@@ -231,6 +231,6 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U03c | /newui toggle + render hook in IrrlichtRenderer | done | |
 | U03d | Player status + target info panels (proof of concept) | done | |
 | U04 | Chat panel | done | |
-| U05 | Inventory and item slots | pending | |
+| U05 | Inventory and item slots | done | |
 | U06 | Remaining panels (hotbar, buffs, spells, status, group, pet) | pending | |
 | U07 | Remove old UI system | pending | |

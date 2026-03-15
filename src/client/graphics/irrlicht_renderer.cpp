@@ -1047,6 +1047,14 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     else if (cmd == "/newui") {
         newUIEnabled_ = !newUIEnabled_;
         chat(fmt::format("New static UI: {}", newUIEnabled_ ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/newinv") {
+        if (inventoryState_.activePopup == PopupType::Inventory) {
+            inventoryState_.activePopup = PopupType::None;
+        } else {
+            inventoryState_.activePopup = PopupType::Inventory;
+        }
+        chat(fmt::format("New UI inventory: {}",
+            inventoryState_.activePopup == PopupType::Inventory ? "OPEN" : "CLOSED"));
     } else if (cmd == "/timestamp" || cmd == "/timestamps") {
         if (auto* wm = getWindowManager()) {
             if (auto* cw = wm->getChatWindow()) {
@@ -10900,6 +10908,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
         renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
         renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
+        renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         uiRenderer_->endFrame();
     }
 

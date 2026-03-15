@@ -57,5 +57,43 @@ struct ChatPanelState {
 void renderChatPanel(UIRenderer& ui, const UILayout& layout,
                      ChatPanelState& state);
 
+// Popup types for center screen area
+enum class PopupType : uint8_t {
+    None = 0,
+    Inventory,
+    Spellbook,
+    Vendor,
+    Bank,
+    Loot,
+    Trade,
+    Skills,
+    Options
+};
+
+// A single inventory slot's visible state
+struct SlotDisplayInfo {
+    bool hasItem = false;
+    std::string itemName;       // Short name for display
+    uint32_t iconId = 0;        // Item icon ID (for future icon atlas)
+    int32_t quantity = 1;       // Stack count
+};
+
+// Cached inventory state for rendering
+struct InventoryPanelState {
+    PopupType activePopup = PopupType::None;
+    // Equipment slots (22 total: 0-21)
+    static constexpr int EQUIP_SLOTS = 22;
+    SlotDisplayInfo equipSlots[22];
+    // General inventory (8 slots)
+    static constexpr int GENERAL_SLOTS = 8;
+    SlotDisplayInfo generalSlots[8];
+    // Hovered slot (-1 = none)
+    int hoveredSlot = -1;
+};
+
+/** Render inventory popup (equipment + general slots). Only when activePopup == Inventory. */
+void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
+                          const InventoryPanelState& inv);
+
 } // namespace Graphics
 } // namespace EQT

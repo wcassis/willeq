@@ -1728,7 +1728,7 @@ private:
 
     // Inventory UI
     std::unique_ptr<eqt::ui::WindowManager> windowManager_;
-    eqt::inventory::InventoryManager* inventoryManager_ = nullptr;
+    // inventoryManager_ moved to public section (U05 — bridge needs access)
     bool windowManagerCapture_ = false;  // True when window manager has mouse capture (dragging/resizing)
 
     // Spell visual effects
@@ -1739,12 +1739,14 @@ private:
     UILayout uiLayout_;                       // U03a
     bool newUIEnabled_ = false;               // U03c: /newui toggle
 public:
-    // U03d/U04: Cached data from bridge events for new static UI panels.
+    // U03d+: Cached data from bridge events for new static UI panels.
     // Public so IrrlichtBridge can update them directly.
     PlayerStatsData cachedPlayerStats_;
     TargetInfoData cachedTargetInfo_;
-    ChatPanelState chatPanelState_;  // U04
+    ChatPanelState chatPanelState_;        // U04
     std::unique_ptr<eqt::ui::ChatMessageBuffer> newUIChatBuffer_;  // U04
+    InventoryPanelState inventoryState_;  // U05
+    eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 
     // World objects for click detection (tradeskill containers, etc.)

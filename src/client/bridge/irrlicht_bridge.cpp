@@ -11,6 +11,8 @@
 #include "client/graphics/ui/inventory_constants.h"
 #include "client/graphics/ui/spell_book_window.h"
 #include "client/graphics/ui/player_status_window.h"
+#include "client/graphics/ui/inventory_manager.h"
+#include "client/graphics/ui/item_instance.h"
 #include "client/pet_constants.h"
 #include "common/logging.h"
 #include <ctime>
@@ -549,10 +551,31 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     // Inventory events (D11a)
-    case state::GameEventType::InventorySlotChanged:
-        // No dedicated renderer call — inventory UI reads state directly
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: InventorySlotChanged");
+    case state::GameEventType::InventorySlotChanged: {
+        // U05: Update cached inventory state for new static UI
+        if (renderer_ && renderer_->inventoryManager_) {
+            auto& d = std::get<state::InventorySlotChangedData>(event.data);
+            auto* mgr = renderer_->inventoryManager_;
+            // Equipment slots: 0-21, General inventory: 22-29 (mapped to slots 22-29)
+            if (d.slotId >= 0 && d.slotId < EQT::Graphics::InventoryPanelState::EQUIP_SLOTS) {
+                auto& slot = renderer_->inventoryState_.equipSlots[d.slotId];
+                const auto* item = mgr->getItem(d.slotId);
+                slot.hasItem = (item != nullptr);
+                slot.itemName = item ? item->name : "";
+                slot.iconId = item ? item->icon : 0;
+                slot.quantity = item ? item->quantity : 0;
+            } else if (d.slotId >= 22 && d.slotId < 30) {
+                int idx = d.slotId - 22;
+                auto& slot = renderer_->inventoryState_.generalSlots[idx];
+                const auto* item = mgr->getItem(d.slotId);
+                slot.hasItem = (item != nullptr);
+                slot.itemName = item ? item->name : "";
+                slot.iconId = item ? item->icon : 0;
+                slot.quantity = item ? item->quantity : 0;
+            }
+        }
         break;
+    }
     case state::GameEventType::CursorItemChanged:
         // No dedicated renderer call — cursor state read directly by UI
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CursorItemChanged");

@@ -157,5 +157,88 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
+                          const InventoryPanelState& inv) {
+    if (inv.activePopup != PopupType::Inventory) return;
+
+    auto* tb = ui.getTextBatch();
+    const auto& popup = layout.centerPopup;
+
+    // Panel background
+    ui.drawPanel(popup);
+
+    // Title
+    if (tb) {
+        tb->addText("Inventory", popup.UpperLeftCorner.X + 8, popup.UpperLeftCorner.Y + 4,
+            irr::video::SColor(255, 255, 215, 0));
+    }
+
+    constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;
+    constexpr irr::s32 PAD = 2;
+    irr::s32 startX = popup.UpperLeftCorner.X + 8;
+    irr::s32 startY = popup.UpperLeftCorner.Y + 22;
+
+    // Equipment slots: 2 columns of 11 rows on the left side
+    for (int i = 0; i < InventoryPanelState::EQUIP_SLOTS; ++i) {
+        int col = i / 11;
+        int row = i % 11;
+        irr::s32 x = startX + col * (SLOT + PAD);
+        irr::s32 y = startY + row * (SLOT + PAD);
+        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+
+        // Slot background
+        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+
+        // Border (hover highlight or normal)
+        uint8_t borderSprite = (inv.hoveredSlot == i)
+            ? static_cast<uint8_t>(UISprite::SlotBorderHover)
+            : static_cast<uint8_t>(UISprite::SlotBorderNormal);
+        ui.drawSprite(slotRect, borderSprite);
+
+        // Item name (abbreviated) — placeholder until icon atlas
+        const auto& slot = inv.equipSlots[i];
+        if (slot.hasItem && tb) {
+            // Show first 3 chars of item name
+            std::string abbrev = slot.itemName.substr(0, 3);
+            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
+                irr::video::SColor(255, 200, 200, 200));
+        }
+    }
+
+    // General inventory: row of 8 slots below equipment
+    irr::s32 genY = startY + 11 * (SLOT + PAD) + 8;
+    if (tb) {
+        tb->addText("General", startX, genY - 14,
+            irr::video::SColor(255, 180, 180, 180));
+    }
+
+    for (int i = 0; i < InventoryPanelState::GENERAL_SLOTS; ++i) {
+        irr::s32 x = startX + i * (SLOT + PAD);
+        irr::s32 y = genY;
+        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+
+        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+
+        int globalIdx = InventoryPanelState::EQUIP_SLOTS + i;
+        uint8_t borderSprite = (inv.hoveredSlot == globalIdx)
+            ? static_cast<uint8_t>(UISprite::SlotBorderHover)
+            : static_cast<uint8_t>(UISprite::SlotBorderNormal);
+        ui.drawSprite(slotRect, borderSprite);
+
+        const auto& slot = inv.generalSlots[i];
+        if (slot.hasItem && tb) {
+            std::string abbrev = slot.itemName.substr(0, 3);
+            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
+                irr::video::SColor(255, 200, 200, 200));
+            // Stack count
+            if (slot.quantity > 1) {
+                std::string qty = fmt::format("{}", slot.quantity);
+                tb->addText(qty, x + SLOT - 12, y + SLOT - 12,
+                    irr::video::SColor(255, 255, 255, 0));
+            }
+        }
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT
