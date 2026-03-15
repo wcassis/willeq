@@ -869,8 +869,9 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // U06a: New UI
             if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
                 auto& slot = renderer_->hotbarState_.slots[d.index];
-                slot.onCooldown = true;
-                slot.cooldownProgress = 0.0f;
+                slot.cooldownDurationMs = d.durationMs;
+                slot.cooldownEndTime = std::chrono::steady_clock::now()
+                    + std::chrono::milliseconds(d.durationMs);
             }
         }
         break;

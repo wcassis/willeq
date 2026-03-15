@@ -240,5 +240,61 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderHotbar(UIRenderer& ui, const UILayout& layout,
+                  const HotbarPanelState& state) {
+    auto* tb = ui.getTextBatch();
+    constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;
+    constexpr irr::s32 PAD = UILayout::MARGIN;
+
+    // Panel background (slightly wider than slots for border)
+    irr::core::rect<irr::s32> bg(
+        layout.hotbar.UpperLeftCorner.X - 2,
+        layout.hotbar.UpperLeftCorner.Y - 2,
+        layout.hotbar.LowerRightCorner.X + 2,
+        layout.hotbar.LowerRightCorner.Y + 2);
+    ui.drawSprite(bg, static_cast<uint8_t>(UISprite::PanelBackground));
+
+    // Key labels
+    static const char* keyLabels[10] = {"1","2","3","4","5","6","7","8","9","0"};
+
+    for (int i = 0; i < HotbarPanelState::SLOT_COUNT; ++i) {
+        irr::s32 x = layout.hotbar.UpperLeftCorner.X + i * (SLOT + PAD);
+        irr::s32 y = layout.hotbar.UpperLeftCorner.Y;
+        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+
+        // Slot background
+        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+
+        // Border
+        uint8_t borderSprite = (state.hoveredSlot == i)
+            ? static_cast<uint8_t>(UISprite::SlotBorderHover)
+            : static_cast<uint8_t>(UISprite::SlotBorderNormal);
+        ui.drawSprite(slotRect, borderSprite);
+
+        const auto& slot = state.slots[i];
+
+        // Cooldown overlay (darken the slot)
+        if (slot.isOnCooldown()) {
+            float darkPct = 1.0f - slot.getCooldownProgress();
+            uint8_t alpha = static_cast<uint8_t>(darkPct * 160);
+            ui.drawRect(slotRect, irr::video::SColor(alpha, 0, 0, 0));
+        }
+
+        // Slot content: abbreviated name (placeholder for icon)
+        if (slot.type != 0 && tb) {
+            std::string abbrev = slot.name.substr(0, 4);
+            irr::s32 tw = tb->getTextWidth(abbrev);
+            tb->addText(abbrev, x + (SLOT - tw) / 2, y + SLOT / 2 - 6,
+                irr::video::SColor(255, 220, 220, 220));
+        }
+
+        // Key label (bottom-right corner)
+        if (tb) {
+            tb->addText(keyLabels[i], x + SLOT - 8, y + SLOT - 12,
+                irr::video::SColor(180, 200, 200, 100));
+        }
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

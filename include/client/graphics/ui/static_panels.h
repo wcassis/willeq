@@ -10,6 +10,7 @@
 #include <irrlicht.h>
 #include <string>
 #include <cstdint>
+#include <chrono>
 
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
 
@@ -94,6 +95,37 @@ struct InventoryPanelState {
 /** Render inventory popup (equipment + general slots). Only when activePopup == Inventory. */
 void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
                           const InventoryPanelState& inv);
+
+// Cached hotbar slot state
+struct HotbarSlotState {
+    uint8_t type = 0;         // HotbarButtonType value (0=Empty)
+    std::string name;         // Spell/skill/item name (abbreviated for display)
+    uint32_t iconId = 0;      // Icon ID (for future icon atlas)
+    // Cooldown tracking
+    std::chrono::steady_clock::time_point cooldownEndTime;
+    uint32_t cooldownDurationMs = 0;
+
+    bool isOnCooldown() const {
+        return cooldownDurationMs > 0 && std::chrono::steady_clock::now() < cooldownEndTime;
+    }
+    float getCooldownProgress() const {
+        if (cooldownDurationMs == 0) return 1.0f;
+        auto now = std::chrono::steady_clock::now();
+        if (now >= cooldownEndTime) return 1.0f;
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(cooldownEndTime - now).count();
+        return 1.0f - static_cast<float>(remaining) / static_cast<float>(cooldownDurationMs);
+    }
+};
+
+struct HotbarPanelState {
+    static constexpr int SLOT_COUNT = 10;
+    HotbarSlotState slots[10];
+    int hoveredSlot = -1;
+};
+
+/** Render hotbar (10 slots, bottom-center). */
+void renderHotbar(UIRenderer& ui, const UILayout& layout,
+                  const HotbarPanelState& state);
 
 } // namespace Graphics
 } // namespace EQT
