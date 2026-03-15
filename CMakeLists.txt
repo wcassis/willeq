@@ -299,8 +299,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
         # Inventory UI sources
-        src/client/graphics/ui/inventory_constants.cpp
-        src/client/graphics/ui/inventory_manager.cpp
+        src/client/inventory/inventory_constants.cpp
+        src/client/inventory/inventory_manager.cpp
         src/client/graphics/ui/window_base.cpp
         src/client/graphics/ui/item_slot.cpp
         src/client/graphics/ui/item_tooltip.cpp
@@ -316,7 +316,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/money_input_dialog.cpp
         src/client/graphics/ui/window_manager.cpp
         src/client/graphics/ui/options_window.cpp
-        src/client/graphics/ui/chat_message_buffer.cpp
+        src/client/chat/chat_message_buffer.cpp
         src/client/graphics/ui/chat_input_field.cpp
         src/client/graphics/ui/chat_window.cpp
         src/client/graphics/ui/command_registry.cpp
