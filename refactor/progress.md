@@ -213,4 +213,21 @@ Full plan: `refactor/D_game_state_threading.md`.
 |------|-------------|--------|--------|
 | D24 | Optimize high-frequency events (entity position batching) | done | `60a2cf9` |
 | D25 | Add console bridge implementation | done | `b94c825` |
-| D26 | Update documentation and CLAUDE.md | done | `c2613dc` |
+| D26 | Update documentation and CLAUDE.md | done | `d774034` |
+
+---
+
+## Batch U — UI and Text Rendering Overhaul
+
+Replace draggable window system with static-layout batched UI.
+Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.md`.
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| U01 | Bitmap font atlas + batched text renderer | pending | |
+| U02 | UI atlas texture | pending | |
+| U03 | Static layout UI framework | pending | |
+| U04 | Chat panel | pending | |
+| U05 | Inventory and item slots | pending | |
+| U06 | Remaining panels (hotbar, buffs, spells, status, group, pet) | pending | |
+| U07 | Remove old UI system | pending | |
