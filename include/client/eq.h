@@ -56,9 +56,7 @@ namespace bridge {
     class GameStateBridge;
     class IrrlichtBridge;
 }
-namespace ui {
-    class WindowManager;
-}
+// U07c3: WindowManager deleted
 class HotbarModel;
 }
 
@@ -1034,8 +1032,7 @@ public:
 	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
 	// D20e2: Flag for Application to detect re-zone loading requests
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
-	// D20e3: WindowManager pointer for hotbar config (set by Application)
-	void SetWindowManager(eqt::ui::WindowManager* wm) { m_hotbar_window_manager = wm; }
+	// U07c3: SetWindowManager removed — old UI deleted
 	// D20g: SetRDPServer removed — RDP audio setup moved to Application
 	// D20f2: Typed BSP tree for water detection / zone lines
 	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) { m_zone_bsp_tree = std::move(bsp); }
@@ -1637,7 +1634,7 @@ private:
 	// D20e2: Loading thread owned by Application; EverQuest holds pointer to signal it
 	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
 	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
-	eqt::ui::WindowManager* m_hotbar_window_manager = nullptr;  // D20e3: Set by Application
+	// U07c3: m_hotbar_window_manager removed — old UI deleted
 	std::unique_ptr<eqt::HotbarModel> m_hotbar_model;  // U07b: standalone hotbar
 	// D20g: m_rdp_server removed — Application owns RDP setup
 

@@ -27,10 +27,10 @@
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
 #include "client/graphics/eq/wld_loader.h"
-#include "client/graphics/ui/inventory_manager.h"
-#include "client/graphics/ui/inventory_constants.h"
-#include "client/graphics/ui/item_instance.h"
-#include "client/graphics/ui/chat_message_buffer.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/inventory_constants.h"
+#include "client/inventory/item_instance.h"
+#include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
 #include "client/input/hotkey_manager.h"
@@ -17929,9 +17929,8 @@ void EverQuest::ShutdownGraphics() {
 		m_inventory_manager.reset();
 	}
 
-	// D20e3: Detach bridge and window pointers — Application owns renderer lifecycle
+	// U07c3: Detach bridge — Application owns renderer lifecycle
 	m_bridge = nullptr;
-	m_hotbar_window_manager = nullptr;
 	m_loading_status_ptr = nullptr;
 	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");

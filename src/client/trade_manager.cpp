@@ -1,7 +1,7 @@
 #include "client/trade_manager.h"
-#include "client/graphics/ui/inventory_manager.h"
-#include "client/graphics/ui/item_instance.h"
-#include "client/graphics/ui/inventory_constants.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/item_instance.h"
+#include "client/inventory/inventory_constants.h"
 #include "common/logging.h"
 
 TradeManager::TradeManager()

@@ -61,7 +61,7 @@ namespace EQT { struct ZoneLineBoundingBox; }
 
 // Forward declarations for inventory UI and bridge
 namespace eqt {
-namespace ui { class WindowManager; }
+// U07c3: WindowManager deleted
 namespace inventory { class InventoryManager; }
 namespace bridge { class GameStateBridge; }
 }
@@ -1043,7 +1043,7 @@ public:
     int getMouseY() const { return eventReceiver_ ? eventReceiver_->getMouseY() : 0; }
 
     // Loot window access
-    eqt::ui::WindowManager* getWindowManager() { return windowManager_.get(); }
+    // U07c3: getWindowManager() removed — old UI deleted
 
     // Spell visual effects access
     EQ::SpellVisualFX* getSpellVisualFX() { return spellVisualFX_.get(); }
@@ -1726,10 +1726,7 @@ private:
     // FPS counter (centered at top of screen)
     void drawFPSCounter();
 
-    // Inventory UI
-    std::unique_ptr<eqt::ui::WindowManager> windowManager_;
-    // inventoryManager_ moved to public section (U05 — bridge needs access)
-    bool windowManagerCapture_ = false;  // True when window manager has mouse capture (dragging/resizing)
+    // U07c3: WindowManager deleted — inventoryManager remains for bridge data access
 
     // Spell visual effects
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
@@ -1833,7 +1830,7 @@ private:
         int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
         int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)
         int64_t zoneLightVisibility = 0; // updateZoneLightVisibility() (split from objectVisibility)
-        int64_t windowManagerUpdate = 0; // windowManager_->update() at sim start
+        // U07c3: windowManagerUpdate removed
         int64_t weatherSystemUpdate = 0; // weatherSystem_->update() (every frame, outside Tier 3)
         int64_t footprintRender = 0;     // detailManager_->renderFootprints()
         int64_t postRender = 0;          // RDP capture + cursor + screenshot

@@ -1,5 +1,5 @@
 #include "client/world_object.h"
-#include "client/graphics/ui/inventory_constants.h"
+#include "client/inventory/inventory_constants.h"
 
 namespace eqt {
 

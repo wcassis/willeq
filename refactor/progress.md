@@ -247,4 +247,4 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U07b | Standalone hotbar data model (JSON read/write + events) | done | |
 | U07c1 | Disable old UI render + input (new UI takes over) | done | |
 | U07c2 | Delete WindowManager + all window subclass files | done | |
-| U07c3 | Delete WindowBase, UISettings, old UI infrastructure | pending | |
+| U07c3 | Delete WindowBase, UISettings, old UI infrastructure | done | |

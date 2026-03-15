@@ -7,7 +7,7 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
-#include "client/graphics/ui/chat_message_buffer.h"
+#include "client/chat/chat_message_buffer.h"
 #include "client/graphics/text_batch.h"
 #include <fmt/format.h>
 

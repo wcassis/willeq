@@ -2,9 +2,9 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
-#include "client/graphics/ui/chat_message_buffer.h"
-#include "client/graphics/ui/inventory_constants.h"
-#include "client/graphics/ui/inventory_manager.h"
+#include "client/chat/chat_message_buffer.h"
+#include "client/inventory/inventory_constants.h"
+#include "client/inventory/inventory_manager.h"
 #include "common/logging.h"
 #include <ctime>
 

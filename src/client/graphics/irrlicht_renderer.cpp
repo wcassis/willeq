@@ -12,13 +12,13 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
-#include "client/graphics/ui/inventory_manager.h"
+#include "client/inventory/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/static_ui_input.h"
-#include "client/graphics/ui/chat_message_buffer.h"
+#include "client/chat/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/sky_config.h"
@@ -9517,8 +9517,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         // Update essential simulation cost EMA
         int64_t essSimUs = frameTimings_.entityUpdate + frameTimings_.doorUpdate +
                            frameTimings_.spellVfxUpdate + frameTimings_.animatedTextures +
-                           frameTimings_.vertexAnimations + frameTimings_.hudUpdate +
-                           frameTimings_.windowManagerUpdate;
+                           frameTimings_.vertexAnimations + frameTimings_.hudUpdate;
         essentialSimCostAvgUs_ = essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
 
         // Record frame in governor and log budget violations.
@@ -9559,7 +9558,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"meshLoading",        frameTimings_.meshLoading},
                 {"postLoadWork",       frameTimings_.postLoadWork},
                 {"entityHousekeeping", frameTimings_.entityHousekeeping},
-                {"wmUpdate",           frameTimings_.windowManagerUpdate},
                 {"entityUpdate",       frameTimings_.entityUpdate},
                 {"doorUpdate",         frameTimings_.doorUpdate},
                 {"spellVfxUpdate",     frameTimings_.spellVfxUpdate},
@@ -9623,7 +9621,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"tier2Update",      frameTimings_.tier2Update},
                 {"tier3Update",      frameTimings_.tier3Update},
                 {"hudUpdate",        frameTimings_.hudUpdate},
-                {"wmUpdate",         frameTimings_.windowManagerUpdate},
                 {"sceneDrawAll",     frameTimings_.sceneDrawAll},
                 {"sceneAnimate",     frameTimings_.sceneAnimate},
                 {"sceneSolid",       frameTimings_.sceneSolid},
@@ -9774,7 +9771,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.playerMovement += frameTimings_.playerMovement;
         frameTimingsAccum_.occlusionCulling += frameTimings_.occlusionCulling;
         frameTimingsAccum_.zoneLightVisibility += frameTimings_.zoneLightVisibility;
-        frameTimingsAccum_.windowManagerUpdate += frameTimings_.windowManagerUpdate;
         frameTimingsAccum_.weatherSystemUpdate += frameTimings_.weatherSystemUpdate;
         frameTimingsAccum_.footprintRender += frameTimings_.footprintRender;
         frameTimingsAccum_.postRender += frameTimings_.postRender;
@@ -9841,8 +9837,8 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
 
     processChatInput();
 
-    // Handle mouse targeting - skip if window consumed the click
-    if (!windowManagerCapture_ && hadClick) {
+    // Handle mouse targeting
+    if (hadClick) {
         handleMouseTargeting(clickX, clickY);
     }
 }
@@ -10174,7 +10170,6 @@ void IrrlichtRenderer::processFrameVisibility() {
 void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // WindowManager removed — no old UI update
     sectionStart_ = std::chrono::steady_clock::now();
-    frameTimings_.windowManagerUpdate = measureSection();
 
     // Entity update — worker handles interpolation + culling, main thread handles
     // animation side-effects, corpse fading, equipment transforms, casting bars
@@ -11378,7 +11373,6 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.inputHandling), pct(frameTimingsAccum_.inputHandling));
     LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.playerMovement), pct(frameTimingsAccum_.playerMovement));
     LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  WM Update (sim):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManagerUpdate), pct(frameTimingsAccum_.windowManagerUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
@@ -11790,8 +11784,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
     bool mouseLookActive = (eventReceiver_->isLeftButtonDown() ||
                             eventReceiver_->isRightButtonDown() ||
-                            (ctrlHeld && eventReceiver_->isLeftButtonDown())) &&
-                           !windowManagerCapture_;
+                            (ctrlHeld && eventReceiver_->isLeftButtonDown()));
 
     if (mouseLookActive) {
         int mouseDeltaX = eventReceiver_->getMouseDeltaX();
