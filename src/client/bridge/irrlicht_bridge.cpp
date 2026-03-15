@@ -735,8 +735,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Spell events (D12)
     case state::GameEventType::SpellGemChanged:
-        // Spell gem panel polls gem state from SpellState each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellGemChanged");
+        if (renderer_) {
+            auto& d = std::get<state::SpellGemChangedData>(event.data);
+            if (d.gemSlot < EQT::Graphics::SpellGemPanelState::GEM_COUNT) {
+                auto& gem = renderer_->spellGemState_.gems[d.gemSlot];
+                gem.spellId = d.spellId;
+                gem.gemState = d.gemState;
+                gem.spellName = d.spellName;
+                gem.iconId = d.iconId;
+                gem.cooldownRemainingMs = d.cooldownRemainingMs;
+                gem.cooldownTotalMs = d.cooldownTotalMs;
+                gem.memorizeTotalMs = d.memorizeTotalMs;
+                gem.lastUpdateTime = std::chrono::steady_clock::now();
+            }
+        }
         break;
     case state::GameEventType::CastingStateChanged:
         // Casting bar is driven by direct SpellManager → WindowManager calls

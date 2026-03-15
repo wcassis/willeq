@@ -1746,6 +1746,8 @@ public:
     ChatPanelState chatPanelState_;        // U04
     std::unique_ptr<eqt::ui::ChatMessageBuffer> newUIChatBuffer_;  // U04
     InventoryPanelState inventoryState_;  // U05
+    HotbarPanelState hotbarState_;       // U06a
+    SpellGemPanelState spellGemState_;  // U06b
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 

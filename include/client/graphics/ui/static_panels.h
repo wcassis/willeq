@@ -127,5 +127,27 @@ struct HotbarPanelState {
 void renderHotbar(UIRenderer& ui, const UILayout& layout,
                   const HotbarPanelState& state);
 
+// Cached spell gem state
+struct SpellGemState {
+    uint32_t spellId = 0;       // 0 or SPELL_UNKNOWN = empty
+    uint8_t gemState = 0;       // GemState enum: 0=Empty, 1=Ready, 2=Casting, 3=Refresh, 4=Memorize
+    std::string spellName;
+    uint32_t iconId = 0;
+    uint32_t cooldownRemainingMs = 0;
+    uint32_t cooldownTotalMs = 0;
+    uint32_t memorizeTotalMs = 0;
+    std::chrono::steady_clock::time_point lastUpdateTime;
+};
+
+struct SpellGemPanelState {
+    static constexpr int GEM_COUNT = 8;
+    SpellGemState gems[8];
+    int hoveredGem = -1;
+};
+
+/** Render spell gem panel (8 gem slots, bottom-right). */
+void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
+                         const SpellGemPanelState& state);
+
 } // namespace Graphics
 } // namespace EQT

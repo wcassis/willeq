@@ -76,6 +76,7 @@ void SpellManager::update(float delta_time)
             m_waiting_for_server_confirm = false;
             if (m_current_gem_slot < MAX_SPELL_GEMS) {
                 m_gem_states[m_current_gem_slot] = GemState::Ready;
+                publishGemChanged(m_current_gem_slot);
             }
         }
     }
@@ -123,6 +124,7 @@ void SpellManager::updateGemCooldowns(float delta_time)
 
             if (elapsed >= m_gem_cooldown_duration[i]) {
                 m_gem_states[i] = GemState::Ready;
+                publishGemChanged(i);
                 LOG_DEBUG(MOD_SPELL, "Gem {} cooldown complete", i + 1);
             }
         }
@@ -148,6 +150,8 @@ void SpellManager::updateMemorization(float delta_time)
         const SpellData* spell = m_spell_db.getSpell(m_memorize_spell_id);
         LOG_INFO(MOD_SPELL, "Memorized spell '{}' in gem {}",
             spell ? spell->name : "Unknown", m_memorize_slot + 1);
+
+        publishGemChanged(m_memorize_slot);
 
         // D20e1: Signal memorize completion via bridge
         if (m_bridge) {
@@ -239,6 +243,7 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
 
     // Update gem state
     m_gem_states[gem_slot] = GemState::Casting;
+    publishGemChanged(gem_slot);
 
     // Send cast packet to server
     sendCastSpellPacket(spell_id, gem_slot, target_id);
@@ -322,6 +327,7 @@ void SpellManager::interruptCast()
     // Reset gem state if it was a gem cast
     if (m_current_gem_slot < MAX_SPELL_GEMS) {
         m_gem_states[m_current_gem_slot] = GemState::Ready;
+        publishGemChanged(m_current_gem_slot);
     }
 
     // Notify callback
@@ -644,6 +650,7 @@ bool SpellManager::memorizeSpell(uint32_t spell_id, uint8_t gem_slot)
     m_memorize_start_time = std::chrono::steady_clock::now();
     m_memorize_duration_ms = calculateMemorizeTime(spell_id);
     m_gem_states[gem_slot] = GemState::MemorizeProgress;
+    publishGemChanged(gem_slot);
 
     // Send memorize packet to server
     sendMemorizePacket(spell_id, gem_slot, true);
@@ -681,6 +688,7 @@ bool SpellManager::forgetSpell(uint8_t gem_slot)
     uint32_t spell_id = m_spell_gems[gem_slot];
     m_spell_gems[gem_slot] = SPELL_UNKNOWN;
     m_gem_states[gem_slot] = GemState::Empty;
+    publishGemChanged(gem_slot);
 
     // Send forget packet to server
     sendMemorizePacket(spell_id, gem_slot, false);
@@ -1074,6 +1082,7 @@ void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_
         // Reset gem state
         if (m_current_gem_slot < MAX_SPELL_GEMS) {
             m_gem_states[m_current_gem_slot] = GemState::Ready;
+            publishGemChanged(m_current_gem_slot);
         }
 
         // Determine interrupt type
@@ -1204,8 +1213,29 @@ void SpellManager::startGemCooldown(uint8_t gem_slot, uint32_t duration_ms)
     m_gem_states[gem_slot] = GemState::Refresh;
     m_gem_cooldown_start[gem_slot] = std::chrono::steady_clock::now();
     m_gem_cooldown_duration[gem_slot] = duration_ms;
+    publishGemChanged(gem_slot);
 
     LOG_DEBUG(MOD_SPELL, "Gem {} on cooldown for {}ms", gem_slot + 1, duration_ms);
+}
+
+// U06b: Push SpellGemChanged to bridge for new UI
+void SpellManager::publishGemChanged(uint8_t gem_slot) {
+    if (!m_bridge || gem_slot >= MAX_SPELL_GEMS) return;
+    uint32_t spellId = m_spell_gems[gem_slot];
+    eqt::state::SpellGemChangedData data;
+    data.gemSlot = gem_slot;
+    data.spellId = spellId;
+    data.gemState = static_cast<uint8_t>(m_gem_states[gem_slot]);
+    data.cooldownRemainingMs = getGemCooldownRemaining(gem_slot);
+    data.cooldownTotalMs = m_gem_cooldown_duration[gem_slot];
+    data.memorizeTotalMs = m_memorize_duration_ms;
+    if (spellId != SPELL_UNKNOWN) {
+        const auto* spell = m_spell_db.getSpell(spellId);
+        data.spellName = spell ? spell->name : "";
+        data.iconId = spell ? spell->gem_icon : 0;
+    }
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellGemChanged, std::move(data)));
 }
 
 // ============================================================================

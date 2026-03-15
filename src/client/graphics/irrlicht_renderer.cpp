@@ -10908,6 +10908,8 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
         renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
         renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
+        renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
+        renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         uiRenderer_->endFrame();
     }

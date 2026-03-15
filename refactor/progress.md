@@ -234,7 +234,7 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U04 | Chat panel | done | |
 | U05 | Inventory and item slots | done | |
 | U06a | Hotbar panel (10 slots + cooldowns + key labels) | done | |
-| U06b | Spell gem panel (8 gem slots) | pending | |
+| U06b | Spell gem panel (8 gem slots) | done | |
 | U06c | Buff bar (icon row + duration text) | pending | |
 | U06d | Casting bar (progress bar + spell name) | pending | |
 | U06e | Group panel (5 member HP bars) | pending | |

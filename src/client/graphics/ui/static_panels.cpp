@@ -296,5 +296,83 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
+                         const SpellGemPanelState& state) {
+    auto* tb = ui.getTextBatch();
+    constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;
+    constexpr irr::s32 PAD = UILayout::MARGIN;
+
+    // Panel background
+    irr::core::rect<irr::s32> bg(
+        layout.spellGems.UpperLeftCorner.X - 2,
+        layout.spellGems.UpperLeftCorner.Y - 2,
+        layout.spellGems.LowerRightCorner.X + 2,
+        layout.spellGems.LowerRightCorner.Y + 2);
+    ui.drawSprite(bg, static_cast<uint8_t>(UISprite::PanelBackground));
+
+    // Gem state colors
+    auto gemColor = [](uint8_t gemState) -> irr::video::SColor {
+        switch (gemState) {
+            case 1: return {255, 100, 200, 100};  // Ready — green tint
+            case 2: return {255, 100, 100, 255};  // Casting — blue tint
+            case 3: return {255, 200, 100, 100};  // Refresh — red tint
+            case 4: return {255, 200, 200, 100};  // Memorizing — yellow tint
+            default: return {255, 80, 80, 80};    // Empty — gray
+        }
+    };
+
+    static const char* gemLabels[8] = {"A1","A2","A3","A4","A5","A6","A7","A8"};
+
+    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) {
+        irr::s32 x = layout.spellGems.UpperLeftCorner.X;
+        irr::s32 y = layout.spellGems.UpperLeftCorner.Y + i * (SLOT + PAD);
+        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+
+        // Slot background with gem state tint
+        const auto& gem = state.gems[i];
+        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+
+        // State-colored border
+        if (gem.spellId != 0 && gem.gemState > 0) {
+            irr::video::SColor borderCol = gemColor(gem.gemState);
+            ui.drawRect({x, y, x + SLOT, y + 1}, borderCol);
+            ui.drawRect({x, y + SLOT - 1, x + SLOT, y + SLOT}, borderCol);
+            ui.drawRect({x, y, x + 1, y + SLOT}, borderCol);
+            ui.drawRect({x + SLOT - 1, y, x + SLOT, y + SLOT}, borderCol);
+        } else {
+            uint8_t borderSprite = (state.hoveredGem == i)
+                ? static_cast<uint8_t>(UISprite::SlotBorderHover)
+                : static_cast<uint8_t>(UISprite::SlotBorderNormal);
+            ui.drawSprite(slotRect, borderSprite);
+        }
+
+        // Cooldown overlay for refresh state
+        if (gem.gemState == 3 && gem.cooldownTotalMs > 0) {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - gem.lastUpdateTime).count();
+            uint32_t remaining = (elapsed < gem.cooldownRemainingMs)
+                ? gem.cooldownRemainingMs - static_cast<uint32_t>(elapsed) : 0;
+            float pct = 1.0f - static_cast<float>(remaining) / static_cast<float>(gem.cooldownTotalMs);
+            float darkPct = 1.0f - pct;
+            uint8_t alpha = static_cast<uint8_t>(darkPct * 160);
+            ui.drawRect(slotRect, irr::video::SColor(alpha, 0, 0, 0));
+        }
+
+        // Spell name (abbreviated)
+        if (gem.spellId != 0 && tb) {
+            std::string abbrev = gem.spellName.substr(0, 4);
+            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
+                irr::video::SColor(255, 220, 220, 220));
+        }
+
+        // Alt+N key label
+        if (tb) {
+            tb->addText(gemLabels[i], x + SLOT - 14, y + SLOT - 12,
+                irr::video::SColor(150, 180, 180, 100));
+        }
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

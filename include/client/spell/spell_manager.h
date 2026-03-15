@@ -199,6 +199,7 @@ private:
 
     void completeCast(bool success);
     void startGemCooldown(uint8_t gem_slot, uint32_t duration_ms);
+    void publishGemChanged(uint8_t gem_slot);  // U06b: push to bridge
     void updateGemCooldowns(float delta_time);
     void updateMemorization(float delta_time);
     uint32_t calculateMemorizeTime(uint32_t spell_id) const;
