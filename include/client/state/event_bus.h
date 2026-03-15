@@ -657,6 +657,8 @@ struct BuffUpdatedData {
     uint32_t spellId;
     uint32_t ticksLeft;
     std::string casterName;
+    std::string spellName;  // U06c: for new UI display
+    uint32_t iconId = 0;    // U06c: spell icon
 };
 
 struct BuffRemovedData {

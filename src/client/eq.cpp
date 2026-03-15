@@ -1362,6 +1362,11 @@ void EverQuest::PublishFullStateSnapshot() {
 			data.spellId = buff.spell_id;
 			data.ticksLeft = buff.remaining_seconds / 6;  // Convert seconds to ticks (6s per tick)
 			data.casterName = "";  // Caster name not stored in ActiveBuff
+			if (m_spell_manager) {
+				const auto* spell = m_spell_manager->getSpell(buff.spell_id);
+				data.spellName = spell ? spell->name : "";
+				data.iconId = spell ? spell->spell_icon : 0;
+			}
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::BuffUpdated, std::move(data)));
 		}
@@ -12314,6 +12319,11 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 					auto caster_it = m_entities.find(static_cast<uint16_t>(buff.player_id));
 					if (caster_it != m_entities.end()) {
 						data.casterName = EQT::toDisplayName(caster_it->second.name);
+					}
+					if (m_spell_manager) {
+						const auto* spell = m_spell_manager->getSpell(buff.spellid);
+						data.spellName = spell ? spell->name : "";
+						data.iconId = spell ? spell->spell_icon : 0;
 					}
 					m_bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::BuffUpdated, std::move(data)));

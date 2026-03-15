@@ -1748,6 +1748,7 @@ public:
     InventoryPanelState inventoryState_;  // U05
     HotbarPanelState hotbarState_;       // U06a
     SpellGemPanelState spellGemState_;  // U06b
+    BuffBarState buffBarState_;         // U06c
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 

@@ -763,12 +763,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellMemorizing");
         break;
     case state::GameEventType::BuffUpdated:
-        // BuffWindow polls buff data from BuffManager each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BuffUpdated");
+        if (renderer_) {
+            auto& d = std::get<state::BuffUpdatedData>(event.data);
+            if (d.slot < EQT::Graphics::BuffBarState::MAX_BUFFS) {
+                auto& buff = renderer_->buffBarState_.buffs[d.slot];
+                buff.spellId = d.spellId;
+                buff.spellName = d.spellName;
+                buff.iconId = d.iconId;
+                buff.ticksLeft = d.ticksLeft;
+                buff.updateTime = std::chrono::steady_clock::now();
+            }
+        }
         break;
     case state::GameEventType::BuffRemoved:
-        // BuffWindow polls buff data from BuffManager each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BuffRemoved");
+        if (renderer_) {
+            auto& d = std::get<state::BuffRemovedData>(event.data);
+            if (d.slot < EQT::Graphics::BuffBarState::MAX_BUFFS) {
+                renderer_->buffBarState_.buffs[d.slot] = {};
+            }
+        }
         break;
     case state::GameEventType::VisionChanged:
         if (renderer_) {

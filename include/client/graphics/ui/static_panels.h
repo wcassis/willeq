@@ -149,5 +149,23 @@ struct SpellGemPanelState {
 void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
                          const SpellGemPanelState& state);
 
+// Cached buff state
+struct BuffSlotState {
+    uint32_t spellId = 0;       // 0 = empty
+    std::string spellName;
+    uint32_t iconId = 0;
+    uint32_t ticksLeft = 0;     // Ticks remaining (6s per tick)
+    std::chrono::steady_clock::time_point updateTime;  // When ticksLeft was set
+};
+
+struct BuffBarState {
+    static constexpr int MAX_BUFFS = 25;
+    BuffSlotState buffs[25];
+};
+
+/** Render buff bar (icon row above chat). */
+void renderBuffBar(UIRenderer& ui, const UILayout& layout,
+                   const BuffBarState& state);
+
 } // namespace Graphics
 } // namespace EQT

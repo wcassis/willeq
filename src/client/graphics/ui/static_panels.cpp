@@ -374,5 +374,64 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderBuffBar(UIRenderer& ui, const UILayout& layout,
+                   const BuffBarState& state) {
+    auto* tb = ui.getTextBatch();
+    constexpr irr::s32 ICON = 20;  // Small buff icons
+    constexpr irr::s32 PAD = 2;
+
+    // Count active buffs
+    int activeCount = 0;
+    for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) {
+        if (state.buffs[i].spellId != 0) activeCount++;
+    }
+    if (activeCount == 0) return;
+
+    // Background
+    ui.drawSprite(layout.buffBar, static_cast<uint8_t>(UISprite::PanelBackground));
+
+    irr::s32 x = layout.buffBar.UpperLeftCorner.X + PAD;
+    irr::s32 y = layout.buffBar.UpperLeftCorner.Y + PAD;
+    auto now = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) {
+        const auto& buff = state.buffs[i];
+        if (buff.spellId == 0) continue;
+
+        // Check if we've run past the bar width
+        if (x + ICON > layout.buffBar.LowerRightCorner.X - PAD) break;
+
+        irr::core::rect<irr::s32> iconRect(x, y, x + ICON, y + ICON);
+
+        // Colored background based on beneficial/detrimental (simplified: always blue-ish)
+        ui.drawRect(iconRect, irr::video::SColor(200, 30, 50, 120));
+        ui.drawRect({x, y, x + ICON, y + 1}, irr::video::SColor(255, 80, 100, 180));
+        ui.drawRect({x, y + ICON - 1, x + ICON, y + ICON}, irr::video::SColor(255, 80, 100, 180));
+        ui.drawRect({x, y, x + 1, y + ICON}, irr::video::SColor(255, 80, 100, 180));
+        ui.drawRect({x + ICON - 1, y, x + ICON, y + ICON}, irr::video::SColor(255, 80, 100, 180));
+
+        // Abbreviated spell name
+        if (tb) {
+            std::string abbrev = buff.spellName.substr(0, 2);
+            tb->addText(abbrev, x + 2, y + 2,
+                irr::video::SColor(255, 220, 220, 255));
+        }
+
+        // Duration text below icon
+        if (tb && buff.ticksLeft > 0) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                now - buff.updateTime).count();
+            int totalSec = static_cast<int>(buff.ticksLeft * 6) - static_cast<int>(elapsed);
+            if (totalSec < 0) totalSec = 0;
+            int minutes = totalSec / 60;
+            std::string dur = (minutes > 0) ? fmt::format("{}m", minutes) : fmt::format("{}s", totalSec);
+            tb->addText(dur, x, y + ICON + 1,
+                irr::video::SColor(200, 180, 180, 180));
+        }
+
+        x += ICON + PAD;
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT
