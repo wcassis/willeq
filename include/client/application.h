@@ -268,7 +268,7 @@ private:
     bool checkLoadingComplete();
     void setupHotbarCallback();  // Wire hotbar changed callback to renderer
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
-    void publishHotbarSnapshot();  // U00: Push hotbar slots to bridge after config load
+    // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this
 
     // ========== Components ==========
 

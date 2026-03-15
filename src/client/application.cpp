@@ -37,6 +37,7 @@
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/hotbar_window.h"
+#include "client/hotbar/hotbar_model.h"
 #endif
 
 #ifdef WITH_AUDIO
@@ -538,8 +539,10 @@ void Application::gameThreadLoop() {
 #ifdef EQT_HAS_GRAPHICS
                 if (m_config.graphicsEnabled && m_graphicsInitialized && m_eqClient) {
                     m_eqClient->LoadHotbarConfig();
-                    // U00: Publish hotbar slot assignments to bridge for new UI
-                    publishHotbarSnapshot();
+                    // U07b: HotbarModel publishes its own events
+                    if (m_eqClient->GetHotbarModel()) {
+                        m_eqClient->GetHotbarModel()->publishAllSlots();
+                    }
                 }
 #endif
             }
@@ -1027,35 +1030,7 @@ void Application::setupHotbarCallback() {
     }
 }
 
-void Application::publishHotbarSnapshot() {
-    if (!m_bridge || !m_renderer) return;
-    auto* wm = m_renderer->getWindowManager();
-    if (!wm) return;
-    auto* hotbar = wm->getHotbarWindow();
-    if (!hotbar) return;
-
-    for (int i = 0; i < hotbar->getButtonCount(); ++i) {
-        const auto& btn = hotbar->getButton(i);
-        eqt::state::HotbarSlotAssignedData data;
-        data.index = i;
-        data.type = static_cast<uint8_t>(btn.type);
-        data.id = btn.id;
-        data.iconId = btn.iconId;
-        // Get name from spell/skill database
-        if (btn.type == eqt::ui::HotbarButtonType::Spell && m_eqClient) {
-            auto* sm = m_eqClient->GetSpellManager();
-            if (sm) {
-                const auto* spell = sm->getSpell(btn.id);
-                data.name = spell ? spell->name : "";
-            }
-        } else if (btn.type == eqt::ui::HotbarButtonType::Emote) {
-            data.name = btn.emoteText;
-        }
-        m_bridge->pushEvent(eqt::state::GameEvent(
-            eqt::state::GameEventType::HotbarSlotAssigned, std::move(data)));
-    }
-    LOG_INFO(MOD_MAIN, "Hotbar snapshot published ({} slots)", hotbar->getButtonCount());
-}
+// U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this
 
 void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
 #if defined(WITH_RDP) && defined(WITH_AUDIO)

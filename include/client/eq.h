@@ -59,6 +59,7 @@ namespace bridge {
 namespace ui {
     class WindowManager;
 }
+class HotbarModel;
 }
 
 #ifdef WITH_AUDIO
@@ -1022,6 +1023,8 @@ public:
 	// D20g: SetRDPServer removed — RDP audio setup moved to Application
 	// D20f2: Typed BSP tree for water detection / zone lines
 	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) { m_zone_bsp_tree = std::move(bsp); }
+	// U07b: Standalone hotbar model
+	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
 	// Phase 7.3: Zone accessors read from GameState
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
@@ -1619,6 +1622,7 @@ private:
 	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
 	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
 	eqt::ui::WindowManager* m_hotbar_window_manager = nullptr;  // D20e3: Set by Application
+	std::unique_ptr<eqt::HotbarModel> m_hotbar_model;  // U07b: standalone hotbar
 	// D20g: m_rdp_server removed — Application owns RDP setup
 
 	// Inventory manager

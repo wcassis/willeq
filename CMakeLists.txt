@@ -301,6 +301,7 @@ IF(EQT_GRAPHICS)
         # Inventory UI sources
         src/client/inventory/inventory_constants.cpp
         src/client/inventory/inventory_manager.cpp
+        src/client/hotbar/hotbar_model.cpp
         src/client/graphics/ui/window_base.cpp
         src/client/graphics/ui/item_slot.cpp
         src/client/graphics/ui/item_tooltip.cpp

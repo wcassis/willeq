@@ -35,6 +35,7 @@
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/graphics/ui/hotbar_types.h"
+#include "client/hotbar/hotbar_model.h"
 #include "client/graphics/ui/spell_book_window.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
@@ -1010,6 +1011,19 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 			const char* skill_name = EQ::getSkillName(skill_id);
 			AddChatSystemMessage(fmt::format("You have become better at {}! ({})", skill_name, new_value));
 		}
+	});
+
+	// U07b: Create standalone hotbar model
+	m_hotbar_model = std::make_unique<eqt::HotbarModel>();
+	m_hotbar_model->setNameResolver([this](eqt::HotbarSlotType type, uint32_t id) -> std::string {
+		if (type == eqt::HotbarSlotType::Spell && m_spell_manager) {
+			const auto* spell = m_spell_manager->getSpell(id);
+			return spell ? spell->name : "";
+		}
+		if (type == eqt::HotbarSlotType::Skill) {
+			return EQ::getSkillName(static_cast<uint8_t>(id));
+		}
+		return "";
 	});
 
 	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
@@ -17853,6 +17867,11 @@ bool EverQuest::InitGraphics(int width, int height,
 	if (m_skill_manager) {
 		m_skill_manager->setBridge(m_bridge);
 	}
+	// U07b: Wire hotbar model to bridge
+	if (m_hotbar_model) {
+		m_hotbar_model->setBridge(m_bridge);
+		m_hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
+	}
 
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
@@ -19346,58 +19365,44 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 }
 
 void EverQuest::SaveHotbarConfig() {
-	if (m_config_path.empty() || !m_bridge) return;
-	// D20e3: Get window manager via bridge's renderer (Application wires this)
-	auto* windowMgr = m_hotbar_window_manager;
-	if (!windowMgr) return;
+	if (m_config_path.empty() || !m_hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	Json::Value& root = config.RawHandle();
 
 	// Migrate old config format to new format if needed
-	// Old format: array of clients at top level
-	// New format: object with "clients" array
 	if (root.isArray()) {
 		Json::Value newRoot;
 		newRoot["clients"] = root;
 		root = newRoot;
-		LOG_INFO(MOD_CONFIG, "Migrated config from legacy array format to new object format");
 	}
 
-	// Now root should be an object - find or create the client config
 	Json::Value* clientConfig = nullptr;
 	if (root.isObject()) {
 		if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
 			clientConfig = &root["clients"][0];
 		} else if (!root.isMember("clients")) {
-			// Single client object at top level - wrap it in clients array
 			Json::Value clientsCopy = root;
 			root = Json::Value(Json::objectValue);
 			root["clients"] = Json::Value(Json::arrayValue);
 			root["clients"].append(clientsCopy);
 			clientConfig = &root["clients"][0];
-			LOG_INFO(MOD_CONFIG, "Migrated single client config to clients array format");
 		}
 	}
 
 	if (clientConfig && clientConfig->isObject()) {
-		(*clientConfig)["hotbar"] = windowMgr->collectHotbarData();
+		(*clientConfig)["hotbar"] = m_hotbar_model->saveToJson();
 		config.Save(m_config_path);
 		LOG_DEBUG(MOD_CONFIG, "Saved hotbar config to {}", m_config_path);
-	} else {
-		LOG_WARN(MOD_CONFIG, "Could not save hotbar config - invalid config format");
 	}
 }
 
 void EverQuest::LoadHotbarConfig() {
-	if (m_config_path.empty() || !m_bridge) return;
-	auto* windowMgr = m_hotbar_window_manager;
-	if (!windowMgr) return;
+	if (m_config_path.empty() || !m_hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	Json::Value& root = config.RawHandle();
 
-	// Find the client config object to load hotbar from
 	const Json::Value* clientConfig = nullptr;
 	if (root.isArray() && root.size() > 0) {
 		clientConfig = &root[0];
@@ -19410,7 +19415,7 @@ void EverQuest::LoadHotbarConfig() {
 	}
 
 	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
-		windowMgr->loadHotbarData((*clientConfig)["hotbar"]);
+		m_hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
 		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
 	} else {
 		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
