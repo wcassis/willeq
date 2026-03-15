@@ -18,6 +18,7 @@
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_renderer.h"
+#include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
@@ -635,6 +636,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // U04: Create chat message buffer for new UI
     newUIChatBuffer_ = std::make_unique<eqt::ui::ChatMessageBuffer>(500);
     chatPanelState_.messageBuffer = newUIChatBuffer_.get();
+    // U06j: Initialize static UI input handler
+    staticUIInput_ = std::make_unique<StaticUIInput>();
+    staticUIInput_->init(bridge_);
     LOG_INFO(MOD_GRAPHICS, "UIRenderer initialized (newui=off, toggle with /newui)");
 
     // Configure mipmap generation based on constrained config
@@ -10917,6 +10921,15 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         frameTimings_.wmTooltips = wt.tooltips;
         frameTimings_.wmOverlays = wt.overlays;
         frameTimings_.wmOther = wt.other;
+    }
+
+    // U06j: Process new UI input before rendering
+    if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
+        bool clicked = eventReceiver_->wasLeftButtonClicked();
+        staticUIInput_->processInput(
+            eventReceiver_->getMouseX(), eventReceiver_->getMouseY(), clicked,
+            uiLayout_, hotbarState_, spellGemState_, inventoryState_,
+            spellbookState_, skillsPopupState_);
     }
 
     // U03c: Render new static UI when enabled

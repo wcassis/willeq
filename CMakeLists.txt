@@ -338,6 +338,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/ui/ui_settings.cpp
         src/client/graphics/ui/ui_atlas.cpp
+        src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/spell_visual_fx.cpp

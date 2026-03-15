@@ -69,7 +69,7 @@ namespace bridge { class GameStateBridge; }
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
-namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; } }
+namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
 // U03: included directly for layout struct and panel data structs (small, no deps)
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
@@ -1755,6 +1755,7 @@ public:
     SpellbookPopupState spellbookState_; // U06g
     SkillsPopupState skillsPopupState_; // U06h
     XPBarState xpBarState_;             // U06i
+    std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 
