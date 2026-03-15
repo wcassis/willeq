@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build-*/
 bin/
 lib/
 CMakeCache.txt
@@ -9,6 +10,10 @@ CTestTestfile.cmake
 Makefile
 _deps/
 
+# OS/NAS metadata
+.DS_Store
+@eaDir/
+
 # IDE files
 .vscode/
 .idea/
@@ -17,6 +22,7 @@ _deps/
 *~
 
 # Test artifacts
+Testing/
 tests/CMakeFiles/
 tests/CTestTestfile.cmake
 tests/Makefile
@@ -56,8 +62,23 @@ tests/*_tests.cmake
 *.wld
 *.s3d
 
+# Downloaded packages
+*.deb
+
+# Backup files
+*.bak
+
+# Scratch/notes files in root
+/*.txt
+/*.logreset
+
+# Runtime caches
+config/shader_cache/
+
+# Runtime data
+data/detail/
+data/region_maps/
+data/eq_client
+
 # Agent working directory
 .agent/
-
-data/detail/zones/
-data/eq_client
