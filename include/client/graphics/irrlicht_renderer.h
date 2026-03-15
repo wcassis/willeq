@@ -68,7 +68,10 @@ namespace bridge { class GameStateBridge; }
 
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
-namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; } }
+namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; } }
+// U03: included directly for layout struct and panel data structs (small, no deps)
+#include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/static_panels.h"
 
 // Forward declaration for constrained texture cache and mesh cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
@@ -1050,6 +1053,11 @@ public:
     // U02: UI sprite atlas
     UIAtlas* getUIAtlas() { return uiAtlas_.get(); }
 
+    // U03: Static layout UI
+    UIRenderer* getUIRenderer() { return uiRenderer_.get(); }
+    bool isNewUIEnabled() const { return newUIEnabled_; }
+    void setNewUIEnabled(bool v) { newUIEnabled_ = v; }
+
     // Constrained texture cache access (may return nullptr if not in constrained mode)
     ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
 
@@ -1726,6 +1734,15 @@ private:
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
     std::unique_ptr<TextBatch> textBatch_;  // U01
     std::unique_ptr<UIAtlas> uiAtlas_;     // U02
+    std::unique_ptr<UIRenderer> uiRenderer_;  // U03b
+    UILayout uiLayout_;                       // U03a
+    bool newUIEnabled_ = false;               // U03c: /newui toggle
+public:
+    // U03d: Cached data from bridge events for new static UI panels.
+    // Public so IrrlichtBridge can update them directly.
+    PlayerStatsData cachedPlayerStats_;
+    TargetInfoData cachedTargetInfo_;
+private:
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

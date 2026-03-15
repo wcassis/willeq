@@ -17,6 +17,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/ui_atlas.h"
+#include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/sky_config.h"
@@ -626,6 +627,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
     }
 
+    // U03: Initialize static layout UI renderer
+    uiRenderer_ = std::make_unique<UIRenderer>();
+    uiRenderer_->init(driver_, uiAtlas_.get(), textBatch_.get());
+    uiLayout_.computeLayout(config.width, config.height);
+    LOG_INFO(MOD_GRAPHICS, "UIRenderer initialized (newui=off, toggle with /newui)");
+
     // Configure mipmap generation based on constrained config
     if (driver_) {
         driver_->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS,
@@ -1033,7 +1040,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         for (const auto& line : report) chat(line);
     }
     // --- UI ---
-    else if (cmd == "/timestamp" || cmd == "/timestamps") {
+    else if (cmd == "/newui") {
+        newUIEnabled_ = !newUIEnabled_;
+        chat(fmt::format("New static UI: {}", newUIEnabled_ ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/timestamp" || cmd == "/timestamps") {
         if (auto* wm = getWindowManager()) {
             if (auto* cw = wm->getChatWindow()) {
                 cw->toggleTimestamps();
@@ -10878,6 +10888,14 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         frameTimings_.wmTooltips = wt.tooltips;
         frameTimings_.wmOverlays = wt.overlays;
         frameTimings_.wmOther = wt.other;
+    }
+
+    // U03c: Render new static UI when enabled
+    if (newUIEnabled_ && uiRenderer_) {
+        uiRenderer_->beginFrame();
+        renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
+        renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
+        uiRenderer_->endFrame();
     }
 
     // Draw zone line overlay

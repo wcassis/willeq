@@ -80,24 +80,49 @@ Pre-generated atlas of UI chrome sprites. Loaded at runtime from `<atlasPath>/`.
 
 Core framework replacing WindowBase + WindowManager with fixed-layout batched rendering.
 
+#### U03a: UILayout — fixed screen region definitions
+
+**New file**: `include/client/graphics/ui/ui_layout.h`
+
+Define anchor-based screen regions for all UI elements. Regions are computed from
+screen dimensions at init and on resize. No rendering — just geometry.
+
+Regions: playerStatus, targetInfo, chatPanel, hotbar, spellGems, buffBar,
+castingBar, centerPopup, groupPanel, petPanel.
+
+#### U03b: UIRenderer — batched quad drawing API
+
 **New files**:
 - `include/client/graphics/ui/ui_renderer.h`
 - `src/client/graphics/ui/ui_renderer.cpp`
-- `include/client/graphics/ui/ui_layout.h`
-- `src/client/graphics/ui/static_panels.h`
+
+Drawing API: `beginFrame()`, `drawRect()`, `drawBar()`, `drawSprite()`,
+`drawSlot()`, `endFrame(driver)`.
+
+Two paths:
+- Atlas enabled (`UIAtlas* != nullptr`): accumulate quads, flush via
+  `draw2DImageBatch` (one call per texture)
+- Atlas disabled: immediate `draw2DRectangle` / `draw2DImage` fallback
+
+#### U03c: /newui toggle + render hook
+
+Wire the new UI into IrrlichtRenderer's render loop:
+- `/newui` slash command toggles between old WindowManager and new static UI
+- When active, `UIRenderer::endFrame()` is called after 3D scene, before old UI
+- Add `newUIEnabled_` flag to renderer
+
+#### U03d: Player status + target info panels (proof of concept)
+
+**New files**:
+- `include/client/graphics/ui/static_panels.h`
 - `src/client/graphics/ui/static_panels.cpp`
 
-**Scope**:
-- `UILayout`: fixed screen regions (playerStatus, targetInfo, chatPanel, hotbar,
-  spellGems, buffBar, castingBar, centerPopup, groupPanel, petPanel)
-- `UIRenderer` class: `beginFrame()`, `drawRect()`, `drawBar()`, `drawSlot()`, `endFrame()`
-  - Collects quads into VBO, sorts by texture, 1 draw call per texture
-- Panel render functions (not class hierarchy):
-  - `renderPlayerStatus()`, `renderTargetInfo()`, `renderHotbar()`, etc.
-- Center popup state machine: `enum PopupType { None, Inventory, Spellbook, Vendor, ... }`
-- Input hit-testing via fixed regions (no overlap resolution)
-- Toggle with `/newui` command — old WindowManager remains functional during migration
-- Resolution scaling via anchor points (works at 800×600 and higher)
+Implement two panels to prove the framework:
+- `renderPlayerStatus(uiRenderer, textBatch, ...)` — HP/mana/stamina bars + text
+- `renderTargetInfo(uiRenderer, textBatch, ...)` — target HP bar + name + level
+
+These read from bridge event data (PlayerStatsChanged, TargetChanged) cached in
+simple structs, not from EverQuest pointers.
 
 ### U04: Chat Panel
 

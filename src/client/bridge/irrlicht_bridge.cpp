@@ -40,6 +40,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 wm->getPlayerStatusWindow()->setPlayerStats(
                     d.curHP, d.maxHP, d.curMana, d.maxMana, d.curEndurance, d.maxEndurance);
             }
+            // U03d: Cache for new static UI
+            auto& cached = renderer_->cachedPlayerStats_;
+            cached.curHP = d.curHP; cached.maxHP = d.maxHP;
+            cached.curMana = d.curMana; cached.maxMana = d.maxMana;
+            cached.curEndurance = d.curEndurance; cached.maxEndurance = d.maxEndurance;
+            cached.level = d.level;
         }
         break;
     case state::GameEventType::PlayerPositionStateChanged:
@@ -308,12 +314,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     }
                 }
             }
+            // U03d: Cache for new static UI
+            auto& ct = renderer_->cachedTargetInfo_;
+            ct.spawnId = d.spawnId;
+            ct.name = d.name;
+            ct.level = d.level;
+            ct.hpPercent = d.hpPercent;
         }
         break;
     case state::GameEventType::TargetHPUpdated:
         if (renderer_) {
             auto& d = std::get<state::TargetHPUpdatedData>(event.data);
             renderer_->updateCurrentTargetHP(d.hpPercent);
+            // U03d: Cache for new static UI
+            renderer_->cachedTargetInfo_.hpPercent = d.hpPercent;
         }
         break;
     case state::GameEventType::DamageEvent:
@@ -775,6 +789,9 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             std::wstring wdeity(d.deity.begin(), d.deity.end());
             renderer_->setCharacterInfo(wname, d.level, wclass);
             renderer_->setCharacterDeity(wdeity);
+            // U03d: Cache for new static UI
+            renderer_->cachedPlayerStats_.name = d.name;
+            renderer_->cachedPlayerStats_.level = d.level;
         }
         break;
     case state::GameEventType::WorldObjectSpawned:

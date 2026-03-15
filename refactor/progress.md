@@ -226,7 +226,10 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 |------|-------------|--------|--------|
 | U01 | Bitmap font atlas + batched text renderer | done | |
 | U02 | UI atlas texture | done | |
-| U03 | Static layout UI framework | pending | |
+| U03a | UILayout — fixed screen region definitions | done | |
+| U03b | UIRenderer — batched quad drawing API (atlas + fallback) | done | |
+| U03c | /newui toggle + render hook in IrrlichtRenderer | done | |
+| U03d | Player status + target info panels (proof of concept) | done | |
 | U04 | Chat panel | pending | |
 | U05 | Inventory and item slots | pending | |
 | U06 | Remaining panels (hotbar, buffs, spells, status, group, pet) | pending | |
