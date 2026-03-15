@@ -68,7 +68,7 @@ namespace bridge { class GameStateBridge; }
 
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
-namespace EQT { namespace Graphics { class TextBatch; } }
+namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; } }
 
 // Forward declaration for constrained texture cache and mesh cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
@@ -1047,6 +1047,9 @@ public:
     // U01: Batched text renderer
     TextBatch* getTextBatch() { return textBatch_.get(); }
 
+    // U02: UI sprite atlas
+    UIAtlas* getUIAtlas() { return uiAtlas_.get(); }
+
     // Constrained texture cache access (may return nullptr if not in constrained mode)
     ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
 
@@ -1722,6 +1725,7 @@ private:
     // Spell visual effects
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
     std::unique_ptr<TextBatch> textBatch_;  // U01
+    std::unique_ptr<UIAtlas> uiAtlas_;     // U02
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

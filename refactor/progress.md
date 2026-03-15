@@ -225,7 +225,7 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
 | U01 | Bitmap font atlas + batched text renderer | done | |
-| U02 | UI atlas texture | pending | |
+| U02 | UI atlas texture | done | |
 | U03 | Static layout UI framework | pending | |
 | U04 | Chat panel | pending | |
 | U05 | Inventory and item slots | pending | |

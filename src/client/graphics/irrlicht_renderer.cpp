@@ -16,6 +16,7 @@
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/text_batch.h"
+#include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/sky_config.h"
@@ -612,6 +613,17 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     } else {
         LOG_WARN(MOD_GRAPHICS, "TextBatch initialization failed — falling back to font->draw()");
         textBatch_.reset();
+    }
+
+    // U02: Load UI atlas (required when enableTextureAtlas is true)
+    if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+        uiAtlas_ = std::make_unique<UIAtlas>();
+        if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath)) {
+            LOG_FATAL(MOD_GRAPHICS, "UIAtlas: required atlas files missing from {}. "
+                "Run ui_atlas_builder --output {} to generate them.",
+                config_.constrainedConfig.atlasPath, config_.constrainedConfig.atlasPath);
+            return false;
+        }
     }
 
     // Configure mipmap generation based on constrained config
