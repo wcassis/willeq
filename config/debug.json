@@ -1,0 +1,10 @@
+{
+  "description": "Debug flags for isolating rendering subsystems during profiling/troubleshooting. All flags default to false. Set to true to skip the named pipeline stage.",
+  "skipManualZoneDraw": false,
+  "skipVBOUpload": false,
+  "skipEntityTextureUpload": false,
+  "skipEntityBuild": false,
+  "skipObjectBuild": false,
+  "skipConstrainedTextureUpload": false,
+  "skipSkyTextureUpload": false
+}

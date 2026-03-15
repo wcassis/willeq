@@ -174,6 +174,11 @@ struct ConstrainedRendererConfig {
     // Returns true if overrides were applied, false if file not found or no matching preset
     bool loadJsonOverrides(const std::string& presetName, const std::string& jsonPath);
 
+    // Load debug flags from config/debug.json
+    // Overrides skip* flags used for isolating rendering subsystems
+    // Returns true if file was loaded, false if not found or parse error
+    bool loadDebugOverrides(const std::string& jsonPath);
+
     // Parse "NxNxN" format: totalMB x textureCacheMB x framebufferMB
     // Returns true and fills outConfig if string matches NxNxN pattern
     static bool parseMemorySpec(const std::string& spec, ConstrainedRendererConfig& outConfig);

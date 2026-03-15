@@ -323,6 +323,9 @@ bool Application::initialize(const ApplicationConfig& config) {
             }
 #endif
 
+            // Load debug overrides (skip* flags from config/debug.json)
+            builtConfig.loadDebugOverrides("config/debug.json");
+
             // S02: Validate preset values
             {
                 std::string presetErrors;

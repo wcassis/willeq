@@ -482,20 +482,6 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableShaders = preset["enableShaders"].asBool();
     if (preset.isMember("enableTextureAtlas"))
         enableTextureAtlas = preset["enableTextureAtlas"].asBool();
-    if (preset.isMember("skipManualZoneDraw"))
-        skipManualZoneDraw = preset["skipManualZoneDraw"].asBool();
-    if (preset.isMember("skipVBOUpload"))
-        skipVBOUpload = preset["skipVBOUpload"].asBool();
-    if (preset.isMember("skipEntityTextureUpload"))
-        skipEntityTextureUpload = preset["skipEntityTextureUpload"].asBool();
-    if (preset.isMember("skipEntityBuild"))
-        skipEntityBuild = preset["skipEntityBuild"].asBool();
-    if (preset.isMember("skipObjectBuild"))
-        skipObjectBuild = preset["skipObjectBuild"].asBool();
-    if (preset.isMember("skipConstrainedTextureUpload"))
-        skipConstrainedTextureUpload = preset["skipConstrainedTextureUpload"].asBool();
-    if (preset.isMember("skipSkyTextureUpload"))
-        skipSkyTextureUpload = preset["skipSkyTextureUpload"].asBool();
     if (preset.isMember("atlasPath"))
         atlasPath = preset["atlasPath"].asString();
     if (preset.isMember("antiAliasLevel"))
@@ -576,6 +562,66 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableItemIcons = preset["enableItemIcons"].asBool();
     if (preset.isMember("chrCacheMaxEntries"))
         chrCacheMaxEntries = static_cast<size_t>(preset["chrCacheMaxEntries"].asUInt());
+
+    return true;
+}
+
+bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to parse debug config {}: {}", jsonPath, errors);
+        return false;
+    }
+
+    bool anySet = false;
+
+    if (root.isMember("skipManualZoneDraw") && root["skipManualZoneDraw"].asBool()) {
+        skipManualZoneDraw = true;
+        anySet = true;
+    }
+    if (root.isMember("skipVBOUpload") && root["skipVBOUpload"].asBool()) {
+        skipVBOUpload = true;
+        anySet = true;
+    }
+    if (root.isMember("skipEntityTextureUpload") && root["skipEntityTextureUpload"].asBool()) {
+        skipEntityTextureUpload = true;
+        anySet = true;
+    }
+    if (root.isMember("skipEntityBuild") && root["skipEntityBuild"].asBool()) {
+        skipEntityBuild = true;
+        anySet = true;
+    }
+    if (root.isMember("skipObjectBuild") && root["skipObjectBuild"].asBool()) {
+        skipObjectBuild = true;
+        anySet = true;
+    }
+    if (root.isMember("skipConstrainedTextureUpload") && root["skipConstrainedTextureUpload"].asBool()) {
+        skipConstrainedTextureUpload = true;
+        anySet = true;
+    }
+    if (root.isMember("skipSkyTextureUpload") && root["skipSkyTextureUpload"].asBool()) {
+        skipSkyTextureUpload = true;
+        anySet = true;
+    }
+
+    if (anySet) {
+        LOG_WARN(MOD_GRAPHICS, "Debug overrides active from {}: ManualZone={} VBO={} EntityTex={} EntityBuild={} ObjBuild={} TexCache={} SkyTex={}",
+                 jsonPath,
+                 skipManualZoneDraw ? "SKIP" : "ok",
+                 skipVBOUpload ? "SKIP" : "ok",
+                 skipEntityTextureUpload ? "SKIP" : "ok",
+                 skipEntityBuild ? "SKIP" : "ok",
+                 skipObjectBuild ? "SKIP" : "ok",
+                 skipConstrainedTextureUpload ? "SKIP" : "ok",
+                 skipSkyTextureUpload ? "SKIP" : "ok");
+    }
 
     return true;
 }
