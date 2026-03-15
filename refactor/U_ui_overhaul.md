@@ -5,104 +5,55 @@ Full design rationale and analysis: `docs/future/ui_fixes.md`
 ## Summary
 
 Replace the current draggable window system (21+ WindowBase subclasses, 85-3000
-draw calls/frame) with a static-layout UI using batched quads and pre-generated
-texture atlases. Target: 2-5 draw calls for the entire UI.
+draw calls/frame) with a static-layout UI. When complete, ALL old UI code
+(WindowBase, WindowManager, all window subclasses) is deleted entirely.
 
-## Zone-In Data Flow (Critical Context)
+**Critical rule**: Nothing created in Batch U can depend on old UI code. The new
+UI must be 100% standalone — its own data models, input handling, and rendering.
 
-The new UI panels **cannot rely solely on incremental bridge events** for their
-initial state. The zone-in loading flow reveals why:
+## Zone-In Data Flow
+
+The new UI is purely event-driven via the bridge. At zone-in, game state publishes
+a full snapshot (U00) so all panels have data on their first rendered frame.
 
 ### Loading timeline (from logs/glow5d5.log)
 
 ```
-Phase 6:  PlayerProfile packet (19KB) — contains:
-          - Position, stats (HP/mana/end), character name/class/level
-          - Skills (100 entries), spellbook (400 slots), spell gems (8)
-          - Currency, deity, bind point
-          - Does NOT contain inventory or hotbar
-          Bridge events fired: PlayerMoved, SkillsRefreshed (only 2)
-          NOT fired: PlayerStatsChanged, CharacterInfoChanged,
-                     SpellGemChanged, BuffUpdated, ExpProgressChanged
-
-Phase 7:  Zone spawns packet (29KB) — all NPCs/players in zone
-          CharInventory packet (11KB) — SEPARATE from PlayerProfile
-          - InventoryManager parses 26 items into slots 1-28
-          - NOT fired: InventorySlotChanged (items go directly to manager)
-
-Phase 8-9: Synchronization, ClientReady sent
-
-Phase 10: Player spawn confirmed (spawn_id assigned)
-
+Phase 6:  PlayerProfile packet — stats, skills, spells, character info
+          (Sets local members, does NOT publish most bridge events)
+Phase 7:  CharInventory packet — parsed by InventoryManager (separate packet)
 Phase 11: OnGameStateComplete — signals loading thread
-          CharacterInfoChanged event fires HERE (after profile + inventory)
-
-Phase 15: Graphics loading complete (83 seconds of S3D loading)
-          Loading screen hides — UI becomes visible
-
-"Fully connected": m_fullyConnected = true
-          LoadHotbarConfig() called — reads JSON config into WindowManager
-          Hotbar is CLIENT-SIDE ONLY — no server packet
+Phase 15: OnGraphicsComplete — PublishFullStateSnapshot() (U00)
+          All bridge events published: stats, character, spells, buffs,
+          inventory, currency, XP, group, pet, hotbar
 ```
 
-### Key facts
+Runtime changes (HP update, item moved, spell cast, hotbar reassigned) publish
+incremental bridge events that keep the new UI in sync.
 
-1. **PlayerProfile does NOT publish bridge events for most data.** Stats, spell
-   gems, buffs, XP are set on local members but not pushed to the bridge.
+## Data Model Independence
 
-2. **Inventory arrives in a separate CharInventory packet**, parsed directly
-   by InventoryManager. No InventorySlotChanged events fire for initial load.
+Several data models are currently embedded in `client/graphics/ui/` but are
+game state, not UI:
 
-3. **Hotbar is client-side only.** Loaded from JSON config (`LoadHotbarConfig`),
-   goes directly to WindowManager::loadHotbarData(). No bridge event exists.
+| Current location | What it is | Dependency on old UI |
+|-----------------|------------|---------------------|
+| `inventory_manager.h/.cpp` | Item parsing, slot management | None (no Irrlicht types) |
+| `item_instance.h` | Item data struct | None |
+| `chat_message_buffer.h/.cpp` | Message buffer + channel types | `irr::video::SColor` for color |
+| `inventory_constants.h` | Slot ID constants | None |
+| `hotbar_window.h` | Hotbar data + rendering | Fully coupled to old UI |
 
-4. **The old UI reads directly from managers** (InventoryManager, SpellManager,
-   BuffManager, SkillManager) via polling. It never needed bridge events for
-   initial state — it just reads current values each frame.
-
-5. **Incremental bridge events work for runtime changes** (HP update, item
-   moved, spell cast) but NOT for initial population at zone-in.
-
-### Solution: Initial State Snapshot Events
-
-The new UI needs a mechanism to receive full state snapshots at zone-in time.
-Two approaches:
-
-**(A) Publish snapshot events from game state** — After `OnGameStateComplete()`,
-push events for all current state: `PlayerStatsChanged` with current HP/mana/stam,
-`SpellGemChanged` for each memorized spell, `BuffUpdated` for each active buff,
-`InventorySlotChanged` for each occupied slot, etc. This is the bridge-native
-approach — the new UI sees the same events regardless of whether they're initial
-or incremental.
-
-**(B) Renderer-side manager polling** — After zone load completes, the renderer
-reads current state from the manager pointers it already holds (inventoryManager_,
-and new pointers for SpellManager/BuffManager/SkillManager). This matches how the
-old UI works but adds coupling to the renderer.
-
-**Chosen approach: (A)** — Publish snapshot events. This keeps the new UI purely
-event-driven and avoids adding more manager pointers to the renderer. The snapshot
-events are published once from `OnGraphicsComplete()` or a new dedicated method.
+U07a relocates the pure data models out of `client/graphics/ui/`. U07b creates
+a standalone hotbar data model. These must happen before U07c deletes old UI code.
 
 ## Atlas Policy
 
 **No runtime procedural generation.** All atlas textures are pre-generated by
 offline tools and loaded from `<atlasPath>/` at runtime.
 
-- `enableTextureAtlas` in constrained renderer config is the global toggle for all
-  atlas-based rendering (zone textures, UI chrome, item icons)
-- When enabled, willeq MUST find all required atlas files in `<atlasPath>/` or
-  exit with FATAL error
-- Atlas files live alongside zone atlases in the same `--atlas-path` directory
-- Pre-generation tools follow the `zone_atlas_builder` convention (standalone CLI tool)
-
-**Atlas is optional.** The Irrlicht software renderer does not have atlas support.
-When `enableTextureAtlas` is false (or atlasPath is empty), `getUIAtlas()` returns
-nullptr. All UI rendering code (U03+) MUST handle both paths:
-- Atlas enabled: draw from atlas texture via `UIAtlas::getSprite()` source rects
-- Atlas disabled: fall back to `draw2DRectangle()` / `draw2DImage()` calls
-
-### Atlas files
+- `enableTextureAtlas` is the global toggle. FATAL on missing files when enabled.
+- Atlas is optional — software renderer works without it (fallback to draw2DRectangle).
 
 | File | Generator tool | Contents |
 |------|---------------|----------|
@@ -112,150 +63,139 @@ nullptr. All UI rendering code (U03+) MUST handle both paths:
 
 ## Units
 
-### U00: Publish initial state snapshot events (PREREQUISITE)
+### U00: Publish initial state snapshot events (done)
 
-**Problem**: PlayerProfile processing sets local members (m_hp, m_mana, etc.)
-and feeds managers (SpellManager, InventoryManager) but does NOT publish bridge
-events for initial state. The new UI panels receive nothing at zone-in.
-
-**Solution**: After zone loading completes and the UI becomes visible, publish
-a full state snapshot through the bridge. This ensures all panels have data on
-their first rendered frame.
-
-**New method**: `EverQuest::PublishFullStateSnapshot()` — called from
-`OnGraphicsComplete()` after LoadingPhase::COMPLETE is set.
-
-**Events to publish**:
-- `PlayerStatsChanged` — current HP/mana/endurance from m_hp/m_mana/m_endurance
-- `CharacterInfoChanged` — name/level/class/deity from m_character/m_level/m_class
-- `SpellGemChanged` — for each of 8 gem slots (spell ID, state, cooldown)
-- `BuffUpdated` — for each active buff from BuffManager
-- `InventorySlotChanged` — for each occupied slot (0-29) from InventoryManager
-- `ExpProgressChanged` — current XP progress
-- `CurrencyChanged` — current platinum/gold/silver/copper
-- `GroupChanged` + `GroupMemberUpdated` — if in a group
-- `PetCreated` + `PetStatsChanged` — if pet exists
-
-**Hotbar**: Add new `HotbarSlotAssigned` event type + data struct to event_bus.h.
-Publish for each non-empty hotbar slot after LoadHotbarConfig() runs. The hotbar
-is client-side (JSON config, no server packet), so the event must originate from
-the config load path.
-
-**Files modified**:
-- `include/client/state/event_bus.h` — add HotbarSlotAssignedData struct + event type
-- `src/client/eq.cpp` — implement PublishFullStateSnapshot()
-- `include/client/eq.h` — declare PublishFullStateSnapshot()
-- `src/client/bridge/irrlicht_bridge.cpp` — handle HotbarSlotAssigned event
-
-**This unit MUST be completed before U03d-U06 panels will show data.**
+`PublishFullStateSnapshot()` called from `OnGraphicsComplete()` pushes all
+current game state through the bridge. `HotbarSlotAssigned` event type added.
 
 ### U01: Bitmap Font Atlas + Batched Text Renderer (done)
 
-Replace Irrlicht's per-string `Font->draw()` with a centralized text batch.
+TextBatch class centralizing all text rendering.
 
 ### U02: UI Atlas Texture (done)
 
-Pre-generated atlas of UI chrome sprites + offline builder tool.
+Pre-generated UI chrome atlas + offline builder tool + runtime loader.
 
 ### U03: Static Layout UI Framework (done: U03a-U03d)
 
-UILayout + UIRenderer + /newui toggle + proof-of-concept panels.
-
-**Note**: U03d player status panel currently shows blank name until
-CharacterInfoChanged arrives. U00 fixes this by publishing the event
-at zone-in completion.
+UILayout + UIRenderer + /newui toggle + player status/target info panels.
 
 ### U04: Chat Panel (done)
 
-Chat message buffer + display. Chat events already fire incrementally
-from server packets, so no U00 dependency for messages. System messages
-from loading process are captured.
+Chat message display with dedicated ChatMessageBuffer.
 
-### U05: Inventory and Item Slots (done — needs U00 for initial population)
+### U05: Inventory and Item Slots (done — needs U00 for initial data)
 
-Inventory popup renders slots from cached data. Currently only populated
-from `InventorySlotChanged` events which don't fire at zone-in. U00 adds
-the initial snapshot publish that populates all slots on first frame.
-
-**Item icon atlas** (pre-generated, deferred):
-- `item_icon_atlas_builder` tool: extracts all item icons from EQ client files
-- Item icons are a global set — not per-zone, not per-character
-- Slots currently show abbreviated item names as placeholder
+Inventory popup with equipment + general slots.
 
 ### U06: Remaining Panels
 
-Each sub-unit needs its render function + cached state struct.
-**All depend on U00 for initial state at zone-in.**
-
-#### U06a: Hotbar (10 slots, bottom-center)
-Icon + cooldown overlay + key label (1-0).
-**Requires U00** for HotbarSlotAssigned events (hotbar is client-side config).
-Cooldown overlay from HotbarCooldownStarted events (already works).
+#### U06a: Hotbar (done)
+10 slots with spell/skill names, live cooldown tracking, key labels.
+Data from HotbarSlotAssigned + HotbarCooldownStarted events.
 
 #### U06b: Spell gem panel (8 gem slots)
 Gem state (ready/casting/cooldown/memorizing), spell name.
-**Requires U00** for initial SpellGemChanged snapshot (gems set in PlayerProfile
-but no events published).
+Data from SpellGemChanged events (snapshot + runtime).
 
 #### U06c: Buff bar (icon row + duration text)
 Row of small icons above chat. Duration countdown text.
-**Requires U00** for initial BuffUpdated snapshot.
+Data from BuffUpdated / BuffRemoved events.
 
 #### U06d: Casting bar (progress bar + spell name)
-Center-bottom, visible only during casting. Driven by SpellCastVisualStarted
-events which fire correctly during gameplay — no U00 dependency (casting doesn't
-happen at zone-in).
+Center-bottom, visible only during casting.
+Data from SpellCastVisualStarted / SpellCastVisualComplete events.
 
 #### U06e: Group panel (5 member HP bars)
-Left side below player status. Name + HP bar per member.
-**Requires U00** if player is in a group at zone-in.
+Left side below player status.
+Data from GroupChanged / GroupMemberUpdated events.
 
 #### U06f: Pet panel (HP bar + command buttons)
-Below group panel. Pet name + HP + command buttons.
-**Requires U00** if pet exists at zone-in.
+Below group panel.
+Data from PetCreated / PetStatsChanged events.
 
 #### U06g: Spellbook popup (center screen)
-Scrollable list of known spells. Memorize action on click.
-Needs access to spellbook data — either via snapshot event or
-SpellManager pointer. Spellbook is set from PlayerProfile.
+Scrollable list of known spells with memorize action.
 
 #### U06h: Skills popup (center screen)
-Scrollable list of skills with values and cooldowns.
-SkillsRefreshed event already fires from PlayerProfile processing.
-Needs SkillManager access for actual values.
+Scrollable list of skills with values.
 
 #### U06i: XP bar (full width bottom)
 Thin bar showing XP progress.
-**Requires U00** for initial ExpProgressChanged (XP set in PlayerProfile).
 
-### U07: Remove Old UI System
+#### U06j: New UI input handling
+Standalone input handler for the static UI — slot clicks, popup
+toggles, chat input focus, scroll. NOT routed through WindowManager.
+Mouse hit-testing via fixed UILayout regions.
 
-Delete WindowBase, WindowManager, and all 40+ window class files.
+### U07: Remove Old UI System + Data Model Relocation
 
-**Dependency**: All previous units complete and tested.
+#### U07a: Relocate game-state data models out of graphics/ui/
+
+Move files that are game state, not UI rendering:
+- `inventory_manager.h/.cpp` → `client/inventory/`
+- `item_instance.h` → `client/inventory/`
+- `inventory_constants.h` → `client/inventory/`
+- `chat_message_buffer.h/.cpp` → `client/chat/` (replace `irr::video::SColor`
+  with `uint32_t` RGBA)
+- `formatted_message.h` — already in `client/`, no move needed
+
+Update all includes across the codebase. Old UI code that references these
+files gets updated include paths (briefly, before deletion in U07c).
+
+#### U07b: Standalone hotbar data model
+
+Create `client/hotbar/hotbar_model.h/.cpp`:
+- `HotbarModel` class: owns slot data array, reads/writes JSON config
+- `loadFromJson(Json::Value)` / `saveToJson() → Json::Value`
+- Publishes `HotbarSlotAssigned` events on load and on slot change
+- `assignSlot(index, type, id, name, iconId)` — updates slot + publishes event
+- `clearSlot(index)` — clears slot + publishes event
+- `startCooldown(index, durationMs)` — publishes HotbarCooldownStarted
+
+Replace `LoadHotbarConfig()` / `SaveHotbarConfig()` in EverQuest to use
+`HotbarModel` instead of `WindowManager::loadHotbarData()`.
+
+Remove `hotbarChangedCallback_` wiring through WindowManager. Hotbar save
+triggered by HotbarModel directly.
+
+#### U07c: Delete old UI code
+
+- Delete `window_base.h/.cpp`, `window_manager.h/.cpp`
+- Delete all `*_window.h/.cpp` files (chat, inventory, bag, loot, vendor,
+  bank, trade, hotbar, buff, spell gem, group, pet, spellbook, skills,
+  casting bar, options, note, skill trainer, tradeskill container)
+- Delete `item_slot.h/.cpp`, `item_tooltip.h/.cpp`, `item_icon_loader.h/.cpp`
+- Delete `hotbar_cursor.h/.cpp`, `ui_settings.h/.cpp`
+- Remove RTT caching infrastructure
+- Update CMakeLists.txt
+- Update IrrlichtRenderer to remove WindowManager member + all wm-> calls
+
+**Dependency**: All U01-U06 + U07a + U07b must be complete and tested.
 
 ## Execution Order
 
 ```
-U00 (State snapshot)     — PREREQUISITE for all data-displaying panels
+U00 (State snapshot)      — done
+U01 (Text batch)          — done
+U02 (UI atlas)            — done
+U03 (Static layout)       — done
+U04 (Chat panel)          — done
+U05 (Inventory/slots)     — done
+U06a (Hotbar)             — done
+U06b-U06i (Panels)        — parallel, each standalone
+U06j (Input handling)     — after panels, before U07
     ↓
-U01 (Text batch)         — done
-U02 (UI atlas)           — done
-U03 (Static layout)      — done (panels show data after U00)
-U04 (Chat panel)         — done (no U00 dependency for messages)
-U05 (Inventory/slots)    — done (needs U00 for initial population)
-U06a-U06i (Panels)       — each needs U00
-    ↓
-U07 (Remove old UI)      — depends on all above
+U07a (Relocate data models) — after all panels working
+U07b (Standalone hotbar)    — after U07a
+U07c (Delete old UI)        — final step
 ```
-
-**U00 should be implemented next** — before continuing U06 panels.
 
 ## Notes
 
-- Input lag fix (original Chunk 1) deferred — needs testing after D21b threading changes
+- Input lag fix (original Chunk 1) deferred — needs testing after D21b
 - Layout uses anchor-point coordinates for resolution independence
 - Center popup pattern: one popup at a time, ESC to close
 - `/newui` toggle allows incremental migration alongside old WindowManager
-- Old UI windows poll managers directly — they don't need snapshot events
-- New UI is purely event-driven — it MUST receive events for all state
+- **New UI code must NEVER import from old UI files** (window_base, window_manager, *_window)
+- Old UI continues to work in parallel until U07c deletes it
