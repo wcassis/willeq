@@ -302,42 +302,8 @@ IF(EQT_GRAPHICS)
         src/client/inventory/inventory_constants.cpp
         src/client/inventory/inventory_manager.cpp
         src/client/hotbar/hotbar_model.cpp
-        src/client/graphics/ui/window_base.cpp
-        src/client/graphics/ui/item_slot.cpp
-        src/client/graphics/ui/item_tooltip.cpp
-        src/client/graphics/ui/item_icon_loader.cpp
-        src/client/graphics/ui/inventory_window.cpp
-        src/client/graphics/ui/bag_window.cpp
-        src/client/graphics/ui/loot_window.cpp
-        src/client/graphics/ui/vendor_window.cpp
-        src/client/graphics/ui/bank_window.cpp
-        src/client/graphics/ui/trade_window.cpp
-        src/client/graphics/ui/tradeskill_container_window.cpp
-        src/client/graphics/ui/trade_request_dialog.cpp
-        src/client/graphics/ui/money_input_dialog.cpp
-        src/client/graphics/ui/window_manager.cpp
-        src/client/graphics/ui/options_window.cpp
         src/client/chat/chat_message_buffer.cpp
-        src/client/graphics/ui/chat_input_field.cpp
-        src/client/graphics/ui/chat_window.cpp
         src/client/graphics/ui/command_registry.cpp
-        src/client/graphics/ui/command_autocomplete.cpp
-        src/client/graphics/ui/spell_book_window.cpp
-        src/client/graphics/ui/spell_gem_panel.cpp
-        src/client/graphics/ui/buff_window.cpp
-        src/client/graphics/ui/buff_tooltip.cpp
-        src/client/graphics/ui/skill_tooltip.cpp
-        src/client/graphics/ui/group_window.cpp
-        src/client/graphics/ui/pet_window.cpp
-        src/client/graphics/ui/hotbar_window.cpp
-        src/client/graphics/ui/hotbar_cursor.cpp
-        src/client/graphics/ui/skills_window.cpp
-        src/client/graphics/ui/skill_trainer_window.cpp
-        src/client/graphics/ui/note_window.cpp
-        src/client/graphics/ui/player_status_window.cpp
-        src/client/graphics/ui/casting_bar.cpp
-        src/client/graphics/ui/character_model_view.cpp
-        src/client/graphics/ui/ui_settings.cpp
         src/client/graphics/ui/ui_atlas.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/ui_renderer.cpp

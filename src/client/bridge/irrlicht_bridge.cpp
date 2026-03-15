@@ -2,21 +2,11 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/ui/chat_window.h"
 #include "client/graphics/ui/chat_message_buffer.h"
-#include "client/graphics/ui/item_instance.h"
-#include "client/graphics/ui/skill_trainer_window.h"
-#include "client/graphics/ui/group_window.h"
 #include "client/graphics/ui/inventory_constants.h"
-#include "client/graphics/ui/spell_book_window.h"
-#include "client/graphics/ui/player_status_window.h"
 #include "client/graphics/ui/inventory_manager.h"
-#include "client/graphics/ui/item_instance.h"
-#include "client/pet_constants.h"
 #include "common/logging.h"
 #include <ctime>
-#include <memory>
 
 class HCMap;
 
@@ -37,11 +27,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::PlayerStatsChanged:
         if (renderer_) {
             auto& d = std::get<state::PlayerStatsChangedData>(event.data);
-            auto* wm = renderer_->getWindowManager();
-            if (wm && wm->getPlayerStatusWindow()) {
-                wm->getPlayerStatusWindow()->setPlayerStats(
-                    d.curHP, d.maxHP, d.curMana, d.maxMana, d.curEndurance, d.maxEndurance);
-            }
             // U03d: Cache for new static UI
             auto& cached = renderer_->cachedPlayerStats_;
             cached.curHP = d.curHP; cached.maxHP = d.maxHP;
@@ -84,23 +69,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->setPlayerSpawnId(d.spawnId);
                 renderer_->updatePlayerAppearance(d.raceId, d.gender, appearance);
             }
-            // D20b3: Track entity name for chat auto-completion
-            auto* wm = renderer_->getWindowManager();
-            if (wm && !d.name.empty()) {
-                wm->addEntityName(d.name);
-                if (d.isPlayer) wm->setPlayerName(d.name);
-            }
         }
         break;
     case state::GameEventType::EntityDespawned:
         if (renderer_) {
             auto& d = std::get<state::EntityDespawnedData>(event.data);
             renderer_->removeEntity(d.spawnId);
-            // D20b3: Remove entity name from chat auto-completion cache
-            auto* wm = renderer_->getWindowManager();
-            if (wm && !d.name.empty()) {
-                wm->removeEntityName(d.name);
-            }
         }
         break;
     case state::GameEventType::EntityMoved:
@@ -249,12 +223,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             msg.channel = static_cast<eqt::ui::ChatChannel>(d.channelType);
             msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
             msg.color = eqt::ui::getChannelColor(msg.channel);
-            // Feed old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* chatWindow = wm->getChatWindow();
-                if (chatWindow) chatWindow->addMessage(msg);
-            }
             // U04: Feed new UI
             if (renderer_->newUIChatBuffer_) {
                 renderer_->newUIChatBuffer_->addMessage(std::move(msg));
@@ -264,12 +232,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SystemMessage:
         if (renderer_) {
             auto& d = std::get<state::ChatMessageData>(event.data);
-            // Feed old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* chatWindow = wm->getChatWindow();
-                if (chatWindow) chatWindow->addSystemMessage(d.message);
-            }
             // U04: Feed new UI
             if (renderer_->newUIChatBuffer_) {
                 renderer_->newUIChatBuffer_->addSystemMessage(d.message);
@@ -286,14 +248,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::TargetChanged:
         if (renderer_) {
             auto& d = std::get<state::TargetChangedData>(event.data);
-            // D20b4: Push target info to windows that need it
-            auto* wm = renderer_->getWindowManager();
             if (d.spawnId == 0) {
                 renderer_->clearCurrentTarget();
-                if (wm) {
-                    if (wm->getGroupWindow()) wm->getGroupWindow()->clearTargetInfo();
-                    if (wm->getPlayerStatusWindow()) wm->getPlayerStatusWindow()->clearTarget();
-                }
             } else {
                 EQT::Graphics::TargetInfo info;
                 info.spawnId = d.spawnId;
@@ -313,14 +269,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     info.equipmentTint[i] = d.equipmentTint[i];
                 }
                 renderer_->setCurrentTargetInfo(info);
-                // D20b4: Push target info to windows
-                if (wm) {
-                    bool isPlayer = (d.npcType == 0);
-                    if (wm->getGroupWindow()) wm->getGroupWindow()->setTargetInfo(d.name, isPlayer);
-                    if (wm->getPlayerStatusWindow()) {
-                        wm->getPlayerStatusWindow()->setTarget(d.name, d.hpPercent, 0, 0);
-                    }
-                }
             }
             // U03d: Cache for new static UI
             auto& ct = renderer_->cachedTargetInfo_;
@@ -359,15 +307,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::GroupChanged:
         if (renderer_) {
             auto& d = std::get<state::GroupChangedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* groupWindow = wm->getGroupWindow();
-                if (groupWindow) {
-                    groupWindow->setGroupState(d.inGroup, d.isLeader, d.leaderName, d.memberCount);
-                    groupWindow->hidePendingInvite();
-                }
-            }
             // U06e: New UI
             renderer_->groupPanelState_.inGroup = d.inGroup;
             renderer_->groupPanelState_.isLeader = d.isLeader;
@@ -382,15 +321,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::GroupMemberUpdated:
         if (renderer_) {
             auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* groupWindow = wm->getGroupWindow();
-                if (groupWindow) {
-                    groupWindow->setMemberData(d.memberIndex, d.name, d.hpPercent,
-                        d.manaPercent, d.inZone, false);
-                }
-            }
             // U06e: New UI
             if (d.memberIndex >= 0 && d.memberIndex < EQT::Graphics::GroupPanelState::MAX_MEMBERS) {
                 auto& m = renderer_->groupPanelState_.members[d.memberIndex];
@@ -402,17 +332,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::GroupInviteReceived:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::GroupInviteReceivedData>(event.data);
-                auto* groupWindow = wm->getGroupWindow();
-                if (groupWindow) {
-                    groupWindow->showPendingInvite(d.inviterName);
-                }
-                wm->openGroupWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: GroupInviteReceived");
         break;
 
     // Time events (D13)
@@ -427,13 +347,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::PetCreated:
         if (renderer_) {
             auto& d = std::get<state::PetCreatedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* pw = wm->getPetWindow();
-                if (pw) pw->setPetInfo(d.name, d.level, 100, true);
-                wm->openPetWindow();
-            }
             // U06f: New UI
             renderer_->petPanelState_.hasPet = true;
             renderer_->petPanelState_.name = d.name;
@@ -445,13 +358,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     case state::GameEventType::PetRemoved:
         if (renderer_) {
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* pw = wm->getPetWindow();
-                if (pw) pw->setPetInfo("", 0, 0, false);
-                wm->closePetWindow();
-            }
             // U06f: New UI
             renderer_->petPanelState_ = {};
         }
@@ -459,12 +365,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::PetStatsChanged:
         if (renderer_) {
             auto& d = std::get<state::PetStatsChangedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* pw = wm->getPetWindow();
-                if (pw) pw->setPetInfo("", 0, d.hpPercent, true);
-            }
             // U06f: New UI
             renderer_->petPanelState_.hpPercent = d.hpPercent;
         }
@@ -472,12 +372,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::PetButtonStateChanged:
         if (renderer_) {
             auto& d = std::get<state::PetButtonStateChangedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* pw = wm->getPetWindow();
-                if (pw) pw->setPetButtonState(static_cast<EQT::PetButton>(d.button), d.state);
-            }
             // U06f: New UI
             if (d.button < EQT::Graphics::PetPanelState::BUTTON_COUNT) {
                 renderer_->petPanelState_.buttonStates[d.button] = d.state;
@@ -487,105 +381,31 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Window events (D11b, D11c, D12)
     case state::GameEventType::VendorWindowOpened:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::WindowOpenedData>(event.data);
-                wm->openVendorWindow(d.npcId, d.npcName, d.sellRate);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowOpened");
         break;
     case state::GameEventType::VendorWindowClosed:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeVendorWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowClosed");
         break;
     case state::GameEventType::VendorItemAdded:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::VendorItemAddedData>(event.data);
-                auto item = std::make_unique<eqt::inventory::ItemInstance>();
-                item->itemId = d.itemId;
-                item->name = d.itemName;
-                item->price = d.price;
-                item->quantity = d.quantity;
-                wm->addVendorItem(d.vendorSlot, std::move(item));
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorItemAdded");
         break;
     case state::GameEventType::BankWindowOpened:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->openBankWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowOpened");
         break;
     case state::GameEventType::BankWindowClosed:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeBankWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowClosed");
         break;
     case state::GameEventType::TrainerWindowOpened:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TrainerWindowOpenedData>(event.data);
-                std::wstring trainerName(d.npcName.begin(), d.npcName.end());
-                std::vector<eqt::ui::TrainerSkillEntry> skills;
-                skills.reserve(d.skills.size());
-                for (const auto& s : d.skills) {
-                    eqt::ui::TrainerSkillEntry entry;
-                    entry.skill_id = s.skillId;
-                    entry.name = std::wstring(s.name.begin(), s.name.end());
-                    entry.current_value = s.currentValue;
-                    entry.max_trainable = s.maxTrainable;
-                    entry.cost = s.cost;
-                    skills.push_back(std::move(entry));
-                }
-                wm->openSkillTrainerWindow(d.npcId, trainerName, skills);
-                wm->updateSkillTrainerMoney(d.platinum, d.gold, d.silver, d.copper);
-                wm->updateSkillTrainerPracticePoints(d.practicePoints);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowOpened");
         break;
     case state::GameEventType::TrainerWindowClosed:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeSkillTrainerWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowClosed");
         break;
     case state::GameEventType::TradeskillContainerOpened:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
-                if (d.isWorldObject) {
-                    wm->openTradeskillContainer(d.objectId, d.containerName,
-                        d.containerType, d.slotCount);
-                } else {
-                    wm->openTradeskillContainerForItem(d.inventorySlot, d.containerName,
-                        d.containerType, d.slotCount);
-                }
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerOpened");
         break;
     case state::GameEventType::TradeskillContainerClosed:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeTradeskillContainer();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerClosed");
         break;
 
     // Inventory events (D11a)
@@ -633,17 +453,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CurrencyChanged (deferred — monolithic renderer API)");
         break;
     case state::GameEventType::BankCurrencyChanged:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::BankCurrencyChangedData>(event.data);
-                wm->updateBankCurrency(
-                    static_cast<uint32_t>(d.platinum),
-                    static_cast<uint32_t>(d.gold),
-                    static_cast<uint32_t>(d.silver),
-                    static_cast<uint32_t>(d.copper));
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankCurrencyChanged");
         break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {
@@ -654,121 +464,39 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Loot events (D11b)
     case state::GameEventType::LootWindowOpened:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::LootWindowOpenedData>(event.data);
-                wm->openLootWindow(d.corpseId, d.corpseName);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowOpened");
         break;
     case state::GameEventType::LootWindowClosed:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeLootWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowClosed");
         break;
     case state::GameEventType::LootItemAdded:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::LootItemAddedData>(event.data);
-                auto item = std::make_unique<eqt::inventory::ItemInstance>();
-                item->itemId = d.itemId;
-                item->name = d.itemName;
-                wm->addLootItem(static_cast<int16_t>(d.slot), std::move(item));
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemAdded");
         break;
     case state::GameEventType::LootItemRemoved:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::LootItemRemovedData>(event.data);
-                wm->removeLootItem(static_cast<int16_t>(d.slot));
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemRemoved");
         break;
 
     // Trade events (D11c)
     case state::GameEventType::TradeRequestReceived:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeRequestReceivedData>(event.data);
-                wm->showTradeRequest(d.spawnId, d.name);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeRequestReceived");
         break;
     case state::GameEventType::TradeStarted:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeStartedData>(event.data);
-                wm->openTradeWindow(d.partnerId, d.partnerName, d.isNpc);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeStarted");
         break;
     case state::GameEventType::TradeItemUpdated:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeItemUpdatedData>(event.data);
-                if (d.who == 1) {
-                    // Partner item update
-                    if (d.itemId != 0) {
-                        auto item = std::make_unique<eqt::inventory::ItemInstance>();
-                        item->itemId = d.itemId;
-                        item->name = d.itemName;
-                        wm->setTradePartnerItem(d.slot, std::move(item));
-                    } else {
-                        wm->clearTradePartnerItem(d.slot);
-                    }
-                }
-                // who==0 (self) items are managed locally by the trade window
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeItemUpdated");
         break;
     case state::GameEventType::TradeMoneyUpdated:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeMoneyUpdatedData>(event.data);
-                if (d.who == 0) {
-                    wm->setTradeOwnMoney(d.platinum, d.gold, d.silver, d.copper);
-                } else {
-                    wm->setTradePartnerMoney(d.platinum, d.gold, d.silver, d.copper);
-                }
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeMoneyUpdated");
         break;
     case state::GameEventType::TradeAcceptStateChanged:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::TradeAcceptStateChangedData>(event.data);
-                wm->setTradeOwnAccepted(d.ownAccepted);
-                wm->setTradePartnerAccepted(d.partnerAccepted);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeAcceptStateChanged");
         break;
     case state::GameEventType::TradeCancelled:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeTradeWindow(false);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCancelled");
         break;
     case state::GameEventType::TradeCompleted:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->closeTradeWindow(false);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCompleted");
         break;
 
     // Spell events (D12)
@@ -928,12 +656,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellScribeCompleted:
         if (renderer_) {
             auto& d = std::get<state::SpellScribeCompletedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto* spellBookWindow = wm->getSpellBookWindow();
-                if (spellBookWindow) spellBookWindow->refresh();
-            }
             // U06g: Add to new UI spellbook
             EQT::Graphics::SpellbookDisplayEntry entry;
             entry.slot = d.slot;
@@ -973,9 +695,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::HotbarCooldownStarted:
         if (renderer_) {
             auto& d = std::get<state::HotbarCooldownStartedData>(event.data);
-            // Old UI
-            auto* wm = renderer_->getWindowManager();
-            if (wm) wm->startHotbarCooldown(d.index, d.durationMs);
             // U06a: New UI
             if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
                 auto& slot = renderer_->hotbarState_.slots[d.index];
@@ -986,15 +705,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::SkillActivationFeedback:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                auto& d = std::get<state::SkillActivationFeedbackData>(event.data);
-                if (d.success && d.cooldownMs > 0) {
-                    wm->startSkillCooldown(d.skillId, d.cooldownMs);
-                }
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillActivationFeedback");
         break;
     case state::GameEventType::RendererCommand:
         if (renderer_) {
@@ -1008,12 +719,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::ToggleSkillsWindow:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->toggleSkillsWindow();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: ToggleSkillsWindow");
         break;
 
     // ========================================================================
@@ -1027,11 +733,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->getSpellVisualFX()->createCastGlow(d.casterId, d.spellId, d.castTimeMs);
             }
             if (d.isPlayerCast) {
-                // Show player's casting bar
-                auto* wm = renderer_->getWindowManager();
-                if (wm) {
-                    wm->startCast(d.spellName, d.castTimeMs);
-                }
                 // U06d: New UI casting bar
                 renderer_->castingBarState_.isCasting = true;
                 renderer_->castingBarState_.spellName = d.spellName;
@@ -1044,12 +745,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                         d.casterId, d.spellId, d.spellName, d.castTimeMs);
                 }
                 // If this is our current target, show target casting bar
-                if (d.isTargetCast) {
-                    auto* wm = renderer_->getWindowManager();
-                    if (wm) {
-                        wm->startTargetCast(d.casterName, d.spellName, d.castTimeMs);
-                    }
-                }
+                // (target casting bar not yet in new UI)
             }
         }
         break;
@@ -1074,19 +770,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             if (!d.completionAnim.empty()) {
                 renderer_->setEntityAnimation(d.casterId, d.completionAnim, false, true);
             }
-            // Complete target casting bar if this was our target
-            if (d.isTargetCast) {
-                auto* wm = renderer_->getWindowManager();
-                if (wm) {
-                    wm->completeTargetCast();
-                }
-            }
             // Complete player's casting bar
             if (d.isPlayerCast) {
-                auto* wm = renderer_->getWindowManager();
-                if (wm) {
-                    wm->completeCast();
-                }
                 // U06d: New UI
                 renderer_->castingBarState_.isCasting = false;
             }
@@ -1104,19 +789,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             if (renderer_->getEntityRenderer()) {
                 renderer_->getEntityRenderer()->cancelEntityCast(d.casterId);
             }
-            // Cancel target casting bar if applicable
-            if (d.isTargetCast) {
-                auto* wm = renderer_->getWindowManager();
-                if (wm) {
-                    wm->cancelTargetCast();
-                }
-            }
             // Cancel player's casting bar
             if (d.isPlayerCast) {
-                auto* wm = renderer_->getWindowManager();
-                if (wm) {
-                    wm->cancelCast();
-                }
                 // U06d: New UI
                 renderer_->castingBarState_.isCasting = false;
             }
@@ -1124,22 +798,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     case state::GameEventType::SpellMemorizeVisualStarted:
-        if (renderer_) {
-            auto& d = std::get<state::SpellMemorizeVisualStartedData>(event.data);
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->startMemorize(d.spellName, d.durationMs);
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellMemorizeVisualStarted");
         break;
 
     case state::GameEventType::SpellMemorizeVisualComplete:
-        if (renderer_) {
-            auto* wm = renderer_->getWindowManager();
-            if (wm) {
-                wm->completeMemorize();
-            }
-        }
+        LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellMemorizeVisualComplete");
         break;
 
     // ========================================================================

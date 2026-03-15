@@ -29,14 +29,10 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/ui/inventory_constants.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/ui/hotbar_window.h"
 #include "client/graphics/ui/item_instance.h"
 #include "client/graphics/ui/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
-#include "client/graphics/ui/hotbar_types.h"
 #include "client/hotbar/hotbar_model.h"
-#include "client/graphics/ui/spell_book_window.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #include "client/graphics/detail/detail_manager.h"
@@ -5111,8 +5107,15 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 		m_trainer_name = "Trainer";
 	}
 
-	// Build list of trainable skills
-	std::vector<eqt::ui::TrainerSkillEntry> skillEntries;
+	// Build list of trainable skills and publish to bridge
+	eqt::state::TrainerWindowOpenedData trainerData;
+	trainerData.npcId = m_trainer_npc_id;
+	trainerData.npcName = m_trainer_name;
+	trainerData.platinum = GetPlatinum();
+	trainerData.gold = GetGold();
+	trainerData.silver = GetSilver();
+	trainerData.copper = GetCopper();
+	trainerData.practicePoints = GetPracticePoints();
 
 	for (uint8_t skill_id = 0; skill_id < EQT::MAX_PP_SKILL; ++skill_id) {
 		uint32_t max_trainable = trainee->skills[skill_id];
@@ -5135,21 +5138,18 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 
 		// Get skill name
 		const char* skill_name = EQ::getSkillName(skill_id);
-		std::wstring name_wstr(skill_name, skill_name + strlen(skill_name));
 
 		// Calculate training cost
 		// EQ training cost formula: (current_value + 1) * 10 copper per point
-		// For simplicity, we'll use the cost for training one point
 		uint32_t cost = (current_value + 1) * 10;
 
-		eqt::ui::TrainerSkillEntry entry;
-		entry.skill_id = skill_id;
-		entry.name = name_wstr;
-		entry.current_value = current_value;
-		entry.max_trainable = max_trainable;
-		entry.cost = cost;
-
-		skillEntries.push_back(entry);
+		eqt::state::TrainerSkillEntryData skill;
+		skill.skillId = skill_id;
+		skill.name = skill_name ? skill_name : "Unknown";
+		skill.currentValue = current_value;
+		skill.maxTrainable = max_trainable;
+		skill.cost = cost;
+		trainerData.skills.push_back(std::move(skill));
 
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
@@ -5158,29 +5158,12 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 	}
 
 	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
-		m_trainer_name, m_trainer_npc_id, skillEntries.size());
+		m_trainer_name, m_trainer_npc_id, trainerData.skills.size());
 
 	// Publish TrainerWindowOpened event to bridge
 	if (m_bridge) {
-		eqt::state::TrainerWindowOpenedData data;
-		data.npcId = m_trainer_npc_id;
-		data.npcName = m_trainer_name;
-		data.platinum = GetPlatinum();
-		data.gold = GetGold();
-		data.silver = GetSilver();
-		data.copper = GetCopper();
-		data.practicePoints = GetPracticePoints();
-		for (const auto& entry : skillEntries) {
-			eqt::state::TrainerSkillEntryData skill;
-			skill.skillId = entry.skill_id;
-			skill.name = std::string(entry.name.begin(), entry.name.end());
-			skill.currentValue = entry.current_value;
-			skill.maxTrainable = entry.max_trainable;
-			skill.cost = entry.cost;
-			data.skills.push_back(std::move(skill));
-		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::TrainerWindowOpened, std::move(data)));
+			eqt::state::GameEventType::TrainerWindowOpened, std::move(trainerData)));
 	}
 }
 
@@ -17854,10 +17837,7 @@ bool EverQuest::InitGraphics(int width, int height,
 	m_bridge = bridge;
 
 	// Wire bridge to subsystems for intent pushing
-	if (renderer->getWindowManager()) {
-		renderer->getWindowManager()->setBridge(m_bridge);
-		m_hotbar_window_manager = renderer->getWindowManager();
-	}
+	// WindowManager removed — bridge wiring handled by new UI path
 	if (m_inventory_manager) {
 		m_inventory_manager->setBridge(m_bridge);
 	}
@@ -17915,18 +17895,7 @@ bool EverQuest::InitGraphics(int width, int height,
 	SetupTradeWindowCallbacks();
 	SetupTradeskillCallbacks();
 
-	// Initialize UI windows via WindowManager
-	if (renderer->getWindowManager()) {
-		auto* wm = renderer->getWindowManager();
-		wm->setCommandRegistry(m_command_registry.get());
-		wm->setPlayerName(m_character);
-		wm->initSpellGemPanel(m_spell_manager.get());
-		wm->initBuffWindow(m_buff_manager.get());
-		wm->initGroupWindow(nullptr);
-		wm->initPlayerStatusWindow(nullptr);
-		wm->initSkillsWindow(m_skill_manager.get());
-		wm->initPetWindow(nullptr, nullptr);
-	}
+	// WindowManager removed — UI initialization handled by new UI path
 
 	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);

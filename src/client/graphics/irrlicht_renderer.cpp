@@ -12,7 +12,6 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
-#include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/text_batch.h"
@@ -94,11 +93,14 @@ extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
 #define M_PI 3.14159265358979323846
 #endif
 
+// Stub definition for WindowManager — class has been deleted but unique_ptr member
+// remains in the header (forward-declared). This allows the unique_ptr destructor to compile.
+namespace eqt { namespace ui { class WindowManager { public: virtual ~WindowManager() = default; }; } }
+
 namespace EQT {
 namespace Graphics {
 
 // Read display settings directly from config/display_settings.json
-// Used during early initialization before WindowManager/OptionsWindow exist
 // This file is optional — missing file uses defaults (everything enabled)
 static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
     eqt::ui::DisplaySettings settings;  // defaults: everything enabled
@@ -135,10 +137,7 @@ static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
 }
 
 eqt::ui::DisplaySettings IrrlichtRenderer::getDisplaySettings() {
-    if (windowManager_ && windowManager_->getOptionsWindow()) {
-        return windowManager_->getOptionsWindow()->getDisplaySettings();
-    }
-    return cachedDisplaySettings_;  // loaded once at startup
+    return cachedDisplaySettings_;
 }
 
 // Log detailed OpenGL/driver information for debugging GPU issues
@@ -877,14 +876,6 @@ bool IrrlichtRenderer::loadGlobalAssets() {
 
     // S05: skyRenderer_ and detailManager_ already created in initLoadingScreen()
 
-    // Initialize inventory window model view now that entity renderer is available
-    // This must happen after entityRenderer_ is created since it needs the race model loader
-    if (windowManager_ && entityRenderer_) {
-        windowManager_->initModelView(smgr_,
-                                      entityRenderer_->getRaceModelLoader(),
-                                      entityRenderer_->getEquipmentModelLoader());
-    }
-
     LOG_INFO(MOD_GRAPHICS, "Global assets loaded successfully");
     return true;
 }
@@ -1077,68 +1068,9 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         chat(fmt::format("New UI inventory: {}",
             inventoryState_.activePopup == PopupType::Inventory ? "OPEN" : "CLOSED"));
     } else if (cmd == "/timestamp" || cmd == "/timestamps") {
-        if (auto* wm = getWindowManager()) {
-            if (auto* cw = wm->getChatWindow()) {
-                cw->toggleTimestamps();
-                cw->saveSettings();
-                chat(fmt::format("Timestamps {}", cw->getShowTimestamps() ? "enabled" : "disabled"));
-            }
-        }
+        chat("Timestamps command not available (WindowManager removed)");
     } else if (cmd == "/filter") {
-        if (auto* wm = getWindowManager()) {
-            if (auto* cw = wm->getChatWindow()) {
-                if (args.empty()) {
-                    chat("=== Chat Filter Status ===");
-                    chat(fmt::format("Say: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Say) ? "ON" : "OFF"));
-                    chat(fmt::format("Tell: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Tell) ? "ON" : "OFF"));
-                    chat(fmt::format("Group: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Group) ? "ON" : "OFF"));
-                    chat(fmt::format("Guild: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Guild) ? "ON" : "OFF"));
-                    chat(fmt::format("Shout: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Shout) ? "ON" : "OFF"));
-                    chat(fmt::format("Auction: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Auction) ? "ON" : "OFF"));
-                    chat(fmt::format("OOC: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::OOC) ? "ON" : "OFF"));
-                    chat(fmt::format("Emote: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Emote) ? "ON" : "OFF"));
-                    chat(fmt::format("Combat: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Combat) ? "ON" : "OFF"));
-                    chat(fmt::format("Miss: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::CombatMiss) ? "ON" : "OFF"));
-                    chat(fmt::format("Exp: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Experience) ? "ON" : "OFF"));
-                    chat(fmt::format("Loot: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::Loot) ? "ON" : "OFF"));
-                    chat(fmt::format("NPC: {}", cw->isChannelEnabled(eqt::ui::ChatChannel::NPCDialogue) ? "ON" : "OFF"));
-                    chat("Type /filter <channel> to toggle.");
-                } else {
-                    std::string channel = args;
-                    std::transform(channel.begin(), channel.end(), channel.begin(), ::tolower);
-                    eqt::ui::ChatChannel ch;
-                    bool found = true;
-                    if (channel == "say" || channel == "s") ch = eqt::ui::ChatChannel::Say;
-                    else if (channel == "tell" || channel == "t") ch = eqt::ui::ChatChannel::Tell;
-                    else if (channel == "group" || channel == "g") ch = eqt::ui::ChatChannel::Group;
-                    else if (channel == "guild" || channel == "gu") ch = eqt::ui::ChatChannel::Guild;
-                    else if (channel == "shout" || channel == "sho") ch = eqt::ui::ChatChannel::Shout;
-                    else if (channel == "auction" || channel == "auc") ch = eqt::ui::ChatChannel::Auction;
-                    else if (channel == "ooc" || channel == "o") ch = eqt::ui::ChatChannel::OOC;
-                    else if (channel == "emote" || channel == "em") ch = eqt::ui::ChatChannel::Emote;
-                    else if (channel == "combat") ch = eqt::ui::ChatChannel::Combat;
-                    else if (channel == "miss" || channel == "misses") ch = eqt::ui::ChatChannel::CombatMiss;
-                    else if (channel == "exp" || channel == "experience") ch = eqt::ui::ChatChannel::Experience;
-                    else if (channel == "loot") ch = eqt::ui::ChatChannel::Loot;
-                    else if (channel == "npc") ch = eqt::ui::ChatChannel::NPCDialogue;
-                    else if (channel == "all") {
-                        cw->enableAllChannels(); cw->saveSettings();
-                        chat("All channels enabled"); found = false;
-                    } else if (channel == "none") {
-                        cw->disableAllChannels(); cw->saveSettings();
-                        chat("All channels disabled (except system)"); found = false;
-                    } else {
-                        chat(fmt::format("Unknown channel: {}. Use /filter for list.", args));
-                        found = false;
-                    }
-                    if (found) {
-                        cw->toggleChannel(ch); cw->saveSettings();
-                        const char* chName = eqt::ui::getChannelName(ch);
-                        chat(fmt::format("{} filter: {}", chName, cw->isChannelEnabled(ch) ? "ON" : "OFF"));
-                    }
-                }
-            }
-        }
+        chat("Filter command not available (WindowManager removed)");
     } else if (cmd == "/reloadeffects" || cmd == "/particlereload") {
         if (auto* pm = getParticleManager()) {
             pm->reloadSettings();
@@ -1267,11 +1199,6 @@ void IrrlichtRenderer::shutdown() {
         entityPrepWorker_.reset();
     }
 
-    // Stop background icon sheet worker before any other cleanup
-    if (windowManager_) {
-        windowManager_->getIconLoader().stopWorker();
-    }
-
     unloadZone();
 
     // Shutdown shared thread pool (all queue users already stopped above)
@@ -1287,7 +1214,6 @@ void IrrlichtRenderer::shutdown() {
     doorManager_.reset();
     skyRenderer_.reset();
     animatedTextureManager_.reset();
-    windowManager_.reset();
     eventReceiver_.reset();
 
     // Weather and environment managers also need the device for cleanup
@@ -1496,19 +1422,7 @@ void IrrlichtRenderer::processCompletedUploads() {
                         }
                     }
                 } else if (sourceType == 4) {
-                    // Icon texture — register in icon loader cache
-                    uint32_t iconId = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
-                    if (wrappedTex && windowManager_) {
-                        auto& iconLoader = windowManager_->getIconLoader();
-                        iconLoader.registerAsyncIcon(iconId, wrappedTex);
-                        iconLoader.clearPendingAsyncIcon(iconId);
-                        // Also register in constrained cache for LRU tracking
-                        if (constrainedTextureCache_) {
-                            std::string texName = "icon_" + std::to_string(iconId);
-                            size_t iconBytes = 40 * 40 * 4;  // 40x40 ARGB
-                            constrainedTextureCache_->registerTexture(texName, wrappedTex, iconBytes, true);
-                        }
-                    }
+                    // Icon texture — icon loading removed (WindowManager deleted)
                 } else {
                     // Atlas texture (sourceType 0 or 1, legacy encoding)
                     // callbackKey encoding: high 32 bits = atlas type (0=zone, 1=obj), low 32 bits = page index
@@ -1705,18 +1619,7 @@ bool IrrlichtRenderer::processOneGPUResult() {
                     }
                 }
             } else if (sourceType == 4) {
-                // Icon texture — register in icon loader cache
-                uint32_t iconId = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
-                if (wrappedTex && windowManager_) {
-                    auto& iconLoader = windowManager_->getIconLoader();
-                    iconLoader.registerAsyncIcon(iconId, wrappedTex);
-                    iconLoader.clearPendingAsyncIcon(iconId);
-                    if (constrainedTextureCache_) {
-                        std::string texName = "icon_" + std::to_string(iconId);
-                        size_t iconBytes = 40 * 40 * 4;
-                        constrainedTextureCache_->registerTexture(texName, wrappedTex, iconBytes, true);
-                    }
-                }
+                // Icon texture — icon loading removed (WindowManager deleted)
             } else {
                 // Atlas texture (sourceType 0 or 1, legacy encoding)
                 uint32_t atlasType = static_cast<uint32_t>(result.callbackKey >> 32);
@@ -1776,8 +1679,6 @@ void IrrlichtRenderer::toggleGPUUploadThread() {
     GPUUploadThread* ptr = gpuUploadEnabled_ ? gpuUploadThread_.get() : nullptr;
     if (constrainedTextureCache_)
         constrainedTextureCache_->setGPUUploadThread(ptr);
-    if (windowManager_)
-        windowManager_->getIconLoader().setGPUUploadThread(ptr);
 #else
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: not available (non-GLES2 build)");
 #endif
@@ -2231,11 +2132,7 @@ void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& sta
 }
 
 void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
-    if (!windowManager_ || !windowManager_->getOptionsWindow()) {
-        return;
-    }
-
-    const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
+    const auto& settings = cachedDisplaySettings_;
     bool zoneLoaded = !currentZoneName_.empty();
 
     // --- Particle Manager: toggle atmospheric billboard particles ---
@@ -2557,11 +2454,6 @@ void IrrlichtRenderer::unloadZone() {
         if (entityRenderer_) {
             entityRenderer_->setEntityPrepWorker(nullptr);
         }
-    }
-
-    // Stop background icon sheet worker before zone cleanup
-    if (windowManager_) {
-        windowManager_->getIconLoader().stopWorker();
     }
 
     // Reset entity loading state - we're starting a new zone
@@ -3398,9 +3290,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Setup ────────────────────────────────────────────────────────────────
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: zone='{}', eqClientPath='{}'", currentZoneName_, eqClientPath);
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: particleManager_={}, windowManager_={}, zoneShader_={}, "
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: particleManager_={}, zoneShader_={}, "
               "simulationWorker_={}, entityRenderer_={}, doorManager_={}",
-              (bool)particleManager_, (bool)windowManager_, (bool)zoneShader_,
+              (bool)particleManager_, (bool)zoneShader_,
               (bool)simulationWorker_, (bool)entityRenderer_, (bool)doorManager_);
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
               "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
@@ -4070,13 +3962,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: RaceModelLoader zone set to '{}'", currentZoneName_);
         }
 
-        // Store model view deps
-        if (windowManager_ && entityRenderer_) {
-            windowManager_->storeModelViewDeps(smgr_,
-                                               entityRenderer_->getRaceModelLoader(),
-                                               entityRenderer_->getEquipmentModelLoader());
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: window manager model view deps stored");
-        }
         logAssetBuildTime("seq_assets", 0, stepStart);
     }
     FlushThreadLog();
@@ -5483,10 +5368,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: weatherEffects_ setSurfaceMap from detailManager_");
         }
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvironmentalDisplaySettings: windowManager_={}, "
-                  "optionsWindow={}",
-                  (bool)windowManager_,
-                  windowManager_ ? (bool)windowManager_->getOptionsWindow() : false);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvironmentalDisplaySettings");
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvSettings: fireGlowLightingEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
                   fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
@@ -9590,12 +9472,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             // Priority 10: Submit new background mesh build
             if (!didWork && constrainedMeshCache_) didWork = submitOneBgMeshBuild();
 
-            // Priority 11: Lazy icon loading
-            if (!didWork && windowManager_ && config_.constrainedConfig.enableItemIcons) {
-                windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
-                windowManager_->getIconLoader().startWorker();
-                didWork = windowManager_->processOneLazyIcon();
-            }
+            // Priority 11: Lazy icon loading (disabled — WindowManager removed)
 
             if (didWork) {
                 frameTimings_.meshLoading = measureSection();
@@ -9923,7 +9800,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
 // ===== Phase 1: Input =====
 void IrrlichtRenderer::processFrameInput(float deltaTime) {
-    chatInputFocused_ = windowManager_ && windowManager_->isChatInputFocused();
+    chatInputFocused_ = false;
     if (eventReceiver_) eventReceiver_->setChatInputFocused(chatInputFocused_);
 
     // Drain action queue and dispatch
@@ -9949,20 +9826,7 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     int clickX = eventReceiver_->getClickMouseX();
     int clickY = eventReceiver_->getClickMouseY();
 
-    // U07c1: Old window manager input disabled when new UI is active
-    if (windowManager_ && !newUIEnabled_) {
-        if (hadClick) {
-            bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-            bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
-            windowManagerCapture_ = windowManager_->handleMouseDown(clickX, clickY, true, shift, ctrl);
-        }
-        if (hadRelease) {
-            int mouseX = eventReceiver_->getMouseX();
-            int mouseY = eventReceiver_->getMouseY();
-            windowManager_->handleMouseUp(mouseX, mouseY, true);
-            windowManagerCapture_ = false;
-        }
-    }
+    // WindowManager removed — no old UI mouse capture
 
     // Update camera and player movement
     updatePlayerMovement(deltaTime);
@@ -9992,7 +9856,7 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
             case RA::ToggleZoneLights: toggleZoneLights(); break;
             case RA::CycleObjectLights: cycleObjectLights(); break;
             case RA::ToggleOptions:
-                if (!chatInputFocused_ && windowManager_) windowManager_->toggleOptionsWindow();
+                // WindowManager removed — options window not available
                 break;
             case RA::ClearTarget:
                 if (currentTargetId_ != 0) {
@@ -10062,20 +9926,15 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
             // UI Windows
             case RA::ToggleInventory: toggleInventory(); break;
             case RA::ToggleGroup:
-                if (windowManager_) windowManager_->toggleGroupWindow();
-                break;
+                break;  // WindowManager removed
             case RA::ToggleSkills:
-                if (windowManager_) windowManager_->toggleSkillsWindow();
-                break;
+                break;  // WindowManager removed
             case RA::TogglePet:
-                if (windowManager_) windowManager_->togglePetWindow();
-                break;
+                break;  // WindowManager removed
             case RA::ToggleSpellbook:
-                if (windowManager_) windowManager_->toggleSpellbook();
-                break;
+                break;  // WindowManager removed
             case RA::ToggleBuffWindow:
-                if (windowManager_) windowManager_->toggleBuffWindow();
-                break;
+                break;  // WindowManager removed
 
             // Debug overlays
             case RA::ToggleZoneLineVisualization: toggleZoneLineVisualization(); break;
@@ -10262,56 +10121,21 @@ void IrrlichtRenderer::processChatInput() {
         }
     }
 
-    // Handle hotbar shortcuts
+    // Handle hotbar shortcuts (WindowManager removed — hotbar handled by new UI)
     int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
-    if (hotbarRequest >= 0 && !chatInputFocused_) {
-        if (windowManager_ && windowManager_->getHotbarWindow()) {
-            LOG_DEBUG(MOD_GRAPHICS, "Hotbar button {} activated", hotbarRequest + 1);
-            windowManager_->getHotbarWindow()->activateButton(hotbarRequest);
-        }
-    }
+    (void)hotbarRequest;
 
-    // Handle chat input (Player mode)
-    if (windowManager_) {
-        bool chatFocused = windowManager_->isChatInputFocused();
-        if (chatFocused) {
-            auto* chatWindow = windowManager_->getChatWindow();
-            while (eventReceiver_->hasPendingKeyEvents()) {
-                auto keyEvent = eventReceiver_->popKeyEvent();
-                if (keyEvent.key == irr::KEY_ESCAPE) { windowManager_->unfocusChatInput(); continue; }
-                if (chatWindow) chatWindow->handleKeyPress(keyEvent.key, keyEvent.character, keyEvent.shift, keyEvent.ctrl);
-            }
-            eventReceiver_->escapeKeyPressed();
-            eventReceiver_->enterKeyPressed();
-        } else {
-            bool moneyDialogShown = windowManager_->isMoneyInputDialogShown();
-            while (eventReceiver_->hasPendingKeyEvents()) {
-                auto keyEvent = eventReceiver_->popKeyEvent();
-                if (keyEvent.ctrl || moneyDialogShown) {
-                    windowManager_->handleKeyPress(keyEvent.key, keyEvent.shift, keyEvent.ctrl);
-                }
-            }
-            if (eventReceiver_->enterKeyPressed() && !moneyDialogShown) windowManager_->focusChatInput();
-            if (eventReceiver_->slashKeyPressed()) {
-                windowManager_->focusChatInput();
-                auto* chatWindow = windowManager_->getChatWindow();
-                if (chatWindow) chatWindow->insertText("/");
-            }
-            if (eventReceiver_->escapeKeyPressed() && !moneyDialogShown) {
-                if (windowManager_->isVendorWindowOpen()) {
-                    if (vendorToggleCallback_) vendorToggleCallback_();
-                    if (bridge_) bridge_->pushIntent(eqt::events::VendorToggleIntent{});
-                } else if (currentTargetId_ != 0) {
-                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                    clearCurrentTarget();
-                    SetTrackedTargetId(0);
-                    // Also notify CombatManager via bridge queue so player status window updates
-                    eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
-                }
+    // Handle escape key for target clearing (chat input handling removed with WindowManager)
+    {
+        eventReceiver_->clearPendingKeyEvents();
+        if (eventReceiver_->escapeKeyPressed()) {
+            if (currentTargetId_ != 0) {
+                LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
+                clearCurrentTarget();
+                SetTrackedTargetId(0);
+                eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
             }
         }
-    } else {
-        eventReceiver_->clearPendingKeyEvents();
     }
 }
 
@@ -10348,16 +10172,8 @@ void IrrlichtRenderer::processFrameVisibility() {
 
 // ===== Phase 3: Simulation =====
 void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
-    // Update window manager (for tooltip timing, etc.)
+    // WindowManager removed — no old UI update
     sectionStart_ = std::chrono::steady_clock::now();
-    // U07c1: Old window manager update disabled when new UI is active
-    if (windowManager_ && !newUIEnabled_) {
-        irr::u32 currentTimeMs = device_->getTimer()->getTime();
-        windowManager_->update(currentTimeMs);
-        int mouseX = eventReceiver_->getMouseX();
-        int mouseY = eventReceiver_->getMouseY();
-        windowManager_->handleMouseMove(mouseX, mouseY);
-    }
     frameTimings_.windowManagerUpdate = measureSection();
 
     // Entity update — worker handles interpolation + culling, main thread handles
@@ -10902,30 +10718,8 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     frameTimings_.guiDrawAll = measureSection();
 
-    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager");
-    // U07c1: Old UI disabled when new UI is active
-    if (!allUIHidden_ && !newUIEnabled_ && windowManager_) windowManager_->render();
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager (removed)");
     frameTimings_.windowManager = measureSection();
-    if (windowManager_) {
-        const auto& wt = windowManager_->renderTimings_;
-        frameTimings_.wmChat = wt.chat;
-        frameTimings_.wmInventory = wt.inventory;
-        frameTimings_.wmSpellGems = wt.spellGems;
-        frameTimings_.wmHotbar = wt.hotbar;
-        frameTimings_.wmPlayerStatus = wt.playerStatus;
-        frameTimings_.wmBuffs = wt.buffs;
-        frameTimings_.wmGroup = wt.group;
-        frameTimings_.wmSpellbook = wt.spellbook;
-        frameTimings_.wmCastingBars = wt.castingBars;
-        frameTimings_.wmPet = wt.pet;
-        frameTimings_.wmSkills = wt.skills;
-        frameTimings_.wmLoot = wt.loot;
-        frameTimings_.wmVendor = wt.vendor;
-        frameTimings_.wmBags = wt.bags;
-        frameTimings_.wmTooltips = wt.tooltips;
-        frameTimings_.wmOverlays = wt.overlays;
-        frameTimings_.wmOther = wt.other;
-    }
 
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
@@ -11549,8 +11343,6 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
         if (smgr_ && renderPassTimer_) {
             smgr_->setLightManager(renderPassTimer_);
         }
-        // Enable per-window timing in WindowManager
-        if (windowManager_) windowManager_->setRenderTimingEnabled(true);
         LOG_INFO(MOD_GRAPHICS, "Frame timing profiler ENABLED - timing data will be logged every 60 frames");
     } else {
         // Remove render pass timer (but keep it if manual zone draw needs it)
@@ -11558,7 +11350,6 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
             smgr_->setLightManager(nullptr);
             renderPassTimer_ = nullptr;  // Irrlicht drops the ref
         }
-        if (windowManager_) windowManager_->setRenderTimingEnabled(false);
         LOG_INFO(MOD_GRAPHICS, "Frame timing profiler DISABLED");
     }
 }
@@ -11916,7 +11707,7 @@ float IrrlichtRenderer::getClipDistance() const {
 
 void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     // Check if chat has focus - skip movement keys if so
-    bool chatHasFocus = windowManager_ && windowManager_->isChatInputFocused();
+    bool chatHasFocus = false;  // WindowManager removed
 
     // Read keyboard state for EQ-style movement (disabled when chat has focus)
     // Use HotkeyManager to check configured movement bindings
@@ -12947,12 +12738,6 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     // P08_Entities phase (beginZoneAssetLoad) which runs after P09_Collision.
     // Creating it here would bypass the manual load gate.
 
-    // Start background icon sheet worker if not already started
-    if (windowManager_ && config_.constrainedConfig.enableItemIcons) {
-        windowManager_->getIconLoader().setBackgroundThreadPool(backgroundThreadPool_.get());
-        windowManager_->getIconLoader().startWorker();
-    }
-
     LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
 }
 
@@ -13327,16 +13112,7 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         }
     }
 
-    // Priority 5: Lazy icon extraction (lowest priority, one icon per GREEN frame)
-    // Sort by sheet key before processing so all icons from the same resident sheet
-    // are extracted consecutively before triggering a new sheet load.
-    if (!didWork && windowManager_ && config_.constrainedConfig.enableItemIcons) {
-        windowManager_->getIconLoader().sortPendingBySheet();
-        if (windowManager_->processOneLazyIcon()) {
-            didWork = canMarkWork;
-            logAssetBuildTime("icon", 0, stepStart);
-        }
-    }
+    // Priority 5: Lazy icon extraction (disabled — WindowManager removed)
 
     // Always queue background prep requests (free work on background thread)
     queueEntityPrepRequests();
@@ -13507,12 +13283,8 @@ void IrrlichtRenderer::logAssetBuildTime(const char* type, size_t id,
 }
 
 void IrrlichtRenderer::sendLoadProgress(const std::string& msg) {
-    if (windowManager_) {
-        auto* chatWindow = windowManager_->getChatWindow();
-        if (chatWindow) {
-            chatWindow->addSystemMessage(msg);
-        }
-    }
+    // WindowManager removed — load progress is logged only
+    LOG_DEBUG(MOD_GRAPHICS, "LoadProgress: {}", msg);
 }
 
 void IrrlichtRenderer::checkProgressiveLoadingComplete() {
@@ -13626,11 +13398,6 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
                 LOG_INFO(MOD_GRAPHICS, "Released {:.1f}KB object texture pixel data (progressive complete)",
                          freed / 1024.0f);
             }
-        }
-
-        // Stop background icon sheet worker — progressive loading complete
-        if (windowManager_) {
-            windowManager_->getIconLoader().stopWorker();
         }
 
         // Remove zone placeholder mesh — real geometry is fully loaded
@@ -14858,55 +14625,11 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
     if (isLoading()) return;
     inventoryManager_ = manager;
 
-    // Create window manager if not already created
-    if (!windowManager_ && inventoryManager_ && driver_ && guienv_) {
-        windowManager_ = std::make_unique<eqt::ui::WindowManager>();
-        windowManager_->init(driver_, guienv_, inventoryManager_, config_.width, config_.height, config_.eqClientPath);
-
-        // Wire up constrained icon loading config
-        windowManager_->setIconLoadingEnabled(config_.constrainedConfig.enableItemIcons);
-        if (constrainedTextureCache_) {
-            windowManager_->setIconConstrainedTextureCache(constrainedTextureCache_.get());
-        }
-#ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_)
-            windowManager_->getIconLoader().setGPUUploadThread(gpuUploadThread_.get());
-#endif
-
-        // Apply UI settings from config (UISettings was loaded in main.cpp)
-        windowManager_->applyUISettings();
-
-        // Initialize model view if entity renderer is available
-        if (entityRenderer_ && smgr_) {
-            windowManager_->initModelView(smgr_,
-                                          entityRenderer_->getRaceModelLoader(),
-                                          entityRenderer_->getEquipmentModelLoader());
-        }
-
-        // Set up display settings callback for environmental systems
-        windowManager_->setDisplaySettingsChangedCallback([this]() {
-            // Update render distance first (affects terrain, objects, entities)
-            if (windowManager_ && windowManager_->getOptionsWindow()) {
-                const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-                setRenderDistance(settings.renderDistance);
-                LOG_DEBUG(MOD_GRAPHICS, "Render distance updated to {}", settings.renderDistance);
-            }
-
-            // Apply environmental display settings (particles, boids, detail, tumbleweeds)
-            applyEnvironmentalDisplaySettings();
-        });
-
-        // Apply initial render distance from saved settings
-        if (windowManager_->getOptionsWindow()) {
-            const auto& settings = windowManager_->getOptionsWindow()->getDisplaySettings();
-            setRenderDistance(settings.renderDistance);
-            LOG_INFO(MOD_GRAPHICS, "Initial render distance set to {} from saved settings", settings.renderDistance);
-        }
-
-        // Set up chat callback if already registered
-        if (chatSubmitCallback_) {
-            windowManager_->setChatSubmitCallback(chatSubmitCallback_);
-        }
+    // WindowManager removed — apply initial render distance from cached settings
+    {
+        const auto& settings = cachedDisplaySettings_;
+        setRenderDistance(settings.renderDistance);
+        LOG_INFO(MOD_GRAPHICS, "Initial render distance set to {} from cached settings", settings.renderDistance);
     }
 
     // Create spell visual effects if not already created
@@ -15017,55 +14740,37 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
 }
 
 void IrrlichtRenderer::toggleInventory() {
-    if (windowManager_) {
-        windowManager_->toggleInventory();
-    }
+    // WindowManager removed — inventory toggle is a no-op
 }
 
 void IrrlichtRenderer::openInventory() {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->openInventory();
-    }
+    // WindowManager removed
 }
 
 void IrrlichtRenderer::closeInventory() {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->closeInventory();
-    }
+    // WindowManager removed
 }
 
 void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
     if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->showNoteWindow(text, type);
-    }
+    LOG_INFO(MOD_GRAPHICS, "Note (type {}): {}", type, text);
 }
 
 bool IrrlichtRenderer::isInventoryOpen() const {
-    return windowManager_ && windowManager_->isInventoryOpen();
+    return false;  // WindowManager removed
 }
 
 void IrrlichtRenderer::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->setCharacterInfo(name, level, className);
-    }
+    // WindowManager removed — character info stored for future new UI
+    (void)name; (void)level; (void)className;
 }
 
 void IrrlichtRenderer::setCharacterDeity(const std::wstring& deity) {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->setCharacterDeity(deity);
-    }
+    (void)deity;  // WindowManager removed
 }
 
 void IrrlichtRenderer::setExpProgress(float progress) {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->setExpProgress(progress);
-    }
+    (void)progress;  // WindowManager removed
 }
 
 void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
@@ -15076,22 +14781,18 @@ void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
                                              int pr, int mr, int dr, int fr, int cr,
                                              float weight, float maxWeight,
                                              uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
-    if (isLoading()) return;
-    if (windowManager_) {
-        windowManager_->updateCharacterStats(curHp, maxHp, curMana, maxMana, curEnd, maxEnd,
-                                             ac, atk, str, sta, agi, dex, wis, intel, cha,
-                                             pr, mr, dr, fr, cr, weight, maxWeight,
-                                             platinum, gold, silver, copper);
-    }
+    // WindowManager removed — stats stored for future new UI
+    (void)curHp; (void)maxHp; (void)curMana; (void)maxMana; (void)curEnd; (void)maxEnd;
+    (void)ac; (void)atk; (void)str; (void)sta; (void)agi; (void)dex; (void)wis; (void)intel; (void)cha;
+    (void)pr; (void)mr; (void)dr; (void)fr; (void)cr; (void)weight; (void)maxWeight;
+    (void)platinum; (void)gold; (void)silver; (void)copper;
 }
 
 void IrrlichtRenderer::updatePlayerAppearance(uint16_t raceId, uint8_t gender,
                                                const EntityAppearance& appearance) {
     if (isLoading()) return;
     LOG_DEBUG(MOD_GRAPHICS, "IrrlichtRenderer::updatePlayerAppearance race={} gender={}", raceId, gender);
-    if (windowManager_) {
-        windowManager_->setPlayerAppearance(raceId, gender, appearance);
-    }
+    (void)appearance;  // WindowManager removed
 }
 
 void IrrlichtRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,
@@ -15106,15 +14807,11 @@ void IrrlichtRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId,
 
 void IrrlichtRenderer::setChatSubmitCallback(ChatSubmitCallback callback) {
     chatSubmitCallback_ = callback;
-    if (windowManager_) {
-        windowManager_->setChatSubmitCallback(callback);
-    }
+    // WindowManager removed — callback stored for future new UI
 }
 
 void IrrlichtRenderer::setReadItemCallback(ReadItemCallback callback) {
-    if (windowManager_) {
-        windowManager_->setOnReadItem(callback);
-    }
+    (void)callback;  // WindowManager removed
 }
 
 void IrrlichtRenderer::setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId, const std::string& debugText) {

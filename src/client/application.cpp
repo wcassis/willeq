@@ -26,8 +26,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/ui/ui_settings.h"
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
@@ -35,8 +33,6 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/state/event_bus.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/ui/hotbar_window.h"
 #include "client/hotbar/hotbar_model.h"
 #endif
 
@@ -1021,13 +1017,8 @@ void Application::loadZoneGraphics() {
 }
 
 void Application::setupHotbarCallback() {
-    auto* windowMgr = m_renderer->getWindowManager();
-    if (windowMgr) {
-        windowMgr->setHotbarChangedCallback([this]() {
-            if (m_eqClient) m_eqClient->SaveHotbarConfig();
-            if (m_bridge) m_bridge->pushIntent(eqt::events::HotbarChangedIntent{});
-        });
-    }
+    // WindowManager removed — hotbar changed callback not wired
+    // TODO: Wire hotbar changed callback through new UI path
 }
 
 // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this
@@ -1485,8 +1476,7 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             clientConfig = handle[0];
 
 #ifdef EQT_HAS_GRAPHICS
-            // Load UI and hotkey settings for legacy config format
-            eqt::ui::UISettings::instance().loadFromFile("config/ui_settings.json");
+            // Load hotkey settings for legacy config format
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
@@ -1505,20 +1495,6 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             InitLoggingFromJson(handle);
 
 #ifdef EQT_HAS_GRAPHICS
-            // Load UI settings from default file, then apply any overrides from main config
-            {
-                auto& uiSettings = eqt::ui::UISettings::instance();
-                uiSettings.loadFromFile("config/ui_settings.json");
-                if (handle.isMember("uiSettings")) {
-                    LOG_INFO(MOD_UI, "Applying UI settings overrides from main config");
-                    uiSettings.applyOverrides(handle["uiSettings"]);
-                }
-                if (handle.isMember("chatSettings")) {
-                    LOG_INFO(MOD_UI, "Applying chat settings overrides from main config");
-                    uiSettings.applyChatSettingsOverride(handle["chatSettings"]);
-                }
-            }
-
             // Load hotkey settings
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();

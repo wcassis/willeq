@@ -89,7 +89,23 @@ namespace inventory {
 }
 namespace ui {
     class CommandRegistry;
-    struct PendingHotbarButton;
+
+    // Hotbar button type enum (was in deleted WindowManager header)
+    enum class HotbarButtonType : uint8_t {
+        Spell = 0,
+        Skill = 1,
+        Item = 2,
+        Command = 3
+    };
+
+    // Pending hotbar button (was in deleted WindowManager header)
+    struct PendingHotbarButton {
+        HotbarButtonType type;
+        uint32_t id;
+        std::string name;
+        PendingHotbarButton(HotbarButtonType t, uint32_t i, std::string n)
+            : type(t), id(i), name(std::move(n)) {}
+    };
 }
 }
 #endif

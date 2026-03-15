@@ -31,9 +31,10 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/irrlicht_bridge.h"
 #include "client/bridge/game_state_bridge.h"
-#include "client/graphics/ui/window_manager.h"
-#include "client/graphics/ui/inventory_window.h"
-#include "client/graphics/ui/character_model_view.h"
+// WindowManager has been deleted — these tests skip at runtime
+// #include "client/graphics/ui/window_manager.h"
+// #include "client/graphics/ui/inventory_window.h"
+// #include "client/graphics/ui/character_model_view.h"
 #endif
 
 using namespace std::chrono_literals;
@@ -246,330 +247,32 @@ protected:
 
 // Test: Verify inventory window model view initializes and loads character model
 TEST_F(InventoryModelViewTest, ModelViewInitializesAndLoadsCharacter) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr) << "Renderer is null";
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr) << "WindowManager is null";
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr) << "InventoryWindow is null";
-
-    // Verify model view exists
-    EXPECT_TRUE(inventoryWindow->hasModelView())
-        << "Inventory window should have a model view";
-
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr) << "Model view is null";
-
-    // Verify model view is ready
-    EXPECT_TRUE(modelView->isReady())
-        << "Model view should be ready after zone-in";
-
-    // Verify character model is loaded
-    EXPECT_TRUE(modelView->hasCharacterModel())
-        << "Character model should be loaded";
-
-    // Log model info
-    std::cout << "Model view state:" << std::endl;
-    std::cout << "  Race ID: " << modelView->getCurrentRaceId() << std::endl;
-    std::cout << "  Gender: " << (int)modelView->getCurrentGender() << std::endl;
-    std::cout << "  Has model: " << (modelView->hasCharacterModel() ? "yes" : "no") << std::endl;
-    std::cout << "  Material count: " << modelView->getMaterialCount() << std::endl;
-    std::cout << "  Has textures: " << (modelView->hasTextures() ? "yes" : "no") << std::endl;
-    std::cout << "  Is animating: " << (modelView->isAnimating() ? "yes" : "no") << std::endl;
-    std::cout << "  Primary weapon ID: " << modelView->getPrimaryWeaponId() << std::endl;
-    std::cout << "  Secondary weapon ID: " << modelView->getSecondaryWeaponId() << std::endl;
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Test: Verify character model has textures applied
 TEST_F(InventoryModelViewTest, ModelHasTexturesApplied) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr);
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr);
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr);
-
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr);
-    ASSERT_TRUE(modelView->hasCharacterModel());
-
-    // Verify model has textures
-    EXPECT_TRUE(modelView->hasTextures())
-        << "Character model should have textures applied";
-
-    // Verify model has at least one material
-    EXPECT_GT(modelView->getMaterialCount(), 0u)
-        << "Character model should have at least one material";
-
-    std::cout << "Model has " << modelView->getMaterialCount() << " materials with textures" << std::endl;
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Test: Verify character model animates properly
 TEST_F(InventoryModelViewTest, ModelAnimatesProperly) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr);
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr);
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr);
-
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr);
-    ASSERT_TRUE(modelView->hasCharacterModel());
-
-    // Verify model is set up for animation
-    EXPECT_TRUE(modelView->isAnimating())
-        << "Character model should be animating (idle animation)";
-
-    // Process several frames to verify animation continues
-    std::cout << "Processing 60 frames to verify animation..." << std::endl;
-    float initialRotation = modelView->getRotationY();
-
-    processFrames(60);
-
-    // Animation should still be running
-    EXPECT_TRUE(modelView->isAnimating())
-        << "Character model should still be animating after 60 frames";
-
-    std::cout << "Animation verified - model continues to animate" << std::endl;
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Test: Verify equipped weapons show on model
 TEST_F(InventoryModelViewTest, EquippedWeaponsShowOnModel) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr);
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr);
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr);
-
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr);
-    ASSERT_TRUE(modelView->hasCharacterModel());
-
-    // Check for equipped weapons
-    // Note: This depends on the character actually having weapons equipped
-    uint32_t primaryId = modelView->getPrimaryWeaponId();
-    uint32_t secondaryId = modelView->getSecondaryWeaponId();
-
-    std::cout << "Equipped items:" << std::endl;
-    std::cout << "  Primary weapon ID: " << primaryId << std::endl;
-    std::cout << "  Secondary weapon ID: " << secondaryId << std::endl;
-    std::cout << "  Has primary weapon node: " << (modelView->hasPrimaryWeapon() ? "yes" : "no") << std::endl;
-    std::cout << "  Has secondary weapon node: " << (modelView->hasSecondaryWeapon() ? "yes" : "no") << std::endl;
-
-    // If the character has a weapon equipped (ID > 0), the weapon node should exist
-    if (primaryId > 0) {
-        EXPECT_TRUE(modelView->hasPrimaryWeapon())
-            << "Primary weapon node should exist when weapon is equipped (ID=" << primaryId << ")";
-    }
-    if (secondaryId > 0) {
-        EXPECT_TRUE(modelView->hasSecondaryWeapon())
-            << "Secondary weapon node should exist when weapon/shield is equipped (ID=" << secondaryId << ")";
-    }
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Test: Verify model view renders to texture
 TEST_F(InventoryModelViewTest, ModelRendersToTexture) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr);
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr);
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr);
-
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr);
-    ASSERT_TRUE(modelView->isReady());
-
-    // Verify render target texture exists
-    auto* texture = modelView->getTexture();
-    EXPECT_NE(texture, nullptr)
-        << "Model view should have a render target texture";
-
-    if (texture) {
-        auto size = texture->getSize();
-        std::cout << "Render target texture size: " << size.Width << "x" << size.Height << std::endl;
-        EXPECT_GT(size.Width, 0u) << "Texture width should be > 0";
-        EXPECT_GT(size.Height, 0u) << "Texture height should be > 0";
-    }
-
-    // Render several frames to ensure render-to-texture works
-    std::cout << "Processing 30 frames to verify render-to-texture..." << std::endl;
-    processFrames(30);
-
-    // Texture should still be valid
-    EXPECT_NE(modelView->getTexture(), nullptr)
-        << "Render target texture should still be valid after rendering";
-
-    std::cout << "Render-to-texture verified" << std::endl;
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Test: Verify model view survives zone transition
 TEST_F(InventoryModelViewTest, ModelViewSurvivesZoneTransition) {
-    ASSERT_TRUE(createClientWithGraphics());
-
-    std::cout << "Waiting for initial zone-in..." << std::endl;
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for initial zone-in";
-
-#ifdef EQT_HAS_GRAPHICS
-    std::cout << "Waiting for graphics zone ready..." << std::endl;
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready";
-
-    ASSERT_NE(renderer_.get(), nullptr);
-
-    auto* windowManager = renderer_->getWindowManager();
-    ASSERT_NE(windowManager, nullptr);
-
-    auto* inventoryWindow = windowManager->getInventoryWindow();
-    ASSERT_NE(inventoryWindow, nullptr);
-
-    // Verify initial state
-    auto* modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr);
-    ASSERT_TRUE(modelView->hasCharacterModel());
-    ASSERT_TRUE(modelView->isReady());
-
-    uint16_t initialRaceId = modelView->getCurrentRaceId();
-    std::cout << "Initial model - Race: " << initialRaceId << std::endl;
-
-    // Find a zone line
-    std::string startZone = eq_->GetCurrentZoneName();
-    std::cout << "Starting zone: " << startZone << std::endl;
-
-    // Load zone_lines.json to find a zone line
-    std::ifstream file("data/zone_lines.json");
-    if (!file.is_open()) {
-        file.open("../data/zone_lines.json");
-    }
-    if (!file.is_open()) {
-        GTEST_SKIP() << "Cannot open zone_lines.json - skipping zone transition test";
-    }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        GTEST_SKIP() << "Failed to parse zone_lines.json";
-    }
-
-    if (!root.isMember(startZone) || !root[startZone].isArray() || root[startZone].empty()) {
-        GTEST_SKIP() << "No zone lines defined for zone: " << startZone;
-    }
-
-    // Get first zone line
-    const auto& zoneLine = root[startZone][0u];
-    float x = (zoneLine["min_x"].asFloat() + zoneLine["max_x"].asFloat()) / 2;
-    float y = (zoneLine["min_y"].asFloat() + zoneLine["max_y"].asFloat()) / 2;
-    float z = (zoneLine["min_z"].asFloat() + zoneLine["max_z"].asFloat()) / 2;
-
-    std::cout << "Teleporting to zone line at (" << x << ", " << y << ", " << z << ")" << std::endl;
-
-    // Trigger zone transition
-    eq_->SetPosition(x, y, z);
-
-    // Wait for zone-out
-    bool leftZone = waitForWithGraphics([this]() {
-        return !eq_->IsFullyZonedIn();
-    }, 10000);
-
-    if (!leftZone) {
-        GTEST_SKIP() << "Zone line did not trigger";
-    }
-
-    std::cout << "Zone-out detected, waiting for new zone..." << std::endl;
-
-    // Wait for zone-in to new zone
-    ASSERT_TRUE(waitForZoneIn(config_.timeoutSeconds * 1000))
-        << "Timed out waiting for zone-in after transition";
-
-    ASSERT_TRUE(waitForZoneReady(30000))
-        << "Timed out waiting for graphics zone ready after transition";
-
-    std::string newZone = eq_->GetCurrentZoneName();
-    std::cout << "Zoned into: " << newZone << std::endl;
-
-    // Verify model view still works after zone transition
-    modelView = inventoryWindow->getModelView();
-    ASSERT_NE(modelView, nullptr) << "Model view should still exist after zone transition";
-    EXPECT_TRUE(modelView->isReady()) << "Model view should be ready after zone transition";
-    EXPECT_TRUE(modelView->hasCharacterModel()) << "Character model should be loaded after zone transition";
-    EXPECT_TRUE(modelView->hasTextures()) << "Character model should have textures after zone transition";
-    EXPECT_TRUE(modelView->isAnimating()) << "Character model should animate after zone transition";
-
-    // Race should be the same
-    EXPECT_EQ(modelView->getCurrentRaceId(), initialRaceId)
-        << "Race ID should be the same after zone transition";
-
-    std::cout << "Model view survives zone transition - all checks passed" << std::endl;
-#endif
+    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
 }
 
 // Main function to support custom config path

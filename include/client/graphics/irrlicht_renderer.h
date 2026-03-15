@@ -34,7 +34,7 @@
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/tumbleweed_manager.h"
 #include "client/graphics/frame_budget_governor.h"
-#include "client/graphics/ui/options_window.h"
+#include "client/graphics/display_settings.h"  // U07c2: extracted from deleted options_window.h
 #include "client/graphics/background_work_queue.h"
 #include "client/graphics/background_thread_pool.h"
 #include "client/graphics/simulation_worker.h"
