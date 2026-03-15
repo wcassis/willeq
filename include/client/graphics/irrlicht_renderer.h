@@ -1737,7 +1737,7 @@ private:
     std::unique_ptr<UIAtlas> uiAtlas_;     // U02
     std::unique_ptr<UIRenderer> uiRenderer_;  // U03b
     UILayout uiLayout_;                       // U03a
-    bool newUIEnabled_ = false;               // U03c: /newui toggle
+    bool newUIEnabled_ = true;                // U07c1: new UI on by default
 public:
     // U03d+: Cached data from bridge events for new static UI panels.
     // Public so IrrlichtBridge can update them directly.

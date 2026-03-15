@@ -9949,7 +9949,8 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     int clickX = eventReceiver_->getClickMouseX();
     int clickY = eventReceiver_->getClickMouseY();
 
-    if (windowManager_) {
+    // U07c1: Old window manager input disabled when new UI is active
+    if (windowManager_ && !newUIEnabled_) {
         if (hadClick) {
             bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
             bool ctrl = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
@@ -10349,7 +10350,8 @@ void IrrlichtRenderer::processFrameVisibility() {
 void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // Update window manager (for tooltip timing, etc.)
     sectionStart_ = std::chrono::steady_clock::now();
-    if (windowManager_) {
+    // U07c1: Old window manager update disabled when new UI is active
+    if (windowManager_ && !newUIEnabled_) {
         irr::u32 currentTimeMs = device_->getTimer()->getTime();
         windowManager_->update(currentTimeMs);
         int mouseX = eventReceiver_->getMouseX();
@@ -10892,15 +10894,17 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     frameTimings_.castingBars = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
-    if (!allUIHidden_) {
+    if (!allUIHidden_ && !newUIEnabled_) {
         guienv_->drawAll();
+    }
+    if (!allUIHidden_) {
         drawFPSCounter();
     }
     frameTimings_.guiDrawAll = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager");
-    // Render inventory UI windows (on top of HUD)
-    if (!allUIHidden_ && windowManager_) windowManager_->render();
+    // U07c1: Old UI disabled when new UI is active
+    if (!allUIHidden_ && !newUIEnabled_ && windowManager_) windowManager_->render();
     frameTimings_.windowManager = measureSection();
     if (windowManager_) {
         const auto& wt = windowManager_->renderTimings_;
