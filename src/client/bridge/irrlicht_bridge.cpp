@@ -893,6 +893,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::ExpProgressChangedData>(event.data);
             renderer_->setExpProgress(d.progress);
+            // U06i: New UI
+            renderer_->xpBarState_.progress = d.progress;
         }
         break;
     case state::GameEventType::CharacterInfoChanged:

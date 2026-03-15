@@ -268,5 +268,14 @@ struct SkillsPopupState {
 void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
                         const SkillsPopupState& state);
 
+// Cached XP progress
+struct XPBarState {
+    float progress = 0.0f;  // 0.0 to 1.0
+};
+
+/** Render XP bar (full width, bottom of screen). */
+void renderXPBar(UIRenderer& ui, const UILayout& layout,
+                 const XPBarState& state);
+
 } // namespace Graphics
 } // namespace EQT

@@ -10934,6 +10934,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
         renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+        renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }
 

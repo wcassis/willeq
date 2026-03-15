@@ -1754,6 +1754,7 @@ public:
     PetPanelState petPanelState_;       // U06f
     SpellbookPopupState spellbookState_; // U06g
     SkillsPopupState skillsPopupState_; // U06h
+    XPBarState xpBarState_;             // U06i
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 

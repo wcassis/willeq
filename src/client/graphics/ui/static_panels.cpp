@@ -701,5 +701,22 @@ void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderXPBar(UIRenderer& ui, const UILayout& layout,
+                 const XPBarState& state) {
+    // Background
+    ui.drawSprite(layout.xpBar, static_cast<uint8_t>(UISprite::BarBackground));
+
+    // Fill
+    if (state.progress > 0.0f) {
+        irr::s32 fillW = static_cast<irr::s32>(layout.xpBar.getWidth() * state.progress);
+        irr::core::rect<irr::s32> fillRect(
+            layout.xpBar.UpperLeftCorner.X,
+            layout.xpBar.UpperLeftCorner.Y,
+            layout.xpBar.UpperLeftCorner.X + fillW,
+            layout.xpBar.LowerRightCorner.Y);
+        ui.drawSprite(fillRect, static_cast<uint8_t>(UISprite::BarXP));
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

@@ -241,7 +241,7 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U06f | Pet panel (HP bar + command buttons) | done | |
 | U06g | Spellbook popup | done | |
 | U06h | Skills popup | done | |
-| U06i | XP bar (full width, bottom) | pending | |
+| U06i | XP bar (full width, bottom) | done | |
 | U06j | New UI input handling (slot clicks, popups, chat focus) | pending | |
 | U07a | Relocate game-state data models out of graphics/ui/ | pending | |
 | U07b | Standalone hotbar data model (JSON read/write + events) | pending | |
