@@ -1351,6 +1351,25 @@ void EverQuest::PublishFullStateSnapshot() {
 		}
 	}
 
+	// --- Spellbook snapshot ---
+	if (m_spell_manager) {
+		eqt::state::SpellbookSnapshotData sbdata;
+		for (uint16_t slot = 0; slot < EQ::MAX_SPELLBOOK_SLOTS; ++slot) {
+			uint32_t spellId = m_spell_manager->getSpellbookSpell(slot);
+			if (spellId == 0 || spellId == EQ::SPELL_UNKNOWN) continue;
+			const auto* spell = m_spell_manager->getSpell(spellId);
+			eqt::state::SpellbookEntry entry;
+			entry.slot = slot;
+			entry.spellId = spellId;
+			entry.name = spell ? spell->name : "";
+			entry.iconId = spell ? spell->spell_icon : 0;
+			entry.level = (spell && m_class > 0) ? spell->class_levels[m_class - 1] : 0;
+			sbdata.spells.push_back(std::move(entry));
+		}
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::SpellbookSnapshot, std::move(sbdata)));
+	}
+
 	// --- Buffs ---
 	if (m_buff_manager) {
 		const auto& buffs = m_buff_manager->getPlayerBuffs();
@@ -2880,6 +2899,8 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 						eqt::state::SpellScribeCompletedData sdata;
 						sdata.spellId = spell_id;
 						sdata.slot = static_cast<uint16_t>(slot);
+						sdata.spellName = spellName;
+						sdata.iconId = spellData ? spellData->spell_icon : 0;
 						m_bridge->pushEvent(eqt::state::GameEvent(
 							eqt::state::GameEventType::SpellScribeCompleted, std::move(sdata)));
 					}

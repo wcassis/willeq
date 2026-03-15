@@ -1751,7 +1751,8 @@ public:
     BuffBarState buffBarState_;         // U06c
     CastingBarState castingBarState_;  // U06d
     GroupPanelState groupPanelState_;  // U06e
-    PetPanelState petPanelState_;     // U06f
+    PetPanelState petPanelState_;       // U06f
+    SpellbookPopupState spellbookState_; // U06g
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 

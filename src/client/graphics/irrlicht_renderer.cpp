@@ -1047,6 +1047,16 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     else if (cmd == "/newui") {
         newUIEnabled_ = !newUIEnabled_;
         chat(fmt::format("New static UI: {}", newUIEnabled_ ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/newbook") {
+        spellbookState_.isOpen = !spellbookState_.isOpen;
+        if (spellbookState_.isOpen) {
+            inventoryState_.activePopup = PopupType::None;  // Close other popups
+        }
+        chat(fmt::format("New UI spellbook: {}", spellbookState_.isOpen ? "OPEN" : "CLOSED"));
+    } else if (cmd == "/newbookprev") {
+        if (spellbookState_.currentPage > 0) spellbookState_.currentPage--;
+    } else if (cmd == "/newbooknext") {
+        if (spellbookState_.currentPage < spellbookState_.pageCount() - 1) spellbookState_.currentPage++;
     } else if (cmd == "/newinv") {
         if (inventoryState_.activePopup == PopupType::Inventory) {
             inventoryState_.activePopup = PopupType::None;
@@ -10915,6 +10925,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
         renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
+        renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
         uiRenderer_->endFrame();
     }
 

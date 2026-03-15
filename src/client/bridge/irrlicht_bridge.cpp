@@ -903,12 +903,35 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     case state::GameEventType::SpellScribeCompleted:
         if (renderer_) {
+            auto& d = std::get<state::SpellScribeCompletedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* spellBookWindow = wm->getSpellBookWindow();
-                if (spellBookWindow) {
-                    spellBookWindow->refresh();
-                }
+                if (spellBookWindow) spellBookWindow->refresh();
+            }
+            // U06g: Add to new UI spellbook
+            EQT::Graphics::SpellbookDisplayEntry entry;
+            entry.slot = d.slot;
+            entry.spellId = d.spellId;
+            entry.name = d.spellName;
+            entry.iconId = d.iconId;
+            renderer_->spellbookState_.spells.push_back(std::move(entry));
+        }
+        break;
+    case state::GameEventType::SpellbookSnapshot:
+        if (renderer_) {
+            auto& d = std::get<state::SpellbookSnapshotData>(event.data);
+            renderer_->spellbookState_.spells.clear();
+            renderer_->spellbookState_.currentPage = 0;
+            for (const auto& s : d.spells) {
+                EQT::Graphics::SpellbookDisplayEntry entry;
+                entry.slot = s.slot;
+                entry.spellId = s.spellId;
+                entry.name = s.name;
+                entry.iconId = s.iconId;
+                entry.level = s.level;
+                renderer_->spellbookState_.spells.push_back(std::move(entry));
             }
         }
         break;

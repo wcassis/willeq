@@ -131,6 +131,7 @@ enum class GameEventType {
     WorldObjectSpawned,
     NoteWindowOpened,
     SpellScribeCompleted,
+    SpellbookSnapshot,  // U06g: full spellbook sent once at zone-in
     ToggleSkillsWindow,
     HotbarCooldownStarted,
     HotbarSlotAssigned,  // U00: hotbar slot content changed (client-side config)
@@ -732,6 +733,21 @@ struct NoteWindowOpenedData {
 struct SpellScribeCompletedData {
     uint32_t spellId;
     uint16_t slot;
+    std::string spellName;  // U06g: for new UI display
+    uint32_t iconId = 0;    // U06g: spell icon
+};
+
+// U06g: Full spellbook snapshot (published once at zone-in from U00)
+struct SpellbookEntry {
+    uint16_t slot;
+    uint32_t spellId;
+    std::string name;
+    uint32_t iconId;
+    uint8_t level;
+};
+
+struct SpellbookSnapshotData {
+    std::vector<SpellbookEntry> spells;
 };
 
 struct ToggleSkillsWindowData {};
@@ -947,6 +963,7 @@ using EventData = std::variant<
     WorldObjectSpawnedData,
     NoteWindowOpenedData,
     SpellScribeCompletedData,
+    SpellbookSnapshotData,
     ToggleSkillsWindowData,
     HotbarCooldownStartedData,
     HotbarSlotAssignedData,

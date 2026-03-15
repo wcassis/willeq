@@ -571,5 +571,75 @@ void renderPetPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
+                          const SpellbookPopupState& state) {
+    if (!state.isOpen) return;
+
+    auto* tb = ui.getTextBatch();
+    const auto& popup = layout.centerPopup;
+
+    ui.drawPanel(popup);
+
+    // Title + page indicator
+    if (tb) {
+        std::string title = fmt::format("Spellbook - Page {}/{}", state.currentPage + 1, state.pageCount());
+        tb->addText(title, popup.UpperLeftCorner.X + 8, popup.UpperLeftCorner.Y + 4,
+            irr::video::SColor(255, 255, 215, 0));
+    }
+
+    constexpr irr::s32 LINE_H = 28;
+    constexpr irr::s32 PAD = UILayout::MARGIN;
+    irr::s32 startX = popup.UpperLeftCorner.X + 8;
+    irr::s32 startY = popup.UpperLeftCorner.Y + 24;
+    irr::s32 slotW = popup.getWidth() - 16;
+
+    // Draw spells for current page
+    int firstIdx = state.currentPage * SpellbookPopupState::SPELLS_PER_PAGE;
+    int lastIdx = std::min(firstIdx + SpellbookPopupState::SPELLS_PER_PAGE,
+                           static_cast<int>(state.spells.size()));
+
+    for (int i = firstIdx; i < lastIdx; ++i) {
+        int row = i - firstIdx;
+        irr::s32 y = startY + row * (LINE_H + PAD);
+        irr::core::rect<irr::s32> slotRect(startX, y, startX + slotW, y + LINE_H);
+
+        // Slot background
+        bool hovered = (state.hoveredSlot == row);
+        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+        if (hovered) {
+            ui.drawRect({startX, y, startX + slotW, y + 1}, irr::video::SColor(255, 255, 215, 0));
+            ui.drawRect({startX, y + LINE_H - 1, startX + slotW, y + LINE_H}, irr::video::SColor(255, 255, 215, 0));
+        }
+
+        const auto& spell = state.spells[i];
+
+        if (tb) {
+            // Level
+            std::string lvlStr = fmt::format("L{}", spell.level);
+            tb->addText(lvlStr, startX + 4, y + 6,
+                irr::video::SColor(255, 150, 150, 150));
+
+            // Spell name
+            tb->addText(spell.name, startX + 30, y + 6,
+                irr::video::SColor(255, 220, 220, 255));
+        }
+    }
+
+    // Page navigation hints
+    if (tb) {
+        irr::s32 navY = popup.LowerRightCorner.Y - 20;
+        if (state.currentPage > 0) {
+            tb->addText("< Prev", startX, navY,
+                irr::video::SColor(255, 180, 180, 255));
+        }
+        if (state.currentPage < state.pageCount() - 1) {
+            std::string next = "Next >";
+            irr::s32 nw = tb->getTextWidth(next);
+            tb->addText(next, popup.LowerRightCorner.X - 8 - nw, navY,
+                irr::video::SColor(255, 180, 180, 255));
+        }
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

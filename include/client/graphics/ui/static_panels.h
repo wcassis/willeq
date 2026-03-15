@@ -9,6 +9,7 @@
 
 #include <irrlicht.h>
 #include <string>
+#include <vector>
 #include <cstdint>
 #include <chrono>
 
@@ -220,6 +221,32 @@ struct PetPanelState {
 /** Render pet panel (below group panel). */
 void renderPetPanel(UIRenderer& ui, const UILayout& layout,
                     const PetPanelState& state);
+
+// Cached spellbook entry for display
+struct SpellbookDisplayEntry {
+    uint16_t slot = 0;
+    uint32_t spellId = 0;
+    std::string name;
+    uint32_t iconId = 0;
+    uint8_t level = 0;
+};
+
+// Spellbook popup state (UI presentation — page navigation is client-side)
+struct SpellbookPopupState {
+    bool isOpen = false;
+    std::vector<SpellbookDisplayEntry> spells;  // All scribed spells
+    int currentPage = 0;                        // 0-based page index
+    static constexpr int SPELLS_PER_PAGE = 8;
+    int hoveredSlot = -1;                       // 0-7 within current page
+
+    int pageCount() const {
+        return spells.empty() ? 1 : static_cast<int>((spells.size() + SPELLS_PER_PAGE - 1) / SPELLS_PER_PAGE);
+    }
+};
+
+/** Render spellbook popup (center screen). */
+void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
+                          const SpellbookPopupState& state);
 
 } // namespace Graphics
 } // namespace EQT
