@@ -232,5 +232,13 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U03d | Player status + target info panels (proof of concept) | done | |
 | U04 | Chat panel | done | |
 | U05 | Inventory and item slots | done | |
-| U06 | Remaining panels (hotbar, buffs, spells, status, group, pet) | pending | |
+| U06a | Hotbar panel (10 slots + cooldowns + key labels) | pending | |
+| U06b | Spell gem panel (8 gem slots) | pending | |
+| U06c | Buff bar (icon row + duration text) | pending | |
+| U06d | Casting bar (progress bar + spell name) | pending | |
+| U06e | Group panel (5 member HP bars) | pending | |
+| U06f | Pet panel (HP bar + command buttons) | pending | |
+| U06g | Spellbook popup | pending | |
+| U06h | Skills popup | pending | |
+| U06i | XP bar (full width, bottom) | pending | |
 | U07 | Remove old UI system | pending | |

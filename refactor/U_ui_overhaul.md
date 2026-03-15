@@ -158,19 +158,44 @@ Implement inventory, bags, bank, loot, vendor, trade as center-screen popups.
 
 ### U06: Remaining Panels
 
-Port all remaining HUD elements and popup windows.
+Port all remaining HUD elements and popup windows. Each is a sub-unit
+with its own render function + cached state struct.
 
-**Scope** (each is a simple render function):
-- Hotbar: 10 slots, bottom-center, icon + cooldown + key label
-- Buff bar: row of icons + duration text
-- Spell gems: 8 slots
-- Player status: HP/mana/stamina bars + text
-- Target info: target HP bar + name
-- Casting bar: progress bar + spell name
-- Group panel: 5 member names + HP bars
-- Pet panel: pet name + HP bar + command buttons
-- Spellbook popup: spell list with memorize action
-- Skills popup: skill list with values
+#### U06a: Hotbar (10 slots, bottom-center)
+Icon + cooldown overlay (darkened or countdown) + key label (1-0).
+Cached from HotbarSlotChanged / HotbarCooldownStarted events.
+
+#### U06b: Spell gem panel (8 gem slots)
+Gem state (ready/casting/cooldown/memorizing), spell name tooltip.
+Cached from SpellGemChanged events.
+
+#### U06c: Buff bar (icon row + duration text)
+Row of small icons above chat. Duration countdown text.
+Cached from BuffUpdated / BuffRemoved events.
+
+#### U06d: Casting bar (progress bar + spell name)
+Center-bottom, visible only during casting. Fill + spell name text.
+Cached from CastingStateChanged / SpellCastVisualStarted events.
+
+#### U06e: Group panel (5 member HP bars)
+Left side below player status. Name + HP bar per member.
+Cached from GroupChanged / GroupMemberUpdated events.
+
+#### U06f: Pet panel (HP bar + command buttons)
+Below group panel. Pet name + HP + command buttons.
+Cached from PetCreated / PetStatsChanged events.
+
+#### U06g: Spellbook popup (center screen)
+Scrollable list of known spells. Memorize action on click.
+Reads from SpellManager via bridge.
+
+#### U06h: Skills popup (center screen)
+Scrollable list of skills with values and cooldowns.
+Reads from SkillManager via bridge.
+
+#### U06i: XP bar (full width bottom)
+Thin bar at very bottom of screen showing XP progress.
+Cached from ExpProgressChanged events.
 
 ### U07: Remove Old UI System
 
