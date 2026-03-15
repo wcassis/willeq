@@ -248,5 +248,25 @@ struct SpellbookPopupState {
 void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
                           const SpellbookPopupState& state);
 
+// Cached skill display entry
+struct SkillDisplayItem {
+    uint8_t skillId = 0;
+    std::string name;
+    uint32_t value = 0;
+    uint32_t maxValue = 0;
+};
+
+// Skills popup state
+struct SkillsPopupState {
+    bool isOpen = false;
+    std::vector<SkillDisplayItem> skills;
+    int scrollOffset = 0;  // Lines scrolled from top
+    int hoveredRow = -1;
+};
+
+/** Render skills popup (center screen). */
+void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
+                        const SkillsPopupState& state);
+
 } // namespace Graphics
 } // namespace EQT

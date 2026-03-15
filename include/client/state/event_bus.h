@@ -116,6 +116,7 @@ enum class GameEventType {
     // Skill events
     SkillValueChanged,
     SkillsRefreshed,
+    SkillsSnapshot,  // U06h: full skills list sent once at zone-in
 
     // World/environment events
     WeatherChanged,
@@ -681,6 +682,18 @@ struct SkillsRefreshedData {
     // Full skill refresh — consumer should re-query all skills
 };
 
+// U06h: Full skills snapshot (published once at zone-in from U00)
+struct SkillDisplayEntry {
+    uint8_t skillId;
+    std::string name;
+    uint32_t value;
+    uint32_t maxValue;
+};
+
+struct SkillsSnapshotData {
+    std::vector<SkillDisplayEntry> skills;
+};
+
 // --- World/environment events ---
 
 struct WeatherChangedData {
@@ -951,6 +964,7 @@ using EventData = std::variant<
     // Skill
     SkillValueChangedData,
     SkillsRefreshedData,
+    SkillsSnapshotData,
     // World
     WeatherChangedData,
     SwimmingStateChangedData,

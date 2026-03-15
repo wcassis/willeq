@@ -831,12 +831,34 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Skill events (D12)
     case state::GameEventType::SkillValueChanged:
-        // SkillsWindow polls skill values from SkillManager each frame — no action needed.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillValueChanged");
+        if (renderer_) {
+            auto& d = std::get<state::SkillValueChangedData>(event.data);
+            // Update cached skill value in new UI
+            for (auto& s : renderer_->skillsPopupState_.skills) {
+                if (s.skillId == static_cast<uint8_t>(d.skillId)) {
+                    s.value = d.value;
+                    break;
+                }
+            }
+        }
         break;
     case state::GameEventType::SkillsRefreshed:
-        // SkillsWindow polls skill values from SkillManager each frame — no action needed.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillsRefreshed");
+        break;
+    case state::GameEventType::SkillsSnapshot:
+        if (renderer_) {
+            auto& d = std::get<state::SkillsSnapshotData>(event.data);
+            renderer_->skillsPopupState_.skills.clear();
+            renderer_->skillsPopupState_.scrollOffset = 0;
+            for (const auto& s : d.skills) {
+                EQT::Graphics::SkillDisplayItem item;
+                item.skillId = s.skillId;
+                item.name = s.name;
+                item.value = s.value;
+                item.maxValue = s.maxValue;
+                renderer_->skillsPopupState_.skills.push_back(std::move(item));
+            }
+        }
         break;
 
     // World/environment events (D13)

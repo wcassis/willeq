@@ -1370,6 +1370,23 @@ void EverQuest::PublishFullStateSnapshot() {
 			eqt::state::GameEventType::SpellbookSnapshot, std::move(sbdata)));
 	}
 
+	// --- Skills snapshot ---
+	if (m_skill_manager) {
+		eqt::state::SkillsSnapshotData skdata;
+		auto allSkills = m_skill_manager->getAllSkills();
+		for (const auto* skill : allSkills) {
+			if (!skill || skill->current_value == 0) continue;
+			eqt::state::SkillDisplayEntry entry;
+			entry.skillId = skill->skill_id;
+			entry.name = skill->name;
+			entry.value = skill->current_value;
+			entry.maxValue = skill->max_value;
+			skdata.skills.push_back(std::move(entry));
+		}
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::SkillsSnapshot, std::move(skdata)));
+	}
+
 	// --- Buffs ---
 	if (m_buff_manager) {
 		const auto& buffs = m_buff_manager->getPlayerBuffs();

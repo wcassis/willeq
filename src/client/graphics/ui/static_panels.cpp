@@ -641,5 +641,65 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
+                        const SkillsPopupState& state) {
+    if (!state.isOpen) return;
+
+    auto* tb = ui.getTextBatch();
+    const auto& popup = layout.centerPopup;
+
+    ui.drawPanel(popup);
+
+    if (tb) {
+        tb->addText("Skills", popup.UpperLeftCorner.X + 8, popup.UpperLeftCorner.Y + 4,
+            irr::video::SColor(255, 255, 215, 0));
+    }
+
+    constexpr irr::s32 LINE_H = 18;
+    constexpr irr::s32 PAD = 2;
+    irr::s32 startX = popup.UpperLeftCorner.X + 8;
+    irr::s32 startY = popup.UpperLeftCorner.Y + 24;
+    irr::s32 contentW = popup.getWidth() - 16;
+    irr::s32 contentH = popup.getHeight() - 40;
+    int visibleLines = contentH / (LINE_H + PAD);
+
+    int totalSkills = static_cast<int>(state.skills.size());
+    int startIdx = state.scrollOffset;
+    int endIdx = std::min(startIdx + visibleLines, totalSkills);
+
+    for (int i = startIdx; i < endIdx; ++i) {
+        int row = i - startIdx;
+        irr::s32 y = startY + row * (LINE_H + PAD);
+
+        const auto& skill = state.skills[i];
+
+        // Highlight hovered row
+        if (state.hoveredRow == row) {
+            irr::core::rect<irr::s32> rowRect(startX, y, startX + contentW, y + LINE_H);
+            ui.drawRect(rowRect, irr::video::SColor(60, 255, 255, 255));
+        }
+
+        if (tb) {
+            // Skill name (left-aligned)
+            tb->addText(skill.name, startX, y + 2,
+                irr::video::SColor(255, 200, 200, 200));
+
+            // Value / Max (right-aligned)
+            std::string valStr = fmt::format("{}/{}", skill.value, skill.maxValue);
+            irr::s32 valW = tb->getTextWidth(valStr);
+            tb->addText(valStr, startX + contentW - valW, y + 2,
+                irr::video::SColor(255, 180, 220, 180));
+        }
+    }
+
+    // Scroll indicator
+    if (totalSkills > visibleLines && tb) {
+        irr::s32 navY = popup.LowerRightCorner.Y - 18;
+        std::string scrollInfo = fmt::format("{}-{} of {}", startIdx + 1, endIdx, totalSkills);
+        tb->addTextCentered(scrollInfo, {startX, navY, startX + contentW, navY + 14},
+            irr::video::SColor(200, 150, 150, 150));
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

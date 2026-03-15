@@ -1057,6 +1057,13 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         if (spellbookState_.currentPage > 0) spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
         if (spellbookState_.currentPage < spellbookState_.pageCount() - 1) spellbookState_.currentPage++;
+    } else if (cmd == "/newskills") {
+        skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
+        if (skillsPopupState_.isOpen) {
+            inventoryState_.activePopup = PopupType::None;
+            spellbookState_.isOpen = false;
+        }
+        chat(fmt::format("New UI skills: {}", skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
         if (inventoryState_.activePopup == PopupType::Inventory) {
             inventoryState_.activePopup = PopupType::None;
@@ -10926,6 +10933,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
+        renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
         uiRenderer_->endFrame();
     }
 

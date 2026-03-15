@@ -1753,6 +1753,7 @@ public:
     GroupPanelState groupPanelState_;  // U06e
     PetPanelState petPanelState_;       // U06f
     SpellbookPopupState spellbookState_; // U06g
+    SkillsPopupState skillsPopupState_; // U06h
     eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 
