@@ -224,6 +224,7 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 
 | Unit | Description | Status | Commit |
 |------|-------------|--------|--------|
+| U00 | Publish initial state snapshot events (prerequisite for all panels) | pending | |
 | U01 | Bitmap font atlas + batched text renderer | done | |
 | U02 | UI atlas texture | done | |
 | U03a | UILayout — fixed screen region definitions | done | |
