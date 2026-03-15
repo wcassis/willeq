@@ -57,7 +57,10 @@ struct ApplicationConfig {
 
     // Mode settings
     mode::OperatingMode operatingMode = mode::OperatingMode::GraphicalInteractive;
-    mode::GraphicalRendererType graphicalRendererType = mode::GraphicalRendererType::IrrlichtSoftware;
+
+    // Renderer backend (--renderer CLI arg, overrides preset if set)
+    // -1 = not specified (use preset default), 0 = Software, 1 = OpenGL, 2 = GLES2
+    int rendererBackend = -1;
 
     // Feature flags
     bool pathfindingEnabled = true;
@@ -80,7 +83,6 @@ struct ApplicationConfig {
 
     // DRM/KMS settings (guarded by EQT_HAS_DRM at usage sites)
     bool useDRM = false;
-    bool useGLES2 = false;  // Use GLES2 backend (auto-detected from preset or --gles2)
 
     // Constrained rendering
     std::string constrainedPreset;

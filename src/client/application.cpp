@@ -226,9 +226,14 @@ bool Application::initialize(const ApplicationConfig& config) {
     modeConfig.eqClientPath = config.eqClientPath;
     modeConfig.regionMapsPath = config.regionMapsPath;
 
+    // Game mode created with Software initially; updated to GPU after constrained config resolves
+    auto rendererType = mode::GraphicalRendererType::IrrlichtSoftware;
+    if (config.rendererBackend == 1 || config.rendererBackend == 2) {
+        rendererType = mode::GraphicalRendererType::IrrlichtGPU;
+    }
     LOG_INFO(MOD_MAIN, "Creating game mode with renderer type: {}",
-        config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU ? "OpenGL" : "Software");
-    m_gameMode = mode::createMode(config.operatingMode, config.graphicalRendererType);
+        rendererType == mode::GraphicalRendererType::IrrlichtGPU ? "GPU" : "Software");
+    m_gameMode = mode::createMode(config.operatingMode, rendererType);
     if (!m_gameMode) {
         LOG_ERROR(MOD_MAIN, "Failed to create game mode");
         return false;
@@ -289,13 +294,9 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
             }
 
-            // CLI overrides: --opengl/--gpu sets backend to OpenGL
-            if (config.graphicalRendererType == mode::GraphicalRendererType::IrrlichtGPU) {
-                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
-            }
-            // CLI override: --gles2 sets backend to GLES2
-            if (config.useGLES2) {
-                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::GLES2;
+            // CLI override: --renderer always wins over preset
+            if (config.rendererBackend >= 0) {
+                builtConfig.renderingBackend = static_cast<EQT::Graphics::RenderingBackend>(config.rendererBackend);
             }
             // CLI override: --drm sets DRM mode
             if (config.useDRM) {
@@ -342,9 +343,9 @@ bool Application::initialize(const ApplicationConfig& config) {
 
             m_eqClient->SetConstrainedConfig(builtConfig);
 
-            // Derive graphicalRendererType for mode creation
+            // Update mode if preset resolved to GPU backend and CLI didn't override
             if (builtConfig.renderingBackend != EQT::Graphics::RenderingBackend::Software) {
-                m_config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
+                m_config.rendererBackend = static_cast<int>(builtConfig.renderingBackend);
             }
 
             LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
@@ -1356,8 +1357,19 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.displayWidth = std::atoi(argv[++i]);
                 config.displayHeight = std::atoi(argv[++i]);
             }
-        } else if (arg == "--opengl" || arg == "--gpu") {
-            config.graphicalRendererType = mode::GraphicalRendererType::IrrlichtGPU;
+        } else if (arg == "--renderer") {
+            if (i + 1 < argc) {
+                std::string backend = argv[++i];
+                if (backend == "software") {
+                    config.rendererBackend = 0;
+                } else if (backend == "opengl") {
+                    config.rendererBackend = 1;
+                } else if (backend == "gles2") {
+                    config.rendererBackend = 2;
+                } else {
+                    std::cerr << "Unknown renderer: " << backend << " (use: software, opengl, gles2)\n";
+                }
+            }
         } else if (arg == "--constrained") {
             if (i + 1 < argc) {
                 config.constrainedPreset = argv[++i];
@@ -1393,8 +1405,6 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             }
         } else if (arg == "--drm") {
             config.useDRM = true;
-        } else if (arg == "--gles2") {
-            config.useGLES2 = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {
             config.rdpEnabled = true;
         } else if (arg == "--rdp-port") {
@@ -1424,11 +1434,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
-            std::cout << "  --opengl, --gpu          Override backend to OpenGL\n";
+            std::cout << "  --renderer <backend>     Rendering backend: software, opengl, gles2\n";
             std::cout << "  --constrained <preset|NxNxN>  Rendering preset (default: orangepi; voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
             std::cout << "  --atlas-path <dir>       Directory containing .atlas texture atlas files\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
-            std::cout << "  --gles2                  Use OpenGL ES 2.0 backend (auto on DRM+OrangePi)\n";
             std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
             std::cout << "  --zone-load <mode>       Zone loading mode: manual (all at load) or automatic (progressive)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";

@@ -148,13 +148,13 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "  scp $OUTPUT_DIR/bin/{willeq,model_viewer,gpu_texture_formats,gles2_etc1_benchmark,egl_image_sharing_test,test_gl_points,gles2_derivatives_test,gles2_npot_test,gles2_shader_perpixel_benchmark,gles2_program_switch_benchmark,gles2_fog_volume_benchmark,gles2_icosphere_anim_benchmark,gles2_texture_read_benchmark} orangepi:~/willeq/"
     echo ""
     echo "Run on Orange Pi (DRM/KMS, Lima GPU, Mesa GL 2.1 - no X11 needed):"
-    echo "  ./willeq -c config.json --drm --opengl --constrained orangepi -r 800 600"
+    echo "  ./willeq -c config.json --drm --renderer opengl --constrained orangepi -r 800 600"
     echo ""
     echo "Run model viewer spell test (GLES2, DRM):"
-    echo "  ./model_viewer --spell-test --gles2 --client /path/to/EQ/"
+    echo "  ./model_viewer --spell-test --renderer gles2 --client /path/to/EQ/"
     echo ""
     echo "Run on Orange Pi (with X11, if Xorg is running):"
-    echo "  DISPLAY=:0 ./willeq -c config.json --opengl --constrained orangepi -r 800 600"
+    echo "  DISPLAY=:0 ./willeq -c config.json --renderer opengl --constrained orangepi -r 800 600"
 else
     echo "=== Build failed: output binary not found ==="
     exit 1

@@ -104,7 +104,7 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     if [ -f "$OUTPUT_DIR/lib/libGL.so.1" ]; then
         echo ""
         echo "Run with Mali 400 GPU (via gl4es):"
-        echo "  cd ~/willeq-orangepi && LD_LIBRARY_PATH=./lib ./willeq -c willeq.json --opengl --constrained orangepi -r 800 600"
+        echo "  cd ~/willeq-orangepi && LD_LIBRARY_PATH=./lib ./willeq -c willeq.json --renderer opengl --constrained orangepi -r 800 600"
     fi
 else
     echo "=== Build failed: output binary not found ==="
