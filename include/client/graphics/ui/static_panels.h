@@ -207,5 +207,19 @@ struct GroupPanelState {
 void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
                       const GroupPanelState& state);
 
+// Cached pet state
+struct PetPanelState {
+    bool hasPet = false;
+    std::string name;
+    uint8_t level = 0;
+    uint8_t hpPercent = 100;
+    static constexpr int BUTTON_COUNT = 10;
+    bool buttonStates[10] = {};  // PetButton toggle states
+};
+
+/** Render pet panel (below group panel). */
+void renderPetPanel(UIRenderer& ui, const UILayout& layout,
+                    const PetPanelState& state);
+
 } // namespace Graphics
 } // namespace EQT

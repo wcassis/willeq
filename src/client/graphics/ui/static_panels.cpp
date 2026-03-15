@@ -522,5 +522,54 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderPetPanel(UIRenderer& ui, const UILayout& layout,
+                    const PetPanelState& state) {
+    if (!state.hasPet) return;
+
+    auto* tb = ui.getTextBatch();
+    constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
+    constexpr irr::s32 PAD = UILayout::MARGIN;
+
+    ui.drawPanel(layout.petPanel);
+
+    irr::s32 x = layout.petPanel.UpperLeftCorner.X + 4;
+    irr::s32 y = layout.petPanel.UpperLeftCorner.Y + 2;
+    irr::s32 barW = layout.petPanel.getWidth() - 8;
+
+    // Pet name + level
+    if (tb) {
+        std::string label = fmt::format("{} ({})", state.name, state.level);
+        tb->addText(label, x, y, irr::video::SColor(255, 200, 255, 200));
+    }
+    y += BAR_H;
+
+    // HP bar
+    irr::core::rect<irr::s32> hpRect(x, y, x + barW, y + BAR_H - 2);
+    float hpPct = state.hpPercent / 100.0f;
+    ui.drawBar(hpRect, hpPct,
+        irr::video::SColor(255, 40, 180, 40),
+        irr::video::SColor(200, 15, 15, 20));
+
+    if (tb) {
+        std::string hpText = fmt::format("{}%%", state.hpPercent);
+        tb->addTextCentered(hpText, hpRect, irr::video::SColor(255, 255, 255, 255));
+    }
+    y += BAR_H + PAD;
+
+    // Command button indicators (compact row of abbreviations)
+    static const char* btnLabels[] = {"Sit","Stp","Reg","Fol","Grd","Tnt","Hld","GH","Foc","SH"};
+    if (tb) {
+        irr::s32 bx = x;
+        for (int i = 0; i < PetPanelState::BUTTON_COUNT && i < 10; ++i) {
+            irr::video::SColor col = state.buttonStates[i]
+                ? irr::video::SColor(255, 100, 255, 100)   // Active — green
+                : irr::video::SColor(255, 120, 120, 120);  // Inactive — gray
+            tb->addText(btnLabels[i], bx, y, col);
+            bx += tb->getTextWidth(btnLabels[i]) + 4;
+            if (bx > layout.petPanel.LowerRightCorner.X - 10) break;
+        }
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

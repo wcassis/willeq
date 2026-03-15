@@ -426,42 +426,61 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     // Pet events (D12)
     case state::GameEventType::PetCreated:
         if (renderer_) {
+            auto& d = std::get<state::PetCreatedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
-                auto& d = std::get<state::PetCreatedData>(event.data);
                 auto* pw = wm->getPetWindow();
                 if (pw) pw->setPetInfo(d.name, d.level, 100, true);
                 wm->openPetWindow();
             }
+            // U06f: New UI
+            renderer_->petPanelState_.hasPet = true;
+            renderer_->petPanelState_.name = d.name;
+            renderer_->petPanelState_.level = d.level;
+            renderer_->petPanelState_.hpPercent = 100;
+            std::fill(std::begin(renderer_->petPanelState_.buttonStates),
+                      std::end(renderer_->petPanelState_.buttonStates), false);
         }
         break;
     case state::GameEventType::PetRemoved:
         if (renderer_) {
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
                 auto* pw = wm->getPetWindow();
                 if (pw) pw->setPetInfo("", 0, 0, false);
                 wm->closePetWindow();
             }
+            // U06f: New UI
+            renderer_->petPanelState_ = {};
         }
         break;
     case state::GameEventType::PetStatsChanged:
         if (renderer_) {
+            auto& d = std::get<state::PetStatsChangedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
-                auto& d = std::get<state::PetStatsChangedData>(event.data);
                 auto* pw = wm->getPetWindow();
                 if (pw) pw->setPetInfo("", 0, d.hpPercent, true);
             }
+            // U06f: New UI
+            renderer_->petPanelState_.hpPercent = d.hpPercent;
         }
         break;
     case state::GameEventType::PetButtonStateChanged:
         if (renderer_) {
+            auto& d = std::get<state::PetButtonStateChangedData>(event.data);
+            // Old UI
             auto* wm = renderer_->getWindowManager();
             if (wm) {
-                auto& d = std::get<state::PetButtonStateChangedData>(event.data);
                 auto* pw = wm->getPetWindow();
                 if (pw) pw->setPetButtonState(static_cast<EQT::PetButton>(d.button), d.state);
+            }
+            // U06f: New UI
+            if (d.button < EQT::Graphics::PetPanelState::BUTTON_COUNT) {
+                renderer_->petPanelState_.buttonStates[d.button] = d.state;
             }
         }
         break;
