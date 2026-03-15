@@ -433,5 +433,44 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+void renderCastingBar(UIRenderer& ui, const UILayout& layout,
+                      const CastingBarState& state) {
+    if (!state.isCasting) return;
+
+    auto* tb = ui.getTextBatch();
+    float progress = state.getProgress();
+
+    // Background
+    ui.drawSprite(layout.castingBar, static_cast<uint8_t>(UISprite::BarBackground));
+
+    // Fill
+    if (progress > 0.0f) {
+        irr::s32 fillW = static_cast<irr::s32>(layout.castingBar.getWidth() * progress);
+        irr::core::rect<irr::s32> fillRect(
+            layout.castingBar.UpperLeftCorner.X,
+            layout.castingBar.UpperLeftCorner.Y,
+            layout.castingBar.UpperLeftCorner.X + fillW,
+            layout.castingBar.LowerRightCorner.Y);
+        ui.drawSprite(fillRect, static_cast<uint8_t>(UISprite::BarCasting));
+    }
+
+    // Border
+    irr::video::SColor border(255, 80, 140, 200);
+    irr::s32 x1 = layout.castingBar.UpperLeftCorner.X;
+    irr::s32 y1 = layout.castingBar.UpperLeftCorner.Y;
+    irr::s32 x2 = layout.castingBar.LowerRightCorner.X;
+    irr::s32 y2 = layout.castingBar.LowerRightCorner.Y;
+    ui.drawRect({x1, y1, x2, y1 + 1}, border);
+    ui.drawRect({x1, y2 - 1, x2, y2}, border);
+    ui.drawRect({x1, y1, x1 + 1, y2}, border);
+    ui.drawRect({x2 - 1, y1, x2, y2}, border);
+
+    // Spell name centered
+    if (tb) {
+        tb->addTextCentered(state.spellName, layout.castingBar,
+            irr::video::SColor(255, 255, 255, 255));
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

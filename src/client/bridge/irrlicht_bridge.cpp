@@ -947,6 +947,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 if (wm) {
                     wm->startCast(d.spellName, d.castTimeMs);
                 }
+                // U06d: New UI casting bar
+                renderer_->castingBarState_.isCasting = true;
+                renderer_->castingBarState_.spellName = d.spellName;
+                renderer_->castingBarState_.castTimeMs = d.castTimeMs;
+                renderer_->castingBarState_.castStartTime = std::chrono::steady_clock::now();
             } else {
                 // Start entity casting bar (shows above the entity's head)
                 if (renderer_->getEntityRenderer()) {
@@ -997,6 +1002,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 if (wm) {
                     wm->completeCast();
                 }
+                // U06d: New UI
+                renderer_->castingBarState_.isCasting = false;
             }
         }
         break;
@@ -1025,6 +1032,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 if (wm) {
                     wm->cancelCast();
                 }
+                // U06d: New UI
+                renderer_->castingBarState_.isCasting = false;
             }
         }
         break;

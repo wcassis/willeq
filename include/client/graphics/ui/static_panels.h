@@ -167,5 +167,24 @@ struct BuffBarState {
 void renderBuffBar(UIRenderer& ui, const UILayout& layout,
                    const BuffBarState& state);
 
+// Cached casting bar state
+struct CastingBarState {
+    bool isCasting = false;
+    std::string spellName;
+    uint32_t castTimeMs = 0;
+    std::chrono::steady_clock::time_point castStartTime;
+
+    float getProgress() const {
+        if (!isCasting || castTimeMs == 0) return 0.0f;
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - castStartTime).count();
+        return std::min(1.0f, static_cast<float>(elapsed) / static_cast<float>(castTimeMs));
+    }
+};
+
+/** Render casting bar (center-bottom, only when casting). */
+void renderCastingBar(UIRenderer& ui, const UILayout& layout,
+                      const CastingBarState& state);
+
 } // namespace Graphics
 } // namespace EQT

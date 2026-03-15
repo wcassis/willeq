@@ -10911,6 +10911,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
         renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
         renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
+        renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         uiRenderer_->endFrame();
     }
