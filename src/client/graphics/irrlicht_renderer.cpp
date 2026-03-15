@@ -15,6 +15,7 @@
 #include "client/graphics/ui/window_manager.h"
 #include "client/graphics/ui/inventory_manager.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "client/graphics/text_batch.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/sky_config.h"
@@ -603,6 +604,15 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         device_->getCursorControl()->setVisible(true);
     }
     createSoftwareCursor();
+
+    // U01: Initialize batched text renderer
+    textBatch_ = std::make_unique<TextBatch>();
+    if (textBatch_->init(guienv_)) {
+        LOG_INFO(MOD_GRAPHICS, "TextBatch initialized");
+    } else {
+        LOG_WARN(MOD_GRAPHICS, "TextBatch initialization failed — falling back to font->draw()");
+        textBatch_.reset();
+    }
 
     // Configure mipmap generation based on constrained config
     if (driver_) {

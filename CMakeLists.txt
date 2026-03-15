@@ -338,6 +338,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/ui/ui_settings.cpp
         src/client/graphics/spell_visual_fx.cpp
+        src/client/graphics/text_batch.cpp
         # Detail system (grass, plants, debris)
         src/client/graphics/detail/detail_manager.cpp
         src/client/graphics/detail/detail_chunk.cpp
