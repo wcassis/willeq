@@ -101,8 +101,8 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
     irr::s32 lineH = tb->getLineHeight();
     if (lineH <= 0) lineH = 14;
 
-    // Panel background — only when input is active (focused), otherwise transparent
-    if (state.inputActive) {
+    // Panel background — visible when input is active or mouse hovers, otherwise transparent
+    if (state.inputActive || state.mouseHover) {
         ui.drawPanel(layout.chatPanel);
     }
 
@@ -128,24 +128,26 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
         };
         std::vector<WrappedLine> wrappedLines;
 
-        // Approximate character width for wrapping
-        irr::s32 charW = tb->getTextWidth("M");
-        if (charW <= 0) charW = 7;
-        int charsPerLine = areaW / charW;
-        if (charsPerLine <= 0) charsPerLine = 1;
-
         for (size_t i = 0; i < messages.size(); ++i) {
             std::string display = eqt::ui::formatMessageForDisplay(messages[i], state.showTimestamps);
-            // Word-wrap long lines
-            while (static_cast<int>(display.size()) > charsPerLine) {
-                // Find last space within limit
-                int breakAt = charsPerLine;
-                for (int j = charsPerLine; j > charsPerLine / 2; --j) {
+            // Word-wrap using pixel width measurement
+            while (tb->getTextWidth(display) > areaW) {
+                // Binary search for the longest substring that fits
+                int lo = 1, hi = static_cast<int>(display.size());
+                while (lo < hi) {
+                    int mid = (lo + hi + 1) / 2;
+                    if (tb->getTextWidth(display.substr(0, mid)) <= areaW)
+                        lo = mid;
+                    else
+                        hi = mid - 1;
+                }
+                // Find last space within the fitting range for word break
+                int breakAt = lo;
+                for (int j = lo; j > lo / 2; --j) {
                     if (display[j] == ' ') { breakAt = j; break; }
                 }
                 wrappedLines.push_back({display.substr(0, breakAt), messages[i].color});
                 display = display.substr(breakAt);
-                // Skip leading space on continuation
                 if (!display.empty() && display[0] == ' ') display = display.substr(1);
             }
             if (!display.empty()) {

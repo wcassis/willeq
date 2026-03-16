@@ -7481,7 +7481,7 @@ void EverQuest::AddChatSystemMessage(const std::string &text)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
 		data.message = text;
-		data.channelType = 0;
+		data.channelType = static_cast<uint32_t>(eqt::ui::ChatChannel::System);
 		data.channelName = "system";
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SystemMessage, std::move(data)));
@@ -7496,7 +7496,7 @@ void EverQuest::AddChatCombatMessage(const std::string &text, bool is_self)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
 		data.message = text;
-		data.channelType = 0;
+		data.channelType = static_cast<uint32_t>(is_self ? eqt::ui::ChatChannel::CombatSelf : eqt::ui::ChatChannel::Combat);
 		data.channelName = is_self ? "combat_self" : "combat";
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ChatMessage, std::move(data)));
@@ -7512,7 +7512,7 @@ void EverQuest::AddChatMissMessage(const std::string &text)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
 		data.message = text;
-		data.channelType = 0;
+		data.channelType = static_cast<uint32_t>(eqt::ui::ChatChannel::CombatMiss);
 		data.channelName = "combat_miss";
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ChatMessage, std::move(data)));
@@ -12439,7 +12439,7 @@ void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
 		if (m_bridge) {
 			eqt::state::ChatMessageData data;
 			data.message = message;
-			data.channelType = 0;
+			data.channelType = static_cast<uint32_t>(eqt::ui::ChatChannel::Spell);
 			data.channelName = "spell";
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::SystemMessage, std::move(data)));
@@ -17269,7 +17269,7 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 	if (m_bridge) {
 		eqt::state::ChatMessageData data;
 		data.message = message;
-		data.channelType = 0;
+		data.channelType = static_cast<uint32_t>(eqt::ui::ChatChannel::System);
 		data.channelName = "system";
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SystemMessage, std::move(data)));

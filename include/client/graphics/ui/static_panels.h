@@ -52,6 +52,7 @@ struct ChatPanelState {
     int scrollOffset = 0;      // Lines scrolled up from bottom (0 = at bottom)
     bool showTimestamps = false;
     bool inputActive = false;  // Whether chat input field is focused
+    bool mouseHover = false;   // Whether mouse is over chat panel
     std::string inputText;     // Current input field text
     int cursorPos = 0;
 };

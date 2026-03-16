@@ -9583,13 +9583,20 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     // ===== FRAME TIMING: Input Handling (accumulated) =====
     frameTimings_.inputHandling += measureSection();
 
-    // Handle window manager mouse capture BEFORE camera/movement updates
+    // Handle mouse state BEFORE camera/movement updates
     bool hadClick = eventReceiver_->wasLeftButtonClicked();
     bool hadRelease = eventReceiver_->wasLeftButtonReleased();
     int clickX = eventReceiver_->getClickMouseX();
     int clickY = eventReceiver_->getClickMouseY();
+    pendingUIClick_ = hadClick;  // Preserved for UI input processing in render phase
 
-    // WindowManager removed — no old UI mouse capture
+    // Update chat panel mouse hover state
+    {
+        int mx = eventReceiver_->getMouseX();
+        int my = eventReceiver_->getMouseY();
+        chatPanelState_.mouseHover = uiLayout_.chatPanel.isPointInside(
+            irr::core::position2d<irr::s32>(mx, my));
+    }
 
     // Update camera and player movement
     updatePlayerMovement(deltaTime);
@@ -10555,11 +10562,11 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
-        bool clicked = eventReceiver_->wasLeftButtonClicked();
         staticUIInput_->processInput(
-            eventReceiver_->getMouseX(), eventReceiver_->getMouseY(), clicked,
+            eventReceiver_->getMouseX(), eventReceiver_->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
             spellbookState_, skillsPopupState_);
+        pendingUIClick_ = false;
     }
 
     // U03c: Render new static UI when enabled

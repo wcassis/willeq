@@ -1433,6 +1433,7 @@ private:
     std::chrono::steady_clock::time_point frameStart_;  // Start of current frame (for lazy load budgeting)
     int64_t measureSection();
     bool chatInputFocused_ = false;
+    bool pendingUIClick_ = false;  // Click consumed in Phase 1, applied to UI in render phase
     bool runTier2_ = true;
     bool runTier3_ = true;
 
