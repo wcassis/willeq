@@ -5,9 +5,15 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <memory>
 
 struct Entity;  // Forward declaration (defined in eq.h)
 class HCMap;
+
+namespace EQT { namespace Graphics {
+    class PfsArchive;
+    class WldLoader;
+}} // forward declarations
 
 namespace eqt {
 
@@ -51,6 +57,11 @@ struct ZoneLoadSnapshot {
 
     // Zone map (read-only pointer — owned by EverQuest, valid during loading)
     HCMap* zoneMap = nullptr;
+
+    // Pre-parsed zone sources (opened once at game state layer, shared with sequential loader)
+    std::shared_ptr<EQT::Graphics::PfsArchive> zoneArchive;
+    std::shared_ptr<EQT::Graphics::WldLoader> zoneWld;
+    size_t playerBspRegion = SIZE_MAX;
 
     // Asset path
     std::string eqClientPath;

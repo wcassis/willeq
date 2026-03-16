@@ -253,6 +253,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 slashKeyPressed_ = true;
             }
 
+            // When chat input is focused, only allow function keys through to hotkey matching.
+            // All other keys are consumed by the chat input handler.
+            if (chatInputFocused_ &&
+                !(event.KeyInput.Key >= irr::KEY_F1 && event.KeyInput.Key <= irr::KEY_F12)) {
+                return true;
+            }
+
             // Look up action from HotkeyManager
             // Check Alt key state (Irrlicht doesn't expose Alt in KeyInput directly)
             bool alt = keyIsDown_[irr::KEY_LMENU] || keyIsDown_[irr::KEY_RMENU];
@@ -9269,7 +9276,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                            frameTimings_.particles + frameTimings_.boids +
                            frameTimings_.weatherRender + frameTimings_.debugOverlays +
                            frameTimings_.castingBars + frameTimings_.guiDrawAll +
-                           frameTimings_.windowManager + frameTimings_.zoneLineOverlay +
+                           frameTimings_.staticUI + frameTimings_.zoneLineOverlay +
                            frameTimings_.endScene + frameTimings_.footprintRender +
                            frameTimings_.postRender;
         renderCostAvgUs_ = renderCostAvgUs_ * 0.9f + static_cast<float>(renderUs) * 0.1f;
@@ -9335,7 +9342,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"debugOverlays",      frameTimings_.debugOverlays},
                 {"castingBars",        frameTimings_.castingBars},
                 {"guiDrawAll",         frameTimings_.guiDrawAll},
-                {"windowManager",      frameTimings_.windowManager},
+                {"staticUI",           frameTimings_.staticUI},
                 {"zoneLineOverlay",    frameTimings_.zoneLineOverlay},
                 {"endScene",           frameTimings_.endScene},
                 {"postRender",         frameTimings_.postRender},
@@ -9392,7 +9399,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 {"weatherRender",    frameTimings_.weatherRender},
                 {"castingBars",      frameTimings_.castingBars},
                 {"guiDrawAll",       frameTimings_.guiDrawAll},
-                {"windowManager",    frameTimings_.windowManager},
+                {"staticUI",         frameTimings_.staticUI},
                 {"glFinish",         frameTimings_.glFinish},
                 {"endScene",         frameTimings_.endScene},
                 {"postRender",       frameTimings_.postRender},
@@ -9401,73 +9408,91 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             std::sort(std::begin(sections), std::end(sections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
 
-            // Log header with totals + scene composition
-            LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms, stall {}/{} — ALL LOADING HALTED",
-                     totalFrameMs, budgetMs,
-                     (totalFrameMs / budgetMs - 1.0f) * 100.0f,
-                     governor_->getAverageFrameTimeMs(),
-                     governor_->getStallCounter(),
-                     FrameBudgetGovernor::kStallThreshold);
-            // Scene composition: nodes, polys, manual draw stats
-            LOG_WARN(MOD_GRAPHICS, "  RED SCENE: {} sceneNodes, {} polys | manualDraw: {} regions, {} drawCalls | sortedList: {}",
-                     frameTimings_.sceneNodeCount, lastPolygonCount_,
-                     frameTimings_.manualZoneRegionsDrawn, frameTimings_.manualZoneDrawCalls,
-                     sortedZoneDrawList_.size());
-
-            // Scene graph node census
-            {
-                int totalNodes = 0, visibleNodes = 0;
-                std::function<void(irr::scene::ISceneNode*)> countNodes =
-                    [&](irr::scene::ISceneNode* node) {
-                        if (!node) return;
-                        totalNodes++;
-                        if (node->isVisible()) visibleNodes++;
-                        for (auto* child : node->getChildren())
-                            countNodes(child);
-                    };
-                if (smgr_ && smgr_->getRootSceneNode())
-                    countNodes(smgr_->getRootSceneNode());
-                LOG_WARN(MOD_GRAPHICS, "  RED GRAPH: {} total scene nodes, {} visible (drawAll traverses all)",
-                         totalNodes, visibleNodes);
+            // Throttle RED warnings to 1 per second
+            static auto lastRedWarnTime = std::chrono::steady_clock::now();
+            static int redFramesSinceWarn = 0;
+            redFramesSinceWarn++;
+            auto redNow = std::chrono::steady_clock::now();
+            bool emitRedWarn = std::chrono::duration_cast<std::chrono::milliseconds>(redNow - lastRedWarnTime).count() >= 1000;
+            if (emitRedWarn) {
+                lastRedWarnTime = redNow;
             }
 
-            // Log every section that consumed >0.1ms, sorted by cost
-            for (const auto& s : sections) {
-                if (s.us < 100) continue;  // Skip <0.1ms noise
-                LOG_WARN(MOD_GRAPHICS, "  RED: {:>20s} = {:>7.1f}ms ({:>5.1f}%)",
-                         s.name, s.us / 1000.0f,
-                         totalFrameMs > 0 ? (s.us / 1000.0f / totalFrameMs * 100.0f) : 0.0f);
+            // Log header with totals + scene composition
+            if (emitRedWarn) {
+                LOG_WARN(MOD_GRAPHICS, "RED STATE: {:.1f}ms / {:.1f}ms budget ({:.0f}% over) — avg {:.1f}ms, stall {}/{} — {} red frames in last 1s",
+                         totalFrameMs, budgetMs,
+                         (totalFrameMs / budgetMs - 1.0f) * 100.0f,
+                         governor_->getAverageFrameTimeMs(),
+                         governor_->getStallCounter(),
+                         FrameBudgetGovernor::kStallThreshold,
+                         redFramesSinceWarn);
+                LOG_WARN(MOD_GRAPHICS, "  RED SCENE: {} sceneNodes, {} polys | manualDraw: {} regions, {} drawCalls | sortedList: {}",
+                         frameTimings_.sceneNodeCount, lastPolygonCount_,
+                         frameTimings_.manualZoneRegionsDrawn, frameTimings_.manualZoneDrawCalls,
+                         sortedZoneDrawList_.size());
+                {
+                    int totalNodes = 0, visibleNodes = 0;
+                    std::function<void(irr::scene::ISceneNode*)> countNodes =
+                        [&](irr::scene::ISceneNode* node) {
+                            if (!node) return;
+                            totalNodes++;
+                            if (node->isVisible()) visibleNodes++;
+                            for (auto* child : node->getChildren())
+                                countNodes(child);
+                        };
+                    if (smgr_ && smgr_->getRootSceneNode())
+                        countNodes(smgr_->getRootSceneNode());
+                    LOG_WARN(MOD_GRAPHICS, "  RED GRAPH: {} total scene nodes, {} visible (drawAll traverses all)",
+                             totalNodes, visibleNodes);
+                }
+                for (const auto& s : sections) {
+                    if (s.us < 100) continue;
+                    LOG_WARN(MOD_GRAPHICS, "  RED: {:>20s} = {:>7.1f}ms ({:>5.1f}%)",
+                             s.name, s.us / 1000.0f,
+                             totalFrameMs > 0 ? (s.us / 1000.0f / totalFrameMs * 100.0f) : 0.0f);
+                }
+                redFramesSinceWarn = 0;
             }
         }
-        // Yellow/Green budget violation: condensed top-3 warning
+        // Yellow/Green budget violation: condensed top-3 warning, throttled to 1/sec
         else if (totalFrameMs > budgetMs * 1.2f) {
-            struct SectionCost { const char* name; int64_t us; };
-            SectionCost sections[] = {
-                {"playerMovement", frameTimings_.playerMovement},
-                {"pvsVisibility", frameTimings_.pvsVisibility},
-                {"occlusionCulling", frameTimings_.occlusionCulling},
-                {"meshLoading", frameTimings_.meshLoading},
-                {"entityUpdate", frameTimings_.entityUpdate},
-                {"tier2Update", frameTimings_.tier2Update},
-                {"tier3Update", frameTimings_.tier3Update},
-                {"sceneDrawAll", frameTimings_.sceneDrawAll},
-                {"windowManager", frameTimings_.windowManager},
-                {"endScene", frameTimings_.endScene},
-                {"particles", frameTimings_.particles},
-                {"simWorkerApply", frameTimings_.simWorkerApply},
-                {"targetBox", frameTimings_.targetBox},
-                {"guiDrawAll", frameTimings_.guiDrawAll},
-                {"footprintRender", frameTimings_.footprintRender},
-            };
-            std::sort(std::begin(sections), std::end(sections),
-                      [](const auto& a, const auto& b) { return a.us > b.us; });
+            static auto lastBudgetWarnTime = std::chrono::steady_clock::now();
+            static int budgetFramesSinceWarn = 0;
+            budgetFramesSinceWarn++;
+            auto budgetNow = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(budgetNow - lastBudgetWarnTime).count() >= 1000) {
+                struct SectionCost { const char* name; int64_t us; };
+                SectionCost sections[] = {
+                    {"playerMovement", frameTimings_.playerMovement},
+                    {"pvsVisibility", frameTimings_.pvsVisibility},
+                    {"occlusionCulling", frameTimings_.occlusionCulling},
+                    {"meshLoading", frameTimings_.meshLoading},
+                    {"entityUpdate", frameTimings_.entityUpdate},
+                    {"tier2Update", frameTimings_.tier2Update},
+                    {"tier3Update", frameTimings_.tier3Update},
+                    {"sceneDrawAll", frameTimings_.sceneDrawAll},
+                    {"staticUI", frameTimings_.staticUI},
+                    {"endScene", frameTimings_.endScene},
+                    {"particles", frameTimings_.particles},
+                    {"simWorkerApply", frameTimings_.simWorkerApply},
+                    {"targetBox", frameTimings_.targetBox},
+                    {"guiDrawAll", frameTimings_.guiDrawAll},
+                    {"footprintRender", frameTimings_.footprintRender},
+                };
+                std::sort(std::begin(sections), std::end(sections),
+                          [](const auto& a, const auto& b) { return a.us > b.us; });
 
-            LOG_WARN(MOD_GRAPHICS, "BUDGET: {:.1f}ms (budget {:.1f}ms, gov={}) top: {}={:.1f}ms {}={:.1f}ms {}={:.1f}ms",
-                     totalFrameMs, budgetMs,
-                     governor_ ? governor_->getStateName() : "N/A",
-                     sections[0].name, sections[0].us / 1000.0f,
-                     sections[1].name, sections[1].us / 1000.0f,
-                     sections[2].name, sections[2].us / 1000.0f);
+                LOG_WARN(MOD_GRAPHICS, "BUDGET: {:.1f}ms (budget {:.1f}ms, gov={}) top: {}={:.1f}ms {}={:.1f}ms {}={:.1f}ms — {} frames in last 1s",
+                         totalFrameMs, budgetMs,
+                         governor_ ? governor_->getStateName() : "N/A",
+                         sections[0].name, sections[0].us / 1000.0f,
+                         sections[1].name, sections[1].us / 1000.0f,
+                         sections[2].name, sections[2].us / 1000.0f,
+                         budgetFramesSinceWarn);
+                lastBudgetWarnTime = budgetNow;
+                budgetFramesSinceWarn = 0;
+            }
         }
     }
 
@@ -9503,24 +9528,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         frameTimingsAccum_.debugOverlays += frameTimings_.debugOverlays;
         frameTimingsAccum_.castingBars += frameTimings_.castingBars;
         frameTimingsAccum_.guiDrawAll += frameTimings_.guiDrawAll;
-        frameTimingsAccum_.windowManager += frameTimings_.windowManager;
-        frameTimingsAccum_.wmChat += frameTimings_.wmChat;
-        frameTimingsAccum_.wmInventory += frameTimings_.wmInventory;
-        frameTimingsAccum_.wmSpellGems += frameTimings_.wmSpellGems;
-        frameTimingsAccum_.wmHotbar += frameTimings_.wmHotbar;
-        frameTimingsAccum_.wmPlayerStatus += frameTimings_.wmPlayerStatus;
-        frameTimingsAccum_.wmBuffs += frameTimings_.wmBuffs;
-        frameTimingsAccum_.wmGroup += frameTimings_.wmGroup;
-        frameTimingsAccum_.wmSpellbook += frameTimings_.wmSpellbook;
-        frameTimingsAccum_.wmCastingBars += frameTimings_.wmCastingBars;
-        frameTimingsAccum_.wmPet += frameTimings_.wmPet;
-        frameTimingsAccum_.wmSkills += frameTimings_.wmSkills;
-        frameTimingsAccum_.wmLoot += frameTimings_.wmLoot;
-        frameTimingsAccum_.wmVendor += frameTimings_.wmVendor;
-        frameTimingsAccum_.wmBags += frameTimings_.wmBags;
-        frameTimingsAccum_.wmTooltips += frameTimings_.wmTooltips;
-        frameTimingsAccum_.wmOverlays += frameTimings_.wmOverlays;
-        frameTimingsAccum_.wmOther += frameTimings_.wmOther;
+        frameTimingsAccum_.staticUI += frameTimings_.staticUI;
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
         frameTimingsAccum_.glFinish += frameTimings_.glFinish;
         frameTimingsAccum_.endScene += frameTimings_.endScene;
@@ -9556,8 +9564,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
 // ===== Phase 1: Input =====
 void IrrlichtRenderer::processFrameInput(float deltaTime) {
-    chatInputFocused_ = false;
-    if (eventReceiver_) eventReceiver_->setChatInputFocused(chatInputFocused_);
+    // chatInputFocused_ is managed by processChatInput() — don't reset it here
 
     // Drain action queue and dispatch
     auto actions = eventReceiver_->drainActions();
@@ -9682,15 +9689,19 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
             // UI Windows
             case RA::ToggleInventory: toggleInventory(); break;
             case RA::ToggleGroup:
-                break;  // WindowManager removed
+                break;  // Group panel visibility is driven by inGroup state
             case RA::ToggleSkills:
-                break;  // WindowManager removed
+                skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
+                LOG_INFO(MOD_GRAPHICS, "Skills window {}", skillsPopupState_.isOpen ? "opened" : "closed");
+                break;
             case RA::TogglePet:
-                break;  // WindowManager removed
+                break;  // Pet panel visibility is driven by hasPet state
             case RA::ToggleSpellbook:
-                break;  // WindowManager removed
+                spellbookState_.isOpen = !spellbookState_.isOpen;
+                LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
+                break;
             case RA::ToggleBuffWindow:
-                break;  // WindowManager removed
+                break;  // Buff bar always visible when buffs exist
 
             // Debug overlays
             case RA::ToggleZoneLineVisualization: toggleZoneLineVisualization(); break;
@@ -9881,16 +9892,85 @@ void IrrlichtRenderer::processChatInput() {
     int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
     (void)hotbarRequest;
 
-    // Handle escape key for target clearing (chat input handling removed with WindowManager)
-    {
-        eventReceiver_->clearPendingKeyEvents();
-        if (eventReceiver_->escapeKeyPressed()) {
-            if (currentTargetId_ != 0) {
-                LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                clearCurrentTarget();
-                SetTrackedTargetId(0);
-                eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
+    // Open chat input on Enter or / key
+    if (!chatInputFocused_) {
+        if (eventReceiver_->enterKeyPressed()) {
+            chatInputFocused_ = true;
+            chatPanelState_.inputActive = true;
+            chatPanelState_.inputText.clear();
+            chatPanelState_.cursorPos = 0;
+            eventReceiver_->setChatInputFocused(true);
+            eventReceiver_->clearPendingKeyEvents();
+            return;
+        }
+        if (eventReceiver_->slashKeyPressed()) {
+            chatInputFocused_ = true;
+            chatPanelState_.inputActive = true;
+            chatPanelState_.inputText = "/";
+            chatPanelState_.cursorPos = 1;
+            eventReceiver_->setChatInputFocused(true);
+            eventReceiver_->clearPendingKeyEvents();
+            return;
+        }
+    }
+
+    // Process typed characters when chat is focused
+    if (chatInputFocused_) {
+        while (eventReceiver_->hasPendingKeyEvents()) {
+            auto ke = eventReceiver_->popKeyEvent();
+
+            if (ke.key == irr::KEY_RETURN) {
+                // Submit chat text
+                if (!chatPanelState_.inputText.empty()) {
+                    LOG_INFO(MOD_GRAPHICS, "Chat submit: '{}'", chatPanelState_.inputText);
+                    if (bridge_) {
+                        bridge_->pushIntent(eqt::events::ChatSubmitIntent{chatPanelState_.inputText});
+                    }
+                }
+                chatPanelState_.inputText.clear();
+                chatPanelState_.cursorPos = 0;
+                chatPanelState_.inputActive = false;
+                chatInputFocused_ = false;
+                eventReceiver_->setChatInputFocused(false);
+                return;
             }
+
+            if (ke.key == irr::KEY_ESCAPE) {
+                // Cancel chat input
+                chatPanelState_.inputText.clear();
+                chatPanelState_.cursorPos = 0;
+                chatPanelState_.inputActive = false;
+                chatInputFocused_ = false;
+                eventReceiver_->setChatInputFocused(false);
+                return;
+            }
+
+            if (ke.key == irr::KEY_BACK) {
+                // Backspace
+                if (chatPanelState_.cursorPos > 0 && !chatPanelState_.inputText.empty()) {
+                    chatPanelState_.inputText.erase(chatPanelState_.cursorPos - 1, 1);
+                    chatPanelState_.cursorPos--;
+                }
+                continue;
+            }
+
+            // Insert printable character
+            if (ke.character >= 32 && ke.character < 127) {
+                chatPanelState_.inputText.insert(chatPanelState_.cursorPos, 1, static_cast<char>(ke.character));
+                chatPanelState_.cursorPos++;
+            }
+        }
+        return;
+    }
+
+    // Not in chat — clear pending keys and handle escape for target clearing
+    eventReceiver_->clearPendingKeyEvents();
+    if (eventReceiver_->escapeKeyPressed()) {
+        if (currentTargetId_ != 0) {
+            LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
+            clearCurrentTarget();
+            SetTrackedTargetId(0);
+            eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
         }
     }
 }
@@ -10473,9 +10553,6 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     frameTimings_.guiDrawAll = measureSection();
 
-    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 10: window manager (removed)");
-    frameTimings_.windowManager = measureSection();
-
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
         bool clicked = eventReceiver_->wasLeftButtonClicked();
@@ -10503,6 +10580,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }
+    frameTimings_.staticUI = measureSection();
 
     // Draw zone line overlay
     drawZoneLineOverlay();
@@ -11169,24 +11247,7 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Debug Overlays:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.debugOverlays), pct(frameTimingsAccum_.debugOverlays));
     LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.castingBars), pct(frameTimingsAccum_.castingBars));
     LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.guiDrawAll), pct(frameTimingsAccum_.guiDrawAll));
-    LOG_INFO(MOD_GRAPHICS, "  Window Manager:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.windowManager), pct(frameTimingsAccum_.windowManager));
-    LOG_INFO(MOD_GRAPHICS, "    Chat:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmChat), pct(frameTimingsAccum_.wmChat));
-    LOG_INFO(MOD_GRAPHICS, "    Inventory:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmInventory), pct(frameTimingsAccum_.wmInventory));
-    LOG_INFO(MOD_GRAPHICS, "    Spell Gems:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSpellGems), pct(frameTimingsAccum_.wmSpellGems));
-    LOG_INFO(MOD_GRAPHICS, "    Hotbar:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmHotbar), pct(frameTimingsAccum_.wmHotbar));
-    LOG_INFO(MOD_GRAPHICS, "    Player Status:    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmPlayerStatus), pct(frameTimingsAccum_.wmPlayerStatus));
-    LOG_INFO(MOD_GRAPHICS, "    Buffs:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmBuffs), pct(frameTimingsAccum_.wmBuffs));
-    LOG_INFO(MOD_GRAPHICS, "    Group:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmGroup), pct(frameTimingsAccum_.wmGroup));
-    LOG_INFO(MOD_GRAPHICS, "    Spellbook:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSpellbook), pct(frameTimingsAccum_.wmSpellbook));
-    LOG_INFO(MOD_GRAPHICS, "    Casting Bars:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmCastingBars), pct(frameTimingsAccum_.wmCastingBars));
-    LOG_INFO(MOD_GRAPHICS, "    Pet:              {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmPet), pct(frameTimingsAccum_.wmPet));
-    LOG_INFO(MOD_GRAPHICS, "    Skills:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmSkills), pct(frameTimingsAccum_.wmSkills));
-    LOG_INFO(MOD_GRAPHICS, "    Loot:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmLoot), pct(frameTimingsAccum_.wmLoot));
-    LOG_INFO(MOD_GRAPHICS, "    Vendor:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmVendor), pct(frameTimingsAccum_.wmVendor));
-    LOG_INFO(MOD_GRAPHICS, "    Bags:             {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmBags), pct(frameTimingsAccum_.wmBags));
-    LOG_INFO(MOD_GRAPHICS, "    Tooltips:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmTooltips), pct(frameTimingsAccum_.wmTooltips));
-    LOG_INFO(MOD_GRAPHICS, "    Overlays:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOverlays), pct(frameTimingsAccum_.wmOverlays));
-    LOG_INFO(MOD_GRAPHICS, "    Other:            {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.wmOther), pct(frameTimingsAccum_.wmOther));
+    LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.staticUI), pct(frameTimingsAccum_.staticUI));
     LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLineOverlay), pct(frameTimingsAccum_.zoneLineOverlay));
     LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.footprintRender), pct(frameTimingsAccum_.footprintRender));
     LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.postRender), pct(frameTimingsAccum_.postRender));
@@ -11461,7 +11522,7 @@ float IrrlichtRenderer::getClipDistance() const {
 
 void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     // Check if chat has focus - skip movement keys if so
-    bool chatHasFocus = false;  // WindowManager removed
+    bool chatHasFocus = chatInputFocused_;
 
     // Read keyboard state for EQ-style movement (disabled when chat has focus)
     // Use HotkeyManager to check configured movement bindings

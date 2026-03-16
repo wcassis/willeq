@@ -191,6 +191,51 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     return true;
 }
 
+bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
+                                       std::shared_ptr<WldLoader> wldLoader,
+                                       const std::string& zoneName,
+                                       const std::string& archivePath,
+                                       const S3DLoadOptions& options) {
+    zone_ = nullptr;
+    error_.clear();
+    zoneName_ = zoneName;
+
+    if (!archive || !wldLoader) {
+        error_ = "Pre-parsed archive or WLD loader is null";
+        return false;
+    }
+
+    zone_ = std::make_shared<S3DZone>();
+    zone_->zoneName = zoneName_;
+    zone_->wldLoader = wldLoader;
+
+    if (options.computeCombinedGeometry) {
+        zone_->geometry = wldLoader->getCombinedGeometry();
+        if (!zone_->geometry) {
+            error_ = "No geometry extracted from pre-parsed WLD";
+            return false;
+        }
+    } else {
+        if (wldLoader->getGeometries().empty()) {
+            error_ = "No geometry extracted from pre-parsed WLD";
+            return false;
+        }
+    }
+
+    // Load textures from the already-open archive
+    loadTextures(*archive);
+
+    // Load placeable objects (_obj.s3d is a separate file, opened by loadObjects internally)
+    if (options.loadObjects) {
+        loadObjects(archivePath);
+    }
+
+    // Load light sources (lights.wld is in the zone archive, already open)
+    loadLightsFromArchive(*archive);
+
+    return true;
+}
+
 bool S3DLoader::loadTextures(PfsArchive& archive) {
     std::vector<std::string> texFiles;
 
@@ -548,36 +593,36 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
         std::shared_ptr<ZoneGeometry> geom = nullptr;
 
         const auto& modelRefs = wldLoader.getModelRefs();
-        LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} modelRefs_.size={}",
+        LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} modelRefs_.size={}",
                   bone->name, bone->modelRef, modelRefs.size());
         auto modelIt = modelRefs.find(bone->modelRef);
         if (modelIt != modelRefs.end()) {
             uint32_t geomFragRef = modelIt->second.geometryFragRef;
-            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} -> geomFragRef={}",
+            LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} -> geomFragRef={}",
                       bone->name, bone->modelRef, geomFragRef);
             if (geomFragRef > 0) {
                 geom = wldLoader.getGeometryByFragmentIndex(geomFragRef);
                 if (geom) {
-                    LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' -> geometry='{}' verts={} materialData={} textureNames={}",
+                    LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' -> geometry='{}' verts={} materialData={} textureNames={}",
                               bone->name, geom->name, geom->vertices.size(),
                               (bool)geom->materialData, geom->textureNames().size());
                 } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef={} NOT FOUND in geometryByFragIndex_",
+                    LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef={} NOT FOUND in geometryByFragIndex_",
                               bone->name, geomFragRef);
                 }
             } else {
-                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef=0, skipping", bone->name);
+                LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef=0, skipping", bone->name);
             }
         } else {
-            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} not in modelRefs, trying direct geometry lookup",
+            LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} not in modelRefs, trying direct geometry lookup",
                       bone->name, bone->modelRef);
             geom = wldLoader.getGeometryByFragmentIndex(bone->modelRef);
             if (geom) {
-                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup -> geometry='{}' verts={} materialData={} textureNames={}",
+                LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup -> geometry='{}' verts={} materialData={} textureNames={}",
                           bone->name, geom->name, geom->vertices.size(),
                           (bool)geom->materialData, geom->textureNames().size());
             } else {
-                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup FAILED for modelRef={}",
+                LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup FAILED for modelRef={}",
                           bone->name, bone->modelRef);
             }
         }
@@ -602,7 +647,7 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                 part.rotateY = 0;
                 part.rotateZ = 0;
 
-                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' ADDED geometry='{}' verts={} vpieces={} materialData={} textureNames={} (partsWithTransforms now={})",
+                LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' ADDED geometry='{}' verts={} vpieces={} materialData={} textureNames={} (partsWithTransforms now={})",
                           bone->name, geom->name, geom->vertices.size(), geom->vertexPieces.size(),
                           (bool)geom->materialData, geom->textureNames().size(),
                           model->partsWithTransforms.size() + 1);
@@ -612,7 +657,7 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                           bone->name, geom->name);
             }
         } else if (geom) {
-            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geometry='{}' has 0 vertices, skipping",
+            LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geometry='{}' has 0 vertices, skipping",
                       bone->name, geom->name);
         }
     }
@@ -659,7 +704,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
     chrArchive.getFilenames(".wld", wldFiles);
     LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: found {} WLD files in '{}'", wldFiles.size(), chrArchivePath);
     for (const auto& wf : wldFiles) {
-        LOG_DEBUG(MOD_GRAPHICS, "  WLD file: '{}'", wf);
+        LOG_TRACE(MOD_GRAPHICS, "  WLD file: '{}'", wf);
     }
 
     if (wldFiles.empty()) {
@@ -711,7 +756,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
             for (size_t pi = 0; pi < character->partsWithTransforms.size(); ++pi) {
                 const auto& pt = character->partsWithTransforms[pi];
                 if (pt.geometry) {
-                    LOG_DEBUG(MOD_GRAPHICS, "  partsWithTransforms[{}]: '{}' verts={} materialData={} textureNames={}",
+                    LOG_TRACE(MOD_GRAPHICS, "  partsWithTransforms[{}]: '{}' verts={} materialData={} textureNames={}",
                               pi, pt.geometry->name, pt.geometry->vertices.size(),
                               (bool)pt.geometry->materialData, pt.geometry->textureNames().size());
                 }
@@ -743,7 +788,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                                   [](unsigned char c) { return std::toupper(c); });
 
                     if (geomName.find(raceCode) == 0) {
-                        LOG_DEBUG(MOD_GRAPHICS, "  prefix match: '{}' verts={} materialData={} textureNames={}",
+                        LOG_TRACE(MOD_GRAPHICS, "  prefix match: '{}' verts={} materialData={} textureNames={}",
                                   geom->name, geom->vertices.size(),
                                   (bool)geom->materialData, geom->textureNames().size());
 
@@ -768,7 +813,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                         rawGeom->centerY = geom->centerY;
                         rawGeom->centerZ = geom->centerZ;
 
-                        LOG_DEBUG(MOD_GRAPHICS, "  rawGeom copy: '{}' materialData={} (same ptr: {})",
+                        LOG_TRACE(MOD_GRAPHICS, "  rawGeom copy: '{}' materialData={} (same ptr: {})",
                                   rawGeom->name, (bool)rawGeom->materialData,
                                   rawGeom->materialData.get() == geom->materialData.get());
 
@@ -816,7 +861,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                 for (size_t pi = 0; pi < character->partsWithTransforms.size(); ++pi) {
                     const auto& pt = character->partsWithTransforms[pi];
                     if (pt.geometry) {
-                        LOG_DEBUG(MOD_GRAPHICS, "  FINAL partsWithTransforms[{}]: '{}' materialData={} textureNames={}",
+                        LOG_TRACE(MOD_GRAPHICS, "  FINAL partsWithTransforms[{}]: '{}' materialData={} textureNames={}",
                                   pi, pt.geometry->name, (bool)pt.geometry->materialData, pt.geometry->textureNames().size());
                     }
                 }
@@ -824,7 +869,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                 for (size_t pi = 0; pi < character->rawParts.size(); ++pi) {
                     const auto& rp = character->rawParts[pi];
                     if (rp.geometry) {
-                        LOG_DEBUG(MOD_GRAPHICS, "  FINAL rawParts[{}]: '{}' materialData={} textureNames={}",
+                        LOG_TRACE(MOD_GRAPHICS, "  FINAL rawParts[{}]: '{}' materialData={} textureNames={}",
                                   pi, rp.geometry->name, (bool)rp.geometry->materialData, rp.geometry->textureNames().size());
                     }
                 }
@@ -935,17 +980,19 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
 }
 
 bool S3DLoader::loadLights(const std::string& archivePath) {
-    // Light sources are stored in lights.wld within the main zone archive
-    if (!zone_) {
-        return false;
-    }
-
     PfsArchive archive;
     if (!archive.open(archivePath)) {
         return false;
     }
+    return loadLightsFromArchive(archive);
+}
 
-    // Check for lights.wld in the archive
+bool S3DLoader::loadLightsFromArchive(PfsArchive& archive) {
+    if (!zone_) {
+        return false;
+    }
+
+    // Check for lights.wld in the already-open archive
     std::vector<std::string> wldFiles;
     archive.getFilenames(".wld", wldFiles);
 
@@ -958,25 +1005,21 @@ bool S3DLoader::loadLights(const std::string& archivePath) {
     }
 
     if (!hasLightsWld) {
-        // No lights.wld, no lights to load
         return false;
     }
 
-    // Parse lights.wld
+    // Parse lights.wld from the already-open archive
     WldLoader lightsLoader;
-    if (!lightsLoader.parseFromArchive(archivePath, "lights.wld")) {
+    if (!lightsLoader.parseFromOpenArchive(archive, "lights.wld")) {
         return false;
     }
 
-    // Get the parsed lights
     const auto& lights = lightsLoader.getLights();
     if (lights.empty()) {
         return false;
     }
 
-    // Copy lights to zone
     zone_->lights = lights;
-
     return !zone_->lights.empty();
 }
 

@@ -3361,6 +3361,9 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// Load zone lines for zone transitions
 		LoadZoneLines(m_current_zone_name);
 
+		// Open zone S3D archive, parse WLD, extract BSP tree
+		LoadZoneSources(m_current_zone_name);
+
 		// Update zone music and sound emitters
 #ifdef WITH_AUDIO
 		// Phase 13: Load zone sound emitters FIRST (unloadZone() stops music)
@@ -13159,8 +13162,10 @@ void EverQuest::CleanupZone()
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 
-	// Clear pathfinding and BSP data
+	// Clear pathfinding, BSP, and zone source data
 	m_zone_bsp_tree.reset();
+	m_zone_wld.reset();
+	m_zone_archive.reset();
 	if (m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NavmeshChanged,
@@ -13589,6 +13594,93 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	// NOTE: Zone line visualization boxes are sent to the renderer in LoadZoneGraphics()
 	// AFTER zone loading completes. If done here, the boxes get cleared when
 	// unloadZone() runs at the start of zone loading.
+}
+
+void EverQuest::LoadZoneSources(const std::string& zone_name)
+{
+	if (zone_name.empty()) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Zone name is empty");
+		RequestQuit();
+		return;
+	}
+
+	if (m_eq_client_path.empty()) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: EQ client path is empty");
+		RequestQuit();
+		return;
+	}
+
+	auto startTime = std::chrono::steady_clock::now();
+
+	// Clear previous zone sources
+	m_zone_archive.reset();
+	m_zone_wld.reset();
+	m_zone_bsp_tree.reset();
+
+	// Open zone S3D archive
+	std::string archivePath = m_eq_client_path;
+	if (!archivePath.empty() && archivePath.back() != '/' && archivePath.back() != '\\')
+		archivePath += '/';
+	archivePath += zone_name + ".s3d";
+
+	m_zone_archive = std::make_shared<EQT::Graphics::PfsArchive>();
+	if (!m_zone_archive->open(archivePath)) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to open zone archive: {}", archivePath);
+		m_zone_archive.reset();
+		RequestQuit();
+		return;
+	}
+
+	// Find main WLD file (skip _obj, _chr, lights.wld)
+	std::vector<std::string> wldFiles;
+	m_zone_archive->getFilenames(".wld", wldFiles);
+
+	std::string mainWld;
+	for (const auto& wld : wldFiles) {
+		if (wld.find("_obj") == std::string::npos &&
+		    wld.find("_chr") == std::string::npos &&
+		    wld != "objects.wld" &&
+		    wld != "lights.wld") {
+			mainWld = wld;
+			break;
+		}
+	}
+	if (mainWld.empty() && !wldFiles.empty()) {
+		mainWld = wldFiles[0];
+	}
+	if (mainWld.empty()) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: No WLD file found in archive: {}", archivePath);
+		m_zone_archive.reset();
+		RequestQuit();
+		return;
+	}
+
+	// Parse WLD
+	m_zone_wld = std::make_shared<EQT::Graphics::WldLoader>();
+	if (!m_zone_wld->parseFromOpenArchive(*m_zone_archive, mainWld)) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to parse WLD '{}' from archive: {}", mainWld, archivePath);
+		m_zone_wld.reset();
+		m_zone_archive.reset();
+		RequestQuit();
+		return;
+	}
+
+	// Extract BSP tree
+	m_zone_bsp_tree = m_zone_wld->getBspTree();
+	if (!m_zone_bsp_tree || m_zone_bsp_tree->regions.empty()) {
+		LOG_FATAL(MOD_MAIN, "LoadZoneSources: BSP tree is null or has no regions for zone '{}'", zone_name);
+		m_zone_bsp_tree.reset();
+		m_zone_wld.reset();
+		m_zone_archive.reset();
+		RequestQuit();
+		return;
+	}
+
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - startTime).count();
+	LOG_INFO(MOD_MAIN, "LoadZoneSources: Loaded zone '{}' in {}ms ({} BSP regions, {} nodes)",
+	         zone_name, elapsed,
+	         m_zone_bsp_tree->regions.size(), m_zone_bsp_tree->nodes.size());
 }
 
 void EverQuest::CheckZoneLine()
@@ -17897,7 +17989,10 @@ bool EverQuest::InitGraphics(int width, int height,
 	SetupTradeWindowCallbacks();
 	SetupTradeskillCallbacks();
 
-	// WindowManager removed — UI initialization handled by new UI path
+	// Wire up movement callback — renderer calls this when player moves
+	renderer->setMovementCallback([this](const EQT::Graphics::PlayerPositionUpdate& update) {
+		OnGraphicsMovement(update);
+	});
 
 	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
@@ -18037,6 +18132,21 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	}
 	snap.zoneMap = m_zone_map.get();
 	snap.eqClientPath = m_eq_client_path;
+
+	// Pre-parsed zone sources for sequential loader
+	snap.zoneArchive = m_zone_archive;
+	snap.zoneWld = m_zone_wld;
+	if (m_zone_bsp_tree) {
+		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(m_x, m_y, m_z);
+		if (snap.playerBspRegion == SIZE_MAX) {
+			LOG_FATAL(MOD_MAIN, "Player BSP region is SIZE_MAX! pos=({:.2f},{:.2f},{:.2f}) zone={}",
+			          m_x, m_y, m_z, m_current_zone_name);
+			std::exit(1);
+		}
+		LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f})",
+		         snap.playerBspRegion, m_x, m_y, m_z);
+	}
+
 	return snap;
 }
 

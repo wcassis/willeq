@@ -10,6 +10,7 @@
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/text_batch.h"
 #include <fmt/format.h>
+#include <chrono>
 
 namespace EQT {
 namespace Graphics {
@@ -97,63 +98,156 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     if (!tb) return;
 
-    // Panel background
-    ui.drawPanel(layout.chatPanel);
+    irr::s32 lineH = tb->getLineHeight();
+    if (lineH <= 0) lineH = 14;
+
+    // Panel background — only when input is active (focused), otherwise transparent
+    if (state.inputActive) {
+        ui.drawPanel(layout.chatPanel);
+    }
 
     // Process any pending messages from network thread
     if (state.messageBuffer) {
         state.messageBuffer->processPending();
     }
 
-    // Render messages
+    // Render messages with word wrapping
     if (state.messageBuffer && state.messageBuffer->size() > 0) {
         const auto& messages = state.messageBuffer->getMessages();
-        irr::s32 lineH = tb->getLineHeight();
-        if (lineH <= 0) lineH = 14;
 
         irr::s32 areaX = layout.chatMessages.UpperLeftCorner.X + 2;
         irr::s32 areaTop = layout.chatMessages.UpperLeftCorner.Y + 1;
         irr::s32 areaBottom = layout.chatMessages.LowerRightCorner.Y - 1;
-        irr::s32 areaW = layout.chatMessages.getWidth() - 4;
-        (void)areaW;  // Will use for word wrapping in future
+        irr::s32 areaW = layout.chatMessages.getWidth() - 18;  // 14px scrollbar + 4px padding
+        if (areaW <= 0) areaW = 100;
 
-        // Calculate how many lines fit
+        // Build wrapped lines from messages (newest at end)
+        struct WrappedLine {
+            std::string text;
+            irr::video::SColor color;
+        };
+        std::vector<WrappedLine> wrappedLines;
+
+        // Approximate character width for wrapping
+        irr::s32 charW = tb->getTextWidth("M");
+        if (charW <= 0) charW = 7;
+        int charsPerLine = areaW / charW;
+        if (charsPerLine <= 0) charsPerLine = 1;
+
+        for (size_t i = 0; i < messages.size(); ++i) {
+            std::string display = eqt::ui::formatMessageForDisplay(messages[i], state.showTimestamps);
+            // Word-wrap long lines
+            while (static_cast<int>(display.size()) > charsPerLine) {
+                // Find last space within limit
+                int breakAt = charsPerLine;
+                for (int j = charsPerLine; j > charsPerLine / 2; --j) {
+                    if (display[j] == ' ') { breakAt = j; break; }
+                }
+                wrappedLines.push_back({display.substr(0, breakAt), messages[i].color});
+                display = display.substr(breakAt);
+                // Skip leading space on continuation
+                if (!display.empty() && display[0] == ' ') display = display.substr(1);
+            }
+            if (!display.empty()) {
+                wrappedLines.push_back({display, messages[i].color});
+            }
+        }
+
+        // Calculate visible lines
         int visibleLines = (areaBottom - areaTop) / lineH;
-        if (visibleLines <= 0) return;
+        if (visibleLines <= 0) visibleLines = 1;
+        int totalLines = static_cast<int>(wrappedLines.size());
 
-        // Draw from bottom up, newest messages at bottom
-        int totalMessages = static_cast<int>(messages.size());
-        int startIdx = totalMessages - visibleLines - state.scrollOffset;
+        // Clamp scroll offset
+        int maxScroll = totalLines - visibleLines;
+        if (maxScroll < 0) maxScroll = 0;
+        if (state.scrollOffset > maxScroll) state.scrollOffset = maxScroll;
+        if (state.scrollOffset < 0) state.scrollOffset = 0;
+
+        // Draw visible lines from bottom up
+        int startIdx = totalLines - visibleLines - state.scrollOffset;
         if (startIdx < 0) startIdx = 0;
         int endIdx = startIdx + visibleLines;
-        if (endIdx > totalMessages) endIdx = totalMessages;
+        if (endIdx > totalLines) endIdx = totalLines;
 
         irr::s32 y = areaTop;
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto& msg = messages[i];
-            std::string display = eqt::ui::formatMessageForDisplay(msg, state.showTimestamps);
-            tb->addText(display, areaX, y, msg.color);
+            tb->addText(wrappedLines[i].text, areaX, y, wrappedLines[i].color);
             y += lineH;
+        }
+
+        // Scrollbar (right edge of chat messages area)
+        if (totalLines > visibleLines) {
+            irr::s32 sbX = layout.chatMessages.LowerRightCorner.X - 10;
+            irr::s32 sbTop = areaTop;
+            irr::s32 sbBottom = areaBottom;
+            irr::s32 sbH = sbBottom - sbTop;
+
+            // Track background
+            ui.drawRect({sbX, sbTop, sbX + 8, sbBottom},
+                irr::video::SColor(100, 30, 30, 40));
+
+            // Thumb position and size
+            float thumbRatio = static_cast<float>(visibleLines) / totalLines;
+            irr::s32 thumbH = std::max(static_cast<irr::s32>(sbH * thumbRatio), static_cast<irr::s32>(10));
+            float scrollRatio = (maxScroll > 0) ?
+                static_cast<float>(maxScroll - state.scrollOffset) / maxScroll : 0.0f;
+            irr::s32 thumbY = sbTop + static_cast<irr::s32>(scrollRatio * (sbH - thumbH));
+
+            ui.drawRect({sbX + 1, thumbY, sbX + 7, thumbY + thumbH},
+                irr::video::SColor(180, 120, 120, 140));
         }
     }
 
-    // Input field background
-    ui.drawRect(layout.chatInput, irr::video::SColor(200, 5, 5, 10));
+    // Input field background (brighter when active)
+    ui.drawRect(layout.chatInput, state.inputActive ?
+        irr::video::SColor(200, 20, 20, 40) : irr::video::SColor(200, 5, 5, 10));
 
-    // Input field border
-    irr::video::SColor inputBorder(255, 80, 80, 90);
+    // Input field border (highlight when active)
+    irr::video::SColor inputBorder = state.inputActive ?
+        irr::video::SColor(255, 140, 140, 180) : irr::video::SColor(255, 80, 80, 90);
     irr::s32 ix1 = layout.chatInput.UpperLeftCorner.X;
     irr::s32 iy1 = layout.chatInput.UpperLeftCorner.Y;
     irr::s32 ix2 = layout.chatInput.LowerRightCorner.X;
     irr::s32 iy2 = layout.chatInput.LowerRightCorner.Y;
+    (void)iy2;
     ui.drawRect({ix1, iy1, ix2, iy1 + 1}, inputBorder);
 
-    // Input text
+    // Input text — scroll horizontally so cursor is always visible
+    irr::s32 inputFieldX = layout.chatInput.UpperLeftCorner.X + 2;
+    irr::s32 inputFieldY = layout.chatInput.UpperLeftCorner.Y + 2;
+    irr::s32 inputFieldW = layout.chatInput.getWidth() - 4;
+
     if (!state.inputText.empty()) {
-        tb->addText(state.inputText,
-            layout.chatInput.UpperLeftCorner.X + 2,
-            layout.chatInput.UpperLeftCorner.Y + 2,
+        // Measure text up to cursor
+        std::string textToCursor = state.inputText.substr(0, state.cursorPos);
+        irr::s32 cursorPixelX = tb->getTextWidth(textToCursor);
+
+        // Calculate scroll offset so cursor stays within visible area
+        irr::s32 scrollPx = 0;
+        if (cursorPixelX > inputFieldW - 4) {
+            scrollPx = cursorPixelX - inputFieldW + 4;
+        }
+
+        tb->addText(state.inputText, inputFieldX - scrollPx, inputFieldY,
             irr::video::SColor(255, 255, 255, 255));
+    }
+
+    // Blinking cursor when chat input is active
+    if (state.inputActive) {
+        auto now = std::chrono::steady_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        if ((ms / 500) % 2 == 0) {
+            std::string textToCursor = state.inputText.substr(0, state.cursorPos);
+            irr::s32 cursorPixelX = tb->getTextWidth(textToCursor);
+            irr::s32 scrollPx = 0;
+            if (cursorPixelX > inputFieldW - 4) {
+                scrollPx = cursorPixelX - inputFieldW + 4;
+            }
+            irr::s32 cursorX = inputFieldX + cursorPixelX - scrollPx;
+            ui.drawRect({cursorX, inputFieldY, cursorX + 1, inputFieldY + lineH - 2},
+                irr::video::SColor(255, 255, 255, 255));
+        }
     }
 }
 

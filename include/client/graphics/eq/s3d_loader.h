@@ -235,6 +235,15 @@ public:
     bool loadZone(const std::string& archivePath);
     bool loadZone(const std::string& archivePath, const S3DLoadOptions& options);
 
+    // Load a zone using pre-opened archive and pre-parsed WLD (from game state layer)
+    // The archive and WLD were already opened/parsed during ZoneProcessNewZone().
+    // This avoids duplicate file I/O and WLD parsing.
+    bool loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
+                                std::shared_ptr<WldLoader> wldLoader,
+                                const std::string& zoneName,
+                                const std::string& archivePath,
+                                const S3DLoadOptions& options);
+
     // Get the loaded zone data
     std::shared_ptr<S3DZone> getZone() const { return zone_; }
 
@@ -291,6 +300,7 @@ private:
     bool loadCharacterTextures(PfsArchive& archive);
     bool loadCharacters(const std::string& archivePath);
     bool loadLights(const std::string& archivePath);
+    bool loadLightsFromArchive(PfsArchive& archive);
     void flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                          std::shared_ptr<CharacterModel>& model,
                          WldLoader& wldLoader,

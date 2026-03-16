@@ -354,7 +354,7 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
     // IMPORTANT: If textureVariant > 0, the mesh was already built with equipment textures
     // baked in via buildMeshFromGeometry. Skip the override to avoid corrupting the correct textures.
     // Only apply textures here for textureVariant == 0 (when mesh has base "00" textures).
-    LOG_DEBUG(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: modelData={} node materials={} textureVariant={} skipOverrides={}",
+    LOG_TRACE(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: modelData={} node materials={} textureVariant={} skipOverrides={}",
               (modelData ? "yes" : "no"), node->getMaterialCount(), (int)textureVariant, (textureVariant > 0));
     if (textureVariant == 0 && modelData && node->getMaterialCount() > 0) {
         irr::scene::IMesh* mesh = node->getMesh() ? node->getMesh()->getMesh(0) : nullptr;

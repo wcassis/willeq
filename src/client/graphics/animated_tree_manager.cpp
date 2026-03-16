@@ -402,7 +402,7 @@ void AnimatedTreeManager::createAnimatedTree(const ObjectInstance& object,
         auto worldPos = tree.worldPosition;
         animatedTrees_.push_back(std::move(tree));
 
-        LOG_DEBUG(MOD_GRAPHICS, "AnimatedTreeManager: Created animated tree '{}' at ({:.1f}, {:.1f}, {:.1f}) "
+        LOG_TRACE(MOD_GRAPHICS, "AnimatedTreeManager: Created animated tree '{}' at ({:.1f}, {:.1f}, {:.1f}) "
                   "scale=({:.2f},{:.2f},{:.2f}) with {} vertices in {} buffers",
                   placeable->getName(), worldPos.X, worldPos.Y, worldPos.Z,
                   scaleX, scaleY, scaleZ, totalVerts, bufCount);

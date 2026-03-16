@@ -297,7 +297,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.enableItemIcons = false;
-            config.skipObjectBuild = true;
             config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             // Entity prep: queue entities up to 2 portal hops away
@@ -582,34 +581,19 @@ bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) 
 
     bool anySet = false;
 
-    if (root.isMember("skipManualZoneDraw") && root["skipManualZoneDraw"].asBool()) {
-        skipManualZoneDraw = true;
-        anySet = true;
-    }
-    if (root.isMember("skipVBOUpload") && root["skipVBOUpload"].asBool()) {
-        skipVBOUpload = true;
-        anySet = true;
-    }
-    if (root.isMember("skipEntityTextureUpload") && root["skipEntityTextureUpload"].asBool()) {
-        skipEntityTextureUpload = true;
-        anySet = true;
-    }
-    if (root.isMember("skipEntityBuild") && root["skipEntityBuild"].asBool()) {
-        skipEntityBuild = true;
-        anySet = true;
-    }
-    if (root.isMember("skipObjectBuild") && root["skipObjectBuild"].asBool()) {
-        skipObjectBuild = true;
-        anySet = true;
-    }
-    if (root.isMember("skipConstrainedTextureUpload") && root["skipConstrainedTextureUpload"].asBool()) {
-        skipConstrainedTextureUpload = true;
-        anySet = true;
-    }
-    if (root.isMember("skipSkyTextureUpload") && root["skipSkyTextureUpload"].asBool()) {
-        skipSkyTextureUpload = true;
-        anySet = true;
-    }
+    auto applyBool = [&](const char* key, bool& field) {
+        if (root.isMember(key)) {
+            field = root[key].asBool();
+            anySet = true;
+        }
+    };
+    applyBool("skipManualZoneDraw", skipManualZoneDraw);
+    applyBool("skipVBOUpload", skipVBOUpload);
+    applyBool("skipEntityTextureUpload", skipEntityTextureUpload);
+    applyBool("skipEntityBuild", skipEntityBuild);
+    applyBool("skipObjectBuild", skipObjectBuild);
+    applyBool("skipConstrainedTextureUpload", skipConstrainedTextureUpload);
+    applyBool("skipSkyTextureUpload", skipSkyTextureUpload);
 
     if (anySet) {
         LOG_WARN(MOD_GRAPHICS, "Debug overrides active from {}: ManualZone={} VBO={} EntityTex={} EntityBuild={} ObjBuild={} TexCache={} SkyTex={}",

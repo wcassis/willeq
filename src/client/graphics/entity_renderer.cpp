@@ -1899,7 +1899,7 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                 }
 
                 if (!fallbackAnim.empty() && visual.animatedNode->playAnimation(fallbackAnim, loopAnim, playThrough)) {
-                    LOG_DEBUG(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found, using fallback '{}' (available: {})",
+                    LOG_TRACE(MOD_GRAPHICS, "updateEntity: spawn={} animation '{}' not found, using fallback '{}' (available: {})",
                               spawnId, targetAnim, fallbackAnim, fmt::join(availableAnims, ","));
                     visual.currentAnimation = fallbackAnim;
                 } else if (visual.isNPC && animation > 0) {

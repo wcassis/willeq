@@ -13,6 +13,8 @@
 namespace EQT {
 namespace Graphics {
 
+class PfsArchive;  // forward declaration (pfs.h)
+
 // WLD file structures (packed)
 #pragma pack(push, 1)
 
@@ -544,6 +546,7 @@ public:
     ~WldLoader() = default;
 
     bool parseFromArchive(const std::string& archivePath, const std::string& wldName);
+    bool parseFromOpenArchive(PfsArchive& archive, const std::string& wldName);
 
     const std::vector<std::shared_ptr<ZoneGeometry>>& getGeometries() const { return geometries_; }
     std::shared_ptr<ZoneGeometry> getCombinedGeometry() const;

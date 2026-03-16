@@ -258,7 +258,16 @@ void WldLoader::releasePostLoadData() {
 }
 
 bool WldLoader::parseFromArchive(const std::string& archivePath, const std::string& wldName) {
-    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseFromArchive: archive='{}' wld='{}'", archivePath, wldName);
+    PfsArchive archive;
+    if (!archive.open(archivePath)) {
+        LOG_WARN(MOD_GRAPHICS, "WldLoader::parseFromArchive: failed to open archive '{}'", archivePath);
+        return false;
+    }
+    return parseFromOpenArchive(archive, wldName);
+}
+
+bool WldLoader::parseFromOpenArchive(PfsArchive& archive, const std::string& wldName) {
+    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseFromOpenArchive: wld='{}'", wldName);
     geometries_.clear();
     textures_.clear();
     brushes_.clear();
@@ -285,15 +294,9 @@ bool WldLoader::parseFromArchive(const std::string& archivePath, const std::stri
     bspTree_.reset();
     totalRegionCount_ = 0;
 
-    PfsArchive archive;
-    if (!archive.open(archivePath)) {
-        LOG_WARN(MOD_GRAPHICS, "WldLoader::parseFromArchive: failed to open archive '{}'", archivePath);
-        return false;
-    }
-
     std::vector<char> buffer;
     if (!archive.get(wldName, buffer)) {
-        LOG_WARN(MOD_GRAPHICS, "WldLoader::parseFromArchive: WLD '{}' not found in archive", wldName);
+        LOG_WARN(MOD_GRAPHICS, "WldLoader::parseFromOpenArchive: WLD '{}' not found in archive", wldName);
         return false;
     }
 
@@ -453,7 +456,7 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
 
     // Log fragment type summary
     for (const auto& [fragType, count] : fragTypeCounts) {
-        LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseWldBuffer: fragment type 0x{:02x} count={}", fragType, count);
+        LOG_TRACE(MOD_GRAPHICS, "WldLoader::parseWldBuffer: fragment type 0x{:02x} count={}", fragType, count);
     }
     LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseWldBuffer: results — geometries={} geometryByFragIndex={} textures_={} brushes_={} textureRefs_={} materials_={} brushSets_={} resolvedMaterialListCache_={} skeletonTracks={} modelRefs={} placeables={} objectDefs={} lights={}",
               geometries_.size(), geometryByFragIndex_.size(), textures_.size(), brushes_.size(), textureRefs_.size(),
@@ -586,7 +589,7 @@ void WldLoader::parseFragment31(const char* fragBuffer, uint32_t fragLength, uin
     WldFragment31Header header = read_val<WldFragment31Header>(fragBuffer);
     const char* ptr = fragBuffer + sizeof(WldFragment31Header);
 
-    LOG_DEBUG(MOD_GRAPHICS, "Frag31[{}]: MaterialList unk={} count={}", fragIndex, header.unk, header.count);
+    LOG_TRACE(MOD_GRAPHICS, "Frag31[{}]: MaterialList unk={} count={}", fragIndex, header.unk, header.count);
 
     WldTextureBrushSet brushSet;
     for (uint32_t i = 0; i < header.count; ++i) {
@@ -601,7 +604,7 @@ void WldLoader::parseFragment31(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "Frag31[{}]: stored {} brushRefs (of {} entries)", fragIndex, brushSet.brushRefs.size(), header.count);
+    LOG_TRACE(MOD_GRAPHICS, "Frag31[{}]: stored {} brushRefs (of {} entries)", fragIndex, brushSet.brushRefs.size(), header.count);
     brushSets_[fragIndex] = brushSet;
 }
 
@@ -792,17 +795,17 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     // Resolve texture names — use cached material list when multiple meshes
     // reference the same 0x31 fragment (e.g. all 1915 meshes in qeynos2)
     if (header.frag1 > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': resolving materialList frag1={}", fragIndex, geom->name, header.frag1);
+        LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': resolving materialList frag1={}", fragIndex, geom->name, header.frag1);
         auto cacheIt = resolvedMaterialListCache_.find(header.frag1);
         if (cacheIt != resolvedMaterialListCache_.end()) {
             // Cache hit — share the resolved material list
             geom->materialData = cacheIt->second;
-            LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': materialList cache HIT for frag1={}, textureNames={}",
+            LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': materialList cache HIT for frag1={}, textureNames={}",
                       fragIndex, geom->name, header.frag1, geom->materialData->textureNames.size());
         } else {
             auto it31 = brushSets_.find(header.frag1);
             if (it31 != brushSets_.end()) {
-                LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': found brushSet for frag1={} with {} brushRefs",
+                LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': found brushSet for frag1={} with {} brushRefs",
                           fragIndex, geom->name, header.frag1, it31->second.brushRefs.size());
                 auto matList = std::make_shared<ResolvedMaterialList>();
                 const WldTextureBrushSet& brushSet = it31->second;
@@ -839,8 +842,8 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                                             animInfo.frames.push_back(frame);
                                         }
                                     } else {
-                                        LOG_DEBUG(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: texIdx={} NOT FOUND in textures_ (size={})",
-                                                  fragIndex, bri, brushRef, texIdx, textures_.size());
+                                        LOG_WARN(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: texIdx={} NOT FOUND in textures_ (size={})",
+                                                 fragIndex, bri, brushRef, texIdx, textures_.size());
                                     }
                                 }
 
@@ -850,8 +853,8 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                                 LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: resolved texName='{}' via brushIdx={} ({} frames)",
                                           fragIndex, bri, brushRef, texName, brushIdx, animInfo.frames.size());
                             } else {
-                                LOG_DEBUG(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: brushIdx={} NOT FOUND in brushes_ (size={})",
-                                          fragIndex, bri, brushRef, brushIdx, brushes_.size());
+                                LOG_WARN(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: brushIdx={} NOT FOUND in brushes_ (size={})",
+                                         fragIndex, bri, brushRef, brushIdx, brushes_.size());
                             }
                         } else {
                             isInvisible = true;
@@ -859,8 +862,8 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                         }
                     } else {
                         isInvisible = true;
-                        LOG_DEBUG(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: NOT FOUND in materials_ (size={}), marking invisible",
-                                  fragIndex, bri, brushRef, materials_.size());
+                        LOG_WARN(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: NOT FOUND in materials_ (size={}), marking invisible",
+                                 fragIndex, bri, brushRef, materials_.size());
                     }
 
                     matList->textureNames.push_back(texName);
@@ -870,15 +873,15 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
 
                 resolvedMaterialListCache_[header.frag1] = matList;
                 geom->materialData = matList;
-                LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': resolved materialList with {} textureNames",
+                LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': resolved materialList with {} textureNames",
                           fragIndex, geom->name, matList->textureNames.size());
                 // Log first few resolved names
                 for (size_t ti = 0; ti < matList->textureNames.size() && ti < 5; ++ti) {
-                    LOG_DEBUG(MOD_GRAPHICS, "  Frag36[{}] textureName[{}]='{}' invisible={}",
+                    LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] textureName[{}]='{}' invisible={}",
                               fragIndex, ti, matList->textureNames[ti], matList->textureInvisible[ti]);
                 }
                 if (matList->textureNames.size() > 5) {
-                    LOG_DEBUG(MOD_GRAPHICS, "  Frag36[{}] ... and {} more textureNames", fragIndex, matList->textureNames.size() - 5);
+                    LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] ... and {} more textureNames", fragIndex, matList->textureNames.size() - 5);
                 }
             } else {
                 LOG_WARN(MOD_GRAPHICS, "Frag36[{}] '{}': frag1={} NOT FOUND in brushSets_ (size={})",
@@ -886,7 +889,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
             }
         }
     } else {
-        LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': frag1={} (<=0), no materialList to resolve", fragIndex, geom->name, header.frag1);
+        LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': frag1={} (<=0), no materialList to resolve", fragIndex, geom->name, header.frag1);
     }
 
     if (geom->textureNames().empty()) {
@@ -907,7 +910,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     // frag2 contains the reference to the 0x2F fragment (mesh animated vertices reference)
     if (header.frag2 > 0) {
         uint32_t animVertRefFragIdx = header.frag2;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': looking up vertex animation frag2={}", fragIndex, geom->name, header.frag2);
+        LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': looking up vertex animation frag2={}", fragIndex, geom->name, header.frag2);
         // Look up the 0x2F -> 0x37 mapping
         auto refIt = meshAnimatedVerticesRefs_.find(animVertRefFragIdx);
         if (refIt != meshAnimatedVerticesRefs_.end()) {
@@ -916,14 +919,14 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
             auto animIt = meshAnimatedVertices_.find(animVertFragIdx);
             if (animIt != meshAnimatedVertices_.end()) {
                 geom->animatedVertices = animIt->second;
-                LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': linked to vertex animation '{}' ({} frames)",
+                LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': linked to vertex animation '{}' ({} frames)",
                     fragIndex, geom->name, animIt->second->name, animIt->second->frames.size());
             } else {
-                LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': animVertFragIdx={} NOT FOUND in meshAnimatedVertices_",
+                LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': animVertFragIdx={} NOT FOUND in meshAnimatedVertices_",
                           fragIndex, geom->name, animVertFragIdx);
             }
         } else {
-            LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': animVertRefFragIdx={} NOT FOUND in meshAnimatedVerticesRefs_",
+            LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': animVertRefFragIdx={} NOT FOUND in meshAnimatedVerticesRefs_",
                       fragIndex, geom->name, animVertRefFragIdx);
         }
     }
@@ -932,11 +935,11 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
         geometries_.push_back(geom);
         // Also store by fragment index for precise bone model lookups
         geometryByFragIndex_[fragIndex] = geom;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': stored geometry (verts={} tris={} textureNames={} materialData={})",
+        LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': stored geometry (verts={} tris={} textureNames={} materialData={})",
                   fragIndex, geom->name, geom->vertices.size(), geom->triangles.size(),
                   geom->textureNames().size(), (bool)geom->materialData);
     } else {
-        LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': NOT stored (verts={} tris={})", fragIndex, geom->name, geom->vertices.size(), geom->triangles.size());
+        LOG_TRACE(MOD_GRAPHICS, "Frag36[{}] '{}': NOT stored (verts={} tris={})", fragIndex, geom->name, geom->vertices.size(), geom->triangles.size());
     }
 }
 
@@ -1113,7 +1116,7 @@ void WldLoader::parseFragment14(const char* fragBuffer, uint32_t fragLength, uin
 
     if (!objDef.name.empty()) {
         objectDefs_[objDef.name] = objDef;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag14[{}]: Actor '{}' flags=0x{:x} entries={} entries2={} meshRefs={}",
+        LOG_TRACE(MOD_GRAPHICS, "Frag14[{}]: Actor '{}' flags=0x{:x} entries={} entries2={} meshRefs={}",
                   fragIndex, objDef.name, header.flags, header.entries, header.entries2, objDef.meshRefs.size());
         for (size_t mi = 0; mi < objDef.meshRefs.size(); ++mi) {
             LOG_TRACE(MOD_GRAPHICS, "  Frag14[{}] '{}': meshRef[{}]={}", fragIndex, objDef.name, mi, objDef.meshRefs[mi]);
@@ -1401,17 +1404,17 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 
     // Resolve texture names — use cached material list (same as parseFragment36)
     uint32_t texBrushSetRef = header.flags & 0xFFFF;
-    LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': flags=0x{:x} texBrushSetRef={} (flags & 0xFFFF)",
+    LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': flags=0x{:x} texBrushSetRef={} (flags & 0xFFFF)",
               fragIndex, geom->name, header.flags, texBrushSetRef);
     if (texBrushSetRef > 0) {
         auto cacheIt = resolvedMaterialListCache_.find(texBrushSetRef);
         if (cacheIt != resolvedMaterialListCache_.end()) {
             geom->materialData = cacheIt->second;
-            LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': materialList cache HIT for texBrushSetRef={}", fragIndex, geom->name, texBrushSetRef);
+            LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': materialList cache HIT for texBrushSetRef={}", fragIndex, geom->name, texBrushSetRef);
         } else {
             auto it31 = brushSets_.find(texBrushSetRef);
             if (it31 != brushSets_.end()) {
-                LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': found brushSet for texBrushSetRef={} with {} brushRefs",
+                LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': found brushSet for texBrushSetRef={} with {} brushRefs",
                           fragIndex, geom->name, texBrushSetRef, it31->second.brushRefs.size());
                 auto matList = std::make_shared<ResolvedMaterialList>();
                 const WldTextureBrushSet& brushSet = it31->second;
@@ -1466,7 +1469,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 
                 resolvedMaterialListCache_[texBrushSetRef] = matList;
                 geom->materialData = matList;
-                LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': resolved materialList with {} textureNames",
+                LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': resolved materialList with {} textureNames",
                           fragIndex, geom->name, matList->textureNames.size());
             } else {
                 LOG_WARN(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef={} NOT FOUND in brushSets_ (size={})",
@@ -1474,7 +1477,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
             }
         }
     } else {
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef=0, no materialList to resolve", fragIndex, geom->name);
+        LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef=0, no materialList to resolve", fragIndex, geom->name);
     }
 
     if (geom->textureNames().empty()) {
@@ -1487,18 +1490,18 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
         mat.textureNames.resize(maxIdx + 1);
         mat.textureInvisible.resize(maxIdx + 1, false);
         mat.textureAnimations.resize(maxIdx + 1);
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': textureNames empty after resolution, created {} placeholder entries",
+        LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': textureNames empty after resolution, created {} placeholder entries",
                   fragIndex, geom->name, maxIdx + 1);
     }
 
     if (!geom->vertices.empty() && !geom->triangles.empty()) {
         geometries_.push_back(geom);
         geometryByFragIndex_[fragIndex] = geom;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': stored legacy mesh (verts={} tris={} textureNames={} materialData={})",
+        LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': stored legacy mesh (verts={} tris={} textureNames={} materialData={})",
                   fragIndex, geom->name, geom->vertices.size(), geom->triangles.size(),
                   geom->textureNames().size(), (bool)geom->materialData);
     } else {
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': NOT stored (verts={} tris={})", fragIndex, geom->name, geom->vertices.size(), geom->triangles.size());
+        LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': NOT stored (verts={} tris={})", fragIndex, geom->name, geom->vertices.size(), geom->triangles.size());
     }
 }
 
@@ -1508,10 +1511,10 @@ void WldLoader::parseFragment2D(const char* fragBuffer, uint32_t fragLength, uin
     WldModelRef modelRef;
     if (header.ref > 0) {
         modelRef.geometryFragRef = header.ref;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2D[{}]: MeshReference ref={}", fragIndex, header.ref);
+        LOG_TRACE(MOD_GRAPHICS, "Frag2D[{}]: MeshReference ref={}", fragIndex, header.ref);
     } else {
         modelRef.geometryFragRef = 0;
-        LOG_DEBUG(MOD_GRAPHICS, "Frag2D[{}]: MeshReference ref={} (<=0, stored as 0)", fragIndex, header.ref);
+        LOG_TRACE(MOD_GRAPHICS, "Frag2D[{}]: MeshReference ref={} (<=0, stored as 0)", fragIndex, header.ref);
     }
 
     modelRefs_[fragIndex] = modelRef;
@@ -1534,7 +1537,7 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "Frag10[{}]: SkeletonHierarchy '{}' flags=0x{:x} trackRefCount={} polygonAnimFrag={}",
+    LOG_TRACE(MOD_GRAPHICS, "Frag10[{}]: SkeletonHierarchy '{}' flags=0x{:x} trackRefCount={} polygonAnimFrag={}",
               fragIndex, track->name, header.flags, header.trackRefCount, header.polygonAnimFrag);
 
     if (header.flags & 1) ptr += sizeof(int32_t) * 3;
@@ -1582,7 +1585,7 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
 
         if (entry.modelRef > 0) {
             bone->modelRef = entry.modelRef;
-            LOG_DEBUG(MOD_GRAPHICS, "  Frag10[{}] bone[{}] '{}': modelRef={} flags=0x{:x} childCount={}",
+            LOG_TRACE(MOD_GRAPHICS, "  Frag10[{}] bone[{}] '{}': modelRef={} flags=0x{:x} childCount={}",
                       fragIndex, i, bone->name, entry.modelRef, entry.flags, entry.childCount);
         } else {
             LOG_TRACE(MOD_GRAPHICS, "  Frag10[{}] bone[{}] '{}': no modelRef flags=0x{:x} childCount={}",
@@ -1639,7 +1642,7 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
     for (const auto& bone : allBones) {
         if (bone->modelRef > 0) bonesWithModelRef++;
     }
-    LOG_DEBUG(MOD_GRAPHICS, "Frag10[{}] '{}': {} total bones, {} roots, {} with modelRef",
+    LOG_TRACE(MOD_GRAPHICS, "Frag10[{}] '{}': {} total bones, {} roots, {} with modelRef",
               fragIndex, track->name, allBones.size(), track->bones.size(), bonesWithModelRef);
 }
 

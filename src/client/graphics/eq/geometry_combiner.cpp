@@ -101,13 +101,13 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
     size_t partIdx = 0;
     for (const auto& part : parts) {
         if (!part.geometry || part.geometry->vertices.empty()) {
-            LOG_DEBUG(MOD_GRAPHICS, "  combiner part[{}]: SKIPPED (geometry={} verts={})",
+            LOG_TRACE(MOD_GRAPHICS, "  combiner part[{}]: SKIPPED (geometry={} verts={})",
                       partIdx, (bool)part.geometry, part.geometry ? part.geometry->vertices.size() : 0);
             partIdx++;
             continue;
         }
 
-        LOG_DEBUG(MOD_GRAPHICS, "  combiner part[{}]: '{}' verts={} tris={} materialData={} textureNames={} vertexPieces={}",
+        LOG_TRACE(MOD_GRAPHICS, "  combiner part[{}]: '{}' verts={} tris={} materialData={} textureNames={} vertexPieces={}",
                   partIdx, part.geometry->name, part.geometry->vertices.size(),
                   part.geometry->triangles.size(), (bool)part.geometry->materialData,
                   part.geometry->textureNames().size(), part.geometry->vertexPieces.size());

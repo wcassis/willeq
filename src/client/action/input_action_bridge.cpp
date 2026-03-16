@@ -34,8 +34,10 @@ void InputActionBridge::update(float deltaTime) {
     // Process discrete one-shot actions
     processDiscreteActions();
 
-    // Process continuous input (movement, turning)
-    processContinuousInput(deltaTime);
+    // Movement is handled by the renderer (console or 3D), which applies collision
+    // and pushes PlayerPositionChanged intents via the bridge. processContinuousInput()
+    // was a redundant path that bypassed renderer collision and caused cross-thread
+    // races on keyIsDown_[] state.
 
     // Process mouse input (camera, targeting)
     processMouseInput(deltaTime);

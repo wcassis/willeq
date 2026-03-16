@@ -692,11 +692,13 @@ void Application::processInput(float deltaTime) {
         m_gameMode->update(deltaTime);
     }
 
-    // Process input through the action bridge — but NOT when graphics handle input.
-    // IrrlichtRenderer owns all input via evdev/X11 and has its own chat-focus gating.
-    // Running the bridge in parallel would bypass that gating (ConsoleInputHandler reads
-    // stdin, which may receive duplicate keystrokes if K_OFF isn't active).
-    if (m_inputBridge && !m_graphicsInitialized) {
+    // Process input through the action bridge.
+    // In graphics mode, GraphicsInputHandler drains the renderer's bridgeQueue_ (evdev/X11
+    // key events) — this is safe because it doesn't touch stdin. The game mode update above
+    // is still gated to headless-only to prevent ConsoleInputHandler stdin duplicate reads.
+    // Skip during loading — no collision detection means movement would drift the player
+    // off the map, and the server would interpolate the unbounded position.
+    if (m_inputBridge && m_fullyConnected) {
         m_inputBridge->update(deltaTime);
     }
 }

@@ -1803,25 +1803,7 @@ private:
         int64_t debugOverlays = 0;
         int64_t castingBars = 0;
         int64_t guiDrawAll = 0;
-        int64_t windowManager = 0;
-        // Window Manager sub-timings
-        int64_t wmChat = 0;
-        int64_t wmInventory = 0;
-        int64_t wmSpellGems = 0;
-        int64_t wmHotbar = 0;
-        int64_t wmPlayerStatus = 0;
-        int64_t wmBuffs = 0;
-        int64_t wmGroup = 0;
-        int64_t wmSpellbook = 0;
-        int64_t wmCastingBars = 0;
-        int64_t wmPet = 0;
-        int64_t wmSkills = 0;
-        int64_t wmLoot = 0;
-        int64_t wmVendor = 0;
-        int64_t wmBags = 0;
-        int64_t wmTooltips = 0;
-        int64_t wmOverlays = 0;
-        int64_t wmOther = 0;
+        int64_t staticUI = 0;           // Static UI panels (player status, chat, hotbar, etc.)
         int64_t zoneLineOverlay = 0;
         int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
         int64_t endScene = 0;

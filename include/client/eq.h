@@ -80,7 +80,7 @@ namespace Graphics {
 }
 #include "client/graphics/constrained_renderer_config.h"
 // D20e3: forward declarations for types used as pointers/shared_ptr
-namespace EQT { namespace Graphics { struct LoadingStatus; struct BspTree; } }
+namespace EQT { namespace Graphics { struct LoadingStatus; struct BspTree; class PfsArchive; class WldLoader; } }
 namespace eqt {
 namespace inventory {
     class InventoryManager;
@@ -1058,6 +1058,10 @@ private:
 	// D20f2: Typed BSP tree for water detection, zone lines, collision
 	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
 
+	// Zone S3D/WLD sources — opened/parsed once at game state layer, shared with sequential loader
+	std::shared_ptr<EQT::Graphics::PfsArchive> m_zone_archive;
+	std::shared_ptr<EQT::Graphics::WldLoader> m_zone_wld;
+
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);
@@ -1602,6 +1606,9 @@ private:
 	void LoadZoneMap(const std::string& zone_name);
 	float GetBestZ(float x, float y, float z);
 	void FixZ();
+
+	// Zone source data (S3D/WLD) — opens archive and parses WLD once for game state + graphics
+	void LoadZoneSources(const std::string& zone_name);
 
 	// Zone line methods
 	void LoadZoneLines(const std::string& zone_name);
