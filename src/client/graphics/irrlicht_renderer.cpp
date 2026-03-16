@@ -3023,7 +3023,7 @@ void IrrlichtRenderer::createEntityRenderer() {
     entityRenderer_->setRenderDistance(renderDistance_);
     if (constrainedTextureCache_) {
         entityRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
-        // Wire mesh builder into cache for entity texture registration during processUploadQueue
+        // Wire mesh builder into cache for entity texture registration during uploadTexture
         auto* meshBuilder = entityRenderer_->getMeshBuilder();
         if (meshBuilder)
             constrainedTextureCache_->setMeshBuilder(meshBuilder);
@@ -3151,131 +3151,14 @@ void IrrlichtRenderer::applyStoredZoneEnvironment() {
 }
 
 // Decode BMP data to A8R8G8B8 pixel array (used by sky texture loading)
-static bool decodeBMPtoARGB(const std::vector<char>& data,
-                            std::vector<uint8_t>& outPixels,
-                            uint32_t& outWidth, uint32_t& outHeight) {
-    if (data.size() < 54) return false;
-    const uint8_t* d = reinterpret_cast<const uint8_t*>(data.data());
-
-    if (d[0] != 'B' || d[1] != 'M') return false;
-
-    uint32_t dataOffset = *reinterpret_cast<const uint32_t*>(d + 10);
-    int32_t width  = *reinterpret_cast<const int32_t*>(d + 18);
-    int32_t height = *reinterpret_cast<const int32_t*>(d + 22);
-    uint16_t bpp   = *reinterpret_cast<const uint16_t*>(d + 28);
-    uint32_t compression = *reinterpret_cast<const uint32_t*>(d + 30);
-
-    if (width <= 0 || width > 4096) return false;
-    bool bottomUp = height > 0;
-    if (height < 0) height = -height;
-    if (height <= 0 || height > 4096) return false;
-
-    outWidth = static_cast<uint32_t>(width);
-    outHeight = static_cast<uint32_t>(height);
-    outPixels.resize(width * height * 4);
-
-    if (bpp == 8 && compression == 0) {
-        const uint8_t* palette = d + 54;
-        if (54 + 256 * 4 > data.size()) return false;
-        const uint8_t* pixels = d + dataOffset;
-        int rowStride = (width + 3) & ~3;
-
-        for (int y = 0; y < height; ++y) {
-            int srcY = bottomUp ? (height - 1 - y) : y;
-            for (int x = 0; x < width; ++x) {
-                uint8_t idx = pixels[srcY * rowStride + x];
-                int outIdx = (y * width + x) * 4;
-                outPixels[outIdx + 0] = palette[idx * 4 + 0];
-                outPixels[outIdx + 1] = palette[idx * 4 + 1];
-                outPixels[outIdx + 2] = palette[idx * 4 + 2];
-                outPixels[outIdx + 3] = 255;
-            }
-        }
-        return true;
-    } else if (bpp == 24 && compression == 0) {
-        const uint8_t* pixels = d + dataOffset;
-        int rowStride = (width * 3 + 3) & ~3;
-
-        for (int y = 0; y < height; ++y) {
-            int srcY = bottomUp ? (height - 1 - y) : y;
-            for (int x = 0; x < width; ++x) {
-                int srcIdx = srcY * rowStride + x * 3;
-                int outIdx = (y * width + x) * 4;
-                outPixels[outIdx + 0] = pixels[srcIdx + 0];
-                outPixels[outIdx + 1] = pixels[srcIdx + 1];
-                outPixels[outIdx + 2] = pixels[srcIdx + 2];
-                outPixels[outIdx + 3] = 255;
-            }
-        }
-        return true;
-    } else if (bpp == 32 && compression == 0) {
-        const uint8_t* pixels = d + dataOffset;
-        int rowStride = width * 4;
-
-        for (int y = 0; y < height; ++y) {
-            int srcY = bottomUp ? (height - 1 - y) : y;
-            for (int x = 0; x < width; ++x) {
-                int srcIdx = srcY * rowStride + x * 4;
-                int outIdx = (y * width + x) * 4;
-                outPixels[outIdx + 0] = pixels[srcIdx + 0];
-                outPixels[outIdx + 1] = pixels[srcIdx + 1];
-                outPixels[outIdx + 2] = pixels[srcIdx + 2];
-                outPixels[outIdx + 3] = pixels[srcIdx + 3];
-            }
-        }
-        return true;
-    }
-
-    return false;
-}
-
-// Bilinear upscale A8R8G8B8 texture (used by sky texture loading)
-static void bilinearUpscaleARGB(const uint8_t* src, uint32_t srcW, uint32_t srcH,
-                                std::vector<uint8_t>& dst, uint32_t dstW, uint32_t dstH) {
-    dst.resize(dstW * dstH * 4);
-    const uint32_t* srcPixels = reinterpret_cast<const uint32_t*>(src);
-    uint32_t* dstPixels = reinterpret_cast<uint32_t*>(dst.data());
-
-    float scaleX = static_cast<float>(srcW) / dstW;
-    float scaleY = static_cast<float>(srcH) / dstH;
-
-    for (uint32_t y = 0; y < dstH; ++y) {
-        float srcYf = y * scaleY;
-        uint32_t y0 = static_cast<uint32_t>(srcYf);
-        uint32_t y1 = (y0 + 1 < srcH) ? y0 + 1 : y0;
-        float fy = srcYf - y0;
-
-        for (uint32_t x = 0; x < dstW; ++x) {
-            float srcXf = x * scaleX;
-            uint32_t x0 = static_cast<uint32_t>(srcXf);
-            uint32_t x1 = (x0 + 1 < srcW) ? x0 + 1 : x0;
-            float fx = srcXf - x0;
-
-            uint32_t c00 = srcPixels[y0 * srcW + x0];
-            uint32_t c10 = srcPixels[y0 * srcW + x1];
-            uint32_t c01 = srcPixels[y1 * srcW + x0];
-            uint32_t c11 = srcPixels[y1 * srcW + x1];
-
-            auto lerp = [](float a, float b, float t) -> float { return a + t * (b - a); };
-            auto ch = [](uint32_t pixel, int shift) -> float {
-                return static_cast<float>((pixel >> shift) & 0xFF);
-            };
-
-            uint32_t result = 0;
-            for (int shift = 0; shift < 32; shift += 8) {
-                float v = lerp(lerp(ch(c00, shift), ch(c10, shift), fx),
-                               lerp(ch(c01, shift), ch(c11, shift), fx), fy);
-                result |= (static_cast<uint32_t>(v) & 0xFF) << shift;
-            }
-            dstPixels[y * dstW + x] = result;
-        }
-    }
-}
+// T14: decodeBMPtoARGB and bilinearUpscaleARGB removed.
+// All texture decoding now goes through ConstrainedTextureCache::getOrLoad().
 
 void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                            LoadingStatus& status) {
     auto totalStart = std::chrono::steady_clock::now();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: starting for zone '{}'", currentZoneName_);
+    loadFailed_ = false;
 
     auto updateProgress = [&](int percent, const std::string& text) {
         status.setProgress(percent, text);
@@ -3283,9 +3166,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Render a loading frame so the progress bar updates visually
         std::wstring wtext(text.begin(), text.end());
         drawLoadingScreen(percent / 100.0f, wtext);
-    };
-    auto checkQuit = [&]() -> bool {
-        return status.quitRequested.load(std::memory_order_relaxed);
     };
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -3303,7 +3183,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
               config_.constrainedConfig.skipObjectBuild, config_.constrainedConfig.enableTextureAtlas,
               config_.constrainedConfig.atlasPath, config_.constrainedConfig.deferredAssetLoading);
 
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
+              simulationWorker_ ? simulationWorker_->isRunning() : false);
     stopSimulationWorker();
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: simulation worker stopped");
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
     entityPrepReady_ = false;
@@ -3316,7 +3199,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 1: S3D — parse zone archive ───────────────────────────────────
     updateProgress(50, "Loading zone data...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         std::string zonePath = eqPath + currentZoneName_ + ".s3d";
@@ -3333,6 +3215,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (!loader.loadZone(zonePath, loadOptions)) {
             LOG_FATAL(MOD_GRAPHICS, "Failed to load zone S3D archive: {} ({})", zonePath, loader.getError());
             pendingZoneComputations_.reset();
+            loadFailed_ = true;
             return;
         }
         currentZone_ = loader.getZone();
@@ -3349,8 +3232,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // Install S3D data
     if (!currentZone_) {
-        LOG_ERROR(MOD_GRAPHICS, "loadZoneSequential: S3D produced no data");
+        LOG_FATAL(MOD_GRAPHICS, "loadZoneSequential: S3D produced no data");
         pendingZoneComputations_.reset();
+        loadFailed_ = true;
         return;
     }
     if (entityRenderer_) {
@@ -3374,7 +3258,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 2: BSP — compute spatial data ─────────────────────────────────
     updateProgress(55, "Computing spatial data...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -3424,6 +3307,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     zbMinX = std::min(zbMinX, bbox.MinEdge.X); zbMinY = std::min(zbMinY, bbox.MinEdge.Y); zbMinZ = std::min(zbMinZ, bbox.MinEdge.Z);
                     zbMaxX = std::max(zbMaxX, bbox.MaxEdge.X); zbMaxY = std::max(zbMaxY, bbox.MaxEdge.Y); zbMaxZ = std::max(zbMaxZ, bbox.MaxEdge.Z);
                 }
+
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone bounds: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}] Z=[{:.1f},{:.1f}]",
+                          zbMinX, zbMaxX, zbMinY, zbMaxY, zbMinZ, zbMaxZ);
 
                 // Build portal system from BSP split planes
                 computations->portalSystem = std::make_unique<PortalSystem>();
@@ -3502,6 +3388,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: {} deferred object entries, {} after tree filtering",
                           computations->deferredObjectEntries.size(), computations->prebuiltDeferredObjects.size());
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: BSP compute skipped (zone={}, wldLoader={})",
+                      (bool)zone, zone ? (bool)zone->wldLoader : false);
         }
         logAssetBuildTime("seq_bsp_compute", 0, stepStart);
     }
@@ -3512,8 +3401,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         auto stepStart = std::chrono::steady_clock::now();
         if (!currentZone_ || !currentZone_->wldLoader) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: no wldLoader, fallback to single zone mesh");
-            if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
-                currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
             createZoneMesh();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-wldLoader fallback), zoneMeshNode_={}",
                       (bool)zoneMeshNode_);
@@ -3639,7 +3526,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 3: Atlas — texture atlas ──────────────────────────────────────
     updateProgress(60, "Building texture atlases...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
@@ -3659,6 +3545,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             if (!computations->zoneAtlasPreload.valid) {
                 LOG_FATAL(MOD_GRAPHICS, "Failed to load texture atlas: {} (atlas enabled in preset but file missing or invalid)", zoneAtlasFile);
                 pendingZoneComputations_.reset();
+                loadFailed_ = true;
                 return;
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone atlas preload '{}': valid={}, pages={}",
@@ -3671,12 +3558,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (!computations->objAtlasPreload.valid) {
                     LOG_FATAL(MOD_GRAPHICS, "Failed to load object texture atlas: {} (atlas enabled in preset but file missing or invalid)", objAtlasFile);
                     pendingZoneComputations_.reset();
+                    loadFailed_ = true;
                     return;
                 }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload '{}': valid={}, pages={}",
                           objAtlasFile, computations->objAtlasPreload.valid,
                           computations->objAtlasPreload.numPages);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload skipped (skipObjectBuild=true)");
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: atlas preload skipped (enableAtlas={}, atlasPath='{}', computations={})",
+                      enableAtlas, atlasPathCopy, (bool)computations);
         }
 
         // Upload zone atlas pages with per-page progress (60-62%)
@@ -3760,7 +3653,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 4: Regions — build ALL zone meshes eagerly ────────────────────
     updateProgress(63, "Building zone meshes...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: currentZone_={}, wldLoader={}, zoneBspTree_={}",
@@ -3771,10 +3663,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             auto bspTree = wldLoader->getBspTree();
 
             ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
-            // Do NOT set constrained texture cache during sequential loading.
-            // The constrained cache defers to background threads and returns nullptr
-            // on first call, which breaks single-pass mesh building. The unconstrained
-            // path does synchronous DDS decode + driver_->addTexture() inline.
+            if (constrainedTextureCache_)
+                builder.setConstrainedTextureCache(constrainedTextureCache_.get());
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                zoneShader_->getActiveAlphaTest());
@@ -3859,6 +3749,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      regionMeshNodes_.size(), regionsSkipped, meshBuildFailed, nodeFailed);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: region mesh building skipped (currentZone_={}, wldLoader={}, zoneBspTree_={})",
+                      (bool)currentZone_, currentZone_ ? (bool)currentZone_->wldLoader : false, (bool)zoneBspTree_);
         }
 
         // Setup front-to-back sorting
@@ -3886,6 +3779,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             } else {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: manual zone draw disabled (software renderer)");
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: front-to-back sorting skipped (usePvsCulling_={}, regionMeshNodes_={}, skipManualZoneDraw={})",
+                      usePvsCulling_, regionMeshNodes_.size(), config_.constrainedConfig.skipManualZoneDraw);
         }
         logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
     }
@@ -3893,7 +3789,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 5: Assets — build indexes, create subsystems ──────────────────
     updateProgress(71, "Building asset indexes...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -3911,6 +3806,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 LOG_WARN(MOD_GRAPHICS, "SEQ Step5: archive index build failed, discarded");
                 computations->archiveIndex.reset();
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: archive index build skipped (deferredAssetLoading={}, computations={})",
+                      config_.constrainedConfig.deferredAssetLoading, (bool)computations);
         }
 
         // Build equipment index inline (was background thread)
@@ -3940,6 +3838,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 setOnRml = true;
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: archive index installed, setOnRaceModelLoader={}", setOnRml);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: archive index not installed (computations={}, archiveIndex={})",
+                      (bool)computations, computations ? (bool)computations->archiveIndex : false);
         }
 
         // Install equipment index
@@ -3954,6 +3855,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             } else {
                 LOG_WARN(MOD_GRAPHICS, "SEQ Step5: equipment index built but EquipmentModelLoader is null — cannot install");
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index not installed (computations={}, loaded={}, entityRenderer_={})",
+                      (bool)computations,
+                      (computations && computations->equipmentIndex) ? computations->equipmentIndex->loaded : false,
+                      (bool)entityRenderer_);
         }
 
         // Set zone on RaceModelLoader
@@ -3968,7 +3874,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 6: Objects — zone objects ──────────────────────────────────────
     updateProgress(75, "Installing zone objects...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", objectLights_.size());
@@ -4029,13 +3934,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             zoneBoundsValid_ = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from regionBoundingBoxes: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
                       zoneBoundsMinX_, zoneBoundsMaxX_, zoneBoundsMinY_, zoneBoundsMaxY_);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds not available (no combined geometry and no region bounding boxes)");
         }
 
         // Build all object meshes eagerly inline (no deferred/PVS-gated build at runtime)
         {
             ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
-            // Do NOT set constrained texture cache — use synchronous unconstrained path
-            // (same rationale as region mesh building above).
+            if (constrainedTextureCache_)
+                objBuilder.setConstrainedTextureCache(constrainedTextureCache_.get());
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                    zoneShader_->getActiveAlphaTest());
@@ -4056,8 +3963,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             size_t objectsBuilt = 0;
 
             for (size_t oi = 0; oi < totalObjects; ++oi) {
-                if (checkQuit()) return;
-
+            
                 DeferredObject& deferred = deferredObjects_[oi];
                 if (deferred.meshBuilt) { ++objectsBuilt; continue; }
                 if (deferred.objectIndex >= currentZone_->objects.size()) {
@@ -4292,14 +4198,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 7: Doors — door meshes ────────────────────────────────────────
     updateProgress(78, "Building door meshes...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)doorManager_);
         if (!doorManager_) {
             doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-            // Do NOT set constrained texture cache yet — sequential builds use
-            // synchronous unconstrained path. Set it after building for runtime use.
+            if (constrainedTextureCache_)
+                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
             if (currentZone_) doorManager_->setZone(currentZone_);
             if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
             doorManager_->setPvsRegion(currentPvsRegion_);
@@ -4357,18 +4262,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_INFO(MOD_GRAPHICS, "Sequential: rebuilt {} doors ({} failed, {} with missing textures)",
                      totalDoors, doorsFailed, doorsWithMissingTex);
         }
-        // Now set constrained cache for runtime door rebuilds (texture arrivals, etc.)
-        if (doorManager_ && constrainedTextureCache_) {
-            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager constrained texture cache set for runtime");
-        }
+        // Constrained cache was set at creation above — no separate runtime set needed.
         logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
 
     // ── Step 8: Entities — inline prep + build (no background threads) ────
     updateProgress(80, "Preparing entity models...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityRenderer_={}, skipEntityBuild={}",
@@ -4397,8 +4297,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
 
             for (uint16_t spawnId : spawnIds) {
-                if (checkQuit()) return;
-
+            
                 const auto& entities2 = entityRenderer_->getEntities();
                 auto it = entities2.find(spawnId);
                 if (it == entities2.end()) continue;
@@ -4433,6 +4332,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     } else {
                         LOG_FATAL(MOD_GRAPHICS, "Failed to load race model: race={} gender={} (not found in any S3D archive)", vis.raceId, vis.gender);
                         pendingZoneComputations_.reset();
+                        loadFailed_ = true;
                         return;
                     }
                     LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
@@ -4455,15 +4355,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     }
                 }
 
-                if (!success) {
-                    LOG_WARN(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} preload FAILED — skipping",
-                             spawnId, vis.name, vis.raceId, vis.gender);
-                    ++prepCount;
-                    continue;
-                }
-
-                // Step 8c: Decode variant textures (body-part overrides based on appearance)
-                std::vector<DecodedTexture> variantTextures;
+                // Step 8c: Load variant textures via constrained cache
+                // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
+                size_t variantTextureCount = 0;
                 {
                     auto modelData = modelLoader->getRaceModelData(vis.raceId, vis.gender);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) appearance.texture={} helm={} modelData={}",
@@ -4474,81 +4368,16 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         std::transform(lowerRaceCode.begin(), lowerRaceCode.end(), lowerRaceCode.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
 
-                        std::set<std::string> decodedNames;
-
-                        auto decodeAndAdd = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
+                        std::set<std::string> loadedNames;
+                        auto loadVariantTexture = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
                             if (!texInfo || texInfo->data.empty()) return;
                             std::string lowerName = texName;
                             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                            [](unsigned char c) { return std::tolower(c); });
-                            if (decodedNames.count(lowerName) > 0) return;
-
-                            if (DDSDecoder::isDDS(texInfo->data)) {
-                                DecodedTexture decoded;
-                                decoded.name = texName;
-                                DecodedImage img = DDSDecoder::decode(texInfo->data);
-                                if (!img.isValid()) {
-                                    LOG_FATAL(MOD_GRAPHICS, "Failed to decode variant texture: '{}' for entity {} ({}) (DDS decode failed, size={})",
-                                              texName, spawnId, vis.name, texInfo->data.size());
-                                    return;
-                                }
-                                decoded.width = img.width;
-                                decoded.height = img.height;
-                                decoded.argbPixels.resize(img.width * img.height);
-                                for (uint32_t pi = 0; pi < img.width * img.height; ++pi) {
-                                    uint8_t r = img.pixels[pi * 4 + 0];
-                                    uint8_t g = img.pixels[pi * 4 + 1];
-                                    uint8_t b = img.pixels[pi * 4 + 2];
-                                    uint8_t a = img.pixels[pi * 4 + 3];
-                                    decoded.argbPixels[pi] = (static_cast<uint32_t>(a) << 24) |
-                                                             (static_cast<uint32_t>(r) << 16) |
-                                                             (static_cast<uint32_t>(g) << 8) |
-                                                             static_cast<uint32_t>(b);
-                                    if (a < 255) decoded.hasAlpha = true;
-                                }
-                                decodedNames.insert(lowerName);
-                                variantTextures.push_back(std::move(decoded));
-                            } else if (texInfo->data.size() >= 2 && texInfo->data[0] == 'B' && texInfo->data[1] == 'M') {
-                                // BMP decode inline
-                                const uint8_t* d = reinterpret_cast<const uint8_t*>(texInfo->data.data());
-                                if (texInfo->data.size() < 54) return;
-                                uint32_t dataOffset = d[10] | (d[11] << 8) | (d[12] << 16) | (d[13] << 24);
-                                int32_t width = d[18] | (d[19] << 8) | (d[20] << 16) | (d[21] << 24);
-                                int32_t height = d[22] | (d[23] << 8) | (d[24] << 16) | (d[25] << 24);
-                                uint16_t bpp = d[28] | (d[29] << 8);
-                                bool bottomUp = (height > 0);
-                                if (height < 0) height = -height;
-                                if (width <= 0 || height <= 0 || width > 4096 || height > 4096) return;
-                                if (bpp != 24 && bpp != 32) return;
-                                if (dataOffset >= texInfo->data.size()) return;
-                                uint32_t w = static_cast<uint32_t>(width);
-                                uint32_t h = static_cast<uint32_t>(height);
-                                uint32_t rowStride = ((w * (bpp / 8) + 3) & ~3);
-                                DecodedTexture decoded;
-                                decoded.name = texName;
-                                decoded.width = w;
-                                decoded.height = h;
-                                decoded.argbPixels.resize(w * h);
-                                decoded.hasAlpha = (bpp == 32);
-                                for (uint32_t y = 0; y < h; ++y) {
-                                    uint32_t srcRow = bottomUp ? (h - 1 - y) : y;
-                                    const uint8_t* row = d + dataOffset + srcRow * rowStride;
-                                    if (dataOffset + srcRow * rowStride + w * (bpp / 8) > texInfo->data.size()) return;
-                                    for (uint32_t x = 0; x < w; ++x) {
-                                        uint8_t bv = row[x * (bpp / 8) + 0];
-                                        uint8_t gv = row[x * (bpp / 8) + 1];
-                                        uint8_t rv = row[x * (bpp / 8) + 2];
-                                        uint8_t av = (bpp == 32) ? row[x * 4 + 3] : 255;
-                                        decoded.argbPixels[y * w + x] = (static_cast<uint32_t>(av) << 24) |
-                                                                         (static_cast<uint32_t>(rv) << 16) |
-                                                                         (static_cast<uint32_t>(gv) << 8) |
-                                                                         static_cast<uint32_t>(bv);
-                                        if (av < 255) decoded.hasAlpha = true;
-                                    }
-                                }
-                                decodedNames.insert(lowerName);
-                                variantTextures.push_back(std::move(decoded));
-                            }
+                            if (loadedNames.count(lowerName) > 0) return;
+                            constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
+                            loadedNames.insert(lowerName);
+                            ++variantTextureCount;
                         };
 
                         // Build variant prefixes
@@ -4578,7 +4407,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                                [](unsigned char c) { return std::tolower(c); });
                                 for (const auto& prefix : variantPrefixes) {
                                     if (ln.find(prefix) != std::string::npos) {
-                                        decodeAndAdd(texName, texInfo);
+                                        loadVariantTexture(texName, texInfo);
                                         break;
                                     }
                                 }
@@ -4604,25 +4433,27 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     }
                 }
 
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) decoded {} variant textures",
-                          spawnId, vis.name, variantTextures.size());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) loaded {} variant textures via cache",
+                          spawnId, vis.name, variantTextureCount);
 
-                // Step 8d: Equipment model extraction + texture decode
+                // Step 8d: Equipment model extraction + texture decode via constrained cache
+                // T07: Replaced inline DDS decoder with getOrLoad() calls.
                 struct EquipPrepData {
                     int modelId = 0;
                     uint32_t equipmentId = 0;
                     bool isPrimary = true;
                     std::shared_ptr<ZoneGeometry> geometry;
                     std::map<std::string, std::shared_ptr<TextureInfo>> rawTextures;
-                    std::vector<DecodedTexture> decodedTextures;
                 };
                 std::vector<EquipPrepData> equipmentData;
 
+                bool equipError = false;
                 if (equipLoader) {
                     uint32_t primaryId = vis.appearance.equipment[7];
                     uint32_t secondaryId = vis.appearance.equipment[8];
 
                     auto prepOneEquip = [&](uint32_t equipmentId, bool isPrimary) {
+                        if (equipError) return;
                         if (equipmentId == 0) return;
                         int modelId = equipLoader->getModelIdForItem(equipmentId);
                         if (modelId < 0) modelId = static_cast<int>(equipmentId);
@@ -4630,11 +4461,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         if (!modelRef) {
                             LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model ref: entity {} ({}) equipment {} ({}) modelId={} (not found in item_models.json)",
                                       spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            equipError = true;
                             return;
                         }
                         auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
                         if (!equipData2) {
                             LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model: entity {} ({}) equipment {} ({}) modelId={}", spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                            equipError = true;
                             return;
                         }
 
@@ -4645,6 +4478,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         prepData.geometry = equipData2->geometry;
                         prepData.rawTextures = equipData2->textures;
 
+                        // Load equipment textures into constrained cache
                         for (const auto& texName : equipData2->textureNames) {
                             std::string ln = texName;
                             std::transform(ln.begin(), ln.end(), ln.begin(),
@@ -4654,31 +4488,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                             const auto& texInfo = texIt->second;
                             if (texInfo->data.empty()) continue;
 
-                            if (DDSDecoder::isDDS(texInfo->data)) {
-                                DecodedTexture decoded;
-                                decoded.name = texName;
-                                DecodedImage img = DDSDecoder::decode(texInfo->data);
-                                if (img.isValid()) {
-                                    decoded.width = img.width;
-                                    decoded.height = img.height;
-                                    decoded.argbPixels.resize(img.width * img.height);
-                                    for (uint32_t pi = 0; pi < img.width * img.height; ++pi) {
-                                        uint8_t r = img.pixels[pi * 4 + 0];
-                                        uint8_t g = img.pixels[pi * 4 + 1];
-                                        uint8_t b = img.pixels[pi * 4 + 2];
-                                        uint8_t a = img.pixels[pi * 4 + 3];
-                                        decoded.argbPixels[pi] = (static_cast<uint32_t>(a) << 24) |
-                                                                 (static_cast<uint32_t>(r) << 16) |
-                                                                 (static_cast<uint32_t>(g) << 8) |
-                                                                 static_cast<uint32_t>(b);
-                                        if (a < 255) decoded.hasAlpha = true;
-                                    }
-                                    prepData.decodedTextures.push_back(std::move(decoded));
-                                } else {
-                                    LOG_FATAL(MOD_GRAPHICS, "Failed to decode equipment texture: '{}' for entity {} ({}) equipment {} (DDS decode failed, size={})",
-                                              texName, spawnId, vis.name, prepData.equipmentId, texInfo->data.size());
-                                }
-                            }
+                            constrainedTextureCache_->getOrLoad(ln, texInfo->data);
                         }
                         equipmentData.push_back(std::move(prepData));
                     };
@@ -4687,6 +4497,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     prepOneEquip(secondaryId, false);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment: primary={} secondary={} extracted={}",
                               spawnId, vis.name, vis.appearance.equipment[7], vis.appearance.equipment[8], equipmentData.size());
+                }
+
+                if (equipError) {
+                    pendingZoneComputations_.reset();
+                    loadFailed_ = true;
+                    return;
                 }
 
                 // Step 8e: Distribute prep results to EntityVisual
@@ -4698,15 +4514,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     if (visIt == mutableEntities.end()) {
                         LOG_WARN(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) vanished before distribution — prep work discarded "
                                  "(variantTex={}, equipData={})",
-                                 spawnId, vis.name, variantTextures.size(), equipmentData.size());
+                                 spawnId, vis.name, variantTextureCount, equipmentData.size());
                     } else {
                         auto& mvis = visIt->second;
-                        mvis.variantTextures = std::move(variantTextures);
+                        // T06: variantTextures no longer stored on EntityVisual — textures are in constrained cache.
 
                         for (auto& eq : equipmentData) {
-                            for (auto& tex : eq.decodedTextures) {
-                                mvis.equipmentTextures.push_back(std::move(tex));
-                            }
                             EntityVisual::EquipmentStaging staging;
                             staging.modelId = eq.modelId;
                             staging.equipmentId = eq.equipmentId;
@@ -4716,56 +4529,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                             mvis.equipmentStaging.push_back(std::move(staging));
                         }
 
-                        // Submit decoded textures to constrained cache
-                        if (constrainedTextureCache_) {
-                            auto modelData = modelLoader->getRaceModelData(mvis.raceId, mvis.gender);
-                            if (modelData) {
-                                for (const auto& decoded : modelData->decodedTextures) {
-                                    if (!decoded.argbPixels.empty()) {
-                                        std::string ln = decoded.name;
-                                        std::transform(ln.begin(), ln.end(), ln.begin(),
-                                                       [](unsigned char c) { return std::tolower(c); });
-                                        constrainedTextureCache_->queueDecodedARGB(
-                                            ln, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                                    }
-                                }
-                            }
-                            for (const auto& decoded : mvis.variantTextures) {
-                                if (!decoded.argbPixels.empty()) {
-                                    std::string ln = decoded.name;
-                                    std::transform(ln.begin(), ln.end(), ln.begin(),
-                                                   [](unsigned char c) { return std::tolower(c); });
-                                    constrainedTextureCache_->queueDecodedARGB(
-                                        ln, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                                }
-                            }
-                            for (const auto& decoded : mvis.equipmentTextures) {
-                                if (!decoded.argbPixels.empty()) {
-                                    std::string ln = decoded.name;
-                                    std::transform(ln.begin(), ln.end(), ln.begin(),
-                                                   [](unsigned char c) { return std::tolower(c); });
-                                    constrainedTextureCache_->queueDecodedARGB(
-                                        ln, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                                }
-                            }
-                            mvis.texturesSubmittedToGpu = true;
-                        }
+                        // Textures already in constrained cache from T05 (base) + T06 (variant) + T07 (equipment).
                         mvis.entityPrepComplete = true;
-                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) distributed: variantTex={} equipTex={} equipStaging={} "
-                                  "baseTex={} submittedToGpu={}",
-                                  spawnId, vis.name, mvis.variantTextures.size(), mvis.equipmentTextures.size(),
-                                  mvis.equipmentStaging.size(),
-                                  modelLoader->getRaceModelData(mvis.raceId, mvis.gender)
-                                      ? modelLoader->getRaceModelData(mvis.raceId, mvis.gender)->decodedTextures.size() : 0,
-                                  mvis.texturesSubmittedToGpu);
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) distributed: equipStaging={}",
+                                  spawnId, vis.name, mvis.equipmentStaging.size());
                     }
                 }
 
-                // Flush constrained texture cache uploads (we have GL context)
-                if (constrainedTextureCache_) {
-                    constrainedTextureCache_->processUploadQueue();
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) flushed texture cache uploads", spawnId, vis.name);
-                }
+                // T04: processUploadQueue removed. Textures uploaded via uploadTexture() in T09.
 
                 // Promote prepared models so buildEntityMesh finds them
                 modelLoader->promotePreparedModels();
@@ -4787,21 +4558,38 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             } else {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: no boats in zone — boat collision checks disabled (zero per-frame cost)");
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entity prep skipped (entityRenderer_={}, raceModelLoader={}, skipEntityBuild={})",
+                      (bool)entityRenderer_,
+                      entityRenderer_ ? (bool)entityRenderer_->getRaceModelLoader() : false,
+                      config_.constrainedConfig.skipEntityBuild);
         }
+        // T09: Upload all decoded textures from Steps 8a-8d to GPU.
+        // getOrLoad() decoded them; uploadAllPending() promotes DecodedEntry → CachedTexture.
+        if (constrainedTextureCache_) {
+            int uploaded = constrainedTextureCache_->uploadAllPending();
+            LOG_INFO(MOD_GRAPHICS, "SEQ Step8: uploadAllPending uploaded {} entity textures", uploaded);
+        }
+
         entityPrepReady_ = true;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityPrepReady_=true");
         logAssetBuildTime("seq_entities", 0, stepStart);
+        LOG_INFO(MOD_GRAPHICS, "SEQ Step8: about to exit scope");
     }
+    LOG_INFO(MOD_GRAPHICS, "SEQ Step8: scope exited, flushing log...");
+    FlushThreadLog();
+    LOG_INFO(MOD_GRAPHICS, "SEQ: Step 8 complete, entering Step 9...");
     FlushThreadLog();
 
     // ── Step 9: Collision ──────────────────────────────────────────────────
     updateProgress(88, "Setting up collision...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
                   (bool)smgr_, regionWorldTriangles_.size(), objectNodes_.size(), (bool)zoneBspTree_);
         setupMinimalZoneCollision();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
+                  regionWorldTriangles_.size());
 
         // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
         size_t objectsAdded = 0;
@@ -4833,7 +4621,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 10: Sky — all sky, fog, weather ───────────────────────────────
     updateProgress(90, "Loading sky and weather...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -4843,6 +4630,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                   "storedZoneEnv.pending={}, skyRenderer_={}, weatherSystem_={}",
                   (bool)computations, skyRendering, (int)skyDomeMode,
                   storedZoneEnvironment_.pending, (bool)skyRenderer_, (bool)weatherSystem_);
+
+        // Names of sky textures loaded into constrained cache (used by upload step after skyLoader is moved)
+        std::vector<std::string> loadedSkyTextureNames;
 
         // Load sky data inline (was background thread)
         if (computations) {
@@ -4857,6 +4647,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 } else {
                     LOG_FATAL(MOD_GRAPHICS, "Failed to load sky S3D archive: {}sky.s3d (sky rendering enabled in preset)", eqPath);
                     pendingZoneComputations_.reset();
+                    loadFailed_ = true;
                     return;
                 }
                 std::string skyIniPath = eqPath + "sky.ini";
@@ -4864,6 +4655,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (!skyIniLoaded) {
                     LOG_FATAL(MOD_GRAPHICS, "Failed to load sky config: {} (sky rendering enabled in preset)", skyIniPath);
                     pendingZoneComputations_.reset();
+                    loadFailed_ = true;
                     return;
                 }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky.ini '{}': loaded={}", skyIniPath, skyIniLoaded);
@@ -4877,35 +4669,25 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         auto neededTextures = skyData->skyLoader->getTextureNamesForSkyType(skyTypeId);
                         neededSet.insert(neededTextures.begin(), neededTextures.end());
                     }
+                    // T08: Load sky textures via constrained cache (replaces inline decodeBMPtoARGB + upscale)
                     const auto& textures = skyData->skyLoader->getSkyData()->textures;
+                    size_t skyTexLoaded = 0;
+                    size_t skyTexSkipped = 0;
                     for (const auto& [texName, texInfo] : textures) {
-                        if (!texInfo || texInfo->data.size() < 2) continue;
-                        if (texInfo->data[0] != 'B' || texInfo->data[1] != 'M') continue;
-                        if (!neededSet.empty() && neededSet.find(texName) == neededSet.end()) continue;
-
-                        PendingZoneComputations::SkyLoadData::PreDecodedTexture preTex;
-                        preTex.name = texName;
-                        uint32_t decW = 0, decH = 0;
-                        std::vector<uint8_t> decoded;
-                        if (!decodeBMPtoARGB(texInfo->data, decoded, decW, decH)) {
-                            LOG_FATAL(MOD_GRAPHICS, "Failed to decode sky texture: '{}' (BMP decode failed, size={})",
-                                      texName, texInfo->data.size());
+                        if (!texInfo || texInfo->data.empty()) continue;
+                        if (!neededSet.empty() && neededSet.find(texName) == neededSet.end()) {
+                            ++skyTexSkipped;
                             continue;
                         }
-                        if (decW <= 128 && decH <= 128 && decW > 0 && decH > 0) {
-                            const uint32_t targetSize = 512;
-                            bilinearUpscaleARGB(decoded.data(), decW, decH,
-                                                preTex.pixels, targetSize, targetSize);
-                            preTex.width = targetSize;
-                            preTex.height = targetSize;
-                        } else {
-                            preTex.pixels = std::move(decoded);
-                            preTex.width = decW;
-                            preTex.height = decH;
-                        }
-                        skyData->preDecodedTextures.push_back(std::move(preTex));
+                        std::string lowerName = texName;
+                        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                       [](unsigned char c) { return std::tolower(c); });
+                        constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
+                        loadedSkyTextureNames.push_back(texName);  // Save for upload step after skyLoader is moved
+                        ++skyTexLoaded;
                     }
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: pre-decoded {} sky textures", skyData->preDecodedTextures.size());
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: loaded {} sky textures via cache ({} skipped, {} total in archive)",
+                              skyTexLoaded, skyTexSkipped, textures.size());
                 }
 
                 // Pre-compute dome mesh
@@ -4972,6 +4754,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 }
 
                 computations->skyLoadData = std::move(skyData);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky loading skipped (skyRendering=false)");
             }
 
             // Load weather config inline
@@ -5000,6 +4784,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 std::move(computations->skyLoadData->skyLoader),
                 std::move(computations->skyLoadData->skyConfig));
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applied preloaded sky data");
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: preloaded sky data not applied (skyRenderer_={}, hasBgData={})",
+                      (bool)skyRenderer_, hasBgData);
         }
 
         if (storedZoneEnvironment_.pending) {
@@ -5041,48 +4828,27 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem fallback to zone name '{}'", currentZoneName_);
                 }
             }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: stored zone environment not pending — sky type, dungeon detection, fog, and weather skipped");
         }
 
-        // Upload sky textures (all at once)
+        // T08: Upload sky textures via constrained cache uploadTexture()
+        // Sky textures were decoded by getOrLoad() above; now promote to GPU.
+        // Uses loadedSkyTextureNames (collected before skyLoader was moved).
         if (!config_.constrainedConfig.skipSkyTextureUpload && skyRenderer_ &&
-            computations && computations->skyLoadData) {
-            auto& preTextures = computations->skyLoadData->preDecodedTextures;
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: uploading {} sky textures", preTextures.size());
-#ifdef EQT_HAS_GLES2
-            for (size_t i = 0; i < preTextures.size(); ++i) {
-                auto& preTex = preTextures[i];
-                if (preTex.pixels.empty()) continue;
-                if (skyRenderer_->beginStripUpload(preTex.name, preTex.pixels.data(),
-                                                    preTex.width, preTex.height)) {
-                    preTex.pixels.clear();
-                    preTex.pixels.shrink_to_fit();
-                    continue;
-                }
-                while (skyRenderer_->isStripActive()) {
-                    if (skyRenderer_->continueStripUpload()) {
-                        skyRenderer_->finalizeStripUpload();
-                        break;
-                    }
-                }
-                preTex.pixels.clear();
-                preTex.pixels.shrink_to_fit();
-            }
-#else
-            for (auto& preTex : preTextures) {
-                if (!preTex.pixels.empty()) {
-                    skyRenderer_->uploadPreDecodedTexture(preTex.name, preTex.pixels.data(),
-                                                          preTex.width, preTex.height);
-                    preTex.pixels.clear();
-                    preTex.pixels.shrink_to_fit();
+            constrainedTextureCache_ && !loadedSkyTextureNames.empty()) {
+            size_t skyUploaded = 0;
+            for (const auto& texName : loadedSkyTextureNames) {
+                std::string lowerName = texName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerName);
+                if (tex && skyRenderer_) {
+                    skyRenderer_->registerUploadedTexture(texName, tex);
+                    ++skyUploaded;
                 }
             }
-#endif
-        }
-
-        // Finalize sky (P10_Sky_Finalize)
-        if (computations && computations->skyLoadData) {
-            computations->skyLoadData->preDecodedTextures.clear();
-            computations->skyLoadData->preDecodedTextures.shrink_to_fit();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: uploaded {} sky textures via constrained cache", skyUploaded);
         }
         if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
             skyRenderer_->clearSkyForRebuild();
@@ -5130,7 +4896,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 11: Env — environment subsystems ──────────────────────────────
     updateProgress(93, "Initializing environment...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_={}, detailManager_={}, particleManager_={}, "
@@ -5242,6 +5007,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             detailManager_->onZoneEnter(currentZoneName_, groundRaycast,
                                         zoneMeshNode_, wldLoader, zoneGeom);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter called for zone '{}'", currentZoneName_);
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter skipped (detailManager_={}, zoneBspTree_={}, regionWorldTriangles_={})",
+                      (bool)detailManager_, (bool)zoneBspTree_, regionWorldTriangles_.size());
         }
         if (detailManager_ && !regionMeshNodes_.empty()) {
             size_t nodesAdded = 0;
@@ -5509,7 +5277,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     // ── Step 12: Lights — zone lighting ────────────────────────────────────
     updateProgress(96, "Setting up lighting...");
-    if (checkQuit()) return;
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: currentZone_={}, lights count={}",
@@ -9353,13 +9120,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     }
 #endif
 
-    if (constrainedTextureCache_) {
-        if (progressiveLoadingActive_) {
-            constrainedTextureCache_->processUploadQueue();  // batch during loading
-        } else {
-            constrainedTextureCache_->drainDecodedQueue();   // drain only (no GL)
-        }
-    }
+    // T04: processUploadQueue/drainDecodedQueue removed. Textures uploaded via uploadTexture().
     frameTimings_.drainQueues = measureSection();
 
     // SimulationWorker: apply results from previous frame, then post new input
@@ -9395,8 +9156,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             if (!didWork) didWork = processOneGPUResult();
 #endif
 
-            // Priority 2: Progress texture decode pipeline (decoded → GPU submit)
-            if (!didWork && constrainedTextureCache_) didWork = constrainedTextureCache_->processOneUpload();
+            // T04: processOneUpload removed. Textures uploaded via uploadTexture().
 
             // Priority 3: Finalize background mesh build (add to scene graph)
             if (!didWork) didWork = finalizeOneMeshResult();

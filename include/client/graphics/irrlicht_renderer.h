@@ -666,6 +666,7 @@ public:
     // Called from the loading thread (L05/L06).
     // Updates status.percent/text between steps, checks status.quitRequested.
     void loadZoneSequential(const std::string& eqClientPath, struct LoadingStatus& status);
+    bool hasLoadFailed() const { return loadFailed_; }
     static const char* stepToString(ZoneLoadStep step);
 
     // Door interaction callback (called when player clicks door or presses U key)
@@ -1381,6 +1382,7 @@ private:
     // Zone loading computations (used by loadZoneSequential)
     std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;
     bool sequentialLoadComplete_ = false;  // True after loadZoneSequential() finishes
+    bool loadFailed_ = false;              // True if loadZoneSequential() hit a FATAL error
 
     // Stored zone environment from NewZone packet (applied after global assets load)
     struct StoredZoneEnvironment {

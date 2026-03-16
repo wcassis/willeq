@@ -24,6 +24,7 @@ int main(int argc, char* argv[]) {
         GetLevelName(static_cast<LogLevel>(GetLogLevel())));
 
     // Load config file
+    LOG_INFO(MOD_MAIN, "Loading config file: {}", config.configFile);
     if (!eqt::Application::loadConfigFile(config.configFile, config)) {
         LOG_FATAL(MOD_MAIN, "Failed to load config file: {}", config.configFile);
         return 1;

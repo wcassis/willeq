@@ -240,117 +240,27 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         return nullptr;
     }
 
-    // If constrained texture cache is set, route through it
-    // This handles downsampling, 16-bit conversion, and memory budget enforcement
+    // Route through constrained texture cache: decode + upload
     if (constrainedCache_) {
+        // getOrLoad decodes to RGBA (no GL). Returns ITexture* if already uploaded.
         irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data);
+        if (!texture) {
+            // Not yet uploaded — upload now (requires GL context on this thread)
+            texture = constrainedCache_->uploadTexture(name);
+        }
         if (texture) {
-            // Also cache locally for quick lookups (cache owns the texture)
             textureCache_[name] = texture;
-            // Track alpha so materials get transparency type instead of EMT_SOLID
             if (constrainedCache_->hasAlpha(name)) {
                 texturesWithAlpha_.insert(name);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' loaded via constrained cache ({} bytes)", name, data.size());
             return texture;
         }
-        LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), skipping (no fallback)", name, data.size());
-        return nullptr;  // Debug: do NOT fall through to unconstrained path
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache failed for '{}' ({} bytes), decode or upload error", name, data.size());
+        return nullptr;
     }
 
-    // DISABLED: unconstrained Path B — all textures must go through constrained cache
-    LOG_INFO(MOD_GRAPHICS, "loadTextureFromBMP: BLOCKED unconstrained texture load '{}' ({} bytes)", name, data.size());
-
-    // // Check cache first (unconstrained mode)
-    // auto it = textureCache_.find(name);
-    // if (it != textureCache_.end()) {
-    //     return it->second;
-    // }
-    //
-    // // Check if file is DDS format (EQ .bmp files are often DDS compressed)
-    // if (DDSDecoder::isDDS(data)) {
-    //     // Decode DDS to RGBA pixels
-    //     DecodedImage decoded = DDSDecoder::decode(data);
-    //     if (!decoded.isValid()) {
-    //         // Failed to decode - cache as nullptr
-    //         textureCache_[name] = nullptr;
-    //         return nullptr;
-    //     }
-    //
-    //     uint32_t width = decoded.width;
-    //     uint32_t height = decoded.height;
-    //
-    //     // Check if texture has any transparency (alpha < 255)
-    //     bool hasTransparency = false;
-    //     for (size_t i = 3; i < decoded.pixels.size(); i += 4) {
-    //         if (decoded.pixels[i] < 255) {
-    //             hasTransparency = true;
-    //             break;
-    //         }
-    //     }
-    //
-    //     // Convert RGBA to ARGB format (Irrlicht's native format)
-    //     std::vector<uint32_t> argbPixels(width * height);
-    //     for (uint32_t y = 0; y < height; ++y) {
-    //         for (uint32_t x = 0; x < width; ++x) {
-    //             size_t srcIdx = (y * width + x) * 4;
-    //             uint8_t r = decoded.pixels[srcIdx + 0];
-    //             uint8_t g = decoded.pixels[srcIdx + 1];
-    //             uint8_t b = decoded.pixels[srcIdx + 2];
-    //             uint8_t a = decoded.pixels[srcIdx + 3];
-    //
-    //             // ARGB format: A in high byte
-    //             argbPixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
-    //         }
-    //     }
-    //
-    //     // Create Irrlicht image directly from ARGB data to preserve alpha
-    //     irr::video::IImage* image = driver_->createImageFromData(
-    //         irr::video::ECF_A8R8G8B8,
-    //         irr::core::dimension2d<irr::u32>(width, height),
-    //         argbPixels.data(),
-    //         false,  // Don't own the data (we have our own copy)
-    //         false   // Don't delete on drop
-    //     );
-    //
-    //     if (!image) {
-    //         textureCache_[name] = nullptr;
-    //         return nullptr;
-    //     }
-    //
-    //     // Create texture from image
-    //     std::string texName = "dds_" + name;
-    //     irr::video::ITexture* texture = driver_->addTexture(texName.c_str(), image);
-    //     image->drop();
-    //
-    //     if (texture && hasTransparency) {
-    //         texturesWithAlpha_.insert(name);
-    //     }
-    //
-    //     textureCache_[name] = texture;
-    //     return texture;
-    // }
-    //
-    // // Check for valid BMP header
-    // if (data.size() >= 2 && data[0] == 'B' && data[1] == 'M') {
-    //     // Standard BMP file - write to temp and load
-    //     std::string tempPath = "/tmp/eqt_tex_" + name;
-    //
-    //     std::ofstream outFile(tempPath, std::ios::binary);
-    //     if (!outFile) {
-    //         textureCache_[name] = nullptr;
-    //         return nullptr;
-    //     }
-    //     outFile.write(data.data(), data.size());
-    //     outFile.close();
-    //
-    //     irr::video::ITexture* texture = driver_->getTexture(tempPath.c_str());
-    //     textureCache_[name] = texture;
-    //     return texture;
-    // }
-    //
-    // // Unknown format
-    // textureCache_[name] = nullptr;
+    // T14: No constrained cache — cannot load texture.
+    LOG_FATAL(MOD_GRAPHICS, "loadTextureFromBMP: no constrained cache for '{}' ({} bytes)", name, data.size());
     return nullptr;
 }
 

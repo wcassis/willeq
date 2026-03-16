@@ -248,3 +248,45 @@ Full plan: `refactor/U_ui_overhaul.md`. Design analysis: `docs/future/ui_fixes.m
 | U07c1 | Disable old UI render + input (new UI takes over) | done | |
 | U07c2 | Delete WindowManager + all window subclass files | done | |
 | U07c3 | Delete WindowBase, UISettings, old UI infrastructure | done | |
+
+---
+
+## Batch T — Texture Loading Consolidation
+
+Consolidate all texture decoding into `ConstrainedTextureCache::getOrLoad`. Remove all
+duplicate decoders. Separate decode (any thread) from GPU upload (renderer thread).
+
+### Phase T1 — Cache Refactor
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| T01 | Split `getOrLoad` into decode-only (no GL) + new `uploadTexture` (GL). Add `DecodedEntry` struct for decoded-but-not-uploaded textures. Add `uploadAllPending()` for sequential loader. | done | |
+| T02 | Add 8bpp paletted BMP support to `decodeBMP` (colors-used field, palette lookup) | done | |
+| T03 | Make `getOrLoad` synchronous (remove background pool submission, remove deferred nullptr-retry) | done | (completed in T01) |
+| T04 | Remove `queueDecodedARGB` and `processUploadQueue` | done | |
+
+### Phase T2 — Remove Duplicate Decoders
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| T05 | `RaceModelLoader::preloadModelData` — remove inline DDS/BMP decoder (lines 698-820), replace with `getOrLoad` calls. Add `ConstrainedTextureCache*` member to `RaceModelLoader`. Remove `RaceModelData::decodedTextures`. | done | |
+| T06 | Step 8c `decodeAndAdd` lambda — remove inline DDS/BMP decoder (140+ lines), replace with `getOrLoad` calls for each variant texture. Remove `variantTextures` vector. | done | |
+| T07 | Step 8d `prepOneEquip` lambda — remove inline DDS decoder, replace with `getOrLoad` calls for equipment textures. Remove `DecodedTexture` vectors from `EquipPrepData` and `EntityVisual::equipmentTextures`. | done | |
+| T08 | Sky renderer `uploadPreDecodedTexture` — replace `decodeBMPtoARGB` + direct upload with `getOrLoad` + `uploadTexture`. | done | |
+
+### Phase T3 — Entity Build Consolidation
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| T09 | Step 8e — remove all `queueDecodedARGB` calls. Replace with `uploadAllPending()` after steps 8a-8d populate the cache. | done | |
+| T10 | `EntityRenderer::pollAndDistributePrepResults` — remove `queueDecodedARGB` calls and texture moves. Textures already in cache from prep worker `getOrLoad` calls. GPU upload deferred to `processOneEntityBuildStep` (T11). | done | |
+| T11 | `EntityRenderer::processOneEntityBuildStep` — texture upload phases now skip directly (textures in cache from getOrLoad). `uploadAllPending()` at SceneNodeCreation. | done | |
+| T12 | Add `processAllEntityBuildSteps` — not needed. Sequential loader already loops via `buildEntityMesh` per entity in Step 8f. `uploadAllPending()` in T09 handles batch upload. | skipped | |
+
+### Phase T4 — Cleanup
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| T13 | Remove `EntityVisual::variantTextures`, `equipmentTextures`, `texturesSubmittedToGpu`, `nextTextureUpload`, `uploadedTextures`, `uploadedTextureAlpha`, `nextVariantUpload`, `nextEquipTextureUpload`. Remove inline DDS decoder in Placeholder phase. Keep `equipmentStaging`. `DecodedTexture` struct kept (still referenced by entity_prep_worker). | done | |
+| T14 | Remove `decodeBMPtoARGB` standalone function (sky). Remove `bilinearUpscaleARGB`. Remove dead commented-out unconstrained texture path from `loadTextureFromBMP`. | done | |
+| T15 | Verify: grep for `addTexture`, `queueDecodedARGB`, `loadTextureFromBMP`, `decodeBMP`. Confirmed single `decodeBMP` in constrained cache, single `addTexture` in `uploadTexture`. Removed dead `uploadPreDecodedTexture` from sky renderer. Other `addTexture` calls are procedural/runtime (effects, cursor) — not texture loading. | done | |

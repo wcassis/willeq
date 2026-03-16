@@ -105,6 +105,7 @@ bool Application::initialize(const ApplicationConfig& config) {
             LOG_INFO(MOD_MAIN, "No constrained preset specified, defaulting to 'orangepi'");
         }
     }
+    LOG_DEBUG(MOD_MAIN, "S01: Config validation passed");
 
     // S03: Global file validation — verify all required files exist before proceeding
 #ifdef EQT_HAS_GRAPHICS
@@ -127,6 +128,7 @@ bool Application::initialize(const ApplicationConfig& config) {
             LOG_FATAL(MOD_MAIN, "Required files missing:\n{}", missing);
             return false;
         }
+        LOG_DEBUG(MOD_MAIN, "S03: All required files validated");
     }
 #endif
 
@@ -140,6 +142,7 @@ bool Application::initialize(const ApplicationConfig& config) {
 #ifdef EQT_HAS_GRAPHICS
     signal(SIGHUP, HandleSigHup);
 #endif
+    LOG_DEBUG(MOD_MAIN, "Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGHUP=hotkey reload)");
 #endif
 
     // Create game state
@@ -147,6 +150,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_DEBUG(MOD_MAIN, "Game state created");
 
     // Create EverQuest client
+    LOG_DEBUG(MOD_MAIN, "Creating EverQuest client...");
     EQT::PerformanceMetrics::instance().startTimer("Client Creation", EQT::MetricCategory::Startup);
     try {
         m_eqClient = std::make_unique<EverQuest>(
@@ -189,7 +193,7 @@ bool Application::initialize(const ApplicationConfig& config) {
         LOG_DEBUG(MOD_MAIN, "EverQuest client created");
 
     } catch (const std::exception& e) {
-        LOG_ERROR(MOD_MAIN, "Failed to create EverQuest client: {}", e.what());
+        LOG_FATAL(MOD_MAIN, "Failed to create EverQuest client: {}", e.what());
         EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
         return false;
     }
@@ -199,6 +203,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     // Must happen after SetEQClientPath() and before any gameplay packets arrive.
     // Spell file was validated in S03, so failure here is FATAL.
     if (!config.eqClientPath.empty()) {
+        LOG_DEBUG(MOD_MAIN, "S04: Initializing spell system from '{}'...", config.eqClientPath);
         if (!m_eqClient->InitializeSpellSystem(config.eqClientPath)) {
             LOG_FATAL(MOD_SPELL, "Failed to load spell database from '{}'", config.eqClientPath);
             return false;
@@ -235,12 +240,12 @@ bool Application::initialize(const ApplicationConfig& config) {
         rendererType == mode::GraphicalRendererType::IrrlichtGPU ? "GPU" : "Software");
     m_gameMode = mode::createMode(config.operatingMode, rendererType);
     if (!m_gameMode) {
-        LOG_ERROR(MOD_MAIN, "Failed to create game mode");
+        LOG_FATAL(MOD_MAIN, "Failed to create game mode");
         return false;
     }
 
     if (!m_gameMode->initialize(*m_gameState, modeConfig)) {
-        LOG_ERROR(MOD_MAIN, "Failed to initialize game mode");
+        LOG_FATAL(MOD_MAIN, "Failed to initialize game mode");
         return false;
     }
     LOG_DEBUG(MOD_MAIN, "Game mode initialized: {}",
@@ -250,6 +255,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     // Create input action bridge
     m_inputBridge = std::make_unique<action::InputActionBridge>(*m_gameState, *m_dispatcher);
     m_inputBridge->setCommandProcessor(m_commandProcessor.get());
+    LOG_DEBUG(MOD_MAIN, "Input action bridge created");
 
     // Connect input handler if available
     auto* inputHandler = m_gameMode->getInputHandler();
@@ -267,6 +273,7 @@ bool Application::initialize(const ApplicationConfig& config) {
 
     // Connect renderer callbacks to action dispatcher
     connectRendererCallbacks();
+    LOG_DEBUG(MOD_MAIN, "Renderer callbacks connected");
 
 #ifdef EQT_HAS_GRAPHICS
     // Initialize graphics if graphical mode
@@ -281,14 +288,23 @@ bool Application::initialize(const ApplicationConfig& config) {
             if (!config.constrainedPreset.empty()) {
                 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
                     customMemorySpec = true;
+                    LOG_DEBUG(MOD_GRAPHICS, "Parsed memory spec '{}': total={}MB, tex={}MB, fb={}MB",
+                              config.constrainedPreset,
+                              builtConfig.totalMemoryBudgetBytes / (1024*1024),
+                              builtConfig.textureMemoryBytes / (1024*1024),
+                              builtConfig.framebufferMemoryBytes / (1024*1024));
                     builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 } else {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
+                    LOG_DEBUG(MOD_GRAPHICS, "Using named preset '{}' -> {}",
+                              config.constrainedPreset,
+                              EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
                     builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
                     builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 }
             } else {
                 // Default to OrangePi preset
+                LOG_DEBUG(MOD_GRAPHICS, "No preset specified, defaulting to OrangePi");
                 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
                     EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
                 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
@@ -297,22 +313,29 @@ bool Application::initialize(const ApplicationConfig& config) {
             // CLI override: --renderer always wins over preset
             if (config.rendererBackend >= 0) {
                 builtConfig.renderingBackend = static_cast<EQT::Graphics::RenderingBackend>(config.rendererBackend);
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: renderer backend -> {}",
+                          EQT::Graphics::backendName(builtConfig.renderingBackend));
             }
             // CLI override: --drm sets DRM mode
             if (config.useDRM) {
                 builtConfig.useDRM = true;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: DRM mode enabled");
             }
             // CLI override: --atlas-path
             if (!config.atlasPath.empty()) {
                 builtConfig.atlasPath = config.atlasPath;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: atlas path -> '{}'", config.atlasPath);
             }
             // CLI override: --threads
             if (config.backgroundThreadCount > 0) {
                 builtConfig.backgroundThreadCount = config.backgroundThreadCount;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: background threads -> {}", config.backgroundThreadCount);
             }
             // CLI override: --zone-load
             if (config.zoneLoadMode >= 0) {
                 builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: deferred asset loading -> {}",
+                          builtConfig.deferredAssetLoading ? "automatic" : "manual");
             }
 
             // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
@@ -343,6 +366,7 @@ bool Application::initialize(const ApplicationConfig& config) {
                     return false;
                 }
             }
+            LOG_DEBUG(MOD_GRAPHICS, "S02: Preset and resolution validation passed");
 
             m_eqClient->SetConstrainedConfig(builtConfig);
 
@@ -360,11 +384,14 @@ bool Application::initialize(const ApplicationConfig& config) {
         EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 
         // D20b5: Application creates renderer + bridge, passes to EverQuest
+        LOG_DEBUG(MOD_GRAPHICS, "Creating IrrlichtRenderer and IrrlichtBridge...");
         m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
         m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
         m_irrlichtBridge->setRenderer(m_renderer.get());
         m_renderer->setBridge(m_irrlichtBridge.get());
         m_bridge = m_irrlichtBridge.get();
+        LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created, calling InitGraphics({}x{})...",
+                  config.displayWidth, config.displayHeight);
 
         if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight,
                                       m_renderer.get(), m_bridge)) {
@@ -376,6 +403,10 @@ bool Application::initialize(const ApplicationConfig& config) {
             if (eqRenderer) {
                 eqRenderer->setLoadingTitle(L"EverQuest");
                 eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
+
+                // Cache font for render thread loading screen (0-50%)
+                if (eqRenderer->getGUIEnvironment())
+                    m_loadingScreenFont = eqRenderer->getGUIEnvironment()->getBuiltInFont();
 
                 if (config.frameTimingEnabled) {
                     eqRenderer->setFrameTimingEnabled(true);
@@ -393,10 +424,13 @@ bool Application::initialize(const ApplicationConfig& config) {
                     LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
                 }
 
-                // D20e2: Wire loading status + start loading thread
+                // Wire loading status and set initial progress text.
+                // Loading thread is NOT started here — it starts when
+                // OnGameStateComplete fires and the game thread creates
+                // the snapshot with full zone data.
+                m_loadingStatus.setTitle(L"EverQuest");
+                m_loadingStatus.setProgress(0, "Connecting to login server...");
                 m_eqClient->SetLoadingStatus(&m_loadingStatus);
-                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
-                startLoadingThread();
 
 #ifdef WITH_RDP
                 // Initialize and start RDP server if enabled
@@ -436,6 +470,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     // Start login connection AFTER graphics init to avoid timeout on slow devices.
     // DRM/EGL initialization can take 4-5 seconds on first run (Orange Pi), and the
     // login server will disconnect if no network pumping occurs during that window.
+    LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
     m_eqClient->ConnectToLogin();
 
     m_running.store(true);
@@ -563,16 +598,23 @@ void Application::gameThreadLoop() {
             }
 
 #ifdef EQT_HAS_GRAPHICS
-            // D21b: Check if EverQuest requested a zone load (re-zone)
-            // Create snapshot on game thread (reads game state), signal render thread
+            // Zone load requested (initial zone-in or re-zone).
+            // Create snapshot, flag render thread to start loading thread.
             if (m_eqClient && m_eqClient->ConsumeZoneLoadRequest()) {
-                std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                LOG_INFO(MOD_MAIN, "Game thread: zone load requested, creating snapshot...");
+                {
+                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+                    m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                }
+                LOG_INFO(MOD_MAIN, "Game thread: snapshot created (zone='{}', entities={}, doors={})",
+                         m_zoneLoadSnapshot.zoneName, m_zoneLoadSnapshot.entities.size(),
+                         m_zoneLoadSnapshot.doors.size());
                 m_zoneLoadReady.store(true, std::memory_order_release);
             }
 
-            // D21b: Pick up graphics complete signal from render thread
+            // Pick up graphics complete signal from render thread
             if (m_graphicsCompleteReady.load(std::memory_order_acquire)) {
+                LOG_INFO(MOD_MAIN, "Game thread: graphicsCompleteReady=true, finalizing zone load...");
                 if (m_eqClient) {
                     {
                         std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
@@ -581,6 +623,7 @@ void Application::gameThreadLoop() {
                     m_eqClient->OnGraphicsComplete();
                 }
                 m_graphicsCompleteReady.store(false, std::memory_order_release);
+                LOG_INFO(MOD_MAIN, "Game thread: OnGraphicsComplete done");
             }
 #endif
 
@@ -693,38 +736,38 @@ void Application::render(float deltaTime) {
         float gfxDeltaTime = std::chrono::duration<float>(now - m_lastGraphicsUpdate).count();
 
         if (gfxDeltaTime >= 1.0f / 60.0f) {
-            // D20e2: Application owns loading thread
-            // 1. Check if loading thread completed
+            // Loading thread active — it owns the GL context, just check if done
             if (isLoadingThreadActive()) {
                 checkLoadingComplete();
                 m_lastGraphicsUpdate = now;
-                return;  // Loading thread owns GL context
+                return;
             }
 
-            // D21b: Pick up zone load snapshot from game thread
+            // Game thread flagged zone load ready — start loading thread
             if (m_zoneLoadReady.load(std::memory_order_acquire)) {
-                // Snapshot already created by game thread under lock
                 startLoadingThread();
                 m_zoneLoadReady.store(false, std::memory_order_release);
+                m_lastGraphicsUpdate = now;
+                return;  // Loading thread now owns GL context
             }
 
-            // D21a: Pre-render — drain bridge events, apply to renderer
+            // Network handshake phase (0-50%): render loading screen on main thread
+            if (!m_loadingStatus.loadingComplete.load(std::memory_order_relaxed) &&
+                m_loadingStatus.percent.load(std::memory_order_relaxed) < 50) {
+                float progress = m_loadingStatus.percent.load(std::memory_order_relaxed) / 100.0f;
+                std::wstring title = m_loadingStatus.getTitle();
+                std::string textNarrow = m_loadingStatus.getText();
+                std::wstring text(textNarrow.begin(), textNarrow.end());
+                EQT::Graphics::LoadingThread::drawLoadingFrame(
+                    m_renderer->getDriver(), m_loadingScreenFont, progress, title, text);
+                m_lastGraphicsUpdate = now;
+                return;
+            }
+
+            // Normal gameplay: drain bridge events, render frame
             m_eqClient->PreRenderTick(gfxDeltaTime);
 
-            // Render frame
             bool result = m_renderer->processFrame(gfxDeltaTime);
-
-            // D21b: Progressive loading check — signal game thread to finalize
-            if (m_renderer->isLoadingScreenVisible() &&
-                !m_renderer->isProgressiveLoadingActive() &&
-                !m_graphicsCompleteReady.load(std::memory_order_acquire)) {
-                // Render thread detects loading complete, game thread finalizes
-                {
-                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                    m_pendingBspTree = m_renderer->getZoneBspTree();
-                }
-                m_graphicsCompleteReady.store(true, std::memory_order_release);
-            }
 
             if (!result) {
                 LOG_DEBUG(MOD_GRAPHICS, "Graphics window closed");
@@ -777,7 +820,9 @@ void Application::startLoadingThread() {
             loadZoneGraphicsOnThread(status);
         });
 
-    LOG_INFO(MOD_GRAPHICS, "startLoadingThread: loading thread started, GL context transferred");
+    LOG_INFO(MOD_GRAPHICS, "startLoadingThread: loading thread started (backend={})",
+             m_glHandles.backend == EQT::Graphics::GLContextHandles::Backend::GLX ? "GLX" :
+             m_glHandles.backend == EQT::Graphics::GLContextHandles::Backend::EGL ? "EGL" : "software");
 }
 
 void Application::joinLoadingThread() {
@@ -799,12 +844,23 @@ void Application::joinLoadingThread() {
 bool Application::checkLoadingComplete() {
     if (!m_loadingThread) return false;
     if (m_loadingStatus.loadingComplete.load(std::memory_order_acquire)) {
+        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: loading thread signaled done, joining...");
         joinLoadingThread();
+
+        // Check if loading failed — if so, quit instead of finalizing
+        if (m_loadingStatus.quitRequested.load(std::memory_order_acquire)) {
+            LOG_FATAL(MOD_GRAPHICS, "checkLoadingComplete: loading thread failed — shutting down");
+            m_running.store(false);
+            return true;
+        }
+
+        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: joined, extracting BSP tree...");
         // D21b: Signal game thread to finalize (BSP tree + OnGraphicsComplete)
         if (m_renderer) {
             std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
             m_pendingBspTree = m_renderer->getZoneBspTree();
         }
+        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: setting graphicsCompleteReady=true");
         m_graphicsCompleteReady.store(true, std::memory_order_release);
         return true;
     }
@@ -812,8 +868,18 @@ bool Application::checkLoadingComplete() {
 }
 
 void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status) {
-    if (!m_renderer || !m_eqClient) return;
+    if (!m_renderer || !m_eqClient) {
+        LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: renderer or eqClient is null");
+        return;
+    }
     const auto& snap = m_zoneLoadSnapshot;
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: starting (zone='{}', entities={}, doors={}, player='{}')",
+             snap.zoneName, snap.entities.size(), snap.doors.size(), snap.playerName);
+
+    if (snap.zoneName.empty()) {
+        LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: snapshot has empty zone name — aborting");
+        return;
+    }
 
     // Temporarily clear loading flag so renderer methods work on this thread.
     m_renderer->setLoading(false);
@@ -904,6 +970,14 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
 
     // 9. Sequential zone asset loading
     m_renderer->loadZoneSequential(snap.eqClientPath, status);
+
+    if (m_renderer->hasLoadFailed()) {
+        LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: sequential loader failed — requesting quit");
+        status.quitRequested.store(true, std::memory_order_release);
+        return;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: complete for zone '{}'", snap.zoneName);
 
     // Restore loading flag — will be cleared by joinLoadingThread on main thread
     m_renderer->setLoading(true);
@@ -1493,7 +1567,6 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
                 hotkeyMgr.loadFromFile("config/hotkeys.json");
-                hotkeyMgr.logConflicts();
             }
 #endif
         } else if (handle.isObject()) {
@@ -1516,7 +1589,6 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                     LOG_INFO(MOD_INPUT, "Applying hotkey overrides from main config");
                     hotkeyMgr.applyOverrides(handle["hotkeys"]);
                 }
-                hotkeyMgr.logConflicts();
             }
 
             // Parse rendering config

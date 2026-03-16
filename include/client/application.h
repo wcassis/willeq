@@ -298,6 +298,7 @@ private:
     EQT::Graphics::LoadingStatus m_loadingStatus;
     EQT::Graphics::GLContextHandles m_glHandles;
     eqt::ZoneLoadSnapshot m_zoneLoadSnapshot;
+    irr::gui::IGUIFont* m_loadingScreenFont = nullptr;  // Cached for render thread loading screen
 
     // ========== State ==========
 

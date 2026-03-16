@@ -102,11 +102,10 @@ public:
     static void precomputeDomeMesh(std::vector<irr::video::S3DVertex>& outVertices,
                                     std::vector<irr::u16>& outIndices);
 
-    // Upload a pre-decoded A8R8G8B8 pixel buffer as a GPU texture.
-    // Stores in textureCache_ for subsequent loadSkyTexture() cache hits.
-    irr::video::ITexture* uploadPreDecodedTexture(const std::string& name,
-                                                   const uint8_t* argbPixels,
-                                                   uint32_t width, uint32_t height);
+    // Register an externally-uploaded texture (from constrained cache) into sky texture cache.
+    void registerUploadedTexture(const std::string& name, irr::video::ITexture* texture) {
+        if (texture) textureCache_[name] = texture;
+    }
 
 #ifdef EQT_HAS_GLES2
     // Strip upload for sky textures (GLES2 only — splits large texture uploads across frames)

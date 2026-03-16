@@ -30,7 +30,6 @@ struct LoadingStatus {
     std::wstring title;
 
     // Main -> loading: signals
-    std::atomic<bool> graphicsLoadReady{false};  // "start active loading"
     std::atomic<bool> quitRequested{false};       // "abort"
 
     // Loading -> main: signals
@@ -60,7 +59,6 @@ struct LoadingStatus {
 
     void reset() {
         percent.store(0, std::memory_order_relaxed);
-        graphicsLoadReady.store(false, std::memory_order_relaxed);
         quitRequested.store(false, std::memory_order_relaxed);
         loadingComplete.store(false, std::memory_order_relaxed);
         std::lock_guard<std::mutex> lock(textMutex);
@@ -127,6 +125,15 @@ public:
 
     bool isRunning() const { return running_.load(std::memory_order_relaxed); }
 
+    // Render one frame of the loading screen.
+    // Public so the render thread can draw the loading screen during the
+    // network handshake phase (0-50%) before the loading thread starts.
+    static void drawLoadingFrame(irr::video::IVideoDriver* driver,
+                                 irr::gui::IGUIFont* font,
+                                 float progress,
+                                 const std::wstring& title,
+                                 const std::wstring& stageText);
+
 private:
     void threadFunc(irr::IrrlichtDevice* device,
                     irr::video::IVideoDriver* driver,
@@ -134,13 +141,6 @@ private:
                     GLContextHandles handles,
                     LoadingStatus& status,
                     ActivePhaseCallback activeCallback);
-
-    // Render one frame of the loading screen.
-    static void drawLoadingFrame(irr::video::IVideoDriver* driver,
-                                 irr::gui::IGUIFont* font,
-                                 float progress,
-                                 const std::wstring& title,
-                                 const std::wstring& stageText);
 
     std::thread thread_;
     std::atomic<bool> running_{false};

@@ -1245,9 +1245,11 @@ void EverQuest::OnGameStateComplete() {
 	if (m_graphics_initialized) {
 		SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
-		// D20e2: Signal Application's loading thread to enter active phase
-		SignalGraphicsLoadReady();
-		LOG_INFO(MOD_GRAPHICS, "OnGameStateComplete: signaled graphicsLoadReady to loading thread");
+		// Signal Application to create snapshot and start zone loading.
+		// Application's game thread loop picks this up, creates the snapshot
+		// (with full zone data), then starts the loading thread.
+		m_zone_load_requested = true;
+		LOG_INFO(MOD_GRAPHICS, "OnGameStateComplete: zone load requested");
 	} else {
 		// No graphics mode - we're done
 		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
@@ -17915,11 +17917,8 @@ bool EverQuest::InitGraphics(int width, int height,
 	return true;
 }
 
-void EverQuest::SignalGraphicsLoadReady() {
-	if (m_loading_status_ptr) {
-		m_loading_status_ptr->graphicsLoadReady.store(true, std::memory_order_release);
-	}
-}
+// SignalGraphicsLoadReady removed — loading thread starts directly from
+// Application::gameThreadLoop when ConsumeZoneLoadRequest fires.
 
 void EverQuest::ShutdownGraphics() {
 	// D20e2: Loading thread now owned by Application — it joins before calling this.

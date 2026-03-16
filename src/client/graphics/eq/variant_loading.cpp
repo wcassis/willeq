@@ -65,10 +65,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRaceWithAppearance(uint16_t raceId
 
     irr::scene::IMesh* mesh = nullptr;
     if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames().empty()) {
-        // DISABLED: unconstrained Path B — all textures must go through constrained cache
-        // mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);
-        LOG_INFO(MOD_GRAPHICS, "getMeshForRaceWithAppearance: BLOCKED unconstrained buildTexturedMesh for race={} head={} body={} ({} textures)",
-                 raceId, (int)headVariant, (int)bodyVariant, modelData->textures.size());
+        mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);
     }

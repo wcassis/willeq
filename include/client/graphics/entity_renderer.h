@@ -100,13 +100,6 @@ struct EntityVisual {
     // Deferred mesh building (progressive loading)
     bool meshBuilt = false;          // false = registered only, true = scene node built
     EntityBuildPhase buildPhase = EntityBuildPhase::Placeholder;
-    size_t nextTextureUpload = 0;              // Index into decodedTextures
-    std::vector<irr::video::ITexture*> uploadedTextures;  // GPU textures ready for mesh
-    std::vector<bool> uploadedTextureAlpha;    // Alpha flag per uploaded texture
-
-    // Variant texture staging (from background prep)
-    std::vector<DecodedTexture> variantTextures;
-    size_t nextVariantUpload = 0;
 
     // Equipment staging (from background prep)
     struct EquipmentStaging {
@@ -117,11 +110,8 @@ struct EntityVisual {
         std::map<std::string, std::shared_ptr<TextureInfo>> rawTextures;
     };
     std::vector<EquipmentStaging> equipmentStaging;
-    std::vector<DecodedTexture> equipmentTextures;  // Flattened for upload
-    size_t nextEquipTextureUpload = 0;
 
     bool entityPrepComplete = false;  // Background prep finished for this entity
-    bool texturesSubmittedToGpu = false;  // All decoded textures submitted to GPU upload thread
 
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played

@@ -811,14 +811,11 @@ bool EntityRenderer::pollAndDistributePrepResults() {
         if (it == entities_.end()) continue;
         auto& vis = it->second;
 
-        // Distribute variant textures
-        vis.variantTextures = std::move(result.variantTextures);
-
-        // Flatten equipment textures for per-frame upload and store staging data
+        // T10: Variant/equipment textures are already decoded in constrained cache
+        // via getOrLoad() (called by prep worker on background thread).
+        // GPU upload happens one-per-frame in processOneEntityBuildStep (T11).
+        // Just move staging data here.
         for (auto& eq : result.equipmentData) {
-            for (auto& tex : eq.decodedTextures) {
-                vis.equipmentTextures.push_back(std::move(tex));
-            }
             EntityVisual::EquipmentStaging staging;
             staging.modelId = eq.modelId;
             staging.equipmentId = eq.equipmentId;
@@ -828,54 +825,10 @@ bool EntityRenderer::pollAndDistributePrepResults() {
             vis.equipmentStaging.push_back(std::move(staging));
         }
 
-        // Submit ALL decoded textures to constrained cache upload queue.
-        // This moves texture upload work off the render thread entirely —
-        // the TextureUploading/VariantTextureUploading/EquipTextureUploading
-        // phases will trivially fall through when texturesSubmittedToGpu is set.
-        if (constrainedTextureCache_) {
-            // Get base race model decoded textures
-            auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
-            if (modelData) {
-                for (const auto& decoded : modelData->decodedTextures) {
-                    if (!decoded.argbPixels.empty()) {
-                        std::string lowerName = decoded.name;
-                        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-                        constrainedTextureCache_->queueDecodedARGB(
-                            lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                    }
-                }
-            }
-            // Variant textures
-            for (const auto& decoded : vis.variantTextures) {
-                if (!decoded.argbPixels.empty()) {
-                    std::string lowerName = decoded.name;
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-                    constrainedTextureCache_->queueDecodedARGB(
-                        lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                }
-            }
-            // Equipment textures
-            for (const auto& decoded : vis.equipmentTextures) {
-                if (!decoded.argbPixels.empty()) {
-                    std::string lowerName = decoded.name;
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-                    constrainedTextureCache_->queueDecodedARGB(
-                        lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-                }
-            }
-            vis.texturesSubmittedToGpu = true;
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) submitted all textures to constrained cache queue",
-                      result.spawnId, vis.name);
-        }
-
         vis.entityPrepComplete = true;
         distributed = true;
-        LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) prep complete: {} variant tex, {} equip pieces, {} equip tex",
-                  result.spawnId, vis.name, vis.variantTextures.size(),
-                  vis.equipmentStaging.size(), vis.equipmentTextures.size());
+        LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) prep complete: {} equip pieces",
+                  result.spawnId, vis.name, vis.equipmentStaging.size());
     }
     return distributed;
 }
@@ -888,6 +841,11 @@ void EntityRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) 
     constrainedTextureCache_ = cache;
     if (equipmentModelLoader_)
         equipmentModelLoader_->setConstrainedTextureCache(cache);
+    if (raceModelLoader_) {
+        raceModelLoader_->setConstrainedTextureCache(cache);
+        if (raceModelLoader_->getMeshBuilder())
+            raceModelLoader_->getMeshBuilder()->setConstrainedTextureCache(cache);
+    }
 }
 
 bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
@@ -1021,187 +979,35 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 return true;
             }
 
-            // If background thread didn't decode textures (model was already in
-            // loadedModels_ before prep ran), decode ONE texture per frame on
-            // the main thread. Stay in Placeholder phase until all are decoded,
-            // then transition to TextureUploading.
-            if (modelData->decodedTextures.empty() && modelData->combinedGeometry &&
-                !modelData->textures.empty()) {
-                size_t totalDecodable = 0;
-                for (const auto& texName : modelData->combinedGeometry->textureNames()) {
-                    std::string lowerName = texName;
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-                    auto texIt = modelData->textures.find(lowerName);
-                    if (texIt != modelData->textures.end() && texIt->second &&
-                        !texIt->second->data.empty() && DDSDecoder::isDDS(texIt->second->data)) {
-                        totalDecodable++;
-                    }
-                }
-
-                if (totalDecodable == 0) {
-                    // No DDS textures to decode — skip to texture uploading
-                    vis.buildPhase = EntityBuildPhase::TextureUploading;
-                    vis.nextTextureUpload = 0;
-                    vis.uploadedTextures.clear();
-                    vis.uploadedTextureAlpha.clear();
-                    continue;  // trivial transition — fall through
-                }
-
-                // Decode ONE texture this frame
-                size_t decodeIdx = 0;
-                for (const auto& texName : modelData->combinedGeometry->textureNames()) {
-                    std::string lowerName = texName;
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-                    auto texIt = modelData->textures.find(lowerName);
-                    if (texIt == modelData->textures.end() || !texIt->second ||
-                        texIt->second->data.empty() || !DDSDecoder::isDDS(texIt->second->data)) {
-                        continue;
-                    }
-
-                    if (decodeIdx < vis.nextTextureUpload) {
-                        decodeIdx++;
-                        continue;
-                    }
-
-                    const auto& rawData = texIt->second->data;
-                    DecodedTexture decoded;
-                    decoded.name = texName;
-                    DecodedImage img = DDSDecoder::decode(rawData);
-                    if (img.isValid()) {
-                        decoded.width = img.width;
-                        decoded.height = img.height;
-                        decoded.argbPixels.resize(img.width * img.height);
-                        for (uint32_t i = 0; i < img.width * img.height; ++i) {
-                            uint8_t r = img.pixels[i * 4 + 0];
-                            uint8_t g = img.pixels[i * 4 + 1];
-                            uint8_t b = img.pixels[i * 4 + 2];
-                            uint8_t a = img.pixels[i * 4 + 3];
-                            decoded.argbPixels[i] = (static_cast<uint32_t>(a) << 24) |
-                                                    (static_cast<uint32_t>(r) << 16) |
-                                                    (static_cast<uint32_t>(g) << 8) |
-                                                    static_cast<uint32_t>(b);
-                            if (a < 255) decoded.hasAlpha = true;
-                        }
-                        modelData->decodedTextures.push_back(std::move(decoded));
-                    }
-
-                    vis.nextTextureUpload++;
-                    LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) decoded texture {}/{}: '{}' on main thread",
-                              bestId, vis.name, vis.nextTextureUpload, totalDecodable, texName);
-
-                    if (vis.nextTextureUpload >= totalDecodable) {
-                        vis.buildPhase = EntityBuildPhase::TextureUploading;
-                        vis.nextTextureUpload = 0;
-                        vis.uploadedTextures.clear();
-                        vis.uploadedTextureAlpha.clear();
-                        LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame upload: {} textures",
-                                  bestId, vis.name, modelData->decodedTextures.size());
-                    }
-                    return true;
-                }
-
-                // Fallback — transition anyway
-                vis.buildPhase = EntityBuildPhase::TextureUploading;
-                vis.nextTextureUpload = 0;
-                vis.uploadedTextures.clear();
-                vis.uploadedTextureAlpha.clear();
-                continue;  // trivial transition — fall through
-            }
-
-            // Background thread already decoded textures — go to upload
-            vis.buildPhase = EntityBuildPhase::TextureUploading;
-            vis.nextTextureUpload = 0;
-            vis.uploadedTextures.clear();
-            vis.uploadedTextureAlpha.clear();
-            if (!modelData->decodedTextures.empty()) {
-                LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) entering multi-frame build: {} textures to upload",
-                          bestId, vis.name, modelData->decodedTextures.size());
-            }
-            continue;  // trivial transition — fall through
+            // T13: Textures already in constrained cache via getOrLoad() (T05/T06/T07).
+            // Skip texture decode/upload phases — go straight to scene node creation.
+            vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+            continue;
         }
 
         case EntityBuildPhase::TextureUploading: {
-            // Textures already submitted to GPU upload thread — skip to next phase
-            if (vis.texturesSubmittedToGpu) {
-                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
-                vis.nextVariantUpload = 0;
-                continue;  // trivial transition — fall through
-            }
-
-            // Upload one pre-decoded base race texture per frame via unified queue
-            auto modelData = raceModelLoader_->getRaceModelData(vis.raceId, vis.gender);
-            if (!modelData || vis.nextTextureUpload >= modelData->decodedTextures.size()) {
-                // All base textures uploaded — move to variant textures
-                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
-                vis.nextVariantUpload = 0;
-                continue;  // trivial transition — fall through
-            }
-
-            const auto& decoded = modelData->decodedTextures[vis.nextTextureUpload];
-            if (!skipTextureUpload_ && constrainedTextureCache_) {
-                std::string lowerName = decoded.name;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                constrainedTextureCache_->queueDecodedARGB(
-                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-            }
-
-            vis.uploadedTextures.push_back(nullptr);  // Resolved later by processUploadQueue
-            vis.uploadedTextureAlpha.push_back(decoded.hasAlpha);
-            vis.nextTextureUpload++;
-
-            if (vis.nextTextureUpload >= modelData->decodedTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::VariantTextureUploading;
-                vis.nextVariantUpload = 0;
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued base texture {}/{}: '{}'",
-                      bestId, vis.name, vis.nextTextureUpload,
-                      modelData->decodedTextures.size(), decoded.name);
-            return true;
+            // T13: Phase skipped — textures in constrained cache.
+            vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+            continue;
         }
 
         case EntityBuildPhase::VariantTextureUploading: {
-            // Textures already submitted to cache queue — skip to next phase
-            if (vis.texturesSubmittedToGpu) {
-                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
-                continue;  // trivial transition — fall through
-            }
-
-            // Upload one pre-decoded variant texture per frame via unified queue
-            if (vis.nextVariantUpload >= vis.variantTextures.size()) {
-                // No variant textures or all uploaded — move to scene node creation
-                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
-                continue;  // trivial transition — fall through
-            }
-
-            const auto& decoded = vis.variantTextures[vis.nextVariantUpload];
-            if (!skipTextureUpload_ && constrainedTextureCache_) {
-                std::string lowerName = decoded.name;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                constrainedTextureCache_->queueDecodedARGB(
-                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-            }
-
-            vis.nextVariantUpload++;
-
-            if (vis.nextVariantUpload >= vis.variantTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued variant texture {}/{}: '{}'",
-                      bestId, vis.name, vis.nextVariantUpload,
-                      vis.variantTextures.size(), decoded.name);
-            return true;
+            // T11: Variant textures already in constrained cache via getOrLoad() (T06).
+            // Skip directly to scene node creation.
+            vis.buildPhase = EntityBuildPhase::SceneNodeCreation;
+            continue;
         }
 
         case EntityBuildPhase::SceneNodeCreation: {
             // Frame 1/3: Create node + set position/rotation/scale.
             // This is the heaviest frame — mesh creation (~10-15ms).
             // Materials and name tags are deferred to NodeSetup and MeshFinalize.
+
+            // T11: Upload any decoded textures to GPU before mesh building.
+            // During gameplay, only this entity's textures should be pending.
+            if (constrainedTextureCache_) {
+                constrainedTextureCache_->uploadAllPending();
+            }
 
             // Promote any background-preloaded model data
             if (entityPrepWorker_ && raceModelLoader_) {
@@ -1447,11 +1253,9 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
             vis.meshBuilt = true;
 
-            // Decide next phase based on equipment data
-            if (!vis.equipmentTextures.empty()) {
-                vis.buildPhase = EntityBuildPhase::EquipTextureUploading;
-                vis.nextEquipTextureUpload = 0;
-            } else if (!vis.equipmentStaging.empty()) {
+            // T13: equipmentTextures removed. Equipment textures in constrained cache.
+            // Decide next phase based on equipment staging data.
+            if (!vis.equipmentStaging.empty()) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
             } else if (vis.appearance.equipment[7] != 0 || vis.appearance.equipment[8] != 0) {
                 vis.buildPhase = EntityBuildPhase::EquipmentAttach;
@@ -1462,39 +1266,10 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
         }
 
         case EntityBuildPhase::EquipTextureUploading: {
-            // Textures already submitted to GPU upload thread — skip to next phase
-            if (vis.texturesSubmittedToGpu) {
-                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
-                continue;  // trivial transition — fall through
-            }
-
-            // Upload one pre-decoded equipment texture per frame
-            if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
-                continue;  // trivial transition — fall through
-            }
-
-            const auto& decoded = vis.equipmentTextures[vis.nextEquipTextureUpload];
-
-            // Queue equipment texture for budget-safe GPU upload via unified path
-            if (!skipTextureUpload_ && constrainedTextureCache_) {
-                std::string lowerName = decoded.name;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                constrainedTextureCache_->queueDecodedARGB(
-                    lowerName, decoded.argbPixels, decoded.width, decoded.height, decoded.hasAlpha);
-            }
-
-            vis.nextEquipTextureUpload++;
-
-            if (vis.nextEquipTextureUpload >= vis.equipmentTextures.size()) {
-                vis.buildPhase = EntityBuildPhase::EquipmentAttach;
-            }
-
-            LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) queued equip texture {}/{}: '{}'",
-                      bestId, vis.name, vis.nextEquipTextureUpload,
-                      vis.equipmentTextures.size(), decoded.name);
-            return true;
+            // T11: Equipment textures already in constrained cache via getOrLoad() (T07).
+            // Skip directly to equipment attach.
+            vis.buildPhase = EntityBuildPhase::EquipmentAttach;
+            continue;
         }
 
         case EntityBuildPhase::EquipmentAttach: {
@@ -1529,10 +1304,6 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             }
 
             // Clean up staging data (free memory)
-            vis.variantTextures.clear();
-            vis.variantTextures.shrink_to_fit();
-            vis.equipmentTextures.clear();
-            vis.equipmentTextures.shrink_to_fit();
             vis.equipmentStaging.clear();
             vis.equipmentStaging.shrink_to_fit();
 

@@ -436,43 +436,35 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
 
                         LOG_DEBUG(MOD_GRAPHICS, "    -> variant texture: {}", equipTexName);
 
-                        // DISABLED: unconstrained Path B — all textures must go through constrained cache
-                        LOG_INFO(MOD_GRAPHICS, "    -> BLOCKED unconstrained equipment texture override: variant='{}' slot={} materialId={}",
-                                 equipTexName, static_cast<int>(slot), materialId);
-                        // // Try the variant texture first
-                        // auto texIt = modelData->textures.find(equipTexName);
-                        // if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
-                        //     irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                        //         equipTexName, texIt->second->data);
-                        //     if (equipTex) {
-                        //         node->getMaterial(b).setTexture(0, equipTex);
-                        //         LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);
-                        //     } else {
-                        //         LOG_DEBUG(MOD_GRAPHICS, "    -> Failed to load variant texture");
-                        //     }
-                        // } else {
-                        //     // Variant texture not found - try the legacy equipment texture lookup
-                        //     // (for chain/plate which use generic chainXX.bmp textures)
-                        //     std::string legacyTexName = getEquipmentTextureName(raceCode, slot, materialId);
-                        //     LOG_DEBUG(MOD_GRAPHICS, "    -> variant not found, trying legacy: {}", legacyTexName);
-                        //     if (!legacyTexName.empty()) {
-                        //         std::string lowerLegacyTex = legacyTexName;
-                        //         std::transform(lowerLegacyTex.begin(), lowerLegacyTex.end(), lowerLegacyTex.begin(),
-                        //                       [](unsigned char c) { return std::tolower(c); });
-                        //
-                        //         auto legacyIt = modelData->textures.find(lowerLegacyTex);
-                        //         if (legacyIt != modelData->textures.end() && legacyIt->second && meshBuilder_) {
-                        //             irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                        //                 legacyTexName, legacyIt->second->data);
-                        //             if (equipTex) {
-                        //                 node->getMaterial(b).setTexture(0, equipTex);
-                        //                 LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with legacy {}", legacyTexName);
-                        //             }
-                        //         } else {
-                        //             LOG_DEBUG(MOD_GRAPHICS, "    -> legacy texture not found");
-                        //         }
-                        //     }
-                        // }
+                        // Try the variant texture first
+                        auto texIt = modelData->textures.find(equipTexName);
+                        if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
+                            irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
+                                equipTexName, texIt->second->data);
+                            if (equipTex) {
+                                node->getMaterial(b).setTexture(0, equipTex);
+                                LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);
+                            }
+                        } else {
+                            // Variant texture not found - try the legacy equipment texture lookup
+                            std::string legacyTexName = getEquipmentTextureName(raceCode, slot, materialId);
+                            LOG_DEBUG(MOD_GRAPHICS, "    -> variant not found, trying legacy: {}", legacyTexName);
+                            if (!legacyTexName.empty()) {
+                                std::string lowerLegacyTex = legacyTexName;
+                                std::transform(lowerLegacyTex.begin(), lowerLegacyTex.end(), lowerLegacyTex.begin(),
+                                              [](unsigned char c) { return std::tolower(c); });
+
+                                auto legacyIt = modelData->textures.find(lowerLegacyTex);
+                                if (legacyIt != modelData->textures.end() && legacyIt->second && meshBuilder_) {
+                                    irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
+                                        legacyTexName, legacyIt->second->data);
+                                    if (equipTex) {
+                                        node->getMaterial(b).setTexture(0, equipTex);
+                                        LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with legacy {}", legacyTexName);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

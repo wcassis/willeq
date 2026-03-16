@@ -10,6 +10,7 @@
 #include "client/graphics/eq/geometry_combiner.h"
 #include "client/graphics/eq/animation_mapping.h"
 #include "client/graphics/eq/dds_decoder.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
@@ -336,10 +337,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
 
     irr::scene::IMesh* mesh = nullptr;
     if (!modelData->textures.empty() && !modelData->combinedGeometry->textureNames().empty()) {
-        // DISABLED: unconstrained Path B — all textures must go through constrained cache
-        // mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);
-        LOG_INFO(MOD_GRAPHICS, "getMeshForRace: BLOCKED unconstrained buildTexturedMesh for race={} ({} textures, {} textureNames)",
-                 raceId, modelData->textures.size(), modelData->combinedGeometry->textureNames().size());
+        mesh = meshBuilder_->buildTexturedMesh(*modelData->combinedGeometry, modelData->textures, true);
     } else {
         mesh = meshBuilder_->buildColoredMesh(*modelData->combinedGeometry);
     }
@@ -698,9 +696,11 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
         }
     }
 
-    // Decode textures to ARGB on background thread (CPU-only, no GL calls).
-    // Main thread can then upload one texture per frame via driver_->addTexture().
-    if (modelData->combinedGeometry && !modelData->textures.empty()) {
+    // T05: Decode textures via constrained cache (single decoder path).
+    // getOrLoad() decodes raw bytes to RGBA and stores as DecodedEntry.
+    // uploadTexture() promotes to GPU later (on the loading thread or render thread).
+    if (modelData->combinedGeometry && !modelData->textures.empty() && constrainedTextureCache_) {
+        size_t decoded = 0;
         for (const auto& texName : modelData->combinedGeometry->textureNames()) {
             std::string lowerName = texName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
@@ -710,116 +710,17 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
             const auto& rawData = texIt->second->data;
             if (rawData.empty()) continue;
 
-            DecodedTexture decoded;
-            decoded.name = texName;
-
-            if (DDSDecoder::isDDS(rawData)) {
-                DecodedImage img = DDSDecoder::decode(rawData);
-                if (!img.isValid()) {
-                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: DDS decode failed for '{}' race={} gender={}",
-                             texName, raceId, gender);
-                    continue;
-                }
-                decoded.width = img.width;
-                decoded.height = img.height;
-                decoded.argbPixels.resize(img.width * img.height);
-                for (uint32_t i = 0; i < img.width * img.height; ++i) {
-                    uint8_t r = img.pixels[i * 4 + 0];
-                    uint8_t g = img.pixels[i * 4 + 1];
-                    uint8_t b = img.pixels[i * 4 + 2];
-                    uint8_t a = img.pixels[i * 4 + 3];
-                    decoded.argbPixels[i] = (static_cast<uint32_t>(a) << 24) |
-                                            (static_cast<uint32_t>(r) << 16) |
-                                            (static_cast<uint32_t>(g) << 8) |
-                                            static_cast<uint32_t>(b);
-                    if (a < 255) decoded.hasAlpha = true;
-                }
-            } else if (rawData.size() >= 54 && rawData[0] == 'B' && rawData[1] == 'M') {
-                // BMP decode: parse header, palette, and pixel data to ARGB
-                uint32_t dataOffset = *reinterpret_cast<const uint32_t*>(&rawData[10]);
-                uint32_t headerSize = *reinterpret_cast<const uint32_t*>(&rawData[14]);
-                int32_t width = *reinterpret_cast<const int32_t*>(&rawData[18]);
-                int32_t height = *reinterpret_cast<const int32_t*>(&rawData[22]);
-                uint16_t bpp = *reinterpret_cast<const uint16_t*>(&rawData[28]);
-                uint32_t compression = *reinterpret_cast<const uint32_t*>(&rawData[30]);
-                bool bottomUp = (height > 0);
-                uint32_t absHeight = bottomUp ? height : -height;
-
-                if (width <= 0 || absHeight == 0 || width > 4096 || absHeight > 4096) {
-                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP invalid dimensions {}x{} for '{}' race={} gender={}",
-                             width, absHeight, texName, raceId, gender);
-                    continue;
-                }
-
-                decoded.width = static_cast<uint32_t>(width);
-                decoded.height = absHeight;
-                decoded.argbPixels.resize(decoded.width * decoded.height);
-
-                if (bpp == 8 && compression == 0) {
-                    // 8-bit paletted BMP
-                    uint32_t paletteOffset = 14 + headerSize;
-                    uint32_t paletteEntries = (dataOffset - paletteOffset) / 4;
-                    if (paletteEntries > 256) paletteEntries = 256;
-                    if (paletteOffset + paletteEntries * 4 > rawData.size() || dataOffset >= rawData.size()) {
-                        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP palette/data out of bounds for '{}' race={} gender={}",
-                                 texName, raceId, gender);
-                        continue;
-                    }
-
-                    // Read BGRA palette
-                    uint32_t palette[256] = {};
-                    for (uint32_t i = 0; i < paletteEntries; ++i) {
-                        uint8_t b = rawData[paletteOffset + i * 4 + 0];
-                        uint8_t g = rawData[paletteOffset + i * 4 + 1];
-                        uint8_t r = rawData[paletteOffset + i * 4 + 2];
-                        palette[i] = 0xFF000000u | (static_cast<uint32_t>(r) << 16) |
-                                     (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
-                    }
-
-                    // BMP rows are padded to 4-byte boundaries
-                    uint32_t rowStride = (decoded.width + 3) & ~3u;
-                    for (uint32_t y = 0; y < decoded.height; ++y) {
-                        uint32_t srcRow = bottomUp ? (decoded.height - 1 - y) : y;
-                        size_t rowOffset = dataOffset + static_cast<size_t>(srcRow) * rowStride;
-                        if (rowOffset + decoded.width > rawData.size()) break;
-                        for (uint32_t x = 0; x < decoded.width; ++x) {
-                            uint8_t idx = rawData[rowOffset + x];
-                            decoded.argbPixels[y * decoded.width + x] = palette[idx];
-                        }
-                    }
-                } else if (bpp == 24 && compression == 0) {
-                    // 24-bit RGB BMP
-                    uint32_t rowStride = (decoded.width * 3 + 3) & ~3u;
-                    for (uint32_t y = 0; y < decoded.height; ++y) {
-                        uint32_t srcRow = bottomUp ? (decoded.height - 1 - y) : y;
-                        size_t rowOffset = dataOffset + static_cast<size_t>(srcRow) * rowStride;
-                        if (rowOffset + decoded.width * 3 > rawData.size()) break;
-                        for (uint32_t x = 0; x < decoded.width; ++x) {
-                            uint8_t b = rawData[rowOffset + x * 3 + 0];
-                            uint8_t g = rawData[rowOffset + x * 3 + 1];
-                            uint8_t r = rawData[rowOffset + x * 3 + 2];
-                            decoded.argbPixels[y * decoded.width + x] =
-                                0xFF000000u | (static_cast<uint32_t>(r) << 16) |
-                                (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
-                        }
-                    }
-                } else {
-                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: BMP unsupported format bpp={} compression={} for '{}' race={} gender={}",
-                             bpp, compression, texName, raceId, gender);
-                    continue;
-                }
-            } else {
-                LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: unknown texture format for '{}' (size={}, magic=0x{:02x}{:02x}) race={} gender={}",
-                         texName, rawData.size(), rawData[0], rawData[1], raceId, gender);
-                continue;
-            }
-
-            if (!decoded.argbPixels.empty()) {
-                modelData->decodedTextures.push_back(std::move(decoded));
-            }
+            constrainedTextureCache_->getOrLoad(lowerName, rawData);
+            ++decoded;
         }
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={}",
-                  modelData->decodedTextures.size(), raceId, gender);
+                  decoded, raceId, gender);
+    } else if (modelData->combinedGeometry && !modelData->textures.empty() && !constrainedTextureCache_) {
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no constrained cache, skipping {} textures for race={} gender={}",
+                 modelData->textures.size(), raceId, gender);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no textures to decode (geometry={}, textures={}, cache={}) for race={} gender={}",
+                  (bool)modelData->combinedGeometry, modelData->textures.size(), (bool)constrainedTextureCache_, raceId, gender);
     }
 
     // Store in staging cache

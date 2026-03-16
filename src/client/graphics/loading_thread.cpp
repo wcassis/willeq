@@ -71,7 +71,8 @@ void LoadingThread::releaseContext(const GLContextHandles& handles) {
             break;
 #endif
         default:
-            LOG_WARN(MOD_GRAPHICS, "LoadingThread: releaseContext called with no backend");
+            // Software renderer — no GL context to release, this is fine
+            LOG_DEBUG(MOD_GRAPHICS, "LoadingThread: no GL context to release (software renderer)");
             break;
     }
 }
@@ -104,8 +105,9 @@ bool LoadingThread::acquireContext(const GLContextHandles& handles) {
         }
 #endif
         default:
-            LOG_WARN(MOD_GRAPHICS, "LoadingThread: acquireContext called with no backend");
-            return false;
+            // Software renderer — no GL context needed, proceed normally
+            LOG_DEBUG(MOD_GRAPHICS, "LoadingThread: no GL context to acquire (software renderer)");
+            return true;
     }
 }
 
@@ -146,43 +148,28 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
         return;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "LoadingThread: started, entering passive display loop");
+    LOG_INFO(MOD_GRAPHICS, "LoadingThread: started, running sequential loader");
 
-    // Passive display loop: render loading screen until graphicsLoadReady or quit
-    while (!status.quitRequested.load(std::memory_order_relaxed) &&
-           !status.graphicsLoadReady.load(std::memory_order_acquire)) {
-
-        float progress = status.percent.load(std::memory_order_relaxed) / 100.0f;
-        std::wstring title = status.getTitle();
-        std::string textNarrow = status.getText();
-        std::wstring text(textNarrow.begin(), textNarrow.end());
-
-        drawLoadingFrame(driver, font, progress, title, text);
-        FlushThreadLog();
-
-        // ~30 fps for the progress bar
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
-    }
-
-    if (status.quitRequested.load(std::memory_order_relaxed)) {
-        LOG_INFO(MOD_GRAPHICS, "LoadingThread: quit requested during passive phase");
-        releaseContext(handles);
-        status.loadingComplete.store(true, std::memory_order_release);
-        running_.store(false, std::memory_order_relaxed);
-        return;
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "LoadingThread: graphicsLoadReady, entering active loading phase");
-
-    // Execute the active loading callback (zone loading + renderer setup)
+    // Execute the loading callback (zone loading + renderer setup).
+    // This MUST succeed — all required assets must load or the client cannot function.
     try {
         if (activeCallback) {
             activeCallback(status);
         }
     } catch (const std::exception& e) {
-        std::cerr << "[FATAL] LoadingThread crashed: " << e.what() << std::endl;
+        LOG_FATAL(MOD_GRAPHICS, "LoadingThread: zone loading failed: {}", e.what());
+        releaseContext(handles);
+        status.loadingComplete.store(true, std::memory_order_release);
+        running_.store(false, std::memory_order_relaxed);
+        status.quitRequested.store(true, std::memory_order_release);
+        return;
     } catch (...) {
-        std::cerr << "[FATAL] LoadingThread crashed with unknown exception" << std::endl;
+        LOG_FATAL(MOD_GRAPHICS, "LoadingThread: zone loading failed with unknown exception");
+        releaseContext(handles);
+        status.loadingComplete.store(true, std::memory_order_release);
+        running_.store(false, std::memory_order_relaxed);
+        status.quitRequested.store(true, std::memory_order_release);
+        return;
     }
     FlushThreadLog();
 

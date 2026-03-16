@@ -15,7 +15,7 @@
 #include <list>
 
 // Forward declarations
-namespace EQT { namespace Graphics { struct EntityAppearance; class GraphicsArchiveIndex; } }
+namespace EQT { namespace Graphics { struct EntityAppearance; class GraphicsArchiveIndex; class ConstrainedTextureCache; } }
 
 namespace EQT {
 namespace Graphics {
@@ -129,6 +129,9 @@ public:
 
     // Get mesh builder (for registering pre-uploaded textures in multi-frame pipeline)
     ZoneMeshBuilder* getMeshBuilder() { return meshBuilder_.get(); }
+
+    // Set constrained texture cache for direct texture loading via getOrLoad()
+    void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
 
     // Background-safe: loads S3D model data + merges animations into staging cache.
     // Does NOT create textures, Irrlicht meshes, or scene nodes (no GL calls).
@@ -301,6 +304,9 @@ private:
 
     // Graphics archive index for on-demand loading (deferred mode, non-owning)
     GraphicsArchiveIndex* graphicsArchiveIndex_ = nullptr;
+
+    // Constrained texture cache for direct texture loading (non-owning)
+    EQT::Graphics::ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
 
     // Staging cache for background-preloaded model data.
     // Written by EntityPrepWorker thread (preloadModelData).

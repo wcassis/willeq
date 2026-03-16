@@ -548,66 +548,20 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
         buffer->Material.Lighting = true;
         buffer->Material.BackfaceCulling = false;
 
-        // DISABLED: unconstrained Path B — all textures must go through constrained cache
-        if (!texName.empty()) {
+        if (!texName.empty() && constrainedTextureCache_) {
             std::string lowerTexName = texName;
             std::transform(lowerTexName.begin(), lowerTexName.end(), lowerTexName.begin(),
                           [](unsigned char c) { return std::tolower(c); });
 
-            LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader::buildMeshFromGeometry: BLOCKED unconstrained texture load \"{}\"",
-                     lowerTexName);
-
-            // auto texIt = textures.find(lowerTexName);
-            // if (texIt != textures.end() && texIt->second) {
-            //     const auto& texInfo = texIt->second;
-            //     if (!texInfo->data.empty()) {
-            //         irr::video::ITexture* tex = nullptr;
-            //
-            //         // Check if this is a DDS file and decode it
-            //         if (DDSDecoder::isDDS(texInfo->data)) {
-            //             DecodedImage decoded = DDSDecoder::decode(texInfo->data);
-            //             if (decoded.isValid()) {
-            //                 // Convert RGBA to ARGB (Irrlicht's ECF_A8R8G8B8 format)
-            //                 std::vector<uint8_t> argbPixels(decoded.pixels.size());
-            //                 for (size_t i = 0; i < decoded.pixels.size(); i += 4) {
-            //                     argbPixels[i + 0] = decoded.pixels[i + 2];  // B
-            //                     argbPixels[i + 1] = decoded.pixels[i + 1];  // G
-            //                     argbPixels[i + 2] = decoded.pixels[i + 0];  // R
-            //                     argbPixels[i + 3] = decoded.pixels[i + 3];  // A
-            //                 }
-            //
-            //                 // Create Irrlicht image from converted ARGB data
-            //                 irr::video::IImage* img = driver_->createImageFromData(
-            //                     irr::video::ECF_A8R8G8B8,
-            //                     irr::core::dimension2d<irr::u32>(decoded.width, decoded.height),
-            //                     argbPixels.data(), false, false);
-            //                 if (img) {
-            //                     tex = driver_->addTexture(texInfo->name.c_str(), img);
-            //                     img->drop();
-            //                 }
-            //             }
-            //         } else {
-            //             // Non-DDS file, try loading directly
-            //             irr::io::IReadFile* memFile = fileSystem_->createMemoryReadFile(
-            //                 texInfo->data.data(), static_cast<irr::s32>(texInfo->data.size()),
-            //                 texInfo->name.c_str(), false);
-            //             if (memFile) {
-            //                 tex = driver_->getTexture(memFile);
-            //                 memFile->drop();
-            //             }
-            //         }
-            //
-            //         if (tex) {
-            //             if (constrainedTextureCache_) {
-            //                 auto texSize = tex->getSize();
-            //                 size_t bytes = static_cast<size_t>(texSize.Width) * texSize.Height * 4;
-            //                 constrainedTextureCache_->registerTexture(lowerTexName, tex, bytes, false);
-            //             }
-            //             buffer->Material.setTexture(0, tex);
-            //             buffer->Material.MaterialType = irr::video::EMT_SOLID;
-            //         }
-            //     }
-            // }
+            auto texIt = textures.find(lowerTexName);
+            if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                constrainedTextureCache_->getOrLoad(lowerTexName, texIt->second->data);
+                irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerTexName);
+                if (tex) {
+                    buffer->Material.setTexture(0, tex);
+                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                }
+            }
         }
 
         buffer->recalculateBoundingBox();

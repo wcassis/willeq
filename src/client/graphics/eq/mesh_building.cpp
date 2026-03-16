@@ -235,40 +235,21 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     return getArmorTexture(name);
                 };
 
-                // DISABLED: unconstrained Path B — all textures must go through constrained cache
-                LOG_INFO(MOD_GRAPHICS, "    Buffer {}: BLOCKED unconstrained texture load \"{}\"{}",
-                         bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
-                // texture = meshBuilder_->getOrLoadTexture(finalTexName);
-                // if (!texture) {
-                //     // Not in cache, register for lazy loading and load now
-                //     auto texInfo = findTextureData(finalTexName);
-                //     if (texInfo && !texInfo->data.empty()) {
-                //         texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data);
-                //         LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded texture \"{}\"{}",
-                //                   bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
-                //     } else {
-                //         // If equipment variant not found, try the original texture
-                //         if (overrideApplied) {
-                //             texture = meshBuilder_->getOrLoadTexture(lowerTexName);
-                //             if (!texture) {
-                //                 texInfo = findTextureData(lowerTexName);
-                //                 if (texInfo && !texInfo->data.empty()) {
-                //                     texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data);
-                //                     LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Loaded fallback texture \"{}\"", bufferIndex, lowerTexName);
-                //                 } else {
-                //                     LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\" or fallback \"{}\"", bufferIndex, finalTexName, lowerTexName);
-                //                 }
-                //             } else {
-                //                 LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Using cached fallback texture \"{}\"", bufferIndex, lowerTexName);
-                //             }
-                //         } else {
-                //             LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: FAILED to find texture \"{}\"", bufferIndex, lowerTexName);
-                //         }
-                //     }
-                // } else {
-                //     LOG_DEBUG(MOD_GRAPHICS, "    Buffer {}: Using cached texture \"{}\"{}",
-                //               bufferIndex, finalTexName, (overrideApplied ? " (equipment override)" : ""));
-                // }
+                texture = meshBuilder_->getOrLoadTexture(finalTexName);
+                if (!texture) {
+                    auto texInfo = findTextureData(finalTexName);
+                    if (texInfo && !texInfo->data.empty()) {
+                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data);
+                    } else if (overrideApplied) {
+                        texture = meshBuilder_->getOrLoadTexture(lowerTexName);
+                        if (!texture) {
+                            texInfo = findTextureData(lowerTexName);
+                            if (texInfo && !texInfo->data.empty()) {
+                                texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data);
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -36,6 +36,15 @@ struct DecodedUpload {
     bool hasAlpha = false;
 };
 
+// Decoded texture entry — decoded but not yet uploaded to GPU.
+// Created by getOrLoad(), promoted to CachedTexture by uploadTexture().
+struct DecodedEntry {
+    std::vector<uint8_t> rgbaPixels;  // Decoded RGBA pixels
+    int width = 0;
+    int height = 0;
+    bool hasAlpha = false;
+};
+
 // LRU texture cache with memory budget enforcement
 // Used for resource-constrained rendering modes (Voodoo1, etc.)
 class ConstrainedTextureCache {
@@ -44,13 +53,25 @@ public:
                             irr::video::IVideoDriver* driver);
     ~ConstrainedTextureCache();
 
-    // Get or load a texture
-    // If texture is already cached, returns it and marks as recently used
-    // If not cached, processes the texture data (downsample, convert to 16-bit)
-    // and adds to cache, evicting LRU textures if needed
-    // Returns nullptr if texture cannot be loaded
+    // Decode and cache a texture (no GL calls — safe to call from any thread).
+    // If already uploaded (CachedTexture), returns the ITexture*.
+    // If already decoded (DecodedEntry), returns nullptr (call uploadTexture to promote).
+    // If not in cache, decodes raw bytes to RGBA and stores as DecodedEntry, returns nullptr.
+    // Returns nullptr on decode failure.
     irr::video::ITexture* getOrLoad(const std::string& name,
                                      const std::vector<char>& data);
+
+    // Upload a decoded texture to the GPU.
+    // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
+    // Must be called on a thread that owns the rendering context.
+    // Returns the uploaded ITexture*, or nullptr if not found/failed.
+    irr::video::ITexture* uploadTexture(const std::string& name);
+
+    // Upload all pending decoded textures to the GPU.
+    // Calls uploadTexture() for each DecodedEntry in the cache.
+    // Used by the sequential loader after populating the cache with getOrLoad().
+    // Returns the number of textures uploaded.
+    int uploadAllPending();
 
     // Mark a texture as recently used (moves to back of LRU list)
     void touch(const std::string& name);
@@ -114,31 +135,8 @@ public:
     // Get placeholder texture (used when a texture is evicted from a mesh material)
     irr::video::ITexture* getPlaceholderTexture();
 
-    // Queue decoded RGBA pixels for budget-safe GPU upload on the render thread.
-    // Thread-safe — may be called from background threads or the render thread.
-    void queueDecoded(const std::string& name, std::vector<uint8_t> rgbaPixels,
-                      int width, int height, bool hasAlpha);
-
-    // Queue decoded ARGB pixels (Irrlicht ECF_A8R8G8B8 format) for GPU upload.
-    // Converts ARGB → RGBA internally then pushes to the upload queue.
-    // Thread-safe — may be called from background threads or the render thread.
-    void queueDecodedARGB(const std::string& name, const std::vector<uint32_t>& argbPixels,
-                          int width, int height, bool hasAlpha);
-
-    // Process queued decoded textures: budget check, evict, GPU upload, register.
-    // Call once per render frame from the main thread (batch mode, for loading screen).
-    // Returns the number of textures uploaded this frame.
-    int processUploadQueue();
-
-    // Drain decoded texture queue into staging buffer (cheap, no GL). Call every frame.
-    void drainDecodedQueue();
-
-    // Process at most 1 staged upload (budget check, evict, GPU submit or sync create).
-    // Returns true if an item was processed. GREEN-gated by caller.
-    bool processOneUpload();
-
-    // How many staged uploads are waiting
-    size_t getStagedUploadCount() const;
+    // T04: queueDecoded, queueDecodedARGB, processUploadQueue, drainDecodedQueue,
+    // processOneUpload, getStagedUploadCount removed. Use getOrLoad() + uploadTexture() instead.
 
     // Check if a texture name is pending decode or upload (not yet in cache)
     bool isPending(const std::string& name) const;
@@ -230,8 +228,11 @@ private:
     // Placeholder texture for evicted textures (created on demand)
     irr::video::ITexture* placeholderTexture_ = nullptr;
 
-    // Texture cache: name -> cached entry
+    // Texture cache: name -> uploaded texture entry
     std::map<std::string, CachedTexture> cache_;
+
+    // Decoded but not yet uploaded: name -> decoded RGBA pixels
+    std::map<std::string, DecodedEntry> decodedEntries_;
 
     // LRU order: front = oldest (evict first), back = newest
     std::list<std::string> lruOrder_;
@@ -262,16 +263,8 @@ private:
     // Mesh builder for entity texture registration (non-owning)
     ZoneMeshBuilder* meshBuilder_ = nullptr;
 
-    // Thread-safe queue of decoded textures waiting for GPU upload
-    mutable std::mutex decodedQueueMutex_;
-    std::vector<DecodedUpload> decodedQueue_;
-
-    // Staged uploads: drained from decodedQueue_ on render thread, processed one-at-a-time
-    // Protected by mutex_ (render thread only)
-    std::vector<DecodedUpload> stagedUploads_;
-
-    // Texture names submitted for background decode but not yet uploaded (render thread only)
-    std::unordered_set<std::string> pendingDecodes_;
+    // T04: decodedQueueMutex_, decodedQueue_, stagedUploads_, pendingDecodes_ removed.
+    // Replaced by decodedEntries_ (decode) + uploadTexture() (upload).
 
     // Eviction listeners (non-owning)
     std::vector<TextureEvictionListener*> evictionListeners_;

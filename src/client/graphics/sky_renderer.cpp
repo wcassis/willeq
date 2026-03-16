@@ -413,48 +413,8 @@ void SkyRenderer::createCelestialBodiesOnly() {
     createCelestialBodies();
 }
 
-irr::video::ITexture* SkyRenderer::uploadPreDecodedTexture(const std::string& name,
-                                                            const uint8_t* argbPixels,
-                                                            uint32_t width, uint32_t height) {
-    if (!driver_ || !argbPixels || width == 0 || height == 0) {
-        return nullptr;
-    }
-
-    // Check cache first — may already be uploaded
-    auto it = textureCache_.find(name);
-    if (it != textureCache_.end()) {
-        return it->second;
-    }
-
-    // Create an Irrlicht image from raw A8R8G8B8 pixel data
-    irr::video::IImage* image = driver_->createImageFromData(
-        irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2d<irr::u32>(width, height),
-        const_cast<uint8_t*>(argbPixels),  // Irrlicht doesn't modify, but API takes void*
-        false  // Don't own the data
-    );
-
-    if (!image) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to create image from pre-decoded sky texture: {}", name);
-        return nullptr;
-    }
-
-    irr::video::ITexture* texture = driver_->addTexture(name.c_str(), image);
-    image->drop();
-
-    if (texture) {
-        textureCache_[name] = texture;
-        if (constrainedCache_) {
-            constrainedCache_->registerTexture(name, texture,
-                static_cast<size_t>(width) * height * 4, false);
-        }
-        LOG_DEBUG(MOD_GRAPHICS, "Uploaded pre-decoded sky texture: {} ({}x{})", name, width, height);
-    } else {
-        LOG_WARN(MOD_GRAPHICS, "Failed to upload pre-decoded sky texture: {}", name);
-    }
-
-    return texture;
-}
+// T14: uploadPreDecodedTexture removed. Sky textures now loaded via
+// ConstrainedTextureCache::getOrLoad() + uploadTexture() + registerUploadedTexture().
 
 void SkyRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     if (!initialized_) {
@@ -919,7 +879,7 @@ irr::video::ITexture* SkyRenderer::loadSkyTexture(const std::string& name) {
     }
 
     // Cache-only lookup — all textures must be pre-decoded on background thread
-    // and uploaded via uploadPreDecodedTexture() during env_sky_textures phase.
+    // and uploaded via constrained cache getOrLoad() + uploadTexture() during Step 10.
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
         return it->second;
