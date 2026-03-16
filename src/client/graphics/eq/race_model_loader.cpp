@@ -380,7 +380,10 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
         uint16_t raceId, uint8_t gender) const {
 
     std::string baseRaceCode = getRaceCode(raceId);
-    if (baseRaceCode.empty()) return nullptr;
+    if (baseRaceCode.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: race={} has empty raceCode, returning nullptr", raceId);
+        return nullptr;
+    }
 
     std::string raceCode = getGenderedRaceCode(baseRaceCode, gender);
     std::transform(raceCode.begin(), raceCode.end(), raceCode.begin(),
@@ -397,6 +400,9 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
         }
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: race={} gender={} raceCode='{}' codesToTry={} characters={}",
+              raceId, gender, raceCode, codesToTry.size(), characters.size());
+
     for (const auto& codeToTry : codesToTry) {
         for (const auto& character : characters) {
             if (!character || character->parts.empty()) continue;
@@ -407,9 +413,14 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
 
             if (charName.find(codeToTry) == std::string::npos) continue;
 
+            LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: race={} MATCHED character='{}' code='{}' parts={} partsWithTransforms={} rawParts={}",
+                      raceId, character->name, codeToTry, character->parts.size(),
+                      character->partsWithTransforms.size(), character->rawParts.size());
+
             // Found a match — select default body and head parts
             std::string defaultBodyName = codeToTry + "_DMSPRITEDEF";
             std::string defaultHeadName = codeToTry + "HE00_DMSPRITEDEF";
+            LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: looking for body='{}' head='{}'", defaultBodyName, defaultHeadName);
 
             std::vector<CharacterPart> selectedSkinnedParts;
             for (const auto& part : character->partsWithTransforms) {
@@ -417,8 +428,12 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
                 std::string partName = part.geometry->name;
                 std::transform(partName.begin(), partName.end(), partName.begin(),
                                [](unsigned char c) { return std::toupper(c); });
+                LOG_TRACE(MOD_GRAPHICS, "  skinned candidate: '{}' materialData={} textureNames={}",
+                          partName, (bool)part.geometry->materialData, part.geometry->textureNames().size());
                 if (partName == defaultBodyName || partName == defaultHeadName) {
                     selectedSkinnedParts.push_back(part);
+                    LOG_DEBUG(MOD_GRAPHICS, "  SELECTED skinned: '{}' materialData={} textureNames={}",
+                              partName, (bool)part.geometry->materialData, part.geometry->textureNames().size());
                 }
             }
 
@@ -430,17 +445,42 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
                                [](unsigned char c) { return std::toupper(c); });
                 if (partName == defaultBodyName || partName == defaultHeadName) {
                     selectedRawParts.push_back(part);
+                    LOG_DEBUG(MOD_GRAPHICS, "  SELECTED raw: '{}' materialData={} textureNames={}",
+                              partName, (bool)part.geometry->materialData, part.geometry->textureNames().size());
                 }
             }
 
             if (selectedSkinnedParts.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: no body/head match, using ALL {} partsWithTransforms and {} rawParts",
+                          character->partsWithTransforms.size(), character->rawParts.size());
                 selectedSkinnedParts = character->partsWithTransforms;
                 selectedRawParts = character->rawParts;
+                // Log what we're using as fallback
+                for (size_t pi = 0; pi < selectedSkinnedParts.size(); ++pi) {
+                    if (selectedSkinnedParts[pi].geometry) {
+                        LOG_DEBUG(MOD_GRAPHICS, "  fallback skinned[{}]: '{}' materialData={} textureNames={}",
+                                  pi, selectedSkinnedParts[pi].geometry->name,
+                                  (bool)selectedSkinnedParts[pi].geometry->materialData,
+                                  selectedSkinnedParts[pi].geometry->textureNames().size());
+                    }
+                }
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: selected {} skinned parts, {} raw parts",
+                          selectedSkinnedParts.size(), selectedRawParts.size());
             }
 
             auto combinedGeom = combineCharacterPartsWithTransforms(selectedSkinnedParts);
             auto rawGeom = combineCharacterPartsRaw(selectedRawParts);
-            if (!combinedGeom) continue;
+
+            LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: combinedGeom={} (textureNames={}) rawGeom={}",
+                      (bool)combinedGeom,
+                      combinedGeom ? combinedGeom->textureNames().size() : 0,
+                      (bool)rawGeom);
+
+            if (!combinedGeom) {
+                LOG_DEBUG(MOD_GRAPHICS, "buildModelDataFromCharacters: combinedGeom is null, continuing search");
+                continue;
+            }
 
             auto modelData = std::make_shared<RaceModelData>();
             modelData->combinedGeometry = combinedGeom;
@@ -573,8 +613,24 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
     if (!modelData) {
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
         for (const auto& [filename, cache] : otherChrCaches_) {
-            modelData = buildModelDataFromCharacters(cache.characters, mergedTextures, raceId, gender);
-            if (modelData) break;
+            // Merge archive textures with existing textures (existing take priority)
+            // — same merge logic as tryLoadFromArchive
+            auto diskTextures = cache.textures;
+            for (const auto& [name, tex] : mergedTextures) {
+                diskTextures[name] = tex;
+            }
+            modelData = buildModelDataFromCharacters(cache.characters, diskTextures, raceId, gender);
+            if (modelData) {
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: found race={} in cached archive '{}' (mergedTextures={} archiveTextures={} diskTextures={})",
+                          raceId, filename, mergedTextures.size(), cache.textures.size(), diskTextures.size());
+                // Add new textures from this archive to our merged set
+                for (const auto& [name, tex] : cache.textures) {
+                    if (mergedTextures.find(name) == mergedTextures.end()) {
+                        mergedTextures[name] = tex;
+                    }
+                }
+                break;
+            }
         }
     }
 
@@ -700,21 +756,40 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
     // getOrLoad() decodes raw bytes to RGBA and stores as DecodedEntry.
     // uploadTexture() promotes to GPU later (on the loading thread or render thread).
     if (modelData->combinedGeometry && !modelData->textures.empty() && constrainedTextureCache_) {
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: T05 decode loop for race={} gender={} — combinedGeometry textureNames={} textures map size={}",
+                  raceId, gender, modelData->combinedGeometry->textureNames().size(), modelData->textures.size());
         size_t decoded = 0;
+        size_t notFound = 0;
+        size_t nullTex = 0;
+        size_t emptyData = 0;
         for (const auto& texName : modelData->combinedGeometry->textureNames()) {
             std::string lowerName = texName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                            [](unsigned char c) { return std::tolower(c); });
             auto texIt = modelData->textures.find(lowerName);
-            if (texIt == modelData->textures.end() || !texIt->second) continue;
+            if (texIt == modelData->textures.end()) {
+                LOG_DEBUG(MOD_GRAPHICS, "  T05: texName='{}' NOT FOUND in textures map (size={})", lowerName, modelData->textures.size());
+                notFound++;
+                continue;
+            }
+            if (!texIt->second) {
+                LOG_DEBUG(MOD_GRAPHICS, "  T05: texName='{}' found but TextureInfo is null", lowerName);
+                nullTex++;
+                continue;
+            }
             const auto& rawData = texIt->second->data;
-            if (rawData.empty()) continue;
+            if (rawData.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "  T05: texName='{}' found but data is empty", lowerName);
+                emptyData++;
+                continue;
+            }
 
+            LOG_TRACE(MOD_GRAPHICS, "  T05: decoding texName='{}' ({} bytes)", lowerName, rawData.size());
             constrainedTextureCache_->getOrLoad(lowerName, rawData);
             ++decoded;
         }
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={}",
-                  decoded, raceId, gender);
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={} (notFound={} null={} empty={})",
+                  decoded, raceId, gender, notFound, nullTex, emptyData);
     } else if (modelData->combinedGeometry && !modelData->textures.empty() && !constrainedTextureCache_) {
         LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no constrained cache, skipping {} textures for race={} gender={}",
                  modelData->textures.size(), raceId, gender);

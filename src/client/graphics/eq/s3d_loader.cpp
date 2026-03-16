@@ -540,50 +540,49 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                                  float parentRotX, float parentRotY, float parentRotZ) {
     if (!bone) return;
 
-    // For flattenSkeleton, we just collect geometry parts
-    // applySkinning handles the actual bone transforms for skinned meshes
-    // Legacy parameters kept for signature compatibility but not used for transform
-
-    // Debug bone info (disabled for now)
-    // if (bone->orientation) {
-    //     std::cout << "  Bone '" << bone->name << "': trans=(" << bone->orientation->shiftX
-    //               << "," << bone->orientation->shiftY << "," << bone->orientation->shiftZ
-    //               << ") quat=(" << bone->orientation->quatX << "," << bone->orientation->quatY
-    //               << "," << bone->orientation->quatZ << "," << bone->orientation->quatW
-    //               << ") modelRef=" << bone->modelRef
-    //               << " children=" << bone->children.size() << std::endl;
-    // }
+    LOG_TRACE(MOD_GRAPHICS, "flattenSkeleton: bone='{}' modelRef={} children={}",
+              bone->name, bone->modelRef, bone->children.size());
 
     // If this bone has a model reference, try to find its geometry
     if (bone->modelRef > 0) {
         std::shared_ptr<ZoneGeometry> geom = nullptr;
 
         const auto& modelRefs = wldLoader.getModelRefs();
+        LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} modelRefs_.size={}",
+                  bone->name, bone->modelRef, modelRefs.size());
         auto modelIt = modelRefs.find(bone->modelRef);
         if (modelIt != modelRefs.end()) {
             uint32_t geomFragRef = modelIt->second.geometryFragRef;
-            LOG_DEBUG(MOD_GRAPHICS, "    -> Found modelRef {} -> geomFragRef {}", bone->modelRef, geomFragRef);
+            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} -> geomFragRef={}",
+                      bone->name, bone->modelRef, geomFragRef);
             if (geomFragRef > 0) {
                 geom = wldLoader.getGeometryByFragmentIndex(geomFragRef);
                 if (geom) {
-                    LOG_DEBUG(MOD_GRAPHICS, "    -> Found geometry: {} verts={}", geom->name, geom->vertices.size());
+                    LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' -> geometry='{}' verts={} materialData={} textureNames={}",
+                              bone->name, geom->name, geom->vertices.size(),
+                              (bool)geom->materialData, geom->textureNames().size());
                 } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "    -> Geometry NOT found for fragRef {}", geomFragRef);
+                    LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef={} NOT FOUND in geometryByFragIndex_",
+                              bone->name, geomFragRef);
                 }
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geomFragRef=0, skipping", bone->name);
             }
         } else {
-            LOG_DEBUG(MOD_GRAPHICS, "    -> modelRef {} not in modelRefs, trying direct geometry lookup", bone->modelRef);
-            // modelRef might directly reference a geometry (0x36) fragment
+            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' modelRef={} not in modelRefs, trying direct geometry lookup",
+                      bone->name, bone->modelRef);
             geom = wldLoader.getGeometryByFragmentIndex(bone->modelRef);
             if (geom) {
-                LOG_DEBUG(MOD_GRAPHICS, "    -> Direct lookup found: {} verts={}", geom->name, geom->vertices.size());
+                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup -> geometry='{}' verts={} materialData={} textureNames={}",
+                          bone->name, geom->name, geom->vertices.size(),
+                          (bool)geom->materialData, geom->textureNames().size());
             } else {
-                LOG_DEBUG(MOD_GRAPHICS, "    -> Direct lookup failed");
+                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' direct lookup FAILED for modelRef={}",
+                          bone->name, bone->modelRef);
             }
         }
 
         if (geom && !geom->vertices.empty()) {
-            // Check if we already have this geometry (in legacy parts list)
             bool alreadyAdded = false;
             for (const auto& existing : model->parts) {
                 if (existing.get() == geom.get()) {
@@ -592,15 +591,10 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                 }
             }
             if (!alreadyAdded) {
-                // Add to legacy parts list
                 model->parts.push_back(geom);
 
-                // Also add to new parts with transforms
                 CharacterPart part;
                 part.geometry = geom;
-
-                // applySkinning handles transforms for skinned meshes (those with vertex pieces)
-                // Use identity transform here - transform is applied during skinning
                 part.shiftX = 0;
                 part.shiftY = 0;
                 part.shiftZ = 0;
@@ -608,13 +602,18 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
                 part.rotateY = 0;
                 part.rotateZ = 0;
 
-                if (!geom->vertexPieces.empty()) {
-                    LOG_DEBUG(MOD_GRAPHICS, "    -> Added skinned mesh (has {} vertex pieces)", geom->vertexPieces.size());
-                } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "    -> Added static mesh");
-                }
+                LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' ADDED geometry='{}' verts={} vpieces={} materialData={} textureNames={} (partsWithTransforms now={})",
+                          bone->name, geom->name, geom->vertices.size(), geom->vertexPieces.size(),
+                          (bool)geom->materialData, geom->textureNames().size(),
+                          model->partsWithTransforms.size() + 1);
                 model->partsWithTransforms.push_back(part);
+            } else {
+                LOG_TRACE(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geometry='{}' already added, skipping",
+                          bone->name, geom->name);
             }
+        } else if (geom) {
+            LOG_DEBUG(MOD_GRAPHICS, "  flattenSkeleton: bone='{}' geometry='{}' has 0 vertices, skipping",
+                      bone->name, geom->name);
         }
     }
 
@@ -642,34 +641,54 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
     }
 
     std::string chrArchivePath = basePath + "_chr.s3d";
+    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: archivePath='{}' -> chrArchivePath='{}'", archivePath, chrArchivePath);
 
     // Open the character archive
     PfsArchive chrArchive;
     if (!chrArchive.open(chrArchivePath)) {
-        // No character archive, that's okay
+        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: failed to open '{}'", chrArchivePath);
         return false;
     }
 
     // Load character textures
     loadCharacterTextures(chrArchive);
+    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: loaded {} character textures", zone_->characterTextures.size());
 
     // Find WLD files in the character archive
     std::vector<std::string> wldFiles;
     chrArchive.getFilenames(".wld", wldFiles);
+    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: found {} WLD files in '{}'", wldFiles.size(), chrArchivePath);
+    for (const auto& wf : wldFiles) {
+        LOG_DEBUG(MOD_GRAPHICS, "  WLD file: '{}'", wf);
+    }
 
     if (wldFiles.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "S3DLoader::loadCharacters: no WLD files in '{}'", chrArchivePath);
         return false;
     }
 
     // Parse each WLD file for character data
     for (const auto& wld : wldFiles) {
+        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: parsing WLD '{}'", wld);
         WldLoader chrLoader;
         if (!chrLoader.parseFromArchive(chrArchivePath, wld)) {
+            LOG_WARN(MOD_GRAPHICS, "S3DLoader::loadCharacters: parseFromArchive failed for '{}'", wld);
             continue;
         }
 
         const auto& skeletonTracks = chrLoader.getSkeletonTracks();
         const auto& geometries = chrLoader.getGeometries();
+        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: WLD '{}' has {} skeletonTracks, {} geometries",
+                  wld, skeletonTracks.size(), geometries.size());
+
+        // Log materialData status of all parsed geometries
+        size_t geomsWithMat = 0, geomsWithoutMat = 0;
+        for (const auto& g : geometries) {
+            if (g && g->materialData && !g->materialData->textureNames.empty()) geomsWithMat++;
+            else geomsWithoutMat++;
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: geometries with materialData+names={} without={}",
+                  geomsWithMat, geomsWithoutMat);
 
         // Create character models from skeleton tracks
         for (const auto& [fragIdx, skeleton] : skeletonTracks) {
@@ -677,16 +696,29 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
             character->name = skeleton->name;
             character->skeleton = skeleton;
 
+            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: processing skeleton '{}' (fragIdx={}) with {} root bones",
+                      skeleton->name, fragIdx, skeleton->bones.size());
+
             // Flatten the skeleton into geometry parts
             for (const auto& rootBone : skeleton->bones) {
                 flattenSkeleton(rootBone, character, chrLoader);
             }
 
+            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' after flattenSkeleton: parts={} partsWithTransforms={} rawParts={}",
+                      skeleton->name, character->parts.size(), character->partsWithTransforms.size(), character->rawParts.size());
+
+            // Log materialData of parts found via flattenSkeleton
+            for (size_t pi = 0; pi < character->partsWithTransforms.size(); ++pi) {
+                const auto& pt = character->partsWithTransforms[pi];
+                if (pt.geometry) {
+                    LOG_DEBUG(MOD_GRAPHICS, "  partsWithTransforms[{}]: '{}' verts={} materialData={} textureNames={}",
+                              pi, pt.geometry->name, pt.geometry->vertices.size(),
+                              (bool)pt.geometry->materialData, pt.geometry->textureNames().size());
+                }
+            }
+
             // If no parts found through skeleton, filter geometries by race code prefix
-            // In global_chr.s3d, meshes are named like "HUM_DMSPRITEDEF", "HUMHE00_DMSPRITEDEF"
-            // The skeleton name is like "HUM_HS_DEF" - extract the race code prefix
             if (character->parts.empty() && !geometries.empty()) {
-                // Extract race code from skeleton name (e.g., "HUM" from "HUM_HS_DEF")
                 std::string skelName = skeleton->name;
                 std::transform(skelName.begin(), skelName.end(), skelName.begin(),
                               [](unsigned char c) { return std::toupper(c); });
@@ -696,9 +728,11 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                 if (hsDefPos != std::string::npos) {
                     raceCode = skelName.substr(0, hsDefPos);
                 } else {
-                    // Fallback: use first 3 characters
                     raceCode = skelName.length() >= 3 ? skelName.substr(0, 3) : skelName;
                 }
+
+                LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' no parts from flattenSkeleton, trying prefix match with raceCode='{}'",
+                          skeleton->name, raceCode);
 
                 // Find geometries that match this race code
                 for (const auto& geom : geometries) {
@@ -708,13 +742,13 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                     std::transform(geomName.begin(), geomName.end(), geomName.begin(),
                                   [](unsigned char c) { return std::toupper(c); });
 
-                    // Check if geometry name starts with the race code
-                    // e.g., "HUM_DMSPRITEDEF" starts with "HUM"
-                    // e.g., "HUMHE00_DMSPRITEDEF" starts with "HUM"
                     if (geomName.find(raceCode) == 0) {
+                        LOG_DEBUG(MOD_GRAPHICS, "  prefix match: '{}' verts={} materialData={} textureNames={}",
+                                  geom->name, geom->vertices.size(),
+                                  (bool)geom->materialData, geom->textureNames().size());
+
                         character->parts.push_back(geom);
 
-                        // Also add to partsWithTransforms with identity transform
                         CharacterPart part;
                         part.geometry = geom;
                         part.shiftX = part.shiftY = part.shiftZ = 0;
@@ -722,10 +756,9 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                         character->partsWithTransforms.push_back(part);
 
                         // Deep copy geometry for rawParts BEFORE skinning is applied
-                        // This is critical for animation - we need the original vertex positions
                         auto rawGeom = std::make_shared<ZoneGeometry>();
                         rawGeom->name = geom->name;
-                        rawGeom->vertices = geom->vertices;  // Copy vertices
+                        rawGeom->vertices = geom->vertices;
                         rawGeom->triangles = geom->triangles;
                         rawGeom->materialData = geom->materialData;
                         rawGeom->vertexPieces = geom->vertexPieces;
@@ -735,6 +768,10 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                         rawGeom->centerY = geom->centerY;
                         rawGeom->centerZ = geom->centerZ;
 
+                        LOG_DEBUG(MOD_GRAPHICS, "  rawGeom copy: '{}' materialData={} (same ptr: {})",
+                                  rawGeom->name, (bool)rawGeom->materialData,
+                                  rawGeom->materialData.get() == geom->materialData.get());
+
                         CharacterPart rawPart;
                         rawPart.geometry = rawGeom;
                         rawPart.shiftX = rawPart.shiftY = rawPart.shiftZ = 0;
@@ -743,10 +780,8 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
                     }
                 }
 
-                if (!character->parts.empty()) {
-                    LOG_TRACE(MOD_GRAPHICS, "S3DLoader: Filtered {} meshes for race code '{}'",
-                        character->parts.size(), raceCode);
-                }
+                LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' prefix match found {} parts, {} rawParts",
+                          skeleton->name, character->parts.size(), character->rawParts.size());
             }
 
             // Apply skinning to meshes that have vertex piece data
@@ -774,7 +809,28 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
             character->animatedSkeleton = buildAnimatedSkeleton(modelCode, skeleton, chrLoader);
 
             if (!character->parts.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: storing character '{}' with parts={} partsWithTransforms={} rawParts={} animSkeleton={}",
+                          character->name, character->parts.size(), character->partsWithTransforms.size(),
+                          character->rawParts.size(), (bool)character->animatedSkeleton);
+                // Log final materialData status of all partsWithTransforms
+                for (size_t pi = 0; pi < character->partsWithTransforms.size(); ++pi) {
+                    const auto& pt = character->partsWithTransforms[pi];
+                    if (pt.geometry) {
+                        LOG_DEBUG(MOD_GRAPHICS, "  FINAL partsWithTransforms[{}]: '{}' materialData={} textureNames={}",
+                                  pi, pt.geometry->name, (bool)pt.geometry->materialData, pt.geometry->textureNames().size());
+                    }
+                }
+                // Also log rawParts materialData status
+                for (size_t pi = 0; pi < character->rawParts.size(); ++pi) {
+                    const auto& rp = character->rawParts[pi];
+                    if (rp.geometry) {
+                        LOG_DEBUG(MOD_GRAPHICS, "  FINAL rawParts[{}]: '{}' materialData={} textureNames={}",
+                                  pi, rp.geometry->name, (bool)rp.geometry->materialData, rp.geometry->textureNames().size());
+                    }
+                }
                 zone_->characters.push_back(character);
+            } else {
+                LOG_TRACE(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' has no parts, not stored", character->name);
             }
         }
 

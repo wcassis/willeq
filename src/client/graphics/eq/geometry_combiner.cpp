@@ -10,7 +10,10 @@ namespace Graphics {
 std::shared_ptr<ZoneGeometry> combineCharacterParts(
     const std::vector<std::shared_ptr<ZoneGeometry>>& parts) {
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterParts: {} parts", parts.size());
+
     if (parts.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "combineCharacterParts: empty parts, returning nullptr");
         return nullptr;
     }
 
@@ -72,6 +75,8 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
         return nullptr;
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterParts: RESULT verts={} tris={} textureNames={}",
+              combined->vertices.size(), combined->triangles.size(), combined->textureNames().size());
     combined->name = "combined";
     return combined;
 }
@@ -79,7 +84,10 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
 std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
     const std::vector<CharacterPart>& parts) {
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsWithTransforms: {} parts", parts.size());
+
     if (parts.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsWithTransforms: empty parts, returning nullptr");
         return nullptr;
     }
 
@@ -90,9 +98,24 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
     uint32_t vertexOffset = 0;
     uint32_t textureOffset = 0;
 
+    size_t partIdx = 0;
     for (const auto& part : parts) {
         if (!part.geometry || part.geometry->vertices.empty()) {
+            LOG_DEBUG(MOD_GRAPHICS, "  combiner part[{}]: SKIPPED (geometry={} verts={})",
+                      partIdx, (bool)part.geometry, part.geometry ? part.geometry->vertices.size() : 0);
+            partIdx++;
             continue;
+        }
+
+        LOG_DEBUG(MOD_GRAPHICS, "  combiner part[{}]: '{}' verts={} tris={} materialData={} textureNames={} vertexPieces={}",
+                  partIdx, part.geometry->name, part.geometry->vertices.size(),
+                  part.geometry->triangles.size(), (bool)part.geometry->materialData,
+                  part.geometry->textureNames().size(), part.geometry->vertexPieces.size());
+        // Log actual texture names for this part
+        for (size_t ti = 0; ti < part.geometry->textureNames().size(); ++ti) {
+            LOG_TRACE(MOD_GRAPHICS, "    combiner part[{}] textureName[{}]='{}' invisible={}",
+                      partIdx, ti, part.geometry->textureNames()[ti],
+                      ti < part.geometry->textureInvisible().size() ? part.geometry->textureInvisible()[ti] : false);
         }
 
         // Debug output for bone transforms
@@ -188,12 +211,20 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
 
         vertexOffset += static_cast<uint32_t>(part.geometry->vertices.size());
         textureOffset += static_cast<uint32_t>(part.geometry->textureNames().size());
+        LOG_TRACE(MOD_GRAPHICS, "  combiner part[{}]: after merge — combined textureNames={} verts={} tris={}",
+                  partIdx, combined->textureNames().size(), combined->vertices.size(), combined->triangles.size());
+        partIdx++;
     }
 
     if (combined->vertices.empty() || combined->triangles.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsWithTransforms: result empty (verts={} tris={}), returning nullptr",
+                  combined->vertices.size(), combined->triangles.size());
         return nullptr;
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsWithTransforms: RESULT verts={} tris={} textureNames={} materialData={}",
+              combined->vertices.size(), combined->triangles.size(),
+              combined->textureNames().size(), (bool)combined->materialData);
     combined->name = "combined_with_transforms";
     return combined;
 }
@@ -201,7 +232,10 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
 std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
     const std::vector<CharacterPart>& parts) {
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsRaw: {} parts", parts.size());
+
     if (parts.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsRaw: empty parts, returning nullptr");
         return nullptr;
     }
 
@@ -264,6 +298,9 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
         return nullptr;
     }
 
+    LOG_DEBUG(MOD_GRAPHICS, "combineCharacterPartsRaw: RESULT verts={} tris={} textureNames={} materialData={}",
+              combined->vertices.size(), combined->triangles.size(),
+              combined->textureNames().size(), (bool)combined->materialData);
     combined->name = "combined_raw";
     return combined;
 }
