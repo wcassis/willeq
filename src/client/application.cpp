@@ -147,6 +147,7 @@ bool Application::initialize(const ApplicationConfig& config) {
 #endif
 
     // Create game state
+    LOG_TRACE(MOD_MAIN, "Allocating GameState...");
     m_gameState = std::make_unique<state::GameState>();
     LOG_DEBUG(MOD_MAIN, "Game state created");
 
@@ -212,15 +213,18 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
 
     // Create action handler adapter
+    LOG_TRACE(MOD_MAIN, "Allocating EqActionHandler...");
     m_actionHandler = std::make_unique<EqActionHandler>(*m_eqClient);
     LOG_DEBUG(MOD_MAIN, "Action handler created");
 
     // Create action dispatcher
+    LOG_TRACE(MOD_MAIN, "Allocating ActionDispatcher...");
     m_dispatcher = std::make_unique<action::ActionDispatcher>(*m_gameState);
     m_dispatcher->setActionHandler(m_actionHandler.get());
     LOG_DEBUG(MOD_MAIN, "Action dispatcher created");
 
     // Create command processor
+    LOG_TRACE(MOD_MAIN, "Allocating CommandProcessor...");
     m_commandProcessor = std::make_unique<action::CommandProcessor>(*m_gameState, *m_dispatcher);
     LOG_DEBUG(MOD_MAIN, "Command processor created");
 
@@ -239,12 +243,14 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
     LOG_INFO(MOD_MAIN, "Creating game mode with renderer type: {}",
         rendererType == mode::GraphicalRendererType::IrrlichtGPU ? "GPU" : "Software");
+    LOG_TRACE(MOD_MAIN, "Allocating game mode...");
     m_gameMode = mode::createMode(config.operatingMode, rendererType);
     if (!m_gameMode) {
         LOG_FATAL(MOD_MAIN, "Failed to create game mode");
         return false;
     }
 
+    LOG_TRACE(MOD_MAIN, "Initializing game mode...");
     if (!m_gameMode->initialize(*m_gameState, modeConfig)) {
         LOG_FATAL(MOD_MAIN, "Failed to initialize game mode");
         return false;
@@ -254,6 +260,7 @@ bool Application::initialize(const ApplicationConfig& config) {
         config.operatingMode == mode::OperatingMode::HeadlessInteractive ? "headless" : "automated");
 
     // Create input action bridge
+    LOG_TRACE(MOD_MAIN, "Allocating InputActionBridge...");
     m_inputBridge = std::make_unique<action::InputActionBridge>(*m_gameState, *m_dispatcher);
     m_inputBridge->setCommandProcessor(m_commandProcessor.get());
     LOG_DEBUG(MOD_MAIN, "Input action bridge created");
@@ -273,6 +280,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
 
     // Connect renderer callbacks to action dispatcher
+    LOG_TRACE(MOD_MAIN, "Connecting renderer callbacks...");
     connectRendererCallbacks();
     LOG_DEBUG(MOD_MAIN, "Renderer callbacks connected");
 
@@ -294,6 +302,7 @@ bool Application::initialize(const ApplicationConfig& config) {
                               builtConfig.totalMemoryBudgetBytes / (1024*1024),
                               builtConfig.textureMemoryBytes / (1024*1024),
                               builtConfig.framebufferMemoryBytes / (1024*1024));
+                    LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for memory spec...");
                     builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 } else {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
@@ -301,6 +310,7 @@ bool Application::initialize(const ApplicationConfig& config) {
                               config.constrainedPreset,
                               EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
                     builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
+                    LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for named preset...");
                     builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
                 }
             } else {
@@ -308,6 +318,7 @@ bool Application::initialize(const ApplicationConfig& config) {
                 LOG_DEBUG(MOD_GRAPHICS, "No preset specified, defaulting to OrangePi");
                 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
                     EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
+                LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for default preset...");
                 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
             }
 
@@ -348,6 +359,7 @@ bool Application::initialize(const ApplicationConfig& config) {
 #endif
 
             // Load debug overrides (skip* flags from config/debug.json)
+            LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
             builtConfig.loadDebugOverrides("config/debug.json");
 
             // S02: Validate preset values
@@ -381,6 +393,8 @@ bool Application::initialize(const ApplicationConfig& config) {
                      builtConfig.useDRM ? "yes" : "no");
 
             // Create constrained asset cache (config-only, no driver yet)
+            LOG_TRACE(MOD_GRAPHICS, "Allocating ConstrainedTextureCache ({}MB budget)...",
+                      builtConfig.textureMemoryBytes / (1024 * 1024));
             m_constrainedCache = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(builtConfig);
             LOG_INFO(MOD_GRAPHICS, "Constrained cache created ({}MB budget)",
                      builtConfig.textureMemoryBytes / (1024 * 1024));
@@ -390,15 +404,16 @@ bool Application::initialize(const ApplicationConfig& config) {
         EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 
         // D20b5: Application creates renderer + bridge, passes to EverQuest
-        LOG_DEBUG(MOD_GRAPHICS, "Creating IrrlichtRenderer and IrrlichtBridge...");
+        LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtRenderer...");
         m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
         m_renderer->setConstrainedTextureCache(m_constrainedCache.get());
+        LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtBridge...");
         m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
         m_irrlichtBridge->setRenderer(m_renderer.get());
         m_renderer->setBridge(m_irrlichtBridge.get());
         m_bridge = m_irrlichtBridge.get();
-        LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created, calling InitGraphics({}x{})...",
-                  config.displayWidth, config.displayHeight);
+        LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
+        LOG_TRACE(MOD_GRAPHICS, "Entering InitGraphics({}x{})...", config.displayWidth, config.displayHeight);
 
         if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight,
                                       m_renderer.get(), m_bridge)) {

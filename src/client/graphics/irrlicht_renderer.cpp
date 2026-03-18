@@ -504,6 +504,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
              config_.constrainedConfig.totalMemoryBudgetBytes / (1024 * 1024));
     // Create frame budget governor
     if (!governor_) {
+        LOG_TRACE(MOD_GRAPHICS, "Allocating FrameBudgetGovernor...");
         float targetFps = config_.constrainedConfig.targetFps;
         governor_ = std::make_unique<FrameBudgetGovernor>(targetFps);
         LOG_INFO(MOD_GRAPHICS, "Frame budget governor: target {:.0f} FPS ({:.1f}ms budget)",
@@ -512,6 +513,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create shared background thread pool
     if (!backgroundThreadPool_) {
+        LOG_TRACE(MOD_GRAPHICS, "Allocating BackgroundThreadPool ({} threads)...",
+                  config_.constrainedConfig.backgroundThreadCount);
         backgroundThreadPool_ = std::make_unique<BackgroundThreadPool>(
             config_.constrainedConfig.backgroundThreadCount);
         LOG_INFO(MOD_GRAPHICS, "Background thread pool: {} thread(s)",
@@ -521,12 +524,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // One-time file I/O at app startup (before render loop begins).
     // Caches display settings so render-thread code never reads JSON.
     if (!displaySettingsCached_) {
+        LOG_TRACE(MOD_GRAPHICS, "Loading display settings from file...");
         cachedDisplaySettings_ = loadDisplaySettingsFromFile();
         displaySettingsCached_ = true;
     }
 
     // One-time race mappings load (validated at startup by S03)
     if (!areRaceMappingsLoaded()) {
+        LOG_TRACE(MOD_GRAPHICS, "Loading race mappings from config/race_models.json...");
         if (!loadRaceMappings("config/race_models.json")) {
             LOG_FATAL(MOD_GRAPHICS, "Failed to load race model mappings: config/race_models.json");
         }
@@ -534,6 +539,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Pre-load item-to-model mapping (validated at startup by S03)
     if (itemToModelMap_.empty()) {
+        LOG_TRACE(MOD_GRAPHICS, "Loading item model mappings from data/item_models.json...");
         if (EquipmentModelLoader::loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) < 0) {
             LOG_FATAL(MOD_GRAPHICS, "Failed to load item model mappings: data/item_models.json");
         }
@@ -584,6 +590,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
 
+    LOG_TRACE(MOD_GRAPHICS, "Creating Irrlicht device (createDeviceEx)...");
     device_ = irr::createDeviceEx(params);
 
     if (!device_) {
@@ -602,9 +609,27 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     device_->getLogger()->setLogLevel(irr::ELL_WARNING);
     device_->setWindowCaption(irr::core::stringw(config.windowTitle.c_str()).c_str());
 
+    LOG_TRACE(MOD_GRAPHICS, "Acquiring driver, scene manager, GUI environment...");
     driver_ = device_->getVideoDriver();
     smgr_ = device_->getSceneManager();
     guienv_ = device_->getGUIEnvironment();
+    if (!driver_ || !smgr_ || !guienv_) {
+        LOG_FATAL(MOD_GRAPHICS, "Irrlicht device returned null subsystems: driver={} smgr={} guienv={}",
+                  (void*)driver_, (void*)smgr_, (void*)guienv_);
+        return false;
+    }
+
+    // Wire driver into constrained texture cache immediately (before any texture loading)
+    LOG_TRACE(MOD_GRAPHICS, "Wiring driver into constrained texture cache...");
+    if (driver_ && constrainedTextureCache_) {
+        constrainedTextureCache_->setDriver(driver_);
+        constrainedTextureCache_->setSceneManager(smgr_);
+        LOG_INFO(MOD_GRAPHICS, "Texture cache wired to driver ({}KB limit, {}x{} max texture, mipmaps={})",
+                 config_.constrainedConfig.textureMemoryBytes / 1024,
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.maxTextureDimension,
+                 config_.constrainedConfig.enableMipmaps ? "yes" : "no");
+    }
 
     // Log comprehensive driver/OpenGL details
     logDriverDetails(driver_, device_, params);
@@ -613,6 +638,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {
         device_->getCursorControl()->setVisible(true);
     }
+    LOG_TRACE(MOD_GRAPHICS, "Creating software cursor...");
     createSoftwareCursor();
 
     // U01: Initialize batched text renderer
@@ -626,6 +652,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // U02: Load UI atlas (required when enableTextureAtlas is true)
     if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+        LOG_TRACE(MOD_GRAPHICS, "Loading UI atlas from {}...", config_.constrainedConfig.atlasPath);
         uiAtlas_ = std::make_unique<UIAtlas>();
         if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath, constrainedTextureCache_)) {
             LOG_FATAL(MOD_GRAPHICS, "UIAtlas: required atlas files missing from {}. "
@@ -636,6 +663,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 
     // U03: Initialize static layout UI renderer
+    LOG_TRACE(MOD_GRAPHICS, "Initializing UI renderer...");
     uiRenderer_ = std::make_unique<UIRenderer>();
     uiRenderer_->init(driver_, uiAtlas_.get(), textBatch_.get());
     uiLayout_.computeLayout(config.width, config.height);
@@ -655,33 +683,25 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                   config_.constrainedConfig.enableMipmaps ? "enabled" : "disabled");
     }
 
-    // Wire driver into constrained texture cache (cache created earlier by Application)
-    if (driver_ && constrainedTextureCache_) {
-        constrainedTextureCache_->setDriver(driver_);
-        constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
+    // Wire ancillary services into cache (driver/smgr already wired above)
+    if (constrainedTextureCache_) {
         if (backgroundThreadPool_)
             constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
-#ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_)
-            constrainedTextureCache_->setGPUUploadThread(gpuUploadThread_.get());
-#endif
         // Pre-create placeholder texture before render loop starts
         constrainedTextureCache_->getPlaceholderTexture();
-        LOG_INFO(MOD_GRAPHICS, "Texture cache created ({}KB limit, {}x{} max texture, mipmaps={})",
-                 config_.constrainedConfig.textureMemoryBytes / 1024,
-                 config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.maxTextureDimension,
-                 config_.constrainedConfig.enableMipmaps ? "yes" : "no");
     }
 
     // Create event receiver
+    LOG_TRACE(MOD_GRAPHICS, "Creating event receiver...");
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
     device_->setEventReceiver(eventReceiver_.get());
 
     // Setup camera (needed for loading screen rendering)
+    LOG_TRACE(MOD_GRAPHICS, "Setting up camera...");
     setupCamera();
 
     // Setup lighting (basic setup)
+    LOG_TRACE(MOD_GRAPHICS, "Setting up lighting...");
     setupLighting();
 
     // Apply initial settings from constrained config (must come BEFORE shader variant sync)
@@ -693,6 +713,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Initialize GLSL shader pipeline (if enabled and driver supports it)
     if (config_.constrainedConfig.enableShaders &&
         config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
+        LOG_TRACE(MOD_GRAPHICS, "Initializing GLSL shader pipeline...");
         auto* gpu = driver_->getGPUProgrammingServices();
         if (gpu) {
             zoneShader_ = std::make_unique<ZoneShaderManager>(driver_, gpu);
@@ -707,18 +728,22 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Initialize GPU upload thread (shared EGL context for async texture/VBO uploads)
 #ifdef EQT_HAS_GLES2
+    LOG_TRACE(MOD_GRAPHICS, "Initializing GPU upload thread (shared EGL context)...");
     initGPUUploadThread();
 #endif
 
     // Setup HUD (needed for loading screen text)
+    LOG_TRACE(MOD_GRAPHICS, "Setting up HUD...");
     setupHUD();
 
     // S05: Pre-allocate renderer-lifetime subsystems (survive zone changes)
 
     // Create entity renderer (needed for entity model loading during zone load)
+    LOG_TRACE(MOD_GRAPHICS, "Creating entity renderer...");
     createEntityRenderer();
 
     // Create sky renderer (skyRendering preset flag controls whether it renders, not whether it exists)
+    LOG_TRACE(MOD_GRAPHICS, "Creating sky renderer...");
     skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
     if (constrainedTextureCache_) {
         skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_);
@@ -730,6 +755,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 
     // Create detail manager (detailObjectsEnabled controls whether it renders, not whether it exists)
+    LOG_TRACE(MOD_GRAPHICS, "Creating detail manager...");
     detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
     detailManager_->setSurfaceMapsPath("data/detail/zones");
     if (constrainedTextureCache_) {
@@ -748,6 +774,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create tree wind animation manager (needed before zone loading)
     if (!treeManager_) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating tree manager...");
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
         if (constrainedTextureCache_) {
@@ -761,6 +788,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create weather system (needed before zone loading)
     if (!weatherSystem_) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating weather system...");
         weatherSystem_ = std::make_unique<WeatherSystem>();
         // Connect weather system to tree manager via callback
         weatherSystem_->addCallback([this](WeatherType weather) {
@@ -776,8 +804,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Always create particle manager — needed for unified fire system even when
     // atmospheric particles (dust, pollen, fireflies) are disabled
     if (!particleManager_) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating particle manager...");
         particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
         particleManager_->setConstrainedTextureCache(constrainedTextureCache_);
+        LOG_TRACE(MOD_GRAPHICS, "Initializing particle manager (loading atlas)...");
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
@@ -795,6 +825,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create ambient creatures (boids) system (only if ambient creatures enabled)
     if (!boidsManager_ && displaySettings.ambientCreatures) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating boids manager (loading atlas)...");
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
         boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!boidsManager_->init(config_.eqClientPath)) {
@@ -807,6 +838,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create tumbleweed manager (only if rolling objects enabled)
     if (!tumbleweedManager_ && displaySettings.rollingObjects) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating tumbleweed manager (loading texture)...");
         tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
         tumbleweedManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!tumbleweedManager_->init()) {
@@ -819,11 +851,13 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Create weather effects controller (screen-space rain/snow overlays, storm clouds, lightning)
     if (!weatherEffects_) {
+        LOG_TRACE(MOD_GRAPHICS, "Creating weather effects controller...");
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
         if (constrainedTextureCache_) {
             weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
         }
+        LOG_TRACE(MOD_GRAPHICS, "Initializing weather effects (loading cloud/rain/snow textures)...");
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
         }
@@ -2131,11 +2165,13 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
 
     // Lazily create weather effects if not yet created and particles are available
     if (!weatherEffects_ && particleManager_) {
+        LOG_TRACE(MOD_GRAPHICS, "Lazy-creating weather effects controller...");
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
         if (constrainedTextureCache_) {
             weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
         }
+        LOG_TRACE(MOD_GRAPHICS, "Lazy-initializing weather effects (loading textures)...");
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
         }
