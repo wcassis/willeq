@@ -1,5 +1,4 @@
 #include "client/graphics/animated_texture_manager.h"
-#include "client/graphics/eq/dds_decoder.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <sstream>
@@ -17,14 +16,7 @@ AnimatedTextureManager::~AnimatedTextureManager() {
     if (constrainedCache_) {
         constrainedCache_->removeEvictionListener(this);
     }
-    // Don't call driver_->removeTexture() if cache owns textures
-    if (!constrainedCache_ && driver_) {
-        for (auto& [name, texture] : textureCache_) {
-            if (texture) {
-                driver_->removeTexture(texture);
-            }
-        }
-    }
+    // Cache owns all textures — don't call driver_->removeTexture()
     textureCache_.clear();
     animatedTextures_.clear();
 }
@@ -60,66 +52,24 @@ void AnimatedTextureManager::onTextureEvicted(const std::string& name) {
 
 irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& name,
                                                            const std::vector<char>& data) {
-    // Check cache first
+    // Check local cache first
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
         return it->second;
     }
 
-    if (data.empty()) {
+    if (data.empty() || !constrainedCache_) {
         return nullptr;
     }
 
-    irr::video::ITexture* texture = nullptr;
-
-    // Check if DDS format
-    if (DDSDecoder::isDDS(data)) {
-        DecodedImage decoded = DDSDecoder::decode(data);
-        if (!decoded.pixels.empty()) {
-            // Convert RGBA to ARGB for Irrlicht
-            std::vector<uint8_t> argbData(decoded.pixels.size());
-            for (size_t i = 0; i < decoded.pixels.size(); i += 4) {
-                argbData[i] = decoded.pixels[i + 2];     // B
-                argbData[i + 1] = decoded.pixels[i + 1]; // G
-                argbData[i + 2] = decoded.pixels[i];     // R
-                argbData[i + 3] = decoded.pixels[i + 3]; // A
-            }
-
-            irr::core::dimension2d<irr::u32> size(decoded.width, decoded.height);
-            irr::video::IImage* image = driver_->createImageFromData(
-                irr::video::ECF_A8R8G8B8, size,
-                argbData.data(), false);
-
-            if (image) {
-                irr::io::path texName(name.c_str());
-                texture = driver_->addTexture(texName, image);
-                image->drop();
-            }
-        }
-    } else if (data.size() >= 2 && data[0] == 'B' && data[1] == 'M' && fileSystem_) {
-        // BMP format
-        irr::io::IReadFile* memFile = fileSystem_->createMemoryReadFile(
-            const_cast<char*>(data.data()), static_cast<irr::s32>(data.size()),
-            name.c_str(), false);
-
-        if (memFile) {
-            irr::video::IImage* image = driver_->createImageFromFile(memFile);
-            if (image) {
-                irr::io::path texName(name.c_str());
-                texture = driver_->addTexture(texName, image);
-                image->drop();
-            }
-            memFile->drop();
-        }
+    // Use constrained cache: decode + upload
+    irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data);
+    if (!texture) {
+        // Decoded but not yet uploaded — promote to GPU
+        texture = constrainedCache_->uploadTexture(name);
     }
 
     textureCache_[name] = texture;
-    if (texture && constrainedCache_) {
-        auto dim = texture->getOriginalSize();
-        bool hasAlpha = texture->hasAlpha();
-        constrainedCache_->registerTexture(name, texture,
-            static_cast<size_t>(dim.Width) * dim.Height * 4, hasAlpha);
-    }
     return texture;
 }
 
@@ -129,12 +79,18 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
     animatedTextures_.clear();
     int animatedCount = 0;
 
+    LOG_INFO(MOD_GRAPHICS, "AnimatedTextureManager::initialize: texAnimations={}, texNames={}, "
+             "archiveTextures={}, mesh={}",
+             geometry.textureAnimations().size(), geometry.textureNames().size(),
+             textures.size(), mesh != nullptr);
+
     // Find all animated textures from geometry
     for (size_t i = 0; i < geometry.textureAnimations().size(); ++i) {
         const TextureAnimationInfo& animInfo = geometry.textureAnimations()[i];
 
         if (!animInfo.isAnimated || animInfo.frames.size() <= 1) {
-            continue;  // Not animated or only 1 frame
+            // Not logged: per-iteration skip for non-animated entries (high volume, no diagnostic value)
+            continue;
         }
 
         std::string primaryName = (i < geometry.textureNames().size()) ?
@@ -143,15 +99,20 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
             primaryName = animInfo.frames[0];
         }
 
-        // Convert to lowercase for lookup
         std::string lowerPrimaryName = primaryName;
         std::transform(lowerPrimaryName.begin(), lowerPrimaryName.end(),
                       lowerPrimaryName.begin(), ::tolower);
 
         // Already processed this texture?
         if (animatedTextures_.find(lowerPrimaryName) != animatedTextures_.end()) {
+            LOG_TRACE(MOD_GRAPHICS, "  initialize[{}]: '{}' already discovered, skipping",
+                      i, lowerPrimaryName);
             continue;
         }
+
+        LOG_DEBUG(MOD_GRAPHICS, "  initialize[{}]: discovered animated texture '{}' "
+                  "(frames={}, delayMs={})",
+                  i, lowerPrimaryName, animInfo.frames.size(), animInfo.animationDelayMs);
 
         AnimatedTextureState state;
         state.animationDelayMs = animInfo.animationDelayMs > 0 ? animInfo.animationDelayMs : 100;
@@ -170,6 +131,7 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
                 irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
                 if (frameTex) {
                     state.frameTextures.push_back(frameTex);
+                    LOG_TRACE(MOD_GRAPHICS, "    frame '{}': loaded OK", frameName);
                 } else {
                     allFramesLoaded = false;
                     LOG_WARN(MOD_GRAPHICS_LOAD, "AnimatedTextureManager: Failed to load frame texture: {}", frameName);
@@ -182,8 +144,6 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
 
         // Only add if we got at least 2 frames
         if (state.frameTextures.size() >= 2) {
-            // Find mesh buffers using this texture
-            // Also check for dds_ prefix since ZoneMeshBuilder adds that for DDS textures
             std::string ddsLowerPrimaryName = "dds_" + lowerPrimaryName;
             if (mesh) {
                 for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
@@ -196,6 +156,8 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
                                       lowerBufTexName.begin(), ::tolower);
                         if (lowerBufTexName == lowerPrimaryName || lowerBufTexName == ddsLowerPrimaryName) {
                             state.affectedBuffers.push_back(buffer);
+                            LOG_TRACE(MOD_GRAPHICS, "    matched mesh buffer[{}] tex='{}'",
+                                      b, lowerBufTexName);
                         }
                     }
                 }
@@ -203,9 +165,17 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
 
             animatedTextures_[lowerPrimaryName] = state;
             animatedCount++;
+            LOG_INFO(MOD_GRAPHICS, "  initialize: registered '{}' ({} frames, {}ms delay, {} buffers)",
+                     lowerPrimaryName, state.frameTextures.size(), state.animationDelayMs,
+                     state.affectedBuffers.size());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "  initialize[{}]: '{}' has animated flag but only {} frames loaded, skipping",
+                     i, lowerPrimaryName, state.frameTextures.size());
         }
     }
 
+    LOG_INFO(MOD_GRAPHICS, "AnimatedTextureManager::initialize: total={} animated textures discovered",
+             animatedCount);
     return animatedCount;
 }
 
@@ -214,9 +184,13 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
                                       irr::scene::IMesh* mesh) {
     if (!mesh) return;
 
-    // For each animated texture we already know about, check if this mesh uses it
+    LOG_TRACE(MOD_GRAPHICS, "AnimatedTextureManager::addMesh: buffers={}, texAnimations={}, texNames={}, "
+              "knownAnimated={}", mesh->getMeshBufferCount(), geometry.textureAnimations().size(),
+              geometry.textureNames().size(), animatedTextures_.size());
+
+    // Phase 1: For each animated texture we already know about, check if this mesh uses it
+    int existingMatched = 0;
     for (auto& [primaryName, state] : animatedTextures_) {
-        // Find mesh buffers using this texture (check both plain name and dds_ prefixed)
         std::string ddsPrimaryName = "dds_" + primaryName;
         for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
             irr::scene::IMeshBuffer* buffer = mesh->getMeshBuffer(b);
@@ -226,27 +200,29 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
                 std::transform(bufTexName.begin(), bufTexName.end(),
                               bufTexName.begin(), ::tolower);
                 if (bufTexName == primaryName || bufTexName == ddsPrimaryName) {
-                    // Check if this buffer is already tracked
                     bool alreadyTracked = false;
                     for (const auto* existingBuf : state.affectedBuffers) {
-                        if (existingBuf == buffer) {
-                            alreadyTracked = true;
-                            break;
-                        }
+                        if (existingBuf == buffer) { alreadyTracked = true; break; }
                     }
                     if (!alreadyTracked) {
                         state.affectedBuffers.push_back(buffer);
+                        existingMatched++;
+                        LOG_TRACE(MOD_GRAPHICS, "  addMesh phase1: buffer[{}] tex='{}' matched existing anim '{}'",
+                                  b, bufTexName, primaryName);
                     }
                 }
             }
         }
     }
 
-    // Also check for new animated textures from this mesh's geometry
+    // Phase 2: Check for new animated textures from this mesh's geometry
+    int newDiscovered = 0;
+    int newBuffersMatched = 0;
     for (size_t i = 0; i < geometry.textureAnimations().size(); ++i) {
         const TextureAnimationInfo& animInfo = geometry.textureAnimations()[i];
 
         if (!animInfo.isAnimated || animInfo.frames.size() <= 1) {
+            // Not logged: per-iteration skip (high volume)
             continue;
         }
 
@@ -274,13 +250,12 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
                     if (bufTexName == lowerPrimaryName || bufTexName == ddsLowerPrimaryName) {
                         bool alreadyTracked = false;
                         for (const auto* existingBuf : it->second.affectedBuffers) {
-                            if (existingBuf == buffer) {
-                                alreadyTracked = true;
-                                break;
-                            }
+                            if (existingBuf == buffer) { alreadyTracked = true; break; }
                         }
                         if (!alreadyTracked) {
                             it->second.affectedBuffers.push_back(buffer);
+                            LOG_TRACE(MOD_GRAPHICS, "  addMesh phase2: buffer[{}] tex='{}' matched known anim '{}'",
+                                      b, bufTexName, lowerPrimaryName);
                         }
                     }
                 }
@@ -289,6 +264,9 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
         }
 
         // New animated texture - load all frames
+        LOG_DEBUG(MOD_GRAPHICS, "  addMesh phase2: NEW animated texture '{}' (index={}, frames={}, delayMs={})",
+                  lowerPrimaryName, i, animInfo.frames.size(), animInfo.animationDelayMs);
+
         AnimatedTextureState state;
         state.animationDelayMs = animInfo.animationDelayMs > 0 ? animInfo.animationDelayMs : 100;
         state.currentFrame = 0;
@@ -304,7 +282,12 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
                 irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
                 if (frameTex) {
                     state.frameTextures.push_back(frameTex);
+                    LOG_TRACE(MOD_GRAPHICS, "    frame '{}': loaded OK", frameName);
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "  addMesh: failed to load frame texture: {}", frameName);
                 }
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "  addMesh: frame texture not found in archive: {}", frameName);
             }
         }
 
@@ -319,18 +302,34 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
                                   bufTexName.begin(), ::tolower);
                     if (bufTexName == lowerPrimaryName || bufTexName == ddsLowerPrimaryName) {
                         state.affectedBuffers.push_back(buffer);
+                        newBuffersMatched++;
+                        LOG_TRACE(MOD_GRAPHICS, "    matched buffer[{}] tex='{}'", b, bufTexName);
                     }
                 }
             }
 
             animatedTextures_[lowerPrimaryName] = state;
+            newDiscovered++;
+            LOG_INFO(MOD_GRAPHICS, "  addMesh: registered NEW anim '{}' ({} frames, {}ms, {} buffers)",
+                     lowerPrimaryName, state.frameTextures.size(), state.animationDelayMs,
+                     state.affectedBuffers.size());
+        } else {
+            LOG_WARN(MOD_GRAPHICS, "  addMesh: '{}' animated but only {} frames loaded, skipping",
+                     lowerPrimaryName, state.frameTextures.size());
         }
+    }
+
+    if (existingMatched > 0 || newDiscovered > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "AnimatedTextureManager::addMesh result: existingMatched={}, "
+                  "newDiscovered={}, newBuffers={}, totalAnimated={}",
+                  existingMatched, newDiscovered, newBuffersMatched, animatedTextures_.size());
     }
 }
 
 void AnimatedTextureManager::addSceneNode(irr::scene::ISceneNode* node) {
     if (!node) return;
 
+    int matched = 0;
     // Scan all materials on this node for animated textures
     for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
         irr::video::ITexture* tex = node->getMaterial(i).getTexture(0);
@@ -357,8 +356,15 @@ void AnimatedTextureManager::addSceneNode(irr::scene::ISceneNode* node) {
             }
             if (!alreadyTracked) {
                 it->second.affectedMaterials.push_back({node, i});
+                matched++;
+                LOG_TRACE(MOD_GRAPHICS, "  addSceneNode: material[{}] tex='{}' matched anim '{}'",
+                          i, texName, lookupName);
             }
         }
+    }
+    if (matched > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "AnimatedTextureManager::addSceneNode: {} materials matched on node with {} materials total",
+                  matched, node->getMaterialCount());
     }
 }
 

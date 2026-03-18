@@ -16,6 +16,7 @@
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <sstream>
 
 namespace EQT {
@@ -50,12 +51,11 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     // Load spell effects config
     SpellEffectsConfig::instance().load("config/spell_effects.json");
 
-    // Load particle atlas texture from project's data directory
-    std::string atlasPath = "data/textures/particle_atlas.png";
+    // Load particle atlas texture via constrained cache
+    std::string atlasPath = "data/textures/particle_atlas.bmp";
     if (!loadParticleAtlas(atlasPath)) {
-        LOG_WARN(MOD_GRAPHICS, "ParticleManager: Atlas not found at {}, disabling particles. Run generate_textures tool.", atlasPath);
-        enabled_ = false;
-        return true;
+        LOG_FATAL(MOD_GRAPHICS, "ParticleManager: Required texture {} not found — run generate_textures first", atlasPath);
+        std::exit(1);
     }
 
     // Set up particle material
@@ -452,11 +452,17 @@ void ParticleManager::clearEmitters() {
 }
 
 bool ParticleManager::loadParticleAtlas(const std::string& path) {
-    if (!driver_) {
-        return false;
-    }
+    if (!driver_ || !constrainedCache_) return false;
 
-    atlasTexture_ = driver_->getTexture(path.c_str());
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> data(fileSize);
+    if (!file.read(data.data(), fileSize)) return false;
+
+    atlasTexture_ = constrainedCache_->getOrLoad("particle_atlas", data);
+    if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("particle_atlas");
     return atlasTexture_ != nullptr;
 }
 

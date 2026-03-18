@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <set>
 #include <map>
 
@@ -130,19 +131,24 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         }
     }
 
-    // Load texture atlas from pre-generated file
-    if (!atlasTexture_ && driver_) {
-        std::string atlasPath = "data/textures/detail_atlas.png";
-        atlasTexture_ = driver_->getTexture(atlasPath.c_str());
-        if (!atlasTexture_) {
-            LOG_WARN(MOD_GRAPHICS, "DetailManager: Atlas not found at {}, disabling detail objects. Run generate_textures tool.", atlasPath);
-            enabled_ = false;
-            return;
+    // Load texture atlas from pre-generated BMP via constrained cache
+    if (!atlasTexture_ && constrainedCache_) {
+        std::string atlasPath = "data/textures/detail_atlas.bmp";
+        std::ifstream file(atlasPath, std::ios::binary | std::ios::ate);
+        if (!file) {
+            LOG_FATAL(MOD_GRAPHICS, "DetailManager: Required texture {} not found — run generate_textures first", atlasPath);
+            std::exit(1);
         }
-        if (constrainedCache_) {
-            auto dim = atlasTexture_->getOriginalSize();
-            constrainedCache_->registerTexture("detail_atlas", atlasTexture_,
-                static_cast<size_t>(dim.Width) * dim.Height * 4, true);
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> data(fileSize);
+        file.read(data.data(), fileSize);
+
+        atlasTexture_ = constrainedCache_->getOrLoad("detail_atlas", data);
+        if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("detail_atlas");
+        if (!atlasTexture_) {
+            LOG_FATAL(MOD_GRAPHICS, "DetailManager: Failed to load required texture: {}", atlasPath);
+            std::exit(1);
         }
     }
 

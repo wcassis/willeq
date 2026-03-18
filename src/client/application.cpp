@@ -26,6 +26,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
@@ -378,6 +379,11 @@ bool Application::initialize(const ApplicationConfig& config) {
             LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
                      EQT::Graphics::backendName(builtConfig.renderingBackend),
                      builtConfig.useDRM ? "yes" : "no");
+
+            // Create constrained asset cache (config-only, no driver yet)
+            m_constrainedCache = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(builtConfig);
+            LOG_INFO(MOD_GRAPHICS, "Constrained cache created ({}MB budget)",
+                     builtConfig.textureMemoryBytes / (1024 * 1024));
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
@@ -386,6 +392,7 @@ bool Application::initialize(const ApplicationConfig& config) {
         // D20b5: Application creates renderer + bridge, passes to EverQuest
         LOG_DEBUG(MOD_GRAPHICS, "Creating IrrlichtRenderer and IrrlichtBridge...");
         m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
+        m_renderer->setConstrainedTextureCache(m_constrainedCache.get());
         m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
         m_irrlichtBridge->setRenderer(m_renderer.get());
         m_renderer->setBridge(m_irrlichtBridge.get());

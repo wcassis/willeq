@@ -1060,8 +1060,9 @@ public:
     bool isNewUIEnabled() const { return newUIEnabled_; }
     void setNewUIEnabled(bool v) { newUIEnabled_ = v; }
 
-    // Constrained texture cache access (may return nullptr if not in constrained mode)
-    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
+    // Constrained texture cache — owned by Application, set before initLoadingScreen()
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
+    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_; }
 
     // Constrained mesh cache access (may return nullptr if not in constrained mode)
     ConstrainedMeshCache* getConstrainedMeshCache() { return constrainedMeshCache_.get(); }
@@ -1219,7 +1220,7 @@ private:
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
     std::unique_ptr<SkyRenderer> skyRenderer_;
-    std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
+    ConstrainedTextureCache* constrainedTextureCache_ = nullptr;  // Owned by Application, mandatory
     std::unique_ptr<ConstrainedMeshCache> constrainedMeshCache_;      // Optional, lazy mesh loading in constrained mode
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation

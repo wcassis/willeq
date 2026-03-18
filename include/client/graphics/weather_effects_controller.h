@@ -375,6 +375,7 @@ private:
     irr::video::IVideoDriver* driver_ = nullptr;
     Environment::ParticleManager* particleManager_ = nullptr;
     SkyRenderer* skyRenderer_ = nullptr;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Storm cloud layer
     std::unique_ptr<Environment::StormCloudLayer> stormCloudLayer_;

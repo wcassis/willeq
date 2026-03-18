@@ -54,6 +54,7 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
     // Create storm cloud layer
     stormCloudLayer_ = std::make_unique<Environment::StormCloudLayer>();
     if (stormCloudLayer_ && smgr_ && driver_) {
+        if (constrainedCache_) stormCloudLayer_->setConstrainedTextureCache(constrainedCache_);
         stormCloudLayer_->initialize(smgr_, driver_, eqClientPath_);
     }
 
@@ -61,11 +62,13 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
 #ifndef EQT_HAS_GLES2
     rainOverlay_ = std::make_unique<Environment::RainOverlay>();
     if (rainOverlay_ && driver_ && smgr_) {
+        if (constrainedCache_) rainOverlay_->setConstrainedTextureCache(constrainedCache_);
         rainOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 
     snowOverlay_ = std::make_unique<Environment::SnowOverlay>();
     if (snowOverlay_ && driver_ && smgr_) {
+        if (constrainedCache_) snowOverlay_->setConstrainedTextureCache(constrainedCache_);
         snowOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 #endif
@@ -256,9 +259,18 @@ void WeatherEffectsController::setLightningCallback(std::function<void()> callba
 }
 
 void WeatherEffectsController::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    constrainedCache_ = cache;
     if (stormCloudLayer_) {
         stormCloudLayer_->setConstrainedTextureCache(cache);
     }
+#ifndef EQT_HAS_GLES2
+    if (rainOverlay_) {
+        rainOverlay_->setConstrainedTextureCache(cache);
+    }
+    if (snowOverlay_) {
+        snowOverlay_->setConstrainedTextureCache(cache);
+    }
+#endif
 }
 
 void WeatherEffectsController::setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {

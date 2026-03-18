@@ -627,7 +627,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // U02: Load UI atlas (required when enableTextureAtlas is true)
     if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
         uiAtlas_ = std::make_unique<UIAtlas>();
-        if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath)) {
+        if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath, constrainedTextureCache_)) {
             LOG_FATAL(MOD_GRAPHICS, "UIAtlas: required atlas files missing from {}. "
                 "Run ui_atlas_builder --output {} to generate them.",
                 config_.constrainedConfig.atlasPath, config_.constrainedConfig.atlasPath);
@@ -655,10 +655,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                   config_.constrainedConfig.enableMipmaps ? "enabled" : "disabled");
     }
 
-    // Create constrained texture cache (always active; Max preset has generous limits)
-    if (driver_) {
-        constrainedTextureCache_ = std::make_unique<ConstrainedTextureCache>(
-            config_.constrainedConfig, driver_);
+    // Wire driver into constrained texture cache (cache created earlier by Application)
+    if (driver_ && constrainedTextureCache_) {
+        constrainedTextureCache_->setDriver(driver_);
         constrainedTextureCache_->setSceneManager(smgr_);  // Enable safe eviction
         if (backgroundThreadPool_)
             constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
@@ -722,7 +721,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Create sky renderer (skyRendering preset flag controls whether it renders, not whether it exists)
     skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
     if (constrainedTextureCache_) {
-        skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        skyRenderer_->setConstrainedTextureCache(constrainedTextureCache_);
     }
     if (!skyRenderer_->initialize(config_.eqClientPath)) {
         LOG_WARN(MOD_GRAPHICS, "Sky renderer initialization failed - sky will not be rendered");
@@ -734,7 +733,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
     detailManager_->setSurfaceMapsPath("data/detail/zones");
     if (constrainedTextureCache_) {
-        detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        detailManager_->setConstrainedTextureCache(constrainedTextureCache_);
     }
     LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
 
@@ -752,7 +751,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
         treeManager_->setRenderDistance(renderDistance_);
         if (constrainedTextureCache_) {
-            treeManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            treeManager_->setConstrainedTextureCache(constrainedTextureCache_);
         }
         if (zoneShader_ && zoneShader_->isAvailable()) {
             treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
@@ -778,6 +777,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // atmospheric particles (dust, pollen, fireflies) are disabled
     if (!particleManager_) {
         particleManager_ = std::make_unique<Environment::ParticleManager>(smgr_, driver_);
+        particleManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
@@ -796,6 +796,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Create ambient creatures (boids) system (only if ambient creatures enabled)
     if (!boidsManager_ && displaySettings.ambientCreatures) {
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
+        boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!boidsManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
         }
@@ -807,6 +808,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Create tumbleweed manager (only if rolling objects enabled)
     if (!tumbleweedManager_ && displaySettings.rollingObjects) {
         tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
+        tumbleweedManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!tumbleweedManager_->init()) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
         }
@@ -819,11 +821,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (!weatherEffects_) {
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+        if (constrainedTextureCache_) {
+            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
+        }
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
-        }
-        if (constrainedTextureCache_) {
-            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_.get());
         }
         // Connect weather system to weather effects
         if (weatherSystem_) {
@@ -862,7 +864,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     if (!doorManager_) {
         doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
         if (constrainedTextureCache_) {
-            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            doorManager_->setConstrainedTextureCache(constrainedTextureCache_);
         }
         // If zone was already loaded before doorManager_ was created, set it now
         if (currentZone_) {
@@ -919,6 +921,7 @@ void IrrlichtRenderer::hideLoadingScreen() {
     if (simulationWorker_ && !simulationWorker_->isRunning()) {
         simulationWorker_->start();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker thread started for runtime updates");
+        registerSimulationWorkerVertexAnimData();
     } else if (!simulationWorker_) {
         // Fallback: loading thread didn't create worker (shouldn't happen)
         LOG_WARN(MOD_GRAPHICS, "SimulationWorker not created by loading thread, creating now");
@@ -1231,7 +1234,7 @@ void IrrlichtRenderer::shutdown() {
     weatherSystem_.reset();
     treeManager_.reset();
     detailManager_.reset();
-    constrainedTextureCache_.reset();
+    // constrainedTextureCache_ is owned by Application, not reset here
     spellVisualFX_.reset();
 
     if (device_) {
@@ -1719,49 +1722,26 @@ void IrrlichtRenderer::requestQuit() {
 void IrrlichtRenderer::createSoftwareCursor() {
     if (!driver_ || !config_.constrainedConfig.useDRM) return;
 
-    // Create an 8x10 arrow cursor texture with alpha transparency
-    const int W = 8, H = 10;
-    irr::video::IImage* img = driver_->createImage(irr::video::ECF_A8R8G8B8,
-        irr::core::dimension2du(W, H));
-    if (!img) return;
+    // Load pre-generated cursor texture via constrained cache
+    std::string cursorPath = "data/textures/software_cursor.bmp";
+    std::ifstream cursorFile(cursorPath, std::ios::binary | std::ios::ate);
+    if (!cursorFile) {
+        LOG_FATAL(MOD_GRAPHICS, "Required texture {} not found — run generate_textures first", cursorPath);
+        std::exit(1);
+    }
+    std::streamsize cursorFileSize = cursorFile.tellg();
+    cursorFile.seekg(0, std::ios::beg);
+    std::vector<char> cursorData(cursorFileSize);
+    cursorFile.read(cursorData.data(), cursorFileSize);
 
-    const irr::video::SColor transparent(0, 0, 0, 0);
-    const irr::video::SColor black(255, 0, 0, 0);
-    const irr::video::SColor white(255, 255, 255, 255);
-
-    // Clear to transparent
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-            img->setPixel(x, y, transparent);
-
-    // Classic arrow cursor shape (1=black outline, 2=white fill)
-    static const char* shape[10] = {
-        "11      ",
-        "121     ",
-        "1221    ",
-        "12221   ",
-        "122221  ",
-        "1222211 ",
-        "111111   ",
-        "   121  ",
-        "    121 ",
-        "     11 ",
-    };
-
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            char c = shape[y][x];
-            if (c == '1') img->setPixel(x, y, black);
-            else if (c == '2') img->setPixel(x, y, white);
-        }
+    softwareCursorTexture_ = constrainedTextureCache_->getOrLoad("softwareCursor", cursorData);
+    if (!softwareCursorTexture_) softwareCursorTexture_ = constrainedTextureCache_->uploadTexture("softwareCursor");
+    if (!softwareCursorTexture_) {
+        LOG_FATAL(MOD_GRAPHICS, "Failed to load required texture: {}", cursorPath);
+        std::exit(1);
     }
 
-    softwareCursorTexture_ = driver_->addTexture("softwareCursor", img);
-    img->drop();
-
-    if (softwareCursorTexture_) {
-        LOG_INFO(MOD_GRAPHICS, "Software cursor texture created for DRM mode");
-    }
+    LOG_INFO(MOD_GRAPHICS, "Software cursor texture loaded for DRM mode");
 }
 
 void IrrlichtRenderer::setupCamera() {
@@ -2153,11 +2133,11 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     if (!weatherEffects_ && particleManager_) {
         weatherEffects_ = std::make_unique<WeatherEffectsController>(
             smgr_, driver_, particleManager_.get(), skyRenderer_.get());
+        if (constrainedTextureCache_) {
+            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
+        }
         if (!weatherEffects_->initialize(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
-        }
-        if (constrainedTextureCache_) {
-            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_.get());
         }
         if (weatherSystem_) {
             weatherSystem_->addListener(weatherEffects_.get());
@@ -2233,7 +2213,7 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
         detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
         detailManager_->setSurfaceMapsPath("data/detail/zones");
         if (constrainedTextureCache_) {
-            detailManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            detailManager_->setConstrainedTextureCache(constrainedTextureCache_);
         }
         LOG_INFO(MOD_GRAPHICS, "Detail manager created (toggled on via settings)");
 
@@ -3029,7 +3009,7 @@ void IrrlichtRenderer::createEntityRenderer() {
     entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
     entityRenderer_->setRenderDistance(renderDistance_);
     if (constrainedTextureCache_) {
-        entityRenderer_->setConstrainedTextureCache(constrainedTextureCache_.get());
+        entityRenderer_->setConstrainedTextureCache(constrainedTextureCache_);
         // Wire mesh builder into cache for entity texture registration during uploadTexture
         auto* meshBuilder = entityRenderer_->getMeshBuilder();
         if (meshBuilder)
@@ -3252,7 +3232,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         doorManager_->setZone(currentZone_);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ zone set");
         if (constrainedTextureCache_) {
-            doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+            doorManager_->setConstrainedTextureCache(constrainedTextureCache_);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ constrained texture cache set");
         }
         if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -3671,7 +3651,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
             ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
             if (constrainedTextureCache_)
-                builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+                builder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                zoneShader_->getActiveAlphaTest());
@@ -3756,6 +3736,59 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      regionMeshNodes_.size(), regionsSkipped, meshBuildFailed, nodeFailed);
+
+            // Initialize animated texture manager for PVS region meshes
+            // Discover animations from combined geometry, then register each region mesh's buffers
+            if (currentZone_ && currentZone_->geometry && !currentZone_->textures.empty()) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: creating AnimatedTextureManager for PVS region meshes "
+                          "(geometry texNames={}, texAnimations={}, zoneTextures={})",
+                          currentZone_->geometry->textureNames().size(),
+                          currentZone_->geometry->textureAnimations().size(),
+                          currentZone_->textures.size());
+
+                animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
+                if (constrainedTextureCache_) {
+                    animatedTextureManager_->setConstrainedTextureCache(constrainedTextureCache_);
+                    LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: animatedTextureManager_ constrained texture cache set");
+                }
+
+                // Discover animated textures from combined geometry (nullptr mesh — buffers added per-region below)
+                int animCount = animatedTextureManager_->initialize(
+                    *currentZone_->geometry, currentZone_->textures, nullptr);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: animatedTextureManager_ initialize found {} animated textures from geometry",
+                          animCount);
+
+                int waterAnimCount = animatedTextureManager_->detectWaterAnimations(
+                    currentZone_->textures, nullptr);
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: animatedTextureManager_ detectWaterAnimations found {} water textures",
+                          waterAnimCount);
+                animCount += waterAnimCount;
+
+                // Register each region mesh's buffers with the animated texture manager.
+                // PVS region meshes use addMesh (buffer materials) because they're drawn
+                // via manual draw path, not through Irrlicht's scene graph.
+                size_t registeredMeshes = 0;
+                for (auto& [regionIdx, node] : regionMeshNodes_) {
+                    if (node && node->getMesh()) {
+                        auto geom = wldLoader->getGeometryForRegion(regionIdx);
+                        if (geom) {
+                            animatedTextureManager_->addMesh(*geom, currentZone_->textures, node->getMesh());
+                            registeredMeshes++;
+                            LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] addMesh (buffers={}, texNames={})",
+                                      regionIdx, node->getMesh()->getMeshBufferCount(), geom->textureNames().size());
+                        }
+                    }
+                }
+
+                LOG_INFO(MOD_GRAPHICS, "Sequential: initialized {} animated textures ({} water) for {} region meshes "
+                         "({} meshes scanned)",
+                         animCount, waterAnimCount, regionMeshNodes_.size(), registeredMeshes);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: animatedTextureManager_ skipped (currentZone_={}, geometry={}, textures={})",
+                          (bool)currentZone_,
+                          currentZone_ ? (bool)currentZone_->geometry : false,
+                          currentZone_ ? currentZone_->textures.size() : 0);
+            }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: region mesh building skipped (currentZone_={}, wldLoader={}, zoneBspTree_={})",
                       (bool)currentZone_, currentZone_ ? (bool)currentZone_->wldLoader : false, (bool)zoneBspTree_);
@@ -3949,7 +3982,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         {
             ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
             if (constrainedTextureCache_)
-                objBuilder.setConstrainedTextureCache(constrainedTextureCache_.get());
+                objBuilder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                    zoneShader_->getActiveAlphaTest());
@@ -4051,6 +4084,81 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                 // Note: treeManager_ wind shaders and animatedTextureManager_ are not yet
                 // created (Step 11). A fixup pass after Step 11 applies these to objects.
+
+                // Register vertex-animated objects (flags, banners)
+                if (objInstance.geometry && objInstance.geometry->animatedVertices &&
+                    objInstance.geometry->animatedVertices->frames.size() >= 2) {
+                    auto& animData = objInstance.geometry->animatedVertices;
+                    irr::scene::IMesh* objMesh = objNode->getMesh();
+                    if (objMesh) {
+                        VertexAnimatedMesh vam;
+                        vam.node = objNode;
+                        vam.mesh = objMesh;
+                        vam.animData = animData;
+                        vam.objectName = objName;
+
+                        // Compute center offset: geometry vertices have center baked in,
+                        // animation frame positions are raw. Offset = geomVertex - animFrame0.
+                        const auto& frame0 = animData->frames[0];
+                        size_t animVertCount = frame0.positions.size() / 3;
+                        if (!objInstance.geometry->vertices.empty() && animVertCount > 0) {
+                            const auto& gv = objInstance.geometry->vertices[0];
+                            vam.centerOffsetX = gv.x - frame0.positions[0];
+                            vam.centerOffsetY = gv.y - frame0.positions[1];
+                            vam.centerOffsetZ = gv.z - frame0.positions[2];
+                            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj '{}' vertex anim center offset: "
+                                      "({:.2f},{:.2f},{:.2f}) from geom({:.2f},{:.2f},{:.2f}) - anim({:.2f},{:.2f},{:.2f})",
+                                      objName, vam.centerOffsetX, vam.centerOffsetY, vam.centerOffsetZ,
+                                      gv.x, gv.y, gv.z,
+                                      frame0.positions[0], frame0.positions[1], frame0.positions[2]);
+                        } else {
+                            vam.centerOffsetX = 0;
+                            vam.centerOffsetY = 0;
+                            vam.centerOffsetZ = 0;
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj '{}' vertex anim: cannot compute center offset "
+                                     "(verts={}, animVerts={})", objName,
+                                     objInstance.geometry->vertices.size(), animVertCount);
+                        }
+
+                        // Build vertex mapping: for each mesh buffer vertex, find the
+                        // corresponding geometry vertex index (= animation vertex index)
+                        // by matching positions (EQ coords → Irrlicht coords: x,z,y)
+                        size_t expectedVerts = animData->frames[0].positions.size() / 3;
+                        vam.vertexMapping.resize(objMesh->getMeshBufferCount());
+                        size_t mappedVerts = 0;
+                        for (irr::u32 b = 0; b < objMesh->getMeshBufferCount(); ++b) {
+                            irr::scene::IMeshBuffer* buf = objMesh->getMeshBuffer(b);
+                            auto* vertices = static_cast<irr::video::S3DVertex*>(buf->getVertices());
+                            irr::u32 vertCount = buf->getVertexCount();
+                            vam.vertexMapping[b].resize(vertCount, SIZE_MAX);
+
+                            for (irr::u32 v = 0; v < vertCount; ++v) {
+                                // Match by position: mesh stores (x, z, y) from geometry (x, y, z)
+                                float mx = vertices[v].Pos.X;
+                                float my = vertices[v].Pos.Y;  // = geom z
+                                float mz = vertices[v].Pos.Z;  // = geom y
+                                for (size_t gi = 0; gi < objInstance.geometry->vertices.size(); ++gi) {
+                                    const auto& gv = objInstance.geometry->vertices[gi];
+                                    if (std::abs(gv.x - mx) < 0.01f &&
+                                        std::abs(gv.z - my) < 0.01f &&
+                                        std::abs(gv.y - mz) < 0.01f) {
+                                        if (gi < expectedVerts) {
+                                            vam.vertexMapping[b][v] = gi;
+                                            mappedVerts++;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        vertexAnimatedMeshes_.push_back(std::move(vam));
+                        LOG_INFO(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' registered as vertex-animated "
+                                 "({} frames, {}ms delay, {} mapped/{} total verts)",
+                                 oi, objName, animData->frames.size(), animData->delayMs,
+                                 mappedVerts, objInstance.geometry->vertices.size());
+                    }
+                }
 
                 objNode->setName(objName.c_str());
                 objNode->grab();
@@ -4211,7 +4319,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (!doorManager_) {
             doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
             if (constrainedTextureCache_)
-                doorManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                doorManager_->setConstrainedTextureCache(constrainedTextureCache_);
             if (currentZone_) doorManager_->setZone(currentZone_);
             if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
             doorManager_->setPvsRegion(currentPvsRegion_);
@@ -5672,7 +5780,7 @@ void IrrlichtRenderer::createZoneMesh() {
 
     // Pass constrained texture cache if in constrained mode
     if (constrainedTextureCache_) {
-        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+        builder.setConstrainedTextureCache(constrainedTextureCache_);
     }
     // Pass GLSL shader material types if available
     if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -5713,7 +5821,7 @@ void IrrlichtRenderer::createZoneMesh() {
             // Initialize animated texture manager for zone textures
             animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
             if (constrainedTextureCache_) {
-                animatedTextureManager_->setConstrainedTextureCache(constrainedTextureCache_.get());
+                animatedTextureManager_->setConstrainedTextureCache(constrainedTextureCache_);
             }
             int animCount = animatedTextureManager_->initialize(
                 *currentZone_->geometry, currentZone_->textures, mesh);
@@ -6154,7 +6262,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     // async background decode submits to bgThreadPool_ which may not be initialized,
     // causing pthread_mutex_lock(NULL) crashes.
     if (constrainedTextureCache_ && !isLoading())
-        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+        builder.setConstrainedTextureCache(constrainedTextureCache_);
 
     bool shaderAvail = zoneShader_ && zoneShader_->isAvailable();
     bool atlasAvail = zoneShader_ && zoneShader_->isAtlasAvailable();
@@ -6314,9 +6422,14 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
 #endif
     }
 
-    // Register with animated texture manager
-    if (animatedTextureManager_)
-        animatedTextureManager_->addSceneNode(node);
+    // Register with animated texture manager (buffer materials only — manual draw path)
+    if (animatedTextureManager_) {
+        auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+        if (geom) {
+            animatedTextureManager_->addMesh(*geom, currentZone_->textures, node->getMesh());
+            LOG_TRACE(MOD_GRAPHICS, "rebuildRegionMesh: region {} addMesh registered", regionIdx);
+        }
+    }
 
     // Pre-evict to make room, then update cache
     size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
@@ -6603,9 +6716,15 @@ bool IrrlichtRenderer::finalizeOneMeshResult() {
 #endif
     }
 
-    // Register with animated texture manager
-    if (animatedTextureManager_)
-        animatedTextureManager_->addSceneNode(node);
+    // Register with animated texture manager (both mesh buffers and scene node)
+    // Register with animated texture manager (buffer materials only — manual draw path)
+    if (animatedTextureManager_ && currentZone_ && currentZone_->wldLoader) {
+        auto geom = currentZone_->wldLoader->getGeometryForRegion(result.regionIdx);
+        if (geom) {
+            animatedTextureManager_->addMesh(*geom, currentZone_->textures, node->getMesh());
+            LOG_TRACE(MOD_GRAPHICS, "asyncRebuild: region {} addMesh registered", result.regionIdx);
+        }
+    }
 
     // Mesh cache bookkeeping (evict + track)
     if (constrainedMeshCache_) {
@@ -6826,7 +6945,7 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
 
     ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
     if (constrainedTextureCache_) {
-        builder.setConstrainedTextureCache(constrainedTextureCache_.get());
+        builder.setConstrainedTextureCache(constrainedTextureCache_);
     }
     if (zoneShader_ && zoneShader_->isAvailable()) {
         builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
@@ -14456,6 +14575,7 @@ void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* man
     // Create spell visual effects if not already created
     if (!spellVisualFX_ && smgr_ && driver_) {
         spellVisualFX_ = std::make_unique<EQ::SpellVisualFX>(smgr_, driver_, config_.eqClientPath);
+        spellVisualFX_->setConstrainedTextureCache(constrainedTextureCache_);
 
         // Set up entity position callback for spell effects
         spellVisualFX_->setEntityPositionCallback(

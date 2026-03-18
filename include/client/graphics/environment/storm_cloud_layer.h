@@ -226,14 +226,11 @@ private:
     irr::scene::IMesh* domeMesh_ = nullptr;
     irr::scene::IMeshSceneNode* domeNode_ = nullptr;
 
-    // Multi-texture animation
-    std::vector<irr::video::ITexture*> cloudFrames_;  // Source frames
-    irr::video::ITexture* blendedTexture_ = nullptr;  // Current blended output
-    irr::video::IImage* blendImage_ = nullptr;        // Working image for blending
+    // Pre-blended cloud texture frames (loaded from disk, no runtime blending)
+    static constexpr int BLEND_STEPS_PER_PAIR = 8;    // Blend steps between each source frame pair
+    std::vector<irr::video::ITexture*> cloudFrames_;  // All pre-blended frames
     int currentFrame_ = 0;                            // Current frame index
-    int nextFrame_ = 1;                               // Next frame to blend to
     float frameTimer_ = 0.0f;                         // Time in current frame
-    float blendFactor_ = 0.0f;                        // 0-1 blend between frames
 
     // Animation state
     glm::vec2 uvOffset_{0.0f, 0.0f};

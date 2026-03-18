@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "boids_types.h"
 #include "particle_types.h"  // For ZoneBiome
 #include <irrlicht.h>
@@ -29,6 +30,9 @@ public:
     // Non-copyable
     BoidsManager(const BoidsManager&) = delete;
     BoidsManager& operator=(const BoidsManager&) = delete;
+
+    // Set constrained texture cache (mandatory, must be called before init)
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
     /**
      * Initialize the boids system (load textures).
@@ -89,6 +93,7 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::video::ITexture* atlasTexture_ = nullptr;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
     irr::video::SMaterial creatureMaterial_;
 
     // State

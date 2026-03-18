@@ -4,6 +4,7 @@
 
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/spell/spell_database.h"
 #include "client/spell/spell_constants.h"
@@ -109,10 +110,10 @@ void SpellVisualFX::loadParticleTextures()
         m_corruption_texture = loadDDSTexture(spellEffectsPath + "darknesssp502.dds", "spell_particle_corruption");
     }
 
-    // If we couldn't load any textures, create a fallback
+    // If we couldn't load any textures, load pre-generated fallback
     if (!m_particle_texture) {
-        LOG_WARN(MOD_SPELL, "Could not load spell effect textures from {}, creating fallback", spellEffectsPath);
-        createFallbackTexture();
+        LOG_WARN(MOD_SPELL, "Could not load spell effect textures from {}, loading fallback", spellEffectsPath);
+        loadFallbackTexture();
     } else {
         LOG_INFO(MOD_SPELL, "Loaded spell particle textures from {}", spellEffectsPath);
     }
@@ -129,7 +130,7 @@ void SpellVisualFX::loadParticleTextures()
 
 irr::video::ITexture* SpellVisualFX::loadDDSTexture(const std::string& path, const std::string& name)
 {
-    if (!m_driver) return nullptr;
+    if (!m_driver || !m_constrained_cache) return nullptr;
 
     // Read file contents
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -147,87 +148,43 @@ irr::video::ITexture* SpellVisualFX::loadDDSTexture(const std::string& path, con
         return nullptr;
     }
 
-    // Check if it's a DDS file
-    if (!EQT::Graphics::DDSDecoder::isDDS(data)) {
-        LOG_WARN(MOD_SPELL, "Not a valid DDS file: {}", path);
-        return nullptr;
+    // Route through constrained cache
+    irr::video::ITexture* texture = m_constrained_cache->getOrLoad(name, data);
+    if (!texture) {
+        texture = m_constrained_cache->uploadTexture(name);
     }
-
-    // Decode DDS
-    EQT::Graphics::DecodedImage decoded = EQT::Graphics::DDSDecoder::decode(data);
-    if (!decoded.isValid()) {
-        LOG_WARN(MOD_SPELL, "Failed to decode DDS: {}", path);
-        return nullptr;
-    }
-
-    // Create Irrlicht image from decoded RGBA data
-    irr::core::dimension2du dim(decoded.width, decoded.height);
-    irr::video::IImage* image = m_driver->createImage(irr::video::ECF_A8R8G8B8, dim);
-    if (!image) {
-        LOG_WARN(MOD_SPELL, "Failed to create image for: {}", path);
-        return nullptr;
-    }
-
-    // Copy pixels (RGBA to ARGB)
-    for (uint32_t y = 0; y < decoded.height; ++y) {
-        for (uint32_t x = 0; x < decoded.width; ++x) {
-            size_t idx = (y * decoded.width + x) * 4;
-            uint8_t r = decoded.pixels[idx + 0];
-            uint8_t g = decoded.pixels[idx + 1];
-            uint8_t b = decoded.pixels[idx + 2];
-            uint8_t a = decoded.pixels[idx + 3];
-            image->setPixel(x, y, irr::video::SColor(a, r, g, b));
-        }
-    }
-
-    // Create texture
-    irr::video::ITexture* texture = m_driver->addTexture(name.c_str(), image);
-    image->drop();
 
     if (texture) {
-        LOG_DEBUG(MOD_SPELL, "Loaded particle texture: {} ({}x{})", path, decoded.width, decoded.height);
+        LOG_DEBUG(MOD_SPELL, "Loaded particle texture: {} via constrained cache", path);
     }
 
     return texture;
 }
 
-void SpellVisualFX::createFallbackTexture()
+void SpellVisualFX::loadFallbackTexture()
 {
-    if (!m_driver) return;
+    if (!m_driver || !m_constrained_cache) return;
 
-    // Create a 32x32 soft circle texture as fallback
-    const int size = 32;
-    irr::core::dimension2du dim(size, size);
+    // Load pre-generated fallback texture from BMP via constrained cache
+    std::string path = "data/textures/spell_particle_fallback.bmp";
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        LOG_FATAL(MOD_SPELL, "Required texture missing: {} — run generate_textures first", path);
+        std::exit(1);
+    }
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> data(fileSize);
+    file.read(data.data(), fileSize);
 
-    irr::video::IImage* image = m_driver->createImage(irr::video::ECF_A8R8G8B8, dim);
-    if (!image) return;
-
-    float center = size / 2.0f;
-    float maxDist = center;
-
-    for (int y = 0; y < size; ++y) {
-        for (int x = 0; x < size; ++x) {
-            float dx = x - center + 0.5f;
-            float dy = y - center + 0.5f;
-            float dist = std::sqrt(dx * dx + dy * dy);
-
-            float normalizedDist = dist / maxDist;
-            int alpha = 0;
-            if (normalizedDist < 1.0f) {
-                float falloff = std::cos(normalizedDist * 3.14159f * 0.5f);
-                alpha = static_cast<int>(falloff * 255.0f);
-            }
-
-            image->setPixel(x, y, irr::video::SColor(alpha, 255, 255, 255));
-        }
+    m_particle_texture = m_constrained_cache->getOrLoad("spell_particle_fallback", data);
+    if (!m_particle_texture) m_particle_texture = m_constrained_cache->uploadTexture("spell_particle_fallback");
+    if (!m_particle_texture) {
+        LOG_FATAL(MOD_SPELL, "Failed to load required texture: {}", path);
+        std::exit(1);
     }
 
-    m_particle_texture = m_driver->addTexture("spell_particle_fallback", image);
-    image->drop();
-
-    if (m_particle_texture) {
-        LOG_DEBUG(MOD_SPELL, "Created fallback particle texture");
-    }
+    LOG_DEBUG(MOD_SPELL, "Loaded fallback particle texture via constrained cache");
 }
 
 irr::video::ITexture* SpellVisualFX::getTextureForSpell(uint32_t spell_id) const

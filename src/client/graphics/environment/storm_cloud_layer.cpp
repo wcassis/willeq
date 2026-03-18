@@ -2,6 +2,7 @@
 #include "common/logging.h"
 #include <irrlicht.h>
 #include <cmath>
+#include <fstream>
 #include <sstream>
 #include <iomanip>
 
@@ -30,13 +31,9 @@ void StormCloudLayer::setConstrainedTextureCache(ConstrainedTextureCache* cache)
 }
 
 void StormCloudLayer::onTextureEvicted(const std::string& name) {
-    if (name == "storm_cloud_blended") {
-        blendedTexture_ = nullptr;
-        return;
-    }
-    // Cloud frame textures: registered as "storm_cloud_frame_N"
+    // Cloud blend frame textures: registered as "storm_cloud_blend_N"
     for (size_t i = 0; i < cloudFrames_.size(); ++i) {
-        if (name == "storm_cloud_frame_" + std::to_string(i)) {
+        if (name == "storm_cloud_blend_" + std::to_string(i)) {
             cloudFrames_[i] = nullptr;
             return;
         }
@@ -59,24 +56,12 @@ bool StormCloudLayer::initialize(irr::scene::ISceneManager* smgr, irr::video::IV
     // Create the dome mesh
     createDomeMesh();
 
-    // Generate all cloud texture frames
+    // Load all pre-generated cloud texture frames (source + blended)
     generateCloudTextures();
 
     if (!domeMesh_ || cloudFrames_.empty()) {
         LOG_ERROR(MOD_GRAPHICS, "StormCloudLayer: Failed to create mesh or textures");
         return false;
-    }
-
-    // Create working image for blending
-    int size = settings_.textureSize;
-    blendImage_ = driver_->createImage(irr::video::ECF_A8R8G8B8,
-                                        irr::core::dimension2d<irr::u32>(size, size));
-
-    // Create initial blended texture
-    blendedTexture_ = driver_->addTexture("storm_cloud_blended", blendImage_);
-    if (blendedTexture_ && constrainedCache_) {
-        constrainedCache_->registerTexture("storm_cloud_blended", blendedTexture_,
-            static_cast<size_t>(size) * size * 4, true);
     }
 
     // Create scene node
@@ -91,16 +76,14 @@ bool StormCloudLayer::initialize(irr::scene::ISceneManager* smgr, irr::video::IV
     domeNode_->setMaterialFlag(irr::video::EMF_LIGHTING, false);
     domeNode_->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
     domeNode_->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-    domeNode_->setMaterialTexture(0, blendedTexture_);
+    domeNode_->setMaterialTexture(0, cloudFrames_[0]);
 
     // Start invisible
     domeNode_->setVisible(false);
 
     // Initialize frame animation
     currentFrame_ = 0;
-    nextFrame_ = 1 % static_cast<int>(cloudFrames_.size());
     frameTimer_ = 0.0f;
-    blendFactor_ = 0.0f;
 
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Initialized with {}x{} texture, {} frames, {} segments",
@@ -119,14 +102,8 @@ void StormCloudLayer::shutdown() {
         domeMesh_ = nullptr;
     }
 
-    // Textures are managed by driver, don't drop them
+    // Textures are managed by constrained cache, don't drop them
     cloudFrames_.clear();
-    blendedTexture_ = nullptr;
-
-    if (blendImage_) {
-        blendImage_->drop();
-        blendImage_ = nullptr;
-    }
 
     initialized_ = false;
 }
@@ -219,8 +196,7 @@ std::string StormCloudLayer::getDebugInfo() const {
     std::ostringstream ss;
     ss << "Clouds: " << std::fixed << std::setprecision(2)
        << currentOpacity_ << "/" << targetOpacity_
-       << " frame=" << currentFrame_ << "->" << nextFrame_
-       << " blend=" << blendFactor_;
+       << " frame=" << currentFrame_ << "/" << cloudFrames_.size();
     return ss.str();
 }
 
@@ -310,25 +286,32 @@ void StormCloudLayer::generateCloudTextures() {
     cloudFrames_.clear();
 
     int frameCount = std::max(1, settings_.frameCount);
+    int blendSteps = BLEND_STEPS_PER_PAIR;
+    int totalFrames = frameCount * blendSteps;
 
-    for (int i = 0; i < frameCount; ++i) {
-        std::string texPath = "data/textures/storm_cloud_" + std::to_string(i) + ".png";
-        irr::video::ITexture* tex = driver_->getTexture(texPath.c_str());
+    for (int i = 0; i < totalFrames; ++i) {
+        std::string texPath = "data/textures/storm_cloud_blend_" + std::to_string(i) + ".bmp";
+        std::string cacheName = "storm_cloud_blend_" + std::to_string(i);
+
+        std::ifstream file(texPath, std::ios::binary | std::ios::ate);
+        if (!file) {
+            LOG_FATAL(MOD_GRAPHICS, "StormCloudLayer: Required texture {} not found — run generate_textures first", texPath);
+            std::exit(1);
+        }
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> data(fileSize);
+        file.read(data.data(), fileSize);
+
+        irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data);
+        if (!tex) tex = constrainedCache_->uploadTexture(cacheName);
         if (!tex) {
-            LOG_WARN(MOD_GRAPHICS, "StormCloudLayer: Cloud texture {} not found, disabling storm clouds. Run generate_textures tool.", texPath);
-            cloudFrames_.clear();
-            enabled_ = false;
-            return;
+            LOG_FATAL(MOD_GRAPHICS, "StormCloudLayer: Failed to load required texture: {}", texPath);
+            std::exit(1);
         }
         cloudFrames_.push_back(tex);
-        if (constrainedCache_) {
-            auto dim = tex->getOriginalSize();
-            constrainedCache_->registerTexture(
-                "storm_cloud_frame_" + std::to_string(i), tex,
-                static_cast<size_t>(dim.Width) * dim.Height * 4, true);
-        }
     }
-    LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} cloud textures", cloudFrames_.size());
+    LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} pre-blended cloud textures", cloudFrames_.size());
 }
 
 void StormCloudLayer::updateScrolling(float deltaTime, const glm::vec3& windDirection, float windStrength) {
@@ -374,114 +357,33 @@ void StormCloudLayer::updateFrameAnimation(float deltaTime) {
 
     frameTimer_ += deltaTime;
 
-    // Calculate blend factor based on frame duration
+    // Total time for one full cycle through all pre-blended frames
     float cycleTime = settings_.frameDuration;
-    float blendTime = settings_.blendDuration;
 
-    // During hold time, blend is 0 (show current frame)
-    // During blend time, blend goes from 0 to 1
-    float holdTime = cycleTime - blendTime;
-
-    if (frameTimer_ < holdTime) {
-        // Holding on current frame
-        blendFactor_ = 0.0f;
-    } else {
-        // Blending to next frame
-        float blendProgress = (frameTimer_ - holdTime) / blendTime;
-        blendFactor_ = std::min(1.0f, blendProgress);
+    // Advance to next frame when enough time has passed
+    float timePerFrame = cycleTime / static_cast<float>(cloudFrames_.size());
+    if (frameTimer_ >= timePerFrame) {
+        frameTimer_ -= timePerFrame;
+        currentFrame_ = (currentFrame_ + 1) % static_cast<int>(cloudFrames_.size());
     }
 
-    // Advance to next frame when cycle complete
-    if (frameTimer_ >= cycleTime) {
-        frameTimer_ -= cycleTime;
-        currentFrame_ = nextFrame_;
-        nextFrame_ = (nextFrame_ + 1) % static_cast<int>(cloudFrames_.size());
-        blendFactor_ = 0.0f;
-    }
-
-    // Update the blended texture
+    // Set the current pre-blended frame on the dome
     updateBlendedTexture();
 }
 
 void StormCloudLayer::updateBlendedTexture() {
-    if (!blendImage_ || !blendedTexture_ || cloudFrames_.empty()) return;
+    if (cloudFrames_.empty()) return;
 
-    int size = settings_.textureSize;
+    irr::video::ITexture* tex = cloudFrames_[currentFrame_];
+    if (!tex) return;
 
-    // Get source textures
-    irr::video::ITexture* tex1 = cloudFrames_[currentFrame_];
-    irr::video::ITexture* tex2 = cloudFrames_[nextFrame_];
-
-    if (!tex1 || !tex2) return;
-
-    // Lock textures to read pixel data
-    // Note: This is slow but works with software renderer
-    // For better performance, we'd pre-compute blended frames
-
-    // Get images from textures (requires locking)
-    void* data1 = tex1->lock(irr::video::ETLM_READ_ONLY);
-    void* data2 = tex2->lock(irr::video::ETLM_READ_ONLY);
-
-    if (!data1 || !data2) {
-        if (data1) tex1->unlock();
-        if (data2) tex2->unlock();
-        return;
+    if (constrainedCache_) {
+        std::string cacheName = "storm_cloud_blend_" + std::to_string(currentFrame_);
+        constrainedCache_->touch(cacheName);
     }
 
-    // Blend the textures
-    irr::video::ECOLOR_FORMAT format = tex1->getColorFormat();
-    int pitch1 = tex1->getPitch();
-    int pitch2 = tex2->getPitch();
-
-    float t = blendFactor_;
-    float invT = 1.0f - t;
-
-    for (int y = 0; y < size; ++y) {
-        for (int x = 0; x < size; ++x) {
-            // Read pixels from both textures
-            irr::video::SColor c1, c2;
-
-            if (format == irr::video::ECF_A8R8G8B8) {
-                uint32_t* row1 = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(data1) + y * pitch1);
-                uint32_t* row2 = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(data2) + y * pitch2);
-                c1 = irr::video::SColor(row1[x]);
-                c2 = irr::video::SColor(row2[x]);
-            } else {
-                // Fallback for other formats
-                c1 = irr::video::SColor(255, 128, 128, 128);
-                c2 = c1;
-            }
-
-            // Blend colors
-            uint8_t a = static_cast<uint8_t>(c1.getAlpha() * invT + c2.getAlpha() * t);
-            uint8_t r = static_cast<uint8_t>(c1.getRed() * invT + c2.getRed() * t);
-            uint8_t g = static_cast<uint8_t>(c1.getGreen() * invT + c2.getGreen() * t);
-            uint8_t b = static_cast<uint8_t>(c1.getBlue() * invT + c2.getBlue() * t);
-
-            blendImage_->setPixel(x, y, irr::video::SColor(a, r, g, b));
-        }
-    }
-
-    tex1->unlock();
-    tex2->unlock();
-
-    // Update the blended texture from the image
-    // Remove old texture and create new one
-    if (!constrainedCache_) {
-        driver_->removeTexture(blendedTexture_);
-    }
-    // Note: if constrainedCache_ is set, registerTexture() below handles evicting
-    // the old texture via re-registration (same name, different pointer).
-    blendedTexture_ = driver_->addTexture("storm_cloud_blended", blendImage_);
-    if (blendedTexture_ && constrainedCache_) {
-        int size = settings_.textureSize;
-        constrainedCache_->registerTexture("storm_cloud_blended", blendedTexture_,
-            static_cast<size_t>(size) * size * 4, true);
-    }
-
-    // Update scene node material
-    if (domeNode_ && blendedTexture_) {
-        domeNode_->setMaterialTexture(0, blendedTexture_);
+    if (domeNode_) {
+        domeNode_->setMaterialTexture(0, tex);
     }
 }
 

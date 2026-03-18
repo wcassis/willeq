@@ -1,6 +1,7 @@
 #include "client/graphics/environment/snow_overlay.h"
 #include "common/logging.h"
 #include <cmath>
+#include <fstream>
 #include <vector>
 #include <string>
 
@@ -25,64 +26,48 @@ bool SnowOverlay::initialize(irr::video::IVideoDriver* driver,
         return false;
     }
 
-    std::vector<std::string> basePaths = {
-        "data/textures/",
-        "../data/textures/",
-        "../../data/textures/"
-    };
+    if (!constrainedCache_) {
+        LOG_FATAL(MOD_GRAPHICS, "SnowOverlay: Constrained texture cache not set");
+        std::exit(1);
+    }
 
-    auto loadTexture = [&](const std::string& texName) -> irr::video::ITexture* {
-        for (const auto& basePath : basePaths) {
-            std::string fullPath = basePath + texName;
-            irr::video::ITexture* tex = driver_->getTexture(fullPath.c_str());
-            if (tex) {
-                LOG_INFO(MOD_GRAPHICS, "SnowOverlay: Loaded '{}'", fullPath);
-                return tex;
-            }
+    auto loadTexture = [&](const std::string& texName, const std::string& cacheName) -> irr::video::ITexture* {
+        std::string path = "data/textures/" + texName;
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file) {
+            LOG_FATAL(MOD_GRAPHICS, "SnowOverlay: Required texture {} not found — run generate_textures first", path);
+            std::exit(1);
         }
-        LOG_WARN(MOD_GRAPHICS, "SnowOverlay: Failed to load '{}'", texName);
-        return nullptr;
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> data(fileSize);
+        file.read(data.data(), fileSize);
+
+        irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data);
+        if (!tex) tex = constrainedCache_->uploadTexture(cacheName);
+        if (!tex) {
+            LOG_FATAL(MOD_GRAPHICS, "SnowOverlay: Failed to load required texture: {}", path);
+            std::exit(1);
+        }
+        LOG_INFO(MOD_GRAPHICS, "SnowOverlay: Loaded '{}'", path);
+        return tex;
     };
 
     // Load 10 intensity-based foreground textures (small flakes, varying density)
     intensityTextures_.clear();
     intensityTextures_.reserve(10);
     for (int i = 1; i <= 10; ++i) {
-        char filename[32];
-        snprintf(filename, sizeof(filename), "snow_intensity_%02d.png", i);
-        irr::video::ITexture* tex = loadTexture(filename);
-        intensityTextures_.push_back(tex);
+        char filename[32], cachename[32];
+        snprintf(filename, sizeof(filename), "snow_intensity_%02d.bmp", i);
+        snprintf(cachename, sizeof(cachename), "snow_intensity_%02d", i);
+        intensityTextures_.push_back(loadTexture(filename, cachename));
     }
 
     // Load background layer textures
-    midLayerTexture_ = loadTexture("snow_layer_mid.png");
-    farLayerTexture_ = loadTexture("snow_layer_far.png");
+    midLayerTexture_ = loadTexture("snow_layer_mid.bmp", "snow_layer_mid");
+    farLayerTexture_ = loadTexture("snow_layer_far.bmp", "snow_layer_far");
 
-    // Fallback: if intensity textures missing, try legacy texture
-    irr::video::ITexture* fallbackTex = nullptr;
-    for (auto* tex : intensityTextures_) {
-        if (tex) {
-            fallbackTex = tex;
-            break;
-        }
-    }
-    if (!fallbackTex) {
-        fallbackTex = loadTexture("snow_flakes.png");
-    }
-
-    if (!fallbackTex) {
-        LOG_ERROR(MOD_GRAPHICS, "SnowOverlay: Failed to load any snow textures");
-        return false;
-    }
-
-    // Fill in missing intensity textures with fallback
-    for (auto& tex : intensityTextures_) {
-        if (!tex) tex = fallbackTex;
-    }
-
-    // Fill in missing layer textures with fallback
-    if (!midLayerTexture_) midLayerTexture_ = fallbackTex;
-    if (!farLayerTexture_) farLayerTexture_ = fallbackTex;
+    // All textures are mandatory — no fallback logic needed
 
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "SnowOverlay initialized with {} intensity textures", intensityTextures_.size());
