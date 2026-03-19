@@ -77,6 +77,11 @@ struct Options {
     float entityRenderDist = 300.0f;
     bool batchEntities = false;   // Merge same-material entity buffers into single draws
 
+    // Analysis modes
+    bool analyzePortals = false;
+    bool detectPortals = false;
+    std::string portalCsvFile;
+
     // Synthetic (Z5)
     bool syntheticDraws = false;
 };
@@ -114,6 +119,10 @@ static void printUsage(const char* prog) {
     printf("  --entities N         Place N static entities along path (default: 0)\n");
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
     printf("  --batch-entities     Batch same-material entity parts into single draws\n");
+    printf("\nAnalysis modes:\n");
+    printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
+    printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
+    printf("  --portal-csv FILE    Write portal analysis to CSV\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
 }
@@ -152,6 +161,9 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entities") == 0 && i + 1 < argc) opts.entityCount = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
+        else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
+        else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
+        else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -484,6 +496,16 @@ int main(int argc, char** argv) {
     if (!data) {
         fprintf(stderr, "ERROR: Failed to load zone\n");
         return 1;
+    }
+
+    // ── Portal analysis modes ──
+    if (opts.analyzePortals) {
+        ZoneBench::analyzePortals(*data, opts.portalCsvFile);
+        return 0;
+    }
+    if (opts.detectPortals) {
+        ZoneBench::detectPortalsFromOccluders(*data, opts.portalCsvFile);
+        return 0;
     }
 
     // ── Find a good surface-level position ──

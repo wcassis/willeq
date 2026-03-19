@@ -156,6 +156,16 @@ int renderBatchedEntities(
     bool frustumCull,
     int& outEntityPolys);
 
+// Analyze portals: for each portal, compute geometry contact ratio
+// (fraction of portal perimeter that touches nearby region geometry).
+// Outputs a report to stdout and optionally to a CSV file.
+void analyzePortals(ZoneBenchData& data, const std::string& csvFile = "");
+
+// Occluder-based portal detection: for each BSP boundary between region pairs,
+// project nearby geometry onto the split plane, compute wall coverage,
+// and identify gaps (low-coverage areas) as portal openings.
+void detectPortalsFromOccluders(ZoneBenchData& data, const std::string& csvFile = "");
+
 // Find a good surface-level position in the zone for camera seeding.
 // Returns the center of the region with the most polygons in the top
 // quartile of Z heights (avoids underground regions).
