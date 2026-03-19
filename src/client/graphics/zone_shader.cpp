@@ -152,6 +152,7 @@ static const char* FRAGMENT_SHADER_ALPHA_SRC_BASE = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
@@ -166,7 +167,8 @@ varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    if (texColor.a < 0.5) discard;
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    if (alpha < 0.5) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
@@ -174,7 +176,7 @@ void main() {
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
-    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, alpha * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -186,6 +188,7 @@ static const char* FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
@@ -200,8 +203,9 @@ varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
-    if (texColor.a < threshold) discard;
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
+    if (alpha < threshold) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
@@ -209,7 +213,7 @@ void main() {
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
-    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, alpha * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -789,6 +793,7 @@ static const char* FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 
 varying vec4 vColor;
@@ -797,8 +802,9 @@ varying float vFogFactor;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
-    if (texColor.a < 0.5) discard;
-    vec4 lit = texColor * vColor;
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    if (alpha < 0.5) discard;
+    vec4 lit = vec4(texColor.rgb * vColor.rgb, alpha * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -1367,6 +1373,7 @@ public:
             locLightAtten_ = glGetUniformLocation(prog, "uLightAtten[0]");
             locFogColor_   = glGetUniformLocation(prog, "uFogColor");
             locTexture_    = glGetUniformLocation(prog, "uTexture");
+            locAlphaTex_   = glGetUniformLocation(prog, "uAlphaTexture");
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
@@ -1381,10 +1388,10 @@ public:
             locShaderDebug_         = glGetUniformLocation(prog, "uShaderDebug");
             locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
             LOG_DEBUG(MOD_SHADER, "ShaderCallback: uniforms resolved — WVP={} World={} SunDir={} "
-                      "LightPos={} LightColor={} LightAtten={} PlayerLightPos={} Texture={} "
+                      "LightPos={} LightColor={} LightAtten={} PlayerLightPos={} Texture={} AlphaTex={} "
                       "NumPointLights={} NumFireGlow={}",
                       locWVP_, locWorld_, locSunDir_, locLightPos_, locLightColor_, locLightAtten_,
-                      locPlayerLightPos_, locTexture_, locNumPointLights_, locNumFireGlowLights_);
+                      locPlayerLightPos_, locTexture_, locAlphaTex_, locNumPointLights_, locNumFireGlowLights_);
         }
 
         // Per-node uniforms (change every node — depend on World matrix)
@@ -1437,6 +1444,7 @@ public:
             if (locLightAtten_ >= 0) glUniform3fv(locLightAtten_, ZoneShaderManager::MAX_POINT_LIGHTS, owner_->lightAtten());
             if (locFogColor_ >= 0)   glUniform4fv(locFogColor_, 1, owner_->fogColor());
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
+            if (locAlphaTex_ >= 0)   glUniform1i(locAlphaTex_, 1);
 
             // Per-pixel player light (FS uniforms + LUT texture)
             if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
@@ -1519,7 +1527,7 @@ private:
     GLint locSunDir_ = -2, locSunColor_ = -2, locAmbient_ = -2, locTint_ = -2;
     GLint locFogStart_ = -2, locFogEnd_ = -2;
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
-    GLint locFogColor_ = -2, locTexture_ = -2;
+    GLint locFogColor_ = -2, locTexture_ = -2, locAlphaTex_ = -2;
     GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2, locPlayerLightAtten_ = -2;
     GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;
@@ -1805,6 +1813,7 @@ public:
             locLightAtten_ = glGetUniformLocation(prog, "uLightAtten[0]");
             locFogColor_   = glGetUniformLocation(prog, "uFogColor");
             locTexture_    = glGetUniformLocation(prog, "uTexture");
+            locAlphaTex_   = glGetUniformLocation(prog, "uAlphaTexture");
             locWindTime_   = glGetUniformLocation(prog, "uWindTime");
             locWindParams_ = glGetUniformLocation(prog, "uWindParams");
             locMeshYBounds_ = glGetUniformLocation(prog, "uMeshYBounds");
@@ -1886,6 +1895,7 @@ public:
             if (locLightAtten_ >= 0) glUniform3fv(locLightAtten_, ZoneShaderManager::MAX_POINT_LIGHTS, owner_->lightAtten());
             if (locFogColor_ >= 0)   glUniform4fv(locFogColor_, 1, owner_->fogColor());
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
+            if (locAlphaTex_ >= 0)   glUniform1i(locAlphaTex_, 1);
             if (locWindTime_ >= 0)   glUniform1f(locWindTime_, owner_->windTime());
             if (locWindParams_ >= 0) glUniform4fv(locWindParams_, 1, owner_->windParams());
             // Per-pixel player light (FS uniforms + LUT texture)
@@ -1988,7 +1998,7 @@ private:
     GLint locSunDir_ = -2, locSunColor_ = -2, locAmbient_ = -2, locTint_ = -2;
     GLint locFogStart_ = -2, locFogEnd_ = -2;
     GLint locLightPos_ = -2, locLightColor_ = -2, locLightAtten_ = -2;
-    GLint locFogColor_ = -2, locTexture_ = -2;
+    GLint locFogColor_ = -2, locTexture_ = -2, locAlphaTex_ = -2;
     GLint locWindTime_ = -2, locWindParams_ = -2, locMeshYBounds_ = -2;
     GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;

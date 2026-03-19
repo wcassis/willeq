@@ -537,6 +537,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
     }
 
+    // Load EQE1 archive configuration (which .eqe1 files to open per zone)
+    if (eqe1ArchiveEntries_.empty()) {
+        loadEQE1ArchiveConfig("config/eqe1_archives.json");
+    }
+
     // Pre-load item-to-model mapping (validated at startup by S03)
     if (itemToModelMap_.empty()) {
         LOG_TRACE(MOD_GRAPHICS, "Loading item model mappings from data/item_models.json...");
@@ -1117,7 +1122,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     } else if (cmd == "/pmem") {
         MemoryReportInput ext{};  // Empty external data — game thread pushes its own stats
         auto report = getMemoryReport(ext);
-        for (const auto& line : report) chat(line);
+        for (const auto& line : report) {
+            chat(line);
+            LOG_INFO(MOD_GRAPHICS, "{}", line);
+        }
     }
     // --- UI ---
     else if (cmd == "/newui") {
@@ -3242,27 +3250,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     if (!config_.constrainedConfig.eqe1Path.empty()) {
         updateProgress(48, "Opening EQE1 textures...");
 
-        // Zone-specific archives
-        getOrOpenEQE1(currentZoneName_);
-        getOrOpenEQE1(currentZoneName_ + "_obj");
-        getOrOpenEQE1(currentZoneName_ + "_chr");
-
-        // Global character archives (shared across all zones)
-        getOrOpenEQE1("global_chr");
-        for (int i = 2; i <= 7; ++i)
-            getOrOpenEQE1("global" + std::to_string(i) + "_chr");
-
-        // Equipment archives
-        getOrOpenEQE1("gequip");
-        for (int i = 2; i <= 8; ++i)
-            getOrOpenEQE1("gequip" + std::to_string(i));
-
-        // Armor texture archives
-        for (int i = 17; i <= 23; ++i)
-            getOrOpenEQE1("global" + std::to_string(i) + "_amr");
-
-        // Sky textures
-        getOrOpenEQE1("sky");
+        auto archiveList = resolveEQE1Archives(currentZoneName_);
+        for (const auto& name : archiveList.zoneArchives) {
+            getOrOpenEQE1(name);
+        }
+        for (const auto& name : archiveList.globalArchives) {
+            getOrOpenEQE1(name);
+        }
     }
 
     // ── Step 1: S3D — parse zone archive ───────────────────────────────────
@@ -5274,10 +5268,19 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                 mat.MaterialTypeParam = meshBbox.MinEdge.Y;
                                 mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
                                 mat.BackfaceCulling = false;
+                                // Ensure ETC1 alpha companion is on layer 1 (may already be set by mesh builder)
+                                if (constrainedTextureCache_ && tex0 && !mat.TextureLayer[1].Texture) {
+                                    // Look up alpha companion by texture name
+                                    irr::core::stringc texName = tex0->getName().getPath();
+                                    irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
+                                        std::string(texName.c_str()));
+                                    if (alphaTex) mat.setTexture(1, alphaTex);
+                                }
                                 LOG_DEBUG(MOD_SHADER, "fixup tree '{}' mat[{}]: prevType={} -> windType={} "
-                                          "tex0={} bboxY=[{:.2f},{:.2f}]",
+                                          "tex0={} alphaTex1={} bboxY=[{:.2f},{:.2f}]",
                                           objName, mi, prevMatType, windMatType,
-                                          (void*)tex0, meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y);
+                                          (void*)tex0, (void*)mat.TextureLayer[1].Texture,
+                                          meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y);
                             }
                             ++treesWindApplied;
                         } else {
@@ -16028,6 +16031,101 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
     eqe1Loaders_[archiveBaseName] = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EQE1: {} not found, S3D fallback", path);
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// EQE1 archive config (JSON-driven archive list)
+// ---------------------------------------------------------------------------
+
+bool IrrlichtRenderer::loadEQE1ArchiveConfig(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        LOG_INFO(MOD_GRAPHICS, "No {} found, using built-in EQE1 archive defaults", path);
+
+        // Built-in fallback (matches original hard-coded list)
+        EQE1ArchiveEntry defaultEntry;
+        defaultEntry.zoneArchives = {"{zone}", "{zone}_obj", "{zone}_chr"};
+        defaultEntry.globalArchives = {
+            "global_chr", "global2_chr", "global3_chr", "global4_chr",
+            "global5_chr", "global6_chr", "global7_chr",
+            "gequip", "gequip2", "gequip3", "gequip4",
+            "gequip5", "gequip6", "gequip7", "gequip8",
+            "gatesequip", "ldonequip", "lgequip", "lgequip2",
+            "lgequip_amr", "lgequip_amr2",
+            "loyequip", "vequip", "frogequip", "obequip_lexit",
+            "global17_amr", "global18_amr", "global19_amr", "global20_amr",
+            "global21_amr", "global22_amr", "global23_amr",
+            "sky"
+        };
+        eqe1ArchiveEntries_["default"] = std::move(defaultEntry);
+        return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+        LOG_WARN(MOD_GRAPHICS, "Failed to parse {}: {}", path, errors);
+        return false;
+    }
+
+    for (const auto& key : root.getMemberNames()) {
+        const Json::Value& entry = root[key];
+        EQE1ArchiveEntry archiveEntry;
+
+        if (entry.isMember("zoneArchives")) {
+            for (const auto& v : entry["zoneArchives"]) {
+                archiveEntry.zoneArchives.push_back(v.asString());
+            }
+        }
+        if (entry.isMember("globalArchives")) {
+            for (const auto& v : entry["globalArchives"]) {
+                archiveEntry.globalArchives.push_back(v.asString());
+            }
+        }
+
+        eqe1ArchiveEntries_[key] = std::move(archiveEntry);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "Loaded EQE1 archive config: {} entries ({} zone-specific)",
+             eqe1ArchiveEntries_.size(),
+             eqe1ArchiveEntries_.size() - (eqe1ArchiveEntries_.count("default") ? 1 : 0));
+    return true;
+}
+
+IrrlichtRenderer::EQE1ArchiveEntry IrrlichtRenderer::resolveEQE1Archives(const std::string& zoneName) const {
+    EQE1ArchiveEntry result;
+
+    // Start with default
+    auto defaultIt = eqe1ArchiveEntries_.find("default");
+    if (defaultIt != eqe1ArchiveEntries_.end()) {
+        result = defaultIt->second;
+    }
+
+    // Merge zone-specific entry if present
+    auto zoneIt = eqe1ArchiveEntries_.find(zoneName);
+    if (zoneIt != eqe1ArchiveEntries_.end()) {
+        // Append zone-specific archives, dedup against existing
+        auto appendUnique = [](std::vector<std::string>& dest, const std::vector<std::string>& src) {
+            for (const auto& item : src) {
+                if (std::find(dest.begin(), dest.end(), item) == dest.end()) {
+                    dest.push_back(item);
+                }
+            }
+        };
+        appendUnique(result.zoneArchives, zoneIt->second.zoneArchives);
+        appendUnique(result.globalArchives, zoneIt->second.globalArchives);
+    }
+
+    // Replace {zone} placeholder in zone archives
+    for (auto& name : result.zoneArchives) {
+        size_t pos = name.find("{zone}");
+        if (pos != std::string::npos) {
+            name.replace(pos, 6, zoneName);
+        }
+    }
+
+    return result;
 }
 
 } // namespace Graphics

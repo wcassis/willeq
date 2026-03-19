@@ -360,6 +360,13 @@ bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
     return it != cache_.end() && it->second.hasAlpha;
 }
 
+irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cache_.find(name);
+    if (it != cache_.end()) return it->second.alphaTexture;
+    return nullptr;
+}
+
 void ConstrainedTextureCache::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     // Notify listeners for each texture being cleared
@@ -1470,10 +1477,26 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         return nullptr;
     }
 
+    // Wrap alpha companion texture if present
+    irr::video::ITexture* alphaTexture = nullptr;
+    if (alphaTexId) {
+        std::string alphaName = name + "_alpha";
+        alphaTexture = static_cast<irr::video::ITexture*>(
+            gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
+                             entry.width, entry.height,
+                             static_cast<unsigned int>(
+                                 EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels))));
+        if (!alphaTexture) {
+            glDeleteTextures(1, &alphaTexId);
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 alpha '{}'", alphaName);
+        }
+    }
+
     // Register in LRU cache
     lruOrder_.push_back(name);
     CachedTexture cached;
     cached.texture = texture;
+    cached.alphaTexture = alphaTexture;
     cached.sizeBytes = gpuSize;
     cached.hasAlpha = entry.hasAlpha;
     cached.lruIterator = std::prev(lruOrder_.end());

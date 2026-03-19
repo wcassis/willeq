@@ -395,6 +395,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                     } else {
                         buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
                     }
+                    // Bind ETC1 alpha companion texture on layer 1 (sampled by uAlphaTexture in shader)
+                    if (constrainedCache_) {
+                        irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                        if (alphaTex) {
+                            buffer->Material.setTexture(1, alphaTex);
+                        }
+                    }
                     // Alpha-to-coverage produces smoother edges on vegetation when MSAA is active
                     if (constrainedCache_ && constrainedCache_->getConfig().enableAlphaToCoverage) {
                         buffer->Material.AntiAliasing |= irr::video::EAAM_ALPHA_TO_COVERAGE;
@@ -1145,6 +1152,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                         buf->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
                     } else {
                         buf->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
+                    // Bind ETC1 alpha companion on layer 1
+                    if (constrainedCache_) {
+                        irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                        if (alphaTex) buf->Material.setTexture(1, alphaTex);
                     }
                 } else {
                     if (shaderMaterialSolid_ >= 0) {

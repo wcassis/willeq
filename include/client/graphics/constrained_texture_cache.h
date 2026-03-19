@@ -99,6 +99,10 @@ public:
     // Check if a cached texture has alpha transparency
     bool hasAlpha(const std::string& name) const;
 
+    // Get ETC1 alpha companion texture (for binding to texture unit 1)
+    // Returns nullptr if texture has no alpha companion.
+    irr::video::ITexture* getAlphaTexture(const std::string& name) const;
+
     // Clear all cached textures
     void clear();
 
@@ -245,6 +249,7 @@ private:
     // Cached texture entry
     struct CachedTexture {
         irr::video::ITexture* texture;
+        irr::video::ITexture* alphaTexture = nullptr;  // ETC1 alpha companion (unit 1)
         size_t sizeBytes;
         bool hasAlpha = false;
         std::list<std::string>::iterator lruIterator;

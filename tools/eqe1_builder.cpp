@@ -270,7 +270,7 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     return result;
 }
 
-// ── Archive processing ───────────────────────────────────────────────────────
+// ── Data structures ─────────────────────────────────────────────────────────
 
 struct TextureEntry {
     std::string name;       // lowercase, no extension
@@ -287,104 +287,18 @@ struct RawDataEntry {
     std::vector<char> data;
 };
 
-static bool processArchive(const std::string& eqPath,
-                            const std::string& archiveName,
-                            const std::string& outputDir,
-                            bool verbose) {
-    std::string archivePath = eqPath + "/" + archiveName;
-    PfsArchive archive;
-    if (!archive.open(archivePath)) {
-        std::cerr << "  Could not open: " << archivePath << std::endl;
-        return false;
-    }
+// ── EQE1 file assembly (shared by both modes) ──────────────────────────────
 
-    // Extract texture filenames (.bmp and .dds)
-    std::vector<std::string> bmpFiles;
-    archive.getFilenames(".bmp", bmpFiles);
-    std::vector<std::string> ddsFiles;
-    archive.getFilenames(".dds", ddsFiles);
-    bmpFiles.insert(bmpFiles.end(), ddsFiles.begin(), ddsFiles.end());
-
-    // Extract non-texture filenames
-    std::vector<std::string> wldFiles;
-    archive.getFilenames(".wld", wldFiles);
-
-    std::cout << "  Files: " << bmpFiles.size() << " textures, "
-              << wldFiles.size() << " wld" << std::endl;
-
-    // Decode and encode all textures
-    std::vector<TextureEntry> textures;
-    int alphaCount = 0;
-    int failCount = 0;
-
-    for (const auto& filename : bmpFiles) {
-        std::vector<char> fileData;
-        if (!archive.get(filename, fileData) || fileData.empty()) {
-            failCount++;
-            continue;
-        }
-
-        TextureEntry tex;
-        tex.name = stripExtension(toLower(filename));
-
-        // Decode BMP or DDS-as-BMP
-        std::vector<uint8_t> rgba;
-        if (DDSDecoder::isDDS(fileData)) {
-            auto decoded = DDSDecoder::decode(fileData);
-            if (!decoded.isValid()) {
-                if (verbose) std::cerr << "    SKIP (DDS decode failed): " << filename << std::endl;
-                failCount++;
-                continue;
-            }
-            tex.width = decoded.width;
-            tex.height = decoded.height;
-            rgba = std::move(decoded.pixels);
-        } else {
-            if (!decodeBMP(fileData, rgba, tex.width, tex.height)) {
-                if (verbose) std::cerr << "    SKIP (BMP decode failed): " << filename << std::endl;
-                failCount++;
-                continue;
-            }
-        }
-
-        tex.hasAlpha = detectAlpha(rgba.data(), tex.width, tex.height);
-        if (tex.hasAlpha) alphaCount++;
-
-        // Encode RGB mip chain
-        tex.rgbETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                        false, tex.mipLevels);
-
-        // Encode alpha mip chain if needed
-        if (tex.hasAlpha) {
-            uint8_t alphaMips = 0;
-            tex.alphaETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                              true, alphaMips);
-        }
-
-        if (verbose) {
-            std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
-                      << " " << (int)tex.mipLevels << " mips"
-                      << " " << tex.rgbETC1.size() << " bytes"
-                      << (tex.hasAlpha ? " +alpha" : "") << std::endl;
-        }
-
-        textures.push_back(std::move(tex));
-    }
-
-    // Collect raw data entries
-    std::vector<RawDataEntry> rawEntries;
-    for (const auto& filename : wldFiles) {
-        RawDataEntry raw;
-        raw.name = toLower(filename);
-        if (!archive.get(filename, raw.data) || raw.data.empty()) continue;
-        rawEntries.push_back(std::move(raw));
-    }
-
+static bool writeEQE1File(const std::vector<TextureEntry>& textures,
+                           const std::vector<RawDataEntry>& rawEntries,
+                           const std::string& outputPath,
+                           bool verbose) {
     // Calculate total entries (textures + alpha companions + raw data)
     uint16_t numEntries = 0;
+    int alphaCount = 0;
     for (const auto& tex : textures) {
         numEntries++;  // RGB entry
-        if (tex.hasAlpha) numEntries++;  // alpha companion entry
+        if (tex.hasAlpha) { numEntries++; alphaCount++; }  // alpha companion entry
     }
     numEntries += static_cast<uint16_t>(rawEntries.size());
 
@@ -453,13 +367,6 @@ static bool processArchive(const std::string& eqPath,
     assert(entries.size() == numEntries);
 
     // Write output file
-    std::string baseName = toLower(archiveName);
-    // Strip .s3d extension
-    if (baseName.size() > 4 && baseName.substr(baseName.size() - 4) == ".s3d") {
-        baseName = baseName.substr(0, baseName.size() - 4);
-    }
-    std::string outputPath = outputDir + "/" + baseName + ".eqe1";
-
     std::ofstream out(outputPath, std::ios::binary);
     if (!out.is_open()) {
         std::cerr << "  Cannot open output: " << outputPath << std::endl;
@@ -480,7 +387,6 @@ static bool processArchive(const std::string& eqPath,
 
     // Write data with 16-byte alignment padding
     for (const auto& entry : entries) {
-        // Pad to entry's dataOffset
         auto currentPos = static_cast<uint32_t>(out.tellp());
         if (currentPos < entry.index.dataOffset) {
             uint32_t padSize = entry.index.dataOffset - currentPos;
@@ -497,9 +403,226 @@ static bool processArchive(const std::string& eqPath,
               << fileSize / 1024 << " KB, "
               << textures.size() << " textures"
               << (alphaCount > 0 ? ", " + std::to_string(alphaCount) + " alpha" : "")
-              << ", " << rawEntries.size() << " wld"
-              << (failCount > 0 ? ", " + std::to_string(failCount) + " skipped" : "")
+              << (!rawEntries.empty() ? ", " + std::to_string(rawEntries.size()) + " raw" : "")
               << ")" << std::endl;
+
+    return true;
+}
+
+// ── Archive processing ───────────────────────────────────────────────────────
+
+static bool processArchive(const std::string& eqPath,
+                            const std::string& archiveName,
+                            const std::string& outputDir,
+                            bool verbose) {
+    std::string archivePath = eqPath + "/" + archiveName;
+    PfsArchive archive;
+    if (!archive.open(archivePath)) {
+        std::cerr << "  Could not open: " << archivePath << std::endl;
+        return false;
+    }
+
+    // Extract texture filenames (.bmp and .dds)
+    std::vector<std::string> bmpFiles;
+    archive.getFilenames(".bmp", bmpFiles);
+    std::vector<std::string> ddsFiles;
+    archive.getFilenames(".dds", ddsFiles);
+    bmpFiles.insert(bmpFiles.end(), ddsFiles.begin(), ddsFiles.end());
+
+    // Extract non-texture filenames
+    std::vector<std::string> wldFiles;
+    archive.getFilenames(".wld", wldFiles);
+
+    std::cout << "  Files: " << bmpFiles.size() << " textures, "
+              << wldFiles.size() << " wld" << std::endl;
+
+    // Decode and encode all textures
+    std::vector<TextureEntry> textures;
+    int failCount = 0;
+
+    for (const auto& filename : bmpFiles) {
+        std::vector<char> fileData;
+        if (!archive.get(filename, fileData) || fileData.empty()) {
+            failCount++;
+            continue;
+        }
+
+        TextureEntry tex;
+        tex.name = stripExtension(toLower(filename));
+
+        // Decode BMP or DDS-as-BMP
+        std::vector<uint8_t> rgba;
+        if (DDSDecoder::isDDS(fileData)) {
+            auto decoded = DDSDecoder::decode(fileData);
+            if (!decoded.isValid()) {
+                if (verbose) std::cerr << "    SKIP (DDS decode failed): " << filename << std::endl;
+                failCount++;
+                continue;
+            }
+            tex.width = decoded.width;
+            tex.height = decoded.height;
+            rgba = std::move(decoded.pixels);
+        } else {
+            if (!decodeBMP(fileData, rgba, tex.width, tex.height)) {
+                if (verbose) std::cerr << "    SKIP (BMP decode failed): " << filename << std::endl;
+                failCount++;
+                continue;
+            }
+        }
+
+        tex.hasAlpha = detectAlpha(rgba.data(), tex.width, tex.height);
+
+        // Encode RGB mip chain
+        tex.rgbETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
+                                        false, tex.mipLevels);
+
+        // Encode alpha mip chain if needed
+        if (tex.hasAlpha) {
+            uint8_t alphaMips = 0;
+            tex.alphaETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
+                                              true, alphaMips);
+        }
+
+        if (verbose) {
+            std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
+                      << " " << (int)tex.mipLevels << " mips"
+                      << " " << tex.rgbETC1.size() << " bytes"
+                      << (tex.hasAlpha ? " +alpha" : "") << std::endl;
+        }
+
+        textures.push_back(std::move(tex));
+    }
+
+    // Collect raw data entries
+    std::vector<RawDataEntry> rawEntries;
+    for (const auto& filename : wldFiles) {
+        RawDataEntry raw;
+        raw.name = toLower(filename);
+        if (!archive.get(filename, raw.data) || raw.data.empty()) continue;
+        rawEntries.push_back(std::move(raw));
+    }
+
+    // Determine output path
+    std::string baseName = toLower(archiveName);
+    if (baseName.size() > 4 && baseName.substr(baseName.size() - 4) == ".s3d") {
+        baseName = baseName.substr(0, baseName.size() - 4);
+    }
+    std::string outputPath = outputDir + "/" + baseName + ".eqe1";
+
+    // Use shared assembly for texture entries
+    if (!writeEQE1File(textures, rawEntries, outputPath, verbose)) {
+        return false;
+    }
+
+    if (failCount > 0) {
+        std::cout << "  (" << failCount << " files skipped)" << std::endl;
+    }
+
+    return true;
+}
+
+// ── BMP directory processing ────────────────────────────────────────────────
+
+static bool processBmpDirectory(const std::string& bmpDir,
+                                 const std::string& outputDir,
+                                 const std::string& nameOverride,
+                                 bool verbose) {
+    // Collect .bmp files
+    std::vector<fs::path> bmpFiles;
+    for (const auto& entry : fs::directory_iterator(bmpDir)) {
+        if (!entry.is_regular_file()) continue;
+        std::string ext = toLower(entry.path().extension().string());
+        if (ext == ".bmp") {
+            bmpFiles.push_back(entry.path());
+        }
+    }
+    std::sort(bmpFiles.begin(), bmpFiles.end());
+
+    if (bmpFiles.empty()) {
+        std::cerr << "  No .bmp files found in: " << bmpDir << std::endl;
+        return false;
+    }
+
+    std::cout << "  Files: " << bmpFiles.size() << " BMPs" << std::endl;
+
+    // Decode and encode all textures
+    std::vector<TextureEntry> textures;
+    int failCount = 0;
+
+    for (const auto& bmpPath : bmpFiles) {
+        // Read file
+        std::ifstream file(bmpPath, std::ios::binary);
+        if (!file.is_open()) {
+            if (verbose) std::cerr << "    SKIP (cannot open): " << bmpPath << std::endl;
+            failCount++;
+            continue;
+        }
+        std::vector<char> fileData((std::istreambuf_iterator<char>(file)),
+                                     std::istreambuf_iterator<char>());
+
+        TextureEntry tex;
+        tex.name = stripExtension(toLower(bmpPath.filename().string()));
+
+        // Decode BMP
+        std::vector<uint8_t> rgba;
+        if (!decodeBMP(fileData, rgba, tex.width, tex.height)) {
+            if (verbose) std::cerr << "    SKIP (BMP decode failed): " << bmpPath << std::endl;
+            failCount++;
+            continue;
+        }
+
+        tex.hasAlpha = detectAlpha(rgba.data(), tex.width, tex.height);
+
+        // Encode RGB mip chain
+        tex.rgbETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
+                                        false, tex.mipLevels);
+
+        // Encode alpha mip chain if needed
+        if (tex.hasAlpha) {
+            uint8_t alphaMips = 0;
+            tex.alphaETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
+                                              true, alphaMips);
+        }
+
+        if (verbose) {
+            std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
+                      << " " << (int)tex.mipLevels << " mips"
+                      << " " << tex.rgbETC1.size() << " bytes"
+                      << (tex.hasAlpha ? " +alpha" : "") << std::endl;
+        }
+
+        textures.push_back(std::move(tex));
+    }
+
+    if (textures.empty()) {
+        std::cerr << "  No textures successfully decoded" << std::endl;
+        return false;
+    }
+
+    // Determine output base name
+    std::string baseName;
+    if (!nameOverride.empty()) {
+        baseName = toLower(nameOverride);
+    } else {
+        // Use last component of directory path
+        fs::path dirPath(bmpDir);
+        baseName = toLower(dirPath.filename().string());
+        if (baseName.empty()) {
+            // Handle trailing slash: /foo/bar/ → parent_path().filename()
+            baseName = toLower(dirPath.parent_path().filename().string());
+        }
+    }
+
+    std::string outputPath = outputDir + "/" + baseName + ".eqe1";
+
+    std::vector<RawDataEntry> noRawEntries;  // BMP directory mode has no raw data
+    if (!writeEQE1File(textures, noRawEntries, outputPath, verbose)) {
+        return false;
+    }
+
+    if (failCount > 0) {
+        std::cout << "  (" << failCount << " files skipped)" << std::endl;
+    }
 
     return true;
 }
@@ -509,10 +632,15 @@ static bool processArchive(const std::string& eqPath,
 static void printUsage(const char* argv0) {
     std::cout << "Usage: " << argv0 << " --eq-path <path> --archive <name> --output <dir>\n"
               << "       " << argv0 << " --eq-path <path> --all --output <dir>\n"
-              << "\nOptions:\n"
+              << "       " << argv0 << " --bmp-dir <path> --output <dir> [--name <name>]\n"
+              << "\nS3D archive mode:\n"
               << "  --eq-path <path>     Path to EverQuest client directory\n"
               << "  --archive <name>     Process single archive (e.g., qeynos2.s3d)\n"
               << "  --all                Process all .s3d files\n"
+              << "\nBMP directory mode:\n"
+              << "  --bmp-dir <path>     Read BMPs from directory (mutually exclusive with --eq-path)\n"
+              << "  --name <name>        Override output base name (default: directory name)\n"
+              << "\nCommon:\n"
               << "  --output <dir>       Output directory for .eqe1 files\n"
               << "  --verbose            Print per-texture stats\n"
               << std::endl;
@@ -522,6 +650,8 @@ int main(int argc, char** argv) {
     std::string eqPath;
     std::string archiveName;
     std::string outputDir;
+    std::string bmpDir;
+    std::string nameOverride;
     bool allArchives = false;
     bool verbose = false;
 
@@ -533,6 +663,10 @@ int main(int argc, char** argv) {
             archiveName = argv[++i];
         } else if (arg == "--output" && i + 1 < argc) {
             outputDir = argv[++i];
+        } else if (arg == "--bmp-dir" && i + 1 < argc) {
+            bmpDir = argv[++i];
+        } else if (arg == "--name" && i + 1 < argc) {
+            nameOverride = argv[++i];
         } else if (arg == "--all") {
             allArchives = true;
         } else if (arg == "--verbose") {
@@ -543,8 +677,38 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (outputDir.empty()) {
+        std::cerr << "Error: --output is required\n";
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    // Validate mutually exclusive modes
+    if (!bmpDir.empty() && !eqPath.empty()) {
+        std::cerr << "Error: --bmp-dir and --eq-path are mutually exclusive\n";
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    fs::create_directories(outputDir);
+
+    // ── BMP directory mode ──────────────────────────────────────────────────
+    if (!bmpDir.empty()) {
+        if (!fs::exists(bmpDir) || !fs::is_directory(bmpDir)) {
+            std::cerr << "Error: BMP directory does not exist or is not a directory: " << bmpDir << std::endl;
+            return 1;
+        }
+
+        std::cout << "Processing BMP directory: " << bmpDir << std::endl;
+        if (processBmpDirectory(bmpDir, outputDir, nameOverride, verbose)) {
+            return 0;
+        }
+        return 1;
+    }
+
+    // ── S3D archive mode ────────────────────────────────────────────────────
     if (eqPath.empty()) {
-        std::cerr << "Error: --eq-path is required\n";
+        std::cerr << "Error: --eq-path or --bmp-dir is required\n";
         printUsage(argv[0]);
         return 1;
     }
@@ -557,13 +721,6 @@ int main(int argc, char** argv) {
         printUsage(argv[0]);
         return 1;
     }
-    if (outputDir.empty()) {
-        std::cerr << "Error: --output is required\n";
-        printUsage(argv[0]);
-        return 1;
-    }
-
-    fs::create_directories(outputDir);
 
     // Collect archives to process
     std::vector<std::string> archives;
@@ -584,7 +741,6 @@ int main(int argc, char** argv) {
 
     int success = 0, failed = 0;
     size_t totalOutputSize = 0;
-    int totalTextures = 0;
 
     for (size_t i = 0; i < archives.size(); ++i) {
         std::cout << "\n[" << (i + 1) << "/" << archives.size() << "] " << archives[i] << std::endl;

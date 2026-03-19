@@ -1234,6 +1234,15 @@ private:
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
     // Zone texture atlas removed (E10) — EQE1 flat packs replace atlas system
 
+    // EQE1 archive configuration — loaded from config/eqe1_archives.json
+    struct EQE1ArchiveEntry {
+        std::vector<std::string> zoneArchives;    // entries with {zone} placeholder
+        std::vector<std::string> globalArchives;  // loaded as-is
+    };
+    std::map<std::string, EQE1ArchiveEntry> eqe1ArchiveEntries_;  // "default" + per-zone overrides
+    bool loadEQE1ArchiveConfig(const std::string& path);
+    EQE1ArchiveEntry resolveEQE1Archives(const std::string& zoneName) const;
+
     // EQE1 flat pack loaders — lazy-opened on demand, keyed by archive base name
     // (e.g., "qeynos2", "global_chr", "gequip2"). Thread-safe via eqe1Mutex_.
     std::unordered_map<std::string, std::unique_ptr<EQE1Loader>> eqe1Loaders_;
