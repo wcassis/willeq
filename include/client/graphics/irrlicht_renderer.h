@@ -10,6 +10,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 #include <unordered_set>
 #include <glm/glm.hpp>
 #include "client/graphics/eq/s3d_loader.h"
@@ -29,6 +30,7 @@
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/texture_atlas.h"
+#include "client/graphics/eqe1_loader.h"
 #include "client/graphics/portal_system.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
@@ -1227,9 +1229,15 @@ private:
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
-    std::shared_ptr<TextureAtlas> zoneAtlas_;  // ETC1 texture atlas for zone geometry (shared_ptr for bg thread capture)
-    std::unique_ptr<TextureAtlas> objAtlas_;   // ETC1 texture atlas for zone objects
-    int objAtlasPageOffset_ = 0;              // Offset for object atlas pages in shader's page texture array
+    // Zone texture atlas removed (E10) — EQE1 flat packs replace atlas system
+
+    // EQE1 flat pack loaders — lazy-opened on demand, keyed by archive base name
+    // (e.g., "qeynos2", "global_chr", "gequip2"). Thread-safe via eqe1Mutex_.
+    std::unordered_map<std::string, std::unique_ptr<EQE1Loader>> eqe1Loaders_;
+    mutable std::mutex eqe1Mutex_;
+    // Try to open an EQE1 file and register with cache. Returns loader pointer or nullptr.
+    // Thread-safe — called from entity prep worker and equipment loader threads.
+    const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
     std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
 #endif

@@ -624,8 +624,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         textBatch_.reset();
     }
 
-    // U02: Load UI atlas (required when enableTextureAtlas is true)
-    if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+    // U02: Load UI atlas (required when atlasPath is configured)
+    if (!config_.constrainedConfig.atlasPath.empty()) {
         uiAtlas_ = std::make_unique<UIAtlas>();
         if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath)) {
             LOG_FATAL(MOD_GRAPHICS, "UIAtlas: required atlas files missing from {}. "
@@ -1430,16 +1430,6 @@ void IrrlichtRenderer::processCompletedUploads() {
                     }
                 } else if (sourceType == 4) {
                     // Icon texture — icon loading removed (WindowManager deleted)
-                } else {
-                    // Atlas texture (sourceType 0 or 1, legacy encoding)
-                    // callbackKey encoding: high 32 bits = atlas type (0=zone, 1=obj), low 32 bits = page index
-                    uint32_t atlasType = static_cast<uint32_t>(result.callbackKey >> 32);
-                    uint32_t pageIndex = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
-                    TextureAtlas* atlas = (atlasType == 0) ? zoneAtlas_.get() : objAtlas_.get();
-                    if (atlas && result.glTextureName != 0) {
-                        atlas->setPageTexture(static_cast<int>(pageIndex),
-                                               result.glTextureName, result.gpuBytes);
-                    }
                 }
                 break;
             }
@@ -1627,15 +1617,6 @@ bool IrrlichtRenderer::processOneGPUResult() {
                 }
             } else if (sourceType == 4) {
                 // Icon texture — icon loading removed (WindowManager deleted)
-            } else {
-                // Atlas texture (sourceType 0 or 1, legacy encoding)
-                uint32_t atlasType = static_cast<uint32_t>(result.callbackKey >> 32);
-                uint32_t pageIndex = static_cast<uint32_t>(result.callbackKey & 0xFFFFFFFF);
-                TextureAtlas* atlas = (atlasType == 0) ? zoneAtlas_.get() : objAtlas_.get();
-                if (atlas && result.glTextureName != 0) {
-                    atlas->setPageTexture(static_cast<int>(pageIndex),
-                                           result.glTextureName, result.gpuBytes);
-                }
             }
             break;
         }
@@ -2482,16 +2463,15 @@ void IrrlichtRenderer::unloadZone() {
     // Remove zone placeholder mesh if still present
     destroyZonePlaceholder();
 
-    // Unload texture atlases
-    if (zoneAtlas_) {
-        zoneAtlas_->unload();
-        zoneAtlas_.reset();
+    // Unload EQE1 flat packs (clear cache refs before destroying loaders)
+    if (constrainedTextureCache_) {
+        constrainedTextureCache_->clearEQE1Loaders();
     }
-    if (objAtlas_) {
-        objAtlas_->unload();
-        objAtlas_.reset();
+    {
+        std::lock_guard<std::mutex> lock(eqe1Mutex_);
+        eqe1Loaders_.clear();
     }
-    objAtlasPageOffset_ = 0;
+
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
     // Release retained GLES2 textures and EGL images after atlas GL textures are deleted.
     // Lima driver requires source textures/images to stay alive while desktop GL textures
@@ -3185,10 +3165,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
               "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
               fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
               maxFireGlowLights_, fireEffectsEnabled_, fireGlowLights_.size());
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, enableTextureAtlas={}, "
-              "atlasPath='{}', deferredAssetLoading={}",
-              config_.constrainedConfig.skipObjectBuild, config_.constrainedConfig.enableTextureAtlas,
-              config_.constrainedConfig.atlasPath, config_.constrainedConfig.deferredAssetLoading);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
+              "atlasPath='{}', eqe1Path='{}', deferredAssetLoading={}",
+              config_.constrainedConfig.skipObjectBuild,
+              config_.constrainedConfig.atlasPath, config_.constrainedConfig.eqe1Path,
+              config_.constrainedConfig.deferredAssetLoading);
 
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
               simulationWorker_ ? simulationWorker_->isRunning() : false);
@@ -3203,6 +3184,33 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     std::string eqPath = eqClientPath;
     if (!eqPath.empty() && eqPath.back() != '/' && eqPath.back() != '\\')
         eqPath += '/';
+
+    // ── Step 0: EQE1 — open flat pack files (if configured) ────────────────
+    if (!config_.constrainedConfig.eqe1Path.empty()) {
+        updateProgress(48, "Opening EQE1 textures...");
+
+        // Zone-specific archives
+        getOrOpenEQE1(currentZoneName_);
+        getOrOpenEQE1(currentZoneName_ + "_obj");
+        getOrOpenEQE1(currentZoneName_ + "_chr");
+
+        // Global character archives (shared across all zones)
+        getOrOpenEQE1("global_chr");
+        for (int i = 2; i <= 7; ++i)
+            getOrOpenEQE1("global" + std::to_string(i) + "_chr");
+
+        // Equipment archives
+        getOrOpenEQE1("gequip");
+        for (int i = 2; i <= 8; ++i)
+            getOrOpenEQE1("gequip" + std::to_string(i));
+
+        // Armor texture archives
+        for (int i = 17; i <= 23; ++i)
+            getOrOpenEQE1("global" + std::to_string(i) + "_amr");
+
+        // Sky textures
+        getOrOpenEQE1("sky");
+    }
 
     // ── Step 1: S3D — parse zone archive ───────────────────────────────────
     updateProgress(50, "Loading zone data...");
@@ -3531,131 +3539,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     }
     FlushThreadLog();
 
-    // ── Step 3: Atlas — texture atlas ──────────────────────────────────────
-    updateProgress(60, "Building texture atlases...");
-    {
-        auto stepStart = std::chrono::steady_clock::now();
-        bool enableAtlas = config_.constrainedConfig.enableTextureAtlas;
-        std::string atlasPathCopy = config_.constrainedConfig.atlasPath;
-        bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
-        auto* computations = pendingZoneComputations_.get();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: enableAtlas={}, atlasPath='{}', skipObjectBuild={}",
-                  enableAtlas, atlasPathCopy, skipObjectBuild);
-
-        // Preload atlas data inline (was background thread)
-        if (enableAtlas && !atlasPathCopy.empty() && computations) {
-            std::string atlasDir = atlasPathCopy;
-            if (!atlasDir.empty() && atlasDir.back() != '/') atlasDir += '/';
-
-            std::string zoneAtlasFile = atlasDir + currentZoneName_ + ".atlas";
-            computations->zoneAtlasPreload = TextureAtlas::preloadFromFile(zoneAtlasFile);
-            if (!computations->zoneAtlasPreload.valid) {
-                LOG_FATAL(MOD_GRAPHICS, "Failed to load texture atlas: {} (atlas enabled in preset but file missing or invalid)", zoneAtlasFile);
-                pendingZoneComputations_.reset();
-                loadFailed_ = true;
-                return;
-            }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone atlas preload '{}': valid={}, pages={}",
-                      zoneAtlasFile, computations->zoneAtlasPreload.valid,
-                      computations->zoneAtlasPreload.numPages);
-
-            if (!skipObjectBuild) {
-                std::string objAtlasFile = atlasDir + currentZoneName_ + "_obj.atlas";
-                computations->objAtlasPreload = TextureAtlas::preloadFromFile(objAtlasFile);
-                if (!computations->objAtlasPreload.valid) {
-                    LOG_FATAL(MOD_GRAPHICS, "Failed to load object texture atlas: {} (atlas enabled in preset but file missing or invalid)", objAtlasFile);
-                    pendingZoneComputations_.reset();
-                    loadFailed_ = true;
-                    return;
-                }
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload '{}': valid={}, pages={}",
-                          objAtlasFile, computations->objAtlasPreload.valid,
-                          computations->objAtlasPreload.numPages);
-            } else {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj atlas preload skipped (skipObjectBuild=true)");
-            }
-        } else {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: atlas preload skipped (enableAtlas={}, atlasPath='{}', computations={})",
-                      enableAtlas, atlasPathCopy, (bool)computations);
-        }
-
-        // Upload zone atlas pages with per-page progress (60-62%)
-        int totalAtlasPages = (computations ? computations->zoneAtlasPreload.numPages : 0)
-                            + (computations ? computations->objAtlasPreload.numPages : 0);
-        int atlasPagesDone = 0;
-
-        if (computations && computations->zoneAtlasPreload.valid) {
-            zoneAtlas_ = std::make_shared<TextureAtlas>();
-            int pageIdx = 0;
-            bool done = false;
-            while (!done) {
-                // Synchronous GL upload — loading thread owns the GL context,
-                // so upload directly instead of deferring to GPU upload thread.
-                done = zoneAtlas_->uploadPreloadedPage(computations->zoneAtlasPreload, pageIdx);
-                ++pageIdx;
-                ++atlasPagesDone;
-                if (totalAtlasPages > 0) {
-                    int pct = 60 + static_cast<int>(2.0f * atlasPagesDone / totalAtlasPages);
-                    updateProgress(pct, "Uploading atlas pages [" + std::to_string(atlasPagesDone)
-                                        + "/" + std::to_string(totalAtlasPages) + "]");
-                }
-            }
-            zoneAtlas_->finalizePreload(computations->zoneAtlasPreload);
-            LOG_INFO(MOD_GRAPHICS, "Sequential: zone atlas uploaded: {} pages, {} tiles",
-                     zoneAtlas_->getPageCount(), zoneAtlas_->getTileCount());
-        } else {
-            zoneAtlas_.reset();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: no zone atlas (preload invalid or atlas disabled)");
-        }
-
-        // Upload object atlas pages with per-page progress
-        if (computations && computations->objAtlasPreload.valid) {
-            objAtlas_ = std::make_unique<TextureAtlas>();
-            int pageIdx = 0;
-            bool done = false;
-            while (!done) {
-                done = objAtlas_->uploadPreloadedPage(computations->objAtlasPreload, pageIdx);
-                ++pageIdx;
-                ++atlasPagesDone;
-                if (totalAtlasPages > 0) {
-                    int pct = 60 + static_cast<int>(2.0f * atlasPagesDone / totalAtlasPages);
-                    updateProgress(pct, "Uploading atlas pages [" + std::to_string(atlasPagesDone)
-                                        + "/" + std::to_string(totalAtlasPages) + "]");
-                }
-            }
-            objAtlas_->finalizePreload(computations->objAtlasPreload);
-            LOG_INFO(MOD_GRAPHICS, "Sequential: obj atlas uploaded: {} pages, {} tiles",
-                     objAtlas_->getPageCount(), objAtlas_->getTileCount());
-        } else {
-            objAtlas_.reset();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: no obj atlas (preload invalid or atlas disabled)");
-        }
-
-        // Set shader page textures
-        if (zoneAtlas_ && zoneAtlas_->isLoaded() && zoneShader_ && zoneShader_->isAtlasAvailable()) {
-            std::vector<uint32_t> pageTextures;
-            for (uint16_t p = 0; p < zoneAtlas_->getPageCount(); ++p)
-                pageTextures.push_back(zoneAtlas_->getPageTexture(p));
-            zoneShader_->setAtlasPageTextures(pageTextures);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: zone shader atlas page textures set, {} pages", pageTextures.size());
-        }
-        if (objAtlas_ && objAtlas_->isLoaded() && zoneShader_ && zoneShader_->isAtlasAvailable()) {
-            std::vector<uint32_t> objPageTextures;
-            for (uint16_t p = 0; p < objAtlas_->getPageCount(); ++p)
-                objPageTextures.push_back(objAtlas_->getPageTexture(p));
-            objAtlasPageOffset_ = zoneShader_->appendAtlasPageTextures(objPageTextures);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step3: obj shader atlas page textures appended, {} pages, offset={}",
-                      objPageTextures.size(), objAtlasPageOffset_);
-        }
-#ifdef EQT_HAS_GLES2
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE0);
-#endif
-        logAssetBuildTime("seq_atlas", 0, stepStart);
-    }
+    // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
+    // Zone textures are loaded as individual ETC1 textures via constrained cache.
     FlushThreadLog();
 
     // ── Step 4: Regions — build ALL zone meshes eagerly ────────────────────
@@ -3678,16 +3563,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: builder shader materials set (solid={}, alphaTest={})",
                           zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
             }
-            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-                builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
-                                                     zoneShader_->getActiveAtlasAlpha());
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: builder atlas shader materials set (solid={}, alpha={})",
-                          zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
-            }
-            bool useZoneAtlas = zoneAtlas_ && zoneAtlas_->isLoaded() &&
-                                zoneShader_ && zoneShader_->isAtlasAvailable();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: useZoneAtlas={}, totalRegions={}",
-                      useZoneAtlas, bspTree->regions.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: totalRegions={}", bspTree->regions.size());
 
             size_t totalRegions = bspTree->regions.size();
             size_t regionsBuilt = 0;
@@ -3700,15 +3576,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                 irr::scene::IMesh* mesh = nullptr;
                 if (!currentZone_->textures.empty() && !geom->textureNames().empty()) {
-                    if (useZoneAtlas) {
-                        mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
-                        LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built atlased mesh, texNames={}, verts={}",
-                                  i, geom->textureNames().size(), geom->vertices.size());
-                    } else {
-                        mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
-                        LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built textured mesh, texNames={}, verts={}",
-                                  i, geom->textureNames().size(), geom->vertices.size());
-                    }
+                    mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+                    LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built textured mesh, texNames={}, verts={}",
+                              i, geom->textureNames().size(), geom->vertices.size());
                 } else {
                     mesh = builder.buildColoredMesh(*geom);
                     LOG_TRACE(MOD_GRAPHICS, "SEQ Step4: region[{}] built colored mesh (no textures), verts={}",
@@ -3962,9 +3832,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder atlas shader materials set (solid={}, alpha={})",
                           zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
             }
-            bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
-                               zoneShader_ && zoneShader_->isAtlasAvailable();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: useObjAtlas={}, totalObjects={}", useObjAtlas, deferredObjects_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", deferredObjects_.size());
 
             size_t totalObjects = deferredObjects_.size();
             size_t objectsBuilt = 0;
@@ -3987,16 +3855,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 // Build mesh
                 irr::scene::IMesh* objMesh = nullptr;
                 if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-                    if (useObjAtlas) {
-                        objMesh = objBuilder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
-                                                               *objAtlas_, objAtlasPageOffset_);
-                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built atlased mesh, texNames={}",
-                                  oi, objName, objInstance.geometry->textureNames().size());
-                    } else {
-                        objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
-                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
-                                  oi, objName, objInstance.geometry->textureNames().size());
-                    }
+                    objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
+                              oi, objName, objInstance.geometry->textureNames().size());
                 } else {
                     objMesh = objBuilder.buildColoredMesh(*objInstance.geometry);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built colored mesh (no textures)", oi, objName);
@@ -6167,13 +6028,12 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
 
     bool hasTextures = !currentZone_->textures.empty();
     bool hasTexNames = !geom->textureNames().empty();
-    bool hasAtlas = zoneAtlas_ && zoneAtlas_->isLoaded();
 
-    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} build config — shader={} atlas={} "
-             "hasTextures={} (count={}) hasTexNames={} hasAtlas={} activeSolid={} activeAlpha={}",
-             regionIdx, shaderAvail, atlasAvail,
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} build config — shader={} "
+             "hasTextures={} (count={}) hasTexNames={} activeSolid={} activeAlpha={}",
+             regionIdx, shaderAvail,
              hasTextures, currentZone_->textures.size(),
-             hasTexNames, hasAtlas,
+             hasTexNames,
              shaderAvail ? zoneShader_->getActiveSolid() : -1,
              shaderAvail ? zoneShader_->getActiveAlphaTest() : -1);
 
@@ -6182,13 +6042,8 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     auto meshBuildStart = std::chrono::steady_clock::now();
 
     if (hasTextures && hasTexNames) {
-        if (hasAtlas && atlasAvail) {
-            buildPath = "buildAtlasedMesh";
-            mesh = builder.buildAtlasedMesh(*geom, currentZone_->textures, *zoneAtlas_);
-        } else {
-            buildPath = "buildTexturedMesh";
-            mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
-        }
+        buildPath = "buildTexturedMesh";
+        mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
     } else {
         buildPath = "buildColoredMesh";
         mesh = builder.buildColoredMesh(*geom);
@@ -6685,20 +6540,16 @@ bool IrrlichtRenderer::processOneMaterialSwap() {
 
 bool IrrlichtRenderer::submitOneBgMeshBuild() {
     if (!constrainedMeshCache_ || !backgroundThreadPool_ || !currentZone_) return false;
-    if (!zoneAtlas_ || !zoneAtlas_->isLoaded()) return false;
 
     for (const auto& entry : meshLoadQueue_) {
         if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
         if (pendingMeshBuilds_.count(entry.regionIdx)) continue;
 
         auto zone = currentZone_;
-        auto atlas = zoneAtlas_;
         auto zoneName = currentZoneName_;
         size_t regionIdx = entry.regionIdx;
         int shaderSolid = zoneShader_ ? zoneShader_->getActiveSolid() : -1;
         int shaderAlpha = zoneShader_ ? zoneShader_->getActiveAlphaTest() : -1;
-        int shaderAtlasSolid = zoneShader_ ? zoneShader_->getActiveAtlasSolid() : -1;
-        int shaderAtlasAlpha = zoneShader_ ? zoneShader_->getActiveAtlasAlpha() : -1;
 
         pendingMeshBuilds_.insert(regionIdx);
         uint32_t priority = WorkPriorityKey::make(
@@ -6714,11 +6565,10 @@ bool IrrlichtRenderer::submitOneBgMeshBuild() {
 
             ZoneMeshBuilder builder(nullptr, nullptr, nullptr);
             builder.setShaderMaterialTypes(shaderSolid, shaderAlpha);
-            builder.setAtlasShaderMaterialTypes(shaderAtlasSolid, shaderAtlasAlpha);
 
             auto start = std::chrono::steady_clock::now();
-            auto* mesh = builder.buildAtlasedMesh(
-                *geom, zone->textures, *atlas, 0, /*deferTextures=*/true);
+            auto* mesh = builder.buildTexturedMesh(
+                *geom, zone->textures);
             float elapsed = std::chrono::duration<float, std::milli>(
                 std::chrono::steady_clock::now() - start).count();
 
@@ -6837,17 +6687,9 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
                                              zoneShader_->getActiveAtlasAlpha());
     }
 
-    bool useObjAtlas = objAtlas_ && objAtlas_->isLoaded() &&
-                       zoneShader_ && zoneShader_->isAtlasAvailable();
-
     irr::scene::IMesh* mesh = nullptr;
     if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-        if (useObjAtlas) {
-            mesh = builder.buildAtlasedMesh(*objInstance.geometry, currentZone_->objectTextures,
-                                             *objAtlas_, objAtlasPageOffset_);
-        } else {
-            mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
-        }
+        mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
     } else {
         mesh = builder.buildColoredMesh(*objInstance.geometry);
     }
@@ -15140,20 +14982,6 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
         lines.push_back(fmt::format("[Placeable Objects] {} ({} objects)",
             formatBytes(objBytes), objectCount));
 
-        // Texture Atlases
-        size_t atlasBytes = 0;
-        if (zoneAtlas_) atlasBytes += zoneAtlas_->getGPUMemoryUsage();
-        if (objAtlas_) atlasBytes += objAtlas_->getGPUMemoryUsage();
-        if (atlasBytes > 0) {
-            size_t tileCount = 0;
-            size_t pageCount = 0;
-            if (zoneAtlas_) { tileCount += zoneAtlas_->getTileCount(); pageCount += zoneAtlas_->getPageCount(); }
-            if (objAtlas_) { tileCount += objAtlas_->getTileCount(); pageCount += objAtlas_->getPageCount(); }
-            totalEstimate += atlasBytes;
-            lines.push_back(fmt::format("[Texture Atlases] {} ({} pages, {} tiles)",
-                formatBytes(atlasBytes), pageCount, tileCount));
-        }
-
         lines.push_back(fmt::format("[Zone Lights] {} zone + {} object",
             lightCount, objectLightCount));
     }
@@ -15935,6 +15763,42 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
 }
 
 #endif // EQT_HAS_DRM
+
+// ---------------------------------------------------------------------------
+// EQE1 flat pack lazy-open (thread-safe)
+// ---------------------------------------------------------------------------
+
+const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBaseName) {
+    if (config_.constrainedConfig.eqe1Path.empty()) return nullptr;
+
+    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+
+    // Already opened?
+    auto it = eqe1Loaders_.find(archiveBaseName);
+    if (it != eqe1Loaders_.end()) {
+        return it->second.get();  // may be nullptr if previously failed
+    }
+
+    // Try to open
+    std::string path = config_.constrainedConfig.eqe1Path + "/" + archiveBaseName + ".eqe1";
+    auto loader = std::make_unique<EQE1Loader>();
+    if (loader->open(path)) {
+        const EQE1Loader* ptr = loader.get();
+        eqe1Loaders_[archiveBaseName] = std::move(loader);
+
+        // Register with cache (cache mutex is separate from eqe1Mutex_ — no deadlock)
+        if (constrainedTextureCache_) {
+            constrainedTextureCache_->addEQE1Loader(ptr);
+        }
+
+        return ptr;
+    }
+
+    // Store nullptr to prevent repeated open attempts
+    eqe1Loaders_[archiveBaseName] = nullptr;
+    LOG_DEBUG(MOD_GRAPHICS, "EQE1: {} not found, S3D fallback", path);
+    return nullptr;
+}
 
 } // namespace Graphics
 } // namespace EQT

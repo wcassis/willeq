@@ -295,7 +295,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/frame_budget_governor.cpp
         src/client/graphics/texture_atlas.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
         # Inventory UI sources
@@ -514,6 +516,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
@@ -658,6 +661,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(s3d_dump PRIVATE
@@ -783,6 +787,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(analyze_hum_model PRIVATE
@@ -806,6 +811,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_animation PRIVATE
@@ -830,6 +836,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
@@ -854,6 +861,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
@@ -878,6 +886,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(generate_surface_map PRIVATE
@@ -910,6 +919,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
@@ -968,6 +978,39 @@ IF(EQT_GRAPHICS)
             EtcLib
         )
     ENDIF()
+
+    ADD_EXECUTABLE(eqe1_builder
+        tools/eqe1_builder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(eqe1_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+        ${etc2comp_SOURCE_DIR}/EtcLib/Etc
+        ${etc2comp_SOURCE_DIR}/EtcLib/EtcCodec
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(eqe1_builder
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+            EtcLib
+        )
+    ELSE()
+        TARGET_LINK_LIBRARIES(eqe1_builder
+            ${ZLIB_LIBRARIES}
+            ${FMT_LIBRARY}
+            EtcLib
+        )
+    ENDIF()
+
+    ADD_EXECUTABLE(verify_eqe1
+        tools/verify_eqe1.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(verify_eqe1 PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
 ENDIF()
 
 # U02: UI atlas builder tool

@@ -1,4 +1,5 @@
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/background_thread_pool.h"
@@ -21,6 +22,11 @@ typedef void (*PFNGLGENERATEMIPMAPPROC_)(GLenum target);
 typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,
     GLenum internalformat, GLsizei width, GLsizei height, GLint border,
     GLsizei imageSize, const void* data);
+
+// Defined in COpenGLES2Driver.cpp — wraps a raw GL texture handle in an ITexture*
+extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+                               unsigned int width, unsigned int height,
+                               unsigned int gpuBytes);
 #endif
 
 namespace EQT {
@@ -97,6 +103,12 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return cacheIt->second.texture;
     }
 
+    // Check if already in compressed entries (from EQE1 lookup)
+    if (compressedEntries_.find(name) != compressedEntries_.end()) {
+        ++cacheHits_;
+        return nullptr;  // Already found in EQE1, call uploadTexture() to promote
+    }
+
     // Check if already decoded (waiting for upload)
     if (decodedEntries_.find(name) != decodedEntries_.end()) {
         ++cacheHits_;
@@ -110,7 +122,28 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;
     }
 
-    // Decode raw bytes to RGBA (no GL calls)
+    // Check EQE1 flat packs for pre-compressed ETC1 data (no decode needed)
+    auto* compressed = findCompressedEntry(name);
+    if (compressed) {
+        compressedEntries_[name] = *compressed;
+        LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{})",
+                  name, compressed->width, compressed->height, compressed->mipLevels,
+                  compressed->hasAlpha ? ", alpha" : "");
+        return nullptr;  // Compressed, call uploadTexture() to promote
+    }
+
+    // EQE1 is configured but texture not found — fatal error.
+    // All textures should be in the EQE1 files. A miss means the EQE1 directory
+    // is incomplete or the wrong path was specified.
+    if (!eqe1Loaders_.empty()) {
+        LOG_FATAL(MOD_GRAPHICS, "Texture '{}' not found in any EQE1 flat pack. "
+                  "The --eqe1-path directory is missing this texture. "
+                  "Re-run eqe1_builder to regenerate, or remove --eqe1-path to use S3D textures.",
+                  name);
+        std::exit(1);
+    }
+
+    // Decode raw bytes to RGBA (no GL calls) — BMP/DDS path (no EQE1 configured)
     std::vector<uint8_t> rgbaPixels;
     int width = 0, height = 0;
     bool hasAlpha = false;
@@ -141,6 +174,14 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     if (cacheIt != cache_.end()) {
         touchInternal(name);
         return cacheIt->second.texture;
+    }
+
+    // Check for compressed ETC1 entry (from EQE1 flat pack)
+    auto compressedIt = compressedEntries_.find(name);
+    if (compressedIt != compressedEntries_.end()) {
+        auto result = uploadCompressedETC1(name, compressedIt->second);
+        compressedEntries_.erase(compressedIt);
+        return result;
     }
 
     // Find decoded entry
@@ -1259,6 +1300,199 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
 #else
     (void)name;
     (void)data;
+    return nullptr;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// EQE1 flat pack support
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::addEQE1Loader(const EQE1Loader* loader) {
+    if (loader) {
+        eqe1Loaders_.push_back(loader);
+    }
+}
+
+void ConstrainedTextureCache::clearEQE1Loaders() {
+    eqe1Loaders_.clear();
+    compressedEntries_.clear();
+}
+
+const ConstrainedTextureCache::CompressedEntry*
+ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
+    if (eqe1Loaders_.empty()) return nullptr;
+
+    // Strip .bmp extension — EQE1 stores names without extension
+    std::string lookupName = name;
+    if (lookupName.size() > 4) {
+        auto ext = lookupName.substr(lookupName.size() - 4);
+        if (ext == ".bmp" || ext == ".dds") {
+            lookupName = lookupName.substr(0, lookupName.size() - 4);
+        }
+    }
+
+    // Lowercase
+    std::transform(lookupName.begin(), lookupName.end(), lookupName.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    for (const auto* loader : eqe1Loaders_) {
+        auto* entry = loader->lookup(lookupName);
+        if (entry) {
+            // Build a static CompressedEntry to return pointer to
+            static thread_local CompressedEntry result;
+            result.etc1Data = entry->data;
+            result.dataSize = entry->dataSize;
+            result.width = entry->width;
+            result.height = entry->height;
+            result.mipLevels = entry->mipLevels;
+            result.hasAlpha = entry->hasAlpha;
+            result.alphaData = entry->alphaData;
+            result.alphaDataSize = entry->alphaDataSize;
+            return &result;
+        }
+    }
+    return nullptr;
+}
+
+irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
+    const std::string& name, const CompressedEntry& entry)
+{
+    // mutex_ is already held by caller (uploadTexture)
+#ifdef EQT_HAS_DRM
+    // Budget check — use ETC1 compressed size, not RGBA size
+    size_t gpuSize = EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels);
+    if (entry.hasAlpha) {
+        gpuSize += EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels);
+    }
+
+    if (!evictUntilAvailable(gpuSize)) {
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: budget exhausted uploading ETC1 '{}' (need {} bytes)",
+                 name, gpuSize);
+        return nullptr;
+    }
+
+    // Generate GL texture and upload ETC1 mip chain
+    static constexpr uint32_t GL_ETC1_RGB8 = 0x8D64;  // GL_ETC1_RGB8_OES
+
+    GLuint texId = 0;
+    glGenTextures(1, &texId);
+    if (texId == 0) {
+        LOG_ERROR(MOD_GRAPHICS, "Constrained cache: glGenTextures failed for '{}'", name);
+        return nullptr;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, texId);
+
+    // Upload RGB mip chain
+    uint32_t offset = 0;
+    uint16_t w = entry.width, h = entry.height;
+    for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+        uint32_t levelSize = EQT::Graphics::etc1DataSize(w, h);
+
+        // Get function pointer for glCompressedTexImage2D
+        static auto pfnCompressedTexImage2D =
+            reinterpret_cast<PFNGLCOMPRESSEDTEXIMAGE2DPROC_>(
+                eglGetProcAddress("glCompressedTexImage2D"));
+
+        if (pfnCompressedTexImage2D) {
+            pfnCompressedTexImage2D(GL_TEXTURE_2D, level, GL_ETC1_RGB8,
+                                     w, h, 0, levelSize, entry.etc1Data + offset);
+        }
+
+        offset += levelSize;
+        w = std::max<uint16_t>(4, w / 2);
+        h = std::max<uint16_t>(4, h / 2);
+    }
+
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (entry.mipLevels > 1) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Upload alpha texture if present
+    GLuint alphaTexId = 0;
+    if (entry.hasAlpha && entry.alphaData) {
+        glGenTextures(1, &alphaTexId);
+        glBindTexture(GL_TEXTURE_2D, alphaTexId);
+
+        offset = 0;
+        w = entry.width;
+        h = entry.height;
+        for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+            uint32_t levelSize = EQT::Graphics::etc1DataSize(w, h);
+
+            static auto pfnCompressedTexImage2D2 =
+                reinterpret_cast<PFNGLCOMPRESSEDTEXIMAGE2DPROC_>(
+                    eglGetProcAddress("glCompressedTexImage2D"));
+
+            if (pfnCompressedTexImage2D2) {
+                pfnCompressedTexImage2D2(GL_TEXTURE_2D, level, GL_ETC1_RGB8,
+                                          w, h, 0, levelSize, entry.alphaData + offset);
+            }
+
+            offset += levelSize;
+            w = std::max<uint16_t>(4, w / 2);
+            h = std::max<uint16_t>(4, h / 2);
+        }
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        if (entry.mipLevels > 1) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        } else {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    // Wrap GL handle in ITexture* via driver (gles2WrapTexture declared at file scope above)
+    irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
+        gles2WrapTexture(driver_, name.c_str(), texId,
+                         entry.width, entry.height,
+                         static_cast<unsigned int>(gpuSize)));
+
+    if (!texture) {
+        glDeleteTextures(1, &texId);
+        if (alphaTexId) glDeleteTextures(1, &alphaTexId);
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 '{}'", name);
+        return nullptr;
+    }
+
+    // Register in LRU cache
+    lruOrder_.push_back(name);
+    CachedTexture cached;
+    cached.texture = texture;
+    cached.sizeBytes = gpuSize;
+    cached.hasAlpha = entry.hasAlpha;
+    cached.lruIterator = std::prev(lruOrder_.end());
+    cache_[name] = cached;
+    currentUsage_ += gpuSize;
+    ++compressedUploadCount_;
+
+    // Register in mesh builder for entity texture lookups
+    if (meshBuilder_) {
+        meshBuilder_->registerUploadedTexture(name, texture, entry.hasAlpha);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] ETC1 texture '{}' uploaded ({}x{}, {} mips, {} bytes{})",
+              name, entry.width, entry.height, entry.mipLevels, gpuSize,
+              entry.hasAlpha ? ", +alpha" : "");
+    return texture;
+#else
+    // Non-GLES2 builds: ETC1 not supported, fall through to BMP decode
+    (void)name;
+    (void)entry;
+    LOG_WARN(MOD_GRAPHICS, "Constrained cache: ETC1 upload not available (non-GLES2 build) for '{}'", name);
     return nullptr;
 #endif
 }
