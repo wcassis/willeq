@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include <irrlicht.h>
 #include <glm/glm.hpp>
 #include <vector>
@@ -62,6 +63,9 @@ public:
     TumbleweedManager(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver);
     ~TumbleweedManager();
 
+    // Set constrained texture cache (mandatory, must be called before init)
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+
     bool init();
     void setEnabled(bool enabled);
     bool isEnabled() const { return enabled_ && settings_.enabled; }
@@ -84,6 +88,7 @@ private:
 
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     // Scene node pool
     std::vector<TumbleweedInstance> pool_;

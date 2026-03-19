@@ -1,6 +1,6 @@
 // Offline texture generator for WillEQ procedural textures.
-// Generates all texture atlases as PNG files so the runtime
-// can load them directly instead of generating at startup.
+// Generates all texture assets as BMP files so the runtime
+// can load them via the constrained texture cache.
 //
 // Usage: generate_textures [options]
 //   -o, --output <dir>        Output directory (default: data/textures)
@@ -13,6 +13,7 @@
 #include <irrlicht.h>
 #include <iostream>
 #include <string>
+#include <vector>
 #include <sys/stat.h>
 
 #include "client/graphics/texture_generators.h"
@@ -118,36 +119,71 @@ int main(int argc, char* argv[]) {
 
     // 1. Particle atlas
     std::cout << "Particle atlas...\n";
-    writeImage(EQT::Graphics::generateParticleAtlas(driver), "particle_atlas.png");
+    writeImage(EQT::Graphics::generateParticleAtlas(driver), "particle_atlas.bmp");
 
     // 2. Creature atlas
     std::cout << "Creature atlas...\n";
-    writeImage(EQT::Graphics::generateCreatureAtlas(driver), "creature_atlas.png");
+    writeImage(EQT::Graphics::generateCreatureAtlas(driver), "creature_atlas.bmp");
 
     // 3. Tumbleweed texture
     std::cout << "Tumbleweed texture...\n";
-    writeImage(EQT::Graphics::generateTumbleweedTexture(driver), "tumbleweed.png");
+    writeImage(EQT::Graphics::generateTumbleweedTexture(driver), "tumbleweed.bmp");
 
-    // 4. Storm cloud frames
-    std::cout << "Storm cloud frames (" << cloudFrames << " x " << cloudSize << "x" << cloudSize << ")...\n";
-    for (int i = 0; i < cloudFrames; ++i) {
-        int seed = 12345 + i * 7919;
-        std::string filename = "storm_cloud_" + std::to_string(i) + ".png";
-        writeImage(EQT::Graphics::generateCloudFrame(driver, seed, cloudSize, cloudOctaves, cloudPersistence),
-                   filename);
+    // 4. Storm cloud blend frames (source frames + interpolated blends)
+    {
+        const int blendStepsPerPair = 8;
+        int totalBlendFrames = cloudFrames * blendStepsPerPair;
+        std::cout << "Storm cloud blend frames (" << totalBlendFrames << " total: "
+                  << cloudFrames << " sources x " << blendStepsPerPair << " steps, "
+                  << cloudSize << "x" << cloudSize << ")...\n";
+
+        // Generate source frames first
+        std::vector<video::IImage*> sourceImages;
+        for (int i = 0; i < cloudFrames; ++i) {
+            int seed = 12345 + i * 7919;
+            video::IImage* img = EQT::Graphics::generateCloudFrame(
+                driver, seed, cloudSize, cloudOctaves, cloudPersistence);
+            sourceImages.push_back(img);
+        }
+
+        // Generate all blend frames
+        for (int pair = 0; pair < cloudFrames; ++pair) {
+            int nextPair = (pair + 1) % cloudFrames;
+            for (int step = 0; step < blendStepsPerPair; ++step) {
+                int frameIndex = pair * blendStepsPerPair + step;
+                float t = static_cast<float>(step) / static_cast<float>(blendStepsPerPair);
+                std::string filename = "storm_cloud_blend_" + std::to_string(frameIndex) + ".bmp";
+
+                video::IImage* blended = EQT::Graphics::generateBlendedCloudFrame(
+                    driver, sourceImages[pair], sourceImages[nextPair], t);
+                writeImage(blended, filename);
+            }
+        }
+
+        // Clean up source images
+        for (auto* img : sourceImages) {
+            if (img) img->drop();
+        }
     }
 
-    // 5. Detail object atlas
+    // 5. Spell particle fallback texture
+    std::cout << "Spell particle fallback...\n";
+    writeImage(EQT::Graphics::generateSpellParticleFallback(driver), "spell_particle_fallback.bmp");
+
+    // 6. Software mouse cursor
+    std::cout << "Software cursor...\n";
+    writeImage(EQT::Graphics::generateSoftwareCursor(driver), "software_cursor.bmp");
+
+    // 7. Detail object atlas
     std::cout << "Detail object atlas...\n";
     {
         EQT::Graphics::Detail::DetailTextureAtlas atlasGenerator;
         video::ITexture* tex = atlasGenerator.createAtlas(driver);
         if (tex) {
-            // Lock texture to get image data, then write
             video::IImage* img = driver->createImage(tex, core::position2d<s32>(0, 0),
                                                       tex->getOriginalSize());
             if (img) {
-                std::string path = outputDir + "/detail_atlas.png";
+                std::string path = outputDir + "/detail_atlas.bmp";
                 if (driver->writeImageToFile(img, path.c_str())) {
                     auto dim = img->getDimension();
                     std::cout << "  OK:   " << path << " (" << dim.Width << "x" << dim.Height << ")\n";
@@ -158,14 +194,41 @@ int main(int argc, char* argv[]) {
                 }
                 img->drop();
             } else {
-                std::cerr << "  FAIL: detail_atlas.png (createImage from texture failed)\n";
+                std::cerr << "  FAIL: detail_atlas.bmp (createImage from texture failed)\n";
                 failed++;
             }
         } else {
-            std::cerr << "  FAIL: detail_atlas.png (createAtlas returned null)\n";
+            std::cerr << "  FAIL: detail_atlas.bmp (createAtlas returned null)\n";
             failed++;
         }
     }
+
+    // 8. Rain textures
+    std::cout << "Rain textures...\n";
+    for (int intensity = 1; intensity <= 10; ++intensity) {
+        int numStreaks = 20 + (intensity - 1) * (100 - 20) / 9;
+        char filename[64];
+        snprintf(filename, sizeof(filename), "rain_intensity_%02d.bmp", intensity);
+        writeImage(EQT::Graphics::generateRainTexture(driver, numStreaks, 100 + intensity, 30, 70), filename);
+    }
+    writeImage(EQT::Graphics::generateRainTexture(driver, 40, 200, 20, 50), "rain_layer_mid.bmp");
+    writeImage(EQT::Graphics::generateRainTexture(driver, 35, 201, 10, 35), "rain_layer_far.bmp");
+    writeImage(EQT::Graphics::generateRainTexture(driver, 50, 42, 10, 40), "rain_streaks.bmp");
+
+    // 9. Snow textures
+    std::cout << "Snow textures...\n";
+    for (int intensity = 1; intensity <= 10; ++intensity) {
+        int density = 50 + (intensity - 1) * 60;
+        float minSz = 1.0f + (intensity - 1) * 0.1f;
+        float maxSz = 3.0f + (intensity - 1) * 0.2f;
+        int alpha = 140 + intensity * 8;
+        char filename[64];
+        snprintf(filename, sizeof(filename), "snow_intensity_%02d.bmp", intensity);
+        writeImage(EQT::Graphics::generateSnowTexture(driver, density, 42 + density, minSz, maxSz, alpha), filename);
+    }
+    writeImage(EQT::Graphics::generateSnowTexture(driver, 200, 242, 1.5f, 3.5f, 160), "snow_layer_mid.bmp");
+    writeImage(EQT::Graphics::generateSnowTexture(driver, 150, 292, 0.8f, 2.0f, 120), "snow_layer_far.bmp");
+    writeImage(EQT::Graphics::generateSnowTexture(driver, 300, 342, 1.0f, 3.0f, 180), "snow_flakes.bmp");
 
     std::cout << "\nDone: " << generated << " generated, " << failed << " failed.\n";
 

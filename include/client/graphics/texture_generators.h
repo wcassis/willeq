@@ -52,5 +52,56 @@ irr::video::IImage* generateCloudFrame(irr::video::IVideoDriver* driver,
                                         float cloudColorG = 0.42f,
                                         float cloudColorB = 0.45f);
 
+/**
+ * Generate a blended cloud frame by interpolating two source images.
+ * @param driver Video driver
+ * @param img1 First source image
+ * @param img2 Second source image
+ * @param t Blend factor (0.0 = img1, 1.0 = img2)
+ * @return Blended image (caller must drop())
+ */
+irr::video::IImage* generateBlendedCloudFrame(irr::video::IVideoDriver* driver,
+                                               irr::video::IImage* img1,
+                                               irr::video::IImage* img2,
+                                               float t);
+
+/**
+ * Generate the spell particle fallback texture (32x32 soft circle).
+ * White with cosine-falloff alpha.
+ */
+irr::video::IImage* generateSpellParticleFallback(irr::video::IVideoDriver* driver);
+
+/**
+ * Generate the software mouse cursor texture (8x10 arrow).
+ * Black outline, white fill, transparent background.
+ */
+irr::video::IImage* generateSoftwareCursor(irr::video::IVideoDriver* driver);
+
+/**
+ * Generate a rain streak texture (256x256).
+ * Vertical streaks with gradient alpha, tileable vertically.
+ * @param numStreaks Number of rain streaks
+ * @param seed Random seed
+ * @param minLength Minimum streak length in pixels
+ * @param maxLength Maximum streak length in pixels
+ */
+irr::video::IImage* generateRainTexture(irr::video::IVideoDriver* driver,
+                                         int numStreaks = 50, int seed = 42,
+                                         int minLength = 10, int maxLength = 40);
+
+/**
+ * Generate a snow flake texture (256x256).
+ * Random soft white dots/circles, tileable.
+ * @param density Number of flakes
+ * @param seed Random seed
+ * @param minSize Minimum flake radius
+ * @param maxSize Maximum flake radius
+ * @param alphaBase Base alpha value (0-255)
+ */
+irr::video::IImage* generateSnowTexture(irr::video::IVideoDriver* driver,
+                                          int density = 300, int seed = 42,
+                                          float minSize = 1.0f, float maxSize = 3.0f,
+                                          int alphaBase = 180);
+
 } // namespace Graphics
 } // namespace EQT

@@ -43,6 +43,7 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
              (void*)smgr_, (void*)driver_, (void*)particleManager_, (void*)skyRenderer_);
 
     // Load weather config from JSON
+    LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Loading weather config from JSON...");
     auto& configLoader = WeatherConfigLoader::instance();
     configLoader.load("config/weather_effects.json");
 
@@ -52,25 +53,35 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
     });
 
     // Create storm cloud layer
+    LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Creating storm cloud layer (constrainedCache_={})...", (void*)constrainedCache_);
     stormCloudLayer_ = std::make_unique<Environment::StormCloudLayer>();
     if (stormCloudLayer_ && smgr_ && driver_) {
+        if (constrainedCache_) stormCloudLayer_->setConstrainedTextureCache(constrainedCache_);
+        LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Initializing storm cloud layer (loading 32 blend textures)...");
         stormCloudLayer_->initialize(smgr_, driver_, eqClientPath_);
     }
 
     // Screen-space overlays — skipped on GLES2 where unified particles replace them
 #ifndef EQT_HAS_GLES2
+    LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Creating rain overlay...");
     rainOverlay_ = std::make_unique<Environment::RainOverlay>();
     if (rainOverlay_ && driver_ && smgr_) {
+        if (constrainedCache_) rainOverlay_->setConstrainedTextureCache(constrainedCache_);
+        LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Initializing rain overlay (loading 13 textures)...");
         rainOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 
+    LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Creating snow overlay...");
     snowOverlay_ = std::make_unique<Environment::SnowOverlay>();
     if (snowOverlay_ && driver_ && smgr_) {
+        if (constrainedCache_) snowOverlay_->setConstrainedTextureCache(constrainedCache_);
+        LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Initializing snow overlay (loading 13 textures)...");
         snowOverlay_->initialize(driver_, smgr_, eqClientPath_);
     }
 #endif
 
     // Apply loaded config to emitters
+    LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Applying config from loader...");
     applyConfigFromLoader();
 
     // Schedule first potential lightning
@@ -256,9 +267,18 @@ void WeatherEffectsController::setLightningCallback(std::function<void()> callba
 }
 
 void WeatherEffectsController::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    constrainedCache_ = cache;
     if (stormCloudLayer_) {
         stormCloudLayer_->setConstrainedTextureCache(cache);
     }
+#ifndef EQT_HAS_GLES2
+    if (rainOverlay_) {
+        rainOverlay_->setConstrainedTextureCache(cache);
+    }
+    if (snowOverlay_) {
+        snowOverlay_->setConstrainedTextureCache(cache);
+    }
+#endif
 }
 
 void WeatherEffectsController::setSurfaceMap(const Detail::SurfaceMap* surfaceMap) {

@@ -331,6 +331,48 @@ void dumpWld(const std::vector<char>& data, const std::string& name) {
                 std::cout << "- Vertex Tex Entries: " << header.vertexTexCount << std::endl;
                 std::cout << "- Scale: " << header.scale << std::endl;
                 std::cout << std::endl;
+
+                // Dump vertex positions and normals for tree meshes
+                if (name.find("TREE") != std::string::npos) {
+                    float scale = 1.0f / static_cast<float>(1 << header.scale);
+                    float recip128 = 1.0f / 128.0f;
+                    const char* vptr = meshData + 4 + sizeof(WldFragment36Header);
+
+                    std::cout << "#### Vertices (EQ coords, Z-up)" << std::endl;
+                    for (uint16_t vi = 0; vi < header.vertexCount; ++vi) {
+                        int16_t vx = *reinterpret_cast<const int16_t*>(vptr);
+                        int16_t vy = *reinterpret_cast<const int16_t*>(vptr + 2);
+                        int16_t vz = *reinterpret_cast<const int16_t*>(vptr + 4);
+                        vptr += 6;
+                        std::cout << "  v[" << vi << "]: (" << vx * scale << ", " << vy * scale << ", " << vz * scale << ")" << std::endl;
+                    }
+
+                    // Skip tex coords (old format: 2x int16, new format: 2x float)
+                    bool oldFmt = (*reinterpret_cast<const uint32_t*>(fragPtr + offset + 8 + 4) & 0xFF) == 0x15;
+                    // Actually just use the version flag from the file header
+                    // Old format uses int16 tex coords (4 bytes each), new uses float (8 bytes each)
+                    // Since we know Scale=8 for trees in old format zones, skip accordingly
+                    if (header.texCoordCount > 0) {
+                        // Old format: 4 bytes per texcoord
+                        vptr += header.texCoordCount * 4;
+                    }
+
+                    std::cout << "#### Normals (EQ coords, Z-up, int8 / 128)" << std::endl;
+                    for (uint16_t ni = 0; ni < header.normalCount; ++ni) {
+                        int8_t nx = *reinterpret_cast<const int8_t*>(vptr);
+                        int8_t ny = *reinterpret_cast<const int8_t*>(vptr + 1);
+                        int8_t nz = *reinterpret_cast<const int8_t*>(vptr + 2);
+                        vptr += 3;
+                        float fnx = nx * recip128;
+                        float fny = ny * recip128;
+                        float fnz = nz * recip128;
+                        float len = std::sqrt(fnx*fnx + fny*fny + fnz*fnz);
+                        if (len > 0.0001f) { fnx /= len; fny /= len; fnz /= len; }
+                        std::cout << "  n[" << ni << "]: raw(" << (int)nx << "," << (int)ny << "," << (int)nz
+                                  << ") -> normalized(" << fnx << ", " << fny << ", " << fnz << ")" << std::endl;
+                    }
+                    std::cout << std::endl;
+                }
             }
         }
 

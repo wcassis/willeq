@@ -3,6 +3,7 @@
 #include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
 #include <cmath>
+#include <fstream>
 #include <sstream>
 
 namespace EQT {
@@ -34,12 +35,28 @@ bool TumbleweedManager::init() {
 
     reloadSettings();
 
-    std::string texPath = "data/textures/tumbleweed.png";
-    tumbleweedTexture_ = driver_->getTexture(texPath.c_str());
-    if (!tumbleweedTexture_) {
-        LOG_WARN(MOD_GRAPHICS, "TumbleweedManager: Texture not found at {}, disabling tumbleweeds. Run generate_textures tool.", texPath);
-        initialized_ = false;
-        return false;
+    std::string texPath = "data/textures/tumbleweed.bmp";
+    if (!constrainedCache_) {
+        LOG_FATAL(MOD_GRAPHICS, "TumbleweedManager: Constrained texture cache not set");
+        std::exit(1);
+    }
+    {
+        std::ifstream file(texPath, std::ios::binary | std::ios::ate);
+        if (!file) {
+            LOG_FATAL(MOD_GRAPHICS, "TumbleweedManager: Required texture {} not found — run generate_textures first", texPath);
+            std::exit(1);
+        }
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> data(fileSize);
+        file.read(data.data(), fileSize);
+
+        tumbleweedTexture_ = constrainedCache_->getOrLoad("tumbleweed", data);
+        if (!tumbleweedTexture_) tumbleweedTexture_ = constrainedCache_->uploadTexture("tumbleweed");
+        if (!tumbleweedTexture_) {
+            LOG_FATAL(MOD_GRAPHICS, "TumbleweedManager: Failed to load required texture: {}", texPath);
+            std::exit(1);
+        }
     }
 
     tumbleweedMesh_ = createTumbleweedMesh();

@@ -4,6 +4,7 @@
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <sstream>
 
 namespace EQT {
@@ -24,11 +25,10 @@ BoidsManager::~BoidsManager() = default;
 bool BoidsManager::init(const std::string& eqClientPath) {
     if (initialized_) return true;
 
-    std::string atlasPath = "data/textures/creature_atlas.png";
+    std::string atlasPath = "data/textures/creature_atlas.bmp";
     if (!loadCreatureAtlas(atlasPath)) {
-        LOG_WARN(MOD_GRAPHICS, "BoidsManager: Creature atlas not found at {}, disabling boids. Run generate_textures tool.", atlasPath);
-        enabled_ = false;
-        return true;
+        LOG_FATAL(MOD_GRAPHICS, "BoidsManager: Required texture {} not found — run generate_textures first", atlasPath);
+        std::exit(1);
     }
 
     creatureMaterial_.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
@@ -210,8 +210,17 @@ void BoidsManager::reloadSettings() {
 }
 
 bool BoidsManager::loadCreatureAtlas(const std::string& path) {
-    if (!driver_) return false;
-    atlasTexture_ = driver_->getTexture(path.c_str());
+    if (!driver_ || !constrainedCache_) return false;
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> data(fileSize);
+    if (!file.read(data.data(), fileSize)) return false;
+
+    atlasTexture_ = constrainedCache_->getOrLoad("creature_atlas", data);
+    if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("creature_atlas");
     return atlasTexture_ != nullptr;
 }
 

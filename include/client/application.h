@@ -20,7 +20,7 @@
 
 // Forward declarations
 class EverQuest;
-namespace EQT { namespace Graphics { class IrrlichtRenderer; struct BspTree; } }
+namespace EQT { namespace Graphics { class IrrlichtRenderer; class ConstrainedTextureCache; struct BspTree; } }
 namespace eqt { namespace bridge { class IrrlichtBridge; class ConsoleBridge; class GameStateBridge; } }
 
 namespace eqt {
@@ -284,6 +284,9 @@ private:
     // EverQuest client and adapter
     std::unique_ptr<EverQuest> m_eqClient;
     std::unique_ptr<EqActionHandler> m_actionHandler;
+
+    // Constrained asset cache — created at startup, shared across all subsystems
+    std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> m_constrainedCache;
 
     // D20b5: Renderer and bridge owned by Application
     std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;

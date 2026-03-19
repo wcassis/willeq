@@ -16,6 +16,8 @@
 #include <utility>
 #include <string>
 
+namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
+
 #ifdef EQT_HAS_GLES2
 namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; }}}
 #endif
@@ -83,6 +85,9 @@ public:
 
     SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                    const std::string& eqClientPath = "");
+
+    // Set constrained texture cache (mandatory, must be called before loadParticleTextures)
+    void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { m_constrained_cache = cache; }
     ~SpellVisualFX();
 
     // Set spell database for spell info lookup
@@ -224,9 +229,10 @@ private:
     irr::video::ITexture* m_chromatic_texture = nullptr; // Chromatic/Prismatic spells
     irr::video::ITexture* m_corruption_texture = nullptr;// Corruption/darkness spells
     std::string m_eq_client_path;
+    EQT::Graphics::ConstrainedTextureCache* m_constrained_cache = nullptr;
 
     void loadParticleTextures();
-    void createFallbackTexture();
+    void loadFallbackTexture();
     irr::video::ITexture* loadDDSTexture(const std::string& path, const std::string& name);
     irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
 

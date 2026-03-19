@@ -56,6 +56,7 @@ enum LogModule {
     MOD_INVENTORY,      // Inventory management
     MOD_GRAPHICS,       // Rendering system
     MOD_GRAPHICS_LOAD,  // Asset loading (models, textures, zones)
+    MOD_SHADER,         // Shader compilation, uniforms, material swaps
     MOD_CAMERA,         // Camera control
     MOD_INPUT,          // User input handling
     MOD_AUDIO,          // Sound system
@@ -72,7 +73,7 @@ inline const char* GetModuleName(LogModule mod) {
     static const char* names[] = {
         "NET", "NET_PACKET", "LOGIN", "WORLD", "ZONE",
         "ENTITY", "MOVEMENT", "COMBAT", "SPELL", "INVENTORY",
-        "GRAPHICS", "GRAPHICS_LOAD", "CAMERA", "INPUT", "AUDIO",
+        "GRAPHICS", "GRAPHICS_LOAD", "SHADER", "CAMERA", "INPUT", "AUDIO",
         "PATHFIND", "MAP", "UI", "CONFIG", "MAIN"
     };
     if (mod >= 0 && mod < MOD_COUNT) {
@@ -89,6 +90,7 @@ inline LogModule ParseModuleName(const char* name) {
         {"ENTITY", MOD_ENTITY}, {"MOVEMENT", MOD_MOVEMENT},
         {"COMBAT", MOD_COMBAT}, {"SPELL", MOD_SPELL}, {"INVENTORY", MOD_INVENTORY},
         {"GRAPHICS", MOD_GRAPHICS}, {"GRAPHICS_LOAD", MOD_GRAPHICS_LOAD},
+        {"SHADER", MOD_SHADER},
         {"CAMERA", MOD_CAMERA}, {"INPUT", MOD_INPUT}, {"AUDIO", MOD_AUDIO},
         {"PATHFIND", MOD_PATHFIND}, {"MAP", MOD_MAP}, {"UI", MOD_UI},
         {"CONFIG", MOD_CONFIG}, {"MAIN", MOD_MAIN}

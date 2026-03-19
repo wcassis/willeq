@@ -51,9 +51,14 @@ struct DecodedEntry {
 // Used for resource-constrained rendering modes (Voodoo1, etc.)
 class ConstrainedTextureCache {
 public:
-    ConstrainedTextureCache(const ConstrainedRendererConfig& config,
-                            irr::video::IVideoDriver* driver);
+    // Construct with config only (no driver needed). Call setDriver() later
+    // when the graphics context is available for GPU uploads.
+    explicit ConstrainedTextureCache(const ConstrainedRendererConfig& config);
     ~ConstrainedTextureCache();
+
+    // Set video driver for GPU texture uploads. Must be called before
+    // uploadTexture() or uploadAllPending(). Probes compressed texture support.
+    void setDriver(irr::video::IVideoDriver* driver);
 
     // Decode and cache a texture (no GL calls — safe to call from any thread).
     // If already uploaded (CachedTexture), returns the ITexture*.

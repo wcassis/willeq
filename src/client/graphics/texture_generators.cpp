@@ -709,5 +709,218 @@ irr::video::IImage* generateCloudFrame(irr::video::IVideoDriver* driver,
     return image;
 }
 
+irr::video::IImage* generateBlendedCloudFrame(irr::video::IVideoDriver* driver,
+                                               irr::video::IImage* img1,
+                                               irr::video::IImage* img2,
+                                               float t) {
+    if (!driver || !img1 || !img2) return nullptr;
+
+    auto dim = img1->getDimension();
+    irr::video::IImage* result = driver->createImage(irr::video::ECF_A8R8G8B8, dim);
+    if (!result) return nullptr;
+
+    float invT = 1.0f - t;
+    for (irr::u32 y = 0; y < dim.Height; ++y) {
+        for (irr::u32 x = 0; x < dim.Width; ++x) {
+            irr::video::SColor c1 = img1->getPixel(x, y);
+            irr::video::SColor c2 = img2->getPixel(x, y);
+            irr::u32 a = static_cast<irr::u32>(c1.getAlpha() * invT + c2.getAlpha() * t);
+            irr::u32 r = static_cast<irr::u32>(c1.getRed() * invT + c2.getRed() * t);
+            irr::u32 g = static_cast<irr::u32>(c1.getGreen() * invT + c2.getGreen() * t);
+            irr::u32 b = static_cast<irr::u32>(c1.getBlue() * invT + c2.getBlue() * t);
+            result->setPixel(x, y, irr::video::SColor(a, r, g, b));
+        }
+    }
+
+    return result;
+}
+
+irr::video::IImage* generateSpellParticleFallback(irr::video::IVideoDriver* driver) {
+    if (!driver) return nullptr;
+
+    const int size = 32;
+    irr::core::dimension2du dim(size, size);
+    irr::video::IImage* image = driver->createImage(irr::video::ECF_A8R8G8B8, dim);
+    if (!image) return nullptr;
+
+    float center = size / 2.0f;
+    float maxDist = center;
+
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float dx = x - center + 0.5f;
+            float dy = y - center + 0.5f;
+            float dist = std::sqrt(dx * dx + dy * dy);
+
+            float normalizedDist = dist / maxDist;
+            int alpha = 0;
+            if (normalizedDist < 1.0f) {
+                float falloff = std::cos(normalizedDist * 3.14159f * 0.5f);
+                alpha = static_cast<int>(falloff * 255.0f);
+            }
+
+            image->setPixel(x, y, irr::video::SColor(alpha, 255, 255, 255));
+        }
+    }
+
+    return image;
+}
+
+irr::video::IImage* generateSoftwareCursor(irr::video::IVideoDriver* driver) {
+    if (!driver) return nullptr;
+
+    const int W = 8, H = 10;
+    irr::video::IImage* image = driver->createImage(irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2du(W, H));
+    if (!image) return nullptr;
+
+    const irr::video::SColor transparent(0, 0, 0, 0);
+    const irr::video::SColor black(255, 0, 0, 0);
+    const irr::video::SColor white(255, 255, 255, 255);
+
+    // Clear to transparent
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            image->setPixel(x, y, transparent);
+
+    // Classic arrow cursor shape (1=black outline, 2=white fill)
+    static const char* shape[10] = {
+        "11      ",
+        "121     ",
+        "1221    ",
+        "12221   ",
+        "122221  ",
+        "1222211 ",
+        "111111   ",
+        "   121  ",
+        "    121 ",
+        "     11 ",
+    };
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            char c = shape[y][x];
+            if (c == '1') image->setPixel(x, y, black);
+            else if (c == '2') image->setPixel(x, y, white);
+        }
+    }
+
+    return image;
+}
+
+irr::video::IImage* generateRainTexture(irr::video::IVideoDriver* driver,
+                                         int numStreaks, int seed,
+                                         int minLength, int maxLength) {
+    if (!driver) return nullptr;
+
+    const int W = 256, H = 256;
+    irr::video::IImage* image = driver->createImage(irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2du(W, H));
+    if (!image) return nullptr;
+
+    // Clear to transparent
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+            image->setPixel(x, y, irr::video::SColor(0, 0, 0, 0));
+
+    std::mt19937 rng(seed);
+    auto randInt = [&](int lo, int hi) {
+        return std::uniform_int_distribution<int>(lo, hi)(rng);
+    };
+    auto randFloat = [&]() {
+        return std::uniform_real_distribution<float>(0.0f, 1.0f)(rng);
+    };
+
+    for (int s = 0; s < numStreaks; ++s) {
+        int x = randInt(0, W - 1);
+        int yStart = randInt(0, H - 1);
+        int length = randInt(minLength, maxLength);
+        int headBright = randInt(220, 255);
+        int headAlpha = randInt(150, 220);
+
+        for (int j = 0; j < length; ++j) {
+            int y = (yStart + j) % H;
+            float progress = static_cast<float>(j) / std::max(1, length - 1);
+            float fade = std::pow(progress, 1.5f);
+            int pixBright = static_cast<int>(headBright * (0.3f + 0.7f * fade));
+            int pixAlpha = static_cast<int>(headAlpha * fade);
+            if (pixAlpha < 5) continue;
+
+            image->setPixel(x, y, irr::video::SColor(pixAlpha, pixBright, pixBright, pixBright));
+
+            // Some streaks widen near the head
+            if (progress > 0.7f && randFloat() < 0.3f && x + 1 < W) {
+                image->setPixel(x + 1, y, irr::video::SColor(pixAlpha / 2, pixBright, pixBright, pixBright));
+            }
+        }
+    }
+
+    return image;
+}
+
+irr::video::IImage* generateSnowTexture(irr::video::IVideoDriver* driver,
+                                          int density, int seed,
+                                          float minSize, float maxSize,
+                                          int alphaBase) {
+    if (!driver) return nullptr;
+
+    const int W = 256, H = 256;
+    irr::video::IImage* image = driver->createImage(irr::video::ECF_A8R8G8B8,
+        irr::core::dimension2du(W, H));
+    if (!image) return nullptr;
+
+    // Clear to transparent
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+            image->setPixel(x, y, irr::video::SColor(0, 0, 0, 0));
+
+    std::mt19937 rng(seed);
+    auto randFloat = [&](float lo, float hi) {
+        return std::uniform_real_distribution<float>(lo, hi)(rng);
+    };
+    auto randInt = [&](int lo, int hi) {
+        return std::uniform_int_distribution<int>(lo, hi)(rng);
+    };
+
+    for (int i = 0; i < density; ++i) {
+        float cx = randFloat(0.0f, static_cast<float>(W));
+        float cy = randFloat(0.0f, static_cast<float>(H));
+
+        // Bias toward smaller sizes
+        float size = minSize + (maxSize - minSize) * std::pow(randFloat(0.0f, 1.0f), 1.5f);
+        int alpha = static_cast<int>(alphaBase * randFloat(0.6f, 1.0f));
+        int brightness = randInt(240, 255);
+        float aspect = randFloat(0.8f, 1.2f);
+        float rx = size;
+        float ry = size * aspect;
+
+        // Rasterize ellipse
+        int x0 = std::max(0, static_cast<int>(cx - rx - 1));
+        int x1 = std::min(W - 1, static_cast<int>(cx + rx + 1));
+        int y0 = std::max(0, static_cast<int>(cy - ry - 1));
+        int y1 = std::min(H - 1, static_cast<int>(cy + ry + 1));
+
+        for (int py = y0; py <= y1; ++py) {
+            for (int px = x0; px <= x1; ++px) {
+                float dx = (px - cx) / rx;
+                float dy = (py - cy) / ry;
+                float dist2 = dx * dx + dy * dy;
+                if (dist2 < 1.0f) {
+                    // Soft edge
+                    float edge = 1.0f - std::sqrt(dist2);
+                    int a = static_cast<int>(alpha * edge);
+                    if (a < 1) continue;
+                    // Blend with existing pixel (additive alpha)
+                    irr::video::SColor existing = image->getPixel(px, py);
+                    int newA = std::min(255, static_cast<int>(existing.getAlpha()) + a);
+                    image->setPixel(px, py, irr::video::SColor(newA, brightness, brightness, brightness));
+                }
+            }
+        }
+    }
+
+    return image;
+}
+
 } // namespace Graphics
 } // namespace EQT

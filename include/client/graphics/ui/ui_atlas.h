@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "client/graphics/constrained_texture_cache.h"
 #include <irrlicht.h>
 #include <cstdint>
 #include <string>
@@ -51,7 +52,8 @@ public:
      * Load atlas from <atlasPath>/ui_atlas.png + ui_atlas.json.
      * Returns false on failure (caller decides whether to FATAL).
      */
-    bool load(irr::video::IVideoDriver* driver, const std::string& atlasPath);
+    bool load(irr::video::IVideoDriver* driver, const std::string& atlasPath,
+              ConstrainedTextureCache* cache = nullptr);
 
     bool isLoaded() const { return texture_ != nullptr; }
 

@@ -32,11 +32,13 @@ extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTex
 namespace EQT {
 namespace Graphics {
 
-ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config,
-                                                   irr::video::IVideoDriver* driver)
+ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
     : config_(config)
-    , driver_(driver)
 {
+}
+
+void ConstrainedTextureCache::setDriver(irr::video::IVideoDriver* driver) {
+    driver_ = driver;
     probeCompressedTextureSupport();
 }
 

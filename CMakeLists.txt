@@ -1017,12 +1017,6 @@ ENDIF()
 ADD_EXECUTABLE(ui_atlas_builder
     tools/ui_atlas_builder.cpp
 )
-TARGET_INCLUDE_DIRECTORIES(ui_atlas_builder PRIVATE
-    ${etc2comp_SOURCE_DIR}/third_party/lodepng
-)
-TARGET_SOURCES(ui_atlas_builder PRIVATE
-    ${etc2comp_SOURCE_DIR}/third_party/lodepng/lodepng.cpp
-)
 
 # Atlas UV audit tool (check which textures can be atlased)
 IF(EQT_GRAPHICS)

@@ -5,6 +5,7 @@
 #include "unified_particle.h"
 #include "spell_particle_types.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include <irrlicht.h>
 #include <memory>
 #include <vector>
@@ -40,6 +41,9 @@ public:
     // Non-copyable
     ParticleManager(const ParticleManager&) = delete;
     ParticleManager& operator=(const ParticleManager&) = delete;
+
+    // Set constrained texture cache (mandatory, must be called before init)
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
     /**
      * Initialize the particle system.
@@ -383,6 +387,7 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::video::ITexture* atlasTexture_ = nullptr;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
     irr::video::SMaterial particleMaterial_;
 
     // Emitters

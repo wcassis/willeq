@@ -830,6 +830,8 @@ public:
     void togglePlayerLight();
     bool isPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
     void swapZoneMeshMaterials();  // Walk zone meshes and swap material types after shader variant change
+    void swapToDebugShader(irr::s32 debugMat);    // Swap all per-pixel materials to debug visualization program
+    void swapFromDebugShader(irr::s32 debugMat);  // Restore original materials from debug mode
     void toggleObjectLights();
     bool isObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
     void toggleDirectionalLight();
@@ -1062,8 +1064,9 @@ public:
     bool isNewUIEnabled() const { return newUIEnabled_; }
     void setNewUIEnabled(bool v) { newUIEnabled_ = v; }
 
-    // Constrained texture cache access (may return nullptr if not in constrained mode)
-    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_.get(); }
+    // Constrained texture cache — owned by Application, set before initLoadingScreen()
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
+    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_; }
 
     // Constrained mesh cache access (may return nullptr if not in constrained mode)
     ConstrainedMeshCache* getConstrainedMeshCache() { return constrainedMeshCache_.get(); }
@@ -1221,7 +1224,7 @@ private:
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
     std::unique_ptr<SkyRenderer> skyRenderer_;
-    std::unique_ptr<ConstrainedTextureCache> constrainedTextureCache_;  // Optional, for memory-limited rendering
+    ConstrainedTextureCache* constrainedTextureCache_ = nullptr;  // Owned by Application, mandatory
     std::unique_ptr<ConstrainedMeshCache> constrainedMeshCache_;      // Optional, lazy mesh loading in constrained mode
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
     std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
@@ -1402,6 +1405,14 @@ private:
     } storedZoneEnvironment_;
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
+
+    // Debug shader swap state (original material types saved when entering debug mode)
+    struct DebugMaterialEntry {
+        irr::scene::IMeshSceneNode* node;
+        irr::u32 materialIndex;
+        irr::s32 originalType;
+    };
+    std::vector<DebugMaterialEntry> debugOriginalMaterials_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph

@@ -1,6 +1,5 @@
 #include "client/graphics/animated_tree_manager.h"
 #include "client/graphics/eq/s3d_loader.h"
-#include "client/graphics/eq/dds_decoder.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -215,14 +214,7 @@ void AnimatedTreeManager::cleanup() {
         tree.buffers.clear();  // Buffers are owned by mesh
     }
     animatedTrees_.clear();
-    // Don't call driver_->removeTexture() if cache owns textures
-    if (!constrainedCache_ && driver_) {
-        for (auto& [name, texture] : textureCache_) {
-            if (texture) {
-                driver_->removeTexture(texture);
-            }
-        }
-    }
+    // Cache owns all textures — don't call driver_->removeTexture()
     textureCache_.clear();
     initialized_ = false;
 }
@@ -510,41 +502,15 @@ irr::video::ITexture* AnimatedTreeManager::getOrLoadTexture(
     const auto& data = texIt->second->data;
     irr::video::ITexture* texture = nullptr;
 
-    // Check if DDS format
-    if (DDSDecoder::isDDS(data)) {
-        DecodedImage decoded = DDSDecoder::decode(data);
-        if (decoded.isValid()) {
-            // Convert RGBA to ARGB for Irrlicht
-            std::vector<uint32_t> argbPixels(decoded.width * decoded.height);
-            for (uint32_t i = 0; i < decoded.width * decoded.height; ++i) {
-                uint8_t r = decoded.pixels[i * 4 + 0];
-                uint8_t g = decoded.pixels[i * 4 + 1];
-                uint8_t b = decoded.pixels[i * 4 + 2];
-                uint8_t a = decoded.pixels[i * 4 + 3];
-                argbPixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
-            }
-
-            // Create Irrlicht image
-            irr::core::dimension2d<irr::u32> size(decoded.width, decoded.height);
-            irr::video::IImage* image = driver_->createImageFromData(
-                irr::video::ECF_A8R8G8B8, size, argbPixels.data(), false, false);
-
-            if (image) {
-                // Generate unique texture name
-                std::string texName = "tree_" + name;
-                texture = driver_->addTexture(texName.c_str(), image);
-                image->drop();
-            }
+    if (!data.empty() && constrainedCache_) {
+        std::string cacheName = "tree_" + name;
+        texture = constrainedCache_->getOrLoad(cacheName, data);
+        if (!texture) {
+            texture = constrainedCache_->uploadTexture(cacheName);
         }
     }
 
     textureCache_[name] = texture;
-    if (texture && constrainedCache_) {
-        auto dim = texture->getOriginalSize();
-        bool hasAlpha = texture->hasAlpha();
-        constrainedCache_->registerTexture("tree_" + name, texture,
-            static_cast<size_t>(dim.Width) * dim.Height * 4, hasAlpha);
-    }
     return texture;
 }
 

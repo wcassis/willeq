@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/graphics/constrained_texture_cache.h"
 #include <glm/glm.hpp>
 #include <irrlicht.h>
 #include <cstdint>
@@ -75,6 +76,9 @@ public:
      * @param eqClientPath Path to EQ client for textures
      * @return true if initialized successfully
      */
+    // Set constrained texture cache (mandatory, must be called before initialize)
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+
     bool initialize(irr::video::IVideoDriver* driver,
                     irr::scene::ISceneManager* smgr,
                     const std::string& eqClientPath = "");
@@ -145,6 +149,7 @@ private:
 
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::ISceneManager* smgr_ = nullptr;
+    ConstrainedTextureCache* constrainedCache_ = nullptr;
 
     SnowOverlaySettings settings_;
     uint8_t intensity_ = 0;

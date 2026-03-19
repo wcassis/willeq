@@ -52,6 +52,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -102,7 +103,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -131,7 +136,6 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
@@ -164,7 +168,6 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
@@ -200,7 +203,6 @@ void main() {
     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
     if (texColor.a < threshold) discard;
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
@@ -243,6 +245,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -295,7 +298,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -323,7 +330,6 @@ varying vec3 vWorldNormal;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
@@ -358,7 +364,6 @@ void main() {
     if (alpha < 0.5) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
@@ -371,7 +376,6 @@ void main() {
 )";
 
 // GLSL ES 1.00 atlas fragment shader — alpha (dual ETC1, derivatives variant)
-// Clamp threshold to [0.1, 0.5] so ETC1-compressed binary alpha still discards.
 static const char* ATLAS_FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
 #extension GL_OES_standard_derivatives : enable
 precision mediump float;
@@ -396,12 +400,57 @@ void main() {
     if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    // Per-pixel player light (LUT: FP16 texture replaces inversesqrt + division)
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
     vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
+
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// ============================================================================
+// Debug fragment shader (GLSL ES 1.00) — visualize shader intermediates
+// ============================================================================
+// Compiled as a separate program. Only used when /shaderdebug N (N>0) is active.
+// Cost: ~36ms on Mali 400 due to 8 FS branches. Never active in production rendering.
+static const char* FRAGMENT_SHADER_DEBUG_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
+uniform int uShaderDebug;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    if (texColor.a < 0.5) discard;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+
+    if (uShaderDebug == 1) { gl_FragColor = texColor; return; }
+    if (uShaderDebug == 2) { gl_FragColor = vColor; return; }
+    if (uShaderDebug == 3) { gl_FragColor = vec4(lut.r, lut.a, 0.0, 1.0); return; }
+    if (uShaderDebug == 4) { gl_FragColor = vec4(pLight, 1.0); return; }
+    if (uShaderDebug == 5) { gl_FragColor = vec4(vWorldNormal * 0.5 + 0.5, 1.0); return; }
+    if (uShaderDebug == 6) { gl_FragColor = vec4(normalize(pLv) * 0.5 + 0.5, 1.0); return; }
+    if (uShaderDebug == 7) { gl_FragColor = vec4(texColor.a, texColor.a, texColor.a, 1.0); return; }
+    if (uShaderDebug == 8) { gl_FragColor = vec4(texColor.rgb * vColor.rgb, 1.0); return; }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -442,6 +491,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -524,7 +574,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -569,6 +623,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -612,7 +667,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -649,6 +708,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -694,7 +754,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -788,6 +852,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -860,7 +925,11 @@ void main() {
         }
     }
 
-    vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    if (uUnifiedLighting > 0) {
+        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+    } else {
+        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+    }
 
     // Linear fog factor
     float fogDist = length((mWorldViewProj * pos).xyz);
@@ -898,6 +967,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying float vFogFactor;
@@ -1026,6 +1096,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 varying vec4 vColor;
 varying float vFogFactor;
@@ -1142,6 +1213,7 @@ uniform vec3 uFireGlowLightColor[8];
 uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
+uniform int uUnifiedLighting;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -1281,6 +1353,7 @@ public:
         if (locWVP_ == -2) {
             GLuint prog;
             glGetIntegerv(GL_CURRENT_PROGRAM, reinterpret_cast<GLint*>(&prog));
+            LOG_DEBUG(MOD_SHADER, "ShaderCallback: resolving uniform locations for program {}", prog);
             locWVP_        = glGetUniformLocation(prog, "mWorldViewProj");
             locWorld_      = glGetUniformLocation(prog, "mWorld");
             locSunDir_     = glGetUniformLocation(prog, "uSunDir");
@@ -1305,6 +1378,13 @@ public:
             locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
             locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
             locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
+            locShaderDebug_         = glGetUniformLocation(prog, "uShaderDebug");
+            locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
+            LOG_DEBUG(MOD_SHADER, "ShaderCallback: uniforms resolved — WVP={} World={} SunDir={} "
+                      "LightPos={} LightColor={} LightAtten={} PlayerLightPos={} Texture={} "
+                      "NumPointLights={} NumFireGlow={}",
+                      locWVP_, locWorld_, locSunDir_, locLightPos_, locLightColor_, locLightAtten_,
+                      locPlayerLightPos_, locTexture_, locNumPointLights_, locNumFireGlowLights_);
         }
 
         // Per-node uniforms (change every node — depend on World matrix)
@@ -1321,6 +1401,30 @@ public:
         // Per-frame uniforms (same for every node — skip if already set this frame)
         if (lastFrameId_ != owner_->frameId()) {
             lastFrameId_ = owner_->frameId();
+
+            if (!firstFrameLogged_) {
+                firstFrameLogged_ = true;
+                LOG_DEBUG(MOD_SHADER, "ShaderCallback: first per-frame uniforms frame={} "
+                          "sun=({:.2f},{:.2f},{:.2f}) sunColor=({:.2f},{:.2f},{:.2f}) "
+                          "ambient=({:.2f},{:.2f},{:.2f}) tint=({:.2f},{:.2f},{:.2f}) "
+                          "playerLightPos=({:.1f},{:.1f},{:.1f}) playerLightColor=({:.2f},{:.2f},{:.2f}) "
+                          "playerLightAtten=({:.3f},{:.3f},{:.3f}) lutTex={} lutScale={:.4f} "
+                          "numLights={} numFireGlow={} fogStart={:.1f} fogEnd={:.1f}",
+                          owner_->frameId(),
+                          owner_->sunDir()[0], owner_->sunDir()[1], owner_->sunDir()[2],
+                          owner_->sunColor()[0], owner_->sunColor()[1], owner_->sunColor()[2],
+                          owner_->ambientColor()[0], owner_->ambientColor()[1], owner_->ambientColor()[2],
+                          owner_->tintColor()[0], owner_->tintColor()[1], owner_->tintColor()[2],
+                          owner_->playerLightPos()[0], owner_->playerLightPos()[1], owner_->playerLightPos()[2],
+                          owner_->playerLightColor()[0], owner_->playerLightColor()[1], owner_->playerLightColor()[2],
+                          owner_->playerLightAtten()[0], owner_->playerLightAtten()[1], owner_->playerLightAtten()[2],
+                          owner_->attenLutTexture(), owner_->lutScale(),
+                          owner_->numPointLights(), owner_->numFireGlowLights(),
+                          owner_->fogStart(), owner_->fogEnd());
+            } else {
+                LOG_TRACE(MOD_SHADER, "ShaderCallback: per-frame uniforms frame={} numLights={} numFireGlow={}",
+                          owner_->frameId(), owner_->numPointLights(), owner_->numFireGlowLights());
+            }
 
             if (locSunDir_ >= 0)     glUniform3fv(locSunDir_, 1, owner_->sunDir());
             if (locSunColor_ >= 0)   glUniform3fv(locSunColor_, 1, owner_->sunColor());
@@ -1353,6 +1457,8 @@ public:
             if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
             if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
             if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
+            if (locShaderDebug_ >= 0)         glUniform1i(locShaderDebug_, owner_->shaderDebug());
+            if (locUnifiedLighting_ >= 0)    glUniform1i(locUnifiedLighting_, owner_->unifiedLighting() ? 1 : 0);
         }
 #else
         // Desktop GL path — use string-based setVertexShaderConstant (no perf concern)
@@ -1400,6 +1506,8 @@ public:
         services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
         irr::s32 numFireGlowLights = owner_->numFireGlowLights();
         services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
+        irr::s32 unifiedLighting = owner_->unifiedLighting() ? 1 : 0;
+        services->setVertexShaderConstant("uUnifiedLighting", &unifiedLighting, 1);
 #endif
     }
 
@@ -1418,7 +1526,10 @@ private:
     GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
     GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
     GLint locNumFireGlowLights_ = -2;
+    GLint locShaderDebug_ = -2;
+    GLint locUnifiedLighting_ = -2;
     uint64_t lastFrameId_ = 0;
+    bool firstFrameLogged_ = false;
 #endif
 };
 
@@ -1477,6 +1588,8 @@ public:
         if (locWVP_ == -2) {
             GLuint prog;
             glGetIntegerv(GL_CURRENT_PROGRAM, reinterpret_cast<GLint*>(&prog));
+            LOG_DEBUG(MOD_SHADER, "AtlasShaderCallback: resolving uniform locations for program {} (alpha={})",
+                      prog, hasAlphaTexture_);
             locWVP_        = glGetUniformLocation(prog, "mWorldViewProj");
             locWorld_      = glGetUniformLocation(prog, "mWorld");
             locSunDir_     = glGetUniformLocation(prog, "uSunDir");
@@ -1502,6 +1615,11 @@ public:
             locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
             locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
             locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
+            locShaderDebug_         = glGetUniformLocation(prog, "uShaderDebug");
+            locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
+            LOG_DEBUG(MOD_SHADER, "AtlasShaderCallback: uniforms resolved — WVP={} PlayerLightPos={} "
+                      "PlayerLightColor={} AttenLUT={} NumPointLights={}",
+                      locWVP_, locPlayerLightPos_, locPlayerLightColor_, locAttenLUT_, locNumPointLights_);
         }
 
         // Per-node uniforms
@@ -1520,6 +1638,18 @@ public:
             lastFrameId_ = owner_->frameId();
             lastBoundRgbTex_ = 0;
             lastBoundAlphaTex_ = 0;
+
+            if (!firstFrameLogged_) {
+                firstFrameLogged_ = true;
+                LOG_DEBUG(MOD_SHADER, "AtlasShaderCallback: first per-frame uniforms frame={} "
+                          "playerLightPos=({:.1f},{:.1f},{:.1f}) playerLightColor=({:.2f},{:.2f},{:.2f}) "
+                          "lutTex={} lutScale={:.4f} numLights={} numFireGlow={}",
+                          owner_->frameId(),
+                          owner_->playerLightPos()[0], owner_->playerLightPos()[1], owner_->playerLightPos()[2],
+                          owner_->playerLightColor()[0], owner_->playerLightColor()[1], owner_->playerLightColor()[2],
+                          owner_->attenLutTexture(), owner_->lutScale(),
+                          owner_->numPointLights(), owner_->numFireGlowLights());
+            }
 
             if (locSunDir_ >= 0)     glUniform3fv(locSunDir_, 1, owner_->sunDir());
             if (locSunColor_ >= 0)   glUniform3fv(locSunColor_, 1, owner_->sunColor());
@@ -1554,9 +1684,11 @@ public:
             if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
             if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
             if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
+            if (locShaderDebug_ >= 0)         glUniform1i(locShaderDebug_, owner_->shaderDebug());
+            if (locUnifiedLighting_ >= 0)    glUniform1i(locUnifiedLighting_, owner_->unifiedLighting() ? 1 : 0);
         }
 #else
-        // Desktop GL path
+        // Desktop GL path (AtlasShaderCallback)
         irr::core::matrix4 worldViewProj = driver->getTransform(irr::video::ETS_PROJECTION);
         worldViewProj *= driver->getTransform(irr::video::ETS_VIEW);
         worldViewProj *= driver->getTransform(irr::video::ETS_WORLD);
@@ -1605,6 +1737,8 @@ public:
         services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
         irr::s32 numFireGlowLights = owner_->numFireGlowLights();
         services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
+        irr::s32 unifiedLighting = owner_->unifiedLighting() ? 1 : 0;
+        services->setVertexShaderConstant("uUnifiedLighting", &unifiedLighting, 1);
 #endif
     }
 
@@ -1628,7 +1762,10 @@ private:
     GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
     GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
     GLint locNumFireGlowLights_ = -2;
+    GLint locShaderDebug_ = -2;
+    GLint locUnifiedLighting_ = -2;
     uint64_t lastFrameId_ = 0;
+    bool firstFrameLogged_ = false;
 #endif
 };
 
@@ -1642,6 +1779,8 @@ public:
         // Unpack mesh Y bounds from material params
         meshMinY_ = material.MaterialTypeParam;
         meshMaxY_ = material.MaterialTypeParam2;
+        LOG_TRACE(MOD_SHADER, "WindShaderCallback: OnSetMaterial meshYBounds=[{:.2f},{:.2f}] tex0={}",
+                  meshMinY_, meshMaxY_, (void*)material.TextureLayer[0].Texture);
     }
 
     void OnSetConstants(irr::video::IMaterialRendererServices* services,
@@ -1652,6 +1791,7 @@ public:
         if (locWVP_ == -2) {
             GLuint prog;
             glGetIntegerv(GL_CURRENT_PROGRAM, reinterpret_cast<GLint*>(&prog));
+            LOG_DEBUG(MOD_SHADER, "WindShaderCallback: resolving uniform locations for program {}", prog);
             locWVP_        = glGetUniformLocation(prog, "mWorldViewProj");
             locWorld_      = glGetUniformLocation(prog, "mWorld");
             locSunDir_     = glGetUniformLocation(prog, "uSunDir");
@@ -1671,11 +1811,21 @@ public:
             locAttenLUT_   = glGetUniformLocation(prog, "uAttenLUT");
             locLUTScale_   = glGetUniformLocation(prog, "uLUTScale");
             locNumPointLights_ = glGetUniformLocation(prog, "uNumPointLights");
+            locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
+            locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
             locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
             locFireGlowLightRadius_ = glGetUniformLocation(prog, "uFireGlowLightRadius[0]");
             locFireGlowLightIntensity_ = glGetUniformLocation(prog, "uFireGlowLightIntensity[0]");
             locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
+            locShaderDebug_         = glGetUniformLocation(prog, "uShaderDebug");
+            locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
+            LOG_DEBUG(MOD_SHADER, "WindShaderCallback: uniforms resolved — WVP={} World={} SunDir={} "
+                      "LightPos={} LightColor={} Texture={} WindTime={} WindParams={} MeshYBounds={} "
+                      "PlayerLightPos={} AttenLUT={} NumPointLights={} NumFireGlow={}",
+                      locWVP_, locWorld_, locSunDir_, locLightPos_, locLightColor_, locTexture_,
+                      locWindTime_, locWindParams_, locMeshYBounds_,
+                      locPlayerLightPos_, locAttenLUT_, locNumPointLights_, locNumFireGlowLights_);
         }
 
         // Per-node uniforms
@@ -1699,6 +1849,32 @@ public:
         if (lastFrameId_ != owner_->frameId()) {
             lastFrameId_ = owner_->frameId();
 
+            if (!firstFrameLogged_) {
+                firstFrameLogged_ = true;
+                LOG_DEBUG(MOD_SHADER, "WindShaderCallback: first per-frame uniforms frame={} "
+                          "sun=({:.2f},{:.2f},{:.2f}) sunColor=({:.2f},{:.2f},{:.2f}) "
+                          "ambient=({:.2f},{:.2f},{:.2f}) tint=({:.2f},{:.2f},{:.2f}) "
+                          "playerLightPos=({:.1f},{:.1f},{:.1f}) playerLightColor=({:.2f},{:.2f},{:.2f}) "
+                          "windTime={:.2f} windParams=({:.3f},{:.3f},{:.3f},{:.3f}) "
+                          "lutTex={} lutScale={:.4f} numLights={} numFireGlow={} fogStart={:.1f} fogEnd={:.1f}",
+                          owner_->frameId(),
+                          owner_->sunDir()[0], owner_->sunDir()[1], owner_->sunDir()[2],
+                          owner_->sunColor()[0], owner_->sunColor()[1], owner_->sunColor()[2],
+                          owner_->ambientColor()[0], owner_->ambientColor()[1], owner_->ambientColor()[2],
+                          owner_->tintColor()[0], owner_->tintColor()[1], owner_->tintColor()[2],
+                          owner_->playerLightPos()[0], owner_->playerLightPos()[1], owner_->playerLightPos()[2],
+                          owner_->playerLightColor()[0], owner_->playerLightColor()[1], owner_->playerLightColor()[2],
+                          owner_->windTime(),
+                          owner_->windParams()[0], owner_->windParams()[1],
+                          owner_->windParams()[2], owner_->windParams()[3],
+                          owner_->attenLutTexture(), owner_->lutScale(),
+                          owner_->numPointLights(), owner_->numFireGlowLights(),
+                          owner_->fogStart(), owner_->fogEnd());
+            } else {
+                LOG_TRACE(MOD_SHADER, "WindShaderCallback: per-frame uniforms frame={} numLights={} numFireGlow={}",
+                          owner_->frameId(), owner_->numPointLights(), owner_->numFireGlowLights());
+            }
+
             if (locSunDir_ >= 0)     glUniform3fv(locSunDir_, 1, owner_->sunDir());
             if (locSunColor_ >= 0)   glUniform3fv(locSunColor_, 1, owner_->sunColor());
             if (locAmbient_ >= 0)    glUniform3fv(locAmbient_, 1, owner_->ambientColor());
@@ -1712,7 +1888,9 @@ public:
             if (locTexture_ >= 0)    glUniform1i(locTexture_, 0);
             if (locWindTime_ >= 0)   glUniform1f(locWindTime_, owner_->windTime());
             if (locWindParams_ >= 0) glUniform4fv(locWindParams_, 1, owner_->windParams());
-            // LUT texture for per-pixel player light FS
+            // Per-pixel player light (FS uniforms + LUT texture)
+            if (locPlayerLightPos_ >= 0)   glUniform3fv(locPlayerLightPos_, 1, owner_->playerLightPos());
+            if (locPlayerLightColor_ >= 0) glUniform3fv(locPlayerLightColor_, 1, owner_->playerLightColor());
             if (locAttenLUT_ >= 0 && owner_->attenLutTexture() > 0) {
                 glActiveTexture(GL_TEXTURE2);
                 glBindTexture(GL_TEXTURE_2D, owner_->attenLutTexture());
@@ -1728,9 +1906,28 @@ public:
             if (locFireGlowLightRadius_ >= 0) glUniform1fv(locFireGlowLightRadius_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightRadius());
             if (locFireGlowLightIntensity_ >= 0) glUniform1fv(locFireGlowLightIntensity_, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS, owner_->fireGlowLightIntensity());
             if (locNumFireGlowLights_ >= 0)   glUniform1i(locNumFireGlowLights_, owner_->numFireGlowLights());
+            if (locShaderDebug_ >= 0)         glUniform1i(locShaderDebug_, owner_->shaderDebug());
+            if (locUnifiedLighting_ >= 0)    glUniform1i(locUnifiedLighting_, owner_->unifiedLighting() ? 1 : 0);
         }
+
+        // Per-draw-call GL state dump (first 5 calls only)
+        if (drawCallCount_ < 5) {
+            GLint boundTex0 = 0, boundTex2 = 0, activeUnit = 0, curProg = 0;
+            glGetIntegerv(GL_ACTIVE_TEXTURE, &activeUnit);
+            glGetIntegerv(GL_CURRENT_PROGRAM, &curProg);
+            glActiveTexture(GL_TEXTURE0);
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTex0);
+            glActiveTexture(GL_TEXTURE2);
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTex2);
+            glActiveTexture(activeUnit);  // restore
+            LOG_DEBUG(MOD_SHADER, "WindShaderCallback draw[{}]: prog={} tex0={} tex2(LUT)={} "
+                      "meshY=[{:.2f},{:.2f}] debug={}",
+                      drawCallCount_, curProg, boundTex0, boundTex2,
+                      meshMinY_, meshMaxY_, owner_->shaderDebug());
+        }
+        ++drawCallCount_;
 #else
-        // Desktop GL path
+        // Desktop GL path (WindShaderCallback)
         irr::core::matrix4 worldViewProj = driver->getTransform(irr::video::ETS_PROJECTION);
         worldViewProj *= driver->getTransform(irr::video::ETS_VIEW);
         worldViewProj *= driver->getTransform(irr::video::ETS_WORLD);
@@ -1777,6 +1974,8 @@ public:
         services->setVertexShaderConstant("uFireGlowLightIntensity[0]", owner_->fireGlowLightIntensity(), ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
         irr::s32 numFireGlowLights = owner_->numFireGlowLights();
         services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
+        irr::s32 unifiedLighting = owner_->unifiedLighting() ? 1 : 0;
+        services->setVertexShaderConstant("uUnifiedLighting", &unifiedLighting, 1);
 #endif
     }
 
@@ -1793,10 +1992,15 @@ private:
     GLint locWindTime_ = -2, locWindParams_ = -2, locMeshYBounds_ = -2;
     GLint locAttenLUT_ = -2, locLUTScale_ = -2;
     GLint locNumPointLights_ = -2;
+    GLint locPlayerLightPos_ = -2, locPlayerLightColor_ = -2;
     GLint locFireGlowLightPos_ = -2, locFireGlowLightColor_ = -2;
     GLint locFireGlowLightRadius_ = -2, locFireGlowLightIntensity_ = -2;
     GLint locNumFireGlowLights_ = -2;
+    GLint locShaderDebug_ = -2;
+    GLint locUnifiedLighting_ = -2;
     uint64_t lastFrameId_ = 0;
+    bool firstFrameLogged_ = false;
+    int drawCallCount_ = 0;
 #endif
 };
 
@@ -1891,6 +2095,7 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
     }
 
     // Compile wind shader (alpha-test only — trees always use alpha for leaf transparency)
+    LOG_DEBUG(MOD_SHADER, "Compiling wind alpha-test shader (VS=WIND_VERTEX_SHADER_SRC, FS=fragmentAlphaSrc)...");
     WindShaderCallback* windCallback = new WindShaderCallback(this);
     materialWindAlphaTest_ = gpu->addHighLevelShaderMaterial(
         WIND_VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
@@ -1957,6 +2162,7 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         }
 
         // Lightweight wind alpha-test
+        LOG_DEBUG(MOD_SHADER, "Compiling lightweight wind alpha-test shader...");
         WindShaderCallback* lwWindCb = new WindShaderCallback(this);
         materialLWWindAlphaTest_ = gpu->addHighLevelShaderMaterial(
             WIND_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
@@ -1972,6 +2178,21 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
                  "atlasSolid={}, atlasAlpha={}, wind={})",
                  materialLWSolid_, materialLWAlphaTest_,
                  materialLWAtlasSolid_, materialLWAtlasAlpha_, materialLWWindAlphaTest_);
+    }
+
+    // Compile debug visualization shader (expensive FS with branches — only used with /shaderdebug)
+    {
+        ShaderCallback* debugCb = new ShaderCallback(this);
+        materialDebug_ = gpu->addHighLevelShaderMaterial(
+            VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_DEBUG_SRC, "main", irr::video::EPST_PS_1_1,
+            debugCb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        debugCb->drop();
+        if (materialDebug_ >= 0) {
+            LOG_INFO(MOD_SHADER, "Debug visualization shader compiled (material={})", materialDebug_);
+        } else {
+            LOG_WARN(MOD_SHADER, "Debug visualization shader compilation failed");
+        }
     }
 
     // Create FP16 attenuation LUT texture for per-pixel player light
@@ -2012,6 +2233,9 @@ ZoneShaderManager::~ZoneShaderManager() {
 
 void ZoneShaderManager::beginFrame() {
     ++frameId_;
+    LOG_TRACE(MOD_SHADER, "beginFrame: frameId={} perPixel={} windMat={} lwWindMat={} activeWind={}",
+              frameId_, perPixelPlayerLight_, materialWindAlphaTest_, materialLWWindAlphaTest_,
+              getActiveWindAlphaTest());
 #ifdef EQT_HAS_GLES2
     // Regenerate LUT if player light attenuation params changed
     if (lutDirty_ && attenLutTexture_ > 0) {
@@ -2058,6 +2282,9 @@ irr::s32 ZoneShaderManager::getActiveWindAlphaTest() const {
 }
 
 void ZoneShaderManager::setPerPixelPlayerLight(bool enabled) {
+    LOG_DEBUG(MOD_SHADER, "setPerPixelPlayerLight: {} -> {} (wind: pp={} lw={} active={})",
+              perPixelPlayerLight_ ? "on" : "off", enabled ? "on" : "off",
+              materialWindAlphaTest_, materialLWWindAlphaTest_, getActiveWindAlphaTest());
     perPixelPlayerLight_ = enabled;
 }
 

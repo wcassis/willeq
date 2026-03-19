@@ -1,6 +1,6 @@
 /*
  * UIAtlas runtime loader implementation.
- * U02: Loads pre-generated ui_atlas.png + ui_atlas.json from atlas path.
+ * U02: Loads pre-generated ui_atlas.bmp + ui_atlas.json from atlas path.
  */
 
 #include "client/graphics/ui/ui_atlas.h"
@@ -11,16 +11,31 @@
 namespace EQT {
 namespace Graphics {
 
-bool UIAtlas::load(irr::video::IVideoDriver* driver, const std::string& atlasPath) {
+bool UIAtlas::load(irr::video::IVideoDriver* driver, const std::string& atlasPath,
+                    EQT::Graphics::ConstrainedTextureCache* cache) {
     if (!driver || atlasPath.empty()) return false;
 
-    std::string pngPath = atlasPath + "/ui_atlas.png";
+    std::string bmpPath = atlasPath + "/ui_atlas.bmp";
     std::string jsonPath = atlasPath + "/ui_atlas.json";
 
-    // Load texture
-    texture_ = driver->getTexture(pngPath.c_str());
+    // Load texture via constrained cache
+    if (cache) {
+        std::ifstream file(bmpPath, std::ios::binary | std::ios::ate);
+        if (!file) {
+            LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", bmpPath);
+            return false;
+        }
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> data(fileSize);
+        file.read(data.data(), fileSize);
+
+        texture_ = cache->getOrLoad("ui_atlas", data);
+        if (!texture_) texture_ = cache->uploadTexture("ui_atlas");
+    }
+
     if (!texture_) {
-        LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", pngPath);
+        LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", bmpPath);
         return false;
     }
 
