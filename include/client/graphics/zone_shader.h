@@ -52,6 +52,19 @@ public:
     void setPerPixelPlayerLight(bool enabled);
     bool isPerPixelPlayerLight() const { return perPixelPlayerLight_; }
 
+    // Shader debug mode (0=normal, 1=texColor, 2=vColor, 3=LUT, 4=pLight,
+    // 5=worldNormal, 6=lightDir, 7=alpha, 8=texColor*vColor no pLight)
+    void setShaderDebug(int mode) { shaderDebug_ = mode; }
+    int shaderDebug() const { return shaderDebug_; }
+
+    // Unified lighting mode: multiply pointLighting by aColor instead of additive
+    void setUnifiedLighting(bool enabled) { unifiedLighting_ = enabled; }
+    bool unifiedLighting() const { return unifiedLighting_; }
+
+    // Debug shader program (separate FS with visualization branches)
+    irr::s32 getDebugMaterialType() const { return materialDebug_; }
+    bool isDebugShaderAvailable() const { return materialDebug_ >= 0; }
+
     // Wind uniform state (updated per frame by renderer)
     void setWindTime(float t) { windTime_ = t; }
     float windTime() const { return windTime_; }
@@ -183,6 +196,7 @@ private:
     irr::s32 materialLWAtlasSolid_ = -1;
     irr::s32 materialLWAtlasAlpha_ = -1;
     irr::s32 materialLWWindAlphaTest_ = -1;
+    irr::s32 materialDebug_ = -1;  // Debug visualization program (expensive, only used with /shaderdebug)
     bool perPixelPlayerLight_ = false;  // Default OFF (lightweight)
 
     // Uniform values (updated per frame)
@@ -217,6 +231,10 @@ private:
 
     // Atlas tile scale uniform
     float atlasTileScale_ = 248.0f / 2048.0f;
+
+    // Shader debug mode
+    int shaderDebug_ = 0;
+    bool unifiedLighting_ = false;
 
     // Wind uniforms (for tree vertex shader animation)
     float windTime_ = 0.0f;

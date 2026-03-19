@@ -62,6 +62,7 @@ public:
      * Check if progressive initialization is in progress.
      */
     bool isInitializing() const { return progressiveInitActive_; }
+    bool isInitialized() const { return initialized_; }
 
     /**
      * Load wind configuration.

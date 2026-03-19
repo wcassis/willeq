@@ -9256,6 +9256,24 @@ void EverQuest::RegisterCommands()
 	zlightcmd.handler = rendererCmd("zlight");
 	m_command_registry->registerCommand(zlightcmd);
 
+	Command lightmodecmd;
+	lightmodecmd.name = "lightmode";
+	lightmodecmd.aliases = {};
+	lightmodecmd.usage = "/lightmode";
+	lightmodecmd.description = "Toggle lighting mode: additive (default) vs unified (pointLight scaled by vertex color)";
+	lightmodecmd.category = "Utility";
+	lightmodecmd.handler = rendererCmd("lightmode");
+	m_command_registry->registerCommand(lightmodecmd);
+
+	Command shaderdebugcmd;
+	shaderdebugcmd.name = "shaderdebug";
+	shaderdebugcmd.aliases = {"sd"};
+	shaderdebugcmd.usage = "/shaderdebug [0-8]";
+	shaderdebugcmd.description = "Shader debug visualization (0=normal, 1=texColor, 2=vColor, 3=LUT, 4=pLight, 5=normal, 6=lightDir, 7=alpha, 8=tex*vColor)";
+	shaderdebugcmd.category = "Utility";
+	shaderdebugcmd.handler = rendererCmd("shaderdebug");
+	m_command_registry->registerCommand(shaderdebugcmd);
+
 	Command firecmd;
 	firecmd.name = "fire";
 	firecmd.aliases = {};

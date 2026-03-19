@@ -1020,6 +1020,43 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     } else if (cmd == "/zlight") {
         toggleDirectionalLight();
         chat(fmt::format("Directional light: {}", isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/lightmode") {
+        if (zoneShader_) {
+            bool unified = !zoneShader_->unifiedLighting();
+            zoneShader_->setUnifiedLighting(unified);
+            chat(fmt::format("Lighting mode: {}", unified ? "UNIFIED (pointLight * aColor)" : "ADDITIVE (pointLight + base*aColor)"));
+            LOG_INFO(MOD_SHADER, "Lighting mode toggled to {}", unified ? "unified" : "additive");
+        }
+    } else if (cmd == "/shaderdebug" || cmd == "/sd") {
+        if (zoneShader_) {
+            int mode = 0;
+            if (!args.empty()) {
+                if (args == "off") mode = 0;
+                else mode = std::atoi(args.c_str());
+            }
+            int prevMode = zoneShader_->shaderDebug();
+            zoneShader_->setShaderDebug(mode);
+
+            // Swap materials to/from debug program
+            irr::s32 debugMat = zoneShader_->getDebugMaterialType();
+            if (debugMat >= 0) {
+                if (mode > 0 && prevMode == 0) {
+                    // Entering debug: swap all per-pixel materials to debug program
+                    swapToDebugShader(debugMat);
+                    LOG_INFO(MOD_SHADER, "Swapped all per-pixel materials to debug program {}", debugMat);
+                } else if (mode == 0 && prevMode > 0) {
+                    // Leaving debug: restore production materials
+                    swapFromDebugShader(debugMat);
+                    LOG_INFO(MOD_SHADER, "Restored production materials from debug program");
+                }
+            }
+
+            const char* modeNames[] = {"normal", "texColor", "vColor", "LUT(r,a)", "pLight",
+                                        "worldNormal", "lightDir", "alpha", "tex*vColor"};
+            const char* name = (mode >= 0 && mode <= 8) ? modeNames[mode] : "unknown";
+            chat(fmt::format("Shader debug mode: {} ({})", mode, name));
+            LOG_INFO(MOD_SHADER, "Shader debug mode set to {} ({})", mode, name);
+        }
     } else if (cmd == "/fire") {
         if (auto* pm = getParticleManager()) {
             pm->toggleUnifiedFire();
@@ -3286,9 +3323,8 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         auto* computations = pendingZoneComputations_.get();
         auto zone = currentZone_;
         bool skipObjectBuild = config_.constrainedConfig.skipObjectBuild;
-        const TreeIdentifier* treeIdentifier = treeManager_ ? &treeManager_->getTreeIdentifier() : nullptr;
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone={}, wldLoader={}, skipObjectBuild={}, treeIdentifier={}",
-                  (bool)zone, zone ? (bool)zone->wldLoader : false, skipObjectBuild, (bool)treeIdentifier);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone={}, wldLoader={}, skipObjectBuild={}",
+                  (bool)zone, zone ? (bool)zone->wldLoader : false, skipObjectBuild);
 
         if (zone && zone->wldLoader) {
             auto wldLoader = zone->wldLoader;
@@ -3380,15 +3416,6 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     const auto& objInstance = zone->objects[objIdx];
                     if (!objInstance.geometry || !objInstance.placeable) continue;
 
-                    if (treeIdentifier) {
-                        const std::string& objName = objInstance.placeable->getName();
-                        std::string primaryTexture;
-                        if (!objInstance.geometry->textureNames().empty())
-                            primaryTexture = objInstance.geometry->textureNames()[0];
-                        if (treeIdentifier->isTreeMesh(objName, primaryTexture))
-                            continue;
-                    }
-
                     DeferredObject deferred;
                     deferred.objectIndex = objIdx;
                     deferred.bspRegion = bspRegion;
@@ -3408,7 +3435,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         x + halfW, z + halfH, y + halfW);
                     computations->prebuiltDeferredObjects.push_back(deferred);
                 }
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: {} deferred object entries, {} after tree filtering",
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: {} deferred object entries, {} prebuilt",
                           computations->deferredObjectEntries.size(), computations->prebuiltDeferredObjects.size());
             }
         } else {
@@ -5058,13 +5085,13 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                   fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
                   maxFireGlowLights_, fireEffectsEnabled_);
 
-        // Trees
+        // Trees — on software path, tree manager handles CPU wind animation
+        // On GPU path, trees are normal objects with wind shaders applied in fixup pass
         if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
             treeManager_->loadConfig("", currentZoneName_);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_ loadConfig for zone '{}'", currentZoneName_);
             if (driver_->getDriverType() == irr::video::EDT_BURNINGSVIDEO) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software renderer tree init path, objects={}", currentZone_->objects.size());
-                // Software path: initialize CPU tree wind
                 if (!treeManager_->isInitializing()) {
                     treeManager_->beginInitialize(currentZone_->objects, currentZone_->objectTextures);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: beginInitialize started, objects={}, textures={}",
@@ -5079,13 +5106,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 if (zoneBspTree_) {
                     treeManager_->assignBspRegions(zoneBspTree_);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree assignBspRegions done");
-                } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: no zoneBspTree_, skipping assignBspRegions");
                 }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree init complete");
             } else {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, tree wind via shader fixup pass (driver={})",
-                          (int)driver_->getDriverType());
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, trees handled as normal objects with wind shaders");
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree init SKIPPED: treeManager_={}, currentZone_={}, objects={}",
@@ -5093,8 +5117,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                       currentZone_ ? currentZone_->objects.size() : 0);
         }
 
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, treeManager_ initialized={}",
-                  treeManager_ ? treeManager_->isInitializing() : false);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, initialized={}, count={}",
+                  treeManager_ ? treeManager_->isInitialized() : false,
+                  treeManager_ ? treeManager_->getAnimatedTreeCount() : 0);
 
         // S05: detailManager_ already created in initLoadingScreen()
         if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
@@ -5379,19 +5404,21 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
                         if (treeMesh) {
                             irr::core::aabbox3df meshBbox = treeMesh->getBoundingBox();
+                            irr::s32 windMatType = zoneShader_->getActiveWindAlphaTest();
                             for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
-                                objNode->getMaterial(mi).MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                                    zoneShader_->getActiveWindAlphaTest());
-                                objNode->getMaterial(mi).MaterialTypeParam = meshBbox.MinEdge.Y;
-                                objNode->getMaterial(mi).MaterialTypeParam2 = meshBbox.MaxEdge.Y;
-                                objNode->getMaterial(mi).BackfaceCulling = false;
+                                auto& mat = objNode->getMaterial(mi);
+                                irr::s32 prevMatType = mat.MaterialType;
+                                irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
+                                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
+                                mat.MaterialTypeParam = meshBbox.MinEdge.Y;
+                                mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
+                                mat.BackfaceCulling = false;
+                                LOG_DEBUG(MOD_SHADER, "fixup tree '{}' mat[{}]: prevType={} -> windType={} "
+                                          "tex0={} bboxY=[{:.2f},{:.2f}]",
+                                          objName, mi, prevMatType, windMatType,
+                                          (void*)tex0, meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y);
                             }
                             ++treesWindApplied;
-                            LOG_TRACE(MOD_GRAPHICS, "SEQ Step11: fixup tree wind applied: '{}' tex='{}' "
-                                      "materials={} bboxY=[{:.1f},{:.1f}] materialType={}",
-                                      objName, primaryTexture, objNode->getMaterialCount(),
-                                      meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y,
-                                      zoneShader_->getActiveWindAlphaTest());
                         } else {
                             ++treesNullMesh;
                             LOG_WARN(MOD_GRAPHICS, "SEQ Step11: tree '{}' identified but getMesh() returned null, "
@@ -11091,6 +11118,8 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
     int swapTotal = 0, swapChanged = 0;
     auto swapNode = [&](irr::scene::IMeshSceneNode* node) {
         if (!node) return;
+        // Swap on BOTH mesh buffer materials AND node materials.
+        // Irrlicht uses node materials when ReadOnlyMaterials=false (default).
         auto* mesh = node->getMesh();
         if (!mesh) return;
         for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
@@ -11101,6 +11130,15 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
             if (mapped != cur) {
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
                 ++swapChanged;
+            }
+        }
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+            auto& mat = node->getMaterial(i);
+            irr::s32 cur = mat.MaterialType;
+            irr::s32 mapped = mapMaterial(cur);
+            if (mapped != cur) {
+                LOG_TRACE(MOD_SHADER, "swapNode: node mat[{}] {} -> {}", i, cur, mapped);
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
             }
         }
     };
@@ -11161,6 +11199,42 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
         treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                              zoneShader_->getActiveAlphaTest());
     }
+}
+
+void IrrlichtRenderer::swapToDebugShader(irr::s32 debugMat) {
+    // Swap all per-pixel custom shader materials to the debug visualization program.
+    // Stores the original material type in debugOriginalMaterials_ for restoration.
+    debugOriginalMaterials_.clear();
+    // Custom shader materials start at the first compiled material type (solid)
+    irr::s32 firstCustom = zoneShader_ ? zoneShader_->getMaterialTypeSolid() : 256;
+
+    auto swapNodeToDebug = [&](irr::scene::IMeshSceneNode* node) {
+        if (!node) return;
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+            auto& mat = node->getMaterial(i);
+            irr::s32 cur = mat.MaterialType;
+            if (cur >= firstCustom && cur != debugMat) {
+                debugOriginalMaterials_.push_back({node, i, cur});
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(debugMat);
+            }
+        }
+    };
+
+    if (zoneMeshNode_) swapNodeToDebug(zoneMeshNode_);
+    for (auto& [idx, node] : regionMeshNodes_) swapNodeToDebug(node);
+    if (fallbackMeshNode_) swapNodeToDebug(fallbackMeshNode_);
+    for (auto* node : objectNodes_) swapNodeToDebug(node);
+}
+
+void IrrlichtRenderer::swapFromDebugShader(irr::s32 debugMat) {
+    // Restore original materials saved by swapToDebugShader.
+    for (auto& entry : debugOriginalMaterials_) {
+        if (entry.node && entry.materialIndex < entry.node->getMaterialCount()) {
+            entry.node->getMaterial(entry.materialIndex).MaterialType =
+                static_cast<irr::video::E_MATERIAL_TYPE>(entry.originalType);
+        }
+    }
+    debugOriginalMaterials_.clear();
 }
 
 void IrrlichtRenderer::toggleObjectLights() {
