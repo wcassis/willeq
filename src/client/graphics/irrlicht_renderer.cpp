@@ -650,8 +650,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         textBatch_.reset();
     }
 
-    // U02: Load UI atlas (required when enableTextureAtlas is true)
-    if (config_.constrainedConfig.enableTextureAtlas && !config_.constrainedConfig.atlasPath.empty()) {
+    // U02: Load UI atlas (required when atlasPath is configured)
+    if (!config_.constrainedConfig.atlasPath.empty()) {
         LOG_TRACE(MOD_GRAPHICS, "Loading UI atlas from {}...", config_.constrainedConfig.atlasPath);
         uiAtlas_ = std::make_unique<UIAtlas>();
         if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath, constrainedTextureCache_)) {
