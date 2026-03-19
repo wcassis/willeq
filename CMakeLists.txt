@@ -1132,6 +1132,79 @@ ELSE()
     TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2)
 ENDIF()
 
+# Zone benchmark — offline zone rendering with real S3D/WLD pipeline
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(gles2_zone_benchmark
+        tools/hwcaps/gles2_zone_benchmark.cpp
+        tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_camera.cpp
+        tools/hwcaps/zone_bench_metrics.cpp
+        # Zone loading pipeline (same sources as zone_line_editor + extras)
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/background_thread_pool.cpp
+        src/client/graphics/portal_system.cpp
+        src/client/graphics/portal_geometry_clipper.cpp
+        src/client/graphics/frustum_culler.cpp
+        src/client/hc_map.cpp
+        src/client/raycast_mesh.cpp
+        src/client/graphics/zone_shader.cpp
+        src/client/graphics/texture_atlas.cpp
+        src/client/graphics/software_occlusion_culler.cpp
+        src/client/zone_bsp.cpp
+        src/common/util/compression.cpp
+    )
+    # GPU upload thread (GLES2 only — needed by texture_atlas.cpp)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(gles2_zone_benchmark PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
+    # Optionally add navmesh source
+    IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
+        TARGET_SOURCES(gles2_zone_benchmark PRIVATE src/client/pathfinder_nav_mesh.cpp)
+    ENDIF()
+    TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+        ${IRRLICHT_INCLUDE_DIR}
+        ${JSONCPP_INCLUDE_DIRS}
+        ${GLM_INCLUDE_DIR}
+    )
+    TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+    ENDIF()
+    IF(EQT_GLES2)
+        TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_GLES2)
+    ENDIF()
+    SET(ZONE_BENCH_LIBS
+        ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+    IF(EQT_DRM AND EQT_GLES2)
+        LIST(APPEND ZONE_BENCH_LIBS EGL GLESv2 drm gbm)
+    ELSEIF(EQT_DRM)
+        LIST(APPEND ZONE_BENCH_LIBS EGL GLESv2 drm gbm)
+    ELSE()
+        # Desktop GL for texture_atlas.cpp glGenTextures etc.
+        LIST(APPEND ZONE_BENCH_LIBS GL)
+    ENDIF()
+    IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
+        LIST(APPEND ZONE_BENCH_LIBS ${RECAST_LIBRARY} ${DETOUR_LIBRARY})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_zone_benchmark ${ZONE_BENCH_LIBS})
+ENDIF()
+
 ADD_EXECUTABLE(test_gl_points tools/test_gl_points.cpp)
 TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include)
 IF(EQT_DRM)

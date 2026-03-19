@@ -3800,6 +3800,74 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      regionMeshNodes_.size(), regionsSkipped, meshBuildFailed, nodeFailed);
 
+            // Extract occluder triangles for software occlusion culling
+            if (occlusionCuller_) {
+                auto occStart = std::chrono::steady_clock::now();
+                int totalOccluders = 0;
+                int regionsWithOccluders = 0;
+                float minArea = occlusionCuller_->getConfig().minOccluderArea;
+                int maxPerRegion = occlusionCuller_->getConfig().maxTrianglesPerRegion;
+
+                for (size_t ri = 0; ri < totalRegions; ++ri) {
+                    auto geom = wldLoader->getGeometryForRegion(ri);
+                    if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
+
+                    std::vector<OccluderTriangle> occluders;
+                    for (const auto& tri : geom->triangles) {
+                        if (tri.v1 >= geom->vertices.size() ||
+                            tri.v2 >= geom->vertices.size() ||
+                            tri.v3 >= geom->vertices.size()) continue;
+
+                        const auto& va = geom->vertices[tri.v1];
+                        const auto& vb = geom->vertices[tri.v2];
+                        const auto& vc = geom->vertices[tri.v3];
+
+                        // World-space positions (add region center offset)
+                        float ax = geom->centerX + va.x, ay = geom->centerY + va.y, az = geom->centerZ + va.z;
+                        float bx = geom->centerX + vb.x, by = geom->centerY + vb.y, bz = geom->centerZ + vb.z;
+                        float cx = geom->centerX + vc.x, cy = geom->centerY + vc.y, cz = geom->centerZ + vc.z;
+
+                        // Cross product for area
+                        float ex = bx - ax, ey = by - ay, ez = bz - az;
+                        float fx = cx - ax, fy = cy - ay, fz = cz - az;
+                        float nx = ey * fz - ez * fy;
+                        float ny = ez * fx - ex * fz;
+                        float nz = ex * fy - ey * fx;
+                        float area = 0.5f * std::sqrt(nx * nx + ny * ny + nz * nz);
+
+                        if (area < minArea) continue;
+
+                        OccluderTriangle ot;
+                        ot.v0[0] = ax; ot.v0[1] = ay; ot.v0[2] = az;
+                        ot.v1[0] = bx; ot.v1[1] = by; ot.v1[2] = bz;
+                        ot.v2[0] = cx; ot.v2[1] = cy; ot.v2[2] = cz;
+                        ot.area = area;
+                        occluders.push_back(ot);
+                    }
+
+                    // Keep only the largest triangles per region
+                    if (static_cast<int>(occluders.size()) > maxPerRegion) {
+                        std::sort(occluders.begin(), occluders.end(),
+                                  [](const OccluderTriangle& a, const OccluderTriangle& b) {
+                                      return a.area > b.area;
+                                  });
+                        occluders.resize(maxPerRegion);
+                    }
+
+                    if (!occluders.empty()) {
+                        totalOccluders += occluders.size();
+                        regionsWithOccluders++;
+                        occlusionCuller_->setRegionOccluders(ri, std::move(occluders));
+                    }
+                }
+
+                auto occEnd = std::chrono::steady_clock::now();
+                LOG_INFO(MOD_GRAPHICS, "Sequential: extracted {} occluder triangles from {} regions ({}x{} depth buffer, {:.0f} ms)",
+                         totalOccluders, regionsWithOccluders,
+                         occlusionCuller_->getConfig().width, occlusionCuller_->getConfig().height,
+                         std::chrono::duration<double, std::milli>(occEnd - occStart).count());
+            }
+
             // Initialize animated texture manager for PVS region meshes
             // Discover animations from combined geometry, then register each region mesh's buffers
             if (currentZone_ && currentZone_->geometry && !currentZone_->textures.empty()) {

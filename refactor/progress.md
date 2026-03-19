@@ -290,3 +290,59 @@ duplicate decoders. Separate decode (any thread) from GPU upload (renderer threa
 | T13 | Remove `EntityVisual::variantTextures`, `equipmentTextures`, `texturesSubmittedToGpu`, `nextTextureUpload`, `uploadedTextures`, `uploadedTextureAlpha`, `nextVariantUpload`, `nextEquipTextureUpload`. Remove inline DDS decoder in Placeholder phase. Keep `equipmentStaging`. `DecodedTexture` struct kept (still referenced by entity_prep_worker). | done | |
 | T14 | Remove `decodeBMPtoARGB` standalone function (sky). Remove `bilinearUpscaleARGB`. Remove dead commented-out unconstrained texture path from `loadTextureFromBMP`. | done | |
 | T15 | Verify: grep for `addTexture`, `queueDecodedARGB`, `loadTextureFromBMP`, `decodeBMP`. Confirmed single `decodeBMP` in constrained cache, single `addTexture` in `uploadTexture`. Removed dead `uploadPreDecodedTexture` from sky renderer. Other `addTexture` calls are procedural/runtime (effects, cursor) — not texture loading. | done | |
+
+---
+
+## Batch Z — Offline Zone Rendering Benchmark
+
+Standalone benchmark tool (`gles2_zone_benchmark`) that loads real EQ zone geometry via the
+production S3D/WLD pipeline, replays a navmesh-generated camera path, and measures per-frame
+rendering metrics with A/B toggles for each optimization technique.
+
+### Phase Z1 — Basic Framework
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| Z1.1 | `gles2_zone_benchmark.cpp` — CLI parsing, Irrlicht device creation, benchmark loop | done | |
+| Z1.2 | `zone_bench_loader.h/.cpp` — Zone loading: S3DLoader, texture cache, atlas, ZoneShaderManager, per-region mesh build, VBO upload, BSP/portal/bbox | done | |
+| Z1.3 | Render loop — set matrices, collect draw entries with visibility, setMaterial+drawMeshBuffer, glFinish, frame stats | done | |
+| Z1.4 | CMakeLists.txt — add executable with zone pipeline + GLES2/DRM + navmesh libs | done | |
+
+### Phase Z2 — Navmesh Camera Path
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| Z2.1 | `zone_bench_camera.h/.cpp` — CameraPath class, generateFromNavmesh (sample waypoints, pathfind, concatenate) | done | |
+| Z2.2 | Fallback orbit path (generateOrbit) | done | |
+| Z2.3 | Path interpolation (getPositionAt/getDirectionAt, fixed dt, --speed flag) | done | |
+| Z2.4 | Integrated into render loop (camera advance, view matrix, FrustumCuller, BSP region lookup, PVS filter) | done | |
+
+### Phase Z3 — Per-Frame Metrics + CSV
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| Z3.1 | `zone_bench_metrics.h/.cpp` — FrameMetrics struct, MetricsCollector with begin/end timing | done | |
+| Z3.2 | Draw loop instrumented — draw call count, state change count, polygon count | done | |
+| Z3.3 | CPU vs GPU split — clock around draw loop + glFinish separately | done | |
+| Z3.4 | CSV output (--csv FILE) + summary stats (min/avg/max/p95) | done | |
+
+### Phase Z4 — A/B Optimization Toggles
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| Z4.1 | `--no-material-sort` — disable material-key draw sorting | done | |
+| Z4.2 | `--no-portal-cull` — disable PVS bitvector check | done | |
+| Z4.3 | `--no-frustum-cull` — disable frustum test | done | |
+| Z4.4 | `--no-front-to-back` — disable distance sorting within material groups | done | |
+| Z4.5 | `--no-atlas` — use buildTexturedMesh instead of buildAtlasedMesh (load-time) | done | |
+| Z4.6 | `--no-depth-test` — glDisable(GL_DEPTH_TEST) | done | |
+| Z4.7 | `--max-draws N` / `--max-polys N` — cap per frame | done | |
+| Z4.8 | `--lighting N` — point light count 0-8 from zone data | done | |
+
+### Phase Z5 — Synthetic Draw Call Isolation
+
+| Unit | Description | Status | Commit |
+|------|-------------|--------|--------|
+| Z5.1 | `--synthetic-draws` — sweep N=1..1000 identical draws, measure per-call overhead | done | |
+| Z5.2 | State change variant — setMaterial between each draw | done | |
+| Z5.3 | Empty draw measurement — (TODO: 1-triangle buffer isolation) | | |
