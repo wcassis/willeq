@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <glm/glm.hpp>
 #include <irrlicht.h>
 
 // Forward declarations
@@ -21,6 +22,7 @@ namespace EQT::Graphics {
     class FrustumCuller;
     class PortalSystem;
     class SoftwareOcclusionCuller;
+    class RaceModelLoader;
     struct BspTree;
     struct ConstrainedRendererConfig;
 }
@@ -35,6 +37,7 @@ struct BenchConfig {
     int height = 600;
     bool useDRM = true;
     bool useAtlas = true;        // Use texture atlas (can be toggled for A/B)
+    int entityCount = 0;         // Number of static entities to place in scene
 };
 
 // Per-region data stored for rendering
@@ -74,6 +77,17 @@ struct ZoneBenchData {
     // Texture systems
     std::shared_ptr<EQT::Graphics::TextureAtlas> zoneAtlas;
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache;
+
+    // Entity models
+    std::unique_ptr<EQT::Graphics::RaceModelLoader> raceModelLoader;
+
+    // Placed entities (static, for benchmarking)
+    struct PlacedEntity {
+        irr::scene::IMesh* mesh = nullptr;
+        irr::core::vector3df position;  // Irrlicht coords
+        float eqX, eqY, eqZ;           // EQ coords (for culling)
+    };
+    std::vector<PlacedEntity> entities;
 
     // Visibility
     std::unique_ptr<EQT::Graphics::FrustumCuller> frustumCuller;
@@ -115,6 +129,22 @@ void collectDrawEntries(
     int& outRegionsVisible,
     int& outRegionsDrawn,
     int& outRegionsOccluded);
+
+// Place entities at evenly-spaced positions along a camera path.
+// Positions are in EQ coords; entities face random directions.
+void placeEntitiesAlongPath(ZoneBenchData& data,
+                             const std::vector<glm::vec3>& pathPositions);
+
+// Collect entity draw entries for visible entities near the camera.
+// Appends to outEntries (call after zone draw collection).
+void collectEntityDrawEntries(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    std::vector<DrawEntry>& outEntries,
+    int& outEntityDrawCalls,
+    int& outEntityPolys);
 
 // Find a good surface-level position in the zone for camera seeding.
 // Returns the center of the region with the most polygons in the top

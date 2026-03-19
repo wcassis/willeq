@@ -72,6 +72,10 @@ struct Options {
     int maxPolys = 0;         // 0 = unlimited
     int lightCount = -1;      // -1 = use zone defaults
 
+    // Entities
+    int entityCount = 0;          // Number of static entities to place
+    float entityRenderDist = 300.0f;
+
     // Synthetic (Z5)
     bool syntheticDraws = false;
 };
@@ -105,6 +109,9 @@ static void printUsage(const char* prog) {
     printf("  --max-draws N        Cap draw calls per frame\n");
     printf("  --max-polys N        Cap polygons per frame\n");
     printf("  --lighting N         Point light count (0-8)\n");
+    printf("\nEntity options:\n");
+    printf("  --entities N         Place N static entities along path (default: 0)\n");
+    printf("  --entity-dist F      Entity render distance (default: 300)\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
 }
@@ -140,6 +147,8 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--max-draws") == 0 && i + 1 < argc) opts.maxDraws = atoi(argv[++i]);
         else if (strcmp(argv[i], "--max-polys") == 0 && i + 1 < argc) opts.maxPolys = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lighting") == 0 && i + 1 < argc) opts.lightCount = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--entities") == 0 && i + 1 < argc) opts.entityCount = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -450,9 +459,9 @@ int main(int argc, char** argv) {
     printf("Zone: %s, Resolution: %dx%d, Frames: %d\n",
            opts.zoneName.c_str(), opts.width, opts.height, opts.frames);
     printf("Toggles: materialSort=%d portalCull=%d frustumCull=%d occlusionCull=%d "
-           "frontToBack=%d atlas=%d depthTest=%d\n",
+           "frontToBack=%d atlas=%d depthTest=%d entities=%d\n",
            opts.materialSort, opts.portalCull, opts.frustumCull, opts.occlusionCull,
-           opts.frontToBack, opts.useAtlas, opts.depthTest);
+           opts.frontToBack, opts.useAtlas, opts.depthTest, opts.entityCount);
     if (opts.maxDraws > 0) printf("  maxDraws=%d\n", opts.maxDraws);
     if (opts.maxPolys > 0) printf("  maxPolys=%d\n", opts.maxPolys);
     printf("\n");
@@ -466,6 +475,7 @@ int main(int argc, char** argv) {
     benchConfig.height = opts.height;
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
     benchConfig.useAtlas = opts.useAtlas;
+    benchConfig.entityCount = opts.entityCount;
 
     auto data = ZoneBench::loadZone(benchConfig);
     if (!data) {
@@ -505,6 +515,19 @@ int main(int argc, char** argv) {
     if (camera.empty()) {
         fprintf(stderr, "ERROR: Failed to generate camera path\n");
         return 1;
+    }
+
+    // ── Place entities along path ──
+    if (!data->entities.empty()) {
+        // Sample positions from the camera path at even intervals
+        std::vector<glm::vec3> pathPositions;
+        float pathLen = camera.totalLength();
+        int samples = std::max(static_cast<int>(data->entities.size()), 100);
+        for (int i = 0; i < samples; ++i) {
+            float t = pathLen * i / samples;
+            pathPositions.push_back(camera.getPositionAt(t));
+        }
+        ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
     }
 
     // ── Set up lighting ──
@@ -567,7 +590,15 @@ int main(int argc, char** argv) {
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
             drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
 
-        // Draw
+        // Collect entity draw entries
+        int entityDrawCalls = 0, entityPolys = 0;
+        if (!data->entities.empty()) {
+            ZoneBench::collectEntityDrawEntries(
+                *data, camState, opts.entityRenderDist, opts.frustumCull,
+                drawEntries, entityDrawCalls, entityPolys);
+        }
+
+        // Draw all (zone + entities)
         int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
         int polyCount = countPolygons(drawEntries);
 

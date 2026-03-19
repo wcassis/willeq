@@ -17,6 +17,7 @@
 #include "client/zone_bsp.h"
 
 #include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/eq/race_model_loader.h"
 
 #ifdef EQT_HAS_TEXTURE_ATLAS
 #include "client/graphics/texture_atlas.h"
@@ -372,6 +373,70 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                totalOccluders, regionsWithOccluders);
     }
 
+    // ── Step 11: Load entity models ──
+    if (config.entityCount > 0) {
+        auto entityStart = std::chrono::steady_clock::now();
+
+        data->raceModelLoader = std::make_unique<RaceModelLoader>(
+            data->smgr, data->driver, data->device->getFileSystem());
+        data->raceModelLoader->setClientPath(config.eqPath);
+        data->raceModelLoader->setConstrainedTextureCache(data->textureCache.get());
+
+        // Wire constrained cache and shader materials on the internal mesh builder
+        auto* mb = data->raceModelLoader->getMeshBuilder();
+        if (mb) {
+            mb->setConstrainedTextureCache(data->textureCache.get());
+            if (data->zoneShader && data->zoneShader->isAvailable()) {
+                mb->setShaderMaterialTypes(
+                    data->zoneShader->getActiveSolid(),
+                    data->zoneShader->getActiveAlphaTest());
+            }
+        }
+
+        printf("  Loading entity models...\n");
+        data->raceModelLoader->loadGlobalModels();
+        data->raceModelLoader->loadNumberedGlobalModels();
+        data->raceModelLoader->loadZoneModels(config.zoneName);
+
+        // Upload any textures decoded during model loading
+        data->textureCache->uploadAllPending();
+
+        // Common EQ race IDs for variety
+        uint16_t raceIds[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+        int numRaces = sizeof(raceIds) / sizeof(raceIds[0]);
+
+        // Pre-load meshes for each race (cache them)
+        std::vector<irr::scene::IMesh*> raceMeshes;
+        for (int r = 0; r < numRaces; ++r) {
+            auto* mesh = data->raceModelLoader->getMeshForRace(raceIds[r], 0);
+            if (mesh) {
+                // Upload VBOs
+                uploadMeshHWBuffers(data->driver, mesh);
+                raceMeshes.push_back(mesh);
+            }
+            // Upload textures that were decoded during mesh building
+            data->textureCache->uploadAllPending();
+        }
+
+        if (raceMeshes.empty()) {
+            printf("  WARNING: No entity meshes loaded, skipping entity placement\n");
+        } else {
+            printf("  Loaded %zu race meshes\n", raceMeshes.size());
+
+            // Entity positions will be set later from the camera path (see main)
+            // For now, just store the meshes. Placement happens after path generation.
+            data->entities.resize(config.entityCount);
+            for (int i = 0; i < config.entityCount; ++i) {
+                data->entities[i].mesh = raceMeshes[i % raceMeshes.size()];
+            }
+        }
+
+        auto entityEnd = std::chrono::steady_clock::now();
+        printf("  Entity models loaded in %.0f ms (%d entities, %zu race meshes)\n",
+               std::chrono::duration<double, std::milli>(entityEnd - entityStart).count(),
+               config.entityCount, raceMeshes.size());
+    }
+
     // ── Summary ──
     auto totalEnd = std::chrono::steady_clock::now();
     printf("Zone loaded in %.0f ms\n",
@@ -553,6 +618,95 @@ void collectDrawEntries(
                           return a.materialKey < b.materialKey;
                       return a.distanceSq < b.distanceSq;
                   });
+    }
+}
+
+void placeEntitiesAlongPath(ZoneBenchData& data,
+                             const std::vector<glm::vec3>& pathPositions) {
+    if (data.entities.empty() || pathPositions.empty()) return;
+
+    int n = static_cast<int>(data.entities.size());
+    int pathLen = static_cast<int>(pathPositions.size());
+
+    for (int i = 0; i < n; ++i) {
+        // Distribute evenly along path
+        int pathIdx = (i * pathLen / n) % pathLen;
+        const auto& pos = pathPositions[pathIdx];
+
+        // Offset slightly to the side so entities aren't on the camera path
+        float offsetX = (i % 2 == 0) ? 5.0f : -5.0f;
+        float offsetY = ((i / 2) % 2 == 0) ? 3.0f : -3.0f;
+
+        data.entities[i].eqX = pos.x + offsetX;
+        data.entities[i].eqY = pos.y + offsetY;
+        data.entities[i].eqZ = pos.z - 6.0f;  // Remove eye height, place on ground
+
+        // Offset upward so feet touch ground (not model center)
+        float meshOffsetY = 0;
+        if (data.entities[i].mesh) {
+            auto bb = data.entities[i].mesh->getBoundingBox();
+            // Irrlicht Y-up: MinEdge.Y is typically negative (below origin)
+            meshOffsetY = -bb.MinEdge.Y;
+        }
+
+        // Irrlicht coords: EQ (x,y,z) -> Irrlicht (x,z,y)
+        data.entities[i].position = irr::core::vector3df(
+            data.entities[i].eqX,
+            data.entities[i].eqZ + meshOffsetY,
+            data.entities[i].eqY);
+    }
+
+    printf("  Placed %d entities along camera path\n", n);
+}
+
+void collectEntityDrawEntries(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    std::vector<DrawEntry>& outEntries,
+    int& outEntityDrawCalls,
+    int& outEntityPolys) {
+
+    outEntityDrawCalls = 0;
+    outEntityPolys = 0;
+    float renderDistSq = renderDistance * renderDistance;
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        // Distance cull
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > renderDistSq) continue;
+
+        // Frustum cull (use entity position as a sphere test with radius ~5)
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        irr::core::matrix4 worldMat;
+        worldMat.setTranslation(ent.position);
+
+        for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            const irr::video::SMaterial& mat = buf->getMaterial();
+            uint32_t texId = 0;
+            if (mat.getTexture(0)) {
+                texId = static_cast<uint32_t>(
+                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
+            }
+            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+
+            outEntries.push_back({matKey, distSq, buf, worldMat});
+            outEntityDrawCalls++;
+            outEntityPolys += buf->getIndexCount() / 3;
+        }
     }
 }
 

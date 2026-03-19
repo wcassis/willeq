@@ -53,11 +53,30 @@ bool CameraPath::generateFromNavmesh(const std::string& navmeshPath,
     float cumDist = 0;
     const float eyeHeight = 6.0f;  // EQ eye height above ground
 
+    int segmentsUsed = 0, segmentsSkipped = 0;
     for (size_t i = 0; i + 1 < randomPoints.size(); ++i) {
         bool partial = false, stuck = false;
         auto path = nav.FindRoute(randomPoints[i], randomPoints[i + 1], partial, stuck);
 
-        if (path.empty()) continue;
+        if (path.empty()) { segmentsSkipped++; continue; }
+
+        // Check for large gap between end of previous segment and start of this one.
+        // Small gaps are normal (navmesh poly snapping). Large gaps mean the path
+        // would teleport, and linear interpolation would fly through walls.
+        if (!waypoints_.empty() && !path.empty()) {
+            auto firstIt = path.begin();
+            while (firstIt != path.end() && firstIt->teleport) ++firstIt;
+            if (firstIt != path.end()) {
+                // waypoints_ have eye height added, path nodes don't — compare XY only
+                float gx = firstIt->pos.x - waypoints_.back().pos.x;
+                float gy = firstIt->pos.y - waypoints_.back().pos.y;
+                float gapSq = gx * gx + gy * gy;
+                if (gapSq > 2500.0f) {  // > 50 EQ units horizontal gap
+                    segmentsSkipped++;
+                    continue;
+                }
+            }
+        }
 
         for (const auto& pt : path) {
             if (pt.teleport) continue;
@@ -75,7 +94,11 @@ bool CameraPath::generateFromNavmesh(const std::string& navmeshPath,
 
             waypoints_.push_back({eyePos, cumDist});
         }
+        segmentsUsed++;
     }
+
+    printf("  Path segments: %d used, %d skipped (partial/gap)\n",
+           segmentsUsed, segmentsSkipped);
 
     printf("  Camera path: %zu waypoints, %.0f EQ units total length\n",
            waypoints_.size(), totalLength());

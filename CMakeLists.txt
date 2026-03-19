@@ -1156,6 +1156,19 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_shader.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
+        src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/mesh_building.cpp
+        src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/geometry_combiner.cpp
+        src/client/graphics/eq/race_codes.cpp
+        src/client/graphics/eq/animation_mapping.cpp
+        src/client/graphics/eq/animated_mesh_creation.cpp
+        src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/skeletal_animator.cpp
+        src/client/graphics/eq/equipment_textures.cpp
+        src/client/graphics/graphics_archive_index.cpp
+        src/common/performance_metrics.cpp
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
     )
