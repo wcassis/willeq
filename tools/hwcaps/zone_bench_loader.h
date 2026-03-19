@@ -146,6 +146,16 @@ void collectEntityDrawEntries(
     int& outEntityDrawCalls,
     int& outEntityPolys);
 
+// Batched entity rendering: merge same-material entity parts into single draws.
+// Bakes world transforms into vertex data, groups by material, one draw per bucket.
+// Returns draw call count and poly count.
+int renderBatchedEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys);
+
 // Find a good surface-level position in the zone for camera seeding.
 // Returns the center of the region with the most polygons in the top
 // quartile of Z heights (avoids underground regions).

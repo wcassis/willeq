@@ -710,6 +710,110 @@ void collectEntityDrawEntries(
     }
 }
 
+int renderBatchedEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys) {
+
+    outEntityPolys = 0;
+    float renderDistSq = renderDistance * renderDistance;
+
+    // Collect visible entity mesh buffers grouped by material key
+    struct BatchEntry {
+        irr::scene::IMeshBuffer* buffer;
+        irr::core::vector3df entityPos;
+    };
+    std::map<uint32_t, std::vector<BatchEntry>> materialBuckets;
+    irr::video::SMaterial firstMaterial;  // Track first material per bucket
+    std::map<uint32_t, irr::video::SMaterial> bucketMaterials;
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        if (dx * dx + dy * dy + dz * dz > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            const irr::video::SMaterial& mat = buf->getMaterial();
+            uint32_t texId = 0;
+            if (mat.getTexture(0)) {
+                texId = static_cast<uint32_t>(
+                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
+            }
+            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+
+            materialBuckets[matKey].push_back({buf, ent.position});
+            if (bucketMaterials.find(matKey) == bucketMaterials.end())
+                bucketMaterials[matKey] = mat;
+        }
+    }
+
+    if (materialBuckets.empty()) return 0;
+
+    // For each material bucket: merge vertices with baked transforms, single draw
+    irr::core::matrix4 identityMat;
+    data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+
+    std::vector<irr::video::S3DVertex> mergedVerts;
+    std::vector<irr::u16> mergedIndices;
+    int drawCalls = 0;
+
+    for (auto& [matKey, entries] : materialBuckets) {
+        mergedVerts.clear();
+        mergedIndices.clear();
+
+        for (const auto& entry : entries) {
+            irr::scene::IMeshBuffer* buf = entry.buffer;
+            irr::u32 baseVertex = static_cast<irr::u32>(mergedVerts.size());
+
+            // Check 16-bit index overflow
+            if (baseVertex + buf->getVertexCount() > 65535) break;
+
+            // Copy vertices with world transform baked in
+            const irr::video::S3DVertex* srcVerts =
+                static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+            for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                irr::video::S3DVertex vert = srcVerts[v];
+                vert.Pos += entry.entityPos;
+                mergedVerts.push_back(vert);
+            }
+
+            // Copy indices with base offset
+            const irr::u16* srcIdx = buf->getIndices();
+            for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx) {
+                mergedIndices.push_back(static_cast<irr::u16>(srcIdx[idx] + baseVertex));
+            }
+        }
+
+        if (mergedIndices.empty()) continue;
+
+        data.driver->setMaterial(bucketMaterials[matKey]);
+        data.driver->drawVertexPrimitiveList(
+            mergedVerts.data(), mergedVerts.size(),
+            mergedIndices.data(), mergedIndices.size() / 3,
+            irr::video::EVT_STANDARD,
+            irr::scene::EPT_TRIANGLES,
+            irr::video::EIT_16BIT);
+
+        outEntityPolys += mergedIndices.size() / 3;
+        drawCalls++;
+    }
+
+    return drawCalls;
+}
+
 void findSurfacePosition(const ZoneBenchData& data,
                           float& outX, float& outY, float& outZ) {
     // Find the region with the most polygons whose center Z is in the

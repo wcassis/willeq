@@ -75,6 +75,7 @@ struct Options {
     // Entities
     int entityCount = 0;          // Number of static entities to place
     float entityRenderDist = 300.0f;
+    bool batchEntities = false;   // Merge same-material entity buffers into single draws
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
@@ -112,6 +113,7 @@ static void printUsage(const char* prog) {
     printf("\nEntity options:\n");
     printf("  --entities N         Place N static entities along path (default: 0)\n");
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
+    printf("  --batch-entities     Batch same-material entity parts into single draws\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
 }
@@ -149,6 +151,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--lighting") == 0 && i + 1 < argc) opts.lightCount = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entities") == 0 && i + 1 < argc) opts.entityCount = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
+        else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -590,22 +593,48 @@ int main(int argc, char** argv) {
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
             drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
 
-        // Collect entity draw entries
+        // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
-            ZoneBench::collectEntityDrawEntries(
-                *data, camState, opts.entityRenderDist, opts.frustumCull,
-                drawEntries, entityDrawCalls, entityPolys);
-        }
+            if (opts.batchEntities) {
+                // Batched: merge same-material entity parts into single draws
+                // Render zone first (from drawEntries), then batched entities
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                entityDrawCalls = ZoneBench::renderBatchedEntities(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    entityPolys);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
 
-        // Draw all (zone + entities)
-        int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
-        int polyCount = countPolygons(drawEntries);
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else {
+                // Unbatched: individual draw calls per entity mesh buffer
+                ZoneBench::collectEntityDrawEntries(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    drawEntries, entityDrawCalls, entityPolys);
+                int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                int polyCount = countPolygons(drawEntries);
 
-        if (measuring) {
-            metrics.endDraw(static_cast<int>(drawEntries.size()),
-                           stateChanges, polyCount,
-                           regionsVisible, regionsDrawn);
+                if (measuring) {
+                    metrics.endDraw(static_cast<int>(drawEntries.size()),
+                                   stateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            }
+        } else {
+            // No entities — zone only
+            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+            int polyCount = countPolygons(drawEntries);
+
+            if (measuring) {
+                metrics.endDraw(static_cast<int>(drawEntries.size()),
+                               stateChanges, polyCount,
+                               regionsVisible, regionsDrawn);
+            }
         }
 
         // GPU sync
