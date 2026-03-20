@@ -156,6 +156,17 @@ int renderBatchedEntities(
     bool frustumCull,
     int& outEntityPolys);
 
+// Composite entity rendering: simulate 1-draw-per-entity by merging all body
+// parts into a single mesh buffer per entity. Uses the first texture as the
+// "composite" stand-in. This models what pre-baked composite textures achieve.
+// Returns draw call count and poly count.
+int renderCompositeEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys);
+
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).
 // Outputs a report to stdout and optionally to a CSV file.

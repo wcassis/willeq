@@ -76,6 +76,7 @@ struct Options {
     int entityCount = 0;          // Number of static entities to place
     float entityRenderDist = 300.0f;
     bool batchEntities = false;   // Merge same-material entity buffers into single draws
+    bool compositeEntities = false; // Simulate 1-draw-per-entity (pre-baked composite texture)
 
     // Analysis modes
     bool analyzePortals = false;
@@ -119,6 +120,7 @@ static void printUsage(const char* prog) {
     printf("  --entities N         Place N static entities along path (default: 0)\n");
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
     printf("  --batch-entities     Batch same-material entity parts into single draws\n");
+    printf("  --composite-entities Simulate 1-draw-per-entity (composite texture)\n");
     printf("\nAnalysis modes:\n");
     printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
     printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
@@ -161,6 +163,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entities") == 0 && i + 1 < argc) opts.entityCount = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
+        else if (strcmp(argv[i], "--composite-entities") == 0) opts.compositeEntities = true;
         else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
         else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
@@ -618,9 +621,22 @@ int main(int argc, char** argv) {
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
-            if (opts.batchEntities) {
+            if (opts.compositeEntities) {
+                // Composite: 1 draw per entity (simulates pre-baked composite texture)
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                entityDrawCalls = ZoneBench::renderCompositeEntities(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    entityPolys);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
+
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else if (opts.batchEntities) {
                 // Batched: merge same-material entity parts into single draws
-                // Render zone first (from drawEntries), then batched entities
                 int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
                 entityDrawCalls = ZoneBench::renderBatchedEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,

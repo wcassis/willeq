@@ -1012,6 +1012,85 @@ void analyzePortals(ZoneBenchData& data, const std::string& csvFile) {
     }
 }
 
+int renderCompositeEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys) {
+
+    outEntityPolys = 0;
+    float renderDistSq = renderDistance * renderDistance;
+
+    std::vector<irr::video::S3DVertex> mergedVerts;
+    std::vector<irr::u16> mergedIndices;
+    irr::core::matrix4 identityMat;
+    int drawCalls = 0;
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        if (dx * dx + dy * dy + dz * dz > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        // Merge ALL mesh buffers for this entity into one draw
+        mergedVerts.clear();
+        mergedIndices.clear();
+        irr::video::SMaterial compositeMat;
+        bool hasMaterial = false;
+
+        for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            // Use first buffer's material as the composite material
+            if (!hasMaterial) {
+                compositeMat = buf->getMaterial();
+                hasMaterial = true;
+            }
+
+            irr::u32 baseVertex = static_cast<irr::u32>(mergedVerts.size());
+            if (baseVertex + buf->getVertexCount() > 65535) break;
+
+            const irr::video::S3DVertex* srcVerts =
+                static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+            for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                irr::video::S3DVertex vert = srcVerts[v];
+                vert.Pos += ent.position;
+                mergedVerts.push_back(vert);
+            }
+
+            const irr::u16* srcIdx = buf->getIndices();
+            for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx) {
+                mergedIndices.push_back(static_cast<irr::u16>(srcIdx[idx] + baseVertex));
+            }
+        }
+
+        if (mergedIndices.empty() || !hasMaterial) continue;
+
+        data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+        data.driver->setMaterial(compositeMat);
+        data.driver->drawVertexPrimitiveList(
+            mergedVerts.data(), mergedVerts.size(),
+            mergedIndices.data(), mergedIndices.size() / 3,
+            irr::video::EVT_STANDARD,
+            irr::scene::EPT_TRIANGLES,
+            irr::video::EIT_16BIT);
+
+        outEntityPolys += mergedIndices.size() / 3;
+        drawCalls++;
+    }
+
+    return drawCalls;
+}
+
 // ============================================================================
 // Occluder-based portal detection
 // ============================================================================
