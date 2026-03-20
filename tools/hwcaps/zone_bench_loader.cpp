@@ -1012,6 +1012,272 @@ void analyzePortals(ZoneBenchData& data, const std::string& csvFile) {
     }
 }
 
+#ifdef EQT_HAS_GLES2
+#include <GLES2/gl2.h>
+#endif
+
+int renderDirectGLEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys) {
+
+    outEntityPolys = 0;
+#ifndef EQT_HAS_GLES2
+    // Direct GL mode only works with GLES2 driver
+    (void)data; (void)cam; (void)renderDistance; (void)frustumCull;
+    return 0;
+#else
+    float renderDistSq = renderDistance * renderDistance;
+
+    // Get current shader program and uniform locations once
+    GLint currentProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    GLint uWVP = glGetUniformLocation(currentProgram, "mWorldViewProj");
+    GLint uWorld = glGetUniformLocation(currentProgram, "mWorld");
+
+    // Pre-compute view-projection matrix (Irrlicht stores these)
+    irr::core::matrix4 viewProj = data.driver->getTransform(irr::video::ETS_PROJECTION);
+    viewProj *= data.driver->getTransform(irr::video::ETS_VIEW);
+
+    // Minimal state: enable depth test, disable blend, backface cull off
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
+    // Vertex attribute layout: S3DVertex = pos(12) + normal(12) + color(4) + uv(8) = 36
+    const GLsizei stride = 36;
+
+    // Save Irrlicht's GL state so we can restore it after direct GL calls
+    GLint savedProgram = 0, savedTexture = 0, savedVBO = 0, savedEBO = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &savedProgram);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTexture);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &savedVBO);
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &savedEBO);
+
+    GLuint lastTexture = 0;
+    int drawCalls = 0;
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        if (dx * dx + dy * dy + dz * dz > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        // Compute WVP for this entity
+        irr::core::matrix4 worldMat;
+        worldMat.setTranslation(ent.position);
+        irr::core::matrix4 wvp = viewProj;
+        wvp *= worldMat;
+
+        // Upload matrices once per entity
+        if (uWVP >= 0) glUniformMatrix4fv(uWVP, 1, GL_FALSE, wvp.pointer());
+        if (uWorld >= 0) glUniformMatrix4fv(uWorld, 1, GL_FALSE, worldMat.pointer());
+
+        // Draw all mesh buffers with minimal state changes
+        for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            // Texture bind — only if changed
+            const irr::video::SMaterial& mat = buf->getMaterial();
+            if (mat.getTexture(0)) {
+                GLuint texId = static_cast<GLuint>(
+                    mat.getTexture(0)->getDriverTextureHandle());
+                if (texId != lastTexture) {
+                    glBindTexture(GL_TEXTURE_2D, texId);
+                    lastTexture = texId;
+                }
+            }
+
+            // For HW-buffered meshes, bind VBO/EBO directly
+            // We need access to the HW buffer map — use driver's handle
+            GLuint vbo = static_cast<GLuint>(buf->getHardwareMappingHint_Vertex());
+            GLuint ebo = static_cast<GLuint>(buf->getHardwareMappingHint_Index());
+
+            // Fallback: use client-side arrays if no HW buffer
+            // (entities typically use client-side arrays)
+            const void* vertexData = buf->getVertices();
+            const void* indexData = buf->getIndices();
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, vertexData);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                                  static_cast<const char*>(vertexData) + 12);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+                                  static_cast<const char*>(vertexData) + 24);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride,
+                                  static_cast<const char*>(vertexData) + 28);
+            glEnableVertexAttribArray(3);
+
+            glDrawElements(GL_TRIANGLES, buf->getIndexCount(),
+                           GL_UNSIGNED_SHORT, indexData);
+
+            outEntityPolys += buf->getIndexCount() / 3;
+            drawCalls++;
+        }
+    }
+
+    // Restore Irrlicht's GL state so it doesn't crash on next frame
+    glUseProgram(savedProgram);
+    glBindTexture(GL_TEXTURE_2D, savedTexture);
+    glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, savedEBO);
+
+    return drawCalls;
+#endif
+}
+
+int renderDirectGLCompositeEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys) {
+
+    outEntityPolys = 0;
+#ifndef EQT_HAS_GLES2
+    (void)data; (void)cam; (void)renderDistance; (void)frustumCull;
+    return 0;
+#else
+    float renderDistSq = renderDistance * renderDistance;
+
+    // Save Irrlicht state
+    GLint savedProgram = 0, savedTexture = 0, savedVBO = 0, savedEBO = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &savedProgram);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTexture);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &savedVBO);
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &savedEBO);
+
+    // Get shader uniforms
+    GLint currentProgram = savedProgram;
+    GLint uWVP = glGetUniformLocation(currentProgram, "mWorldViewProj");
+    GLint uWorld = glGetUniformLocation(currentProgram, "mWorld");
+
+    // Pre-compute VP matrix
+    irr::core::matrix4 viewProj = data.driver->getTransform(irr::video::ETS_PROJECTION);
+    viewProj *= data.driver->getTransform(irr::video::ETS_VIEW);
+
+    // Set GL state once for all entities
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    const GLsizei stride = 36;
+    GLuint lastTexture = 0;
+    int drawCalls = 0;
+
+    // Reusable merge buffers
+    std::vector<irr::video::S3DVertex> mergedVerts;
+    std::vector<irr::u16> mergedIndices;
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        if (dx * dx + dy * dy + dz * dz > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        // Merge all body parts into one buffer with baked position
+        mergedVerts.clear();
+        mergedIndices.clear();
+        GLuint texId = 0;
+
+        for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            if (texId == 0 && buf->getMaterial().getTexture(0)) {
+                texId = static_cast<GLuint>(
+                    buf->getMaterial().getTexture(0)->getDriverTextureHandle());
+            }
+
+            irr::u32 baseVertex = static_cast<irr::u32>(mergedVerts.size());
+            if (baseVertex + buf->getVertexCount() > 65535) break;
+
+            const irr::video::S3DVertex* srcVerts =
+                static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+            for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                irr::video::S3DVertex vert = srcVerts[v];
+                vert.Pos += ent.position;
+                mergedVerts.push_back(vert);
+            }
+
+            const irr::u16* srcIdx = buf->getIndices();
+            for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx)
+                mergedIndices.push_back(static_cast<irr::u16>(srcIdx[idx] + baseVertex));
+        }
+
+        if (mergedIndices.empty()) continue;
+
+        // Upload identity world (positions baked into vertices)
+        irr::core::matrix4 identityMat;
+        irr::core::matrix4 wvp = viewProj;
+        if (uWVP >= 0) glUniformMatrix4fv(uWVP, 1, GL_FALSE, wvp.pointer());
+        if (uWorld >= 0) glUniformMatrix4fv(uWorld, 1, GL_FALSE, identityMat.pointer());
+
+        // Bind texture only if changed
+        if (texId != lastTexture) {
+            glBindTexture(GL_TEXTURE_2D, texId);
+            lastTexture = texId;
+        }
+
+        // Set vertex attribs and draw
+        const void* vdata = mergedVerts.data();
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, vdata);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                              static_cast<const char*>(vdata) + 12);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+                              static_cast<const char*>(vdata) + 24);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride,
+                              static_cast<const char*>(vdata) + 28);
+        glEnableVertexAttribArray(3);
+
+        glDrawElements(GL_TRIANGLES, mergedIndices.size(),
+                       GL_UNSIGNED_SHORT, mergedIndices.data());
+
+        outEntityPolys += mergedIndices.size() / 3;
+        drawCalls++;
+    }
+
+    // Restore Irrlicht state
+    glUseProgram(savedProgram);
+    glBindTexture(GL_TEXTURE_2D, savedTexture);
+    glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, savedEBO);
+
+    return drawCalls;
+#endif
+}
+
 int renderCompositeEntities(
     ZoneBenchData& data,
     const CameraState& cam,

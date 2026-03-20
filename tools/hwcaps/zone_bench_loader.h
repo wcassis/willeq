@@ -167,6 +167,25 @@ int renderCompositeEntities(
     bool frustumCull,
     int& outEntityPolys);
 
+// Direct GL entity rendering: bypasses Irrlicht's setMaterial/drawMeshBuffer
+// and calls glBindTexture/glDrawElements directly with minimal state tracking.
+// Per-body-part mode (same draws as unbatched, less overhead per draw).
+int renderDirectGLEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys);
+
+// Direct GL composite: 1 draw per entity via direct GL, bypassing Irrlicht.
+// Merges body parts per entity, uses drawVertexPrimitiveList equivalent via raw GL.
+int renderDirectGLCompositeEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    int& outEntityPolys);
+
 // LOD entity rendering: composite meshes for near entities, batched billboard
 // quads for far entities. One draw for all billboards.
 // Returns draw call count and poly count.

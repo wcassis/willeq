@@ -77,6 +77,7 @@ struct Options {
     float entityRenderDist = 300.0f;
     bool batchEntities = false;   // Merge same-material entity buffers into single draws
     bool compositeEntities = false; // Simulate 1-draw-per-entity (pre-baked composite texture)
+    bool directGLEntities = false; // Bypass Irrlicht, direct GL calls per entity
     bool lodEntities = false;     // LOD tiers: composite near, billboard far
     float lodTier2Dist = 80.0f;   // Distance for billboard switch
     bool trainMode = false;       // Cluster entities together (train simulation)
@@ -124,6 +125,7 @@ static void printUsage(const char* prog) {
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
     printf("  --batch-entities     Batch same-material entity parts into single draws\n");
     printf("  --composite-entities Simulate 1-draw-per-entity (composite texture)\n");
+    printf("  --direct-gl          Bypass Irrlicht for entities (direct GL calls)\n");
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
@@ -170,6 +172,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
         else if (strcmp(argv[i], "--composite-entities") == 0) opts.compositeEntities = true;
+        else if (strcmp(argv[i], "--direct-gl") == 0) opts.directGLEntities = true;
         else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
@@ -640,7 +643,35 @@ int main(int argc, char** argv) {
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
-            if (opts.lodEntities) {
+            if (opts.directGLEntities && opts.compositeEntities) {
+                // Direct GL + composite: 1 draw per entity via raw GL
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                entityDrawCalls = ZoneBench::renderDirectGLCompositeEntities(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    entityPolys);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
+
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else if (opts.directGLEntities) {
+                // Direct GL per-body-part: bypass Irrlicht, same draw count as unbatched
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                entityDrawCalls = ZoneBench::renderDirectGLEntities(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    entityPolys);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
+
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else if (opts.lodEntities) {
                 // LOD: composite near + batched billboards far
                 int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
                 int tier1 = 0, tier2 = 0;
