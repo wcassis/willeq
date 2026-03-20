@@ -80,6 +80,8 @@ struct Options {
     bool directGLEntities = false; // Bypass Irrlicht, direct GL calls per entity
     bool lodEntities = false;     // LOD tiers: composite near, billboard far
     float lodTier2Dist = 80.0f;   // Distance for billboard switch
+    bool adaptiveLod = false;     // Predictive LOD: billboard excess entities
+    int entityBudget = 55;        // Max composite entities per frame
     bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Analysis modes
@@ -127,6 +129,8 @@ static void printUsage(const char* prog) {
     printf("  --composite-entities Simulate 1-draw-per-entity (composite texture)\n");
     printf("  --direct-gl          Bypass Irrlicht for entities (direct GL calls)\n");
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
+    printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
+    printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("\nAnalysis modes:\n");
@@ -174,6 +178,8 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--composite-entities") == 0) opts.compositeEntities = true;
         else if (strcmp(argv[i], "--direct-gl") == 0) opts.directGLEntities = true;
         else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
+        else if (strcmp(argv[i], "--adaptive-lod") == 0) opts.adaptiveLod = true;
+        else if (strcmp(argv[i], "--entity-budget") == 0 && i + 1 < argc) opts.entityBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
@@ -580,6 +586,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ── Configure adaptive LOD budget ──
+    data->compositeEntityBudget = opts.entityBudget;
+
     // ── Set up lighting ──
     setupLighting(*data, opts);
 
@@ -663,6 +672,24 @@ int main(int argc, char** argv) {
                 entityDrawCalls = ZoneBench::renderDirectGLEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     entityPolys);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
+
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else if (opts.adaptiveLod) {
+                // Adaptive LOD: reactive billboard swap based on frame budget
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                int tier1 = 0, tier2 = 0;
+                // Use previous frame's total time for budget tracking
+                float prevFrameMs = metrics.frames().empty() ? 0 :
+                    metrics.frames().back().totalMs;
+                entityDrawCalls = ZoneBench::renderAdaptiveLodEntities(
+                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    prevFrameMs, entityPolys, tier1, tier2);
                 int polyCount = countPolygons(drawEntries) + entityPolys;
                 int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
                 int totalStateChanges = stateChangesZone + entityDrawCalls;

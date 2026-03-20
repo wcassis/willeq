@@ -655,9 +655,17 @@ void placeEntitiesAlongPath(ZoneBenchData& data,
             data.entities[i].eqX,
             data.entities[i].eqZ + meshOffsetY,
             data.entities[i].eqY);
+
+        // Assign priority — simulate realistic mix
+        // Entity 0: current target, 1-5: group, 6-10: raid, rest: default/idle
+        if (i == 0) data.entities[i].priority = ZoneBenchData::EntityPriority::Target;
+        else if (i <= 5) data.entities[i].priority = ZoneBenchData::EntityPriority::Group;
+        else if (i <= 10) data.entities[i].priority = ZoneBenchData::EntityPriority::Raid;
+        else if (i % 5 == 0) data.entities[i].priority = ZoneBenchData::EntityPriority::Idle;
+        else data.entities[i].priority = ZoneBenchData::EntityPriority::Default;
     }
 
-    printf("  Placed %d entities along camera path\n", n);
+    printf("  Placed %d entities along camera path (1 target, 5 group, 5 raid, rest default/idle)\n", n);
 }
 
 void collectEntityDrawEntries(
@@ -1543,11 +1551,212 @@ void placeEntitiesTrain(ZoneBenchData& data, const glm::vec3& centerPos) {
             data.entities[i].eqX,
             data.entities[i].eqZ + meshOffsetY,
             data.entities[i].eqY);
+
+        // Train entities are all hostile mobs — mostly default priority
+        if (i == 0) data.entities[i].priority = ZoneBenchData::EntityPriority::Target;
+        else data.entities[i].priority = ZoneBenchData::EntityPriority::Default;
     }
 
     float extent = gridSize * spacing;
     printf("  Train: %d entities in %.0fx%.0f grid at (%.0f, %.0f, %.0f)\n",
            n, extent, extent, centerPos.x, centerPos.y, centerPos.z);
+}
+
+int renderAdaptiveLodEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    float lastFrameMs,
+    int& outEntityPolys,
+    int& outTier1Count,
+    int& outTier2Count) {
+
+    outEntityPolys = 0;
+    outTier1Count = 0;
+    outTier2Count = 0;
+    float renderDistSq = renderDistance * renderDistance;
+
+    // Collect visible entities with distance and priority
+    struct VisibleEntity {
+        int entityIdx;
+        float distSq;
+        float lodScore;  // Higher = more likely to billboard
+    };
+    std::vector<VisibleEntity> visible;
+
+    for (int i = 0; i < static_cast<int>(data.entities.size()); ++i) {
+        const auto& ent = data.entities[i];
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        // LOD score: distance / priority_weight
+        // Higher score = first to become billboard
+        float priorityWeight;
+        switch (ent.priority) {
+            case ZoneBenchData::EntityPriority::Target:          priorityWeight = 10.0f; break;
+            case ZoneBenchData::EntityPriority::Group:           priorityWeight = 8.0f; break;
+            case ZoneBenchData::EntityPriority::Raid:            priorityWeight = 6.0f; break;
+            case ZoneBenchData::EntityPriority::Guild:           priorityWeight = 5.0f; break;
+            case ZoneBenchData::EntityPriority::Friend:          priorityWeight = 4.0f; break;
+            case ZoneBenchData::EntityPriority::RecentInteract:  priorityWeight = 3.0f; break;
+            case ZoneBenchData::EntityPriority::Default:         priorityWeight = 1.0f; break;
+            case ZoneBenchData::EntityPriority::Idle:            priorityWeight = 0.5f; break;
+            default: priorityWeight = 1.0f; break;
+        }
+
+        float lodScore = std::sqrt(distSq) / priorityWeight;
+        visible.push_back({i, distSq, lodScore});
+    }
+
+    // Sort by LOD score descending — highest score = first to billboard
+    std::sort(visible.begin(), visible.end(),
+              [](const VisibleEntity& a, const VisibleEntity& b) {
+                  return a.lodScore > b.lodScore;
+              });
+
+    // Predictive budget: compute how many need to be billboarded NOW,
+    // before this frame renders, based on visible count vs budget.
+    int visibleCount = static_cast<int>(visible.size());
+    int excess = visibleCount - data.compositeEntityBudget;
+
+    int numToBillboard = 0;
+    if (excess > 0) {
+        // Aggressive: billboard 50% more than strictly needed to ensure headroom
+        numToBillboard = static_cast<int>(excess * data.aggressiveFactor);
+        numToBillboard = std::min(numToBillboard, visibleCount);
+        data.recoveryFrames = 0;
+    } else if (excess < -5 && lastFrameMs > 0) {
+        // Well under budget — gradually recover billboarded entities
+        // Only if we've been under budget for several consecutive frames
+        data.recoveryFrames++;
+    }
+    numToBillboard = std::min(numToBillboard, visibleCount);
+
+    // Camera basis for billboards
+    float fwdLen = std::sqrt(cam.dirX * cam.dirX + cam.dirY * cam.dirY + cam.dirZ * cam.dirZ);
+    float fX = cam.dirX / fwdLen, fY = cam.dirY / fwdLen;
+    float rX = fY, rY = -fX;
+    float rLen = std::sqrt(rX * rX + rY * rY);
+    if (rLen > 0.001f) { rX /= rLen; rY /= rLen; }
+
+    const float bbHalfW = 3.0f;
+    const float bbHeight = 8.0f;
+
+    // Billboard batch
+    std::vector<irr::video::S3DVertex> bbVerts;
+    std::vector<irr::u16> bbIndices;
+    irr::video::SMaterial bbMaterial;
+    bool hasBbMaterial = false;
+
+    // Composite entity buffers
+    std::vector<irr::video::S3DVertex> compositeVerts;
+    std::vector<irr::u16> compositeIndices;
+    irr::core::matrix4 identityMat;
+    int drawCalls = 0;
+
+    for (int vi = 0; vi < static_cast<int>(visible.size()); ++vi) {
+        const auto& ve = visible[vi];
+        const auto& ent = data.entities[ve.entityIdx];
+        bool isBillboard = (vi < numToBillboard);
+
+        if (isBillboard) {
+            // Billboard quad
+            if (!hasBbMaterial && ent.mesh->getMeshBufferCount() > 0) {
+                auto* buf = ent.mesh->getMeshBuffer(0);
+                if (buf) { bbMaterial = buf->getMaterial(); hasBbMaterial = true; }
+            }
+
+            if (bbVerts.size() + 4 > 65535) continue;
+            irr::u32 base = static_cast<irr::u32>(bbVerts.size());
+
+            float irrRX = rX * bbHalfW, irrRZ = rY * bbHalfW;
+            irr::video::SColor white(255, 255, 255, 255);
+
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X - irrRX, ent.position.Y,
+                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 1.0f));
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X + irrRX, ent.position.Y,
+                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 1.0f));
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X + irrRX, ent.position.Y + bbHeight,
+                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 0.0f));
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X - irrRX, ent.position.Y + bbHeight,
+                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 0.0f));
+
+            bbIndices.push_back(base + 0); bbIndices.push_back(base + 1); bbIndices.push_back(base + 2);
+            bbIndices.push_back(base + 0); bbIndices.push_back(base + 2); bbIndices.push_back(base + 3);
+
+            outTier2Count++;
+        } else {
+            // Composite entity (1 draw)
+            compositeVerts.clear();
+            compositeIndices.clear();
+            irr::video::SMaterial compositeMat;
+            bool hasMat = false;
+
+            for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+                if (!buf || buf->getVertexCount() == 0) continue;
+                if (!hasMat) { compositeMat = buf->getMaterial(); hasMat = true; }
+
+                irr::u32 baseVertex = static_cast<irr::u32>(compositeVerts.size());
+                if (baseVertex + buf->getVertexCount() > 65535) break;
+
+                const irr::video::S3DVertex* srcVerts =
+                    static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+                for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                    irr::video::S3DVertex vert = srcVerts[v];
+                    vert.Pos += ent.position;
+                    compositeVerts.push_back(vert);
+                }
+
+                const irr::u16* srcIdx = buf->getIndices();
+                for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx)
+                    compositeIndices.push_back(static_cast<irr::u16>(srcIdx[idx] + baseVertex));
+            }
+
+            if (!compositeIndices.empty() && hasMat) {
+                data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+                data.driver->setMaterial(compositeMat);
+                data.driver->drawVertexPrimitiveList(
+                    compositeVerts.data(), compositeVerts.size(),
+                    compositeIndices.data(), compositeIndices.size() / 3,
+                    irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                    irr::video::EIT_16BIT);
+                outEntityPolys += compositeIndices.size() / 3;
+                drawCalls++;
+                outTier1Count++;
+            }
+        }
+    }
+
+    // Draw all billboards in one batch
+    if (!bbIndices.empty() && hasBbMaterial) {
+        data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+        data.driver->setMaterial(bbMaterial);
+        data.driver->drawVertexPrimitiveList(
+            bbVerts.data(), bbVerts.size(),
+            bbIndices.data(), bbIndices.size() / 3,
+            irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+            irr::video::EIT_16BIT);
+        outEntityPolys += bbIndices.size() / 3;
+        drawCalls++;  // One draw for ALL billboards
+    }
+
+    return drawCalls;
 }
 
 // ============================================================================

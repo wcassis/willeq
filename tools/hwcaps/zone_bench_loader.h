@@ -82,12 +82,31 @@ struct ZoneBenchData {
     std::unique_ptr<EQT::Graphics::RaceModelLoader> raceModelLoader;
 
     // Placed entities (static, for benchmarking)
+    // Entity priority tiers (higher = more important to keep as full mesh)
+    enum class EntityPriority : uint8_t {
+        Idle = 0,           // Ambient NPCs, shopkeepers
+        Default = 1,        // Everything else
+        RecentInteract = 2, // NPCs you've interacted with recently
+        Friend = 3,         // Friends list (future)
+        Guild = 4,          // Guild members
+        Raid = 5,           // Raid members
+        Group = 6,          // Group members
+        Target = 7,         // Current target / aggro'd mobs
+    };
+
     struct PlacedEntity {
         irr::scene::IMesh* mesh = nullptr;
         irr::core::vector3df position;  // Irrlicht coords
         float eqX, eqY, eqZ;           // EQ coords (for culling)
+        EntityPriority priority = EntityPriority::Default;
     };
     std::vector<PlacedEntity> entities;
+
+    // Adaptive LOD config
+    int compositeEntityBudget = 55;        // Max composite entities per frame (configurable)
+    float aggressiveFactor = 1.5f;         // Overshoot: billboard 50% more than needed
+    int recoveryFrames = 0;                // Frames under budget before recovering one entity
+    int recoveryThreshold = 15;            // Consecutive under-budget frames to start recovery
 
     // Visibility
     std::unique_ptr<EQT::Graphics::FrustumCuller> frustumCuller;
@@ -203,6 +222,22 @@ int renderLodEntities(
 // (simulates an EQ "train" running toward the camera).
 void placeEntitiesTrain(ZoneBenchData& data,
                          const glm::vec3& centerPos);
+
+// Adaptive LOD entity rendering: dynamically swaps entities between composite
+// mesh and billboard based on frame budget. Tracks rolling frame time and
+// adjusts billboard count to maintain target FPS. Prioritizes keeping
+// important entities (target, group) as full meshes.
+// lastFrameMs: previous frame's total time (for budget tracking)
+// Returns draw call count and poly count.
+int renderAdaptiveLodEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    float lastFrameMs,
+    int& outEntityPolys,
+    int& outTier1Count,
+    int& outTier2Count);
 
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).
