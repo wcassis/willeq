@@ -77,6 +77,9 @@ struct Options {
     float entityRenderDist = 300.0f;
     bool batchEntities = false;   // Merge same-material entity buffers into single draws
     bool compositeEntities = false; // Simulate 1-draw-per-entity (pre-baked composite texture)
+    bool lodEntities = false;     // LOD tiers: composite near, billboard far
+    float lodTier2Dist = 80.0f;   // Distance for billboard switch
+    bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Analysis modes
     bool analyzePortals = false;
@@ -121,6 +124,9 @@ static void printUsage(const char* prog) {
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
     printf("  --batch-entities     Batch same-material entity parts into single draws\n");
     printf("  --composite-entities Simulate 1-draw-per-entity (composite texture)\n");
+    printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
+    printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
+    printf("  --train              Cluster entities together (train simulation)\n");
     printf("\nAnalysis modes:\n");
     printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
     printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
@@ -164,6 +170,9 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
         else if (strcmp(argv[i], "--composite-entities") == 0) opts.compositeEntities = true;
+        else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
+        else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
+        else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
         else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
@@ -555,7 +564,17 @@ int main(int argc, char** argv) {
             float t = pathLen * i / samples;
             pathPositions.push_back(camera.getPositionAt(t));
         }
-        ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
+        if (opts.trainMode) {
+            // Place train at surface position, override camera to approach path
+            glm::vec3 trainPos(surfX, surfY, surfZ);
+            ZoneBench::placeEntitiesTrain(*data, trainPos);
+            camera = ZoneBench::CameraPath();
+            camera.generateApproach(surfX, surfY, surfZ, 250.0f, 6.0f);
+            printf("Train mode: %d entities at (%.0f,%.0f,%.0f), approach from 250 units\n",
+                   opts.entityCount, surfX, surfY, surfZ);
+        } else {
+            ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
+        }
     }
 
     // ── Set up lighting ──
@@ -621,7 +640,22 @@ int main(int argc, char** argv) {
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
-            if (opts.compositeEntities) {
+            if (opts.lodEntities) {
+                // LOD: composite near + batched billboards far
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                int tier1 = 0, tier2 = 0;
+                entityDrawCalls = ZoneBench::renderLodEntities(
+                    *data, camState, opts.entityRenderDist, opts.lodTier2Dist,
+                    opts.frustumCull, entityPolys, tier1, tier2);
+                int polyCount = countPolygons(drawEntries) + entityPolys;
+                int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
+                int totalStateChanges = stateChangesZone + entityDrawCalls;
+
+                if (measuring) {
+                    metrics.endDraw(totalDraws, totalStateChanges, polyCount,
+                                   regionsVisible, regionsDrawn);
+                }
+            } else if (opts.compositeEntities) {
                 // Composite: 1 draw per entity (simulates pre-baked composite texture)
                 int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
                 entityDrawCalls = ZoneBench::renderCompositeEntities(

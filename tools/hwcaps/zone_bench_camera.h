@@ -29,6 +29,12 @@ public:
     void generateOrbit(float centerX, float centerY, float centerZ,
                        float radius, float heightOffset, int steps = 360);
 
+    // Straight-line approach toward a target point from distance.
+    // Camera starts at (targetX + distX, targetY + distY, targetZ + eyeHeight)
+    // and walks toward the target. Good for train stress tests.
+    void generateApproach(float targetX, float targetY, float targetZ,
+                          float approachDist, float eyeHeight, int steps = 300);
+
     // Get interpolated position at distance t along path (wraps).
     glm::vec3 getPositionAt(float t) const;
 

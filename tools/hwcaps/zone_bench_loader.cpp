@@ -1091,6 +1091,199 @@ int renderCompositeEntities(
     return drawCalls;
 }
 
+int renderLodEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    float billboardDist,
+    bool frustumCull,
+    int& outEntityPolys,
+    int& outTier1Count,
+    int& outTier2Count) {
+
+    outEntityPolys = 0;
+    outTier1Count = 0;
+    outTier2Count = 0;
+    float renderDistSq = renderDistance * renderDistance;
+    float bbDistSq = billboardDist * billboardDist;
+
+    // Camera basis vectors for billboard orientation (EQ Z-up)
+    float fwdLen = std::sqrt(cam.dirX * cam.dirX + cam.dirY * cam.dirY + cam.dirZ * cam.dirZ);
+    float fX = cam.dirX / fwdLen, fY = cam.dirY / fwdLen;
+    // Right vector (EQ Z-up): forward × (0,0,1)
+    float rX = fY, rY = -fX;
+    float rLen = std::sqrt(rX * rX + rY * rY);
+    if (rLen > 0.001f) { rX /= rLen; rY /= rLen; }
+
+    // Tier 1: composite entities (near)
+    std::vector<irr::video::S3DVertex> compositeVerts;
+    std::vector<irr::u16> compositeIndices;
+    irr::core::matrix4 identityMat;
+    int drawCalls = 0;
+
+    // Tier 2: billboard quads (far) — collected then drawn in one batch
+    std::vector<irr::video::S3DVertex> bbVerts;
+    std::vector<irr::u16> bbIndices;
+    irr::video::SMaterial bbMaterial;
+    bool hasBbMaterial = false;
+
+    const float bbHalfW = 3.0f;   // Billboard half-width in EQ units
+    const float bbHeight = 8.0f;  // Billboard height in EQ units
+
+    for (const auto& ent : data.entities) {
+        if (!ent.mesh) continue;
+
+        float dx = ent.eqX - cam.eqX;
+        float dy = ent.eqY - cam.eqY;
+        float dz = ent.eqZ - cam.eqZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > renderDistSq) continue;
+
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                continue;
+        }
+
+        if (distSq < bbDistSq) {
+            // Tier 1: composite entity (1 draw per entity)
+            compositeVerts.clear();
+            compositeIndices.clear();
+            irr::video::SMaterial compositeMat;
+            bool hasMat = false;
+
+            for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
+                if (!buf || buf->getVertexCount() == 0) continue;
+
+                if (!hasMat) { compositeMat = buf->getMaterial(); hasMat = true; }
+
+                irr::u32 baseVertex = static_cast<irr::u32>(compositeVerts.size());
+                if (baseVertex + buf->getVertexCount() > 65535) break;
+
+                const irr::video::S3DVertex* srcVerts =
+                    static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+                for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                    irr::video::S3DVertex vert = srcVerts[v];
+                    vert.Pos += ent.position;
+                    compositeVerts.push_back(vert);
+                }
+
+                const irr::u16* srcIdx = buf->getIndices();
+                for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx)
+                    compositeIndices.push_back(static_cast<irr::u16>(srcIdx[idx] + baseVertex));
+            }
+
+            if (!compositeIndices.empty() && hasMat) {
+                data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+                data.driver->setMaterial(compositeMat);
+                data.driver->drawVertexPrimitiveList(
+                    compositeVerts.data(), compositeVerts.size(),
+                    compositeIndices.data(), compositeIndices.size() / 3,
+                    irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                    irr::video::EIT_16BIT);
+                outEntityPolys += compositeIndices.size() / 3;
+                drawCalls++;
+                outTier1Count++;
+            }
+        } else {
+            // Tier 2: billboard quad
+            // Grab material from first buffer if we don't have one yet
+            if (!hasBbMaterial && ent.mesh->getMeshBufferCount() > 0) {
+                auto* buf = ent.mesh->getMeshBuffer(0);
+                if (buf) { bbMaterial = buf->getMaterial(); hasBbMaterial = true; }
+            }
+
+            // Check 16-bit index overflow
+            if (bbVerts.size() + 4 > 65535) continue;
+
+            irr::u32 base = static_cast<irr::u32>(bbVerts.size());
+
+            // Billboard corners in Irrlicht coords (Y-up)
+            // Entity position is already in Irrlicht coords
+            // Right vector: EQ (rX, rY, 0) -> Irrlicht (rX, 0, rY)
+            float irrRX = rX * bbHalfW, irrRZ = rY * bbHalfW;
+
+            irr::video::SColor white(255, 255, 255, 255);
+            // Bottom-left
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X - irrRX, ent.position.Y,
+                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 1.0f));
+            // Bottom-right
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X + irrRX, ent.position.Y,
+                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 1.0f));
+            // Top-right
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X + irrRX, ent.position.Y + bbHeight,
+                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 0.0f));
+            // Top-left
+            bbVerts.push_back(irr::video::S3DVertex(
+                ent.position.X - irrRX, ent.position.Y + bbHeight,
+                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 0.0f));
+
+            bbIndices.push_back(base + 0);
+            bbIndices.push_back(base + 1);
+            bbIndices.push_back(base + 2);
+            bbIndices.push_back(base + 0);
+            bbIndices.push_back(base + 2);
+            bbIndices.push_back(base + 3);
+
+            outTier2Count++;
+        }
+    }
+
+    // Draw all billboards in one batch
+    if (!bbIndices.empty() && hasBbMaterial) {
+        data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
+        data.driver->setMaterial(bbMaterial);
+        data.driver->drawVertexPrimitiveList(
+            bbVerts.data(), bbVerts.size(),
+            bbIndices.data(), bbIndices.size() / 3,
+            irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+            irr::video::EIT_16BIT);
+        outEntityPolys += bbIndices.size() / 3;
+        drawCalls++;  // One draw for ALL billboards
+    }
+
+    return drawCalls;
+}
+
+void placeEntitiesTrain(ZoneBenchData& data, const glm::vec3& centerPos) {
+    if (data.entities.empty()) return;
+
+    int n = static_cast<int>(data.entities.size());
+    // Pack entities in a tight grid around the center
+    // ~3 units apart (shoulder-to-shoulder mob pack)
+    float spacing = 3.0f;
+    int gridSize = static_cast<int>(std::ceil(std::sqrt(static_cast<float>(n))));
+
+    for (int i = 0; i < n; ++i) {
+        int gx = i % gridSize;
+        int gy = i / gridSize;
+        float offsetX = (gx - gridSize / 2) * spacing;
+        float offsetY = (gy - gridSize / 2) * spacing;
+
+        data.entities[i].eqX = centerPos.x + offsetX;
+        data.entities[i].eqY = centerPos.y + offsetY;
+        data.entities[i].eqZ = centerPos.z - 6.0f;  // Remove eye height
+
+        float meshOffsetY = 0;
+        if (data.entities[i].mesh) {
+            auto bb = data.entities[i].mesh->getBoundingBox();
+            meshOffsetY = -bb.MinEdge.Y;
+        }
+
+        data.entities[i].position = irr::core::vector3df(
+            data.entities[i].eqX,
+            data.entities[i].eqZ + meshOffsetY,
+            data.entities[i].eqY);
+    }
+
+    float extent = gridSize * spacing;
+    printf("  Train: %d entities in %.0fx%.0f grid at (%.0f, %.0f, %.0f)\n",
+           n, extent, extent, centerPos.x, centerPos.y, centerPos.z);
+}
+
 // ============================================================================
 // Occluder-based portal detection
 // ============================================================================

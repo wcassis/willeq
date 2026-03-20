@@ -136,6 +136,48 @@ void CameraPath::generateOrbit(float centerX, float centerY, float centerZ,
            waypoints_.size(), radius, totalLength());
 }
 
+void CameraPath::generateApproach(float targetX, float targetY, float targetZ,
+                                    float approachDist, float eyeHeight, int steps) {
+    waypoints_.clear();
+    float cumDist = 0;
+
+    // Walk from far away straight toward the target
+    for (int i = 0; i <= steps; ++i) {
+        float t = static_cast<float>(i) / steps;
+        // Start far, end at target
+        float x = targetX + (1.0f - t) * approachDist;
+        float y = targetY;
+        float z = targetZ + eyeHeight;
+
+        glm::vec3 pos(x, y, z);
+        if (!waypoints_.empty()) {
+            float dx = pos.x - waypoints_.back().pos.x;
+            float dy = pos.y - waypoints_.back().pos.y;
+            float dz = pos.z - waypoints_.back().pos.z;
+            cumDist += std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        waypoints_.push_back({pos, cumDist});
+    }
+
+    // Walk back out (so the path loops)
+    for (int i = steps - 1; i >= 0; --i) {
+        float t = static_cast<float>(i) / steps;
+        float x = targetX + (1.0f - t) * approachDist;
+        float y = targetY;
+        float z = targetZ + eyeHeight;
+
+        glm::vec3 pos(x, y, z);
+        float dx = pos.x - waypoints_.back().pos.x;
+        float dy = pos.y - waypoints_.back().pos.y;
+        float dz = pos.z - waypoints_.back().pos.z;
+        cumDist += std::sqrt(dx * dx + dy * dy + dz * dz);
+        waypoints_.push_back({pos, cumDist});
+    }
+
+    printf("  Approach path: %zu waypoints, %.0f EQ units, target=(%.0f,%.0f,%.0f)\n",
+           waypoints_.size(), totalLength(), targetX, targetY, targetZ);
+}
+
 size_t CameraPath::findSegment(float t) const {
     // Binary search for segment containing t
     size_t lo = 0, hi = waypoints_.size() - 1;

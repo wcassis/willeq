@@ -167,6 +167,24 @@ int renderCompositeEntities(
     bool frustumCull,
     int& outEntityPolys);
 
+// LOD entity rendering: composite meshes for near entities, batched billboard
+// quads for far entities. One draw for all billboards.
+// Returns draw call count and poly count.
+int renderLodEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    float billboardDist,
+    bool frustumCull,
+    int& outEntityPolys,
+    int& outTier1Count,
+    int& outTier2Count);
+
+// Place entities in a tight cluster at a fixed position along the path
+// (simulates an EQ "train" running toward the camera).
+void placeEntitiesTrain(ZoneBenchData& data,
+                         const glm::vec3& centerPos);
+
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).
 // Outputs a report to stdout and optionally to a CSV file.
