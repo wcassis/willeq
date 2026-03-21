@@ -223,13 +223,10 @@ void AudioManager::playSound(uint32_t soundId, const glm::vec3& position) {
     }
 
     std::string filename = "unknown";
-    if (useDbForSounds_) {
-        auto* db = EQT::WilleqDatabase::globalInstance();
-        if (db) filename = db->getSoundAsset(soundId);
-        if (filename.empty()) filename = "unknown";
-    } else {
-        auto it = soundIdMap_.find(soundId);
-        if (it != soundIdMap_.end()) filename = it->second;
+    auto* db = EQT::WilleqDatabase::globalInstance();
+    if (db) {
+        std::string result = db->getSoundAsset(soundId);
+        if (!result.empty()) filename = result;
     }
 
     // Ensure sound is loaded into SfxManager cache
@@ -621,22 +618,12 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::getSoundById(uint32_t soundId) {
-    // Try on-demand SQLite lookup first
-    if (useDbForSounds_) {
-        auto* db = EQT::WilleqDatabase::globalInstance();
-        if (db) {
-            std::string filename = db->getSoundAsset(soundId);
-            if (!filename.empty()) return loadSound(filename);
-        }
-        return nullptr;
+    auto* db = EQT::WilleqDatabase::globalInstance();
+    if (db) {
+        std::string filename = db->getSoundAsset(soundId);
+        if (!filename.empty()) return loadSound(filename);
     }
-
-    // Legacy: in-memory map
-    auto it = soundIdMap_.find(soundId);
-    if (it == soundIdMap_.end()) {
-        return nullptr;
-    }
-    return loadSound(it->second);
+    return nullptr;
 }
 
 std::string AudioManager::findZoneMusic(const std::string& zoneName) {
@@ -670,36 +657,10 @@ std::string AudioManager::findZoneMusic(const std::string& zoneName) {
 }
 
 void AudioManager::loadSoundAssets() {
-    // Try SQLite first
-    auto* db = EQT::WilleqDatabase::globalInstance();
-    if (db) {
-        // On-demand: don't pre-load the map. Individual lookups will
-        // go through getSoundFilename() which queries the database.
-        soundIdMap_.clear();
-        useDbForSounds_ = true;
-        LOG_INFO(MOD_AUDIO, "Sound assets using on-demand SQLite lookup");
-        return;
-    }
-
-    // Legacy: parse SoundAssets.txt
-    std::string assetsPath = eqPath_ + "/SoundAssets.txt";
-    if (!std::filesystem::exists(assetsPath)) {
-        LOG_WARN(MOD_AUDIO, "SoundAssets.txt not found at: {}", assetsPath);
-        return;
-    }
-
-    SoundAssets assets;
-    if (!assets.loadFromFile(assetsPath)) {
-        LOG_WARN(MOD_AUDIO, "Failed to parse SoundAssets.txt");
-        return;
-    }
-
+    // Sound assets accessed on-demand via SQLite
     soundIdMap_.clear();
-    assets.forEach([this](uint32_t id, const std::string& filename, float /*volume*/) {
-        soundIdMap_[id] = filename;
-    });
-
-    LOG_INFO(MOD_AUDIO, "Loaded {} sound asset mappings (legacy)", soundIdMap_.size());
+    useDbForSounds_ = true;
+    LOG_INFO(MOD_AUDIO, "Sound assets using on-demand SQLite lookup");
 }
 
 void AudioManager::preloadSound(uint32_t soundId) {

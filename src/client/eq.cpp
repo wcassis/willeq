@@ -603,36 +603,14 @@ std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::
 }
 
 bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
-	// Try SQLite first
-	if (EQT::WilleqDatabase::globalInstance()) {
-		if (m_string_db.initFromDatabase()) {
-			LOG_INFO(MOD_MAIN, "Loaded strings from SQLite ({} eqstr, {} dbstr)",
-					 m_string_db.getEqStrCount(), m_string_db.getDbStrCount());
-			return true;
-		}
+	(void)eqClientPath;
+	if (!m_string_db.initFromDatabase()) {
+		LOG_ERROR(MOD_MAIN, "Failed to initialize string database from SQLite");
+		return false;
 	}
-
-	// Legacy: load from text files
-	std::string eqstr_path = eqClientPath + "/eqstr_us.txt";
-	std::string dbstr_path = eqClientPath + "/dbstr_us.txt";
-
-	bool success = true;
-
-	if (m_string_db.loadEqStrFile(eqstr_path)) {
-		LOG_INFO(MOD_MAIN, "Loaded {} strings from eqstr_us.txt", m_string_db.getEqStrCount());
-	} else {
-		LOG_WARN(MOD_MAIN, "Failed to load eqstr_us.txt from {}", eqstr_path);
-		success = false;
-	}
-
-	if (m_string_db.loadDbStrFile(dbstr_path)) {
-		LOG_INFO(MOD_MAIN, "Loaded {} strings from dbstr_us.txt", m_string_db.getDbStrCount());
-	} else {
-		LOG_WARN(MOD_MAIN, "Failed to load dbstr_us.txt from {}", dbstr_path);
-		success = false;
-	}
-
-	return success;
+	LOG_INFO(MOD_MAIN, "Loaded strings from SQLite ({} eqstr, {} dbstr)",
+			 m_string_db.getEqStrCount(), m_string_db.getDbStrCount());
+	return true;
 }
 
 std::string EverQuest::GetChatTypeName(uint32_t chat_type) {
@@ -1063,19 +1041,11 @@ void EverQuest::OpenDatabase(const std::string& dbPath) {
 
 bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 {
-	// S04: Initialize spell database — try SQLite first, fall back to file
-	auto* db = EQT::WilleqDatabase::globalInstance();
-	if (db) {
-		if (!m_spell_manager->initialize(db)) {
-			return false;
-		}
-		LOG_DEBUG(MOD_SPELL, "Spell database loaded from SQLite");
-	} else {
-		if (!m_spell_manager->initialize(eqClientPath)) {
-			return false;
-		}
-		LOG_DEBUG(MOD_SPELL, "Spell database loaded from spells_us.txt (legacy)");
+	// S04: Initialize spell database from SQLite
+	if (!m_spell_manager->initialize(EQT::WilleqDatabase::globalInstance())) {
+		return false;
 	}
+	LOG_DEBUG(MOD_SPELL, "Spell database loaded from SQLite");
 
 	// S04: Create buff manager (depends on spell DB)
 	m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());

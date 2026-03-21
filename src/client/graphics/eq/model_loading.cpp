@@ -93,55 +93,10 @@ bool RaceModelLoader::loadArmorTextures() {
         return true;
     }
 
-    // With WilleqDatabase, no pre-loading needed — getArmorTexture() queries on demand.
-    if (EQT::WilleqDatabase::globalInstance()) {
-        armorTexturesLoaded_ = true;
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Armor textures using on-demand SQLite lookup (no index needed)");
-        return true;
-    }
-
-    // Legacy: build index by opening each archive (needed if no database)
-    if (clientPath_.empty()) {
-        LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: No client path set");
-        return false;
-    }
-
-    int loadedCount = 0;
-    for (int num = 17; num <= 23; ++num) {
-        std::string archivePath = clientPath_ + "global" + std::to_string(num) + "_amr.s3d";
-
-        PfsArchive archive;
-        if (!archive.open(archivePath)) {
-            continue;
-        }
-
-        int texCount = 0;
-        auto indexExtension = [&](const std::string& ext) {
-            std::vector<std::string> files;
-            archive.getFilenames(ext, files);
-            for (const auto& texName : files) {
-                std::string lowerName = texName;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                              [](unsigned char c) { return std::tolower(c); });
-                if (armorTextureIndex_.find(lowerName) == armorTextureIndex_.end()) {
-                    armorTextureIndex_[lowerName] = {archivePath, texName};
-                    texCount++;
-                }
-            }
-        };
-
-        indexExtension(".bmp");
-        indexExtension(".dds");
-
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Indexed {} armor textures from global{}_amr.s3d",
-                 texCount, num);
-        loadedCount++;
-    }
-
+    // Armor textures accessed on-demand via SQLite — no index pre-loading needed
     armorTexturesLoaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Total armor textures indexed: {} (legacy)",
-             armorTextureIndex_.size());
-    return armorTexturesLoaded_;
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Armor textures using on-demand SQLite lookup");
+    return true;
 }
 
 std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string& lowerName) {
@@ -153,63 +108,32 @@ std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string&
 
     // On-demand SQLite lookup — find which archive contains this texture
     auto* db = EQT::WilleqDatabase::globalInstance();
-    if (db) {
-        auto loc = db->getAssetLocation(lowerName);
-        if (!loc.found) return nullptr;
+    if (!db) return nullptr;
 
-        // Open the specific archive and extract the texture
-        std::string archivePath = clientPath_ + loc.archive;
-        PfsArchive archive;
-        if (!archive.open(archivePath)) {
-            LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to open archive for armor texture: {}", archivePath);
-            return nullptr;
-        }
+    auto loc = db->getAssetLocation(lowerName);
+    if (!loc.found) return nullptr;
 
-        std::vector<char> data;
-        if (!archive.get(lowerName, data)) {
-            LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to extract armor texture: {} from {}", lowerName, archivePath);
-            return nullptr;
-        }
-
-        auto tex = std::make_shared<TextureInfo>();
-        tex->name = lowerName;
-        tex->data = std::move(data);
-        armorTextureCache_[lowerName] = tex;
-
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand (SQLite): {} ({} bytes from {})",
-                  lowerName, tex->data.size(), loc.archive);
-        return tex;
-    }
-
-    // Look up in index
-    auto indexIt = armorTextureIndex_.find(lowerName);
-    if (indexIt == armorTextureIndex_.end()) {
-        return nullptr;
-    }
-
-    // Extract from archive on demand
-    const auto& ref = indexIt->second;
+    // Open the specific archive and extract the texture
+    std::string archivePath = clientPath_ + loc.archive;
     PfsArchive archive;
-    if (!archive.open(ref.archivePath)) {
-        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to open archive for armor texture: {}", ref.archivePath);
+    if (!archive.open(archivePath)) {
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to open archive for armor texture: {}", archivePath);
         return nullptr;
     }
 
     std::vector<char> data;
-    if (!archive.get(ref.entryName, data)) {
-        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to extract armor texture: {} from {}", ref.entryName, ref.archivePath);
+    if (!archive.get(lowerName, data)) {
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to extract armor texture: {} from {}", lowerName, archivePath);
         return nullptr;
     }
 
     auto tex = std::make_shared<TextureInfo>();
-    tex->name = ref.entryName;
+    tex->name = lowerName;
     tex->data = std::move(data);
-
     armorTextureCache_[lowerName] = tex;
 
-    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes)",
-              lowerName, tex->data.size());
-
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes from {})",
+              lowerName, tex->data.size(), loc.archive);
     return tex;
 }
 

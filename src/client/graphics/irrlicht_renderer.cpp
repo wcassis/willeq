@@ -538,13 +538,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
     }
 
-    // Pre-load item-to-model mapping — skip if SQLite handles on-demand lookups
-    if (itemToModelMap_.empty() && !EQT::WilleqDatabase::globalInstance()) {
-        LOG_TRACE(MOD_GRAPHICS, "Loading item model mappings from data/item_models.json...");
-        if (EquipmentModelLoader::loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) < 0) {
-            LOG_FATAL(MOD_GRAPHICS, "Failed to load item model mappings: data/item_models.json");
-        }
-    }
+    // Item model mappings handled on-demand via SQLite — no pre-loading needed
 
     // Choose driver type from constrained config backend
     irr::video::E_DRIVER_TYPE driverType;
@@ -4019,15 +4013,10 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (computations && computations->equipmentIndex &&
             computations->equipmentIndex->loaded && entityRenderer_) {
             if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
-                // Pass item model map only if not using SQLite (on-demand lookups)
-                std::map<uint32_t, int> itemMap;
-                if (!EQT::WilleqDatabase::globalInstance()) {
-                    itemMap = itemToModelMap_;
-                }
                 eml->adoptIndex(
                     std::move(computations->equipmentIndex->modelIndex),
                     std::move(computations->equipmentIndex->textureIndex),
-                    std::move(itemMap));
+                    std::map<uint32_t, int>());  // Item models via on-demand SQLite
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index installed on EquipmentModelLoader");
             } else {
                 LOG_WARN(MOD_GRAPHICS, "SEQ Step5: equipment index built but EquipmentModelLoader is null — cannot install");
