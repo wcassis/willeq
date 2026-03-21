@@ -17,7 +17,6 @@ namespace EQT::Graphics {
     class WldLoader;
     struct ZoneGeometry;
     class ZoneShaderManager;
-    class TextureAtlas;
     class ConstrainedTextureCache;
     class FrustumCuller;
     class PortalSystem;
@@ -32,11 +31,10 @@ namespace ZoneBench {
 struct BenchConfig {
     std::string zoneName = "qeynos2";
     std::string eqPath;          // Path to EQ client directory
-    std::string atlasPath;       // Path to atlas directory (optional)
+    std::string eqe1Path;        // Path to EQE1 texture directory (optional)
     int width = 800;
     int height = 600;
     bool useDRM = true;
-    bool useAtlas = true;        // Use texture atlas (can be toggled for A/B)
     int entityCount = 0;         // Number of static entities to place in scene
 };
 
@@ -76,7 +74,6 @@ struct ZoneBenchData {
     std::unique_ptr<EQT::Graphics::ZoneShaderManager> zoneShader;
 
     // Texture systems
-    std::shared_ptr<EQT::Graphics::TextureAtlas> zoneAtlas;
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache;
 
     // Entity models
@@ -117,11 +114,6 @@ struct ZoneBenchData {
     irr::s32 materialPerPixelAlpha = -1;   // Per-pixel alpha test material type
     irr::s32 materialLWSolid = -1;         // Lightweight (per-vertex) shader material type
     irr::s32 materialLWAlpha = -1;         // Lightweight alpha test material type
-    // Atlas variants
-    irr::s32 materialPerPixelAtlasSolid = -1;
-    irr::s32 materialPerPixelAtlasAlpha = -1;
-    irr::s32 materialLWAtlasSolid = -1;
-    irr::s32 materialLWAtlasAlpha = -1;
 
     // Visibility
     std::unique_ptr<EQT::Graphics::FrustumCuller> frustumCuller;

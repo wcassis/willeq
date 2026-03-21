@@ -20,9 +20,6 @@
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/eq/race_model_loader.h"
 
-#ifdef EQT_HAS_TEXTURE_ATLAS
-#include "client/graphics/texture_atlas.h"
-#endif
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
@@ -136,7 +133,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     // ── Step 3: Set up constrained renderer config (OrangePi preset) ──
     auto constrainedConfig = ConstrainedRendererConfig::fromPreset(
         ConstrainedRenderingPreset::OrangePi);
-    constrainedConfig.atlasPath = config.atlasPath;
+    constrainedConfig.eqe1Path = config.eqe1Path;
 
     // ── Step 4: Set up texture cache ──
     data->textureCache = std::make_unique<ConstrainedTextureCache>(constrainedConfig);
@@ -161,45 +158,6 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         data->zoneShader->setPerPixelPlayerLight(true);
     }
 
-    // ── Step 6: Load texture atlas ──
-#ifdef EQT_HAS_TEXTURE_ATLAS
-    if (config.useAtlas && !config.atlasPath.empty()) {
-        auto atlasStart = std::chrono::steady_clock::now();
-        std::string atlasFile = config.atlasPath;
-        if (!atlasFile.empty() && atlasFile.back() != '/') atlasFile += '/';
-        atlasFile += config.zoneName + ".atlas";
-
-        auto preload = TextureAtlas::preloadFromFile(atlasFile);
-        if (preload.valid) {
-            data->zoneAtlas = std::make_shared<TextureAtlas>();
-            int pageIdx = 0;
-            bool done = false;
-            while (!done) {
-                done = data->zoneAtlas->uploadPreloadedPage(preload, pageIdx);
-                ++pageIdx;
-            }
-            data->zoneAtlas->finalizePreload(preload);
-
-            // Set atlas page textures on shader
-            if (data->zoneShader && data->zoneShader->isAtlasAvailable()) {
-                std::vector<uint32_t> pageTextures;
-                for (uint16_t p = 0; p < data->zoneAtlas->getPageCount(); ++p)
-                    pageTextures.push_back(data->zoneAtlas->getPageTexture(p));
-                data->zoneShader->setAtlasPageTextures(pageTextures);
-            }
-
-            auto atlasEnd = std::chrono::steady_clock::now();
-            printf("  Atlas loaded: %d pages, %d tiles (%.0f ms)\n",
-                   data->zoneAtlas->getPageCount(),
-                   data->zoneAtlas->getTileCount(),
-                   std::chrono::duration<double, std::milli>(atlasEnd - atlasStart).count());
-        } else {
-            printf("  Atlas not found or invalid: %s (falling back to per-texture)\n",
-                   atlasFile.c_str());
-        }
-    }
-#endif
-
     // ── Step 7: Build per-region meshes ──
     auto meshStart = std::chrono::steady_clock::now();
 
@@ -211,16 +169,6 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             data->zoneShader->getActiveSolid(),
             data->zoneShader->getActiveAlphaTest());
     }
-#ifdef EQT_HAS_TEXTURE_ATLAS
-    if (data->zoneShader && data->zoneShader->isAtlasAvailable()) {
-        builder.setAtlasShaderMaterialTypes(
-            data->zoneShader->getActiveAtlasSolid(),
-            data->zoneShader->getActiveAtlasAlpha());
-    }
-#endif
-
-    bool useAtlas = data->zoneAtlas && data->zoneAtlas->isLoaded() &&
-                    data->zoneShader && data->zoneShader->isAtlasAvailable();
 
     auto wldLoader = data->zone->wldLoader;
     size_t totalRegions = bspTree->regions.size();
@@ -240,14 +188,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
         irr::scene::IMesh* mesh = nullptr;
         if (!data->zone->textures.empty() && !geom->textureNames().empty()) {
-#ifdef EQT_HAS_TEXTURE_ATLAS
-            if (useAtlas) {
-                mesh = builder.buildAtlasedMesh(*geom, data->zone->textures, *data->zoneAtlas);
-            } else
-#endif
-            {
-                mesh = builder.buildTexturedMesh(*geom, data->zone->textures);
-            }
+            mesh = builder.buildTexturedMesh(*geom, data->zone->textures);
         } else {
             mesh = builder.buildColoredMesh(*geom);
         }
@@ -623,10 +564,6 @@ void collectDrawEntries(
                     matOverride = data.materialLWSolid;
                 else if (origType == data.materialPerPixelAlpha)
                     matOverride = data.materialLWAlpha;
-                else if (origType == data.materialPerPixelAtlasSolid)
-                    matOverride = data.materialLWAtlasSolid;
-                else if (origType == data.materialPerPixelAtlasAlpha)
-                    matOverride = data.materialLWAtlasAlpha;
             }
 
             uint32_t effectiveMatType = (matOverride >= 0) ?

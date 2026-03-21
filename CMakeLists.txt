@@ -1285,6 +1285,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp

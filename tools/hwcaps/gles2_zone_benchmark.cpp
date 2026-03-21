@@ -6,7 +6,7 @@
 //
 // Usage:
 //   ./gles2_zone_benchmark --zone qeynos2 --eq-path /path/to/EQ \
-//       --atlas-path /path/to/atlas --drm --frames 300 --csv results.csv
+//       --eqe1-path /path/to/eqe1 --drm --frames 300 --csv results.csv
 //
 // See --help for full options.
 
@@ -43,7 +43,7 @@ struct Options {
     // Zone
     std::string zoneName = "qeynos2";
     std::string eqPath;
-    std::string atlasPath;
+    std::string eqe1Path;
     std::string navmeshPath;
 
     // Display
@@ -66,7 +66,6 @@ struct Options {
     bool frustumCull = true;
     bool occlusionCull = false;   // Software occlusion culling (off by default, enable with --occlusion-cull)
     bool frontToBack = true;
-    bool useAtlas = true;
     bool depthTest = true;
     int maxDraws = 0;         // 0 = unlimited
     int maxPolys = 0;         // 0 = unlimited
@@ -101,7 +100,7 @@ static void printUsage(const char* prog) {
     printf("Zone options:\n");
     printf("  --zone NAME       Zone name (default: qeynos2)\n");
     printf("  --eq-path PATH    Path to EQ client directory (required)\n");
-    printf("  --atlas-path PATH Path to atlas directory\n");
+    printf("  --eqe1-path PATH  Path to EQE1 texture directory\n");
     printf("  --navmesh-path P  Path to navmesh directory\n");
     printf("\nDisplay options:\n");
     printf("  --drm             Use DRM/KMS framebuffer\n");
@@ -120,7 +119,6 @@ static void printUsage(const char* prog) {
     printf("  --no-frustum-cull    Disable frustum culling\n");
     printf("  --occlusion-cull     Enable software occlusion culling\n");
     printf("  --no-front-to-back   Disable distance sorting\n");
-    printf("  --no-atlas           Use per-texture meshes instead of atlas\n");
     printf("  --no-depth-test      Disable GL depth test\n");
     printf("  --max-draws N        Cap draw calls per frame\n");
     printf("  --max-polys N        Cap polygons per frame\n");
@@ -155,7 +153,7 @@ static Options parseArgs(int argc, char** argv) {
         }
         else if (strcmp(argv[i], "--zone") == 0 && i + 1 < argc) opts.zoneName = argv[++i];
         else if (strcmp(argv[i], "--eq-path") == 0 && i + 1 < argc) opts.eqPath = argv[++i];
-        else if (strcmp(argv[i], "--atlas-path") == 0 && i + 1 < argc) opts.atlasPath = argv[++i];
+        else if (strcmp(argv[i], "--eqe1-path") == 0 && i + 1 < argc) opts.eqe1Path = argv[++i];
         else if (strcmp(argv[i], "--navmesh-path") == 0 && i + 1 < argc) opts.navmeshPath = argv[++i];
         else if (strcmp(argv[i], "--drm") == 0) opts.useDRM = true;
         else if (strcmp(argv[i], "--x11") == 0) opts.forceX11 = true;
@@ -173,7 +171,6 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--no-frustum-cull") == 0) opts.frustumCull = false;
         else if (strcmp(argv[i], "--occlusion-cull") == 0) opts.occlusionCull = true;
         else if (strcmp(argv[i], "--no-front-to-back") == 0) opts.frontToBack = false;
-        else if (strcmp(argv[i], "--no-atlas") == 0) opts.useAtlas = false;
         else if (strcmp(argv[i], "--no-depth-test") == 0) opts.depthTest = false;
         else if (strcmp(argv[i], "--max-draws") == 0 && i + 1 < argc) opts.maxDraws = atoi(argv[++i]);
         else if (strcmp(argv[i], "--max-polys") == 0 && i + 1 < argc) opts.maxPolys = atoi(argv[++i]);
@@ -513,9 +510,9 @@ int main(int argc, char** argv) {
     printf("Zone: %s, Resolution: %dx%d, Frames: %d\n",
            opts.zoneName.c_str(), opts.width, opts.height, opts.frames);
     printf("Toggles: materialSort=%d portalCull=%d frustumCull=%d occlusionCull=%d "
-           "frontToBack=%d atlas=%d depthTest=%d entities=%d\n",
+           "frontToBack=%d depthTest=%d entities=%d\n",
            opts.materialSort, opts.portalCull, opts.frustumCull, opts.occlusionCull,
-           opts.frontToBack, opts.useAtlas, opts.depthTest, opts.entityCount);
+           opts.frontToBack, opts.depthTest, opts.entityCount);
     if (opts.maxDraws > 0) printf("  maxDraws=%d\n", opts.maxDraws);
     if (opts.maxPolys > 0) printf("  maxPolys=%d\n", opts.maxPolys);
     printf("\n");
@@ -524,11 +521,10 @@ int main(int argc, char** argv) {
     ZoneBench::BenchConfig benchConfig;
     benchConfig.zoneName = opts.zoneName;
     benchConfig.eqPath = opts.eqPath;
-    benchConfig.atlasPath = opts.atlasPath;
+    benchConfig.eqe1Path = opts.eqe1Path;
     benchConfig.width = opts.width;
     benchConfig.height = opts.height;
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
-    benchConfig.useAtlas = opts.useAtlas;
     benchConfig.entityCount = opts.entityCount;
 
     auto data = ZoneBench::loadZone(benchConfig);
@@ -616,10 +612,6 @@ int main(int argc, char** argv) {
         data->materialPerPixelAlpha = data->zoneShader->getMaterialTypeAlphaTest();
         data->materialLWSolid = data->zoneShader->getMaterialTypeLWSolid();
         data->materialLWAlpha = data->zoneShader->getMaterialTypeLWAlphaTest();
-        data->materialPerPixelAtlasSolid = data->zoneShader->getMaterialTypeAtlasSolid();
-        data->materialPerPixelAtlasAlpha = data->zoneShader->getMaterialTypeAtlasAlpha();
-        data->materialLWAtlasSolid = data->zoneShader->getMaterialTypeLWAtlasSolid();
-        data->materialLWAtlasAlpha = data->zoneShader->getMaterialTypeLWAtlasAlpha();
         if (opts.adaptiveLighting) {
             printf("Adaptive lighting: entity PP budget=%d, zone PP budget=%d\n",
                    opts.perPixelBudget, opts.perPixelZoneBudget);
