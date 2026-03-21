@@ -1042,7 +1042,7 @@ void EverQuest::OpenDatabase(const std::string& dbPath) {
 bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 {
 	// S04: Initialize spell database from SQLite
-	if (!m_spell_manager->initialize(EQT::WilleqDatabase::globalInstance())) {
+	if (!m_spell_manager->initialize()) {
 		return false;
 	}
 	LOG_DEBUG(MOD_SPELL, "Spell database loaded from SQLite");

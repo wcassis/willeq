@@ -37,23 +37,8 @@ SpellManager::~SpellManager() = default;
 // Initialization
 // ============================================================================
 
-bool SpellManager::initialize(const std::string& eq_client_path)
+bool SpellManager::initialize()
 {
-    std::string spell_file = eq_client_path + "/spells_us.txt";
-
-    if (!m_spell_db.loadFromFile(spell_file)) {
-        LOG_ERROR(MOD_SPELL, "Failed to load spell database: {}", m_spell_db.getLoadError());
-        return false;
-    }
-
-    LOG_INFO(MOD_SPELL, "Loaded {} spells from database (legacy file)", m_spell_db.getSpellCount());
-    m_initialized = true;
-    return true;
-}
-
-bool SpellManager::initialize(EQT::WilleqDatabase* db)
-{
-    (void)db;  // Uses global instance now
     if (!m_spell_db.initFromDatabase()) {
         LOG_ERROR(MOD_SPELL, "Failed to initialize spell database from SQLite: {}",
                   m_spell_db.getLoadError());
