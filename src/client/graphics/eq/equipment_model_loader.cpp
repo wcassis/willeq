@@ -1,4 +1,5 @@
 #include "client/graphics/eq/equipment_model_loader.h"
+#include "client/willeq_database.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
@@ -68,6 +69,13 @@ int EquipmentModelLoader::loadItemModelMapping(const std::string& jsonPath) {
 }
 
 int EquipmentModelLoader::getModelIdForItem(uint32_t databaseItemId) const {
+    // On-demand SQLite lookup
+    auto* db = EQT::WilleqDatabase::globalInstance();
+    if (db) {
+        return db->getItemModel(databaseItemId);
+    }
+
+    // Legacy: in-memory map
     auto it = itemToModelMap_.find(databaseItemId);
     if (it != itemToModelMap_.end()) {
         return it->second;
@@ -105,9 +113,12 @@ void EquipmentModelLoader::ensureIndexLoaded() {
                  equipmentModelIndex_.size(), textureIndex_.size());
     }
 
-    // Load item-to-model mapping (file validated at startup by S03)
-    if (loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) >= 0) {
-        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: loaded {} item-to-model mappings",
+    // Load item-to-model mapping — skip if SQLite handles on-demand lookups
+    if (EQT::WilleqDatabase::globalInstance()) {
+        mappingLoaded_ = true;
+        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: item model mapping via on-demand SQLite");
+    } else if (loadItemModelMappingStatic("data/item_models.json", itemToModelMap_) >= 0) {
+        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: loaded {} item-to-model mappings (legacy)",
                  itemToModelMap_.size());
         mappingLoaded_ = true;
     } else {
