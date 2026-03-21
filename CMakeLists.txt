@@ -534,6 +534,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp
+        # SQLite database (required by spell_database, race_codes, equipment_model_loader)
+        src/client/willeq_database.cpp
+        third_party/sqlite3.c
         # Spell test mode dependencies
         src/client/spell/spell_database.cpp
         src/client/graphics/spell_visual_fx.cpp
@@ -564,10 +567,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/third_party
         ${IRRLICHT_INCLUDE_DIR}
         ${ZLIB_INCLUDE_DIRS}
         ${GLM_INCLUDE_DIR}
     )
+    TARGET_COMPILE_DEFINITIONS(model_viewer PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
     IF(APPLE)
         TARGET_LINK_LIBRARIES(model_viewer
             ${IRRLICHT_LIBRARY}
@@ -1201,6 +1206,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp
+        src/client/willeq_database.cpp
+        third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
     )
@@ -1215,12 +1222,13 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/third_party
         ${ZLIB_INCLUDE_DIRS}
         ${IRRLICHT_INCLUDE_DIR}
         ${JSONCPP_INCLUDE_DIRS}
         ${GLM_INCLUDE_DIR}
     )
-    TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_TEXTURE_ATLAS SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_DRM)
         IF(LIBDRM_INCLUDE_DIR)

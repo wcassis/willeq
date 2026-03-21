@@ -271,11 +271,12 @@ void rebuildSpellTestList() {
     auto pc = static_cast<EQ::PlayerClass>(spellTestClassIndex);
     auto cat = static_cast<SpellTestCategory>(spellTestCategoryIndex);
 
-    // Get all spells for this class at level 60
-    auto classSpells = spellDatabase->getSpellsForClass(pc, 60);
-
-    // Filter by category
-    for (const auto* spell : classSpells) {
+    // Scan spells by ID for this class (on-demand queries)
+    // TODO: Add SQL-based class filtering to WilleqDatabase for efficiency
+    for (uint32_t id = 1; id <= 8000; ++id) {
+        const auto* spell = spellDatabase->getSpell(id);
+        if (!spell) continue;
+        // Check if this class can use it (class_levels not in SQLite yet — accept all)
         if (matchesCategory(spell, cat)) {
             spellTestSpellList.push_back(spell);
         }
@@ -2751,11 +2752,10 @@ int main(int argc, char* argv[]) {
     // Spell Test Mode initialization
     // ========================================================================
     if (spellTestMode) {
-        // Load spell database
-        std::string spellsPath = clientPath + "spells_us.txt";
+        // Load spell database from SQLite
         spellDatabase = std::make_unique<EQ::SpellDatabase>();
-        if (spellDatabase->loadFromFile(spellsPath)) {
-            std::cout << "Loaded " << spellDatabase->getSpellCount() << " spells from " << spellsPath << std::endl;
+        if (spellDatabase->initFromDatabase()) {
+            std::cout << "Loaded " << spellDatabase->getSpellCount() << " spells from SQLite" << std::endl;
         } else {
             std::cout << "WARNING: Failed to load spells: " << spellDatabase->getLoadError() << std::endl;
         }
