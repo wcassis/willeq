@@ -272,11 +272,14 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
 }
 
 int ConstrainedTextureCache::uploadAllPending() {
-    // Collect names first (uploadTexture modifies decodedEntries_)
+    // Collect names first (uploadTexture modifies decodedEntries_ and compressedEntries_)
     std::vector<std::string> names;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        names.reserve(decodedEntries_.size());
+        names.reserve(decodedEntries_.size() + compressedEntries_.size());
+        for (const auto& [name, entry] : compressedEntries_) {
+            names.push_back(name);
+        }
         for (const auto& [name, entry] : decodedEntries_) {
             names.push_back(name);
         }
@@ -1326,6 +1329,16 @@ void ConstrainedTextureCache::addEQE1Loader(const EQE1Loader* loader) {
 void ConstrainedTextureCache::clearEQE1Loaders() {
     eqe1Loaders_.clear();
     compressedEntries_.clear();
+}
+
+bool ConstrainedTextureCache::getEQE1RawData(const std::string& name,
+                                               const uint8_t*& data, uint32_t& size) const {
+    for (const auto* loader : eqe1Loaders_) {
+        if (loader->getRawData(name, data, size)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const ConstrainedTextureCache::CompressedEntry*

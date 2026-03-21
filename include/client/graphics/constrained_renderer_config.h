@@ -110,8 +110,9 @@ struct ConstrainedRendererConfig {
     bool skipObjectBuild = false;            // Skip placeable object loading entirely (geometry + textures)
     bool skipConstrainedTextureUpload = false; // Debug: skip constrained cache glTexImage2D uploads
     bool skipSkyTextureUpload = false;         // Debug: skip sky texture GPU uploads (untextured sky dome)
-    std::string atlasPath;                   // Directory containing .atlas files
     std::string eqe1Path;                    // Directory containing .eqe1 flat pack files (ETC1 textures)
+    bool enableCompositeEntities = false;    // Use composite texture sheets for entity rendering (1 draw call)
+    std::string compositeEntityPath;         // Directory containing composite BMP/EQE1 + JSON from entity_composite_builder
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)
 

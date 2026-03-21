@@ -479,10 +479,12 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableAlphaToCoverage = preset["enableAlphaToCoverage"].asBool();
     if (preset.isMember("enableShaders"))
         enableShaders = preset["enableShaders"].asBool();
-    if (preset.isMember("atlasPath"))
-        atlasPath = preset["atlasPath"].asString();
     if (preset.isMember("eqe1Path"))
         eqe1Path = preset["eqe1Path"].asString();
+    if (preset.isMember("enableCompositeEntities"))
+        enableCompositeEntities = preset["enableCompositeEntities"].asBool();
+    if (preset.isMember("compositeEntityPath"))
+        compositeEntityPath = preset["compositeEntityPath"].asString();
     if (preset.isMember("antiAliasLevel"))
         antiAliasLevel = preset["antiAliasLevel"].asInt();
     if (preset.isMember("anisotropicFilterLevel"))

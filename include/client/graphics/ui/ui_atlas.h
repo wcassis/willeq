@@ -1,7 +1,7 @@
 /*
  * UIAtlas — runtime loader for the pre-generated UI sprite atlas.
  *
- * U02: Loads ui_atlas.png + ui_atlas.json from <atlasPath>/.
+ * U02: Loads ui_atlas texture + JSON from EQE1 flat pack (ui.eqe1).
  * FATAL if files are missing when enableTextureAtlas is true.
  * No procedural generation — atlas is created offline by ui_atlas_builder.
  */
@@ -49,11 +49,12 @@ public:
     ~UIAtlas() = default;
 
     /**
-     * Load atlas from <atlasPath>/ui_atlas.png + ui_atlas.json.
-     * Returns false on failure (caller decides whether to FATAL).
+     * Load atlas texture + JSON from EQE1 flat pack (ui.eqe1).
+     * Texture loaded as ETC1 compressed entry "ui_atlas".
+     * JSON loaded as raw data entry "ui_atlas.json".
+     * Returns false on failure (FATAL — all assets must exist).
      */
-    bool load(irr::video::IVideoDriver* driver, const std::string& atlasPath,
-              ConstrainedTextureCache* cache = nullptr);
+    bool load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* cache);
 
     bool isLoaded() const { return texture_ != nullptr; }
 
@@ -61,7 +62,7 @@ public:
     const UISpriteRect& getSprite(UISprite sprite) const;
 
 private:
-    bool loadJson(const std::string& jsonPath);
+    bool loadJsonFromMemory(const char* data, size_t size);
     void mapSprite(const std::string& name, const irr::core::rect<irr::s32>& rect);
 
     irr::video::ITexture* texture_ = nullptr;

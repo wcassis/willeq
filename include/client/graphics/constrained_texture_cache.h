@@ -169,6 +169,11 @@ public:
     void addEQE1Loader(const EQE1Loader* loader);
     void clearEQE1Loaders();
 
+    // Look up raw (non-texture) data from registered EQE1 loaders.
+    // Used for JSON metadata, WLD files, etc. packed as EQE1_TYPE_RAW_DATA entries.
+    // Returns true if found, with data pointer and size. Data is owned by the EQE1 loader.
+    bool getEQE1RawData(const std::string& name, const uint8_t*& data, uint32_t& size) const;
+
 private:
     // Look up a texture name in registered EQE1 loaders.
     // Strips .bmp extension and lowercases before lookup.

@@ -152,7 +152,28 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
 
     // Build mesh from RAW (unskinned) geometry for animation
     // This is critical - animated meshes need the original vertex positions
-    irr::scene::IMesh* rawMesh = buildMeshFromGeometry(modelData->rawGeometry, modelData->textures);
+    irr::scene::IMesh* rawMesh = nullptr;
+
+    // If composite data is available, build single-buffer mesh with remapped UVs
+    if (modelData->compositeData && !modelData->compositeBmpPath.empty() && meshBuilder_) {
+        // compositeBmpPath holds the EQE1 entry name (e.g., "hum_hs_def_0_0")
+        irr::video::ITexture* compositeTexture = meshBuilder_->getOrLoadTexture(modelData->compositeBmpPath);
+        if (compositeTexture) {
+            rawMesh = buildCompositeMeshFromGeometry(
+                modelData->rawGeometry, compositeTexture, *modelData->compositeData);
+            if (rawMesh) {
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Built composite animated mesh for race {} ({} buffers vs multi-buffer)",
+                          raceId, rawMesh->getMeshBufferCount());
+            }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Composite texture not yet uploaded for race {} — falling back to multi-buffer", raceId);
+        }
+    }
+
+    // Fall back to standard multi-buffer mesh
+    if (!rawMesh) {
+        rawMesh = buildMeshFromGeometry(modelData->rawGeometry, modelData->textures);
+    }
     if (!rawMesh) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Failed to build raw mesh for race {}", raceId);
         animatedMeshCache_[key] = nullptr;

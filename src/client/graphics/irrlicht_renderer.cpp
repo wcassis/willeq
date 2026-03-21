@@ -1,6 +1,8 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/entity_prep_worker.h"
+#include "client/graphics/eqe1_loader.h"
+#include <filesystem>
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/frame_budget_governor.h"
@@ -655,14 +657,16 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         textBatch_.reset();
     }
 
-    // U02: Load UI atlas (required when atlasPath is configured)
-    if (!config_.constrainedConfig.atlasPath.empty()) {
-        LOG_TRACE(MOD_GRAPHICS, "Loading UI atlas from {}...", config_.constrainedConfig.atlasPath);
+    // U02: Load UI atlas from willeq.eqe1 flat pack (ETC1 compressed texture + JSON metadata)
+    if (!config_.constrainedConfig.eqe1Path.empty() && constrainedTextureCache_) {
+        // Open willeq.eqe1 early (before zone loading) so all willeq-generated assets are available
+        getOrOpenEQE1("willeq");
+
         uiAtlas_ = std::make_unique<UIAtlas>();
-        if (!uiAtlas_->load(driver_, config_.constrainedConfig.atlasPath, constrainedTextureCache_)) {
-            LOG_FATAL(MOD_GRAPHICS, "UIAtlas: required atlas files missing from {}. "
-                "Run ui_atlas_builder --output {} to generate them.",
-                config_.constrainedConfig.atlasPath, config_.constrainedConfig.atlasPath);
+        if (!uiAtlas_->load(driver_, constrainedTextureCache_)) {
+            LOG_FATAL(MOD_GRAPHICS, "UIAtlas: willeq.eqe1 missing or incomplete in {}. "
+                "Run: eqe1_builder --bmp-dir data/atlas --bmp-dir data/textures --output {} --name willeq",
+                config_.constrainedConfig.eqe1Path, config_.constrainedConfig.eqe1Path);
             return false;
         }
     }
@@ -3078,6 +3082,9 @@ void IrrlichtRenderer::createEntityRenderer() {
     }
     entityRenderer_->setConstrainedConfig(&config_.constrainedConfig);
     entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload);
+    if (config_.constrainedConfig.enableCompositeEntities && !config_.constrainedConfig.compositeEntityPath.empty()) {
+        entityRenderer_->setCompositeEntityPath(config_.constrainedConfig.compositeEntityPath);
+    }
     if (zoneShader_ && zoneShader_->isAvailable()) {
         entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                 zoneShader_->getActiveAlphaTest());
@@ -3227,9 +3234,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
               fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
               maxFireGlowLights_, fireEffectsEnabled_, fireGlowLights_.size());
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
-              "atlasPath='{}', eqe1Path='{}', deferredAssetLoading={}",
+              "eqe1Path='{}', deferredAssetLoading={}",
               config_.constrainedConfig.skipObjectBuild,
-              config_.constrainedConfig.atlasPath, config_.constrainedConfig.eqe1Path,
+              config_.constrainedConfig.eqe1Path,
               config_.constrainedConfig.deferredAssetLoading);
 
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
@@ -3256,6 +3263,36 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         }
         for (const auto& name : archiveList.globalArchives) {
             getOrOpenEQE1(name);
+        }
+
+        // Load composite entity EQE1 files (from entity_composite_builder --eqe1 output)
+        if (config_.constrainedConfig.enableCompositeEntities &&
+            !config_.constrainedConfig.compositeEntityPath.empty()) {
+            namespace fs = std::filesystem;
+            const auto& compositeDir = config_.constrainedConfig.compositeEntityPath;
+            if (fs::is_directory(compositeDir)) {
+                size_t compositeCount = 0;
+                for (const auto& entry : fs::directory_iterator(compositeDir)) {
+                    if (entry.path().extension() == ".eqe1") {
+                        std::string baseName = entry.path().stem().string();
+                        // Skip if already loaded (shouldn't happen, but be safe)
+                        std::lock_guard<std::mutex> lock(eqe1Mutex_);
+                        if (eqe1Loaders_.find(baseName) != eqe1Loaders_.end()) continue;
+
+                        auto loader = std::make_unique<EQE1Loader>();
+                        if (loader->open(entry.path().string())) {
+                            const EQE1Loader* ptr = loader.get();
+                            eqe1Loaders_[baseName] = std::move(loader);
+                            if (constrainedTextureCache_) {
+                                constrainedTextureCache_->addEQE1Loader(ptr);
+                            }
+                            ++compositeCount;
+                        }
+                    }
+                }
+                LOG_INFO(MOD_GRAPHICS, "EQE1: loaded {} composite entity archives from '{}'",
+                         compositeCount, compositeDir);
+            }
         }
     }
 
@@ -4573,7 +4610,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                 // Promote prepared models so buildEntityMesh finds them
                 modelLoader->promotePreparedModels();
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) promoted prepared models", spawnId, vis.name);
+
+                // Upload all pending textures (including composite EQE1 entries queued in Step 8a)
+                // so they're available as GPU textures when buildEntityMesh builds composite meshes.
+                if (constrainedTextureCache_) {
+                    constrainedTextureCache_->uploadAllPending();
+                }
 
                 // Step 8f: Build entity mesh (GL work — scene node, materials, name tag)
                 bool meshBuilt = entityRenderer_->buildEntityMesh(spawnId);

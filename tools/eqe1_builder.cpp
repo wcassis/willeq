@@ -114,7 +114,8 @@ static bool decodeBMP(const std::vector<char>& data,
             }
         }
         return true;
-    } else if (bpp == 32 && compression == 0) {
+    } else if (bpp == 32 && (compression == 0 || compression == 3)) {
+        // compression == 3 is BI_BITFIELDS (BITMAPV4/V5 headers) — same BGRA layout for 32bpp
         const uint8_t* pixels = d + dataOffset;
         int rowStride = width * 4;
 
@@ -523,23 +524,29 @@ static bool processArchive(const std::string& eqPath,
 
 // ── BMP directory processing ────────────────────────────────────────────────
 
-static bool processBmpDirectory(const std::string& bmpDir,
-                                 const std::string& outputDir,
-                                 const std::string& nameOverride,
-                                 bool verbose) {
-    // Collect .bmp files
+static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
+                                   const std::string& outputDir,
+                                   const std::string& nameOverride,
+                                   bool verbose) {
+    // Collect .bmp files and non-texture files (JSON, etc.) as raw data from all directories
     std::vector<fs::path> bmpFiles;
-    for (const auto& entry : fs::directory_iterator(bmpDir)) {
-        if (!entry.is_regular_file()) continue;
-        std::string ext = toLower(entry.path().extension().string());
-        if (ext == ".bmp") {
-            bmpFiles.push_back(entry.path());
+    std::vector<fs::path> rawFiles;
+    for (const auto& bmpDir : bmpDirs) {
+        for (const auto& entry : fs::directory_iterator(bmpDir)) {
+            if (!entry.is_regular_file()) continue;
+            std::string ext = toLower(entry.path().extension().string());
+            if (ext == ".bmp") {
+                bmpFiles.push_back(entry.path());
+            } else if (ext == ".json" || ext == ".wld") {
+                rawFiles.push_back(entry.path());
+            }
         }
     }
     std::sort(bmpFiles.begin(), bmpFiles.end());
+    std::sort(rawFiles.begin(), rawFiles.end());
 
     if (bmpFiles.empty()) {
-        std::cerr << "  No .bmp files found in: " << bmpDir << std::endl;
+        std::cerr << "  No .bmp files found in specified directories" << std::endl;
         return false;
     }
 
@@ -604,8 +611,8 @@ static bool processBmpDirectory(const std::string& bmpDir,
     if (!nameOverride.empty()) {
         baseName = toLower(nameOverride);
     } else {
-        // Use last component of directory path
-        fs::path dirPath(bmpDir);
+        // Use last component of first directory path
+        fs::path dirPath(bmpDirs.front());
         baseName = toLower(dirPath.filename().string());
         if (baseName.empty()) {
             // Handle trailing slash: /foo/bar/ → parent_path().filename()
@@ -615,8 +622,22 @@ static bool processBmpDirectory(const std::string& bmpDir,
 
     std::string outputPath = outputDir + "/" + baseName + ".eqe1";
 
-    std::vector<RawDataEntry> noRawEntries;  // BMP directory mode has no raw data
-    if (!writeEQE1File(textures, noRawEntries, outputPath, verbose)) {
+    // Include non-texture files as raw data entries
+    std::vector<RawDataEntry> rawEntries;
+    for (const auto& rawPath : rawFiles) {
+        std::ifstream rawFile(rawPath, std::ios::binary);
+        if (!rawFile.is_open()) continue;
+        RawDataEntry raw;
+        raw.name = toLower(rawPath.filename().string());
+        raw.data.assign(std::istreambuf_iterator<char>(rawFile),
+                        std::istreambuf_iterator<char>());
+        if (verbose) {
+            std::cout << "    " << raw.name << " (raw, " << raw.data.size() << " bytes)" << std::endl;
+        }
+        rawEntries.push_back(std::move(raw));
+    }
+
+    if (!writeEQE1File(textures, rawEntries, outputPath, verbose)) {
         return false;
     }
 
@@ -632,13 +653,13 @@ static bool processBmpDirectory(const std::string& bmpDir,
 static void printUsage(const char* argv0) {
     std::cout << "Usage: " << argv0 << " --eq-path <path> --archive <name> --output <dir>\n"
               << "       " << argv0 << " --eq-path <path> --all --output <dir>\n"
-              << "       " << argv0 << " --bmp-dir <path> --output <dir> [--name <name>]\n"
+              << "       " << argv0 << " --bmp-dir <path> [--bmp-dir <path2> ...] --output <dir> [--name <name>]\n"
               << "\nS3D archive mode:\n"
               << "  --eq-path <path>     Path to EverQuest client directory\n"
               << "  --archive <name>     Process single archive (e.g., qeynos2.s3d)\n"
               << "  --all                Process all .s3d files\n"
               << "\nBMP directory mode:\n"
-              << "  --bmp-dir <path>     Read BMPs from directory (mutually exclusive with --eq-path)\n"
+              << "  --bmp-dir <path>     Read BMPs from directory (repeatable, mutually exclusive with --eq-path)\n"
               << "  --name <name>        Override output base name (default: directory name)\n"
               << "\nCommon:\n"
               << "  --output <dir>       Output directory for .eqe1 files\n"
@@ -650,7 +671,7 @@ int main(int argc, char** argv) {
     std::string eqPath;
     std::string archiveName;
     std::string outputDir;
-    std::string bmpDir;
+    std::vector<std::string> bmpDirs;
     std::string nameOverride;
     bool allArchives = false;
     bool verbose = false;
@@ -664,7 +685,7 @@ int main(int argc, char** argv) {
         } else if (arg == "--output" && i + 1 < argc) {
             outputDir = argv[++i];
         } else if (arg == "--bmp-dir" && i + 1 < argc) {
-            bmpDir = argv[++i];
+            bmpDirs.push_back(argv[++i]);
         } else if (arg == "--name" && i + 1 < argc) {
             nameOverride = argv[++i];
         } else if (arg == "--all") {
@@ -684,7 +705,7 @@ int main(int argc, char** argv) {
     }
 
     // Validate mutually exclusive modes
-    if (!bmpDir.empty() && !eqPath.empty()) {
+    if (!bmpDirs.empty() && !eqPath.empty()) {
         std::cerr << "Error: --bmp-dir and --eq-path are mutually exclusive\n";
         printUsage(argv[0]);
         return 1;
@@ -693,14 +714,18 @@ int main(int argc, char** argv) {
     fs::create_directories(outputDir);
 
     // ── BMP directory mode ──────────────────────────────────────────────────
-    if (!bmpDir.empty()) {
-        if (!fs::exists(bmpDir) || !fs::is_directory(bmpDir)) {
-            std::cerr << "Error: BMP directory does not exist or is not a directory: " << bmpDir << std::endl;
-            return 1;
+    if (!bmpDirs.empty()) {
+        for (const auto& bmpDir : bmpDirs) {
+            if (!fs::exists(bmpDir) || !fs::is_directory(bmpDir)) {
+                std::cerr << "Error: BMP directory does not exist or is not a directory: " << bmpDir << std::endl;
+                return 1;
+            }
         }
 
-        std::cout << "Processing BMP directory: " << bmpDir << std::endl;
-        if (processBmpDirectory(bmpDir, outputDir, nameOverride, verbose)) {
+        for (const auto& dir : bmpDirs) {
+            std::cout << "Processing BMP directory: " << dir << std::endl;
+        }
+        if (processBmpDirectories(bmpDirs, outputDir, nameOverride, verbose)) {
             return 0;
         }
         return 1;

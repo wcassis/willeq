@@ -1,4 +1,5 @@
 #include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/eq/composite_texture_data.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -618,6 +619,175 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
     }
 
     mesh->recalculateBoundingBox();
+    return mesh;
+}
+
+// ============================================================================
+// Composite Texture Mesh Building (single-buffer, remapped UVs)
+// ============================================================================
+
+irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
+    const ZoneGeometry& geometry,
+    irr::video::ITexture* compositeTexture,
+    const CompositeTextureData& compositeData,
+    bool hasAlpha,
+    bool flipV) {
+
+    if (geometry.vertices.empty() || geometry.triangles.empty() || !compositeTexture) {
+        return nullptr;
+    }
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+    // Material setup: single composite texture, CLAMP_TO_EDGE (tiling is pre-baked)
+    buffer->Material.setTexture(0, compositeTexture);
+    buffer->Material.BackfaceCulling = false;
+    buffer->Material.Lighting = false;
+    if (hasAlpha) {
+        if (shaderMaterialAlphaTest_ >= 0) {
+            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+        } else {
+            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+        }
+    } else {
+        if (shaderMaterialSolid_ >= 0) {
+            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+        } else {
+            buffer->Material.MaterialType = irr::video::EMT_SOLID;
+        }
+    }
+    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+    buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
+    buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
+    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+
+    float minZ = geometry.minZ;
+    float maxZ = geometry.maxZ;
+
+    // Track unmapped textures for fallback info
+    size_t unmappedTriangles = 0;
+
+    // Build a single vertex/index buffer with all triangles, remapping UVs
+    std::unordered_map<uint64_t, irr::u16> globalToLocal;
+
+    for (size_t i = 0; i < geometry.triangles.size(); ++i) {
+        const auto& tri = geometry.triangles[i];
+
+        // Skip invisible textures
+        uint32_t texIdx = tri.textureIndex;
+        bool isInvisible = (texIdx < geometry.textureInvisible().size()) && geometry.textureInvisible()[texIdx];
+        if (isInvisible) {
+            std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
+            if (texName.empty()) continue;
+        }
+
+        // Look up composite entry for this triangle's texture
+        std::string texName;
+        if (texIdx < geometry.textureNames().size()) {
+            texName = geometry.textureNames()[texIdx];
+        }
+        const CompositeTextureEntry* entry = nullptr;
+        if (!texName.empty()) {
+            entry = compositeData.lookup(texName);
+        }
+
+        if (!entry) {
+            unmappedTriangles++;
+            continue;  // Skip triangles whose textures aren't in the composite
+        }
+
+        // Cell basing: same as buildTexturedMeshFromUploaded
+        const auto& tv0 = geometry.vertices[tri.v1];
+        const auto& tv1 = geometry.vertices[tri.v2];
+        const auto& tv2 = geometry.vertices[tri.v3];
+        float fv0 = flipV ? (1.0f - tv0.v) : tv0.v;
+        float fv1 = flipV ? (1.0f - tv1.v) : tv1.v;
+        float fv2 = flipV ? (1.0f - tv2.v) : tv2.v;
+        int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
+        int cellV = static_cast<int>(std::floor(std::min({fv0, fv1, fv2})));
+
+        for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
+            // Key includes texture index + cell to handle shared vertices across textures
+            uint64_t key = (static_cast<uint64_t>(vidx) << 32)
+                         | (static_cast<uint64_t>(texIdx) << 16)
+                         | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
+                         | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
+            auto it = globalToLocal.find(key);
+            if (it != globalToLocal.end()) {
+                buffer->Indices.push_back(it->second);
+            } else {
+                const auto& v = geometry.vertices[vidx];
+                irr::video::S3DVertex vertex;
+                vertex.Pos.X = v.x;
+                vertex.Pos.Y = v.z;  // Irrlicht Y↔Z swap
+                vertex.Pos.Z = v.y;
+                vertex.Normal.X = v.nx;
+                vertex.Normal.Y = v.nz;
+                vertex.Normal.Z = v.ny;
+                vertex.Color = irr::video::SColor(255, 255, 255, 255);
+
+                // UV remap: cell-based UV → normalized [0,1) → composite sheet position
+                float baseU = v.u - static_cast<float>(cellU);
+                float baseV = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
+                float fractU = baseU / static_cast<float>(entry->tilesU);
+                float fractV = baseV / static_cast<float>(entry->tilesV);
+                vertex.TCoords.X = entry->uvOffsetU + fractU * entry->uvScaleU;
+                vertex.TCoords.Y = entry->uvOffsetV + fractV * entry->uvScaleV;
+
+                if (buffer->Vertices.size() >= 65535) {
+                    // Hit 16-bit index limit — finalize this buffer and start a new one
+                    buffer->recalculateBoundingBox();
+                    mesh->addMeshBuffer(buffer);
+                    buffer->drop();
+
+                    buffer = new irr::scene::SMeshBuffer();
+                    buffer->Material.setTexture(0, compositeTexture);
+                    buffer->Material.BackfaceCulling = false;
+                    buffer->Material.Lighting = false;
+                    if (hasAlpha) {
+                        if (shaderMaterialAlphaTest_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                        }
+                    } else {
+                        if (shaderMaterialSolid_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                        }
+                    }
+                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+                    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+                    globalToLocal.clear();
+                }
+
+                irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
+                globalToLocal[key] = localIdx;
+                buffer->Vertices.push_back(vertex);
+                buffer->Indices.push_back(localIdx);
+            }
+        }
+    }
+
+    if (buffer->Vertices.size() > 0) {
+        buffer->recalculateBoundingBox();
+        mesh->addMeshBuffer(buffer);
+    }
+    buffer->drop();
+
+    if (unmappedTriangles > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "ZoneMeshBuilder::buildCompositeMesh: {} triangles not in composite (skipped)",
+                  unmappedTriangles);
+    }
+
+    mesh->recalculateBoundingBox();
+    LOG_DEBUG(MOD_GRAPHICS, "ZoneMeshBuilder::buildCompositeMesh: built mesh with {} buffers, {} total vertices",
+              mesh->getMeshBufferCount(),
+              mesh->getMeshBufferCount() > 0 ? mesh->getMeshBuffer(0)->getVertexCount() : 0);
     return mesh;
 }
 

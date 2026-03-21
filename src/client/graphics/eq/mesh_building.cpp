@@ -316,6 +316,154 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
     return mesh;
 }
 
+irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
+    const std::shared_ptr<ZoneGeometry>& geometry,
+    irr::video::ITexture* compositeTexture,
+    const CompositeTextureData& compositeData) {
+
+    if (!geometry || !compositeTexture) {
+        return nullptr;
+    }
+
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+    // Single composite texture, CLAMP_TO_EDGE (tiling is pre-baked in the sheet)
+    buffer->Material.Lighting = false;
+    buffer->Material.BackfaceCulling = false;
+    buffer->Material.setTexture(0, compositeTexture);
+    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+
+    // Build original vertices array (in EQ coordinates for bone transforms)
+    originalVerticesForAnimation_.clear();
+    originalVerticesForAnimation_.reserve(geometry->vertices.size());
+    for (const auto& v : geometry->vertices) {
+        irr::video::S3DVertex vert;
+        vert.Pos.X = v.x;
+        vert.Pos.Y = v.y;
+        vert.Pos.Z = v.z;
+        vert.Normal.X = v.nx;
+        vert.Normal.Y = v.ny;
+        vert.Normal.Z = v.nz;
+        vert.TCoords.X = v.u;
+        vert.TCoords.Y = 1.0f - v.v;  // Flip V for character models
+        vert.Color = irr::video::SColor(255, 255, 255, 255);
+        originalVerticesForAnimation_.push_back(vert);
+    }
+
+    // Initialize vertex mapping (all go to buffer 0 for composite)
+    vertexMappingForAnimation_.clear();
+    vertexMappingForAnimation_.resize(geometry->vertices.size());
+    for (auto& m : vertexMappingForAnimation_) {
+        m.bufferIndex = 0xFFFFFFFF;
+        m.localIndex = 0xFFFFFFFF;
+    }
+
+    // Map from global vertex index to local buffer index
+    // Key includes texture index because shared vertices across different textures
+    // get different UV coordinates in the composite
+    std::map<uint64_t, irr::u16> globalToLocal;
+    size_t unmappedTriangles = 0;
+    irr::u32 currentBufferIndex = 0;
+
+    for (size_t i = 0; i < geometry->triangles.size(); ++i) {
+        const auto& tri = geometry->triangles[i];
+        uint32_t texIdx = tri.textureIndex;
+
+        // Look up composite entry for this triangle's texture
+        std::string texName;
+        if (texIdx < geometry->textureNames().size()) {
+            texName = geometry->textureNames()[texIdx];
+        }
+        const CompositeTextureEntry* entry = nullptr;
+        if (!texName.empty()) {
+            entry = compositeData.lookup(texName);
+        }
+        if (!entry) {
+            unmappedTriangles++;
+            continue;
+        }
+
+        for (irr::u32 vidx : {tri.v1, tri.v2, tri.v3}) {
+            // Key: vertex index + texture index (different UVs per texture in composite)
+            uint64_t key = (static_cast<uint64_t>(vidx) << 32) | texIdx;
+            auto it = globalToLocal.find(key);
+            if (it != globalToLocal.end()) {
+                buffer->Indices.push_back(it->second);
+            } else {
+                // Check 16-bit index limit
+                if (buffer->Vertices.size() >= 65535) {
+                    buffer->recalculateBoundingBox();
+                    mesh->addMeshBuffer(buffer);
+                    buffer->drop();
+
+                    buffer = new irr::scene::SMeshBuffer();
+                    buffer->Material.Lighting = false;
+                    buffer->Material.BackfaceCulling = false;
+                    buffer->Material.setTexture(0, compositeTexture);
+                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
+                    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+                    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+                    globalToLocal.clear();
+                    currentBufferIndex++;
+                }
+
+                const auto& v = geometry->vertices[vidx];
+                irr::video::S3DVertex vert;
+                // Store in EQ coordinates - conversion happens during animation
+                vert.Pos.X = v.x;
+                vert.Pos.Y = v.y;
+                vert.Pos.Z = v.z;
+                vert.Normal.X = v.nx;
+                vert.Normal.Y = v.ny;
+                vert.Normal.Z = v.nz;
+                vert.Color = irr::video::SColor(255, 255, 255, 255);
+
+                // Remap UV to composite sheet coordinates
+                // Character models use flipV (1-v), same as originalVerticesForAnimation_
+                float baseU = v.u;
+                float baseV = 1.0f - v.v;
+                float fractU = baseU / static_cast<float>(entry->tilesU);
+                float fractV = baseV / static_cast<float>(entry->tilesV);
+                vert.TCoords.X = entry->uvOffsetU + fractU * entry->uvScaleU;
+                vert.TCoords.Y = entry->uvOffsetV + fractV * entry->uvScaleV;
+
+                irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
+                globalToLocal[key] = localIdx;
+                buffer->Vertices.push_back(vert);
+                buffer->Indices.push_back(localIdx);
+
+                // Record vertex mapping for animation
+                if (vidx < vertexMappingForAnimation_.size()) {
+                    vertexMappingForAnimation_[vidx].bufferIndex = currentBufferIndex;
+                    vertexMappingForAnimation_[vidx].localIndex = localIdx;
+                }
+            }
+        }
+    }
+
+    if (buffer->Vertices.size() > 0) {
+        buffer->recalculateBoundingBox();
+        mesh->addMeshBuffer(buffer);
+    }
+    buffer->drop();
+
+    mesh->recalculateBoundingBox();
+
+    if (unmappedTriangles > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::buildCompositeMeshFromGeometry: {} triangles not in composite (skipped)", unmappedTriangles);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::buildCompositeMeshFromGeometry: built mesh with {} buffers, {} original vertices (vs {} multi-buffer)",
+              mesh->getMeshBufferCount(), geometry->vertices.size(), 0);
+
+    return mesh;
+}
+
 irr::scene::IMesh* RaceModelLoader::buildMeshWithEquipment(
     const std::shared_ptr<ZoneGeometry>& geometry,
     const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,

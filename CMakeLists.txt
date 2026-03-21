@@ -675,6 +675,56 @@ IF(EQT_GRAPHICS)
         fmt::fmt
     )
 
+    # UV Analysis tool (character model UV wrapping analysis for entity atlas feasibility)
+    ADD_EXECUTABLE(uv_analysis
+        tools/uv_analysis.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/background_thread_pool.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(uv_analysis PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(uv_analysis
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+
+    # Entity Composite Texture Builder (offline composite sheet generation for single-draw entity rendering)
+    ADD_EXECUTABLE(entity_composite_builder
+        tools/entity_composite_builder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/zone_bsp.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/background_thread_pool.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(entity_composite_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(entity_composite_builder
+        ${ZLIB_LIBRARIES}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+
     # S3D Extract tool (for extracting files from S3D archives)
     ADD_EXECUTABLE(s3d_extract
         tools/s3d_extract.cpp
@@ -1004,6 +1054,14 @@ IF(EQT_GRAPHICS)
             EtcLib
         )
     ENDIF()
+
+    # Add ETC1 support to entity_composite_builder (optional --eqe1 flag)
+    TARGET_INCLUDE_DIRECTORIES(entity_composite_builder PRIVATE
+        ${etc2comp_SOURCE_DIR}/EtcLib/Etc
+        ${etc2comp_SOURCE_DIR}/EtcLib/EtcCodec
+    )
+    TARGET_COMPILE_DEFINITIONS(entity_composite_builder PRIVATE EQT_HAS_ETC2COMP)
+    TARGET_LINK_LIBRARIES(entity_composite_builder EtcLib)
 
     ADD_EXECUTABLE(verify_eqe1
         tools/verify_eqe1.cpp
