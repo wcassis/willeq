@@ -15,7 +15,7 @@
 #include <list>
 
 // Forward declarations
-namespace EQT { class WilleqDatabase; namespace Graphics { struct EntityAppearance; class GraphicsArchiveIndex; class ConstrainedTextureCache; } }
+namespace EQT { namespace Graphics { struct EntityAppearance; class GraphicsArchiveIndex; class ConstrainedTextureCache; } }
 
 namespace EQT {
 namespace Graphics {
@@ -133,8 +133,6 @@ public:
     // Set constrained texture cache for direct texture loading via getOrLoad()
     void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
 
-    // Set WilleqDatabase for armor texture index lookup (replaces archive scanning)
-    void setWilleqDatabase(EQT::WilleqDatabase* db) { willeqDb_ = db; }
 
     // Background-safe: loads S3D model data + merges animations into staging cache.
     // Does NOT create textures, Irrlicht meshes, or scene nodes (no GL calls).
@@ -311,8 +309,6 @@ private:
     // Constrained texture cache for direct texture loading (non-owning)
     EQT::Graphics::ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
 
-    // WilleqDatabase for armor texture index (non-owning, optional)
-    EQT::WilleqDatabase* willeqDb_ = nullptr;
 
     // Staging cache for background-preloaded model data.
     // Written by EntityPrepWorker thread (preloadModelData).

@@ -8,6 +8,7 @@
 #include "client/audio/midi_player.h"
 #include "client/audio/sfx_manager.h"
 #include "client/audio/sound_assets.h"
+#include "client/willeq_database.h"
 #include "client/graphics/eq/pfs.h"
 #include "common/logging.h"
 
@@ -222,9 +223,13 @@ void AudioManager::playSound(uint32_t soundId, const glm::vec3& position) {
     }
 
     std::string filename = "unknown";
-    auto it = soundIdMap_.find(soundId);
-    if (it != soundIdMap_.end()) {
-        filename = it->second;
+    if (useDbForSounds_) {
+        auto* db = EQT::WilleqDatabase::globalInstance();
+        if (db) filename = db->getSoundAsset(soundId);
+        if (filename.empty()) filename = "unknown";
+    } else {
+        auto it = soundIdMap_.find(soundId);
+        if (it != soundIdMap_.end()) filename = it->second;
     }
 
     // Ensure sound is loaded into SfxManager cache
@@ -616,11 +621,21 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::getSoundById(uint32_t soundId) {
+    // Try on-demand SQLite lookup first
+    if (useDbForSounds_) {
+        auto* db = EQT::WilleqDatabase::globalInstance();
+        if (db) {
+            std::string filename = db->getSoundAsset(soundId);
+            if (!filename.empty()) return loadSound(filename);
+        }
+        return nullptr;
+    }
+
+    // Legacy: in-memory map
     auto it = soundIdMap_.find(soundId);
     if (it == soundIdMap_.end()) {
         return nullptr;
     }
-
     return loadSound(it->second);
 }
 
@@ -655,6 +670,18 @@ std::string AudioManager::findZoneMusic(const std::string& zoneName) {
 }
 
 void AudioManager::loadSoundAssets() {
+    // Try SQLite first
+    auto* db = EQT::WilleqDatabase::globalInstance();
+    if (db) {
+        // On-demand: don't pre-load the map. Individual lookups will
+        // go through getSoundFilename() which queries the database.
+        soundIdMap_.clear();
+        useDbForSounds_ = true;
+        LOG_INFO(MOD_AUDIO, "Sound assets using on-demand SQLite lookup");
+        return;
+    }
+
+    // Legacy: parse SoundAssets.txt
     std::string assetsPath = eqPath_ + "/SoundAssets.txt";
     if (!std::filesystem::exists(assetsPath)) {
         LOG_WARN(MOD_AUDIO, "SoundAssets.txt not found at: {}", assetsPath);
@@ -672,7 +699,7 @@ void AudioManager::loadSoundAssets() {
         soundIdMap_[id] = filename;
     });
 
-    LOG_INFO(MOD_AUDIO, "Loaded {} sound asset mappings", soundIdMap_.size());
+    LOG_INFO(MOD_AUDIO, "Loaded {} sound asset mappings (legacy)", soundIdMap_.size());
 }
 
 void AudioManager::preloadSound(uint32_t soundId) {

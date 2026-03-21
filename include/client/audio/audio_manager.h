@@ -200,8 +200,9 @@ private:
     size_t soundBufferCacheSizeBytes_ = 0;
     std::list<std::string> bufferLruOrder_;
 
-    // Sound ID to filename mapping (from SoundAssets.txt)
+    // Sound ID to filename mapping (from SoundAssets.txt or SQLite)
     std::unordered_map<uint32_t, std::string> soundIdMap_;
+    bool useDbForSounds_ = false;  // True when using SQLite on-demand lookups
 
     // PFS archive index: lowercase filename -> archive path
     std::unordered_map<std::string, std::string> pfsFileIndex_;

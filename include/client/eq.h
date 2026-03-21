@@ -41,7 +41,6 @@ namespace EQ {
 }
 
 namespace EQT {
-    class WilleqDatabase;
     class ZoneLines;
     // Trade packet structures (forward declarations)
     struct TradeRequest_Struct;
@@ -1003,11 +1002,9 @@ public:
 	// Must be called after SetEQClientPath(). Returns false if spell DB fails to load.
 	bool InitializeSpellSystem(const std::string& eqClientPath);
 
-	// Open the WilleqDatabase (SQLite). Not FATAL if missing — falls back to legacy.
+	// Open the WilleqDatabase (SQLite) and set as global instance.
+	// Not FATAL if missing — falls back to legacy file loading.
 	void OpenDatabase(const std::string& dbPath);
-
-	// Get the WilleqDatabase (may be null if not opened)
-	EQT::WilleqDatabase* GetDatabase() { return m_willeq_db.get(); }
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods

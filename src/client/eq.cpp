@@ -604,8 +604,8 @@ std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::
 
 bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
 	// Try SQLite first
-	if (m_willeq_db && m_willeq_db->isOpen()) {
-		if (m_string_db.initFromDatabase(m_willeq_db.get())) {
+	if (EQT::WilleqDatabase::globalInstance()) {
+		if (m_string_db.initFromDatabase()) {
 			LOG_INFO(MOD_MAIN, "Loaded strings from SQLite ({} eqstr, {} dbstr)",
 					 m_string_db.getEqStrCount(), m_string_db.getDbStrCount());
 			return true;
@@ -1052,6 +1052,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 void EverQuest::OpenDatabase(const std::string& dbPath) {
 	m_willeq_db = std::make_unique<EQT::WilleqDatabase>();
 	if (m_willeq_db->open(dbPath)) {
+		EQT::WilleqDatabase::setGlobalInstance(m_willeq_db.get());
 		LOG_INFO(MOD_MAIN, "WilleqDatabase opened: {} (cache: {} bytes)",
 				 dbPath, m_willeq_db->getMemoryUsage());
 	} else {
@@ -1063,8 +1064,9 @@ void EverQuest::OpenDatabase(const std::string& dbPath) {
 bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 {
 	// S04: Initialize spell database — try SQLite first, fall back to file
-	if (m_willeq_db && m_willeq_db->isOpen()) {
-		if (!m_spell_manager->initialize(m_willeq_db.get())) {
+	auto* db = EQT::WilleqDatabase::globalInstance();
+	if (db) {
+		if (!m_spell_manager->initialize(db)) {
 			return false;
 		}
 		LOG_DEBUG(MOD_SPELL, "Spell database loaded from SQLite");
@@ -18177,7 +18179,6 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		snap.zoneLineBBoxes = m_zone_lines->getZoneLineBoundingBoxes();
 	}
 	snap.zoneMap = m_zone_map.get();
-	snap.willeqDb = m_willeq_db.get();
 	snap.eqClientPath = m_eq_client_path;
 
 	// Pre-parsed zone sources for sequential loader

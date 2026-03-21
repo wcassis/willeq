@@ -13,7 +13,8 @@ namespace EQT {
 // SQLite initialization
 // ============================================================================
 
-bool StringDatabase::initFromDatabase(WilleqDatabase* db) {
+bool StringDatabase::initFromDatabase() {
+    auto* db = WilleqDatabase::globalInstance();
     if (!db || !db->isOpen()) {
         return false;
     }

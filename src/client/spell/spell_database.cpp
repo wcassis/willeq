@@ -22,9 +22,10 @@ SpellDatabase::~SpellDatabase() = default;
 // SQLite-backed initialization
 // ============================================================================
 
-bool SpellDatabase::initFromDatabase(EQT::WilleqDatabase* db) {
+bool SpellDatabase::initFromDatabase() {
+    auto* db = EQT::WilleqDatabase::globalInstance();
     if (!db || !db->isOpen()) {
-        m_load_error = "WilleqDatabase not open";
+        m_load_error = "WilleqDatabase global instance not available";
         return false;
     }
 
@@ -34,7 +35,7 @@ bool SpellDatabase::initFromDatabase(EQT::WilleqDatabase* db) {
     m_load_error.clear();
 
     // Query spell count and max ID
-    m_max_spell_id = 0;  // Will be lazy-evaluated or we query it now
+    m_max_spell_id = 0;
     uint32_t count = db->getSpellCount();
 
     LOG_INFO(MOD_SPELL, "SpellDatabase: initialized from SQLite ({} spells, cache capacity {})",

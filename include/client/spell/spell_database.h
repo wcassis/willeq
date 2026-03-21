@@ -19,9 +19,7 @@
 #include <functional>
 #include <atomic>
 
-namespace EQT {
-class WilleqDatabase;
-}
+namespace EQT { class WilleqDatabase; }
 
 namespace EQ {
 
@@ -34,9 +32,9 @@ public:
     // Initialization
     // ========================================================================
 
-    // Connect to WilleqDatabase for spell queries.
+    // Initialize from WilleqDatabase global instance (SQLite-backed, preferred).
     // Replaces loadFromFile() — the database must already be open.
-    bool initFromDatabase(EQT::WilleqDatabase* db);
+    bool initFromDatabase();
 
     // Legacy: Load spells from EQ client spells_us.txt file
     // DEPRECATED — use initFromDatabase() instead

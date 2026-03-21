@@ -2,6 +2,7 @@
 #define EQT_WILLEQ_DATABASE_H
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 #include <atomic>
@@ -137,7 +138,13 @@ public:
     }
     size_t getMemoryUsage() const;  // SQLite page cache + overhead
 
+    // ── Global instance (read-only singleton, set once at startup) ──
+    static void setGlobalInstance(WilleqDatabase* db) { s_instance = db; }
+    static WilleqDatabase* globalInstance() { return s_instance; }
+
 private:
+    static inline WilleqDatabase* s_instance = nullptr;
+
     // Prepare a statement and cache it. Returns the cached stmt.
     sqlite3_stmt* prepare(const char* sql, sqlite3_stmt*& cached);
 

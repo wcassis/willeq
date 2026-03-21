@@ -36,8 +36,8 @@ public:
     // Initialization
     // ========================================================================
 
-    // Initialize from WilleqDatabase (SQLite-backed, preferred)
-    bool initFromDatabase(WilleqDatabase* db);
+    // Initialize from WilleqDatabase global instance (SQLite-backed, preferred)
+    bool initFromDatabase();
 
     // Legacy: Load eqstr_us.txt from EQ client directory
     bool loadEqStrFile(const std::string& filepath);
