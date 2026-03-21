@@ -187,6 +187,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/world_object.cpp
     src/client/formatted_message.cpp
     src/client/string_database.cpp
+    src/client/willeq_database.cpp
+    third_party/sqlite3.c
     src/client/pathfinder_interface.cpp
     src/client/pathfinder_null.cpp
     src/client/raycast_mesh.cpp
@@ -415,6 +417,9 @@ SET(ALL_CORE_SOURCES
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # TextureAtlas requires GL - only available in main library, not standalone tools
 TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_TEXTURE_ATLAS)
+# SQLite for WilleqDatabase
+TARGET_INCLUDE_DIRECTORIES(willeq_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 
 # Create the main executable
 ADD_EXECUTABLE(willeq src/client/main.cpp)
@@ -424,6 +429,7 @@ SET(LINK_LIBS
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
     Threads::Threads
+    dl  # Required by SQLite
 )
 
 IF(fmt_FOUND)
