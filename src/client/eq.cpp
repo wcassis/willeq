@@ -18177,6 +18177,7 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		snap.zoneLineBBoxes = m_zone_lines->getZoneLineBoundingBoxes();
 	}
 	snap.zoneMap = m_zone_map.get();
+	snap.willeqDb = m_willeq_db.get();
 	snap.eqClientPath = m_eq_client_path;
 
 	// Pre-parsed zone sources for sequential loader

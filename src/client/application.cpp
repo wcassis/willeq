@@ -999,6 +999,13 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
 
     m_eqClient->SetPlayerGraphicsEntityPending(true);
 
+    // Set WilleqDatabase on RaceModelLoader before sequential loading starts
+    // (needed for armor texture index lookup from SQLite instead of opening archives)
+    if (snap.willeqDb && m_renderer->getEntityRenderer() &&
+        m_renderer->getEntityRenderer()->getRaceModelLoader()) {
+        m_renderer->getEntityRenderer()->getRaceModelLoader()->setWilleqDatabase(snap.willeqDb);
+    }
+
     // 9. Sequential zone asset loading
     m_renderer->loadZoneSequential(snap.eqClientPath, status);
 

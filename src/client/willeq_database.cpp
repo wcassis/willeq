@@ -300,6 +300,7 @@ AssetLocation WilleqDatabase::getAssetLocation(const std::string& assetName) {
 
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         loc.found = true;
+        loc.name = assetName;
         loc.archive = colText(stmt, 0);
         loc.blockOffset = sqlite3_column_int(stmt, 1);
         loc.compressedSize = sqlite3_column_int(stmt, 2);
@@ -326,6 +327,7 @@ std::vector<AssetLocation> WilleqDatabase::getAssetsInArchive(const std::string&
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         AssetLocation loc;
         loc.found = true;
+        loc.name = colText(stmt, 0);
         loc.archive = archiveName;
         loc.blockOffset = sqlite3_column_int(stmt, 1);
         loc.compressedSize = sqlite3_column_int(stmt, 2);

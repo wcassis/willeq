@@ -10,10 +10,13 @@
 struct Entity;  // Forward declaration (defined in eq.h)
 class HCMap;
 
-namespace EQT { namespace Graphics {
-    class PfsArchive;
-    class WldLoader;
-}} // forward declarations
+namespace EQT {
+    class WilleqDatabase;
+    namespace Graphics {
+        class PfsArchive;
+        class WldLoader;
+    }
+} // forward declarations
 
 namespace eqt {
 
@@ -57,6 +60,9 @@ struct ZoneLoadSnapshot {
 
     // Zone map (read-only pointer — owned by EverQuest, valid during loading)
     HCMap* zoneMap = nullptr;
+
+    // Central data database (read-only pointer — owned by EverQuest, valid during loading)
+    EQT::WilleqDatabase* willeqDb = nullptr;
 
     // Pre-parsed zone sources (opened once at game state layer, shared with sequential loader)
     std::shared_ptr<EQT::Graphics::PfsArchive> zoneArchive;

@@ -2,6 +2,7 @@
 // These methods remain part of the RaceModelLoader class
 
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/willeq_database.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -97,47 +98,79 @@ bool RaceModelLoader::loadArmorTextures() {
         return true;
     }
 
-    // Build index of armor textures from global17-23_amr.s3d
-    // Only scan filenames - don't extract data until needed
-    int loadedCount = 0;
-    for (int num = 17; num <= 23; ++num) {
-        std::string archivePath = clientPath_ + "global" + std::to_string(num) + "_amr.s3d";
-
-        PfsArchive archive;
-        if (!archive.open(archivePath)) {
-            continue;
-        }
-
-        int texCount = 0;
-        auto indexExtension = [&](const std::string& ext) {
-            std::vector<std::string> files;
-            archive.getFilenames(ext, files);
-            for (const auto& texName : files) {
-                std::string lowerName = texName;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                              [](unsigned char c) { return std::tolower(c); });
-                // Don't overwrite if already indexed (earlier archives have priority)
-                if (armorTextureIndex_.find(lowerName) == armorTextureIndex_.end()) {
-                    armorTextureIndex_[lowerName] = {archivePath, texName};
-                    texCount++;
-                }
-            }
+    // Try SQLite index first — avoids opening 7 archive files (saves ~2s + ~60MB spike)
+    if (willeqDb_) {
+        armorTextureIndex_.clear();
+        const char* armorArchiveNames[] = {
+            "global17_amr.s3d", "global18_amr.s3d", "global19_amr.s3d",
+            "global20_amr.s3d", "global21_amr.s3d", "global22_amr.s3d",
+            "global23_amr.s3d"
         };
 
-        indexExtension(".bmp");
-        indexExtension(".dds");
+        for (const char* archiveName : armorArchiveNames) {
+            auto assets = willeqDb_->getAssetsInArchive(archiveName);
+            std::string fullPath = clientPath_ + archiveName;
 
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Indexed {} armor textures from global{}_amr.s3d",
-                 texCount, num);
-        loadedCount++;
+            for (const auto& asset : assets) {
+                // Only index texture files (.bmp, .dds)
+                const std::string& name = asset.name;
+                if (name.size() < 4) continue;
+                std::string ext = name.substr(name.size() - 4);
+                if (ext != ".bmp" && ext != ".dds") continue;
+
+                // Don't overwrite if already indexed (earlier archives have priority)
+                if (armorTextureIndex_.find(name) == armorTextureIndex_.end()) {
+                    armorTextureIndex_[name] = {fullPath, name};
+                }
+            }
+        }
+
+        armorTexturesLoaded_ = true;
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Armor textures indexed from SQLite ({} entries, 0 archives opened)",
+                 armorTextureIndex_.size());
     }
 
-    armorTexturesLoaded_ = true;
+    if (!armorTexturesLoaded_) {
+        // Legacy: Build index by opening each archive
+        int loadedCount = 0;
+        for (int num = 17; num <= 23; ++num) {
+            std::string archivePath = clientPath_ + "global" + std::to_string(num) + "_amr.s3d";
 
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Total armor textures indexed: {} (0 bytes loaded)",
-             armorTextureIndex_.size());
+            PfsArchive archive;
+            if (!archive.open(archivePath)) {
+                continue;
+            }
 
-    return loadedCount > 0;
+            int texCount = 0;
+            auto indexExtension = [&](const std::string& ext) {
+                std::vector<std::string> files;
+                archive.getFilenames(ext, files);
+                for (const auto& texName : files) {
+                    std::string lowerName = texName;
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                                  [](unsigned char c) { return std::tolower(c); });
+                    if (armorTextureIndex_.find(lowerName) == armorTextureIndex_.end()) {
+                        armorTextureIndex_[lowerName] = {archivePath, texName};
+                        texCount++;
+                    }
+                }
+            };
+
+            indexExtension(".bmp");
+            indexExtension(".dds");
+
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Indexed {} armor textures from global{}_amr.s3d",
+                     texCount, num);
+            loadedCount++;
+        }
+
+        armorTexturesLoaded_ = true;
+
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Total armor textures indexed: {} (0 bytes loaded, legacy)",
+                 armorTextureIndex_.size());
+    }
+
+    return armorTexturesLoaded_;
 }
 
 std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string& lowerName) {

@@ -35,6 +35,7 @@ struct DatabaseStats {
 
 // S3D asset location returned by getAssetLocation()
 struct AssetLocation {
+    std::string name;            // e.g., "clkshk01.bmp"
     std::string archive;         // e.g., "qeynos2.s3d"
     uint32_t blockOffset = 0;
     uint32_t compressedSize = 0;
