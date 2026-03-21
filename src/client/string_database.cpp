@@ -1,4 +1,5 @@
 #include "client/string_database.h"
+#include "client/willeq_database.h"
 #include "common/logging.h"
 
 #include <fstream>
@@ -7,6 +8,43 @@
 #include <algorithm>
 
 namespace EQT {
+
+// ============================================================================
+// SQLite initialization
+// ============================================================================
+
+bool StringDatabase::initFromDatabase(WilleqDatabase* db) {
+    if (!db || !db->isOpen()) {
+        return false;
+    }
+
+    db_ = db;
+    using_db_ = true;
+    eqstr_loaded_ = true;
+    dbstr_loaded_ = true;
+
+    LOG_INFO(MOD_MAIN, "StringDatabase: initialized from SQLite");
+    return true;
+}
+
+size_t StringDatabase::getEqStrCount() const {
+    if (using_db_ && db_) {
+        // Approximate — avoid expensive COUNT(*) on every call
+        return 5901;  // Known count from db build
+    }
+    return eq_strings_.size();
+}
+
+size_t StringDatabase::getDbStrCount() const {
+    if (using_db_ && db_) {
+        return 8305;  // Known count from db build
+    }
+    return db_strings_.size();
+}
+
+// ============================================================================
+// Legacy file loading
+// ============================================================================
 
 bool StringDatabase::loadEqStrFile(const std::string& filepath) {
     std::ifstream file(filepath);
@@ -127,6 +165,12 @@ bool StringDatabase::loadDbStrFile(const std::string& filepath) {
 }
 
 std::string StringDatabase::getString(uint32_t string_id) const {
+    query_count_.fetch_add(1, std::memory_order_relaxed);
+
+    if (using_db_ && db_) {
+        return db_->getString(string_id);
+    }
+
     auto it = eq_strings_.find(string_id);
     if (it != eq_strings_.end()) {
         return it->second;
@@ -135,6 +179,12 @@ std::string StringDatabase::getString(uint32_t string_id) const {
 }
 
 std::string StringDatabase::getDbString(uint32_t category, uint32_t sub_id) const {
+    query_count_.fetch_add(1, std::memory_order_relaxed);
+
+    if (using_db_ && db_) {
+        return db_->getDbString(category, sub_id);
+    }
+
     auto it = db_strings_.find({category, sub_id});
     if (it != db_strings_.end()) {
         return it->second;

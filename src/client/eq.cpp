@@ -603,7 +603,16 @@ std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::
 }
 
 bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
-	// Load EQ string files for message lookups
+	// Try SQLite first
+	if (m_willeq_db && m_willeq_db->isOpen()) {
+		if (m_string_db.initFromDatabase(m_willeq_db.get())) {
+			LOG_INFO(MOD_MAIN, "Loaded strings from SQLite ({} eqstr, {} dbstr)",
+					 m_string_db.getEqStrCount(), m_string_db.getDbStrCount());
+			return true;
+		}
+	}
+
+	// Legacy: load from text files
 	std::string eqstr_path = eqClientPath + "/eqstr_us.txt";
 	std::string dbstr_path = eqClientPath + "/dbstr_us.txt";
 
