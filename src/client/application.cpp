@@ -170,6 +170,12 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->SetMapsPath(config.mapsPath);
         }
 
+        // Open WilleqDatabase before any data lookups (SetEQClientPath loads strings)
+        {
+            std::string dbPath = "data/willeq.db";
+            m_eqClient->OpenDatabase(dbPath);
+        }
+
 #ifdef EQT_HAS_GRAPHICS
         if (!config.eqClientPath.empty()) {
             m_eqClient->SetEQClientPath(config.eqClientPath);
@@ -200,13 +206,6 @@ bool Application::initialize(const ApplicationConfig& config) {
         return false;
     }
     EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
-
-    // Open WilleqDatabase (SQLite) before any data lookups.
-    // Not FATAL if missing — falls back to legacy file parsing.
-    {
-        std::string dbPath = "data/willeq.db";
-        m_eqClient->OpenDatabase(dbPath);
-    }
 
     // S04: Initialize spell system at startup (spell DB, buff manager, spell effects, spell type processor)
     // Must happen after SetEQClientPath() and before any gameplay packets arrive.
