@@ -346,6 +346,138 @@ static int loadItemModels(sqlite3* db, const std::string& filepath) {
 }
 
 // ============================================================================
+// Race models loader (config/race_models.json)
+// ============================================================================
+
+static int loadRaceModels(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS race_models (
+            race_id INTEGER PRIMARY KEY,
+            code TEXT NOT NULL,
+            name TEXT,
+            female_code TEXT,
+            male_code TEXT,
+            neuter_code TEXT,
+            s3d_file TEXT,
+            fallback_code TEXT,
+            animation_source TEXT,
+            animation_source_s3d TEXT,
+            scale REAL DEFAULT 1.0,
+            gender_variants INTEGER DEFAULT 0,
+            invisible INTEGER DEFAULT 0
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO race_models (race_id, code, name, female_code, "
+        "male_code, neuter_code, s3d_file, fallback_code, animation_source, "
+        "animation_source_s3d, scale, gender_variants, invisible) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        -1, &stmt, nullptr);
+
+    // Parse JSON
+    std::string content((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+
+    // Find "races" object — simple parser for our known format
+    size_t racesPos = content.find("\"races\"");
+    if (racesPos == std::string::npos) {
+        sqlite3_finalize(stmt);
+        execSQL(db, "COMMIT");
+        return 0;
+    }
+
+    int count = 0;
+    // Find each race entry: "N": { ... }
+    size_t pos = content.find('{', racesPos + 7);  // Opening brace of races object
+    if (pos == std::string::npos) { sqlite3_finalize(stmt); execSQL(db, "COMMIT"); return 0; }
+    pos++;
+
+    while (pos < content.size()) {
+        // Find race ID string
+        size_t q1 = content.find('"', pos);
+        if (q1 == std::string::npos) break;
+        size_t q2 = content.find('"', q1 + 1);
+        if (q2 == std::string::npos) break;
+        std::string raceIdStr = content.substr(q1 + 1, q2 - q1 - 1);
+
+        // Skip metadata keys
+        if (raceIdStr[0] == '_') { pos = q2 + 1; continue; }
+
+        int raceId = 0;
+        try { raceId = std::stoi(raceIdStr); } catch (...) { pos = q2 + 1; continue; }
+
+        // Find the object for this race
+        size_t objStart = content.find('{', q2);
+        if (objStart == std::string::npos) break;
+        size_t objEnd = content.find('}', objStart);
+        if (objEnd == std::string::npos) break;
+        std::string obj = content.substr(objStart, objEnd - objStart + 1);
+
+        auto extractStr = [&](const char* key) -> std::string {
+            std::string search = std::string("\"") + key + "\"";
+            size_t kp = obj.find(search);
+            if (kp == std::string::npos) return "";
+            size_t vs = obj.find('"', kp + search.size() + 1);
+            if (vs == std::string::npos) return "";
+            size_t ve = obj.find('"', vs + 1);
+            if (ve == std::string::npos) return "";
+            return obj.substr(vs + 1, ve - vs - 1);
+        };
+        auto extractFloat = [&](const char* key, float def) -> float {
+            std::string search = std::string("\"") + key + "\"";
+            size_t kp = obj.find(search);
+            if (kp == std::string::npos) return def;
+            size_t colon = obj.find(':', kp);
+            if (colon == std::string::npos) return def;
+            return static_cast<float>(std::atof(obj.c_str() + colon + 1));
+        };
+        auto extractBool = [&](const char* key) -> int {
+            std::string search = std::string("\"") + key + "\"";
+            size_t kp = obj.find(search);
+            if (kp == std::string::npos) return 0;
+            size_t colon = obj.find(':', kp);
+            if (colon == std::string::npos) return 0;
+            size_t vs = obj.find_first_not_of(" \t", colon + 1);
+            return (vs < obj.size() && obj[vs] == 't') ? 1 : 0;
+        };
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, raceId);
+        sqlite3_bind_text(stmt, 2, extractStr("code").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, extractStr("name").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, extractStr("female_code").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 5, extractStr("male_code").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 6, extractStr("neuter_code").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 7, extractStr("s3d_file").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 8, extractStr("fallback_code").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 9, extractStr("animation_source").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 10, extractStr("animation_source_s3d").c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_double(stmt, 11, extractFloat("scale", 1.0f));
+        sqlite3_bind_int(stmt, 12, extractBool("gender_variants"));
+        sqlite3_bind_int(stmt, 13, extractBool("invisible"));
+
+        sqlite3_step(stmt);
+        count++;
+
+        pos = objEnd + 1;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
 // Sound assets loader (SoundAssets.txt)
 // ============================================================================
 
@@ -959,6 +1091,16 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  item_models:  %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Race Models ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadRaceModels(db, configPath + "/race_models.json");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  race_models:  %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

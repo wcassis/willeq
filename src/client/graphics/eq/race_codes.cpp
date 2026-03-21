@@ -1,89 +1,28 @@
 #include "client/graphics/eq/race_codes.h"
+#include "client/willeq_database.h"
 #include "common/logging.h"
-#include <json/json.h>
 #include <algorithm>
-#include <fstream>
 #include <map>
 #include <mutex>
 
 namespace EQT {
 namespace Graphics {
 
-// Static storage for race mappings loaded from JSON
-struct RaceMapping {
-    std::string code;
-    std::string name;
-    std::string femaleCode;
-    std::string s3dFile;
-    std::string fallbackCode;
-    std::string animationSource;     // Animation source code (e.g., "RAT" for ARM)
-    std::string animationSourceS3d;  // S3D file containing animation source (e.g., "qeynos_chr.s3d")
-    float scale = 1.0f;
-    bool genderVariants = false;
-    bool invisible = false;
-};
-
-static std::map<uint16_t, RaceMapping> s_raceMappings;
-static std::string s_jsonPath;
+// Race mappings now served on-demand from WilleqDatabase::globalInstance()
 static bool s_mappingsLoaded = false;
-static std::mutex s_mappingsMutex;
 
 bool loadRaceMappings(const std::string& jsonPath) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
-        LOG_WARN(MOD_GRAPHICS, "Could not open race mappings file: {}", jsonPath);
-        return false;
+    (void)jsonPath;
+    // Race mappings now served on-demand from SQLite
+    s_mappingsLoaded = (WilleqDatabase::globalInstance() != nullptr);
+    if (s_mappingsLoaded) {
+        LOG_INFO(MOD_GRAPHICS, "Race mappings using on-demand SQLite lookup");
     }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to parse race mappings JSON: {}", errors);
-        return false;
-    }
-
-    s_raceMappings.clear();
-
-    const Json::Value& races = root["races"];
-    if (!races.isObject()) {
-        LOG_ERROR(MOD_GRAPHICS, "race_models.json missing 'races' object");
-        return false;
-    }
-
-    for (const auto& raceIdStr : races.getMemberNames()) {
-        uint16_t raceId = static_cast<uint16_t>(std::stoi(raceIdStr));
-        const Json::Value& raceData = races[raceIdStr];
-
-        RaceMapping mapping;
-        mapping.code = raceData.get("code", "").asString();
-        mapping.name = raceData.get("name", "").asString();
-        mapping.femaleCode = raceData.get("female_code", "").asString();
-        mapping.s3dFile = raceData.get("s3d_file", "").asString();
-        mapping.fallbackCode = raceData.get("fallback_code", "").asString();
-        mapping.animationSource = raceData.get("animation_source", "").asString();
-        mapping.animationSourceS3d = raceData.get("animation_source_s3d", "").asString();
-        mapping.scale = static_cast<float>(raceData.get("scale", 1.0).asDouble());
-        mapping.genderVariants = raceData.get("gender_variants", false).asBool();
-        mapping.invisible = raceData.get("invisible", false).asBool();
-
-        s_raceMappings[raceId] = mapping;
-    }
-
-    s_jsonPath = jsonPath;
-    s_mappingsLoaded = true;
-    LOG_INFO(MOD_GRAPHICS, "Loaded {} race mappings from {}", s_raceMappings.size(), jsonPath);
-    return true;
+    return s_mappingsLoaded;
 }
 
 bool reloadRaceMappings() {
-    if (s_jsonPath.empty()) {
-        LOG_WARN(MOD_GRAPHICS, "Cannot reload race mappings: no JSON file loaded");
-        return false;
-    }
-    return loadRaceMappings(s_jsonPath);
+    return loadRaceMappings("");
 }
 
 bool areRaceMappingsLoaded() {
@@ -91,64 +30,48 @@ bool areRaceMappingsLoaded() {
 }
 
 std::string getRaceS3DFile(uint16_t raceId) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-    auto it = s_raceMappings.find(raceId);
-    if (it != s_raceMappings.end()) {
-        return it->second.s3dFile;
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found) return info.s3dFile;
     }
     return "";
 }
 
 std::string getRaceS3DFileByCode(const std::string& raceCode) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-    std::string upperCode = raceCode;
-    std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
-
-    // Search all race mappings for one with this code
-    for (const auto& [raceId, mapping] : s_raceMappings) {
-        std::string mappingCode = mapping.code;
-        std::transform(mappingCode.begin(), mappingCode.end(), mappingCode.begin(),
-                       [](unsigned char c) { return std::toupper(c); });
-        if (mappingCode == upperCode && !mapping.s3dFile.empty()) {
-            return mapping.s3dFile;
-        }
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModelByCode(raceCode);
+        if (info.found) return info.s3dFile;
     }
     return "";
 }
 
 std::string getAnimationSourceFromConfig(uint16_t raceId) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-    auto it = s_raceMappings.find(raceId);
-    if (it != s_raceMappings.end()) {
-        return it->second.animationSource;
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found) return info.animationSource;
     }
     return "";
 }
 
 std::string getAnimationSourceS3DFile(uint16_t raceId) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-    auto it = s_raceMappings.find(raceId);
-    if (it != s_raceMappings.end()) {
-        return it->second.animationSourceS3d;
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found) return info.animationSourceS3d;
     }
     return "";
 }
 
 std::string getAnimationSourceS3DFileByCode(const std::string& raceCode) {
-    std::lock_guard<std::mutex> lock(s_mappingsMutex);
-    std::string upperCode = raceCode;
-    std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
+    auto* db = WilleqDatabase::globalInstance();
+    if (!db) return "";
 
-    // Search all race mappings for one with this code and an animation_source_s3d
-    for (const auto& [raceId, mapping] : s_raceMappings) {
-        std::string mappingCode = mapping.code;
-        std::transform(mappingCode.begin(), mappingCode.end(), mappingCode.begin(),
-                       [](unsigned char c) { return std::toupper(c); });
-        if (mappingCode == upperCode && !mapping.animationSourceS3d.empty()) {
-            return mapping.animationSourceS3d;
-        }
+    auto info = db->getRaceModelByCode(raceCode);
+    if (info.found && !info.animationSourceS3d.empty()) {
+        return info.animationSourceS3d;
     }
     return "";
 }
@@ -170,12 +93,12 @@ std::string getGenderedRaceCode(const std::string& maleCode, uint8_t gender) {
 }
 
 std::string getRaceCode(uint16_t raceId) {
-    // First check JSON mappings
+    // First check SQLite race_models table
     {
-        std::lock_guard<std::mutex> lock(s_mappingsMutex);
-        auto it = s_raceMappings.find(raceId);
-        if (it != s_raceMappings.end() && !it->second.code.empty()) {
-            return it->second.code;
+        auto* db = WilleqDatabase::globalInstance();
+        if (db) {
+            auto info = db->getRaceModel(raceId);
+            if (info.found && !info.code.empty()) return info.code;
         }
     }
 
@@ -337,17 +260,19 @@ std::string getZoneSpecificRaceCode(uint16_t raceId, uint8_t gender, const std::
 }
 
 std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender) {
-    // First check JSON mappings for fallback_code
+    // Check SQLite race_models table for fallback_code
     {
-        std::lock_guard<std::mutex> lock(s_mappingsMutex);
-        auto it = s_raceMappings.find(raceId);
-        if (it != s_raceMappings.end() && !it->second.fallbackCode.empty()) {
-            std::string fallback = it->second.fallbackCode;
-            // Apply gender suffix if it ends in M and gender is female
-            if (gender == 1 && fallback.length() == 3 && fallback.back() == 'M') {
-                fallback.back() = 'F';
+        auto* db = WilleqDatabase::globalInstance();
+        if (db) {
+            auto info = db->getRaceModel(raceId);
+            if (info.found && !info.fallbackCode.empty()) {
+                std::string fallback = info.fallbackCode;
+                // Apply gender suffix if it ends in M and gender is female
+                if (gender == 1 && fallback.length() == 3 && fallback.back() == 'M') {
+                    fallback.back() = 'F';
+                }
+                return fallback;
             }
-            return fallback;
         }
     }
 
@@ -409,12 +334,12 @@ std::string getRaceModelFilename(uint16_t raceId, uint8_t gender) {
 }
 
 float getRaceScale(uint16_t raceId) {
-    // First check JSON mappings
+    // Check SQLite race_models table
     {
-        std::lock_guard<std::mutex> lock(s_mappingsMutex);
-        auto it = s_raceMappings.find(raceId);
-        if (it != s_raceMappings.end()) {
-            return it->second.scale;
+        auto* db = WilleqDatabase::globalInstance();
+        if (db) {
+            auto info = db->getRaceModel(raceId);
+            if (info.found) return info.scale;
         }
     }
 
@@ -489,12 +414,12 @@ float getRaceScale(uint16_t raceId) {
 }
 
 std::string getRaceName(uint16_t raceId) {
-    // First check JSON mappings
+    // Check SQLite race_models table
     {
-        std::lock_guard<std::mutex> lock(s_mappingsMutex);
-        auto it = s_raceMappings.find(raceId);
-        if (it != s_raceMappings.end() && !it->second.name.empty()) {
-            return it->second.name;
+        auto* db = WilleqDatabase::globalInstance();
+        if (db) {
+            auto info = db->getRaceModel(raceId);
+            if (info.found && !info.name.empty()) return info.name;
         }
     }
 

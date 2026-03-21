@@ -61,6 +61,8 @@ void WilleqDatabase::close() {
     fin(stmtGetItemModel_);
     fin(stmtGetAsset_);
     fin(stmtGetAssetsInArchive_);
+    fin(stmtGetRaceModel_);
+    fin(stmtGetRaceModelByCode_);
     fin(stmtGetZoneChars_);
     fin(stmtGetSoundAsset_);
     fin(stmtGetAnimSound_);
@@ -336,6 +338,80 @@ std::vector<AssetLocation> WilleqDatabase::getAssetsInArchive(const std::string&
     }
 
     return results;
+}
+
+// ============================================================================
+// Race model queries
+// ============================================================================
+
+RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
+    ScopedQueryTimer timer(stats_);
+    RaceModelInfo info;
+    if (!db_) return info;
+
+    auto* stmt = prepare(
+        "SELECT race_id, code, name, female_code, male_code, neuter_code, "
+        "s3d_file, fallback_code, animation_source, animation_source_s3d, "
+        "scale, gender_variants, invisible FROM race_models WHERE race_id=?",
+        stmtGetRaceModel_);
+    if (!stmt) return info;
+
+    sqlite3_reset(stmt);
+    sqlite3_bind_int(stmt, 1, raceId);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        info.found = true;
+        info.raceId = sqlite3_column_int(stmt, 0);
+        info.code = colText(stmt, 1);
+        info.name = colText(stmt, 2);
+        info.femaleCode = colText(stmt, 3);
+        info.maleCode = colText(stmt, 4);
+        info.neuterCode = colText(stmt, 5);
+        info.s3dFile = colText(stmt, 6);
+        info.fallbackCode = colText(stmt, 7);
+        info.animationSource = colText(stmt, 8);
+        info.animationSourceS3d = colText(stmt, 9);
+        info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
+        info.genderVariants = sqlite3_column_int(stmt, 11) != 0;
+        info.invisible = sqlite3_column_int(stmt, 12) != 0;
+    }
+
+    return info;
+}
+
+RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
+    ScopedQueryTimer timer(stats_);
+    RaceModelInfo info;
+    if (!db_) return info;
+
+    auto* stmt = prepare(
+        "SELECT race_id, code, name, female_code, male_code, neuter_code, "
+        "s3d_file, fallback_code, animation_source, animation_source_s3d, "
+        "scale, gender_variants, invisible FROM race_models WHERE code=? COLLATE NOCASE",
+        stmtGetRaceModelByCode_);
+    if (!stmt) return info;
+
+    sqlite3_reset(stmt);
+    sqlite3_bind_text(stmt, 1, code.c_str(), -1, SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        info.found = true;
+        info.raceId = sqlite3_column_int(stmt, 0);
+        info.code = colText(stmt, 1);
+        info.name = colText(stmt, 2);
+        info.femaleCode = colText(stmt, 3);
+        info.maleCode = colText(stmt, 4);
+        info.neuterCode = colText(stmt, 5);
+        info.s3dFile = colText(stmt, 6);
+        info.fallbackCode = colText(stmt, 7);
+        info.animationSource = colText(stmt, 8);
+        info.animationSourceS3d = colText(stmt, 9);
+        info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
+        info.genderVariants = sqlite3_column_int(stmt, 11) != 0;
+        info.invisible = sqlite3_column_int(stmt, 12) != 0;
+    }
+
+    return info;
 }
 
 // ============================================================================

@@ -1,6 +1,7 @@
 #ifdef WITH_AUDIO
 
 #include "client/audio/eff_loader.h"
+#include "client/willeq_database.h"
 #include <fstream>
 #include <sstream>
 #include <cstring>
@@ -185,74 +186,23 @@ void EffLoader::clear() {
 }
 
 bool EffLoader::loadMp3Index(const std::string& eqPath) {
-    if (mp3IndexLoaded_) {
-        return true;
-    }
-
-    std::string filepath = eqPath + "/mp3index.txt";
-    std::ifstream file(filepath);
-
-    if (!file.is_open()) {
-        // Use default entries for Planes of Power era
-        // Index 0 is unused (1-indexed)
-        mp3Index_.clear();
-        mp3Index_.push_back("");  // Index 0 placeholder
-        mp3Index_.push_back("bothunder.mp3");
-        mp3Index_.push_back("codecay.mp3");
-        mp3Index_.push_back("combattheme1.mp3");
-        mp3Index_.push_back("combattheme2.mp3");
-        mp3Index_.push_back("deaththeme.mp3");
-        mp3Index_.push_back("eqtheme.mp3");
-        mp3Index_.push_back("hohonor.mp3");
-        mp3Index_.push_back("poair.mp3");
-        mp3Index_.push_back("podisease.mp3");
-        mp3Index_.push_back("poearth.mp3");
-        mp3Index_.push_back("pofire.mp3");
-        mp3Index_.push_back("poinnovation.mp3");
-        mp3Index_.push_back("pojustice.mp3");
-        mp3Index_.push_back("poknowledge.mp3");
-        mp3Index_.push_back("ponightmare.mp3");
-        mp3Index_.push_back("postorms.mp3");
-        mp3Index_.push_back("potactics.mp3");
-        mp3Index_.push_back("potime.mp3");
-        mp3Index_.push_back("potorment.mp3");
-        mp3Index_.push_back("potranquility.mp3");
-        mp3Index_.push_back("povalor.mp3");
-        mp3Index_.push_back("powar.mp3");
-        mp3Index_.push_back("powater.mp3");
-        mp3Index_.push_back("solrotower.mp3");
-        mp3IndexLoaded_ = true;
-        return false;
-    }
-
-    mp3Index_.clear();
-    mp3Index_.push_back("");  // Index 0 placeholder (1-indexed file)
-
-    std::string line;
-    while (std::getline(file, line)) {
-        // Remove carriage return if present
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        // Remove whitespace
-        size_t start = line.find_first_not_of(" \t");
-        if (start == std::string::npos) {
-            mp3Index_.push_back("");
-            continue;
-        }
-        size_t end = line.find_last_not_of(" \t");
-        mp3Index_.push_back(line.substr(start, end - start + 1));
-    }
-
+    (void)eqPath;
+    // Music files accessed on-demand via SQLite music_files table
     mp3IndexLoaded_ = true;
     return true;
 }
 
 std::string EffLoader::getMp3File(int index) {
-    if (index <= 0 || static_cast<size_t>(index) >= mp3Index_.size()) {
-        return "";
+    // mp3index.txt is 1-indexed, database is 0-indexed
+    // Database stores: id=0 → "bothunder.mp3", id=1 → "codecay.mp3", etc.
+    // EffLoader callers use 1-indexed: index=1 → first entry
+    if (index <= 0) return "";
+
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        return db->getMusicFile(index - 1);  // Convert 1-indexed to 0-indexed
     }
-    return mp3Index_[static_cast<size_t>(index)];
+    return "";
 }
 
 std::string EffLoader::getHardcodedSound(int32_t soundId) {

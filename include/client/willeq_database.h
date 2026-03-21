@@ -44,6 +44,24 @@ struct AssetLocation {
     bool found = false;
 };
 
+// Race model mapping entry
+struct RaceModelInfo {
+    uint16_t raceId = 0;
+    std::string code;
+    std::string name;
+    std::string femaleCode;
+    std::string maleCode;
+    std::string neuterCode;
+    std::string s3dFile;
+    std::string fallbackCode;
+    std::string animationSource;
+    std::string animationSourceS3d;
+    float scale = 1.0f;
+    bool genderVariants = false;
+    bool invisible = false;
+    bool found = false;
+};
+
 // Zone character model entry
 struct ZoneCharacterEntry {
     std::string modelCode;
@@ -116,6 +134,10 @@ public:
     AssetLocation getAssetLocation(const std::string& assetName);
     std::vector<AssetLocation> getAssetsInArchive(const std::string& archiveName);
 
+    // ── Race model queries ──
+    RaceModelInfo getRaceModel(uint16_t raceId);
+    RaceModelInfo getRaceModelByCode(const std::string& code);
+
     // ── Zone character queries ──
     std::vector<ZoneCharacterEntry> getZoneCharacters(const std::string& zoneName);
 
@@ -163,6 +185,8 @@ private:
     sqlite3_stmt* stmtGetItemModel_ = nullptr;
     sqlite3_stmt* stmtGetAsset_ = nullptr;
     sqlite3_stmt* stmtGetAssetsInArchive_ = nullptr;
+    sqlite3_stmt* stmtGetRaceModel_ = nullptr;
+    sqlite3_stmt* stmtGetRaceModelByCode_ = nullptr;
     sqlite3_stmt* stmtGetZoneChars_ = nullptr;
     sqlite3_stmt* stmtGetSoundAsset_ = nullptr;
     sqlite3_stmt* stmtGetAnimSound_ = nullptr;
