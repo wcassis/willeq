@@ -55,6 +55,7 @@ struct DrawEntry {
     float distanceSq;
     irr::scene::IMeshBuffer* buffer;
     irr::core::matrix4 worldMat;
+    irr::s32 materialOverride = -1;  // If >= 0, override buffer's MaterialType at draw time
 };
 
 // All loaded zone data needed for benchmarking
@@ -107,6 +108,20 @@ struct ZoneBenchData {
     float aggressiveFactor = 1.5f;         // Overshoot: billboard 50% more than needed
     int recoveryFrames = 0;                // Frames under budget before recovering one entity
     int recoveryThreshold = 15;            // Consecutive under-budget frames to start recovery
+
+    // Adaptive lighting config
+    bool adaptiveLighting = false;
+    int perPixelEntityBudget = 15;         // Max entities with per-pixel lighting
+    int perPixelZoneBudget = 20;           // Max zone regions with per-pixel lighting
+    irr::s32 materialPerPixelSolid = -1;   // Per-pixel shader material type
+    irr::s32 materialPerPixelAlpha = -1;   // Per-pixel alpha test material type
+    irr::s32 materialLWSolid = -1;         // Lightweight (per-vertex) shader material type
+    irr::s32 materialLWAlpha = -1;         // Lightweight alpha test material type
+    // Atlas variants
+    irr::s32 materialPerPixelAtlasSolid = -1;
+    irr::s32 materialPerPixelAtlasAlpha = -1;
+    irr::s32 materialLWAtlasSolid = -1;
+    irr::s32 materialLWAtlasAlpha = -1;
 
     // Visibility
     std::unique_ptr<EQT::Graphics::FrustumCuller> frustumCuller;

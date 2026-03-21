@@ -82,6 +82,9 @@ struct Options {
     float lodTier2Dist = 80.0f;   // Distance for billboard switch
     bool adaptiveLod = false;     // Predictive LOD: billboard excess entities
     int entityBudget = 55;        // Max composite entities per frame
+    bool adaptiveLighting = false; // Per-pixel near, per-vertex far
+    int perPixelBudget = 15;       // Max entities with per-pixel lighting
+    int perPixelZoneBudget = 20;   // Max zone regions with per-pixel lighting
     bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Analysis modes
@@ -131,6 +134,9 @@ static void printUsage(const char* prog) {
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
+    printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
+    printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
+    printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("\nAnalysis modes:\n");
@@ -180,6 +186,9 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
         else if (strcmp(argv[i], "--adaptive-lod") == 0) opts.adaptiveLod = true;
         else if (strcmp(argv[i], "--entity-budget") == 0 && i + 1 < argc) opts.entityBudget = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--adaptive-lighting") == 0) opts.adaptiveLighting = true;
+        else if (strcmp(argv[i], "--perpixel-budget") == 0 && i + 1 < argc) opts.perPixelBudget = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--zone-pp-budget") == 0 && i + 1 < argc) opts.perPixelZoneBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
@@ -200,11 +209,11 @@ static Options parseArgs(int argc, char** argv) {
 static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
     if (!data.zoneShader) return;
 
-    // Ambient + sun
-    data.zoneShader->setAmbientColor(0.3f, 0.3f, 0.35f);
-    data.zoneShader->setSunDirection(0.3f, -0.8f, 0.5f);
-    data.zoneShader->setSunColor(0.8f, 0.75f, 0.65f);
-    data.zoneShader->setTintColor(1.0f, 1.0f, 1.0f);
+    // Midnight lighting — dark ambient, no sun, player light is dominant
+    data.zoneShader->setAmbientColor(0.02f, 0.02f, 0.04f);
+    data.zoneShader->setSunDirection(0.0f, -1.0f, 0.0f);
+    data.zoneShader->setSunColor(0.0f, 0.0f, 0.0f);
+    data.zoneShader->setTintColor(0.15f, 0.15f, 0.2f);
 
     // Fog (based on OrangePi preset: clip 300, fog 60-95%)
     float clipDist = 300.0f;
@@ -232,6 +241,7 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
     // Player light (per-pixel, index 0) — will be updated per frame at camera pos
     data.zoneShader->setPlayerLightColor(1.0f, 0.95f, 0.8f);
     data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, 0.0005f);
+    // Note: setPerPixelPlayerLight(true) is called in loadZone() before mesh building
 }
 
 // Set up projection and view matrices for a given camera state (EQ coords).
@@ -289,7 +299,15 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
 
     for (const auto& de : entries) {
         data.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
-        data.driver->setMaterial(de.buffer->getMaterial());
+
+        if (de.materialOverride >= 0) {
+            // Apply material with overridden shader type
+            irr::video::SMaterial mat = de.buffer->getMaterial();
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+            data.driver->setMaterial(mat);
+        } else {
+            data.driver->setMaterial(de.buffer->getMaterial());
+        }
         data.driver->drawMeshBuffer(de.buffer);
 
         if (de.materialKey != prevMatKey) {
@@ -588,6 +606,25 @@ int main(int argc, char** argv) {
 
     // ── Configure adaptive LOD budget ──
     data->compositeEntityBudget = opts.entityBudget;
+
+    // ── Configure adaptive lighting ──
+    data->adaptiveLighting = opts.adaptiveLighting;
+    data->perPixelEntityBudget = opts.perPixelBudget;
+    data->perPixelZoneBudget = opts.perPixelZoneBudget;
+    if (data->zoneShader) {
+        data->materialPerPixelSolid = data->zoneShader->getMaterialTypeSolid();
+        data->materialPerPixelAlpha = data->zoneShader->getMaterialTypeAlphaTest();
+        data->materialLWSolid = data->zoneShader->getMaterialTypeLWSolid();
+        data->materialLWAlpha = data->zoneShader->getMaterialTypeLWAlphaTest();
+        data->materialPerPixelAtlasSolid = data->zoneShader->getMaterialTypeAtlasSolid();
+        data->materialPerPixelAtlasAlpha = data->zoneShader->getMaterialTypeAtlasAlpha();
+        data->materialLWAtlasSolid = data->zoneShader->getMaterialTypeLWAtlasSolid();
+        data->materialLWAtlasAlpha = data->zoneShader->getMaterialTypeLWAtlasAlpha();
+        if (opts.adaptiveLighting) {
+            printf("Adaptive lighting: entity PP budget=%d, zone PP budget=%d\n",
+                   opts.perPixelBudget, opts.perPixelZoneBudget);
+        }
+    }
 
     // ── Set up lighting ──
     setupLighting(*data, opts);

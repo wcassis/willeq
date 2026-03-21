@@ -155,6 +155,12 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         }
     }
 
+    // Enable per-pixel player light BEFORE building meshes so
+    // getActiveSolid() returns the per-pixel variant
+    if (data->zoneShader) {
+        data->zoneShader->setPerPixelPlayerLight(true);
+    }
+
     // ── Step 6: Load texture atlas ──
 #ifdef EQT_HAS_TEXTURE_ATLAS
     if (config.useAtlas && !config.atlasPath.empty()) {
@@ -579,9 +585,15 @@ void collectDrawEntries(
     }
 
     // Collect mesh buffers from visible regions
+    // visibleRegions is sorted front-to-back (nearest first).
+    int regionIdx = 0;
     for (const auto& re : visibleRegions) {
         auto& rd = data.regions[re.idx];
         if (!rd.mesh) continue;
+
+        // Adaptive zone lighting: nearest N regions get per-pixel, rest get lightweight
+        bool usePerPixel = !data.adaptiveLighting ||
+                           regionIdx < data.perPixelZoneBudget;
 
         irr::core::matrix4 worldMat;
         worldMat.setTranslation(rd.position);
@@ -601,12 +613,31 @@ void collectDrawEntries(
                 texId = static_cast<uint32_t>(
                     reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
             }
-            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
 
-            outEntries.push_back({matKey, re.distSq, buf, worldMat});
+            // Compute material override for adaptive lighting
+            irr::s32 matOverride = -1;
+            if (data.adaptiveLighting && !usePerPixel && data.materialLWSolid >= 0) {
+                irr::s32 origType = mat.MaterialType;
+                // Map per-pixel material types to their lightweight equivalents
+                if (origType == data.materialPerPixelSolid)
+                    matOverride = data.materialLWSolid;
+                else if (origType == data.materialPerPixelAlpha)
+                    matOverride = data.materialLWAlpha;
+                else if (origType == data.materialPerPixelAtlasSolid)
+                    matOverride = data.materialLWAtlasSolid;
+                else if (origType == data.materialPerPixelAtlasAlpha)
+                    matOverride = data.materialLWAtlasAlpha;
+            }
+
+            uint32_t effectiveMatType = (matOverride >= 0) ?
+                static_cast<uint32_t>(matOverride) : static_cast<uint32_t>(mat.MaterialType);
+            uint32_t matKey = (effectiveMatType << 16) | texId;
+
+            outEntries.push_back({matKey, re.distSq, buf, worldMat, matOverride});
             polysCollected += bufPolys;
         }
 
+        regionIdx++;
         outRegionsDrawn++;
         if (budgetExceeded) break;
     }
@@ -1665,6 +1696,14 @@ int renderAdaptiveLodEntities(
     irr::core::matrix4 identityMat;
     int drawCalls = 0;
 
+    // Count composite entities (non-billboarded) for lighting tier assignment.
+    // Visible list is sorted by lodScore descending (farthest/lowest-priority first).
+    // Billboards are the first numToBillboard entries. Composites are the rest.
+    // Within composites, the last ones in the list are nearest/highest-priority —
+    // those get per-pixel lighting.
+    int totalComposites = visibleCount - numToBillboard;
+    int compositeIdx = 0;
+
     for (int vi = 0; vi < static_cast<int>(visible.size()); ++vi) {
         const auto& ve = visible[vi];
         const auto& ent = data.entities[ve.entityIdx];
@@ -1729,6 +1768,21 @@ int renderAdaptiveLodEntities(
             }
 
             if (!compositeIndices.empty() && hasMat) {
+                // Adaptive lighting: nearest composites get per-pixel shader,
+                // farther composites get lightweight per-vertex shader.
+                // List is sorted farthest-first, so last composites are nearest.
+                if (data.adaptiveLighting && data.materialLWSolid >= 0) {
+                    int distFromEnd = totalComposites - compositeIdx;
+                    if (distFromEnd <= data.perPixelEntityBudget) {
+                        compositeMat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                            data.materialPerPixelSolid);
+                    } else {
+                        compositeMat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                            data.materialLWSolid);
+                    }
+                }
+                compositeIdx++;
+
                 data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
                 data.driver->setMaterial(compositeMat);
                 data.driver->drawVertexPrimitiveList(
