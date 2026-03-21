@@ -18,6 +18,7 @@
 //   s3d_assets      - S3D archive asset index (if s3d_index.json present)
 //   sound_assets    - Sound file references from SoundAssets.txt
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -123,31 +124,43 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         int id = std::atoi(fields[0].c_str());
         if (id <= 0) continue;
 
+        // Field indices from spell_constants.h SpellField namespace
+        // These are the authoritative field positions for Titanium spells_us.txt
+        auto safeStr = [&](int idx) -> const char* {
+            return (idx < static_cast<int>(fields.size())) ? fields[idx].c_str() : "";
+        };
+        auto safeInt = [&](int idx) -> int {
+            return (idx < static_cast<int>(fields.size())) ? std::atoi(fields[idx].c_str()) : 0;
+        };
+        auto safeDbl = [&](int idx) -> double {
+            return (idx < static_cast<int>(fields.size())) ? std::atof(fields[idx].c_str()) : 0.0;
+        };
+
         sqlite3_reset(stmt);
         sqlite3_bind_int(stmt, 1, id);
-        sqlite3_bind_text(stmt, 2, fields[1].c_str(), -1, SQLITE_TRANSIENT);    // name
-        sqlite3_bind_text(stmt, 3, fields[2].c_str(), -1, SQLITE_TRANSIENT);    // player_tag
-        sqlite3_bind_text(stmt, 4, fields[3].c_str(), -1, SQLITE_TRANSIENT);    // teleport_zone
-        sqlite3_bind_text(stmt, 5, fields[6].c_str(), -1, SQLITE_TRANSIENT);    // cast_on_you
-        sqlite3_bind_text(stmt, 6, fields[7].c_str(), -1, SQLITE_TRANSIENT);    // cast_on_other
-        sqlite3_bind_text(stmt, 7, fields[8].c_str(), -1, SQLITE_TRANSIENT);    // spell_fades
-        sqlite3_bind_int(stmt, 8, std::atoi(fields[13].c_str()));                // cast_time_ms
-        sqlite3_bind_int(stmt, 9, std::atoi(fields[14].c_str()));                // recovery_time_ms
-        sqlite3_bind_int(stmt, 10, std::atoi(fields[15].c_str()));               // recast_time_ms
-        sqlite3_bind_int(stmt, 11, std::atoi(fields[16].c_str()));               // duration_formula
-        sqlite3_bind_int(stmt, 12, std::atoi(fields[17].c_str()));               // duration_cap
-        sqlite3_bind_int(stmt, 13, std::atoi(fields[18].c_str()));               // mana_cost
-        sqlite3_bind_int(stmt, 14, std::atoi(fields[98].c_str()));               // target_type
-        sqlite3_bind_double(stmt, 15, std::atof(fields[9].c_str()));             // range
-        sqlite3_bind_double(stmt, 16, std::atof(fields[10].c_str()));            // aoe_range
-        sqlite3_bind_int(stmt, 17, std::atoi(fields[85].c_str()));               // resist_type
-        sqlite3_bind_int(stmt, 18, std::atoi(fields[147].c_str()));              // resist_diff
-        sqlite3_bind_int(stmt, 19, std::atoi(fields[100].c_str()));              // casting_skill
-        sqlite3_bind_int(stmt, 20, std::atoi(fields[83].c_str()));               // is_beneficial
-        sqlite3_bind_int(stmt, 21, std::atoi(fields[144].c_str()));              // spell_icon
-        sqlite3_bind_int(stmt, 22, std::atoi(fields[145].c_str()));              // gem_icon
-        sqlite3_bind_int(stmt, 23, std::atoi(fields[86].c_str()));               // cast_anim
-        sqlite3_bind_int(stmt, 24, std::atoi(fields[101].c_str()));              // zone_type
+        sqlite3_bind_text(stmt, 2, safeStr(1), -1, SQLITE_TRANSIENT);     // Name
+        sqlite3_bind_text(stmt, 3, safeStr(2), -1, SQLITE_TRANSIENT);     // PlayerTag
+        sqlite3_bind_text(stmt, 4, safeStr(3), -1, SQLITE_TRANSIENT);     // TeleportZone
+        sqlite3_bind_text(stmt, 5, safeStr(4), -1, SQLITE_TRANSIENT);     // CastOnYou
+        sqlite3_bind_text(stmt, 6, safeStr(5), -1, SQLITE_TRANSIENT);     // CastOnOther
+        sqlite3_bind_text(stmt, 7, safeStr(7), -1, SQLITE_TRANSIENT);     // SpellFades
+        sqlite3_bind_int(stmt, 8, safeInt(13));                             // CastTime
+        sqlite3_bind_int(stmt, 9, safeInt(14));                             // RecoveryTime
+        sqlite3_bind_int(stmt, 10, safeInt(15));                            // RecastTime
+        sqlite3_bind_int(stmt, 11, safeInt(16));                            // DurationFormula
+        sqlite3_bind_int(stmt, 12, safeInt(17));                            // DurationCap
+        sqlite3_bind_int(stmt, 13, safeInt(19));                            // ManaCost
+        sqlite3_bind_int(stmt, 14, safeInt(98));                            // TargetType
+        sqlite3_bind_double(stmt, 15, safeDbl(9));                          // Range
+        sqlite3_bind_double(stmt, 16, safeDbl(10));                         // AoERange
+        sqlite3_bind_int(stmt, 17, safeInt(85));                            // ResistType
+        sqlite3_bind_int(stmt, 18, safeInt(99));                            // BaseDifficulty (resist diff)
+        sqlite3_bind_int(stmt, 19, safeInt(100));                           // CastingSkill
+        sqlite3_bind_int(stmt, 20, safeInt(83));                            // GoodEffect (is_beneficial)
+        sqlite3_bind_int(stmt, 21, safeInt(143));                           // SpellIcon
+        sqlite3_bind_int(stmt, 22, safeInt(144));                           // NewIcon (gem_icon)
+        sqlite3_bind_int(stmt, 23, safeInt(120));                           // CastAnim
+        sqlite3_bind_int(stmt, 24, safeInt(101));                           // ZoneType
 
         sqlite3_step(stmt);
         count++;
@@ -330,6 +343,329 @@ static int loadItemModels(sqlite3* db, const std::string& filepath) {
     sqlite3_finalize(stmt);
     execSQL(db, "COMMIT");
     return count;
+}
+
+// ============================================================================
+// Sound assets loader (SoundAssets.txt)
+// ============================================================================
+
+static int loadSoundAssets(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS sound_assets (
+            id INTEGER PRIMARY KEY,
+            filename TEXT NOT NULL
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO sound_assets (id, filename) VALUES (?,?)",
+        -1, &stmt, nullptr);
+
+    std::string line;
+    int count = 0;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        auto fields = split(line, '^');
+        if (fields.size() < 2) continue;
+
+        int id = std::atoi(fields[0].c_str());
+        const std::string& filename = fields[1];
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, id);
+        sqlite3_bind_text(stmt, 2, filename.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
+// Animation sounds loader (AnimationSounds.txt)
+// ============================================================================
+
+static int loadAnimationSounds(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS animation_sounds (
+            animation_name TEXT PRIMARY KEY,
+            sound_id INTEGER NOT NULL
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO animation_sounds (animation_name, sound_id) VALUES (?,?)",
+        -1, &stmt, nullptr);
+
+    std::string line;
+    int count = 0;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        auto fields = split(line, '^');
+        if (fields.size() < 2) continue;
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_text(stmt, 1, fields[0].c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 2, std::atoi(fields[1].c_str()));
+        sqlite3_step(stmt);
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
+// Race data loader (RaceData.txt)
+// ============================================================================
+
+static int loadRaceData(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    // RaceData.txt: race_id ^ gender ^ unknown ^ unknown ^ anim_ids...
+    // Store as race_id -> full raw field data for flexibility
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS race_data (
+            race_id INTEGER NOT NULL,
+            gender INTEGER NOT NULL,
+            raw_fields TEXT NOT NULL,
+            PRIMARY KEY (race_id, gender)
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO race_data (race_id, gender, raw_fields) VALUES (?,?,?)",
+        -1, &stmt, nullptr);
+
+    std::string line;
+    int count = 0;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        auto fields = split(line, '^');
+        if (fields.size() < 4) continue;
+
+        int raceId = std::atoi(fields[0].c_str());
+        int gender = std::atoi(fields[1].c_str());
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, raceId);
+        sqlite3_bind_int(stmt, 2, gender);
+        sqlite3_bind_text(stmt, 3, line.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
+// Music index loader (mp3index.txt)
+// ============================================================================
+
+static int loadMusicIndex(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS music_files (
+            id INTEGER PRIMARY KEY,
+            filename TEXT NOT NULL
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO music_files (id, filename) VALUES (?,?)",
+        -1, &stmt, nullptr);
+
+    std::string line;
+    int count = 0;
+    while (std::getline(file, line)) {
+        line = trim(line);
+        if (line.empty()) continue;
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, count);
+        sqlite3_bind_text(stmt, 2, line.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
+// Login server strings loader (eqlsstr_us.txt)
+// ============================================================================
+
+static int loadLoginStrings(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS login_strings (
+            id INTEGER PRIMARY KEY,
+            text TEXT NOT NULL
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO login_strings (id, text) VALUES (?,?)",
+        -1, &stmt, nullptr);
+
+    std::string line;
+    int count = 0;
+    // First line is header (EQST0002), skip it
+    bool headerSkipped = false;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        if (!headerSkipped && line.find("EQST") != std::string::npos) {
+            headerSkipped = true;
+            continue;
+        }
+
+        size_t space = line.find(' ');
+        if (space == std::string::npos) continue;
+
+        int id = std::atoi(line.substr(0, space).c_str());
+        std::string text = line.substr(space + 1);
+
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, id);
+        sqlite3_bind_text(stmt, 2, text.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    return count;
+}
+
+// ============================================================================
+// Zone character model lists loader (zone_chr.txt files)
+// ============================================================================
+
+static int loadZoneCharacters(sqlite3* db, const std::string& eqPath) {
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS zone_characters (
+            zone_name TEXT NOT NULL,
+            model_code TEXT NOT NULL,
+            source_file TEXT,
+            PRIMARY KEY (zone_name, model_code)
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO zone_characters (zone_name, model_code, source_file) VALUES (?,?,?)",
+        -1, &stmt, nullptr);
+
+    // Find all *_chr.txt files
+    std::string cmd = "ls " + eqPath + "/*_chr.txt 2>/dev/null";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        sqlite3_finalize(stmt);
+        execSQL(db, "COMMIT");
+        return 0;
+    }
+
+    int totalCount = 0;
+    char pathBuf[1024];
+    while (fgets(pathBuf, sizeof(pathBuf), pipe)) {
+        std::string fullPath(pathBuf);
+        while (!fullPath.empty() && (fullPath.back() == '\n' || fullPath.back() == '\r'))
+            fullPath.pop_back();
+
+        // Extract zone name from filename: /path/to/qeynos2_chr.txt -> qeynos2
+        std::string filename = fullPath;
+        size_t lastSlash = filename.rfind('/');
+        if (lastSlash != std::string::npos) filename = filename.substr(lastSlash + 1);
+        size_t chrPos = filename.find("_chr.txt");
+        if (chrPos == std::string::npos) continue;
+        std::string zoneName = filename.substr(0, chrPos);
+
+        std::ifstream file(fullPath);
+        if (!file.is_open()) continue;
+
+        std::string line;
+        // First line is count, skip it
+        std::getline(file, line);
+
+        while (std::getline(file, line)) {
+            line = trim(line);
+            if (line.empty()) continue;
+
+            // Format: model_code,source_file (comma separated)
+            auto parts = split(line, ',');
+            std::string modelCode = parts[0];
+            std::string sourceFile = (parts.size() > 1) ? parts[1] : "";
+
+            // Lowercase
+            std::transform(modelCode.begin(), modelCode.end(), modelCode.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            std::transform(sourceFile.begin(), sourceFile.end(), sourceFile.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+
+            sqlite3_reset(stmt);
+            sqlite3_bind_text(stmt, 1, zoneName.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, modelCode.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 3, sourceFile.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            totalCount++;
+        }
+    }
+
+    pclose(pipe);
+    sqlite3_finalize(stmt);
+    execSQL(db, "COMMIT");
+    execSQL(db, "CREATE INDEX IF NOT EXISTS idx_zone_chars_zone ON zone_characters(zone_name)");
+    return totalCount;
 }
 
 // ============================================================================
@@ -623,6 +959,66 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  item_models:  %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Sound Assets ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadSoundAssets(db, eqPath + "/SoundAssets.txt");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  sound_assets: %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Animation Sounds ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadAnimationSounds(db, eqPath + "/AnimationSounds.txt");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  anim_sounds:  %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Race Data ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadRaceData(db, eqPath + "/RaceData.txt");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  race_data:    %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Music Index ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadMusicIndex(db, eqPath + "/mp3index.txt");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  music_files:  %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Login Strings ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadLoginStrings(db, eqPath + "/eqlsstr_us.txt");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  login_strings:%6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Zone Character Models ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadZoneCharacters(db, eqPath);
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  zone_chars:   %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 
