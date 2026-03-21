@@ -943,6 +943,32 @@ IF(EQT_GRAPHICS)
     )
     FetchContent_MakeAvailable(etc2comp)
 
+    # WillEQ Database Builder tool (offline SQLite database generation)
+    ADD_EXECUTABLE(willeq_db_builder
+        tools/willeq_db_builder.cpp
+        third_party/sqlite3.c
+    )
+    TARGET_INCLUDE_DIRECTORIES(willeq_db_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party
+    )
+    TARGET_LINK_LIBRARIES(willeq_db_builder dl pthread)
+    TARGET_COMPILE_DEFINITIONS(willeq_db_builder PRIVATE
+        SQLITE_THREADSAFE=1
+        SQLITE_OMIT_LOAD_EXTENSION
+    )
+
+    # S3D Index Builder tool (offline asset index generation)
+    ADD_EXECUTABLE(s3d_index_builder
+        tools/s3d_index_builder.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(s3d_index_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(s3d_index_builder
+        ${ZLIB_LIBRARIES}
+    )
+
     ADD_EXECUTABLE(zone_atlas_builder
         tools/zone_atlas_builder.cpp
         src/client/graphics/eq/pfs.cpp
