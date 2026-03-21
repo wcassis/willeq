@@ -62,7 +62,7 @@
       "skyRendering": true,
       "skyTextures": "original",
       "nameTagsEnabled": true,
-      "enableTextureAtlas": false,
+      "enableTextureAtlas": true,
       "enableItemIcons": true,
       "entityPrepMaxPvsDepth": 255,
       "terrainPrepMaxPvsDepth": 255,

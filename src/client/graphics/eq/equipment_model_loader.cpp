@@ -117,10 +117,18 @@ bool EquipmentModelLoader::loadEquipmentArchives() {
         return false;
     }
 
-    // Index all gequip archives (lower priority first, higher priority last for duplicates)
+    // Index all equipment archives (lower priority first, higher priority last for duplicates)
     // gequip.s3d: IT27-153, gequip2: IT11-656, gequip3: IT10000-10105
     // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip6: IT661-668, gequip8: IT10524-10733
+    // gatesequip: IT10715-10732 (Gates of Discord), ldonequip: IT10700-10713 (Lost Dungeons)
+    // lgequip/lgequip2: Luclin equipment, loyequip: Loyalty, vequip: Velious
+    // frogequip: Froglok, obequip_lexit: OoW, lgequip_amr/lgequip_amr2: Luclin armor
     std::vector<std::string> archiveNames = {
+        "obequip_lexit.s3d", "frogequip.s3d",
+        "lgequip_amr2.s3d", "lgequip_amr.s3d",
+        "loyequip.s3d", "vequip.s3d",
+        "lgequip2.s3d", "lgequip.s3d",
+        "ldonequip.s3d", "gatesequip.s3d",
         "gequip8.s3d", "gequip6.s3d", "gequip5.s3d", "gequip4.s3d",
         "gequip3.s3d", "gequip2.s3d", "gequip.s3d"
     };

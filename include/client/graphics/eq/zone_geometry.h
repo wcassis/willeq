@@ -13,6 +13,7 @@ namespace Graphics {
 // Forward declarations
 struct S3DZone;
 struct TextureInfo;
+struct CompositeTextureData;
 class ConstrainedTextureCache;
 #ifdef EQT_HAS_TEXTURE_ATLAS
 class TextureAtlas;
@@ -45,6 +46,19 @@ public:
         const std::vector<irr::video::ITexture*>& textures,
         const std::vector<bool>& textureAlpha,
         bool flipV = false);
+
+    // Build a single-buffer mesh using a composite texture sheet.
+    // All body-part triangles are merged into one mesh buffer with UVs remapped
+    // to the composite sheet, enabling 1 draw call per entity instead of 6-12.
+    // compositeTexture: pre-uploaded composite sheet texture
+    // compositeData: UV remap metadata from entity_composite_builder JSON
+    // hasAlpha: whether the composite texture requires alpha testing
+    irr::scene::IMesh* buildCompositeMesh(
+        const ZoneGeometry& geometry,
+        irr::video::ITexture* compositeTexture,
+        const CompositeTextureData& compositeData,
+        bool hasAlpha = false,
+        bool flipV = true);
 
     // Load a texture from raw BMP/DDS data
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data);

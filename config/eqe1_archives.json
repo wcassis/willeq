@@ -1,0 +1,18 @@
+{
+  "default": {
+    "zoneArchives": ["{zone}", "{zone}_obj", "{zone}_chr"],
+    "globalArchives": [
+      "global_chr", "global2_chr", "global3_chr", "global4_chr",
+      "global5_chr", "global6_chr", "global7_chr",
+      "gequip", "gequip2", "gequip3", "gequip4",
+      "gequip5", "gequip6", "gequip7", "gequip8",
+      "gatesequip", "ldonequip", "lgequip", "lgequip2",
+      "lgequip_amr", "lgequip_amr2",
+      "loyequip", "vequip", "frogequip", "obequip_lexit",
+      "global17_amr", "global18_amr", "global19_amr", "global20_amr",
+      "global21_amr", "global22_amr", "global23_amr",
+      "sky",
+      "textures"
+    ]
+  }
+}

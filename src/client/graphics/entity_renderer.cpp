@@ -837,6 +837,13 @@ ZoneMeshBuilder* EntityRenderer::getMeshBuilder() const {
     return raceModelLoader_ ? raceModelLoader_->getMeshBuilder() : nullptr;
 }
 
+void EntityRenderer::setCompositeEntityPath(const std::string& path) {
+    if (raceModelLoader_) {
+        raceModelLoader_->setCompositeEntityPath(path);
+        LOG_INFO(MOD_GRAPHICS, "EntityRenderer: composite entity path set to '{}'", path);
+    }
+}
+
 void EntityRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
     constrainedTextureCache_ = cache;
     if (equipmentModelLoader_)

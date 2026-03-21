@@ -752,6 +752,37 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
         }
     }
 
+    // Composite texture lookup: check if a composite JSON exists for this race/gender.
+    // The matching EQE1 file is already loaded as an EQE1 loader (opened during zone load
+    // from the composite directory). The constrained cache will find the composite texture
+    // via findCompressedEntry() using the EQE1 entry name.
+    if (!compositeEntityPath_.empty() && modelData->combinedGeometry) {
+        std::string modelName = modelData->raceName;
+        std::transform(modelName.begin(), modelName.end(), modelName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        // entity_composite_builder output: {modelname}_{gender}_{variant}.json
+        std::string compositeBaseName = modelName + "_" + std::to_string(gender) + "_0";
+        std::string jsonPath = compositeEntityPath_ + "/" + compositeBaseName + ".json";
+        auto compositeData = std::make_shared<CompositeTextureData>();
+        if (compositeData->loadFromJson(jsonPath)) {
+            modelData->compositeData = compositeData;
+            // Store the EQE1 texture name (matches the entry name inside the .eqe1 file)
+            modelData->compositeBmpPath = compositeBaseName;
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite found for race={} gender={}: '{}' ({} textures, {}x{})",
+                     raceId, gender, compositeBaseName,
+                     compositeData->textures.size(), compositeData->sheetWidth, compositeData->sheetHeight);
+
+            // Trigger EQE1 lookup so the composite texture gets queued for GPU upload.
+            // getOrLoad() will find it via findCompressedEntry() in the composite EQE1 loader.
+            if (constrainedTextureCache_) {
+                std::vector<char> emptyData;  // No raw data — EQE1 lookup provides the data
+                constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData);
+            }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no composite at {}", jsonPath);
+        }
+    }
+
     // T05: Decode textures via constrained cache (single decoder path).
     // getOrLoad() decodes raw bytes to RGBA and stores as DecodedEntry.
     // uploadTexture() promotes to GPU later (on the loading thread or render thread).

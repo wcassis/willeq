@@ -13,6 +13,7 @@
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 
+#include <filesystem>
 #include <iostream>
 #include <thread>
 #include <algorithm>
@@ -339,10 +340,16 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.useDRM = true;
                 LOG_DEBUG(MOD_GRAPHICS, "CLI override: DRM mode enabled");
             }
-            // CLI override: --atlas-path
-            if (!config.atlasPath.empty()) {
-                builtConfig.atlasPath = config.atlasPath;
-                LOG_DEBUG(MOD_GRAPHICS, "CLI override: atlas path -> '{}'", config.atlasPath);
+            // CLI override: --eqe1-path
+            if (!config.eqe1Path.empty()) {
+                builtConfig.eqe1Path = config.eqe1Path;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: eqe1 path -> '{}'", config.eqe1Path);
+            }
+            // CLI override: --composite-entities
+            if (!config.compositeEntityPath.empty()) {
+                builtConfig.enableCompositeEntities = true;
+                builtConfig.compositeEntityPath = config.compositeEntityPath;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: composite entity path -> '{}'", config.compositeEntityPath);
             }
             // CLI override: --threads
             if (config.backgroundThreadCount > 0) {
@@ -375,6 +382,20 @@ bool Application::initialize(const ApplicationConfig& config) {
                     LOG_FATAL(MOD_GRAPHICS, "Invalid constrained renderer config:\n{}", presetErrors);
                     return false;
                 }
+            }
+
+            // E06: Validate eqe1Path if set
+            if (!builtConfig.eqe1Path.empty()) {
+                if (!std::filesystem::is_directory(builtConfig.eqe1Path)) {
+                    LOG_FATAL(MOD_GRAPHICS, "EQE1 path does not exist or is not a directory: '{}'", builtConfig.eqe1Path);
+                    return false;
+                }
+                int eqe1Count = 0;
+                for (const auto& entry : std::filesystem::directory_iterator(builtConfig.eqe1Path)) {
+                    if (entry.is_regular_file() && entry.path().extension() == ".eqe1")
+                        eqe1Count++;
+                }
+                LOG_INFO(MOD_GRAPHICS, "EQE1 texture path: '{}' ({} .eqe1 files)", builtConfig.eqe1Path, eqe1Count);
             }
 
             // S02: Validate framebuffer budget vs requested resolution
@@ -1506,9 +1527,13 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
             }
-        } else if (arg == "--atlas-path") {
+        } else if (arg == "--eqe1-path") {
             if (i + 1 < argc) {
-                config.atlasPath = argv[++i];
+                config.eqe1Path = argv[++i];
+            }
+        } else if (arg == "--composite-entities") {
+            if (i + 1 < argc) {
+                config.compositeEntityPath = argv[++i];
             }
         } else if (arg == "--drm") {
             config.useDRM = true;
@@ -1543,7 +1568,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
             std::cout << "  --renderer <backend>     Rendering backend: software, opengl, gles2\n";
             std::cout << "  --constrained <preset|NxNxN>  Rendering preset (default: orangepi; voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
-            std::cout << "  --atlas-path <dir>       Directory containing .atlas texture atlas files\n";
+            std::cout << "  --eqe1-path <dir>        Directory containing .eqe1 ETC1 texture files\n";
+            std::cout << "  --composite-entities <dir>  Directory containing composite entity texture sheets\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
             std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
             std::cout << "  --zone-load <mode>       Zone loading mode: manual (all at load) or automatic (progressive)\n";

@@ -1,53 +1,45 @@
 /*
  * UIAtlas runtime loader implementation.
- * U02: Loads pre-generated ui_atlas.bmp + ui_atlas.json from atlas path.
+ * U02: Loads ui_atlas texture + ui_atlas.json from EQE1 flat pack (ui.eqe1).
  */
 
 #include "client/graphics/ui/ui_atlas.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
 #include <json/json.h>
-#include <fstream>
 
 namespace EQT {
 namespace Graphics {
 
-bool UIAtlas::load(irr::video::IVideoDriver* driver, const std::string& atlasPath,
-                    EQT::Graphics::ConstrainedTextureCache* cache) {
-    if (!driver || atlasPath.empty()) return false;
+bool UIAtlas::load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* cache) {
+    if (!driver || !cache) return false;
 
-    std::string bmpPath = atlasPath + "/ui_atlas.bmp";
-    std::string jsonPath = atlasPath + "/ui_atlas.json";
-
-    // Load texture via constrained cache
-    if (cache) {
-        std::ifstream file(bmpPath, std::ios::binary | std::ios::ate);
-        if (!file) {
-            LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", bmpPath);
-            return false;
-        }
-        std::streamsize fileSize = file.tellg();
-        file.seekg(0, std::ios::beg);
-        std::vector<char> data(fileSize);
-        file.read(data.data(), fileSize);
-
-        texture_ = cache->getOrLoad("ui_atlas", data);
-        if (!texture_) texture_ = cache->uploadTexture("ui_atlas");
-    }
+    // Load texture via constrained cache — EQE1 compressed entry "ui_atlas"
+    std::vector<char> emptyData;
+    texture_ = cache->getOrLoad("ui_atlas", emptyData);
+    if (!texture_) texture_ = cache->uploadTexture("ui_atlas");
 
     if (!texture_) {
-        LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", bmpPath);
+        LOG_FATAL(MOD_GRAPHICS, "UIAtlas: texture 'ui_atlas' not found in any EQE1 flat pack");
         return false;
     }
 
-    // Load sprite rects from JSON
-    if (!loadJson(jsonPath)) {
-        LOG_ERROR(MOD_GRAPHICS, "UIAtlas: failed to load {}", jsonPath);
+    // Load sprite rects from JSON raw data entry in EQE1
+    const uint8_t* jsonData = nullptr;
+    uint32_t jsonSize = 0;
+    if (!cache->getEQE1RawData("ui_atlas.json", jsonData, jsonSize) || !jsonData || jsonSize == 0) {
+        LOG_FATAL(MOD_GRAPHICS, "UIAtlas: raw data 'ui_atlas.json' not found in any EQE1 flat pack");
         texture_ = nullptr;
         return false;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "UIAtlas: loaded from {} ({}x{})",
-        atlasPath,
+    if (!loadJsonFromMemory(reinterpret_cast<const char*>(jsonData), jsonSize)) {
+        LOG_FATAL(MOD_GRAPHICS, "UIAtlas: failed to parse ui_atlas.json from EQE1");
+        texture_ = nullptr;
+        return false;
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "UIAtlas: loaded from EQE1 ({}x{})",
         texture_->getOriginalSize().Width,
         texture_->getOriginalSize().Height);
     return true;
@@ -61,14 +53,12 @@ const UISpriteRect& UIAtlas::getSprite(UISprite sprite) const {
     return emptySprite_;
 }
 
-bool UIAtlas::loadJson(const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) return false;
-
+bool UIAtlas::loadJsonFromMemory(const char* data, size_t size) {
     Json::Value root;
     Json::CharReaderBuilder builder;
     std::string errors;
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    if (!reader->parse(data, data + size, &root, &errors)) {
         LOG_ERROR(MOD_GRAPHICS, "UIAtlas: JSON parse error: {}", errors);
         return false;
     }

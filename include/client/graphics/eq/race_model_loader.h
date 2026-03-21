@@ -3,6 +3,7 @@
 
 #include "s3d_loader.h"
 #include "zone_geometry.h"
+#include "composite_texture_data.h"
 #include "animated_mesh_scene_node.h"
 #include "race_codes.h"
 #include "equipment_textures.h"
@@ -45,6 +46,10 @@ struct RaceModelData {
 
     // Pre-decoded textures (background thread decodes DDS → ARGB, main thread uploads to GPU)
     std::vector<DecodedTexture> decodedTextures;
+
+    // Composite texture data (if available — enables 1-draw-call entity rendering)
+    std::shared_ptr<CompositeTextureData> compositeData;  // UV remap metadata
+    std::string compositeBmpPath;  // EQE1 entry name for composite texture (e.g., "hum_hs_def_0_0")
 };
 
 // Loads and caches character models by race ID
@@ -133,6 +138,8 @@ public:
     // Set constrained texture cache for direct texture loading via getOrLoad()
     void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
 
+    // Set composite entity texture path (directory containing composite BMP + JSON from entity_composite_builder)
+    void setCompositeEntityPath(const std::string& path) { compositeEntityPath_ = path; }
 
     // Background-safe: loads S3D model data + merges animations into staging cache.
     // Does NOT create textures, Irrlicht meshes, or scene nodes (no GL calls).
@@ -263,6 +270,15 @@ private:
         uint8_t bodyTextureVariant = 0,
         const std::string& raceCode = "");
 
+    // Build a single-buffer mesh using composite texture sheet (1 draw call per entity).
+    // Remaps UVs to composite sheet coordinates and populates vertexMappingForAnimation_.
+    // compositeTexture: pre-uploaded composite sheet ITexture*
+    // compositeData: UV remap metadata from entity_composite_builder JSON
+    irr::scene::IMesh* buildCompositeMeshFromGeometry(
+        const std::shared_ptr<ZoneGeometry>& geometry,
+        irr::video::ITexture* compositeTexture,
+        const CompositeTextureData& compositeData);
+
     // Build an Irrlicht mesh with equipment texture overrides
     irr::scene::IMesh* buildMeshWithEquipment(
         const std::shared_ptr<ZoneGeometry>& geometry,
@@ -309,6 +325,8 @@ private:
     // Constrained texture cache for direct texture loading (non-owning)
     EQT::Graphics::ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
 
+    // Composite entity texture directory (from entity_composite_builder output)
+    std::string compositeEntityPath_;
 
     // Staging cache for background-preloaded model data.
     // Written by EntityPrepWorker thread (preloadModelData).

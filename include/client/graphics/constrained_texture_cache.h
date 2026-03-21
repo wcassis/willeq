@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_CONSTRAINED_TEXTURE_CACHE_H
 
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/eqe1_format.h"
 #include <irrlicht.h>
 #include <map>
 #include <list>
@@ -17,6 +18,7 @@ namespace Graphics {
 class GPUUploadThread;
 class BackgroundThreadPool;
 class ZoneMeshBuilder;
+class EQE1Loader;
 
 // Listener interface for texture eviction notifications.
 // Subsystems that register textures with the cache can implement this
@@ -97,6 +99,10 @@ public:
     // Check if a cached texture has alpha transparency
     bool hasAlpha(const std::string& name) const;
 
+    // Get ETC1 alpha companion texture (for binding to texture unit 1)
+    // Returns nullptr if texture has no alpha companion.
+    irr::video::ITexture* getAlphaTexture(const std::string& name) const;
+
     // Clear all cached textures
     void clear();
 
@@ -159,7 +165,37 @@ public:
     void addEvictionListener(TextureEvictionListener* listener);
     void removeEvictionListener(TextureEvictionListener* listener);
 
+    // EQE1 flat pack loader management (GLES2 ETC1 compressed textures)
+    void addEQE1Loader(const EQE1Loader* loader);
+    void clearEQE1Loaders();
+
+    // Look up raw (non-texture) data from registered EQE1 loaders.
+    // Used for JSON metadata, WLD files, etc. packed as EQE1_TYPE_RAW_DATA entries.
+    // Returns true if found, with data pointer and size. Data is owned by the EQE1 loader.
+    bool getEQE1RawData(const std::string& name, const uint8_t*& data, uint32_t& size) const;
+
 private:
+    // Look up a texture name in registered EQE1 loaders.
+    // Strips .bmp extension and lowercases before lookup.
+    // Returns nullptr if not found in any loader.
+    struct CompressedEntry {
+        const uint8_t* etc1Data;
+        uint32_t dataSize;
+        uint16_t width;
+        uint16_t height;
+        uint8_t  mipLevels;
+        bool hasAlpha;
+        const uint8_t* alphaData;
+        uint32_t alphaDataSize;
+    };
+    const CompressedEntry* findCompressedEntry(const std::string& name);
+
+    // Upload pre-compressed ETC1 data to GPU via glCompressedTexImage2D.
+    // Creates GL texture, wraps in ITexture*, registers in LRU cache.
+    // Must be called on a thread with GL context. Caller holds mutex_.
+    irr::video::ITexture* uploadCompressedETC1(const std::string& name,
+                                                const CompressedEntry& entry);
+
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);
 
@@ -218,6 +254,7 @@ private:
     // Cached texture entry
     struct CachedTexture {
         irr::video::ITexture* texture;
+        irr::video::ITexture* alphaTexture = nullptr;  // ETC1 alpha companion (unit 1)
         size_t sizeBytes;
         bool hasAlpha = false;
         std::list<std::string>::iterator lruIterator;
@@ -273,6 +310,12 @@ private:
 
     // Eviction listeners (non-owning)
     std::vector<TextureEvictionListener*> evictionListeners_;
+
+    // EQE1 flat pack loaders (non-owning, populated per zone)
+    std::vector<const EQE1Loader*> eqe1Loaders_;
+
+    // Compressed entries pending GPU upload (from EQE1 lookup)
+    std::map<std::string, CompressedEntry> compressedEntries_;
 };
 
 } // namespace Graphics

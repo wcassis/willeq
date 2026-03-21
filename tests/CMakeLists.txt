@@ -280,6 +280,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
     )
@@ -322,6 +323,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
     )
@@ -347,6 +349,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -642,3 +645,11 @@ IF(WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_music_loopback_compare GTest::gtest ${AUDIO_COMMON_TEST_LIBS})
     # Note: Not using GTEST_DISCOVER_TESTS as this is a manual command-line tool
 ENDIF()
+
+# Test EQE1 flat pack loader (standalone, no GTest — uses real .eqe1 files)
+ADD_EXECUTABLE(test_eqe1_loader
+    test_eqe1_loader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_eqe1_loader PRIVATE ${CMAKE_SOURCE_DIR}/include)
+ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)

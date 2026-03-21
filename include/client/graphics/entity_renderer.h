@@ -206,6 +206,9 @@ public:
     // Debug: skip texture uploads during entity build (isolate glTexImage2D)
     void setSkipTextureUpload(bool skip) { skipTextureUpload_ = skip; }
 
+    // Set composite entity texture path (enables 1-draw-call entity rendering)
+    void setCompositeEntityPath(const std::string& path);
+
     // Set constrained texture cache for LRU tracking of entity/equipment textures
     void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
