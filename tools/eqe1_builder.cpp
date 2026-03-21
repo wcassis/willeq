@@ -85,6 +85,8 @@ static bool decodeBMP(const std::vector<char>& data,
         const uint8_t* pixels = d + dataOffset;
         int rowStride = (width + 3) & ~3;
 
+        // EQ convention: palette index 0 is the transparent color.
+        // Pixels referencing index 0 get alpha=0, all others get alpha=255.
         for (int y = 0; y < height; ++y) {
             int srcY = bottomUp ? (height - 1 - y) : y;
             for (int x = 0; x < width; ++x) {
@@ -94,7 +96,7 @@ static bool decodeBMP(const std::vector<char>& data,
                 outRGBA[outIdx + 0] = palette[idx * 4 + 2]; // R
                 outRGBA[outIdx + 1] = palette[idx * 4 + 1]; // G
                 outRGBA[outIdx + 2] = palette[idx * 4 + 0]; // B
-                outRGBA[outIdx + 3] = 255;
+                outRGBA[outIdx + 3] = (idx == 0) ? 0 : 255; // Index 0 = transparent
             }
         }
         return true;

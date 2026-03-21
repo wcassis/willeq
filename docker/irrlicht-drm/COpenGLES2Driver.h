@@ -445,6 +445,10 @@ private:
 
     // Currently bound custom shader program (0 = built-in)
     GLuint currentCustomProgram_;
+
+    // 1x1 white texture for alpha fallback (lazily created)
+    GLuint opaqueAlphaFallback_ = 0;
+    GLuint getOpaqueAlphaFallback();
 };
 
 // Factory function (called from CIrrDeviceFB::createDriver)

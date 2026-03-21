@@ -1087,6 +1087,20 @@ void COpenGLES2Driver::setMaterial(const SMaterial& material)
     applyMaterialState(material);
 }
 
+GLuint COpenGLES2Driver::getOpaqueAlphaFallback() {
+    if (!opaqueAlphaFallback_) {
+        glGenTextures(1, &opaqueAlphaFallback_);
+        glBindTexture(GL_TEXTURE_2D, opaqueAlphaFallback_);
+        uint8_t white[] = {255, 255, 255, 255};
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        // Restore unit 0 as active
+        glActiveTexture(GL_TEXTURE0);
+    }
+    return opaqueAlphaFallback_;
+}
+
 void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
 {
     // Blend / depth-write based on material type
@@ -1135,10 +1149,14 @@ void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
     }
 
-    // Second texture unit (for atlas alpha)
+    // Second texture unit (for ETC1 alpha companion or atlas alpha)
     if (material.getTexture(1)) {
         const COGLES2Texture* tex = static_cast<const COGLES2Texture*>(material.getTexture(1));
         bindTexture(GL_TEXTURE1, tex->getOpenGLTextureName());
+    } else {
+        // Bind white fallback so shaders reading uAlphaTexture get alpha=1.0 (opaque)
+        // instead of undefined data, which would cause spurious discard.
+        bindTexture(GL_TEXTURE1, getOpaqueAlphaFallback());
     }
 }
 
