@@ -19,6 +19,7 @@
 
 // Forward declarations
 class EverQuest;
+namespace EQT { class WilleqDatabase; }
 namespace eqt { namespace bridge { class GameStateBridge; } }
 
 namespace EQ {
@@ -37,8 +38,11 @@ public:
     // Initialization
     // ========================================================================
 
-    // Initialize spell database from EQ client path
+    // Initialize spell database from EQ client path (legacy: parses spells_us.txt)
     bool initialize(const std::string& eq_client_path);
+
+    // Initialize spell database from WilleqDatabase (SQLite-backed)
+    bool initialize(EQT::WilleqDatabase* db);
 
     // Check if initialized
     bool isInitialized() const { return m_initialized; }

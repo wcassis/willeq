@@ -1,11 +1,13 @@
 /*
  * WillEQ Spell Database Implementation
  *
- * Parses the spells_us.txt file format from the EQ Titanium client.
- * Fields are delimited by '^' characters.
+ * Primary mode: SQLite-backed queries via WilleqDatabase with LRU cache.
+ * Legacy mode: Parses spells_us.txt directly (for backward compatibility).
  */
 
 #include "client/spell/spell_database.h"
+#include "client/willeq_database.h"
+#include "common/logging.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -15,6 +17,94 @@ namespace EQ {
 
 SpellDatabase::SpellDatabase() = default;
 SpellDatabase::~SpellDatabase() = default;
+
+// ============================================================================
+// SQLite-backed initialization
+// ============================================================================
+
+bool SpellDatabase::initFromDatabase(EQT::WilleqDatabase* db) {
+    if (!db || !db->isOpen()) {
+        m_load_error = "WilleqDatabase not open";
+        return false;
+    }
+
+    m_db = db;
+    m_using_db = true;
+    m_loaded = true;
+    m_load_error.clear();
+
+    // Query spell count and max ID
+    m_max_spell_id = 0;  // Will be lazy-evaluated or we query it now
+    uint32_t count = db->getSpellCount();
+
+    LOG_INFO(MOD_SPELL, "SpellDatabase: initialized from SQLite ({} spells, cache capacity {})",
+             count, m_cache_capacity);
+
+    return true;
+}
+
+// ============================================================================
+// LRU cache management
+// ============================================================================
+
+void SpellDatabase::evictIfNeeded() const {
+    while (m_cache.size() >= m_cache_capacity && !m_lru.empty()) {
+        uint32_t evictId = m_lru.back();
+        m_lru.pop_back();
+        m_lru_map.erase(evictId);
+        m_cache.erase(evictId);
+    }
+}
+
+SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
+    if (!m_db) return nullptr;
+
+    EQT::SpellInfo info = m_db->getSpell(spell_id);
+    if (!info.found) return nullptr;
+
+    // Evict if at capacity
+    evictIfNeeded();
+
+    // Build SpellData from query result
+    SpellData spell;
+    spell.id = info.id;
+    spell.name = std::move(info.name);
+    spell.player_tag = std::move(info.playerTag);
+    spell.teleport_zone = std::move(info.teleportZone);
+    spell.cast_on_you = std::move(info.castOnYou);
+    spell.cast_on_other = std::move(info.castOnOther);
+    spell.spell_fades = std::move(info.spellFades);
+    spell.cast_time_ms = info.castTimeMs;
+    spell.recovery_time_ms = info.recoveryTimeMs;
+    spell.recast_time_ms = info.recastTimeMs;
+    spell.duration_formula = info.durationFormula;
+    spell.duration_cap = info.durationCap;
+    spell.mana_cost = info.manaCost;
+    spell.target_type = static_cast<SpellTargetType>(info.targetType);
+    spell.range = info.range;
+    spell.aoe_range = info.aoeRange;
+    spell.resist_type = static_cast<ResistType>(info.resistType);
+    spell.resist_diff = info.resistDiff;
+    spell.casting_skill = static_cast<CastingSkill>(info.castingSkill);
+    spell.is_beneficial = info.isBeneficial;
+    spell.spell_icon = info.spellIcon;
+    spell.gem_icon = info.gemIcon;
+    spell.cast_anim = info.castAnim;
+    spell.zone_type = info.zoneType;
+    // Effects, class_levels, reagents: not yet in SQLite — default initialized
+
+    // Insert into cache
+    auto [it, _] = m_cache.emplace(spell_id, std::move(spell));
+
+    // Update LRU
+    m_lru.push_front(spell_id);
+    m_lru_map[spell_id] = m_lru.begin();
+
+    // Track max ID
+    if (spell_id > m_max_spell_id) m_max_spell_id = spell_id;
+
+    return &it->second;
+}
 
 bool SpellDatabase::loadFromFile(const std::string& filepath)
 {
@@ -410,8 +500,33 @@ std::string SpellDatabase::toLower(const std::string& str)
     return result;
 }
 
+size_t SpellDatabase::getSpellCount() const {
+    if (m_using_db && m_db) {
+        return m_db->getSpellCount();
+    }
+    return m_spells.size();
+}
+
 const SpellData* SpellDatabase::getSpell(uint32_t spell_id) const
 {
+    if (m_using_db) {
+        // Check LRU cache first
+        auto it = m_cache.find(spell_id);
+        if (it != m_cache.end()) {
+            m_cache_hits.fetch_add(1, std::memory_order_relaxed);
+            // Move to front of LRU
+            auto lruIt = m_lru_map.find(spell_id);
+            if (lruIt != m_lru_map.end()) {
+                m_lru.splice(m_lru.begin(), m_lru, lruIt->second);
+            }
+            return &it->second;
+        }
+        // Cache miss — query SQLite
+        m_cache_misses.fetch_add(1, std::memory_order_relaxed);
+        return queryAndCache(spell_id);
+    }
+
+    // Legacy path
     auto it = m_spells.find(spell_id);
     if (it != m_spells.end()) {
         return &it->second;
@@ -421,11 +536,24 @@ const SpellData* SpellDatabase::getSpell(uint32_t spell_id) const
 
 bool SpellDatabase::hasSpell(uint32_t spell_id) const
 {
+    if (m_using_db) {
+        // Check cache first, then query
+        return getSpell(spell_id) != nullptr;
+    }
     return m_spells.find(spell_id) != m_spells.end();
 }
 
 const SpellData* SpellDatabase::getSpellByName(const std::string& name) const
 {
+    if (m_using_db && m_db) {
+        EQT::SpellInfo info = m_db->getSpellByName(name);
+        if (info.found) {
+            // Route through getSpell to leverage cache
+            return getSpell(info.id);
+        }
+        return nullptr;
+    }
+
     std::string lower_name = toLower(name);
     auto it = m_name_to_id.find(lower_name);
     if (it != m_name_to_id.end()) {

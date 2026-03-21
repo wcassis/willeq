@@ -1,4 +1,5 @@
 #include "client/eq.h"
+#include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
 #include "client/pathfinder_nav_mesh.h"
@@ -1039,13 +1040,31 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// This prevents the login server from timing out while waiting for a response.
 }
 
+void EverQuest::OpenDatabase(const std::string& dbPath) {
+	m_willeq_db = std::make_unique<EQT::WilleqDatabase>();
+	if (m_willeq_db->open(dbPath)) {
+		LOG_INFO(MOD_MAIN, "WilleqDatabase opened: {} (cache: {} bytes)",
+				 dbPath, m_willeq_db->getMemoryUsage());
+	} else {
+		LOG_WARN(MOD_MAIN, "WilleqDatabase not found at {} — using legacy file loading", dbPath);
+		m_willeq_db.reset();
+	}
+}
+
 bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 {
-	// S04: Initialize spell database — FATAL if fails (file was validated in S03)
-	if (!m_spell_manager->initialize(eqClientPath)) {
-		return false;
+	// S04: Initialize spell database — try SQLite first, fall back to file
+	if (m_willeq_db && m_willeq_db->isOpen()) {
+		if (!m_spell_manager->initialize(m_willeq_db.get())) {
+			return false;
+		}
+		LOG_DEBUG(MOD_SPELL, "Spell database loaded from SQLite");
+	} else {
+		if (!m_spell_manager->initialize(eqClientPath)) {
+			return false;
+		}
+		LOG_DEBUG(MOD_SPELL, "Spell database loaded from spells_us.txt (legacy)");
 	}
-	LOG_DEBUG(MOD_SPELL, "Spell database loaded");
 
 	// S04: Create buff manager (depends on spell DB)
 	m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
