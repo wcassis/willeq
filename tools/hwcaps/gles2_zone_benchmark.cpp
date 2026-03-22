@@ -67,7 +67,7 @@ struct Options {
     bool materialSort = true;
     bool portalCull = true;
     bool frustumCull = true;
-    bool occlusionCull = false;   // Software occlusion culling (off by default, enable with --occlusion-cull)
+    bool occlusionCull = true;    // Software occlusion culling (on by default, disable with --no-occlusion-cull)
     bool frontToBack = true;
     bool depthTest = true;
     int maxDraws = 0;         // 0 = unlimited
@@ -127,7 +127,7 @@ static void printUsage(const char* prog) {
     printf("  --no-material-sort   Disable material-key draw sorting\n");
     printf("  --no-portal-cull     Disable PVS culling\n");
     printf("  --no-frustum-cull    Disable frustum culling\n");
-    printf("  --occlusion-cull     Enable software occlusion culling\n");
+    printf("  --no-occlusion-cull  Disable software occlusion culling\n");
     printf("  --no-front-to-back   Disable distance sorting\n");
     printf("  --no-depth-test      Disable GL depth test\n");
     printf("  --max-draws N        Cap draw calls per frame\n");
@@ -184,7 +184,8 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--no-material-sort") == 0) opts.materialSort = false;
         else if (strcmp(argv[i], "--no-portal-cull") == 0) opts.portalCull = false;
         else if (strcmp(argv[i], "--no-frustum-cull") == 0) opts.frustumCull = false;
-        else if (strcmp(argv[i], "--occlusion-cull") == 0) opts.occlusionCull = true;
+        else if (strcmp(argv[i], "--no-occlusion-cull") == 0) opts.occlusionCull = false;
+        else if (strcmp(argv[i], "--occlusion-cull") == 0) opts.occlusionCull = true;  // legacy flag, same as default
         else if (strcmp(argv[i], "--no-front-to-back") == 0) opts.frontToBack = false;
         else if (strcmp(argv[i], "--no-depth-test") == 0) opts.depthTest = false;
         else if (strcmp(argv[i], "--max-draws") == 0 && i + 1 < argc) opts.maxDraws = atoi(argv[++i]);
@@ -1066,7 +1067,8 @@ int main(int argc, char** argv) {
         int objectDrawCalls = 0, objectPolys = 0;
         if (!data->objects.empty()) {
             ZoneBench::collectObjectDrawEntries(
-                *data, camState, opts.objectRenderDist, opts.frustumCull,
+                *data, camState, opts.objectRenderDist,
+                opts.portalCull, opts.frustumCull, opts.occlusionCull,
                 drawEntries, objectDrawCalls, objectPolys);
         }
 
@@ -1165,7 +1167,8 @@ int main(int argc, char** argv) {
             } else {
                 // Unbatched: individual draw calls per entity mesh buffer
                 ZoneBench::collectEntityDrawEntries(
-                    *data, camState, opts.entityRenderDist, opts.frustumCull,
+                    *data, camState, opts.entityRenderDist,
+                    opts.frustumCull, opts.occlusionCull,
                     drawEntries, entityDrawCalls, entityPolys);
                 int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
                 int polyCount = countPolygons(drawEntries);

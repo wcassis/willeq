@@ -114,6 +114,11 @@ struct ZoneBenchData {
         irr::core::matrix4 worldTransform;
         float eqX, eqY, eqZ;  // EQ coords for culling
         std::string name;      // Object definition name (e.g., "TREE6")
+        // World-space AABB in EQ coords (for frustum/PVS culling)
+        float eqMinX, eqMinY, eqMinZ;
+        float eqMaxX, eqMaxY, eqMaxZ;
+        // BSP regions this object overlaps (precomputed at load time)
+        std::vector<size_t> bspRegions;
     };
     std::vector<PlacedObject> objects;
 
@@ -182,6 +187,7 @@ void collectEntityDrawEntries(
     const CameraState& cam,
     float renderDistance,
     bool frustumCull,
+    bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outEntityDrawCalls,
     int& outEntityPolys);
@@ -261,12 +267,16 @@ int renderAdaptiveLodEntities(
     int& outTier2Count);
 
 // Collect object draw entries for visible zone objects near the camera.
+// Uses PVS culling (precomputed region overlap) + AABB frustum culling +
+// software occlusion culling (tests against occlusion buffer built by zone pass).
 // Appends to outEntries (call after zone draw collection).
 void collectObjectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     float renderDistance,
+    bool portalCull,
     bool frustumCull,
+    bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outObjectDrawCalls,
     int& outObjectPolys);

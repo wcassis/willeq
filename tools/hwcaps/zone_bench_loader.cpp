@@ -353,10 +353,55 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                     obj.eqY = p->getY();
                     obj.eqZ = p->getZ();
                     obj.name = objName;
+
+                    // Compute world-space AABB in EQ coords from all mesh buffer vertices
+                    obj.eqMinX = std::numeric_limits<float>::max();
+                    obj.eqMinY = obj.eqMinX; obj.eqMinZ = obj.eqMinX;
+                    obj.eqMaxX = std::numeric_limits<float>::lowest();
+                    obj.eqMaxY = obj.eqMaxX; obj.eqMaxZ = obj.eqMaxX;
+                    for (irr::u32 bi = 0; bi < objMesh->getMeshBufferCount(); bi++) {
+                        auto* buf = objMesh->getMeshBuffer(bi);
+                        auto* verts = (const irr::video::S3DVertex*)buf->getVertices();
+                        for (irr::u32 vi = 0; vi < buf->getVertexCount(); vi++) {
+                            // Transform vertex to world space (Irrlicht coords)
+                            irr::core::vector3df worldPos;
+                            mat.transformVect(worldPos, verts[vi].Pos);
+                            // Convert Irrlicht (x,y,z) → EQ (x,z,y) for AABB
+                            float ex = worldPos.X, ey = worldPos.Z, ez = worldPos.Y;
+                            obj.eqMinX = std::min(obj.eqMinX, ex);
+                            obj.eqMinY = std::min(obj.eqMinY, ey);
+                            obj.eqMinZ = std::min(obj.eqMinZ, ez);
+                            obj.eqMaxX = std::max(obj.eqMaxX, ex);
+                            obj.eqMaxY = std::max(obj.eqMaxY, ey);
+                            obj.eqMaxZ = std::max(obj.eqMaxZ, ez);
+                        }
+                    }
+
                     data->objects.push_back(obj);
 
                     objBuffers += objMesh->getMeshBufferCount();
                     ++objCount;
+                }
+
+                // Precompute BSP region overlap for each object
+                if (data->bspTree && !data->bspTree->regions.empty()) {
+                    // Build region AABBs from zone geometry
+                    size_t numRegions = data->bspTree->regions.size();
+                    int totalRegionHits = 0;
+                    for (auto& obj : data->objects) {
+                        for (const auto& [regionIdx, rd] : data->regions) {
+                            // Test AABB overlap between object and region (both in EQ coords)
+                            if (obj.eqMinX <= rd.eqMaxX && obj.eqMaxX >= rd.eqMinX &&
+                                obj.eqMinY <= rd.eqMaxY && obj.eqMaxY >= rd.eqMinY &&
+                                obj.eqMinZ <= rd.eqMaxZ && obj.eqMaxZ >= rd.eqMinZ) {
+                                obj.bspRegions.push_back(regionIdx);
+                            }
+                        }
+                        totalRegionHits += obj.bspRegions.size();
+                    }
+                    printf("  Object PVS: %d objects, %d total region hits (avg %.1f regions/obj)\n",
+                           (int)data->objects.size(), totalRegionHits,
+                           data->objects.empty() ? 0.0 : (double)totalRegionHits / data->objects.size());
                 }
 
                 // Upload any textures queued during object mesh building
@@ -773,7 +818,9 @@ void collectObjectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     float renderDistance,
+    bool portalCull,
     bool frustumCull,
+    bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outObjectDrawCalls,
     int& outObjectPolys) {
@@ -782,20 +829,55 @@ void collectObjectDrawEntries(
     outObjectPolys = 0;
     float renderDistSq = renderDistance * renderDistance;
 
+    // Find camera's BSP region for PVS
+    size_t camRegion = SIZE_MAX;
+    if (portalCull && data.bspTree) {
+        camRegion = data.bspTree->findRegionIndexForPoint(cam.eqX, cam.eqY, cam.eqZ);
+    }
+
     for (const auto& obj : data.objects) {
         if (!obj.mesh) continue;
 
-        // Distance cull
-        float dx = obj.eqX - cam.eqX;
-        float dy = obj.eqY - cam.eqY;
-        float dz = obj.eqZ - cam.eqZ;
+        // Distance cull (nearest AABB edge to camera)
+        float dx = std::max(0.0f, std::max(obj.eqMinX - cam.eqX, cam.eqX - obj.eqMaxX));
+        float dy = std::max(0.0f, std::max(obj.eqMinY - cam.eqY, cam.eqY - obj.eqMaxY));
+        float dz = std::max(0.0f, std::max(obj.eqMinZ - cam.eqZ, cam.eqZ - obj.eqMaxZ));
         float distSq = dx * dx + dy * dy + dz * dz;
         if (distSq > renderDistSq) continue;
 
-        // Frustum cull (use object position as a sphere test with radius ~10)
+        // PVS culling: object visible if ANY of its regions are in camera's PVS
+        if (portalCull && camRegion != SIZE_MAX && data.bspTree &&
+            !obj.bspRegions.empty()) {
+            auto& camReg = data.bspTree->regions[camRegion];
+            bool pvsVisible = false;
+            if (camReg) {
+                for (size_t regionIdx : obj.bspRegions) {
+                    if (regionIdx < camReg->visibleRegions.size() &&
+                        camReg->visibleRegions[regionIdx]) {
+                        pvsVisible = true;
+                        break;
+                    }
+                }
+            }
+            if (!pvsVisible) continue;
+        }
+
+        // Frustum cull (use object AABB)
         if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
-            if (!data.frustumCuller->testSphere(obj.eqX, obj.eqY, obj.eqZ, 10.0f))
+            if (!data.frustumCuller->testAABB(
+                    obj.eqMinX, obj.eqMinY, obj.eqMinZ,
+                    obj.eqMaxX, obj.eqMaxY, obj.eqMaxZ)) {
                 continue;
+            }
+        }
+
+        // Software occlusion cull (test AABB against occlusion buffer from zone pass)
+        if (occlusionCull && data.occlusionCuller && data.occlusionCuller->hasOccluders()) {
+            if (data.occlusionCuller->testAABB(
+                    obj.eqMinX, obj.eqMinY, obj.eqMinZ,
+                    obj.eqMaxX, obj.eqMaxY, obj.eqMaxZ)) {
+                continue;
+            }
         }
 
         for (irr::u32 i = 0; i < obj.mesh->getMeshBufferCount(); ++i) {
@@ -822,6 +904,7 @@ void collectEntityDrawEntries(
     const CameraState& cam,
     float renderDistance,
     bool frustumCull,
+    bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outEntityDrawCalls,
     int& outEntityPolys) {
@@ -844,6 +927,16 @@ void collectEntityDrawEntries(
         if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
             if (!data.frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
                 continue;
+        }
+
+        // Software occlusion cull (approximate entity as small AABB around position)
+        if (occlusionCull && data.occlusionCuller && data.occlusionCuller->hasOccluders()) {
+            float r = 3.0f;  // approximate entity half-size
+            if (data.occlusionCuller->testAABB(
+                    ent.eqX - r, ent.eqY - r, ent.eqZ,
+                    ent.eqX + r, ent.eqY + r, ent.eqZ + 8.0f)) {
+                continue;
+            }
         }
 
         irr::core::matrix4 worldMat;
