@@ -346,6 +346,204 @@ static int loadItemModels(sqlite3* db, const std::string& filepath) {
 }
 
 // ============================================================================
+// Equipment models loader (data/equipment_models.json)
+// ============================================================================
+
+static int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
+        return 0;
+    }
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS equipment_models (
+            model_id INTEGER PRIMARY KEY,
+            archive TEXT NOT NULL,
+            wld TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            textures TEXT
+        )
+    )");
+
+    execSQL(db, R"(
+        CREATE TABLE IF NOT EXISTS equipment_textures (
+            name TEXT PRIMARY KEY,
+            archive TEXT NOT NULL,
+            entry TEXT NOT NULL
+        )
+    )");
+
+    execSQL(db, "BEGIN TRANSACTION");
+
+    sqlite3_stmt* modelStmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO equipment_models (model_id, archive, wld, actor, textures) VALUES (?,?,?,?,?)",
+        -1, &modelStmt, nullptr);
+
+    sqlite3_stmt* texStmt;
+    sqlite3_prepare_v2(db,
+        "INSERT OR REPLACE INTO equipment_textures (name, archive, entry) VALUES (?,?,?)",
+        -1, &texStmt, nullptr);
+
+    // Parse JSON — format: {"models": {"id": {...}, ...}, "textures": {"name": {...}, ...}}
+    std::string content((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+
+    int modelCount = 0;
+    int texCount = 0;
+
+    // Helper: find matching closing brace/bracket from opening position
+    auto findMatchingClose = [&](size_t openPos, char open, char close) -> size_t {
+        int depth = 1;
+        size_t p = openPos + 1;
+        bool inString = false;
+        while (p < content.size() && depth > 0) {
+            char c = content[p];
+            if (c == '"' && (p == 0 || content[p-1] != '\\')) inString = !inString;
+            if (!inString) {
+                if (c == open) depth++;
+                else if (c == close) depth--;
+            }
+            p++;
+        }
+        return p;  // one past matching close
+    };
+
+    // Helper: extract string value from a small JSON object string
+    auto extractStr = [](const std::string& obj, const std::string& key) -> std::string {
+        size_t kp = obj.find("\"" + key + "\"");
+        if (kp == std::string::npos) return "";
+        kp = obj.find('"', kp + key.size() + 2);
+        if (kp == std::string::npos) return "";
+        kp++;
+        size_t ep = obj.find('"', kp);
+        if (ep == std::string::npos) return "";
+        return obj.substr(kp, ep - kp);
+    };
+
+    // Find "models" section and its brace-delimited extent
+    size_t modelsKey = content.find("\"models\"");
+    if (modelsKey == std::string::npos) {
+        fprintf(stderr, "WARNING: no 'models' section in %s\n", filepath.c_str());
+        sqlite3_finalize(modelStmt);
+        sqlite3_finalize(texStmt);
+        execSQL(db, "COMMIT");
+        return 0;
+    }
+
+    size_t modelsOpen = content.find('{', modelsKey + 8);
+    size_t modelsClose = findMatchingClose(modelsOpen, '{', '}');
+
+    // Parse each model entry within the models section
+    size_t pos = modelsOpen + 1;
+    while (pos < modelsClose - 1) {
+        // Find next quoted key (model ID)
+        pos = content.find('"', pos);
+        if (pos == std::string::npos || pos >= modelsClose - 1) break;
+        pos++;
+        size_t keyEnd = content.find('"', pos);
+        if (keyEnd == std::string::npos) break;
+        std::string modelIdStr = content.substr(pos, keyEnd - pos);
+        pos = keyEnd + 1;
+
+        // Must be all digits
+        bool isModelId = !modelIdStr.empty();
+        for (char c : modelIdStr) {
+            if (!isdigit(c)) { isModelId = false; break; }
+        }
+        if (!isModelId) continue;
+        int modelId = std::atoi(modelIdStr.c_str());
+        if (modelId <= 0) continue;
+
+        // Find and extract the model's object
+        size_t braceStart = content.find('{', pos);
+        if (braceStart == std::string::npos || braceStart >= modelsClose) break;
+        size_t braceEnd = findMatchingClose(braceStart, '{', '}');
+        std::string obj = content.substr(braceStart, braceEnd - braceStart);
+
+        std::string archive = extractStr(obj, "archive");
+        std::string wld = extractStr(obj, "wld");
+        std::string actor = extractStr(obj, "actor");
+
+        // Extract textures array as comma-separated string
+        std::string texList;
+        size_t texArrStart = obj.find("[");
+        size_t texArrEnd = obj.find("]");
+        if (texArrStart != std::string::npos && texArrEnd != std::string::npos) {
+            std::string arr = obj.substr(texArrStart + 1, texArrEnd - texArrStart - 1);
+            size_t tp = 0;
+            while ((tp = arr.find('"', tp)) != std::string::npos) {
+                tp++;
+                size_t te = arr.find('"', tp);
+                if (te == std::string::npos) break;
+                if (!texList.empty()) texList += ",";
+                texList += arr.substr(tp, te - tp);
+                tp = te + 1;
+            }
+        }
+
+        if (!archive.empty() && !wld.empty() && !actor.empty()) {
+            sqlite3_reset(modelStmt);
+            sqlite3_bind_int(modelStmt, 1, modelId);
+            sqlite3_bind_text(modelStmt, 2, archive.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(modelStmt, 3, wld.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(modelStmt, 4, actor.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(modelStmt, 5, texList.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(modelStmt);
+            modelCount++;
+        }
+
+        pos = braceEnd;
+    }
+
+    // Find "textures" section — search for the top-level key after models section
+    size_t texKey = content.find("\"textures\"", modelsClose);
+    if (texKey != std::string::npos) {
+        size_t texOpen = content.find('{', texKey + 10);
+        size_t texClose = findMatchingClose(texOpen, '{', '}');
+
+        pos = texOpen + 1;
+        while (pos < texClose - 1) {
+            pos = content.find('"', pos);
+            if (pos == std::string::npos || pos >= texClose - 1) break;
+            pos++;
+            size_t keyEnd = content.find('"', pos);
+            if (keyEnd == std::string::npos) break;
+            std::string texName = content.substr(pos, keyEnd - pos);
+            pos = keyEnd + 1;
+
+            // Must have a file extension
+            if (texName.find('.') == std::string::npos) continue;
+
+            size_t braceStart = content.find('{', pos);
+            if (braceStart == std::string::npos || braceStart >= texClose) break;
+            size_t braceEnd = findMatchingClose(braceStart, '{', '}');
+            std::string obj = content.substr(braceStart, braceEnd - braceStart);
+
+            std::string archive = extractStr(obj, "archive");
+            std::string entry = extractStr(obj, "entry");
+
+            if (!archive.empty() && !entry.empty()) {
+                sqlite3_reset(texStmt);
+                sqlite3_bind_text(texStmt, 1, texName.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(texStmt, 2, archive.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(texStmt, 3, entry.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_step(texStmt);
+                texCount++;
+            }
+
+            pos = braceEnd;
+        }
+    }
+
+    sqlite3_finalize(modelStmt);
+    sqlite3_finalize(texStmt);
+    execSQL(db, "COMMIT");
+    return modelCount + texCount;
+}
+
+// ============================================================================
 // Race models loader (config/race_models.json)
 // ============================================================================
 
@@ -1091,6 +1289,16 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  item_models:  %6d entries (%.0f ms)\n", n, elapsed);
+        totalEntries += n;
+    }
+
+    // ── Equipment Models ──
+    {
+        auto start = std::chrono::steady_clock::now();
+        int n = loadEquipmentModels(db, dataPath + "/equipment_models.json");
+        auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        printf("  equip_models: %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

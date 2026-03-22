@@ -22,6 +22,7 @@ namespace EQT::Graphics {
     class PortalSystem;
     class SoftwareOcclusionCuller;
     class RaceModelLoader;
+    class EQE1Loader;
     struct BspTree;
     struct ConstrainedRendererConfig;
 }
@@ -36,6 +37,7 @@ struct BenchConfig {
     int height = 600;
     bool useDRM = true;
     int entityCount = 0;         // Number of static entities to place in scene
+    bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)
 };
 
 // Per-region data stored for rendering
@@ -106,6 +108,15 @@ struct ZoneBenchData {
     int recoveryFrames = 0;                // Frames under budget before recovering one entity
     int recoveryThreshold = 15;            // Consecutive under-budget frames to start recovery
 
+    // Placed zone objects (trees, lamps, fences, etc.)
+    struct PlacedObject {
+        irr::scene::IMesh* mesh = nullptr;
+        irr::core::matrix4 worldTransform;
+        float eqX, eqY, eqZ;  // EQ coords for culling
+        std::string name;      // Object definition name (e.g., "TREE6")
+    };
+    std::vector<PlacedObject> objects;
+
     // Adaptive lighting config
     bool adaptiveLighting = false;
     int perPixelEntityBudget = 15;         // Max entities with per-pixel lighting
@@ -123,6 +134,9 @@ struct ZoneBenchData {
     // Zone bounds (EQ coords)
     float boundsMinX = 0, boundsMinY = 0, boundsMinZ = 0;
     float boundsMaxX = 0, boundsMaxY = 0, boundsMaxZ = 0;
+
+    // EQE1 loaders (owned, kept alive for texture cache references)
+    std::vector<std::unique_ptr<EQT::Graphics::EQE1Loader>> eqe1Loaders;
 
     // Cleanup
     ~ZoneBenchData();
@@ -245,6 +259,17 @@ int renderAdaptiveLodEntities(
     int& outEntityPolys,
     int& outTier1Count,
     int& outTier2Count);
+
+// Collect object draw entries for visible zone objects near the camera.
+// Appends to outEntries (call after zone draw collection).
+void collectObjectDrawEntries(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    std::vector<DrawEntry>& outEntries,
+    int& outObjectDrawCalls,
+    int& outObjectPolys);
 
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).

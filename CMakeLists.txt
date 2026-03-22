@@ -1028,6 +1028,29 @@ IF(EQT_GRAPHICS)
         SQLITE_OMIT_LOAD_EXTENSION
     )
 
+    # Equipment Index Builder tool (offline equipment model index from *equip.s3d)
+    ADD_EXECUTABLE(equipment_index_builder
+        tools/equipment_index_builder.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(equipment_index_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(equipment_index_builder
+            ${ZLIB_LIBRARIES}
+            fmt::fmt
+        )
+    ELSE()
+        TARGET_LINK_LIBRARIES(equipment_index_builder
+            ${ZLIB_LIBRARIES}
+            ${FMT_LIBRARY}
+        )
+    ENDIF()
+
     # S3D Index Builder tool (offline asset index generation)
     ADD_EXECUTABLE(s3d_index_builder
         tools/s3d_index_builder.cpp
@@ -1160,6 +1183,24 @@ IF(EQT_DRM)
     TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2 drm gbm)
 ELSE()
     TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2)
+ENDIF()
+
+ADD_EXECUTABLE(gles2_etc1_alpha_readback_test
+    tools/hwcaps/gles2_etc1_alpha_readback_test.cpp
+    src/client/graphics/eqe1_loader.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+IF(EQT_DRM)
+    TARGET_COMPILE_DEFINITIONS(gles2_etc1_alpha_readback_test PRIVATE EQT_HAS_DRM)
+    IF(LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2 drm gbm)
+ELSE()
+    TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2)
 ENDIF()
 
 ADD_EXECUTABLE(gles2_shader_perpixel_benchmark tools/hwcaps/gles2_shader_perpixel_benchmark.cpp)

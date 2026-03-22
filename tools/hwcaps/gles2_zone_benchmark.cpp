@@ -35,6 +35,9 @@
 
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+#include <EGL/egl.h>
+
+
 #endif
 
 // ======== CLI Options ========
@@ -86,10 +89,17 @@ struct Options {
     int perPixelZoneBudget = 20;   // Max zone regions with per-pixel lighting
     bool trainMode = false;       // Cluster entities together (train simulation)
 
+    // Zone objects
+    bool loadObjects = false;     // Load zone objects (trees, lamps, etc.)
+    float objectRenderDist = 300.0f;
+
     // Analysis modes
     bool analyzePortals = false;
     bool detectPortals = false;
     std::string portalCsvFile;
+
+    // Diagnostic
+    bool treeTest = false;        // Render single tree object, screenshot, exit
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
@@ -137,10 +147,15 @@ static void printUsage(const char* prog) {
     printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
+    printf("\nObject options:\n");
+    printf("  --objects            Load zone objects (trees, lamps, fences)\n");
+    printf("  --object-dist F      Object render distance (default: 300)\n");
     printf("\nAnalysis modes:\n");
     printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
     printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
     printf("  --portal-csv FILE    Write portal analysis to CSV\n");
+    printf("\nDiagnostic:\n");
+    printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
 }
@@ -191,6 +206,9 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
         else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
+        else if (strcmp(argv[i], "--objects") == 0) opts.loadObjects = true;
+        else if (strcmp(argv[i], "--tree-test") == 0) { opts.treeTest = true; opts.loadObjects = true; }
+        else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -526,6 +544,7 @@ int main(int argc, char** argv) {
     benchConfig.height = opts.height;
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
     benchConfig.entityCount = opts.entityCount;
+    benchConfig.loadObjects = opts.loadObjects;
 
     auto data = ZoneBench::loadZone(benchConfig);
     if (!data) {
@@ -540,6 +559,370 @@ int main(int argc, char** argv) {
     }
     if (opts.detectPortals) {
         ZoneBench::detectPortalsFromOccluders(*data, opts.portalCsvFile);
+        return 0;
+    }
+
+    // ── Tree test: render one tree, screenshot, exit ──
+    if (opts.treeTest) {
+        printf("=== Tree Test ===\n");
+
+        // Find TREE6 or TREE1 by name
+        ZoneBench::ZoneBenchData::PlacedObject* treeObj = nullptr;
+        for (auto& obj : data->objects) {
+            if (!obj.mesh) continue;
+            if (obj.name == "TREE6" || obj.name == "TREE1") {
+                treeObj = &obj;
+                break;
+            }
+        }
+
+        if (!treeObj) {
+            printf("No tree object found with alpha material\n");
+            return 1;
+        }
+
+        printf("Tree '%s' found: %d buffers, pos=(%.1f, %.1f, %.1f)\n",
+               treeObj->name.c_str(), treeObj->mesh->getMeshBufferCount(),
+               treeObj->eqX, treeObj->eqY, treeObj->eqZ);
+        for (irr::u32 i = 0; i < treeObj->mesh->getMeshBufferCount(); i++) {
+            auto* buf = treeObj->mesh->getMeshBuffer(i);
+            const auto& mat = buf->getMaterial();
+            printf("  buf[%u]: verts=%u idx=%u matType=%d tex0=%p tex1=%p\n",
+                   i, buf->getVertexCount(), buf->getIndexCount(),
+                   (int)mat.MaterialType, (void*)mat.getTexture(0), (void*)mat.getTexture(1));
+        }
+
+        // Compute bounding box from ALL mesh buffers to frame the whole tree
+        irr::core::vector3df bbMin(1e9f, 1e9f, 1e9f), bbMax(-1e9f, -1e9f, -1e9f);
+        for (irr::u32 bi = 0; bi < treeObj->mesh->getMeshBufferCount(); bi++) {
+            auto* buf = treeObj->mesh->getMeshBuffer(bi);
+            auto* verts = (irr::video::S3DVertex*)buf->getVertices();
+            for (irr::u32 vi = 0; vi < buf->getVertexCount(); vi++) {
+                bbMin.X = std::min(bbMin.X, verts[vi].Pos.X);
+                bbMin.Y = std::min(bbMin.Y, verts[vi].Pos.Y);
+                bbMin.Z = std::min(bbMin.Z, verts[vi].Pos.Z);
+                bbMax.X = std::max(bbMax.X, verts[vi].Pos.X);
+                bbMax.Y = std::max(bbMax.Y, verts[vi].Pos.Y);
+                bbMax.Z = std::max(bbMax.Z, verts[vi].Pos.Z);
+            }
+        }
+        irr::core::vector3df treeCenter = (bbMin + bbMax) * 0.5f;
+        float treeHeight = bbMax.Y - bbMin.Y;
+        float treeWidth = std::max(bbMax.X - bbMin.X, bbMax.Z - bbMin.Z);
+        float treeDiag = sqrtf(treeHeight * treeHeight + treeWidth * treeWidth);
+
+        printf("[TREE-TEST] Bounding box: (%.1f,%.1f,%.1f) to (%.1f,%.1f,%.1f)\n",
+               bbMin.X, bbMin.Y, bbMin.Z, bbMax.X, bbMax.Y, bbMax.Z);
+        printf("[TREE-TEST] Center: (%.1f,%.1f,%.1f), height=%.1f, width=%.1f\n",
+               treeCenter.X, treeCenter.Y, treeCenter.Z, treeHeight, treeWidth);
+        fflush(stdout);
+
+        // Camera: back up enough to see the whole tree, look at center
+        float camDist = treeDiag * 1.5f;
+        irr::core::vector3df camPos = treeCenter + irr::core::vector3df(camDist, 0.0f, 0.0f);
+        irr::core::vector3df lookAt = treeCenter;
+
+        printf("[TREE-TEST] Camera at (%.1f,%.1f,%.1f) looking at (%.1f,%.1f,%.1f), dist=%.1f\n",
+               camPos.X, camPos.Y, camPos.Z, lookAt.X, lookAt.Y, lookAt.Z, camDist);
+        fflush(stdout);
+
+        // Build view and projection matrices manually (don't rely on scene manager)
+        irr::core::matrix4 viewMat;
+        viewMat.buildCameraLookAtMatrixLH(camPos, lookAt, irr::core::vector3df(0, 1, 0));
+        data->driver->setTransform(irr::video::ETS_VIEW, viewMat);
+
+        float aspect = (float)opts.width / (float)opts.height;
+        irr::core::matrix4 projMat;
+        projMat.buildProjectionMatrixPerspectiveFovLH(0.8f, aspect, 0.1f, 1000.0f);
+        data->driver->setTransform(irr::video::ETS_PROJECTION, projMat);
+
+        // Set up lighting — bright, no fog, so tree is clearly visible
+        if (data->zoneShader) {
+            data->zoneShader->beginFrame();
+            data->zoneShader->setAmbientColor(0.8f, 0.8f, 0.8f);
+            data->zoneShader->setSunDirection(0.3f, -0.8f, 0.2f);
+            data->zoneShader->setSunColor(0.5f, 0.5f, 0.4f);
+            data->zoneShader->setTintColor(1.0f, 1.0f, 1.0f);
+            data->zoneShader->setFog(9000.0f, 9999.0f, 0.5f, 0.5f, 0.5f, 1.0f);  // fog far away
+            data->zoneShader->setNumPointLights(0);
+            data->zoneShader->setPlayerLightPos(camPos.X, camPos.Y, camPos.Z);
+            data->zoneShader->setPlayerLightColor(1.0f, 0.95f, 0.8f);
+            data->zoneShader->setPlayerLightAtten(1.0f, 0.0f, 0.00001f);  // wide radius
+        }
+
+        irr::core::matrix4 identity;
+
+        // Helper: save screenshot to BMP
+        auto saveScreenshot = [&](const char* filename) {
+#ifdef EQT_HAS_GLES2
+            glFinish();
+            GLint vp[4];
+            glGetIntegerv(GL_VIEWPORT, vp);
+            int scrW = vp[2], scrH = vp[3];
+            std::vector<uint8_t> pixels(scrW * scrH * 4);
+            glReadPixels(0, 0, scrW, scrH, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+            // Count non-clear pixels
+            int nonClear = 0;
+            for (int p = 0; p < scrW*scrH; p++) {
+                uint8_t r = pixels[p*4], g = pixels[p*4+1], b = pixels[p*4+2];
+                if (!(r == 100 && g == 150 && b == 255)) nonClear++;
+            }
+            printf("[TREE-TEST] %s: %d/%d non-clear pixels (%.1f%%)\n",
+                   filename, nonClear, scrW*scrH, 100.0*nonClear/(scrW*scrH));
+
+            FILE* f = fopen(filename, "wb");
+            if (f) {
+                uint32_t rowBytes = scrW * 3;
+                uint32_t rowPad = (4 - (rowBytes % 4)) % 4;
+                uint32_t dataSize = (rowBytes + rowPad) * scrH;
+                uint32_t fileSize = 54 + dataSize;
+                uint8_t hdr[54] = {};
+                hdr[0] = 'B'; hdr[1] = 'M';
+                memcpy(hdr + 2, &fileSize, 4);
+                uint32_t off = 54; memcpy(hdr + 10, &off, 4);
+                uint32_t dibSize = 40; memcpy(hdr + 14, &dibSize, 4);
+                int32_t sw = scrW, sh = scrH;
+                memcpy(hdr + 18, &sw, 4); memcpy(hdr + 22, &sh, 4);
+                uint16_t planes = 1; memcpy(hdr + 26, &planes, 2);
+                uint16_t bpp = 24; memcpy(hdr + 28, &bpp, 2);
+                fwrite(hdr, 54, 1, f);
+                uint8_t pad[3] = {};
+                for (int y = 0; y < scrH; y++) {
+                    for (int x = 0; x < scrW; x++) {
+                        int idx = (y * scrW + x) * 4;
+                        uint8_t bgr[3] = { pixels[idx+2], pixels[idx+1], pixels[idx+0] };
+                        fwrite(bgr, 3, 1, f);
+                    }
+                    if (rowPad) fwrite(pad, rowPad, 1, f);
+                }
+                fclose(f);
+                printf("[TREE-TEST] Saved %s (%dx%d)\n", filename, scrW, scrH);
+            }
+            fflush(stdout);
+#endif
+        };
+
+        // === Screenshot 1: SOLID shader (no alpha discard) ===
+        data->driver->beginScene(true, true, irr::video::SColor(255, 100, 150, 255));
+        if (data->zoneShader) data->zoneShader->beginFrame();
+
+        data->driver->setTransform(irr::video::ETS_WORLD, identity);
+        for (irr::u32 i = 0; i < treeObj->mesh->getMeshBufferCount(); i++) {
+            irr::video::SMaterial mat = treeObj->mesh->getMeshBuffer(i)->getMaterial();
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                data->zoneShader->getActiveSolid());
+            data->driver->setMaterial(mat);
+            data->driver->drawMeshBuffer(treeObj->mesh->getMeshBuffer(i));
+        }
+        saveScreenshot("tree_test_solid.bmp");
+        data->driver->endScene();
+
+        // === Screenshot 2: FULLY RAW GL alpha test (bypass Irrlicht completely) ===
+#ifdef EQT_HAS_GLES2
+        {
+            auto compile = [](GLenum type, const char* src) -> GLuint {
+                GLuint s = glCreateShader(type);
+                glShaderSource(s, 1, &src, nullptr);
+                glCompileShader(s);
+                GLint ok = 0;
+                glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+                if (!ok) {
+                    char log[512]; glGetShaderInfoLog(s, 512, nullptr, log);
+                    printf("[TREE-TEST] Shader error: %s\n", log);
+                }
+                return s;
+            };
+
+            // Attribute locations matching Irrlicht's S3DVertex layout
+            // Position=0, Normal=1, Color=2, TexCoord0=3
+            const char* rawVS = R"(
+                attribute vec3 aPos;
+                attribute vec3 aNormal;
+                attribute vec4 aColor;
+                attribute vec2 aTexCoord;
+                uniform mat4 uWVP;
+                varying vec2 vTexCoord;
+                void main() {
+                    gl_Position = uWVP * vec4(aPos, 1.0);
+                    vTexCoord = aTexCoord;
+                }
+            )";
+            const char* rawFS = R"(
+                precision mediump float;
+                uniform sampler2D uTexture;
+                uniform sampler2D uAlphaTexture;
+                varying vec2 vTexCoord;
+                void main() {
+                    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+                    if (alpha < 0.5) discard;
+                    gl_FragColor = texture2D(uTexture, vTexCoord);
+                }
+            )";
+
+            GLuint vs = compile(GL_VERTEX_SHADER, rawVS);
+            GLuint fs = compile(GL_FRAGMENT_SHADER, rawFS);
+            GLuint rawProg = glCreateProgram();
+            glAttachShader(rawProg, vs);
+            glAttachShader(rawProg, fs);
+            glBindAttribLocation(rawProg, 0, "aPos");
+            glBindAttribLocation(rawProg, 1, "aNormal");
+            glBindAttribLocation(rawProg, 2, "aColor");
+            glBindAttribLocation(rawProg, 3, "aTexCoord");
+            glLinkProgram(rawProg);
+            glDeleteShader(vs);
+            glDeleteShader(fs);
+
+            GLint locWVP = glGetUniformLocation(rawProg, "uWVP");
+            GLint locTex = glGetUniformLocation(rawProg, "uTexture");
+            GLint locAlpha = glGetUniformLocation(rawProg, "uAlphaTexture");
+            printf("[TREE-TEST] Raw program: id=%u, uWVP=%d, uTex=%d, uAlpha=%d\n",
+                   rawProg, locWVP, locTex, locAlpha);
+            fflush(stdout);
+
+            // Clear
+            glClearColor(100/255.0f, 150/255.0f, 255/255.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+
+            glUseProgram(rawProg);
+            irr::core::matrix4 wvp = projMat * viewMat;
+            glUniformMatrix4fv(locWVP, 1, GL_FALSE, wvp.pointer());
+            glUniform1i(locTex, 0);
+            glUniform1i(locAlpha, 1);
+
+            // Draw each mesh buffer using raw GL
+            for (irr::u32 bi = 0; bi < treeObj->mesh->getMeshBufferCount(); bi++) {
+                auto* buf = treeObj->mesh->getMeshBuffer(bi);
+                const auto& mat = buf->getMaterial();
+
+                // Use Irrlicht to bind textures, then query GL for the bound names
+                data->driver->setMaterial(mat);
+                GLint glTex0 = 0, glTex1 = 0;
+                glActiveTexture(GL_TEXTURE0);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &glTex0);
+                glActiveTexture(GL_TEXTURE1);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &glTex1);
+                glActiveTexture(GL_TEXTURE0);
+
+                // Also check what's ACTUALLY bound after switching program
+                glUseProgram(rawProg);
+                GLint finalTex0 = 0, finalTex1 = 0;
+                glActiveTexture(GL_TEXTURE0);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &finalTex0);
+                glActiveTexture(GL_TEXTURE1);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &finalTex1);
+                glActiveTexture(GL_TEXTURE0);
+
+                printf("[TREE-TEST] Raw draw buf[%u]: verts=%u, idx=%u, afterSetMat tex0=%d tex1=%d, afterProgSwitch tex0=%d tex1=%d\n",
+                       bi, buf->getVertexCount(), buf->getIndexCount(), glTex0, glTex1, finalTex0, finalTex1);
+                // Log UV coordinates for foliage buffer
+                if (buf->getVertexCount() <= 32) {
+                    const irr::video::S3DVertex* v = (const irr::video::S3DVertex*)buf->getVertices();
+                    for (irr::u32 vi = 0; vi < buf->getVertexCount(); vi++) {
+                        printf("[TREE-TEST]   v[%u] pos=(%.2f,%.2f,%.2f) uv=(%.4f,%.4f)\n",
+                               vi, v[vi].Pos.X, v[vi].Pos.Y, v[vi].Pos.Z,
+                               v[vi].TCoords.X, v[vi].TCoords.Y);
+                    }
+                }
+                fflush(stdout);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, glTex0);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, glTex1);
+                glActiveTexture(GL_TEXTURE0);
+
+                // Bind VBO/EBO from Irrlicht's HW buffer
+                // Use client-side arrays from the mesh buffer
+                const irr::video::S3DVertex* verts = (const irr::video::S3DVertex*)buf->getVertices();
+                const irr::u16* indices = buf->getIndices();
+                GLsizei stride = sizeof(irr::video::S3DVertex);
+
+                // Unbind VBO to use client pointers
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, &verts[0].Pos);
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, &verts[0].Normal);
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, &verts[0].Color);
+                glEnableVertexAttribArray(2);
+                glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, &verts[0].TCoords);
+                glEnableVertexAttribArray(3);
+
+                glDrawElements(GL_TRIANGLES, buf->getIndexCount(), GL_UNSIGNED_SHORT, indices);
+            }
+
+            glFinish();
+            saveScreenshot("tree_test_alpha.bmp");
+
+            // === Screenshot 3: Raw GL, NO discard (confirm geometry renders) ===
+            const char* noDiscardFS = R"(
+                precision mediump float;
+                uniform sampler2D uTexture;
+                varying vec2 vTexCoord;
+                void main() {
+                    gl_FragColor = texture2D(uTexture, vTexCoord);
+                }
+            )";
+            GLuint ndFS = compile(GL_FRAGMENT_SHADER, noDiscardFS);
+            GLuint ndVS = compile(GL_VERTEX_SHADER, rawVS);
+            GLuint ndProg = glCreateProgram();
+            glAttachShader(ndProg, ndVS);
+            glAttachShader(ndProg, ndFS);
+            glBindAttribLocation(ndProg, 0, "aPos");
+            glBindAttribLocation(ndProg, 1, "aNormal");
+            glBindAttribLocation(ndProg, 2, "aColor");
+            glBindAttribLocation(ndProg, 3, "aTexCoord");
+            glLinkProgram(ndProg);
+            glDeleteShader(ndVS);
+            glDeleteShader(ndFS);
+
+            glClearColor(100/255.0f, 150/255.0f, 255/255.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            glUseProgram(ndProg);
+            GLint ndWVP = glGetUniformLocation(ndProg, "uWVP");
+            GLint ndTex = glGetUniformLocation(ndProg, "uTexture");
+            glUniformMatrix4fv(ndWVP, 1, GL_FALSE, wvp.pointer());
+            glUniform1i(ndTex, 0);
+
+            // Draw only foliage buffer (buf[0]) with tex0 only
+            {
+                auto* buf = treeObj->mesh->getMeshBuffer(0);
+                const auto& mat = buf->getMaterial();
+                data->driver->setMaterial(mat);  // binds textures
+                glUseProgram(ndProg);  // switch back to our program
+                glUniformMatrix4fv(ndWVP, 1, GL_FALSE, wvp.pointer());
+                glUniform1i(ndTex, 0);
+
+                const irr::video::S3DVertex* verts = (const irr::video::S3DVertex*)buf->getVertices();
+                const irr::u16* indices = buf->getIndices();
+                GLsizei stride = sizeof(irr::video::S3DVertex);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, &verts[0].Pos);
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, &verts[0].TCoords);
+                glEnableVertexAttribArray(3);
+                glDrawElements(GL_TRIANGLES, buf->getIndexCount(), GL_UNSIGNED_SHORT, indices);
+            }
+            glFinish();
+            saveScreenshot("tree_test_rawsolid.bmp");
+            glDeleteProgram(ndProg);
+
+            // Swap to show on screen too
+            eglSwapBuffers(eglGetCurrentDisplay(), eglGetCurrentSurface(EGL_DRAW));
+
+            glDeleteProgram(rawProg);
+        }
+#endif
+
+        printf("Tree test complete.\n");
         return 0;
     }
 
@@ -660,6 +1043,7 @@ int main(int argc, char** argv) {
 
         // Begin frame
         data->driver->beginScene(true, true, irr::video::SColor(255, 40, 40, 60));
+        if (data->zoneShader) data->zoneShader->beginFrame();
 
         if (measuring) {
             metrics.beginFrame(frame - opts.warmup, camPos.x, camPos.y, camPos.z);
@@ -677,6 +1061,14 @@ int main(int argc, char** argv) {
             opts.materialSort, opts.portalCull, opts.frustumCull, opts.occlusionCull,
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
             drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
+
+        // Collect object draw entries (trees, lamps, etc.)
+        int objectDrawCalls = 0, objectPolys = 0;
+        if (!data->objects.empty()) {
+            ZoneBench::collectObjectDrawEntries(
+                *data, camState, opts.objectRenderDist, opts.frustumCull,
+                drawEntries, objectDrawCalls, objectPolys);
+        }
 
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;

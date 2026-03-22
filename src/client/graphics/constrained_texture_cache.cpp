@@ -1465,14 +1465,25 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
             h = std::max<uint16_t>(4, h / 2);
         }
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        if (entry.mipLevels > 1) {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        } else {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        }
+        // Alpha companion textures use NEAREST_MIPMAP_NEAREST filtering.
+        // LINEAR_MIPMAP_LINEAR (trilinear) blends between mip levels, pushing
+        // binary alpha values below the 0.5 discard threshold and making
+        // foliage invisible. NEAREST_MIPMAP_NEAREST selects the closest mip
+        // level without interpolation, preserving the binary alpha mask while
+        // still benefiting from mipmaps at distance.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        {
+            GLint minF = 0, magF = 0;
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
+            printf("[FILTER-DIAG] alpha upload '%s' glName=%u: set minFilter=0x%x magFilter=0x%x\n",
+                   name.c_str(), alphaTexId, minF, magF);
+            fflush(stdout);
+        }
 
         glBindTexture(GL_TEXTURE_2D, 0);
     }

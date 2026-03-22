@@ -103,6 +103,10 @@ if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
         file "$OUTPUT_DIR/bin/gles2_etc1_benchmark"
         ls -lh "$OUTPUT_DIR/bin/gles2_etc1_benchmark"
     fi
+    if [ -f "$OUTPUT_DIR/bin/gles2_etc1_alpha_readback_test" ]; then
+        file "$OUTPUT_DIR/bin/gles2_etc1_alpha_readback_test"
+        ls -lh "$OUTPUT_DIR/bin/gles2_etc1_alpha_readback_test"
+    fi
     if [ -f "$OUTPUT_DIR/bin/egl_image_sharing_test" ]; then
         file "$OUTPUT_DIR/bin/egl_image_sharing_test"
         ls -lh "$OUTPUT_DIR/bin/egl_image_sharing_test"

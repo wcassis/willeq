@@ -19,6 +19,9 @@
 
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/eqe1_loader.h"
+
+#include <filesystem>
 
 
 #ifdef EQT_HAS_GLES2
@@ -139,6 +142,37 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     data->textureCache = std::make_unique<ConstrainedTextureCache>(constrainedConfig);
     data->textureCache->setDriver(data->driver);
 
+    // ── Step 4b: Load EQE1 flat packs (zone-specific only) ──
+    if (!config.eqe1Path.empty()) {
+        // Only load archives needed for this zone + global assets
+        std::vector<std::string> eqe1Names = {
+            config.zoneName,                    // zone geometry textures
+            config.zoneName + "_obj",           // zone object textures (trees, lamps)
+            config.zoneName + "_chr",           // zone character textures
+            "global_chr",                       // global character textures
+            "global2_chr", "global3_chr", "global4_chr",
+            "global5_chr", "global6_chr", "global7_chr",
+            "gequip", "gequip2", "gequip3", "gequip4",
+            "gequip5", "gequip6", "gequip8",
+            "gatesequip", "ldonequip",
+            "lgequip", "lgequip2", "lgequip_amr", "lgequip_amr2",
+            "loyequip", "vequip", "frogequip", "obequip_lexit",
+            "willeq",                           // composite entity textures
+        };
+
+        int eqe1Count = 0;
+        for (const auto& name : eqe1Names) {
+            std::string path = config.eqe1Path + "/" + name + ".eqe1";
+            auto loader = std::make_unique<EQE1Loader>();
+            if (loader->open(path)) {
+                data->textureCache->addEQE1Loader(loader.get());
+                data->eqe1Loaders.push_back(std::move(loader));
+                ++eqe1Count;
+            }
+        }
+        printf("  EQE1 loaders: %d archives loaded\n", eqe1Count);
+    }
+
     // ── Step 5: Set up shaders ──
     auto* gpu = data->driver->getGPUProgrammingServices();
     if (gpu) {
@@ -238,6 +272,179 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     printf("  Meshes built: %zu regions (%zu skipped), %d buffers, %d textures uploaded (%.0f ms)\n",
            regionsBuilt, regionsSkipped, totalBuffers, uploaded,
            std::chrono::duration<double, std::milli>(meshEnd - meshStart).count());
+
+    // ── Step 7b: Load and build zone objects ──
+    if (config.loadObjects) {
+        auto objStart = std::chrono::steady_clock::now();
+
+        // Re-load zone with objects enabled
+        S3DLoader objLoader;
+        S3DLoadOptions objOpts;
+        objOpts.loadObjects = true;
+        objOpts.loadCharacters = false;
+        objOpts.computeCombinedGeometry = false;
+
+        printf("[OBJ-DIAG] Loading zone with objects: %s\n", archivePath.c_str());
+        if (objLoader.loadZone(archivePath, objOpts)) {
+            auto objZone = objLoader.getZone();
+            printf("[OBJ-DIAG] Zone loaded: objZone=%p\n", (void*)objZone.get());
+            printf("[OBJ-DIAG] objects=%zu, objectGeometries=%zu, objectTextures=%zu, textures=%zu\n",
+                   objZone ? objZone->objects.size() : 0,
+                   objZone ? objZone->objectGeometries.size() : 0,
+                   objZone ? objZone->objectTextures.size() : 0,
+                   objZone ? objZone->textures.size() : 0);
+
+            if (objZone) {
+                // Log all object texture names
+                printf("[OBJ-DIAG] objectTextures keys:\n");
+                for (const auto& [name, tex] : objZone->objectTextures) {
+                    printf("[OBJ-DIAG]   '%s' data=%p size=%zu\n",
+                           name.c_str(), (void*)tex.get(), tex ? tex->data.size() : 0);
+                }
+
+                // Log all object instances with their geometry texture names
+                int logCount = 0;
+                for (const auto& instance : objZone->objects) {
+                    if (logCount < 30 || (instance.placeable &&
+                        (instance.placeable->getName().find("TREE") != std::string::npos ||
+                         instance.placeable->getName().find("tree") != std::string::npos ||
+                         instance.placeable->getName().find("PINE") != std::string::npos ||
+                         instance.placeable->getName().find("pine") != std::string::npos))) {
+                        printf("[OBJ-DIAG] object '%s': geom=%p verts=%zu tris=%zu texNames=[",
+                               instance.placeable ? instance.placeable->getName().c_str() : "?",
+                               (void*)instance.geometry.get(),
+                               instance.geometry ? instance.geometry->vertices.size() : 0,
+                               instance.geometry ? instance.geometry->triangles.size() : 0);
+                        if (instance.geometry) {
+                            auto texNames = instance.geometry->textureNames();
+                            for (size_t ti = 0; ti < texNames.size(); ++ti) {
+                                printf("%s'%s'", ti > 0 ? ", " : "", texNames[ti].c_str());
+                            }
+                        }
+                        printf("]\n");
+                    }
+                    logCount++;
+                }
+
+                // Build meshes for each placed object
+                ZoneMeshBuilder objBuilder(data->smgr, data->driver, data->device->getFileSystem());
+                objBuilder.setConstrainedTextureCache(data->textureCache.get());
+                printf("[OBJ-DIAG] objBuilder constrainedCache=%p, eqe1Loaders=%zu\n",
+                       (void*)data->textureCache.get(), data->eqe1Loaders.size());
+                if (data->zoneShader && data->zoneShader->isAvailable()) {
+                    auto solidMat = data->zoneShader->getActiveSolid();
+                    auto alphaMat = data->zoneShader->getActiveAlphaTest();
+                    objBuilder.setShaderMaterialTypes(solidMat, alphaMat);
+                    printf("[OBJ-DIAG] objBuilder shader materials: solid=%d, alphaTest=%d\n",
+                           solidMat, alphaMat);
+                }
+
+                int objCount = 0, objBuffers = 0;
+                for (const auto& instance : objZone->objects) {
+                    if (!instance.geometry || instance.geometry->vertices.empty()) continue;
+
+                    const std::string& objName = instance.placeable ? instance.placeable->getName() : "";
+                    bool isTree = objName.find("TREE") != std::string::npos ||
+                                  objName.find("tree") != std::string::npos ||
+                                  objName.find("PINE") != std::string::npos ||
+                                  objName.find("pine") != std::string::npos;
+
+                    // Build mesh — use object textures merged with zone textures
+                    auto mergedTextures = objZone->objectTextures;
+                    for (const auto& [name, tex] : objZone->textures) {
+                        if (mergedTextures.find(name) == mergedTextures.end()) {
+                            mergedTextures[name] = tex;
+                        }
+                    }
+
+                    irr::scene::IMesh* objMesh = nullptr;
+                    if (!mergedTextures.empty() && !instance.geometry->textureNames().empty()) {
+                        if (isTree) {
+                            printf("[OBJ-DIAG] Building textured mesh for '%s' (%zu verts, %zu tris)\n",
+                                   objName.c_str(), instance.geometry->vertices.size(),
+                                   instance.geometry->triangles.size());
+                            auto texNames = instance.geometry->textureNames();
+                            for (const auto& tn : texNames) {
+                                auto it = mergedTextures.find(tn);
+                                printf("[OBJ-DIAG]   texName='%s' inMerged=%d dataSize=%zu\n",
+                                       tn.c_str(), it != mergedTextures.end(),
+                                       (it != mergedTextures.end() && it->second) ? it->second->data.size() : 0);
+                            }
+                        }
+                        objMesh = objBuilder.buildTexturedMesh(*instance.geometry, mergedTextures);
+                        if (isTree) {
+                            printf("[OBJ-DIAG] '%s' mesh=%p buffers=%d\n",
+                                   objName.c_str(), (void*)objMesh,
+                                   objMesh ? (int)objMesh->getMeshBufferCount() : 0);
+                            if (objMesh) {
+                                for (irr::u32 bi = 0; bi < objMesh->getMeshBufferCount(); ++bi) {
+                                    auto* buf = objMesh->getMeshBuffer(bi);
+                                    const auto& mat = buf->getMaterial();
+                                    printf("[OBJ-DIAG]   buf[%u]: verts=%u idx=%u matType=%d tex0=%p tex1=%p\n",
+                                           bi, buf->getVertexCount(), buf->getIndexCount(),
+                                           (int)mat.MaterialType,
+                                           (void*)mat.getTexture(0), (void*)mat.getTexture(1));
+                                }
+                            }
+                        }
+                    } else {
+                        objMesh = objBuilder.buildColoredMesh(*instance.geometry);
+                    }
+                    if (!objMesh) continue;
+
+                    uploadMeshHWBuffers(data->driver, objMesh);
+
+                    // Build world transform matrix (EQ → Irrlicht coordinate swap)
+                    const auto& p = instance.placeable;
+                    irr::core::matrix4 mat;
+
+                    // Scale (EQ x,y,z → Irrlicht x,z,y)
+                    irr::core::matrix4 scaleMat;
+                    scaleMat.setScale(irr::core::vector3df(
+                        p->getScaleX(), p->getScaleZ(), p->getScaleY()));
+
+                    // Rotation
+                    irr::core::matrix4 rotMat;
+                    rotMat.setRotationDegrees(irr::core::vector3df(
+                        p->getRotateX(), p->getRotateY(), p->getRotateZ()));
+
+                    // Translation (EQ x,y,z → Irrlicht x,z,y)
+                    irr::core::matrix4 transMat;
+                    transMat.setTranslation(irr::core::vector3df(
+                        p->getX(), p->getZ(), p->getY()));
+
+                    mat = transMat * rotMat * scaleMat;
+
+                    // Disable backface culling on object materials (matching production)
+                    for (irr::u32 mi = 0; mi < objMesh->getMeshBufferCount(); ++mi) {
+                        objMesh->getMeshBuffer(mi)->getMaterial().BackfaceCulling = false;
+                    }
+
+                    ZoneBenchData::PlacedObject obj;
+                    obj.mesh = objMesh;
+                    obj.worldTransform = mat;
+                    obj.eqX = p->getX();
+                    obj.eqY = p->getY();
+                    obj.eqZ = p->getZ();
+                    obj.name = objName;
+                    data->objects.push_back(obj);
+
+                    objBuffers += objMesh->getMeshBufferCount();
+                    ++objCount;
+                }
+
+                // Upload any textures queued during object mesh building
+                int objUploaded = data->textureCache->uploadAllPending();
+
+                auto objEnd = std::chrono::steady_clock::now();
+                printf("  Objects built: %d objects, %d buffers, %d textures (%.0f ms)\n",
+                       objCount, objBuffers, objUploaded,
+                       std::chrono::duration<double, std::milli>(objEnd - objStart).count());
+            }
+        } else {
+            printf("  Objects: none (no _obj.s3d or objects.wld)\n");
+        }
+    }
 
     // ── Step 8: Build portal system ──
     data->portalSystem = std::make_unique<PortalSystem>();
@@ -634,6 +841,54 @@ void placeEntitiesAlongPath(ZoneBenchData& data,
     }
 
     printf("  Placed %d entities along camera path (1 target, 5 group, 5 raid, rest default/idle)\n", n);
+}
+
+void collectObjectDrawEntries(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    std::vector<DrawEntry>& outEntries,
+    int& outObjectDrawCalls,
+    int& outObjectPolys) {
+
+    outObjectDrawCalls = 0;
+    outObjectPolys = 0;
+    float renderDistSq = renderDistance * renderDistance;
+
+    for (const auto& obj : data.objects) {
+        if (!obj.mesh) continue;
+
+        // Distance cull
+        float dx = obj.eqX - cam.eqX;
+        float dy = obj.eqY - cam.eqY;
+        float dz = obj.eqZ - cam.eqZ;
+        float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > renderDistSq) continue;
+
+        // Frustum cull (use object position as a sphere test with radius ~10)
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testSphere(obj.eqX, obj.eqY, obj.eqZ, 10.0f))
+                continue;
+        }
+
+        for (irr::u32 i = 0; i < obj.mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = obj.mesh->getMeshBuffer(i);
+            if (!buf || buf->getVertexCount() == 0) continue;
+
+            const irr::video::SMaterial& mat = buf->getMaterial();
+            uint32_t texId = 0;
+            if (mat.getTexture(0)) {
+                texId = static_cast<uint32_t>(
+                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
+            }
+            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+
+            outEntries.push_back({matKey, distSq, buf, obj.worldTransform});
+            outObjectDrawCalls++;
+            outObjectPolys += buf->getIndexCount() / 3;
+        }
+    }
 }
 
 void collectEntityDrawEntries(
