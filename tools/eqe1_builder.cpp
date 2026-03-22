@@ -215,11 +215,12 @@ static std::vector<uint8_t> encodeETC1_Alpha(const uint8_t* rgba, int width, int
 
 // ── Mipmap generation ────────────────────────────────────────────────────────
 
-// Box-filter downsample RGBA by 2x, clamping minimum dimension to 4 (ETC1 block size).
+// Box-filter downsample RGBA by 2x, down to 1x1.
+// Sub-4x4 levels are valid — ETC1 pads to one 4x4 block (8 bytes).
 static std::vector<uint8_t> downsample2x(const uint8_t* src, int srcW, int srcH,
                                           int& dstW, int& dstH) {
-    dstW = std::max(4, srcW / 2);
-    dstH = std::max(4, srcH / 2);
+    dstW = std::max(1, srcW / 2);
+    dstH = std::max(1, srcH / 2);
     std::vector<uint8_t> dst(dstW * dstH * 4);
 
     for (int y = 0; y < dstH; ++y) {

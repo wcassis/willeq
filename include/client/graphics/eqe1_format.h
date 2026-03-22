@@ -66,16 +66,17 @@ inline uint32_t etc1DataSize(uint16_t width, uint16_t height) {
     return blocksW * blocksH * 8;
 }
 
-// Compute number of mip levels from base dimensions down to 4x4 minimum.
-// A 256x256 texture gets 7 levels (256,128,64,32,16,8,4).
-// A 4x4 texture gets 1 level.
+// Compute number of mip levels from base dimensions down to 1x1.
+// A 256x256 texture gets 9 levels (256,128,64,32,16,8,4,2,1).
+// GLES2 requires a complete chain to 1x1 for mipmap-complete textures.
+// Sub-4x4 levels still use one ETC1 block (8 bytes) with padding.
 inline uint8_t computeMipLevels(uint16_t width, uint16_t height) {
     uint8_t levels = 1;
     uint16_t w = width;
     uint16_t h = height;
-    while (w > 4 || h > 4) {
-        w = std::max<uint16_t>(4, w / 2);
-        h = std::max<uint16_t>(4, h / 2);
+    while (w > 1 || h > 1) {
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
         ++levels;
     }
     return levels;
@@ -88,8 +89,8 @@ inline uint32_t etc1MipChainSize(uint16_t width, uint16_t height, uint8_t mipLev
     uint16_t h = height;
     for (uint8_t level = 0; level < mipLevels; ++level) {
         total += etc1DataSize(w, h);
-        w = std::max<uint16_t>(4, w / 2);
-        h = std::max<uint16_t>(4, h / 2);
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
     }
     return total;
 }

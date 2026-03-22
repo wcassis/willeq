@@ -1423,8 +1423,8 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         }
 
         offset += levelSize;
-        w = std::max<uint16_t>(4, w / 2);
-        h = std::max<uint16_t>(4, h / 2);
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
     }
 
     // Set texture parameters
@@ -1461,18 +1461,21 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
             }
 
             offset += levelSize;
-            w = std::max<uint16_t>(4, w / 2);
-            h = std::max<uint16_t>(4, h / 2);
+            w = std::max<uint16_t>(1, w / 2);
+            h = std::max<uint16_t>(1, h / 2);
         }
 
         // Alpha companion textures use NEAREST_MIPMAP_NEAREST filtering.
-        // LINEAR_MIPMAP_LINEAR (trilinear) blends between mip levels, pushing
-        // binary alpha values below the 0.5 discard threshold and making
-        // foliage invisible. NEAREST_MIPMAP_NEAREST selects the closest mip
-        // level without interpolation, preserving the binary alpha mask while
-        // still benefiting from mipmaps at distance.
+        // Binary alpha masks must not be linearly interpolated — trilinear
+        // blending pushes binary values below the 0.5 discard threshold.
+        // NEAREST_MIPMAP_NEAREST selects the closest mip level without
+        // interpolation, preserving the binary alpha mask.
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        if (entry.mipLevels > 1) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+        } else {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
