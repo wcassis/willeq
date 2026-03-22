@@ -284,59 +284,16 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         objOpts.loadCharacters = false;
         objOpts.computeCombinedGeometry = false;
 
-        printf("[OBJ-DIAG] Loading zone with objects: %s\n", archivePath.c_str());
         if (objLoader.loadZone(archivePath, objOpts)) {
             auto objZone = objLoader.getZone();
-            printf("[OBJ-DIAG] Zone loaded: objZone=%p\n", (void*)objZone.get());
-            printf("[OBJ-DIAG] objects=%zu, objectGeometries=%zu, objectTextures=%zu, textures=%zu\n",
-                   objZone ? objZone->objects.size() : 0,
-                   objZone ? objZone->objectGeometries.size() : 0,
-                   objZone ? objZone->objectTextures.size() : 0,
-                   objZone ? objZone->textures.size() : 0);
-
             if (objZone) {
-                // Log all object texture names
-                printf("[OBJ-DIAG] objectTextures keys:\n");
-                for (const auto& [name, tex] : objZone->objectTextures) {
-                    printf("[OBJ-DIAG]   '%s' data=%p size=%zu\n",
-                           name.c_str(), (void*)tex.get(), tex ? tex->data.size() : 0);
-                }
-
-                // Log all object instances with their geometry texture names
-                int logCount = 0;
-                for (const auto& instance : objZone->objects) {
-                    if (logCount < 30 || (instance.placeable &&
-                        (instance.placeable->getName().find("TREE") != std::string::npos ||
-                         instance.placeable->getName().find("tree") != std::string::npos ||
-                         instance.placeable->getName().find("PINE") != std::string::npos ||
-                         instance.placeable->getName().find("pine") != std::string::npos))) {
-                        printf("[OBJ-DIAG] object '%s': geom=%p verts=%zu tris=%zu texNames=[",
-                               instance.placeable ? instance.placeable->getName().c_str() : "?",
-                               (void*)instance.geometry.get(),
-                               instance.geometry ? instance.geometry->vertices.size() : 0,
-                               instance.geometry ? instance.geometry->triangles.size() : 0);
-                        if (instance.geometry) {
-                            auto texNames = instance.geometry->textureNames();
-                            for (size_t ti = 0; ti < texNames.size(); ++ti) {
-                                printf("%s'%s'", ti > 0 ? ", " : "", texNames[ti].c_str());
-                            }
-                        }
-                        printf("]\n");
-                    }
-                    logCount++;
-                }
-
                 // Build meshes for each placed object
                 ZoneMeshBuilder objBuilder(data->smgr, data->driver, data->device->getFileSystem());
                 objBuilder.setConstrainedTextureCache(data->textureCache.get());
-                printf("[OBJ-DIAG] objBuilder constrainedCache=%p, eqe1Loaders=%zu\n",
-                       (void*)data->textureCache.get(), data->eqe1Loaders.size());
                 if (data->zoneShader && data->zoneShader->isAvailable()) {
-                    auto solidMat = data->zoneShader->getActiveSolid();
-                    auto alphaMat = data->zoneShader->getActiveAlphaTest();
-                    objBuilder.setShaderMaterialTypes(solidMat, alphaMat);
-                    printf("[OBJ-DIAG] objBuilder shader materials: solid=%d, alphaTest=%d\n",
-                           solidMat, alphaMat);
+                    objBuilder.setShaderMaterialTypes(
+                        data->zoneShader->getActiveSolid(),
+                        data->zoneShader->getActiveAlphaTest());
                 }
 
                 int objCount = 0, objBuffers = 0;
@@ -344,10 +301,6 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                     if (!instance.geometry || instance.geometry->vertices.empty()) continue;
 
                     const std::string& objName = instance.placeable ? instance.placeable->getName() : "";
-                    bool isTree = objName.find("TREE") != std::string::npos ||
-                                  objName.find("tree") != std::string::npos ||
-                                  objName.find("PINE") != std::string::npos ||
-                                  objName.find("pine") != std::string::npos;
 
                     // Build mesh — use object textures merged with zone textures
                     auto mergedTextures = objZone->objectTextures;
@@ -359,34 +312,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
                     irr::scene::IMesh* objMesh = nullptr;
                     if (!mergedTextures.empty() && !instance.geometry->textureNames().empty()) {
-                        if (isTree) {
-                            printf("[OBJ-DIAG] Building textured mesh for '%s' (%zu verts, %zu tris)\n",
-                                   objName.c_str(), instance.geometry->vertices.size(),
-                                   instance.geometry->triangles.size());
-                            auto texNames = instance.geometry->textureNames();
-                            for (const auto& tn : texNames) {
-                                auto it = mergedTextures.find(tn);
-                                printf("[OBJ-DIAG]   texName='%s' inMerged=%d dataSize=%zu\n",
-                                       tn.c_str(), it != mergedTextures.end(),
-                                       (it != mergedTextures.end() && it->second) ? it->second->data.size() : 0);
-                            }
-                        }
                         objMesh = objBuilder.buildTexturedMesh(*instance.geometry, mergedTextures);
-                        if (isTree) {
-                            printf("[OBJ-DIAG] '%s' mesh=%p buffers=%d\n",
-                                   objName.c_str(), (void*)objMesh,
-                                   objMesh ? (int)objMesh->getMeshBufferCount() : 0);
-                            if (objMesh) {
-                                for (irr::u32 bi = 0; bi < objMesh->getMeshBufferCount(); ++bi) {
-                                    auto* buf = objMesh->getMeshBuffer(bi);
-                                    const auto& mat = buf->getMaterial();
-                                    printf("[OBJ-DIAG]   buf[%u]: verts=%u idx=%u matType=%d tex0=%p tex1=%p\n",
-                                           bi, buf->getVertexCount(), buf->getIndexCount(),
-                                           (int)mat.MaterialType,
-                                           (void*)mat.getTexture(0), (void*)mat.getTexture(1));
-                                }
-                            }
-                        }
                     } else {
                         objMesh = objBuilder.buildColoredMesh(*instance.geometry);
                     }

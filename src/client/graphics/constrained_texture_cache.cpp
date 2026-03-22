@@ -1479,15 +1479,6 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-        {
-            GLint minF = 0, magF = 0;
-            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
-            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
-            printf("[FILTER-DIAG] alpha upload '%s' glName=%u: set minFilter=0x%x magFilter=0x%x\n",
-                   name.c_str(), alphaTexId, minF, magF);
-            fflush(stdout);
-        }
-
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 

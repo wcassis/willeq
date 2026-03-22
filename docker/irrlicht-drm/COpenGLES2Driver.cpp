@@ -1150,30 +1150,9 @@ void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
     }
 
     // Second texture unit (for ETC1 alpha companion or atlas alpha)
-    {
-        static int matLog = 0;
-        if (matLog < 20) {
-            printf("[FILTER-DIAG] applyMaterialRenderState: matType=%d tex0=%p tex1=%p\n",
-                   (int)material.MaterialType, (void*)material.getTexture(0), (void*)material.getTexture(1));
-            fflush(stdout);
-            matLog++;
-        }
-    }
     if (material.getTexture(1)) {
         const COGLES2Texture* tex = static_cast<const COGLES2Texture*>(material.getTexture(1));
         bindTexture(GL_TEXTURE1, tex->getOpenGLTextureName());
-
-        // Log filter state on first few alpha binds
-        static int alphaFilterLog = 0;
-        if (alphaFilterLog < 5) {
-            GLint minF = 0, magF = 0;
-            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
-            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
-            printf("[FILTER-DIAG] unit1 glName=%u minFilter=0x%x magFilter=0x%x\n",
-                   tex->getOpenGLTextureName(), minF, magF);
-            fflush(stdout);
-            alphaFilterLog++;
-        }
     } else {
         // Bind white fallback so shaders reading uAlphaTexture get alpha=1.0 (opaque)
         // instead of undefined data, which would cause spurious discard.
