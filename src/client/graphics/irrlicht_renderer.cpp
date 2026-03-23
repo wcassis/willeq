@@ -4191,14 +4191,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 objectBoundingBoxes_.push_back(objNode->getTransformedBoundingBox());
                 deferred.nodeIndex = newNodeIndex;
 
-                // PVS visibility (no SimWorker yet, so all visible)
+                // PVS visibility (no SimWorker yet, so all visible).
+                // When manualZoneDrawEnabled_, objects are always out of scene graph
+                // and rendered via drawZoneGeometrySorted() instead.
                 bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
-                if (!pvsVisible) {
+                if (!pvsVisible || manualZoneDrawEnabled_) {
                     objNode->remove();
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
-                              oi, objName, objectRegions_.back());
+                    if (!pvsVisible) {
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
+                                  oi, objName, objectRegions_.back());
+                    }
                 }
-                objectInSceneGraph_.push_back(pvsVisible);
+                objectInSceneGraph_.push_back(pvsVisible && !manualZoneDrawEnabled_);
 
                 // Object lights (torch, lantern, fire, candle, etc.)
                 std::string upperName = objName;
@@ -6005,6 +6009,51 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         regionsDrawn++;
     }
 
+    // Add visible object mesh buffers (sorted alongside zone geometry)
+    if (!objectNodes_.empty() && currentFrameSimResults_) {
+        const auto* results = currentFrameSimResults_;
+        {
+            // Get camera position for distance sorting
+            irr::core::vector3df camPos(0, 0, 0);
+            if (smgr_ && smgr_->getActiveCamera()) {
+                camPos = smgr_->getActiveCamera()->getAbsolutePosition();
+            }
+
+            for (size_t i = 0; i < objectNodes_.size() && i < results->objectVisible.size(); ++i) {
+                if (!results->objectVisible[i]) continue;
+                auto* node = objectNodes_[i];
+                if (!node || !node->getMesh()) continue;
+
+                // Distance from stored object position (Irrlicht coords)
+                float distSq = 0.0f;
+                if (i < objectPositions_.size()) {
+                    irr::core::vector3df diff = objectPositions_[i] - camPos;
+                    distSq = diff.getLengthSQ();
+                }
+
+                // World transform from node's relative transformation
+                // (node is not in scene graph, so no parent transform to worry about)
+                irr::core::matrix4 worldMat = node->getRelativeTransformation();
+
+                irr::scene::IMesh* mesh = node->getMesh();
+                for (irr::u32 bi = 0; bi < mesh->getMeshBufferCount(); ++bi) {
+                    irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bi);
+                    if (!buf || buf->getVertexCount() == 0) continue;
+
+                    const irr::video::SMaterial& mat = buf->getMaterial();
+                    uint32_t texId = 0;
+                    if (mat.getTexture(0)) {
+                        texId = static_cast<uint32_t>(
+                            reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
+                    }
+                    uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+
+                    sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat});
+                }
+            }
+        }
+    }
+
     // Add fallback mesh buffers (always drawn last — use max distance)
     if (fallbackMeshNode_) {
         collectMeshBuffers(fallbackMeshNode_, 1e18f);
@@ -7071,12 +7120,14 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     // Track deferred→node mapping for texture rebuild
     deferred.nodeIndex = newNodeIndex;
 
-    // PVS check at insertion — start hidden if not in visible region
+    // PVS check at insertion — start hidden if not in visible region.
+    // When manualZoneDrawEnabled_, objects are always out of scene graph
+    // and rendered via drawZoneGeometrySorted() instead.
     bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
-    if (!pvsVisible) {
+    if (!pvsVisible || manualZoneDrawEnabled_) {
         node->remove();  // Remove from scene graph (grab() keeps it alive)
     }
-    objectInSceneGraph_.push_back(pvsVisible);
+    objectInSceneGraph_.push_back(pvsVisible && !manualZoneDrawEnabled_);
 
     // Create object light if this is a light source (torch, lantern, etc.)
     // Create object light if this is a light source (torch, lantern, etc.)
@@ -8451,6 +8502,7 @@ void IrrlichtRenderer::applySimulationResults() {
 
     const SimulationOutput* results = simulationWorker_->swapAndGetResults();
     if (!results) return;
+    currentFrameSimResults_ = results;
 
     applySimulationOutput(*results);
 }
@@ -8564,7 +8616,10 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     }
 
     // Apply object visibility
-    if (!results->objectVisible.empty()) {
+    // When manualZoneDrawEnabled_, objects are drawn via drawZoneGeometrySorted()
+    // alongside zone geometry for material sorting. Keep them out of the scene graph
+    // to avoid double-rendering by drawAll().
+    if (!results->objectVisible.empty() && !manualZoneDrawEnabled_) {
         for (size_t i = 0; i < results->objectVisible.size() && i < objectNodes_.size(); ++i) {
             auto* node = objectNodes_[i];
             if (!node) continue;
@@ -11270,6 +11325,14 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
         if (fallbackMeshNode_ && fallbackMeshNode_->getParent()) {
             fallbackMeshNode_->grab(); fallbackMeshNode_->remove();
         }
+        // Remove object nodes from scene graph — drawn via sorted draw list
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            auto* node = objectNodes_[i];
+            if (node && node->getParent()) {
+                node->grab(); node->remove();
+                if (i < objectInSceneGraph_.size()) objectInSceneGraph_[i] = false;
+            }
+        }
     } else {
         // Re-add zone mesh nodes to scene graph for Irrlicht-managed rendering
         for (auto& [regionIdx, node] : regionMeshNodes_) {
@@ -11281,6 +11344,15 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
         if (fallbackMeshNode_ && !fallbackMeshNode_->getParent()) {
             smgr_->getRootSceneNode()->addChild(fallbackMeshNode_);
             fallbackMeshNode_->drop();
+        }
+        // Re-add visible object nodes to scene graph
+        for (size_t i = 0; i < objectNodes_.size(); ++i) {
+            auto* node = objectNodes_[i];
+            if (node && !node->getParent()) {
+                smgr_->getRootSceneNode()->addChild(node);
+                node->drop();
+                if (i < objectInSceneGraph_.size()) objectInSceneGraph_[i] = true;
+            }
         }
     }
     LOG_INFO(MOD_GRAPHICS, "Manual zone draw (front-to-back sorting): {}",

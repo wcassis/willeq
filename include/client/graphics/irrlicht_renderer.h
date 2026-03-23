@@ -1202,6 +1202,7 @@ private:
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
     int entityPrepScanCounter_ = 0;  // Throttle queueEntityPrepRequests to every ~10 frames
     std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
+    const SimulationOutput* currentFrameSimResults_ = nullptr;  // Valid during processFrame, null otherwise
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
     std::unordered_set<size_t> pendingVBOUploads_;       // Region indices with VBO uploads in flight
