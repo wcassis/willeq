@@ -300,6 +300,12 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableItemIcons = false;
             config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
+            // Adaptive per-pixel lighting: nearest N regions/objects get per-pixel
+            // player light, rest use lightweight per-vertex. Benchmarked on qeynos2:
+            // zone budget 20 + object budget 10 maintains visual quality near camera
+            // while saving ~4ms/frame on distant geometry.
+            config.adaptiveLightingZoneBudget = 20;
+            config.adaptiveLightingObjectBudget = 10;
             // Entity prep: queue entities up to 2 portal hops away
             config.entityPrepMaxPvsDepth = 2;
             config.terrainPrepMaxPvsDepth = 5;
@@ -490,6 +496,10 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         antiAliasLevel = preset["antiAliasLevel"].asInt();
     if (preset.isMember("anisotropicFilterLevel"))
         anisotropicFilterLevel = preset["anisotropicFilterLevel"].asInt();
+    if (preset.isMember("adaptiveLightingZoneBudget"))
+        adaptiveLightingZoneBudget = preset["adaptiveLightingZoneBudget"].asInt();
+    if (preset.isMember("adaptiveLightingObjectBudget"))
+        adaptiveLightingObjectBudget = preset["adaptiveLightingObjectBudget"].asInt();
     if (preset.isMember("mesh_memory_mb"))
         meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
     if (preset.isMember("meshMemoryBytes"))

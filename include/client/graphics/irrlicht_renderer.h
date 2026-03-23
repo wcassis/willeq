@@ -480,6 +480,7 @@ struct ZoneDrawEntry {
     float distanceSq;
     irr::scene::IMeshBuffer* buffer;
     irr::core::matrix4 worldMat;
+    irr::s32 materialOverride = -1;  // If >= 0, override buffer's MaterialType at draw time
 };
 
 // External subsystem memory data passed into getMemoryReport()

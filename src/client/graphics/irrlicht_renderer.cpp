@@ -5369,6 +5369,22 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                         if (treeMesh) {
                             irr::core::aabbox3df meshBbox = treeMesh->getBoundingBox();
                             irr::s32 windMatType = zoneShader_->getActiveWindAlphaTest();
+                            // Update BOTH node materials AND mesh buffer materials.
+                            // Node materials are used by Irrlicht's scene graph rendering.
+                            // Mesh buffer materials are used by drawZoneGeometrySorted().
+                            for (irr::u32 mi = 0; mi < treeMesh->getMeshBufferCount(); ++mi) {
+                                auto& bufMat = treeMesh->getMeshBuffer(mi)->getMaterial();
+                                bufMat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
+                                bufMat.MaterialTypeParam = meshBbox.MinEdge.Y;
+                                bufMat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
+                                bufMat.BackfaceCulling = false;
+                                if (constrainedTextureCache_ && bufMat.TextureLayer[0].Texture && !bufMat.TextureLayer[1].Texture) {
+                                    irr::core::stringc texName = bufMat.TextureLayer[0].Texture->getName().getPath();
+                                    irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
+                                        std::string(texName.c_str()));
+                                    if (alphaTex) bufMat.setTexture(1, alphaTex);
+                                }
+                            }
                             for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
                                 auto& mat = objNode->getMaterial(mi);
                                 irr::s32 prevMatType = mat.MaterialType;
@@ -5959,7 +5975,39 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // Collect all visible mesh buffers into a flat draw list
     sortedDrawEntries_.clear();
 
-    auto collectMeshBuffers = [this](irr::scene::IMeshSceneNode* node, float distSq) {
+    // Adaptive lighting: if /plight is on and budget > 0, nearest N regions
+    // get per-pixel lighting; the rest get lightweight per-vertex shaders.
+    const bool adaptiveLight = zoneShader_ && zoneShader_->isPerPixelPlayerLight() &&
+                                config_.constrainedConfig.adaptiveLightingZoneBudget > 0;
+    const int zonePPBudget = config_.constrainedConfig.adaptiveLightingZoneBudget;
+    const int objectPPBudget = config_.constrainedConfig.adaptiveLightingObjectBudget;
+    const irr::s32 ppSolid = zoneShader_ ? zoneShader_->getMaterialTypeSolid() : -1;
+    const irr::s32 ppAlpha = zoneShader_ ? zoneShader_->getMaterialTypeAlphaTest() : -1;
+    const irr::s32 lwSolid = zoneShader_ ? zoneShader_->getMaterialTypeLWSolid() : -1;
+    const irr::s32 lwAlpha = zoneShader_ ? zoneShader_->getMaterialTypeLWAlphaTest() : -1;
+
+    // Compute lightweight material override for a buffer beyond the per-pixel budget.
+    // Returns -1 if no override needed (keep original material).
+    const irr::s32 ppWind = zoneShader_ ? zoneShader_->getMaterialTypeWindAlphaTest() : -1;
+    const irr::s32 lwWind = zoneShader_ ? zoneShader_->getMaterialTypeLWWindAlphaTest() : -1;
+
+    static bool adaptiveLightLogOnce = false;
+    if (!adaptiveLightLogOnce) {
+        LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE] adaptiveLight={} ppSolid={} ppAlpha={} ppWind={} lwSolid={} lwAlpha={} lwWind={} zoneBudget={} objBudget={}",
+                 adaptiveLight, ppSolid, ppAlpha, ppWind, lwSolid, lwAlpha, lwWind, zonePPBudget, objectPPBudget);
+        adaptiveLightLogOnce = true;
+    }
+
+    auto getLightweightOverride = [&](irr::s32 origType) -> irr::s32 {
+        if (!adaptiveLight || lwSolid < 0) return -1;
+        if (origType == ppSolid) return lwSolid;
+        if (origType == ppAlpha) return lwAlpha;
+        if (origType == ppWind && lwWind >= 0) return lwWind;
+        return -1;
+    };
+
+    auto collectMeshBuffers = [&](irr::scene::IMeshSceneNode* node, float distSq,
+                                    bool useLightweight = false) {
         irr::scene::IMesh* mesh = node->getMesh();
         if (!mesh) return;
 
@@ -5972,6 +6020,9 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
 
             const irr::video::SMaterial& mat = buf->getMaterial();
 
+            // Compute per-buffer material override for adaptive lighting
+            irr::s32 matOverride = useLightweight ? getLightweightOverride(mat.MaterialType) : -1;
+
             // Material key: (materialType << 16) | textureID
             // Groups all same-shader, same-texture draws together
             uint32_t texId = 0;
@@ -5980,9 +6031,10 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                 texId = static_cast<uint32_t>(
                     reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
             }
-            uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+            irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
+            uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
-            sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat});
+            sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
         }
     };
 
@@ -6005,52 +6057,64 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         auto it = regionMeshNodes_.find(entry.regionIdx);
         if (it == regionMeshNodes_.end() || !it->second) continue;
 
-        collectMeshBuffers(it->second, entry.distanceSq);
+        bool regionUseLW = adaptiveLight && regionsDrawn >= zonePPBudget;
+        collectMeshBuffers(it->second, entry.distanceSq, regionUseLW);
         regionsDrawn++;
     }
 
     // Add visible object mesh buffers (sorted alongside zone geometry)
     if (!objectNodes_.empty() && currentFrameSimResults_) {
         const auto* results = currentFrameSimResults_;
-        {
-            // Get camera position for distance sorting
-            irr::core::vector3df camPos(0, 0, 0);
-            if (smgr_ && smgr_->getActiveCamera()) {
-                camPos = smgr_->getActiveCamera()->getAbsolutePosition();
+
+        // Get camera position for distance sorting
+        irr::core::vector3df camPos(0, 0, 0);
+        if (smgr_ && smgr_->getActiveCamera()) {
+            camPos = smgr_->getActiveCamera()->getAbsolutePosition();
+        }
+
+        int objectsDrawn = 0;
+        for (size_t i = 0; i < objectNodes_.size() && i < results->objectVisible.size(); ++i) {
+            if (!results->objectVisible[i]) continue;
+            auto* node = objectNodes_[i];
+            if (!node || !node->getMesh()) continue;
+
+            // Distance from stored object position (Irrlicht coords)
+            float distSq = 0.0f;
+            if (i < objectPositions_.size()) {
+                irr::core::vector3df diff = objectPositions_[i] - camPos;
+                distSq = diff.getLengthSQ();
             }
 
-            for (size_t i = 0; i < objectNodes_.size() && i < results->objectVisible.size(); ++i) {
-                if (!results->objectVisible[i]) continue;
-                auto* node = objectNodes_[i];
-                if (!node || !node->getMesh()) continue;
+            // Adaptive lighting: beyond object budget, use lightweight
+            bool objUseLW = adaptiveLight && objectPPBudget > 0 && objectsDrawn >= objectPPBudget;
 
-                // Distance from stored object position (Irrlicht coords)
-                float distSq = 0.0f;
-                if (i < objectPositions_.size()) {
-                    irr::core::vector3df diff = objectPositions_[i] - camPos;
-                    distSq = diff.getLengthSQ();
+            // World transform from node's relative transformation
+            irr::core::matrix4 worldMat = node->getRelativeTransformation();
+
+            irr::scene::IMesh* mesh = node->getMesh();
+            for (irr::u32 bi = 0; bi < mesh->getMeshBufferCount(); ++bi) {
+                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bi);
+                if (!buf || buf->getVertexCount() == 0) continue;
+
+                const irr::video::SMaterial& mat = buf->getMaterial();
+                irr::s32 matOverride = objUseLW ? getLightweightOverride(mat.MaterialType) : -1;
+
+                if (node->getName() && (std::string(node->getName()) == "TREE6" || std::string(node->getName()) == "TREE1")) {
+                    LOG_DEBUG(MOD_GRAPHICS, "[ADAPTIVE] {} obj[{}] buf[{}] matType={} useLW={} override={}",
+                              node->getName(), i, bi, (int)mat.MaterialType, objUseLW, matOverride);
                 }
 
-                // World transform from node's relative transformation
-                // (node is not in scene graph, so no parent transform to worry about)
-                irr::core::matrix4 worldMat = node->getRelativeTransformation();
-
-                irr::scene::IMesh* mesh = node->getMesh();
-                for (irr::u32 bi = 0; bi < mesh->getMeshBufferCount(); ++bi) {
-                    irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bi);
-                    if (!buf || buf->getVertexCount() == 0) continue;
-
-                    const irr::video::SMaterial& mat = buf->getMaterial();
-                    uint32_t texId = 0;
-                    if (mat.getTexture(0)) {
-                        texId = static_cast<uint32_t>(
-                            reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-                    }
-                    uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
-
-                    sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat});
+                uint32_t texId = 0;
+                if (mat.getTexture(0)) {
+                    texId = static_cast<uint32_t>(
+                        reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
                 }
+                irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
+                uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
+
+                sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
             }
+            objectsDrawn++;
         }
     }
 
@@ -6073,7 +6137,14 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // blend/depth/cull/texture/program when consecutive draws share the same material.
     for (const auto& de : sortedDrawEntries_) {
         driver_->setTransform(irr::video::ETS_WORLD, de.worldMat);
-        driver_->setMaterial(de.buffer->getMaterial());
+        if (de.materialOverride >= 0) {
+            // Adaptive lighting: override material type (per-pixel → lightweight)
+            irr::video::SMaterial mat = de.buffer->getMaterial();
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+            driver_->setMaterial(mat);
+        } else {
+            driver_->setMaterial(de.buffer->getMaterial());
+        }
         driver_->drawMeshBuffer(de.buffer);
     }
 

@@ -116,6 +116,12 @@ struct ConstrainedRendererConfig {
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)
 
+    // Adaptive per-pixel lighting: nearest N regions/objects get per-pixel player light,
+    // the rest use lightweight per-vertex shaders. Requires /plight enabled.
+    // 0 = disabled (all per-pixel when /plight on, all per-vertex when off).
+    int adaptiveLightingZoneBudget = 0;      // Max zone regions with per-pixel lighting (0=disabled)
+    int adaptiveLightingObjectBudget = 0;    // Max objects with per-pixel lighting (0=disabled)
+
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
 
