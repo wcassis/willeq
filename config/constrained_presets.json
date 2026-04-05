@@ -34,7 +34,9 @@
       "deferredAssetLoading": "automatic",
       "backgroundThreadCount": 1,
       "chrCacheMaxEntries": 8,
-      "pvsNeighborhoodHops": 3 
+      "pvsNeighborhoodHops": 3, 
+      "adaptiveLightingZoneBudget": 5,
+      "adaptiveLightingObjectBudget": 5
     },
     "orangepi": {
       "renderingBackend": "gles2",
@@ -70,7 +72,9 @@
       "deferredAssetLoading": "automatic",
       "backgroundThreadCount": 1,
       "chrCacheMaxEntries": 8,
-      "pvsNeighborhoodHops": 3
+      "pvsNeighborhoodHops": 3,
+      "adaptiveLightingZoneBudget": 5,
+      "adaptiveLightingObjectBudget": 5
     }
   }
 }

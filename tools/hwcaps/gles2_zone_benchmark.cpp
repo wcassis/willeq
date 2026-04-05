@@ -31,6 +31,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/portal_system.h"
 #include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/zone_bsp.h"
 
 #ifdef EQT_HAS_GLES2
@@ -65,7 +66,7 @@ struct Options {
 
     // A/B toggles (Z4)
     bool materialSort = true;
-    bool portalCull = true;
+    bool pvsCull = true;
     bool frustumCull = true;
     bool occlusionCull = true;    // Software occlusion culling (on by default, disable with --no-occlusion-cull)
     bool frontToBack = true;
@@ -93,13 +94,19 @@ struct Options {
     bool loadObjects = false;     // Load zone objects (trees, lamps, etc.)
     float objectRenderDist = 300.0f;
 
-    // Analysis modes
-    bool analyzePortals = false;
-    bool detectPortals = false;
-    std::string portalCsvFile;
+    // Analysis modes (portal culling DOES NOT WORK and has NEVER WORKED with WillEQ)
+    // bool analyzePortals = false;
+    // bool detectPortals = false;
+    // std::string portalCsvFile;
+
+    // Animation
+    bool animate = false;         // Enable entity skeletal animation
 
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
+
+    // Output
+    bool dump = false;            // Print per-frame stats to stdout
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
@@ -125,7 +132,7 @@ static void printUsage(const char* prog) {
     printf("  --csv FILE        Write per-frame CSV\n");
     printf("\nA/B toggle flags:\n");
     printf("  --no-material-sort   Disable material-key draw sorting\n");
-    printf("  --no-portal-cull     Disable PVS culling\n");
+    printf("  --no-pvs             Disable PVS bitvector culling\n");
     printf("  --no-frustum-cull    Disable frustum culling\n");
     printf("  --no-occlusion-cull  Disable software occlusion culling\n");
     printf("  --no-front-to-back   Disable distance sorting\n");
@@ -147,13 +154,17 @@ static void printUsage(const char* prog) {
     printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
+    printf("  --animate            Enable skeletal animation on entities\n");
     printf("\nObject options:\n");
     printf("  --objects            Load zone objects (trees, lamps, fences)\n");
     printf("  --object-dist F      Object render distance (default: 300)\n");
-    printf("\nAnalysis modes:\n");
-    printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
-    printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
-    printf("  --portal-csv FILE    Write portal analysis to CSV\n");
+    // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
+    // printf("\nAnalysis modes:\n");
+    // printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
+    // printf("  --detect-portals     Detect portals from occluder gaps and exit\n");
+    // printf("  --portal-csv FILE    Write portal analysis to CSV\n");
+    printf("\nOutput:\n");
+    printf("  --dump               Print per-frame stats (polys, draws, camera) to stdout\n");
     printf("\nDiagnostic:\n");
     printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("\nSynthetic tests:\n");
@@ -182,7 +193,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--waypoints") == 0 && i + 1 < argc) opts.navWaypoints = atoi(argv[++i]);
         else if (strcmp(argv[i], "--csv") == 0 && i + 1 < argc) opts.csvFile = argv[++i];
         else if (strcmp(argv[i], "--no-material-sort") == 0) opts.materialSort = false;
-        else if (strcmp(argv[i], "--no-portal-cull") == 0) opts.portalCull = false;
+        else if (strcmp(argv[i], "--no-pvs") == 0) opts.pvsCull = false;
         else if (strcmp(argv[i], "--no-frustum-cull") == 0) opts.frustumCull = false;
         else if (strcmp(argv[i], "--no-occlusion-cull") == 0) opts.occlusionCull = false;
         else if (strcmp(argv[i], "--occlusion-cull") == 0) opts.occlusionCull = true;  // legacy flag, same as default
@@ -204,12 +215,15 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--zone-pp-budget") == 0 && i + 1 < argc) opts.perPixelZoneBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
-        else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
-        else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
-        else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
+        else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
+        // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
+        // else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
+        // else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
+        // else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
         else if (strcmp(argv[i], "--objects") == 0) opts.loadObjects = true;
         else if (strcmp(argv[i], "--tree-test") == 0) { opts.treeTest = true; opts.loadObjects = true; }
         else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
+        else if (strcmp(argv[i], "--dump") == 0) opts.dump = true;
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -528,10 +542,10 @@ int main(int argc, char** argv) {
     printf("=== gles2_zone_benchmark ===\n");
     printf("Zone: %s, Resolution: %dx%d, Frames: %d\n",
            opts.zoneName.c_str(), opts.width, opts.height, opts.frames);
-    printf("Toggles: materialSort=%d portalCull=%d frustumCull=%d occlusionCull=%d "
-           "frontToBack=%d depthTest=%d entities=%d\n",
-           opts.materialSort, opts.portalCull, opts.frustumCull, opts.occlusionCull,
-           opts.frontToBack, opts.depthTest, opts.entityCount);
+    printf("Toggles: materialSort=%d pvsCull=%d frustumCull=%d occlusionCull=%d "
+           "frontToBack=%d depthTest=%d entities=%d animate=%d\n",
+           opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
+           opts.frontToBack, opts.depthTest, opts.entityCount, opts.animate);
     if (opts.maxDraws > 0) printf("  maxDraws=%d\n", opts.maxDraws);
     if (opts.maxPolys > 0) printf("  maxPolys=%d\n", opts.maxPolys);
     printf("\n");
@@ -545,6 +559,8 @@ int main(int argc, char** argv) {
     benchConfig.height = opts.height;
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
     benchConfig.entityCount = opts.entityCount;
+    benchConfig.animate = opts.animate;
+    benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
 
     auto data = ZoneBench::loadZone(benchConfig);
@@ -553,15 +569,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // ── Portal analysis modes ──
-    if (opts.analyzePortals) {
-        ZoneBench::analyzePortals(*data, opts.portalCsvFile);
-        return 0;
-    }
-    if (opts.detectPortals) {
-        ZoneBench::detectPortalsFromOccluders(*data, opts.portalCsvFile);
-        return 0;
-    }
+    // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
+    // if (opts.analyzePortals) {
+    //     ZoneBench::analyzePortals(*data, opts.portalCsvFile);
+    //     return 0;
+    // }
+    // if (opts.detectPortals) {
+    //     ZoneBench::detectPortalsFromOccluders(*data, opts.portalCsvFile);
+    //     return 0;
+    // }
 
     // ── Tree test: render one tree, screenshot, exit ──
     if (opts.treeTest) {
@@ -1017,6 +1033,7 @@ int main(int argc, char** argv) {
 
     ZoneBench::MetricsCollector metrics;
     metrics.reserve(opts.frames);
+    metrics.setDumpPerFrame(opts.dump);
 
     std::vector<ZoneBench::DrawEntry> drawEntries;
     drawEntries.reserve(2048);
@@ -1047,7 +1064,78 @@ int main(int argc, char** argv) {
         if (data->zoneShader) data->zoneShader->beginFrame();
 
         if (measuring) {
-            metrics.beginFrame(frame - opts.warmup, camPos.x, camPos.y, camPos.z);
+            // Compute heading (degrees, 0=North/+Y, CW) and pitch (degrees, positive=up)
+            float heading = atan2f(camDir.x, camDir.y) * 180.0f / 3.14159265f;
+            if (heading < 0) heading += 360.0f;
+            float horizLen = sqrtf(camDir.x * camDir.x + camDir.y * camDir.y);
+            float pitch = atan2f(camDir.z, horizLen) * 180.0f / 3.14159265f;
+            metrics.beginFrame(frame - opts.warmup, camPos.x, camPos.y, camPos.z,
+                               heading, pitch);
+        }
+
+        // Tick entity animations (skeletal skinning)
+        // Only animate entities within budget, sorted front-to-back,
+        // and only if they pass visibility (render distance + frustum).
+        if (opts.animate && !data->animatedNodes.empty()) {
+            if (measuring) metrics.beginAnimation();
+
+            // Build distance-sorted index list (front to back)
+            struct EntityDist {
+                int index;
+                float distSq;
+            };
+            static std::vector<EntityDist> sortedEntities;
+            sortedEntities.clear();
+            sortedEntities.reserve(data->entities.size());
+
+            float renderDistSq = opts.entityRenderDist * opts.entityRenderDist;
+            for (int i = 0; i < static_cast<int>(data->entities.size()); ++i) {
+                if (!data->animatedNodes[i]) continue;
+                auto& ent = data->entities[i];
+                float dx = ent.eqX - camPos.x;
+                float dy = ent.eqY - camPos.y;
+                float dz = ent.eqZ - camPos.z;
+                float dSq = dx*dx + dy*dy + dz*dz;
+
+                // Render distance cull
+                if (dSq > renderDistSq) continue;
+
+                // Frustum cull
+                if (data->frustumCuller && data->frustumCuller->isEnabled()) {
+                    if (!data->frustumCuller->testSphere(ent.eqX, ent.eqY, ent.eqZ, 5.0f))
+                        continue;
+                }
+
+                sortedEntities.push_back({i, dSq});
+            }
+
+            // Sort front to back
+            std::sort(sortedEntities.begin(), sortedEntities.end(),
+                      [](const EntityDist& a, const EntityDist& b) {
+                          return a.distSq < b.distSq;
+                      });
+
+            // Animate only up to entity budget
+            int animBudget = opts.entityBudget;
+            int animCount = std::min(static_cast<int>(sortedEntities.size()), animBudget);
+            irr::u32 simTimeMs = static_cast<irr::u32>(frame * 33.3f);
+
+            for (int j = 0; j < animCount; ++j) {
+                int i = sortedEntities[j].index;
+                data->animatedNodes[i]->OnAnimate(simTimeMs);
+            }
+
+            if (measuring) metrics.endAnimation();
+
+            // Update entity mesh pointers to use animated instance meshes
+            // (only for entities that were actually animated this frame)
+            for (int j = 0; j < animCount; ++j) {
+                int i = sortedEntities[j].index;
+                auto* instMesh = data->animatedNodes[i]->getInstanceMesh();
+                if (instMesh) {
+                    data->entities[i].mesh = instMesh;
+                }
+            }
         }
 
         // Collect draw entries with visibility culling
@@ -1059,7 +1147,7 @@ int main(int argc, char** argv) {
         int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
         ZoneBench::collectDrawEntries(
             *data, camState,
-            opts.materialSort, opts.portalCull, opts.frustumCull, opts.occlusionCull,
+            opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
             drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
 
@@ -1068,7 +1156,7 @@ int main(int argc, char** argv) {
         if (!data->objects.empty()) {
             ZoneBench::collectObjectDrawEntries(
                 *data, camState, opts.objectRenderDist,
-                opts.portalCull, opts.frustumCull, opts.occlusionCull,
+                opts.pvsCull, opts.frustumCull, opts.occlusionCull,
                 drawEntries, objectDrawCalls, objectPolys);
         }
 
@@ -1087,7 +1175,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.directGLEntities) {
                 // Direct GL per-body-part: bypass Irrlicht, same draw count as unbatched
@@ -1101,7 +1189,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.adaptiveLod) {
                 // Adaptive LOD: reactive billboard swap based on frame budget
@@ -1119,7 +1207,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.lodEntities) {
                 // LOD: composite near + batched billboards far
@@ -1134,7 +1222,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.compositeEntities) {
                 // Composite: 1 draw per entity (simulates pre-baked composite texture)
@@ -1148,7 +1236,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.batchEntities) {
                 // Batched: merge same-material entity parts into single draws
@@ -1162,7 +1250,7 @@ int main(int argc, char** argv) {
 
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else {
                 // Unbatched: individual draw calls per entity mesh buffer
@@ -1176,7 +1264,7 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(static_cast<int>(drawEntries.size()),
                                    stateChanges, polyCount,
-                                   regionsVisible, regionsDrawn);
+                                   regionsVisible, regionsDrawn, regionsOccluded);
                 }
             }
         } else {

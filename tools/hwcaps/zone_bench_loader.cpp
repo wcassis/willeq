@@ -19,6 +19,7 @@
 
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eqe1_loader.h"
 
 #include <filesystem>
@@ -417,12 +418,19 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         }
     }
 
-    // ── Step 8: Build portal system ──
-    data->portalSystem = std::make_unique<PortalSystem>();
-    data->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
-    printf("  Portal system: %zu portals, hasPortals=%d\n",
-           data->portalSystem->getData().portals.size(),
-           data->portalSystem->hasPortals());
+    // ── Step 8: Portal system ──
+    // NOTE: Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
+    // The PortalSystem builds AABB portal quads from BSP boundaries but the
+    // benchmark never used them for culling — it uses PVS bitvectors from the
+    // WLD file (Fragment 0x22) which is a completely separate mechanism.
+    // Commented out to avoid confusion between PVS culling (works) and
+    // portal culling (not implemented).
+    //
+    // data->portalSystem = std::make_unique<PortalSystem>();
+    // data->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
+    // printf("  Portal system: %zu portals, hasPortals=%d\n",
+    //        data->portalSystem->getData().portals.size(),
+    //        data->portalSystem->hasPortals());
 
     // ── Step 9: Set up frustum culler ──
     data->frustumCuller = std::make_unique<FrustumCuller>();
@@ -524,12 +532,49 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         data->raceModelLoader->loadNumberedGlobalModels();
         data->raceModelLoader->loadZoneModels(config.zoneName);
 
+        // Wire composite entity textures (same as production renderer)
+        if (config.compositeEntities && !config.eqe1Path.empty()) {
+            data->raceModelLoader->setCompositeEntityPath(config.eqe1Path);
+
+            // Open per-race composite EQE1 files from the eqe1 directory
+            namespace fs = std::filesystem;
+            if (fs::is_directory(config.eqe1Path)) {
+                int compositeCount = 0;
+                for (const auto& entry : fs::directory_iterator(config.eqe1Path)) {
+                    if (entry.path().extension() != ".eqe1") continue;
+                    std::string stem = entry.path().stem().string();
+                    // Composite files match pattern: {race}_hs_def_{gender}_{variant}
+                    if (stem.find("_hs_def_") == std::string::npos &&
+                        stem.find("_actordef_") == std::string::npos) continue;
+                    auto loader = std::make_unique<EQE1Loader>();
+                    if (loader->open(entry.path().string())) {
+                        data->textureCache->addEQE1Loader(loader.get());
+                        data->eqe1Loaders.push_back(std::move(loader));
+                        ++compositeCount;
+                    }
+                }
+                printf("  Composite EQE1: %d archives loaded\n", compositeCount);
+            }
+        }
+
         // Upload any textures decoded during model loading
         data->textureCache->uploadAllPending();
 
         // Common EQ race IDs for variety
         uint16_t raceIds[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
         int numRaces = sizeof(raceIds) / sizeof(raceIds[0]);
+
+        // When composite entities are enabled, use preloadModelData() to populate
+        // composite texture data (JSON + EQE1 lookup) before building meshes.
+        // This mirrors the production renderer's EntityPrepWorker flow.
+        if (config.compositeEntities && !config.eqe1Path.empty()) {
+            for (int r = 0; r < numRaces; ++r) {
+                data->raceModelLoader->preloadModelData(raceIds[r], 0);
+            }
+            data->raceModelLoader->promotePreparedModels();
+            data->textureCache->uploadAllPending();
+            printf("  Composite: preloaded %d race models\n", numRaces);
+        }
 
         // Pre-load meshes for each race (cache them)
         std::vector<irr::scene::IMesh*> raceMeshes;
@@ -555,6 +600,49 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             for (int i = 0; i < config.entityCount; ++i) {
                 data->entities[i].mesh = raceMeshes[i % raceMeshes.size()];
             }
+
+            // Create animated scene nodes when animation is enabled
+            if (config.animate) {
+                // Mix of animations for variety
+                static const char* animCodes[] = {"o01", "l01", "l02", "c01", "p01"};
+                static const int numAnims = 5;
+
+                data->animatedNodes.resize(config.entityCount, nullptr);
+                int animatedCount = 0;
+
+                for (int i = 0; i < config.entityCount; ++i) {
+                    uint16_t raceId = raceIds[i % numRaces];
+                    auto* node = data->raceModelLoader->createAnimatedNode(
+                        raceId, 0, data->smgr->getRootSceneNode());
+                    if (node) {
+                        data->animatedNodes[i] = node;
+                        // Set stream mapping hint for animated vertex buffers
+                        // (vertices change every frame via skeletal skinning)
+                        if (node->getInstanceMesh()) {
+                            node->getInstanceMesh()->setHardwareMappingHint(
+                                irr::scene::EHM_STREAM, irr::scene::EBT_VERTEX);
+                            node->getInstanceMesh()->setHardwareMappingHint(
+                                irr::scene::EHM_STATIC, irr::scene::EBT_INDEX);
+                            uploadMeshHWBuffers(data->driver, node->getInstanceMesh());
+                        }
+                        // Assign animation with variety: cycle through codes
+                        const char* animCode = animCodes[i % numAnims];
+                        if (!node->playAnimation(animCode, true)) {
+                            // Fallback to idle if requested animation not available
+                            node->playAnimation("o01", true);
+                        }
+                        // Stagger start time so entities aren't in sync
+                        // Advance each entity by a different offset
+                        float offsetMs = static_cast<float>(i * 137 % 1000);
+                        node->getAnimator().update(offsetMs);
+                        node->forceAnimationUpdate();
+                        ++animatedCount;
+                    }
+                }
+                // Upload any textures from animated mesh creation
+                data->textureCache->uploadAllPending();
+                printf("  Created %d animated scene nodes\n", animatedCount);
+            }
         }
 
         auto entityEnd = std::chrono::steady_clock::now();
@@ -579,7 +667,7 @@ void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     bool materialSort,
-    bool portalCull,
+    bool pvsCull,
     bool frustumCull,
     bool occlusionCull,
     bool frontToBack,
@@ -613,7 +701,7 @@ void collectDrawEntries(
 
     for (auto& [regionIdx, rd] : data.regions) {
         // PVS culling
-        if (portalCull && camRegion != SIZE_MAX && data.bspTree) {
+        if (pvsCull && camRegion != SIZE_MAX && data.bspTree) {
             auto& camReg = data.bspTree->regions[camRegion];
             if (camReg && regionIdx < camReg->visibleRegions.size() &&
                 !camReg->visibleRegions[regionIdx]) {
@@ -802,6 +890,12 @@ void placeEntitiesAlongPath(ZoneBenchData& data,
             data.entities[i].eqZ + meshOffsetY,
             data.entities[i].eqY);
 
+        // Position animated scene node to match (if animation is enabled)
+        if (i < static_cast<int>(data.animatedNodes.size()) && data.animatedNodes[i]) {
+            data.animatedNodes[i]->setPosition(data.entities[i].position);
+            data.animatedNodes[i]->updateAbsolutePosition();
+        }
+
         // Assign priority — simulate realistic mix
         // Entity 0: current target, 1-5: group, 6-10: raid, rest: default/idle
         if (i == 0) data.entities[i].priority = ZoneBenchData::EntityPriority::Target;
@@ -818,7 +912,7 @@ void collectObjectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     float renderDistance,
-    bool portalCull,
+    bool pvsCull,
     bool frustumCull,
     bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
@@ -831,7 +925,7 @@ void collectObjectDrawEntries(
 
     // Find camera's BSP region for PVS
     size_t camRegion = SIZE_MAX;
-    if (portalCull && data.bspTree) {
+    if (pvsCull && data.bspTree) {
         camRegion = data.bspTree->findRegionIndexForPoint(cam.eqX, cam.eqY, cam.eqZ);
     }
 
@@ -846,7 +940,7 @@ void collectObjectDrawEntries(
         if (distSq > renderDistSq) continue;
 
         // PVS culling: object visible if ANY of its regions are in camera's PVS
-        if (portalCull && camRegion != SIZE_MAX && data.bspTree &&
+        if (pvsCull && camRegion != SIZE_MAX && data.bspTree &&
             !obj.bspRegions.empty()) {
             auto& camReg = data.bspTree->regions[camRegion];
             bool pvsVisible = false;
@@ -1793,6 +1887,12 @@ void placeEntitiesTrain(ZoneBenchData& data, const glm::vec3& centerPos) {
             data.entities[i].eqX,
             data.entities[i].eqZ + meshOffsetY,
             data.entities[i].eqY);
+
+        // Position animated scene node to match (if animation is enabled)
+        if (i < static_cast<int>(data.animatedNodes.size()) && data.animatedNodes[i]) {
+            data.animatedNodes[i]->setPosition(data.entities[i].position);
+            data.animatedNodes[i]->updateAbsolutePosition();
+        }
 
         // Train entities are all hostile mobs — mostly default priority
         if (i == 0) data.entities[i].priority = ZoneBenchData::EntityPriority::Target;

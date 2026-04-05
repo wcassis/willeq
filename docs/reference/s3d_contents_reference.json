@@ -1,6 +1,6 @@
 {
   "description": "Pre-Luclin EverQuest S3D file contents reference",
-  "eq_client_path": "/home/user/projects/claude/EverQuestP1999",
+  "eq_client_path": "/mnt/projects/EverQuestP1999",
   "global_character_files": [
     {
       "name": "global",

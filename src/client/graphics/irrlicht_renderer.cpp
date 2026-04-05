@@ -6043,14 +6043,27 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                                      config_.constrainedConfig.portalOcclusion &&
                                      !config_.constrainedConfig.enableStencilBuffer;
 
+    // Occlusion-culled regions set (from SimWorker's software occlusion pass)
+    const std::unordered_set<size_t>* occlusionCulled = nullptr;
+    if (currentFrameSimResults_ && !currentFrameSimResults_->occlusionCulledRegions.empty()) {
+        occlusionCulled = &currentFrameSimResults_->occlusionCulledRegions;
+    }
+
     int regionsDrawn = 0;
     int portalCulled = 0;
+    int occlusionCulledCount = 0;
     for (const auto& entry : sortedZoneDrawList_) {
         if (!entry.node) continue;
 
         // BFS portal culling: skip regions not reachable through portal walk
         if (useBfsPortalCulling && portalVisibleRegions_->count(entry.regionIdx) == 0) {
             portalCulled++;
+            continue;
+        }
+
+        // Software occlusion culling: skip regions behind walls/terrain
+        if (occlusionCulled && occlusionCulled->count(entry.regionIdx)) {
+            occlusionCulledCount++;
             continue;
         }
 

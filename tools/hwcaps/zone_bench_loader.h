@@ -23,6 +23,7 @@ namespace EQT::Graphics {
     class SoftwareOcclusionCuller;
     class RaceModelLoader;
     class EQE1Loader;
+    class EQAnimatedMeshSceneNode;
     struct BspTree;
     struct ConstrainedRendererConfig;
 }
@@ -37,6 +38,8 @@ struct BenchConfig {
     int height = 600;
     bool useDRM = true;
     int entityCount = 0;         // Number of static entities to place in scene
+    bool animate = false;        // Enable skeletal animation on entities
+    bool compositeEntities = false; // Use composite textures for entities (single draw per entity)
     bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)
 };
 
@@ -102,6 +105,10 @@ struct ZoneBenchData {
     };
     std::vector<PlacedEntity> entities;
 
+    // Animated entity scene nodes (one per entity when --animate is enabled)
+    // These own per-instance SkeletalAnimator + vertex buffers
+    std::vector<EQT::Graphics::EQAnimatedMeshSceneNode*> animatedNodes;
+
     // Adaptive LOD config
     int compositeEntityBudget = 55;        // Max composite entities per frame (configurable)
     float aggressiveFactor = 1.5f;         // Overshoot: billboard 50% more than needed
@@ -164,7 +171,7 @@ void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     bool materialSort,
-    bool portalCull,
+    bool pvsCull,
     bool frustumCull,
     bool occlusionCull,
     bool frontToBack,
@@ -274,7 +281,7 @@ void collectObjectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
     float renderDistance,
-    bool portalCull,
+    bool pvsCull,
     bool frustumCull,
     bool occlusionCull,
     std::vector<DrawEntry>& outEntries,

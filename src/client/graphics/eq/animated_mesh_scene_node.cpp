@@ -122,6 +122,44 @@ static void applyBoneTransformsToMeshImpl(
     // Check if we're using multi-buffer mode (with vertex mapping) or single-buffer mode
     bool useMultiBuffer = !originalVertices.empty() && !vertexMapping.empty();
 
+    // Track per-buffer bounding boxes inline during vertex transforms,
+    // avoiding the expensive second pass of recalculateBoundingBox() which
+    // iterates all vertices again. On a 500-vertex entity this eliminates
+    // ~500 reads per buffer per frame.
+    irr::u32 bufferCount = destMesh->getMeshBufferCount();
+    struct BufBounds {
+        float minX, minY, minZ, maxX, maxY, maxZ;
+        bool initialized;
+    };
+    // Stack-allocate for typical case (<=8 buffers), heap for more
+    BufBounds stackBounds[8];
+    std::vector<BufBounds> heapBounds;
+    BufBounds* bufBounds;
+    if (bufferCount <= 8) {
+        bufBounds = stackBounds;
+    } else {
+        heapBounds.resize(bufferCount);
+        bufBounds = heapBounds.data();
+    }
+    for (irr::u32 b = 0; b < bufferCount; ++b) {
+        bufBounds[b].initialized = false;
+    }
+
+    // Helper to update per-buffer bounds with a transformed vertex (Irrlicht Y-up coords)
+    auto updateBounds = [&](irr::u32 bufIdx, float ix, float iy, float iz) {
+        auto& bb = bufBounds[bufIdx];
+        if (!bb.initialized) {
+            bb.minX = bb.maxX = ix;
+            bb.minY = bb.maxY = iy;
+            bb.minZ = bb.maxZ = iz;
+            bb.initialized = true;
+        } else {
+            if (ix < bb.minX) bb.minX = ix; else if (ix > bb.maxX) bb.maxX = ix;
+            if (iy < bb.minY) bb.minY = iy; else if (iy > bb.maxY) bb.maxY = iy;
+            if (iz < bb.minZ) bb.minZ = iz; else if (iz > bb.maxZ) bb.maxZ = iz;
+        }
+    };
+
     if (useMultiBuffer) {
         // Multi-buffer mode: transform original vertices and copy to mapped buffer locations
         size_t totalOrigVerts = originalVertices.size();
@@ -146,7 +184,7 @@ static void applyBoneTransformsToMeshImpl(
 
                 // Get the destination buffer and local index
                 const auto& mapping = vertexMapping[vIdx];
-                if (mapping.bufferIndex >= destMesh->getMeshBufferCount()) continue;
+                if (mapping.bufferIndex >= bufferCount) continue;
 
                 irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
                     destMesh->getMeshBuffer(mapping.bufferIndex));
@@ -183,23 +221,31 @@ static void applyBoneTransformsToMeshImpl(
                 }
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[mapping.localIndex].Pos.X = px;
-                dstBuffer->Vertices[mapping.localIndex].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[mapping.localIndex].Pos.Z = py;  // EQ Y -> Irrlicht Z
+                float ix = px, iy = pz, iz = py;  // Irrlicht coords
+                dstBuffer->Vertices[mapping.localIndex].Pos.X = ix;
+                dstBuffer->Vertices[mapping.localIndex].Pos.Y = iy;
+                dstBuffer->Vertices[mapping.localIndex].Pos.Z = iz;
                 dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
                 dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
                 dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
+
+                // Track bounding box inline — no second vertex pass needed
+                updateBounds(mapping.bufferIndex, ix, iy, iz);
             }
 
             vertexIdx += piece.count;
         }
 
-        // Mark all buffers as dirty and recalculate bounds
-        for (irr::u32 b = 0; b < destMesh->getMeshBufferCount(); ++b) {
+        // Set pre-computed bounding boxes and mark dirty (no recalculateBoundingBox)
+        for (irr::u32 b = 0; b < bufferCount; ++b) {
             irr::scene::SMeshBuffer* buf = static_cast<irr::scene::SMeshBuffer*>(
                 destMesh->getMeshBuffer(b));
             if (buf) {
-                buf->recalculateBoundingBox();
+                if (bufBounds[b].initialized) {
+                    buf->setBoundingBox(irr::core::aabbox3df(
+                        bufBounds[b].minX, bufBounds[b].minY, bufBounds[b].minZ,
+                        bufBounds[b].maxX, bufBounds[b].maxY, bufBounds[b].maxZ));
+                }
                 buf->setDirty();
             }
         }
@@ -261,22 +307,47 @@ static void applyBoneTransformsToMeshImpl(
                 }
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
-                dstBuffer->Vertices[vIdx].Pos.X = px;
-                dstBuffer->Vertices[vIdx].Pos.Y = pz;  // EQ Z -> Irrlicht Y
-                dstBuffer->Vertices[vIdx].Pos.Z = py;  // EQ Y -> Irrlicht Z
+                float ix = px, iy = pz, iz = py;
+                dstBuffer->Vertices[vIdx].Pos.X = ix;
+                dstBuffer->Vertices[vIdx].Pos.Y = iy;
+                dstBuffer->Vertices[vIdx].Pos.Z = iz;
                 dstBuffer->Vertices[vIdx].Normal.X = tnx;
                 dstBuffer->Vertices[vIdx].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
                 dstBuffer->Vertices[vIdx].Normal.Z = tny;  // EQ Y -> Irrlicht Z
+
+                updateBounds(0, ix, iy, iz);
             }
 
             vertexIdx += piece.count;
         }
 
-        dstBuffer->recalculateBoundingBox();
+        if (bufBounds[0].initialized) {
+            dstBuffer->setBoundingBox(irr::core::aabbox3df(
+                bufBounds[0].minX, bufBounds[0].minY, bufBounds[0].minZ,
+                bufBounds[0].maxX, bufBounds[0].maxY, bufBounds[0].maxZ));
+        }
         dstBuffer->setDirty();
     }
 
-    destMesh->recalculateBoundingBox();
+    // Build mesh bounding box from per-buffer boxes (no vertex iteration)
+    irr::core::aabbox3df meshBox;
+    bool meshBoxInit = false;
+    for (irr::u32 b = 0; b < bufferCount; ++b) {
+        if (bufBounds[b].initialized) {
+            irr::core::aabbox3df bb(
+                bufBounds[b].minX, bufBounds[b].minY, bufBounds[b].minZ,
+                bufBounds[b].maxX, bufBounds[b].maxY, bufBounds[b].maxZ);
+            if (!meshBoxInit) {
+                meshBox = bb;
+                meshBoxInit = true;
+            } else {
+                meshBox.addInternalBox(bb);
+            }
+        }
+    }
+    if (meshBoxInit) {
+        destMesh->setBoundingBox(meshBox);
+    }
 }
 
 // ============================================================================
