@@ -419,7 +419,9 @@ void main() {
 // Debug fragment shader (GLSL ES 1.00) — visualize shader intermediates
 // ============================================================================
 // Compiled as a separate program. Only used when /shaderdebug N (N>0) is active.
-// Cost: ~36ms on Mali 400 due to 8 FS branches. Never active in production rendering.
+// Cost: ~36ms on Mali 400 due to FS branches. Never active in production rendering.
+// Modes: 1=texColor 2=vColor 3=LUT 4=pLight 5=worldNormal 6=lightDir
+//        7=alpha 8=tex*vColor 9=UV 10=depth 11=rawTexAlpha
 static const char* FRAGMENT_SHADER_DEBUG_SRC = R"(
 precision mediump float;
 
@@ -455,6 +457,9 @@ void main() {
     if (uShaderDebug == 6) { gl_FragColor = vec4(normalize(pLv) * 0.5 + 0.5, 1.0); return; }
     if (uShaderDebug == 7) { gl_FragColor = vec4(texColor.a, texColor.a, texColor.a, 1.0); return; }
     if (uShaderDebug == 8) { gl_FragColor = vec4(texColor.rgb * vColor.rgb, 1.0); return; }
+    if (uShaderDebug == 9) { gl_FragColor = vec4(vTexCoord.x, vTexCoord.y, 0.0, 1.0); return; }
+    if (uShaderDebug == 10) { gl_FragColor = vec4(vec3(gl_FragCoord.z), 1.0); return; }
+    if (uShaderDebug == 11) { gl_FragColor = vec4(texColor.rgb, texColor.a); return; }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);

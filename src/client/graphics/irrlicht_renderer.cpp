@@ -1056,8 +1056,9 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             }
 
             const char* modeNames[] = {"normal", "texColor", "vColor", "LUT(r,a)", "pLight",
-                                        "worldNormal", "lightDir", "alpha", "tex*vColor"};
-            const char* name = (mode >= 0 && mode <= 8) ? modeNames[mode] : "unknown";
+                                        "worldNormal", "lightDir", "alpha", "tex*vColor",
+                                        "UV", "depth", "rawTexAlpha"};
+            const char* name = (mode >= 0 && mode <= 11) ? modeNames[mode] : "unknown";
             chat(fmt::format("Shader debug mode: {} ({})", mode, name));
             LOG_INFO(MOD_SHADER, "Shader debug mode set to {} ({})", mode, name);
         }

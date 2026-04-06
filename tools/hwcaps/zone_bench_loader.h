@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -109,11 +110,73 @@ struct ZoneBenchData {
     // These own per-instance SkeletalAnimator + vertex buffers
     std::vector<EQT::Graphics::EQAnimatedMeshSceneNode*> animatedNodes;
 
-    // Adaptive LOD config
-    int compositeEntityBudget = 55;        // Max composite entities per frame (configurable)
-    float aggressiveFactor = 1.5f;         // Overshoot: billboard 50% more than needed
-    int recoveryFrames = 0;                // Frames under budget before recovering one entity
-    int recoveryThreshold = 15;            // Consecutive under-budget frames to start recovery
+    // Adaptive LOD state and config
+    struct AdaptiveLodConfig {
+        int maxEntitiesPerScene = 55;      // Hard cap: never render more composites than this
+        float frameBudgetMs = 33.3f;       // Target frame time (30 FPS)
+        int hysteresisFrames = 10;         // Stay billboarded for N frames after switching
+        int rollingWindowSize = 30;        // Frames for rolling average
+        float safetyMargin = 0.85f;        // Use 85% of budget to leave headroom
+    } adaptiveLodConfig;
+
+    struct AdaptiveLodState {
+        // Rolling average tracking
+        std::deque<float> recentFrameMs;       // Recent total frame times
+        std::deque<float> recentEntityMs;      // Recent entity render times
+        std::deque<int>   recentEntityCounts;  // Recent composite entity counts
+        float avgPerEntityMs = 0.5f;           // Rolling average ms per composite entity
+        float avgBaseZoneMs = 10.0f;           // Rolling average non-entity frame cost
+
+        // Per-entity hysteresis: entityIndex → frames remaining as billboard
+        std::map<int, int> billboardTimers;
+
+        void updateRollingAverage(float totalMs, float entityMs, int entityCount, int windowSize) {
+            recentFrameMs.push_back(totalMs);
+            recentEntityMs.push_back(entityMs);
+            recentEntityCounts.push_back(entityCount);
+            while (static_cast<int>(recentFrameMs.size()) > windowSize) {
+                recentFrameMs.pop_front();
+                recentEntityMs.pop_front();
+                recentEntityCounts.pop_front();
+            }
+            // Compute rolling averages
+            float sumEntityMs = 0, sumBaseMs = 0;
+            int sumEntities = 0;
+            for (size_t i = 0; i < recentFrameMs.size(); ++i) {
+                sumEntityMs += recentEntityMs[i];
+                sumBaseMs += (recentFrameMs[i] - recentEntityMs[i]);
+                sumEntities += recentEntityCounts[i];
+            }
+            int n = static_cast<int>(recentFrameMs.size());
+            if (n > 0) avgBaseZoneMs = sumBaseMs / n;
+            if (sumEntities > 0) avgPerEntityMs = sumEntityMs / sumEntities;
+        }
+
+        void tickHysteresis() {
+            for (auto it = billboardTimers.begin(); it != billboardTimers.end(); ) {
+                if (--it->second <= 0)
+                    it = billboardTimers.erase(it);
+                else
+                    ++it;
+            }
+        }
+
+        bool isForcedBillboard(int entityIdx) const {
+            return billboardTimers.count(entityIdx) > 0;
+        }
+
+        void markBillboard(int entityIdx, int frames) {
+            billboardTimers[entityIdx] = frames;
+        }
+
+        // RTT impostor cache: entityIndex → dedicated FBO texture (both render target and billboard)
+        std::map<int, irr::video::ITexture*> impostorTextures;
+        int impostorSize = 256;  // Width/height of impostor textures
+
+        // Rate-limited composite limit (smoothed to prevent oscillation)
+        int smoothedCompositeLimit = -1;  // -1 = uninitialized
+        static constexpr int maxLimitChangePerFrame = 2;
+    } adaptiveLodState;
 
     // Placed zone objects (trees, lamps, fences, etc.)
     struct PlacedObject {
@@ -271,7 +334,8 @@ int renderAdaptiveLodEntities(
     float lastFrameMs,
     int& outEntityPolys,
     int& outTier1Count,
-    int& outTier2Count);
+    int& outTier2Count,
+    float& outEntityMs);
 
 // Collect object draw entries for visible zone objects near the camera.
 // Uses PVS culling (precomputed region overlap) + AABB frustum culling +

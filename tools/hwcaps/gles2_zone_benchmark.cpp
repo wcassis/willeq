@@ -1230,7 +1230,7 @@ int main(int argc, char** argv) {
     }
 
     // ── Configure adaptive LOD budget ──
-    data->compositeEntityBudget = opts.entityBudget;
+    data->adaptiveLodConfig.maxEntitiesPerScene = opts.entityBudget;
 
     // ── Configure adaptive lighting ──
     data->adaptiveLighting = opts.adaptiveLighting;
@@ -1421,15 +1421,15 @@ int main(int argc, char** argv) {
                                    regionsVisible, regionsDrawn, regionsOccluded);
                 }
             } else if (opts.adaptiveLod) {
-                // Adaptive LOD: reactive billboard swap based on frame budget
+                // Adaptive LOD: proactive frame-time prediction with billboard fallback
                 int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
                 int tier1 = 0, tier2 = 0;
-                // Use previous frame's total time for budget tracking
+                float entityMs = 0;
                 float prevFrameMs = metrics.frames().empty() ? 0 :
                     metrics.frames().back().totalMs;
                 entityDrawCalls = ZoneBench::renderAdaptiveLodEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
-                    prevFrameMs, entityPolys, tier1, tier2);
+                    prevFrameMs, entityPolys, tier1, tier2, entityMs);
                 int polyCount = countPolygons(drawEntries) + entityPolys;
                 int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
                 int totalStateChanges = stateChangesZone + entityDrawCalls;
