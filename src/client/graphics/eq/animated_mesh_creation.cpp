@@ -155,23 +155,37 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     irr::scene::IMesh* rawMesh = nullptr;
 
     // If composite data is available, build single-buffer mesh with remapped UVs
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeData={} compositeBmpPath='{}' meshBuilder_={}",
+             raceId, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
     if (modelData->compositeData && !modelData->compositeBmpPath.empty() && meshBuilder_) {
         // compositeBmpPath holds the EQE1 entry name (e.g., "hum_hs_def_0_0")
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: calling getOrLoadTexture('{}')",
+                 raceId, modelData->compositeBmpPath);
         irr::video::ITexture* compositeTexture = meshBuilder_->getOrLoadTexture(modelData->compositeBmpPath);
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeTexture={} ({})",
+                 raceId, (bool)compositeTexture,
+                 compositeTexture ? compositeTexture->getName().getPath().c_str() : "null");
         if (compositeTexture) {
             rawMesh = buildCompositeMeshFromGeometry(
                 modelData->rawGeometry, compositeTexture, *modelData->compositeData);
             if (rawMesh) {
-                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Built composite animated mesh for race {} ({} buffers vs multi-buffer)",
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Built composite animated mesh for race {} ({} buffers)",
                           raceId, rawMesh->getMeshBufferCount());
+            } else {
+                LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: buildCompositeMeshFromGeometry returned null for race {}", raceId);
             }
         } else {
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Composite texture not yet uploaded for race {} — falling back to multi-buffer", raceId);
+            LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Composite texture not yet uploaded for race {} — falling back to multi-buffer", raceId);
         }
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: composite path NOT taken (compositeData={} bmpPath='{}' meshBuilder={})",
+                 raceId, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
     }
 
     // Fall back to standard multi-buffer mesh
     if (!rawMesh) {
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: falling back to buildMeshFromGeometry (multi-buffer)",
+                 raceId);
         rawMesh = buildMeshFromGeometry(modelData->rawGeometry, modelData->textures);
     }
     if (!rawMesh) {

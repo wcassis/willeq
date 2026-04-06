@@ -13,6 +13,7 @@
 #include "zone_bench_loader.h"
 #include "zone_bench_camera.h"
 #include "zone_bench_metrics.h"
+#include "common/logging.h"
 
 #include <algorithm>
 #include <chrono>
@@ -32,6 +33,8 @@
 #include "client/graphics/portal_system.h"
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/constrained_texture_cache.h"
 #include "client/zone_bsp.h"
 
 #ifdef EQT_HAS_GLES2
@@ -104,6 +107,9 @@ struct Options {
 
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
+    bool compositeEntityTest = false; // Render 1 of each race/gender, screenshot, exit
+    int testRace = 0;                 // Race ID to test (0 = all)
+    int testVariant = 0;              // Texture variant (0=naked, 1=cloth, 2=chain, 3=plate)
 
     // Output
     bool dump = false;            // Print per-frame stats to stdout
@@ -167,8 +173,15 @@ static void printUsage(const char* prog) {
     printf("  --dump               Print per-frame stats (polys, draws, camera) to stdout\n");
     printf("\nDiagnostic:\n");
     printf("  --tree-test          Render single tree, screenshot, exit\n");
+    printf("  --composite-entity-test  Render 1 of each race/gender with composite textures\n");
+    printf("  --test-race N            Test specific race ID (1=HUM, 2=BAM, etc.) default: all\n");
+    printf("  --test-variant N         Texture variant (0=naked, 1=cloth, 2=chain, 3=plate, 4=leather)\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
+    printf("\nLogging (handled by InitLogging):\n");
+    printf("  --log-level=LEVEL    Set log level: NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE\n");
+    printf("  --log-only=MOD,...   Only show listed modules\n");
+    printf("  --log-module=MOD:LVL Per-module override\n");
 }
 
 static Options parseArgs(int argc, char** argv) {
@@ -222,9 +235,18 @@ static Options parseArgs(int argc, char** argv) {
         // else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
         else if (strcmp(argv[i], "--objects") == 0) opts.loadObjects = true;
         else if (strcmp(argv[i], "--tree-test") == 0) { opts.treeTest = true; opts.loadObjects = true; }
+        else if (strcmp(argv[i], "--composite-entity-test") == 0) {
+            opts.compositeEntityTest = true;
+            opts.compositeEntities = true;
+            if (opts.entityCount == 0) opts.entityCount = 24;
+        }
+        else if (strcmp(argv[i], "--test-race") == 0 && i + 1 < argc) opts.testRace = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--test-variant") == 0 && i + 1 < argc) opts.testVariant = atoi(argv[++i]);
         else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--dump") == 0) opts.dump = true;
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
+        // --log-level=, --log-only=, --log-module= handled by InitLogging()
+        else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
         else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             printUsage(argv[0]); exit(1);
@@ -531,6 +553,7 @@ static void runSyntheticDrawTest(ZoneBench::ZoneBenchData& data, int numFrames) 
 // ======== Main ========
 
 int main(int argc, char** argv) {
+    InitLogging(argc, argv);
     Options opts = parseArgs(argc, argv);
 
     if (opts.eqPath.empty()) {
@@ -940,6 +963,212 @@ int main(int argc, char** argv) {
 #endif
 
         printf("Tree test complete.\n");
+        return 0;
+    }
+
+    // ── Composite entity test mode ──
+    if (opts.compositeEntityTest) {
+        const char* variantNames[] = {"naked", "cloth", "chain", "plate", "leather"};
+        const char* variantName = (opts.testVariant >= 0 && opts.testVariant <= 4)
+            ? variantNames[opts.testVariant] : "unknown";
+        printf("=== Composite Entity Test (variant %d: %s) ===\n",
+               opts.testVariant, variantName);
+
+        // Build entity list: either one specific race (male+female) or all 12
+        struct RaceGender { uint16_t raceId; uint8_t gender; const char* label; };
+        std::vector<RaceGender> testEntities;
+
+        RaceGender allRaces[] = {
+            {1,0,"HUM"},{1,1,"HUF"},{2,0,"BAM"},{2,1,"BAF"},
+            {3,0,"ERM"},{3,1,"ERF"},{4,0,"ELM"},{4,1,"ELF"},
+            {5,0,"HIM"},{5,1,"HIF"},{6,0,"DAM"},{6,1,"DAF"},
+            {7,0,"HAM"},{7,1,"HAF"},{8,0,"DWM"},{8,1,"DWF"},
+            {9,0,"TRM"},{9,1,"TRF"},{10,0,"OGM"},{10,1,"OGF"},
+            {11,0,"HOM"},{11,1,"HOF"},{12,0,"GNM"},{12,1,"GNF"},
+        };
+
+        if (opts.testRace > 0 && opts.testRace <= 12) {
+            // Just male + female of the specified race
+            testEntities.push_back(allRaces[(opts.testRace - 1) * 2]);
+            testEntities.push_back(allRaces[(opts.testRace - 1) * 2 + 1]);
+            printf("  Testing race %d: %s / %s\n", opts.testRace,
+                   testEntities[0].label, testEntities[1].label);
+        } else {
+            for (const auto& r : allRaces) testEntities.push_back(r);
+            printf("  Testing all %zu race/gender combos\n", testEntities.size());
+        }
+
+        int numEntities = static_cast<int>(testEntities.size());
+
+        // Clear any model data from the generic preload (which used variant 0)
+        // so we can reload with the requested variant.
+        data->raceModelLoader->clearCache();
+
+        // Preload composite data for all genders being tested
+        printf("  Preloading composite data (variant %d)...\n", opts.testVariant);
+        for (int i = 0; i < numEntities; ++i) {
+            data->raceModelLoader->preloadModelData(
+                testEntities[i].raceId, testEntities[i].gender, opts.testVariant);
+        }
+        data->raceModelLoader->promotePreparedModels();
+        data->textureCache->uploadAllPending();
+
+        data->entities.resize(numEntities);
+        data->animatedNodes.resize(numEntities, nullptr);
+
+        int loadedCount = 0;
+        for (int i = 0; i < numEntities; ++i) {
+            auto* mesh = data->raceModelLoader->getMeshForRace(
+                testEntities[i].raceId, testEntities[i].gender);
+            data->textureCache->uploadAllPending();
+
+            if (!mesh) {
+                printf("    %s: NO MESH\n", testEntities[i].label);
+                continue;
+            }
+            data->entities[i].mesh = mesh;
+
+            // Create animated node if requested
+            if (opts.animate) {
+                auto* node = data->raceModelLoader->createAnimatedNode(
+                    testEntities[i].raceId, testEntities[i].gender,
+                    data->smgr->getRootSceneNode());
+                if (node) {
+                    data->animatedNodes[i] = node;
+                    node->playAnimation("o01", true);
+                    data->textureCache->uploadAllPending();
+                    if (node->getInstanceMesh())
+                        data->entities[i].mesh = node->getInstanceMesh();
+                }
+            }
+
+            int bufCount = data->entities[i].mesh->getMeshBufferCount();
+            const char* texName = "(none)";
+            if (bufCount > 0) {
+                auto* tex = data->entities[i].mesh->getMeshBuffer(0)->getMaterial().getTexture(0);
+                if (tex) texName = tex->getName().getPath().c_str();
+            }
+            printf("    %s: %d buffers, tex0='%s'\n", testEntities[i].label, bufCount, texName);
+            loadedCount++;
+        }
+        printf("  Loaded %d/%d entities\n", loadedCount, numEntities);
+
+        // Place entities side by side, spaced apart
+        float surfX, surfY, surfZ;
+        ZoneBench::findSurfacePosition(*data, surfX, surfY, surfZ);
+
+        float spacing = 20.0f;
+        float totalWidth = (numEntities - 1) * spacing;
+        float startX = surfX - totalWidth * 0.5f;
+        float entityY = surfY + 40.0f;  // 40 units in front of camera
+
+        for (int i = 0; i < numEntities; ++i) {
+            if (!data->entities[i].mesh) continue;
+
+            float eqX = startX + i * spacing;
+            data->entities[i].eqX = eqX;
+            data->entities[i].eqY = entityY;
+            data->entities[i].eqZ = surfZ - 6.0f;
+
+            float meshOffsetY = -data->entities[i].mesh->getBoundingBox().MinEdge.Y;
+            data->entities[i].position = irr::core::vector3df(
+                eqX, data->entities[i].eqZ + meshOffsetY, entityY);
+
+            if (data->animatedNodes[i]) {
+                data->animatedNodes[i]->setPosition(data->entities[i].position);
+                data->animatedNodes[i]->updateAbsolutePosition();
+            }
+            data->entities[i].priority = ZoneBench::ZoneBenchData::EntityPriority::Target;
+
+            printf("    %s placed at EQ (%.1f, %.1f, %.1f)\n",
+                   testEntities[i].label, eqX, entityY, data->entities[i].eqZ);
+        }
+
+        // Camera: behind and looking at entities
+        float camEqX = surfX;
+        float camEqY = surfY;
+        float camEqZ = surfZ;
+        float camDirX = 0, camDirY = 1, camDirZ = 0;
+
+        printf("  Camera at EQ (%.1f, %.1f, %.1f) looking +Y toward entities at Y=%.1f\n",
+               camEqX, camEqY, camEqZ, entityY);
+
+        // Bright daytime lighting
+        if (data->zoneShader) {
+            data->zoneShader->setAmbientColor(0.6f, 0.6f, 0.6f);
+            data->zoneShader->setSunDirection(0.3f, -0.8f, 0.2f);
+            data->zoneShader->setSunColor(0.5f, 0.5f, 0.4f);
+            data->zoneShader->setTintColor(1.0f, 1.0f, 1.0f);
+            data->zoneShader->setFog(9000.0f, 9999.0f, 0.5f, 0.5f, 0.5f, 1.0f);
+            data->zoneShader->setNumPointLights(0);
+        }
+
+        // Render loop — runs until --frames count
+        int testFrames = opts.frames;
+        printf("  Rendering %d frames (%.1f sec at 30fps)...\n",
+               testFrames, testFrames / 30.0f);
+
+        irr::core::matrix4 identityMat;
+        for (int frame = 0; frame < testFrames; ++frame) {
+            setupCamera(*data, camEqX, camEqY, camEqZ, camDirX, camDirY, camDirZ);
+            data->driver->beginScene(true, true, irr::video::SColor(255, 80, 80, 120));
+            if (data->zoneShader) data->zoneShader->beginFrame();
+
+            // Animate
+            if (opts.animate) {
+                irr::u32 simTimeMs = static_cast<irr::u32>(frame * 33.3f);
+                for (int i = 0; i < numEntities; ++i) {
+                    if (!data->animatedNodes[i]) continue;
+                    data->animatedNodes[i]->OnAnimate(simTimeMs);
+                    auto* instMesh = data->animatedNodes[i]->getInstanceMesh();
+                    if (instMesh) data->entities[i].mesh = instMesh;
+                }
+            }
+
+            // Draw each entity (composite = 1 buffer, multi-buffer = merge with first mat)
+            for (int i = 0; i < numEntities; ++i) {
+                auto* mesh = data->entities[i].mesh;
+                if (!mesh) continue;
+
+                std::vector<irr::video::S3DVertex> verts;
+                std::vector<irr::u16> indices;
+                irr::video::SMaterial mat;
+                bool hasMat = false;
+
+                for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
+                    auto* buf = mesh->getMeshBuffer(b);
+                    if (!buf || buf->getVertexCount() == 0) continue;
+                    if (!hasMat) { mat = buf->getMaterial(); hasMat = true; }
+
+                    irr::u32 base = static_cast<irr::u32>(verts.size());
+                    if (base + buf->getVertexCount() > 65535) break;
+
+                    auto* sv = static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+                    for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+                        irr::video::S3DVertex vert = sv[v];
+                        vert.Pos += data->entities[i].position;
+                        verts.push_back(vert);
+                    }
+                    auto* si = buf->getIndices();
+                    for (irr::u32 idx = 0; idx < buf->getIndexCount(); ++idx)
+                        indices.push_back(static_cast<irr::u16>(si[idx] + base));
+                }
+
+                if (!indices.empty() && hasMat) {
+                    data->driver->setTransform(irr::video::ETS_WORLD, identityMat);
+                    data->driver->setMaterial(mat);
+                    data->driver->drawVertexPrimitiveList(
+                        verts.data(), verts.size(),
+                        indices.data(), indices.size() / 3,
+                        irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                        irr::video::EIT_16BIT);
+                }
+            }
+
+            data->driver->endScene();
+        }
+
+        printf("Composite entity test complete (%d frames rendered).\n", testFrames);
         return 0;
     }
 

@@ -508,7 +508,7 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
     return nullptr;
 }
 
-bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
+bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int textureVariant) {
     uint32_t key = makeCacheKey(raceId, gender);
 
     // Check staging cache (thread-safe). If already staged or will be promoted,
@@ -761,7 +761,9 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender) {
         std::transform(modelName.begin(), modelName.end(), modelName.begin(),
                        [](unsigned char c) { return std::tolower(c); });
         // entity_composite_builder output: {modelname}_{gender}_{variant}.json
-        std::string compositeBaseName = modelName + "_" + std::to_string(gender) + "_0";
+        // The model name already encodes gender (e.g., HUM vs HUF), so the
+        // composite builder always writes gender=0 in the filename. Use _0_ here.
+        std::string compositeBaseName = modelName + "_0_" + std::to_string(textureVariant);
         std::string jsonPath = compositeEntityPath_ + "/" + compositeBaseName + ".json";
         auto compositeData = std::make_shared<CompositeTextureData>();
         if (compositeData->loadFromJson(jsonPath)) {

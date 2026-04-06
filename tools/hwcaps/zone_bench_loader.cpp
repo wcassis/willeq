@@ -520,6 +520,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         auto* mb = data->raceModelLoader->getMeshBuilder();
         if (mb) {
             mb->setConstrainedTextureCache(data->textureCache.get());
+            data->textureCache->setMeshBuilder(mb);
             if (data->zoneShader && data->zoneShader->isAvailable()) {
                 mb->setShaderMaterialTypes(
                     data->zoneShader->getActiveSolid(),
@@ -568,12 +569,36 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // composite texture data (JSON + EQE1 lookup) before building meshes.
         // This mirrors the production renderer's EntityPrepWorker flow.
         if (config.compositeEntities && !config.eqe1Path.empty()) {
+            printf("  Composite: compositeEntityPath='%s'\n", config.eqe1Path.c_str());
+            int preloadOk = 0, preloadFail = 0;
             for (int r = 0; r < numRaces; ++r) {
-                data->raceModelLoader->preloadModelData(raceIds[r], 0);
+                bool ok = data->raceModelLoader->preloadModelData(raceIds[r], 0);
+                printf("    preloadModelData(race=%d, gender=0) = %s\n",
+                       raceIds[r], ok ? "OK" : "FAILED");
+                if (ok) preloadOk++; else preloadFail++;
             }
+            printf("  Composite: preloaded %d OK, %d failed\n", preloadOk, preloadFail);
+
             data->raceModelLoader->promotePreparedModels();
+            printf("  Composite: promotePreparedModels() done\n");
+
+            // Verify composite data survived promotion
+            for (int r = 0; r < numRaces; ++r) {
+                auto md = data->raceModelLoader->getRaceModelData(raceIds[r], 0);
+                if (md) {
+                    printf("    race=%d: raceName='%s' compositeData=%s compositeBmpPath='%s' "
+                           "rawGeometry=%s combinedGeometry=%s\n",
+                           raceIds[r], md->raceName.c_str(),
+                           md->compositeData ? "YES" : "NO",
+                           md->compositeBmpPath.c_str(),
+                           md->rawGeometry ? "yes" : "no",
+                           md->combinedGeometry ? "yes" : "no");
+                } else {
+                    printf("    race=%d: getRaceModelData returned NULL\n", raceIds[r]);
+                }
+            }
+
             data->textureCache->uploadAllPending();
-            printf("  Composite: preloaded %d race models\n", numRaces);
         }
 
         // Pre-load meshes for each race (cache them)

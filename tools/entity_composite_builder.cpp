@@ -153,7 +153,8 @@ static bool decodeBMP(const std::vector<char>& data,
 // ── Texture UV stats (per body-part texture) ────────────────────────────────
 
 struct BodyPartTexture {
-    std::string textureName;      // Original texture filename (e.g., "humch0001.bmp")
+    std::string textureName;      // Texture filename (may be variant-substituted)
+    std::string originalName;     // Original name from model geometry (set during resolve)
     float minU = 1e9f, maxU = -1e9f;
     float minV = 1e9f, maxV = -1e9f;
     int texWidth = 0, texHeight = 0;
@@ -167,7 +168,8 @@ struct BodyPartTexture {
 // ── Placement rect in composite sheet ───────────────────────────────────────
 
 struct PlacedTexture {
-    std::string textureName;
+    std::string textureName;      // Actual texture file used (may be variant-substituted)
+    std::string originalName;     // Original name from model geometry (for UV lookup key)
     int x = 0, y = 0;            // Position in sheet
     int w = 0, h = 0;            // Unrolled size
     int tilesU = 1, tilesV = 1;  // Tile counts
@@ -532,6 +534,8 @@ static ModelResult processModel(const std::string& eqPath,
     int skippedTiles = 0;
 
     for (auto& [key, bp] : bodyParts) {
+        // Save original name before variant substitution (for JSON lookup key)
+        std::string originalName = bp.textureName;
         // Apply variant substitution
         std::string variantName = applyVariant(bp.textureName, variant);
         // Check if variant texture exists
@@ -539,6 +543,7 @@ static ModelResult processModel(const std::string& eqPath,
         if (variant > 0 && archive.get(variantName, testData)) {
             bp.textureName = variantName;
         }
+        bp.originalName = originalName;
 
         auto dims = getTexDims(bp.textureName);
         bp.texWidth = dims.first;
@@ -576,6 +581,7 @@ static ModelResult processModel(const std::string& eqPath,
     for (const auto& bp : resolved) {
         PlacedTexture pt;
         pt.textureName = bp.textureName;
+        pt.originalName = bp.originalName.empty() ? bp.textureName : bp.originalName;
         pt.w = bp.unrolledW();
         pt.h = bp.unrolledH();
         pt.tilesU = bp.tilesU();
@@ -674,7 +680,10 @@ static ModelResult processModel(const std::string& eqPath,
         entry["uvScaleV"] = static_cast<double>(pt.h) / sheetH;
         entry["uvOffsetU"] = static_cast<double>(pt.x) / sheetW;
         entry["uvOffsetV"] = static_cast<double>(pt.y) / sheetH;
-        textures[pt.textureName] = entry;
+        // Key by original (geometry) name so the mesh builder can look up textures
+        // using the names from the model data, regardless of variant substitution.
+        std::string jsonKey = pt.originalName.empty() ? pt.textureName : pt.originalName;
+        textures[jsonKey] = entry;
     }
     root["textures"] = textures;
 

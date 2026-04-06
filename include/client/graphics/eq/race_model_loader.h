@@ -146,7 +146,7 @@ public:
     // Reads from immutable archives (globalCharacters_, etc.) and writes to
     // preparedModelData_ (thread-safe staging map). Call promotePreparedModels()
     // on the main thread to move data into loadedModels_ before getMeshForRace().
-    bool preloadModelData(uint16_t raceId, uint8_t gender);
+    bool preloadModelData(uint16_t raceId, uint8_t gender, int textureVariant = 0);
 
     // Background-safe: loads variant model data (S3D load + character search +
     // part combining + animation merge) for zone-specific variants (e.g., QCM).

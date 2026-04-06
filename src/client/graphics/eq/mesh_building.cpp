@@ -362,9 +362,57 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
         m.localIndex = 0xFFFFFFFF;
     }
 
-    // Map from global vertex index to local buffer index
-    // Key includes texture index because shared vertices across different textures
-    // get different UV coordinates in the composite
+    // ── Pass 1: Scan UV extents per texture ──
+    // Character models use flipV (1.0 - v.v) for individual textures (see
+    // buildMeshFromGeometry). The composite sheet was tiled using the source BMP
+    // in raster order (y=0 at top), and GL loads all textures with V=0 at top
+    // (both BMP-decoded via glTexImage2D and ETC1 via glCompressedTexImage2D use
+    // the same convention in this pipeline). So correctedV = 1.0 - v.v gives us
+    // the right V to map into the composite sheet, matching how the zone composite
+    // path works (buildCompositeMesh in zone_geometry.cpp, line 733).
+    //
+    // We scan correctedV extents here so the shift aligns with correctedV space.
+    struct TexUVExtent {
+        float minU = 1e9f, minCorrV = 1e9f;
+    };
+    std::map<uint32_t, TexUVExtent> texExtents;  // keyed by textureIndex
+
+    for (const auto& tri : geometry->triangles) {
+        uint32_t texIdx = tri.textureIndex;
+        if (texIdx >= geometry->textureNames().size()) continue;
+        const std::string& texName = geometry->textureNames()[texIdx];
+        if (texName.empty() || !compositeData.lookup(texName)) continue;
+
+        auto& ext = texExtents[texIdx];
+        for (irr::u32 vidx : {tri.v1, tri.v2, tri.v3}) {
+            if (vidx >= geometry->vertices.size()) continue;
+            const auto& v = geometry->vertices[vidx];
+            ext.minU = std::min(ext.minU, v.u);
+            ext.minCorrV = std::min(ext.minCorrV, 1.0f - v.v);
+        }
+    }
+
+    // Compute per-texture shift: bring UVs into [0, tilesU] × [0, tilesV] range.
+    struct TexShift { float shiftU = 0, shiftCorrV = 0; };
+    std::map<uint32_t, TexShift> texShifts;
+    for (const auto& [texIdx, ext] : texExtents) {
+        TexShift s;
+        s.shiftU = -std::floor(ext.minU);
+        s.shiftCorrV = -std::floor(ext.minCorrV);
+        texShifts[texIdx] = s;
+    }
+
+    // Diagnostic: track UV ranges per texture for logging
+    struct UVDiag {
+        float rawMinU = 1e9f, rawMaxU = -1e9f, rawMinV = 1e9f, rawMaxV = -1e9f;
+        float remapMinU = 1e9f, remapMaxU = -1e9f, remapMinV = 1e9f, remapMaxV = -1e9f;
+        int tilesU = 0, tilesV = 0;
+        float shiftU = 0, shiftV = 0;
+        int vertCount = 0;
+    };
+    std::map<std::string, UVDiag> uvDiags;
+
+    // ── Pass 2: Build composite mesh with remapped UVs ──
     std::map<uint64_t, irr::u16> globalToLocal;
     size_t unmappedTriangles = 0;
     irr::u32 currentBufferIndex = 0;
@@ -373,7 +421,6 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
         const auto& tri = geometry->triangles[i];
         uint32_t texIdx = tri.textureIndex;
 
-        // Look up composite entry for this triangle's texture
         std::string texName;
         if (texIdx < geometry->textureNames().size()) {
             texName = geometry->textureNames()[texIdx];
@@ -387,14 +434,20 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
             continue;
         }
 
+        // Get the shift for this texture (computed in pass 1)
+        float shiftU = 0, shiftCorrV = 0;
+        auto shiftIt = texShifts.find(texIdx);
+        if (shiftIt != texShifts.end()) {
+            shiftU = shiftIt->second.shiftU;
+            shiftCorrV = shiftIt->second.shiftCorrV;
+        }
+
         for (irr::u32 vidx : {tri.v1, tri.v2, tri.v3}) {
-            // Key: vertex index + texture index (different UVs per texture in composite)
             uint64_t key = (static_cast<uint64_t>(vidx) << 32) | texIdx;
             auto it = globalToLocal.find(key);
             if (it != globalToLocal.end()) {
                 buffer->Indices.push_back(it->second);
             } else {
-                // Check 16-bit index limit
                 if (buffer->Vertices.size() >= 65535) {
                     buffer->recalculateBoundingBox();
                     mesh->addMeshBuffer(buffer);
@@ -414,7 +467,6 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
 
                 const auto& v = geometry->vertices[vidx];
                 irr::video::S3DVertex vert;
-                // Store in EQ coordinates - conversion happens during animation
                 vert.Pos.X = v.x;
                 vert.Pos.Y = v.y;
                 vert.Pos.Z = v.z;
@@ -423,21 +475,42 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
                 vert.Normal.Z = v.nz;
                 vert.Color = irr::video::SColor(255, 255, 255, 255);
 
-                // Remap UV to composite sheet coordinates
-                // Character models use flipV (1-v), same as originalVerticesForAnimation_
-                float baseU = v.u;
-                float baseV = 1.0f - v.v;
-                float fractU = baseU / static_cast<float>(entry->tilesU);
-                float fractV = baseV / static_cast<float>(entry->tilesV);
+                // Remap UV to composite sheet coordinates.
+                //
+                // Character models use flipV (1.0 - v.v) — same as the standard
+                // multi-buffer path (buildMeshFromGeometry). The corrected V maps
+                // directly into composite sheet space: offset + fract * scale, with
+                // NO additional 1.0-rasterV flip. This matches the zone composite
+                // path (zone_geometry.cpp buildCompositeMesh).
+                //
+                // Shift handles negative/tiled UVs: bring correctedV into [0, tilesV].
+                float shiftedU = v.u + shiftU;
+                float correctedV = 1.0f - v.v;
+                float shiftedV = correctedV + shiftCorrV;
+                float fractU = shiftedU / static_cast<float>(entry->tilesU);
+                float fractV = shiftedV / static_cast<float>(entry->tilesV);
                 vert.TCoords.X = entry->uvOffsetU + fractU * entry->uvScaleU;
                 vert.TCoords.Y = entry->uvOffsetV + fractV * entry->uvScaleV;
+
+                // Track UV diagnostics
+                auto& diag = uvDiags[texName];
+                diag.tilesU = entry->tilesU; diag.tilesV = entry->tilesV;
+                diag.shiftU = shiftU; diag.shiftV = shiftCorrV;
+                diag.rawMinU = std::min(diag.rawMinU, v.u);
+                diag.rawMaxU = std::max(diag.rawMaxU, v.u);
+                diag.rawMinV = std::min(diag.rawMinV, v.v);
+                diag.rawMaxV = std::max(diag.rawMaxV, v.v);
+                diag.remapMinU = std::min(diag.remapMinU, vert.TCoords.X);
+                diag.remapMaxU = std::max(diag.remapMaxU, vert.TCoords.X);
+                diag.remapMinV = std::min(diag.remapMinV, vert.TCoords.Y);
+                diag.remapMaxV = std::max(diag.remapMaxV, vert.TCoords.Y);
+                diag.vertCount++;
 
                 irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
                 globalToLocal[key] = localIdx;
                 buffer->Vertices.push_back(vert);
                 buffer->Indices.push_back(localIdx);
 
-                // Record vertex mapping for animation
                 if (vidx < vertexMappingForAnimation_.size()) {
                     vertexMappingForAnimation_[vidx].bufferIndex = currentBufferIndex;
                     vertexMappingForAnimation_[vidx].localIndex = localIdx;
@@ -455,11 +528,20 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
     mesh->recalculateBoundingBox();
 
     if (unmappedTriangles > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::buildCompositeMeshFromGeometry: {} triangles not in composite (skipped)", unmappedTriangles);
+        LOG_INFO(MOD_GRAPHICS, "buildCompositeMesh: {} triangles not in composite (skipped)", unmappedTriangles);
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::buildCompositeMeshFromGeometry: built mesh with {} buffers, {} original vertices (vs {} multi-buffer)",
-              mesh->getMeshBufferCount(), geometry->vertices.size(), 0);
+    // Dump per-texture UV diagnostics
+    for (const auto& [name, d] : uvDiags) {
+        LOG_INFO(MOD_GRAPHICS, "  COMPOSITE UV '{}': tiles={}x{} shift=({:.0f},{:.0f}) | "
+                 "rawUV=[{:.3f},{:.3f}]x[{:.3f},{:.3f}] -> remapUV=[{:.4f},{:.4f}]x[{:.4f},{:.4f}] ({} verts)",
+                 name, d.tilesU, d.tilesV, d.shiftU, d.shiftV,
+                 d.rawMinU, d.rawMaxU, d.rawMinV, d.rawMaxV,
+                 d.remapMinU, d.remapMaxU, d.remapMinV, d.remapMaxV, d.vertCount);
+    }
+
+    LOG_INFO(MOD_GRAPHICS, "buildCompositeMesh: built mesh with {} buffers, {} verts, {} textures mapped",
+              mesh->getMeshBufferCount(), geometry->vertices.size(), uvDiags.size());
 
     return mesh;
 }
