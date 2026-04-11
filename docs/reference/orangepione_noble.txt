@@ -431,21 +431,6 @@ OpenGL ES profile extensions:
 0x114 32 tc  0  32  0 r  . .   8  8  8  8 .  s  0 24  8  0  0  0  0  0 0 .  None
 0x115 32 tc  0  32  0 r  y .   8  8  8  8 .  s  0 24  8  0  0  0  0  0 0 .  None
 
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL] Max texture size: 4096x4096
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL] Feature support:
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Hardware TL: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Multitexture: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Bilinear filter: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   MipMap: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Stencil buffer: no
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Vertex shader 1.1: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Pixel shader 1.1: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Render to target: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Alpha to coverage: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Texture NPOT: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL]   Framebuffer object: yes
-[2026-02-15 16:35:35.170] [DEBUG] [GRAPHICS] [GL] Vendor info: Mesa
-
 EGL_VERSION: 1.5
 EGL_VENDOR: Mesa Project
 EGL_EXTENSIONS:

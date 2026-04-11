@@ -1467,6 +1467,74 @@ IF(EQT_GRAPHICS)
         TARGET_COMPILE_DEFINITIONS(gles2_shader_diagnostic PRIVATE EQT_HAS_GLES2)
     ENDIF()
     TARGET_LINK_LIBRARIES(gles2_shader_diagnostic ${ZONE_BENCH_LIBS})
+
+    # Composite entity audit tool — renders all race/gender/variant combos as PNGs
+    ADD_EXECUTABLE(gles2_composite_audit
+        tools/hwcaps/gles2_composite_audit.cpp
+        tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_camera.cpp
+        tools/hwcaps/zone_bench_metrics.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/background_thread_pool.cpp
+        src/client/graphics/portal_system.cpp
+        src/client/graphics/portal_geometry_clipper.cpp
+        src/client/graphics/frustum_culler.cpp
+        src/client/hc_map.cpp
+        src/client/raycast_mesh.cpp
+        src/client/graphics/zone_shader.cpp
+        src/client/graphics/texture_atlas.cpp
+        src/client/graphics/software_occlusion_culler.cpp
+        src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/mesh_building.cpp
+        src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/geometry_combiner.cpp
+        src/client/graphics/eq/race_codes.cpp
+        src/client/graphics/eq/animation_mapping.cpp
+        src/client/graphics/eq/animated_mesh_creation.cpp
+        src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/skeletal_animator.cpp
+        src/client/graphics/eq/equipment_textures.cpp
+        src/client/graphics/graphics_archive_index.cpp
+        src/common/performance_metrics.cpp
+        src/client/willeq_database.cpp
+        third_party/sqlite3.c
+        src/client/zone_bsp.cpp
+        src/common/util/compression.cpp
+    )
+    IF(EQT_GLES2)
+        TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
+    IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
+        TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/pathfinder_nav_mesh.cpp)
+    ENDIF()
+    TARGET_INCLUDE_DIRECTORIES(gles2_composite_audit PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/third_party
+        ${ZLIB_INCLUDE_DIRS}
+        ${IRRLICHT_INCLUDE_DIR}
+        ${JSONCPP_INCLUDE_DIRS}
+        ${GLM_INCLUDE_DIR}
+    )
+    TARGET_COMPILE_DEFINITIONS(gles2_composite_audit PRIVATE EQT_HAS_TEXTURE_ATLAS SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_composite_audit PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_composite_audit PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+    ENDIF()
+    IF(EQT_GLES2)
+        TARGET_COMPILE_DEFINITIONS(gles2_composite_audit PRIVATE EQT_HAS_GLES2)
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_composite_audit ${ZONE_BENCH_LIBS})
 ENDIF()
 
 ADD_EXECUTABLE(test_gl_points tools/test_gl_points.cpp)

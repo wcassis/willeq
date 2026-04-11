@@ -533,7 +533,21 @@ static ModelResult processModel(const std::string& eqPath,
     std::vector<BodyPartTexture> resolved;
     int skippedTiles = 0;
 
+    int skippedHelm = 0;
     for (auto& [key, bp] : bodyParts) {
+        // Filter out helmet model textures — these are rendered as separate
+        // equipment draw calls, not applied to the base/robe body mesh.
+        {
+            const std::string& name = bp.textureName;
+            if (name.substr(0, 4) == "helm" ||
+                name.substr(0, 11) == "helmleather" ||
+                name.substr(0, 7) == "magecap") {
+                if (verbose) std::cerr << "    Skip (helmet model): " << name << std::endl;
+                skippedHelm++;
+                continue;
+            }
+        }
+
         // Save original name before variant substitution (for JSON lookup key)
         std::string originalName = bp.textureName;
         // Apply variant substitution
@@ -572,8 +586,11 @@ static ModelResult processModel(const std::string& eqPath,
         return result;
     }
 
-    if (skippedTiles > 0 && verbose) {
-        std::cerr << "  " << skippedTiles << " textures skipped (exceeded max tiles)" << std::endl;
+    if ((skippedTiles > 0 || skippedHelm > 0) && verbose) {
+        if (skippedTiles > 0)
+            std::cerr << "  " << skippedTiles << " textures skipped (exceeded max tiles)" << std::endl;
+        if (skippedHelm > 0)
+            std::cerr << "  " << skippedHelm << " textures skipped (helmet models)" << std::endl;
     }
 
     // Build placement list with unrolled dimensions

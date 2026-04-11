@@ -236,6 +236,15 @@ public:
     // Clear mesh caches for zone transition (keeps model data, forces fresh mesh/texture rebuild)
     void clearMeshCaches();
 
+    // Build a composite mesh from geometry + pre-uploaded atlas texture + UV metadata.
+    // Public interface for dynamic atlas pipeline (audit tool, runtime atlas builder).
+    irr::scene::IMesh* buildCompositeEntityMesh(
+        const std::shared_ptr<ZoneGeometry>& geometry,
+        irr::video::ITexture* compositeTexture,
+        const CompositeTextureData& compositeData) {
+        return buildCompositeMeshFromGeometry(geometry, compositeTexture, compositeData);
+    }
+
 private:
     // Load model from a specific S3D file
     bool loadModelFromS3D(const std::string& s3dPath, uint16_t raceId, uint8_t gender);
