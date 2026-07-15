@@ -58,6 +58,13 @@ tests/*_tests.cmake
 # JSON data dumps in root (keep tests/ and src/ json files)
 /*.json
 
+# Benchmark/analysis output in root (frame captures, portal analysis)
+/*.csv
+
+# Profiler output
+perf.data
+perf.data.old
+
 # EQ data files
 *.wld
 *.s3d
