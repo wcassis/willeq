@@ -282,6 +282,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/irrlicht_renderer.cpp
+        src/client/graphics/renderer_diagnostics.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/frustum_culler.cpp
@@ -382,6 +383,7 @@ IF(WITH_RDP)
         src/client/graphics/rdp/rdp_server.cpp
         src/client/graphics/rdp/rdp_peer_context.cpp
         src/client/graphics/rdp/rdp_input_handler.cpp
+        src/client/graphics/renderer_rdp.cpp
     )
 ENDIF()
 
