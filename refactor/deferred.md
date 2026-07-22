@@ -71,6 +71,14 @@ the commit. Sources are historical docs — do not edit those.
   (`getSpellByName` is exact-match `WHERE name=?`); old tests covering them
   were deleted in F00. Restore only if a consumer needs them.
 
+## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
+
+- **RDPServerFrameTest.UpdateFrameMultipleTimes segfaults intermittently**
+  (~once per <=10 stress repetitions, confirmed on unmodified fable during
+  F18 integration; also seen under parallel ctest load in F01/F09/F24 runs).
+  This is a real race in the RDP frame-update path, not just test noise —
+  worth an actual investigation/fix in renderer_rdp.cpp / rdp_server.cpp.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.

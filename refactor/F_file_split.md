@@ -86,9 +86,9 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F15 | Debug toggles + overlays + targeting | renderer_debug.cpp, renderer_overlays.cpp | 1,564 | done | slot3 | `02052bf` |
 | F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | 476 | done | slot2 | `2060d2c` |
 | F17 | loadZoneSequential (phase-split) + zone load/unload/env | renderer_zone_load.cpp (possibly 2 files) | ~3,330 | | | |
-| F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp | ~1,955 | | | |
+| F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp, renderer_zone_stream.cpp | 2,148 | done | slot1 | `46fa92d` |
 | F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | 1,550 | done | slot2 | `bb180cb` |
-| F20 | Simulation bridge | renderer_sim_bridge.cpp | ~1,040 | | | |
+| F20 | Simulation bridge | renderer_sim_bridge.cpp | 1,046 | done | slot2 | `699345c` |
 | F21 | Entity/inventory/combat façades + GPU upload thread | renderer_entities.cpp, renderer_gpu_upload.cpp | 863 | done | slot3 | `aa158a4` |
 | F22 | processFrame + sub-passes | renderer_frame.cpp | ~1,100 | | | |
 
