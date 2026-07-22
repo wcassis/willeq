@@ -59,6 +59,18 @@ the commit. Sources are historical docs — do not edit those.
   `hasBspZoneLines()` (always false), `debugTestCoordinateMappings()`.
 - RDP peer threads not joined until `stop()` (§1.3).
 
+## From F00 test repair (2026-07-22)
+
+- **`SpellData::effects` is never populated.** `EQT::SpellInfo`
+  (include/client/willeq_database.h) has no effects field, so
+  `SpellDatabase::queryAndCache()` leaves every spell's effects array empty,
+  and `isDamageSpell()`/`isHealSpell()` can never return true via this path.
+  The old file-based loader populated it; the SQLite migration dropped it.
+  Whoever owns the spell-effects data path should restore or formally remove it.
+- Case-insensitive and partial-name spell search no longer exist
+  (`getSpellByName` is exact-match `WHERE name=?`); old tests covering them
+  were deleted in F00. Restore only if a consumer needs them.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
