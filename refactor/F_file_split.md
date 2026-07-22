@@ -68,9 +68,9 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F02 | Static name/string tables + dump helpers | eq_strings.cpp | 735 | done | slot1 | `d7b6371` |
 | F03 | Login + world connection | eq_login_world.cpp | 672 | done | slot1 | `75fb045` |
 | F04 | Guild + GM commands (UCS cluster turned out to be dead commented code — live UCS already in ucs.cpp; no eq_ucs.cpp created) | eq_guild.cpp, eq_gm.cpp | 415 | done | slot2 | `7920faa` |
-| F05 | Trade + loot/vendor/bank/trainer + inventory + recipes | eq_merchant.cpp | ~1,530 | | | |
+| F05 | Trade + loot/vendor/bank/trainer + inventory + recipes | eq_merchant.cpp | 1,528 | done | slot1 | `8065e59` |
 | F06 | Chat + text messages | eq_chat.cpp | ~540 | | | |
-| F07 | Stat getters + misc low-coupling clusters | eq_player_info.cpp | ~1,600 | | | |
+| F07 | Stat getters + misc low-coupling clusters | eq_player_info.cpp | 1,913 | done | slot3 | `564bffd` |
 | F08 | Movement + pathfinding + water + keyboard | eq_movement.cpp | ~2,100 | | | |
 | F09 | Zone geometry + zone change/teardown | eq_zone.cpp | ~800 | | | |
 | F10 | Bridge processing (intents/events) + InitGraphics | eq_bridge.cpp | ~1,750 | | | |
@@ -84,7 +84,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 |---|---|---|---|---|---|---|
 | F14 | RDP + memory report + profiling/diagnostics | renderer_rdp.cpp, renderer_diagnostics.cpp | 1,151 | done | slot2 | `efde88b` |
 | F15 | Debug toggles + overlays + targeting | renderer_debug.cpp, renderer_overlays.cpp | 1,564 | done | slot3 | `02052bf` |
-| F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | ~460 | | | |
+| F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | 476 | done | slot2 | `2060d2c` |
 | F17 | loadZoneSequential (phase-split) + zone load/unload/env | renderer_zone_load.cpp (possibly 2 files) | ~3,330 | | | |
 | F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp | ~1,955 | | | |
 | F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | ~1,760 | | | |

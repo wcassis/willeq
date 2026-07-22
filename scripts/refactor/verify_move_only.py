@@ -23,7 +23,7 @@ from collections import Counter
 
 # Lines that may legitimately appear/disappear during a TU split.
 BOILERPLATE = re.compile(
-    r"^(#include\b|#pragma\b|#ifndef\b|#ifdef\b|#define\b|#endif\b"
+    r"^(#include\b|#pragma\b|#ifndef\b|#ifdef\b|#if\b|#define\b|#endif\b|#else\b|#elif\b"
     r"|//|/\*|\*|\*/|namespace\s+[\w:]*\s*\{?$|\}\s*(//.*)?$)"
 )
 
