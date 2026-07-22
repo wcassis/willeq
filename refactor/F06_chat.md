@@ -40,4 +40,61 @@ chat/text (judgment) stays put, documented.
 
 ## Review
 
-(executor fills in)
+**Branch:** `task/F06-chat`, commit `369a5b1`.
+
+**Located clusters** (line numbers as found on this branch, pre-move):
+
+1. Chat cluster, eq.cpp lines 4414–4689 (before UCS block, which turned out
+   to be entirely inside a `/* ... */` comment — no live UCS definitions
+   exist in eq.cpp today, so nothing there needed handling):
+   - `EverQuest::ZoneSendChannelMessage`
+   - `EverQuest::ZoneProcessChannelMessage`
+   - `EverQuest::SendChatMessage`
+   - `EverQuest::AddChatSystemMessage`
+   - `EverQuest::AddChatCombatMessage`
+   - `EverQuest::AddChatMissMessage`
+   - `EverQuest::AddPendingHotbarButton`
+   - `EverQuest::GetPendingHotbarButtons`
+   - `EverQuest::ClearPendingHotbarButtons`
+   - `EverQuest::GetPendingHotbarButtonCount`
+   - `EverQuest::ProcessChatInput`
+
+   (11 methods — the 4 pending-hotbar-button helpers were interleaved
+   between `AddChatMissMessage` and `ProcessChatInput` under their own
+   "Hotbar Button Management" banner comment; moved together per the plan's
+   "hotbar-pending chat helpers" note.)
+
+2. Text-messages cluster, eq.cpp lines 6515–6748 (immediately after
+   `ZoneProcessMoveDoor`, confirming F07's note that it left
+   `ZoneProcessColoredText` in place for this unit):
+   - `EverQuest::ZoneProcessColoredText`
+   - `EverQuest::ZoneProcessFormattedMessage`
+   - `EverQuest::ZoneProcessSimpleMessage`
+
+**Helper analysis:** No file-local (anonymous-namespace/static) helpers are
+exclusive to either cluster — all supporting state (`m_bridge`, `m_string_db`,
+`m_combat_manager`, `m_entities`, `s_debug_level`, `m_pending_hotbar_buttons`,
+`m_command_registry`) and free functions (`GetStringMessage`,
+`GetFormattedStringMessage`, `eqt::parseFormattedMessageArgs`) are class
+members or externally-declared, so nothing needed relocating or de-static-ing.
+
+**Line counts:** eq.cpp 11,932 → 11,422 lines (−510). New `src/client/eq_chat.cpp`:
+538 lines (510 moved + 28 header/include boilerplate).
+
+**Necessary-include deviation:** `eq_chat.cpp` added `#include "client/combat.h"`,
+which eq.cpp did not need explicitly (it pulled in the full `CombatManager`
+definition transitively through its much larger include list). Without it,
+`ZoneProcessSimpleMessage`'s use of `m_combat_manager->GetTargetId()` fails
+against the forward declaration in `eq.h`. Pure include addition, no logic
+change — flagged per plan step 4/verification note.
+
+**Verifier summary:**
+- `cmake --build build -j24`: clean (after adding the `combat.h` include).
+- `ctest --test-dir build`: 1191/1192 passed; sole failure
+  `AudioManagerTest.PreloadCommonSounds` is the documented pre-existing ALSA
+  expected-fail in `refactor/test_baseline.txt`, unrelated to this unit.
+- `verify_move_only.py ebbf816..369a5b1`: PASS, move-only modulo boilerplate
+  (CMakeLists.txt change reported separately, as expected for a new TU).
+- `check_file_sizes.sh --files eq_chat.cpp`: ok, 538 lines.
+
+**Deviations:** none beyond the documented `combat.h` include above.
