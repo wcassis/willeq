@@ -59,7 +59,7 @@ Pre-existing breakage (repair tracked as F00, see below):
 
 | Unit | Scope (module_map clusters) | Target file(s) | ~LOC | Status | Slot | Commit |
 |---|---|---|---|---|---|---|
-| F01 | RegisterCommands + runPmem/runLoadDiagnostics | eq_commands.cpp | ~2,480 | | | |
+| F01 | RegisterCommands + runPmemDiagnostics/runLoadDiagnostics | eq_commands.cpp | 2,481 | done | slot2 | `cea246d` |
 | F02 | Static name/string tables + dump helpers | eq_strings.cpp | ~730 | | | |
 | F03 | Login + world connection | eq_login_world.cpp | ~680 | | | |
 | F04 | UCS + guild + GM commands | eq_ucs.cpp, eq_guild.cpp, eq_gm.cpp | ~660 | | | |
