@@ -154,9 +154,12 @@ grep before moving. No function-local statics inside the moved methods either.
 - `git merge-base fable HEAD` → `443fea3eb300207f827ac222a46c2086f1b936ea`,
   confirming no rebase occurred and `fable` did not advance during this
   unit's work; this is the BASE used for the verifier below.
-- `python3 scripts/refactor/verify_move_only.py 443fea3eb300207f827ac222a46c2086f1b936ea..HEAD --repo <slot2>`:
-  run after committing (the script diffs commits, not the working tree) —
-  result recorded in the commit-final report below.
+- `python3 scripts/refactor/verify_move_only.py 443fea3eb300207f827ac222a46c2086f1b936ea..HEAD --repo <slot2>`
+  (run after committing — the script diffs commits, not the working tree):
+  **PASS** ("Boilerplate: +14 / -0 lines (allowed)"). `CMakeLists.txt` (the
+  additive `GRAPHICS_SOURCES` line) and `refactor/F20_sim_bridge.md` (this
+  review) reported separately as non-C++, not verified — expected for a
+  build-file edit and doc update.
 - `bash scripts/refactor/check_file_sizes.sh --files <slot2>/renderer_sim_bridge.cpp`:
   **ok** (1,063 lines, well under the 1,500-line ceiling).
 
