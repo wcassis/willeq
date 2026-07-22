@@ -182,6 +182,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_commands.cpp
     src/client/eq_strings.cpp
     src/client/eq_login_world.cpp
+    src/client/eq_guild.cpp
+    src/client/eq_gm.cpp
     src/client/combat.cpp
     src/client/trade_manager.cpp
     src/client/door_state_manager.cpp
