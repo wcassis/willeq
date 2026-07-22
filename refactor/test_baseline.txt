@@ -3,3 +3,10 @@
 # (gitignored) or the 3 asset-dependent tests fail.
 # Known flake (rare, load-dependent): RDPServerFrameTest.UpdateFrameMultipleTimes
 # segfaults ~once per many runs, pre-existing, unrelated to Batch F. Re-run to confirm.
+#
+# Environment-dependent failure (documented 2026-07-22 during F02/F14):
+# AudioManagerTest.PreloadCommonSounds — ALSA cannot resolve default card 0 on
+# this host ("cannot find card '0'" despite /dev/snd/controlC0 existing).
+# Fails consistently in isolation; confirmed pre-existing on unmodified fable
+# by two independent stash-bisections (F02 and F14 reviews). Unrelated to
+# Batch F. Treat as expected-fail until the host ALSA config is fixed.

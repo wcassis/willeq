@@ -65,7 +65,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | Unit | Scope (module_map clusters) | Target file(s) | ~LOC | Status | Slot | Commit |
 |---|---|---|---|---|---|---|
 | F01 | RegisterCommands + runPmemDiagnostics/runLoadDiagnostics | eq_commands.cpp | 2,481 | done | slot2 | `cea246d` |
-| F02 | Static name/string tables + dump helpers | eq_strings.cpp | ~730 | | | |
+| F02 | Static name/string tables + dump helpers | eq_strings.cpp | 735 | done | slot1 | `d7b6371` |
 | F03 | Login + world connection | eq_login_world.cpp | ~680 | | | |
 | F04 | UCS + guild + GM commands | eq_ucs.cpp, eq_guild.cpp, eq_gm.cpp | ~660 | | | |
 | F05 | Trade + loot/vendor/bank/trainer + inventory + recipes | eq_merchant.cpp | ~1,530 | | | |
@@ -82,7 +82,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 
 | Unit | Scope | Target file(s) | ~LOC | Status | Slot | Commit |
 |---|---|---|---|---|---|---|
-| F14 | RDP + memory report + profiling/diagnostics | renderer_rdp.cpp, renderer_diagnostics.cpp | ~1,155 | | | |
+| F14 | RDP + memory report + profiling/diagnostics | renderer_rdp.cpp, renderer_diagnostics.cpp | 1,151 | done | slot2 | `efde88b` |
 | F15 | Debug toggles + overlays + targeting | renderer_debug.cpp, renderer_overlays.cpp | ~2,100 | | | |
 | F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | ~460 | | | |
 | F17 | loadZoneSequential (phase-split) + zone load/unload/env | renderer_zone_load.cpp (possibly 2 files) | ~3,330 | | | |
