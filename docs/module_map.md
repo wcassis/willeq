@@ -44,7 +44,7 @@ HIGH = tied to core entity/movement/zone state; keep in core or split last.
 | DeleteSpawn / MobHealth / HPUpdate | 7057–7287 | ~230 | HIGH | F11 |
 | Chat (channel msgs, chat input) | 7288–7593 | ~305 | Medium | F06 |
 | **RegisterCommands (single ~2,366-line method @7709–10075)** | 7594–10074 | ~2,480 | Isolated | **F01** |
-| UCS chat-server connection | 10075–10313 | ~240 | CLEAN | F04 |
+| UCS chat-server connection | 10075–10313 | ~240 | DEAD CODE — entire cluster is inside a `/* */` block, superseded by the live `UCSConnection` in src/client/ucs.cpp (F04 finding) | none |
 | High-level movement (Move/Follow/CombatMovement) | 10314–10627 | ~315 | HIGH | F08 |
 | Player stat getters (~40 one-liners) | 10628–10828 | ~200 | CLEAN | F07 |
 | GameState sync + group accessors | 10829–10977 | ~150 | Medium | F07 |
