@@ -1,3 +1,5 @@
-558 - ComprehensiveZoneTest.ClassicZones (Failed)
-563 - ComprehensiveZoneTest.OverallSummary (Failed)
-774 - DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries (Failed)
+# Empty: full suite green as of F00 + data/eq_client symlink (2026-07-22).
+# Worktrees need `ln -s /mnt/projects/EverQuestP1999 <worktree>/data/eq_client`
+# (gitignored) or the 3 asset-dependent tests fail.
+# Known flake (rare, load-dependent): RDPServerFrameTest.UpdateFrameMultipleTimes
+# segfaults ~once per many runs, pre-existing, unrelated to Batch F. Re-run to confirm.

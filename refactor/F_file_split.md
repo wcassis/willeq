@@ -53,7 +53,12 @@ Pre-existing breakage (repair tracked as F00, see below):
 
 | Unit | Scope | Status | Slot | Commit |
 |---|---|---|---|---|
-| F00 | Fix 13 link-broken test targets (add missing sources to tests/CMakeLists.txt lists). Rewrite test_spell_database against the current SpellDatabase API. Investigate the 6 genuinely-failing tests; fix or document each as environment-dependent in test_baseline.txt. | | | |
+| F00 | Fix 13 link-broken test targets (add missing sources to tests/CMakeLists.txt lists). Rewrite test_spell_database against the current SpellDatabase API. Investigate the 6 genuinely-failing tests; fix or document each as environment-dependent in test_baseline.txt. | done | slot1 | `6955f0e` |
+
+F00 outcome: suite fully green (1192 tests) after adding the gitignored
+`data/eq_client -> /mnt/projects/EverQuestP1999` symlink each worktree needs
+(provisioned in main + all slots). `refactor/test_baseline.txt` is now empty;
+unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 
 ## Units — eq.cpp
 
