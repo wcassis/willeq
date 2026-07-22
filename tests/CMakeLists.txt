@@ -7,10 +7,14 @@ INCLUDE(GoogleTest)
 INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/third_party
 )
 
 # Default EQ client path (resolved at configure time, overridable via EQ_CLIENT_PATH env var)
 ADD_COMPILE_DEFINITIONS(EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+
+# SQLite flags for WilleqDatabase (needed by any target pulling in willeq_database.cpp/sqlite3.c)
+ADD_COMPILE_DEFINITIONS(SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 
 # Helper variable for fmt library
 IF(fmt_FOUND)
@@ -212,16 +216,21 @@ ADD_EXECUTABLE(test_string_database
     test_string_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/string_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/formatted_message.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_LINK_LIBRARIES(test_string_database GTest::gtest_main ${FMT_LIB})
+TARGET_LINK_LIBRARIES(test_string_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_string_database)
 
 # Test spell database loading and querying
 ADD_EXECUTABLE(test_spell_database
     test_spell_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_database)
 
 # Test PFS/S3D archive parsing
@@ -283,9 +292,11 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
+    TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     GTEST_DISCOVER_TESTS(test_graphics)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
@@ -326,9 +337,11 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
     TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
+    TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
 
@@ -418,6 +431,8 @@ SET(AUDIO_COMMON_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_assets.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/xmi_decoder.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
 
 # Common libs for audio tests (platform audio libs for miniaudio)
@@ -448,9 +463,11 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_eff_loader
         test_eff_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/eff_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
-    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO)
-    TARGET_LINK_LIBRARIES(test_eff_loader GTest::gtest_main ${FMT_LIB})
+    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_LINK_LIBRARIES(test_eff_loader GTest::gtest_main ${FMT_LIB} dl)
     GTEST_DISCOVER_TESTS(test_eff_loader)
 ENDIF()
 

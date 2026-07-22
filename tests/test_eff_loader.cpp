@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include "client/audio/eff_loader.h"
+#include "client/willeq_database.h"
 
 #include <filesystem>
 #include <fstream>
@@ -15,6 +16,40 @@ static std::string getEqClientPath() {
     return env ? env : EQ_CLIENT_DATA_PATH;
 }
 static const std::string EQ_PATH = getEqClientPath();
+
+#ifndef WILLEQ_DB_PATH
+#define WILLEQ_DB_PATH "data/willeq.db"
+#endif
+
+// EffLoader::getMp3File() (and getSoundAsset() indirectly via other tests
+// in this binary) reads from WilleqDatabase's global instance — mp3 index
+// data no longer comes from mp3index.txt (loadMp3Index() is now a no-op
+// stub; see src/client/audio/eff_loader.cpp). Open the real willeq.db and
+// install it as the global instance for the whole test binary, same
+// pattern as tests/test_spell_database.cpp.
+namespace {
+EQT::WilleqDatabase g_willeq_db;
+bool g_willeq_db_available = false;
+
+class WilleqDbEnvironment : public ::testing::Environment {
+public:
+    void SetUp() override {
+        const char* env_path = std::getenv("WILLEQ_DB_PATH");
+        std::string db_path = env_path ? env_path : WILLEQ_DB_PATH;
+        std::ifstream probe(db_path);
+        if (probe.good()) {
+            probe.close();
+            if (g_willeq_db.open(db_path)) {
+                EQT::WilleqDatabase::setGlobalInstance(&g_willeq_db);
+                g_willeq_db_available = true;
+            }
+        }
+    }
+};
+
+::testing::Environment* const g_willeq_db_env =
+    ::testing::AddGlobalTestEnvironment(new WilleqDbEnvironment);
+} // namespace
 
 // =============================================================================
 // EffSoundEntry Structure Tests
@@ -391,6 +426,10 @@ TEST_F(EffLoaderZoneTest, SoundTypeDistribution) {
 // =============================================================================
 
 TEST(EffLoaderMp3Test, DefaultMp3Index) {
+    if (!g_willeq_db_available) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
     // Load from non-existent path to get defaults
     EffLoader::loadMp3Index("/nonexistent/path");
 

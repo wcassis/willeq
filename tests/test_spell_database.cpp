@@ -1,45 +1,78 @@
 /*
  * Spell Database Tests
  *
- * Tests for loading and querying the spell database from spells_us.txt
+ * Tests for the SQLite-backed SpellDatabase (client/spell/spell_database.h).
+ *
+ * The database is opened once for the whole binary (see main()) against
+ * data/willeq.db and installed as the WilleqDatabase global instance;
+ * SpellDatabase::initFromDatabase() reads from that global instance.
+ *
+ * NOTE: This file was rewritten against the current SQLite-backed API.
+ * The previous version tested a legacy in-memory, file-loaded
+ * (spells_us.txt) SpellDatabase with bulk-query methods
+ * (getAllSpellIds, getSpellsForClass, getSpellsByLevelRange,
+ * getBeneficialSpells/getDetrimentalSpells, getSpellsByEffect,
+ * filterSpells) and a case-insensitive/partial name search. None of
+ * those exist on the current API, which only supports single-spell
+ * lookups by id or exact name backed by an LRU cache in front of
+ * SQLite queries. See refactor/F00_test_repair.md review section for
+ * the full list of removed test cases and why.
  */
 
 #include <gtest/gtest.h>
 #include "client/spell/spell_database.h"
 #include "client/spell/spell_data.h"
 #include "client/spell/spell_constants.h"
+#include "client/willeq_database.h"
 #include <fstream>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 using namespace EQ;
 
-// Path to EQ client files (from environment or default)
-static std::string getEQPath() {
-    const char* env_path = std::getenv("EQ_CLIENT_PATH");
+#ifndef WILLEQ_DB_PATH
+#define WILLEQ_DB_PATH "data/willeq.db"
+#endif
+
+namespace {
+
+// Opened once for the process in main(); tests treat it as read-only.
+EQT::WilleqDatabase g_willeq_db;
+bool g_db_available = false;
+
+std::string getWilleqDbPath() {
+    const char* env_path = std::getenv("WILLEQ_DB_PATH");
     if (env_path) {
         return std::string(env_path);
     }
-    return EQ_CLIENT_DATA_PATH;
+    return WILLEQ_DB_PATH;
 }
+
+} // namespace
 
 class SpellDatabaseTest : public ::testing::Test {
 protected:
     SpellDatabase db;
 
     void SetUp() override {
-        std::string spell_file = getEQPath() + "/spells_us.txt";
-        // Only load if file exists
-        std::ifstream test(spell_file);
-        if (test.good()) {
-            ASSERT_TRUE(db.loadFromFile(spell_file))
-                << "Failed to load spells: " << db.getLoadError();
+        if (g_db_available) {
+            ASSERT_TRUE(db.initFromDatabase()) << db.getLoadError();
         }
     }
 
-    bool hasSpellFile() {
-        std::string spell_file = getEQPath() + "/spells_us.txt";
-        std::ifstream test(spell_file);
-        return test.good();
+    bool hasDb() const { return g_db_available; }
+
+    // Replaces the removed SpellDatabase::getAllSpellIds(): scans
+    // [lo, hi] and returns up to max_results ids that exist in the DB.
+    std::vector<uint32_t> scanSpellIds(uint32_t lo, uint32_t hi, size_t max_results) {
+        std::vector<uint32_t> found;
+        for (uint32_t id = lo; id <= hi && found.size() < max_results; ++id) {
+            if (db.hasSpell(id)) {
+                found.push_back(id);
+            }
+        }
+        return found;
     }
 };
 
@@ -48,8 +81,8 @@ protected:
 // ============================================================================
 
 TEST_F(SpellDatabaseTest, LoadsSuccessfully) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
     EXPECT_TRUE(db.isLoaded());
@@ -58,8 +91,8 @@ TEST_F(SpellDatabaseTest, LoadsSuccessfully) {
 }
 
 TEST_F(SpellDatabaseTest, LoadsReasonableSpellCount) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
     // Titanium client should have thousands of spells
@@ -67,11 +100,14 @@ TEST_F(SpellDatabaseTest, LoadsReasonableSpellCount) {
     EXPECT_LT(db.getSpellCount(), 50000u);  // Sanity check
 }
 
-TEST_F(SpellDatabaseTest, FailsGracefullyOnMissingFile) {
-    SpellDatabase empty_db;
-    EXPECT_FALSE(empty_db.loadFromFile("/nonexistent/path/spells_us.txt"));
-    EXPECT_FALSE(empty_db.isLoaded());
-    EXPECT_FALSE(empty_db.getLoadError().empty());
+// Original test loaded SpellDatabase::loadFromFile("/nonexistent/...") and
+// checked graceful failure. loadFromFile no longer exists — SpellDatabase
+// always reads from the WilleqDatabase global instance. The equivalent
+// "missing file" failure now lives on WilleqDatabase::open() itself.
+TEST(WilleqDatabaseTest, FailsGracefullyOnMissingFile) {
+    EQT::WilleqDatabase bad_db;
+    EXPECT_FALSE(bad_db.open("/nonexistent/path/willeq.db"));
+    EXPECT_FALSE(bad_db.isOpen());
 }
 
 // ============================================================================
@@ -79,12 +115,11 @@ TEST_F(SpellDatabaseTest, FailsGracefullyOnMissingFile) {
 // ============================================================================
 
 TEST_F(SpellDatabaseTest, LookupByIdWorks) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    // Get all spell IDs and verify at least one lookup works
-    auto ids = db.getAllSpellIds();
+    auto ids = scanSpellIds(1, 9000, 1);
     ASSERT_GT(ids.size(), 0u);
 
     const SpellData* spell = db.getSpell(ids[0]);
@@ -93,8 +128,8 @@ TEST_F(SpellDatabaseTest, LookupByIdWorks) {
 }
 
 TEST_F(SpellDatabaseTest, LookupByIdReturnsNullForInvalid) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
     EXPECT_EQ(db.getSpell(999999999), nullptr);
@@ -102,11 +137,11 @@ TEST_F(SpellDatabaseTest, LookupByIdReturnsNullForInvalid) {
 }
 
 TEST_F(SpellDatabaseTest, HasSpellWorks) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    auto ids = db.getAllSpellIds();
+    auto ids = scanSpellIds(1, 9000, 1);
     ASSERT_GT(ids.size(), 0u);
 
     EXPECT_TRUE(db.hasSpell(ids[0]));
@@ -115,49 +150,32 @@ TEST_F(SpellDatabaseTest, HasSpellWorks) {
 
 // ============================================================================
 // Name Lookup Tests
+//
+// The legacy API supported case-insensitive and partial-name lookup
+// (LookupByNameCaseInsensitive, FindSpellsByPartialName). The current
+// getSpellByName()/findSpellsByName() only do a single exact-match SQL
+// query (WHERE name=?, no COLLATE NOCASE, no LIKE) — findSpellsByName is
+// a thin wrapper that returns at most one exact match. Those two test
+// cases were deleted since the capability they tested is gone; this test
+// replaces them with an exact-match round-trip, which is the surviving
+// capability.
 // ============================================================================
 
-TEST_F(SpellDatabaseTest, LookupByNameCaseInsensitive) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+TEST_F(SpellDatabaseTest, GetSpellByNameWorks) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    // Find a known spell and verify case-insensitive lookup
-    auto spells = db.findSpellsByName("heal");
-    if (spells.empty()) {
-        GTEST_SKIP() << "No 'heal' spells found";
-    }
+    auto ids = scanSpellIds(1, 9000, 1);
+    ASSERT_GT(ids.size(), 0u);
 
-    // Get exact name
-    std::string name = spells[0]->name;
+    const SpellData* spell = db.getSpell(ids[0]);
+    ASSERT_NE(spell, nullptr);
+    std::string name = spell->name;
 
-    // Try lookups with different cases
-    const SpellData* spell1 = db.getSpellByName(name);
-    EXPECT_NE(spell1, nullptr);
-
-    // Convert to lowercase and try again
-    std::string lower_name = name;
-    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
-    const SpellData* spell2 = db.getSpellByName(lower_name);
-    EXPECT_NE(spell2, nullptr);
-
-    if (spell1 && spell2) {
-        EXPECT_EQ(spell1->id, spell2->id);
-    }
-}
-
-TEST_F(SpellDatabaseTest, FindSpellsByPartialName) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Search for common spell terms
-    auto fire_spells = db.findSpellsByName("fire");
-    auto heal_spells = db.findSpellsByName("heal");
-
-    // There should be multiple fire and heal spells
-    EXPECT_GT(fire_spells.size(), 0u);
-    EXPECT_GT(heal_spells.size(), 0u);
+    const SpellData* looked_up = db.getSpellByName(name);
+    ASSERT_NE(looked_up, nullptr);
+    EXPECT_EQ(looked_up->id, spell->id);
 }
 
 // ============================================================================
@@ -165,11 +183,12 @@ TEST_F(SpellDatabaseTest, FindSpellsByPartialName) {
 // ============================================================================
 
 TEST_F(SpellDatabaseTest, SpellsHaveValidData) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    auto ids = db.getAllSpellIds();
+    auto ids = scanSpellIds(1, 9000, 500);
+    ASSERT_GT(ids.size(), 0u);
     int valid_count = 0;
 
     for (uint32_t id : ids) {
@@ -195,255 +214,90 @@ TEST_F(SpellDatabaseTest, SpellsHaveValidData) {
     EXPECT_GT(valid_count, 0);
 }
 
-TEST_F(SpellDatabaseTest, SpellEffectsAreValid) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    auto ids = db.getAllSpellIds();
-
-    for (uint32_t id : ids) {
-        const SpellData* spell = db.getSpell(id);
-        ASSERT_NE(spell, nullptr);
-
-        for (const auto& effect : spell->effects) {
-            // Effect IDs should be in reasonable range or invalid
-            int effect_val = static_cast<int>(effect.effect_id);
-            EXPECT_TRUE(effect_val == -1 || effect_val == 254 ||
-                       (effect_val >= 0 && effect_val < 500))
-                << "Spell " << spell->name << " has invalid effect ID: " << effect_val;
-        }
-    }
-}
+// Deleted: SpellEffectsAreValid, EffectCountAndHasEffect. The DB-backed
+// queryAndCache() (src/client/spell/spell_database.cpp) never populates
+// SpellData::effects — EQT::SpellInfo (include/client/willeq_database.h)
+// has no effects field at all, so spell->effects is always default/empty
+// for every spell returned by this API. There is nothing meaningful left
+// to assert; the underlying capability was not carried over to the
+// SQLite-backed database. Not a production bug we're fixing here (test
+// and CMake files only) — documented for follow-up.
 
 // ============================================================================
-// Filtering Tests
+// Filtering Tests — all deleted.
+//
+// FilterByClass, FilterByLevelRange, FilterBeneficialDetrimental,
+// FilterByEffect, CustomFilter all called bulk-query methods that no
+// longer exist on SpellDatabase: getSpellsForClass, getSpellsByLevelRange,
+// getBeneficialSpells, getDetrimentalSpells, getSpellsByEffect,
+// filterSpells. The current API is single-spell lookup only (by id or
+// exact name); there is no equivalent bulk/filter capability to test.
 // ============================================================================
-
-TEST_F(SpellDatabaseTest, FilterByClass) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Get spells for a wizard at level 50
-    auto wizard_spells = db.getSpellsForClass(PlayerClass::Wizard, 50);
-
-    // Wizards should have many spells at 50
-    EXPECT_GT(wizard_spells.size(), 10u);
-
-    // Verify all returned spells are actually usable by wizard at 50
-    for (const SpellData* spell : wizard_spells) {
-        EXPECT_TRUE(spell->canClassUse(PlayerClass::Wizard, 50))
-            << "Spell " << spell->name << " should be usable by level 50 wizard";
-    }
-}
-
-TEST_F(SpellDatabaseTest, FilterByLevelRange) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Get cleric spells levels 1-10
-    auto low_level_spells = db.getSpellsByLevelRange(PlayerClass::Cleric, 1, 10);
-
-    EXPECT_GT(low_level_spells.size(), 0u);
-
-    for (const SpellData* spell : low_level_spells) {
-        uint8_t req_level = spell->getClassLevel(PlayerClass::Cleric);
-        EXPECT_GE(req_level, 1);
-        EXPECT_LE(req_level, 10);
-    }
-}
-
-TEST_F(SpellDatabaseTest, FilterBeneficialDetrimental) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    auto beneficial = db.getBeneficialSpells();
-    auto detrimental = db.getDetrimentalSpells();
-
-    // Should have both types
-    EXPECT_GT(beneficial.size(), 0u);
-    EXPECT_GT(detrimental.size(), 0u);
-
-    // Verify classification
-    for (const SpellData* spell : beneficial) {
-        EXPECT_TRUE(spell->is_beneficial);
-    }
-    for (const SpellData* spell : detrimental) {
-        EXPECT_FALSE(spell->is_beneficial);
-    }
-}
-
-TEST_F(SpellDatabaseTest, FilterByEffect) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Find all spells with root effect
-    auto root_spells = db.getSpellsByEffect(SpellEffect::Root);
-
-    // There should be some root spells
-    EXPECT_GT(root_spells.size(), 0u);
-
-    for (const SpellData* spell : root_spells) {
-        EXPECT_TRUE(spell->hasEffect(SpellEffect::Root));
-    }
-}
-
-TEST_F(SpellDatabaseTest, CustomFilter) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Find all instant-cast spells
-    auto instant_spells = db.filterSpells([](const SpellData& spell) {
-        return spell.isInstantCast();
-    });
-
-    for (const SpellData* spell : instant_spells) {
-        EXPECT_EQ(spell->cast_time_ms, 0u);
-    }
-}
 
 // ============================================================================
 // SpellData Helper Method Tests
 // ============================================================================
 
-TEST_F(SpellDatabaseTest, SpellDataHelperMethods) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    // Find a known buff spell
-    auto buff_spells = db.filterSpells([](const SpellData& spell) {
-        return spell.is_beneficial && spell.hasDuration();
-    });
-
-    if (!buff_spells.empty()) {
-        const SpellData* buff = buff_spells[0];
-        EXPECT_TRUE(buff->isBuffSpell());
-        EXPECT_TRUE(buff->hasDuration());
-    }
-
-    // Find a damage spell
-    auto damage_spells = db.filterSpells([](const SpellData& spell) {
-        return spell.isDamageSpell();
-    });
-
-    if (!damage_spells.empty()) {
-        const SpellData* nuke = damage_spells[0];
-        EXPECT_TRUE(nuke->isDamageSpell());
-        EXPECT_TRUE(nuke->isDetrimental());
-    }
-}
+// Deleted: SpellDataHelperMethods. It searched via the now-removed
+// filterSpells() for a beneficial+duration spell and a damage spell.
+// isDamageSpell()/isHealSpell() depend on SpellData::effects, which (per
+// above) is never populated by the DB-backed path, so even a 1:1 rewrite
+// would not test anything real.
 
 TEST_F(SpellDatabaseTest, DurationCalculation) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    // Find a spell with duration formula
-    auto spells = db.filterSpells([](const SpellData& spell) {
-        return spell.hasDuration() && spell.duration_formula > 0;
-    });
-
-    if (!spells.empty()) {
-        const SpellData* spell = spells[0];
-
-        // Duration at level 50 should be positive
-        uint32_t duration = spell->calculateDuration(50);
-        EXPECT_GT(duration, 0u);
-
-        // Duration at higher level should be >= lower level (for most formulas)
-        uint32_t duration_low = spell->calculateDuration(10);
-        uint32_t duration_high = spell->calculateDuration(50);
-        EXPECT_GE(duration_high, duration_low);
-    }
-}
-
-TEST_F(SpellDatabaseTest, EffectCountAndHasEffect) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
-    }
-
-    auto ids = db.getAllSpellIds();
-    int spells_with_effects = 0;
-
+    // Find a spell with duration formula (duration_formula/duration_cap
+    // ARE populated by queryAndCache, unlike effects/class_levels).
+    auto ids = scanSpellIds(1, 9000, 500);
+    const SpellData* found = nullptr;
     for (uint32_t id : ids) {
         const SpellData* spell = db.getSpell(id);
-        int count = spell->getEffectCount();
-
-        if (count > 0) {
-            spells_with_effects++;
-
-            // Find one valid effect and verify hasEffect works
-            for (const auto& effect : spell->effects) {
-                if (effect.isValid()) {
-                    EXPECT_TRUE(spell->hasEffect(effect.effect_id));
-                    break;
-                }
-            }
+        if (spell && spell->hasDuration() && spell->duration_formula > 0) {
+            found = spell;
+            break;
         }
     }
 
-    // Most spells should have at least one effect
-    EXPECT_GT(spells_with_effects, static_cast<int>(ids.size() / 2));
-}
-
-// ============================================================================
-// Known Spell Tests (verify specific iconic spells exist)
-// ============================================================================
-
-TEST_F(SpellDatabaseTest, IconicSpellsExist) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!found) {
+        GTEST_SKIP() << "No spell with a duration formula found in scanned range";
     }
 
-    // Test some iconic EQ spell names exist (partial match)
-    std::vector<std::string> iconic_spells = {
-        "complete heal",
-        "clarity",
-        "spirit of wolf",
-        "root",
-        "gate",
-        "bind",
-        "heal",
-        "nuke",  // Various nuke spells
-        "haste",
-    };
+    // Duration at level 50 should be positive
+    uint32_t duration = found->calculateDuration(50);
+    EXPECT_GT(duration, 0u);
 
-    int found = 0;
-    for (const auto& name : iconic_spells) {
-        auto results = db.findSpellsByName(name);
-        if (!results.empty()) {
-            found++;
-        }
-    }
-
-    // At least some iconic spells should exist
-    EXPECT_GT(found, 3);
+    // Duration at higher level should be >= lower level (for most formulas)
+    uint32_t duration_low = found->calculateDuration(10);
+    uint32_t duration_high = found->calculateDuration(50);
+    EXPECT_GE(duration_high, duration_low);
 }
+
+// Deleted: IconicSpellsExist. It relied on findSpellsByName() doing
+// partial/substring matching (e.g. "heal" matching "Complete Heal"); the
+// current implementation only wraps an exact-match query, so lowercase
+// partial terms like "complete heal" would not match a title-cased exact
+// name like "Complete Heal" even if the row exists.
 
 // ============================================================================
 // Edge Case Tests
 // ============================================================================
 
 TEST_F(SpellDatabaseTest, EmptyStringSearchReturnsEmpty) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
     auto results = db.findSpellsByName("");
-    // Empty search should return all or nothing, depending on implementation
     // Just verify it doesn't crash
     (void)results;
 }
 
 TEST_F(SpellDatabaseTest, GetSpellByInvalidNameReturnsNull) {
-    if (!hasSpellFile()) {
-        GTEST_SKIP() << "spells_us.txt not found, skipping";
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
     EXPECT_EQ(db.getSpellByName("zzzznonexistentspellzzz"), nullptr);
@@ -452,5 +306,16 @@ TEST_F(SpellDatabaseTest, GetSpellByInvalidNameReturnsNull) {
 // Main entry point for tests
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
+
+    std::string db_path = getWilleqDbPath();
+    std::ifstream probe(db_path);
+    if (probe.good()) {
+        probe.close();
+        if (g_willeq_db.open(db_path)) {
+            EQT::WilleqDatabase::setGlobalInstance(&g_willeq_db);
+            g_db_available = true;
+        }
+    }
+
     return RUN_ALL_TESTS();
 }

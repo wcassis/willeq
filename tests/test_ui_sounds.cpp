@@ -222,6 +222,11 @@ protected:
         }
     }
 
+    // NOTE: GTEST_SKIP() only unwinds the function it's called directly
+    // in — calling it from a helper like this does not skip the calling
+    // TEST_F. Kept for documentation of intent; callers must also check
+    // assetsLoaded_ themselves (see SoundIdsExistInSoundAssets /
+    // SoundFilenamesMatchSoundAssets below) and return immediately.
     void SkipIfNoAssets() {
         if (!assetsLoaded_) {
             GTEST_SKIP() << "SoundAssets.txt not found or failed to load";
@@ -231,6 +236,9 @@ protected:
 
 TEST_F(UISoundsIntegrationTest, SoundIdsExistInSoundAssets) {
     SkipIfNoAssets();
+    if (!assetsLoaded_) {
+        return;
+    }
 
     // Verify all UI sound IDs exist in SoundAssets.txt
     for (int i = 0; i < static_cast<int>(UISoundType::Count); ++i) {
@@ -247,6 +255,9 @@ TEST_F(UISoundsIntegrationTest, SoundIdsExistInSoundAssets) {
 
 TEST_F(UISoundsIntegrationTest, SoundFilenamesMatchSoundAssets) {
     SkipIfNoAssets();
+    if (!assetsLoaded_) {
+        return;
+    }
 
     // Verify filenames match what's in SoundAssets.txt
     for (int i = 0; i < static_cast<int>(UISoundType::Count); ++i) {
