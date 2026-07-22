@@ -297,6 +297,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_diagnostics.cpp
         src/client/graphics/renderer_debug.cpp
         src/client/graphics/renderer_overlays.cpp
+        src/client/graphics/renderer_player_physics.cpp
         src/client/graphics/renderer_effects.cpp
         src/client/graphics/renderer_gpu_upload.cpp
         src/client/graphics/renderer_entities.cpp
