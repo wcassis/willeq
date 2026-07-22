@@ -73,7 +73,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F07 | Stat getters + misc low-coupling clusters | eq_player_info.cpp | 1,913 | done | slot3 | `564bffd` |
 | F08 | Movement + pathfinding + water + keyboard | eq_movement.cpp | 1,861 | done | slot1 | `9d2ac94` |
 | F09 | Zone geometry + zone change/teardown | eq_zone.cpp | 755 | done | slot2 | `ca3b032` |
-| F10 | Bridge processing (intents/events) + InitGraphics | eq_bridge.cpp | ~1,750 | | | |
+| F10 | Bridge processing (intents/events) + InitGraphics + loot flow + audio init | eq_bridge.cpp | 1,739 | done | slot1 | `beebd3f` |
 | F11 | Entity/spawn tracking + appearance + world objects | eq_entities.cpp | 2,340 | done | slot2 | `3463909` |
 | F12 | Group / raid / pet | eq_group.cpp | 603 | done | slot2 | `c8ff48b` |
 | F13 | Combat resolution | eq_combat_actions.cpp | 495 | done | slot1 | `6ad6bc5` |
@@ -87,7 +87,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | 476 | done | slot2 | `2060d2c` |
 | F17 | loadZoneSequential (phase-split) + zone load/unload/env | renderer_zone_load.cpp (possibly 2 files) | ~3,330 | | | |
 | F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp | ~1,955 | | | |
-| F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | ~1,760 | | | |
+| F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | 1,550 | done | slot2 | `bb180cb` |
 | F20 | Simulation bridge | renderer_sim_bridge.cpp | ~1,040 | | | |
 | F21 | Entity/inventory/combat façades + GPU upload thread | renderer_entities.cpp, renderer_gpu_upload.cpp | 863 | done | slot3 | `aa158a4` |
 | F22 | processFrame + sub-passes | renderer_frame.cpp | ~1,100 | | | |
