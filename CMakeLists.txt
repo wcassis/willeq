@@ -298,6 +298,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_debug.cpp
         src/client/graphics/renderer_overlays.cpp
         src/client/graphics/renderer_player_physics.cpp
+        src/client/graphics/renderer_zone_draw.cpp
+        src/client/graphics/renderer_zone_stream.cpp
         src/client/graphics/renderer_effects.cpp
         src/client/graphics/renderer_sim_bridge.cpp
         src/client/graphics/renderer_gpu_upload.cpp
