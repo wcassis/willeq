@@ -30,6 +30,31 @@ New file naming: `src/client/eq_<domain>.cpp`,
 `src/client/graphics/sim_<domain>.cpp`, `src/client/graphics/entity_<domain>.cpp`.
 Each new file must be added to CMakeLists.txt.
 
+## Test baseline (recorded 2026-07-22, slot1 @ 93a3c2a)
+
+`willeq` and 83 tools build. 840 ctest cases: 98% pass. Pre-existing failures
+are recorded in `refactor/test_baseline.txt` — **unit acceptance means zero
+NEW failures relative to that file**, not a fully green suite. Compare with:
+`ctest ... | grep -E '\(Failed\)|\(Not Run\)'` vs the baseline file.
+
+Pre-existing breakage (repair tracked as F00, see below):
+- 14 test targets fail to BUILD. Most are link errors — production code grew a
+  `WilleqDatabase` dependency (`getDbString`, `getMusicFile`) never added to
+  the tests' minimal source lists (test_string_database, test_eff_loader, and
+  the audio test family). `test_spell_database` is API drift: it calls
+  `loadFromFile`/`getAllSpellIds`/`getSpellsForClass`/`getSpellsByLevelRange`/
+  `getBeneficialSpells`, none of which exist on `EQ::SpellDatabase` anymore.
+- 6 tests genuinely fail: LoggingTest.ModuleCount_MatchesExpected,
+  ComprehensiveZoneTest.{ClassicZones,OverallSummary},
+  DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries,
+  UISoundsIntegrationTest.{SoundIdsExistInSoundAssets,SoundFilenamesMatchSoundAssets}.
+
+## Unit — F00 (test repair, before or alongside F01)
+
+| Unit | Scope | Status | Slot | Commit |
+|---|---|---|---|---|
+| F00 | Fix 13 link-broken test targets (add missing sources to tests/CMakeLists.txt lists). Rewrite test_spell_database against the current SpellDatabase API. Investigate the 6 genuinely-failing tests; fix or document each as environment-dependent in test_baseline.txt. | | | |
+
 ## Units — eq.cpp
 
 | Unit | Scope (module_map clusters) | Target file(s) | ~LOC | Status | Slot | Commit |
