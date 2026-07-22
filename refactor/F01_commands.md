@@ -113,11 +113,16 @@ body).
 - `verify_move_only.py fable..HEAD`: run after committing (see below);
   reported PASS — no substantive/non-move lines beyond the mechanical cut
   and the new file's boilerplate include block and header comment.
-- `check_file_sizes.sh fable`: `eq.cpp` ok (17,195 lines, under warn
-  threshold... note: still >1,500 but eq.cpp is the legacy file, exempt per
-  decisions.md until its own split unit lands); `eq_commands.cpp` WARN
-  (2,568 > 1,500 warn threshold, < 3,000 fail threshold) — expected and
-  accepted per the plan.
+- `check_file_sizes.sh fable`: the script itself has no repo-root
+  auto-detection override, so it was run with explicit `--files` (equivalent
+  result) against both changed files. Raw output: `eq.cpp` FAILs the script's
+  blanket >3,000-line threshold at 17,195 lines — expected and accepted, since
+  `docs/decisions.md` states legacy files are exempt from the ceiling until
+  their own split unit lands (eq.cpp's remaining splits are tracked as later
+  Batch F units, not this one). `eq_commands.cpp` WARN (2,568 > 1,500 warn
+  threshold, < 3,000 fail threshold) — expected and accepted per the plan's
+  own acceptance text ("eq_commands.cpp may WARN but must not FAIL"), which
+  is satisfied.
 
 **Deviations:** none in scope/behavior. Two naming corrections vs the plan's
 prose (plan said "runPmem", actual symbol is `runPmemDiagnostics"; plan's
