@@ -69,13 +69,13 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F03 | Login + world connection | eq_login_world.cpp | 672 | done | slot1 | `75fb045` |
 | F04 | Guild + GM commands (UCS cluster turned out to be dead commented code — live UCS already in ucs.cpp; no eq_ucs.cpp created) | eq_guild.cpp, eq_gm.cpp | 415 | done | slot2 | `7920faa` |
 | F05 | Trade + loot/vendor/bank/trainer + inventory + recipes | eq_merchant.cpp | 1,528 | done | slot1 | `8065e59` |
-| F06 | Chat + text messages | eq_chat.cpp | ~540 | | | |
+| F06 | Chat + text messages | eq_chat.cpp | 510 | done | slot1 | `369a5b1` |
 | F07 | Stat getters + misc low-coupling clusters | eq_player_info.cpp | 1,913 | done | slot3 | `564bffd` |
 | F08 | Movement + pathfinding + water + keyboard | eq_movement.cpp | ~2,100 | | | |
 | F09 | Zone geometry + zone change/teardown | eq_zone.cpp | ~800 | | | |
 | F10 | Bridge processing (intents/events) + InitGraphics | eq_bridge.cpp | ~1,750 | | | |
 | F11 | Entity/spawn tracking + appearance + world objects | eq_entities.cpp | ~2,700 | | | |
-| F12 | Group / raid / pet | eq_group.cpp | ~600 | | | |
+| F12 | Group / raid / pet | eq_group.cpp | 603 | done | slot2 | `c8ff48b` |
 | F13 | Combat resolution | eq_combat_actions.cpp | ~495 | | | |
 
 ## Units — irrlicht_renderer.cpp
@@ -96,7 +96,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 
 | Unit | Scope | Target file(s) | ~LOC | Status | Slot | Commit |
 |---|---|---|---|---|---|---|
-| F23 | simulation_worker compute passes | sim_particles.cpp, sim_boids.cpp, sim_weather.cpp, sim_visibility.cpp, sim_entity_sync.cpp, sim_animation.cpp | ~3,800 | | | |
+| F23 | simulation_worker compute passes | sim_particles.cpp, sim_boids.cpp, sim_weather.cpp, sim_visibility.cpp, sim_entity_sync.cpp, sim_animation.cpp | 3,882 | done | slot3 | `bb22559` |
 | F24 | entity_renderer clean lifts (cast bars, combat anim, spatial grid, equipment, boats) | entity_castbars.cpp, entity_combat_anim.cpp, entity_spatial.cpp, entity_equipment.cpp | ~1,000 | | | |
 
 ## Sequencing
