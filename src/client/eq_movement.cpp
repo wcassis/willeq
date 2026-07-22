@@ -1,0 +1,1943 @@
+// EverQuest movement cluster: pathfinding, water state, and keyboard
+// control. High entanglement with combat/entity/zone code but a pure
+// TU move — no behavior change, no interface change.
+//
+// Split out of eq.cpp (Batch F, unit F08):
+//  - High-level movement: Move, MoveToEntity, MoveToEntityWithinRange,
+//    Follow, StopFollow, StartCombatMovement(name), UpdateCombatMovement.
+//  - Face/MoveTo/StopMovement/UpdateMovement (UpdateMovement is the core
+//    per-tick movement state machine, ~450 lines).
+//  - SendPositionUpdate + movement-geometry helpers: CalculateHeading,
+//    CalculateDistance, CalculateDistance2D, HasReachedDestination.
+//  - Pathfinding: LoadPathfinder, FindPath, MoveToWithPath, FollowPath.
+//  - MovementMode / PositionState: SetMovementMode, SetPositionState.
+//  - Jump / MovementHistory: SendJump, SendMovementHistory, Jump,
+//    UpdateJump.
+//  - Water state: UpdateWaterState, OnEnterWater, OnExitWater,
+//    GetSwimSpeed.
+//  - Keyboard movement: StartMove*/StopMove*/Turn*, UpdateKeyboardMovement,
+//    GetMovementSpeed.
+// Moved verbatim, no behavior change. See refactor/F08_movement.md.
+//
+// NOTE: FindEntityByName / ListEntities (immediately following
+// HasReachedDestination in eq.cpp) are entity-lookup helpers, not movement
+// — left in eq.cpp for F11 (entities).
+//
+// NOTE: SafeQueueZonePacket (network helper sitting between SendMovementHistory
+// and Jump in eq.cpp) is also used by eq_zone.cpp — not exclusively
+// movement-used — left in eq.cpp.
+//
+// NOTE: StartUpdateLoop / StopUpdateLoop (sitting between Jump and
+// UpdateJump in eq.cpp) orchestrate both UpdateMovement() and
+// CombatManager::Update() — not movement-exclusive — left in eq.cpp.
+//
+// NOTE: QueuePacket (core networking, sitting between GetMovementSpeed and
+// the keyboard-control cluster in eq.cpp) stays in eq.cpp per the plan.
+//
+// NOTE: StartCombatMovement(uint16_t entity_id) — an overload of the
+// StartCombatMovement(name) moved above, sitting between QueuePacket and
+// the keyboard-control cluster — is not named in the plan's enumeration
+// and is not contiguous with either named cluster; left in eq.cpp and
+// flagged for orchestrator review (see unit review).
+
+#include "client/eq.h"
+#include "client/combat.h"
+#include "client/pathfinder_interface.h"
+#ifdef EQT_HAS_NAVMESH
+#include "client/pathfinder_nav_mesh.h"
+#endif
+#include "client/skill/skill_manager.h"
+#include "client/bridge/game_state_bridge.h"
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/eq/wld_loader.h"
+#endif
+#ifdef WITH_AUDIO
+#include "client/audio/water_sounds.h"
+#endif
+#include "common/logging.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <ctime>
+#include <map>
+#include <tuple>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// Movement constants
+const float DEFAULT_RUN_SPEED = 6.0f;     // Real EQ run speed based on good client testing
+const float DEFAULT_WALK_SPEED = 3.0f;    // Normal EQ walk speed (half of run)
+const float WALK_SPEED_THRESHOLD = 4.5f;  // Speed threshold for walk vs run animation
+const float POSITION_UPDATE_INTERVAL_MS = 200.0f;  // Real clients update every 200ms
+
+// Following constants
+const float FOLLOW_CLOSE_DISTANCE = 10.0f;   // Stop following when this close
+const float FOLLOW_FAR_DISTANCE = 30.0f;     // Full speed when this far
+const float FOLLOW_MIN_SPEED_MULT = 0.5f;    // Minimum speed multiplier when close
+const float FOLLOW_MAX_SPEED_MULT = 1.5f;    // Maximum speed multiplier when far
+
+void EverQuest::Move(float x, float y, float z)
+{
+	LOG_DEBUG(MOD_MAIN, "Move called: target=({:.2f}, {:.2f}, {:.2f})", x, y, z);
+	// Use pathfinding by default
+	MoveToWithPath(x, y, z);
+	
+	// Non-blocking - movement will be handled by the update system
+}
+
+void EverQuest::MoveToEntity(const std::string &name)
+{
+	Entity* entity = FindEntityByName(name);
+	if (entity) {
+		if (s_debug_level >= 1) {
+			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
+				entity->name, entity->x, entity->y, entity->z) << std::endl;
+		}
+		LOG_DEBUG(MOD_MAIN, "MoveToEntity: Moving to {} at ({:.2f}, {:.2f}, {:.2f})", 
+			entity->name, entity->x, entity->y, entity->z);
+		Move(entity->x, entity->y, entity->z);  // This will block until complete
+	} else {
+		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+	}
+}
+
+void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_distance)
+{
+	Entity* entity = FindEntityByName(name);
+	if (entity) {
+		if (s_debug_level >= 1) {
+			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
+				entity->name, entity->x, entity->y, entity->z, stop_distance) << std::endl;
+		}
+		
+		// Calculate current distance
+		float dx = entity->x - m_x;
+		float dy = entity->y - m_y;
+		float dz = entity->z - m_z;
+		float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+		
+		// If we're already within range, don't move
+		if (dist <= stop_distance) {
+			if (s_debug_level >= 1) {
+				std::cout << fmt::format("Already within range ({:.1f} <= {:.1f})", dist, stop_distance) << std::endl;
+			}
+			return;
+		}
+		
+		// Predict where the target will be based on its movement
+		// Use a prediction time based on how long it would take us to reach them
+		float our_speed = 4.3f;  // Approximate run speed
+		float time_to_reach = dist / our_speed;
+		
+		// Limit prediction time to avoid overshooting
+		if (time_to_reach > 2.0f) time_to_reach = 2.0f;
+		
+		// Calculate predicted position
+		float predicted_x = entity->x + entity->delta_x * time_to_reach;
+		float predicted_y = entity->y + entity->delta_y * time_to_reach;
+		float predicted_z = entity->z + entity->delta_z * time_to_reach;
+		
+		// Calculate direction to predicted position
+		dx = predicted_x - m_x;
+		dy = predicted_y - m_y;
+		dz = predicted_z - m_z;
+		dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+		
+		// Calculate position to stop at (stop_distance units away from predicted position)
+		// We want to move to 80% of the stop distance to ensure we're well within range
+		float move_ratio = (dist - stop_distance * 0.8f) / dist;
+		float target_x = m_x + dx * move_ratio;
+		float target_y = m_y + dy * move_ratio;
+		float target_z = m_z + dz * move_ratio;
+		
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Predictive targeting: entity at ({:.1f},{:.1f},{:.1f}), velocity ({:.1f},{:.1f},{:.1f})", entity->x, entity->y, entity->z, entity->delta_x, entity->delta_y, entity->delta_z);
+			LOG_DEBUG(MOD_MAIN, "Predicted position in {:.1f}s: ({:.1f},{:.1f},{:.1f})", time_to_reach, predicted_x, predicted_y, predicted_z);
+		}
+		
+		LOG_DEBUG(MOD_MAIN, "MoveToEntityWithinRange: Moving to ({:.2f}, {:.2f}, {:.2f}) to be within {:.1f} of {}", 
+			target_x, target_y, target_z, stop_distance, entity->name);
+		
+		// For combat movement, don't block - let UpdateCombatMovement handle continuous tracking
+		if (m_in_combat_movement) {
+			// Just set the target and let the movement system handle it
+			m_target_x = target_x;
+			m_target_y = target_y;
+			m_target_z = target_z;
+			m_is_moving = true;
+			m_heading = CalculateHeading(m_x, m_y, predicted_x, predicted_y);
+			
+			if (s_debug_level >= 1) {
+				LOG_DEBUG(MOD_MAIN, "Non-blocking combat movement initiated");
+			}
+		} else {
+			Move(target_x, target_y, target_z);  // This will block until complete
+		}
+	} else {
+		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+	}
+}
+
+void EverQuest::Follow(const std::string &name)
+{
+	Entity* entity = FindEntityByName(name);
+	if (entity) {
+		m_follow_target = entity->name;  // Store the actual entity name
+		std::cout << fmt::format("Following {}", entity->name) << std::endl;
+		
+		// Calculate initial path if pathfinding is enabled
+		if (m_use_pathfinding && m_pathfinder) {
+			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding enabled, m_pathfinder={}", 
+				m_pathfinder ? "valid" : "null");
+			float dist = CalculateDistance2D(m_x, m_y, entity->x, entity->y);
+			LOG_DEBUG(MOD_MAIN, "Follow: Distance to target: {:.2f}, follow_distance: {:.2f}", 
+				dist, m_follow_distance);
+			if (dist > m_follow_distance) {
+				// Find path from current position to target
+				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", m_x, m_y, m_z, entity->x, entity->y, entity->z);
+				if (FindPath(m_x, m_y, m_z, entity->x, entity->y, entity->z)) {
+					// Start following the path
+					m_current_path_index = 0;
+					m_is_moving = true;
+					LOG_DEBUG(MOD_MOVEMENT, "Follow: Path calculated successfully with {} waypoints",
+						m_current_path.size());
+					for (size_t i = 0; i < std::min(m_current_path.size(), size_t(5)); i++) {
+						LOG_DEBUG(MOD_MOVEMENT, "  Waypoint {}: ({:.2f},{:.2f},{:.2f})",
+							i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z);
+					}
+				} else {
+					// Pathfinding failed, use direct movement
+					LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding failed, using direct movement");
+					m_target_x = entity->x;
+					m_target_y = entity->y;
+					m_target_z = entity->z;
+					m_is_moving = true;
+				}
+			}
+		} else {
+			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding disabled (m_use_pathfinding={}, m_pathfinder={})", m_use_pathfinding, m_pathfinder ? "valid" : "null");
+		}
+	} else {
+		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+	}
+}
+
+void EverQuest::StopFollow()
+{
+	if (!m_follow_target.empty()) {
+		std::cout << fmt::format("Stopped following {}", m_follow_target) << std::endl;
+		m_follow_target.clear();
+	}
+	StopMovement();
+}
+
+void EverQuest::StartCombatMovement(const std::string &name, float stop_distance)
+{
+	Entity* entity = FindEntityByName(name);
+	if (entity) {
+		m_combat_target = entity->name;
+		m_combat_stop_distance = stop_distance;
+		m_in_combat_movement = true;
+		m_last_combat_movement_update = std::chrono::steady_clock::now();
+
+		// Phase 7.6: Sync to GameState
+		m_game_state.combat().setCombatTarget(entity->name);
+		m_game_state.combat().setCombatStopDistance(stop_distance);
+		m_game_state.combat().setInCombatMovement(true);
+		m_game_state.combat().setLastCombatMovementUpdate(m_last_combat_movement_update);
+
+		if (s_debug_level >= 1) {
+			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}",
+				entity->name, stop_distance) << std::endl;
+		}
+
+		// Start initial movement immediately
+		UpdateCombatMovement();
+	} else {
+		std::cout << fmt::format("Combat target '{}' not found", name) << std::endl;
+	}
+}
+
+void EverQuest::UpdateCombatMovement()
+{
+	if (!m_in_combat_movement || m_combat_target.empty()) {
+		return;
+	}
+	
+	Entity* entity = FindEntityByName(m_combat_target);
+	if (!entity) {
+		// Target disappeared
+		m_in_combat_movement = false;
+		m_game_state.combat().setInCombatMovement(false);  // Phase 7.6
+		StopMovement();
+		return;
+	}
+	
+	// Calculate current distance
+	float dx = entity->x - m_x;
+	float dy = entity->y - m_y;
+	float dz = entity->z - m_z;
+	float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+	
+	// Check if we're within range
+	if (dist <= m_combat_stop_distance) {
+		// We're in range, stop if moving
+		if (m_is_moving) {
+			StopMovement();
+		}
+		// Keep combat movement active to track if target moves away
+		return;
+	}
+	
+	// We're out of range, need to move closer
+	// Only update movement if target has moved significantly or enough time has passed
+	auto now = std::chrono::steady_clock::now();
+	auto time_since_update = std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - m_last_combat_movement_update).count();
+	
+	// For hunting, always update to track the moving target
+	bool should_update = false;
+	bool is_hunting = m_combat_manager && m_combat_manager->IsAutoHunting();
+	
+	if (is_hunting) {
+		// When hunting, always update position to track moving targets
+		should_update = true;
+	} else {
+		// Normal combat movement - update less frequently
+		int update_interval = 500;
+		float movement_threshold = 5.0f;
+		
+		if (time_since_update >= update_interval) {
+			should_update = true;
+		} else if (m_is_moving) {
+			// Check if target moved significantly from where we're heading
+			if (!m_current_path.empty()) {
+				// Check distance from path endpoint to target
+				const auto& endpoint = m_current_path.back();
+				float path_dx = std::abs(entity->x - endpoint.x);
+				float path_dy = std::abs(entity->y - endpoint.y);
+				if (path_dx > movement_threshold || path_dy > movement_threshold) {
+					should_update = true;
+					LOG_DEBUG(MOD_MOVEMENT, "Target moved {:.1f} units from path endpoint, updating",
+						std::sqrt(path_dx*path_dx + path_dy*path_dy));
+				}
+			} else {
+				// Direct movement - check against target position
+				float target_dx = std::abs(entity->x - m_target_x);
+				float target_dy = std::abs(entity->y - m_target_y);
+				if (target_dx > movement_threshold || target_dy > movement_threshold) {
+					should_update = true;
+				}
+			}
+		}
+	}
+	
+	if (should_update || !m_is_moving) {
+		// Only update direct target if we're not following a path
+		bool following_path = !m_current_path.empty() && m_current_path_index < m_current_path.size();
+		
+		if (!following_path) {
+			// Use predictive targeting for hunting
+			if (is_hunting) {
+				// Predict where the target will be
+				float our_speed = 4.3f;
+				float time_to_reach = dist / our_speed;
+				if (time_to_reach > 1.0f) time_to_reach = 1.0f; // Shorter prediction for updates
+				
+				float predicted_x = entity->x + entity->delta_x * time_to_reach;
+				float predicted_y = entity->y + entity->delta_y * time_to_reach;
+				float predicted_z = entity->z + entity->delta_z * time_to_reach;
+				
+				// Recalculate direction to predicted position
+				dx = predicted_x - m_x;
+				dy = predicted_y - m_y;
+				dz = predicted_z - m_z;
+				dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+			}
+			
+			// Calculate new position to move to
+			float move_ratio = (dist - m_combat_stop_distance * 0.8f) / dist;
+			m_target_x = m_x + dx * move_ratio;
+			m_target_y = m_y + dy * move_ratio;
+			m_target_z = m_z + dz * move_ratio;
+			
+			// Update heading and start moving
+			m_heading = CalculateHeading(m_x, m_y, m_target_x, m_target_y);
+			
+			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", m_target_x, m_target_y, m_target_z);
+		} else {
+			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (path): Keeping target=({:.1f},{:.1f},{:.1f}), path_index={}/{}",
+				m_target_x, m_target_y, m_target_z, m_current_path_index, m_current_path.size());
+		}
+		
+		m_is_moving = true;
+		m_last_combat_movement_update = now;
+		
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", m_x, m_y, m_z, entity->name, entity->x, entity->y, entity->z, dist, m_combat_stop_distance);
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_is_moving set to {}",
+			m_target_x, m_target_y, m_target_z, m_is_moving);
+		
+		// For now, use direct movement for combat (like the working attack command)
+		// We can add pathfinding later once basic movement works
+		m_current_path.clear();
+		m_current_path_index = 0;
+		
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement using direct approach (no pathfinding)");
+	}
+}
+
+void EverQuest::Face(float x, float y, float z)
+{
+	// Calculate heading to face the given position
+	float new_heading = CalculateHeading(m_x, m_y, x, y);
+	
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", m_x, m_y, x, y, m_heading, new_heading);
+	}
+	
+	// Always update heading - even small changes should be sent
+	// The previous 0.1f threshold was preventing the face command from working
+	m_heading = new_heading;
+	SendPositionUpdate();
+}
+
+void EverQuest::FaceEntity(const std::string &name)
+{
+	Entity* entity = FindEntityByName(name);
+	if (entity) {
+		if (s_debug_level >= 2) {
+			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;
+		}
+		Face(entity->x, entity->y, entity->z);
+	} else {
+		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+	}
+}
+
+void EverQuest::MoveTo(float x, float y, float z)
+{
+	// Trace who's calling MoveTo
+	if (s_debug_level >= 1 && std::abs(x - m_x) < 0.1f && std::abs(y - m_y) < 0.1f) {
+		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, m_x, m_y, m_z);
+	}
+	
+	m_target_x = x;
+	m_target_y = y;
+	m_target_z = z;
+	m_is_moving = true;
+	
+	// Calculate initial heading towards target
+	float new_heading = CalculateHeading(m_x, m_y, x, y);
+	m_heading = new_heading;
+	// Send immediate position update to show the heading change
+	SendPositionUpdate();
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_is_moving={}", 
+			x, y, z, m_x, m_y, m_z, m_heading, m_is_moving);
+	}
+}
+
+void EverQuest::StopMovement()
+{
+	if (m_is_moving) {
+		m_is_moving = false;
+		m_animation = ANIM_STAND;
+
+		// Clear any active path
+		m_current_path.clear();
+		m_current_path_index = 0;
+
+		// Clear target coordinates so UpdateMovement doesn't keep moving back
+		m_target_x = m_target_y = m_target_z = 0.0f;
+
+		SendPositionUpdate();
+
+		if (s_debug_level >= 1) {
+			std::cout << "Movement stopped" << std::endl;
+		}
+	}
+}
+
+void EverQuest::UpdateMovement()
+{
+	// Process deferred zone change if approved
+	// This MUST be at the very start of UpdateMovement to process outside of any callback context
+	if (m_zone_change_approved) {
+		m_zone_change_approved = false;
+		LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
+		ProcessDeferredZoneChange();
+		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
+		return;  // Don't process movement while zone changing
+	}
+
+	// Update camp timer
+	UpdateCampTimer();
+
+	// Check distance to banker NPC - close bank if player moved too far
+	if (IsBankWindowOpen() && m_banker_npc_id != 0) {
+		auto it = m_entities.find(m_banker_npc_id);
+		if (it == m_entities.end()) {
+			// Banker NPC no longer exists (despawned, etc.)
+			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_banker_npc_id);
+			CloseBankWindow();
+		} else {
+			float dist = CalculateDistance2D(m_x, m_y, it->second.x, it->second.y);
+			if (dist > NPC_INTERACTION_DISTANCE) {
+				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
+					dist, NPC_INTERACTION_DISTANCE);
+				CloseBankWindow();
+				AddChatSystemMessage("You have moved too far from the banker.");
+			}
+		}
+	}
+
+	// Debug: Log target at start of UpdateMovement
+	static auto last_update_debug = std::chrono::steady_clock::now();
+	auto now = std::chrono::steady_clock::now();
+	if (m_in_combat_movement &&
+	    std::chrono::duration_cast<std::chrono::seconds>(now - last_update_debug).count() >= 1) {
+		LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement START: target=({:.1f},{:.1f},{:.1f}) is_moving={} path_size={}",
+			m_target_x, m_target_y, m_target_z, m_is_moving, m_current_path.size());
+		last_update_debug = now;
+	}
+	
+	// Update keyboard-based movement first
+	if (m_move_forward || m_move_backward || m_turn_left || m_turn_right) {
+		UpdateKeyboardMovement();
+		// Check for zone line collision
+		CheckZoneLine();
+		// SendPositionUpdate has internal 250ms throttling
+		SendPositionUpdate();
+		// Don't process other movement if using keyboard
+		return;
+	}
+	
+	// Update combat movement if active
+	if (m_in_combat_movement) {
+		UpdateCombatMovement();
+	}
+	
+	// Check if we're following someone
+	if (!m_follow_target.empty()) {
+		// Find the entity we're following
+		for (const auto& pair : m_entities) {
+			const Entity& entity = pair.second;
+			if (entity.name == m_follow_target) {
+				// Check if we're close enough
+				float dist = CalculateDistance2D(m_x, m_y, entity.x, entity.y);
+				float z_diff = std::abs(m_z - entity.z);
+				
+				// Log follow status periodically
+				static std::chrono::steady_clock::time_point last_follow_log = std::chrono::steady_clock::now();
+				auto now_follow = std::chrono::steady_clock::now();
+				auto elapsed_follow = std::chrono::duration_cast<std::chrono::milliseconds>(now_follow - last_follow_log);
+				
+				if (elapsed_follow.count() >= 1000 && s_debug_level >= 1) {
+					LOG_DEBUG(MOD_MAIN, "Following {}: Distance={:.1f} (stop at {:.1f}), Z-diff={:.1f}, Speed={:.1f}", m_follow_target, dist, m_follow_distance, z_diff, m_move_speed);
+					last_follow_log = now_follow;
+				}
+				
+				if (dist < m_follow_distance) {
+					// We're close enough, stop if we were moving
+					if (m_is_moving) {
+						if (s_debug_level >= 1) {
+							LOG_DEBUG(MOD_MAIN, "Reached follow distance ({:.1f}), stopping", dist);
+						}
+						StopMovement();
+					}
+					return;
+				} else if (dist > m_follow_distance * 1.5f) {
+					// Target has moved significantly, recalculate path
+					// Check if final destination changed significantly
+					float final_dest_dist = 0.0f;
+					if (!m_current_path.empty() && m_current_path.size() > 0) {
+						// Compare with the final waypoint in our path
+						const auto& final_waypoint = m_current_path.back();
+						final_dest_dist = CalculateDistance2D(final_waypoint.x, final_waypoint.y, entity.x, entity.y);
+					} else {
+						// No path, compare with our immediate target
+						final_dest_dist = CalculateDistance2D(m_target_x, m_target_y, entity.x, entity.y);
+					}
+					
+					if (final_dest_dist > 5.0f || m_current_path.empty()) {
+						// Recalculate path using pathfinding
+						LOG_DEBUG(MOD_MAIN, "UpdateMovement: Target moved significantly (dist={:.2f})", final_dest_dist);
+						if (m_use_pathfinding && m_pathfinder) {
+							// Find path from current position to target
+							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", m_x, m_y, m_z, entity.x, entity.y, entity.z);
+							if (FindPath(m_x, m_y, m_z, entity.x, entity.y, entity.z)) {
+								// Start following the path
+								m_current_path_index = 0;
+								m_is_moving = true;
+								LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement: Path recalculated with {} waypoints",
+									m_current_path.size());
+								for (size_t i = 0; i < std::min(m_current_path.size(), size_t(3)); i++) {
+									LOG_DEBUG(MOD_MOVEMENT, "  Waypoint {}: ({:.2f},{:.2f},{:.2f})",
+										i, m_current_path[i].x, m_current_path[i].y, m_current_path[i].z);
+								}
+							} else {
+								// Pathfinding failed, use direct movement
+								LOG_DEBUG(MOD_MAIN, "UpdateMovement: Pathfinding failed, using direct movement");
+								m_target_x = entity.x;
+								m_target_y = entity.y;
+								m_target_z = entity.z;
+								m_is_moving = true;
+							}
+						} else {
+							// Fallback to direct movement
+							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Pathfinding disabled, using direct movement");
+							m_target_x = entity.x;
+							m_target_y = entity.y;
+							m_target_z = entity.z;
+							m_is_moving = true;
+						}
+					}
+				}
+				break;
+			}
+		}
+	}
+	
+	// Always update jump if jumping, even when not moving
+	if (m_is_jumping) {
+		float old_z = m_z;
+		UpdateJump();
+		
+		// If Z changed, send position update immediately
+		if (m_z != old_z) {
+			SendPositionUpdate();
+		}
+	}
+	
+	if (!m_is_moving) {
+		// Still check for zone lines when stopped (player might have stopped in one)
+		CheckZoneLine();
+
+		// Send idle position updates like real clients (every 1-2 seconds)
+		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_idle_updates;
+		if (last_idle_updates.find(this) == last_idle_updates.end()) {
+			last_idle_updates[this] = std::chrono::steady_clock::now();
+		}
+
+		auto now = std::chrono::steady_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_idle_updates[this]);
+
+		if (elapsed.count() >= 1500) {  // 1.5 seconds average
+			SendPositionUpdate();
+			last_idle_updates[this] = now;
+		}
+		return;
+	}
+	
+	// Check if we're following a path
+	if (!m_current_path.empty() && m_current_path_index < m_current_path.size()) {
+		// Check if we've reached the current waypoint
+		const auto& waypoint = m_current_path[m_current_path_index];
+		float dist_to_waypoint = CalculateDistance2D(m_x, m_y, waypoint.x, waypoint.y);
+
+		// Always log path progress for debugging coordinate issues
+		static auto last_path_debug = std::chrono::steady_clock::now();
+		auto now_path_debug = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now_path_debug - last_path_debug).count() >= 500) {
+			LOG_INFO(MOD_MAIN, "Path progress: pos=({:.1f},{:.1f},{:.1f}) waypoint[{}]=({:.1f},{:.1f},{:.1f}) dist={:.1f}",
+				m_x, m_y, m_z, m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
+			last_path_debug = now_path_debug;
+		}
+
+		LOG_DEBUG(MOD_MOVEMENT, "Following path: waypoint {}/{}, dist to waypoint: {:.2f}",
+			m_current_path_index, m_current_path.size()-1, dist_to_waypoint);
+		
+		// Stuck detection - track if we're not making progress
+		static std::map<EverQuest*, std::pair<float, std::chrono::steady_clock::time_point>> stuck_detection;
+		auto now = std::chrono::steady_clock::now();
+		
+		if (stuck_detection.find(this) == stuck_detection.end()) {
+			stuck_detection[this] = {dist_to_waypoint, now};
+		} else {
+			auto& [last_dist, last_time] = stuck_detection[this];
+			auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();
+			
+			// If we haven't moved closer to the waypoint in 3 seconds, we're stuck
+			if (elapsed >= 3 && std::abs(dist_to_waypoint - last_dist) < 1.0f) {
+				LOG_WARN(MOD_MOVEMENT, "Stuck at waypoint {} - distance hasn't changed in {} seconds",
+					m_current_path_index, elapsed);
+
+				// Skip to next waypoint or stop
+				if (m_current_path_index < m_current_path.size() - 1) {
+					m_current_path_index++;
+					LOG_DEBUG(MOD_MOVEMENT, "Skipping to next waypoint due to being stuck");
+					// Reset stuck detection for the new waypoint
+					stuck_detection.erase(this);
+				} else {
+					LOG_DEBUG(MOD_MOVEMENT, "Stuck on final waypoint, stopping movement");
+					StopMovement();
+					stuck_detection.erase(this);
+					return;
+				}
+			} else if (elapsed >= 1) {
+				// Update every second if we've made progress
+				if (std::abs(dist_to_waypoint - last_dist) > 0.5f) {
+					stuck_detection[this] = {dist_to_waypoint, now};
+				}
+			}
+		}
+		
+		// Check both 2D distance and Z difference for waypoint reached
+		float z_diff_to_waypoint = std::abs(m_z - waypoint.z);
+		bool waypoint_reached = (dist_to_waypoint < 5.0f && z_diff_to_waypoint < 10.0f) || dist_to_waypoint < 3.0f;
+		
+		if (waypoint_reached) { // Within range of waypoint
+			// Move to next waypoint
+			m_current_path_index++;
+			stuck_detection.erase(this); // Clear stuck detection when reaching waypoint
+			
+			if (m_current_path_index >= m_current_path.size()) {
+				// Reached the end of the path
+				LOG_DEBUG(MOD_MAIN, "Reached end of path");
+				StopMovement();
+				return;
+			} else {
+				// Move to next waypoint
+				const auto& next_waypoint = m_current_path[m_current_path_index];
+				
+				// Check if the next waypoint is different enough from current position
+				float dist_to_next = CalculateDistance2D(m_x, m_y, next_waypoint.x, next_waypoint.y);
+				if (dist_to_next > 2.0f) {  // Only move if it's far enough away
+					MoveTo(next_waypoint.x, next_waypoint.y, next_waypoint.z);
+
+					LOG_TRACE(MOD_MOVEMENT, "Reached waypoint {}, moving to waypoint {} of {}",
+						m_current_path_index - 1, m_current_path_index, m_current_path.size() - 1);
+				} else {
+					// Skip this waypoint, it's too close
+					LOG_TRACE(MOD_MOVEMENT, "Skipping waypoint {} (too close: {:.2f} units)",
+						m_current_path_index, dist_to_next);
+					// Continue to check the next waypoint in the next update
+				}
+			}
+		}
+	}
+	
+	// Only process console-based target movement if we have an active target or path
+	// Skip this if we're in graphics Player mode without a console movement command
+	bool has_console_movement = !m_follow_target.empty() || !m_current_path.empty() ||
+	                            m_in_combat_movement ||
+	                            (m_target_x != 0.0f || m_target_y != 0.0f || m_target_z != 0.0f);
+
+	if (!has_console_movement) {
+		// No console-based movement active, skip target processing
+		return;
+	}
+
+	// Debug: Check what target we're moving to
+	static auto last_target_debug = std::chrono::steady_clock::now();
+	auto now_debug = std::chrono::steady_clock::now();
+	if (ShouldLog(MOD_MOVEMENT, LOG_DEBUG) && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
+		LOG_DEBUG(MOD_MOVEMENT, "Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
+			m_x, m_y, m_z, m_target_x, m_target_y, m_target_z, m_current_path.size(), m_current_path_index);
+		last_target_debug = now_debug;
+	}
+
+	// Calculate distance to target
+	float dx = m_target_x - m_x;
+	float dy = m_target_y - m_y;
+	float dz = m_target_z - m_z;
+	float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+	// Check if we've reached the target
+	if (distance < 2.0f) {  // Stop within 2 units of target
+		LOG_DEBUG(MOD_MOVEMENT, "Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
+			distance, m_target_x, m_target_y, m_target_z);
+
+		m_x = m_target_x;
+		m_y = m_target_y;
+		m_z = m_target_z;
+
+		// If following a path, check for next waypoint
+		if (!m_current_path.empty() && m_current_path_index < m_current_path.size() - 1) {
+			// Continue to next waypoint instead of stopping
+			return;
+		}
+
+		StopMovement();
+		return;
+	}
+	
+	// Calculate time delta based on actual elapsed time
+	static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_move_times;
+	if (last_move_times.find(this) == last_move_times.end()) {
+		last_move_times[this] = std::chrono::steady_clock::now();
+	}
+	auto now_movement = std::chrono::steady_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - last_move_times[this]);
+	last_move_times[this] = now_movement;
+	
+	float delta_time = elapsed.count() / 1000.0f;  // Convert to seconds
+	if (delta_time > 0.1f) delta_time = 0.1f;  // Cap at 100ms to prevent large jumps
+	
+	// Debug delta time issues
+	if (m_in_combat_movement && delta_time < 0.01f) {
+		LOG_WARN(MOD_MOVEMENT, "Very small delta_time: {:.6f}s ({}ms)",
+			delta_time, elapsed.count());
+	}
+	
+	// Calculate movement step using current movement speed
+	float current_speed = m_move_speed;
+	
+	// Adjust speed when following
+	if (!m_follow_target.empty()) {
+		// Speed up when far, slow down when close
+		if (distance > FOLLOW_FAR_DISTANCE) {
+			current_speed *= FOLLOW_MAX_SPEED_MULT;
+		} else if (distance < FOLLOW_CLOSE_DISTANCE) {
+			current_speed *= FOLLOW_MIN_SPEED_MULT;
+		} else {
+			// Linear interpolation between min and max speed
+			float speed_factor = (distance - FOLLOW_CLOSE_DISTANCE) / (FOLLOW_FAR_DISTANCE - FOLLOW_CLOSE_DISTANCE);
+			current_speed *= FOLLOW_MIN_SPEED_MULT + (FOLLOW_MAX_SPEED_MULT - FOLLOW_MIN_SPEED_MULT) * speed_factor;
+		}
+	}
+	
+	float step = current_speed * delta_time;
+	if (step > distance) {
+		step = distance;
+	}
+	
+	// Debug output for combat movement
+	static auto last_move_debug = std::chrono::steady_clock::now();
+	if (s_debug_level >= 1 && m_in_combat_movement && 
+	    std::chrono::duration_cast<std::chrono::seconds>(now_movement - last_move_debug).count() >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", m_x, m_y, m_z, m_target_x, m_target_y, m_target_z, distance, current_speed, step);
+		last_move_debug = now_movement;
+	}
+	
+	// Normalize direction and move
+	float factor = step / distance;
+	float old_x = m_x;
+	float old_y = m_y;
+	m_x += dx * factor;
+	m_y += dy * factor;
+	m_z += dz * factor;
+	
+	// Debug: verify position actually changed
+	if (s_debug_level >= 1 && m_in_combat_movement) {
+		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, m_x, m_y, m_x - old_x, m_y - old_y);
+	}
+	
+	// Update heading
+	m_heading = CalculateHeading(m_x - dx * factor, m_y - dy * factor, m_x, m_y);
+
+	// Update bridge position for console-driven movement (moveto, follow, etc.)
+	if (m_bridge) {
+		eqt::state::PlayerMovedData pdata;
+		pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+		pdata.heading = m_heading;
+		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
+		pdata.isMoving = true;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+	}
+
+	// Set animation based on actual movement distance
+	// Don't change animation if we're jumping
+	if (!m_is_jumping) {
+		// Calculate movement distance in this update
+		float move_dist = std::sqrt(dx * dx + dy * dy);
+		
+		// Determine animation based on movement distance
+		uint32_t new_animation = ANIM_STAND;
+		
+		if (move_dist < 0.1f) {
+			// Very small movement (< 0.1 units) - no animation change
+			new_animation = ANIM_STAND;
+		} else if (move_dist < 2.0f) {
+			// Small movement - walk animation
+			new_animation = ANIM_WALK;
+		} else {
+			// Larger movement - run animation
+			new_animation = ANIM_RUN;
+		}
+		
+		// Only change animation if it's different
+		if (m_animation != new_animation) {
+			m_animation = new_animation;
+		}
+	}
+	
+	// Update jump if jumping
+	bool was_jumping = m_is_jumping;
+	float old_z = m_z;
+	UpdateJump();
+	
+	// If jumping and Z changed, send position update immediately
+	if (m_is_jumping && m_z != old_z) {
+		SendPositionUpdate();
+		m_last_position_update_time = now;
+	}
+	
+	// Fix Z position periodically to follow terrain (but not while jumping)
+	if (!m_is_jumping) {
+		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_z_fix_times;
+		if (last_z_fix_times.find(this) == last_z_fix_times.end()) {
+			last_z_fix_times[this] = now;
+		}
+		
+		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[this]);
+		// Fix Z every 1000ms while moving (once per second to reduce adjustments)
+		if (z_fix_elapsed.count() >= 1000) {
+			FixZ();
+			last_z_fix_times[this] = now;
+		}
+	}
+	
+	// Check for zone line collision
+	CheckZoneLine();
+
+	// Send position update with proper throttling per instance
+	if (!m_last_position_update_time.time_since_epoch().count()) {
+		m_last_position_update_time = std::chrono::steady_clock::now();
+	}
+
+	auto update_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - m_last_position_update_time);
+
+	// Send updates at regular intervals when moving
+	if (update_elapsed.count() >= POSITION_UPDATE_INTERVAL_MS) {
+		SendPositionUpdate();
+		m_last_position_update_time = now_movement;
+	}
+}
+
+
+void EverQuest::SendPositionUpdate()
+{
+	if (!IsFullyZonedIn() || !m_zone_connection) {
+		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
+			IsFullyZonedIn(), m_zone_connection != nullptr);
+		return;
+	}
+
+	// Throttle position updates to ~250ms minimum (working client averages ~275ms)
+	// This prevents jerky motion when viewed by other players
+	static auto lastSendTime = std::chrono::steady_clock::now();
+	static int16_t lastSentAnimation = 0;
+	auto now = std::chrono::steady_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSendTime);
+
+	// Allow immediate send when stopping (animation goes to 0) for responsiveness
+	bool isStoppingNow = (m_animation == 0 && lastSentAnimation != 0);
+
+	if (!isStoppingNow && elapsed.count() < 250) {
+		// Throttled - skip this update
+		return;
+	}
+
+	lastSendTime = now;
+	lastSentAnimation = m_animation;
+	
+	// Keep track of last position for delta calculations (per instance, not static)
+	static std::map<EverQuest*, std::tuple<float, float, float, float>> last_positions;
+	
+	// Initialize last position if this is the first update
+	if (last_positions.find(this) == last_positions.end()) {
+		last_positions[this] = std::make_tuple(m_x, m_y, m_z, m_heading);
+	}
+	
+	auto& [last_x, last_y, last_z, last_heading] = last_positions[this];
+	
+	// Calculate deltas
+	float delta_x = m_x - last_x;
+	float delta_y = m_y - last_y;
+	float delta_z = m_z - last_z;
+	float delta_heading_deg = m_heading - last_heading;
+	
+	// Normalize delta heading to -180 to 180
+	while (delta_heading_deg > 180.0f) delta_heading_deg -= 360.0f;
+	while (delta_heading_deg < -180.0f) delta_heading_deg += 360.0f;
+	
+	// Convert heading values for the packet
+	// EQ uses a different heading system where values might need adjustment
+	int delta_heading_scaled = static_cast<int>(delta_heading_deg * 512.0f / 360.0f) & 0x3FF; // 10 bits
+	
+	// Convert heading to 12-bit value for packet
+	// Server uses EQ12toFloat which divides by 4, then converts: degrees = (raw/4) * 360/512
+	// This simplifies to: degrees = raw * 360 / 2048
+	// So to convert degrees to raw: raw = degrees * 2048 / 360
+	//
+	// C->S transformation: -m_heading + 90 to match server convention
+	// Inverse of S->C transformation (m_heading = 90 - server_h)
+	float server_heading = 90.0f - m_heading;
+	if (server_heading < 0.0f) server_heading += 360.0f;
+	if (server_heading >= 360.0f) server_heading -= 360.0f;
+	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
+	// FloatToEQ12 does modulo 2048, so values wrap
+	uint16_t heading_scaled = heading_raw % 2048;
+	
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] m_heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
+			m_heading, server_heading, heading_scaled);
+	}
+	
+	// Build PlayerPositionUpdateClient_Struct
+	// NOTE: Field order must match server's expected binary layout exactly
+	// Server struct has: spawn_id, sequence, y_pos, delta_z, delta_x, delta_y, ...
+	struct {
+		uint16_t spawn_id;
+		uint16_t sequence;
+		float y_pos;
+		float delta_z;
+		float delta_x;   // Server expects delta_x at offset 12
+		float delta_y;   // Server expects delta_y at offset 16
+		uint32_t anim_and_delta_heading;
+		float x_pos;
+		float z_pos;
+		uint16_t heading_and_padding;
+		uint8_t unknown[2];
+	} update;
+	
+	memset(&update, 0, sizeof(update));
+
+	// Use the spawn ID we extracted from PlayerProfile or ZoneSpawns
+	// This is what the server expects in ClientUpdate packets
+	update.spawn_id = m_my_spawn_id;
+	update.sequence = ++m_movement_sequence;
+
+	// Validate that we have a valid spawn ID
+	if (m_my_spawn_id == 0) {
+		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with m_my_spawn_id = 0! Not sending update.");
+		return;
+	}
+
+	// Check if we're accidentally using another player's ID
+	auto it = m_entities.find(m_my_spawn_id);
+	if (it != m_entities.end() && it->second.name != m_character) {
+		LOG_WARN(MOD_MOVEMENT, "m_my_spawn_id {} belongs to '{}', not our character '{}'!",
+			m_my_spawn_id, it->second.name, m_character);
+	}
+	
+	// Convert from internal coordinate system back to server coordinate system
+	// When receiving from server: m_x = server_y, m_y = server_x (see ZoneProcessPlayerProfile)
+	// So to send back: server's y_pos = m_x, server's x_pos = m_y
+	update.y_pos = m_x;  // m_x holds server's original y
+	update.x_pos = m_y;  // m_y holds server's original x
+	// Send Z position directly without offset - server stores the actual position
+	update.z_pos = m_z;
+	// Deltas follow the same transformation:
+	// Internal delta_x (change in m_x) = change in server's y = server's delta_y
+	// Internal delta_y (change in m_y) = change in server's x = server's delta_x
+	update.delta_x = delta_y;  // server's delta_x = change in m_y (server's x)
+	update.delta_y = delta_x;  // server's delta_y = change in m_x (server's y)
+	update.delta_z = delta_z;
+	
+	// Pack animation and delta_heading into bitfield
+	// Use current animation state (which includes jump animation)
+	uint32_t anim_value = m_animation;
+	update.anim_and_delta_heading = (anim_value & 0x3FF) | (0 << 10) | (1 << 20);
+	
+	// Pack heading into bitfield (12 bits)
+	update.heading_and_padding = heading_scaled;
+	
+	// Build packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(sizeof(update) + 2);
+	p.PutUInt16(0, HC_OP_ClientUpdate);
+	memcpy((char*)p.Data() + 2, &update, sizeof(update));
+	
+	// Debug: Verify what's in the packet
+	if (s_debug_level >= 1) {
+		uint16_t packet_spawn_id = p.GetUInt16(2); // spawn_id is first field after opcode
+		// LOG_DEBUG(MOD_MAIN, "ClientUpdate packet: spawn_id in struct = {}, spawn_id in packet = {}", 
+		// 	update.spawn_id, packet_spawn_id);
+	}
+	
+	// Log C->S position updates at debug level 2+
+	if (s_debug_level >= 2) {
+		// Log server coordinates (x_pos, y_pos) = (m_y, m_x) due to coordinate swap
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
+			m_my_spawn_id, update.x_pos, update.y_pos, update.z_pos, m_heading, m_animation, update.delta_x, update.delta_y, update.delta_z);
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
+			m_x, m_y, m_z, update.x_pos, update.y_pos, update.z_pos);
+	}
+
+	DumpPacket("C->S", HC_OP_ClientUpdate, p);
+	SafeQueueZonePacket(p, 0, false);  // Send unreliable
+	
+	// Update last position
+	last_x = m_x;
+	last_y = m_y;
+	last_z = m_z;
+	last_heading = m_heading;
+	
+	// Track movement history for anti-cheat
+	MovementHistoryEntry history_entry;
+	history_entry.x = m_x;
+	history_entry.y = m_y;
+	history_entry.z = m_z;
+	history_entry.type = 1; // Normal movement (Collision type)
+	history_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
+	
+	m_movement_history.push_back(history_entry);
+	
+	// Send movement history every second (matching client behavior)
+	uint32_t current_time = static_cast<uint32_t>(std::time(nullptr));
+	if (current_time - m_last_movement_history_send >= 1) {
+		m_last_movement_history_send = current_time;  // Update timestamp BEFORE sending to prevent duplicates
+		try {
+			SendMovementHistory();
+		}
+		catch (const std::exception& e) {
+			LOG_ERROR(MOD_MOVEMENT, "Exception in SendMovementHistory: {}", e.what());
+		}
+		catch (...) {
+			LOG_ERROR(MOD_MOVEMENT, "Unknown exception in SendMovementHistory");
+		}
+	}
+}
+
+float EverQuest::CalculateHeading(float x1, float y1, float x2, float y2)
+{
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	
+	// If we're not moving, preserve current heading
+	if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
+		return m_heading;
+	}
+	
+	// Calculate angle in radians
+	// In EQ's coordinate system: +X is East, +Y is North (verified)
+	// We want: 0° = North, 90° = East, 180° = South, 270° = West
+	// Standard atan2(y,x) gives: 0° = East, 90° = North, 180° = West, 270° = South
+	// So we need to use atan2(x,y) and then adjust by 90 degrees
+	float angle = std::atan2(dx, dy);  // This gives 0° = North, 90° = East
+	
+	// Convert radians to degrees
+	float degrees = angle * 180.0f / M_PI;
+	
+	// atan2 returns -180 to 180, convert to 0-360
+	if (degrees < 0.0f) {
+		degrees += 360.0f;
+	}
+	
+	// No 180° adjustment needed - the known good client shows:
+	// North ≈ 3.5°, East ≈ 137.7°, South ≈ 89.5°, West ≈ 45.8°
+	// (converted from raw values 14, 1567, 1018, 521)
+	
+	// Debug output with more detail
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "CalculateHeading: from ({:.1f},{:.1f}) to ({:.1f},{:.1f}), dx={:.1f}, dy={:.1f}, raw angle={:.1f}°, adjusted={:.1f}°", 
+			x1, y1, x2, y2, dx, dy, angle * 180.0f / M_PI, degrees);
+	}
+	
+	return degrees;
+}
+
+float EverQuest::CalculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const
+{
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	float dz = z2 - z1;
+	return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+float EverQuest::CalculateDistance2D(float x1, float y1, float x2, float y2) const
+{
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	return std::sqrt(dx * dx + dy * dy);
+}
+
+bool EverQuest::HasReachedDestination() const
+{
+	if (!m_is_moving) {
+		return true;
+	}
+	
+	// Check if we're close enough to the target (within 2 units)
+	float dist = CalculateDistance2D(m_x, m_y, m_target_x, m_target_y);
+	return dist < 2.0f;
+}
+
+// Pathfinding implementation
+void EverQuest::LoadPathfinder(const std::string& zone_name)
+{
+	if (zone_name.empty()) {
+		LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Zone name is empty, skipping");
+		return;
+	}
+	
+	LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Loading pathfinder for zone '{}'", zone_name);
+
+	// Release previous pathfinder if any - clear renderer's reference via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NavmeshChanged,
+			eqt::state::NavmeshChangedData{nullptr}));
+	}
+	m_pathfinder.reset();
+	m_current_path.clear();
+	m_current_path_index = 0;
+	
+	try {
+		// Use the IPathfinder factory method to load the navigation mesh
+		m_pathfinder.reset(IPathfinder::Load(zone_name, m_navmesh_path));
+		
+		if (m_pathfinder) {
+			// Check if it's actually a PathfinderNavmesh vs PathfinderNull
+			// This is a bit of a hack but helps us understand what type we got
+			PathfinderOptions test_opts;
+			bool partial = false, stuck = false;
+			auto test_path = m_pathfinder->FindPath(
+				glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
+
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Loaded pathfinder for zone: {} (type: {})",
+					zone_name, test_path.empty() ? "NavMesh" : "Null");
+			}
+
+#if defined(EQT_HAS_NAVMESH)
+			// Pass navmesh to renderer via bridge for visualization overlay
+			if (m_bridge) {
+				PathfinderNavmesh* navmesh = dynamic_cast<PathfinderNavmesh*>(m_pathfinder.get());
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::NavmeshChanged,
+					eqt::state::NavmeshChangedData{navmesh}));
+			}
+#endif
+		} else {
+			if (s_debug_level >= 1) {
+				LOG_DEBUG(MOD_MAIN, "No navigation mesh available for zone: {}", zone_name);
+			}
+		}
+	} catch (const std::exception& e) {
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Failed to load navigation mesh for {}: {}", zone_name, e.what());
+		}
+	}
+}
+
+bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_x, float end_y, float end_z)
+{
+	LOG_DEBUG(MOD_MAIN, "FindPath called: from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", start_x, start_y, start_z, end_x, end_y, end_z);
+	
+	if (!m_pathfinder) {
+		LOG_DEBUG(MOD_MAIN, "FindPath: No pathfinder object available (m_pathfinder is null)");
+		return false;
+	}
+	
+	// Clear previous path
+	m_current_path.clear();
+	m_current_path_index = 0;
+	
+	// Set up pathfinding options
+	PathfinderOptions opts;
+	opts.smooth_path = true;
+	opts.step_size = 10.0f; // Distance between waypoints
+	opts.offset = 5.0f; // Height offset for character
+	
+	// Find the path
+	bool partial = false;
+	bool stuck = false;
+	LOG_DEBUG(MOD_MAIN, "FindPath: Calling m_pathfinder->FindPath()...");
+	IPathfinder::IPath path = m_pathfinder->FindPath(
+		glm::vec3(start_x, start_y, start_z),
+		glm::vec3(end_x, end_y, end_z),
+		partial,
+		stuck,
+		opts
+	);
+	LOG_DEBUG(MOD_PATHFIND, "FindPath: Result - path size: {}, partial: {}, stuck: {}",
+		path.size(), partial, stuck);
+
+	if (path.empty()) {
+		LOG_DEBUG(MOD_PATHFIND, "No path found from ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
+			start_x, start_y, start_z, end_x, end_y, end_z);
+		if (partial) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Partial path available)");
+		}
+		if (stuck) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Path leads back to start - stuck)");
+		}
+		return false;
+	}
+
+	// Convert path nodes to vec3 waypoints
+	for (const auto& node : path) {
+		// Skip teleport nodes for now
+		if (!node.teleport) {
+			m_current_path.push_back(node.pos);
+		}
+	}
+
+	LOG_DEBUG(MOD_PATHFIND, "Found path with {} waypoints", m_current_path.size());
+	if (ShouldLog(MOD_PATHFIND, LOG_TRACE)) {
+		for (size_t i = 0; i < m_current_path.size() && i < 5; i++) {
+			const auto& pos = m_current_path[i];
+			LOG_TRACE(MOD_PATHFIND, "  Waypoint {}: ({:.1f}, {:.1f}, {:.1f})",
+				i, pos.x, pos.y, pos.z);
+		}
+		if (m_current_path.size() > 5) {
+			LOG_TRACE(MOD_PATHFIND, "  ...");
+		}
+	}
+	
+	return true;
+}
+
+void EverQuest::MoveToWithPath(float x, float y, float z)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
+		return;
+	}
+	
+	// If pathfinding is disabled or not available, use direct movement
+	if (!m_use_pathfinding || !m_pathfinder) {
+		MoveTo(x, y, z);
+		return;
+	}
+	
+	// Find path from current position to target
+	if (FindPath(m_x, m_y, m_z, x, y, z)) {
+		// Face the final destination immediately
+		float new_heading = CalculateHeading(m_x, m_y, x, y);
+		if (std::abs(new_heading - m_heading) > 0.1f) {
+			m_heading = new_heading;
+			SendPositionUpdate();
+		}
+		
+		// Start following the path
+		m_current_path_index = 0;
+		FollowPath();
+	} else {
+		// Fallback to direct movement if pathfinding fails
+		LOG_WARN(MOD_PATHFIND, "Pathfinding failed, using direct movement");
+		MoveTo(x, y, z);
+	}
+}
+
+void EverQuest::FollowPath()
+{
+	if (m_current_path.empty() || m_current_path_index >= m_current_path.size()) {
+		StopMovement();
+		return;
+	}
+	
+	// Skip waypoints that are too close to current position (within 1 unit)
+	while (m_current_path_index < m_current_path.size()) {
+		const auto& waypoint = m_current_path[m_current_path_index];
+		float dist = CalculateDistance2D(m_x, m_y, waypoint.x, waypoint.y);
+		
+		if (dist > 1.0f) {
+			// This waypoint is far enough, move to it
+			MoveTo(waypoint.x, waypoint.y, waypoint.z);
+			break;
+		} else {
+			// Skip this waypoint, it's too close
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Skipping waypoint {} at ({:.1f},{:.1f},{:.1f}) - too close (dist={:.1f})", m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist);
+			}
+			m_current_path_index++;
+		}
+	}
+	
+	// If we've gone through all waypoints, stop
+	if (m_current_path_index >= m_current_path.size()) {
+		StopMovement();
+		return;
+	}
+	
+	// The UpdateMovement function will handle checking when we reach waypoints
+}
+
+void EverQuest::SetMovementMode(MovementMode mode)
+{
+	if (m_movement_mode == mode) {
+		return;
+	}
+	
+	m_movement_mode = mode;
+
+	if (m_bridge) {
+		eqt::state::PlayerMovementModeChangedData data;
+		data.mode = static_cast<uint8_t>(mode);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMovementModeChanged, std::move(data)));
+	}
+
+	// Update movement speed based on mode
+	switch (mode) {
+		case MOVE_MODE_RUN:
+			m_move_speed = DEFAULT_RUN_SPEED;
+			break;
+		case MOVE_MODE_WALK:
+			m_move_speed = DEFAULT_WALK_SPEED;
+			break;
+		case MOVE_MODE_SNEAK:
+			m_move_speed = DEFAULT_WALK_SPEED * 0.6f;  // Sneak is 60% of walk speed
+			SetSneak(true);
+			break;
+	}
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Movement mode changed to {} (speed: {:.1f})", 
+			mode == MOVE_MODE_RUN ? "RUN" : mode == MOVE_MODE_WALK ? "WALK" : "SNEAK", 
+			m_move_speed);
+	}
+}
+
+void EverQuest::SetPositionState(PositionState state)
+{
+	if (m_position_state == state) {
+		return;
+	}
+	
+	m_position_state = state;
+
+	if (m_bridge) {
+		eqt::state::PlayerPositionStateChangedData data;
+		data.state = static_cast<uint8_t>(state);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerPositionStateChanged, std::move(data)));
+	}
+
+	switch (state) {
+		case POS_STANDING:
+			SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
+			if (m_is_moving) {
+				StopMovement();
+			}
+			// Cancel camp timer if standing up
+			if (m_is_camping) {
+				CancelCamp();
+			}
+			break;
+		case POS_SITTING:
+			SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
+			if (m_is_moving) {
+				StopMovement();
+			}
+			break;
+		case POS_CROUCHING:
+			SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
+			break;
+		case POS_FEIGN_DEATH:
+			SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
+			if (m_is_moving) {
+				StopMovement();
+			}
+			break;
+		case POS_DEAD:
+			SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
+			if (m_is_moving) {
+				StopMovement();
+			}
+			break;
+	}
+	
+	if (s_debug_level >= 1) {
+		const char* state_names[] = {"STANDING", "SITTING", "CROUCHING", "FEIGN_DEATH", "DEAD"};
+		LOG_DEBUG(MOD_MAIN, "Position state changed to {}", state_names[state]);
+	}
+}
+
+void EverQuest::SendJump()
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+	
+	EQ::Net::DynamicPacket p;
+	p.Resize(2);  // Jump packet size: 2 bytes opcode only (no data)
+	
+	p.PutUInt16(0, HC_OP_Jump);  // opcode
+	
+	m_zone_connection->QueuePacket(p, 0, false);
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_Jump packet (2 bytes)");
+	}
+}
+
+void EverQuest::SendMovementHistory()
+{
+	if (!IsFullyZonedIn() || m_movement_history.empty() || !m_zone_connection) {
+		return;
+	}
+
+	// Additional safety check
+	if (!m_zone_connected || !m_zone_connection_manager) {
+		LOG_WARN(MOD_ZONE, "SendMovementHistory called with invalid connection state");
+		return;
+	}
+
+	// Add debugging info about connection state
+	LOG_TRACE(MOD_ZONE, "SendMovementHistory called at time {} - connection ptr: {}, connected: {}, history size: {}",
+		static_cast<uint32_t>(std::time(nullptr)),
+		static_cast<void*>(m_zone_connection.get()),
+		m_zone_connected,
+		m_movement_history.size());
+
+	// Limit history to last 70 entries (similar to what client sends)
+	while (m_movement_history.size() > 70) {
+		m_movement_history.pop_front();
+	}
+
+	// For unreliable packets, we have a max of ~250 bytes (255 - CRC)
+	// Each entry is 17 bytes, plus 2 bytes for opcode
+	// So we can fit about 14 entries per unreliable packet: (250 - 2) / 17 = 14.5
+	const size_t MAX_ENTRIES_PER_PACKET = 14;
+	(void)MAX_ENTRIES_PER_PACKET; // Unused but kept for documentation
+
+	// Real clients send all entries in one packet, so we must send as reliable
+	// to match their behavior (they send 67-70 entries = 1139-1190 bytes + 2 = 1141-1192 total)
+	size_t packet_size = 2 + (m_movement_history.size() * sizeof(MovementHistoryEntry));
+
+	LOG_TRACE(MOD_ZONE, "Creating OP_FloatListThing packet: {} entries, {} bytes total",
+		m_movement_history.size(), packet_size);
+
+	EQ::Net::DynamicPacket p;
+	p.Resize(packet_size);
+
+	p.PutUInt16(0, HC_OP_FloatListThing);
+
+	// Pack movement entries
+	size_t offset = 2;
+	try {
+		for (const auto& entry : m_movement_history) {
+			// UpdateMovementEntry struct layout:
+			// float Y, float X, float Z, uint8 type, uint32 timestamp
+			p.PutFloat(offset, entry.y);      // Y first
+			p.PutFloat(offset + 4, entry.x);  // then X
+			p.PutFloat(offset + 8, entry.z);  // then Z
+			p.PutUInt8(offset + 12, entry.type);
+			p.PutUInt32(offset + 13, entry.timestamp);
+			offset += 17;
+		}
+
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_ZONE, "About to queue OP_FloatListThing as reliable packet");
+		}
+
+		// Send as reliable since it exceeds unreliable packet size limit
+		if (!SafeQueueZonePacket(p, 0, true)) {  // Send reliable
+			LOG_ERROR(MOD_ZONE, "Failed to queue OP_FloatListThing packet - SafeQueueZonePacket returned false");
+		} else {
+			LOG_TRACE(MOD_ZONE, "Successfully queued OP_FloatListThing with {} movement entries ({} bytes) as reliable",
+				m_movement_history.size(), packet_size);
+		}
+	}
+	catch (const std::exception& e) {
+		LOG_ERROR(MOD_ZONE, "Exception packing movement history: {}", e.what());
+	}
+	catch (...) {
+		LOG_ERROR(MOD_ZONE, "Unknown exception packing movement history");
+	}
+}
+
+void EverQuest::Jump()
+{
+	if (m_is_jumping) {
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Jump blocked - already jumping");
+		}
+		return;  // Can't jump while already jumping
+	}
+	
+	// Allow jumping while moving or standing
+	m_is_jumping = true;
+	m_jump_start_z = m_z;
+	m_jump_start_time = std::chrono::steady_clock::now();
+	
+	// Real clients have a tiny position shift when jumping (to trigger server broadcasts)
+	// Add a small random X/Y movement like real clients do
+	static int jump_count = 0;
+	jump_count++;
+	float tiny_shift = (jump_count % 2 == 0) ? -0.04f : 0.04f;  // Alternate direction
+	
+	// Apply tiny shift to X or Y position (alternate between them)
+	if (jump_count % 4 < 2) {
+		m_x += tiny_shift;
+	} else {
+		m_y += tiny_shift;
+	}
+	
+	// Real clients send standing animation before jumping
+	SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
+	
+	// Send OP_Jump packet like real clients do
+	SendJump();
+	
+	// Don't set animation to jump - real clients keep animation at 0 in ClientUpdate
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", m_z);
+	}
+	
+	// Don't block - let the update loop handle the jump
+	// The jump will be processed by UpdateMovement() calls
+}
+
+void EverQuest::UpdateJump()
+{
+	if (!m_is_jumping) {
+		return;
+	}
+	
+	auto now = std::chrono::steady_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_jump_start_time).count();
+	
+	// Jump physics: parabolic arc
+	// Jump lasts about 1 second, peaks at 0.5 seconds
+	const float jump_duration_ms = 1000.0f;
+	const float jump_height = 25.0f;  // Maximum height of jump (increased for visibility)
+	
+	if (elapsed >= jump_duration_ms) {
+		// Jump complete
+		m_is_jumping = false;
+		m_z = m_jump_start_z;  // Return to original height (or use FixZ)
+		
+		// Return to appropriate animation
+		if (m_is_moving) {
+			m_animation = (m_move_speed >= WALK_SPEED_THRESHOLD) ? ANIM_RUN : ANIM_WALK;
+		} else {
+			m_animation = ANIM_STAND;
+		}
+		
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Jump completed");
+		}
+	} else {
+		// Calculate jump height using parabola
+		float t = elapsed / jump_duration_ms;  // 0 to 1
+		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
+		m_z = m_jump_start_z + height;
+		
+		if (s_debug_level >= 2) {
+			static int jump_frame = 0;
+			if (jump_frame % 10 == 0) {  // Log every 10th frame
+				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
+					t, height, m_z);
+			}
+			jump_frame++;
+		}
+	}
+}
+
+void EverQuest::UpdateWaterState()
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+
+	WaterState newState = WaterState::NotInWater;
+	float waterSurfaceZ = 0.0f;
+
+	// Fully underwater zones - these don't have BSP water regions
+	// The entire zone is submerged so we hardcode them here
+	bool isFullyUnderwaterZone = (m_current_zone_name == "kedge");
+
+	if (isFullyUnderwaterZone) {
+		newState = WaterState::Submerged;
+	} else {
+		// Normal water detection via BSP regions (D20f3: reads typed game-state BSP tree)
+		const auto& bspTree = m_zone_bsp_tree;
+		if (bspTree) {
+			// Check the region at current player position
+			// In EQ, the "head" is approximately 6 units above feet position
+			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
+			float headZ = m_z + HEAD_HEIGHT_OFFSET;
+
+			auto region = bspTree->findRegionForPoint(m_x, m_y, m_z);
+
+			if (region) {
+				// Check if this region is water
+				bool isWaterRegion = false;
+				for (auto type : region->regionTypes) {
+					if (type == EQT::Graphics::RegionType::Water ||
+					    type == EQT::Graphics::RegionType::FreezingWater ||
+					    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+						isWaterRegion = true;
+						break;
+					}
+				}
+
+				if (isWaterRegion) {
+					// Check if head is also in water (determines OnSurface vs Submerged)
+					auto headRegion = bspTree->findRegionForPoint(m_x, m_y, headZ);
+					bool headInWater = false;
+					if (headRegion) {
+						for (auto type : headRegion->regionTypes) {
+							if (type == EQT::Graphics::RegionType::Water ||
+							    type == EQT::Graphics::RegionType::FreezingWater ||
+							    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+								headInWater = true;
+								break;
+							}
+						}
+					}
+
+					if (headInWater) {
+						newState = WaterState::Submerged;
+					} else {
+						newState = WaterState::OnSurface;
+						// Estimate water surface Z (head is above water, feet are in)
+						waterSurfaceZ = m_z + (HEAD_HEIGHT_OFFSET / 2.0f);
+					}
+				}
+			}
+		}
+	}
+
+	// Handle state transitions
+	if (newState != m_water_state) {
+		WaterState oldState = m_water_state;
+		m_water_state = newState;
+		m_water_surface_z = waterSurfaceZ;
+
+		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
+			OnEnterWater();
+		} else if (oldState != WaterState::NotInWater && newState == WaterState::NotInWater) {
+			OnExitWater();
+		}
+
+		// Publish SwimmingStateChanged event to bridge (only on state change)
+		if (m_bridge) {
+			float swimSpd = GetSwimSpeed();
+			bool lev = false;
+			auto me = m_entities.find(m_my_spawn_id);
+			if (me != m_entities.end() && me->second.flymode == 2) {
+				lev = true;
+			}
+			eqt::state::SwimmingStateChangedData data;
+			data.isSwimming = (newState != WaterState::NotInWater);
+			data.swimSpeed = swimSpd;
+			data.isLevitating = lev;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SwimmingStateChanged, std::move(data)));
+		}
+	}
+
+}
+
+void EverQuest::OnEnterWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Cancel any jump in progress
+	m_is_jumping = false;
+
+	// Send flymode=3 (water) to server
+	SendSpawnAppearance(AT_FLYMODE, 3);
+
+#ifdef WITH_AUDIO
+	// Play water entry sound
+	if (m_audio_manager) {
+		PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+	}
+#endif
+}
+
+void EverQuest::OnExitWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+	}
+
+	// Check if player is levitating (flymode 2 from buffs)
+	// If levitating, keep flymode 2, otherwise reset to 0
+	auto myEntity = m_entities.find(m_my_spawn_id);
+	uint8_t newFlymode = 0;
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		newFlymode = 2;  // Keep levitating
+	}
+
+	SendSpawnAppearance(AT_FLYMODE, newFlymode);
+
+	m_water_state = WaterState::NotInWater;
+}
+
+float EverQuest::GetSwimSpeed() const
+{
+	// Base swim speed is slower than running
+	constexpr float BASE_SWIM_SPEED = 20.0f;
+
+	// Skill bonus: up to 50% at max skill (200)
+	uint32_t swimSkill = 0;
+	if (m_skill_manager) {
+		swimSkill = m_skill_manager->getSkillValue(50);  // Skill ID 50 = Swimming
+	}
+
+	// Cap skill at 200 for calculation
+	if (swimSkill > 200) swimSkill = 200;
+
+	// Formula: BASE_SPEED * (1.0 + (skill / 200) * 0.5)
+	// At skill 0: 20 units/sec
+	// At skill 200: 30 units/sec
+	float skillBonus = (static_cast<float>(swimSkill) / 200.0f) * 0.5f;
+	return BASE_SWIM_SPEED * (1.0f + skillBonus);
+}
+
+float EverQuest::GetMovementSpeed() const
+{
+	// Return current movement speed, which may be modified by buffs, encumbrance, etc.
+	return m_move_speed;
+}
+
+// Keyboard control methods
+void EverQuest::StartMoveForward()
+{
+	if (!IsFullyZonedIn()) return;
+
+	// Clear any console-based movement (moveto, follow) when user takes manual control
+	if (!m_current_path.empty() || m_target_x != 0.0f || m_target_y != 0.0f || m_target_z != 0.0f) {
+		m_current_path.clear();
+		m_current_path_index = 0;
+		m_target_x = m_target_y = m_target_z = 0.0f;
+		m_follow_target.clear();
+		LOG_DEBUG(MOD_MAIN, "Cleared pathfinding state due to manual movement");
+	}
+
+	m_move_forward = true;
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting forward movement");
+	}
+}
+
+void EverQuest::StartMoveBackward()
+{
+	if (!IsFullyZonedIn()) return;
+	m_move_backward = true;
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting backward movement");
+	}
+}
+
+void EverQuest::StartTurnLeft()
+{
+	if (!IsFullyZonedIn()) return;
+	m_turn_left = true;
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting left turn");
+	}
+}
+
+void EverQuest::StartTurnRight()
+{
+	if (!IsFullyZonedIn()) return;
+	m_turn_right = true;
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting right turn");
+	}
+}
+
+void EverQuest::StopMoveForward()
+{
+	m_move_forward = false;
+	if (!m_move_backward && !m_turn_left && !m_turn_right) {
+		m_is_moving = false;
+		m_animation = ANIM_STAND;
+		SendPositionUpdate();  // Send immediate update when stopping
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
+		}
+	}
+}
+
+void EverQuest::StopMoveBackward()
+{
+	m_move_backward = false;
+	if (!m_move_forward && !m_turn_left && !m_turn_right) {
+		m_is_moving = false;
+		m_animation = ANIM_STAND;
+		SendPositionUpdate();  // Send immediate update when stopping
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
+		}
+	}
+}
+
+void EverQuest::StopTurnLeft()
+{
+	m_turn_left = false;
+	if (!m_move_forward && !m_move_backward && !m_turn_right) {
+		m_is_moving = false;
+		m_animation = ANIM_STAND;
+		SendPositionUpdate();  // Send immediate update when stopping
+	}
+}
+
+void EverQuest::StopTurnRight()
+{
+	m_turn_right = false;
+	if (!m_move_forward && !m_move_backward && !m_turn_left) {
+		m_is_moving = false;
+		m_animation = ANIM_STAND;
+		SendPositionUpdate();  // Send immediate update when stopping
+	}
+}
+
+void EverQuest::UpdateKeyboardMovement()
+{
+	if (!IsFullyZonedIn()) return;
+	
+	// Handle turning
+	const float turn_speed = 90.0f; // degrees per second (4 seconds for full rotation)
+	float delta_heading = 0.0f;
+	
+	if (m_turn_left && !m_turn_right) {
+		delta_heading = -turn_speed * 0.5f; // 500ms tick rate
+	} else if (m_turn_right && !m_turn_left) {
+		delta_heading = turn_speed * 0.5f;
+	}
+	
+	if (delta_heading != 0.0f) {
+		m_heading += delta_heading;
+		// Normalize heading to 0-360
+		while (m_heading < 0.0f) m_heading += 360.0f;
+		while (m_heading >= 360.0f) m_heading -= 360.0f;
+	}
+	
+	// Handle forward/backward movement
+	float move_distance = 0.0f;
+	
+	if (m_move_forward && !m_move_backward) {
+		move_distance = GetMovementSpeed() * 0.5f; // 500ms tick rate
+		m_is_moving = true;
+		m_animation = (m_move_speed >= WALK_SPEED_THRESHOLD) ? ANIM_RUN : ANIM_WALK;
+	} else if (m_move_backward && !m_move_forward) {
+		move_distance = -DEFAULT_WALK_SPEED * 0.5f; // Backward uses walk speed, 500ms tick
+		m_is_moving = true;
+		m_animation = ANIM_WALK; // Always walk when moving backward
+	} else if (!m_move_forward && !m_move_backward && !m_turn_left && !m_turn_right) {
+		// Not moving
+		if (m_is_moving) {
+			m_is_moving = false;
+			m_animation = ANIM_STAND;
+		}
+	}
+	
+	// Apply movement
+	if (move_distance != 0.0f) {
+		// Convert heading to radians for calculations
+		float heading_rad = m_heading * M_PI / 180.0f;
+
+		// Calculate new position
+		// In EQ coordinates: +X = East, +Y = North
+		// Heading 0 = North, 90 = East, 180 = South, 270 = West
+		float new_x = m_x + move_distance * sin(heading_rad);
+		float new_y = m_y + move_distance * cos(heading_rad);
+
+		// Update position
+		m_x = new_x;
+		m_y = new_y;
+
+		// Fix Z position if we have map data
+		FixZ();
+	}
+}
