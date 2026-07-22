@@ -179,6 +179,7 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/eq.cpp
+    src/client/eq_entities.cpp
     src/client/eq_commands.cpp
     src/client/eq_strings.cpp
     src/client/eq_login_world.cpp
