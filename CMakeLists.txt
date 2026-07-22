@@ -302,6 +302,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/entity_prep_worker.cpp
         src/client/graphics/simulation_worker.cpp
+        src/client/graphics/sim_visibility.cpp
+        src/client/graphics/sim_animation.cpp
+        src/client/graphics/sim_weather.cpp
+        src/client/graphics/sim_particles.cpp
+        src/client/graphics/sim_entity_sync.cpp
+        src/client/graphics/sim_boids.cpp
         src/client/graphics/loading_thread.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/animated_texture_manager.cpp
