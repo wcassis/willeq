@@ -301,6 +301,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
+        src/client/graphics/entity_castbars.cpp
+        src/client/graphics/entity_combat_anim.cpp
+        src/client/graphics/entity_spatial.cpp
+        src/client/graphics/entity_equipment.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/entity_prep_worker.cpp
         src/client/graphics/simulation_worker.cpp
