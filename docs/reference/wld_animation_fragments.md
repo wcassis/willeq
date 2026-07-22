@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # WLD Animation Fragment Analysis
 
 Comparison of animation-related WLD fragment parsing between zone-utilities (eqemu reference) and WillEQ.

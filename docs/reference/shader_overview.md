@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # WillEQ Shader Overview
 
 All shader source code is embedded as C++ string literals (no external `.glsl`/`.vert`/`.frag` files). The codebase has three shader systems targeting two GPU backends: a built-in GLES2 driver layer, a `ZoneShaderManager` for custom zone/entity materials, and a standalone particle renderer.

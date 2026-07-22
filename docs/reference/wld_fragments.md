@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 EQWldData.pas in the OpenZone source is a direct translation of the corresponding ZoneConverter file, but also has bug fixes and improvements.
 
 Here's a rundown of the fragment types as I understand them and some basic documentation below:

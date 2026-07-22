@@ -12,6 +12,14 @@ Additional context is in subdirectory CLAUDE.md files:
 - `docker/CLAUDE.md` - Cross-compilation, DRM/KMS device, GLES2 driver
 - `docs/CLAUDE.md` - Coordinate systems, heading conventions, docs layout
 
+## Orientation (read before large tasks)
+
+- `docs/decisions.md` — standing architecture decisions. Settled; do not re-litigate.
+- `docs/module_map.md` — functional map of the oversized files (eq.cpp, irrlicht_renderer.cpp). Consult it instead of scanning those files.
+- `refactor/deferred.md` — known-open items. `refactor/F_file_split.md` — active file-splitting batch.
+- `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current.
+- Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3`. Task branches: `task/F##-<name>`. The `renderer` branch is reference-only — never merge it.
+
 ## Project Overview
 
 WillEQ is a standalone EverQuest client targeting the Titanium client version with optional 3D graphics rendering. It was migrated from the akk-stack headless client to remove all eqemu dependencies. All opcodes are hard-coded for Titanium specifically.
@@ -147,12 +155,12 @@ Audio updates                       Zone load completion detection
 ```
 
 - **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
-- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (839+ case switch)
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (99-case switch, one per GameEventType, kept at 100% coverage)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
-- **Event types** (`include/client/state/event_bus.h`) — 140+ event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 50+ intent types for user actions
+- **Event types** (`include/client/state/event_bus.h`) — 99 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 56 intent types for user actions
 
-**Key separation**: EverQuest has zero graphics dependencies. No `m_renderer` member, no `GetRenderer()` accessor, no graphics includes except `constrained_renderer_config.h` (preset enum). All renderer communication goes through the bridge. Application owns the renderer and wires it to EverQuest via bridge pointers.
+**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. The decoupling is ~90% complete, not total: eq.cpp still has 14 graphics includes (mostly asset/config loaders in the `EQT::Graphics` namespace), reads the renderer-owned `EntityPoseState` enum, and two `void*` payloads cross the bridge. The full residue list is in `refactor/deferred.md` — do not "fix" coupling ad hoc; those items are tracked units.
 
 ### Connection Flow
 
@@ -170,7 +178,7 @@ The client connects through three stages, each with its own connection manager:
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
 **EverQuest class** (`include/client/eq.h`, `src/client/eq.cpp`)
-- Game state and network logic (~9000 lines)
+- Game state and network logic (~19,700 lines — being split into domain TUs by Batch F, see `refactor/F_file_split.md`; consult `docs/module_map.md` before reading it)
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`

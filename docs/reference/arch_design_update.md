@@ -1,6 +1,6 @@
 # willeq architecture — updated design
 
-This document extends arch_design.md with clarifications, additional detail, and design
+This document extends arch_design_orig.md (formerly named arch_design.md) with clarifications, additional detail, and design
 decisions made during review. It serves as the foundation for a comprehensive code audit
 and refactoring effort.
 

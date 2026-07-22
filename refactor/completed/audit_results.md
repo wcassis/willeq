@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # willeq Code Audit Results
 
 Audit conducted against the architecture defined in `arch_design.md` and `arch_design_update.md`.

@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # D04: Publish Entity Events Alongside Existing Calls
 
 ## Plan

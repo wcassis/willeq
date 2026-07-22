@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # Pre-Luclin S3D Contents Reference
 
 This file contains the complete contents of all pre-Luclin EverQuest S3D files,

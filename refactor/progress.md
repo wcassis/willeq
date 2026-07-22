@@ -12,6 +12,12 @@ Each unit follows: **Plan -> Implement -> Review -> Commit**
 4. Commit only after review passes
 5. Update this table
 
+## Active Batch
+
+**Batch F — Mechanical File Splitting** (`refactor/F_file_split.md`): split
+eq.cpp and irrlicht_renderer.cpp into domain TUs. Open items deferred from
+completed batches: `refactor/deferred.md`. Standing decisions: `docs/decisions.md`.
+
 ## Completed Batches
 
 All completed batch plans and unit files are in `refactor/completed/`.

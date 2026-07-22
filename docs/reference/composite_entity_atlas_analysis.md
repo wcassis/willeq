@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — point-in-time document from a completed batch or past audit; findings inside may be superseded and are NOT kept current. Current truth lives in `docs/decisions.md`, `docs/module_map.md`, and `refactor/deferred.md`.
+
 # Entity Texture Atlas — Exhaustive Analysis
 
 Generated 2026-04-06 by scanning all 1006 S3D archives in the EQ Titanium client.
