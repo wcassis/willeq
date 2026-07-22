@@ -25,7 +25,11 @@ status=0
 for f in "${files[@]}"; do
     path="$repo_root/$f"
     [ -f "$path" ] || path="$f"
-    [ -f "$path" ] || continue
+    if [ ! -f "$path" ]; then
+        echo "ERROR $f: file not found (cwd=$PWD, repo_root=$repo_root) — pass absolute paths or run from the target worktree"
+        status=2
+        continue
+    fi
     lines=$(wc -l < "$path")
     if [ "$lines" -gt "$FAIL" ]; then
         echo "FAIL  $f: $lines lines (> $FAIL)"
