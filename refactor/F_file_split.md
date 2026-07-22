@@ -71,10 +71,10 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F05 | Trade + loot/vendor/bank/trainer + inventory + recipes | eq_merchant.cpp | 1,528 | done | slot1 | `8065e59` |
 | F06 | Chat + text messages | eq_chat.cpp | 510 | done | slot1 | `369a5b1` |
 | F07 | Stat getters + misc low-coupling clusters | eq_player_info.cpp | 1,913 | done | slot3 | `564bffd` |
-| F08 | Movement + pathfinding + water + keyboard | eq_movement.cpp | ~2,100 | | | |
+| F08 | Movement + pathfinding + water + keyboard | eq_movement.cpp | 1,861 | done | slot1 | `9d2ac94` |
 | F09 | Zone geometry + zone change/teardown | eq_zone.cpp | 755 | done | slot2 | `ca3b032` |
 | F10 | Bridge processing (intents/events) + InitGraphics | eq_bridge.cpp | ~1,750 | | | |
-| F11 | Entity/spawn tracking + appearance + world objects | eq_entities.cpp | ~2,700 | | | |
+| F11 | Entity/spawn tracking + appearance + world objects | eq_entities.cpp | 2,340 | done | slot2 | `3463909` |
 | F12 | Group / raid / pet | eq_group.cpp | 603 | done | slot2 | `c8ff48b` |
 | F13 | Combat resolution | eq_combat_actions.cpp | 495 | done | slot1 | `6ad6bc5` |
 
@@ -89,7 +89,7 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp | ~1,955 | | | |
 | F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | ~1,760 | | | |
 | F20 | Simulation bridge | renderer_sim_bridge.cpp | ~1,040 | | | |
-| F21 | Entity/inventory/combat façades + GPU upload thread | renderer_entities.cpp, renderer_gpu_upload.cpp | ~1,155 | | | |
+| F21 | Entity/inventory/combat façades + GPU upload thread | renderer_entities.cpp, renderer_gpu_upload.cpp | 863 | done | slot3 | `aa158a4` |
 | F22 | processFrame + sub-passes | renderer_frame.cpp | ~1,100 | | | |
 
 ## Units — other
