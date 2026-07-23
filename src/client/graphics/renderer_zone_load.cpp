@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -55,53 +56,49 @@ namespace Graphics {
 // T14: decodeBMPtoARGB and bilinearUpscaleARGB removed.
 // All texture decoding now goes through ConstrainedTextureCache::getOrLoad().
 
-void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
-                                           LoadingStatus& status) {
-    auto totalStart = std::chrono::steady_clock::now();
-    LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: starting for zone '{}'", currentZoneName_);
-    loadFailed_ = false;
 
-    auto updateProgress = [&](int percent, const std::string& text) {
-        status.setProgress(percent, text);
-        LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: [{}%] {}", percent, text);
-        // Render a loading frame so the progress bar updates visually
-        std::wstring wtext(text.begin(), text.end());
-        drawLoadingScreen(percent / 100.0f, wtext);
+// ── ZoneLoadContext ─────────────────────────────────────────────────────────
+// Holds every local that crosses a loadZoneSequential() step boundary (G01
+// decomposition). Defined here (not in the header) since it is purely an
+// implementation detail of the step methods; the header only forward-declares
+// it so the private step-method declarations can take it by reference.
+struct IrrlichtRenderer::ZoneLoadContext {
+    // Setup-scope locals used across many steps.
+    std::string eqPath;
+    std::chrono::steady_clock::time_point totalStart;
+    std::function<void(int, const std::string&)> updateProgress;
+
+    // Step 8 (Entities) per-entity-loop state. These are set up once before the
+    // loop (modelLoader/equipLoader/totalEntities/*Count accumulators) or once
+    // per iteration (spawnId/vis/entitySuccess/variantTextureCount/equipmentData)
+    // and threaded through the 8a-8f sub-step calls that make up one iteration.
+    RaceModelLoader* modelLoader = nullptr;
+    EquipmentModelLoader* equipLoader = nullptr;
+    size_t totalEntities = 0;
+    size_t prepCount = 0;
+    size_t buildCount = 0;
+    size_t modelCacheHits = 0;
+    size_t modelDiskLoads = 0;
+
+    uint16_t spawnId = 0;
+    const EntityVisual* vis = nullptr;
+    bool entitySuccess = false;       // set by 8a, consumed by 8b
+    size_t variantTextureCount = 0;   // set by 8c, consumed by 8e (warn log)
+
+    struct EquipPrepData {
+        int modelId = 0;
+        uint32_t equipmentId = 0;
+        bool isPrimary = true;
+        std::shared_ptr<ZoneGeometry> geometry;
+        std::map<std::string, std::shared_ptr<TextureInfo>> rawTextures;
     };
+    std::vector<EquipPrepData> equipmentData;  // set by 8d, consumed by 8e
+};
 
-    // ── Setup ────────────────────────────────────────────────────────────────
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: zone='{}', eqClientPath='{}'", currentZoneName_, eqClientPath);
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: particleManager_={}, zoneShader_={}, "
-              "simulationWorker_={}, entityRenderer_={}, doorManager_={}",
-              (bool)particleManager_, (bool)zoneShader_,
-              (bool)simulationWorker_, (bool)entityRenderer_, (bool)doorManager_);
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
-              "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
-              fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
-              maxFireGlowLights_, fireEffectsEnabled_, fireGlowLights_.size());
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
-              "eqe1Path='{}', deferredAssetLoading={}",
-              config_.constrainedConfig.skipObjectBuild,
-              config_.constrainedConfig.eqe1Path,
-              config_.constrainedConfig.deferredAssetLoading);
-
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
-              simulationWorker_ ? simulationWorker_->isRunning() : false);
-    stopSimulationWorker();
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: simulation worker stopped");
-    progressiveLoadingActive_ = true;
-    progressiveLoadStartTime_ = std::chrono::steady_clock::now();
-    entityPrepReady_ = false;
-    entityPrepScanCounter_ = 0;
-    pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
-
-    std::string eqPath = eqClientPath;
-    if (!eqPath.empty() && eqPath.back() != '/' && eqPath.back() != '\\')
-        eqPath += '/';
-
+void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
     // ── Step 0: EQE1 — open flat pack files (if configured) ────────────────
     if (!config_.constrainedConfig.eqe1Path.empty()) {
-        updateProgress(48, "Opening EQE1 textures...");
+        ctx.updateProgress(48, "Opening EQE1 textures...");
 
         auto archiveList = resolveEQE1Archives(currentZoneName_);
         for (const auto& name : archiveList.zoneArchives) {
@@ -141,12 +138,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             }
         }
     }
+}
 
+bool IrrlichtRenderer::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
     // ── Step 1: S3D — parse zone archive ───────────────────────────────────
-    updateProgress(50, "Loading zone data...");
+    ctx.updateProgress(50, "Loading zone data...");
     {
         auto stepStart = std::chrono::steady_clock::now();
-        std::string zonePath = eqPath + currentZoneName_ + ".s3d";
+        std::string zonePath = ctx.eqPath + currentZoneName_ + ".s3d";
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: loading S3D from '{}'", zonePath);
 
         S3DLoadOptions loadOptions;
@@ -161,7 +160,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_FATAL(MOD_GRAPHICS, "Failed to load zone S3D archive: {} ({})", zonePath, loader.getError());
             pendingZoneComputations_.reset();
             loadFailed_ = true;
-            return;
+            return false;
         }
         currentZone_ = loader.getZone();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: S3D loaded: objects={}, lights={}, textures={}, "
@@ -180,7 +179,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         LOG_FATAL(MOD_GRAPHICS, "loadZoneSequential: S3D produced no data");
         pendingZoneComputations_.reset();
         loadFailed_ = true;
-        return;
+        return false;
     }
     if (entityRenderer_) {
         entityRenderer_->setCurrentZone(currentZoneName_);
@@ -200,9 +199,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                       zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
         }
     }
+    return true;
+}
 
+void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
     // ── Step 2: BSP — compute spatial data ─────────────────────────────────
-    updateProgress(55, "Computing spatial data...");
+    ctx.updateProgress(55, "Computing spatial data...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -458,13 +460,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_bsp_install", 0, stepStart);
     }
     FlushThreadLog();
+}
 
-    // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
-    // Zone textures are loaded as individual ETC1 textures via constrained cache.
-    FlushThreadLog();
-
+void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
     // ── Step 4: Regions — build ALL zone meshes eagerly ────────────────────
-    updateProgress(63, "Building zone meshes...");
+    ctx.updateProgress(63, "Building zone meshes...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: currentZone_={}, wldLoader={}, zoneBspTree_={}",
@@ -540,7 +540,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 // Update progress every 20 regions (63-70%)
                 if (regionsBuilt % 20 == 0 && totalRegions > 0) {
                     int pct = 63 + static_cast<int>(7.0f * regionsBuilt / totalRegions);
-                    updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
+                    ctx.updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
                                         + "/" + std::to_string(totalRegions) + "]");
                 }
             }
@@ -704,9 +704,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
     }
     FlushThreadLog();
+}
 
+void IrrlichtRenderer::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
     // ── Step 5: Assets — build indexes, create subsystems ──────────────────
-    updateProgress(71, "Building asset indexes...");
+    ctx.updateProgress(71, "Building asset indexes...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -716,7 +718,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Build archive index inline (was background thread)
         if (computations && config_.constrainedConfig.deferredAssetLoading) {
             computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
-            if (computations->archiveIndex->buildIndex(eqPath, config_.constrainedConfig.lazyPfsLoading)) {
+            if (computations->archiveIndex->buildIndex(ctx.eqPath, config_.constrainedConfig.lazyPfsLoading)) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: archive index built ({} race entries, {} archives)",
                          computations->archiveIndex->getRaceEntryCount(),
                          computations->archiveIndex->getArchiveCount());
@@ -732,7 +734,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // Build equipment index inline (was background thread)
         if (computations) {
             auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
-            if (EquipmentModelLoader::buildEquipmentIndex(eqPath,
+            if (EquipmentModelLoader::buildEquipmentIndex(ctx.eqPath,
                     eqIdx->modelIndex, eqIdx->textureIndex)) {
                 eqIdx->loaded = true;
                 LOG_INFO(MOD_GRAPHICS, "Sequential: equipment index ({} models, {} textures)",
@@ -789,9 +791,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_assets", 0, stepStart);
     }
     FlushThreadLog();
+}
 
+void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
     // ── Step 6: Objects — zone objects ──────────────────────────────────────
-    updateProgress(75, "Installing zone objects...");
+    ctx.updateProgress(75, "Installing zone objects...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", objectLights_.size());
@@ -1168,7 +1172,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
                 if (objectsBuilt % 20 == 0 && totalObjects > 0) {
                     int pct = 75 + static_cast<int>(3.0f * objectsBuilt / totalObjects);
-                    updateProgress(pct, "Building objects [" + std::to_string(objectsBuilt)
+                    ctx.updateProgress(pct, "Building objects [" + std::to_string(objectsBuilt)
                                         + "/" + std::to_string(totalObjects) + "]");
                 }
             }
@@ -1183,9 +1187,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_objects", deferredObjects_.size(), stepStart);
     }
     FlushThreadLog();
+}
 
+void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
     // ── Step 7: Doors — door meshes ────────────────────────────────────────
-    updateProgress(78, "Building door meshes...");
+    ctx.updateProgress(78, "Building door meshes...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)doorManager_);
@@ -1243,7 +1249,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 // Update progress every 10 doors (78-80%)
                 if (doorsBuilt % 10 == 0 && totalDoors > 0) {
                     int pct = 78 + static_cast<int>(2.0f * doorsBuilt / totalDoors);
-                    updateProgress(pct, "Building doors [" + std::to_string(doorsBuilt)
+                    ctx.updateProgress(pct, "Building doors [" + std::to_string(doorsBuilt)
                                         + "/" + std::to_string(totalDoors) + "]");
                 }
             }
@@ -1254,9 +1260,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
+}
 
+bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
     // ── Step 8: Entities — inline prep + build (no background threads) ────
-    updateProgress(80, "Preparing entity models...");
+    ctx.updateProgress(80, "Preparing entity models...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityRenderer_={}, skipEntityBuild={}",
@@ -1265,269 +1273,56 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         if (entityRenderer_ && entityRenderer_->getRaceModelLoader()
             && !config_.constrainedConfig.skipEntityBuild) {
 
-            auto* modelLoader = entityRenderer_->getRaceModelLoader();
-            auto* equipLoader = entityRenderer_->getEquipmentModelLoader();
+            ctx.modelLoader = entityRenderer_->getRaceModelLoader();
+            ctx.equipLoader = entityRenderer_->getEquipmentModelLoader();
             const auto& entities = entityRenderer_->getEntities();
-            size_t totalEntities = entities.size();
-            size_t prepCount = 0;
-            size_t buildCount = 0;
-            size_t modelCacheHits = 0;
-            size_t modelDiskLoads = 0;
+            ctx.totalEntities = entities.size();
+            ctx.prepCount = 0;
+            ctx.buildCount = 0;
+            ctx.modelCacheHits = 0;
+            ctx.modelDiskLoads = 0;
 
             LOG_INFO(MOD_GRAPHICS, "Sequential: preparing {} entities inline (chrCacheMaxEntries={})",
-                     totalEntities, config_.constrainedConfig.chrCacheMaxEntries);
+                     ctx.totalEntities, config_.constrainedConfig.chrCacheMaxEntries);
 
             // Collect spawn IDs (iterate copy since we modify visuals)
             std::vector<uint16_t> spawnIds;
-            spawnIds.reserve(totalEntities);
+            spawnIds.reserve(ctx.totalEntities);
             for (const auto& [spawnId, vis] : entities) {
                 spawnIds.push_back(spawnId);
             }
 
             for (uint16_t spawnId : spawnIds) {
-            
+
                 const auto& entities2 = entityRenderer_->getEntities();
                 auto it = entities2.find(spawnId);
                 if (it == entities2.end()) continue;
-                const auto& vis = it->second;
+                ctx.spawnId = spawnId;
+                ctx.vis = &it->second;
 
                 // Update progress within entity phase (80-88%)
-                if (totalEntities > 0) {
-                    int pct = 80 + static_cast<int>(8.0f * prepCount / totalEntities);
-                    updateProgress(pct, "Preparing entities [" + std::to_string(prepCount + 1)
-                                        + "/" + std::to_string(totalEntities) + "]");
+                if (ctx.totalEntities > 0) {
+                    int pct = 80 + static_cast<int>(8.0f * ctx.prepCount / ctx.totalEntities);
+                    ctx.updateProgress(pct, "Preparing entities [" + std::to_string(ctx.prepCount + 1)
+                                        + "/" + std::to_string(ctx.totalEntities) + "]");
                 }
 
                 // ── Inline entity prep (EntityPrepWorker::processRequest logic) ──
 
-                // Step 8a: Base race model prep (S3D load, WLD parse, animation merge)
-                uint32_t key = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
-                bool alreadyCached = modelLoader->isModelDataCached(key);
-                bool success = false;
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} cacheKey={} cached={}",
-                          spawnId, vis.name, vis.raceId, vis.gender, key, alreadyCached);
+                if (!loadZoneStep8a_BaseModelPrep(ctx)) return false;
 
-                if (alreadyCached) {
-                    success = true;
-                    ++modelCacheHits;
-                } else {
-                    auto prepStart = std::chrono::steady_clock::now();
-                    success = modelLoader->preloadModelData(vis.raceId, vis.gender);
-                    auto prepMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - prepStart).count();
-                    if (success) {
-                        ++modelDiskLoads;
-                    } else {
-                        LOG_FATAL(MOD_GRAPHICS, "Failed to load race model: race={} gender={} (not found in any S3D archive)", vis.raceId, vis.gender);
-                        pendingZoneComputations_.reset();
-                        loadFailed_ = true;
-                        return;
-                    }
-                    LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
-                             vis.raceId, vis.gender, prepMs, success);
-                }
+                loadZoneStep8b_VariantModelPrep(ctx);
 
-                // Step 8b: Variant model prep (zone-specific S3D for head/body variants)
-                if (success) {
-                    uint8_t headVariant = vis.appearance.helm;
-                    uint8_t bodyVariant = 0;
-                    uint8_t chestMaterial = static_cast<uint8_t>(
-                        vis.appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
-                    if (isRobeTexture(vis.appearance.texture) || isRobeTexture(chestMaterial)) {
-                        bodyVariant = 1;
-                    }
-                    if (headVariant != 0 || bodyVariant != 0) {
-                        modelLoader->preloadVariantModel(vis.raceId, vis.gender, headVariant, bodyVariant);
-                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8b: entity {} ({}) preloadVariantModel head={} body={}",
-                                  spawnId, vis.name, headVariant, bodyVariant);
-                    }
-                }
+                loadZoneStep8c_VariantTextures(ctx);
 
-                // Step 8c: Load variant textures via constrained cache
-                // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
-                size_t variantTextureCount = 0;
-                {
-                    auto modelData = modelLoader->getRaceModelData(vis.raceId, vis.gender);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) appearance.texture={} helm={} modelData={}",
-                              spawnId, vis.name, vis.appearance.texture, vis.appearance.helm, (bool)modelData);
-                    if (vis.appearance.texture != 0 || vis.appearance.helm != 0) {
-                        std::string raceCode = RaceModelLoader::getRaceCode(vis.raceId);
-                        std::string lowerRaceCode = raceCode;
-                        std::transform(lowerRaceCode.begin(), lowerRaceCode.end(), lowerRaceCode.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
+                if (!loadZoneStep8d_EquipmentPrep(ctx)) return false;
 
-                        std::set<std::string> loadedNames;
-                        auto loadVariantTexture = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
-                            if (!texInfo || texInfo->data.empty()) return;
-                            std::string lowerName = texName;
-                            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                                           [](unsigned char c) { return std::tolower(c); });
-                            if (loadedNames.count(lowerName) > 0) return;
-                            constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
-                            loadedNames.insert(lowerName);
-                            ++variantTextureCount;
-                        };
-
-                        // Build variant prefixes
-                        std::vector<std::string> variantPrefixes;
-                        if (vis.appearance.texture >= 10) {
-                            char buf[32];
-                            snprintf(buf, sizeof(buf), "clk%02d", vis.appearance.texture - 10);
-                            variantPrefixes.push_back(buf);
-                        } else if (vis.appearance.texture > 0) {
-                            char buf[32];
-                            const char* slots[] = {"ch", "ua", "fa", "hn", "lg", "ft"};
-                            for (const char* slot : slots) {
-                                snprintf(buf, sizeof(buf), "%s%s%02d", lowerRaceCode.c_str(), slot, vis.appearance.texture);
-                                variantPrefixes.push_back(buf);
-                            }
-                        }
-                        if (vis.appearance.helm > 0) {
-                            char buf[32];
-                            snprintf(buf, sizeof(buf), "%she%02d", lowerRaceCode.c_str(), vis.appearance.helm);
-                            variantPrefixes.push_back(buf);
-                        }
-
-                        auto searchTextures = [&](const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) {
-                            for (const auto& [texName, texInfo] : textures) {
-                                std::string ln = texName;
-                                std::transform(ln.begin(), ln.end(), ln.begin(),
-                                               [](unsigned char c) { return std::tolower(c); });
-                                for (const auto& prefix : variantPrefixes) {
-                                    if (ln.find(prefix) != std::string::npos) {
-                                        loadVariantTexture(texName, texInfo);
-                                        break;
-                                    }
-                                }
-                            }
-                        };
-
-                        if (modelData && !modelData->textures.empty())
-                            searchTextures(modelData->textures);
-
-                        // Search variant model textures
-                        uint8_t hv = vis.appearance.helm;
-                        uint8_t bv2 = 0;
-                        uint8_t cm = static_cast<uint8_t>(
-                            vis.appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
-                        if (isRobeTexture(vis.appearance.texture) || isRobeTexture(cm))
-                            bv2 = 1;
-                        if (hv != 0 || bv2 != 0) {
-                            auto variantModelData = modelLoader->getVariantModelData(
-                                vis.raceId, vis.gender, hv, bv2);
-                            if (variantModelData && !variantModelData->textures.empty())
-                                searchTextures(variantModelData->textures);
-                        }
-                    }
-                }
-
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) loaded {} variant textures via cache",
-                          spawnId, vis.name, variantTextureCount);
-
-                // Step 8d: Equipment model extraction + texture decode via constrained cache
-                // T07: Replaced inline DDS decoder with getOrLoad() calls.
-                struct EquipPrepData {
-                    int modelId = 0;
-                    uint32_t equipmentId = 0;
-                    bool isPrimary = true;
-                    std::shared_ptr<ZoneGeometry> geometry;
-                    std::map<std::string, std::shared_ptr<TextureInfo>> rawTextures;
-                };
-                std::vector<EquipPrepData> equipmentData;
-
-                bool equipError = false;
-                if (equipLoader) {
-                    uint32_t primaryId = vis.appearance.equipment[7];
-                    uint32_t secondaryId = vis.appearance.equipment[8];
-
-                    auto prepOneEquip = [&](uint32_t equipmentId, bool isPrimary) {
-                        if (equipError) return;
-                        if (equipmentId == 0) return;
-                        int modelId = equipLoader->getModelIdForItem(equipmentId);
-                        if (modelId < 0) modelId = static_cast<int>(equipmentId);
-                        const EquipmentModelLoader::EquipmentModelRef* modelRef = equipLoader->getModelRef(modelId);
-                        if (!modelRef) {
-                            LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model ref: entity {} ({}) equipment {} ({}) modelId={} (not found in item_models.json)",
-                                      spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
-                            equipError = true;
-                            return;
-                        }
-                        auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
-                        if (!equipData2) {
-                            LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model: entity {} ({}) equipment {} ({}) modelId={}", spawnId, vis.name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
-                            equipError = true;
-                            return;
-                        }
-
-                        EquipPrepData prepData;
-                        prepData.modelId = modelId;
-                        prepData.equipmentId = equipmentId;
-                        prepData.isPrimary = isPrimary;
-                        prepData.geometry = equipData2->geometry;
-                        prepData.rawTextures = equipData2->textures;
-
-                        // Load equipment textures into constrained cache
-                        for (const auto& texName : equipData2->textureNames) {
-                            std::string ln = texName;
-                            std::transform(ln.begin(), ln.end(), ln.begin(),
-                                           [](unsigned char c) { return std::tolower(c); });
-                            auto texIt = equipData2->textures.find(ln);
-                            if (texIt == equipData2->textures.end() || !texIt->second) continue;
-                            const auto& texInfo = texIt->second;
-                            if (texInfo->data.empty()) continue;
-
-                            constrainedTextureCache_->getOrLoad(ln, texInfo->data);
-                        }
-                        equipmentData.push_back(std::move(prepData));
-                    };
-
-                    prepOneEquip(primaryId, true);
-                    prepOneEquip(secondaryId, false);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment: primary={} secondary={} extracted={}",
-                              spawnId, vis.name, vis.appearance.equipment[7], vis.appearance.equipment[8], equipmentData.size());
-                }
-
-                if (equipError) {
-                    pendingZoneComputations_.reset();
-                    loadFailed_ = true;
-                    return;
-                }
-
-                // Step 8e: Distribute prep results to EntityVisual
-                // (equivalent to pollAndDistributePrepResults inline)
-                {
-                    // We need a mutable reference — use const_cast since we own the renderer
-                    auto& mutableEntities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
-                    auto visIt = mutableEntities.find(spawnId);
-                    if (visIt == mutableEntities.end()) {
-                        LOG_WARN(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) vanished before distribution — prep work discarded "
-                                 "(variantTex={}, equipData={})",
-                                 spawnId, vis.name, variantTextureCount, equipmentData.size());
-                    } else {
-                        auto& mvis = visIt->second;
-                        // T06: variantTextures no longer stored on EntityVisual — textures are in constrained cache.
-
-                        for (auto& eq : equipmentData) {
-                            EntityVisual::EquipmentStaging staging;
-                            staging.modelId = eq.modelId;
-                            staging.equipmentId = eq.equipmentId;
-                            staging.isPrimary = eq.isPrimary;
-                            staging.geometry = eq.geometry;
-                            staging.rawTextures = eq.rawTextures;
-                            mvis.equipmentStaging.push_back(std::move(staging));
-                        }
-
-                        // Textures already in constrained cache from T05 (base) + T06 (variant) + T07 (equipment).
-                        mvis.entityPrepComplete = true;
-                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) distributed: equipStaging={}",
-                                  spawnId, vis.name, mvis.equipmentStaging.size());
-                    }
-                }
+                loadZoneStep8e_DistributePrepResults(ctx);
 
                 // T04: processUploadQueue removed. Textures uploaded via uploadTexture() in T09.
 
                 // Promote prepared models so buildEntityMesh finds them
-                modelLoader->promotePreparedModels();
+                ctx.modelLoader->promotePreparedModels();
 
                 // Upload all pending textures (including composite EQE1 entries queued in Step 8a)
                 // so they're available as GPU textures when buildEntityMesh builds composite meshes.
@@ -1535,17 +1330,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                     constrainedTextureCache_->uploadAllPending();
                 }
 
-                // Step 8f: Build entity mesh (GL work — scene node, materials, name tag)
-                bool meshBuilt = entityRenderer_->buildEntityMesh(spawnId);
-                if (meshBuilt) ++buildCount;
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) buildEntityMesh result={}", spawnId, vis.name, meshBuilt);
+                loadZoneStep8f_BuildEntityMesh(ctx);
 
-                ++prepCount;
+                ++ctx.prepCount;
             }
 
             bool hasBoats = entityRenderer_->hasBoatsInZone();
             LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes (model cache hits={}, disk loads={}, hasBoats={})",
-                     prepCount, buildCount, modelCacheHits, modelDiskLoads, hasBoats);
+                     ctx.prepCount, ctx.buildCount, ctx.modelCacheHits, ctx.modelDiskLoads, hasBoats);
             if (hasBoats) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: zone has boats — boat collision checks enabled");
             } else {
@@ -1573,9 +1365,250 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     FlushThreadLog();
     LOG_INFO(MOD_GRAPHICS, "SEQ: Step 8 complete, entering Step 9...");
     FlushThreadLog();
+    return true;
+}
 
+bool IrrlichtRenderer::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
+    // Step 8a: Base race model prep (S3D load, WLD parse, animation merge)
+    uint32_t key = (static_cast<uint32_t>(ctx.vis->raceId) << 8) | ctx.vis->gender;
+    bool alreadyCached = ctx.modelLoader->isModelDataCached(key);
+    bool success = false;
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} cacheKey={} cached={}",
+              ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender, key, alreadyCached);
+
+    if (alreadyCached) {
+        success = true;
+        ++ctx.modelCacheHits;
+    } else {
+        auto prepStart = std::chrono::steady_clock::now();
+        success = ctx.modelLoader->preloadModelData(ctx.vis->raceId, ctx.vis->gender);
+        auto prepMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - prepStart).count();
+        if (success) {
+            ++ctx.modelDiskLoads;
+        } else {
+            LOG_FATAL(MOD_GRAPHICS, "Failed to load race model: race={} gender={} (not found in any S3D archive)", ctx.vis->raceId, ctx.vis->gender);
+            pendingZoneComputations_.reset();
+            loadFailed_ = true;
+            return false;
+        }
+        LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
+                 ctx.vis->raceId, ctx.vis->gender, prepMs, success);
+    }
+    ctx.entitySuccess = success;
+    return true;
+}
+
+void IrrlichtRenderer::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
+    // Step 8b: Variant model prep (zone-specific S3D for head/body variants)
+    if (ctx.entitySuccess) {
+        uint8_t headVariant = ctx.vis->appearance.helm;
+        uint8_t bodyVariant = 0;
+        uint8_t chestMaterial = static_cast<uint8_t>(
+            ctx.vis->appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
+        if (isRobeTexture(ctx.vis->appearance.texture) || isRobeTexture(chestMaterial)) {
+            bodyVariant = 1;
+        }
+        if (headVariant != 0 || bodyVariant != 0) {
+            ctx.modelLoader->preloadVariantModel(ctx.vis->raceId, ctx.vis->gender, headVariant, bodyVariant);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8b: entity {} ({}) preloadVariantModel head={} body={}",
+                      ctx.spawnId, ctx.vis->name, headVariant, bodyVariant);
+        }
+    }
+}
+
+void IrrlichtRenderer::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
+    // Step 8c: Load variant textures via constrained cache
+    // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
+    ctx.variantTextureCount = 0;
+    {
+        auto modelData = ctx.modelLoader->getRaceModelData(ctx.vis->raceId, ctx.vis->gender);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) appearance.texture={} helm={} modelData={}",
+                  ctx.spawnId, ctx.vis->name, ctx.vis->appearance.texture, ctx.vis->appearance.helm, (bool)modelData);
+        if (ctx.vis->appearance.texture != 0 || ctx.vis->appearance.helm != 0) {
+            std::string raceCode = RaceModelLoader::getRaceCode(ctx.vis->raceId);
+            std::string lowerRaceCode = raceCode;
+            std::transform(lowerRaceCode.begin(), lowerRaceCode.end(), lowerRaceCode.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+
+            std::set<std::string> loadedNames;
+            auto loadVariantTexture = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
+                if (!texInfo || texInfo->data.empty()) return;
+                std::string lowerName = texName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (loadedNames.count(lowerName) > 0) return;
+                constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
+                loadedNames.insert(lowerName);
+                ++ctx.variantTextureCount;
+            };
+
+            // Build variant prefixes
+            std::vector<std::string> variantPrefixes;
+            if (ctx.vis->appearance.texture >= 10) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "clk%02d", ctx.vis->appearance.texture - 10);
+                variantPrefixes.push_back(buf);
+            } else if (ctx.vis->appearance.texture > 0) {
+                char buf[32];
+                const char* slots[] = {"ch", "ua", "fa", "hn", "lg", "ft"};
+                for (const char* slot : slots) {
+                    snprintf(buf, sizeof(buf), "%s%s%02d", lowerRaceCode.c_str(), slot, ctx.vis->appearance.texture);
+                    variantPrefixes.push_back(buf);
+                }
+            }
+            if (ctx.vis->appearance.helm > 0) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%she%02d", lowerRaceCode.c_str(), ctx.vis->appearance.helm);
+                variantPrefixes.push_back(buf);
+            }
+
+            auto searchTextures = [&](const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) {
+                for (const auto& [texName, texInfo] : textures) {
+                    std::string ln = texName;
+                    std::transform(ln.begin(), ln.end(), ln.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    for (const auto& prefix : variantPrefixes) {
+                        if (ln.find(prefix) != std::string::npos) {
+                            loadVariantTexture(texName, texInfo);
+                            break;
+                        }
+                    }
+                }
+            };
+
+            if (modelData && !modelData->textures.empty())
+                searchTextures(modelData->textures);
+
+            // Search variant model textures
+            uint8_t hv = ctx.vis->appearance.helm;
+            uint8_t bv2 = 0;
+            uint8_t cm = static_cast<uint8_t>(
+                ctx.vis->appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF);
+            if (isRobeTexture(ctx.vis->appearance.texture) || isRobeTexture(cm))
+                bv2 = 1;
+            if (hv != 0 || bv2 != 0) {
+                auto variantModelData = ctx.modelLoader->getVariantModelData(
+                    ctx.vis->raceId, ctx.vis->gender, hv, bv2);
+                if (variantModelData && !variantModelData->textures.empty())
+                    searchTextures(variantModelData->textures);
+            }
+        }
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) loaded {} variant textures via cache",
+              ctx.spawnId, ctx.vis->name, ctx.variantTextureCount);
+}
+
+bool IrrlichtRenderer::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
+    // Step 8d: Equipment model extraction + texture decode via constrained cache
+    // T07: Replaced inline DDS decoder with getOrLoad() calls.
+    using EquipPrepData = ZoneLoadContext::EquipPrepData;
+    ctx.equipmentData.clear();
+
+    bool equipError = false;
+    if (ctx.equipLoader) {
+        uint32_t primaryId = ctx.vis->appearance.equipment[7];
+        uint32_t secondaryId = ctx.vis->appearance.equipment[8];
+
+        auto prepOneEquip = [&](uint32_t equipmentId, bool isPrimary) {
+            if (equipError) return;
+            if (equipmentId == 0) return;
+            int modelId = ctx.equipLoader->getModelIdForItem(equipmentId);
+            if (modelId < 0) modelId = static_cast<int>(equipmentId);
+            const EquipmentModelLoader::EquipmentModelRef* modelRef = ctx.equipLoader->getModelRef(modelId);
+            if (!modelRef) {
+                LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model ref: entity {} ({}) equipment {} ({}) modelId={} (not found in item_models.json)",
+                          ctx.spawnId, ctx.vis->name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                equipError = true;
+                return;
+            }
+            auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
+            if (!equipData2) {
+                LOG_FATAL(MOD_GRAPHICS, "Failed to load equipment model: entity {} ({}) equipment {} ({}) modelId={}", ctx.spawnId, ctx.vis->name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
+                equipError = true;
+                return;
+            }
+
+            EquipPrepData prepData;
+            prepData.modelId = modelId;
+            prepData.equipmentId = equipmentId;
+            prepData.isPrimary = isPrimary;
+            prepData.geometry = equipData2->geometry;
+            prepData.rawTextures = equipData2->textures;
+
+            // Load equipment textures into constrained cache
+            for (const auto& texName : equipData2->textureNames) {
+                std::string ln = texName;
+                std::transform(ln.begin(), ln.end(), ln.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                auto texIt = equipData2->textures.find(ln);
+                if (texIt == equipData2->textures.end() || !texIt->second) continue;
+                const auto& texInfo = texIt->second;
+                if (texInfo->data.empty()) continue;
+
+                constrainedTextureCache_->getOrLoad(ln, texInfo->data);
+            }
+            ctx.equipmentData.push_back(std::move(prepData));
+        };
+
+        prepOneEquip(primaryId, true);
+        prepOneEquip(secondaryId, false);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8d: entity {} ({}) equipment: primary={} secondary={} extracted={}",
+                  ctx.spawnId, ctx.vis->name, ctx.vis->appearance.equipment[7], ctx.vis->appearance.equipment[8], ctx.equipmentData.size());
+    }
+
+    if (equipError) {
+        pendingZoneComputations_.reset();
+        loadFailed_ = true;
+        return false;
+    }
+    return true;
+}
+
+void IrrlichtRenderer::loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx) {
+    // Step 8e: Distribute prep results to EntityVisual
+    // (equivalent to pollAndDistributePrepResults inline)
+    {
+        // We need a mutable reference — use const_cast since we own the renderer
+        auto& mutableEntities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
+        auto visIt = mutableEntities.find(ctx.spawnId);
+        if (visIt == mutableEntities.end()) {
+            LOG_WARN(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) vanished before distribution — prep work discarded "
+                     "(variantTex={}, equipData={})",
+                     ctx.spawnId, ctx.vis->name, ctx.variantTextureCount, ctx.equipmentData.size());
+        } else {
+            auto& mvis = visIt->second;
+            // T06: variantTextures no longer stored on EntityVisual — textures are in constrained cache.
+
+            for (auto& eq : ctx.equipmentData) {
+                EntityVisual::EquipmentStaging staging;
+                staging.modelId = eq.modelId;
+                staging.equipmentId = eq.equipmentId;
+                staging.isPrimary = eq.isPrimary;
+                staging.geometry = eq.geometry;
+                staging.rawTextures = eq.rawTextures;
+                mvis.equipmentStaging.push_back(std::move(staging));
+            }
+
+            // Textures already in constrained cache from T05 (base) + T06 (variant) + T07 (equipment).
+            mvis.entityPrepComplete = true;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) distributed: equipStaging={}",
+                      ctx.spawnId, ctx.vis->name, mvis.equipmentStaging.size());
+        }
+    }
+}
+
+void IrrlichtRenderer::loadZoneStep8f_BuildEntityMesh(ZoneLoadContext& ctx) {
+    // Step 8f: Build entity mesh (GL work — scene node, materials, name tag)
+    bool meshBuilt = entityRenderer_->buildEntityMesh(ctx.spawnId);
+    if (meshBuilt) ++ctx.buildCount;
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) buildEntityMesh result={}", ctx.spawnId, ctx.vis->name, meshBuilt);
+}
+
+void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
     // ── Step 9: Collision ──────────────────────────────────────────────────
-    updateProgress(88, "Setting up collision...");
+    ctx.updateProgress(88, "Setting up collision...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
@@ -1611,9 +1644,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_collision", 0, stepStart);
     }
     FlushThreadLog();
+}
 
+bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
     // ── Step 10: Sky — all sky, fog, weather ───────────────────────────────
-    updateProgress(90, "Loading sky and weather...");
+    ctx.updateProgress(90, "Loading sky and weather...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
@@ -1634,22 +1669,22 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                 skyData->skyLoader = std::make_unique<SkyLoader>();
                 skyData->skyConfig = std::make_unique<SkyConfig>();
 
-                if (skyData->skyLoader->load(eqPath)) {
+                if (skyData->skyLoader->load(ctx.eqPath)) {
                     LOG_INFO(MOD_GRAPHICS, "Sequential: sky.s3d loaded ({} textures)",
                              skyData->skyLoader->getSkyData()->textures.size());
                 } else {
-                    LOG_FATAL(MOD_GRAPHICS, "Failed to load sky S3D archive: {}sky.s3d (sky rendering enabled in preset)", eqPath);
+                    LOG_FATAL(MOD_GRAPHICS, "Failed to load sky S3D archive: {}sky.s3d (sky rendering enabled in preset)", ctx.eqPath);
                     pendingZoneComputations_.reset();
                     loadFailed_ = true;
-                    return;
+                    return false;
                 }
-                std::string skyIniPath = eqPath + "sky.ini";
+                std::string skyIniPath = ctx.eqPath + "sky.ini";
                 bool skyIniLoaded = skyData->skyConfig->loadFromFile(skyIniPath);
                 if (!skyIniLoaded) {
                     LOG_FATAL(MOD_GRAPHICS, "Failed to load sky config: {} (sky rendering enabled in preset)", skyIniPath);
                     pendingZoneComputations_.reset();
                     loadFailed_ = true;
-                    return;
+                    return false;
                 }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky.ini '{}': loaded={}", skyIniPath, skyIniLoaded);
 
@@ -1886,9 +1921,12 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_sky", 0, stepStart);
     }
     FlushThreadLog();
+    return true;
+}
 
+void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
     // ── Step 11: Env — environment subsystems ──────────────────────────────
-    updateProgress(93, "Initializing environment...");
+    ctx.updateProgress(93, "Initializing environment...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_={}, detailManager_={}, particleManager_={}, "
@@ -2292,9 +2330,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_env", 0, stepStart);
     }
     FlushThreadLog();
+}
 
+void IrrlichtRenderer::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
     // ── Step 12: Lights — zone lighting ────────────────────────────────────
-    updateProgress(96, "Setting up lighting...");
+    ctx.updateProgress(96, "Setting up lighting...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: currentZone_={}, lights count={}",
@@ -2349,12 +2389,14 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
     }
     FlushThreadLog();
+}
 
+void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
     // ── Step 12b: SimulationWorker first-frame computation ──────────────────
     // Create SimulationWorker, set zone data, and run one synchronous computation
     // so the first rendered frame after loading has full PVS culling, sorted draw
     // list, lighting, weather, particles, etc. — no visual pop-in.
-    updateProgress(99, "Computing scene...");
+    ctx.updateProgress(99, "Computing scene...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: simulationWorker_={}, frustumCuller_={}, camera_={}",
@@ -2625,9 +2667,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
             LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized for region {}", currentPvsRegion_);
         }
     }
+}
 
+void IrrlichtRenderer::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
     // ── Step 13: Cleanup ───────────────────────────────────────────────────
-    updateProgress(100, "Finalizing...");
+    ctx.updateProgress(100, "Finalizing...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: releaseTextureDataAfterUpload={}, currentZone_={}, "
@@ -2656,6 +2700,84 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         logAssetBuildTime("seq_cleanup", 0, stepStart);
     }
     FlushThreadLog();
+}
+
+void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
+                                           LoadingStatus& status) {
+    ZoneLoadContext ctx;
+    ctx.totalStart = std::chrono::steady_clock::now();
+    LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: starting for zone '{}'", currentZoneName_);
+    loadFailed_ = false;
+
+    ctx.updateProgress = [&](int percent, const std::string& text) {
+        status.setProgress(percent, text);
+        LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: [{}%] {}", percent, text);
+        // Render a loading frame so the progress bar updates visually
+        std::wstring wtext(text.begin(), text.end());
+        drawLoadingScreen(percent / 100.0f, wtext);
+    };
+
+    // ── Setup ────────────────────────────────────────────────────────────────
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: zone='{}', eqClientPath='{}'", currentZoneName_, eqClientPath);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: particleManager_={}, zoneShader_={}, "
+              "simulationWorker_={}, entityRenderer_={}, doorManager_={}",
+              (bool)particleManager_, (bool)zoneShader_,
+              (bool)simulationWorker_, (bool)entityRenderer_, (bool)doorManager_);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
+              "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
+              fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
+              maxFireGlowLights_, fireEffectsEnabled_, fireGlowLights_.size());
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
+              "eqe1Path='{}', deferredAssetLoading={}",
+              config_.constrainedConfig.skipObjectBuild,
+              config_.constrainedConfig.eqe1Path,
+              config_.constrainedConfig.deferredAssetLoading);
+
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
+              simulationWorker_ ? simulationWorker_->isRunning() : false);
+    stopSimulationWorker();
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: simulation worker stopped");
+    progressiveLoadingActive_ = true;
+    progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+    entityPrepReady_ = false;
+    entityPrepScanCounter_ = 0;
+    pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
+
+    ctx.eqPath = eqClientPath;
+    if (!ctx.eqPath.empty() && ctx.eqPath.back() != '/' && ctx.eqPath.back() != '\\')
+        ctx.eqPath += '/';
+
+    loadZoneStep0_EQE1(ctx);
+
+    if (!loadZoneStep1_S3D(ctx)) return;
+
+    loadZoneStep2_BSP(ctx);
+
+    // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
+    // Zone textures are loaded as individual ETC1 textures via constrained cache.
+    FlushThreadLog();
+
+    loadZoneStep4_Regions(ctx);
+
+    loadZoneStep5_Assets(ctx);
+
+    loadZoneStep6_Objects(ctx);
+
+    loadZoneStep7_Doors(ctx);
+
+    if (!loadZoneStep8_Entities(ctx)) return;
+
+    loadZoneStep9_Collision(ctx);
+
+    if (!loadZoneStep10_Sky(ctx)) return;
+
+    loadZoneStep11_Env(ctx);
+
+    loadZoneStep12_Lights(ctx);
+
+    loadZoneStep12b_Simulation(ctx);
+
+    loadZoneStep13_Cleanup(ctx);
 
     sequentialLoadComplete_ = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "
@@ -2663,7 +2785,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
               fireGlowLights_.size(), fireGlowLightingEnabled_,
               fireGlowIcospheresEnabled_, maxFireGlowLights_);
     auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - totalStart).count();
+        std::chrono::steady_clock::now() - ctx.totalStart).count();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: complete for zone '{}' in {}ms", currentZoneName_, totalMs);
     dumpScene();
     FlushThreadLog();

@@ -1145,6 +1145,33 @@ private:
     void applySimulationOutput(const SimulationOutput& results);  // Apply output directly (loading thread or runtime)
     SimulationZoneData buildSimulationZoneData();  // Build zone data snapshot for SimulationWorker
 
+    // loadZoneSequential() per-step helpers (G01 decomposition).
+    // ZoneLoadContext is forward-declared here and defined in renderer_zone_load.cpp;
+    // it holds every local that crosses a step boundary. Steps that can hit an
+    // unrecoverable error return false; the driver stops and returns immediately,
+    // matching the original early-return control flow.
+    struct ZoneLoadContext;
+    void loadZoneStep0_EQE1(ZoneLoadContext& ctx);
+    bool loadZoneStep1_S3D(ZoneLoadContext& ctx);
+    void loadZoneStep2_BSP(ZoneLoadContext& ctx);
+    void loadZoneStep4_Regions(ZoneLoadContext& ctx);
+    void loadZoneStep5_Assets(ZoneLoadContext& ctx);
+    void loadZoneStep6_Objects(ZoneLoadContext& ctx);
+    void loadZoneStep7_Doors(ZoneLoadContext& ctx);
+    bool loadZoneStep8_Entities(ZoneLoadContext& ctx);
+    bool loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx);
+    void loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx);
+    void loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx);
+    bool loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx);
+    void loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx);
+    void loadZoneStep8f_BuildEntityMesh(ZoneLoadContext& ctx);
+    void loadZoneStep9_Collision(ZoneLoadContext& ctx);
+    bool loadZoneStep10_Sky(ZoneLoadContext& ctx);
+    void loadZoneStep11_Env(ZoneLoadContext& ctx);
+    void loadZoneStep12_Lights(ZoneLoadContext& ctx);
+    void loadZoneStep12b_Simulation(ZoneLoadContext& ctx);
+    void loadZoneStep13_Cleanup(ZoneLoadContext& ctx);
+
     void setupFog();
     void setupHUD();
     void updateHUD();
