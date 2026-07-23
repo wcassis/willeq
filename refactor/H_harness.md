@@ -19,6 +19,13 @@ Background decisions (from discussion with Will, 2026-07-23):
 
 | Unit | Scope | Status | Slot | Commit |
 |---|---|---|---|---|
-| H01 | x86 GLES2 build: patched Irrlicht 1.8.5 built locally for x86_64 with EGL/X11 winsys; willeq + gles2_zone_benchmark running the real GLES2 driver under Xvfb/llvmpipe | | | |
-| H02 | CI gates (needs H01): golden-frame capture + pixel-exact compare, draw/state/CPU-ms metric assertions, memory-ceiling assertions; contact sheet for Will's blessing | | | |
-| H03 | eqemu automation: akk-stack up/down/health/seed scripts (GM-command-based lifecycle) + scripted headless recording tour producing data/captures/auto_session.sleq, arming the replay oracle golden | | | |
+| H01 | x86 GLES2 build (EGL surfaceless llvmpipe fallback; no X11+GLES2 path exists — finding) | done | slot1 | `9bc8914` |
+| H02 | CI gates: golden compare + metric/memory assertions (first golden set rejected by orchestrator review) | done | slot1 | `585d198` |
+| H03 | eqemu automation + recording tour (2 real client bugs fixed; credential scrubbed pre-merge; launcher misdiagnosis later corrected) | done | slot2 | `19ba3f7` |
+| H02b | Golden re-frame: pose-search cameras, representative scenes; found+fixed ASLR pointer-key draw-order bug in benchmark | done | slot1 | `6bb32ac` |
+| H02c | Foliage alpha fix attempt — SUPERSEDED by H02d (use-after-erase made foliage vanish; diagnosis partially correct; WLD flag harvested) | superseded | slot1 | (branch deleted) |
+| H02d | Option A alpha-source-aware shader selection + shader-debug diagnostics (Will-approved design; foliage cutouts verified by instrument) | done | slot1 | `d00c8d3` |
+
+**Remaining for Batch H closure:** Will's blessing of the golden set (contact
+sheet republished after H02d); Pi tier-2 timing script (awaits Pi power-on +
+IP); Win10 character-creation session for the two-client tours.

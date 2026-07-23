@@ -103,6 +103,15 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   could be killed mid-test. Watch for this in CI; the allowlist lives in
   akk-stack assets (server-code-adjacent — flag before changing).
 
+## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
+
+- Distant geometry renders as flat fog-colored (pale) shapes against the
+  darker sky — visually jarring; likely fog color/sky color mismatch or fog
+  applied to geometry but not sky. Pre-existing (byte-identical across the
+  alpha fixes); visible in gfaydark goldens. Investigate fog pipeline vs
+  zone fog color data. Will's eye flagged the general area; needs its own
+  unit.
+
 ## Production draw-order nondeterminism (found by H02b, 2026-07-23)
 
 - **renderer_zone_draw.cpp:242,333 builds the material sort key from the low
