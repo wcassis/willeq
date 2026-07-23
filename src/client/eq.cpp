@@ -3572,38 +3572,6 @@ void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 	m_zone_connection->QueuePacket(p);
 }
 
-void EverQuest::StartCombatMovement(uint16_t entity_id)
-{
-	// Find the entity
-	auto it = m_entities.find(entity_id);
-	if (it == m_entities.end()) {
-		if (s_debug_level >= 1) {
-			LOG_DEBUG(MOD_MAIN, "StartCombatMovement: Entity {} not found", entity_id);
-		}
-		return;
-	}
-
-	const auto& entity = it->second;
-	m_combat_target = entity.name;
-	// Use previously set combat stop distance, or default to 5.0f
-	if (m_combat_stop_distance <= 0.0f) {
-		m_combat_stop_distance = 5.0f;
-	}
-	m_in_combat_movement = true;
-
-	// Phase 7.6: Sync to GameState
-	m_game_state.combat().setCombatTarget(entity.name);
-	m_game_state.combat().setCombatStopDistance(m_combat_stop_distance);
-	m_game_state.combat().setInCombatMovement(true);
-
-	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Starting combat movement to {} (ID: {})", entity.name, entity_id);
-	}
-
-	// Start moving to the target
-	MoveToEntityWithinRange(entity.name, m_combat_stop_distance);
-}
-
 
 #ifdef EQT_HAS_GRAPHICS
 // Graphics renderer integration methods

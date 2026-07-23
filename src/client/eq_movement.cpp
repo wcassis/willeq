@@ -34,11 +34,7 @@
 // NOTE: QueuePacket (core networking, sitting between GetMovementSpeed and
 // the keyboard-control cluster in eq.cpp) stays in eq.cpp per the plan.
 //
-// NOTE: StartCombatMovement(uint16_t entity_id) — an overload of the
-// StartCombatMovement(name) moved above, sitting between QueuePacket and
-// the keyboard-control cluster — is not named in the plan's enumeration
-// and is not contiguous with either named cluster; left in eq.cpp and
-// flagged for orchestrator review (see unit review).
+// NOTE: StartCombatMovement(uint16_t) was co-located here from eq.cpp by G03.
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -260,6 +256,39 @@ void EverQuest::StartCombatMovement(const std::string &name, float stop_distance
 	} else {
 		std::cout << fmt::format("Combat target '{}' not found", name) << std::endl;
 	}
+}
+
+// G03: uint16_t overload co-located from eq.cpp
+void EverQuest::StartCombatMovement(uint16_t entity_id)
+{
+	// Find the entity
+	auto it = m_entities.find(entity_id);
+	if (it == m_entities.end()) {
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "StartCombatMovement: Entity {} not found", entity_id);
+		}
+		return;
+	}
+
+	const auto& entity = it->second;
+	m_combat_target = entity.name;
+	// Use previously set combat stop distance, or default to 5.0f
+	if (m_combat_stop_distance <= 0.0f) {
+		m_combat_stop_distance = 5.0f;
+	}
+	m_in_combat_movement = true;
+
+	// Phase 7.6: Sync to GameState
+	m_game_state.combat().setCombatTarget(entity.name);
+	m_game_state.combat().setCombatStopDistance(m_combat_stop_distance);
+	m_game_state.combat().setInCombatMovement(true);
+
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Starting combat movement to {} (ID: {})", entity.name, entity_id);
+	}
+
+	// Start moving to the target
+	MoveToEntityWithinRange(entity.name, m_combat_stop_distance);
 }
 
 void EverQuest::UpdateCombatMovement()
