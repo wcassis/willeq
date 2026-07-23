@@ -677,6 +677,19 @@ public:
 	// Call from main loop instead of EQ::EventLoop::Get().Process().
 	void TickNetwork();
 
+	// Replay/test seam (Batch R): dispatches a decoded application packet
+	// through the same switch ZoneOnPacketRecv uses, without requiring a
+	// live m_zone_connection. `opcode` is the application opcode (HC_OP_*)
+	// and `data`/`size` is the payload excluding the 2-byte opcode prefix,
+	// matching include/common/net/session_log.h's RecordHeader layout.
+	// Any handler-triggered sends no-op safely (see m_replay_suppressed_sends).
+	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size);
+
+	// Count of zone packet sends suppressed because m_zone_connection was
+	// null (replay/test mode). Only incremented by the Zone packet senders
+	// reachable from S->C handlers (see ReplayZonePacket).
+	uint64_t GetReplaySuppressedSendCount() const { return m_replay_suppressed_sends; }
+
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
@@ -1176,6 +1189,8 @@ private:
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
+	// Opcode switch shared by ZoneOnPacketRecv and the ReplayZonePacket test seam.
+	void DispatchZonePacket(const EQ::Net::Packet &p);
 
 	void ZoneSendStreamIdentify();
 	void ZoneSendAckPacket();
@@ -1300,6 +1315,10 @@ private:
 
 	// Safe packet sending helper
 	bool SafeQueueZonePacket(EQ::Net::Packet &p, int stream = 0, bool reliable = true);
+
+	// Batch R: incremented whenever a Zone packet sender no-ops because
+	// m_zone_connection is null (replay/test mode has no live connection).
+	uint64_t m_replay_suppressed_sends = 0;
 
 	// Loading phase tracking (covers entire pre-gameplay process)
 	LoadingPhase m_loading_phase = LoadingPhase::DISCONNECTED;

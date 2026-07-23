@@ -86,11 +86,11 @@ config/shader_cache/
 data/detail/
 data/region_maps/
 data/eq_client
+data/captures/
 
 # Recorded sessions / packet captures for replay-oracle tests (Batch R).
 # Never checked in: contains real server/account traffic. Golden replay
 # snapshots generated alongside them are also local-only.
-data/captures/
 
 # Agent working directory
 .agent/
