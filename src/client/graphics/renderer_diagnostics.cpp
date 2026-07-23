@@ -11,6 +11,15 @@
 #include <chrono>
 #include <set>
 
+#ifdef EQT_HAS_GLES2
+// Declared in irrlicht_renderer.cpp (H01: hit when building EQT_GLES2 on x86;
+// pre-existing gap from the Batch F file split — these externs were only
+// re-declared in the files that already needed them at the time).
+extern size_t gles2GetHWBufferMemoryUsage(void* driver);
+extern size_t gles2GetHWBufferCount(void* driver);
+extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
+#endif
+
 namespace EQT {
 namespace Graphics {
 

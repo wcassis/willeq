@@ -12,6 +12,11 @@ OPTION(EQT_BUILD_TESTS "Build tests" ON)
 OPTION(EQT_GRAPHICS "Enable Irrlicht graphics rendering" ON)
 OPTION(EQT_DRM "Use DRM/KMS/GBM/EGL instead of X11 (for ARM boards without X11)" OFF)
 OPTION(EQT_GLES2 "Use OpenGL ES 2.0 backend instead of desktop GL (for DRM+Mali/Lima)" OFF)
+# H01: path to a locally-built patched Irrlicht (headers/ + lib/libIrrlicht.a),
+# e.g. third_party/irrlicht-gles2-x86/ produced by scripts/build-gles2-x86.sh.
+# When set, this overrides the system Irrlicht FIND_PATH/FIND_LIBRARY below.
+# Leave empty (default) for the normal desktop-GL build and the ARM Docker flow.
+SET(EQT_GLES2_IRRLICHT_DIR "" CACHE PATH "Path to a locally-built patched Irrlicht for x86 GLES2 dev builds")
 
 # Output directories
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -65,14 +70,27 @@ FIND_LIBRARY(DETOUR_LIBRARY NAMES Detour)
 
 # Find Irrlicht (optional, for graphics rendering)
 IF(EQT_GRAPHICS)
-    FIND_PATH(IRRLICHT_INCLUDE_DIR irrlicht.h PATH_SUFFIXES irrlicht)
-    FIND_LIBRARY(IRRLICHT_LIBRARY NAMES Irrlicht)
-    IF(IRRLICHT_INCLUDE_DIR AND IRRLICHT_LIBRARY)
-        ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
-        MESSAGE(STATUS "Irrlicht graphics support: ENABLED")
+    IF(EQT_GLES2_IRRLICHT_DIR)
+        # H01: use the locally-built patched Irrlicht (x86 GLES2 dev builds)
+        # instead of searching the system for one.
+        SET(IRRLICHT_INCLUDE_DIR "${EQT_GLES2_IRRLICHT_DIR}/include")
+        SET(IRRLICHT_LIBRARY "${EQT_GLES2_IRRLICHT_DIR}/lib/libIrrlicht.a")
+        IF(EXISTS "${IRRLICHT_INCLUDE_DIR}/irrlicht.h" AND EXISTS "${IRRLICHT_LIBRARY}")
+            ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
+            MESSAGE(STATUS "Irrlicht graphics support: ENABLED (local GLES2 build: ${EQT_GLES2_IRRLICHT_DIR})")
+        ELSE()
+            MESSAGE(FATAL_ERROR "EQT_GLES2_IRRLICHT_DIR set to '${EQT_GLES2_IRRLICHT_DIR}' but irrlicht.h / libIrrlicht.a not found there. Run scripts/build-gles2-x86.sh first.")
+        ENDIF()
     ELSE()
-        MESSAGE(STATUS "Irrlicht graphics support: DISABLED (Irrlicht not found)")
-        SET(EQT_GRAPHICS OFF)
+        FIND_PATH(IRRLICHT_INCLUDE_DIR irrlicht.h PATH_SUFFIXES irrlicht)
+        FIND_LIBRARY(IRRLICHT_LIBRARY NAMES Irrlicht)
+        IF(IRRLICHT_INCLUDE_DIR AND IRRLICHT_LIBRARY)
+            ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
+            MESSAGE(STATUS "Irrlicht graphics support: ENABLED")
+        ELSE()
+            MESSAGE(STATUS "Irrlicht graphics support: DISABLED (Irrlicht not found)")
+            SET(EQT_GRAPHICS OFF)
+        ENDIF()
     ENDIF()
 ENDIF()
 
@@ -502,9 +520,14 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)
         FIND_LIBRARY(CARBON_FRAMEWORK Carbon)
         LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK} ${OPENGL_FRAMEWORK} ${IOKIT_FRAMEWORK} ${CARBON_FRAMEWORK})
-    ELSEIF(EQT_DRM)
-        # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost
-        ADD_DEFINITIONS(-DEQT_HAS_DRM)
+    ELSEIF(EQT_DRM OR EQT_GLES2)
+        # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost, and for
+        # H01's x86 GLES2 dev builds (EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
+        # still needs the drm/gbm symbols even though it falls back to a
+        # surfaceless EGL context at runtime when no DRM display is available).
+        IF(EQT_DRM)
+            ADD_DEFINITIONS(-DEQT_HAS_DRM)
+        ENDIF()
         IF(EQT_GLES2)
             # GLES2 mode: link GLESv2 only (no desktop GL)
             ADD_DEFINITIONS(-DEQT_HAS_GLES2)
@@ -1415,9 +1438,9 @@ IF(EQT_GRAPHICS)
     TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_TEXTURE_ATLAS SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_DRM)
-        IF(LIBDRM_INCLUDE_DIR)
-            TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
-        ENDIF()
+    ENDIF()
+    IF((EQT_DRM OR EQT_GLES2) AND LIBDRM_INCLUDE_DIR)
+        TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
     ENDIF()
     IF(EQT_GLES2)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_GLES2)
@@ -1428,9 +1451,9 @@ IF(EQT_GRAPHICS)
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
-    IF(EQT_DRM AND EQT_GLES2)
-        LIST(APPEND ZONE_BENCH_LIBS EGL GLESv2 drm gbm)
-    ELSEIF(EQT_DRM)
+    IF(EQT_DRM OR EQT_GLES2)
+        # H01: x86 GLES2 dev builds have EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
+        # still references drm/gbm symbols even with the surfaceless fallback.
         LIST(APPEND ZONE_BENCH_LIBS EGL GLESv2 drm gbm)
     ELSE()
         # Desktop GL for texture_atlas.cpp glGenTextures etc.

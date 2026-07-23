@@ -113,6 +113,7 @@ struct Options {
 
     // Output
     bool dump = false;            // Print per-frame stats to stdout
+    std::string dumpPngPath;      // H01: save the last measured frame as a PNG
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
@@ -171,6 +172,7 @@ static void printUsage(const char* prog) {
     // printf("  --portal-csv FILE    Write portal analysis to CSV\n");
     printf("\nOutput:\n");
     printf("  --dump               Print per-frame stats (polys, draws, camera) to stdout\n");
+    printf("  --dump-png FILE      Save the last measured frame as a PNG (H01 verification)\n");
     printf("\nDiagnostic:\n");
     printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("  --composite-entity-test  Render 1 of each race/gender with composite textures\n");
@@ -244,6 +246,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--test-variant") == 0 && i + 1 < argc) opts.testVariant = atoi(argv[++i]);
         else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--dump") == 0) opts.dump = true;
+        else if (strcmp(argv[i], "--dump-png") == 0 && i + 1 < argc) opts.dumpPngPath = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
@@ -1516,6 +1519,20 @@ int main(int argc, char** argv) {
         if (measuring) {
             metrics.endGpuSync();
             metrics.endFrame();  // Measure before endScene (vsync page flip blocks)
+        }
+
+        // H01: dump the last frame as a PNG for the x86/Xvfb verification harness.
+        // Must read the framebuffer before endScene()'s swap/page-flip.
+        if (!opts.dumpPngPath.empty() && frame == totalFrames - 1) {
+            irr::video::IImage* shot = data->driver->createScreenShot();
+            if (shot) {
+                bool ok = data->driver->writeImageToFile(shot, opts.dumpPngPath.c_str());
+                shot->drop();
+                printf("[dump-png] %s: %s\n", opts.dumpPngPath.c_str(),
+                       ok ? "saved" : "FAILED to save");
+            } else {
+                printf("[dump-png] %s: createScreenShot() FAILED\n", opts.dumpPngPath.c_str());
+            }
         }
 
         data->driver->endScene();

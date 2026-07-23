@@ -94,3 +94,5 @@ data/captures/
 
 # Agent working directory
 .agent/
+third_party/irrlicht-gles2-x86/
+build-gles2/

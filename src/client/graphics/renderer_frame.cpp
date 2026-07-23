@@ -16,6 +16,15 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#ifdef __linux__
+#include <unistd.h>  // sysconf, _SC_PAGESIZE (H01: missing on x86 EQT_GLES2 builds)
+#endif
+
+#ifdef EQT_HAS_GLES2
+// Declared in irrlicht_renderer.cpp (H01: hit when building EQT_GLES2 on x86;
+// pre-existing gap from the Batch F file split).
+extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
+#endif
 
 namespace EQT {
 namespace Graphics {
