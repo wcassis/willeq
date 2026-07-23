@@ -193,14 +193,17 @@ linkage concern.
 - `git merge-base fable HEAD` → `2085112ba344b3dcbb169f8d40a7913d523af580`,
   confirming no rebase occurred and `fable` did not advance during this
   unit's work; this is the BASE used for the verifier below.
-- `python3 scripts/refactor/verify_move_only.py 2085112ba344b3dcbb169f8d40a7913d523af580..HEAD --repo <slot1>`:
-  **PASS**. `CMakeLists.txt` (the additive `GRAPHICS_SOURCES` line) and this
-  review file reported separately as non-C++, not verified — expected for a
+- `python3 scripts/refactor/verify_move_only.py 2085112ba344b3dcbb169f8d40a7913d523af580..HEAD --repo <slot1>`
+  (run after committing — the script diffs commits, not the working tree):
+  **PASS** ("Boilerplate: +22 / -0 lines (allowed)", 2 C++ files verified).
+  `CMakeLists.txt` (the additive `GRAPHICS_SOURCES` line) and this review
+  file reported separately as non-C++, not verified — expected for a
   build-file edit and doc update.
 - `bash scripts/refactor/check_file_sizes.sh --files <slot1>/renderer_frame.cpp`:
-  result recorded below (WARN accepted if over the 1,500-line ceiling —
-  1,583 lines is 83 over; not split further since the plan defines this as
-  one cohesive unit and 1,583 is well under the 3,000-line FAIL threshold).
+  **WARN** (1,583 lines, 83 over the 1,500-line ceiling) — accepted per the
+  plan's verification criteria ("WARN accepted, must not FAIL"). Not split
+  further since the plan defines this as one cohesive unit (the full
+  per-frame spine) and 1,583 is well under the 3,000-line FAIL threshold.
 
 **Deviations from plan:** none in the moved code itself (verbatim, no
 reformatting, no scope creep). One naming clarification: the plan's phrase
