@@ -116,12 +116,18 @@ The client cross-compiles for Orange Pi One (Allwinner H3, ARMv7-A Cortex-A7, Ma
 # Cross-compile
 bash scripts/build-arm-noble.sh
 
-# Run on Orange Pi (DRM/KMS, GLES2 — default for ARM builds)
+# Run on Orange Pi (DRM/KMS, GLES2 — the only GLES2 windowing path on ARM)
 ./willeq -c config.json --drm --renderer gles2 --constrained orangepi -r 800 600
 
-# Run on Orange Pi (with X11, if Xorg is running)
-DISPLAY=:0 ./willeq -c config.json --renderer gles2 --constrained orangepi -r 800 600
+# Run the GLES2 path on the x86 dev VM (llvmpipe via EGL surfaceless; H01)
+bash scripts/build-gles2-x86.sh
+./build-gles2/bin/willeq -c config.json --renderer gles2
 ```
+
+Note (H01 finding, 2026-07-23): there is NO X11+GLES2 path — the ARM Irrlicht
+patch compiles only the DRM/FB device. On x86 the forked device
+(`docker/irrlicht-drm-x86/`) falls back to Mesa's surfaceless EGL platform
+(llvmpipe), which is how CI runs the real GLES2 driver headlessly.
 
 **GLES2 rendering backend**: The Orange Pi uses a custom native GLES2 driver (`COpenGLES2Driver`) rather than Irrlicht's desktop OpenGL driver. This eliminates all desktop GL → GLES translation complexity, enables native ETC1 compressed textures (real 6:1 memory savings via `GL_ETC1_RGB8_OES`), and provides a shared rendering path for the planned Android 4.4 port. The driver uses 6 built-in GLSL ES 1.0 shader programs (no fixed-function pipeline). See `src/client/graphics/CLAUDE.md` for details.
 
