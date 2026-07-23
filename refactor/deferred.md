@@ -117,6 +117,25 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   it automatically. Candidate levers already in this file: unified priority
   queue, GL-on-render-thread fallback, pointer-key draw order, render-loop
   blocking items.
+- **PANIC MECHANISM CONFIRMED (P02): the ETC1/EQE1 texture path leaks CMA
+  kernel-side** — per-invocation drains of -14 to -81MB that survive process
+  exit; only reboot recovers (5/5 times to exactly 102,056kB). RGBA runs are
+  CMA-neutral across 24 DRM cycles (rapid DRM cycling per se does NOT leak).
+  One telemetered run reproduced P01's pre-panic state (CmaFree 3.3MB) with
+  a clean abort. Root cause location unknown: could be our ETC1 upload path
+  misusing the driver (per the standing "Lima bugs are always ours" prior —
+  check COpenGLES2Driver's compressed-upload GEM handling first) or a real
+  lima/sun4i kernel bug (upstream report candidate if our side is clean).
+- **Lighting model is a real, quantified lever (P02/6b):** per-pixel costs
+  +17-18% total frame time on real geometry (GPU-only 1.2-2.0x — the
+  historical 3x was synthetic). All-lightweight takes qeynos2 28.8→34.1 fps
+  (CROSSES the 30fps KPI) and gfaydark 24.4→28.5. Decision candidate:
+  default the orangepi preset to lightweight/adaptive lighting.
+- **EQE1 steady-state is FASTER than RGBA** (30/18/29ms cycle vs 33/20/34 —
+  the compression bandwidth win is real) but ~2/3 of runs suffer episodic
+  1-4-frame stall bursts (+10-30ms) that dominate p95, NOT correlated with
+  CMA level/session position/reboot recency. Open question; folded into the
+  P03 decision calculus.
 - **EQE1-vs-RGBA (P01 correction of the H04 headline):** H04's "EQE1
   consistently slower" was partly a measurement-methodology artifact — its
   harness never varied A/B ordering (pi_bench_run.py), and P01's ABBA runs

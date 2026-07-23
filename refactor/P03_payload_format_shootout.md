@@ -6,10 +6,22 @@ base per open on the Pi — consolidation and pre-decode stay regardless).
 This unit produces the DATA for that decision. No retirement happens here —
 deliverable is a four-way measurement table + a drafted decision-doc entry.
 
-Goal frame (Will's words): performant client, >30fps, low RAM. P01/P02
-context: RGBA path is stable (±2%), EQE1 erratic (>49% spread, cause under
-investigation); ETC1's negatives include the alpha-companion architecture,
-unrolled-texture workarounds, and the composite/animation friction.
+Goal frame (Will's words): performant client, >30fps, low RAM. P02 REWROTE
+the context — weigh all of this in the decision draft:
+- The ETC1 path LEAKS CMA kernel-side (-14 to -81MB/run, reboot-only
+  recovery) — the confirmed P01 panic mechanism. Root cause (our upload
+  code vs lima kernel) still unknown. A leaking path is currently
+  disqualifying for a long-running client regardless of speed.
+- BUT EQE1 steady-state is FASTER than RGBA (30/18/29 vs 33/20/34 ms) —
+  the compression bandwidth win is real. Retirement trades that away;
+  the decision draft must say so honestly.
+- EQE1 also shows episodic stall bursts uncorrelated with CMA.
+- CMA-leak check is therefore a FIRST-CLASS measurement axis for the new
+  formats: run the P02 CmaMonitor telemetry per config and report
+  per-invocation deltas — 565/4444 should be leak-free like RGBA8888
+  (same glTexImage2D family), but VERIFY, don't assume.
+- Lighting context for the decision draft: lightweight lighting alone takes
+  qeynos2 over 30fps (P02/6b); texture format is the supporting act.
 
 ## Part 1 — v2 pack format + builder + loader
 
