@@ -302,14 +302,17 @@ def write_contact_sheet(manifest):
     for zone_cfg in manifest["zones"]:
         zone = zone_cfg["zone"]
         rows_html.append(f'<h2>{zone}</h2><p>{zone_cfg.get("description", "")}</p><div class="frames">')
+        frame_descriptions = zone_cfg.get("frameDescriptions", {})
         for f in zone_cfg["designatedFrames"]:
             png_path = GOLDENS_DIR / f"{zone}_f{f}.png"
             data = base64.b64encode(png_path.read_bytes()).decode("ascii")
             metrics = zone_cfg["metrics"].get(str(f), {})
+            desc = frame_descriptions.get(str(f), "")
+            desc_html = f'<br><strong>{desc}</strong>' if desc else ""
             rows_html.append(
                 f'<figure><img src="data:image/png;base64,{data}" alt="{zone} frame {f}">'
                 f'<figcaption>frame {f} -- draws={metrics.get("draws")} '
-                f'state={metrics.get("stateChanges")} polys={metrics.get("polys")}<br>'
+                f'state={metrics.get("stateChanges")} polys={metrics.get("polys")}{desc_html}<br>'
                 f'What to check: geometry silhouette, texture placement, lighting/fog tone.</figcaption></figure>'
             )
         rows_html.append("</div>")

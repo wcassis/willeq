@@ -690,6 +690,26 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     return data;
 }
 
+// H02b: address-independent 16-bit texture grouping ID for materialKey.
+// The old key was `(uintptr_t)texture & 0xFFFF` -- the low bits of a heap
+// POINTER. That made the material-sorted draw order depend on allocation
+// addresses, so ASLR (or merely a different environment-block size shifting
+// the layout) reordered equal-material draws between otherwise identical
+// runs -> z-fighting pixel flips on coplanar geometry and a wobbling
+// stateChanges count. This silently broke the golden-frame CI gate's
+// exact-match bar (1-33 differing pixels between identical invocations,
+// only reproducible across processes). An FNV-1a hash of the texture NAME
+// is just as good a grouping key and is stable across runs.
+static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
+    if (!mat.getTexture(0)) return 0;
+    const irr::io::path& tname = mat.getTexture(0)->getName().getPath();
+    uint32_t h = 2166136261u;
+    for (irr::u32 ci = 0; ci < tname.size(); ++ci) {
+        h = (h ^ static_cast<uint8_t>(tname[ci])) * 16777619u;
+    }
+    return h & 0xFFFF;
+}
+
 void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
@@ -842,11 +862,7 @@ void collectDrawEntries(
             if (static_cast<int>(outEntries.size()) >= drawBudget) { budgetExceeded = true; break; }
 
             const irr::video::SMaterial& mat = buf->getMaterial();
-            uint32_t texId = 0;
-            if (mat.getTexture(0)) {
-                texId = static_cast<uint32_t>(
-                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-            }
+            uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
 
             // Compute material override for adaptive lighting
             irr::s32 matOverride = -1;
@@ -1006,11 +1022,7 @@ void collectObjectDrawEntries(
             if (!buf || buf->getVertexCount() == 0) continue;
 
             const irr::video::SMaterial& mat = buf->getMaterial();
-            uint32_t texId = 0;
-            if (mat.getTexture(0)) {
-                texId = static_cast<uint32_t>(
-                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-            }
+            uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
             uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
 
             outEntries.push_back({matKey, distSq, buf, obj.worldTransform});
@@ -1068,11 +1080,7 @@ void collectEntityDrawEntries(
             if (!buf || buf->getVertexCount() == 0) continue;
 
             const irr::video::SMaterial& mat = buf->getMaterial();
-            uint32_t texId = 0;
-            if (mat.getTexture(0)) {
-                texId = static_cast<uint32_t>(
-                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-            }
+            uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
             uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
 
             outEntries.push_back({matKey, distSq, buf, worldMat});
@@ -1119,11 +1127,7 @@ int renderBatchedEntities(
             if (!buf || buf->getVertexCount() == 0) continue;
 
             const irr::video::SMaterial& mat = buf->getMaterial();
-            uint32_t texId = 0;
-            if (mat.getTexture(0)) {
-                texId = static_cast<uint32_t>(
-                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-            }
+            uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
             uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
 
             materialBuckets[matKey].push_back({buf, ent.position});

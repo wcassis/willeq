@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <unordered_set>
 #include <vector>
 
 #include <irrlicht.h>
@@ -128,6 +129,27 @@ struct Options {
     float orbitRadius = 0.0f;         // 0 = keep the existing auto radius (30% of extent)
     float orbitHeightOffset = 6.0f;   // Added to the anchor Z (approx. player eye height)
 
+    // H02b: explicit static camera poses (EQ coords + heading/pitch degrees).
+    // When non-empty, replaces the moving navmesh/orbit camera path entirely
+    // with a sequence of static single-frame captures, one per pose --
+    // frame index i corresponds 1:1 to cameraPoses[i], which lines up exactly
+    // with the existing --dump-frames / manifest "designatedFrames" scheme.
+    // --camera-pose is repeatable: one flag occurrence per pose.
+    struct CameraPose { float x, y, z, heading, pitch; };
+    std::vector<CameraPose> cameraPoses;
+
+    // H02b: opt-in interesting-view search (bless-time diagnostic only, never
+    // used by the CI gate). Samples candidate poses anchored at real zone
+    // region bounding boxes (guaranteed to be near actual geometry, not empty
+    // space) at several headings, renders each once, scores by
+    // draws * distinctColors * nonSkyFraction, and prints the top scorers so
+    // a human can pick and hard-code --camera-pose flags from the output.
+    int poseSearch = 0;               // 0 = disabled; N = number of anchor points to sample
+    int poseSearchHeadings = 4;       // Headings tried per anchor point
+    float poseSearchPitch = -5.0f;    // Fixed pitch (degrees, negative = looking down slightly)
+    float poseSearchEyeHeight = 6.0f; // Added to each anchor's floor Z (approx. player eye height)
+    std::string poseSearchCsv;        // Optional: write all sampled candidates to CSV
+
     // Synthetic (Z5)
     bool syntheticDraws = false;
 };
@@ -194,6 +216,17 @@ static void printUsage(const char* prog) {
     printf("                          finder's XY instead of the zone bounding-box center\n");
     printf("  --orbit-radius F        Override the orbit radius in EQ units (default: auto, 30%% of extent)\n");
     printf("  --orbit-height-offset F Added to the anchor Z for camera height (default: 6.0)\n");
+    printf("\nStatic camera poses (H02b, opt-in -- replaces the moving camera path):\n");
+    printf("  --camera-pose X,Y,Z,HEADING,PITCH  Static camera pose (EQ coords, degrees).\n");
+    printf("                          Repeatable: one flag per pose. Frame index i in\n");
+    printf("                          --dump-frames/CSV corresponds to the i-th --camera-pose.\n");
+    printf("\nInteresting-view search (H02b, opt-in, bless-time diagnostic only):\n");
+    printf("  --pose-search N         Sample N candidate poses anchored at zone region\n");
+    printf("                          bounding boxes, score each, print top scorers\n");
+    printf("  --pose-search-headings N  Headings tried per anchor point (default: 4)\n");
+    printf("  --pose-search-pitch F   Fixed pitch in degrees (default: -5.0)\n");
+    printf("  --pose-search-eye-height F  Added to anchor floor Z (default: 6.0)\n");
+    printf("  --pose-search-csv FILE  Write all sampled candidates + scores to CSV\n");
     printf("\nDiagnostic:\n");
     printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("  --composite-entity-test  Render 1 of each race/gender with composite textures\n");
@@ -285,6 +318,24 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--orbit-anchor-surface") == 0) opts.orbitAnchorSurface = true;
         else if (strcmp(argv[i], "--orbit-radius") == 0 && i + 1 < argc) opts.orbitRadius = atof(argv[++i]);
         else if (strcmp(argv[i], "--orbit-height-offset") == 0 && i + 1 < argc) opts.orbitHeightOffset = atof(argv[++i]);
+        else if (strcmp(argv[i], "--camera-pose") == 0 && i + 1 < argc) {
+            std::string spec = argv[++i];
+            float vals[5] = {0, 0, 0, 0, 0};
+            size_t pos = 0;
+            for (int k = 0; k < 5 && pos <= spec.size(); ++k) {
+                size_t comma = spec.find(',', pos);
+                std::string tok = spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                vals[k] = atof(tok.c_str());
+                if (comma == std::string::npos) break;
+                pos = comma + 1;
+            }
+            opts.cameraPoses.push_back({vals[0], vals[1], vals[2], vals[3], vals[4]});
+        }
+        else if (strcmp(argv[i], "--pose-search") == 0 && i + 1 < argc) opts.poseSearch = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--pose-search-headings") == 0 && i + 1 < argc) opts.poseSearchHeadings = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--pose-search-pitch") == 0 && i + 1 < argc) opts.poseSearchPitch = atof(argv[++i]);
+        else if (strcmp(argv[i], "--pose-search-eye-height") == 0 && i + 1 < argc) opts.poseSearchEyeHeight = atof(argv[++i]);
+        else if (strcmp(argv[i], "--pose-search-csv") == 0 && i + 1 < argc) opts.poseSearchCsv = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
@@ -425,6 +476,56 @@ static int countPolygons(const std::vector<ZoneBench::DrawEntry>& entries) {
         total += de.buffer->getIndexCount() / 3;
     }
     return total;
+}
+
+// H02b: convert a heading/pitch pose (degrees; heading 0=North/+Y, CW; pitch
+// positive=up) into an EQ-coordinate direction vector, matching the
+// convention the benchmark loop already uses when it derives heading/pitch
+// from a direction vector for metrics (see the `heading = atan2f(...)` code
+// in the main loop below) -- this is the exact inverse of that computation.
+static void poseToDirection(float headingDeg, float pitchDeg,
+                             float& dirX, float& dirY, float& dirZ) {
+    const float d2r = 3.14159265f / 180.0f;
+    float headingRad = headingDeg * d2r;
+    float pitchRad = pitchDeg * d2r;
+    float horiz = cosf(pitchRad);
+    dirX = horiz * sinf(headingRad);
+    dirY = horiz * cosf(headingRad);
+    dirZ = sinf(pitchRad);
+}
+
+// H02b: read back the current framebuffer and compute (distinct color count,
+// fraction of pixels equal to the clear/background color). Sampled at a
+// stride to keep this cheap -- used by --pose-search scoring and available
+// for ad-hoc diagnostics. Not used by the CI gate itself (that does its own
+// PIL-based comparison in Python on the dumped PNGs).
+static void computeFrameStats(ZoneBench::ZoneBenchData& data,
+                               uint8_t clearR, uint8_t clearG, uint8_t clearB,
+                               size_t& distinctColors, double& skyFraction) {
+    distinctColors = 0;
+    skyFraction = 1.0;
+    irr::video::IImage* shot = data.driver->createScreenShot();
+    if (!shot) return;
+
+    irr::core::dimension2d<irr::u32> dim = shot->getDimension();
+    const int stride = 2;  // sample every 2nd pixel in each axis (4x fewer samples)
+    std::unordered_set<uint32_t> seen;
+    seen.reserve(4096);
+    size_t total = 0, skyCount = 0;
+    for (irr::u32 y = 0; y < dim.Height; y += stride) {
+        for (irr::u32 x = 0; x < dim.Width; x += stride) {
+            irr::video::SColor c = shot->getPixel(x, y);
+            uint32_t key = (c.getRed() << 16) | (c.getGreen() << 8) | c.getBlue();
+            seen.insert(key);
+            if (c.getRed() == clearR && c.getGreen() == clearG && c.getBlue() == clearB) {
+                ++skyCount;
+            }
+            ++total;
+        }
+    }
+    shot->drop();
+    distinctColors = seen.size();
+    skyFraction = total > 0 ? static_cast<double>(skyCount) / static_cast<double>(total) : 1.0;
 }
 
 // ======== Synthetic Draw Call Test (Z5) ========
@@ -1304,9 +1405,229 @@ int main(int argc, char** argv) {
     // ── Set up lighting ──
     setupLighting(*data, opts);
 
+    // ── H02b: interesting-view search (opt-in, bless-time diagnostic only) ──
+    // Never used by the CI gate; run manually to find candidate poses, then
+    // hard-code the winners as --camera-pose flags in the manifest.
+    if (opts.poseSearch > 0) {
+        printf("\n=== Pose search: %d anchors x %d headings ===\n",
+               opts.poseSearch, opts.poseSearchHeadings);
+
+        // Candidate anchor points: region bounding-box centers/floors, spread
+        // evenly across the (already sorted-by-key) region map so candidates
+        // are guaranteed to be near real loaded geometry, not empty space.
+        std::vector<const ZoneBench::RegionData*> regionList;
+        regionList.reserve(data->regions.size());
+        for (auto& [idx, rd] : data->regions) regionList.push_back(&rd);
+
+        int n = static_cast<int>(regionList.size());
+        int take = std::min(opts.poseSearch, n);
+        if (take <= 0) {
+            fprintf(stderr, "ERROR: no regions loaded, cannot pose-search\n");
+            return 1;
+        }
+
+        struct Candidate {
+            float x, y, z, heading, pitch;
+            int draws = 0;
+            size_t distinctColors = 0;
+            double skyFraction = 1.0;
+            double score = 0.0;
+        };
+        std::vector<Candidate> candidates;
+        candidates.reserve(take * opts.poseSearchHeadings);
+
+        std::vector<ZoneBench::DrawEntry> drawEntries;
+        drawEntries.reserve(2048);
+        float fov = 60.0f * 3.14159265f / 180.0f;
+        float aspect = static_cast<float>(opts.width) / static_cast<float>(opts.height);
+
+        FILE* csvOut = nullptr;
+        if (!opts.poseSearchCsv.empty()) {
+            csvOut = fopen(opts.poseSearchCsv.c_str(), "w");
+            if (csvOut) fprintf(csvOut, "x,y,z,heading,pitch,draws,distinct_colors,sky_fraction,score\n");
+        }
+
+        for (int i = 0; i < take; ++i) {
+            int ridx = i * n / take;
+            const ZoneBench::RegionData* rd = regionList[ridx];
+            float cx = (rd->eqMinX + rd->eqMaxX) * 0.5f;
+            float cy = (rd->eqMinY + rd->eqMaxY) * 0.5f;
+            // Anchor near the region's floor (bbox min Z) rather than its
+            // center -- a good approximation of "standing inside this chunk
+            // of geometry" for both open outdoor regions and enclosed rooms.
+            float cz = rd->eqMinZ + opts.poseSearchEyeHeight;
+
+            for (int h = 0; h < opts.poseSearchHeadings; ++h) {
+                float heading = 360.0f * h / opts.poseSearchHeadings;
+                float pitch = opts.poseSearchPitch;
+
+                float dirX, dirY, dirZ;
+                poseToDirection(heading, pitch, dirX, dirY, dirZ);
+                setupCamera(*data, cx, cy, cz, dirX, dirY, dirZ);
+                if (data->zoneShader) data->zoneShader->beginFrame();
+                data->driver->beginScene(true, true, irr::video::SColor(255, 40, 40, 60));
+                if (data->zoneShader) data->zoneShader->beginFrame();
+
+                ZoneBench::CameraState camState{cx, cy, cz, dirX, dirY, dirZ, fov, aspect};
+                int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
+                drawEntries.clear();
+                ZoneBench::collectDrawEntries(
+                    *data, camState,
+                    opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
+                    opts.frontToBack, opts.maxDraws, opts.maxPolys,
+                    drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
+                if (!data->objects.empty()) {
+                    int objDraws = 0, objPolys = 0;
+                    ZoneBench::collectObjectDrawEntries(
+                        *data, camState, opts.objectRenderDist,
+                        opts.pvsCull, opts.frustumCull, opts.occlusionCull,
+                        drawEntries, objDraws, objPolys);
+                }
+                renderDrawEntries(*data, drawEntries, opts.depthTest);
+#ifdef EQT_HAS_GLES2
+                glFinish();
+#endif
+                Candidate c;
+                c.x = cx; c.y = cy; c.z = cz; c.heading = heading; c.pitch = pitch;
+                c.draws = static_cast<int>(drawEntries.size());
+                computeFrameStats(*data, 40, 40, 60, c.distinctColors, c.skyFraction);
+                double nonSkyFraction = 1.0 - c.skyFraction;
+                c.score = static_cast<double>(c.draws) *
+                          static_cast<double>(c.distinctColors) * nonSkyFraction;
+
+                data->driver->endScene();
+
+                if (csvOut) {
+                    fprintf(csvOut, "%.1f,%.1f,%.1f,%.1f,%.1f,%d,%zu,%.4f,%.1f\n",
+                            c.x, c.y, c.z, c.heading, c.pitch, c.draws,
+                            c.distinctColors, c.skyFraction, c.score);
+                }
+                candidates.push_back(c);
+            }
+        }
+        if (csvOut) fclose(csvOut);
+
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+
+        int topK = std::min<int>(20, static_cast<int>(candidates.size()));
+        printf("\nTop %d candidate poses (by draws * distinctColors * nonSkyFraction):\n", topK);
+        printf("  %10s %10s %10s %8s %6s %6s %8s %8s %10s\n",
+               "x", "y", "z", "heading", "pitch", "draws", "colors", "sky%", "score");
+        for (int i = 0; i < topK; ++i) {
+            const auto& c = candidates[i];
+            printf("  %10.1f %10.1f %10.1f %8.1f %6.1f %6d %8zu %7.1f%% %10.1f  --camera-pose %.1f,%.1f,%.1f,%.1f,%.1f\n",
+                   c.x, c.y, c.z, c.heading, c.pitch, c.draws, c.distinctColors,
+                   c.skyFraction * 100.0, c.score, c.x, c.y, c.z, c.heading, c.pitch);
+        }
+        return 0;
+    }
+
     // ── Run synthetic test if requested ──
     if (opts.syntheticDraws) {
         runSyntheticDrawTest(*data, opts.frames);
+        return 0;
+    }
+
+    ZoneBench::MetricsCollector metrics;
+
+    // ── H02b: static multi-pose capture ──
+    // When --camera-pose was given (one or more times), skip the moving
+    // navmesh/orbit camera path entirely: render exactly one frame per pose,
+    // pose index i -> frame index i, which lines up 1:1 with the existing
+    // --dump-frames / manifest "designatedFrames" mechanism below with no
+    // changes needed to it or to the CI gate script.
+    if (!opts.cameraPoses.empty()) {
+        printf("\n=== Static pose capture: %zu poses ===\n", opts.cameraPoses.size());
+        metrics.reserve(static_cast<int>(opts.cameraPoses.size()));
+        metrics.setDumpPerFrame(opts.dump);
+
+        std::vector<ZoneBench::DrawEntry> drawEntries;
+        drawEntries.reserve(2048);
+        float fov = 60.0f * 3.14159265f / 180.0f;
+        float aspect = static_cast<float>(opts.width) / static_cast<float>(opts.height);
+
+        for (size_t i = 0; i < opts.cameraPoses.size(); ++i) {
+            const auto& pose = opts.cameraPoses[i];
+            float dirX, dirY, dirZ;
+            poseToDirection(pose.heading, pose.pitch, dirX, dirY, dirZ);
+
+            setupCamera(*data, pose.x, pose.y, pose.z, dirX, dirY, dirZ);
+            if (data->zoneShader) data->zoneShader->beginFrame();
+            data->driver->beginScene(true, true, irr::video::SColor(255, 40, 40, 60));
+            if (data->zoneShader) data->zoneShader->beginFrame();
+
+            metrics.beginFrame(static_cast<int>(i), pose.x, pose.y, pose.z, pose.heading, pose.pitch);
+
+            ZoneBench::CameraState camState{pose.x, pose.y, pose.z, dirX, dirY, dirZ, fov, aspect};
+            int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
+            drawEntries.clear();
+            ZoneBench::collectDrawEntries(
+                *data, camState,
+                opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
+                opts.frontToBack, opts.maxDraws, opts.maxPolys,
+                drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
+            if (!data->objects.empty()) {
+                int objDraws = 0, objPolys = 0;
+                ZoneBench::collectObjectDrawEntries(
+                    *data, camState, opts.objectRenderDist,
+                    opts.pvsCull, opts.frustumCull, opts.occlusionCull,
+                    drawEntries, objDraws, objPolys);
+            }
+            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+            int polyCount = countPolygons(drawEntries);
+            metrics.endDraw(static_cast<int>(drawEntries.size()), stateChanges, polyCount,
+                            regionsVisible, regionsDrawn, regionsOccluded);
+
+#ifdef EQT_HAS_GLES2
+            glFinish();
+#endif
+            metrics.endGpuSync();
+            metrics.endFrame();
+
+            if (!opts.dumpPngPrefix.empty()) {
+                irr::video::IImage* shot = data->driver->createScreenShot();
+                std::string path = opts.dumpPngPrefix + "_f" + std::to_string(i) + ".png";
+                if (shot) {
+                    bool ok = data->driver->writeImageToFile(shot, path.c_str());
+                    shot->drop();
+                    printf("[dump-frames] %s: %s\n", path.c_str(), ok ? "saved" : "FAILED to save");
+                } else {
+                    printf("[dump-frames] %s: createScreenShot() FAILED\n", path.c_str());
+                }
+            }
+
+            data->driver->endScene();
+        }
+
+        metrics.printSummary();
+        if (!opts.csvFile.empty()) metrics.writeCSV(opts.csvFile);
+
+        if (data->textureCache) {
+            size_t used = data->textureCache->getCurrentUsage();
+            size_t limit = data->textureCache->getMemoryLimit();
+            size_t count = data->textureCache->getTextureCount();
+            printf("Texture cache: %zu / %zu bytes (%zu textures)\n", used, limit, count);
+            if (!opts.memoryJsonPath.empty()) {
+                FILE* f = fopen(opts.memoryJsonPath.c_str(), "w");
+                if (f) {
+                    fprintf(f,
+                            "{\n"
+                            "  \"zone\": \"%s\",\n"
+                            "  \"textureCacheBytesUsed\": %zu,\n"
+                            "  \"textureCacheBytesLimit\": %zu,\n"
+                            "  \"textureCount\": %zu\n"
+                            "}\n",
+                            opts.zoneName.c_str(), used, limit, count);
+                    fclose(f);
+                    printf("[memory-json] %s: saved\n", opts.memoryJsonPath.c_str());
+                } else {
+                    printf("[memory-json] %s: FAILED to open for write\n", opts.memoryJsonPath.c_str());
+                }
+            }
+        }
+
+        printf("Benchmark complete.\n");
         return 0;
     }
 
@@ -1314,7 +1635,6 @@ int main(int argc, char** argv) {
     printf("\nStarting benchmark: %d warmup + %d measured frames\n",
            opts.warmup, opts.frames);
 
-    ZoneBench::MetricsCollector metrics;
     metrics.reserve(opts.frames);
     metrics.setDumpPerFrame(opts.dump);
 

@@ -16,31 +16,43 @@
   "zones": [
     {
       "zone": "qeynos2",
-      "description": "City/outdoor, proven in H01",
-      "extraArgs": [],
+      "description": "H02b re-frame: city/outdoor, static representative poses picked via --pose-search (region-anchored candidate scoring) after the H02 orbit-path frames were rejected for showing fog/ground/sky with no city geometry.",
+      "extraArgs": [
+        "--camera-pose",
+        "201.9,393.4,5.0,180.0,-5.0",
+        "--camera-pose",
+        "-134.9,-238.9,6.0,0.0,-5.0",
+        "--camera-pose",
+        "-202.9,-706.7,20.0,90.0,-5.0"
+      ],
       "designatedFrames": [
         0,
-        30,
-        59
+        1,
+        2
       ],
+      "frameDescriptions": {
+        "0": "Gate plaza with two-story buildings on both sides, ivy-covered stone wall",
+        "1": "Courtyard facing a tiled-roof building entrance framed by ivy-covered walls",
+        "2": "Interior temple/building room: mosaic-tiled walls, stone pillars, vaulted ceiling"
+      },
       "metrics": {
         "0": {
-          "draws": 10,
-          "stateChanges": 4,
-          "polys": 27
+          "draws": 236,
+          "stateChanges": 20,
+          "polys": 885
         },
-        "30": {
-          "draws": 9,
-          "stateChanges": 4,
-          "polys": 25
+        "1": {
+          "draws": 119,
+          "stateChanges": 16,
+          "polys": 542
         },
-        "59": {
-          "draws": 9,
-          "stateChanges": 3,
-          "polys": 38
+        "2": {
+          "draws": 228,
+          "stateChanges": 8,
+          "polys": 663
         }
       },
-      "p95CpuMsBaseline": 1.71,
+      "p95CpuMsBaseline": 20.723,
       "memory": {
         "textureCacheBytesUsed": 42226984,
         "textureCacheBytesLimit": 67108864,
@@ -49,35 +61,43 @@
     },
     {
       "zone": "gfaydark",
-      "description": "Forest/organic, outdoor. Uses --orbit-anchor-surface (H02): the bare bounding-box-center orbit fallback flies the fixed-height camera through empty sky over this zone's uneven terrain, producing entirely blank frames despite nonzero draw counts -- see H02 review.",
+      "description": "H02b re-frame: forest/organic, static representative poses picked via --pose-search after the H02 orbit-path frames were rejected for clipping through a tree. Poses sit on real elven treehouse platforms (region-anchored candidates), not embedded in trunks or rock.",
       "extraArgs": [
-        "--orbit-anchor-surface",
-        "--orbit-radius",
-        "60"
+        "--camera-pose",
+        "820.0,84.9,110.0,0.0,-5.0",
+        "--camera-pose",
+        "444.7,688.9,141.0,90.0,-5.0",
+        "--camera-pose",
+        "-440.9,72.3,110.0,180.0,-5.0"
       ],
       "designatedFrames": [
         0,
-        30,
-        59
+        1,
+        2
       ],
+      "frameDescriptions": {
+        "0": "Elven treehouse platform with a large tree trunk in frame and a gazebo visible in the distance",
+        "1": "Close-up gazebo rooftop on a treehouse platform, wooden bridges connecting to neighboring platforms",
+        "2": "Elevated wooden bridge walkway connecting elven treehouse platforms, forest canopy behind"
+      },
       "metrics": {
         "0": {
-          "draws": 25,
-          "stateChanges": 5,
-          "polys": 567
+          "draws": 143,
+          "stateChanges": 10,
+          "polys": 3338
         },
-        "30": {
-          "draws": 9,
-          "stateChanges": 2,
-          "polys": 199
+        "1": {
+          "draws": 134,
+          "stateChanges": 7,
+          "polys": 3633
         },
-        "59": {
-          "draws": 8,
-          "stateChanges": 2,
-          "polys": 164
+        "2": {
+          "draws": 203,
+          "stateChanges": 9,
+          "polys": 4421
         }
       },
-      "p95CpuMsBaseline": 2.096,
+      "p95CpuMsBaseline": 18.3,
       "memory": {
         "textureCacheBytesUsed": 11184800,
         "textureCacheBytesLimit": 67108864,
@@ -86,35 +106,43 @@
     },
     {
       "zone": "befallen",
-      "description": "Dungeon interior (undead crypt). blackburrow and crushbone were tried first and rejected -- both rendered entirely blank frames at every camera position tried (default AND --orbit-anchor-surface, even with all culling disabled and the whole zone force-drawn), for reasons not fully root-caused within this unit's scope; befallen renders correctly with the same --orbit-anchor-surface mechanism. See H02 review for the investigation.",
+      "description": "H02b re-frame: dungeon interior (undead crypt), static representative poses picked via --pose-search after the H02 orbit-path frames were rejected for viewing the crypt from outside its shell. All three poses sit inside crypt rooms/halls (region-anchored candidates), not outside the geometry. blackburrow and crushbone remain rejected substitutes -- see H02 review for that investigation (unchanged in this unit).",
       "extraArgs": [
-        "--orbit-anchor-surface",
-        "--orbit-radius",
-        "30"
+        "--camera-pose",
+        "-554.8,-186.9,-50.1,270.0,-5.0",
+        "--camera-pose",
+        "-299.9,-181.9,-9.0,0.0,-5.0",
+        "--camera-pose",
+        "-149.9,-5.8,7.1,180.0,-5.0"
       ],
       "designatedFrames": [
         0,
-        30,
-        59
+        1,
+        2
       ],
+      "frameDescriptions": {
+        "0": "Crypt altar/pillar room with checkerboard floor, wooden-lattice walls, staircase in background",
+        "1": "Crypt doorway/archway opening onto a stone-railed hall with checkerboard floor",
+        "2": "Crypt balcony hall: checkerboard floor and stone balustrade railing under a vaulted ceiling"
+      },
       "metrics": {
         "0": {
-          "draws": 87,
-          "stateChanges": 6,
-          "polys": 415
-        },
-        "30": {
-          "draws": 1248,
-          "stateChanges": 8,
-          "polys": 4457
-        },
-        "59": {
-          "draws": 373,
+          "draws": 368,
           "stateChanges": 7,
-          "polys": 1572
+          "polys": 1241
+        },
+        "1": {
+          "draws": 75,
+          "stateChanges": 5,
+          "polys": 384
+        },
+        "2": {
+          "draws": 170,
+          "stateChanges": 5,
+          "polys": 526
         }
       },
-      "p95CpuMsBaseline": 19.511,
+      "p95CpuMsBaseline": 17.14,
       "memory": {
         "textureCacheBytesUsed": 2883581,
         "textureCacheBytesLimit": 67108864,
