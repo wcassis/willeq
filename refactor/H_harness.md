@@ -30,5 +30,9 @@ Background decisions (from discussion with Will, 2026-07-23):
 gate is fully armed: any rendering change now requires either byte-identical
 frames or a re-blessed golden set through the same review.
 
-**Remaining for Batch H closure:** Pi tier-2 timing script (awaits Pi
-power-on + IP); Win10 character-creation session for the two-client tours.
+| H04 | Pi tier-2 timing baseline: 3-run variance, ±40% evidence-based tolerance, blessed baseline, compare gate. KPI verdict: ALL zones < 30fps on Mali400; EQE1 slower than RGBA (deferred investigations filed) | done | slot2 | `33f0c29` |
+
+**BATCH H COMPLETE (2026-07-23).** Full verification stack: build + 1,225
+tests + replay oracle (real session) + blessed pixel goldens (llvmpipe) +
+Pi hardware timing baseline. Character roster for two-client tours created
+by Will. Open perf findings → refactor/deferred.md.

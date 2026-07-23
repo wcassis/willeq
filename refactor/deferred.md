@@ -103,6 +103,26 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   could be killed mid-test. Watch for this in CI; the allowlist lives in
   akk-stack assets (server-code-adjacent — flag before changing).
 
+## Performance gap on real hardware (H04 baseline, 2026-07-23)
+
+- **All three golden zones render below the 30fps KPI on the Orange Pi**
+  (p95, 800×600, performance governor): qeynos2 ~28.8, gfaydark ~24.3,
+  befallen ~22.4 fps (RGBA path). This is the measured target for all
+  future perf work; scripts/pi/bench_pi.sh + compare_pi.sh regression-track
+  it automatically. Candidate levers already in this file: unified priority
+  queue, GL-on-render-thread fallback, pointer-key draw order, render-loop
+  blocking items.
+- **EQE1/ETC1 is consistently SLOWER than direct RGBA on Mali400** in p95
+  frame time despite ~8x smaller texture memory (e.g. befallen down to
+  ~15.8fps worst run). Counterintuitive — challenges the assumption that
+  drove the flat-pack effort's perf side (memory savings remain real).
+  Needs its own investigation (Lima ETC1 sampling cost? alpha-companion
+  double-sampling? mipmap filtering differences?).
+- **Intermittent mid-run stalls** observed on the Pi during timed runs
+  (part of the ±36% variance that forced a ±40% tolerance). Worth
+  investigating alongside the render-loop blocking items — tighter variance
+  would let the tolerance shrink and catch smaller regressions.
+
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
 - Distant geometry renders as flat fog-colored (pale) shapes against the
