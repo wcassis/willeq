@@ -9,14 +9,19 @@
 #      other processes read; this is the normal eqemu startup step and exits
 #      0 on its own once done).
 #   4. Start ./bin/loginserver, ./bin/world, and ./bin/zone <shortname> in the
-#      background inside the eqemu-server container — the same binaries
-#      akk-stack's own spire launcher (`spire eqemu-server:launcher`) would
-#      exec. That launcher got stuck in a persistent "already running" state
-#      on this host that `stop`/`start` cycling could not clear (no matching
-#      OS process, listening port, or discoverable DB/file state was found
-#      backing the check — see refactor/H03_eqemu_recording.md's review for
-#      the full investigation) so this script drives the binaries directly.
-#      This does not touch /mnt/projects/akk-stack/code or any server script.
+#      background inside the eqemu-server container.
+#
+#      NOTE (correcting H03's initial diagnosis): the sanctioned way to run
+#      the full stack is `spire spire:launcher start` (the container's
+#      `start` alias) — it re-execs /tmp/spire-launcher which runs
+#      `eqemu-server:launcher start`. Invoking `spire eqemu-server:launcher
+#      start` DIRECTLY always fails with "already running" because its
+#      process check matches its own command line — it was never wedged
+#      state. This script still defaults to driving the binaries directly
+#      because CI wants ONE zone process, not the launcher's full static-zone
+#      fleet (~15 zone processes). Pass --launcher to use the sanctioned
+#      spire:launcher path instead (boots the fleet per eqemu_config's
+#      web-admin.launcher block).
 #   5. Wait for the login (5998), world (9000), and zone (7000) ports to
 #      accept TCP/UDP-adjacent connections on the host.
 #
@@ -27,6 +32,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env.sh"
 
+USE_LAUNCHER=0
+if [ "${1:-}" = "--launcher" ]; then
+    USE_LAUNCHER=1
+    shift
+fi
 ZONE_SHORTNAME="${1:-${EQ_TEST_ZONE_SHORTNAME}}"
 
 wait_for() {
@@ -57,6 +67,22 @@ wait_for "eqemu-server container" 30 docker exec "${EQEMU_CONTAINER}" true
 
 echo "== up.sh: populating shared memory (bin/shared_memory) =="
 server_exec "./bin/shared_memory 2>&1 | tail -5"
+
+if [ "${USE_LAUNCHER}" = "1" ]; then
+    # Sanctioned path: the container's `start` alias. Boots world/ucs + the
+    # full static-zone fleet per eqemu_config's web-admin.launcher block.
+    # The launcher does NOT start loginserver on this config; start it
+    # ourselves either way.
+    echo "== up.sh: starting via sanctioned spire:launcher =="
+    server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
+    server_exec "./bin/spire spire:launcher start 2>&1 | head -3"
+    wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
+        "exec 3<>/dev/tcp/127.0.0.1/${LOGIN_PORT}"
+    wait_for "world port ${WORLD_PORT}" 90 bash -c \
+        "exec 3<>/dev/tcp/127.0.0.1/${WORLD_PORT}"
+    echo "== up.sh: launcher mode up (fleet booting in background) =="
+    exit 0
+fi
 
 echo "== up.sh: starting loginserver =="
 server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"

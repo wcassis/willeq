@@ -90,10 +90,18 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   create a character from nothing. seed.sh stops cleanly on a fresh install.
   Closing this means implementing the Titanium char-create handshake in the
   client (H03 review documents the server-side flow to match).
-- akk-stack's `spire eqemu-server:launcher` is wedged on this host ("already
-  running" with no backing process) — scripts drive the server binaries
-  directly instead. Harmless, but the launcher state may confuse future
-  sessions.
+- ~~spire launcher "wedged"~~ RESOLVED 2026-07-23: never wedged — the H03
+  executor invoked `spire eqemu-server:launcher start` directly, an internal
+  entry point whose process check matches its own cmdline ("already
+  running" by self-match). The sanctioned path is `spire spire:launcher
+  start` (the container's `start` alias), verified to boot the full fleet.
+  up.sh keeps direct-binary single-zone boot as CI default (lighter: 1 zone
+  vs ~15) with `--launcher` for the sanctioned path.
+- The container's `process-watcher.pl` kills any process using >30% CPU for
+  60s whose name isn't allowlisted (gcc/mysql/world/etc.) — `zone` and
+  `spire` are NOT allowlisted. A busy zone process during automated runs
+  could be killed mid-test. Watch for this in CI; the allowlist lives in
+  akk-stack assets (server-code-adjacent — flag before changing).
 
 ## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
 
