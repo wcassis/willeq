@@ -64,23 +64,18 @@ Still open from that audit:
   (`getSpellByName` is exact-match `WHERE name=?`); old tests covering them
   were deleted in F00. Restore only if a consumer needs them.
 
-## Batch G candidates (from Batch F completion, 2026-07-23)
+## Batch G — CLOSED (2026-07-23, see refactor/G_decomposition.md)
 
-- **Per-step decomposition of `loadZoneSequential`** (renderer_zone_load.cpp,
-  2,673 lines, one method with Step 0–13 banners). Requires new private
-  helper declarations in irrlicht_renderer.h — a header-changing refactor
-  outside Batch F's move-only rules. Highest-value follow-up.
-- **Split `eq_commands.cpp`** (2,568 lines — RegisterCommands is one giant
-  method of lambda registrations; could split by command domain).
-- **Co-locate the two `StartCombatMovement` overloads** (one in
-  eq_movement.cpp, one left in eq.cpp — F08 review flagged it).
-- Files still over the 1,500-line warn ceiling: eq_commands.cpp (2,568),
-  renderer_zone_load.cpp (2,673), eq_entities.cpp (2,438), eq_player_info.cpp
-  (2,006), eq_movement.cpp (1,943), eq_bridge.cpp (1,837), renderer_frame.cpp
-  (1,583), renderer_player_physics.cpp (1,570), eq_merchant.cpp (1,558) —
-  plus the two remaining cores eq.cpp (3,629) and entity_renderer.cpp (3,201),
-  and irrlicht_renderer.cpp (2,736). All under the 3,000 hard ceiling except
-  eq.cpp/entity_renderer.cpp, which are accepted cores.
+loadZoneSequential decomposed into 20 step methods (largest 408 lines);
+RegisterCommands split into 3 domain TUs each under 1,500; StartCombatMovement
+overloads co-located.
+
+Files still over the 1,500-line warn ceiling (all under the 3,000 hard
+ceiling; accepted): renderer_zone_load.cpp (2,795 — now structured as step
+methods), eq_entities.cpp (2,438), eq_player_info.cpp (2,006),
+eq_movement.cpp (~1,975), eq_bridge.cpp (1,837), renderer_frame.cpp (1,583),
+renderer_player_physics.cpp (1,570), eq_merchant.cpp (1,558), plus the
+accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
 
 ## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
 

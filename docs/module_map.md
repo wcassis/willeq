@@ -12,7 +12,9 @@ section under `refactor/F*.md`.
 | TU | Lines | Contents |
 |---|---|---|
 | src/client/eq.cpp | 3,629 | Core: ctor/lifecycle, PublishFullStateSnapshot, ZoneOnPacketRecv dispatcher (~845-line switch), NewZone/PlayerProfile, zone connection phases, PlayerState/Death/Stamina/Bind, ZoneProcessEmote/GuildMOTD/LevelUpdate, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
-| eq_commands.cpp | 2,568 | RegisterCommands (slash commands), runPmemDiagnostics, runLoadDiagnostics |
+| eq_commands.cpp | 1,110 | RegisterCommands driver + RegisterSocialCommands (chat/group/trade/guild/social), runPmemDiagnostics, runLoadDiagnostics |
+| eq_commands_movement.cpp | 900 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
+| eq_commands_spells.cpp | 783 | RegisterSpellCommands (spell/skill/hotkey/detail/audio commands) |
 | eq_entities.cpp | 2,438 | Zone spawns, NewSpawn/DeleteSpawn, ClientUpdate interp, HP/MobHealth, appearance/WearChange/Illusion, doors, world objects, FindEntityByName |
 | eq_movement.cpp | 1,943 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
 | eq_bridge.cpp | 1,837 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
@@ -32,7 +34,7 @@ section under `refactor/F*.md`.
 | TU | Lines | Contents |
 |---|---|---|
 | src/client/graphics/irrlicht_renderer.cpp | 2,736 | Core: init/shutdown, loading screen, slash-command processing, camera/lighting/time-of-day, run(), saveScreenshot, sky façade, door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |
-| renderer_zone_load.cpp | 2,673 | loadZoneSequential (Steps 0–13, verbatim; per-step decomposition = Batch G candidate) |
+| renderer_zone_load.cpp | 2,795 | loadZoneSequential driver + 20 per-step methods (loadZoneStep0..13, 8a–8f) with ZoneLoadContext (Batch G01) |
 | renderer_frame.cpp | 1,583 | processFrame + input/visibility/simulation/render sub-passes |
 | renderer_player_physics.cpp | 1,570 | updatePlayerMovement, collision setup, BSP-filtered raycasting, collision debug lines |
 | renderer_zone_stream.cpp | 1,363 | Lazy/background mesh load pipeline, progressive load, PVS neighborhood |
