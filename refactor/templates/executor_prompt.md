@@ -24,6 +24,13 @@ Rules:
 - Add each new .cpp file to CMakeLists.txt.
 - Shell discipline: never chain commands with `&&` or `;`; never `cd` — pass
   paths as arguments; never pipe build output through grep/tail.
+- NEVER end your turn waiting on a background task or monitor — this stalls
+  the whole pipeline until the orchestrator manually resumes you (it has
+  happened repeatedly). Run long commands in the FOREGROUND with explicit
+  timeouts (600000 ms) and re-run on timeout (builds resume incrementally).
+  If you must wait on a condition, use a bounded until-loop inside a single
+  foreground call. If you catch yourself about to say "waiting for the
+  background task" — don't; check its output file directly and continue.
 
 Verification (all must pass before you finish):
 1. `cmake --build {SLOT_PATH}/build -j24` — clean build, do not pipe/filter output
