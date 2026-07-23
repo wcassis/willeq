@@ -57,6 +57,14 @@ establishes the baseline; later runs regression-gate.
 
 ## Rules
 
+- **I/O rule (from Will — fps has been measurably hurt by this):** during
+  timed runs, ALL benchmark output (CSVs, logs, any diagnostic capture)
+  goes to /tmp on the Pi (242MB tmpfs — verified) — NEVER to NFS or the SD
+  card while frames are being timed. Copy results from /tmp to the NFS
+  artifacts dir only AFTER the timed portion completes (rsync/cp in the
+  script's post-run phase). Keep client/benchmark log verbosity minimal
+  during timed runs; if a verbose diagnostic capture is ever needed, do it
+  as a separate untimed run. Watch the tmpfs ceiling.
 - Nothing on the Pi's SD card gets modified except transient state
   (governor, console) — binaries/assets/output all live on NFS. Any
   apt/system change on the Pi: report needed, don't install without noting.
