@@ -123,6 +123,54 @@ Net: per-entity cross-sub-step locals promoted to `ZoneLoadContext` fields: `mod
 - Step 8d's `equipError` abort (`pendingZoneComputations_.reset(); loadFailed_=true; return;`) happens in the original code just after the loop that calls `prepOneEquip` twice, still textually inside "Step 8d" territory but outside the `if (equipLoader)` block. It is kept as part of `loadZoneStep8d_EquipmentPrep`, which returns `bool` (false on abort); `loadZoneStep8_Entities`'s loop checks this and `return`s `false` immediately (breaking the entity loop and propagating up to `loadZoneSequential`), matching the original single `return;` from the middle of the function.
 - `loadZoneStep2_BSP` includes both the "compute" and "install" sub-sections (they were never separated by a banner of their own — both live under the Step 2 banner) — kept as one method per the "one method per step banner" rule.
 
-### Results (filled in after implementation)
+### Results
 
-(build/ctest/verifier output, largest method line count — see below)
+**Build:** `cmake --build build -j24` — clean, no warnings introduced.
+
+**ctest:** `ctest --test-dir build` — 1191/1192 ran and passed, 1 pre-existing
+documented failure (`AudioManagerTest.PreloadCommonSounds`, ALSA card-0
+resolution on this host, listed in `refactor/test_baseline.txt` since
+F02/F14 — unrelated to this change). 9 tests skipped for lack of a
+display/GL context in this sandbox (`DoorManagerGraphicsTest.*` ×8,
+`PfsArchiveContentTest.DdsFileValid`, `SoundBufferTest.LoadSwingWav`) —
+pre-existing environment limitation, not caused by this change.
+`ComprehensiveZoneTest.*` (6 tests) and `DoorLoadingUnitTest.*` (4 tests) —
+all passed. `DoorManagerGraphicsTest.*` all skipped (same skip reason as
+baseline; 0 failed of the 8 that were collected).
+
+**Largest resulting method:** `loadZoneStep11_Env` at 408 lines (target
+was ≤~500). Next largest: `loadZoneStep6_Objects` (396),
+`loadZoneStep10_Sky` / `loadZoneStep12b_Simulation` (278 each),
+`loadZoneStep2_BSP` (260), `loadZoneStep4_Regions` (244). All 20 step
+methods plus the driver are well under the 500-line target; the driver
+`loadZoneSequential` itself is 91 lines.
+
+**File size:** `check_file_sizes.sh` → `WARN ... 2795 lines (> 1500)` (expected;
+well under the 3000-line hard fail threshold; file grew from 2673 to 2795
+lines, +122, entirely method-signature/brace/ZoneLoadContext-declaration
+boilerplate — no body text was duplicated).
+
+**Move-only verifier** (`verify_move_only.py b2f03343ecdf77fe1aca266f00a343d758aba04d..HEAD`,
+BASE = merge-base with `fable`): reports 184 substantive added lines / 97
+substantive removed lines and exits non-zero, as expected for a
+non-move-only unit. Every added line is one of: a step-method signature
+(`void`/`bool IrrlichtRenderer::loadZoneStepN_Name(ZoneLoadContext&)`), the
+matching header declaration, the `ZoneLoadContext` struct definition and
+its members/comments, a `ctx.`-qualified rename of a former local
+(`eqPath`→`ctx.eqPath`, `updateProgress`→`ctx.updateProgress`,
+`spawnId`/`vis`/`modelLoader`/`equipLoader`/`success`/`variantTextureCount`/
+`equipmentData`/the loop counters → `ctx.*`), a driver call to a step
+method (`loadZoneStepN_...(ctx);` / `if (!loadZoneStepN_...(ctx)) return...;`),
+or the `return true;`/`return false;` bool-return-path adjustments the
+plan calls for. Every removed line is the corresponding original local
+declaration/reference before renaming. No reformatting or drive-by fixes
+are present in the diff. Full verifier output has been reviewed line-by-line;
+no line falls outside the allowed categories above.
+
+### Deviations from a literal reading of the plan (recap, see analysis above for detail)
+
+- `EquipPrepData` hoisted from a Step-8d-local struct to `ZoneLoadContext::EquipPrepData` (mechanical consequence of crossing 8d→8e).
+- `variantTextureCount` (originally analyzed as possibly 8c-local) turned out to also be read in 8e's warning log — promoted to `ctx.variantTextureCount`.
+- Step 2's "install" sub-section (no separate banner of its own) stays inside `loadZoneStep2_BSP` rather than becoming its own method, per "one method per banner."
+- The dead "Step 3 (removed)" comment + its `FlushThreadLog()` call has no method of its own (nothing to decompose) and is kept verbatim in the driver between the Step 2 and Step 4 calls.
+- Added `#include <functional>` to `renderer_zone_load.cpp` for `std::function` (used by `ZoneLoadContext::updateProgress`) — a mechanical necessity of the design, not a behavior change.
