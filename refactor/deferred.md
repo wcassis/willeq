@@ -103,6 +103,17 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   could be killed mid-test. Watch for this in CI; the allowlist lives in
   akk-stack assets (server-code-adjacent — flag before changing).
 
+## Production draw-order nondeterminism (found by H02b, 2026-07-23)
+
+- **renderer_zone_draw.cpp:242,333 builds the material sort key from the low
+  16 bits of the texture POINTER** — same bug H02b fixed in the benchmark
+  loader (zone_bench_loader.cpp, FNV-1a name hash). Under ASLR the
+  production draw order of equal-material geometry varies run-to-run:
+  wobbling state-change counts, nondeterministic z-fighting on coplanar
+  faces, and it would break any future full-app golden testing. Small fix
+  (apply textureGroupId() pattern to both sites); do it before the full-app
+  llvmpipe test tier.
+
 ## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
 
 - **RDPServerFrameTest.UpdateFrameMultipleTimes segfaults intermittently**
