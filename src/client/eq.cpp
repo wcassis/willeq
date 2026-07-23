@@ -3268,25 +3268,30 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 {
-	// Stamina (endurance) update packet
-	// Format: spawn_id (2 bytes), current_stamina (4 bytes), max_stamina (4 bytes)
-	
-	if (p.Length() < 10) {
+	// Stamina (hunger/thirst) update packet — always refers to our own
+	// character (there is no spawn_id field; the server's Stamina_Struct
+	// is just { uint32 food; uint32 water; }, confirmed against
+	// akk-stack/code/zone/client.cpp's SetHunger/SetThirst/SetConsumption,
+	// which are the only senders of OP_Stamina).
+	//
+	// H03: this previously assumed a spawn_id (2 bytes) + current_stamina
+	// (4 bytes) + max_stamina (4 bytes) layout that doesn't match the real
+	// protocol, requiring 12 bytes total (2 opcode + 10 struct) but only
+	// checking for 10 — an out-of-range read on real 8-byte payloads (2
+	// opcode + 8 struct), reproduced replaying a real recorded session
+	// (see refactor/H03_eqemu_recording.md). Fixed to the real 8-byte
+	// food/water layout.
+	if (p.Length() < 10) {  // 2 opcode + 8 bytes (food + water)
 		LOG_WARN(MOD_ENTITY, "Stamina packet too small: {} bytes", p.Length());
 		return;
 	}
-	
-	uint16_t spawn_id = p.GetUInt16(2);
-	uint32_t current_stamina = p.GetUInt32(4);
-	uint32_t max_stamina = p.GetUInt32(8);
-	
-	LOG_DEBUG(MOD_ENTITY, "Stamina update: spawn_id={}, current={}, max={}",
-		spawn_id, current_stamina, max_stamina);
-	
-	// Store stamina values if this is for our character
-	if (spawn_id == m_my_spawn_id) {
-		// TODO: Store stamina values as member variables if needed
-	}
+
+	uint32_t food = p.GetUInt32(2);
+	uint32_t water = p.GetUInt32(6);
+
+	LOG_DEBUG(MOD_ENTITY, "Stamina update: food={}, water={}", food, water);
+
+	// TODO: Store hunger/thirst values as member variables if needed.
 }
 
 void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)

@@ -99,8 +99,22 @@ struct ApplicationConfig {
     // R01: Session recording (--record-session <file>)
     std::string recordSessionPath;
 
+    // H03: Scripted command tour (--script <file>)
+    std::string scriptPath;
+
     // Help flag
     bool showHelp = false;
+};
+
+/**
+ * H03: One step of a --script tour file: either a timed pause ("wait N")
+ * or a command line to feed through CommandProcessor::processCommand()
+ * verbatim (e.g. "/moveto loc" or "/camp").
+ */
+struct ScriptStep {
+    bool isWait = false;
+    float waitSeconds = 0.0f;
+    std::string commandText;
 };
 
 /**
@@ -276,6 +290,20 @@ private:
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
     // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this
 
+    // ========== H03: Scripted command tour (--script <file>) ==========
+
+    // Parses a script file ("wait N" lines + slash-command lines, '#' comments,
+    // blank lines ignored) into m_scriptSteps. Returns false (logs an error) if
+    // the file cannot be opened. Called once from initialize().
+    bool loadScriptFile(const std::string& path);
+
+    // Advances the loaded script by one game tick. Wait steps count down using
+    // deltaTime; command steps are held (not consumed) until m_fullyConnected is
+    // true, then dispatched through m_commandProcessor->processCommand() exactly
+    // as a live slash command would be. No-op if no script was loaded. Called
+    // from processInput() on the game thread.
+    void updateScript(float deltaTime);
+
     // ========== Components ==========
 
     std::unique_ptr<state::GameState> m_gameState;
@@ -343,6 +371,12 @@ private:
     // Spell state tracking
     bool m_lastIsCasting = false;
     uint32_t m_lastCastingSpellId = 0;
+
+    // H03: Scripted command tour state (game thread only)
+    std::vector<ScriptStep> m_scriptSteps;
+    size_t m_scriptIndex = 0;
+    float m_scriptWaitRemaining = 0.0f;
+    bool m_scriptWaitStarted = false;
 };
 
 } // namespace eqt

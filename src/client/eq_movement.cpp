@@ -494,6 +494,19 @@ void EverQuest::StopMovement()
 
 void EverQuest::UpdateMovement()
 {
+	// H03: Process a deferred post-logout disconnect if the server confirmed our
+	// OP_Logout. Must run before anything else, outside of any packet-callback
+	// context — see the comment on m_pending_logout_disconnect and
+	// ZoneProcessLogoutReply() for why this can't happen synchronously in the
+	// packet handler.
+	if (m_pending_logout_disconnect) {
+		m_pending_logout_disconnect = false;
+		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
+		DisconnectFromZone();
+		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
+		return;  // Don't process movement post-logout
+	}
+
 	// Process deferred zone change if approved
 	// This MUST be at the very start of UpdateMovement to process outside of any callback context
 	if (m_zone_change_approved) {

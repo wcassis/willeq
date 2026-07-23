@@ -1507,6 +1507,13 @@ private:
 	bool m_zone_change_requested = false;                            // Waiting for server zone change response
 	bool m_zone_change_approved = false;                             // Zone change approved, needs deferred processing
 
+	// H03: server confirmed our OP_Logout (ZoneProcessLogoutReply) — DisconnectFromZone()
+	// must not run synchronously from inside that packet handler (it resets
+	// m_zone_connection_manager, destroying the DaybreakConnectionManager whose Tick()
+	// is still on the call stack — a use-after-free). Deferred the same way as
+	// m_zone_change_approved: set here, processed at the top of UpdateMovement().
+	bool m_pending_logout_disconnect = false;
+
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;
 

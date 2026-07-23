@@ -14,6 +14,8 @@
 #include "common/performance_metrics.h"
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <iostream>
 #include <thread>
 #include <algorithm>
@@ -239,6 +241,15 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_TRACE(MOD_MAIN, "Allocating CommandProcessor...");
     m_commandProcessor = std::make_unique<action::CommandProcessor>(*m_gameState, *m_dispatcher);
     LOG_DEBUG(MOD_MAIN, "Command processor created");
+
+    // H03: Scripted command tour (--script <file>)
+    if (!config.scriptPath.empty()) {
+        if (loadScriptFile(config.scriptPath)) {
+            LOG_INFO(MOD_MAIN, "Script loaded: {} ({} steps)", config.scriptPath, m_scriptSteps.size());
+        } else {
+            LOG_ERROR(MOD_MAIN, "Failed to load script file: {}", config.scriptPath);
+        }
+    }
 
     // Create game mode
     mode::ModeConfig modeConfig;
@@ -754,6 +765,90 @@ void Application::processInput(float deltaTime) {
     // off the map, and the server would interpolate the unbounded position.
     if (m_inputBridge && m_fullyConnected) {
         m_inputBridge->update(deltaTime);
+    }
+
+    // H03: Advance the scripted command tour, if one was loaded via --script.
+    updateScript(deltaTime);
+}
+
+bool Application::loadScriptFile(const std::string& path) {
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        LOG_ERROR(MOD_MAIN, "Script file not found: {}", path);
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        // Trim leading/trailing whitespace.
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            continue;  // blank line
+        }
+        size_t end = line.find_last_not_of(" \t\r\n");
+        line = line.substr(start, end - start + 1);
+
+        if (line.empty() || line[0] == '#') {
+            continue;  // comment
+        }
+
+        std::istringstream iss(line);
+        std::string first;
+        iss >> first;
+
+        ScriptStep step;
+        if (first == "wait") {
+            float seconds = 0.0f;
+            iss >> seconds;
+            step.isWait = true;
+            step.waitSeconds = std::max(0.0f, seconds);
+        } else {
+            step.isWait = false;
+            step.commandText = line;
+        }
+        m_scriptSteps.push_back(step);
+    }
+
+    return true;
+}
+
+void Application::updateScript(float deltaTime) {
+    if (m_scriptIndex >= m_scriptSteps.size()) {
+        return;
+    }
+
+    ScriptStep& step = m_scriptSteps[m_scriptIndex];
+
+    if (step.isWait) {
+        if (!m_scriptWaitStarted) {
+            m_scriptWaitRemaining = step.waitSeconds;
+            m_scriptWaitStarted = true;
+            LOG_INFO(MOD_MAIN, "Script: wait {:.1f}s (step {}/{})",
+                step.waitSeconds, m_scriptIndex + 1, m_scriptSteps.size());
+        }
+        m_scriptWaitRemaining -= deltaTime;
+        if (m_scriptWaitRemaining <= 0.0f) {
+            m_scriptWaitStarted = false;
+            ++m_scriptIndex;
+        }
+        return;
+    }
+
+    // Command step: hold here (without consuming it) until fully zoned in, so a
+    // script that starts with a command line rather than "wait" doesn't drop it.
+    if (!m_fullyConnected) {
+        return;
+    }
+
+    if (m_commandProcessor) {
+        LOG_INFO(MOD_MAIN, "Script: executing '{}' (step {}/{})",
+            step.commandText, m_scriptIndex + 1, m_scriptSteps.size());
+        m_commandProcessor->processCommand(step.commandText);
+    }
+    ++m_scriptIndex;
+
+    if (m_scriptIndex >= m_scriptSteps.size()) {
+        LOG_INFO(MOD_MAIN, "Script: complete ({} steps)", m_scriptSteps.size());
     }
 }
 
@@ -1565,6 +1660,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.recordSessionPath = argv[++i];
             }
+        } else if (arg == "--script") {
+            if (i + 1 < argc) {
+                config.scriptPath = argv[++i];
+            }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -1573,6 +1672,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -c, --config <file>      Set config file (default: willeq.json)\n";
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
+            std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";

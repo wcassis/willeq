@@ -903,8 +903,15 @@ void EverQuest::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
 	// D20c4: Signal quit via flag — Application checks and exits
 	RequestQuit();
 
-	// In headless mode, disconnect from zone
-	DisconnectFromZone();
+	// H03: Don't call DisconnectFromZone() here — this handler runs from inside
+	// DaybreakConnectionManager::Tick()'s packet-processing loop (Tick -> ProcessPacket
+	// -> ZoneOnPacketRecv -> DispatchZonePacket -> here). DisconnectFromZone() resets
+	// m_zone_connection_manager, destroying the very object whose Tick() is still on
+	// the call stack; the next loop iteration then dereferences a dangling m_transport
+	// (use-after-free crash — reproduced via GM fast-camp, which triggers an
+	// almost-immediate OP_LogoutReply). Defer to UpdateMovement(), which — like the
+	// existing m_zone_change_approved deferral — runs outside any callback context.
+	m_pending_logout_disconnect = true;
 }
 
 // ============================================================================
