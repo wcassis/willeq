@@ -107,21 +107,39 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
 
 - **All three golden zones render below the 30fps KPI on the Orange Pi**
   (p95, 800×600, performance governor): qeynos2 ~28.8, gfaydark ~24.3,
-  befallen ~22.4 fps (RGBA path). This is the measured target for all
+  befallen ~22.4 fps (RGBA path — P01 confirmed RGBA numbers are stable/
+  trustworthy; EQE1 columns are not, see below). P01 also CLOSED Will's
+  lighting-vs-culling question: lighting is never applied to culled
+  geometry (traced sim_visibility.cpp:91-149 → renderer_sim_bridge.cpp:
+  700-705 → renderer_zone_draw.cpp:266-373), and culling is worth ~27x
+  (947ms p95 with both culling systems off vs ~35ms on, qeynos2). This is the measured target for all
   future perf work; scripts/pi/bench_pi.sh + compare_pi.sh regression-track
   it automatically. Candidate levers already in this file: unified priority
   queue, GL-on-render-thread fallback, pointer-key draw order, render-loop
   blocking items.
-- **EQE1/ETC1 is consistently SLOWER than direct RGBA on Mali400** in p95
-  frame time despite ~8x smaller texture memory (e.g. befallen down to
-  ~15.8fps worst run). Counterintuitive — challenges the assumption that
-  drove the flat-pack effort's perf side (memory savings remain real).
-  Needs its own investigation (Lima ETC1 sampling cost? alpha-companion
-  double-sampling? mipmap filtering differences?).
-- **Intermittent mid-run stalls** observed on the Pi during timed runs
-  (part of the ±36% variance that forced a ±40% tolerance). Worth
-  investigating alongside the render-loop blocking items — tighter variance
-  would let the tolerance shrink and catch smaller regressions.
+- **EQE1-vs-RGBA (P01 correction of the H04 headline):** H04's "EQE1
+  consistently slower" was partly a measurement-methodology artifact — its
+  harness never varied A/B ordering (pi_bench_run.py), and P01's ABBA runs
+  showed strong order/thermal effects. The REAL finding: RGBA p95 is stable
+  within 2% across sessions while **EQE1 is erratic (>49% spread,
+  30.7-46ms, no order correlation)** — the mystery is EQE1's instability,
+  not a uniform slowdown. H1 (H02d fetch asymmetry) DISCONFIRMED; H2
+  (filtering) refuted from source; H4 (Lima ETC1 sampling) best-supported
+  but unprofiled. P02 re-measures with randomized interleaving + CmaFree
+  telemetry (EQE1 variance may be CMA/allocation-correlated).
+- **Per-vertex vs per-pixel lighting on real geometry (experiment 6b)** —
+  the one P01 experiment that got zero data before the Pi panic; the
+  benchmark hard-codes per-pixel (zone_bench_loader.cpp:209). Historical
+  synthetic data showed ~3x cost for the model switch. Top priority on
+  hardware resume (P02) — point-light COUNT is confirmed free (flat
+  34.6-35.3ms across --lighting 0..8).
+- **Pi kernel panic under dense benchmark cycling**: died between runs
+  (zero GPU activity in the window) after 41 DRM init/teardown cycles in
+  ~45min; H04's gentle 4 runs were fine. Consistent with cumulative
+  kernel-side GEM/CMA state. P02 protocol: CmaFree sampled between runs
+  (downward ratchet = the leak signature), capped runs/session, scripted
+  reboots between matrices (fstab now persists NFS), kmsg follower running
+  on the VM for lead-up capture; serial console for the trace itself.
 
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
