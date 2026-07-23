@@ -72,6 +72,11 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 	auto opcode = p.GetUInt16(0);
 	DumpPacket("S->C", opcode, p);
 
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
+			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
+
 	switch (opcode) {
 	case HC_OP_ChatMessage:
 		LoginSendLogin();
@@ -316,6 +321,11 @@ void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 	LOG_TRACE(MOD_WORLD, "WorldOnPacketRecv called");
 	auto opcode = p.GetUInt16(0);
 	DumpPacket("S->C", opcode, p);
+
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
+			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
 
 	switch (opcode) {
 	case HC_OP_ChatMessage:

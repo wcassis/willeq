@@ -2,6 +2,7 @@
 
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
+#include "common/net/session_recorder.h"
 #include "common/packet_structs.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
@@ -730,6 +731,11 @@ public:
 	void SetNavmeshPath(const std::string& path) { m_navmesh_path = path; }
 	void SetMapsPath(const std::string& path) { m_maps_path = path; }
 
+	// R01: Session recorder — records decoded application packets to `path`
+	// for later replay (--record-session CLI flag). No-op hooks elsewhere
+	// check m_session_recorder before recording.
+	void StartSessionRecording(const std::string& path);
+
 	// Combat and entity access
 	CombatManager* GetCombatManager() { return m_combat_manager.get(); }
 	TradeManager* GetTradeManager() { return m_trade_manager.get(); }
@@ -1457,6 +1463,9 @@ private:
 	std::thread::id m_main_thread_id;
 	bool m_use_pathfinding = true;
 	std::string m_navmesh_path;
+
+	// R01: Session recorder (null unless --record-session was passed)
+	std::unique_ptr<EQT::Net::SessionRecorder> m_session_recorder;
 
 	// Map for Z-height calculations
 	std::unique_ptr<HCMap> m_zone_map;

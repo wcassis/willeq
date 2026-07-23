@@ -96,6 +96,9 @@ struct ApplicationConfig {
     bool frameTimingEnabled = false;
     bool sceneProfileEnabled = false;
 
+    // R01: Session recording (--record-session <file>)
+    std::string recordSessionPath;
+
     // Help flag
     bool showHelp = false;
 };

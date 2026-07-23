@@ -166,6 +166,16 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// This prevents the login server from timing out while waiting for a response.
 }
 
+void EverQuest::StartSessionRecording(const std::string& path) {
+	m_session_recorder = std::make_unique<EQT::Net::SessionRecorder>();
+	if (m_session_recorder->open(path, m_character, m_current_zone_name)) {
+		LOG_INFO(MOD_MAIN, "Session recording started: {}", path);
+	} else {
+		LOG_ERROR(MOD_MAIN, "Failed to start session recording to '{}'", path);
+		m_session_recorder.reset();
+	}
+}
+
 void EverQuest::OpenDatabase(const std::string& dbPath) {
 	m_willeq_db = std::make_unique<EQT::WilleqDatabase>();
 	if (m_willeq_db->open(dbPath)) {
@@ -704,6 +714,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
 
 	DumpPacket("S->C", opcode, p);
+
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::Zone, EQT::Net::SessionDirection::ServerToClient,
+			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
 
 	switch (opcode) {
 	case HC_OP_SessionReady:
@@ -3362,6 +3377,11 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 		return false;
 	}
 
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::Zone, EQT::Net::SessionDirection::ClientToServer,
+			p.GetUInt16(0), (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
+
 	// Update thread must use async to avoid libuv thread-safety violation
 	if (std::this_thread::get_id() != m_main_thread_id) {
 		if (m_zone_connection_manager) {
@@ -3551,6 +3571,11 @@ void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 {
 	if (!m_zone_connection || !packet) {
 		return;
+	}
+
+	if (m_session_recorder) {
+		m_session_recorder->record(EQT::Net::SessionStream::Zone, EQT::Net::SessionDirection::ClientToServer,
+			opcode, packet->Data(), static_cast<uint32_t>(packet->Length()));
 	}
 
 	EQ::Net::DynamicPacket p;

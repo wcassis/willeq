@@ -163,6 +163,14 @@ ADD_EXECUTABLE(test_packet_structs
 TARGET_LINK_LIBRARIES(test_packet_structs GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_packet_structs)
 
+# Test SessionRecorder (R01: session log writer for replay)
+ADD_EXECUTABLE(test_session_recorder
+    test_session_recorder.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/session_recorder.cpp
+)
+TARGET_LINK_LIBRARIES(test_session_recorder GTest::gtest_main ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_session_recorder)
+
 # Test FormattedMessage parsing (link extraction)
 ADD_EXECUTABLE(test_formatted_message
     test_formatted_message.cpp

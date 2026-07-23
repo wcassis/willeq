@@ -177,6 +177,11 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->OpenDatabase(dbPath);
         }
 
+        // R01: Session recording (--record-session <file>)
+        if (!config.recordSessionPath.empty()) {
+            m_eqClient->StartSessionRecording(config.recordSessionPath);
+        }
+
 #ifdef EQT_HAS_GRAPHICS
         if (!config.eqClientPath.empty()) {
             m_eqClient->SetEQClientPath(config.eqClientPath);
@@ -1556,6 +1561,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.backgroundThreadCount = std::atoi(argv[++i]);
             }
+        } else if (arg == "--record-session") {
+            if (i + 1 < argc) {
+                config.recordSessionPath = argv[++i];
+            }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -1563,6 +1572,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -d, --debug <level>      Set debug level (0-6)\n";
             std::cout << "  -c, --config <file>      Set config file (default: willeq.json)\n";
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
+            std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";

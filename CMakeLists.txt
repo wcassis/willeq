@@ -173,6 +173,7 @@ SET(COMMON_SOURCES
     src/common/net/daybreak_connection.cpp
     src/common/net/crc32.cpp
     src/common/net/posix_udp_transport.cpp
+    src/common/net/session_recorder.cpp
     src/common/performance_metrics.cpp
 )
 
