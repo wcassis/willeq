@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <irrlicht.h>
@@ -156,6 +157,13 @@ struct Options {
     // H02d: shader debug mode for offline diagnostic capture (mirrors the
     // renderer's /shaderdebug console command). 0 = off.
     int shaderDebugMode = 0;
+
+    // P01: per-material-type draw-call histogram in the CSV (flag-gated --
+    // investigation-only, see refactor/P01_eqe1_perf_investigation.md
+    // experiment 2). Off by default: adds two trailing CSV columns
+    // (alpha_test_draws, solid_draws) computed from each frame's already-built
+    // drawEntries list, no renderer changes needed.
+    bool materialCounts = false;
 };
 
 static void printUsage(const char* prog) {
@@ -240,6 +248,7 @@ static void printUsage(const char* prog) {
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
     printf("\nDiagnostics (H02d):\n");
     printf("  --shader-debug N     Render via ZoneShaderManager's debug visualization\n");
+    printf("  --material-counts    Add alpha_test_draws,solid_draws columns to --csv (P01)\n");
     printf("                       program (0=off; see zone_shader.cpp for the mode list,\n");
     printf("                       e.g. 7=alpha, 11=rawTexAlpha, 12=companionAlpha)\n");
     printf("\nLogging (handled by InitLogging):\n");
@@ -346,6 +355,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--pose-search-csv") == 0 && i + 1 < argc) opts.poseSearchCsv = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
         else {
@@ -485,6 +495,44 @@ static int countPolygons(const std::vector<ZoneBench::DrawEntry>& entries) {
         total += de.buffer->getIndexCount() / 3;
     }
     return total;
+}
+
+// P01 experiment 2: classify each draw entry's effective material type (after
+// any materialOverride from adaptive lighting) into "alpha-test family"
+// (solid vs alphaTest+alphaTestRGBA+wind, heavy or lightweight variants) vs
+// "solid family", using ZoneShaderManager's own type IDs so this never
+// hard-codes irrlicht material-type enum values. Returns {alphaTestDraws,
+// solidDraws}; entries whose type matches neither known family (e.g.
+// fixed-function fallback) are counted under solidDraws as the conservative
+// default (matches production's non-alpha-test path).
+static std::pair<int, int> countMaterialFamilies(
+    const std::vector<ZoneBench::DrawEntry>& entries,
+    EQT::Graphics::ZoneShaderManager* zoneShader) {
+    int alphaTestDraws = 0, solidDraws = 0;
+    if (!zoneShader) {
+        return {0, static_cast<int>(entries.size())};
+    }
+    const irr::s32 alphaTypes[] = {
+        zoneShader->getMaterialTypeAlphaTest(),
+        zoneShader->getMaterialTypeAlphaTestRGBA(),
+        zoneShader->getMaterialTypeLWAlphaTest(),
+        zoneShader->getMaterialTypeLWAlphaTestRGBA(),
+        zoneShader->getMaterialTypeWindAlphaTest(),
+        zoneShader->getMaterialTypeLWWindAlphaTest(),
+        zoneShader->getMaterialTypeAtlasAlpha(),
+        zoneShader->getMaterialTypeLWAtlasAlpha(),
+    };
+    for (const auto& de : entries) {
+        irr::s32 effectiveType = (de.materialOverride >= 0)
+            ? de.materialOverride
+            : static_cast<irr::s32>(de.buffer->getMaterial().MaterialType);
+        bool isAlpha = false;
+        for (irr::s32 t : alphaTypes) {
+            if (t >= 0 && t == effectiveType) { isAlpha = true; break; }
+        }
+        if (isAlpha) ++alphaTestDraws; else ++solidDraws;
+    }
+    return {alphaTestDraws, solidDraws};
 }
 
 // H02b: convert a heading/pitch pose (degrees; heading 0=North/+Y, CW; pitch
@@ -1588,6 +1636,10 @@ int main(int argc, char** argv) {
             int polyCount = countPolygons(drawEntries);
             metrics.endDraw(static_cast<int>(drawEntries.size()), stateChanges, polyCount,
                             regionsVisible, regionsDrawn, regionsOccluded);
+            if (opts.materialCounts) {
+                auto counts = countMaterialFamilies(drawEntries, data->zoneShader.get());
+                metrics.setMaterialCounts(counts.first, counts.second);
+            }
 
 #ifdef EQT_HAS_GLES2
             glFinish();

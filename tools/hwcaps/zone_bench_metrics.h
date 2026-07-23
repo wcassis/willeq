@@ -22,6 +22,11 @@ struct FrameMetrics {
     int regionsVisible = 0;   // Regions passing PVS + frustum
     int regionsDrawn = 0;     // Regions actually drawn (after budget caps)
     int regionsOccluded = 0;  // Regions culled by software occlusion
+    // P01 experiment 2 (--material-counts, off by default): draw-call
+    // breakdown by material family. Both 0 unless setMaterialCounts() was
+    // called for this frame.
+    int alphaTestDraws = 0;
+    int solidDraws = 0;
 };
 
 class MetricsCollector {
@@ -60,6 +65,13 @@ public:
         current_.regionsDrawn = regionsDrawn;
         current_.regionsOccluded = regionsOccluded;
         current_.cpuDrawMs = msElapsed(drawStart_, drawEnd_);
+    }
+
+    // P01 experiment 2: record the material-family draw histogram for the
+    // frame currently being built (call between endDraw() and endFrame()).
+    void setMaterialCounts(int alphaTestDraws, int solidDraws) {
+        current_.alphaTestDraws = alphaTestDraws;
+        current_.solidDraws = solidDraws;
     }
 
     void endGpuSync() {

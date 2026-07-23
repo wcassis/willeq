@@ -35,6 +35,9 @@ public:
     // unaffected by this).
     irr::s32 getMaterialTypeAlphaTestRGBA() const { return materialAlphaTestRGBA_; }
     bool isAlphaTestRGBAAvailable() const { return materialAlphaTestRGBA_ >= 0; }
+    // P01: lightweight counterpart, needed to classify draws by material
+    // family in the zone benchmark's --material-counts diagnostic.
+    irr::s32 getMaterialTypeLWAlphaTestRGBA() const { return materialLWAlphaTestRGBA_; }
 
     // Atlas-specific material types (per-pixel lighting, atlas UV transform)
     irr::s32 getMaterialTypeAtlasSolid() const { return materialAtlasSolid_; }

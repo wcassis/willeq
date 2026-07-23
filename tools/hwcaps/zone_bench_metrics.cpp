@@ -13,17 +13,22 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
         return;
     }
 
+    // P01 experiment 2: alpha_test_draws/solid_draws are trailing columns,
+    // always present (0 when --material-counts was not passed) so existing
+    // consumers keyed by column name (csv.DictReader et al.) are unaffected.
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
-               "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms\n");
+               "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
+               "alpha_test_draws,solid_draws\n");
 
     for (const auto& m : frames_) {
-        fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f\n",
+        fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
                 m.drawCalls, m.stateChanges, m.polyCount,
                 m.regionsVisible, m.regionsDrawn, m.regionsOccluded,
-                m.animationCpuMs);
+                m.animationCpuMs,
+                m.alphaTestDraws, m.solidDraws);
     }
 
     fclose(f);
