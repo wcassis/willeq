@@ -77,5 +77,16 @@ echo "  character '${EQ_TEST_CHARACTER}' -> id ${CHAR_ID}, zone_id ${ZONE_ID}"
 
 echo "== seed.sh: resetting login password via loginserver's own admin CLI =="
 server_exec "./bin/loginserver login-user:update-credentials ${EQ_TEST_ACCOUNT} ${EQ_TEST_PASSWORD}"
+server_exec "./bin/loginserver login-user:update-credentials ${EQ_BUDDY_ACCOUNT} ${EQ_BUDDY_PASSWORD}"
+
+# Verify the full character roster (created via official client 2026-07-23)
+for char in Testchar Testmelee Testcaster Testbuddy; do
+    ROW="$(mysql_exec "SELECT id FROM character_data WHERE name='${char}'" | tail -n +2)"
+    if [ -z "${ROW}" ]; then
+        echo "seed.sh: MISSING character '${char}' — recreate via official client (see refactor/H03_eqemu_recording.md character-creation gap)" >&2
+        exit 1
+    fi
+done
+echo "seed.sh: roster verified (Testchar, Testmelee, Testcaster, Testbuddy)"
 
 echo "== seed.sh: done — account and character ready =="

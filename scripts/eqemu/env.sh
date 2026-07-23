@@ -20,7 +20,14 @@ EQEMU_CONTAINER="akk-stack-eqemu-server-1"
 EQ_TEST_ACCOUNT="willeq_test"
 EQ_TEST_PASSWORD="WillEqH03Pass"
 EQ_TEST_CHARACTER="Testchar"
-EQ_TEST_SERVER_LONGNAME="Akkas Docker PEQ Installer"
+EQ_TEST_SERVER_LONGNAME="WillEQ"
+
+# Second account for two-client tours (trade/group/duel) — created by Will
+# via the official client 2026-07-23; password normalized by seed.sh
+EQ_BUDDY_ACCOUNT="willeq_buddy"
+EQ_BUDDY_PASSWORD="WillEqBuddyPass"
+# Characters (created via official client): Testchar+Testmelee(warrior)+
+# Testcaster(wizard) on willeq_test; Testbuddy(magician) on willeq_buddy
 EQ_TEST_ZONE_SHORTNAME="arena"
 
 LOGIN_PORT=5998
