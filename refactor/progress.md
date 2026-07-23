@@ -14,9 +14,8 @@ Each unit follows: **Plan -> Implement -> Review -> Commit**
 
 ## Active Batch
 
-**Batch F — Mechanical File Splitting** (`refactor/F_file_split.md`): split
-eq.cpp and irrlicht_renderer.cpp into domain TUs. Open items deferred from
-completed batches: `refactor/deferred.md`. Standing decisions: `docs/decisions.md`.
+None. Open items and follow-up candidates: `refactor/deferred.md`.
+Standing decisions: `docs/decisions.md`.
 
 ## Completed Batches
 
@@ -32,6 +31,7 @@ All completed batch plans and unit files are in `refactor/completed/`.
 | D | Game State Threading (event bus, bridge, intents, thread separation) | done |
 | U | UI and Text Rendering Overhaul (bitmap font, batched UI, static layout) | done |
 | T | Texture Loading Consolidation (single decoder, getOrLoad/uploadTexture) | done |
+| F | Mechanical File Splitting (eq.cpp/irrlicht_renderer.cpp/sim_worker/entity_renderer → 40 domain TUs, move-only verified; `refactor/F_file_split.md`) | done |
 
 ---
 

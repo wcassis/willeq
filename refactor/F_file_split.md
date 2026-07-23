@@ -1,5 +1,14 @@
 # Batch F — Mechanical File Splitting
 
+**STATUS: COMPLETE (2026-07-23).** All 25 units done (F00–F24; F04's eq_ucs
+scope was dead code, no file created). Final sizes: eq.cpp 3,629 (was 19,676),
+irrlicht_renderer.cpp 2,736 (was 16,394), simulation_worker.cpp 474 (was
+4,356), entity_renderer.cpp 3,201 (was 4,329). 40 new domain TUs. Every move
+verified behavior-preserving by scripts/refactor/verify_move_only.py; suite
+green throughout (modulo the documented ALSA/RDP exceptions in
+test_baseline.txt). Follow-up candidates recorded in refactor/deferred.md
+(Batch G).
+
 Split `eq.cpp` (19,676 lines) and `irrlicht_renderer.cpp` (16,394 lines) —
 plus `simulation_worker.cpp` and `entity_renderer.cpp` — into domain
 translation units. **No class interface changes. No behavior changes.**
@@ -85,12 +94,12 @@ unit acceptance is simply a green ctest run (modulo the documented RDP flake).
 | F14 | RDP + memory report + profiling/diagnostics | renderer_rdp.cpp, renderer_diagnostics.cpp | 1,151 | done | slot2 | `efde88b` |
 | F15 | Debug toggles + overlays + targeting | renderer_debug.cpp, renderer_overlays.cpp | 1,564 | done | slot3 | `02052bf` |
 | F16 | Fire-glow effects + EQE1 loading | renderer_effects.cpp | 476 | done | slot2 | `2060d2c` |
-| F17 | loadZoneSequential (phase-split) + zone load/unload/env | renderer_zone_load.cpp (possibly 2 files) | ~3,330 | | | |
+| F17 | loadZoneSequential (verbatim) + zone lifecycle | renderer_zone_load.cpp, renderer_zone_lifecycle.cpp | 3,301 | done | slot1 | `23e6c0d` |
 | F18 | Zone mesh/portal draw + lazy load + progressive/PVS | renderer_zone_draw.cpp, renderer_zone_stream.cpp | 2,148 | done | slot1 | `46fa92d` |
 | F19 | Player movement/collision + raycasting | renderer_player_physics.cpp | 1,550 | done | slot2 | `bb180cb` |
 | F20 | Simulation bridge | renderer_sim_bridge.cpp | 1,046 | done | slot2 | `699345c` |
 | F21 | Entity/inventory/combat façades + GPU upload thread | renderer_entities.cpp, renderer_gpu_upload.cpp | 863 | done | slot3 | `aa158a4` |
-| F22 | processFrame + sub-passes | renderer_frame.cpp | ~1,100 | | | |
+| F22 | processFrame + sub-passes | renderer_frame.cpp | 1,559 | done | slot1 | `9c04884` |
 
 ## Units — other
 

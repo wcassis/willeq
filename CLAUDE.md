@@ -177,8 +177,8 @@ The client connects through three stages, each with its own connection manager:
 - Main thread runs render loop (or sleeps in headless mode)
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
-**EverQuest class** (`include/client/eq.h`, `src/client/eq.cpp`)
-- Game state and network logic (~19,700 lines — being split into domain TUs by Batch F, see `refactor/F_file_split.md`; consult `docs/module_map.md` before reading it)
+**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 14 `eq_*.cpp` domain TUs)
+- Game state and network logic. eq.cpp itself (~3,600 lines) holds only the core: lifecycle, packet dispatcher, zone connection. Everything else (movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`

@@ -54,6 +54,15 @@ strategy. The clean-room C99 rewrite proposal is rejected and archived at
 **Sequencing:** Irrlicht re-port starts only after Batch F (file splitting)
 completes, using the `renderer` branch as reference.
 
+## 2026-07-23 — Batch F complete; per-step decomposition deferred to Batch G
+
+**Status:** Batch F finished 2026-07-23 — all 25 units, 40 new domain TUs,
+every move verifier-proven behavior-preserving. Final layout:
+`docs/module_map.md`. Follow-up (Batch G) candidates in `refactor/deferred.md`:
+per-step helper decomposition of `loadZoneSequential` (needs header changes,
+outside move-only rules), splitting `eq_commands.cpp` (2,568 lines), and the
+Step-2 decoupling residue.
+
 ## 2026-07-22 — Batch F: mechanical TU splits before any deeper refactor
 
 **Decision:** `eq.cpp` (19,676 lines) and `irrlicht_renderer.cpp` (16,394
