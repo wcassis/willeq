@@ -77,6 +77,24 @@ eq_movement.cpp (~1,975), eq_bridge.cpp (1,837), renderer_frame.cpp (1,583),
 renderer_player_physics.cpp (1,570), eq_merchant.cpp (1,558), plus the
 accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
 
+## From Batch H (2026-07-23)
+
+- **blackburrow and crushbone render entirely blank in the benchmark** at
+  every camera position tried, even with all culling disabled (~2000-4000
+  draws submitted, zero visible output). befallen renders fine. Not
+  root-caused (H02 review speculates a BSP above/below-ground split issue).
+  Could be a real rendering bug affecting those zones in production —
+  investigate.
+- **No unattended character creation on a fresh eqemu DB** — willeq lacks
+  OP_CharacterCreate client-side, and eqemu has no console/GM command to
+  create a character from nothing. seed.sh stops cleanly on a fresh install.
+  Closing this means implementing the Titanium char-create handshake in the
+  client (H03 review documents the server-side flow to match).
+- akk-stack's `spire eqemu-server:launcher` is wedged on this host ("already
+  running" with no backing process) — scripts drive the server binaries
+  directly instead. Harmless, but the launcher state may confuse future
+  sessions.
+
 ## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
 
 - **RDPServerFrameTest.UpdateFrameMultipleTimes segfaults intermittently**
