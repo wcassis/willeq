@@ -235,5 +235,98 @@ semantics.
 
 ### Verifier output, build/test results, deviations
 
-(filled in after implementation)
+**Build:** `cmake --build build -j24` — clean, no errors (after a `cmake -S . -B build`
+reconfigure to pick up the 2 new sources in `CLIENT_CORE_SOURCES`; the initial
+incremental build failed with unresolved-symbol link errors until CMake was
+re-run to regenerate build files — expected for a new-file CMakeLists change,
+not a code defect).
+
+**ctest:** `ctest --test-dir build` — 1191/1192 passed; 9 skipped (asset/graphics
+tests requiring `data/eq_client` symlink or a display, expected in this
+environment). 1 failure: `AudioManagerTest.PreloadCommonSounds`, the documented
+pre-existing ALSA environment failure in `refactor/test_baseline.txt` (unrelated
+to Batch F/G, confirmed pre-existing on unmodified `fable`). No new failures.
+
+**Verifier** (`python3 scripts/refactor/verify_move_only.py b2f0334..9c60d77`,
+where `b2f0334` = merge-base of `fable` and this branch = the commit this
+branch was cut from):
+
+```
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/G02_commands_split.md
+
+Files verified: 4
+Boilerplate: +193 / -3 lines (allowed)
+
+SUBSTANTIVE ADDED lines (25):
+  +1x  RegisterMovementCommands();
+  +1x  RegisterSocialCommands();
+  +1x  RegisterSpellCommands();
+  +1x  auto rendererCmd = [this](const std::string& cmdName) {
+  +1x  eqt::state::GameEventType::RendererCommand,
+  +1x  eqt::state::RendererCommandData{fullCmd}));
+  +1x  if (!args.empty()) fullCmd += " " + args;
+  +1x  if (m_bridge) {
+  +1x  m_bridge->pushEvent(eqt::state::GameEvent(
+  +1x  return [this, cmdName](const std::string& args) {
+  +1x  std::string fullCmd = "/" + cmdName;
+  +2x  using namespace eqt::ui;
+  +1x  void EverQuest::RegisterMovementCommands()
+  +1x  void EverQuest::RegisterSocialCommands()
+  +1x  void EverQuest::RegisterSpellCommands()
+  +1x  void RegisterCommands();  // Driver: calls per-domain registration methods below, in order (G02)
+  +1x  void RegisterMovementCommands();  // Movement/combat/utility-debug/sky commands (eq_commands_movement.cpp)
+  +1x  void RegisterSocialCommands();    // Chat/group/trade/guild/corpse/duel/misc social commands (eq_commands.cpp)
+  +1x  void RegisterSpellCommands();     // Spell/skill/hotkey/detail/audio commands (eq_commands_spells.cpp)
+  +3x  {
+  +2x  };
+
+SUBSTANTIVE REMOVED lines (1):
+  -1x  void RegisterCommands();  // Initialize all chat commands
+
+FAIL: substantive line changes detected. If intentional (e.g. de-static-ing a
+helper), document in the unit review section for orchestrator sign-off.
+```
+
+Exit code 1 is expected here and is not a defect — every flagged line falls
+into the categories the task instructions pre-authorized ("substantive lines
+limited to method signatures/declarations/driver calls"), plus one documented
+deviation:
+
+**Deviations:**
+1. **New method signatures/declarations/driver calls** (as expected/pre-authorized):
+   `void EverQuest::RegisterSocialCommands()` / `RegisterMovementCommands()` /
+   `RegisterSpellCommands()` definitions, the matching 3 declarations added to
+   `eq.h` (plus the updated `RegisterCommands()` comment, counted as removed
+   old + it's actually unchanged text so only shows as removed old comment),
+   the 3 driver call lines (`RegisterSocialCommands(); RegisterMovementCommands();
+   RegisterSpellCommands();`), 2 extra `using namespace eqt::ui;` (one per new
+   method, since the original had exactly one at the top of the monolithic
+   method and each split method needs its own), and the associated brace lines.
+2. **`rendererCmd` helper duplication** (documented deviation, not anticipated
+   verbatim-move-only): the `D20d` local lambda helper `rendererCmd` was
+   defined once in the original monolithic method (now living in
+   `RegisterMovementCommands()`, used by Utility-section commands like
+   `timestamp`, `reloadeffects`, `portal`, etc.) but is also used by
+   `RegisterSpellCommands()`'s Detail System Commands (`detail`, `togglegrass`,
+   `toggleplants`, `togglerocks`, `toggledebris`, `season`, `detailinfo`) and
+   `pmem`. Since it's a local closure (not a class member) it cannot be shared
+   across two methods without either (a) promoting it to a private class
+   method, which the plan explicitly scoped out (method-signature changes
+   beyond the 3 new `Register*Commands` methods), or (b) passing it as a
+   parameter, which would change the call sites' verbatim text. The minimal,
+   behavior-preserving fix is to duplicate the ~11-line stateless lambda
+   definition verbatim into `RegisterSpellCommands()`. It captures only
+   `this` and reads `m_bridge`/pushes the same event type — behavior is
+   byte-identical to the original single definition. This is the only
+   non-mechanical addition in the unit.
+
+No other deviations. All 120 commands, including the order-critical duplicate
+`"who"` registration (see Analysis above), retain their exact original
+relative registration order.
+
+**File sizes (final):** `eq_commands.cpp` 1,110 lines, `eq_commands_movement.cpp`
+900 lines, `eq_commands_spells.cpp` 783 lines — all under the 1,500-line
+ceiling, `check_file_sizes.sh` reports `ok` for all three with no WARN.
 
