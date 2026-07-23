@@ -187,6 +187,20 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         } else {
             printf("  Shader system: NOT available\n");
         }
+
+        // H02d: --shader-debug diagnostic mode. Set the debug mode on the
+        // shader manager (drives FRAGMENT_SHADER_DEBUG_SRC's branch) and
+        // record the debug material type so draw entry collection can swap
+        // per-pixel materials to it — mirrors the renderer's /shaderdebug
+        // swapToDebugShader, applied at draw time instead of mutating mesh
+        // buffers permanently (see collectDrawEntries/collectObjectDrawEntries).
+        if (config.shaderDebugMode > 0 && data->zoneShader->isAvailable() &&
+            data->zoneShader->isDebugShaderAvailable()) {
+            data->zoneShader->setShaderDebug(config.shaderDebugMode);
+            data->shaderDebugMaterial = data->zoneShader->getDebugMaterialType();
+            printf("  Shader debug mode: %d (debug material=%d)\n",
+                   config.shaderDebugMode, data->shaderDebugMaterial);
+        }
     }
 
     // Enable per-pixel player light BEFORE building meshes so
@@ -710,6 +724,18 @@ static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
     return h & 0xFFFF;
 }
 
+// H02d: if --shader-debug is active and this buffer uses one of
+// ZoneShaderManager's custom per-pixel materials (solid, alpha-test, RGBA
+// alpha-test, lightweight variants, etc. — anything >= getMaterialTypeSolid(),
+// mirroring IrrlichtRenderer::swapToDebugShader's threshold check), return the
+// debug visualization material type to use as a draw-time override. Returns
+// -1 (no override) otherwise.
+static irr::s32 debugMaterialOverride(const ZoneBench::ZoneBenchData& data, irr::s32 currentMaterialType) {
+    if (data.shaderDebugMaterial < 0 || !data.zoneShader) return -1;
+    if (currentMaterialType >= data.zoneShader->getMaterialTypeSolid()) return data.shaderDebugMaterial;
+    return -1;
+}
+
 void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
@@ -864,9 +890,11 @@ void collectDrawEntries(
             const irr::video::SMaterial& mat = buf->getMaterial();
             uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
 
+            // H02d: --shader-debug takes priority over adaptive lighting swaps.
+            irr::s32 matOverride = debugMaterialOverride(data, mat.MaterialType);
+
             // Compute material override for adaptive lighting
-            irr::s32 matOverride = -1;
-            if (data.adaptiveLighting && !usePerPixel && data.materialLWSolid >= 0) {
+            if (matOverride < 0 && data.adaptiveLighting && !usePerPixel && data.materialLWSolid >= 0) {
                 irr::s32 origType = mat.MaterialType;
                 // Map per-pixel material types to their lightweight equivalents
                 if (origType == data.materialPerPixelSolid)
@@ -1024,8 +1052,9 @@ void collectObjectDrawEntries(
             const irr::video::SMaterial& mat = buf->getMaterial();
             uint32_t texId = textureGroupId(mat);  // H02b: address-independent (see textureGroupId)
             uint32_t matKey = (static_cast<uint32_t>(mat.MaterialType) << 16) | texId;
+            irr::s32 matOverride = debugMaterialOverride(data, mat.MaterialType);  // H02d
 
-            outEntries.push_back({matKey, distSq, buf, obj.worldTransform});
+            outEntries.push_back({matKey, distSq, buf, obj.worldTransform, matOverride});
             outObjectDrawCalls++;
             outObjectPolys += buf->getIndexCount() / 3;
         }

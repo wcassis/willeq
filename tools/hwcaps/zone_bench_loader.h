@@ -42,6 +42,12 @@ struct BenchConfig {
     bool animate = false;        // Enable skeletal animation on entities
     bool compositeEntities = false; // Use composite textures for entities (single draw per entity)
     bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)
+    // H02d: shader debug mode (0=off, >0=ZoneShaderManager debug mode; see
+    // zone_shader.cpp FRAGMENT_SHADER_DEBUG_SRC for the mode list). When set,
+    // all per-pixel zone/object draw entries render via the debug
+    // visualization program instead of their normal material — mirrors the
+    // renderer's /shaderdebug swapToDebugShader for offline diagnostic capture.
+    int shaderDebugMode = 0;
 };
 
 // Per-region data stored for rendering
@@ -78,6 +84,11 @@ struct ZoneBenchData {
 
     // Shader system
     std::unique_ptr<EQT::Graphics::ZoneShaderManager> zoneShader;
+
+    // H02d: debug visualization material type (-1 = off). When >= 0, draw
+    // entry collection overrides any per-pixel custom shader material
+    // (MaterialType >= zoneShader->getMaterialTypeSolid()) to this type.
+    irr::s32 shaderDebugMaterial = -1;
 
     // Texture systems
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache;

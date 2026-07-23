@@ -53,7 +53,8 @@ public:
     bool isPerPixelPlayerLight() const { return perPixelPlayerLight_; }
 
     // Shader debug mode (0=normal, 1=texColor, 2=vColor, 3=LUT, 4=pLight,
-    // 5=worldNormal, 6=lightDir, 7=alpha, 8=texColor*vColor no pLight)
+    // 5=worldNormal, 6=lightDir, 7=alpha, 8=texColor*vColor no pLight,
+    // 9=UV, 10=depth, 11=rawTexAlpha, 12=companionAlpha (H02d))
     void setShaderDebug(int mode) { shaderDebug_ = mode; }
     int shaderDebug() const { return shaderDebug_; }
 

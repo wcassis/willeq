@@ -152,6 +152,10 @@ struct Options {
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
+
+    // H02d: shader debug mode for offline diagnostic capture (mirrors the
+    // renderer's /shaderdebug console command). 0 = off.
+    int shaderDebugMode = 0;
 };
 
 static void printUsage(const char* prog) {
@@ -234,6 +238,10 @@ static void printUsage(const char* prog) {
     printf("  --test-variant N         Texture variant (0=naked, 1=cloth, 2=chain, 3=plate, 4=leather)\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
+    printf("\nDiagnostics (H02d):\n");
+    printf("  --shader-debug N     Render via ZoneShaderManager's debug visualization\n");
+    printf("                       program (0=off; see zone_shader.cpp for the mode list,\n");
+    printf("                       e.g. 7=alpha, 11=rawTexAlpha, 12=companionAlpha)\n");
     printf("\nLogging (handled by InitLogging):\n");
     printf("  --log-level=LEVEL    Set log level: NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE\n");
     printf("  --log-only=MOD,...   Only show listed modules\n");
@@ -337,6 +345,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--pose-search-eye-height") == 0 && i + 1 < argc) opts.poseSearchEyeHeight = atof(argv[++i]);
         else if (strcmp(argv[i], "--pose-search-csv") == 0 && i + 1 < argc) opts.poseSearchCsv = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
+        else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
         else {
@@ -727,6 +736,7 @@ int main(int argc, char** argv) {
     benchConfig.animate = opts.animate;
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
+    benchConfig.shaderDebugMode = opts.shaderDebugMode;
 
     auto data = ZoneBench::loadZone(benchConfig);
     if (!data) {

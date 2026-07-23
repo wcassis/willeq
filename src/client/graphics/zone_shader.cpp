@@ -422,10 +422,14 @@ void main() {
 // Cost: ~36ms on Mali 400 due to FS branches. Never active in production rendering.
 // Modes: 1=texColor 2=vColor 3=LUT 4=pLight 5=worldNormal 6=lightDir
 //        7=alpha 8=tex*vColor 9=UV 10=depth 11=rawTexAlpha
+//        12=companionAlpha (H02d — uAlphaTexture.r, unit 1; cannot visualize
+//        the main-texture-alpha RGBA variant since that reads uTexture.a,
+//        already covered by modes 7/11)
 static const char* FRAGMENT_SHADER_DEBUG_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
@@ -460,6 +464,11 @@ void main() {
     if (uShaderDebug == 9) { gl_FragColor = vec4(vTexCoord.x, vTexCoord.y, 0.0, 1.0); return; }
     if (uShaderDebug == 10) { gl_FragColor = vec4(vec3(gl_FragCoord.z), 1.0); return; }
     if (uShaderDebug == 11) { gl_FragColor = vec4(texColor.rgb, texColor.a); return; }
+    if (uShaderDebug == 12) {
+        float compAlpha = texture2D(uAlphaTexture, vTexCoord).r;
+        gl_FragColor = vec4(compAlpha, compAlpha, compAlpha, 1.0);
+        return;
+    }
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
