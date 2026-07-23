@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <glm/glm.hpp>
+#include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/camera_controller.h"
@@ -258,19 +259,6 @@ struct ObjectLight {
     float flickerPhase = 0.0f;   // Randomized phase for fire flickering
     float flickerSpeed = 1.0f;   // Randomized speed multiplier for flickering
     size_t bspRegion = SIZE_MAX; // BSP region for PVS culling
-};
-
-// Player position update for server synchronization
-// Contains raw data; receiver derives isMoving/isRunning/isBackward from velocity and heading
-struct PlayerPositionUpdate {
-    float x = 0, y = 0, z = 0;      // Position in EQ coordinates
-    float heading = 0;              // Heading in EQ format (0-512, where 512 = 360 degrees)
-    float dx = 0, dy = 0, dz = 0;   // Velocity/delta per update interval
-
-    // Helper to check if moving (velocity magnitude > threshold)
-    bool isMoving(float threshold = 0.1f) const {
-        return (dx * dx + dy * dy + dz * dz) > (threshold * threshold);
-    }
 };
 
 // Vertex animated mesh (flags, banners, etc.)
@@ -699,7 +687,8 @@ public:
     bool setEntityAnimation(uint16_t spawnId, const std::string& animCode, bool loop = false, bool playThrough = true);
 
     // Set entity pose state (sitting, standing, crouching) - prevents movement updates from overriding
-    enum class EntityPoseState : uint8_t { Standing = 0, Sitting = 1, Crouching = 2, Lying = 3 };
+    // S2: enum owned by the state layer (client/state/entity_pose_state.h); alias kept for renderer call sites
+    using EntityPoseState = eqt::state::EntityPoseState;
     void setEntityPoseState(uint16_t spawnId, EntityPoseState pose);
 
     // Set entity weapon skill types for combat animation selection
@@ -917,9 +906,7 @@ public:
     using HUDCallback = std::function<std::wstring()>;
     void setHUDCallback(HUDCallback callback) { hudCallback_ = callback; }
 
-    // Movement callback (for notifying EverQuest class of position changes in Player Mode)
-    using MovementCallback = std::function<void(const PlayerPositionUpdate& update)>;
-    void setMovementCallback(MovementCallback callback) { movementCallback_ = callback; }
+    // S2: movement callback removed — player position flows via PlayerPositionChanged intent only
 
     // Bridge for cross-thread game state ↔ renderer communication (D14+)
     void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
@@ -975,8 +962,9 @@ public:
     void setClipDistance(float distance);
     float getClipDistance() const;
 
-    // Inventory UI
-    void setInventoryManager(eqt::inventory::InventoryManager* manager);
+    // Deferred graphics init (render distance, spell VFX) — S2: was setInventoryManager(InventoryManager*),
+    // renamed; the stored pointer was dead and no game-thread object crosses the boundary now
+    void initDeferredGraphics();
     void toggleInventory();
     void openInventory();
     void closeInventory();
@@ -1607,7 +1595,6 @@ private:
 
     PlayerMovementState playerMovement_;
     PlayerModeConfig playerConfig_;
-    MovementCallback movementCallback_;
     eqt::bridge::GameStateBridge* bridge_ = nullptr;  // For pushing intents (D14+)
 
     // Collision detection for player mode
@@ -1786,7 +1773,6 @@ public:
     SkillsPopupState skillsPopupState_; // U06h
     XPBarState xpBarState_;             // U06i
     std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
-    eqt::inventory::InventoryManager* inventoryManager_ = nullptr;  // moved to public for bridge access
 private:
 
     // World objects for click detection (tradeskill containers, etc.)

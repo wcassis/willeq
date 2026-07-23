@@ -767,42 +767,32 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     // Notify EverQuest class of position/heading change (for server sync)
     // Throttle to 250ms minimum between callbacks (working client averages ~275ms)
     // Exception: allow immediate callback when player stops (so others see us stop promptly)
-    bool shouldCallback = movementCallback_ &&
+    bool shouldCallback = bridge_ &&
                           (positionChanged || headingChanged || stoppedMoving) &&
                           (stoppedMoving || elapsed.count() >= 250);
 
     if (shouldCallback) {
-        PlayerPositionUpdate update;
-        update.x = playerX_;
-        update.y = playerY_;
-        update.z = playerZ_;
-        update.heading = heading;  // EQ format (0-512)
+        // S2: intent-only — the former synchronous movementCallback_ ran
+        // OnGraphicsMovement on the render thread (thread-unsafe) and
+        // double-sent position updates alongside this intent.
+        eqt::events::PlayerPositionChanged intent;
+        intent.x = playerX_;
+        intent.y = playerY_;
+        intent.z = playerZ_;
+        intent.heading = heading;  // EQ format (0-512)
 
         // When player stops, send zero deltas to ensure server knows we've stopped
         // This triggers anim=0 in OnGraphicsMovement
         if (stoppedMoving) {
-            update.dx = 0.0f;
-            update.dy = 0.0f;
-            update.dz = 0.0f;
+            intent.dx = 0.0f;
+            intent.dy = 0.0f;
+            intent.dz = 0.0f;
         } else {
-            update.dx = playerX_ - prevX;
-            update.dy = playerY_ - prevY;
-            update.dz = playerZ_ - prevZ;
+            intent.dx = playerX_ - prevX;
+            intent.dy = playerY_ - prevY;
+            intent.dz = playerZ_ - prevZ;
         }
-        movementCallback_(update);
-
-        // D14: Also push movement intent to bridge (dual path with callback)
-        if (bridge_) {
-            eqt::events::PlayerPositionChanged intent;
-            intent.x = update.x;
-            intent.y = update.y;
-            intent.z = update.z;
-            intent.heading = update.heading;
-            intent.dx = update.dx;
-            intent.dy = update.dy;
-            intent.dz = update.dz;
-            bridge_->pushIntent(std::move(intent));
-        }
+        bridge_->pushIntent(std::move(intent));
 
         lastCallbackTime = now;
 

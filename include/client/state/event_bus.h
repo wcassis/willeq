@@ -8,6 +8,9 @@
 #include <mutex>
 #include <glm/glm.hpp>
 
+class HCMap;
+class PathfinderNavmesh;
+
 namespace eqt {
 namespace state {
 
@@ -536,6 +539,11 @@ struct InventorySlotChangedData {
     int16_t slotId;
     bool hasItem;
     uint32_t itemId;  // 0 if no item
+    // S2: display fields carried in the event so the render-thread bridge no
+    // longer reads the game-thread InventoryManager through a shared pointer
+    std::string itemName;
+    uint32_t iconId = 0;
+    uint32_t quantity = 0;
 };
 
 struct CursorItemChangedData {
@@ -710,7 +718,7 @@ struct SwimmingStateChangedData {
 // --- Zone lifecycle events ---
 
 struct CollisionMapChangedData {
-    void* map;  // Opaque pointer — consumer casts to HCMap*
+    HCMap* map;  // S2: typed handoff (non-owning; game thread retains ownership)
 };
 
 struct ZoneLineBoundingBoxesData {
@@ -833,7 +841,7 @@ struct ZoneUnloadingData {};
 
 // D20e1: Navmesh changed
 struct NavmeshChangedData {
-    void* navmesh;  // Opaque pointer — consumer casts to PathfinderNavmesh*
+    PathfinderNavmesh* navmesh;  // S2: typed handoff (non-owning; game thread retains ownership)
 };
 
 // D20e1: Diagnostics

@@ -208,9 +208,8 @@ void IrrlichtRenderer::setEntityPoseState(uint16_t spawnId, EntityPoseState pose
 
 // --- Inventory UI Methods ---
 
-void IrrlichtRenderer::setInventoryManager(eqt::inventory::InventoryManager* manager) {
+void IrrlichtRenderer::initDeferredGraphics() {
     if (isLoading()) return;
-    inventoryManager_ = manager;
 
     // WindowManager removed — apply initial render distance from cached settings
     {

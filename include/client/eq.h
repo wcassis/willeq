@@ -73,11 +73,11 @@ namespace Audio {
 namespace EQT {
 namespace Graphics {
     class IrrlichtRenderer;
-    struct PlayerPositionUpdate;
     enum class ConstrainedRenderingPreset;
     enum class ZoneLoadStep : uint8_t;
 }
 }
+namespace eqt { namespace events { struct PlayerPositionChanged; } }
 #include "client/graphics/constrained_renderer_config.h"
 // D20e3: forward declarations for types used as pointers/shared_ptr
 namespace EQT { namespace Graphics { struct LoadingStatus; struct BspTree; class PfsArchive; class WldLoader; } }
@@ -1045,7 +1045,7 @@ public:
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
 	// D20e2: LoadZoneGraphics moved to Application
-	void OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update);  // Called when player moves in Player Mode
+	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);  // S2: takes the movement intent directly
 	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 #endif
 

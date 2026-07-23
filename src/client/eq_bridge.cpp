@@ -35,6 +35,7 @@
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/state/entity_pose_state.h"
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -155,9 +156,9 @@ bool EverQuest::InitGraphics(int width, int height,
 			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
 	}
 
-	// Connect inventory manager to renderer
-	if (renderer && m_inventory_manager) {
-		renderer->setInventoryManager(m_inventory_manager.get());
+	// One-time deferred renderer init (render distance, spell VFX)
+	if (renderer) {
+		renderer->initDeferredGraphics();
 	}
 
 	// Setup window callbacks (all empty stubs since D20a/D20b1)
@@ -168,10 +169,7 @@ bool EverQuest::InitGraphics(int width, int height,
 	SetupTradeWindowCallbacks();
 	SetupTradeskillCallbacks();
 
-	// Wire up movement callback — renderer calls this when player moves
-	renderer->setMovementCallback([this](const EQT::Graphics::PlayerPositionUpdate& update) {
-		OnGraphicsMovement(update);
-	});
+	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
 
 	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
@@ -413,23 +411,23 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	// Set initial pose state from spawn animation value
 	if (!isCorpse && entity.animation != 0) {
 		uint8_t poseState = static_cast<uint8_t>(
-			EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
+			eqt::state::EntityPoseState::Standing);
 		std::string animCode;
 		bool setPose = false;
 
 		if (entity.animation == ANIM_SITTING) {
 			poseState = static_cast<uint8_t>(
-				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting);
+				eqt::state::EntityPoseState::Sitting);
 			animCode = "p02";
 			setPose = true;
 		} else if (entity.animation == ANIM_CROUCHING) {
 			poseState = static_cast<uint8_t>(
-				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching);
+				eqt::state::EntityPoseState::Crouching);
 			animCode = "l08";
 			setPose = true;
 		} else if (entity.animation == ANIM_LYING) {
 			poseState = static_cast<uint8_t>(
-				EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying);
+				eqt::state::EntityPoseState::Lying);
 			animCode = "d05";
 			setPose = true;
 		}
@@ -617,7 +615,7 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 		eqt::state::GameEventType::EntityMoved, std::move(data)));
 }
 
-void EverQuest::OnGraphicsMovement(const EQT::Graphics::PlayerPositionUpdate& update) {
+void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update) {
 	// Called by the renderer when the player moves in Player Mode
 	// This syncs the player's position with the server
 
@@ -696,16 +694,8 @@ void EverQuest::ProcessBridgeIntents() {
 		std::visit([this](const auto& i) {
 			using T = std::decay_t<decltype(i)>;
 			if constexpr (std::is_same_v<T, eqt::events::PlayerPositionChanged>) {
-				// D14: Movement intent — same logic as movementCallback_ path
-				EQT::Graphics::PlayerPositionUpdate update;
-				update.x = i.x;
-				update.y = i.y;
-				update.z = i.z;
-				update.heading = i.heading;
-				update.dx = i.dx;
-				update.dy = i.dy;
-				update.dz = i.dz;
-				OnGraphicsMovement(update);
+				// D14/S2: movement intent — sole movement channel
+				OnGraphicsMovement(i);
 			}
 			// ================================================================
 			// D15: Interaction intents (D20a — intent-only, callbacks removed)

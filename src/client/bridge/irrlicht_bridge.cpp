@@ -410,26 +410,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
 
     // Inventory events (D11a)
     case state::GameEventType::InventorySlotChanged: {
-        // U05: Update cached inventory state for new static UI
-        if (renderer_ && renderer_->inventoryManager_) {
+        // U05/S2: update cached inventory state from event data only — the
+        // event carries the display fields, so no cross-thread read of the
+        // game-thread InventoryManager is needed.
+        if (renderer_) {
             auto& d = std::get<state::InventorySlotChangedData>(event.data);
-            auto* mgr = renderer_->inventoryManager_;
             // Equipment slots: 0-21, General inventory: 22-29 (mapped to slots 22-29)
             if (d.slotId >= 0 && d.slotId < EQT::Graphics::InventoryPanelState::EQUIP_SLOTS) {
                 auto& slot = renderer_->inventoryState_.equipSlots[d.slotId];
-                const auto* item = mgr->getItem(d.slotId);
-                slot.hasItem = (item != nullptr);
-                slot.itemName = item ? item->name : "";
-                slot.iconId = item ? item->icon : 0;
-                slot.quantity = item ? item->quantity : 0;
+                slot.hasItem = d.hasItem;
+                slot.itemName = d.hasItem ? d.itemName : "";
+                slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.quantity = d.hasItem ? d.quantity : 0;
             } else if (d.slotId >= 22 && d.slotId < 30) {
                 int idx = d.slotId - 22;
                 auto& slot = renderer_->inventoryState_.generalSlots[idx];
-                const auto* item = mgr->getItem(d.slotId);
-                slot.hasItem = (item != nullptr);
-                slot.itemName = item ? item->name : "";
-                slot.iconId = item ? item->icon : 0;
-                slot.quantity = item ? item->quantity : 0;
+                slot.hasItem = d.hasItem;
+                slot.itemName = d.hasItem ? d.itemName : "";
+                slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.quantity = d.hasItem ? d.quantity : 0;
             }
         }
         break;
@@ -607,7 +606,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::CollisionMapChanged:
         if (renderer_) {
             auto& d = std::get<state::CollisionMapChangedData>(event.data);
-            renderer_->setCollisionMap(static_cast<HCMap*>(d.map));
+            renderer_->setCollisionMap(d.map);
         }
         break;
     case state::GameEventType::ZoneLineBoundingBoxes:

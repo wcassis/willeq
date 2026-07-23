@@ -52,7 +52,7 @@
 #include "common/name_utils.h"
 
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
+#include "client/state/entity_pose_state.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/item_instance.h"
 #endif
@@ -696,32 +696,32 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 				// Zone server animation values (100+) are pose/state animations
 				// Lower values are action animations
 				uint8_t poseState = static_cast<uint8_t>(
-					EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
+					eqt::state::EntityPoseState::Standing);
 				bool setPose = false;
 
 				switch (parameter) {
 				case ANIM_STANDING:
 				case ANIM_STAND:
 					animCode = "o01";  // Idle/standing
-					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Standing);
+					poseState = static_cast<uint8_t>(eqt::state::EntityPoseState::Standing);
 					setPose = true;
 					break;
 				case ANIM_SITTING:
 					animCode = "p02";  // Sitting idle pose
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Sitting);
+					poseState = static_cast<uint8_t>(eqt::state::EntityPoseState::Sitting);
 					setPose = true;
 					break;
 				case ANIM_CROUCHING:
 					animCode = "l08";  // Crouching
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Crouching);
+					poseState = static_cast<uint8_t>(eqt::state::EntityPoseState::Crouching);
 					setPose = true;
 					break;
 				case ANIM_LYING:
 					animCode = "d05";  // Lying down (death pose)
 					loop = false;      // Don't loop (holds on last frame automatically)
-					poseState = static_cast<uint8_t>(EQT::Graphics::IrrlichtRenderer::EntityPoseState::Lying);
+					poseState = static_cast<uint8_t>(eqt::state::EntityPoseState::Lying);
 					setPose = true;
 					break;
 				case ANIM_FREEZE:

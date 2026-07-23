@@ -21,28 +21,20 @@
 #include "common/performance_metrics.h"
 
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#include "client/graphics/loading_thread.h"
-#include "client/graphics/constrained_renderer_config.h"
-#include "client/graphics/weather_effects_controller.h"
-#include "client/graphics/weather_config_loader.h"
-#include "client/graphics/weather_quality_preset.h"
-#include "client/graphics/eq/wld_loader.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
 #include "client/chat/chat_message_buffer.h"
-#include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
-#include "client/graphics/detail/detail_manager.h"
-#include "client/graphics/detail/detail_types.h"
-#include "client/graphics/detail/seasonal_controller.h"
-#include "client/graphics/environment/spell_effects_config.h"
 #endif
 
 #include "client/bridge/game_state_bridge.h"
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/loading_thread.h"
+#include "client/graphics/ui/command_registry.h"
+#endif
 #include "client/bridge/irrlicht_bridge.h"
 
 #ifdef WITH_AUDIO
@@ -577,6 +569,9 @@ void EverQuest::PublishFullStateSnapshot() {
 			data.slotId = slot;
 			data.hasItem = (item != nullptr);
 			data.itemId = item ? item->itemId : 0;
+			data.itemName = item ? item->name : "";
+			data.iconId = item ? item->icon : 0;
+			data.quantity = item ? item->quantity : 0;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		}

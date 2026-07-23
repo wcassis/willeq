@@ -70,6 +70,9 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 			const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
 			data.hasItem = (item != nullptr && item->itemId != 0);
 			data.itemId = data.hasItem ? item->itemId : 0;
+			data.itemName = data.hasItem ? item->name : "";
+			data.iconId = data.hasItem ? item->icon : 0;
+			data.quantity = data.hasItem ? item->quantity : 0;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		};
