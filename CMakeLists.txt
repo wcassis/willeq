@@ -302,6 +302,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_stream.cpp
         src/client/graphics/renderer_effects.cpp
         src/client/graphics/renderer_sim_bridge.cpp
+        src/client/graphics/renderer_frame.cpp
         src/client/graphics/renderer_gpu_upload.cpp
         src/client/graphics/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
