@@ -4,33 +4,26 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
-## Decoupling residue (from 2026-07-22 coupling audit of fable @ a0c02cd)
+## Decoupling residue — CLOSED by S2 (2026-07-23, see refactor/S2_decoupling.md)
 
-- **`EntityPoseState` enum owned by renderer, read by game state** — 9 uses in
-  eq.cpp (~5781–5806, ~18255–18271) cast a renderer-owned enum
-  (irrlicht_renderer.h:702) to uint8_t for `EntityPoseStateChanged` events.
-  Move the enum to the state layer.
-- **eq.cpp has 14 graphics includes** (eq.cpp:24–46), incl. irrlicht_renderer.h,
-  loading_thread.h, weather_effects_controller.h, detail_manager.h, wld_loader.h.
-  Most are asset/config loaders (`WldLoader`, `PfsArchive`, `BspTree`,
-  `WeatherConfigLoader`, `SpellEffectsConfig`) that belong in a shared asset
-  layer, not `EQT::Graphics`.
-- **`InitGraphics(int, int, IrrlichtRenderer*, GameStateBridge*)`**
-  (eq.cpp:17936) — game state takes a raw renderer pointer.
-- **Two `void*` payloads cross the bridge**: event_bus.h:713 (`void* map` →
-  HCMap*, cast at irrlicht_bridge.cpp:610) and event_bus.h:836
-  (`void* navmesh` → PathfinderNavmesh*). Replace with typed
-  ownership-transferring handoffs.
-- **Dead pointer:** `setInventoryManager()` / `inventoryManager_`
-  (irrlicht_renderer.cpp:14781, eq.cpp:17999) — assigned, never read. Delete.
-- **Dual movement channel:** both `PlayerPositionChanged` intent
-  (eq.cpp:18537) and a still-live `renderer->setMovementCallback(...)`
-  (eq.cpp:18011) despite D20a claiming callbacks were removed. Collapse to
-  intent-only.
-- Renderer reads spell static data directly (spell_visual_fx.cpp:194,282 via
-  spell_database.h) and item DB (equipment_model_loader.cpp:73) — acceptable
-  (static data), but note if a shared asset layer is created.
-- `EverQuest::GetDebugLevel()` static call from door_manager.cpp:955.
+EntityPoseState moved to state layer; dual movement channel collapsed to
+intent-only (was a render-thread call into game state + doubled position
+sends); InventorySlotChanged events now carry display fields (the "dead"
+inventoryManager_ pointer was actually a live cross-thread read — audit
+claim corrected); bridge payloads typed (HCMap*/PathfinderNavmesh*);
+PlayerPositionUpdate struct deleted; eq.cpp graphics includes pruned 12→2.
+
+Still open from that audit:
+- `InitGraphics` keeps its `IrrlichtRenderer*` parameter (drives
+  initLoadingScreen + initDeferredGraphics); full removal needs
+  Application-side init restructuring.
+- Asset-loader namespace relocation (`WldLoader`, `PfsArchive`, `BspTree`,
+  … out of `EQT::Graphics` into a shared asset layer) — own unit.
+- Renderer reads spell static data (spell_visual_fx.cpp) and item DB
+  (equipment_model_loader.cpp) — acceptable (static data).
+- `EverQuest::GetDebugLevel()` static call from door_manager.cpp.
+- `output/graphical_renderer.h` legacy interface — dead-code deletion
+  candidate (IrrlichtRenderer does not inherit from it).
 
 ## From Batch U / ui_fixes.md
 
@@ -81,9 +74,6 @@ the commit. Sources are historical docs — do not edit those.
   method of lambda registrations; could split by command domain).
 - **Co-locate the two `StartCombatMovement` overloads** (one in
   eq_movement.cpp, one left in eq.cpp — F08 review flagged it).
-- **Include-list pruning pass on eq.cpp** — after F10, eq.cpp's include block
-  still carries headers only the moved bridge code used (F10 plan explicitly
-  deferred pruning).
 - Files still over the 1,500-line warn ceiling: eq_commands.cpp (2,568),
   renderer_zone_load.cpp (2,673), eq_entities.cpp (2,438), eq_player_info.cpp
   (2,006), eq_movement.cpp (1,943), eq_bridge.cpp (1,837), renderer_frame.cpp

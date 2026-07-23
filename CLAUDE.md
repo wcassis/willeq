@@ -160,7 +160,7 @@ Audio updates                       Zone load completion detection
 - **Event types** (`include/client/state/event_bus.h`) — 99 event types covering all game state changes
 - **Intent types** (`include/client/events/renderer_intents.h`) — 56 intent types for user actions
 
-**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. The decoupling is ~90% complete, not total: eq.cpp still has 14 graphics includes (mostly asset/config loaders in the `EQT::Graphics` namespace), reads the renderer-owned `EntityPoseState` enum, and two `void*` payloads cross the bridge. The full residue list is in `refactor/deferred.md` — do not "fix" coupling ad hoc; those items are tracked units.
+**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/deferred.md` — do not "fix" coupling ad hoc.
 
 ### Connection Flow
 
