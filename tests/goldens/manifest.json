@@ -149,5 +149,11 @@
         "textureCount": 9
       }
     }
-  ]
+  ],
+  "approval": {
+    "status": "blessed",
+    "by": "Will",
+    "date": "2026-07-23",
+    "note": "Approved after H02d foliage-transparency fix (round 2 review). Known accepted artifact: pale fog-colored distant shapes in gfaydark (tracked in refactor/deferred.md, fog pipeline)."
+  }
 }

@@ -26,6 +26,9 @@ Background decisions (from discussion with Will, 2026-07-23):
 | H02c | Foliage alpha fix attempt — SUPERSEDED by H02d (use-after-erase made foliage vanish; diagnosis partially correct; WLD flag harvested) | superseded | slot1 | (branch deleted) |
 | H02d | Option A alpha-source-aware shader selection + shader-debug diagnostics (Will-approved design; foliage cutouts verified by instrument) | done | slot1 | `d00c8d3` |
 
-**Remaining for Batch H closure:** Will's blessing of the golden set (contact
-sheet republished after H02d); Pi tier-2 timing script (awaits Pi power-on +
-IP); Win10 character-creation session for the two-client tours.
+**Golden set BLESSED by Will 2026-07-23** (round 2, post-H02d) — the visual
+gate is fully armed: any rendering change now requires either byte-identical
+frames or a re-blessed golden set through the same review.
+
+**Remaining for Batch H closure:** Pi tier-2 timing script (awaits Pi
+power-on + IP); Win10 character-creation session for the two-client tours.
