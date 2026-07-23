@@ -10,16 +10,19 @@
 
 using namespace EQ::Test;
 
-// Path to the test capture file
-static const char* TEST_PCAP_FILE = "/tmp/willeq_audit_capture2.pcap";
+// Path to the test capture file: WILLEQ_PCAP env var, else data/captures/session.pcap
+static const std::string TEST_PCAP_FILE = getTestPcapPath();
 
 class PcapExtractorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Check if pcap file exists
+        // Check if pcap file exists. GTEST_SKIP() here is safe because
+        // SetUp() is a fixture lifecycle method invoked directly by the
+        // framework (unlike a helper called from the TEST body, which does
+        // NOT propagate the skip - see test_ui_sounds.cpp for that gotcha).
         std::ifstream f(TEST_PCAP_FILE);
         if (!f.good()) {
-            GTEST_SKIP() << "Test pcap file not found: " << TEST_PCAP_FILE;
+            GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
         }
     }
 };

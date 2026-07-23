@@ -12,8 +12,8 @@
 
 using namespace EQ::Test;
 
-// Path to test pcap file
-static const char* TEST_PCAP_FILE = "/tmp/willeq_audit_capture2.pcap";
+// Path to test pcap file: WILLEQ_PCAP env var, else data/captures/session.pcap
+static const std::string TEST_PCAP_FILE = getTestPcapPath();
 
 class DaybreakHarnessTest : public ::testing::Test {
 protected:
@@ -191,7 +191,7 @@ protected:
 
 TEST_F(PcapDaybreakHarnessTest, ProcessZoneServerPackets) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     std::cout << "Processing " << pcap_packets.size() << " zone server packets" << std::endl;
@@ -240,7 +240,7 @@ TEST_F(PcapDaybreakHarnessTest, ProcessZoneServerPackets) {
 
 TEST_F(PcapDaybreakHarnessTest, ProcessFirstFewPackets_Verbose) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     // Enable verbose logging
@@ -289,7 +289,7 @@ TEST_F(PcapDaybreakHarnessTest, ProcessFirstFewPackets_Verbose) {
 
 TEST_F(PcapDaybreakHarnessTest, AnalyzeCompressedFragments) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     // Find session response first

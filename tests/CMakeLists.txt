@@ -104,6 +104,47 @@ ADD_EXECUTABLE(test_integration_network
 TARGET_LINK_LIBRARIES(test_integration_network GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_integration_network)
 
+# Protocol-level pcap replay tests (Batch R / R03).
+# All of these SKIP cleanly when no capture is present: WILLEQ_PCAP env var,
+# else data/captures/session.pcap (see docs/plans/session_replay_oracle.md).
+# No capture ships in the repo, so on a stock checkout every test below
+# reports SKIPPED rather than PASSED or FAILED.
+
+# Test the pcap file reading/parsing utility itself (header-only, no project deps)
+ADD_EXECUTABLE(test_pcap_extractor
+    test_pcap_extractor.cpp
+)
+TARGET_LINK_LIBRARIES(test_pcap_extractor GTest::gtest)
+GTEST_DISCOVER_TESTS(test_pcap_extractor)
+
+# Test the standalone DaybreakTestHarness (replicates protocol decode logic
+# for exploration/debugging without touching production code); needs zlib
+# for the harness's own inflate calls.
+ADD_EXECUTABLE(test_daybreak_harness
+    test_daybreak_harness.cpp
+)
+TARGET_LINK_LIBRARIES(test_daybreak_harness GTest::gtest ${ZLIB_LIBRARIES})
+GTEST_DISCOVER_TESTS(test_daybreak_harness)
+
+# Step-by-step verbose pcap decode verification (uses the standalone harness)
+ADD_EXECUTABLE(test_pcap_step_through
+    test_pcap_step_through.cpp
+)
+TARGET_LINK_LIBRARIES(test_pcap_step_through GTest::gtest ${ZLIB_LIBRARIES})
+GTEST_DISCOVER_TESTS(test_pcap_step_through)
+
+# Test the REAL production DaybreakConnection::ProcessPacket() against a
+# pcap capture (private-member access via #define private public).
+ADD_EXECUTABLE(test_daybreak_connection_pcap
+    test_daybreak_connection_pcap.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/posix_udp_transport.cpp
+)
+TARGET_LINK_LIBRARIES(test_daybreak_connection_pcap GTest::gtest ${ZLIB_LIBRARIES} ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
+
 # Test Titanium opcodes are correctly hard-coded
 ADD_EXECUTABLE(test_titanium_opcodes
     test_titanium_opcodes.cpp

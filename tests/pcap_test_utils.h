@@ -8,6 +8,7 @@
  */
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -19,6 +20,22 @@
 
 namespace EQ {
 namespace Test {
+
+/**
+ * Resolve the path to the pcap capture used by the protocol-level tests.
+ *
+ * Overridable via the WILLEQ_PCAP environment variable; defaults to
+ * data/captures/session.pcap (relative to cwd, matching other asset-test
+ * conventions). No capture ships in the repo, so tests that need one must
+ * check for its existence and GTEST_SKIP() from the TEST body directly.
+ */
+inline std::string getTestPcapPath() {
+    const char* env = std::getenv("WILLEQ_PCAP");
+    if (env && *env) {
+        return env;
+    }
+    return "data/captures/session.pcap";
+}
 
 // PCAP file format structures
 #pragma pack(push, 1)

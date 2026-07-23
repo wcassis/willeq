@@ -16,8 +16,8 @@
 
 using namespace EQ::Test;
 
-// Path to test pcap file
-static const char* TEST_PCAP_FILE = "/tmp/willeq_audit_capture2.pcap";
+// Path to test pcap file: WILLEQ_PCAP env var, else data/captures/session.pcap
+static const std::string TEST_PCAP_FILE = getTestPcapPath();
 
 /**
  * Helper to format a full hex dump of data
@@ -468,7 +468,7 @@ protected:
 
 TEST_F(PcapStepThroughTest, StepThroughFirst50Packets) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     std::cout << "\n" << std::string(70, '=') << std::endl;
@@ -489,7 +489,7 @@ TEST_F(PcapStepThroughTest, StepThroughFirst50Packets) {
 
 TEST_F(PcapStepThroughTest, StepThroughZoneServerSession) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     std::cout << "\n" << std::string(70, '=') << std::endl;
@@ -522,7 +522,7 @@ TEST_F(PcapStepThroughTest, StepThroughZoneServerSession) {
 
 TEST_F(PcapStepThroughTest, StepThroughFragmentSequence) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     std::cout << "\n" << std::string(70, '=') << std::endl;
@@ -566,7 +566,7 @@ TEST_F(PcapStepThroughTest, StepThroughFragmentSequence) {
 
 TEST_F(PcapStepThroughTest, WriteDetailedLogToFile) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     std::ofstream logfile("/tmp/pcap_step_through.log");

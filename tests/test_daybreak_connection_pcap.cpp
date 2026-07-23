@@ -26,6 +26,7 @@
 #define protected public
 
 #include "common/net/daybreak_connection.h"
+#include "common/net/posix_udp_transport.h"
 #include "pcap_test_utils.h"
 
 #undef private
@@ -34,8 +35,8 @@
 using namespace EQ::Net;
 using namespace EQ::Test;
 
-// Path to test pcap file
-static const char* TEST_PCAP_FILE = "/tmp/willeq_audit_capture2.pcap";
+// Path to test pcap file: WILLEQ_PCAP env var, else data/captures/session.pcap
+static const std::string TEST_PCAP_FILE = getTestPcapPath();
 
 // Helper to dump packet bytes
 static std::string hexDump(const uint8_t* data, size_t len, size_t max = 64) {
@@ -91,8 +92,10 @@ protected:
         opts.encode_passes[0] = EncodeNone;
         opts.encode_passes[1] = EncodeNone;
 
-        // Create manager - we'll access internals directly
-        manager_ = std::make_unique<DaybreakConnectionManager>();
+        // Create manager with a real (but unopened) transport - we don't call
+        // Tick()/open() in these tests, we drive ProcessPacket() directly, so
+        // no socket is ever bound. We'll access internals directly.
+        manager_ = std::make_unique<DaybreakConnectionManager>(opts, std::make_unique<PosixUdpTransport>());
 
         // Set up packet receive callback
         manager_->OnPacketRecv([this](std::shared_ptr<DaybreakConnection> conn, const Packet& p) {
@@ -183,7 +186,7 @@ protected:
 
 TEST_F(DaybreakConnectionPcapTest, ReplayZoneServerPackets) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     createTestManager();
@@ -292,7 +295,7 @@ TEST_F(DaybreakConnectionPcapTest, ReplayZoneServerPackets) {
 
 TEST_F(DaybreakConnectionPcapTest, DetailedFragmentTracking) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     createTestManager();
@@ -383,7 +386,7 @@ TEST_F(DaybreakConnectionPcapTest, DetailedFragmentTracking) {
 
 TEST_F(DaybreakConnectionPcapTest, SingleCompressedFragmentDebug) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     createTestManager();
@@ -454,7 +457,7 @@ TEST_F(DaybreakConnectionPcapTest, SingleCompressedFragmentDebug) {
 
 TEST_F(DaybreakConnectionPcapTest, ReplayWithCRCBypassed) {
     if (!hasPcapData()) {
-        GTEST_SKIP() << "Pcap file not available";
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
     createTestManager();
