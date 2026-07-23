@@ -164,6 +164,32 @@ struct Options {
     // (alpha_test_draws, solid_draws) computed from each frame's already-built
     // drawEntries list, no renderer changes needed.
     bool materialCounts = false;
+
+    // P02 experiment A: convenience wrapper around the existing
+    // --adaptive-lighting / --zone-pp-budget mechanism, letting the caller
+    // ask for "all zone regions per-pixel" (the benchmark's unconditional
+    // default -- zone_bench_loader.cpp's setPerPixelPlayerLight(true) is
+    // always called, so with adaptiveLighting off every region draws with
+    // the per-pixel-lit material) vs "all zone regions lightweight" in one
+    // flag, for the 6b per-pixel-vs-lightweight A/B
+    // (refactor/P02_hardware_resume.md). Source inspection (zone_shader.cpp)
+    // shows "pervertex" and "lightweight" name the SAME shader variant (the
+    // *_LIGHTWEIGHT_SRC programs: no per-pixel player light, all 8 point
+    // lights per-vertex) -- both spellings are accepted and behave
+    // identically, documented as such rather than pretending they're
+    // distinct. "perpixel" (the default if the flag is never passed) leaves
+    // adaptiveLighting/perPixelZoneBudget exactly as set by other flags, so
+    // omitting --lighting-model entirely reproduces prior behavior exactly.
+    enum class LightingModel { Default, PerPixel, PerVertexOrLightweight };
+    LightingModel lightingModel = LightingModel::Default;
+
+    // P02 experiment C: small runtime GL filter-state spot-check (H2 was
+    // answered from source inspection in P01; this confirms it against the
+    // real driver). 0 = off; N = sample the first N draw entries of the
+    // first rendered pose, bind each entry's unit-0 (main) and unit-1
+    // (companion, if any) texture, and print the actual
+    // GL_TEXTURE_MIN_FILTER/MAG_FILTER GL returns.
+    int dumpFilters = 0;
 };
 
 static void printUsage(const char* prog) {
@@ -251,6 +277,14 @@ static void printUsage(const char* prog) {
     printf("  --material-counts    Add alpha_test_draws,solid_draws columns to --csv (P01)\n");
     printf("                       program (0=off; see zone_shader.cpp for the mode list,\n");
     printf("                       e.g. 7=alpha, 11=rawTexAlpha, 12=companionAlpha)\n");
+    printf("  --lighting-model M   perpixel|pervertex|lightweight (P02, default: perpixel,\n");
+    printf("                       i.e. unchanged benchmark behavior). pervertex and\n");
+    printf("                       lightweight are the same shader variant on this codebase\n");
+    printf("                       (see zone_shader.cpp *_LIGHTWEIGHT_SRC) -- both names\n");
+    printf("                       accepted. Implemented as --adaptive-lighting with\n");
+    printf("                       --zone-pp-budget forced to 0.\n");
+    printf("  --dump-filters N     Print actual GL min/mag texture filters for the first N\n");
+    printf("                       draw entries of the first pose (P02 H2 runtime spot-check)\n");
     printf("\nLogging (handled by InitLogging):\n");
     printf("  --log-level=LEVEL    Set log level: NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE\n");
     printf("  --log-only=MOD,...   Only show listed modules\n");
@@ -356,6 +390,16 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
+        else if (strcmp(argv[i], "--lighting-model") == 0 && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (v == "perpixel") opts.lightingModel = Options::LightingModel::PerPixel;
+            else if (v == "pervertex" || v == "lightweight") opts.lightingModel = Options::LightingModel::PerVertexOrLightweight;
+            else {
+                fprintf(stderr, "--lighting-model: unknown value '%s' (expected perpixel|pervertex|lightweight)\n", v.c_str());
+                exit(1);
+            }
+        }
+        else if (strcmp(argv[i], "--dump-filters") == 0 && i + 1 < argc) opts.dumpFilters = atoi(argv[++i]);
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
         else {
@@ -534,6 +578,64 @@ static std::pair<int, int> countMaterialFamilies(
     }
     return {alphaTestDraws, solidDraws};
 }
+
+#ifdef EQT_HAS_GLES2
+// P02 experiment C: runtime GL filter-state spot-check. P01 answered H2
+// (ETC1-vs-RGBA filter/mip asymmetry) entirely from source inspection of
+// constrained_texture_cache.cpp; this confirms the actual driver-reported
+// state matches for a handful of real draw entries. Binds unit 0 (main) and
+// unit 1 (companion, if the material uses one) via Irrlicht's own
+// setMaterial() -- same technique the pre-existing --tree-test diagnostic
+// uses -- then reads back GL_TEXTURE_MIN_FILTER/MAG_FILTER directly from the
+// driver, no assumptions about what was requested at upload time.
+static const char* glFilterName(GLint f) {
+    switch (f) {
+        case GL_NEAREST: return "GL_NEAREST";
+        case GL_LINEAR: return "GL_LINEAR";
+        case GL_NEAREST_MIPMAP_NEAREST: return "GL_NEAREST_MIPMAP_NEAREST";
+        case GL_LINEAR_MIPMAP_NEAREST: return "GL_LINEAR_MIPMAP_NEAREST";
+        case GL_NEAREST_MIPMAP_LINEAR: return "GL_NEAREST_MIPMAP_LINEAR";
+        case GL_LINEAR_MIPMAP_LINEAR: return "GL_LINEAR_MIPMAP_LINEAR";
+        default: return "?";
+    }
+}
+
+static void dumpFilterState(ZoneBench::ZoneBenchData& data,
+                             const std::vector<ZoneBench::DrawEntry>& entries,
+                             int count) {
+    printf("[dump-filters] sampling first %d of %zu draw entries:\n",
+           count, entries.size());
+    int n = std::min<int>(count, static_cast<int>(entries.size()));
+    for (int i = 0; i < n; ++i) {
+        const auto& de = entries[i];
+        const irr::video::SMaterial& mat = de.buffer->getMaterial();
+        data.driver->setMaterial(mat);
+
+        GLint tex0 = 0, tex1 = 0;
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex0);
+        glActiveTexture(GL_TEXTURE1);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex1);
+        glActiveTexture(GL_TEXTURE0);
+
+        auto dumpUnit = [&](int unit, GLint texName, const char* label) {
+            if (texName == 0) {
+                printf("  entry[%d] unit%d (%s): no texture bound\n", i, unit, label);
+                return;
+            }
+            glActiveTexture(unit == 0 ? GL_TEXTURE0 : GL_TEXTURE1);
+            GLint minF = 0, magF = 0;
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
+            printf("  entry[%d] unit%d (%s) glTex=%d: MIN=%s MAG=%s\n",
+                   i, unit, label, texName, glFilterName(minF), glFilterName(magF));
+        };
+        dumpUnit(0, tex0, "main");
+        dumpUnit(1, tex1, "companion");
+        glActiveTexture(GL_TEXTURE0);
+    }
+}
+#endif
 
 // H02b: convert a heading/pitch pose (degrees; heading 0=North/+Y, CW; pitch
 // positive=up) into an EQ-coordinate direction vector, matching the
@@ -754,6 +856,23 @@ static void runSyntheticDrawTest(ZoneBench::ZoneBenchData& data, int numFrames) 
 int main(int argc, char** argv) {
     InitLogging(argc, argv);
     Options opts = parseArgs(argc, argv);
+
+    // P02: --lighting-model is a thin convenience wrapper over the existing
+    // --adaptive-lighting/--zone-pp-budget mechanism (see Options::LightingModel
+    // comment above); LightingModel::Default (flag never passed) touches
+    // nothing, so default behavior is byte-for-byte unchanged.
+    if (opts.lightingModel == Options::LightingModel::PerVertexOrLightweight) {
+        opts.adaptiveLighting = true;
+        opts.perPixelZoneBudget = 0;
+        printf("[lighting-model] pervertex/lightweight requested -- forcing "
+               "adaptiveLighting=true, zone-pp-budget=0 (all zone regions "
+               "lightweight-shaded).\n");
+    } else if (opts.lightingModel == Options::LightingModel::PerPixel) {
+        printf("[lighting-model] perpixel requested -- default benchmark "
+               "behavior (zone_bench_loader.cpp always calls "
+               "setPerPixelPlayerLight(true); adaptiveLighting left as set by "
+               "other flags, default off = all regions per-pixel).\n");
+    }
 
     if (opts.eqPath.empty()) {
         fprintf(stderr, "ERROR: --eq-path is required\n");
@@ -1642,6 +1761,9 @@ int main(int argc, char** argv) {
             }
 
 #ifdef EQT_HAS_GLES2
+            if (opts.dumpFilters > 0 && i == 0) {
+                dumpFilterState(*data, drawEntries, opts.dumpFilters);
+            }
             glFinish();
 #endif
             metrics.endGpuSync();

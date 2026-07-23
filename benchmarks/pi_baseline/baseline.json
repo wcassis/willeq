@@ -1,12 +1,13 @@
 {
-  "blessed_from_run": "run3",
-  "tolerance_pct": 40.0,
+  "blessed_from_run": "p02_rebless",
+  "tolerance_pct": 30.0,
   "zones": {
     "befallen": {
       "eqe1": {
-        "fps_p95": 22.390398996910125,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 23.164771016238507,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -54,16 +55,21 @@
             ]
           }
         },
-        "total_ms_max": 62.396,
-        "total_ms_mean": 29.053877192982455,
-        "total_ms_min": 16.557,
-        "total_ms_p95": 44.662,
-        "warmup_frames_discarded": 3
+        "reps": [
+          45.677,
+          43.169
+        ],
+        "total_ms_max": 108.521,
+        "total_ms_mean": 28.59509649122807,
+        "total_ms_min": 16.512,
+        "total_ms_p95": 43.169,
+        "warmup_frames_discarded": 6
       },
       "rgba": {
-        "fps_p95": 22.475445575708537,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 22.530134054297623,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -111,18 +117,23 @@
             ]
           }
         },
-        "total_ms_max": 44.572,
-        "total_ms_mean": 29.24575438596491,
-        "total_ms_min": 17.709,
-        "total_ms_p95": 44.493,
-        "warmup_frames_discarded": 3
+        "reps": [
+          44.376,
+          44.408
+        ],
+        "total_ms_max": 44.577,
+        "total_ms_mean": 29.224982456140353,
+        "total_ms_min": 17.672,
+        "total_ms_p95": 44.385,
+        "warmup_frames_discarded": 6
       }
     },
     "gfaydark": {
       "eqe1": {
-        "fps_p95": 22.595806218365873,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 25.584608299646934,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -170,16 +181,21 @@
             ]
           }
         },
-        "total_ms_max": 48.125,
-        "total_ms_mean": 32.852245614035084,
-        "total_ms_min": 24.27,
-        "total_ms_p95": 44.256,
-        "warmup_frames_discarded": 3
+        "reps": [
+          39.212,
+          38.943
+        ],
+        "total_ms_max": 43.718,
+        "total_ms_mean": 31.782438596491225,
+        "total_ms_min": 24.154,
+        "total_ms_p95": 39.086,
+        "warmup_frames_discarded": 6
       },
       "rgba": {
-        "fps_p95": 24.301336573511545,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 24.328532502919423,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -227,18 +243,23 @@
             ]
           }
         },
-        "total_ms_max": 44.681,
-        "total_ms_mean": 33.79175438596491,
-        "total_ms_min": 26.005,
-        "total_ms_p95": 41.15,
-        "warmup_frames_discarded": 3
+        "reps": [
+          41.278,
+          41.083
+        ],
+        "total_ms_max": 44.567,
+        "total_ms_mean": 33.73691228070175,
+        "total_ms_min": 26.011,
+        "total_ms_p95": 41.104,
+        "warmup_frames_discarded": 6
       }
     },
     "qeynos2": {
       "eqe1": {
-        "fps_p95": 25.72214934279908,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 25.4880970586736,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -286,16 +307,21 @@
             ]
           }
         },
-        "total_ms_max": 50.458,
-        "total_ms_mean": 26.75256140350877,
-        "total_ms_min": 18.121,
-        "total_ms_p95": 38.877,
-        "warmup_frames_discarded": 3
+        "reps": [
+          39.234,
+          39.855
+        ],
+        "total_ms_max": 67.524,
+        "total_ms_mean": 27.940780701754385,
+        "total_ms_min": 18.077,
+        "total_ms_p95": 39.234,
+        "warmup_frames_discarded": 6
       },
       "rgba": {
-        "fps_p95": 28.74554444061171,
-        "n_frames": 60,
-        "n_frames_steady": 57,
+        "fps_p95": 28.73398080570082,
+        "n_frames": 120,
+        "n_frames_steady": 114,
+        "n_reps": 2,
         "per_pose": {
           "0": {
             "deterministic": true,
@@ -343,11 +369,15 @@
             ]
           }
         },
-        "total_ms_max": 34.912,
-        "total_ms_mean": 28.954508771929824,
-        "total_ms_min": 19.532,
-        "total_ms_p95": 34.788,
-        "warmup_frames_discarded": 3
+        "reps": [
+          34.802,
+          35.07
+        ],
+        "total_ms_max": 45.403,
+        "total_ms_mean": 29.053947368421053,
+        "total_ms_min": 19.498,
+        "total_ms_p95": 34.802,
+        "warmup_frames_discarded": 6
       }
     }
   }
