@@ -244,6 +244,8 @@ Tests are in `tests/` with one executable per test suite. Each test links only t
 
 Audio tests and graphics integration tests are documented in their respective CLAUDE.md files.
 
+**Session replay oracle** (Batch R, `docs/plans/session_replay_oracle.md`): record a real play session with `--record-session data/captures/session.sleq`, then `test_session_replay` replays it into a headless EverQuest and asserts game state against a golden snapshot (self-created on first run). A synthetic-session mode keeps the test green without a recording. Protocol-level pcap tests (`test_daybreak_*`, `test_pcap_*`) skip unless a capture exists at `data/captures/session.pcap` (or `WILLEQ_PCAP`).
+
 ## Key Patterns
 
 - **Bridge events/intents**: Game state changes are published as events via `m_bridge->pushEvent()`. Renderer user actions arrive as intents via `m_bridge->drainIntents()`. Never call renderer methods directly from EverQuest.

@@ -1,5 +1,10 @@
 # Batch R — Session Recording & Replay (game-state regression oracle)
 
+**STATUS: COMPLETE (2026-07-23).** Part A landed green (suite now 1,224
+tests). Part B awaits a real recording from Will — see
+docs/plans/session_replay_oracle.md for the exact steps; the golden
+snapshot self-creates on the first replay-test run against it.
+
 Goal: a deterministic regression oracle for the game-state layer — record a
 real play session's decoded application packets, replay them into a headless
 EverQuest instance, and assert the resulting game state against a golden
@@ -19,6 +24,6 @@ recording.
 
 | Unit | Scope | Status | Slot | Commit |
 |---|---|---|---|---|
-| R01 | Session recorder in the client: `--record-session <file>` CLI flag; write SessionLog records for decoded app packets (both directions, all three streams) at the EverQuest packet boundary | | | |
-| R02 | Replay harness + test: headless EverQuest, public replay seam, feed S→C records into the zone dispatcher, snapshot-assert game state; ships with a synthetic session so the test is green NOW; auto-activates golden mode when a real recording exists | | | |
-| R03 | Register the orphaned pcap protocol tests in CMake with skip-if-no-capture guards; replace docs/plans/pcap_replay_test_plan.md with a current doc (oracle design + exact recording instructions for Will) | | | |
+| R01 | Session recorder: `--record-session <file>`; hooks at all three S→C streams + zone C→S; 5 unit tests | done | slot1 | `6f0304a` |
+| R02 | Replay harness: ReplayZonePacket seam, 11 null-connection send guards, synthetic-session test PASSING, golden mode armed | done | slot2 | `0fd3b25` |
+| R03 | Pcap protocol tests registered (21 skip cleanly, 4 synthetic pass; 1 unfixable file deleted); docs/plans/session_replay_oracle.md written | done | slot3 | `0fcb41f` |
