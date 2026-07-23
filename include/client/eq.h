@@ -1656,7 +1656,13 @@ private:
 
 	// Command registry for chat commands
 	std::unique_ptr<eqt::ui::CommandRegistry> m_command_registry;
-	void RegisterCommands();  // Initialize all chat commands
+	void RegisterCommands();  // Driver: calls per-domain registration methods below, in order (G02)
+	// G02: per-domain command registration, split out of the former monolithic
+	// RegisterCommands() body. Order between methods (and within each) matches
+	// the original registration order exactly — see eq_commands.cpp driver.
+	void RegisterSocialCommands();    // Chat/group/trade/guild/corpse/duel/misc social commands (eq_commands.cpp)
+	void RegisterMovementCommands();  // Movement/combat/utility-debug/sky commands (eq_commands_movement.cpp)
+	void RegisterSpellCommands();     // Spell/skill/hotkey/detail/audio commands (eq_commands_spells.cpp)
 
 	// Manual zone load diagnostics helpers
 	void runPmemDiagnostics(const std::string& label);
