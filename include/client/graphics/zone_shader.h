@@ -26,6 +26,16 @@ public:
     irr::s32 getMaterialTypeSolid() const { return materialSolid_; }
     irr::s32 getMaterialTypeAlphaTest() const { return materialAlphaTest_; }
 
+    // H02d (Option A): alpha-test variant that reads alpha from the main
+    // texture's own alpha channel (uTexture.a) instead of the ETC1 companion
+    // texture on unit 1. Used for masked textures on the direct RGBA/DDS
+    // decode path, which never builds a companion texture. -1 if compilation
+    // failed (callers fall back to fixed-function EMT_TRANSPARENT_ALPHA_CHANNEL_REF,
+    // which has always read the main texture's alpha directly and is
+    // unaffected by this).
+    irr::s32 getMaterialTypeAlphaTestRGBA() const { return materialAlphaTestRGBA_; }
+    bool isAlphaTestRGBAAvailable() const { return materialAlphaTestRGBA_ >= 0; }
+
     // Atlas-specific material types (per-pixel lighting, atlas UV transform)
     irr::s32 getMaterialTypeAtlasSolid() const { return materialAtlasSolid_; }
     irr::s32 getMaterialTypeAtlasAlpha() const { return materialAtlasAlpha_; }
@@ -46,6 +56,7 @@ public:
     // Active material resolution — returns lightweight or per-pixel variant
     irr::s32 getActiveSolid() const;
     irr::s32 getActiveAlphaTest() const;
+    irr::s32 getActiveAlphaTestRGBA() const;  // H02d: RGBA main-texture-alpha variant
     irr::s32 getActiveAtlasSolid() const;
     irr::s32 getActiveAtlasAlpha() const;
     irr::s32 getActiveWindAlphaTest() const;
@@ -187,6 +198,7 @@ private:
     bool available_ = false;
     irr::s32 materialSolid_ = -1;
     irr::s32 materialAlphaTest_ = -1;
+    irr::s32 materialAlphaTestRGBA_ = -1;  // H02d: main-texture-alpha variant (heavy/per-pixel)
     irr::s32 materialAtlasSolid_ = -1;
     irr::s32 materialAtlasAlpha_ = -1;
     irr::s32 materialWindAlphaTest_ = -1;
@@ -194,6 +206,7 @@ private:
     // Lightweight material types (no per-pixel player light, 3 varyings)
     irr::s32 materialLWSolid_ = -1;
     irr::s32 materialLWAlphaTest_ = -1;
+    irr::s32 materialLWAlphaTestRGBA_ = -1;  // H02d: main-texture-alpha variant (lightweight)
     irr::s32 materialLWAtlasSolid_ = -1;
     irr::s32 materialLWAtlasAlpha_ = -1;
     irr::s32 materialLWWindAlphaTest_ = -1;

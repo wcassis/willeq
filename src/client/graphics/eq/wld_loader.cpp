@@ -559,6 +559,7 @@ void WldLoader::parseFragment30(const char* fragBuffer, uint32_t fragLength, uin
 
     // Extract material type from parameters (matches eqsage's materialType masking)
     uint32_t materialType = header.parameters & ~0x80000000;
+    material.materialType = materialType;
 
     LOG_TRACE(MOD_GRAPHICS, "Frag30[{}]: Material flags=0x{:x} params=0x{:x} materialType={} bitmapInfoRef={} color=({},{},{},{}) brightness={} scaledAmbient={}",
               fragIndex, header.flags, header.parameters, materialType, header.bitmapInfoRef,
@@ -814,6 +815,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                     uint32_t brushRef = brushSet.brushRefs[bri];
                     std::string texName;
                     bool isInvisible = false;
+                    bool isMasked = false;
                     TextureAnimationInfo animInfo;
 
                     auto it30 = materials_.find(brushRef);
@@ -823,6 +825,9 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                         if (material.flags & 1) {
                             isInvisible = true;
                             LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] brushRef[{}]={}: invisible (flags & 1)", fragIndex, bri, brushRef);
+                        }
+                        if (material.materialType == WLD_MATERIAL_TYPE_TRANSPARENT_MASKED) {
+                            isMasked = true;
                         }
 
                         if (!material.textureRefs.empty()) {
@@ -868,6 +873,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
 
                     matList->textureNames.push_back(texName);
                     matList->textureInvisible.push_back(isInvisible);
+                    matList->textureMasked.push_back(isMasked);
                     matList->textureAnimations.push_back(animInfo);
                 }
 
@@ -901,6 +907,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
         auto& mat = geom->mutableMaterialData();
         mat.textureNames.resize(maxIdx + 1);
         mat.textureInvisible.resize(maxIdx + 1, false);
+        mat.textureMasked.resize(maxIdx + 1, false);
         mat.textureAnimations.resize(maxIdx + 1);
         LOG_DEBUG(MOD_GRAPHICS, "Frag36[{}] '{}': textureNames was empty after resolution, created {} placeholder entries (maxTexIdx={})",
                   fragIndex, geom->name, maxIdx + 1, maxIdx);
@@ -1422,6 +1429,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
                 for (uint32_t brushRef : brushSet.brushRefs) {
                     std::string texName;
                     bool isInvisible = false;
+                    bool isMasked = false;
                     TextureAnimationInfo animInfo;
 
                     auto it30 = materials_.find(brushRef);
@@ -1430,6 +1438,9 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 
                         if (material.flags & 1) {
                             isInvisible = true;
+                        }
+                        if (material.materialType == WLD_MATERIAL_TYPE_TRANSPARENT_MASKED) {
+                            isMasked = true;
                         }
 
                         if (!material.textureRefs.empty()) {
@@ -1464,6 +1475,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
 
                     matList->textureNames.push_back(texName);
                     matList->textureInvisible.push_back(isInvisible);
+                    matList->textureMasked.push_back(isMasked);
                     matList->textureAnimations.push_back(animInfo);
                 }
 
@@ -1489,6 +1501,7 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
         auto& mat = geom->mutableMaterialData();
         mat.textureNames.resize(maxIdx + 1);
         mat.textureInvisible.resize(maxIdx + 1, false);
+        mat.textureMasked.resize(maxIdx + 1, false);
         mat.textureAnimations.resize(maxIdx + 1);
         LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': textureNames empty after resolution, created {} placeholder entries",
                   fragIndex, geom->name, maxIdx + 1);

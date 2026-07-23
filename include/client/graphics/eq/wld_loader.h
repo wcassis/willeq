@@ -300,12 +300,20 @@ struct WldTexture {
     std::vector<std::string> frames;
 };
 
-// Texture brush (Fragment 0x04)
+// Fragment 0x30 (Material) materialType values that matter for rendering.
+// Matches eqsage's ShaderType enum (sage/lib/s3d/materials/material.js) —
+// masked transparency is a material-level flag, not something derivable from
+// pixel inspection of the (possibly opaque-compressed) decoded texture.
+constexpr uint32_t WLD_MATERIAL_TYPE_TRANSPARENT_MASKED = 0x13;
+
+// Texture brush (Fragment 0x04). Also reused (misleadingly) by parseFragment30
+// to hold resolved Fragment 0x30 Material data — see materialType below.
 struct WldTextureBrush {
     std::vector<uint32_t> textureRefs;
     uint32_t flags = 0;
     bool isAnimated = false;           // True if this is an animated texture
     int animationDelayMs = 0;          // Milliseconds between frames (if animated)
+    uint32_t materialType = 0;         // Fragment 0x30 materialType (0x13 = TransparentMasked)
 };
 
 // Texture brush set
@@ -460,6 +468,7 @@ struct MeshAnimatedVertices {
 struct ResolvedMaterialList {
     std::vector<std::string> textureNames;
     std::vector<bool> textureInvisible;
+    std::vector<bool> textureMasked;   // Fragment 0x30 materialType == TransparentMasked (0x13)
     std::vector<TextureAnimationInfo> textureAnimations;
 
     size_t getMemoryUsage() const {
@@ -467,6 +476,7 @@ struct ResolvedMaterialList {
         for (const auto& n : textureNames) total += n.capacity();
         total += textureNames.capacity() * sizeof(std::string);
         total += textureInvisible.capacity() / 8;  // vector<bool>
+        total += textureMasked.capacity() / 8;     // vector<bool>
         for (const auto& a : textureAnimations) {
             total += sizeof(TextureAnimationInfo);
             for (const auto& f : a.frames) total += f.capacity();
@@ -497,6 +507,10 @@ struct ZoneGeometry {
     const std::vector<bool>& textureInvisible() const {
         static const std::vector<bool> empty;
         return materialData ? materialData->textureInvisible : empty;
+    }
+    const std::vector<bool>& textureMasked() const {
+        static const std::vector<bool> empty;
+        return materialData ? materialData->textureMasked : empty;
     }
     const std::vector<TextureAnimationInfo>& textureAnimations() const {
         static const std::vector<TextureAnimationInfo> empty;

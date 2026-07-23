@@ -365,6 +365,7 @@ bool IrrlichtRenderer::submitOneBgMeshBuild() {
         size_t regionIdx = entry.regionIdx;
         int shaderSolid = zoneShader_ ? zoneShader_->getActiveSolid() : -1;
         int shaderAlpha = zoneShader_ ? zoneShader_->getActiveAlphaTest() : -1;
+        int shaderAlphaRGBA = zoneShader_ ? zoneShader_->getActiveAlphaTestRGBA() : -1;
 
         pendingMeshBuilds_.insert(regionIdx);
         uint32_t priority = WorkPriorityKey::make(
@@ -379,7 +380,7 @@ bool IrrlichtRenderer::submitOneBgMeshBuild() {
             }
 
             ZoneMeshBuilder builder(nullptr, nullptr, nullptr);
-            builder.setShaderMaterialTypes(shaderSolid, shaderAlpha);
+            builder.setShaderMaterialTypes(shaderSolid, shaderAlpha, shaderAlphaRGBA);
 
             auto start = std::chrono::steady_clock::now();
             auto* mesh = builder.buildTexturedMesh(
@@ -495,7 +496,8 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     }
     if (zoneShader_ && zoneShader_->isAvailable()) {
         builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                       zoneShader_->getActiveAlphaTest());
+                                       zoneShader_->getActiveAlphaTest(),
+                                       zoneShader_->getActiveAlphaTestRGBA());
     }
     if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
         builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),

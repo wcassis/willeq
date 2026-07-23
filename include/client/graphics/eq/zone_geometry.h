@@ -113,10 +113,21 @@ public:
         bool deferTextures = false);
 #endif
 
-    // Set GLSL shader material type IDs (negative = not available, use fixed-function)
-    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+    // Set GLSL shader material type IDs (negative = not available, use fixed-function).
+    // alphaTestRGBAType (H02d, Option A) is the variant that reads alpha from
+    // the main texture's own alpha channel (uTexture.a) — used for masked
+    // textures on the direct RGBA/DDS decode path, which has no ETC1 alpha
+    // companion texture. alphaTestType remains the ETC1-companion variant
+    // (uAlphaTexture, unit 1), used only for ETC1-sourced textures. Defaults
+    // to -1 (not wired) for callers that don't build zone geometry directly;
+    // in that case masked RGBA textures safely fall back to the fixed-function
+    // EMT_TRANSPARENT_ALPHA_CHANNEL_REF material, which already reads the main
+    // texture's own alpha and was never affected by the companion-unit bug.
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType,
+                                 irr::s32 alphaTestRGBAType = -1) {
         shaderMaterialSolid_ = solidType;
         shaderMaterialAlphaTest_ = alphaTestType;
+        shaderMaterialAlphaTestRGBA_ = alphaTestRGBAType;
     }
 
 #ifdef EQT_HAS_TEXTURE_ATLAS
@@ -153,7 +164,8 @@ private:
 
     // GLSL shader material type IDs (-1 = not available)
     irr::s32 shaderMaterialSolid_ = -1;
-    irr::s32 shaderMaterialAlphaTest_ = -1;
+    irr::s32 shaderMaterialAlphaTest_ = -1;         // ETC1 companion-texture variant
+    irr::s32 shaderMaterialAlphaTestRGBA_ = -1;      // H02d: main-texture-alpha variant
 
     // Fallback buffer map from last buildAtlasedMesh(deferTextures=true) call
     std::vector<FallbackBufferInfo> fallbackBufferMap_;

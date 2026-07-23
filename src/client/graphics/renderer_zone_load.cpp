@@ -479,7 +479,8 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                 builder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                               zoneShader_->getActiveAlphaTest());
+                                               zoneShader_->getActiveAlphaTest(),
+                                               zoneShader_->getActiveAlphaTestRGBA());
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: builder shader materials set (solid={}, alphaTest={})",
                           zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
             }
@@ -867,7 +868,8 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 objBuilder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
                 objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                   zoneShader_->getActiveAlphaTest());
+                                                   zoneShader_->getActiveAlphaTest(),
+                                                   zoneShader_->getActiveAlphaTestRGBA());
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder shader materials set (solid={}, alphaTest={})",
                           zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
             }

@@ -181,6 +181,43 @@ void main() {
 }
 )";
 
+// GLSL ES 1.00 fragment shader — alpha-test, RGBA main-texture-alpha variant
+// (H02d, Option A). Reads alpha from uTexture's own alpha channel instead of
+// a companion texture on unit 1 — used for masked textures on the direct
+// RGBA/DDS decode path (ConstrainedTextureCache::uploadTexture()), which has
+// real per-pixel alpha in the main texture and never builds a companion.
+// Identical to FRAGMENT_SHADER_ALPHA_SRC_BASE except for the alpha source.
+static const char* FRAGMENT_SHADER_ALPHA_RGBA_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+uniform vec3 uPlayerLightPos;
+uniform vec3 uPlayerLightColor;
+uniform sampler2D uAttenLUT;
+uniform float uLUTScale;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    if (texColor.a < 0.5) discard;
+
+    vec3 pLv = uPlayerLightPos - vWorldPos;
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
+    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+
+    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
 // GLSL ES 1.00 fragment shader — alpha-test (derivatives variant)
 // Clamp threshold to [0.1, 0.5] so binary alpha masks still discard transparent pixels.
 static const char* FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
@@ -819,6 +856,27 @@ void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
     vec4 lit = vec4(texColor.rgb * vColor.rgb, alpha * vColor.a);
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// Lightweight FS (RGBA main-texture-alpha variant, H02d Option A) — alpha
+// from uTexture's own alpha channel, no companion texture. See
+// FRAGMENT_SHADER_ALPHA_RGBA_SRC for the heavy/per-pixel-light equivalent.
+static const char* FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_RGBA_SRC = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    if (texColor.a < 0.5) discard;
+    vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
 )";
@@ -2050,9 +2108,14 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
     // Lima driver's fwidth() returns degenerate values — use base alpha shaders.
     const char* fragmentAlphaSrc = FRAGMENT_SHADER_ALPHA_SRC_BASE;
     const char* atlasFragmentAlphaSrc = ATLAS_FRAGMENT_SHADER_ALPHA_SRC_BASE;
+    const char* fragmentAlphaRGBASrc = FRAGMENT_SHADER_ALPHA_RGBA_SRC;
 #else
     const char* fragmentAlphaSrc = FRAGMENT_SHADER_ALPHA_SRC;
     const char* atlasFragmentAlphaSrc = ATLAS_FRAGMENT_SHADER_ALPHA_SRC;
+    // Desktop's alpha-test shader already reads the main texture's own alpha
+    // channel directly (no companion texture involved) — semantically
+    // identical to the RGBA variant, so reuse it rather than duplicating it.
+    const char* fragmentAlphaRGBASrc = FRAGMENT_SHADER_ALPHA_SRC;
 #endif
 
     // Separate callbacks per material — each caches its own GL program's uniform locations
@@ -2088,6 +2151,25 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
     available_ = true;
     LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: GLSL shaders compiled (solid={}, alphaTest={})",
              materialSolid_, materialAlphaTest_);
+
+    // Create RGBA alpha-test material type (H02d, Option A): reads uTexture.a
+    // directly, for masked textures on the direct RGBA/DDS decode path (no
+    // ETC1 companion texture exists or is needed). Non-fatal if it fails to
+    // compile — callers fall back to fixed-function EMT_TRANSPARENT_ALPHA_CHANNEL_REF.
+    ShaderCallback* alphaRGBACallback = new ShaderCallback(this);
+    materialAlphaTestRGBA_ = gpu->addHighLevelShaderMaterial(
+        VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
+        fragmentAlphaRGBASrc, "main", irr::video::EPST_PS_1_1,
+        alphaRGBACallback,
+        irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+    alphaRGBACallback->drop();
+
+    if (materialAlphaTestRGBA_ < 0) {
+        LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile RGBA alpha-test shader");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: RGBA alpha-test shader compiled (alphaTestRGBA={})",
+                 materialAlphaTestRGBA_);
+    }
 
     // Compile atlas shaders (separate callbacks for solid and alpha)
     AtlasShaderCallback* atlasSolidCallback = new AtlasShaderCallback(this, false);
@@ -2159,6 +2241,21 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         if (materialLWAlphaTest_ < 0) {
             LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight alpha shader");
             materialLWSolid_ = -1;
+        }
+    }
+
+    if (materialLWSolid_ >= 0) {
+        // Lightweight RGBA alpha-test (H02d, Option A) — main-texture-alpha
+        // equivalent of materialLWAlphaTest_. Non-fatal if it fails.
+        ShaderCallback* lwAlphaRGBACb = new ShaderCallback(this);
+        materialLWAlphaTestRGBA_ = gpu->addHighLevelShaderMaterial(
+            VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_RGBA_SRC, "main", irr::video::EPST_PS_1_1,
+            lwAlphaRGBACb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        lwAlphaRGBACb->drop();
+
+        if (materialLWAlphaTestRGBA_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight RGBA alpha-test shader");
         }
     }
 
@@ -2288,6 +2385,11 @@ irr::s32 ZoneShaderManager::getActiveSolid() const {
 irr::s32 ZoneShaderManager::getActiveAlphaTest() const {
     if (perPixelPlayerLight_ || materialLWAlphaTest_ < 0) return materialAlphaTest_;
     return materialLWAlphaTest_;
+}
+
+irr::s32 ZoneShaderManager::getActiveAlphaTestRGBA() const {
+    if (perPixelPlayerLight_ || materialLWAlphaTestRGBA_ < 0) return materialAlphaTestRGBA_;
+    return materialLWAlphaTestRGBA_;
 }
 
 irr::s32 ZoneShaderManager::getActiveAtlasSolid() const {

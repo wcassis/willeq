@@ -103,6 +103,25 @@ public:
     // Returns nullptr if texture has no alpha companion.
     irr::video::ITexture* getAlphaTexture(const std::string& name) const;
 
+    // Reverse-lookup overload for callers that only have the GPU texture
+    // pointer (e.g. ZoneMeshBuilder::buildCompositeMesh, which builds from a
+    // single merged texture with no single originating cache name). Linear
+    // scan over the cache — fine given the current (small, mesh-build-time)
+    // call volume.
+    irr::video::ITexture* getAlphaTexture(irr::video::ITexture* texture) const;
+
+    // H02d (Option A alpha-source-aware shader selection): does this cached
+    // texture come from the ETC1/EQE1 pipeline (uploadCompressedETC1, which
+    // builds a companion alpha texture on unit 1) or the direct RGBA/DDS
+    // decode path (uploadTexture, which has real alpha in the main texture's
+    // own alpha channel and never needs/builds a companion)? Callers use this
+    // to pick the matching alpha-test shader variant. Returns false for
+    // unknown/not-yet-uploaded names.
+    bool isETC1Texture(const std::string& name) const;
+
+    // Reverse-lookup overload by GPU texture pointer (see getAlphaTexture(ITexture*)).
+    bool isETC1Texture(irr::video::ITexture* texture) const;
+
     // Clear all cached textures
     void clear();
 
@@ -257,6 +276,10 @@ private:
         irr::video::ITexture* alphaTexture = nullptr;  // ETC1 alpha companion (unit 1)
         size_t sizeBytes;
         bool hasAlpha = false;
+        // H02d: true if uploaded via uploadCompressedETC1 (companion-based
+        // alpha), false if uploaded via uploadTexture (direct RGBA/DDS decode,
+        // alpha lives in the main texture's own alpha channel).
+        bool isETC1 = false;
         std::list<std::string>::iterator lruIterator;
     };
 

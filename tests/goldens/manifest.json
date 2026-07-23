@@ -52,7 +52,7 @@
           "polys": 663
         }
       },
-      "p95CpuMsBaseline": 20.723,
+      "p95CpuMsBaseline": 16.917,
       "memory": {
         "textureCacheBytesUsed": 42226984,
         "textureCacheBytesLimit": 67108864,
@@ -97,7 +97,7 @@
           "polys": 4421
         }
       },
-      "p95CpuMsBaseline": 18.3,
+      "p95CpuMsBaseline": 17.165,
       "memory": {
         "textureCacheBytesUsed": 11184800,
         "textureCacheBytesLimit": 67108864,
@@ -142,7 +142,7 @@
           "polys": 526
         }
       },
-      "p95CpuMsBaseline": 17.14,
+      "p95CpuMsBaseline": 16.972,
       "memory": {
         "textureCacheBytesUsed": 2883581,
         "textureCacheBytesLimit": 67108864,

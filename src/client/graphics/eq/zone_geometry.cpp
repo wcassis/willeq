@@ -387,20 +387,48 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
             if (texture) {
                 buffer->Material.setTexture(0, texture);
 
-                // Check if this texture has alpha transparency
-                bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
+                // Check if this texture has alpha transparency. Post-decode pixel
+                // inspection (texturesWithAlpha_) alone misses masked materials
+                // whose alpha is baked into an opaque-compressed source (e.g. DXT1
+                // with no punch-through blocks actually used) — the WLD Fragment
+                // 0x30 materialType (TransparentMasked = 0x13) is the ground-truth
+                // signal for that, so OR it in regardless of what decode found.
+                bool isMaskedMaterial = (texIdx < geometry.textureMasked().size()) && geometry.textureMasked()[texIdx];
+                bool hasAlpha = isMaskedMaterial ||
+                    (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
                 if (hasAlpha) {
-                    // Use GLSL shader alpha-test material if available, else fixed-function
-                    if (shaderMaterialAlphaTest_ >= 0) {
-                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    // H02d (Option A): alpha-source-aware shader selection.
+                    // ETC1-sourced textures carry a companion alpha texture on
+                    // unit 1 (uAlphaTexture) — use the existing companion
+                    // variant, unchanged. The direct RGBA/DDS decode path has
+                    // real alpha in the main texture's own alpha channel and
+                    // never builds a companion; using the companion variant
+                    // there reads whatever (or nothing) happens to be bound on
+                    // unit 1 (the driver's opaque-white fallback), which never
+                    // discards — the RGBA variant reads uTexture.a directly
+                    // instead, matching desktop-GL's known-good
+                    // EMT_TRANSPARENT_ALPHA_CHANNEL_REF semantics.
+                    bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(texName);
+                    if (isETC1) {
+                        // Use GLSL shader alpha-test material if available, else fixed-function
+                        if (shaderMaterialAlphaTest_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                        }
+                        // Bind ETC1 alpha companion texture on layer 1 (sampled by uAlphaTexture in shader)
+                        if (constrainedCache_) {
+                            irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                            if (alphaTex) {
+                                buffer->Material.setTexture(1, alphaTex);
+                            }
+                        }
                     } else {
-                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                    }
-                    // Bind ETC1 alpha companion texture on layer 1 (sampled by uAlphaTexture in shader)
-                    if (constrainedCache_) {
-                        irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
-                        if (alphaTex) {
-                            buffer->Material.setTexture(1, alphaTex);
+                        // Direct RGBA/DDS path: no companion exists or is needed.
+                        if (shaderMaterialAlphaTestRGBA_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
                         }
                     }
                     // Alpha-to-coverage produces smoother edges on vegetation when MSAA is active
@@ -526,6 +554,9 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
         // Look up pre-uploaded texture
         irr::video::ITexture* texture = (texIdx < textures.size()) ? textures[texIdx] : nullptr;
         bool hasAlpha = (texIdx < textureAlpha.size()) ? textureAlpha[texIdx] : false;
+        // H02d: texture name needed to query the cache's alpha-source (ETC1
+        // companion vs direct RGBA) for shader variant selection below.
+        std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
 
         // Split into sub-buffers for 16-bit index limit
         std::vector<std::vector<size_t>> subBuffers;
@@ -551,10 +582,26 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
             if (texture) {
                 buffer->Material.setTexture(0, texture);
                 if (hasAlpha) {
-                    if (shaderMaterialAlphaTest_ >= 0) {
-                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    // H02d (Option A): see buildTexturedMesh for rationale.
+                    bool isETC1 = constrainedCache_ && !texName.empty() && constrainedCache_->isETC1Texture(texName);
+                    if (isETC1) {
+                        if (shaderMaterialAlphaTest_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                        }
+                        if (constrainedCache_) {
+                            irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                            if (alphaTex) {
+                                buffer->Material.setTexture(1, alphaTex);
+                            }
+                        }
                     } else {
-                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                        if (shaderMaterialAlphaTestRGBA_ >= 0) {
+                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+                        } else {
+                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                        }
                     }
                 } else {
                     if (shaderMaterialSolid_ >= 0) {
@@ -645,10 +692,28 @@ irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
     buffer->Material.BackfaceCulling = false;
     buffer->Material.Lighting = false;
     if (hasAlpha) {
-        if (shaderMaterialAlphaTest_ >= 0) {
-            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+        // H02d (Option A): see buildTexturedMesh for rationale. No single
+        // originating texture name exists here (compositeTexture merges many
+        // source textures), so use the pointer-based reverse lookup.
+        bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(compositeTexture);
+        if (isETC1) {
+            if (shaderMaterialAlphaTest_ >= 0) {
+                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+            } else {
+                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+            }
+            if (constrainedCache_) {
+                irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(compositeTexture);
+                if (alphaTex) {
+                    buffer->Material.setTexture(1, alphaTex);
+                }
+            }
         } else {
-            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+            if (shaderMaterialAlphaTestRGBA_ >= 0) {
+                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+            } else {
+                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+            }
         }
     } else {
         if (shaderMaterialSolid_ >= 0) {
@@ -747,10 +812,26 @@ irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
                     buffer->Material.BackfaceCulling = false;
                     buffer->Material.Lighting = false;
                     if (hasAlpha) {
-                        if (shaderMaterialAlphaTest_ >= 0) {
-                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        // H02d (Option A): see buildTexturedMesh for rationale.
+                        bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(compositeTexture);
+                        if (isETC1) {
+                            if (shaderMaterialAlphaTest_ >= 0) {
+                                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                            } else {
+                                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                            }
+                            if (constrainedCache_) {
+                                irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(compositeTexture);
+                                if (alphaTex) {
+                                    buffer->Material.setTexture(1, alphaTex);
+                                }
+                            }
                         } else {
-                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                            if (shaderMaterialAlphaTestRGBA_ >= 0) {
+                                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+                            } else {
+                                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                            }
                         }
                     } else {
                         if (shaderMaterialSolid_ >= 0) {
@@ -1316,7 +1397,9 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
             buf->Material.Lighting = false;
             if (texture) {
                 buf->Material.setTexture(0, texture);
-                bool hasAlpha = (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
+                bool isMaskedMaterial = (texIdx < geometry.textureMasked().size()) && geometry.textureMasked()[texIdx];
+                bool hasAlpha = isMaskedMaterial ||
+                    (texturesWithAlpha_.find(texName) != texturesWithAlpha_.end());
                 if (hasAlpha) {
                     if (shaderMaterialAlphaTest_ >= 0) {
                         buf->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);

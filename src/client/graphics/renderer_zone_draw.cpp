@@ -47,7 +47,8 @@ void IrrlichtRenderer::createZoneMesh() {
     // Pass GLSL shader material types if available
     if (zoneShader_ && zoneShader_->isAvailable()) {
         builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                       zoneShader_->getActiveAlphaTest());
+                                       zoneShader_->getActiveAlphaTest(),
+                                       zoneShader_->getActiveAlphaTestRGBA());
     }
 
     irr::scene::IMesh* mesh = nullptr;
@@ -643,7 +644,8 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     bool atlasAvail = zoneShader_ && zoneShader_->isAtlasAvailable();
     if (shaderAvail)
         builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                       zoneShader_->getActiveAlphaTest());
+                                       zoneShader_->getActiveAlphaTest(),
+                                       zoneShader_->getActiveAlphaTestRGBA());
     if (atlasAvail)
         builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
                                              zoneShader_->getActiveAtlasAlpha());

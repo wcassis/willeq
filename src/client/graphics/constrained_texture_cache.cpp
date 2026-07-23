@@ -370,6 +370,30 @@ irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string
     return nullptr;
 }
 
+irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(irr::video::ITexture* texture) const {
+    if (!texture) return nullptr;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [name, entry] : cache_) {
+        if (entry.texture == texture) return entry.alphaTexture;
+    }
+    return nullptr;
+}
+
+bool ConstrainedTextureCache::isETC1Texture(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cache_.find(name);
+    return it != cache_.end() && it->second.isETC1;
+}
+
+bool ConstrainedTextureCache::isETC1Texture(irr::video::ITexture* texture) const {
+    if (!texture) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [name, entry] : cache_) {
+        if (entry.texture == texture) return entry.isETC1;
+    }
+    return false;
+}
+
 void ConstrainedTextureCache::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     // Notify listeners for each texture being cleared
@@ -1517,6 +1541,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     cached.alphaTexture = alphaTexture;
     cached.sizeBytes = gpuSize;
     cached.hasAlpha = entry.hasAlpha;
+    cached.isETC1 = true;  // H02d: companion-based alpha pipeline
     cached.lruIterator = std::prev(lruOrder_.end());
     cache_[name] = cached;
     currentUsage_ += gpuSize;

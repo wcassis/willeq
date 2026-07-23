@@ -218,7 +218,8 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     if (data->zoneShader && data->zoneShader->isAvailable()) {
         builder.setShaderMaterialTypes(
             data->zoneShader->getActiveSolid(),
-            data->zoneShader->getActiveAlphaTest());
+            data->zoneShader->getActiveAlphaTest(),
+            data->zoneShader->getActiveAlphaTestRGBA());
     }
 
     auto wldLoader = data->zone->wldLoader;
@@ -310,7 +311,8 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                 if (data->zoneShader && data->zoneShader->isAvailable()) {
                     objBuilder.setShaderMaterialTypes(
                         data->zoneShader->getActiveSolid(),
-                        data->zoneShader->getActiveAlphaTest());
+                        data->zoneShader->getActiveAlphaTest(),
+                        data->zoneShader->getActiveAlphaTestRGBA());
                 }
 
                 int objCount = 0, objBuffers = 0;
