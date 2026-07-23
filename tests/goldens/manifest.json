@@ -1,0 +1,125 @@
+{
+  "blessedUnder": {
+    "glRenderer": "llvmpipe (LLVM 20.1.2, 256 bits) (Mesa)",
+    "glVersion": "OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2",
+    "note": "Match required on glVersion string. A mismatch means mesa was upgraded on this VM -- re-bless with --bless, do not treat a mismatch alone as a regression."
+  },
+  "benchmark": {
+    "binary": "build-gles2/bin/gles2_zone_benchmark",
+    "resolution": {
+      "width": 800,
+      "height": 600
+    },
+    "warmup": 5,
+    "frames": 60
+  },
+  "zones": [
+    {
+      "zone": "qeynos2",
+      "description": "City/outdoor, proven in H01",
+      "extraArgs": [],
+      "designatedFrames": [
+        0,
+        30,
+        59
+      ],
+      "metrics": {
+        "0": {
+          "draws": 10,
+          "stateChanges": 4,
+          "polys": 27
+        },
+        "30": {
+          "draws": 9,
+          "stateChanges": 4,
+          "polys": 25
+        },
+        "59": {
+          "draws": 9,
+          "stateChanges": 3,
+          "polys": 38
+        }
+      },
+      "p95CpuMsBaseline": 1.71,
+      "memory": {
+        "textureCacheBytesUsed": 42226984,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      }
+    },
+    {
+      "zone": "gfaydark",
+      "description": "Forest/organic, outdoor. Uses --orbit-anchor-surface (H02): the bare bounding-box-center orbit fallback flies the fixed-height camera through empty sky over this zone's uneven terrain, producing entirely blank frames despite nonzero draw counts -- see H02 review.",
+      "extraArgs": [
+        "--orbit-anchor-surface",
+        "--orbit-radius",
+        "60"
+      ],
+      "designatedFrames": [
+        0,
+        30,
+        59
+      ],
+      "metrics": {
+        "0": {
+          "draws": 25,
+          "stateChanges": 5,
+          "polys": 567
+        },
+        "30": {
+          "draws": 9,
+          "stateChanges": 2,
+          "polys": 199
+        },
+        "59": {
+          "draws": 8,
+          "stateChanges": 2,
+          "polys": 164
+        }
+      },
+      "p95CpuMsBaseline": 2.096,
+      "memory": {
+        "textureCacheBytesUsed": 11184800,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      }
+    },
+    {
+      "zone": "befallen",
+      "description": "Dungeon interior (undead crypt). blackburrow and crushbone were tried first and rejected -- both rendered entirely blank frames at every camera position tried (default AND --orbit-anchor-surface, even with all culling disabled and the whole zone force-drawn), for reasons not fully root-caused within this unit's scope; befallen renders correctly with the same --orbit-anchor-surface mechanism. See H02 review for the investigation.",
+      "extraArgs": [
+        "--orbit-anchor-surface",
+        "--orbit-radius",
+        "30"
+      ],
+      "designatedFrames": [
+        0,
+        30,
+        59
+      ],
+      "metrics": {
+        "0": {
+          "draws": 87,
+          "stateChanges": 6,
+          "polys": 415
+        },
+        "30": {
+          "draws": 1248,
+          "stateChanges": 8,
+          "polys": 4457
+        },
+        "59": {
+          "draws": 373,
+          "stateChanges": 7,
+          "polys": 1572
+        }
+      },
+      "p95CpuMsBaseline": 19.511,
+      "memory": {
+        "textureCacheBytesUsed": 2883581,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      }
+    }
+  ]
+}

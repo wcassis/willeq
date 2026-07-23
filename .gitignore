@@ -10,6 +10,10 @@ CTestTestfile.cmake
 Makefile
 _deps/
 
+# Python
+__pycache__/
+*.pyc
+
 # OS/NAS metadata
 .DS_Store
 @eaDir/
@@ -54,6 +58,10 @@ tests/*_tests.cmake
 *.jpg
 *.jpeg
 *.ppm
+
+# H02: golden-frame PNGs are intentionally committed (tests/goldens/manifest.json
+# records what they were blessed under; scripts/ci/visual_gate.sh compares against them)
+!tests/goldens/*.png
 
 # JSON data dumps in root (keep tests/ and src/ json files)
 /*.json

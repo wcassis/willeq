@@ -114,6 +114,19 @@ struct Options {
     // Output
     bool dump = false;            // Print per-frame stats to stdout
     std::string dumpPngPath;      // H01: save the last measured frame as a PNG
+    std::string dumpPngPrefix;    // H02: save designated measured frames as PREFIX_f<N>.png
+    std::vector<int> dumpFrames;  // H02: measured-frame indices (0-based) to dump when dumpPngPrefix is set
+    std::string memoryJsonPath;   // H02: write texture-cache memory stats as JSON
+
+    // H02: orbit-fallback camera anchoring (opt-in; default preserves the
+    // original zone-bounding-box-center behavior exactly). Anchoring the
+    // orbit to the surface-position finder instead avoids the camera flying
+    // through empty sky or embedded rock on tall/uneven zones where the
+    // bounding-box center + auto radius can put the fixed-height orbit far
+    // from any actual walkable geometry.
+    bool orbitAnchorSurface = false;
+    float orbitRadius = 0.0f;         // 0 = keep the existing auto radius (30% of extent)
+    float orbitHeightOffset = 6.0f;   // Added to the anchor Z (approx. player eye height)
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
@@ -173,6 +186,14 @@ static void printUsage(const char* prog) {
     printf("\nOutput:\n");
     printf("  --dump               Print per-frame stats (polys, draws, camera) to stdout\n");
     printf("  --dump-png FILE      Save the last measured frame as a PNG (H01 verification)\n");
+    printf("  --dump-frames LIST   Comma-separated measured-frame indices to dump (H02, e.g. 0,30,59)\n");
+    printf("  --dump-png-prefix P  With --dump-frames: write P_f<N>.png per listed frame\n");
+    printf("  --memory-json FILE   Write texture-cache memory stats (bytes used/limit/count) as JSON (H02)\n");
+    printf("\nOrbit-fallback camera anchoring (H02, opt-in, default off):\n");
+    printf("  --orbit-anchor-surface  Anchor the orbit-fallback camera to the surface-position\n");
+    printf("                          finder's XY instead of the zone bounding-box center\n");
+    printf("  --orbit-radius F        Override the orbit radius in EQ units (default: auto, 30%% of extent)\n");
+    printf("  --orbit-height-offset F Added to the anchor Z for camera height (default: 6.0)\n");
     printf("\nDiagnostic:\n");
     printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("  --composite-entity-test  Render 1 of each race/gender with composite textures\n");
@@ -247,6 +268,23 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--dump") == 0) opts.dump = true;
         else if (strcmp(argv[i], "--dump-png") == 0 && i + 1 < argc) opts.dumpPngPath = argv[++i];
+        else if (strcmp(argv[i], "--dump-frames") == 0 && i + 1 < argc) {
+            opts.dumpFrames.clear();
+            std::string spec = argv[++i];
+            size_t pos = 0;
+            while (pos < spec.size()) {
+                size_t comma = spec.find(',', pos);
+                std::string tok = spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                if (!tok.empty()) opts.dumpFrames.push_back(atoi(tok.c_str()));
+                if (comma == std::string::npos) break;
+                pos = comma + 1;
+            }
+        }
+        else if (strcmp(argv[i], "--dump-png-prefix") == 0 && i + 1 < argc) opts.dumpPngPrefix = argv[++i];
+        else if (strcmp(argv[i], "--memory-json") == 0 && i + 1 < argc) opts.memoryJsonPath = argv[++i];
+        else if (strcmp(argv[i], "--orbit-anchor-surface") == 0) opts.orbitAnchorSurface = true;
+        else if (strcmp(argv[i], "--orbit-radius") == 0 && i + 1 < argc) opts.orbitRadius = atof(argv[++i]);
+        else if (strcmp(argv[i], "--orbit-height-offset") == 0 && i + 1 < argc) opts.orbitHeightOffset = atof(argv[++i]);
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         // --log-level=, --log-only=, --log-module= handled by InitLogging()
         else if (strncmp(argv[i], "--log-", 6) == 0) { /* skip */ }
@@ -1194,14 +1232,27 @@ int main(int argc, char** argv) {
 
     // Fallback to orbit at surface level
     if (!hasNavPath) {
-        float cx = (data->boundsMinX + data->boundsMaxX) * 0.5f;
-        float cy = (data->boundsMinY + data->boundsMaxY) * 0.5f;
+        float cx, cy, cz;
         float extent = std::max(data->boundsMaxX - data->boundsMinX,
                                 data->boundsMaxY - data->boundsMinY);
-        float radius = extent * 0.3f;  // Orbit at 30% of zone extent
-        printf("Using orbit fallback: center=(%.0f,%.0f,%.0f) radius=%.0f\n",
-               cx, cy, surfZ, radius);
-        camera.generateOrbit(cx, cy, surfZ, radius, 10.0f);
+        float radius = (opts.orbitRadius > 0.0f) ? opts.orbitRadius : extent * 0.3f;  // Orbit at 30% of zone extent
+
+        if (opts.orbitAnchorSurface) {
+            // H02: anchor to the densest surface-level region instead of the
+            // raw bounding-box center — on tall/uneven zones (caves, tiered
+            // outdoor terrain) the bbox-center + fixed-height orbit can put
+            // the camera in empty sky or embedded rock for the whole path.
+            cx = surfX;
+            cy = surfY;
+            cz = surfZ + opts.orbitHeightOffset;
+        } else {
+            cx = (data->boundsMinX + data->boundsMaxX) * 0.5f;
+            cy = (data->boundsMinY + data->boundsMaxY) * 0.5f;
+            cz = surfZ;
+        }
+        printf("Using orbit fallback: center=(%.0f,%.0f,%.0f) radius=%.0f%s\n",
+               cx, cy, cz, radius, opts.orbitAnchorSurface ? " [surface-anchored]" : "");
+        camera.generateOrbit(cx, cy, cz, radius, 10.0f);
     }
 
     if (camera.empty()) {
@@ -1535,6 +1586,24 @@ int main(int argc, char** argv) {
             }
         }
 
+        // H02: dump designated measured frames (golden-image CI gate) as
+        // PREFIX_f<N>.png. Same read-before-swap requirement as --dump-png.
+        if (measuring && !opts.dumpPngPrefix.empty() && !opts.dumpFrames.empty()) {
+            int measuredFrame = frame - opts.warmup;
+            if (std::find(opts.dumpFrames.begin(), opts.dumpFrames.end(), measuredFrame)
+                != opts.dumpFrames.end()) {
+                irr::video::IImage* shot = data->driver->createScreenShot();
+                std::string path = opts.dumpPngPrefix + "_f" + std::to_string(measuredFrame) + ".png";
+                if (shot) {
+                    bool ok = data->driver->writeImageToFile(shot, path.c_str());
+                    shot->drop();
+                    printf("[dump-frames] %s: %s\n", path.c_str(), ok ? "saved" : "FAILED to save");
+                } else {
+                    printf("[dump-frames] %s: createScreenShot() FAILED\n", path.c_str());
+                }
+            }
+        }
+
         data->driver->endScene();
 
         // Progress
@@ -1548,6 +1617,31 @@ int main(int argc, char** argv) {
 
     if (!opts.csvFile.empty()) {
         metrics.writeCSV(opts.csvFile);
+    }
+
+    // H02: report/emit texture-cache memory usage for the memory-ceiling CI gate.
+    if (data->textureCache) {
+        size_t used = data->textureCache->getCurrentUsage();
+        size_t limit = data->textureCache->getMemoryLimit();
+        size_t count = data->textureCache->getTextureCount();
+        printf("Texture cache: %zu / %zu bytes (%zu textures)\n", used, limit, count);
+        if (!opts.memoryJsonPath.empty()) {
+            FILE* f = fopen(opts.memoryJsonPath.c_str(), "w");
+            if (f) {
+                fprintf(f,
+                        "{\n"
+                        "  \"zone\": \"%s\",\n"
+                        "  \"textureCacheBytesUsed\": %zu,\n"
+                        "  \"textureCacheBytesLimit\": %zu,\n"
+                        "  \"textureCount\": %zu\n"
+                        "}\n",
+                        opts.zoneName.c_str(), used, limit, count);
+                fclose(f);
+                printf("[memory-json] %s: saved\n", opts.memoryJsonPath.c_str());
+            } else {
+                printf("[memory-json] %s: FAILED to open for write\n", opts.memoryJsonPath.c_str());
+            }
+        }
     }
 
     printf("Benchmark complete.\n");

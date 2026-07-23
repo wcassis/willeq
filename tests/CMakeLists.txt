@@ -732,3 +732,15 @@ ADD_EXECUTABLE(test_eqe1_loader
 )
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_loader PRIVATE ${CMAKE_SOURCE_DIR}/include)
 ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
+
+# H02: golden-frame/metric/memory CI gate on top of H01's x86 GLES2 build
+# (build-gles2/, gitignored, produced by scripts/build-gles2-x86.sh). Not a
+# GTest binary — it's a script that drives gles2_zone_benchmark directly.
+# Registered unconditionally (not gated on an EQT_GLES2 CMake option, since
+# build-gles2/ is a separate, independently-configured build tree from this
+# one) — the script itself detects a missing benchmark binary and exits 125,
+# which SKIP_RETURN_CODE below turns into a clean ctest SKIP rather than a
+# failure, so the default `build/` + ctest suite stays fully independent of
+# whether build-gles2/ has ever been built in this worktree.
+ADD_TEST(NAME visual_gate COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/visual_gate.sh)
+SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125)
