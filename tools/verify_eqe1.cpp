@@ -63,9 +63,9 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
         return result;
     }
 
-    if (header->version != EQE1_VERSION) {
-        fprintf(stderr, "  ERROR: Bad version: %u (expected %u)\n",
-                header->version, EQE1_VERSION);
+    if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2) {
+        fprintf(stderr, "  ERROR: Bad version: %u (expected %u or %u)\n",
+                header->version, EQE1_VERSION, EQE1_VERSION_V2);
         result.errors++;
         return result;
     }
@@ -159,44 +159,59 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
                 result.errors++;
             }
 
-            // Check data size matches mip chain
-            uint32_t expectedSize = etc1MipChainSize(e.width, e.height, e.mipLevels);
+            bool isV2Payload = (e.payloadFormat != EQE1_PAYLOAD_ETC1);
+
+            // Check data size matches mip chain (compressed ETC1 vs uncompressed v2 payload)
+            uint32_t expectedSize = isV2Payload
+                ? payloadMipChainSize(e.width, e.height, e.mipLevels,
+                                       static_cast<EQE1PayloadFormat>(e.payloadFormat))
+                : etc1MipChainSize(e.width, e.height, e.mipLevels);
             if (e.dataSize != expectedSize) {
-                fprintf(stderr, "  ERROR: Entry %u '%s' dataSize=%u (expected %u for %ux%u, %u mips)\n",
-                        i, nameBuf, e.dataSize, expectedSize, e.width, e.height, e.mipLevels);
+                fprintf(stderr, "  ERROR: Entry %u '%s' dataSize=%u (expected %u for %ux%u, %u mips, payloadFormat=%u)\n",
+                        i, nameBuf, e.dataSize, expectedSize, e.width, e.height, e.mipLevels, e.payloadFormat);
                 result.errors++;
             }
 
-            // Check alpha companion
+            // Check alpha companion — only the ETC1 payload path builds one.
+            // v2 payloads (RGBA4444/RGBA8888) carry alpha in-band; hasAlpha=1
+            // with no companion entry is expected and correct for them.
             if (e.hasAlpha) {
-                std::string alphaName = name + "_alpha";
-                if (allNames.find(alphaName) == allNames.end()) {
-                    fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=1 but no '%s' companion entry\n",
-                            i, nameBuf, alphaName.c_str());
-                    result.errors++;
+                if (!isV2Payload) {
+                    std::string alphaName = name + "_alpha";
+                    if (allNames.find(alphaName) == allNames.end()) {
+                        fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=1 but no '%s' companion entry\n",
+                                i, nameBuf, alphaName.c_str());
+                        result.errors++;
+                    }
                 }
                 result.alphaCount++;
             }
 
-            // Check entryType vs hasAlpha consistency
-            if (e.hasAlpha && e.entryType != EQE1_TYPE_ETC1_RGBA) {
-                fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=1 but entryType=%u (expected %u)\n",
-                        i, nameBuf, e.entryType, EQE1_TYPE_ETC1_RGBA);
-                result.errors++;
-            }
-            if (!e.hasAlpha && e.entryType == EQE1_TYPE_ETC1_RGBA) {
-                fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=0 but entryType=%u\n",
-                        i, nameBuf, e.entryType);
-                result.errors++;
+            // Check entryType vs hasAlpha consistency — only meaningful for
+            // the ETC1 companion model; v2 payloads always use the
+            // no-companion entryType regardless of hasAlpha.
+            if (!isV2Payload) {
+                if (e.hasAlpha && e.entryType != EQE1_TYPE_ETC1_RGBA) {
+                    fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=1 but entryType=%u (expected %u)\n",
+                            i, nameBuf, e.entryType, EQE1_TYPE_ETC1_RGBA);
+                    result.errors++;
+                }
+                if (!e.hasAlpha && e.entryType == EQE1_TYPE_ETC1_RGBA) {
+                    fprintf(stderr, "  ERROR: Entry %u '%s' hasAlpha=0 but entryType=%u\n",
+                            i, nameBuf, e.entryType);
+                    result.errors++;
+                }
             }
 
             result.textureCount++;
             result.totalDataSize += e.dataSize;
 
             if (verbose) {
-                printf("    %s %ux%u %u mips %u bytes%s\n",
+                static const char* kPayloadNames[] = {"etc1", "rgb565", "rgba4444", "rgba8888"};
+                const char* payloadName = (e.payloadFormat < 4) ? kPayloadNames[e.payloadFormat] : "?";
+                printf("    %s %ux%u %u mips %u bytes%s [%s]\n",
                        nameBuf, e.width, e.height, e.mipLevels, e.dataSize,
-                       e.hasAlpha ? " +alpha" : "");
+                       e.hasAlpha ? " +alpha" : "", payloadName);
             }
         }
     }

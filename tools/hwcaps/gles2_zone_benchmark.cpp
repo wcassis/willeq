@@ -60,6 +60,9 @@ struct Options {
     int height = 600;
     bool useDRM = false;
     bool forceX11 = false;
+    // P03: flag-gated load-phase timing (cold/warm zone-load-time claim).
+    // Default off — output byte-identical to before when absent.
+    bool reportLoadTime = false;
 
     // Benchmark
     int frames = 300;
@@ -198,6 +201,7 @@ static void printUsage(const char* prog) {
     printf("  --zone NAME       Zone name (default: qeynos2)\n");
     printf("  --eq-path PATH    Path to EQ client directory (required)\n");
     printf("  --eqe1-path PATH  Path to EQE1 texture directory\n");
+    printf("  --report-load-time  Print LOAD_PHASE_MS=<ms> after loadZone() (P03)\n");
     printf("  --navmesh-path P  Path to navmesh directory\n");
     printf("\nDisplay options:\n");
     printf("  --drm             Use DRM/KMS framebuffer\n");
@@ -302,6 +306,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--eqe1-path") == 0 && i + 1 < argc) opts.eqe1Path = argv[++i];
         else if (strcmp(argv[i], "--navmesh-path") == 0 && i + 1 < argc) opts.navmeshPath = argv[++i];
         else if (strcmp(argv[i], "--drm") == 0) opts.useDRM = true;
+        else if (strcmp(argv[i], "--report-load-time") == 0) opts.reportLoadTime = true;
         else if (strcmp(argv[i], "--x11") == 0) opts.forceX11 = true;
         else if (strcmp(argv[i], "--res") == 0 && i + 2 < argc) {
             opts.width = atoi(argv[++i]); opts.height = atoi(argv[++i]);
@@ -905,10 +910,16 @@ int main(int argc, char** argv) {
     benchConfig.loadObjects = opts.loadObjects;
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
 
+    auto loadT0 = std::chrono::steady_clock::now();
     auto data = ZoneBench::loadZone(benchConfig);
+    auto loadT1 = std::chrono::steady_clock::now();
     if (!data) {
         fprintf(stderr, "ERROR: Failed to load zone\n");
         return 1;
+    }
+    if (opts.reportLoadTime) {
+        double loadMs = std::chrono::duration<double, std::milli>(loadT1 - loadT0).count();
+        printf("LOAD_PHASE_MS=%.2f\n", loadMs);
     }
 
     // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.

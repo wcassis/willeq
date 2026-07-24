@@ -79,7 +79,7 @@ bool EQE1Loader::open(const std::string& filepath) {
         return false;
     }
 
-    if (header->version != EQE1_VERSION) {
+    if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2) {
         EQE1_LOG_ERROR("EQE1Loader: unsupported version %u in '%s'", header->version, filepath.c_str());
         fileData_.clear();
         return false;
@@ -138,6 +138,7 @@ bool EQE1Loader::open(const std::string& filepath) {
             tex.hasAlpha = (e.hasAlpha != 0);
             tex.alphaData = nullptr;
             tex.alphaDataSize = 0;
+            tex.payloadFormat = e.payloadFormat;
             textureLookup_[name] = tex;
             textureCount++;
             if (tex.hasAlpha) alphaCount++;

@@ -16,6 +16,13 @@ static constexpr uint32_t EQE1_MAGIC = 0x31455145;
 
 static constexpr uint16_t EQE1_VERSION = 1;
 
+// v2: per-entry payloadFormat field (repurposes the former padding byte —
+// wire-compatible with v1, whose index entries always carry padding==0,
+// which decodes as EQE1_PAYLOAD_ETC1). v2 packs may mix payload formats
+// per-entry; readers dispatch on payloadFormat, not on the file version,
+// so a v1 loader path only needs to accept both version numbers.
+static constexpr uint16_t EQE1_VERSION_V2 = 2;
+
 // Each index entry is exactly 48 bytes
 static constexpr uint32_t EQE1_INDEX_ENTRY_SIZE = 48;
 
@@ -26,9 +33,19 @@ static constexpr uint32_t EQE1_DATA_ALIGNMENT = 16;
 static constexpr uint32_t EQE1_NAME_SIZE = 32;
 
 enum EQE1EntryType : uint8_t {
-    EQE1_TYPE_ETC1_RGB  = 0,  // Opaque ETC1 texture (RGB only)
+    EQE1_TYPE_ETC1_RGB  = 0,  // Opaque ETC1 texture (RGB only), or v2 payload w/o alpha companion
     EQE1_TYPE_ETC1_RGBA = 1,  // ETC1 texture with alpha (has companion _alpha entry)
     EQE1_TYPE_RAW_DATA  = 2,  // Non-texture data (e.g., .wld files)
+};
+
+// v2: payload pixel format carried by an index entry's data bytes.
+// ETC1 (0) is the v1 format and the implicit value of a zero-initialized
+// (v1) padding byte, so v1 packs need no migration.
+enum EQE1PayloadFormat : uint8_t {
+    EQE1_PAYLOAD_ETC1     = 0,  // Compressed ETC1 (glCompressedTexImage2D); companion-alpha model
+    EQE1_PAYLOAD_RGB565   = 1,  // Uncompressed opaque, GL_RGB/GL_UNSIGNED_SHORT_5_6_5
+    EQE1_PAYLOAD_RGBA4444 = 2,  // Uncompressed w/ alpha, GL_RGBA/GL_UNSIGNED_SHORT_4_4_4_4
+    EQE1_PAYLOAD_RGBA8888 = 3,  // Uncompressed w/ alpha, GL_RGBA/GL_UNSIGNED_BYTE
 };
 
 #pragma pack(push, 1)
@@ -46,9 +63,15 @@ struct EQE1IndexEntry {
     uint16_t width;         // Texture width in pixels (0 for RAW_DATA)
     uint16_t height;        // Texture height in pixels (0 for RAW_DATA)
     uint8_t  mipLevels;     // Number of mip levels (0 for RAW_DATA)
-    uint8_t  hasAlpha;      // 1 if companion "{name}_alpha" entry exists
+    uint8_t  hasAlpha;      // 1 if this texture needs alpha-test; for
+                            // EQE1_PAYLOAD_ETC1 it also means a companion
+                            // "{name}_alpha" entry exists. v2 payload formats
+                            // (RGBA4444/RGBA8888) carry alpha in-band and
+                            // build no companion even when hasAlpha==1.
     uint8_t  entryType;     // EQE1EntryType
-    uint8_t  padding;       // 0
+    uint8_t  payloadFormat; // EQE1PayloadFormat (was "padding", always 0 in
+                            // v1 files — 0 == EQE1_PAYLOAD_ETC1, so v1 packs
+                            // decode correctly unmodified)
     uint32_t dataOffset;    // Byte offset from file start to data
     uint32_t dataSize;      // Total data bytes (all mip levels, or raw data size)
 };
@@ -98,6 +121,41 @@ inline uint32_t etc1MipChainSize(uint16_t width, uint16_t height, uint8_t mipLev
 // Align offset up to 16-byte boundary.
 inline uint32_t alignTo16(uint32_t offset) {
     return (offset + 15) & ~15u;
+}
+
+// v2 uncompressed payloads: bytes-per-pixel for a given format.
+// ETC1 has no fixed bpp (block-compressed); callers must use
+// etc1DataSize/etc1MipChainSize for that format instead.
+inline uint32_t payloadBytesPerPixel(EQE1PayloadFormat fmt) {
+    switch (fmt) {
+        case EQE1_PAYLOAD_RGB565:
+        case EQE1_PAYLOAD_RGBA4444:
+            return 2;
+        case EQE1_PAYLOAD_RGBA8888:
+            return 4;
+        case EQE1_PAYLOAD_ETC1:
+        default:
+            return 0;
+    }
+}
+
+// Uncompressed data size for one mip level of a v2 payload format.
+inline uint32_t payloadDataSize(uint16_t width, uint16_t height, EQE1PayloadFormat fmt) {
+    return static_cast<uint32_t>(width) * static_cast<uint32_t>(height) * payloadBytesPerPixel(fmt);
+}
+
+// Total uncompressed bytes for a full mip chain of a v2 payload format.
+inline uint32_t payloadMipChainSize(uint16_t width, uint16_t height, uint8_t mipLevels,
+                                     EQE1PayloadFormat fmt) {
+    uint32_t total = 0;
+    uint16_t w = width;
+    uint16_t h = height;
+    for (uint8_t level = 0; level < mipLevels; ++level) {
+        total += payloadDataSize(w, h, fmt);
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
+    }
+    return total;
 }
 
 }} // namespace EQT::Graphics

@@ -31,6 +31,7 @@ public:
         bool     hasAlpha;
         const uint8_t* alphaData;
         uint32_t alphaDataSize;
+        uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1 (v1 default)
     };
 
     const TextureEntry* lookup(const std::string& name) const;

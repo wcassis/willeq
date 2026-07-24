@@ -187,6 +187,95 @@ void testGetTextureNames() {
     PASS();
 }
 
+// P03: v2 pack round-trip -- build a minimal synthetic v2 file in /tmp with
+// one RGB565 entry, one RGBA4444 entry (hasAlpha=1, NO companion), and one
+// v1-style ETC1 entry, then verify the loader dispatches payloadFormat
+// correctly and accepts the version-2 header.
+void testV2PayloadFormats() {
+    TEST(V2PayloadFormats);
+    const char* tmpPath = "/tmp/test_v2_pack.eqe1";
+
+    auto makeEntry = [](const char* name, uint16_t w, uint16_t h,
+                        uint8_t mips, uint8_t hasAlpha, uint8_t entryType,
+                        uint8_t payloadFormat, uint32_t offset, uint32_t size) {
+        EQE1IndexEntry e = {};
+        std::strncpy(e.name, name, EQE1_NAME_SIZE - 1);
+        e.width = w; e.height = h; e.mipLevels = mips;
+        e.hasAlpha = hasAlpha; e.entryType = entryType;
+        e.payloadFormat = payloadFormat;
+        e.dataOffset = offset; e.dataSize = size;
+        return e;
+    };
+
+    // 4x4, 3 mips (4->2->1): 565 = (16+4+1)*2 = 42 bytes; etc1 = 3 blocks = 24 bytes
+    uint32_t sz565 = payloadMipChainSize(4, 4, 3, EQE1_PAYLOAD_RGB565);
+    uint32_t sz4444 = payloadMipChainSize(4, 4, 3, EQE1_PAYLOAD_RGBA4444);
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    ASSERT_TRUE(sz565 == 42, "expected 42-byte 565 mip chain for 4x4x3");
+    ASSERT_TRUE(sz4444 == 42, "expected 42-byte 4444 mip chain for 4x4x3");
+
+    uint32_t indexEnd = sizeof(EQE1Header) + 3 * EQE1_INDEX_ENTRY_SIZE;
+    uint32_t off1 = alignTo16(indexEnd);
+    uint32_t off2 = alignTo16(off1 + sz565);
+    uint32_t off3 = alignTo16(off2 + sz4444);
+
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        EQE1Header hdr = {};
+        hdr.magic = EQE1_MAGIC;
+        hdr.version = EQE1_VERSION_V2;
+        hdr.numEntries = 3;
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        auto e1 = makeEntry("opaque565", 4, 4, 3, 0, EQE1_TYPE_ETC1_RGB,
+                            EQE1_PAYLOAD_RGB565, off1, sz565);
+        auto e2 = makeEntry("masked4444", 4, 4, 3, 1, EQE1_TYPE_ETC1_RGB,
+                            EQE1_PAYLOAD_RGBA4444, off2, sz4444);
+        auto e3 = makeEntry("legacyetc1", 4, 4, 3, 0, EQE1_TYPE_ETC1_RGB,
+                            EQE1_PAYLOAD_ETC1, off3, szEtc1);
+        out.write(reinterpret_cast<const char*>(&e1), sizeof(e1));
+        out.write(reinterpret_cast<const char*>(&e2), sizeof(e2));
+        out.write(reinterpret_cast<const char*>(&e3), sizeof(e3));
+        std::vector<char> payload(off3 + szEtc1 - indexEnd, 0x5A);
+        out.write(payload.data(), payload.size());
+    }
+
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(tmpPath), "open() failed on v2 pack");
+    ASSERT_TRUE(loader.getEntryCount() == 3, "entry count != 3");
+
+    auto* t565 = loader.lookup("opaque565");
+    ASSERT_TRUE(t565 != nullptr, "opaque565 not found");
+    ASSERT_TRUE(t565->payloadFormat == EQE1_PAYLOAD_RGB565, "payloadFormat != RGB565");
+    ASSERT_TRUE(!t565->hasAlpha, "opaque565 should not have alpha");
+    ASSERT_TRUE(t565->dataSize == sz565, "565 dataSize mismatch");
+
+    auto* t4444 = loader.lookup("masked4444");
+    ASSERT_TRUE(t4444 != nullptr, "masked4444 not found");
+    ASSERT_TRUE(t4444->payloadFormat == EQE1_PAYLOAD_RGBA4444, "payloadFormat != RGBA4444");
+    ASSERT_TRUE(t4444->hasAlpha, "masked4444 should have alpha");
+    // v2 alpha is in-band: NO companion entry, alphaData must stay null
+    ASSERT_TRUE(t4444->alphaData == nullptr, "v2 entry must not link a companion");
+    ASSERT_TRUE(loader.lookup("masked4444_alpha") == nullptr, "no _alpha entry expected");
+
+    auto* tEtc1 = loader.lookup("legacyetc1");
+    ASSERT_TRUE(tEtc1 != nullptr, "legacyetc1 not found");
+    ASSERT_TRUE(tEtc1->payloadFormat == EQE1_PAYLOAD_ETC1, "payloadFormat != ETC1");
+    PASS();
+}
+
+// P03: v1 packs must still load with payloadFormat decoding as ETC1 (the
+// former padding byte is 0 in every v1 file).
+void testV1PayloadFormatDefaultsToETC1() {
+    TEST(V1PayloadFormatDefaultsToETC1);
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(TEST_CHR_FILE), "open() failed");
+    auto* entry = loader.lookup("batch0001");
+    ASSERT_TRUE(entry != nullptr, "lookup returned nullptr");
+    ASSERT_TRUE(entry->payloadFormat == EQE1_PAYLOAD_ETC1,
+                "v1 entry payloadFormat should decode as ETC1 (0)");
+    PASS();
+}
+
 void testClose() {
     TEST(Close);
     EQE1Loader loader;
@@ -211,6 +300,8 @@ int main() {
     testInvalidFile();
     testMoveSemantics();
     testGetTextureNames();
+    testV2PayloadFormats();
+    testV1PayloadFormatDefaultsToETC1();
     testClose();
 
     printf("\n%d passed, %d failed\n", testsPassed, testsFailed);

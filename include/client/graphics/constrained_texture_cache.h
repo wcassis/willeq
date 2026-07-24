@@ -198,7 +198,7 @@ private:
     // Strips .bmp extension and lowercases before lookup.
     // Returns nullptr if not found in any loader.
     struct CompressedEntry {
-        const uint8_t* etc1Data;
+        const uint8_t* etc1Data;  // v2: raw uncompressed payload bytes (name kept for churn's sake)
         uint32_t dataSize;
         uint16_t width;
         uint16_t height;
@@ -206,14 +206,24 @@ private:
         bool hasAlpha;
         const uint8_t* alphaData;
         uint32_t alphaDataSize;
+        uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1
     };
     const CompressedEntry* findCompressedEntry(const std::string& name);
 
     // Upload pre-compressed ETC1 data to GPU via glCompressedTexImage2D.
     // Creates GL texture, wraps in ITexture*, registers in LRU cache.
     // Must be called on a thread with GL context. Caller holds mutex_.
+    // ETC1/v1 path — byte-for-byte untouched by the v2 payload-format work.
     irr::video::ITexture* uploadCompressedETC1(const std::string& name,
                                                 const CompressedEntry& entry);
+
+    // Upload an uncompressed v2 payload (RGB565/RGBA4444/RGBA8888) to GPU via
+    // glTexImage2D with the format/type matching entry.payloadFormat. No
+    // alpha companion is ever built (v2 alpha lives in the main texture's own
+    // alpha channel) — CachedTexture::isETC1 stays false, which routes these
+    // textures to H02d's main-alpha shader variant. Caller holds mutex_.
+    irr::video::ITexture* uploadCompressedV2(const std::string& name,
+                                              const CompressedEntry& entry);
 
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);

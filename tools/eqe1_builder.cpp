@@ -274,6 +274,67 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     return result;
 }
 
+// ── v2 payload encoding (uncompressed RGB565/RGBA4444/RGBA8888) ────────────
+//
+// --payload-format etc1 (default) keeps the original ETC1 encode path
+// (generateMipChain, above) completely untouched byte-for-byte. These
+// helpers are only reached when --payload-format rgba8888|rgb565 is passed.
+
+enum class BuilderPayloadMode { ETC1, RGBA8888, RGB565 };
+
+static inline uint16_t packRGB565(uint8_t r, uint8_t g, uint8_t b) {
+    return static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+
+static inline uint16_t packRGBA4444(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    return static_cast<uint16_t>(((r >> 4) << 12) | ((g >> 4) << 8) | ((b >> 4) << 4) | (a >> 4));
+}
+
+// Pack one RGBA8 level into the target v2 payload's byte layout (little-endian
+// for the 16-bit formats, matching GL_UNSIGNED_SHORT_5_6_5 / _4_4_4_4 on both
+// x86 and ARM — both are little-endian targets for this project).
+static std::vector<uint8_t> packLevel(const uint8_t* rgba, int width, int height,
+                                       EQE1PayloadFormat fmt) {
+    std::vector<uint8_t> out;
+    if (fmt == EQE1_PAYLOAD_RGBA8888) {
+        out.assign(rgba, rgba + static_cast<size_t>(width) * height * 4);
+        return out;
+    }
+    out.resize(static_cast<size_t>(width) * height * 2);
+    for (int i = 0; i < width * height; ++i) {
+        uint8_t r = rgba[i * 4 + 0], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2], a = rgba[i * 4 + 3];
+        uint16_t packed = (fmt == EQE1_PAYLOAD_RGB565) ? packRGB565(r, g, b) : packRGBA4444(r, g, b, a);
+        out[i * 2 + 0] = static_cast<uint8_t>(packed & 0xFF);
+        out[i * 2 + 1] = static_cast<uint8_t>((packed >> 8) & 0xFF);
+    }
+    return out;
+}
+
+// Generate a full uncompressed mip chain for a v2 payload format. Reuses the
+// same box-filter downsample2x as the ETC1 path so mip dimensions/levels are
+// identical across formats (fair comparison basis for the shootout).
+static std::vector<uint8_t> generateV2MipChain(const uint8_t* rgba, int width, int height,
+                                                EQE1PayloadFormat fmt, uint8_t& outMipLevels) {
+    outMipLevels = computeMipLevels(static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+    std::vector<uint8_t> result;
+
+    auto level0 = packLevel(rgba, width, height, fmt);
+    result.insert(result.end(), level0.begin(), level0.end());
+
+    std::vector<uint8_t> current(rgba, rgba + static_cast<size_t>(width) * height * 4);
+    int w = width, h = height;
+    for (uint8_t level = 1; level < outMipLevels; ++level) {
+        int dw, dh;
+        auto downsampled = downsample2x(current.data(), w, h, dw, dh);
+        w = dw;
+        h = dh;
+        auto packed = packLevel(downsampled.data(), w, h, fmt);
+        result.insert(result.end(), packed.begin(), packed.end());
+        current = std::move(downsampled);
+    }
+    return result;
+}
+
 // ── Data structures ─────────────────────────────────────────────────────────
 
 struct TextureEntry {
@@ -281,10 +342,46 @@ struct TextureEntry {
     int width = 0;
     int height = 0;
     bool hasAlpha = false;
-    std::vector<uint8_t> rgbETC1;      // full mip chain
-    std::vector<uint8_t> alphaETC1;    // full mip chain (empty if opaque)
+    std::vector<uint8_t> rgbETC1;      // full mip chain (ETC1-compressed, or raw v2 payload bytes)
+    std::vector<uint8_t> alphaETC1;    // full mip chain (empty if opaque, or if v2 payload — no companion)
     uint8_t mipLevels = 0;
+    uint8_t payloadFormat = EQE1_PAYLOAD_ETC1;
 };
+
+// Encode one decoded RGBA texture into a TextureEntry per the requested
+// builder mode. Shared by both S3D-archive and BMP-directory processing so
+// the two code paths can't drift.
+static TextureEntry encodeTexture(const std::string& name, const uint8_t* rgba,
+                                   int width, int height, bool hasAlpha,
+                                   BuilderPayloadMode mode) {
+    TextureEntry tex;
+    tex.name = name;
+    tex.width = width;
+    tex.height = height;
+    tex.hasAlpha = hasAlpha;
+
+    if (mode == BuilderPayloadMode::ETC1) {
+        tex.payloadFormat = EQE1_PAYLOAD_ETC1;
+        tex.rgbETC1 = generateMipChain(rgba, width, height, false, tex.mipLevels);
+        if (hasAlpha) {
+            uint8_t alphaMips = 0;
+            tex.alphaETC1 = generateMipChain(rgba, width, height, true, alphaMips);
+        }
+        return tex;
+    }
+
+    // v2 modes never build an alpha companion — alpha (if any) is carried
+    // in-band by the payload format itself.
+    EQE1PayloadFormat fmt;
+    if (mode == BuilderPayloadMode::RGBA8888) {
+        fmt = EQE1_PAYLOAD_RGBA8888;
+    } else {  // RGB565 mode: opaque -> RGB565, alpha-carrying -> RGBA4444
+        fmt = hasAlpha ? EQE1_PAYLOAD_RGBA4444 : EQE1_PAYLOAD_RGB565;
+    }
+    tex.payloadFormat = fmt;
+    tex.rgbETC1 = generateV2MipChain(rgba, width, height, fmt, tex.mipLevels);
+    return tex;
+}
 
 struct RawDataEntry {
     std::string name;       // lowercase, with extension (e.g., "zone.wld")
@@ -296,13 +393,18 @@ struct RawDataEntry {
 static bool writeEQE1File(const std::vector<TextureEntry>& textures,
                            const std::vector<RawDataEntry>& rawEntries,
                            const std::string& outputPath,
-                           bool verbose) {
-    // Calculate total entries (textures + alpha companions + raw data)
+                           bool verbose,
+                           uint16_t fileVersion = EQE1_VERSION) {
+    // Calculate total entries (textures + alpha companions + raw data).
+    // v2 payload formats never get a companion entry — their alpha (if any)
+    // is carried in-band by the payload bytes themselves.
     uint16_t numEntries = 0;
     int alphaCount = 0;
     for (const auto& tex : textures) {
-        numEntries++;  // RGB entry
-        if (tex.hasAlpha) { numEntries++; alphaCount++; }  // alpha companion entry
+        numEntries++;  // main entry
+        bool buildsCompanion = tex.hasAlpha && tex.payloadFormat == EQE1_PAYLOAD_ETC1;
+        if (buildsCompanion) { numEntries++; }
+        if (tex.hasAlpha) { alphaCount++; }
     }
     numEntries += static_cast<uint16_t>(rawEntries.size());
 
@@ -320,22 +422,26 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     entries.reserve(numEntries);
 
     for (const auto& tex : textures) {
-        // RGB entry
+        bool buildsCompanion = tex.hasAlpha && tex.payloadFormat == EQE1_PAYLOAD_ETC1;
+
+        // Main entry
         EQE1IndexEntry idx = {};
         std::strncpy(idx.name, tex.name.c_str(), EQE1_NAME_SIZE - 1);
         idx.width = static_cast<uint16_t>(tex.width);
         idx.height = static_cast<uint16_t>(tex.height);
         idx.mipLevels = tex.mipLevels;
         idx.hasAlpha = tex.hasAlpha ? 1 : 0;
-        idx.entryType = tex.hasAlpha ? EQE1_TYPE_ETC1_RGBA : EQE1_TYPE_ETC1_RGB;
+        idx.entryType = buildsCompanion ? EQE1_TYPE_ETC1_RGBA : EQE1_TYPE_ETC1_RGB;
         idx.dataOffset = dataOffset;
         idx.dataSize = static_cast<uint32_t>(tex.rgbETC1.size());
-        idx.padding = 0;
+        idx.payloadFormat = tex.payloadFormat;
         entries.push_back({idx, tex.rgbETC1.data(), idx.dataSize});
         dataOffset = alignTo16(dataOffset + idx.dataSize);
 
-        // Alpha companion entry
-        if (tex.hasAlpha) {
+        // Alpha companion entry — ETC1 payload only. v2 payload formats
+        // carry alpha in-band and never build one (idx.hasAlpha may still be
+        // 1 for them, but buildsCompanion is false).
+        if (buildsCompanion) {
             EQE1IndexEntry alphaIdx = {};
             std::string alphaName = tex.name + "_alpha";
             std::strncpy(alphaIdx.name, alphaName.c_str(), EQE1_NAME_SIZE - 1);
@@ -346,7 +452,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
             alphaIdx.entryType = EQE1_TYPE_ETC1_RGB;  // alpha stored as grayscale RGB
             alphaIdx.dataOffset = dataOffset;
             alphaIdx.dataSize = static_cast<uint32_t>(tex.alphaETC1.size());
-            alphaIdx.padding = 0;
+            alphaIdx.payloadFormat = EQE1_PAYLOAD_ETC1;
             entries.push_back({alphaIdx, tex.alphaETC1.data(), alphaIdx.dataSize});
             dataOffset = alignTo16(dataOffset + alphaIdx.dataSize);
         }
@@ -363,7 +469,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
         idx.entryType = EQE1_TYPE_RAW_DATA;
         idx.dataOffset = dataOffset;
         idx.dataSize = static_cast<uint32_t>(raw.data.size());
-        idx.padding = 0;
+        idx.payloadFormat = EQE1_PAYLOAD_ETC1;
         entries.push_back({idx, reinterpret_cast<const uint8_t*>(raw.data.data()), idx.dataSize});
         dataOffset = alignTo16(dataOffset + idx.dataSize);
     }
@@ -380,7 +486,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     // Write header
     EQE1Header header = {};
     header.magic = EQE1_MAGIC;
-    header.version = EQE1_VERSION;
+    header.version = fileVersion;
     header.numEntries = numEntries;
     out.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
@@ -418,7 +524,8 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
 static bool processArchive(const std::string& eqPath,
                             const std::string& archiveName,
                             const std::string& outputDir,
-                            bool verbose) {
+                            bool verbose,
+                            BuilderPayloadMode mode) {
     std::string archivePath = eqPath + "/" + archiveName;
     PfsArchive archive;
     if (!archive.open(archivePath)) {
@@ -451,11 +558,11 @@ static bool processArchive(const std::string& eqPath,
             continue;
         }
 
-        TextureEntry tex;
-        tex.name = stripExtension(toLower(filename));
+        std::string texName = stripExtension(toLower(filename));
 
         // Decode BMP or DDS-as-BMP
         std::vector<uint8_t> rgba;
+        int width = 0, height = 0;
         if (DDSDecoder::isDDS(fileData)) {
             auto decoded = DDSDecoder::decode(fileData);
             if (!decoded.isValid()) {
@@ -463,29 +570,19 @@ static bool processArchive(const std::string& eqPath,
                 failCount++;
                 continue;
             }
-            tex.width = decoded.width;
-            tex.height = decoded.height;
+            width = decoded.width;
+            height = decoded.height;
             rgba = std::move(decoded.pixels);
         } else {
-            if (!decodeBMP(fileData, rgba, tex.width, tex.height)) {
+            if (!decodeBMP(fileData, rgba, width, height)) {
                 if (verbose) std::cerr << "    SKIP (BMP decode failed): " << filename << std::endl;
                 failCount++;
                 continue;
             }
         }
 
-        tex.hasAlpha = detectAlpha(rgba.data(), tex.width, tex.height);
-
-        // Encode RGB mip chain
-        tex.rgbETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                        false, tex.mipLevels);
-
-        // Encode alpha mip chain if needed
-        if (tex.hasAlpha) {
-            uint8_t alphaMips = 0;
-            tex.alphaETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                              true, alphaMips);
-        }
+        bool hasAlpha = detectAlpha(rgba.data(), width, height);
+        TextureEntry tex = encodeTexture(texName, rgba.data(), width, height, hasAlpha, mode);
 
         if (verbose) {
             std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
@@ -513,8 +610,11 @@ static bool processArchive(const std::string& eqPath,
     }
     std::string outputPath = outputDir + "/" + baseName + ".eqe1";
 
-    // Use shared assembly for texture entries
-    if (!writeEQE1File(textures, rawEntries, outputPath, verbose)) {
+    // Use shared assembly for texture entries. --payload-format etc1 (the
+    // default) writes EQE1_VERSION (1) — byte-for-byte the same file this
+    // tool always produced. v2 modes write EQE1_VERSION_V2.
+    uint16_t fileVersion = (mode == BuilderPayloadMode::ETC1) ? EQE1_VERSION : EQE1_VERSION_V2;
+    if (!writeEQE1File(textures, rawEntries, outputPath, verbose, fileVersion)) {
         return false;
     }
 
@@ -530,6 +630,7 @@ static bool processArchive(const std::string& eqPath,
 static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
                                    const std::string& outputDir,
                                    const std::string& nameOverride,
+                                   BuilderPayloadMode mode,
                                    bool verbose) {
     // Collect .bmp files and non-texture files (JSON, etc.) as raw data from all directories
     std::vector<fs::path> bmpFiles;
@@ -570,29 +671,19 @@ static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
         std::vector<char> fileData((std::istreambuf_iterator<char>(file)),
                                      std::istreambuf_iterator<char>());
 
-        TextureEntry tex;
-        tex.name = stripExtension(toLower(bmpPath.filename().string()));
+        std::string texName = stripExtension(toLower(bmpPath.filename().string()));
 
         // Decode BMP
         std::vector<uint8_t> rgba;
-        if (!decodeBMP(fileData, rgba, tex.width, tex.height)) {
+        int width = 0, height = 0;
+        if (!decodeBMP(fileData, rgba, width, height)) {
             if (verbose) std::cerr << "    SKIP (BMP decode failed): " << bmpPath << std::endl;
             failCount++;
             continue;
         }
 
-        tex.hasAlpha = detectAlpha(rgba.data(), tex.width, tex.height);
-
-        // Encode RGB mip chain
-        tex.rgbETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                        false, tex.mipLevels);
-
-        // Encode alpha mip chain if needed
-        if (tex.hasAlpha) {
-            uint8_t alphaMips = 0;
-            tex.alphaETC1 = generateMipChain(rgba.data(), tex.width, tex.height,
-                                              true, alphaMips);
-        }
+        bool hasAlpha = detectAlpha(rgba.data(), width, height);
+        TextureEntry tex = encodeTexture(texName, rgba.data(), width, height, hasAlpha, mode);
 
         if (verbose) {
             std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
@@ -640,7 +731,8 @@ static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
         rawEntries.push_back(std::move(raw));
     }
 
-    if (!writeEQE1File(textures, rawEntries, outputPath, verbose)) {
+    uint16_t fileVersion = (mode == BuilderPayloadMode::ETC1) ? EQE1_VERSION : EQE1_VERSION_V2;
+    if (!writeEQE1File(textures, rawEntries, outputPath, verbose, fileVersion)) {
         return false;
     }
 
@@ -667,6 +759,13 @@ static void printUsage(const char* argv0) {
               << "\nCommon:\n"
               << "  --output <dir>       Output directory for .eqe1 files\n"
               << "  --verbose            Print per-texture stats\n"
+              << "  --payload-format <etc1|rgba8888|rgb565>\n"
+              << "                       Per-entry payload format (default: etc1, byte-for-byte\n"
+              << "                       identical to the original v1 output). rgba8888 emits\n"
+              << "                       uncompressed RGBA8888 for every texture. rgb565 emits\n"
+              << "                       RGB565 for opaque textures and RGBA4444 for alpha-\n"
+              << "                       carrying ones. Both non-etc1 modes write v2 packs\n"
+              << "                       (version 2) with no alpha companion entries.\n"
               << std::endl;
 }
 
@@ -678,6 +777,7 @@ int main(int argc, char** argv) {
     std::string nameOverride;
     bool allArchives = false;
     bool verbose = false;
+    std::string payloadFormatArg = "etc1";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -691,6 +791,8 @@ int main(int argc, char** argv) {
             bmpDirs.push_back(argv[++i]);
         } else if (arg == "--name" && i + 1 < argc) {
             nameOverride = argv[++i];
+        } else if (arg == "--payload-format" && i + 1 < argc) {
+            payloadFormatArg = argv[++i];
         } else if (arg == "--all") {
             allArchives = true;
         } else if (arg == "--verbose") {
@@ -699,6 +801,19 @@ int main(int argc, char** argv) {
             printUsage(argv[0]);
             return 0;
         }
+    }
+
+    BuilderPayloadMode mode;
+    if (payloadFormatArg == "etc1") {
+        mode = BuilderPayloadMode::ETC1;
+    } else if (payloadFormatArg == "rgba8888") {
+        mode = BuilderPayloadMode::RGBA8888;
+    } else if (payloadFormatArg == "rgb565") {
+        mode = BuilderPayloadMode::RGB565;
+    } else {
+        std::cerr << "Error: unknown --payload-format '" << payloadFormatArg
+                  << "' (expected etc1|rgba8888|rgb565)\n";
+        return 1;
     }
 
     if (outputDir.empty()) {
@@ -728,7 +843,7 @@ int main(int argc, char** argv) {
         for (const auto& dir : bmpDirs) {
             std::cout << "Processing BMP directory: " << dir << std::endl;
         }
-        if (processBmpDirectories(bmpDirs, outputDir, nameOverride, verbose)) {
+        if (processBmpDirectories(bmpDirs, outputDir, nameOverride, mode, verbose)) {
             return 0;
         }
         return 1;
@@ -773,7 +888,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < archives.size(); ++i) {
         std::cout << "\n[" << (i + 1) << "/" << archives.size() << "] " << archives[i] << std::endl;
 
-        if (processArchive(eqPath, archives[i], outputDir, verbose)) {
+        if (processArchive(eqPath, archives[i], outputDir, verbose, mode)) {
             success++;
 
             // Accumulate stats
