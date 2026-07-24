@@ -106,6 +106,11 @@ struct Options {
     // area mode, regardless of estimated area. Mirrors production's
     // adaptiveLightingAreaPPFloor. Ignored in count mode. Default 1.
     int zonePPAreaFloor = 1;
+    // P07d: radius mode -- mirrors production's
+    // AdaptiveLightingBudgetMode::Radius. Mutually exclusive with
+    // zonePPAreaMode (--pp-budget-mode count|area|radius).
+    bool zonePPRadiusMode = false;
+    float zonePPRadiusMargin = 1.0f;
     bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Zone objects
@@ -246,11 +251,12 @@ static void printUsage(const char* prog) {
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
     printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
-    printf("  --pp-budget-mode M   count|area (default: count). area accumulates estimated\n");
+    printf("  --pp-budget-mode M   count|area|radius (default: count). area accumulates estimated\n");
     printf("                       projected screen area nearest-first until it exceeds\n");
     printf("                       --pp-area-factor * screen area, then lightweight (P06)\n");
     printf("  --pp-area-factor F   Area-mode budget factor k (default: 0.75)\n");
     printf("  --pp-area-floor N    Area-mode: first N nearest regions always per-pixel (P07, default: 1)\n");
+    printf("  --pp-radius-margin F Radius-mode: multiplies computed light range R (P07d, default: 1.0)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("  --animate            Enable skeletal animation on entities\n");
@@ -356,12 +362,14 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--zone-pp-budget") == 0 && i + 1 < argc) opts.perPixelZoneBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--pp-budget-mode") == 0 && i + 1 < argc) {
             const char* mode = argv[++i];
-            if (strcmp(mode, "area") == 0) opts.zonePPAreaMode = true;
-            else if (strcmp(mode, "count") == 0) opts.zonePPAreaMode = false;
-            else { fprintf(stderr, "Unknown --pp-budget-mode '%s' (expected count|area)\n", mode); exit(1); }
+            if (strcmp(mode, "area") == 0) { opts.zonePPAreaMode = true; opts.zonePPRadiusMode = false; }
+            else if (strcmp(mode, "radius") == 0) { opts.zonePPRadiusMode = true; opts.zonePPAreaMode = false; }
+            else if (strcmp(mode, "count") == 0) { opts.zonePPAreaMode = false; opts.zonePPRadiusMode = false; }
+            else { fprintf(stderr, "Unknown --pp-budget-mode '%s' (expected count|area|radius)\n", mode); exit(1); }
         }
         else if (strcmp(argv[i], "--pp-area-factor") == 0 && i + 1 < argc) opts.zonePPAreaBudgetFactor = static_cast<float>(atof(argv[++i]));
         else if (strcmp(argv[i], "--pp-area-floor") == 0 && i + 1 < argc) opts.zonePPAreaFloor = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--pp-radius-margin") == 0 && i + 1 < argc) opts.zonePPRadiusMargin = static_cast<float>(atof(argv[++i]));
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
@@ -1607,6 +1615,8 @@ int main(int argc, char** argv) {
     data->zonePPAreaMode = opts.zonePPAreaMode;
     data->zonePPAreaBudgetFactor = opts.zonePPAreaBudgetFactor;
     data->zonePPAreaFloor = opts.zonePPAreaFloor;
+    data->zonePPRadiusMode = opts.zonePPRadiusMode;
+    data->zonePPRadiusMargin = opts.zonePPRadiusMargin;
     if (data->zoneShader) {
         data->materialPerPixelSolid = data->zoneShader->getMaterialTypeSolid();
         data->materialPerPixelAlpha = data->zoneShader->getMaterialTypeAlphaTest();
@@ -1777,12 +1787,16 @@ int main(int argc, char** argv) {
 
             ZoneBench::CameraState camState{pose.x, pose.y, pose.z, dirX, dirY, dirZ, fov, aspect};
             int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
+            float lightRadius = 0.0f;
+            int regionsDemotedRadius = 0;
             drawEntries.clear();
             ZoneBench::collectDrawEntries(
                 *data, camState,
                 opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
                 opts.frontToBack, opts.maxDraws, opts.maxPolys,
-                drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
+                drawEntries, regionsVisible, regionsDrawn, regionsOccluded,
+                &lightRadius, &regionsDemotedRadius);
+            metrics.setRadiusStats(lightRadius, regionsDemotedRadius);
             if (!data->objects.empty()) {
                 int objDraws = 0, objPolys = 0;
                 ZoneBench::collectObjectDrawEntries(
@@ -1971,11 +1985,15 @@ int main(int argc, char** argv) {
                                          camDir.x, camDir.y, camDir.z,
                                          fov, aspect};
         int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
+        float lightRadius = 0.0f;
+        int regionsDemotedRadius = 0;
         ZoneBench::collectDrawEntries(
             *data, camState,
             opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
-            drawEntries, regionsVisible, regionsDrawn, regionsOccluded);
+            drawEntries, regionsVisible, regionsDrawn, regionsOccluded,
+            &lightRadius, &regionsDemotedRadius);
+        if (measuring) metrics.setRadiusStats(lightRadius, regionsDemotedRadius);
 
         // Collect object draw entries (trees, lamps, etc.)
         int objectDrawCalls = 0, objectPolys = 0;

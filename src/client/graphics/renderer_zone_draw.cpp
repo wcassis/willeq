@@ -4,6 +4,7 @@
 #include "common/logging.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -76,6 +77,48 @@ float estimateRegionScreenArea(const irr::core::aabbox3df& worldBox,
 
     if (maxSx <= minSx || maxSy <= minSy) return 0.0f;
     return (maxSx - minSx) * (maxSy - minSy);
+}
+
+// P07d: compute the player light's effective range R -- the distance beyond
+// which the maximum possible per-pixel contribution (attenuation alone,
+// saturating NdotL/wrap-lighting at 1.0 -- conservative, see
+// refactor/P07d_radius_demotion.md) falls below ~1/255. Attenuation is
+// 1/(constant + linear*d + quadratic*d^2) (matches zone_shader.cpp's fillAttenLUT
+// and the FS's attenuation LUT lookup); solve for the largest d where
+// constant + linear*d + quadratic*d^2 <= 255. Returns FLT_MAX if attenuation
+// never decays enough (e.g. quadratic==linear==0, or the solve is otherwise
+// degenerate) -- the caller must treat that as "radius mode demotes nothing"
+// and the plan requires flagging this for orchestrator review rather than
+// tuning unilaterally.
+float computeLightEffectiveRadius(const float atten[3], float margin) {
+    const float c = atten[0];
+    const float l = atten[1];
+    const float q = atten[2];
+    const float target = 255.0f - c;  // constant + l*d + q*d^2 <= 255
+    float r;
+    if (q > 0.0f) {
+        const float disc = l * l + 4.0f * q * target;
+        if (disc < 0.0f || target <= 0.0f) {
+            // Attenuation already below threshold at d=0 (or no real root) --
+            // degenerate; treat conservatively as "never in range" so no
+            // region ever gets a false pass (R=0 demotes everything except
+            // regions overlapping the light position itself).
+            r = 0.0f;
+        } else {
+            r = (-l + std::sqrt(disc)) / (2.0f * q);
+        }
+    } else if (l > 0.0f) {
+        r = (target > 0.0f) ? (target / l) : 0.0f;
+    } else {
+        // No linear or quadratic falloff -- attenuation is constant and never
+        // drops below 1/255 (assuming constant <= 255, always true here since
+        // constant is O(1)). No finite range exists.
+        r = std::numeric_limits<float>::max();
+    }
+    if (r >= std::numeric_limits<float>::max() / margin) {
+        return std::numeric_limits<float>::max();
+    }
+    return r * margin;
 }
 
 } // namespace
@@ -259,7 +302,9 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE] adaptiveLight={} ppSolid={} ppAlpha={} ppWind={} lwSolid={} lwAlpha={} lwWind={} zoneBudget={} objBudget={} zoneBudgetMode={} areaFactor={}",
                  adaptiveLight, ppSolid, ppAlpha, ppWind, lwSolid, lwAlpha, lwWind, zonePPBudget, objectPPBudget,
                  (config_.constrainedConfig.adaptiveLightingBudgetMode ==
-                      ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area) ? "area" : "count",
+                      ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area) ? "area" :
+                 (config_.constrainedConfig.adaptiveLightingBudgetMode ==
+                      ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Radius) ? "radius" : "count",
                  config_.constrainedConfig.adaptiveLightingAreaBudgetFactor);
         adaptiveLightLogOnce = true;
     }
@@ -335,6 +380,41 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                           screenAreaW * screenAreaH;
     }
 
+    // P07d: radius-mode setup. R is computed once per frame from the SAME
+    // light[0] position + attenuation the zone shader will use this frame
+    // (zoneShader_->playerLightPos()/playerLightAtten(), already in Irrlicht
+    // world coords -- see zone_shader.h). adaptiveLightingZoneBudget's numeric
+    // value is unused here (only its >0 gate, folded into `adaptiveLight`,
+    // matters). regionsDemotedRadius/regionsConsideredRadius are informational
+    // only (see refactor/P07d_radius_demotion.md Review for how they're
+    // surfaced via the benchmark tool's per-frame CSV).
+    const bool radiusBudgetMode = adaptiveLight && zoneShader_ &&
+        config_.constrainedConfig.adaptiveLightingBudgetMode ==
+            ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Radius;
+    irr::core::vector3df lightPos;
+    float lightRangeSq = 0.0f;
+    float lightRange = 0.0f;
+    int regionsDemotedRadius = 0;
+    int regionsConsideredRadius = 0;
+    if (radiusBudgetMode) {
+        const float* pos = zoneShader_->playerLightPos();
+        lightPos = irr::core::vector3df(pos[0], pos[1], pos[2]);
+        lightRange = computeLightEffectiveRadius(
+            zoneShader_->playerLightAtten(),
+            config_.constrainedConfig.adaptiveLightingRadiusMargin);
+        lightRangeSq = (lightRange >= std::numeric_limits<float>::max())
+                           ? std::numeric_limits<float>::max()
+                           : lightRange * lightRange;
+    }
+
+    static bool radiusLogOnce = false;
+    if (radiusBudgetMode && !radiusLogOnce) {
+        LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE][P07d] radius mode: lightPos=({},{},{}) R={} margin={}",
+                 lightPos.X, lightPos.Y, lightPos.Z, lightRange,
+                 config_.constrainedConfig.adaptiveLightingRadiusMargin);
+        radiusLogOnce = true;
+    }
+
     int regionsDrawn = 0;
     int portalCulled = 0;
     int occlusionCulledCount = 0;
@@ -382,11 +462,48 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             // still accumulated above, so later regions demote exactly as
             // before. Count mode is untouched (areaBudgetMode false there).
             regionUseLW = (regionsDrawn >= areaPPFloor) && cumulativeRegionArea > areaBudgetLimit;
+        } else if (radiusBudgetMode) {
+            // P07d: demote iff the CLOSEST POINT of the region's world AABB
+            // to the player light position is beyond the light's effective
+            // range R -- closest-point (clamp-to-box), not center distance,
+            // so a huge nearby region (outskirts case) whose center is far
+            // away is not wrongly demoted. Same clamp-to-box formula
+            // sim_visibility.cpp uses for entry.distanceSq (camera-to-region),
+            // but computed against the LIGHT position, not the camera --
+            // they differ slightly (light sits at player pos + vertical
+            // offset, see renderer_entities.cpp), so entry.distanceSq is not
+            // reused directly.
+            irr::scene::IMesh* regionMesh = it->second->getMesh();
+            bool inRange = true;  // conservative default if mesh missing
+            if (regionMesh) {
+                irr::core::aabbox3df worldBox = regionMesh->getBoundingBox();
+                worldBox.MinEdge += it->second->getPosition();
+                worldBox.MaxEdge += it->second->getPosition();
+                const float nearX = std::max(worldBox.MinEdge.X, std::min(lightPos.X, worldBox.MaxEdge.X));
+                const float nearY = std::max(worldBox.MinEdge.Y, std::min(lightPos.Y, worldBox.MaxEdge.Y));
+                const float nearZ = std::max(worldBox.MinEdge.Z, std::min(lightPos.Z, worldBox.MaxEdge.Z));
+                const float dx = nearX - lightPos.X;
+                const float dy = nearY - lightPos.Y;
+                const float dz = nearZ - lightPos.Z;
+                const float distSq = dx * dx + dy * dy + dz * dz;
+                inRange = distSq <= lightRangeSq;
+                regionsConsideredRadius++;
+                if (!inRange) regionsDemotedRadius++;
+            }
+            regionUseLW = !inRange;
         } else {
             regionUseLW = regionsDrawn >= zonePPBudget;
         }
         collectMeshBuffers(it->second, entry.distanceSq, regionUseLW);
         regionsDrawn++;
+    }
+
+    // P07d: per-frame informational trace (module TRACE, filtered by default) --
+    // demoted-region fraction for the current pose, for measurement/review use.
+    if (radiusBudgetMode && regionsConsideredRadius > 0) {
+        LOG_TRACE(MOD_GRAPHICS, "[ADAPTIVE][P07d] R={} regionsConsidered={} regionsDemoted={} fraction={}",
+                  lightRange, regionsConsideredRadius, regionsDemotedRadius,
+                  static_cast<float>(regionsDemotedRadius) / static_cast<float>(regionsConsideredRadius));
     }
 
     // Add visible object mesh buffers (sorted alongside zone geometry)

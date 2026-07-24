@@ -27,6 +27,12 @@ struct FrameMetrics {
     // called for this frame.
     int alphaTestDraws = 0;
     int solidDraws = 0;
+    // P07d (--pp-budget-mode radius, off by default): computed light effective
+    // range R and the count of zone regions demoted to lightweight this frame
+    // (see refactor/P07d_radius_demotion.md). Both 0 unless radius mode is
+    // active for this run.
+    float lightRadius = 0.0f;
+    int regionsDemotedRadius = 0;
 };
 
 class MetricsCollector {
@@ -72,6 +78,13 @@ public:
     void setMaterialCounts(int alphaTestDraws, int solidDraws) {
         current_.alphaTestDraws = alphaTestDraws;
         current_.solidDraws = solidDraws;
+    }
+
+    // P07d: record radius-mode stats for the frame currently being built
+    // (call any time between beginFrame() and endFrame()).
+    void setRadiusStats(float lightRadius, int regionsDemotedRadius) {
+        current_.lightRadius = lightRadius;
+        current_.regionsDemotedRadius = regionsDemotedRadius;
     }
 
     void endGpuSync() {

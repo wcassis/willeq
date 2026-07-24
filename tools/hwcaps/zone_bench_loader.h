@@ -222,6 +222,16 @@ struct ZoneBenchData {
     // per-pixel regardless of estimated area, in area mode only. Mirrors
     // EQT::Graphics::ConstrainedRendererConfig::adaptiveLightingAreaPPFloor.
     int zonePPAreaFloor = 1;
+    // P07d: radius mode -- mirrors
+    // EQT::Graphics::ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Radius.
+    // Demotes a region iff the closest point of its world AABB to the player
+    // light position is beyond the light's effective attenuation range R
+    // (computed from the SAME zoneShader player-light position/attenuation
+    // used to render, times zonePPRadiusMargin). Mutually exclusive with
+    // zonePPAreaMode (--pp-budget-mode count|area|radius); perPixelZoneBudget's
+    // numeric value is unused in this mode (only its on/off gate applies).
+    bool zonePPRadiusMode = false;
+    float zonePPRadiusMargin = 1.0f;
     irr::s32 materialPerPixelSolid = -1;   // Per-pixel shader material type
     irr::s32 materialPerPixelAlpha = -1;   // Per-pixel alpha test material type
     irr::s32 materialLWSolid = -1;         // Lightweight (per-vertex) shader material type
@@ -269,7 +279,13 @@ void collectDrawEntries(
     std::vector<DrawEntry>& outEntries,
     int& outRegionsVisible,
     int& outRegionsDrawn,
-    int& outRegionsOccluded);
+    int& outRegionsOccluded,
+    // P07d: optional radius-mode reporting (see refactor/P07d_radius_demotion.md).
+    // Non-null only when the caller wants the computed R + demoted-region
+    // fraction for this frame (e.g. for --csv reporting). Left untouched
+    // (not written) when zonePPRadiusMode is off.
+    float* outLightRadius = nullptr,
+    int* outRegionsDemotedRadius = nullptr);
 
 // Place entities at evenly-spaced positions along a camera path.
 // Positions are in EQ coords; entities face random directions.

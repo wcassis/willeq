@@ -131,7 +131,7 @@ struct ConstrainedRendererConfig {
     // exhaust a region-count budget and pay full per-pixel fill cost on most of the
     // screen. Object budget (adaptiveLightingObjectBudget) is unaffected -- still
     // count-based regardless of this mode (see P06 review).
-    enum class AdaptiveLightingBudgetMode { Count, Area };
+    enum class AdaptiveLightingBudgetMode { Count, Area, Radius };
     AdaptiveLightingBudgetMode adaptiveLightingBudgetMode = AdaptiveLightingBudgetMode::Count;
     // k in "cumulative estimated area > k * screen area -> lightweight" (area mode
     // only). Default 0.75 -- see refactor/P06_area_aware_budget.md Review for the
@@ -154,6 +154,30 @@ struct ConstrainedRendererConfig {
     // only protects the nearest N from ever flipping themselves. Ignored in
     // Count mode. See refactor/P07_pp_hybrid_floor.md.
     int adaptiveLightingAreaPPFloor = 1;
+
+    // P07d: radius-based demotion -- visually lossless by construction, since
+    // the per-pixel and lightweight zone shaders differ ONLY in the player
+    // light (light[0], the sole per-pixel term; the other 7 point lights are
+    // per-vertex in both paths). A region whose world AABB lies entirely
+    // beyond the player light's effective attenuation range renders
+    // (near-)identically under either shader, so demoting exactly those
+    // regions costs nothing visually. Demotion test: the CLOSEST POINT of the
+    // region's world AABB to the player light position is beyond range R
+    // (closest-point, NOT region-center -- a huge nearby region whose center
+    // is far away must not be wrongly demoted). R is computed once per frame
+    // from the SAME light[0] position + attenuation (constant/linear/quadratic)
+    // the zone shader receives this frame, as the distance where the maximum
+    // possible contribution (attenuation alone, i.e. NdotL/wrap-lighting
+    // assumed saturated at 1.0 -- conservative, since wrap lighting's
+    // (NdotL+0.5)/1.5 floor of 1/3 can only make the true contribution
+    // smaller) falls below ~1/255. adaptiveLightingRadiusMargin multiplies
+    // the computed R for headroom/tuning (default 1.0 = no margin). Unlike
+    // Area mode, adaptiveLightingZoneBudget's numeric value is UNUSED in
+    // Radius mode -- only its >0/==0 on/off gate applies (radius mode's
+    // demotion decision comes entirely from R, not from a region count or
+    // area budget). Count and Area modes are untouched by this field. See
+    // refactor/P07d_radius_demotion.md.
+    float adaptiveLightingRadiusMargin = 1.0f;
 
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;

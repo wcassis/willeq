@@ -504,12 +504,16 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         std::string mode = preset["adaptiveLightingBudgetMode"].asString();
         adaptiveLightingBudgetMode = (mode == "area")
             ? AdaptiveLightingBudgetMode::Area
-            : AdaptiveLightingBudgetMode::Count;
+            : (mode == "radius")
+                  ? AdaptiveLightingBudgetMode::Radius
+                  : AdaptiveLightingBudgetMode::Count;
     }
     if (preset.isMember("adaptiveLightingAreaBudgetFactor"))
         adaptiveLightingAreaBudgetFactor = preset["adaptiveLightingAreaBudgetFactor"].asFloat();
     if (preset.isMember("adaptiveLightingAreaPPFloor"))
         adaptiveLightingAreaPPFloor = preset["adaptiveLightingAreaPPFloor"].asInt();
+    if (preset.isMember("adaptiveLightingRadiusMargin"))
+        adaptiveLightingRadiusMargin = preset["adaptiveLightingRadiusMargin"].asFloat();
     if (preset.isMember("mesh_memory_mb"))
         meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
     if (preset.isMember("meshMemoryBytes"))

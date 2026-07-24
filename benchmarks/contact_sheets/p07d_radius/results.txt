@@ -1,0 +1,20 @@
+qeynos2_f0 max_delta=170 diff_pixels=144421/480000 (30.088%)
+qeynos2_f1 max_delta=113 diff_pixels=52966/480000 (11.035%)
+qeynos2_f2 max_delta=192 diff_pixels=309884/480000 (64.559%)
+gfaydark_f0 max_delta=143 diff_pixels=35335/480000 (7.361%)
+gfaydark_f1 max_delta=30 diff_pixels=3690/480000 (0.769%)
+gfaydark_f2 max_delta=144 diff_pixels=46232/480000 (9.632%)
+befallen_f0 max_delta=148 diff_pixels=332054/480000 (69.178%)
+befallen_f1 max_delta=0 diff_pixels=0/480000 (0.000%)
+befallen_f2 max_delta=86 diff_pixels=329192/480000 (68.582%)
+qeynos2_fr291 max_delta=0 diff_pixels=0/480000 (0.000%)
+qeynos2_fr509 max_delta=0 diff_pixels=0/480000 (0.000%)
+qeynos2_fr627 max_delta=0 diff_pixels=0/480000 (0.000%)
+qeynos2_fr634 max_delta=99 diff_pixels=1/480000 (0.000%)
+
+--- Targeted radius-vs-full-PP check (frames where radius mode actually
+    demoted >=1 region, found in the x86 moving-path run; core "lossless by
+    construction" claim, distinct from the count-vs-radius comparison above
+    which compares against a KNOWN-LOSSY baseline, not full-PP) ---
+targeted_pose1 (304.8,112.1,6.1,103.3,0.0, 1 region demoted): max_delta=0 diff_pixels=0/480000 (pixel-identical)
+targeted_pose2 (319.7,50.5,6.1,351.3,0.0, 1 region demoted): max_delta=0 diff_pixels=0/480000 (pixel-identical)

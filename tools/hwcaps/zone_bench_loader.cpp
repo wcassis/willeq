@@ -806,6 +806,34 @@ static float estimateRegionScreenAreaBench(const irr::core::aabbox3df& worldBox,
     return (maxSx - minSx) * (maxSy - minSy);
 }
 
+// P07d: mirrors IrrlichtRenderer's (anonymous-namespace) computeLightEffectiveRadius
+// in src/client/graphics/renderer_zone_draw.cpp -- same attenuation solve
+// (1/(c + l*d + q*d^2) < 1/255, saturating NdotL/wrap-lighting at 1.0,
+// conservative) so benchmark radius-mode numbers predict production behavior.
+static float computeLightEffectiveRadiusBench(const float atten[3], float margin) {
+    const float c = atten[0];
+    const float l = atten[1];
+    const float q = atten[2];
+    const float target = 255.0f - c;
+    float r;
+    if (q > 0.0f) {
+        const float disc = l * l + 4.0f * q * target;
+        if (disc < 0.0f || target <= 0.0f) {
+            r = 0.0f;
+        } else {
+            r = (-l + std::sqrt(disc)) / (2.0f * q);
+        }
+    } else if (l > 0.0f) {
+        r = (target > 0.0f) ? (target / l) : 0.0f;
+    } else {
+        r = std::numeric_limits<float>::max();
+    }
+    if (r >= std::numeric_limits<float>::max() / margin) {
+        return std::numeric_limits<float>::max();
+    }
+    return r * margin;
+}
+
 void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
@@ -819,7 +847,9 @@ void collectDrawEntries(
     std::vector<DrawEntry>& outEntries,
     int& outRegionsVisible,
     int& outRegionsDrawn,
-    int& outRegionsOccluded)
+    int& outRegionsOccluded,
+    float* outLightRadius,
+    int* outRegionsDemotedRadius)
 {
     outEntries.clear();
     outRegionsVisible = 0;
@@ -977,6 +1007,47 @@ void collectDrawEntries(
         }
     }
 
+    // P07d: radius-mode budget decision. Computed as its own pre-pass (order
+    // doesn't matter here -- unlike area mode, radius mode's per-region
+    // decision is independent across regions, no running total) keyed by
+    // region index. Mirrors IrrlichtRenderer::drawZoneGeometrySorted's
+    // radius-mode branch: demote iff the closest point of the region's world
+    // AABB to the player light position is beyond R.
+    std::unordered_map<size_t, bool> radiusUseLW;
+    int regionsDemotedRadiusLocal = 0;
+    int regionsConsideredRadiusLocal = 0;
+    float lightRadiusLocal = 0.0f;
+    if (data.adaptiveLighting && data.zonePPRadiusMode && data.zoneShader) {
+        const float* pos = data.zoneShader->playerLightPos();
+        irr::core::vector3df lightPos(pos[0], pos[1], pos[2]);
+        lightRadiusLocal = computeLightEffectiveRadiusBench(
+            data.zoneShader->playerLightAtten(), data.zonePPRadiusMargin);
+        const float lightRangeSq = (lightRadiusLocal >= std::numeric_limits<float>::max())
+                                        ? std::numeric_limits<float>::max()
+                                        : lightRadiusLocal * lightRadiusLocal;
+        for (const auto& re : visibleRegions) {
+            auto& rd = data.regions[re.idx];
+            if (!rd.mesh) continue;
+            irr::core::aabbox3df worldBox = rd.mesh->getBoundingBox();
+            worldBox.MinEdge += rd.position;
+            worldBox.MaxEdge += rd.position;
+            const float nearX = std::max(worldBox.MinEdge.X, std::min(lightPos.X, worldBox.MaxEdge.X));
+            const float nearY = std::max(worldBox.MinEdge.Y, std::min(lightPos.Y, worldBox.MaxEdge.Y));
+            const float nearZ = std::max(worldBox.MinEdge.Z, std::min(lightPos.Z, worldBox.MaxEdge.Z));
+            const float dx = nearX - lightPos.X;
+            const float dy = nearY - lightPos.Y;
+            const float dz = nearZ - lightPos.Z;
+            const float distSq = dx * dx + dy * dy + dz * dz;
+            const bool demote = distSq > lightRangeSq;
+            radiusUseLW[re.idx] = demote;
+            regionsConsideredRadiusLocal++;
+            if (demote) regionsDemotedRadiusLocal++;
+        }
+    }
+    if (outLightRadius) *outLightRadius = lightRadiusLocal;
+    if (outRegionsDemotedRadius) *outRegionsDemotedRadius = regionsDemotedRadiusLocal;
+    (void)regionsConsideredRadiusLocal;
+
     // Collect mesh buffers from visible regions
     // visibleRegions is sorted front-to-back (nearest first) when
     // frontToBack||occlusionCull; the area-mode decision above does not rely
@@ -993,6 +1064,9 @@ void collectDrawEntries(
         } else if (data.zonePPAreaMode) {
             auto itLW = areaUseLW.find(re.idx);
             usePerPixel = (itLW == areaUseLW.end()) || !itLW->second;
+        } else if (data.zonePPRadiusMode) {
+            auto itLW = radiusUseLW.find(re.idx);
+            usePerPixel = (itLW == radiusUseLW.end()) || !itLW->second;
         } else {
             usePerPixel = regionIdx < data.perPixelZoneBudget;
         }

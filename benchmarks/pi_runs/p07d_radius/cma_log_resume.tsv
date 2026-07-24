@@ -1,0 +1,8 @@
+1784908449	moving_count (pre)	82044	395676
+1784908554	moving_count (post, invocation #1)	62156	392964
+1784908571	static_count (pre)	62156	395660
+1784908592	static_count (post, invocation #2)	59216	392192
+1784908608	static_radius (pre)	59216	395764
+1784908628	static_radius (post, invocation #3)	57776	390772
+1784908645	static_all_lw (pre)	57816	397640
+1784908664	static_all_lw (post, invocation #4)	57268	396828
