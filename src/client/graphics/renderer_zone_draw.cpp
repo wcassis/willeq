@@ -121,6 +121,26 @@ float computeLightEffectiveRadius(const float atten[3], float margin) {
     return r * margin;
 }
 
+// H02b/Q02: address-independent 16-bit texture grouping ID for materialKey.
+// The old key was `(uintptr_t)texture & 0xFFFF` -- the low bits of a heap
+// POINTER. That made the material-sorted draw order depend on allocation
+// addresses, so ASLR (or merely a different environment-block size shifting
+// the layout) reordered equal-material draws between otherwise identical
+// runs -> z-fighting pixel flips on coplanar geometry and a wobbling
+// stateChanges count. This mirrors the fix already applied to the benchmark
+// loader (tools/hwcaps/zone_bench_loader.cpp, textureGroupId(), H02b) -- keep
+// the two copies in sync. An FNV-1a hash of the texture NAME is just as good
+// a grouping key and is stable across runs.
+static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
+    if (!mat.getTexture(0)) return 0;
+    const irr::io::path& tname = mat.getTexture(0)->getName().getPath();
+    uint32_t h = 2166136261u;
+    for (irr::u32 ci = 0; ci < tname.size(); ++ci) {
+        h = (h ^ static_cast<uint8_t>(tname[ci])) * 16777619u;
+    }
+    return h & 0xFFFF;
+}
+
 } // namespace
 
 void IrrlichtRenderer::createZoneMesh() {
@@ -336,12 +356,7 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
 
             // Material key: (materialType << 16) | textureID
             // Groups all same-shader, same-texture draws together
-            uint32_t texId = 0;
-            if (mat.getTexture(0)) {
-                // Use low 16 bits of texture pointer as a hash
-                texId = static_cast<uint32_t>(
-                    reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-            }
+            uint32_t texId = textureGroupId(mat);
             irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
             uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
@@ -548,11 +563,7 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                               node->getName(), i, bi, (int)mat.MaterialType, objUseLW, matOverride);
                 }
 
-                uint32_t texId = 0;
-                if (mat.getTexture(0)) {
-                    texId = static_cast<uint32_t>(
-                        reinterpret_cast<uintptr_t>(mat.getTexture(0)) & 0xFFFF);
-                }
+                uint32_t texId = textureGroupId(mat);
                 irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
                 uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
