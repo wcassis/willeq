@@ -27,6 +27,23 @@ actually goes in simple-scene/low-fps areas.
   ground+sky overdraw vs city's depth-testing? Would show as GPU-bound
   (gpu_ms), distinguishable from B/C (cpu_ms).
 
+## Reference data (Will, 2026-07-24): /mnt/projects/willeq-orangepi/200*.log
+
+March benchmark series: qeynos2, 200 entities placed along the camera path,
+1000 frames, moving camera. Headlines: baseline 31.8 avg fps @97 draws;
++LOD 40.2 @78; +LOD@40 46.8 @68 (Will's ">45fps with per-pixel" — note the
+adaptive-budget system was the "per-pixel" config: header line "Adaptive
+lighting: entity PP budget=N, zone PP budget=M"); LOD40+pp15+zonePP10 =
+30.4 avg in a very busy scene. CAUTION: the "v2" logs (4h later) are much
+slower at identical names (baseline 31.8 vs v2 20.6) — config drift
+mid-series; treat v1/v2 as separate populations. Implications binding on
+this unit: (a) use the benchmark's entity path-placement mode
+(entities=200) and MOVING camera paths as the primary instrument — match
+the zl10 config for comparability; (b) production lighting is the adaptive
+budget system, so any lighting numbers reported here use budgets, not the
+all-PP/all-lightweight extremes; (c) fps tracked draw calls across the
+whole March series — quantify that relationship in current code.
+
 ## Method
 
 1. **Find the poses**: use --pose-search plus manual picks to get 3
