@@ -178,13 +178,16 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   (benchmarks/contact_sheets/p07_pp_floor/) confirms the near-black
   artifact is gone — anomaly/corridor poses byte-identical to count-mode,
   city pairs visually indistinguishable. All software gates green.
-- **Pi A/B for P07 is PENDING**: the Orange Pi went unreachable
-  (No route to host) while idle on 2026-07-24 ~12:40 UTC, before the P07
-  session ran a single timed invocation; kmsg follower captured no panic
-  trace (last kernel msgs were P06-era drop_caches hours earlier).
-  Needs a physical power cycle, then run: count vs area-floor1 vs all-LW
-  at the P07 plan's poses (static --camera-pose fallback documented
-  there). Acceptance criteria in refactor/P07_pp_hybrid_floor.md.
+- **Pi A/B for P07 running as P07b** (dispatched after Will power-cycled
+  the Pi 2026-07-24): count vs area-floor1 vs all-LW at the P07 plan's
+  poses. Acceptance criteria in refactor/P07_pp_hybrid_floor.md.
+- **Pi froze HARD while idle** (2026-07-24 ~12:40 UTC, before P07 ran any
+  timed invocation): monitor showed NO error output (Will confirmed) and
+  kmsg follower captured no trace — a hard hang, not a panic, so a serial
+  console would likely capture nothing either. Distinct from the P01
+  panic (which followed 41 dense DRM cycles); this one was idle. If it
+  recurs, consider a hardware watchdog (`/dev/watchdog`, sunxi-wdt exists
+  on H3) so the Pi self-recovers instead of needing physical power cycles.
 - After the Pi numbers: default-flip decision (orangepi preset →
   area+floor), golden re-bless with Will, Pi tier-2 baseline rerun.
 
