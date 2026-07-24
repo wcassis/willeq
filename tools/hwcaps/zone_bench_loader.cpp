@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <limits>
 #include <set>
+#include <unordered_map>
 
 #include "common/logging.h"
 
@@ -760,6 +761,51 @@ static irr::s32 debugMaterialOverride(const ZoneBench::ZoneBenchData& data, irr:
     return -1;
 }
 
+// P06: mirrors IrrlichtRenderer's (anonymous-namespace) estimateRegionScreenArea
+// in src/client/graphics/renderer_zone_draw.cpp -- same method (project 8
+// world-space AABB corners with the current view-projection, clamped
+// screen-space bounding-rect area; any corner at/behind the near plane ->
+// conservative full-screen area) so benchmark area-mode numbers predict
+// production area-mode behavior.
+static float estimateRegionScreenAreaBench(const irr::core::aabbox3df& worldBox,
+                                            const irr::core::matrix4& viewProj,
+                                            float screenW, float screenH) {
+    const float fullScreenArea = screenW * screenH;
+    const irr::core::vector3df& mn = worldBox.MinEdge;
+    const irr::core::vector3df& mx = worldBox.MaxEdge;
+    const irr::core::vector3df corners[8] = {
+        {mn.X, mn.Y, mn.Z}, {mx.X, mn.Y, mn.Z}, {mn.X, mx.Y, mn.Z}, {mx.X, mx.Y, mn.Z},
+        {mn.X, mn.Y, mx.Z}, {mx.X, mn.Y, mx.Z}, {mn.X, mx.Y, mx.Z}, {mx.X, mx.Y, mx.Z}
+    };
+
+    float minSx = std::numeric_limits<float>::max();
+    float maxSx = -std::numeric_limits<float>::max();
+    float minSy = std::numeric_limits<float>::max();
+    float maxSy = -std::numeric_limits<float>::max();
+    for (int i = 0; i < 8; ++i) {
+        float clip[4];
+        viewProj.transformVect(clip, corners[i]);
+        if (clip[3] <= 0.0001f) {
+            return fullScreenArea;  // At/behind near plane -- conservative.
+        }
+        const float invW = 1.0f / clip[3];
+        const float sx = (clip[0] * invW * 0.5f + 0.5f) * screenW;
+        const float sy = (1.0f - (clip[1] * invW * 0.5f + 0.5f)) * screenH;
+        minSx = std::min(minSx, sx);
+        maxSx = std::max(maxSx, sx);
+        minSy = std::min(minSy, sy);
+        maxSy = std::max(maxSy, sy);
+    }
+
+    minSx = std::max(0.0f, minSx);
+    maxSx = std::min(screenW, maxSx);
+    minSy = std::max(0.0f, minSy);
+    maxSy = std::min(screenH, maxSy);
+
+    if (maxSx <= minSx || maxSy <= minSy) return 0.0f;
+    return (maxSx - minSx) * (maxSy - minSy);
+}
+
 void collectDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
@@ -888,16 +934,62 @@ void collectDrawEntries(
         }
     }
 
+    // P06: area-mode budget decision. Computed as a separate pre-pass sorted
+    // strictly by camera distance, independent of visibleRegions' actual
+    // iteration/draw order below (which only follows distance when
+    // frontToBack||occlusionCull requested a sort) -- the area accumulation's
+    // nearest-first invariant must hold regardless of --no-front-to-back.
+    // Mirrors IrrlichtRenderer::drawZoneGeometrySorted's area-mode branch.
+    std::unordered_map<size_t, bool> areaUseLW;
+    if (data.adaptiveLighting && data.zonePPAreaMode) {
+        std::vector<const RegionEntry*> distOrder;
+        distOrder.reserve(visibleRegions.size());
+        for (const auto& re : visibleRegions) distOrder.push_back(&re);
+        std::sort(distOrder.begin(), distOrder.end(),
+                  [](const RegionEntry* a, const RegionEntry* b) { return a->distSq < b->distSq; });
+
+        irr::core::matrix4 viewProj = data.driver->getTransform(irr::video::ETS_PROJECTION);
+        viewProj *= data.driver->getTransform(irr::video::ETS_VIEW);
+        irr::core::dimension2du screenSize = data.driver->getScreenSize();
+        float screenW = static_cast<float>(screenSize.Width);
+        float screenH = static_cast<float>(screenSize.Height);
+        float areaBudgetLimit = data.zonePPAreaBudgetFactor * screenW * screenH;
+        float cumulativeArea = 0.0f;
+        for (const auto* rePtr : distOrder) {
+            auto& rd = data.regions[rePtr->idx];
+            // Add this region's own area FIRST, then decide -- even the
+            // nearest region can flip to lightweight if its own footprint
+            // alone exceeds the budget (see the matching comment in
+            // IrrlichtRenderer::drawZoneGeometrySorted).
+            if (rd.mesh) {
+                irr::core::aabbox3df worldBox = rd.mesh->getBoundingBox();
+                worldBox.MinEdge += rd.position;
+                worldBox.MaxEdge += rd.position;
+                cumulativeArea += estimateRegionScreenAreaBench(worldBox, viewProj, screenW, screenH);
+            }
+            areaUseLW[rePtr->idx] = cumulativeArea > areaBudgetLimit;
+        }
+    }
+
     // Collect mesh buffers from visible regions
-    // visibleRegions is sorted front-to-back (nearest first).
+    // visibleRegions is sorted front-to-back (nearest first) when
+    // frontToBack||occlusionCull; the area-mode decision above does not rely
+    // on this loop's order (see pre-pass above).
     int regionIdx = 0;
     for (const auto& re : visibleRegions) {
         auto& rd = data.regions[re.idx];
         if (!rd.mesh) continue;
 
         // Adaptive zone lighting: nearest N regions get per-pixel, rest get lightweight
-        bool usePerPixel = !data.adaptiveLighting ||
-                           regionIdx < data.perPixelZoneBudget;
+        bool usePerPixel;
+        if (!data.adaptiveLighting) {
+            usePerPixel = true;
+        } else if (data.zonePPAreaMode) {
+            auto itLW = areaUseLW.find(re.idx);
+            usePerPixel = (itLW == areaUseLW.end()) || !itLW->second;
+        } else {
+            usePerPixel = regionIdx < data.perPixelZoneBudget;
+        }
 
         irr::core::matrix4 worldMat;
         worldMat.setTranslation(rd.position);

@@ -28,6 +28,58 @@ extern void gles2DeleteStaticHWBuffer(void* driver, const void* meshBuffer);
 namespace EQT {
 namespace Graphics {
 
+namespace {
+
+// P06: estimate a region's projected screen-space coverage, cheaply and
+// conservatively -- project the 8 world-space (Irrlicht-coords) AABB corners
+// with the current view-projection matrix and take the clamped screen-space
+// bounding-rect area. If any corner is at/behind the near plane (w <= 0),
+// the region is treated as covering the full screen -- conservative (never
+// under-counts), and avoids near-plane clipping math for a decision that
+// only needs to be directionally right, not exact (see
+// refactor/P06_area_aware_budget.md "Projection details").
+float estimateRegionScreenArea(const irr::core::aabbox3df& worldBox,
+                                const irr::core::matrix4& viewProj,
+                                float screenW, float screenH) {
+    const float fullScreenArea = screenW * screenH;
+    const irr::core::vector3df& mn = worldBox.MinEdge;
+    const irr::core::vector3df& mx = worldBox.MaxEdge;
+    const irr::core::vector3df corners[8] = {
+        {mn.X, mn.Y, mn.Z}, {mx.X, mn.Y, mn.Z}, {mn.X, mx.Y, mn.Z}, {mx.X, mx.Y, mn.Z},
+        {mn.X, mn.Y, mx.Z}, {mx.X, mn.Y, mx.Z}, {mn.X, mx.Y, mx.Z}, {mx.X, mx.Y, mx.Z}
+    };
+
+    float minSx = std::numeric_limits<float>::max();
+    float maxSx = -std::numeric_limits<float>::max();
+    float minSy = std::numeric_limits<float>::max();
+    float maxSy = -std::numeric_limits<float>::max();
+    for (int i = 0; i < 8; ++i) {
+        float clip[4];
+        viewProj.transformVect(clip, corners[i]);
+        if (clip[3] <= 0.0001f) {
+            return fullScreenArea;  // At/behind near plane -- conservative.
+        }
+        const float invW = 1.0f / clip[3];
+        const float sx = (clip[0] * invW * 0.5f + 0.5f) * screenW;
+        const float sy = (1.0f - (clip[1] * invW * 0.5f + 0.5f)) * screenH;
+        minSx = std::min(minSx, sx);
+        maxSx = std::max(maxSx, sx);
+        minSy = std::min(minSy, sy);
+        maxSy = std::max(maxSy, sy);
+    }
+
+    // Clamp to viewport.
+    minSx = std::max(0.0f, minSx);
+    maxSx = std::min(screenW, maxSx);
+    minSy = std::max(0.0f, minSy);
+    maxSy = std::min(screenH, maxSy);
+
+    if (maxSx <= minSx || maxSy <= minSy) return 0.0f;
+    return (maxSx - minSx) * (maxSy - minSy);
+}
+
+} // namespace
+
 void IrrlichtRenderer::createZoneMesh() {
     if (!currentZone_ || !currentZone_->geometry) {
         return;
@@ -204,8 +256,11 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
 
     static bool adaptiveLightLogOnce = false;
     if (!adaptiveLightLogOnce) {
-        LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE] adaptiveLight={} ppSolid={} ppAlpha={} ppWind={} lwSolid={} lwAlpha={} lwWind={} zoneBudget={} objBudget={}",
-                 adaptiveLight, ppSolid, ppAlpha, ppWind, lwSolid, lwAlpha, lwWind, zonePPBudget, objectPPBudget);
+        LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE] adaptiveLight={} ppSolid={} ppAlpha={} ppWind={} lwSolid={} lwAlpha={} lwWind={} zoneBudget={} objBudget={} zoneBudgetMode={} areaFactor={}",
+                 adaptiveLight, ppSolid, ppAlpha, ppWind, lwSolid, lwAlpha, lwWind, zonePPBudget, objectPPBudget,
+                 (config_.constrainedConfig.adaptiveLightingBudgetMode ==
+                      ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area) ? "area" : "count",
+                 config_.constrainedConfig.adaptiveLightingAreaBudgetFactor);
         adaptiveLightLogOnce = true;
     }
 
@@ -260,6 +315,25 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         occlusionCulled = &currentFrameSimResults_->occlusionCulledRegions;
     }
 
+    // P06: area-mode budget setup. sortedZoneDrawList_ is already nearest-first
+    // (frustum-visible regions sorted by distanceSq in sim_visibility.cpp), so
+    // the existing draw loop below can accumulate cumulative screen area in
+    // order without a separate distance pre-pass.
+    const bool areaBudgetMode = adaptiveLight &&
+        config_.constrainedConfig.adaptiveLightingBudgetMode ==
+            ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area;
+    irr::core::matrix4 zoneViewProj;
+    float screenAreaW = 0.0f, screenAreaH = 0.0f, areaBudgetLimit = 0.0f;
+    float cumulativeRegionArea = 0.0f;
+    if (areaBudgetMode) {
+        zoneViewProj = captured3DProj_ * captured3DView_;
+        irr::core::dimension2du screenSize = driver_->getScreenSize();
+        screenAreaW = static_cast<float>(screenSize.Width);
+        screenAreaH = static_cast<float>(screenSize.Height);
+        areaBudgetLimit = config_.constrainedConfig.adaptiveLightingAreaBudgetFactor *
+                          screenAreaW * screenAreaH;
+    }
+
     int regionsDrawn = 0;
     int portalCulled = 0;
     int occlusionCulledCount = 0;
@@ -281,7 +355,30 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
         auto it = regionMeshNodes_.find(entry.regionIdx);
         if (it == regionMeshNodes_.end() || !it->second) continue;
 
-        bool regionUseLW = adaptiveLight && regionsDrawn >= zonePPBudget;
+        bool regionUseLW;
+        if (!adaptiveLight) {
+            regionUseLW = false;
+        } else if (areaBudgetMode) {
+            // Add this region's own estimated area to the running total FIRST,
+            // then decide. This must include the current region -- the whole
+            // point of area mode is that even the FIRST (nearest) region can
+            // flip to lightweight if its own screen footprint alone exceeds
+            // the budget (the P05 outskirts case: a single huge region covers
+            // nearly the whole screen). Deciding on the pre-region total would
+            // always give the nearest region a free pass, exactly reproducing
+            // the count-mode bug for the single/few-huge-region case.
+            irr::scene::IMesh* regionMesh = it->second->getMesh();
+            if (regionMesh) {
+                irr::core::aabbox3df worldBox = regionMesh->getBoundingBox();
+                worldBox.MinEdge += it->second->getPosition();
+                worldBox.MaxEdge += it->second->getPosition();
+                cumulativeRegionArea += estimateRegionScreenArea(
+                    worldBox, zoneViewProj, screenAreaW, screenAreaH);
+            }
+            regionUseLW = cumulativeRegionArea > areaBudgetLimit;
+        } else {
+            regionUseLW = regionsDrawn >= zonePPBudget;
+        }
         collectMeshBuffers(it->second, entry.distanceSq, regionUseLW);
         regionsDrawn++;
     }

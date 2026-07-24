@@ -1,0 +1,18 @@
+1784886908	lightweight0 (lightweight0) (pre)	47180	396128
+1784887054	fullpp (fullpp) (pre)	37828	393900
+1784887095	fullpp (fullpp) (pre)	79008	394536
+1784887216	fullpp (fullpp) (post, invocation #1)	57176	395012
+1784887304	area (area) (pre)	57404	393024
+1784887406	area (area) (post, invocation #1)	42156	392324
+1784887418	count (count) (pre)	42168	395812
+1784887527	count (count) (post, invocation #2)	42172	394464
+1784888352	area2 (area) (pre)	42220	393148
+1784888451	area2 (area) (post, invocation #1)	42212	394000
+1784888463	count2 (count) (pre)	42212	396016
+1784888572	count2 (count) (post, invocation #2)	42212	393964
+1784888640	area95 (area) (pre)	42376	392756
+1784888739	area95 (area) (post, invocation #1)	42376	392616
+1784889941	area_final (area) (pre)	42376	390236
+1784890040	area_final (area) (post, invocation #1)	42376	392236
+1784890052	count_final (count) (pre)	42376	391780
+1784890160	count_final (count) (post, invocation #2)	42892	393516

@@ -98,6 +98,10 @@ struct Options {
     bool adaptiveLighting = false; // Per-pixel near, per-vertex far
     int perPixelBudget = 15;       // Max entities with per-pixel lighting
     int perPixelZoneBudget = 20;   // Max zone regions with per-pixel lighting
+    // P06: zone budget mode -- mirrors production's adaptiveLightingBudgetMode.
+    // Default false (count mode, unchanged behavior).
+    bool zonePPAreaMode = false;
+    float zonePPAreaBudgetFactor = 0.75f;
     bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Zone objects
@@ -238,6 +242,10 @@ static void printUsage(const char* prog) {
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
     printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
+    printf("  --pp-budget-mode M   count|area (default: count). area accumulates estimated\n");
+    printf("                       projected screen area nearest-first until it exceeds\n");
+    printf("                       --pp-area-factor * screen area, then lightweight (P06)\n");
+    printf("  --pp-area-factor F   Area-mode budget factor k (default: 0.75)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("  --animate            Enable skeletal animation on entities\n");
@@ -341,6 +349,13 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--adaptive-lighting") == 0) opts.adaptiveLighting = true;
         else if (strcmp(argv[i], "--perpixel-budget") == 0 && i + 1 < argc) opts.perPixelBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--zone-pp-budget") == 0 && i + 1 < argc) opts.perPixelZoneBudget = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--pp-budget-mode") == 0 && i + 1 < argc) {
+            const char* mode = argv[++i];
+            if (strcmp(mode, "area") == 0) opts.zonePPAreaMode = true;
+            else if (strcmp(mode, "count") == 0) opts.zonePPAreaMode = false;
+            else { fprintf(stderr, "Unknown --pp-budget-mode '%s' (expected count|area)\n", mode); exit(1); }
+        }
+        else if (strcmp(argv[i], "--pp-area-factor") == 0 && i + 1 < argc) opts.zonePPAreaBudgetFactor = static_cast<float>(atof(argv[++i]));
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
@@ -1583,6 +1598,8 @@ int main(int argc, char** argv) {
     data->adaptiveLighting = opts.adaptiveLighting;
     data->perPixelEntityBudget = opts.perPixelBudget;
     data->perPixelZoneBudget = opts.perPixelZoneBudget;
+    data->zonePPAreaMode = opts.zonePPAreaMode;
+    data->zonePPAreaBudgetFactor = opts.zonePPAreaBudgetFactor;
     if (data->zoneShader) {
         data->materialPerPixelSolid = data->zoneShader->getMaterialTypeSolid();
         data->materialPerPixelAlpha = data->zoneShader->getMaterialTypeAlphaTest();

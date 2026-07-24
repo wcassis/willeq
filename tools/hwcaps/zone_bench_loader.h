@@ -209,6 +209,15 @@ struct ZoneBenchData {
     bool adaptiveLighting = false;
     int perPixelEntityBudget = 15;         // Max entities with per-pixel lighting
     int perPixelZoneBudget = 20;           // Max zone regions with per-pixel lighting
+    // P06: zone budget mode -- mirrors
+    // EQT::Graphics::ConstrainedRendererConfig::AdaptiveLightingBudgetMode so
+    // benchmark numbers predict production behavior. Count (default) = flat
+    // region-count budget (unchanged). Area = accumulate estimated projected
+    // screen area nearest-first, switch to lightweight once cumulative area
+    // exceeds zonePPAreaBudgetFactor * screen area. Entity budget is unaffected
+    // (still count-based regardless of this mode).
+    bool zonePPAreaMode = false;
+    float zonePPAreaBudgetFactor = 0.75f;  // see P06 config header comment for rationale
     irr::s32 materialPerPixelSolid = -1;   // Per-pixel shader material type
     irr::s32 materialPerPixelAlpha = -1;   // Per-pixel alpha test material type
     irr::s32 materialLWSolid = -1;         // Lightweight (per-vertex) shader material type

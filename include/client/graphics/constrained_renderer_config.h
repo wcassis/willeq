@@ -122,6 +122,27 @@ struct ConstrainedRendererConfig {
     int adaptiveLightingZoneBudget = 0;      // Max zone regions with per-pixel lighting (0=disabled)
     int adaptiveLightingObjectBudget = 0;    // Max objects with per-pixel lighting (0=disabled)
 
+    // P06: how the zone budget above is spent. Count (default, unchanged behavior)
+    // treats adaptiveLightingZoneBudget as a flat region COUNT in front-to-back draw
+    // order. Area instead accumulates each region's estimated projected screen-space
+    // footprint (nearest-first) and switches to lightweight once the running total
+    // exceeds adaptiveLightingAreaBudgetFactor * screen area -- fixes the outskirts
+    // anomaly (see refactor/P06_area_aware_budget.md) where 1-6 huge regions never
+    // exhaust a region-count budget and pay full per-pixel fill cost on most of the
+    // screen. Object budget (adaptiveLightingObjectBudget) is unaffected -- still
+    // count-based regardless of this mode (see P06 review).
+    enum class AdaptiveLightingBudgetMode { Count, Area };
+    AdaptiveLightingBudgetMode adaptiveLightingBudgetMode = AdaptiveLightingBudgetMode::Count;
+    // k in "cumulative estimated area > k * screen area -> lightweight" (area mode
+    // only). Default 0.75 -- see refactor/P06_area_aware_budget.md Review for the
+    // measured basis: k must be < 1.0 for a single near-full-screen outskirts
+    // region to flip on its own (the whole point of area mode), and 0.6-0.95
+    // measured equivalently at both the outskirts and city reference poses on the
+    // Pi (city's cumulative area saturates within the first 1-3 regions regardless
+    // of k in that range), so 0.75 is a mid-range value with no measured
+    // downside relative to the extremes tested.
+    float adaptiveLightingAreaBudgetFactor = 0.75f;
+
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
 
