@@ -125,13 +125,17 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   (proportional to bytes read). The P02 abort protocol reacted to a
   harmless-but-reclaimable condition; telemetry stays (it's how we learned
   all this) but thresholds should key on reclaim behavior, not raw CmaFree.
-- **The REAL instability: the v1 EQE1 loader heap-loads ENTIRE packs** —
-  including 139MB of never-sampled global archives on a 494MB board. The
-  EQE1 "stall bursts" track whole-file heap loading (zone-only pack dir:
-  8/8 runs burst-free at <=0.3ms spread); memory pressure from this is also
-  the most plausible remaining explanation for the P01 panic. FIX CANDIDATE
-  #1: mmap/streaming loader instead of whole-file heap reads + load only
-  referenced archives; consider drop_caches on zone transitions.
+- ~~v1 loader whole-pack heap loading~~ **FIXED by P04 (2026-07-24)**:
+  mmap + lazy referenced-only archive opening. Result: -107 to -110MB
+  resident per zone; the historical /pmem "untracked RSS" mystery solved
+  (the EQE1 open step's invisible heap was 110-112MB of it; steady
+  untracked now ~21-24MB); EQE1 stall bursts eliminated on the FULL 4.7GB
+  production dir (8/8 burst-free, p95 spread <=0.27ms); Pi steady RSS
+  92-95MB. Bonus fixes: zone archive/wld released post-BSP (-7.5 to
+  -12.7MB), ZoneLoadSnapshot lifetime, dead snapshot fields, a pre-existing
+  loader-vector data race. Remaining named gap: entityprep bytes accessor
+  for the audit line; live willeq zone-in audit pending next server
+  session.
 - **Format shootout verdict (P03, awaiting Will's decision):** measured
   fairly, ETC1 wins steady-state speed (-3.5 to -12.4% vs RGBA), GPU memory
   (8x), pack bytes, and cold load (NFS-transfer-bound → smallest pack
