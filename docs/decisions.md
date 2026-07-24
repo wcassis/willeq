@@ -54,6 +54,53 @@ strategy. The clean-room C99 rewrite proposal is rejected and archived at
 **Sequencing:** Irrlicht re-port starts only after Batch F (file splitting)
 completes, using the `renderer` branch as reference.
 
+## 2026-07-24 — Zone lighting budget: COUNT mode stays production default (P05→P07d investigation closed)
+
+**Decision:** The adaptive per-pixel zone lighting budget remains COUNT
+mode (nearest-N-regions-by-draw-order keep per-pixel, default budget 20).
+The P05 outskirts anomaly is understood, bounded, and ACCEPTED as the cost
+of correct near lighting.
+
+**The full evidence chain (refactor/P05..P07d reviews):**
+- P05: sparse-region poses pay full per-pixel fill (2.2-2.6x) because a
+  region-count budget never engages there. Cost at the worst poses:
+  ~18ms/50fps at 720p — above the 30fps KPI; not the KPI bottleneck.
+- P06 (area mode): statistically all-lightweight (the camera-containing
+  region's near-plane fallback exhausts any k<1 budget at region 1);
+  visually unlights near geometry — per-vertex light interpolates to ~0
+  on giant polys (black walls).
+- P07/P07b (area+floor): fixes the underfoot case, passed all timing
+  criteria on the Pi, but P07c's golden regeneration exposed near-field
+  blackouts of frame-dominant structures (the building you look AT can be
+  region #2-3 by distance). Part of area-mode's measured savings was
+  unlighting visible geometry. Flip REJECTED at orchestrator review.
+- P07d (radius mode, "lossless by construction"): the player light's
+  effective range is R=712 EQ units — it reaches essentially the whole
+  zone, so truly-lossless demotion demotes ~nothing (0 regions at all 15
+  reference views; radius ≈ full-PP cost). Genuinely free savings DO NOT
+  EXIST at the current light attenuation.
+- Bonus finding: count-mode itself is visibly different from full
+  per-pixel at 7/13 reference views (up to 69% of pixels) — and it is the
+  config Will has played and accepted. "Pixel-identical to full-PP" was
+  never the real quality bar; "looks right in practice" is, and that bar
+  is Will's eyes on contact sheets.
+
+**Implications:**
+- Per-pixel lighting cost can only be cut by visibly changing lighting
+  somewhere. Further lighting micro-optimization is poor ROI; the 30fps
+  KPI problem is draw-call/CPU-bound (befallen p95: 368 draws, 26.5ms
+  CPU). Draw-call reduction (P08) is the funded thread.
+- Area/floor/radius modes remain in the tree as flag-gated experiments
+  (config-selectable, default count). The one future lever: radius-mode
+  with margin<1 (perceptual rather than 1/255 threshold) — would need a
+  visual-knee study; only revisit if lighting cost resurfaces after the
+  draw-call work.
+- task/P07c-default-flip stays parked unmerged (its contact sheets
+  document the rejection). Its harness-alignment idea survives as a
+  deferred item: the visual gate and Pi tier-2 baseline currently measure
+  FULL per-pixel, not production count-mode config — align them (with a
+  count-mode golden re-bless) so KPI tracking reflects what ships.
+
 ## 2026-07-24 — Texture format: KEEP ETC1 (Will's decision, P03 data)
 
 **Decision:** ETC1 flatpack (EQE1 v1) remains the production texture path.

@@ -178,14 +178,24 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   (benchmarks/contact_sheets/p07_pp_floor/) confirms the near-black
   artifact is gone — anomaly/corridor poses byte-identical to count-mode,
   city pairs visually indistinguishable. All software gates green.
-- **Pi A/B COMPLETE (P07b, merged 9ac4762): all four acceptance criteria
-  PASS.** Anomaly poses tie count-mode (+0.0/+0.1%); city poses -19 to
-  -24% vs count (78-103% of pure-area's win retained); whole-run
-  -11.3% (76.85→68.19ms, 13.0→14.7fps); geometry byte-identical.
-  Ready for the default flip: orangepi preset → area+floor1, golden
-  re-bless with Will, Pi tier-2 baseline rerun — awaiting Will's go.
-  (Path drift 5th occurrence — static-pose fallback used, see the
-  record/replay unit below.)
+- **THREAD CLOSED (P07d, 2026-07-24)** — see docs/decisions.md
+  "Zone lighting budget: COUNT mode stays production default" for the
+  full chain and rationale. Area+floor flip was REJECTED at golden
+  review (near-field blackouts of frame-dominant geometry); radius mode
+  proved lossless savings don't exist (player light R=712 units covers
+  the zone). Count/area/floor/radius all remain flag-gated; production
+  unchanged. task/P07c-default-flip parked unmerged (rejection evidence
+  in its contact sheets).
+- **Harness alignment (salvaged from P07c, still worth doing):** visual
+  gate + Pi tier-2 baseline currently measure FULL per-pixel, not the
+  production count-mode adaptive config — add the production flags to
+  both, regenerate goldens (count-mode look), re-bless with Will,
+  re-capture tier-2. Small unit; fold into the next harness-touching
+  batch (path drift is 6 occurrences counting P07d — do record/replay
+  first or together).
+- Optional future lever (only if lighting cost resurfaces post-P08):
+  radius-mode margin<1 perceptual-knee study (mechanism landed in P07d,
+  config `adaptiveLightingRadiusMargin`).
 - **Pi froze HARD while idle** (2026-07-24 ~12:40 UTC, before P07 ran any
   timed invocation): monitor showed NO error output (Will confirmed) and
   kmsg follower captured no trace — a hard hang, not a panic, so a serial
