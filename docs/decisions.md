@@ -54,6 +54,30 @@ strategy. The clean-room C99 rewrite proposal is rejected and archived at
 **Sequencing:** Irrlicht re-port starts only after Batch F (file splitting)
 completes, using the `renderer` branch as reference.
 
+## 2026-07-24 — Texture format: KEEP ETC1 (Will's decision, P03 data)
+
+**Decision:** ETC1 flatpack (EQE1 v1) remains the production texture path.
+Measured fairly (P03): ETC1 wins steady-state p95 (-3.5 to -12.4% vs RGBA),
+GPU texture memory (8x), pack bytes, and cold load (NFS-transfer-bound).
+The suspected CMA leak was overturned (page-cache borrowing of movable CMA
+pages, fully reclaimable). Quality cost (29.5dB vs lossless) accepted.
+RGB565/4444 v2 payloads remain implemented and measured as the fallback
+(one config flag away) if ETC1's complexity costs (alpha companions,
+unrolled textures) ever tip the balance.
+
+**Companion decisions from the same review:**
+- The real instability is the v1 loader's whole-file heap loading (139MB of
+  never-referenced global archives on a 494MB board) — fix funded (P04:
+  mmap/streaming + referenced-archives-only + full sequential-loader memory
+  audit; /pmem has shown large UNTRACKED RSS historically).
+- Per-pixel lighting STAYS ENABLED as a feature; headroom comes from
+  dynamic LOD, draw-call reduction, and loader/memory fixes — not from
+  defaulting to lightweight (Will: >45fps WITH per-pixel mid-city qeynos2;
+  the outskirts render SLOWER despite simpler scenes — anomaly under
+  investigation, P05).
+- Draw-call reduction/minimization remains a critical strategic thread
+  (it motivated composite entities and is not finished).
+
 ## 2026-07-23 — Batch F complete; per-step decomposition deferred to Batch G
 
 **Status:** Batch F finished 2026-07-23 — all 25 units, 40 new domain TUs,
