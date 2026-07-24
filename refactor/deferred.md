@@ -117,25 +117,31 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   it automatically. Candidate levers already in this file: unified priority
   queue, GL-on-render-thread fallback, pointer-key draw order, render-loop
   blocking items.
-- **PANIC MECHANISM CONFIRMED (P02): the ETC1/EQE1 texture path leaks CMA
-  kernel-side** — per-invocation drains of -14 to -81MB that survive process
-  exit; only reboot recovers (5/5 times to exactly 102,056kB). RGBA runs are
-  CMA-neutral across 24 DRM cycles (rapid DRM cycling per se does NOT leak).
-  One telemetered run reproduced P01's pre-panic state (CmaFree 3.3MB) with
-  a clean abort. Root cause location unknown: could be our ETC1 upload path
-  misusing the driver (per the standing "Lima bugs are always ours" prior —
-  check COpenGLES2Driver's compressed-upload GEM handling first) or a real
-  lima/sun4i kernel bug (upstream report candidate if our side is clean).
-- **Lighting model is a real, quantified lever (P02/6b):** per-pixel costs
-  +17-18% total frame time on real geometry (GPU-only 1.2-2.0x — the
-  historical 3x was synthetic). All-lightweight takes qeynos2 28.8→34.1 fps
-  (CROSSES the 30fps KPI) and gfaydark 24.4→28.5. Decision candidate:
-  default the orangepi preset to lightweight/adaptive lighting.
-- **EQE1 steady-state is FASTER than RGBA** (30/18/29ms cycle vs 33/20/34 —
-  the compression bandwidth win is real) but ~2/3 of runs suffer episodic
-  1-4-frame stall bursts (+10-30ms) that dominate p95, NOT correlated with
-  CMA level/session position/reboot recency. Open question; folded into the
-  P03 decision calculus.
+- **CMA "leak" OVERTURNED (P03 controlled measurement):** no texture format
+  leaks CMA kernel-side (true-leak check with cache drops: all formats
+  <=+60kB per run). P02's "reboot-only drain" was PAGE CACHE borrowing
+  movable CMA pages while reading pack files — a plain drop_caches restores
+  it mid-session (52->102MB observed), and RGBA drained MORE than ETC1
+  (proportional to bytes read). The P02 abort protocol reacted to a
+  harmless-but-reclaimable condition; telemetry stays (it's how we learned
+  all this) but thresholds should key on reclaim behavior, not raw CmaFree.
+- **The REAL instability: the v1 EQE1 loader heap-loads ENTIRE packs** —
+  including 139MB of never-sampled global archives on a 494MB board. The
+  EQE1 "stall bursts" track whole-file heap loading (zone-only pack dir:
+  8/8 runs burst-free at <=0.3ms spread); memory pressure from this is also
+  the most plausible remaining explanation for the P01 panic. FIX CANDIDATE
+  #1: mmap/streaming loader instead of whole-file heap reads + load only
+  referenced archives; consider drop_caches on zone transitions.
+- **Format shootout verdict (P03, awaiting Will's decision):** measured
+  fairly, ETC1 wins steady-state speed (-3.5 to -12.4% vs RGBA), GPU memory
+  (8x), pack bytes, and cold load (NFS-transfer-bound → smallest pack
+  fastest). Quality cost is real (29.5dB vs 8888). RGB565/4444 is now a
+  fully implemented, measured fallback (+2.3-7.6% vs ETC1, 46.4dB visually
+  transparent, no companion machinery). Draft recommendation in
+  refactor/P03_payload_format_shootout.md: KEEP ETC1, fix the loader.
+- **Bonus from P03:** the EQE1 upload path was silently compiled OUT of x86
+  builds (guard widened) — ETC1 packs now work under llvmpipe, enabling
+  future ETC1-path goldens/CI coverage on the VM.
 - **EQE1-vs-RGBA (P01 correction of the H04 headline):** H04's "EQE1
   consistently slower" was partly a measurement-methodology artifact — its
   harness never varied A/B ordering (pi_bench_run.py), and P01's ABBA runs
