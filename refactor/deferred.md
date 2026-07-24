@@ -178,9 +178,14 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   (benchmarks/contact_sheets/p07_pp_floor/) confirms the near-black
   artifact is gone — anomaly/corridor poses byte-identical to count-mode,
   city pairs visually indistinguishable. All software gates green.
-- **Pi A/B for P07 running as P07b** (dispatched after Will power-cycled
-  the Pi 2026-07-24): count vs area-floor1 vs all-LW at the P07 plan's
-  poses. Acceptance criteria in refactor/P07_pp_hybrid_floor.md.
+- **Pi A/B COMPLETE (P07b, merged 9ac4762): all four acceptance criteria
+  PASS.** Anomaly poses tie count-mode (+0.0/+0.1%); city poses -19 to
+  -24% vs count (78-103% of pure-area's win retained); whole-run
+  -11.3% (76.85→68.19ms, 13.0→14.7fps); geometry byte-identical.
+  Ready for the default flip: orangepi preset → area+floor1, golden
+  re-bless with Will, Pi tier-2 baseline rerun — awaiting Will's go.
+  (Path drift 5th occurrence — static-pose fallback used, see the
+  record/replay unit below.)
 - **Pi froze HARD while idle** (2026-07-24 ~12:40 UTC, before P07 ran any
   timed invocation): monitor showed NO error output (Will confirmed) and
   kmsg follower captured no trace — a hard hang, not a panic, so a serial
