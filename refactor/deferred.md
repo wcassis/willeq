@@ -170,6 +170,24 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   reboots between matrices (fstab now persists NFS), kmsg follower running
   on the VM for lead-up capture; serial console for the trace itself.
 
+## Outskirts anomaly SOLVED (P05, 2026-07-24) — fix pending Will's go
+
+- Will's inverted-fps observation reproduced and root-caused: the adaptive
+  per-pixel lighting budget is a flat region-COUNT threshold
+  (renderer_zone_draw.cpp:191-284, `regionsDrawn >= zonePPBudget`) with no
+  screen-area awareness. Dense city: budget exhausts immediately → cheap.
+  Open outskirts: 1-6 huge regions never reach the budget → full-screen
+  per-pixel fill at 2.16-2.59x lightweight cost (~62% of frame time is
+  fragment shading at those poses). Fix candidate #1 (highest confidence):
+  area/fragment-aware budgeting. Scene graph exonerated (nodes properly
+  removed on PVS exit — hypothesis B refuted by code audit).
+- **Live-game-only follow-up (benchmark-blind):** several per-frame loops
+  iterate FULL zone populations regardless of visibility:
+  sim_entity_sync.cpp:179, door_manager.cpp:964,
+  animated_texture_manager.cpp:383, entity_castbars.cpp:149. Real mechanism
+  in code, unquantified — needs a live-client measurement session (tour
+  machinery + frame timing) to size before bounding.
+
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
 - Distant geometry renders as flat fog-colored (pale) shapes against the
