@@ -170,23 +170,51 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   reboots between matrices (fstab now persists NFS), kmsg follower running
   on the VM for lead-up capture; serial console for the trace itself.
 
-## Outskirts anomaly SOLVED (P05, 2026-07-24) — fix pending Will's go
+## Outskirts anomaly (P05→P06, 2026-07-24) — mechanism LANDED, default flip pending Will
 
-- Will's inverted-fps observation reproduced and root-caused: the adaptive
-  per-pixel lighting budget is a flat region-COUNT threshold
-  (renderer_zone_draw.cpp:191-284, `regionsDrawn >= zonePPBudget`) with no
-  screen-area awareness. Dense city: budget exhausts immediately → cheap.
-  Open outskirts: 1-6 huge regions never reach the budget → full-screen
-  per-pixel fill at 2.16-2.59x lightweight cost (~62% of frame time is
-  fragment shading at those poses). Fix candidate #1 (highest confidence):
-  area/fragment-aware budgeting. Scene graph exonerated (nodes properly
-  removed on PVS exit — hypothesis B refuted by code audit).
+- P05 root cause (flat region-COUNT budget, renderer_zone_draw.cpp) fixed by
+  P06: flag-gated area-mode budget (`adaptiveLightingBudgetMode`, k=0.75),
+  merged 23aee56, **default remains `count` everywhere — no behavior
+  change yet**. Outskirts poses: area-mode within 0.1-1.6% of
+  all-lightweight (2.2-2.6x gap closed). Whole-run: 11.0→12.2 fps.
+- **Structural finding gating the default flip (orchestrator analysis of
+  P06 CSVs):** area-mode is statistically all-lightweight — whole-run avg
+  81.71ms vs all-LW's 81.47ms, median per-frame ratio 1.002, per-pixel
+  meaningfully engaged in only 89/1000 frames. Mechanism: the
+  camera-containing region nearly always straddles the near plane → the
+  conservative fallback counts it as full-screen → budget exhausts at
+  region 1. So flipping the default = zone per-pixel lighting effectively
+  OFF ~91% of the time (entity per-pixel budget unaffected). Options for
+  Will: (a) flip anyway if the visual delta is acceptable (contact sheet),
+  (b) refine the estimator first (near-plane AABB clipping, or a
+  world-extent discriminator so only genuinely huge regions trigger the
+  full-screen fallback — small unit), (c) P05 candidate #2, frame-time-
+  driven rolling budget (bigger, most robust). Scene graph exonerated
+  (P05 hypothesis B refuted by code audit).
 - **Live-game-only follow-up (benchmark-blind):** several per-frame loops
   iterate FULL zone populations regardless of visibility:
   sim_entity_sync.cpp:179, door_manager.cpp:964,
   animated_texture_manager.cpp:383, entity_castbars.cpp:149. Real mechanism
   in code, unquantified — needs a live-client measurement session (tour
   machinery + frame timing) to size before bounding.
+
+## Benchmark camera path is not reproducible across builds (3rd occurrence, P06)
+
+- The navmesh-driven moving camera path (`--entities 200 --seed 42`) has now
+  failed to transfer three times: March logs → P05, and P05 → P06 (identical
+  command, same worktree, different session — P05's frame 558/560-563 poses
+  did not exist in P06's run; P06's whole-run avg 91ms vs P05's 30ms is a
+  path difference, not a regression). Every perf unit re-finds poses from
+  scratch and cross-unit frame-time comparisons are impossible. Fix: record/
+  replay the camera path (dump per-frame pose to a path file, `--path-file`
+  replay flag — the CSV already carries pos/heading/pitch, so replay is the
+  only missing piece). Small unit; do it before the next perf campaign.
+- Related doc gap: x86/llvmpipe runs silently fall back to an orbit camera
+  unless `--navmesh-path /mnt/projects/maps/nav` is passed (not in help
+  text) — P06 review documents it; fold the help-text fix into the same unit.
+- Repo hygiene: `benchmarks/pi_runs/` is gitignored (H04-era), which is how
+  P05's "committed" CSVs silently never landed (salvaged 3fb85fc). Unit
+  deliverable CSVs must be `git add -f`'d, or unignore the directory.
 
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
