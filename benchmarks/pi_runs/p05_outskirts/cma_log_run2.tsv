@@ -1,0 +1,8 @@
+1784861842	fullPP (pre)	73288	395004
+1784861892	fullPP (post, invocation #1)	73400	394476
+1784861904	lightweight0 (pre)	73400	394948
+1784861949	lightweight0 (post, invocation #2)	73212	392580
+1784861961	lightweight0 (pre)	73212	393808
+1784862006	lightweight0 (post, invocation #3)	73208	394288
+1784862018	fullPP (pre)	73208	396036
+1784862068	fullPP (post, invocation #4)	73040	392728
