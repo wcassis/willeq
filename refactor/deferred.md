@@ -170,7 +170,25 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   reboots between matrices (fstab now persists NFS), kmsg follower running
   on the VM for lead-up capture; serial console for the trace itself.
 
-## Outskirts anomaly (P05→P06, 2026-07-24) — mechanism LANDED, default flip pending Will
+## Outskirts anomaly (P05→P07, 2026-07-24) — hybrid floor LANDED, Pi A/B + default flip pending
+
+- **P07 (merged 3c2b801)** adds the hybrid floor Will approved: in area
+  mode the nearest `adaptiveLightingAreaPPFloor` regions (default 1)
+  always keep per-pixel (their area still accumulates). Contact sheet
+  (benchmarks/contact_sheets/p07_pp_floor/) confirms the near-black
+  artifact is gone — anomaly/corridor poses byte-identical to count-mode,
+  city pairs visually indistinguishable. All software gates green.
+- **Pi A/B for P07 is PENDING**: the Orange Pi went unreachable
+  (No route to host) while idle on 2026-07-24 ~12:40 UTC, before the P07
+  session ran a single timed invocation; kmsg follower captured no panic
+  trace (last kernel msgs were P06-era drop_caches hours earlier).
+  Needs a physical power cycle, then run: count vs area-floor1 vs all-LW
+  at the P07 plan's poses (static --camera-pose fallback documented
+  there). Acceptance criteria in refactor/P07_pp_hybrid_floor.md.
+- After the Pi numbers: default-flip decision (orangepi preset →
+  area+floor), golden re-bless with Will, Pi tier-2 baseline rerun.
+
+## Outskirts anomaly history (P05→P06, 2026-07-24) — mechanism landed, superseded by P07 above
 
 - P05 root cause (flat region-COUNT budget, renderer_zone_draw.cpp) fixed by
   P06: flag-gated area-mode budget (`adaptiveLightingBudgetMode`, k=0.75),
