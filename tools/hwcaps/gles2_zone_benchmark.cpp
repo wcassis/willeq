@@ -169,6 +169,19 @@ struct Options {
     float poseSearchEyeHeight = 6.0f; // Added to each anchor's floor Z (approx. player eye height)
     std::string poseSearchCsv;        // Optional: write all sampled candidates to CSV
 
+    // Q01: moving camera-path record/replay. --dump-path writes the resolved
+    // moving-path camera trajectory (one line per rendered MEASURED frame,
+    // "x,y,z,heading,pitch" -- exactly the --camera-pose convention) so a
+    // later run can reproduce it exactly with --path-file, instead of
+    // re-deriving a (possibly different) path from the navmesh/orbit
+    // generator every session (deferred.md "Benchmark camera path is not
+    // reproducible across builds"). Mutually exclusive with --camera-pose
+    // and --pose-search (both replace the moving path with something else
+    // entirely already).
+    std::string dumpPathFile;
+    std::string pathFile;
+    std::string fullCommandLine;      // For --dump-path header provenance
+
     // Synthetic (Z5)
     bool syntheticDraws = false;
 
@@ -217,7 +230,13 @@ static void printUsage(const char* prog) {
     printf("  --eq-path PATH    Path to EQ client directory (required)\n");
     printf("  --eqe1-path PATH  Path to EQE1 texture directory\n");
     printf("  --report-load-time  Print LOAD_PHASE_MS=<ms> after loadZone() (P03)\n");
-    printf("  --navmesh-path P  Path to navmesh directory\n");
+    printf("  --navmesh-path P  Path to navmesh directory (e.g. /mnt/projects/maps/nav).\n");
+    printf("                    Moving-path runs (no --camera-pose/--pose-search) need this\n");
+    printf("                    to drive the camera along real navmesh waypoints; WITHOUT it\n");
+    printf("                    (or if the zone's .nav file fails to load) the benchmark\n");
+    printf("                    silently fell back to a synthetic orbit camera -- Q01 makes\n");
+    printf("                    this loud: an unmissable stderr WARNING is printed naming\n");
+    printf("                    the fallback and this flag.\n");
     printf("\nDisplay options:\n");
     printf("  --drm             Use DRM/KMS framebuffer\n");
     printf("  --x11             Use X11/EGL\n");
@@ -283,6 +302,21 @@ static void printUsage(const char* prog) {
     printf("  --camera-pose X,Y,Z,HEADING,PITCH  Static camera pose (EQ coords, degrees).\n");
     printf("                          Repeatable: one flag per pose. Frame index i in\n");
     printf("                          --dump-frames/CSV corresponds to the i-th --camera-pose.\n");
+    printf("\nMoving camera-path record/replay (Q01 -- reproduces the navmesh/orbit path\n");
+    printf("across sessions; the CSV already carries pos/heading/pitch per frame, this is\n");
+    printf("the replay half):\n");
+    printf("  --dump-path FILE     Write the resolved moving-path camera trajectory to FILE:\n");
+    printf("                       one line per rendered MEASURED frame (post-warmup),\n");
+    printf("                       \"x,y,z,heading,pitch\" (EQ coords + degrees, exactly the\n");
+    printf("                       --camera-pose convention). CSV frame row i corresponds to\n");
+    printf("                       path line i. Works with navmesh- or orbit-generated paths.\n");
+    printf("  --path-file FILE     Replay a camera path dumped by --dump-path, replacing\n");
+    printf("                       navmesh/orbit path generation entirely (byte-identical\n");
+    printf("                       poses and entity placement vs. the original recording).\n");
+    printf("                       Mutually exclusive with --camera-pose/--pose-search.\n");
+    printf("                       --frames greater than the path length is an ERROR;\n");
+    printf("                       fewer is a prefix replay (stderr warning). Warmup frames\n");
+    printf("                       hold pose[0] (path file has no warmup poses).\n");
     printf("\nInteresting-view search (H02b, opt-in, bless-time diagnostic only):\n");
     printf("  --pose-search N         Sample N candidate poses anchored at zone region\n");
     printf("                          bounding boxes, score each, print top scorers\n");
@@ -318,6 +352,11 @@ static void printUsage(const char* prog) {
 
 static Options parseArgs(int argc, char** argv) {
     Options opts;
+    // Q01: captured for --dump-path header provenance ("full generating command").
+    for (int i = 0; i < argc; ++i) {
+        if (i > 0) opts.fullCommandLine += ' ';
+        opts.fullCommandLine += argv[i];
+    }
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printUsage(argv[0]); exit(0);
@@ -424,6 +463,8 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--pose-search-pitch") == 0 && i + 1 < argc) opts.poseSearchPitch = atof(argv[++i]);
         else if (strcmp(argv[i], "--pose-search-eye-height") == 0 && i + 1 < argc) opts.poseSearchEyeHeight = atof(argv[++i]);
         else if (strcmp(argv[i], "--pose-search-csv") == 0 && i + 1 < argc) opts.poseSearchCsv = argv[++i];
+        else if (strcmp(argv[i], "--dump-path") == 0 && i + 1 < argc) opts.dumpPathFile = argv[++i];
+        else if (strcmp(argv[i], "--path-file") == 0 && i + 1 < argc) opts.pathFile = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
@@ -444,7 +485,105 @@ static Options parseArgs(int argc, char** argv) {
             printUsage(argv[0]); exit(1);
         }
     }
+    // Q01: --path-file replaces navmesh/orbit path generation entirely, same
+    // as --camera-pose/--pose-search already do -- combining them is
+    // ambiguous about which camera scheme should win, so reject it outright.
+    if (!opts.pathFile.empty() && (!opts.cameraPoses.empty() || opts.poseSearch > 0)) {
+        fprintf(stderr, "ERROR: --path-file is mutually exclusive with --camera-pose/--pose-search\n");
+        exit(1);
+    }
     return opts;
+}
+
+// ======== Q01: moving camera-path record/replay ========
+//
+// A "trace" is one resolved camera pose per rendered frame (warmup +
+// measured), independent of whether it came from live navmesh/orbit path
+// evaluation (record/normal mode) or was loaded verbatim from a --path-file
+// (replay mode). Building this ONE array up front, before entity placement
+// and before the render loop, is what makes replay reproduce entity
+// placement: entity placement (zone_bench_loader.cpp
+// placeEntitiesAlongPath) is fed the trace's MEASURED-frame positions
+// directly (see design point A3 in refactor/Q01_path_replay_harness_align.md)
+// instead of resampling the raw navmesh polyline by arc length -- a scheme
+// that has no equivalent once the navmesh isn't available (replay). The
+// render loop then just indexes into the trace instead of re-walking
+// pathDist/CameraPath::getPositionAt() itself, so record and replay share
+// exactly one code path for "what pose does frame N have".
+struct TracePose {
+    glm::vec3 pos;
+    glm::vec3 dir;
+    float heading = 0.0f;
+    float pitch = 0.0f;
+};
+
+// One line of a loaded --path-file: "x,y,z,heading,pitch" (EQ coords +
+// degrees -- exactly the --camera-pose convention, see printUsage()).
+struct PathFilePose { float x, y, z, heading, pitch; };
+
+// Parse a --dump-path-format file: '#'-prefixed / blank lines ignored,
+// everything else must be "x,y,z,heading,pitch". Returns false (with a
+// stderr ERROR) on any I/O or parse failure.
+static bool loadPathFile(const std::string& path, std::vector<PathFilePose>& out) {
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) {
+        fprintf(stderr, "ERROR: --path-file: cannot open '%s'\n", path.c_str());
+        return false;
+    }
+    char line[512];
+    int lineNo = 0;
+    while (fgets(line, sizeof(line), f)) {
+        ++lineNo;
+        // Trim leading whitespace for the comment/blank check.
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (*p == '#' || *p == '\n' || *p == '\0' || *p == '\r') continue;
+
+        PathFilePose pose{};
+        int n = sscanf(p, "%f,%f,%f,%f,%f",
+                        &pose.x, &pose.y, &pose.z, &pose.heading, &pose.pitch);
+        if (n != 5) {
+            fprintf(stderr, "ERROR: --path-file: %s:%d: expected \"x,y,z,heading,pitch\", got: %s",
+                    path.c_str(), lineNo, line);
+            fclose(f);
+            return false;
+        }
+        out.push_back(pose);
+    }
+    fclose(f);
+    if (out.empty()) {
+        fprintf(stderr, "ERROR: --path-file: '%s' has no pose lines\n", path.c_str());
+        return false;
+    }
+    return true;
+}
+
+// Write the trace's measured-frame poses to a --dump-path file. traceMeasured
+// is exactly opts.frames entries (the same poses fed to
+// placeEntitiesAlongPath()); CSV frame row i corresponds to path line i.
+static void writePathFile(const std::string& path, const Options& opts,
+                           const std::vector<TracePose>& traceMeasured) {
+    FILE* f = fopen(path.c_str(), "w");
+    if (!f) {
+        fprintf(stderr, "ERROR: --dump-path: cannot open '%s' for write\n", path.c_str());
+        return;
+    }
+    fprintf(f, "# Q01 camera path dump\n");
+    fprintf(f, "# zone: %s\n", opts.zoneName.c_str());
+    fprintf(f, "# seed: %u\n", opts.seed);
+    fprintf(f, "# entities: %d\n", opts.entityCount);
+    fprintf(f, "# frames: %d\n", opts.frames);
+    fprintf(f, "# command: %s\n", opts.fullCommandLine.c_str());
+    fprintf(f, "# format: x,y,z,heading,pitch (EQ coords + degrees, --camera-pose convention)\n");
+    fprintf(f, "# one line per rendered MEASURED (post-warmup) frame; CSV frame row i == path line i\n");
+    // %.9g round-trips an IEEE-754 float32 exactly (9 significant digits is
+    // the documented minimum) -- required for the replay determinism
+    // acceptance test (pose columns byte-identical to this file).
+    for (const auto& tp : traceMeasured) {
+        fprintf(f, "%.9g,%.9g,%.9g,%.9g,%.9g\n", tp.pos.x, tp.pos.y, tp.pos.z, tp.heading, tp.pitch);
+    }
+    fclose(f);
+    printf("[dump-path] %s: saved (%zu poses)\n", path.c_str(), traceMeasured.size());
 }
 
 // ======== Rendering ========
@@ -1541,68 +1680,166 @@ int main(int argc, char** argv) {
 
     // ── Set up camera path ──
     ZoneBench::CameraPath camera;
+    std::vector<PathFilePose> loadedPath;   // Q01: populated only in --path-file replay
+    bool usingPathFile = !opts.pathFile.empty();
 
-    // Try navmesh first
-    bool hasNavPath = false;
-    if (!opts.navmeshPath.empty()) {
-        std::string navFile = opts.navmeshPath;
-        if (!navFile.empty() && navFile.back() != '/') navFile += '/';
-        navFile += opts.zoneName + ".nav";
-        hasNavPath = camera.generateFromNavmesh(navFile, opts.navWaypoints, opts.seed,
-                                                 glm::vec3(surfX, surfY, surfZ));
-    }
-
-    // Fallback to orbit at surface level
-    if (!hasNavPath) {
-        float cx, cy, cz;
-        float extent = std::max(data->boundsMaxX - data->boundsMinX,
-                                data->boundsMaxY - data->boundsMinY);
-        float radius = (opts.orbitRadius > 0.0f) ? opts.orbitRadius : extent * 0.3f;  // Orbit at 30% of zone extent
-
-        if (opts.orbitAnchorSurface) {
-            // H02: anchor to the densest surface-level region instead of the
-            // raw bounding-box center — on tall/uneven zones (caves, tiered
-            // outdoor terrain) the bbox-center + fixed-height orbit can put
-            // the camera in empty sky or embedded rock for the whole path.
-            cx = surfX;
-            cy = surfY;
-            cz = surfZ + opts.orbitHeightOffset;
-        } else {
-            cx = (data->boundsMinX + data->boundsMaxX) * 0.5f;
-            cy = (data->boundsMinY + data->boundsMaxY) * 0.5f;
-            cz = surfZ;
+    if (usingPathFile) {
+        // Q01: replay -- replaces navmesh/orbit path generation entirely.
+        if (!loadPathFile(opts.pathFile, loadedPath)) {
+            return 1;
         }
-        printf("Using orbit fallback: center=(%.0f,%.0f,%.0f) radius=%.0f%s\n",
-               cx, cy, cz, radius, opts.orbitAnchorSurface ? " [surface-anchored]" : "");
-        camera.generateOrbit(cx, cy, cz, radius, 10.0f);
+        if (opts.frames > static_cast<int>(loadedPath.size())) {
+            fprintf(stderr,
+                    "ERROR: --frames %d exceeds --path-file '%s' length (%zu poses)\n",
+                    opts.frames, opts.pathFile.c_str(), loadedPath.size());
+            return 1;
+        }
+        if (opts.frames < static_cast<int>(loadedPath.size())) {
+            fprintf(stderr,
+                    "WARNING: --frames %d < --path-file '%s' length (%zu poses); "
+                    "replaying prefix (first %d poses)\n",
+                    opts.frames, opts.pathFile.c_str(), loadedPath.size(), opts.frames);
+        }
+        printf("Replaying camera path from %s (%d of %zu poses)\n",
+               opts.pathFile.c_str(), opts.frames, loadedPath.size());
+    } else {
+        // Try navmesh first
+        bool hasNavPath = false;
+        if (!opts.navmeshPath.empty()) {
+            std::string navFile = opts.navmeshPath;
+            if (!navFile.empty() && navFile.back() != '/') navFile += '/';
+            navFile += opts.zoneName + ".nav";
+            hasNavPath = camera.generateFromNavmesh(navFile, opts.navWaypoints, opts.seed,
+                                                     glm::vec3(surfX, surfY, surfZ));
+        }
+
+        // Fallback to orbit at surface level
+        if (!hasNavPath) {
+            float cx, cy, cz;
+            float extent = std::max(data->boundsMaxX - data->boundsMinX,
+                                    data->boundsMaxY - data->boundsMinY);
+            float radius = (opts.orbitRadius > 0.0f) ? opts.orbitRadius : extent * 0.3f;  // Orbit at 30% of zone extent
+
+            if (opts.orbitAnchorSurface) {
+                // H02: anchor to the densest surface-level region instead of the
+                // raw bounding-box center — on tall/uneven zones (caves, tiered
+                // outdoor terrain) the bbox-center + fixed-height orbit can put
+                // the camera in empty sky or embedded rock for the whole path.
+                cx = surfX;
+                cy = surfY;
+                cz = surfZ + opts.orbitHeightOffset;
+            } else {
+                cx = (data->boundsMinX + data->boundsMaxX) * 0.5f;
+                cy = (data->boundsMinY + data->boundsMaxY) * 0.5f;
+                cz = surfZ;
+            }
+            // Q01 (deferred.md "Benchmark camera path is not reproducible
+            // across builds" / P06 review): this fallback used to be silent
+            // unless you already knew to look for it. Make it loud -- name
+            // the flag that avoids it.
+            fprintf(stderr,
+                    "WARNING: no navmesh path available (opts.navmeshPath=%s%s); "
+                    "falling back to a synthetic ORBIT camera path, not the real "
+                    "navmesh-driven path. Pass --navmesh-path /mnt/projects/maps/nav "
+                    "(or wherever the zone's .nav file lives) for the real moving path.\n",
+                    opts.navmeshPath.empty() ? "<empty>" : opts.navmeshPath.c_str(),
+                    opts.navmeshPath.empty() ? "" : ", load failed");
+            printf("Using orbit fallback: center=(%.0f,%.0f,%.0f) radius=%.0f%s\n",
+                   cx, cy, cz, radius, opts.orbitAnchorSurface ? " [surface-anchored]" : "");
+            camera.generateOrbit(cx, cy, cz, radius, 10.0f);
+        }
+
+        if (camera.empty()) {
+            fprintf(stderr, "ERROR: Failed to generate camera path\n");
+            return 1;
+        }
     }
 
-    if (camera.empty()) {
-        fprintf(stderr, "ERROR: Failed to generate camera path\n");
-        return 1;
+    // ── Train mode: override the camera BEFORE the trace is resolved ──
+    // (must happen before the Q01 trace build below, since the trace reads
+    // whatever `camera` ends up being). Unsupported combined with
+    // --path-file: the file already fixed the trajectory, so there is
+    // nothing left for trainMode to override -- reject that combination
+    // explicitly rather than silently ignoring one of the two flags.
+    if (opts.trainMode && !data->entities.empty()) {
+        if (usingPathFile) {
+            fprintf(stderr, "ERROR: --train is not supported with --path-file\n");
+            return 1;
+        }
+        glm::vec3 trainPos(surfX, surfY, surfZ);
+        ZoneBench::placeEntitiesTrain(*data, trainPos);
+        camera = ZoneBench::CameraPath();
+        camera.generateApproach(surfX, surfY, surfZ, 250.0f, 6.0f);
+        printf("Train mode: %d entities at (%.0f,%.0f,%.0f), approach from 250 units\n",
+               opts.entityCount, surfX, surfY, surfZ);
+    }
+
+    // ── Q01: resolve the per-frame trace (warmup + measured) ──
+    // See the "Q01: moving camera-path record/replay" comment block above
+    // main() for why this exists: one array, built once, that both entity
+    // placement and the render loop read from, so record and replay share
+    // exactly one notion of "what pose does frame N have". Not used for
+    // --camera-pose/--pose-search/--synthetic-draws/--tree-test, which
+    // return earlier or don't touch the moving path.
+    int totalFrames = opts.warmup + opts.frames;
+    std::vector<TracePose> fullTrace;
+    fullTrace.reserve(totalFrames);
+    if (usingPathFile) {
+        TracePose hold;
+        hold.pos = glm::vec3(loadedPath[0].x, loadedPath[0].y, loadedPath[0].z);
+        hold.heading = loadedPath[0].heading;
+        hold.pitch = loadedPath[0].pitch;
+        poseToDirection(hold.heading, hold.pitch, hold.dir.x, hold.dir.y, hold.dir.z);
+        // Q01 design point A4: the path file has no warmup poses (it only
+        // records rendered MEASURED frames), so warmup holds pose[0]. Warmup
+        // frames are never measured/dumped, so this only needs to prime GPU
+        // state/caches, not reproduce a specific trajectory.
+        for (int i = 0; i < opts.warmup; ++i) fullTrace.push_back(hold);
+        for (int i = 0; i < opts.frames; ++i) {
+            const auto& lp = loadedPath[i];
+            TracePose tp;
+            tp.pos = glm::vec3(lp.x, lp.y, lp.z);
+            tp.heading = lp.heading;
+            tp.pitch = lp.pitch;
+            poseToDirection(tp.heading, tp.pitch, tp.dir.x, tp.dir.y, tp.dir.z);
+            fullTrace.push_back(tp);
+        }
+    } else {
+        float dt = 1.0f / 30.0f;
+        float pathDist = 0.0f;
+        for (int f = 0; f < totalFrames; ++f) {
+            pathDist += opts.speed * dt;
+            TracePose tp;
+            tp.pos = camera.getPositionAt(pathDist);
+            tp.dir = camera.getDirectionAt(pathDist);
+            // Same convention as the CSV columns: heading 0=North/+Y, CW; pitch positive=up.
+            tp.heading = atan2f(tp.dir.x, tp.dir.y) * 180.0f / 3.14159265f;
+            if (tp.heading < 0) tp.heading += 360.0f;
+            float horizLen = sqrtf(tp.dir.x * tp.dir.x + tp.dir.y * tp.dir.y);
+            tp.pitch = atan2f(tp.dir.z, horizLen) * 180.0f / 3.14159265f;
+            fullTrace.push_back(tp);
+        }
+    }
+
+    if (!opts.dumpPathFile.empty()) {
+        std::vector<TracePose> measured(fullTrace.begin() + opts.warmup, fullTrace.end());
+        writePathFile(opts.dumpPathFile, opts, measured);
     }
 
     // ── Place entities along path ──
-    if (!data->entities.empty()) {
-        // Sample positions from the camera path at even intervals
+    // (trainMode already placed its entities above, before the trace build.)
+    if (!data->entities.empty() && !opts.trainMode) {
+        // Q01: sample from the resolved MEASURED-frame trace (what will
+        // actually be rendered / what a --path-file replay has available),
+        // not the raw navmesh polyline's own arc length -- the latter has no
+        // equivalent once the navmesh isn't available (replay). This changes
+        // exactly where entities land relative to pre-Q01 runs (see design
+        // point A3), but is the only way replay can reproduce placement
+        // without the navmesh.
         std::vector<glm::vec3> pathPositions;
-        float pathLen = camera.totalLength();
-        int samples = std::max(static_cast<int>(data->entities.size()), 100);
-        for (int i = 0; i < samples; ++i) {
-            float t = pathLen * i / samples;
-            pathPositions.push_back(camera.getPositionAt(t));
-        }
-        if (opts.trainMode) {
-            // Place train at surface position, override camera to approach path
-            glm::vec3 trainPos(surfX, surfY, surfZ);
-            ZoneBench::placeEntitiesTrain(*data, trainPos);
-            camera = ZoneBench::CameraPath();
-            camera.generateApproach(surfX, surfY, surfZ, 250.0f, 6.0f);
-            printf("Train mode: %d entities at (%.0f,%.0f,%.0f), approach from 250 units\n",
-                   opts.entityCount, surfX, surfY, surfZ);
-        } else {
-            ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
-        }
+        pathPositions.reserve(opts.frames);
+        for (int i = 0; i < opts.frames; ++i) pathPositions.push_back(fullTrace[opts.warmup + i].pos);
+        ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
     }
 
     // ── Configure adaptive LOD budget ──
@@ -1878,17 +2115,17 @@ int main(int argc, char** argv) {
     std::vector<ZoneBench::DrawEntry> drawEntries;
     drawEntries.reserve(2048);
 
-    float dt = 1.0f / 30.0f;  // Fixed timestep for determinism
-    float pathDist = 0;
-    int totalFrames = opts.warmup + opts.frames;
-
+    // Q01: totalFrames/fullTrace were resolved above (before entity
+    // placement) -- both record (navmesh/orbit) and replay (--path-file)
+    // populate the same per-frame trace, so the loop below no longer cares
+    // which mode it's in.
     for (int frame = 0; frame < totalFrames; ++frame) {
         bool measuring = (frame >= opts.warmup);
 
-        // Advance camera along path
-        pathDist += opts.speed * dt;
-        glm::vec3 camPos = camera.getPositionAt(pathDist);
-        glm::vec3 camDir = camera.getDirectionAt(pathDist);
+        // Camera pose for this frame, resolved up front (Q01).
+        const TracePose& tp = fullTrace[frame];
+        glm::vec3 camPos = tp.pos;
+        glm::vec3 camDir = tp.dir;
 
         // Set up camera transforms
         setupCamera(*data, camPos.x, camPos.y, camPos.z,
@@ -1904,13 +2141,8 @@ int main(int argc, char** argv) {
         if (data->zoneShader) data->zoneShader->beginFrame();
 
         if (measuring) {
-            // Compute heading (degrees, 0=North/+Y, CW) and pitch (degrees, positive=up)
-            float heading = atan2f(camDir.x, camDir.y) * 180.0f / 3.14159265f;
-            if (heading < 0) heading += 360.0f;
-            float horizLen = sqrtf(camDir.x * camDir.x + camDir.y * camDir.y);
-            float pitch = atan2f(camDir.z, horizLen) * 180.0f / 3.14159265f;
             metrics.beginFrame(frame - opts.warmup, camPos.x, camPos.y, camPos.z,
-                               heading, pitch);
+                               tp.heading, tp.pitch);
         }
 
         // Tick entity animations (skeletal skinning)

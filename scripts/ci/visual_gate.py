@@ -49,7 +49,7 @@ def load_manifest():
         return json.load(f)
 
 
-def run_benchmark(zone_cfg, bench_cfg, out_dir):
+def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
     """Run the benchmark for one zone, dumping designated frames + CSV + memory JSON.
 
     Returns (png_paths_by_frame, csv_rows, memory_dict, stdout_text).
@@ -71,7 +71,7 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir):
         "--dump-png-prefix", str(prefix),
         "--csv", str(csv_path),
         "--memory-json", str(mem_path),
-    ] + zone_cfg.get("extraArgs", [])
+    ] + (production_args or []) + zone_cfg.get("extraArgs", [])
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
@@ -172,11 +172,13 @@ def save_diff_artifact(golden_path, actual_path, out_path):
 def bless(manifest):
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     bench_cfg = manifest["benchmark"]
+    production_args = manifest.get("productionConfig", {}).get("args", [])
 
     for zone_cfg in manifest["zones"]:
         zone = zone_cfg["zone"]
         print(f"[bless] {zone} ...")
-        png_paths, csv_rows, memory, stdout_text = run_benchmark(zone_cfg, bench_cfg, ARTIFACTS_DIR)
+        png_paths, csv_rows, memory, stdout_text = run_benchmark(
+            zone_cfg, bench_cfg, ARTIFACTS_DIR, production_args)
 
         gl_version = extract_gl_version(stdout_text)
         if gl_version:
@@ -217,6 +219,7 @@ def bless(manifest):
 def verify(manifest):
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     bench_cfg = manifest["benchmark"]
+    production_args = manifest.get("productionConfig", {}).get("args", [])
     failures = []
     mesa_mismatch_warned = False
 
@@ -224,7 +227,8 @@ def verify(manifest):
         zone = zone_cfg["zone"]
         print(f"[verify] {zone} ...")
         try:
-            png_paths, csv_rows, memory, stdout_text = run_benchmark(zone_cfg, bench_cfg, ARTIFACTS_DIR)
+            png_paths, csv_rows, memory, stdout_text = run_benchmark(
+                zone_cfg, bench_cfg, ARTIFACTS_DIR, production_args)
         except RuntimeError as e:
             failures.append(f"{zone}: {e}")
             continue

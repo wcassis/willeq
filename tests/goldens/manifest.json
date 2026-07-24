@@ -13,6 +13,16 @@
     "warmup": 5,
     "frames": 60
   },
+  "productionConfig": {
+    "args": [
+      "--adaptive-lighting",
+      "--zone-pp-budget",
+      "20",
+      "--pp-budget-mode",
+      "count"
+    ],
+    "note": "Q01: mirror of the orangepi preset (constrained_renderer_config.cpp:307, zone budget 20, count mode). Consumed by BOTH scripts/ci/visual_gate.py (run_benchmark) and scripts/pi/ (pi_common.py) so the harness measures what production actually ships instead of full per-pixel lighting. The orangepi preset's object budget (10) is NOT mirrored here -- meaningful only with --objects, which the harness doesn't pass (out of scope, would change scene content). Do NOT add these flags to any zone's extraArgs -- pi_common.build_pose_args asserts extraArgs contains only --camera-pose entries."
+  },
   "zones": [
     {
       "zone": "qeynos2",
@@ -38,21 +48,21 @@
       "metrics": {
         "0": {
           "draws": 236,
-          "stateChanges": 20,
+          "stateChanges": 31,
           "polys": 885
         },
         "1": {
           "draws": 119,
-          "stateChanges": 16,
+          "stateChanges": 22,
           "polys": 542
         },
         "2": {
           "draws": 228,
-          "stateChanges": 8,
+          "stateChanges": 16,
           "polys": 663
         }
       },
-      "p95CpuMsBaseline": 16.917,
+      "p95CpuMsBaseline": 23.189,
       "memory": {
         "textureCacheBytesUsed": 42226984,
         "textureCacheBytesLimit": 67108864,
@@ -83,21 +93,21 @@
       "metrics": {
         "0": {
           "draws": 143,
-          "stateChanges": 10,
+          "stateChanges": 15,
           "polys": 3338
         },
         "1": {
           "draws": 134,
-          "stateChanges": 7,
+          "stateChanges": 13,
           "polys": 3633
         },
         "2": {
           "draws": 203,
-          "stateChanges": 9,
+          "stateChanges": 16,
           "polys": 4421
         }
       },
-      "p95CpuMsBaseline": 17.165,
+      "p95CpuMsBaseline": 27.195,
       "memory": {
         "textureCacheBytesUsed": 11184800,
         "textureCacheBytesLimit": 67108864,
@@ -128,21 +138,21 @@
       "metrics": {
         "0": {
           "draws": 368,
-          "stateChanges": 7,
+          "stateChanges": 13,
           "polys": 1241
         },
         "1": {
           "draws": 75,
-          "stateChanges": 5,
+          "stateChanges": 9,
           "polys": 384
         },
         "2": {
           "draws": 170,
-          "stateChanges": 5,
+          "stateChanges": 9,
           "polys": 526
         }
       },
-      "p95CpuMsBaseline": 16.972,
+      "p95CpuMsBaseline": 25.415,
       "memory": {
         "textureCacheBytesUsed": 2883581,
         "textureCacheBytesLimit": 67108864,
@@ -151,9 +161,7 @@
     }
   ],
   "approval": {
-    "status": "blessed",
-    "by": "Will",
-    "date": "2026-07-23",
-    "note": "Approved after H02d foliage-transparency fix (round 2 review). Known accepted artifact: pale fog-colored distant shapes in gfaydark (tracked in refactor/deferred.md, fog pipeline)."
+    "status": "pending",
+    "note": "Q01 count-mode alignment -- awaiting Will's re-bless"
   }
 }

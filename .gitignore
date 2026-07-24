@@ -105,7 +105,8 @@ data/captures/
 third_party/irrlicht-gles2-x86/
 build-gles2/
 
-# H04 -- Pi tier-2 timing runs (raw per-run CSVs/logs). The blessed
-# baseline (benchmarks/pi_baseline/) IS committed -- only the timestamped
-# per-run artifacts dir is ignored.
-benchmarks/pi_runs/
+# Q01 (repo hygiene): benchmarks/pi_runs/ used to be gitignored here
+# (H04-era), which is how P05's "committed" CSVs silently never landed
+# (salvaged 3fb85fc, see refactor/deferred.md "Repo hygiene"). Unignored so
+# unit deliverable CSVs can never silently vanish again -- commit each unit's
+# artifacts explicitly; do not mass-add pre-existing untracked run dirs.

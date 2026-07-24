@@ -416,6 +416,19 @@ def load_manifest():
         return json.load(f)
 
 
+def production_config_args(manifest=None):
+    """Q01: shared production-lighting-config args (single source of truth:
+    tests/goldens/manifest.json's top-level "productionConfig" block, also
+    consumed by scripts/ci/visual_gate.py) -- mirrors the orangepi preset
+    (adaptive count-mode lighting, zone budget 20) so the Pi tier-2 baseline
+    measures what production actually ships instead of full per-pixel
+    lighting. NOT added to any zone's extraArgs -- pose_flags_repeated()
+    above asserts extraArgs is --camera-pose entries only."""
+    if manifest is None:
+        manifest = load_manifest()
+    return list(manifest.get("productionConfig", {}).get("args", []))
+
+
 def pose_flags_repeated(zone_cfg, total_frames):
     """Build a flat list of --camera-pose ... args, repeating the manifest's
     pose list (in order) until total_frames poses have been emitted. Frame i
@@ -518,11 +531,14 @@ def run_zone_bench_generic(zone_cfg, resolution, total_frames, extra_cli_args,
     over this for the eqe1-only case, kept for backward compatibility with
     existing callers/tests."""
     pose_flags, n_poses = pose_flags_repeated(zone_cfg, total_frames)
+    # Q01: productionConfig args come first so a caller's own extra_cli_args
+    # (e.g. an investigation script's --pp-budget-mode override) still wins
+    # on any flag it repeats -- the benchmark's arg parser is last-flag-wins.
     cmd_parts = [
         PI_REMOTE_BIN,
         "--zone", zone_cfg["zone"],
         "--eq-path", PI_EQ_PATH,
-    ] + list(extra_cli_args) + [
+    ] + production_config_args() + list(extra_cli_args) + [
         "--drm",
         "--res", str(resolution["width"]), str(resolution["height"]),
         "--csv", remote_csv,
