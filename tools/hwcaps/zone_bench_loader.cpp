@@ -955,6 +955,7 @@ void collectDrawEntries(
         float screenH = static_cast<float>(screenSize.Height);
         float areaBudgetLimit = data.zonePPAreaBudgetFactor * screenW * screenH;
         float cumulativeArea = 0.0f;
+        int regionsDrawn = 0;
         for (const auto* rePtr : distOrder) {
             auto& rd = data.regions[rePtr->idx];
             // Add this region's own area FIRST, then decide -- even the
@@ -967,7 +968,12 @@ void collectDrawEntries(
                 worldBox.MaxEdge += rd.position;
                 cumulativeArea += estimateRegionScreenAreaBench(worldBox, viewProj, screenW, screenH);
             }
-            areaUseLW[rePtr->idx] = cumulativeArea > areaBudgetLimit;
+            // P07: hybrid floor -- first zonePPAreaFloor regions (nearest-first)
+            // always keep per-pixel regardless of estimated area; their area
+            // still accumulated above so later regions demote as before.
+            areaUseLW[rePtr->idx] = (regionsDrawn >= data.zonePPAreaFloor) &&
+                                    cumulativeArea > areaBudgetLimit;
+            regionsDrawn++;
         }
     }
 

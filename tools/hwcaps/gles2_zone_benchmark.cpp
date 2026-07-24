@@ -102,6 +102,10 @@ struct Options {
     // Default false (count mode, unchanged behavior).
     bool zonePPAreaMode = false;
     float zonePPAreaBudgetFactor = 0.75f;
+    // P07: hybrid floor -- first N regions (nearest-first) always per-pixel in
+    // area mode, regardless of estimated area. Mirrors production's
+    // adaptiveLightingAreaPPFloor. Ignored in count mode. Default 1.
+    int zonePPAreaFloor = 1;
     bool trainMode = false;       // Cluster entities together (train simulation)
 
     // Zone objects
@@ -246,6 +250,7 @@ static void printUsage(const char* prog) {
     printf("                       projected screen area nearest-first until it exceeds\n");
     printf("                       --pp-area-factor * screen area, then lightweight (P06)\n");
     printf("  --pp-area-factor F   Area-mode budget factor k (default: 0.75)\n");
+    printf("  --pp-area-floor N    Area-mode: first N nearest regions always per-pixel (P07, default: 1)\n");
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("  --animate            Enable skeletal animation on entities\n");
@@ -356,6 +361,7 @@ static Options parseArgs(int argc, char** argv) {
             else { fprintf(stderr, "Unknown --pp-budget-mode '%s' (expected count|area)\n", mode); exit(1); }
         }
         else if (strcmp(argv[i], "--pp-area-factor") == 0 && i + 1 < argc) opts.zonePPAreaBudgetFactor = static_cast<float>(atof(argv[++i]));
+        else if (strcmp(argv[i], "--pp-area-floor") == 0 && i + 1 < argc) opts.zonePPAreaFloor = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
@@ -1600,6 +1606,7 @@ int main(int argc, char** argv) {
     data->perPixelZoneBudget = opts.perPixelZoneBudget;
     data->zonePPAreaMode = opts.zonePPAreaMode;
     data->zonePPAreaBudgetFactor = opts.zonePPAreaBudgetFactor;
+    data->zonePPAreaFloor = opts.zonePPAreaFloor;
     if (data->zoneShader) {
         data->materialPerPixelSolid = data->zoneShader->getMaterialTypeSolid();
         data->materialPerPixelAlpha = data->zoneShader->getMaterialTypeAlphaTest();

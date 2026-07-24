@@ -218,6 +218,10 @@ struct ZoneBenchData {
     // (still count-based regardless of this mode).
     bool zonePPAreaMode = false;
     float zonePPAreaBudgetFactor = 0.75f;  // see P06 config header comment for rationale
+    // P07: hybrid floor -- first zonePPAreaFloor regions (nearest-first) always
+    // per-pixel regardless of estimated area, in area mode only. Mirrors
+    // EQT::Graphics::ConstrainedRendererConfig::adaptiveLightingAreaPPFloor.
+    int zonePPAreaFloor = 1;
     irr::s32 materialPerPixelSolid = -1;   // Per-pixel shader material type
     irr::s32 materialPerPixelAlpha = -1;   // Per-pixel alpha test material type
     irr::s32 materialLWSolid = -1;         // Lightweight (per-vertex) shader material type

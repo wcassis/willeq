@@ -143,6 +143,18 @@ struct ConstrainedRendererConfig {
     // downside relative to the extremes tested.
     float adaptiveLightingAreaBudgetFactor = 0.75f;
 
+    // P07: hybrid floor for area mode. The first N regions (nearest-first
+    // order) always get per-pixel lighting regardless of estimated area --
+    // area mode alone demotes even the nearest region to lightweight for the
+    // outskirts single-huge-region case (near-plane fallback pins its
+    // estimate at the full screen area, so it flips at k<1.0 same as any
+    // other region), which unlights the geometry the camera is closest to.
+    // Floor regions' estimated area still accumulates into the running
+    // total, so regions after the floor demote exactly as before -- this
+    // only protects the nearest N from ever flipping themselves. Ignored in
+    // Count mode. See refactor/P07_pp_hybrid_floor.md.
+    int adaptiveLightingAreaPPFloor = 1;
+
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
 

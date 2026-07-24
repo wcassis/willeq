@@ -325,6 +325,7 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     irr::core::matrix4 zoneViewProj;
     float screenAreaW = 0.0f, screenAreaH = 0.0f, areaBudgetLimit = 0.0f;
     float cumulativeRegionArea = 0.0f;
+    const int areaPPFloor = config_.constrainedConfig.adaptiveLightingAreaPPFloor;
     if (areaBudgetMode) {
         zoneViewProj = captured3DProj_ * captured3DView_;
         irr::core::dimension2du screenSize = driver_->getScreenSize();
@@ -375,7 +376,12 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                 cumulativeRegionArea += estimateRegionScreenArea(
                     worldBox, zoneViewProj, screenAreaW, screenAreaH);
             }
-            regionUseLW = cumulativeRegionArea > areaBudgetLimit;
+            // P07: hybrid floor -- the first adaptiveLightingAreaPPFloor regions
+            // (nearest-first, regionsDrawn is 0 here for the very first region)
+            // always keep per-pixel regardless of estimated area. Their area
+            // still accumulated above, so later regions demote exactly as
+            // before. Count mode is untouched (areaBudgetMode false there).
+            regionUseLW = (regionsDrawn >= areaPPFloor) && cumulativeRegionArea > areaBudgetLimit;
         } else {
             regionUseLW = regionsDrawn >= zonePPBudget;
         }
