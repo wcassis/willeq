@@ -1,0 +1,118 @@
+=== gles2_zone_benchmark ===
+Zone: qeynos2, Resolution: 1280x720, Frames: 1000
+Toggles: materialSort=1 pvsCull=1 frustumCull=1 occlusionCull=1 frontToBack=1 depthTest=1 entities=200 animate=0
+
+Creating Irrlicht device: 1280x720, DRM=1
+Irrlicht Engine version 1.8.5
+DRM: Opened /dev/dri/card0 (fd=3)
+DRM: Available mode [0]: 2560x1440@60Hz (preferred)
+DRM: Available mode [1]: 1920x1440@60Hz
+DRM: Available mode [2]: 1920x1200@60Hz
+DRM: Available mode [3]: 1920x1080@60Hz
+DRM: Available mode [4]: 1920x1080@60Hz
+DRM: Available mode [5]: 1920x1080@60Hz
+DRM: Available mode [6]: 1920x1080@60Hz
+DRM: Available mode [7]: 1920x1080@50Hz
+DRM: Available mode [8]: 1920x1080@50Hz
+DRM: Available mode [9]: 1680x1050@60Hz
+DRM: Available mode [10]: 1400x1050@60Hz
+DRM: Available mode [11]: 1280x1024@75Hz
+DRM: Available mode [12]: 1280x1024@60Hz
+DRM: Available mode [13]: 1440x900@60Hz
+DRM: Available mode [14]: 1152x864@75Hz
+DRM: Available mode [15]: 1280x720@60Hz
+DRM: Available mode [16]: 1280x720@60Hz
+DRM: Available mode [17]: 1280x720@50Hz
+DRM: Available mode [18]: 1440x576@50Hz
+DRM: Available mode [19]: 1024x768@75Hz
+DRM: Available mode [20]: 1024x768@70Hz
+DRM: Available mode [21]: 1024x768@60Hz
+DRM: Available mode [22]: 832x624@75Hz
+DRM: Available mode [23]: 800x600@75Hz
+DRM: Available mode [24]: 800x600@72Hz
+DRM: Available mode [25]: 800x600@60Hz
+DRM: Available mode [26]: 800x600@56Hz
+DRM: Available mode [27]: 720x576@50Hz
+DRM: Available mode [28]: 720x480@60Hz
+DRM: Available mode [29]: 720x480@60Hz
+DRM: Available mode [30]: 640x480@75Hz
+DRM: Available mode [31]: 640x480@73Hz
+DRM: Available mode [32]: 640x480@67Hz
+DRM: Available mode [33]: 640x480@60Hz
+DRM: Available mode [34]: 640x480@60Hz
+DRM: Available mode [35]: 720x400@70Hz
+DRM: Found matching mode 1280x720@60Hz for requested 1280x720
+DRM: Using mode 1280x720@60Hz
+DRM: Initialization successful
+GBM: Surface created 1280x720 XRGB8888
+EGL: Version 1.5
+EGL: Using OpenGL ES API
+EGL: Config depth=24 stencil=8
+EGL: Context created and made current
+evdev: Keyboard at /dev/input/event2
+evdev: Mouse at /dev/input/event1
+evdev: Cannot open tty for keyboard mode control
+GLES2 Driver: Mali400 (Mesa) [OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1]
+GLES2: GL_EXT_multisampled_render_to_texture (max 4 samples)
+GLES2: GL_EXT_discard_framebuffer
+GLES2: GL_OES_standard_derivatives
+GLES2: GL_OES_get_program_binary (1 formats)
+GLES2: Shader binary cache enabled (config/shader_cache)
+GLES2: Using fwidth() alpha threshold (standard_derivatives)
+GLES2: Color2D shader compiled
+GLES2: UI2D shader compiled
+GLES2: Solid3D shader compiled
+GLES2: AlphaTest3D shader compiled
+GLES2: AtlasSolid3D shader compiled
+GLES2: AtlasAlpha3D shader compiled
+GLES2 Driver initialized
+  Driver: OpenGL ES 2.0
+Loading zone: qeynos2
+  S3D loaded: 2074 regions, 148 textures (404 ms)
+  Shader system: available (solid=256, alphaTest=257)
+  Meshes built: 1898 regions (176 skipped), 3662 buffers, 0 textures uploaded (1707 ms)
+  Occlusion culler: 8804 occluder triangles from 1434 regions (64x32 depth buffer)
+  Loading entity models...
+  Loaded 12 race meshes
+  Entity models loaded in 5977 ms (200 entities, 12 race meshes)
+Zone loaded in 8853 ms
+  Zone bounds (EQ): X=[-259,1999] Y=[-1100,1100] Z=[-391,80]
+  Center (EQ): (870, 0, -155)
+  Surface position: (243.9, 53.0, 43.0) [158 polys in region]
+Navmesh loaded: /mnt/projects/maps/nav/qeynos2.nav
+Generating camera path with 20 waypoints (seed=42)...
+  Navmesh seed position: (243.9, 53.0, 43.0)
+  Sampled 20 valid waypoints
+  Path segments: 17 used, 2 skipped (partial/gap)
+  Camera path: 105 waypoints, 2639 EQ units total length
+  Placed 200 entities along camera path (1 target, 5 group, 5 raid, rest default/idle)
+Adaptive lighting: entity PP budget=15, zone PP budget=20
+
+Starting benchmark: 10 warmup + 1000 measured frames
+  Frame 100/1010...
+  Frame 200/1010...
+  Frame 300/1010...
+  Frame 400/1010...
+  Frame 500/1010...
+  Frame 600/1010...
+  Frame 700/1010...
+  Frame 800/1010...
+  Frame 900/1010...
+  Frame 1000/1010...
+
+=== Zone Benchmark Summary (1000 frames) ===
+  CPU draw              min=0.86     avg=35.54    p95=79.77    max=466.62   ms
+  GPU sync              min=2.99     avg=41.30    p95=89.72    max=113.64   ms
+  Total frame           min=5.70     avg=76.85    p95=172.05   max=539.80   ms
+  Draw calls            min=2        avg=472      max=2718    
+  State changes         min=2        avg=416      max=2468    
+  Polygons              min=10       avg=13776    max=82466   
+  Regions visible       min=0        avg=36       max=164     
+  Regions drawn         min=0        avg=36       max=164     
+  Regions occluded      min=0        avg=11       max=371     
+  Avg FPS: 13.0
+=========================================
+
+CSV written: /tmp/p07b_count.csv (1000 frames)
+Texture cache: 44869501 / 67108864 bytes (280 textures)
+Benchmark complete.

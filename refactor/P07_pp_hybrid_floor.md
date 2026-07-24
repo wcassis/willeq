@@ -320,3 +320,99 @@ session:
   governor) could not be confirmed as "pristine" at session end because it
   was unreachable — flagging this explicitly rather than asserting
   pristine-state without being able to check it.
+
+### Pi measurement (P07b, post power-cycle)
+
+The blocked Pi hardware A/B was completed 2026-07-24 after the Pi was
+power-cycled (branch `task/P07b-pi-measure`, built at the fable tip
+3c2b801 from wt/slot1 — `ARM_BUILD_BIN_DIR` explicitly overridden to the
+slot1 build dir per the trap documented above; the staged binary was
+confirmed to contain the P06/P07 flags via `strings` before any run).
+Pi healthy on arrival: fresh boot (~5 min uptime), CmaFree 102052 kB —
+no reclaim needed. P02 protocol throughout: GovernorPin (performance,
+restored to ondemand after each session — confirmed by readback),
+CmaMonitor with the 40 MB abort threshold (never approached; CmaFree
+stayed 74.7–83.2 MB across all samples, no monotonic ratchet), randomized
+variant order, all timed-run I/O to Pi-local /tmp tmpfs, results rsynced
+back after the timed phase, 7 total invocations across two sessions
+(1 smoke + 3 moving + 3 static), under the 12-invocation cap.
+
+Command (all variants): `--zone qeynos2 --eq-path
+/mnt/projects/EverQuestP1999 --entities 200 --seed 42 --navmesh-path
+/mnt/projects/maps/nav --res 1280 720 --drm`, moving runs `--frames 1000`,
+per-frame CSV. Variants: `count` = `--adaptive-lighting --zone-pp-budget
+20 --pp-budget-mode count`; `area-floor1` = `--adaptive-lighting
+--zone-pp-budget 20 --pp-budget-mode area --pp-area-factor 0.75
+--pp-area-floor 1`; `all-LW` = `--adaptive-lighting --zone-pp-budget 0`.
+
+**Path drift confirmed (5th occurrence)**: the fresh count run's
+pos_x/pos_y/pos_z do NOT match P06's committed `count.csv` at any of
+frames 291/292/509/627/631/634 (e.g. fr291: P06 `240.6,19.6,6.1` vs fresh
+`240.9,11.7,37.8`) — same cross-session non-transferability P05/P06/P07
+documented; `refactor/deferred.md` item still open. Per the plan's
+fallback, pose-level timings below come from STATIC `--camera-pose`
+captures (one invocation per variant, the plan's 6 poses cycled 10x = 60
+frames, first cycle discarded as warmup per the H04 convention, stats over
+the remaining 9 reps); the moving runs are used only for whole-run
+averages. Within this session the three moving runs' camera paths are
+bit-identical to each other (pos columns equal at all 1000 frames), so
+the whole-run A/B is internally valid.
+
+Static pose timings (mean total_ms over 9 steady reps; min–max spreads
+are tight, ≤0.2 ms at the anomaly/corridor poses, ≤2 ms at city poses):
+
+| pose | regions_vis | count_ms | area-floor1_ms | all-LW_ms | af1 vs count | af1 vs all-LW |
+|---|---|---|---|---|---|---|
+| anomaly fr291 | 1 | 18.23 | 18.25 | 6.97 | +0.1% | +161.9% |
+| anomaly fr292 | 1 | 17.76 | 17.76 | 6.47 | +0.0% | +174.5% |
+| corridor fr509 | 2 | 19.85 | 18.20 | 7.31 | -8.3% | +148.9% |
+| city fr627 | 159 | 54.09 | 41.23 | 41.04 | -23.8% | +0.5% |
+| city fr631 | 151 | 55.68 | 42.08 | 39.91 | -24.4% | +5.4% |
+| city fr634 | 138 | 56.83 | 45.83 | 38.00 | -19.4% | +20.6% |
+
+(`draws`/`polys` identical between count and area-floor1 at every pose,
+as expected. The anomaly poses sit right at the ~17–18 ms the plan
+predicted — the floor keeps the huge near region per-pixel by design, vs
+all-LW's ~7 ms, the accepted price of correct near lighting. At fr627 the
+floor's cost is fully hidden: area-floor1 is within 0.5% of the all-LW
+floor reference.)
+
+Whole-run (1000-frame moving path) average total_ms: count 76.85
+(13.0 fps), area-floor1 68.19 (14.7 fps), all-LW 66.21 (15.1 fps).
+Absolute levels differ from P06's run (91.18/81.71 ms) — expected, the
+drifted path visits different poses; comparisons are within-session only.
+
+`draws`/`regions_vis`/`regions_drawn`/`polys` verified byte-identical
+between `count.csv` and `area_floor1.csv` at **every one of the 1000
+moving frames** (programmatic full-file check): 0 diffs — the lighting
+decision remains the only variable between the modes.
+
+CSVs: `benchmarks/pi_runs/p07_pp_floor/{count,area_floor1,all_lw}.csv`
+(moving, 1000 frames), `static_{count,area_floor1,all_lw}.csv` (60
+frames each, 6 poses x 10 reps), benchmark stdout logs alongside, and
+`cma_log.tsv` (CmaFree telemetry, both sessions).
+
+**Acceptance criteria verdicts (Pi, this measurement):**
+
+- **(a) Anomaly poses: area-floor1 within noise of count total_ms
+  (~17 ms expected)**: **PASS** — +0.1% / +0.0% at fr291/fr292
+  (18.25 vs 18.23, 17.76 vs 17.76 ms), well within the reps'
+  min–max spread.
+- **(b) City poses: area-floor1 retains >= half of pure-area's P06 win
+  vs count (P06: -30.7%/-23.8%/-28.1% at 627/631/634, half = 15.4/11.9/
+  14.1%)**: **PASS** — -23.8% / -24.4% / -19.4%, i.e. 78–103% of the
+  pure-area saving retained, and area-floor1 lands within 0.5–20.6% of
+  the all-LW floor reference at those poses.
+- **(c) Whole-run avg: area-floor1 <= count**: **PASS** — 68.19 vs
+  76.85 ms (-11.3%).
+- **(d) draws/regions_vis/regions_drawn/polys byte-identical count vs
+  area-floor1 across all frames**: **PASS** — 0 diffs across all 1000
+  moving frames (full-file programmatic check), and identical at all 6
+  static poses.
+
+Pi left pristine, verified via ssh after cleanup: governor `ondemand` on
+all 4 cores, staged binary and all remote `/tmp/p07b_*` files removed
+(`ls` confirms none remain), CmaFree 76496 kB, no reboot triggered.
+Measurement driver (`p07b_measure.py`/`p07b_static.py`, built on
+`pi_common.py` primitives) kept in session scratch, not committed — same
+P05/P06/P07 standalone-script precedent.
