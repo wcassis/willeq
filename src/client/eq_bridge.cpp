@@ -310,9 +310,9 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	snap.zoneMap = m_zone_map.get();
 	snap.eqClientPath = m_eq_client_path;
 
-	// Pre-parsed zone sources for sequential loader
-	snap.zoneArchive = m_zone_archive;
-	snap.zoneWld = m_zone_wld;
+	// P04: zoneArchive/zoneWld snapshot fields removed (never read; see
+	// zone_load_snapshot.h) — LoadZoneSources now releases both right after
+	// BSP extraction.
 	if (m_zone_bsp_tree) {
 		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(m_x, m_y, m_z);
 		if (snap.playerBspRegion == SIZE_MAX) {

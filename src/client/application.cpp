@@ -361,6 +361,11 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.eqe1Path = config.eqe1Path;
                 LOG_DEBUG(MOD_GRAPHICS, "CLI override: eqe1 path -> '{}'", config.eqe1Path);
             }
+            // CLI override: --load-mem-audit
+            if (config.loadMemAudit) {
+                builtConfig.loadMemAudit = true;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: load-mem-audit enabled");
+            }
             // CLI override: --composite-entities
             if (!config.compositeEntityPath.empty()) {
                 builtConfig.enableCompositeEntities = true;
@@ -686,6 +691,15 @@ void Application::gameThreadLoop() {
                         m_eqClient->SetZoneBspTree(std::move(m_pendingBspTree));
                     }
                     m_eqClient->OnGraphicsComplete();
+                }
+                // P04 (memory audit fix): the loading thread has been joined
+                // (checkLoadingComplete joins BEFORE setting the flag we just
+                // consumed), so nothing reads the snapshot anymore. Release its
+                // entity/door/zone-line copies now instead of holding them
+                // until the next zone's snapshot overwrites them.
+                {
+                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+                    m_zoneLoadSnapshot = eqt::ZoneLoadSnapshot{};
                 }
                 m_graphicsCompleteReady.store(false, std::memory_order_release);
                 LOG_INFO(MOD_MAIN, "Game thread: OnGraphicsComplete done");
@@ -1635,6 +1649,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.compositeEntityPath = argv[++i];
             }
+        } else if (arg == "--load-mem-audit") {
+            config.loadMemAudit = true;
         } else if (arg == "--drm") {
             config.useDRM = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {

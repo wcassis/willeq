@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <functional>
 #include <unordered_set>
 
 namespace EQT {
@@ -188,6 +189,15 @@ public:
     void addEQE1Loader(const EQE1Loader* loader);
     void clearEQE1Loaders();
 
+    // P04: global EQE1 archives are no longer opened eagerly at zone load.
+    // This callback (set once by the renderer) opens the next not-yet-tried
+    // global archive on a lookup miss and registers it via addEQE1Loader()
+    // internally; returns nullptr once the list is exhausted. Only archives a
+    // zone actually references end up mmap'd.
+    void setEQE1LazyOpener(std::function<const EQE1Loader*()> opener) {
+        eqe1LazyOpener_ = std::move(opener);
+    }
+
     // Look up raw (non-texture) data from registered EQE1 loaders.
     // Used for JSON metadata, WLD files, etc. packed as EQE1_TYPE_RAW_DATA entries.
     // Returns true if found, with data pointer and size. Data is owned by the EQE1 loader.
@@ -209,6 +219,9 @@ private:
         uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1
     };
     const CompressedEntry* findCompressedEntry(const std::string& name);
+
+    // P04: copy of the loader-pointer vector taken under eqe1LoadersMutex_.
+    std::vector<const EQE1Loader*> snapshotEQE1Loaders() const;
 
     // Upload pre-compressed ETC1 data to GPU via glCompressedTexImage2D.
     // Creates GL texture, wraps in ITexture*, registers in LRU cache.
@@ -344,11 +357,21 @@ private:
     // Eviction listeners (non-owning)
     std::vector<TextureEvictionListener*> evictionListeners_;
 
-    // EQE1 flat pack loaders (non-owning, populated per zone)
+    // EQE1 flat pack loaders (non-owning, populated per zone).
+    // P04: guarded by eqe1LoadersMutex_ (NOT mutex_) — addEQE1Loader is called
+    // from prep-worker/equipment threads via getOrOpenEQE1 while the render
+    // thread iterates the vector inside findCompressedEntry/getEQE1RawData;
+    // with lazy global-archive opening those two now overlap routinely. A
+    // separate mutex (not mutex_) because the lazy opener runs while mutex_ is
+    // held and re-enters addEQE1Loader on the same thread.
     std::vector<const EQE1Loader*> eqe1Loaders_;
+    mutable std::mutex eqe1LoadersMutex_;
 
     // Compressed entries pending GPU upload (from EQE1 lookup)
     std::map<std::string, CompressedEntry> compressedEntries_;
+
+    // P04: lazy-open callback for global EQE1 archives (see setEQE1LazyOpener).
+    std::function<const EQE1Loader*()> eqe1LazyOpener_;
 };
 
 } // namespace Graphics

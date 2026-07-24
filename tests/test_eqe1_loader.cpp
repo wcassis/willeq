@@ -289,6 +289,72 @@ void testClose() {
     PASS();
 }
 
+// P04: the loader mmaps the file instead of heap-loading it. Entry pointers
+// point into the mapping and must match the file bytes exactly; the mapped
+// byte count must equal the file size while open and drop to 0 on close.
+void testMmapBackingMatchesFile() {
+    TEST(MmapBackingMatchesFile);
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(TEST_CHR_FILE), "open() failed");
+
+    // getMappedBytes == file size while open
+    std::ifstream in(TEST_CHR_FILE, std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(in.is_open(), "cannot re-open test file");
+    size_t fileSize = static_cast<size_t>(in.tellg());
+    ASSERT_TRUE(loader.getMappedBytes() == fileSize, "getMappedBytes != file size");
+
+    // Entry payload bytes read via the mapping match the file bytes at the
+    // same offset (proves pointers point into a correct file-backed mapping).
+    auto* entry = loader.lookup("batch0001");
+    ASSERT_TRUE(entry != nullptr, "lookup returned nullptr");
+    ASSERT_TRUE(entry->dataSize >= 16, "entry too small to compare");
+
+    // Find the entry's file offset by scanning the index directly.
+    in.seekg(0);
+    std::vector<char> fileData(fileSize);
+    in.read(fileData.data(), fileSize);
+    const auto* header = reinterpret_cast<const EQE1Header*>(fileData.data());
+    const auto* entries = reinterpret_cast<const EQE1IndexEntry*>(
+        fileData.data() + sizeof(EQE1Header));
+    const EQE1IndexEntry* found = nullptr;
+    for (uint16_t i = 0; i < header->numEntries; ++i) {
+        if (strncmp(entries[i].name, "batch0001", EQE1_NAME_SIZE) == 0) {
+            found = &entries[i];
+            break;
+        }
+    }
+    ASSERT_TRUE(found != nullptr, "batch0001 not found in raw index");
+    ASSERT_TRUE(memcmp(entry->data, fileData.data() + found->dataOffset,
+                        entry->dataSize) == 0,
+                "mapped payload bytes differ from file bytes");
+
+    loader.close();
+    ASSERT_TRUE(loader.getMappedBytes() == 0, "getMappedBytes != 0 after close");
+    PASS();
+}
+
+// P04: entry pointers must stay valid across a move (the mapping transfers,
+// it is not remapped) — the same no-use-after-free contract E04 required of
+// the heap buffer.
+void testMmapPointersSurviveMove() {
+    TEST(MmapPointersSurviveMove);
+    EQE1Loader loader1;
+    ASSERT_TRUE(loader1.open(TEST_CHR_FILE), "open() failed");
+    auto* entryBefore = loader1.lookup("batch0001");
+    ASSERT_TRUE(entryBefore != nullptr, "lookup returned nullptr");
+    const uint8_t* dataPtr = entryBefore->data;
+    uint8_t firstByte = dataPtr[0];
+
+    EQE1Loader loader2(std::move(loader1));
+    ASSERT_TRUE(loader1.getMappedBytes() == 0, "moved-from loader still reports mapping");
+    ASSERT_TRUE(loader2.getMappedBytes() > 0, "moved-to loader has no mapping");
+    auto* entryAfter = loader2.lookup("batch0001");
+    ASSERT_TRUE(entryAfter != nullptr, "lookup after move returned nullptr");
+    ASSERT_TRUE(entryAfter->data == dataPtr, "data pointer changed across move");
+    ASSERT_TRUE(entryAfter->data[0] == firstByte, "data bytes changed across move");
+    PASS();
+}
+
 int main() {
     printf("test_eqe1_loader:\n");
 
@@ -303,6 +369,8 @@ int main() {
     testV2PayloadFormats();
     testV1PayloadFormatDefaultsToETC1();
     testClose();
+    testMmapBackingMatchesFile();
+    testMmapPointersSurviveMove();
 
     printf("\n%d passed, %d failed\n", testsPassed, testsFailed);
     return testsFailed > 0 ? 1 : 0;

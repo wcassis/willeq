@@ -48,6 +48,8 @@ struct BenchConfig {
     // visualization program instead of their normal material — mirrors the
     // renderer's /shaderdebug swapToDebugShader for offline diagnostic capture.
     int shaderDebugMode = 0;
+    // P04: log [LOAD-MEM-AUDIT] RSS + pool samples at each load step boundary
+    bool loadMemAudit = false;
 };
 
 // Per-region data stored for rendering

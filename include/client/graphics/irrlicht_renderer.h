@@ -190,9 +190,9 @@ struct PendingZoneComputations {
     };
     std::unique_ptr<SkyLoadData> skyLoadData;
 
-    // Atlas preload data (file I/O + tile lookup on background thread, GL upload on main thread)
-    TextureAtlas::PreloadData zoneAtlasPreload;
-    TextureAtlas::PreloadData objAtlasPreload;
+    // P04: zoneAtlasPreload/objAtlasPreload (TextureAtlas::PreloadData) and
+    // prebuiltMeshCache (PrebuiltMeshCacheData) removed — dead fields, never
+    // populated or read anywhere since the E10 atlas removal / G01 rework.
 
     // Weather config pre-loaded on background thread (file I/O + JSON parse)
     struct WeatherConfigData {
@@ -200,13 +200,6 @@ struct PendingZoneComputations {
         bool loaded = false;
     };
     std::unique_ptr<WeatherConfigData> weatherConfig;
-
-    // Pre-built mesh cache (created + all regions registered on background thread)
-    struct PrebuiltMeshCacheData {
-        std::unique_ptr<ConstrainedMeshCache> cache;
-        size_t regionsWithGeometry = 0;
-    };
-    std::unique_ptr<PrebuiltMeshCacheData> prebuiltMeshCache;
 
     // Pre-built deferred objects (tree-filtered + world bounds on background thread)
     std::vector<DeferredObject> prebuiltDeferredObjects;
@@ -1267,6 +1260,23 @@ private:
     // Try to open an EQE1 file and register with cache. Returns loader pointer or nullptr.
     // Thread-safe — called from entity prep worker and equipment loader threads.
     const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
+
+    // P04: global archives resolved for the current zone but not yet opened.
+    // loadZoneStep0_EQE1 populates this (instead of eagerly opening every
+    // global archive); tryOpenNextGlobalEQE1() opens them one at a time, only
+    // as ConstrainedTextureCache's lookup actually misses on what's open so
+    // far. Reset alongside eqe1Loaders_ on zone teardown.
+    std::vector<std::string> pendingGlobalEQE1Archives_;
+    size_t nextGlobalEQE1Idx_ = 0;
+    // Opens pendingGlobalEQE1Archives_[nextGlobalEQE1Idx_++] (skipping any that
+    // fail to open, e.g. missing files) until one opens successfully or the
+    // list is exhausted. Returns the opened loader or nullptr when exhausted.
+    // Registered with ConstrainedTextureCache via setEQE1LazyOpener().
+    const EQE1Loader* tryOpenNextGlobalEQE1();
+    // Sum of getMappedBytes() across every currently-open EQE1Loader (opened
+    // zone archives + whatever global archives lazy-open has pulled in so
+    // far). Used by --load-mem-audit and /pmem's accounted-vs-RSS breakdown.
+    size_t getEQE1MappedBytesTotal() const;
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
     std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
 #endif

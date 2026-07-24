@@ -143,7 +143,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // EQE1 is configured but texture not found — fatal error.
     // All textures should be in the EQE1 files. A miss means the EQE1 directory
     // is incomplete or the wrong path was specified.
-    if (!eqe1Loaders_.empty()) {
+    if (!snapshotEQE1Loaders().empty()) {
         LOG_FATAL(MOD_GRAPHICS, "Texture '{}' not found in any EQE1 flat pack. "
                   "The --eqe1-path directory is missing this texture. "
                   "Re-run eqe1_builder to regenerate, or remove --eqe1-path to use S3D textures.",
@@ -1355,28 +1355,50 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
 
 void ConstrainedTextureCache::addEQE1Loader(const EQE1Loader* loader) {
     if (loader) {
+        std::lock_guard<std::mutex> lock(eqe1LoadersMutex_);
         eqe1Loaders_.push_back(loader);
     }
 }
 
 void ConstrainedTextureCache::clearEQE1Loaders() {
-    eqe1Loaders_.clear();
+    {
+        std::lock_guard<std::mutex> lock(eqe1LoadersMutex_);
+        eqe1Loaders_.clear();
+    }
     compressedEntries_.clear();
+}
+
+std::vector<const EQE1Loader*> ConstrainedTextureCache::snapshotEQE1Loaders() const {
+    std::lock_guard<std::mutex> lock(eqe1LoadersMutex_);
+    return eqe1Loaders_;
 }
 
 bool ConstrainedTextureCache::getEQE1RawData(const std::string& name,
                                                const uint8_t*& data, uint32_t& size) const {
-    for (const auto* loader : eqe1Loaders_) {
-        if (loader->getRawData(name, data, size)) {
-            return true;
+    // P04: search already-open archives first; on a miss, open the next
+    // not-yet-tried global archive (lazily, one at a time) and retry until
+    // found or the global archive list is exhausted. The loader-pointer
+    // vector is copied under eqe1LoadersMutex_ each round so the lazy opener
+    // (which appends via addEQE1Loader) never mutates a vector we're
+    // iterating; loader objects themselves live until zone teardown.
+    size_t searched = 0;
+    for (;;) {
+        auto loaders = snapshotEQE1Loaders();
+        for (; searched < loaders.size(); ++searched) {
+            if (loaders[searched]->getRawData(name, data, size)) {
+                return true;
+            }
         }
+        if (!eqe1LazyOpener_) return false;
+        if (!eqe1LazyOpener_()) return false;  // global archive list exhausted
+        // eqe1LazyOpener_ appended a newly opened loader via addEQE1Loader();
+        // loop re-snapshots and picks it up at `searched`.
     }
-    return false;
 }
 
 const ConstrainedTextureCache::CompressedEntry*
 ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
-    if (eqe1Loaders_.empty()) return nullptr;
+    if (snapshotEQE1Loaders().empty() && !eqe1LazyOpener_) return nullptr;
 
     // Strip .bmp extension — EQE1 stores names without extension
     std::string lookupName = name;
@@ -1391,7 +1413,14 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
     std::transform(lookupName.begin(), lookupName.end(), lookupName.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    for (const auto* loader : eqe1Loaders_) {
+    // P04: as above — search open archives, then lazily open global archives
+    // one at a time on a miss until found or the list is exhausted. Vector
+    // snapshotted under eqe1LoadersMutex_ per round (see getEQE1RawData).
+    size_t searched = 0;
+    for (;;) {
+    auto loaders = snapshotEQE1Loaders();
+    for (; searched < loaders.size(); ++searched) {
+        const auto* loader = loaders[searched];
         auto* entry = loader->lookup(lookupName);
         if (entry) {
             // Build a static CompressedEntry to return pointer to
@@ -1408,7 +1437,9 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
             return &result;
         }
     }
-    return nullptr;
+        if (!eqe1LazyOpener_) return nullptr;
+        if (!eqe1LazyOpener_()) return nullptr;  // global archive list exhausted
+    }
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(

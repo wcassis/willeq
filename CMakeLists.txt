@@ -360,6 +360,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
+        src/client/graphics/load_mem_audit.cpp
         # Inventory UI sources
         src/client/inventory/inventory_constants.cpp
         src/client/inventory/inventory_manager.cpp
@@ -1045,6 +1046,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
@@ -1391,6 +1393,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
@@ -1478,6 +1481,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
@@ -1546,6 +1550,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp

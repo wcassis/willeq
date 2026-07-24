@@ -652,6 +652,27 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
         }
     }
 
+    // --- EQE1 Flat Packs (P04) ---
+    // Named suspect for the "untracked RSS" gap: before P04 this pool wasn't
+    // reported anywhere, and the v1 loader heap-loaded every opened archive
+    // (including all never-referenced global archives) as pinned anonymous
+    // memory. Now mmap'd (page-cache backed, reclaimable) and only opened
+    // on demand, but still worth naming explicitly since it can still be a
+    // multi-MB resident pool for zones that touch many global archives.
+    {
+        size_t eqe1Bytes = getEQE1MappedBytesTotal();
+        size_t eqe1Count = 0;
+        {
+            std::lock_guard<std::mutex> lock(eqe1Mutex_);
+            for (const auto& [name, loader] : eqe1Loaders_) {
+                if (loader) ++eqe1Count;
+            }
+        }
+        totalEstimate += eqe1Bytes;
+        lines.push_back(fmt::format("[EQE1 Flat Packs] {} mmap'd ({} archives open, mmap/page-cache backed)",
+            formatBytes(eqe1Bytes), eqe1Count));
+    }
+
     // --- Mesh Cache ---
     if (constrainedMeshCache_) {
         size_t used = constrainedMeshCache_->getCurrentUsage();
@@ -964,12 +985,19 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- Total ---
+    // P04: named-suspects breakdown. Every line above this point is a named
+    // pool (texture/mesh cache, zone geometry/objects/entities/models, GPU
+    // textures, HCMap, framebuffer, VBO/EBO, EQE1 flat packs, audio, network).
+    // "untracked" is RSS minus all of those — glibc allocator arena/heap
+    // fragmentation overhead and any decode/staging buffers not yet named as
+    // their own line are the leading remaining suspects (see review's audit
+    // notes; malloc_trim was measured, not applied — see Deviations).
     lines.push_back("");
     if (ext.processRssBytes > 0) {
-        size_t gap = ext.processRssBytes > totalEstimate ? ext.processRssBytes - totalEstimate : 0;
+        size_t untracked = ext.processRssBytes > totalEstimate ? ext.processRssBytes - totalEstimate : 0;
         float pct = ext.processRssBytes > 0 ? (totalEstimate * 100.0f / ext.processRssBytes) : 0.0f;
-        lines.push_back(fmt::format("--- Tracked: {} / RSS: {} ({:.0f}%, gap: {}) ---",
-            formatBytes(totalEstimate), formatBytes(ext.processRssBytes), pct, formatBytes(gap)));
+        lines.push_back(fmt::format("--- Tracked: {} / RSS: {} ({:.0f}%, untracked: {}) ---",
+            formatBytes(totalEstimate), formatBytes(ext.processRssBytes), pct, formatBytes(untracked)));
     } else {
         lines.push_back(fmt::format("--- Tracked total: {} ---", formatBytes(totalEstimate)));
     }

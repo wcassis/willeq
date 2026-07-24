@@ -401,6 +401,28 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
     return nullptr;
 }
 
+const EQE1Loader* IrrlichtRenderer::tryOpenNextGlobalEQE1() {
+    while (nextGlobalEQE1Idx_ < pendingGlobalEQE1Archives_.size()) {
+        const std::string name = pendingGlobalEQE1Archives_[nextGlobalEQE1Idx_++];
+        const EQE1Loader* loader = getOrOpenEQE1(name);
+        if (loader) {
+            return loader;
+        }
+        // getOrOpenEQE1 returned nullptr (file missing/bad) — try the next
+        // global archive rather than giving up the whole lazy-open chain.
+    }
+    return nullptr;
+}
+
+size_t IrrlichtRenderer::getEQE1MappedBytesTotal() const {
+    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+    size_t total = 0;
+    for (const auto& [name, loader] : eqe1Loaders_) {
+        if (loader) total += loader->getMappedBytes();
+    }
+    return total;
+}
+
 // ---------------------------------------------------------------------------
 // EQE1 archive config (JSON-driven archive list)
 // ---------------------------------------------------------------------------

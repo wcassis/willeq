@@ -3,6 +3,7 @@
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/load_mem_audit.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/frame_budget_governor.h"
@@ -100,12 +101,21 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
     if (!config_.constrainedConfig.eqe1Path.empty()) {
         ctx.updateProgress(48, "Opening EQE1 textures...");
 
+        // P04: open the (small) zone-specific archives eagerly — they're
+        // always needed. Global archives (the ~33-file, 139MB-of-mostly-
+        // unreferenced-bytes set P03 measured) are NOT opened here anymore;
+        // they're queued and opened lazily, one at a time, only when
+        // ConstrainedTextureCache actually misses a lookup against what's
+        // already open. Most zones only ever touch a handful of them.
         auto archiveList = resolveEQE1Archives(currentZoneName_);
         for (const auto& name : archiveList.zoneArchives) {
             getOrOpenEQE1(name);
         }
-        for (const auto& name : archiveList.globalArchives) {
-            getOrOpenEQE1(name);
+        pendingGlobalEQE1Archives_ = archiveList.globalArchives;
+        nextGlobalEQE1Idx_ = 0;
+        if (constrainedTextureCache_) {
+            constrainedTextureCache_->setEQE1LazyOpener(
+                [this]() { return tryOpenNextGlobalEQE1(); });
         }
 
         // Load composite entity EQE1 files (from entity_composite_builder --eqe1 output)
@@ -772,6 +782,10 @@ void IrrlichtRenderer::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
                     std::move(computations->equipmentIndex->modelIndex),
                     std::move(computations->equipmentIndex->textureIndex),
                     std::map<uint32_t, int>());  // Item models via on-demand SQLite
+                // P04: consumed — free the wrapper now instead of at step 13
+                // (skyLoadData precedent: release each computation as soon as
+                // its consumer step is done with it).
+                computations->equipmentIndex.reset();
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index installed on EquipmentModelLoader");
             } else {
                 LOG_WARN(MOD_GRAPHICS, "SEQ Step5: equipment index built but EquipmentModelLoader is null — cannot install");
@@ -1852,6 +1866,9 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
             if (weatherSystem_) {
                 if (computations && computations->weatherConfig && computations->weatherConfig->loaded) {
                     weatherSystem_->setZoneConfig(computations->weatherConfig->config);
+                    // P04: consumed (setZoneConfig copies) — free the wrapper
+                    // now instead of at step 13 (skyLoadData precedent).
+                    computations->weatherConfig.reset();
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem zone config applied");
                 } else {
                     weatherSystem_->setWeatherFromZone(currentZoneName_);
@@ -2749,37 +2766,66 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     if (!ctx.eqPath.empty() && ctx.eqPath.back() != '/' && ctx.eqPath.back() != '\\')
         ctx.eqPath += '/';
 
+    // P04: --load-mem-audit — logs one [LOAD-MEM-AUDIT] line after each step
+    // with RSS plus the known-pool byte counts, so the "untracked" gap is a
+    // number at every step boundary instead of just at the end. entityprep
+    // bytes are 0 here — the prep-worker buffers this could name don't have a
+    // stable byte-count accessor yet (see review's audit note on this gap).
+    const bool memAudit = config_.constrainedConfig.loadMemAudit;
+    auto sampleStep = [&](const char* stepName) {
+        if (!memAudit) return;
+        size_t texBytes = constrainedTextureCache_ ? constrainedTextureCache_->getCurrentUsage() : 0;
+        size_t meshBytes = constrainedMeshCache_ ? constrainedMeshCache_->getCurrentUsage() : 0;
+        logLoadMemAuditStep(stepName, getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
+    };
+
+    sampleStep("00_start");
+
     loadZoneStep0_EQE1(ctx);
+    sampleStep("00_EQE1");
 
     if (!loadZoneStep1_S3D(ctx)) return;
+    sampleStep("01_S3D");
 
     loadZoneStep2_BSP(ctx);
+    sampleStep("02_BSP");
 
     // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
     // Zone textures are loaded as individual ETC1 textures via constrained cache.
     FlushThreadLog();
 
     loadZoneStep4_Regions(ctx);
+    sampleStep("04_Regions");
 
     loadZoneStep5_Assets(ctx);
+    sampleStep("05_Assets");
 
     loadZoneStep6_Objects(ctx);
+    sampleStep("06_Objects");
 
     loadZoneStep7_Doors(ctx);
+    sampleStep("07_Doors");
 
     if (!loadZoneStep8_Entities(ctx)) return;
+    sampleStep("08_Entities");
 
     loadZoneStep9_Collision(ctx);
+    sampleStep("09_Collision");
 
     if (!loadZoneStep10_Sky(ctx)) return;
+    sampleStep("10_Sky");
 
     loadZoneStep11_Env(ctx);
+    sampleStep("11_Env");
 
     loadZoneStep12_Lights(ctx);
+    sampleStep("12_Lights");
 
     loadZoneStep12b_Simulation(ctx);
+    sampleStep("12b_Simulation");
 
     loadZoneStep13_Cleanup(ctx);
+    sampleStep("13_Cleanup");
 
     sequentialLoadComplete_ = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "

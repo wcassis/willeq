@@ -10,11 +10,6 @@
 struct Entity;  // Forward declaration (defined in eq.h)
 class HCMap;
 
-namespace EQT { namespace Graphics {
-    class PfsArchive;
-    class WldLoader;
-}} // forward declarations
-
 namespace eqt {
 
 /**
@@ -58,9 +53,10 @@ struct ZoneLoadSnapshot {
     // Zone map (read-only pointer — owned by EverQuest, valid during loading)
     HCMap* zoneMap = nullptr;
 
-    // Pre-parsed zone sources (opened once at game state layer, shared with sequential loader)
-    std::shared_ptr<EQT::Graphics::PfsArchive> zoneArchive;
-    std::shared_ptr<EQT::Graphics::WldLoader> zoneWld;
+    // P04: zoneArchive/zoneWld ("pre-parsed zone sources") removed — never read
+    // by any consumer (the sequential loader parses its own S3D copy in
+    // loadZoneStep1_S3D), and holding the shared_ptrs kept the entire
+    // compressed .s3d + game-side WLD parse artifacts alive past their need.
     size_t playerBspRegion = SIZE_MAX;
 
     // Asset path

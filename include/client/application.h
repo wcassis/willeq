@@ -91,6 +91,7 @@ struct ApplicationConfig {
     std::string regionMapsPath = "data/region_maps";  // Directory containing per-zone region classification JSON
     int backgroundThreadCount = 0;  // 0 = use preset default
     int zoneLoadMode = -1;  // -1 = use preset default, 0 = manual (all at load), 1 = automatic (progressive)
+    bool loadMemAudit = false;  // P04: --load-mem-audit — per-step RSS logging during zone load
 
     // Profiling
     bool frameTimingEnabled = false;

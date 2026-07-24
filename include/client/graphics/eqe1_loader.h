@@ -44,9 +44,19 @@ public:
     const std::string& getFilePath() const { return filepath_; }
     bool isOpen() const { return isOpen_; }
 
+    // P04: bytes currently mmap'd for this archive (0 if not open). Used by the
+    // load-mem-audit instrumentation and /pmem's accounted-vs-RSS breakdown to
+    // name EQE1 mapped memory as a distinct suspect.
+    size_t getMappedBytes() const { return isOpen_ ? mappingSize_ : 0; }
+
 private:
     std::string filepath_;
-    std::vector<uint8_t> fileData_;
+    // P04: file is mmap'd read-only (MAP_PRIVATE) rather than heap-loaded. Entry
+    // pointers below point into this mapping. Backing pages are page-cache
+    // resident (reclaimable under memory pressure), unlike the old heap vector
+    // which pinned every byte of every opened archive as anonymous memory.
+    void* mapping_ = nullptr;
+    size_t mappingSize_ = 0;
     std::unordered_map<std::string, TextureEntry> textureLookup_;
     std::unordered_map<std::string, std::pair<const uint8_t*, uint32_t>> rawDataLookup_;
     uint16_t entryCount_ = 0;

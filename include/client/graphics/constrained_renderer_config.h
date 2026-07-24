@@ -132,6 +132,7 @@ struct ConstrainedRendererConfig {
     bool lazyPfsLoading = false;            // Don't keep PFS archives decompressed in memory
     bool releaseTextureDataAfterUpload = false;  // Free raw pixel data post-GPU upload
     bool deferredAssetLoading = false;  // Defer mesh building to per-frame budget
+    bool loadMemAudit = false;  // P04: log per-step RSS + known-pool bytes during loadZoneSequential
 
     // Background thread pool size (shared by all BackgroundWorkQueues)
     int backgroundThreadCount = 1;

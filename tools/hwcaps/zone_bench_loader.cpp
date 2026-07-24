@@ -23,6 +23,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/load_mem_audit.h"
 
 #include <filesystem>
 
@@ -94,6 +95,22 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     auto data = std::make_unique<ZoneBenchData>();
     auto totalStart = std::chrono::steady_clock::now();
 
+    // P04: --load-mem-audit — same [LOAD-MEM-AUDIT] line format as
+    // loadZoneSequential's per-step sampling (load_mem_audit.h) so benchmark
+    // and willeq runs are directly comparable. No mesh cache / entity prep
+    // pools in the benchmark path; those columns stay 0.
+    auto sampleStep = [&](const char* stepName) {
+        if (!config.loadMemAudit) return;
+        size_t eqe1Bytes = 0;
+        for (const auto& l : data->eqe1Loaders) {
+            if (l) eqe1Bytes += l->getMappedBytes();
+        }
+        size_t texBytes = data->textureCache ? data->textureCache->getCurrentUsage() : 0;
+        EQT::Graphics::logLoadMemAuditStep(stepName, eqe1Bytes, texBytes, 0, 0);
+    };
+
+    sampleStep("bench_00_start");
+
     // ── Step 1: Create Irrlicht device ──
     data->device = createDevice(config);
     if (!data->device) return nullptr;
@@ -135,6 +152,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
            bspTree->regions.size(),
            data->zone->textures.size(),
            std::chrono::duration<double, std::milli>(loadEnd - loadStart).count());
+    sampleStep("bench_02_s3d");
 
     // ── Step 3: Set up constrained renderer config (OrangePi preset) ──
     auto constrainedConfig = ConstrainedRendererConfig::fromPreset(
@@ -175,6 +193,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         }
         printf("  EQE1 loaders: %d archives loaded\n", eqe1Count);
     }
+    sampleStep("bench_04b_eqe1");
 
     // ── Step 5: Set up shaders ──
     auto* gpu = data->driver->getGPUProgrammingServices();
@@ -290,6 +309,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     printf("  Meshes built: %zu regions (%zu skipped), %d buffers, %d textures uploaded (%.0f ms)\n",
            regionsBuilt, regionsSkipped, totalBuffers, uploaded,
            std::chrono::duration<double, std::milli>(meshEnd - meshStart).count());
+    sampleStep("bench_07_meshes");
 
     // ── Step 7b: Load and build zone objects ──
     if (config.loadObjects) {
@@ -693,6 +713,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                std::chrono::duration<double, std::milli>(entityEnd - entityStart).count(),
                config.entityCount, raceMeshes.size());
     }
+    sampleStep("bench_11_entities");
 
     // ── Summary ──
     auto totalEnd = std::chrono::steady_clock::now();
@@ -702,6 +723,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
            zbMinX, zbMaxX, zbMinY, zbMaxY, zbMinZ, zbMaxZ);
     printf("  Center (EQ): (%.0f, %.0f, %.0f)\n",
            (zbMinX + zbMaxX) * 0.5f, (zbMinY + zbMaxY) * 0.5f, (zbMinZ + zbMaxZ) * 0.5f);
+    sampleStep("bench_99_done");
 
     return data;
 }

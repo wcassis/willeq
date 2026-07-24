@@ -63,6 +63,8 @@ struct Options {
     // P03: flag-gated load-phase timing (cold/warm zone-load-time claim).
     // Default off — output byte-identical to before when absent.
     bool reportLoadTime = false;
+    // P04: flag-gated per-step RSS/pool sampling during zone load.
+    bool loadMemAudit = false;
 
     // Benchmark
     int frames = 300;
@@ -305,6 +307,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--eq-path") == 0 && i + 1 < argc) opts.eqPath = argv[++i];
         else if (strcmp(argv[i], "--eqe1-path") == 0 && i + 1 < argc) opts.eqe1Path = argv[++i];
         else if (strcmp(argv[i], "--navmesh-path") == 0 && i + 1 < argc) opts.navmeshPath = argv[++i];
+        else if (strcmp(argv[i], "--load-mem-audit") == 0) opts.loadMemAudit = true;
         else if (strcmp(argv[i], "--drm") == 0) opts.useDRM = true;
         else if (strcmp(argv[i], "--report-load-time") == 0) opts.reportLoadTime = true;
         else if (strcmp(argv[i], "--x11") == 0) opts.forceX11 = true;
@@ -909,6 +912,7 @@ int main(int argc, char** argv) {
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
+    benchConfig.loadMemAudit = opts.loadMemAudit;
 
     auto loadT0 = std::chrono::steady_clock::now();
     auto data = ZoneBench::loadZone(benchConfig);

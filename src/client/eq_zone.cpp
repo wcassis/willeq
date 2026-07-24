@@ -584,6 +584,18 @@ void EverQuest::LoadZoneSources(const std::string& zone_name)
 		return;
 	}
 
+	// P04 (memory audit fix): the archive and WldLoader have now served their
+	// only game-state purpose — producing the BSP tree (self-owned shared_ptr,
+	// independent of WldLoader per zone_bsp.h). Nothing on the game side reads
+	// them after this point (the renderer parses its own S3D copy in
+	// loadZoneStep1_S3D; the former ZoneLoadSnapshot::zoneArchive/zoneWld
+	// hand-off fields were never read and have been removed). Keeping them
+	// pinned the whole compressed .s3d plus all WLD parse artifacts in RSS for
+	// the entire in-zone duration — measured 7.5-12.7 MB per golden zone
+	// (see refactor/P04_loader_memory_audit.md review).
+	m_zone_archive.reset();
+	m_zone_wld.reset();
+
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now() - startTime).count();
 	LOG_INFO(MOD_MAIN, "LoadZoneSources: Loaded zone '{}' in {}ms ({} BSP regions, {} nodes)",
