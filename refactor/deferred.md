@@ -125,14 +125,21 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   gameplay-load reality check; calibrated N=205 → median 38 visible
   entities, matching H04's live cap; P08's 200-entity "stress" config
   turned out already gameplay-representative by visible count):
-  1. **Entity draw-path reduction** — PROMOTED. At gameplay density,
-     entities are 64.4% of combined draws / 67.8% of Pi submission time.
-     Befallen at gameplay load: p95 279.7ms (3.6fps) whole-run replay —
-     still submission-bound (64.5% of frame; GPU 32.4%). The benchmark
-     ALREADY has four candidate techniques ready to measure
-     (--batch-entities / --composite-entities / --lod-entities /
-     --direct-gl, P05-era) — next unit is measure-and-select, not design.
-     RECOMMENDED next.
+  1. **Entity draw-path reduction — P08c (2026-07-25) picked the winner:
+     COMPOSITE ENTITIES.** Head-to-head at gameplay load (befallen replay
+     p95 speedup): batch 18.1% / composite 33.1% / lod 35.5% (worst
+     visuals — flat silhouettes) / direct-gl BROKEN (garbled textures, no
+     perf win — disqualified; genuine bug, undebugged per plan).
+     Composite generalizes (56.0% on qeynos2) and — key finding —
+     **production already has the full pipeline built and dormant**
+     (EntityRenderer::setCompositeEntityPath + entity_composite_builder
+     tool + 210 pre-baked sheets at /mnt/projects/EverQuest_ETC1/;
+     ConstrainedRendererConfig::enableCompositeEntities defaults false,
+     absent from orangepi preset). Landing unit = flip the preset flag +
+     verify real assets + Will's quality verdict on PRODUCTION rendering
+     (the benchmark's composite stand-in is not representative) + tier-2
+     impact. Projected befallen p95 279.7 → ~187ms — real but NOT
+     KPI-closing alone; lever #2 still needed after.
   2. **Cross-region same-material zone draw merge** — still real
      (97.8% zone-draw ceiling; Pi zone-only submission is 21.7ms avg, not
      negligible; zone-only replay also misses KPI at p95 174.3ms). Needs
