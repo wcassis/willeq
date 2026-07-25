@@ -1,0 +1,14 @@
+1784996631	batch (pre)	60488	392460
+1784996716	batch (post, invocation #1)	19128	390180
+1784996958	composite (pre)	76088	394912
+1784997035	composite (post, invocation #1)	60984	393804
+1784997058	lod (pre)	61448	396720
+1784997116	lod (post, invocation #2)	37952	395144
+1784997128	lod (pre)	75872	393332
+1784997196	lod (post, invocation #3)	61900	398516
+1784997219	directgl (pre)	61984	394684
+1784997336	directgl (post, invocation #4)	62288	393972
+1784997359	directgl_composite (pre)	62288	396324
+1784997428	directgl_composite (post, invocation #5)	33808	395848
+1784997436	directgl_composite (pre)	74100	394144
+1784997513	directgl_composite (post, invocation #6)	55568	395616

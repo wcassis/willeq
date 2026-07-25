@@ -1,0 +1,173 @@
+{
+  "355": {
+    "batch": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 311,
+      "differing_pct": 0.065,
+      "max_channel_diff": 74,
+      "mean_abs_channel_diff": 0.0005
+    },
+    "composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 15080,
+      "differing_pct": 3.142,
+      "max_channel_diff": 203,
+      "mean_abs_channel_diff": 0.8458
+    },
+    "lod": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 18610,
+      "differing_pct": 3.877,
+      "max_channel_diff": 203,
+      "mean_abs_channel_diff": 1.2576
+    },
+    "directgl": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 15910,
+      "differing_pct": 3.315,
+      "max_channel_diff": 244,
+      "mean_abs_channel_diff": 0.9063
+    },
+    "directgl_composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 15911,
+      "differing_pct": 3.315,
+      "max_channel_diff": 244,
+      "mean_abs_channel_diff": 0.9065
+    }
+  },
+  "626": {
+    "batch": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 378,
+      "differing_pct": 0.079,
+      "max_channel_diff": 15,
+      "mean_abs_channel_diff": 0.0004
+    },
+    "composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 29450,
+      "differing_pct": 6.135,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 2.1282
+    },
+    "lod": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 33768,
+      "differing_pct": 7.035,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 2.6751
+    },
+    "directgl": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 36383,
+      "differing_pct": 7.58,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 3.3704
+    },
+    "directgl_composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 36383,
+      "differing_pct": 7.58,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 3.3704
+    }
+  },
+  "791": {
+    "batch": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 887,
+      "differing_pct": 0.185,
+      "max_channel_diff": 92,
+      "mean_abs_channel_diff": 0.0014
+    },
+    "composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 28771,
+      "differing_pct": 5.994,
+      "max_channel_diff": 244,
+      "mean_abs_channel_diff": 2.0597
+    },
+    "lod": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 35285,
+      "differing_pct": 7.351,
+      "max_channel_diff": 244,
+      "mean_abs_channel_diff": 2.6691
+    },
+    "directgl": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 32119,
+      "differing_pct": 6.691,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 2.5478
+    },
+    "directgl_composite": {
+      "size": [
+        800,
+        600
+      ],
+      "total_pixels": 480000,
+      "differing_pixels": 32121,
+      "differing_pct": 6.692,
+      "max_channel_diff": 255,
+      "mean_abs_channel_diff": 2.5483
+    }
+  }
+}
