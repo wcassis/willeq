@@ -121,22 +121,31 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   production config, pinned poses bf355/472/626/791/917/987): submission
   (`setMaterial`+`drawMeshBuffer` loop) is 87-96% of CPU draw time on both
   x86 and Pi; Mali400/Lima per-draw cost 2.15-12.55 ms/100 draws synthetic
-  (5.9-16.3 real). Ranked levers → next-unit candidates:
-  1. **Cross-region same-material draw merge** — 97.8% aggregate zone-draw
-     ceiling; needs a real design unit (shared-VBO layout reconciled with
-     mesh-cache eviction, adaptive-lighting overrides, occlusion/PVS
-     granularity, front-to-back order). RECOMMENDED next.
-  2. **Occlusion occluder-budget increase** — up to +225 occludable
-     regions at bf472; cheap, pose-dependent; good interim unit.
-  3. **Entity draw path** — at the benchmark's --entities 200 stress
-     config, entities are 63.8% of combined draws and 86.9% of combined
-     submission time (zone-only submission is just ~2.7ms avg on x86).
-     The --batch-entities/--composite-entities/--lod-entities machinery
-     already exists in the benchmark; needs a gameplay-representative
-     entity-count check (H04 live cap was ~40 visible) before concluding
-     production impact.
-  4. Within-region merges: DEAD (~0% ceiling, regions already ~1 buffer
-     per material).
+  (5.9-16.3 real). Ranked levers — RE-RANKED by P08b (2026-07-25,
+  gameplay-load reality check; calibrated N=205 → median 38 visible
+  entities, matching H04's live cap; P08's 200-entity "stress" config
+  turned out already gameplay-representative by visible count):
+  1. **Entity draw-path reduction** — PROMOTED. At gameplay density,
+     entities are 64.4% of combined draws / 67.8% of Pi submission time.
+     Befallen at gameplay load: p95 279.7ms (3.6fps) whole-run replay —
+     still submission-bound (64.5% of frame; GPU 32.4%). The benchmark
+     ALREADY has four candidate techniques ready to measure
+     (--batch-entities / --composite-entities / --lod-entities /
+     --direct-gl, P05-era) — next unit is measure-and-select, not design.
+     RECOMMENDED next.
+  2. **Cross-region same-material zone draw merge** — still real
+     (97.8% zone-draw ceiling; Pi zone-only submission is 21.7ms avg, not
+     negligible; zone-only replay also misses KPI at p95 174.3ms). Needs
+     the proper design unit per P08's C5 interaction list.
+  3. **Occlusion occluder-budget increase** — unchanged; cheap interim.
+  4. Within-region merges: DEAD (~0% ceiling).
+  - P08b method notes: --animate is nonrepresentative in the benchmark
+    (4.5-5x visible inflation — don't use for perf runs); static
+    --camera-pose runs don't render entities at all (pre-existing; use
+    frame-indexed extraction from replays instead); tier-2's befallen
+    39.5ms p95 vs the replay's 279.7ms is pose selection (3 curated views
+    vs worst-case-inclusive path), so tier-2 alone understates the KPI
+    gap.
 - **CMA "leak" OVERTURNED (P03 controlled measurement):** no texture format
   leaks CMA kernel-side (true-leak check with cache drops: all formats
   <=+60kB per run). P02's "reboot-only drain" was PAGE CACHE borrowing
