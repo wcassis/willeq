@@ -1,7 +1,12 @@
 #include "zone_bench_histogram.h"
 
 #include <algorithm>
+#include <cmath>
 #include <numeric>
+
+#include "client/graphics/frustum_culler.h"
+#include "client/graphics/software_occlusion_culler.h"
+#include "client/zone_bsp.h"
 
 namespace ZoneBench {
 
@@ -110,6 +115,92 @@ void printDrawHistogram(const DrawHistogram& h) {
            buckets.b64_127, buckets.b128plus);
     printf("  tiny draws (<%d polys): %d / %d (%.1f%%)\n",
            kTinyDrawPolyThreshold, tinyDraws, totalDraws, tinyFrac * 100.0);
+}
+
+OcclusionHeadroom computeOcclusionHeadroomUncapped(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    bool pvsCull,
+    bool frustumCull,
+    int regionsOccludedCapped)
+{
+    OcclusionHeadroom result;
+    result.regionsOccludedCapped = regionsOccludedCapped;
+
+    if (!data.occlusionCuller || !data.occlusionCuller->hasOccluders()) {
+        return result;
+    }
+
+    float camEqX = cam.eqX, camEqY = cam.eqY, camEqZ = cam.eqZ;
+    size_t camRegion = data.bspTree->findRegionIndexForPoint(camEqX, camEqY, camEqZ);
+
+    struct RegionEntry { size_t idx; float distSq; };
+    std::vector<RegionEntry> visibleRegions;
+
+    for (auto& [regionIdx, rd] : data.regions) {
+        if (pvsCull && camRegion != SIZE_MAX && data.bspTree) {
+            auto& camReg = data.bspTree->regions[camRegion];
+            if (camReg && regionIdx < camReg->visibleRegions.size() &&
+                !camReg->visibleRegions[regionIdx]) {
+                continue;
+            }
+        }
+        if (frustumCull && data.frustumCuller && data.frustumCuller->isEnabled()) {
+            if (!data.frustumCuller->testAABB(
+                    rd.eqMinX, rd.eqMinY, rd.eqMinZ,
+                    rd.eqMaxX, rd.eqMaxY, rd.eqMaxZ)) {
+                continue;
+            }
+        }
+        float dx = std::max(0.0f, std::max(rd.eqMinX - camEqX, camEqX - rd.eqMaxX));
+        float dy = std::max(0.0f, std::max(rd.eqMinY - camEqY, camEqY - rd.eqMaxY));
+        float dz = std::max(0.0f, std::max(rd.eqMinZ - camEqZ, camEqZ - rd.eqMaxZ));
+        float distSq = dx * dx + dy * dy + dz * dz;
+        visibleRegions.push_back({regionIdx, distSq});
+    }
+    result.regionsVisiblePVS = static_cast<int>(visibleRegions.size());
+
+    std::sort(visibleRegions.begin(), visibleRegions.end(),
+              [](const RegionEntry& a, const RegionEntry& b) {
+                  return a.distSq < b.distSq;
+              });
+
+    // Compute camera basis (same math as collectDrawEntries' occlusion block).
+    float fwdLen = std::sqrt(cam.dirX * cam.dirX + cam.dirY * cam.dirY + cam.dirZ * cam.dirZ);
+    float fX = cam.dirX / fwdLen, fY = cam.dirY / fwdLen, fZ = cam.dirZ / fwdLen;
+    float rX = fY, rY = -fX, rZ = 0.0f;
+    float rLen = std::sqrt(rX * rX + rY * rY);
+    if (rLen > 0.001f) { rX /= rLen; rY /= rLen; }
+    float uX = rY * fZ - rZ * fY;
+    float uY = rZ * fX - rX * fZ;
+    float uZ = rX * fY - rY * fX;
+
+    data.occlusionCuller->setCamera(camEqX, camEqY, camEqZ,
+                                     fX, fY, fZ, rX, rY, rZ, uX, uY, uZ,
+                                     cam.fovRadV, cam.aspect);
+    data.occlusionCuller->clear();
+    data.occlusionCuller->resetStats();
+
+    // Uncapped: every region is tested against the depth buffer accumulated
+    // from ALL nearer regions' occluders (no maxOccluderRegions ceiling),
+    // then (if not occluded) rasterizes its OWN occluders for farther
+    // regions -- same nearest-first incremental semantics as production,
+    // just without the region-count cap on the occluder set.
+    for (const auto& re : visibleRegions) {
+        auto& rd = data.regions[re.idx];
+        bool occluded = data.occlusionCuller->testAABB(
+            rd.eqMinX, rd.eqMinY, rd.eqMinZ, rd.eqMaxX, rd.eqMaxY, rd.eqMaxZ);
+        if (occluded) {
+            result.regionsOccludedUncapped++;
+            continue;  // fully occluded regions don't contribute new occluders either
+        }
+        const auto& occluders = data.occlusionCuller->getRegionOccluders(re.idx);
+        for (const auto& tri : occluders) {
+            data.occlusionCuller->rasterizeTriangle(tri.v0, tri.v1, tri.v2);
+        }
+    }
+
+    return result;
 }
 
 } // namespace ZoneBench
