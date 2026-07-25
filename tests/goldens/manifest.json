@@ -64,7 +64,7 @@
           "polys": 663
         }
       },
-      "p95CpuMsBaseline": 29.082,
+      "p95CpuMsBaseline": 52.576,
       "memory": {
         "textureCacheBytesUsed": 42226984,
         "textureCacheBytesLimit": 67108864,
@@ -109,7 +109,7 @@
           "polys": 4421
         }
       },
-      "p95CpuMsBaseline": 18.063,
+      "p95CpuMsBaseline": 22.378,
       "memory": {
         "textureCacheBytesUsed": 11184800,
         "textureCacheBytesLimit": 67108864,
@@ -154,7 +154,7 @@
           "polys": 526
         }
       },
-      "p95CpuMsBaseline": 23.329,
+      "p95CpuMsBaseline": 20.072,
       "memory": {
         "textureCacheBytesUsed": 2883581,
         "textureCacheBytesLimit": 67108864,
@@ -166,6 +166,6 @@
     "status": "blessed",
     "by": "Will",
     "date": "2026-07-25",
-    "note": "Q03 goldens: production count-mode config + Greater Lightstone player light (level 9, x3 shader color boost, per-vertex slot-0 fill). Blessed after three-way review (pre-Q01 mega-lamp full-PP / Q01 count+mega-lamp / Q03 GLS); rounds 1-2 rejected for fixture-lamp infidelity."
+    "note": "P09c driver-fix re-bless — getOpaqueAlphaFallback texture-unit fix corrected persistent corruption baked into qeynos2_f0/gfaydark_f0 goldens"
   }
 }
