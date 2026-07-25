@@ -1,0 +1,4 @@
+frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,alpha_test_draws,solid_draws
+0,201.9,393.4,5.0,180.0,-5.0,39.017,66.175,105.201,236,20,885,111,111,0,0.000,0,0
+1,-134.9,-238.9,6.0,0.0,-5.0,8.871,54.603,63.483,119,16,542,60,60,12,0.000,0,0
+2,-202.9,-706.7,20.0,90.0,-5.0,16.451,23.259,39.718,228,8,663,140,140,0,0.000,0,0

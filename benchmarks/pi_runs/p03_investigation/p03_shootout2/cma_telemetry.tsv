@@ -1,0 +1,28 @@
+1784850356	loadtime/qeynos2/etc1z/r0cold (pre)	78792	399344
+1784850383	loadtime/qeynos2/etc1z/r0cold (post, invocation #1)	87480	397340
+1784850400	loadtime/qeynos2/etc1z/r1warm (pre)	87480	398400
+1784850412	loadtime/qeynos2/etc1z/r1warm (post, invocation #2)	87468	397816
+1784850429	loadtime/gfaydark/etc1z/r0cold (pre)	87468	396444
+1784850460	loadtime/gfaydark/etc1z/r0cold (post, invocation #3)	87308	398636
+1784850477	loadtime/gfaydark/etc1z/r1warm (pre)	87392	399084
+1784850490	loadtime/gfaydark/etc1z/r1warm (post, invocation #4)	87436	395380
+1784850507	loadtime/befallen/etc1z/r0cold (pre)	87436	398612
+1784850539	loadtime/befallen/etc1z/r0cold (post, invocation #5)	86004	395780
+1784850556	loadtime/befallen/etc1z/r1warm (pre)	86004	399128
+1784850569	loadtime/befallen/etc1z/r1warm (post, invocation #6)	85992	396024
+1784850586	leak/gfaydark/rgba8888/leak1 (pre)	85992	396664
+1784850634	leak/gfaydark/rgba8888/leak1 (post, invocation #7)	87644	391276
+1784850651	leak/gfaydark/etc1z/leak0 (pre)	87644	393924
+1784850689	leak/gfaydark/etc1z/leak0 (post, invocation #8)	87584	392880
+1784850772	leak/gfaydark/rgba8888/leak0 (pre)	102056	374712
+1784850815	leak/gfaydark/rgba8888/leak0 (post, invocation #9)	97312	396472
+1784850832	leak/gfaydark/rgb565/leak1 (pre)	97312	397624
+1784850872	leak/gfaydark/rgb565/leak1 (post, invocation #10)	97296	396192
+1784850889	leak/gfaydark/raw/leak0 (pre)	97296	399132
+1784850925	leak/gfaydark/raw/leak0 (post, invocation #11)	97292	394644
+1784850942	leak/gfaydark/rgb565/leak0 (pre)	97292	399288
+1784850981	leak/gfaydark/rgb565/leak0 (post, invocation #12)	97280	394792
+1784850998	leak/gfaydark/raw/leak1 (pre)	97280	398972
+1784851033	leak/gfaydark/raw/leak1 (post, invocation #13)	97276	396576
+1784851050	leak/gfaydark/etc1z/leak1 (pre)	97276	398304
+1784851091	leak/gfaydark/etc1z/leak1 (post, invocation #14)	97264	396792

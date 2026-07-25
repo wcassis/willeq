@@ -163,7 +163,9 @@
     }
   ],
   "approval": {
-    "status": "pending",
-    "note": "Q03 production-mirrored player light re-bless -- awaiting Will re-bless"
+    "status": "blessed",
+    "by": "Will",
+    "date": "2026-07-25",
+    "note": "Q03 goldens: production count-mode config + Greater Lightstone player light (level 9, x3 shader color boost, per-vertex slot-0 fill). Blessed after three-way review (pre-Q01 mega-lamp full-PP / Q01 count+mega-lamp / Q03 GLS); rounds 1-2 rejected for fixture-lamp infidelity."
   }
 }

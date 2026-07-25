@@ -1,0 +1,1757 @@
+{
+  "results": [
+    {
+      "zone": "befallen",
+      "config": "raw",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 10270.85,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 2883581,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 44.735,
+        "total_ms_mean": 29.39438596491228,
+        "total_ms_min": 17.726,
+        "total_ms_max": 45.323,
+        "fps_p95": 22.353861629596512,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_raw_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_raw_r0cold.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "raw",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2391.17,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 2883581,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 44.563,
+        "total_ms_mean": 29.32864912280702,
+        "total_ms_min": 17.727,
+        "total_ms_max": 44.834,
+        "fps_p95": 22.440140924085004,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_raw_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_raw_r1warm.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "etc1",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 20717.13,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 5280160,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 30.546,
+        "total_ms_mean": 25.904508771929827,
+        "total_ms_min": 18.134,
+        "total_ms_max": 31.224,
+        "fps_p95": 32.73751063969096,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_etc1_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_etc1_r0cold.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "etc1",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 9930.36,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 5280160,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 48.567,
+        "total_ms_mean": 28.212403508771928,
+        "total_ms_min": 18.112,
+        "total_ms_max": 64.401,
+        "fps_p95": 20.590112627916074,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_etc1_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_etc1_r1warm.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "raw",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 10259.75,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 11184800,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 41.119,
+        "total_ms_mean": 33.75033333333333,
+        "total_ms_min": 26.009,
+        "total_ms_max": 44.398,
+        "fps_p95": 24.319657579221285,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_raw_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_raw_r0cold.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "raw",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2109.98,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 11184800,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 41.138,
+        "total_ms_mean": 33.7969649122807,
+        "total_ms_min": 26.059,
+        "total_ms_max": 44.429,
+        "fps_p95": 24.308425300209052,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_raw_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_raw_r1warm.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "rgba8888",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 16159.65,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 11184768,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 41.139,
+        "total_ms_mean": 33.770175438596496,
+        "total_ms_min": 26.024,
+        "total_ms_max": 45.308,
+        "fps_p95": 24.307834415031962,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgba8888_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgba8888_r0cold.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "rgba8888",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2839.5,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 11184768,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 41.064,
+        "total_ms_mean": 33.76940350877193,
+        "total_ms_min": 25.995,
+        "total_ms_max": 45.242,
+        "fps_p95": 24.352230664328854,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgba8888_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgba8888_r1warm.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "etc1",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 20136.56,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 1485936,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 39.19,
+        "total_ms_mean": 31.77524561403509,
+        "total_ms_min": 24.177,
+        "total_ms_max": 42.279,
+        "fps_p95": 25.51671344730799,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_etc1_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_etc1_r0cold.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "etc1",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 10620.02,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 1485936,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 42.208,
+        "total_ms_mean": 32.050456140350875,
+        "total_ms_min": 24.222,
+        "total_ms_max": 44.605,
+        "fps_p95": 23.692191053828658,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_etc1_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_etc1_r1warm.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "etc1",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 19470.17,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 360568,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 42.774,
+        "total_ms_mean": 27.399736842105266,
+        "total_ms_min": 16.533,
+        "total_ms_max": 45.378,
+        "fps_p95": 23.378687988030112,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_etc1_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_etc1_r0cold.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "etc1",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 13205.77,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 360568,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 50.825,
+        "total_ms_mean": 29.99157894736842,
+        "total_ms_min": 16.513,
+        "total_ms_max": 99.408,
+        "fps_p95": 19.675356615838663,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_etc1_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_etc1_r1warm.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "rgb565",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 13992.19,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 21113456,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 32.138,
+        "total_ms_mean": 27.21724561403509,
+        "total_ms_min": 18.608,
+        "total_ms_max": 32.495,
+        "fps_p95": 31.11581305619516,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgb565_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgb565_r0cold.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "rgb565",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2453.44,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 21113456,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 32.144,
+        "total_ms_mean": 27.174105263157895,
+        "total_ms_min": 18.552,
+        "total_ms_max": 32.37,
+        "fps_p95": 31.1100049776008,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgb565_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgb565_r1warm.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "raw",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 10028.61,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 42226984,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 34.755,
+        "total_ms_mean": 29.008684210526315,
+        "total_ms_min": 19.528,
+        "total_ms_max": 34.997,
+        "fps_p95": 28.772838440512153,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_raw_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_raw_r0cold.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "raw",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2692.08,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 42226984,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 34.8,
+        "total_ms_mean": 28.947701754385964,
+        "total_ms_min": 19.533,
+        "total_ms_max": 34.964,
+        "fps_p95": 28.73563218390805,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_raw_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_raw_r1warm.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "rgb565",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 10881.81,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 1441786,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 43.405,
+        "total_ms_mean": 28.112070175438596,
+        "total_ms_min": 16.854,
+        "total_ms_max": 43.5,
+        "fps_p95": 23.038820412394884,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgb565_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgb565_r0cold.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "rgb565",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2422.94,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 1441786,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 43.412,
+        "total_ms_mean": 28.120263157894737,
+        "total_ms_min": 16.896,
+        "total_ms_max": 43.566,
+        "fps_p95": 23.035105500783192,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgb565_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgb565_r1warm.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "rgba8888",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 12082.47,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 2883572,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 44.441,
+        "total_ms_mean": 29.247771929824562,
+        "total_ms_min": 17.67,
+        "total_ms_max": 44.924,
+        "fps_p95": 22.501743885151097,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgba8888_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgba8888_r0cold.log"
+    },
+    {
+      "zone": "befallen",
+      "config": "rgba8888",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2595.77,
+      "memory": {
+        "zone": "befallen",
+        "textureCacheBytesUsed": 2883572,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 9
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 44.327,
+        "total_ms_mean": 29.211526315789474,
+        "total_ms_min": 17.68,
+        "total_ms_max": 44.437,
+        "fps_p95": 22.559613779412096,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              368
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              1241
+            ],
+            "deterministic": true,
+            "draws": 368,
+            "state_changes": 7,
+            "polys": 1241
+          },
+          "1": {
+            "draws_set": [
+              75
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              384
+            ],
+            "deterministic": true,
+            "draws": 75,
+            "state_changes": 5,
+            "polys": 384
+          },
+          "2": {
+            "draws_set": [
+              170
+            ],
+            "state_changes_set": [
+              5
+            ],
+            "polys_set": [
+              526
+            ],
+            "deterministic": true,
+            "draws": 170,
+            "state_changes": 5,
+            "polys": 526
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgba8888_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_befallen_rgba8888_r1warm.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "rgba8888",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 17624.95,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 42226912,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 34.803,
+        "total_ms_mean": 29.0310350877193,
+        "total_ms_min": 19.497,
+        "total_ms_max": 35.323,
+        "fps_p95": 28.73315518777117,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgba8888_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgba8888_r0cold.log"
+    },
+    {
+      "zone": "qeynos2",
+      "config": "rgba8888",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 10618.59,
+      "memory": {
+        "zone": "qeynos2",
+        "textureCacheBytesUsed": 42226912,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 126
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 50.193,
+        "total_ms_mean": 31.098877192982457,
+        "total_ms_min": 19.533,
+        "total_ms_max": 64.294,
+        "fps_p95": 19.92309684617377,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              236
+            ],
+            "state_changes_set": [
+              20
+            ],
+            "polys_set": [
+              885
+            ],
+            "deterministic": true,
+            "draws": 236,
+            "state_changes": 20,
+            "polys": 885
+          },
+          "1": {
+            "draws_set": [
+              119
+            ],
+            "state_changes_set": [
+              16
+            ],
+            "polys_set": [
+              542
+            ],
+            "deterministic": true,
+            "draws": 119,
+            "state_changes": 16,
+            "polys": 542
+          },
+          "2": {
+            "draws_set": [
+              228
+            ],
+            "state_changes_set": [
+              8
+            ],
+            "polys_set": [
+              663
+            ],
+            "deterministic": true,
+            "draws": 228,
+            "state_changes": 8,
+            "polys": 663
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgba8888_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_qeynos2_rgba8888_r1warm.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "rgb565",
+      "rep": "r0cold",
+      "cold": true,
+      "n_poses": 3,
+      "load_phase_ms": 11967.5,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 5592384,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 39.977,
+        "total_ms_mean": 32.56421052631579,
+        "total_ms_min": 24.797,
+        "total_ms_max": 43.398,
+        "fps_p95": 25.01438327038047,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgb565_r0cold.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgb565_r0cold.log"
+    },
+    {
+      "zone": "gfaydark",
+      "config": "rgb565",
+      "rep": "r1warm",
+      "cold": false,
+      "n_poses": 3,
+      "load_phase_ms": 2109.43,
+      "memory": {
+        "zone": "gfaydark",
+        "textureCacheBytesUsed": 5592384,
+        "textureCacheBytesLimit": 67108864,
+        "textureCount": 32
+      },
+      "summary": {
+        "n_frames": 60,
+        "warmup_frames_discarded": 3,
+        "n_frames_steady": 57,
+        "total_ms_p95": 40.017,
+        "total_ms_mean": 32.61717543859649,
+        "total_ms_min": 24.825,
+        "total_ms_max": 43.601,
+        "fps_p95": 24.989379513706673,
+        "per_pose": {
+          "0": {
+            "draws_set": [
+              143
+            ],
+            "state_changes_set": [
+              10
+            ],
+            "polys_set": [
+              3338
+            ],
+            "deterministic": true,
+            "draws": 143,
+            "state_changes": 10,
+            "polys": 3338
+          },
+          "1": {
+            "draws_set": [
+              134
+            ],
+            "state_changes_set": [
+              7
+            ],
+            "polys_set": [
+              3633
+            ],
+            "deterministic": true,
+            "draws": 134,
+            "state_changes": 7,
+            "polys": 3633
+          },
+          "2": {
+            "draws_set": [
+              203
+            ],
+            "state_changes_set": [
+              9
+            ],
+            "polys_set": [
+              4421
+            ],
+            "deterministic": true,
+            "draws": 203,
+            "state_changes": 9,
+            "polys": 4421
+          }
+        }
+      },
+      "csv": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgb565_r1warm.csv",
+      "log": "/mnt/projects/fable/wt/slot1/benchmarks/pi_runs/p03_investigation/p03_shootout1/p03_gfaydark_rgb565_r1warm.log"
+    }
+  ],
+  "aborted": false
+}

@@ -1,0 +1,48 @@
+1784848964	befallen/raw/r0cold (pre)	102056	396108
+1784848998	befallen/raw/r0cold (post, invocation #1)	99844	398020
+1784849015	befallen/raw/r1warm (pre)	99848	401808
+1784849032	befallen/raw/r1warm (post, invocation #2)	99832	399152
+1784849049	qeynos2/etc1/r0cold (pre)	99832	400508
+1784849096	qeynos2/etc1/r0cold (post, invocation #3)	96772	395712
+1784849113	qeynos2/etc1/r1warm (pre)	96788	394928
+1784849142	qeynos2/etc1/r1warm (post, invocation #4)	74384	397884
+1784849159	gfaydark/raw/r0cold (pre)	74384	400380
+1784849193	gfaydark/raw/r0cold (post, invocation #5)	97076	398132
+1784849210	gfaydark/raw/r1warm (pre)	97088	400544
+1784849227	gfaydark/raw/r1warm (post, invocation #6)	97080	395080
+1784849244	gfaydark/rgba8888/r0cold (pre)	97080	399280
+1784849286	gfaydark/rgba8888/r0cold (post, invocation #7)	69152	396712
+1784849303	gfaydark/rgba8888/r1warm (pre)	69152	397500
+1784849322	gfaydark/rgba8888/r1warm (post, invocation #8)	67936	397504
+1784849407	gfaydark/etc1/r0cold (pre)	102056	373964
+1784849448	gfaydark/etc1/r0cold (post, invocation #9)	76964	398468
+1784849465	gfaydark/etc1/r1warm (pre)	76964	400244
+1784849493	gfaydark/etc1/r1warm (post, invocation #10)	52060	398268
+1784849510	befallen/etc1/r0cold (pre)	52060	399748
+1784849556	befallen/etc1/r0cold (post, invocation #11)	100316	397440
+1784849573	befallen/etc1/r1warm (pre)	100316	397136
+1784849606	befallen/etc1/r1warm (post, invocation #12)	71232	398388
+1784849623	qeynos2/rgb565/r0cold (pre)	71232	399380
+1784849665	qeynos2/rgb565/r0cold (post, invocation #13)	56052	386868
+1784849682	qeynos2/rgb565/r1warm (pre)	56052	390488
+1784849702	qeynos2/rgb565/r1warm (post, invocation #14)	60952	398804
+1784849719	qeynos2/raw/r0cold (pre)	60952	397160
+1784849752	qeynos2/raw/r0cold (post, invocation #15)	61676	397420
+1784849769	qeynos2/raw/r1warm (pre)	61676	400556
+1784849787	qeynos2/raw/r1warm (post, invocation #16)	61676	400200
+1784849871	befallen/rgb565/r0cold (pre)	102056	368572
+1784849903	befallen/rgb565/r0cold (post, invocation #17)	97512	396192
+1784849920	befallen/rgb565/r1warm (pre)	97512	399988
+1784849937	befallen/rgb565/r1warm (post, invocation #18)	97488	400180
+1784849954	befallen/rgba8888/r0cold (pre)	97496	399352
+1784849989	befallen/rgba8888/r0cold (post, invocation #19)	80092	398592
+1784850006	befallen/rgba8888/r1warm (pre)	80092	398848
+1784850023	befallen/rgba8888/r1warm (post, invocation #20)	79144	398480
+1784850040	qeynos2/rgba8888/r0cold (pre)	79144	399328
+1784850086	qeynos2/rgba8888/r0cold (post, invocation #21)	101204	387480
+1784850103	qeynos2/rgba8888/r1warm (pre)	101204	390400
+1784850133	qeynos2/rgba8888/r1warm (post, invocation #22)	69644	395368
+1784850150	gfaydark/rgb565/r0cold (pre)	69644	398832
+1784850186	gfaydark/rgb565/r0cold (post, invocation #23)	78700	398784
+1784850203	gfaydark/rgb565/r1warm (pre)	78700	400716
+1784850219	gfaydark/rgb565/r1warm (post, invocation #24)	78684	398316

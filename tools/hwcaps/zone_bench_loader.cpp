@@ -739,6 +739,8 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 // exact-match bar (1-33 differing pixels between identical invocations,
 // only reproducible across processes). An FNV-1a hash of the texture NAME
 // is just as good a grouping key and is stable across runs.
+// Q02 applied this same fix to production (renderer_zone_draw.cpp has a
+// byte-identical copy of this helper) -- keep the two copies in sync.
 static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
     if (!mat.getTexture(0)) return 0;
     const irr::io::path& tname = mat.getTexture(0)->getName().getPath();

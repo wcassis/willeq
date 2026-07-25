@@ -101,6 +101,19 @@ of correct near lighting.
   FULL per-pixel, not production count-mode config — align them (with a
   count-mode golden re-bless) so KPI tracking reflects what ships.
 
+**Addendum (2026-07-25, Q03):** P07d's "radius mode demotes ~nothing"
+finding was a property of the BENCHMARK FIXTURE, not the game — the bench
+lamp (fixed atten, R=712) reached the whole zone, while the production
+player light is a lightstone (level-dependent radius 20-100; Greater
+Lightstone = level 9, effective R=336 with the ×3 shader color boost the
+first Q03 pass missed). The harness now mirrors the real light
+(Q01/Q02/Q03, goldens blessed by Will 2026-07-25). Under the honest lamp,
+radius mode IS provably lossless while demoting real regions, and count
+mode is provably lossy at >20-region views — the count-stays-default
+decision above still stands on TIMING alone (radius measured 1-17% slower
+in Q03), not on "savings don't exist." The flip remains an open candidate
+in refactor/deferred.md pending re-measurement under the final fixture.
+
 ## 2026-07-24 — Texture format: KEEP ETC1 (Will's decision, P03 data)
 
 **Decision:** ETC1 flatpack (EQE1 v1) remains the production texture path.

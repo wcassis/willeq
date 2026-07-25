@@ -234,23 +234,35 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   in code, unquantified — needs a live-client measurement session (tour
   machinery + frame timing) to size before bounding.
 
-## Benchmark camera path is not reproducible across builds (3rd occurrence, P06)
+## Benchmark camera path — CLOSED by Q01 (2026-07-25, see refactor/Q01_path_replay_harness_align.md)
 
-- The navmesh-driven moving camera path (`--entities 200 --seed 42`) has now
-  failed to transfer three times: March logs → P05, and P05 → P06 (identical
-  command, same worktree, different session — P05's frame 558/560-563 poses
-  did not exist in P06's run; P06's whole-run avg 91ms vs P05's 30ms is a
-  path difference, not a regression). Every perf unit re-finds poses from
-  scratch and cross-unit frame-time comparisons are impossible. Fix: record/
-  replay the camera path (dump per-frame pose to a path file, `--path-file`
-  replay flag — the CSV already carries pos/heading/pitch, so replay is the
-  only missing piece). Small unit; do it before the next perf campaign.
-- Related doc gap: x86/llvmpipe runs silently fall back to an orbit camera
-  unless `--navmesh-path /mnt/projects/maps/nav` is passed (not in help
-  text) — P06 review documents it; fold the help-text fix into the same unit.
-- Repo hygiene: `benchmarks/pi_runs/` is gitignored (H04-era), which is how
-  P05's "committed" CSVs silently never landed (salvaged 3fb85fc). Unit
-  deliverable CSVs must be `git add -f`'d, or unignore the directory.
+- `--dump-path`/`--path-file` record/replay landed; canonical 1000-frame
+  paths for the three golden zones committed at `benchmarks/paths/`.
+  **All future perf-unit moving runs must REPLAY a canonical path** —
+  record-vs-replay proven byte-identical on metric columns (x86 R0=R1=R2),
+  and geometry columns byte-identical x86↔Pi. Orbit fallback now warns
+  loudly + is in the help text. `benchmarks/pi_runs/` unignored (stranded
+  P01-P04/H04 CSVs from both slots salvaged into git).
+- Residual: entity placement now samples the resolved measured-frame trace
+  (not the raw navmesh polyline arc length) — a future `--entities` +
+  moving-path run WITHOUT replay places entities differently than the
+  P05-P07-era runs did (those were never cross-comparable anyway).
+
+## Radius mode as production default — OPEN flip candidate (Q03, 2026-07-25)
+
+- Under the honest Greater-Lightstone fixture (Q03; level 9, ×3 boost,
+  R=336), radius mode is PROVABLY lossless (pixel-identical to full-PP at
+  all 15 x86 poses incl. 6-10 real demotions per pose) while count mode
+  provably unlights lit geometry at any view with >20 visible regions
+  (7/15 poses, up to 69% px). But radius timed 1.1% (moving) to 8-17%
+  (city static) SLOWER than count in Q03's Pi measurement — count buys its
+  speed by unlighting reachable geometry. GLS reach tripled radius
+  demotions vs the level-10 first pass; a flip unit should re-measure
+  timing under the FINAL fixture (Q03 amendment: boost + slot-0 fill were
+  added after the Pi timing runs), and per the P07c lesson a flip needs
+  its own golden/tier-2 re-bless. Will has conceptually endorsed
+  radius-limited pp lighting ("what's stopping efficient light calculation
+  in a radius around the player") — the remaining question is purely perf.
 
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
@@ -261,16 +273,13 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   zone fog color data. Will's eye flagged the general area; needs its own
   unit.
 
-## Production draw-order nondeterminism (found by H02b, 2026-07-23)
+## Production draw-order nondeterminism — CLOSED by Q02 (2026-07-25, see refactor/Q02_draw_order_key.md)
 
-- **renderer_zone_draw.cpp:242,333 builds the material sort key from the low
-  16 bits of the texture POINTER** — same bug H02b fixed in the benchmark
-  loader (zone_bench_loader.cpp, FNV-1a name hash). Under ASLR the
-  production draw order of equal-material geometry varies run-to-run:
-  wobbling state-change counts, nondeterministic z-fighting on coplanar
-  faces, and it would break any future full-app golden testing. Small fix
-  (apply textureGroupId() pattern to both sites); do it before the full-app
-  llvmpipe test tier.
+- Both pointer-key sites in renderer_zone_draw.cpp now use the H02b
+  FNV-1a texture-name hash (`textureGroupId()`, byte-for-byte mirror of
+  zone_bench_loader.cpp's — keep the two copies in sync). Straggler sweep
+  confirmed no other pointer-derived draw/sort keys in src/ or include/.
+  Unblocks the future full-app llvmpipe golden tier.
 
 ## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
 
