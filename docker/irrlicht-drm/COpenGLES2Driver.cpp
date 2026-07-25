@@ -1089,6 +1089,14 @@ void COpenGLES2Driver::setMaterial(const SMaterial& material)
 
 GLuint COpenGLES2Driver::getOpaqueAlphaFallback() {
     if (!opaqueAlphaFallback_) {
+        // P09b root cause: lazy-init used to glBindTexture() without first
+        // selecting unit 1, so the new fallback texture landed on whichever
+        // unit was last left active by applyMaterialRenderState() (unit 0),
+        // clobbering the real diffuse texture for the process's first
+        // no-companion-texture draw. Select GL_TEXTURE1 explicitly before
+        // the bind so the lazy-init always lands on the unit this fallback
+        // is actually for (see refactor/P09b_merge_fix.md, Root cause A).
+        glActiveTexture(GL_TEXTURE1);
         glGenTextures(1, &opaqueAlphaFallback_);
         glBindTexture(GL_TEXTURE_2D, opaqueAlphaFallback_);
         uint8_t white[] = {255, 255, 255, 255};
