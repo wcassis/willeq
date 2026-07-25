@@ -506,3 +506,53 @@ default flip is its own unit with its own tier-2 re-bless (P07c lesson).
   removed manually after the session (done, confirmed clean) -- flagged in
   case a future unit wants to fold a generic "arbitrary-variant P02 runner
   with cleanup" helper into `pi_common.py` proper.
+
+### Amendment (orchestrator, 2026-07-25): Greater Lightstone reference + the x3 boost DOES reach the shader
+
+Will's re-bless review of the first Q03 goldens ("with a greater lightstone
+equipped, all of the current room in the befallen screenshots should be
+somewhat lit") caught two production-fidelity gaps in the original mirror:
+
+1. **The x3 color boost is part of the shader input.** The original pass
+   mirrored the SLight's DiffuseColor and explicitly declined to reproduce
+   the boost at renderer_sim_bridge.cpp:745, reasoning it was "display
+   only" — but the boosted color IS what both setPointLight(0,...) and
+   setPlayerLightColor deliver to the shader in production, so the
+   benchmark under-lit every scene 3x vs real gameplay. The fixture now
+   applies the boost to the color (never the attenuation — the radius-mode
+   R solve is unaffected, by construction and by the readback proof).
+2. **Point-light slot 0 was never filled.** Production mirrors the boosted
+   player light into per-vertex slot 0 (renderer_sim_bridge.cpp:746-752),
+   which is what lights DEMOTED (lightweight) regions. The benchmark left
+   slot 0 dark, so demoted regions had NO player light at all — harsher
+   than production ever renders, which exaggerated the count-mode black
+   cliff in both the Q01 and first-Q03 goldens. setupLighting() now seeds
+   slot 0 (boosted color, same attenuation) and setupCamera() keeps it
+   collocated with the camera per frame (ZoneBenchData carries the values).
+   Verified safe: the per-pixel VS variants loop lights from i=1 (FS owns
+   light 0, zone_shader.cpp:82/318/608), lightweight VS loops i=0 — exactly
+   production's split, no double-count.
+3. **Reference level is 9, not 10**: TypeToLevel(LightTypeGreaterLightstone)
+   = LightLevelLargeMagic = 9 (light_source.h); level 10 (Brilliant) is
+   Globe of Stars. Will's stated reference — "the greater lightstone
+   provides the best lighting in-game outside of ultravision" — pins the
+   harness config, so manifest productionConfig now carries
+   `--player-light-level 9` (radius 92, atten (1,0,19/92^2), boosted color
+   (2.673, 2.376, 1.566), effective R = 336.378 confirmed via the CSV
+   light_radius column).
+
+Goldens re-blessed under GLS level 9 + boost; visual gate PASS against
+them; manifest approval remains pending Will. Losslessness spot-check
+under the boost (the R solve ignores color, so the margin at R is now
+3/255 not 1/255): gfaydark_f1, full-PP vs radius, level 9 — radius demoted
+10/53 regions and the render is STILL pixel-identical (max_delta 0,
+0/480000 pixels differ). Note also: level 9's shorter R more than triples
+radius-mode demotion at this pose vs the level-10 first pass (10 vs 3
+regions), reinforcing the review's "the balance may tip at lower light
+levels" observation for any future flip investigation. The quantitative
+tables above (x86 decision data, Pi timing) were measured under the
+unboosted level-10 fixture and are NOT invalidated for their comparative
+purpose (boost scales color only, identically across variants; geometry
+columns are light-independent), but absolute pixel-diff percentages there
+understate nothing relevant to the flip question; a flip unit should
+re-measure under this final fixture anyway.

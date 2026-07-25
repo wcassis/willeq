@@ -636,7 +636,8 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
                                            1.0f, 0.0f, l->radius > 0 ? 1.0f / (l->radius * l->radius) : 0.001f);
         }
     }
-    data.zoneShader->setNumPointLights(numLights);
+    // Slot 0 is the player light (set below), zone lights occupy 1..numLights.
+    data.zoneShader->setNumPointLights(std::min(numLights + 1, 8));
 
     // Q03: player light (per-pixel, index 0) — position is updated per frame
     // at the camera position in setupCamera() (unchanged by this unit); the
@@ -646,24 +647,34 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
     // so the existing camera-collocated placement is treated as equivalent
     // and is NOT changed here.
     //
-    // Color/radius/attenuation are mirrored EXACTLY from that same
-    // production formula (verified chain: SLight.Attenuation is set in
+    // Color/radius/attenuation are mirrored EXACTLY from what the production
+    // SHADER receives (verified chain: SLight.Attenuation is set in
     // setEntityLight to (1, 0, 19/radius^2) and flows untouched through
     // SimulationInput::playerLightAtt{Constant,Linear,Quadratic}
     // (renderer_sim_bridge.cpp:301-305) -> SelectedLight::attConstant/
     // attLinear/attQuadratic (sim_visibility.cpp:581-583) ->
-    // ZoneShader::setPlayerLightAtten (renderer_sim_bridge.cpp:760); the x3
-    // "boost" applied at renderer_sim_bridge.cpp:745/754-761 multiplies only
-    // the diffuse COLOR uniform sent to the shader for display, never the
-    // attenuation triple or the SLight/simulation-input values themselves,
-    // and is not part of what this benchmark fixture or the radius-mode R
-    // solve consume, so it is intentionally not reproduced here):
+    // ZoneShader::setPlayerLightAtten (renderer_sim_bridge.cpp:760)):
     //   intensity = level/10, radius = 20 + intensity*80
     //   color: r = min(1, 0.9 + 0.1*intensity), g = min(1, 0.7 + 0.2*intensity),
-    //          b = min(1, 0.4 + 0.2*intensity); each is then scaled by
-    //          `intensity` to match the DiffuseColor production stores
-    //          (SColorf(r*intensity, g*intensity, b*intensity, 1)).
+    //          b = min(1, 0.4 + 0.2*intensity); each scaled by `intensity`
+    //          (the DiffuseColor production stores), then BY 3.0 — the boost
+    //          renderer_sim_bridge.cpp:745/754-761 applies to the color
+    //          uniforms the shader receives (both setPointLight(0,...) and
+    //          setPlayerLightColor). Q03 amendment: the boost IS part of the
+    //          production shader input and IS reproduced here (the original
+    //          Q03 pass mirrored the SLight color only, which under-lit
+    //          every scene 3x vs real gameplay — Will's re-bless review
+    //          caught it). Attenuation is never boosted, so the radius-mode
+    //          R solve is unaffected.
     //   attenuation = (1, 0, 19/radius^2)
+    // The boosted color/atten are also mirrored into point-light slot 0
+    // (per-frame, alongside the camera update) because production fills
+    // slot 0 too — that is what lights DEMOTED (lightweight, per-vertex)
+    // regions; without it the benchmark's lightweight path had NO player
+    // light at all, harsher than production ever renders.
+    // Level reference: TypeToLevel(LightTypeGreaterLightstone) = 9
+    // (light_source.h) — the best practical in-game light. Level 10 is
+    // Globe of Stars.
     // Level 0 = no player light: production removes the light scene node
     // entirely (setEntityLight, lightLevel==0 branch); the benchmark has no
     // equivalent "remove the light" step (index 0 is always sent to the
@@ -674,8 +685,8 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
     {
         int level = opts.playerLightLevel;
         if (level <= 0) {
-            data.zoneShader->setPlayerLightColor(0.0f, 0.0f, 0.0f);
-            data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, 0.0f);
+            data.playerLightColor[0] = data.playerLightColor[1] = data.playerLightColor[2] = 0.0f;
+            data.playerLightAtten[0] = 1.0f; data.playerLightAtten[1] = 0.0f; data.playerLightAtten[2] = 0.0f;
         } else {
             float intensity = level / 10.0f;
             float radius = 20.0f + intensity * 80.0f;
@@ -683,9 +694,27 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
             float g = std::min(1.0f, 0.7f + intensity * 0.2f);
             float b = std::min(1.0f, 0.4f + intensity * 0.2f);
             float quad = 19.0f / (radius * radius);
-            data.zoneShader->setPlayerLightColor(r * intensity, g * intensity, b * intensity);
-            data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, quad);
+            const float boost = 3.0f;  // renderer_sim_bridge.cpp:745 — color only, never attenuation
+            data.playerLightColor[0] = r * intensity * boost;
+            data.playerLightColor[1] = g * intensity * boost;
+            data.playerLightColor[2] = b * intensity * boost;
+            data.playerLightAtten[0] = 1.0f; data.playerLightAtten[1] = 0.0f; data.playerLightAtten[2] = quad;
         }
+        data.zoneShader->setPlayerLightColor(data.playerLightColor[0],
+                                             data.playerLightColor[1],
+                                             data.playerLightColor[2]);
+        data.zoneShader->setPlayerLightAtten(data.playerLightAtten[0],
+                                             data.playerLightAtten[1],
+                                             data.playerLightAtten[2]);
+        // Seed point-light slot 0 (per-vertex path, demoted regions);
+        // position is re-set every frame in setupCamera().
+        data.zoneShader->setPointLight(0, 0.0f, 0.0f, 0.0f,
+                                       data.playerLightColor[0],
+                                       data.playerLightColor[1],
+                                       data.playerLightColor[2],
+                                       data.playerLightAtten[0],
+                                       data.playerLightAtten[1],
+                                       data.playerLightAtten[2]);
     }
     // Q03: attenuation-mirror proof -- read back what the shader uniforms
     // actually hold (not just what we computed above) via the same
@@ -734,6 +763,16 @@ static void setupCamera(ZoneBench::ZoneBenchData& data,
     if (data.zoneShader) {
         data.zoneShader->setCameraPos(irrPos.X, irrPos.Y, irrPos.Z);
         data.zoneShader->setPlayerLightPos(irrPos.X, irrPos.Y, irrPos.Z);
+        // Q03 amendment: keep point-light slot 0 (the per-vertex player
+        // light that lights DEMOTED regions, mirroring production's
+        // renderer_sim_bridge.cpp:746-752) collocated with the camera.
+        data.zoneShader->setPointLight(0, irrPos.X, irrPos.Y, irrPos.Z,
+                                       data.playerLightColor[0],
+                                       data.playerLightColor[1],
+                                       data.playerLightColor[2],
+                                       data.playerLightAtten[0],
+                                       data.playerLightAtten[1],
+                                       data.playerLightAtten[2]);
     }
 }
 

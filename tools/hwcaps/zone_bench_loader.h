@@ -92,6 +92,15 @@ struct ZoneBenchData {
     // (MaterialType >= zoneShader->getMaterialTypeSolid()) to this type.
     irr::s32 shaderDebugMaterial = -1;
 
+    // Q03 amendment: the player light's boosted color + attenuation, as the
+    // production shader receives them (renderer_sim_bridge.cpp:745-761 —
+    // diffuse color x3 boost). setupLighting() computes these once; the
+    // per-frame camera update mirrors them into point-light slot 0 so the
+    // LIGHTWEIGHT (per-vertex) path carries the player light exactly like
+    // production. Color (0,0,0) = no player light (level 0).
+    float playerLightColor[3] = {0.0f, 0.0f, 0.0f};
+    float playerLightAtten[3] = {1.0f, 0.0f, 0.0f};
+
     // Texture systems
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache;
 
