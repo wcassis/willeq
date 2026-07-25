@@ -1,10 +1,10 @@
 {
-  "blessed_from_run": "q01_tier2_rebless",
+  "blessed_from_run": "q03_tier2_rebless",
   "tolerance_pct": 30.0,
   "zones": {
     "befallen": {
       "eqe1": {
-        "fps_p95": 26.169104754926334,
+        "fps_p95": 26.45922633222205,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -56,16 +56,16 @@
           }
         },
         "reps": [
-          38.213
+          37.794
         ],
-        "total_ms_max": 38.629,
-        "total_ms_mean": 24.429684210526315,
-        "total_ms_min": 16.738,
-        "total_ms_p95": 38.213,
+        "total_ms_max": 37.988,
+        "total_ms_mean": 24.246578947368423,
+        "total_ms_min": 16.681,
+        "total_ms_p95": 37.794,
         "warmup_frames_discarded": 3
       },
       "rgba": {
-        "fps_p95": 25.25698987194706,
+        "fps_p95": 25.30492433827623,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -117,18 +117,18 @@
           }
         },
         "reps": [
-          39.593
+          39.518
         ],
-        "total_ms_max": 40.452,
-        "total_ms_mean": 26.37654385964912,
-        "total_ms_min": 17.863,
-        "total_ms_p95": 39.593,
+        "total_ms_max": 40.166,
+        "total_ms_mean": 26.290508771929822,
+        "total_ms_min": 17.857,
+        "total_ms_p95": 39.518,
         "warmup_frames_discarded": 3
       }
     },
     "gfaydark": {
       "eqe1": {
-        "fps_p95": 30.406227195329606,
+        "fps_p95": 30.349013657056144,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -180,16 +180,16 @@
           }
         },
         "reps": [
-          32.888
+          32.95
         ],
-        "total_ms_max": 36.472,
-        "total_ms_mean": 28.077842105263155,
-        "total_ms_min": 23.098,
-        "total_ms_p95": 32.888,
+        "total_ms_max": 36.448,
+        "total_ms_mean": 28.100368421052632,
+        "total_ms_min": 23.148,
+        "total_ms_p95": 32.95,
         "warmup_frames_discarded": 3
       },
       "rgba": {
-        "fps_p95": 25.646944166602548,
+        "fps_p95": 25.66603357117191,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -241,18 +241,18 @@
           }
         },
         "reps": [
-          38.991
+          38.962
         ],
-        "total_ms_max": 42.43,
-        "total_ms_mean": 32.14082456140351,
-        "total_ms_min": 25.017,
-        "total_ms_p95": 38.991,
+        "total_ms_max": 42.51,
+        "total_ms_mean": 32.112736842105264,
+        "total_ms_min": 25.03,
+        "total_ms_p95": 38.962,
         "warmup_frames_discarded": 3
       }
     },
     "qeynos2": {
       "eqe1": {
-        "fps_p95": 36.524343474926035,
+        "fps_p95": 36.61260205762824,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -304,16 +304,16 @@
           }
         },
         "reps": [
-          27.379
+          27.313
         ],
-        "total_ms_max": 28.098,
-        "total_ms_mean": 22.884999999999998,
-        "total_ms_min": 17.433,
-        "total_ms_p95": 27.379,
+        "total_ms_max": 28.005,
+        "total_ms_mean": 22.792508771929825,
+        "total_ms_min": 17.323,
+        "total_ms_p95": 27.313,
         "warmup_frames_discarded": 3
       },
       "rgba": {
-        "fps_p95": 32.48124208269724,
+        "fps_p95": 32.38237103720734,
         "n_frames": 60,
         "n_frames_steady": 57,
         "n_reps": 1,
@@ -365,12 +365,12 @@
           }
         },
         "reps": [
-          30.787
+          30.881
         ],
-        "total_ms_max": 31.116,
-        "total_ms_mean": 26.468894736842106,
-        "total_ms_min": 18.96,
-        "total_ms_p95": 30.787,
+        "total_ms_max": 31.146,
+        "total_ms_mean": 26.50382456140351,
+        "total_ms_min": 18.958,
+        "total_ms_p95": 30.881,
         "warmup_frames_discarded": 3
       }
     }

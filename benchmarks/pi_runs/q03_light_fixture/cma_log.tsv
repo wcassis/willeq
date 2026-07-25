@@ -1,0 +1,12 @@
+1784939400	moving/count (pre)	81264	391720
+1784939505	moving/count (post, invocation #1)	66584	395268
+1784939522	static/radius (pre)	66584	396376
+1784939536	static/radius (post, invocation #2)	66572	396840
+1784939553	static/all_lw (pre)	66572	397932
+1784939566	static/all_lw (post, invocation #3)	66556	394988
+1784939583	moving/radius (pre)	66556	396964
+1784939681	moving/radius (post, invocation #4)	67084	394784
+1784939698	static/count (pre)	67084	397272
+1784939711	static/count (post, invocation #5)	67092	394500
+1784939728	moving/all_lw (pre)	67092	398336
+1784939814	moving/all_lw (post, invocation #6)	67000	394516

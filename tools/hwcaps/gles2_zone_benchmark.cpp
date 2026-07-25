@@ -113,6 +113,12 @@ struct Options {
     float zonePPRadiusMargin = 1.0f;
     bool trainMode = false;       // Cluster entities together (train simulation)
 
+    // Q03: player-light fixture mirrored from production's lightstone model
+    // (renderer_entities.cpp IrrlichtRenderer::setEntityLight, level 0-10).
+    // Default 10 (max-level lightstone) -- replaces the old fixed
+    // atten=(1,0,0.0005)/color=(1,0.95,0.8) fixture. 0 = no player light.
+    int playerLightLevel = 10;
+
     // Zone objects
     bool loadObjects = false;     // Load zone objects (trees, lamps, etc.)
     float objectRenderDist = 300.0f;
@@ -258,6 +264,10 @@ static void printUsage(const char* prog) {
     printf("  --max-draws N        Cap draw calls per frame\n");
     printf("  --max-polys N        Cap polygons per frame\n");
     printf("  --lighting N         Point light count (0-8)\n");
+    printf("  --player-light-level N  Player lightstone level 0-10, mirrors production's\n");
+    printf("                       renderer_entities.cpp lightstone formula exactly\n");
+    printf("                       (radius/color/attenuation); 0 = no player light\n");
+    printf("                       (default: 10, max-level lightstone)\n");
     printf("\nEntity options:\n");
     printf("  --entities N         Place N static entities along path (default: 0)\n");
     printf("  --entity-dist F      Entity render distance (default: 300)\n");
@@ -388,6 +398,13 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--max-draws") == 0 && i + 1 < argc) opts.maxDraws = atoi(argv[++i]);
         else if (strcmp(argv[i], "--max-polys") == 0 && i + 1 < argc) opts.maxPolys = atoi(argv[++i]);
         else if (strcmp(argv[i], "--lighting") == 0 && i + 1 < argc) opts.lightCount = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--player-light-level") == 0 && i + 1 < argc) {
+            opts.playerLightLevel = atoi(argv[++i]);
+            if (opts.playerLightLevel < 0 || opts.playerLightLevel > 10) {
+                fprintf(stderr, "ERROR: --player-light-level must be 0-10 (got %d)\n", opts.playerLightLevel);
+                exit(1);
+            }
+        }
         else if (strcmp(argv[i], "--entities") == 0 && i + 1 < argc) opts.entityCount = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
@@ -621,9 +638,65 @@ static void setupLighting(ZoneBench::ZoneBenchData& data, const Options& opts) {
     }
     data.zoneShader->setNumPointLights(numLights);
 
-    // Player light (per-pixel, index 0) — will be updated per frame at camera pos
-    data.zoneShader->setPlayerLightColor(1.0f, 0.95f, 0.8f);
-    data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, 0.0005f);
+    // Q03: player light (per-pixel, index 0) — position is updated per frame
+    // at the camera position in setupCamera() (unchanged by this unit); the
+    // camera pose is an eye-height point, and production's lightstone sits
+    // at player position + 3z (Irrlicht up), i.e. roughly eye height too —
+    // see IrrlichtRenderer::setEntityLight, renderer_entities.cpp:98-156 —
+    // so the existing camera-collocated placement is treated as equivalent
+    // and is NOT changed here.
+    //
+    // Color/radius/attenuation are mirrored EXACTLY from that same
+    // production formula (verified chain: SLight.Attenuation is set in
+    // setEntityLight to (1, 0, 19/radius^2) and flows untouched through
+    // SimulationInput::playerLightAtt{Constant,Linear,Quadratic}
+    // (renderer_sim_bridge.cpp:301-305) -> SelectedLight::attConstant/
+    // attLinear/attQuadratic (sim_visibility.cpp:581-583) ->
+    // ZoneShader::setPlayerLightAtten (renderer_sim_bridge.cpp:760); the x3
+    // "boost" applied at renderer_sim_bridge.cpp:745/754-761 multiplies only
+    // the diffuse COLOR uniform sent to the shader for display, never the
+    // attenuation triple or the SLight/simulation-input values themselves,
+    // and is not part of what this benchmark fixture or the radius-mode R
+    // solve consume, so it is intentionally not reproduced here):
+    //   intensity = level/10, radius = 20 + intensity*80
+    //   color: r = min(1, 0.9 + 0.1*intensity), g = min(1, 0.7 + 0.2*intensity),
+    //          b = min(1, 0.4 + 0.2*intensity); each is then scaled by
+    //          `intensity` to match the DiffuseColor production stores
+    //          (SColorf(r*intensity, g*intensity, b*intensity, 1)).
+    //   attenuation = (1, 0, 19/radius^2)
+    // Level 0 = no player light: production removes the light scene node
+    // entirely (setEntityLight, lightLevel==0 branch); the benchmark has no
+    // equivalent "remove the light" step (index 0 is always sent to the
+    // shader), so the same zero-contribution result is reproduced instead by
+    // zeroing the color uniform -- with color (0,0,0) the per-pixel player
+    // light term is exactly 0 regardless of the attenuation triple, which
+    // is the observable behavior production's node-removal produces.
+    {
+        int level = opts.playerLightLevel;
+        if (level <= 0) {
+            data.zoneShader->setPlayerLightColor(0.0f, 0.0f, 0.0f);
+            data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, 0.0f);
+        } else {
+            float intensity = level / 10.0f;
+            float radius = 20.0f + intensity * 80.0f;
+            float r = std::min(1.0f, 0.9f + intensity * 0.1f);
+            float g = std::min(1.0f, 0.7f + intensity * 0.2f);
+            float b = std::min(1.0f, 0.4f + intensity * 0.2f);
+            float quad = 19.0f / (radius * radius);
+            data.zoneShader->setPlayerLightColor(r * intensity, g * intensity, b * intensity);
+            data.zoneShader->setPlayerLightAtten(1.0f, 0.0f, quad);
+        }
+    }
+    // Q03: attenuation-mirror proof -- read back what the shader uniforms
+    // actually hold (not just what we computed above) via the same
+    // accessors the R solve (zone_bench_loader.cpp) and per-frame draw path
+    // consume, gated on --dump so it doesn't spam ordinary runs.
+    if (opts.dump) {
+        const float* c = data.zoneShader->playerLightColor();
+        const float* a = data.zoneShader->playerLightAtten();
+        printf("[player-light] level=%d color=(%.6f,%.6f,%.6f) atten=(%.6f,%.6f,%.9f)\n",
+               opts.playerLightLevel, c[0], c[1], c[2], a[0], a[1], a[2]);
+    }
     // Note: setPerPixelPlayerLight(true) is called in loadZone() before mesh building
 }
 

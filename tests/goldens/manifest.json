@@ -19,9 +19,11 @@
       "--zone-pp-budget",
       "20",
       "--pp-budget-mode",
-      "count"
+      "count",
+      "--player-light-level",
+      "10"
     ],
-    "note": "Q01: mirror of the orangepi preset (constrained_renderer_config.cpp:307, zone budget 20, count mode). Consumed by BOTH scripts/ci/visual_gate.py (run_benchmark) and scripts/pi/ (pi_common.py) so the harness measures what production actually ships instead of full per-pixel lighting. The orangepi preset's object budget (10) is NOT mirrored here -- meaningful only with --objects, which the harness doesn't pass (out of scope, would change scene content). Do NOT add these flags to any zone's extraArgs -- pi_common.build_pose_args asserts extraArgs contains only --camera-pose entries."
+    "note": "Q01: mirror of the orangepi preset (constrained_renderer_config.cpp:307, zone budget 20, count mode). Consumed by BOTH scripts/ci/visual_gate.py (run_benchmark) and scripts/pi/ (pi_common.py) so the harness measures what production actually ships instead of full per-pixel lighting. The orangepi preset's object budget (10) is NOT mirrored here -- meaningful only with --objects, which the harness doesn't pass (out of scope, would change scene content). Do NOT add these flags to any zone's extraArgs -- pi_common.build_pose_args asserts extraArgs contains only --camera-pose entries. Q03: --player-light-level 10 replaces the benchmark's old fixed-attenuation lamp fixture with a max-level (10) production-mirrored lightstone (renderer_entities.cpp), so the goldens/harness measure the light the game actually ships instead of a fixture no character carries."
   },
   "zones": [
     {
@@ -62,7 +64,7 @@
           "polys": 663
         }
       },
-      "p95CpuMsBaseline": 23.189,
+      "p95CpuMsBaseline": 27.599,
       "memory": {
         "textureCacheBytesUsed": 42226984,
         "textureCacheBytesLimit": 67108864,
@@ -107,7 +109,7 @@
           "polys": 4421
         }
       },
-      "p95CpuMsBaseline": 27.195,
+      "p95CpuMsBaseline": 23.138,
       "memory": {
         "textureCacheBytesUsed": 11184800,
         "textureCacheBytesLimit": 67108864,
@@ -152,7 +154,7 @@
           "polys": 526
         }
       },
-      "p95CpuMsBaseline": 25.415,
+      "p95CpuMsBaseline": 17.981,
       "memory": {
         "textureCacheBytesUsed": 2883581,
         "textureCacheBytesLimit": 67108864,
@@ -162,6 +164,6 @@
   ],
   "approval": {
     "status": "pending",
-    "note": "Q01 count-mode alignment -- awaiting Will's re-bless"
+    "note": "Q03 production-mirrored player light re-bless -- awaiting Will re-bless"
   }
 }
