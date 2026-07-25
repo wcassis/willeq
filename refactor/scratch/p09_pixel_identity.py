@@ -61,13 +61,20 @@ def compare(a, b):
     ia = Image.open(a).convert("RGB")
     ib = Image.open(b).convert("RGB")
     if ia.size != ib.size:
-        return False, -1
+        return False, -1, 255
     diff = ImageChops.difference(ia, ib)
     bbox = diff.getbbox()
     if bbox is None:
-        return True, 0
-    diff_count = sum(1 for px in diff.getdata() if any(px))
-    return False, diff_count
+        return True, 0, 0
+    diff_count = 0
+    max_delta = 0
+    for px in diff.getdata():
+        m = max(px)
+        if m:
+            diff_count += 1
+            if m > max_delta:
+                max_delta = m
+    return (diff_count == 0 and max_delta == 0), diff_count, max_delta
 
 results = []
 all_pass = True
@@ -75,13 +82,17 @@ for tag, (zone, pose) in [("golden%d" % i, gp) for i, gp in enumerate(golden_pos
                           [(t, (("befallen"), p)) for t, p in pinned_poses]:
     png_u, line_u = run(zone, pose, tag, merged=False)
     png_m, line_m = run(zone, pose, tag, merged=True)
-    identical, diff_count = compare(png_u, png_m)
+    identical, diff_count, max_delta = compare(png_u, png_m)
     all_pass &= identical
-    results.append((zone, tag, pose, identical, diff_count, line_u, line_m))
+    results.append((zone, tag, pose, identical, diff_count, max_delta, line_u, line_m))
     status = "PASS" if identical else "FAIL"
-    print(f"[{status}] {zone:10s} {tag:10s} diff_px={diff_count:6d}  {line_u}")
-    print(f"                                                    {line_m}")
+    print(f"[{status}] {zone:10s} {tag:10s} diff_px={diff_count:6d} max_delta={max_delta:3d}  {line_u}")
+    print(f"                                                                     {line_m}")
 
 print()
-print("ALL PASS" if all_pass else "SOME FAILED")
+print("zone       pose       diff_px  max_delta  status")
+for zone, tag, pose, identical, diff_count, max_delta, line_u, line_m in results:
+    print(f"{zone:10s} {tag:10s} {diff_count:7d}  {max_delta:9d}  {'PASS' if identical else 'FAIL'}")
+print()
+print("ALL PASS (max_delta=0 at all poses)" if all_pass else "SOME FAILED")
 sys.exit(0 if all_pass else 1)
