@@ -67,7 +67,7 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
 
 ## Zone Rendering Optimizations
 
-**Static VBOs and material-sorted draw** (GLES2): Zone geometry is uploaded once at zone load via `GL_STATIC_DRAW` VBOs, eliminating per-frame CPU→GPU DMA. Draw calls are sorted by material key `(MaterialType << 16) | TextureID` to minimize `glUseProgram` + `glBindTexture` state changes, with front-to-back order preserved within each material group.
+**Static VBOs and material-sorted draw** (GLES2): Zone geometry is uploaded once at zone load via `GL_STATIC_DRAW` VBOs, eliminating per-frame CPU→GPU DMA. Draw calls are sorted by material key `(MaterialType << 16) | TextureID` to minimize `glUseProgram` + `glBindTexture` state changes, with front-to-back order preserved within each material group. `TextureID` is a stable FNV-1a hash of the texture name (`textureGroupId()`, H02b/Q02), not a texture pointer — the old pointer-derived key made draw order depend on ASLR-influenced heap addresses, nondeterministic run-to-run.
 
 **Front-to-back sorting** (`manualZoneDrawEnabled_`): Zone region meshes are removed from Irrlicht's scene graph rendering and drawn manually in front-to-back order for early-Z rejection on tile-based GPUs. The injection point is `RenderPassTimer::OnRenderPassPreRender(ESNRP_SOLID)` — fires after CAMERA pass sets up matrices. Toggle at runtime with `/sort`.
 

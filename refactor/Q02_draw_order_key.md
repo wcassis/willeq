@@ -80,4 +80,83 @@ sites. Prerequisite for the full-app llvmpipe test tier.
 
 ## Review
 
-(executor fills in)
+**Implementation notes.** Added a file-local `textureGroupId(const
+irr::video::SMaterial&)` helper to the anonymous namespace in
+`src/client/graphics/renderer_zone_draw.cpp` (right before the closing
+`} // namespace` at what was line 124), body copied verbatim from
+`tools/hwcaps/zone_bench_loader.cpp`'s `textureGroupId()` (H02b): FNV-1a hash
+of the texture-0 name path, `& 0xFFFF`, with a null-texture guard returning
+0. Replaced both pointer-key sites (zone regions, formerly ~339-346; zone
+objects, formerly ~551-557) with `uint32_t texId = textureGroupId(mat);`,
+removing the inline `reinterpret_cast<uintptr_t>(mat.getTexture(0)) &
+0xFFFF` and its guarding `if`. No other logic changed: `matKey` is still
+`(effectiveType << 16) | texId`, still 16-bit, still consumed only by
+`sortedDrawEntries_`. Also updated
+`src/client/graphics/CLAUDE.md`'s "material key `(MaterialType << 16) |
+TextureID`" line to note `TextureID` is a stable texture-name hash
+(H02b/Q02), not a pointer.
+
+**Deviation from the plan's literal wording**: design point 1 says to "add
+a 'keep in sync' cross-reference comment at BOTH copies." The executor
+instructions' Rules section explicitly lists `tools/hwcaps` as one of Q01's
+files, off-limits for this unit (parallel-unit file-boundary discipline).
+I resolved the conflict in favor of the stricter, more specific rule:
+`zone_bench_loader.cpp` is untouched by this unit. The cross-reference is
+one-directional — the new `renderer_zone_draw.cpp` copy's rationale comment
+explicitly names `tools/hwcaps/zone_bench_loader.cpp`'s `textureGroupId()`
+(H02b) and says "keep the two copies in sync." The existing H02b comment in
+`zone_bench_loader.cpp` is unmodified and does not point back at this new
+production copy. If a bidirectional cross-reference is wanted, it should be
+a trivial follow-up touching only `tools/hwcaps/zone_bench_loader.cpp` (Q01
+territory) once that unit is clear.
+
+**Helper parity**: byte-for-byte diff of the two `textureGroupId` function
+bodies (signature through closing brace) — identical, confirmed
+programmatically. The only difference between the two files is the
+rationale/cross-reference comment text above each definition, as intended.
+
+**Straggler sweep results**: `grep -rn "uintptr_t.*getTexture"` across
+`src/` and `include/` — no matches (the two sites fixed here were the only
+ones). `grep -rn "0xFFFF"` near graphics code turns up only known
+non-issues: `regionIdx`-based callback keys in
+`renderer_zone_stream.cpp`/`renderer_gpu_upload.cpp`/`renderer_zone_draw.cpp:1013`
+(index-based, not pointer-derived), flicker RNG state in
+`renderer_zone_load.cpp`/`renderer_effects.cpp` (not a sort/group key), a
+checker-texture placeholder color constant in `constrained_texture_cache.cpp`,
+sentinel index values (`0xFFFFFFFF`) in `mesh_building.cpp`,
+`gpu_upload_thread.h`, `background_work_queue.h`, `detail_types.h`, and a
+WLD fragment flags mask in `wld_loader.cpp`. None are pointer-derived
+draw/sort keys.
+
+**matKey consumption**: `grep -rn "matKey\|materialKey\|sortedDrawEntries_"`
+in `src/client/graphics` and `include/client/graphics` confirms `matKey`
+(struct field `ZoneDrawEntry::materialKey`,
+`include/client/graphics/irrlicht_renderer.h:460`) is populated only in the
+two collection sites, sorted via `std::sort` on `sortedDrawEntries_`, and
+consumed only in the immediately-following draw loop within the same
+function call (`drawZoneGeometrySorted`, `renderer_zone_draw.cpp`).
+`sortedDrawEntries_` is cleared at the top of that function and also in
+`renderer_debug.cpp`/`renderer_zone_lifecycle.cpp` (zone-teardown/debug
+paths) — never persisted or compared across frames or runs.
+
+**Verification outcomes**:
+- `cmake --build build -j24` — PASS, clean build.
+- `ctest --test-dir build --output-on-failure` — PASS modulo the two known
+  host exceptions (`AudioManagerTest.PreloadCommonSounds`,
+  `RDPServerFrameTest.UpdateFrameMultipleTimes`, latter segfaulted on the
+  second run as documented). First full run also showed `visual_gate`
+  failing on a CPU-time perf ceiling (p95 120ms vs 33.8ms ceiling) — this is
+  the perf gate, not a pixel/golden diff; re-running `visual_gate` alone
+  immediately after passed cleanly (6.4s, no other CPU-heavy process
+  running), confirming host scheduling noise from the parallel Q01 unit's
+  concurrent build, not a regression from this change. A subsequent full
+  ctest re-run confirmed `visual_gate` PASS with goldens untouched.
+- `scripts/build-gles2-x86.sh` — PASS.
+- `scripts/build-arm-noble.sh` — PASS, ARM ELF binaries produced.
+- `scripts/refactor/check_file_sizes.sh fable` — PASS (exit 0, no
+  violations).
+
+**Deviations**: one, documented above (did not touch
+`tools/hwcaps/zone_bench_loader.cpp` per the executor Rules' explicit Q01
+file boundary, despite design point 1's "both copies" phrasing). No other
+deviations from the plan; no scope creep.
