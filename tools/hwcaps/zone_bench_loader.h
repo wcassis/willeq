@@ -321,6 +321,9 @@ void placeEntitiesAlongPath(ZoneBenchData& data,
 
 // Collect entity draw entries for visible entities near the camera.
 // Appends to outEntries (call after zone draw collection).
+// P08b: outEntitiesVisible counts distinct entities surviving cull (vs.
+// outEntityDrawCalls, which counts mesh-buffer draw entries per entity) --
+// the calibration target for placed-N -> visible-per-frame.
 void collectEntityDrawEntries(
     ZoneBenchData& data,
     const CameraState& cam,
@@ -329,7 +332,8 @@ void collectEntityDrawEntries(
     bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outEntityDrawCalls,
-    int& outEntityPolys);
+    int& outEntityPolys,
+    int& outEntitiesVisible);
 
 // Batched entity rendering: merge same-material entity parts into single draws.
 // Bakes world transforms into vertex data, groups by material, one draw per bucket.

@@ -2539,10 +2539,11 @@ int main(int argc, char** argv) {
                 // entity draws combined -- phaseSubmitMs is a true combined
                 // submission-phase number here, not zone-only.
                 const auto entCollectStart = std::chrono::steady_clock::now();
+                int entitiesVisible = 0;
                 ZoneBench::collectEntityDrawEntries(
                     *data, camState, opts.entityRenderDist,
                     opts.frustumCull, opts.occlusionCull,
-                    drawEntries, entityDrawCalls, entityPolys);
+                    drawEntries, entityDrawCalls, entityPolys, entitiesVisible);
                 phaseCollectCullMs += std::chrono::duration<float, std::milli>(
                     std::chrono::steady_clock::now() - entCollectStart).count();
                 int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
@@ -2553,6 +2554,7 @@ int main(int argc, char** argv) {
                                    stateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
                     metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.setEntitiesVisible(entitiesVisible);
                     metrics.finalizePhaseTiming();
                 }
             }

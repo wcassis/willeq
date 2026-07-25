@@ -1290,10 +1290,10 @@ void collectEntityDrawEntries(
     bool occlusionCull,
     std::vector<DrawEntry>& outEntries,
     int& outEntityDrawCalls,
-    int& outEntityPolys) {
+    int& outEntityPolys,
+    int& outEntitiesVisible) {
 
-    outEntityDrawCalls = 0;
-    outEntityPolys = 0;
+    outEntityDrawCalls = 0; outEntityPolys = 0; outEntitiesVisible = 0;
     float renderDistSq = renderDistance * renderDistance;
 
     for (const auto& ent : data.entities) {
@@ -1325,6 +1325,7 @@ void collectEntityDrawEntries(
         irr::core::matrix4 worldMat;
         worldMat.setTranslation(ent.position);
 
+        bool contributedBuffer = false;
         for (irr::u32 i = 0; i < ent.mesh->getMeshBufferCount(); ++i) {
             irr::scene::IMeshBuffer* buf = ent.mesh->getMeshBuffer(i);
             if (!buf || buf->getVertexCount() == 0) continue;
@@ -1336,7 +1337,9 @@ void collectEntityDrawEntries(
             outEntries.push_back({matKey, distSq, buf, worldMat});
             outEntityDrawCalls++;
             outEntityPolys += buf->getIndexCount() / 3;
+            contributedBuffer = true;
         }
+        if (contributedBuffer) outEntitiesVisible++;  // P08b: count once per entity
     }
 }
 

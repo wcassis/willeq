@@ -61,6 +61,12 @@ struct FrameMetrics {
     float submissionMs = 0;
     float swapMs = 0;
     float otherMs = 0;
+    // P08b: distinct entities that survived distance/frustum/occlusion cull
+    // this frame (collectEntityDrawEntries' outEntitiesVisible). Only
+    // populated in the default/unbatched entity path (the P08/P08b canonical
+    // config); 0 for the batched/composite/LOD/direct-GL entity modes and
+    // for zone-only (--entities 0) runs.
+    int entitiesVisible = 0;
 };
 
 class MetricsCollector {
@@ -140,6 +146,12 @@ public:
     void setRadiusStats(float lightRadius, int regionsDemotedRadius) {
         current_.lightRadius = lightRadius;
         current_.regionsDemotedRadius = regionsDemotedRadius;
+    }
+
+    // P08b: record the distinct-visible-entity count for the frame currently
+    // being built (call any time between beginFrame() and endFrame()).
+    void setEntitiesVisible(int entitiesVisible) {
+        current_.entitiesVisible = entitiesVisible;
     }
 
     void endGpuSync() {

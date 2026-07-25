@@ -1,0 +1,11 @@
+1784994337	bf_e0_whole (pre)	1008	394620
+1784994415	bf_e0_whole (pre)	78792	396348
+1784994472	bf_e0_whole (post, invocation #1)	76636	395584
+1784994489	bf_e0_pinned (pre)	76636	396408
+1784994504	bf_e0_pinned (post, invocation #2)	76620	393592
+1784994521	bf_e205_whole (pre)	76620	394140
+1784994646	bf_e205_whole (post, invocation #3)	61288	394976
+1784994663	bf_e205_pinned (pre)	61288	395532
+1784994684	bf_e205_pinned (post, invocation #4)	61288	395704
+1784994701	qe_e205_whole (pre)	61288	395996
+1784994784	qe_e205_whole (post, invocation #5)	60200	395164
