@@ -421,6 +421,28 @@ void collectObjectDrawEntries(
     int& outObjectDrawCalls,
     int& outObjectPolys);
 
+// P08 design point 6: occlusion headroom ground-truth diagnostic (one-shot,
+// call at 2-3 pinned poses only -- NOT per-frame, unbounded occluder count
+// makes this more expensive than the production culler). Re-runs PVS +
+// frustum culling, then occlusion-tests every visible region against ALL
+// nearer regions' occluder triangles (no maxOccluderRegions cap, unlike
+// production's collectDrawEntries/the real occlusion pass) to estimate how
+// many additional regions a bigger occluder budget could catch beyond what
+// the production-capped pass already finds. Returns counts, not draw
+// entries -- this does not touch outEntries/drawEntries at all.
+struct OcclusionHeadroom {
+    int regionsVisiblePVS = 0;       // after PVS + frustum cull, before any occlusion test
+    int regionsOccludedCapped = 0;   // what collectDrawEntries()'s production pass found
+                                      // (maxOccluderRegions-capped occluder set)
+    int regionsOccludedUncapped = 0; // this function's uncapped-occluder-budget result
+};
+OcclusionHeadroom computeOcclusionHeadroomUncapped(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    bool pvsCull,
+    bool frustumCull,
+    int regionsOccludedCapped);
+
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).
 // Outputs a report to stdout and optionally to a CSV file.

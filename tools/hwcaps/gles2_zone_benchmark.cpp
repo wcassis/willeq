@@ -2394,6 +2394,17 @@ int main(int argc, char** argv) {
             ZoneBench::writeDrawHistogramCSV(histFile, hist, !histHeaderWritten);
             histHeaderWritten = true;
             if (opts.dump) ZoneBench::printDrawHistogram(hist);
+
+            // P08 design point 6: occlusion headroom ground truth (uncapped
+            // occluder budget vs production's capped pass) at the same
+            // pinned poses -- one-shot, printed to stdout for log capture.
+            ZoneBench::OcclusionHeadroom headroom = ZoneBench::computeOcclusionHeadroomUncapped(
+                *data, camState, opts.pvsCull, opts.frustumCull, regionsOccluded);
+            printf("[occlusion-headroom] frame=%d regions_pvs=%d occluded_capped=%d "
+                   "occluded_uncapped=%d headroom=%d\n",
+                   measuredFrameIdx, headroom.regionsVisiblePVS,
+                   headroom.regionsOccludedCapped, headroom.regionsOccludedUncapped,
+                   headroom.regionsOccludedUncapped - headroom.regionsOccludedCapped);
         }
 
         // Collect object draw entries (trees, lamps, etc.)
