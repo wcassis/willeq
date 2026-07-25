@@ -1385,6 +1385,8 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp
+        tools/hwcaps/zone_bench_merge_probe.cpp
+        tools/hwcaps/zone_bench_merge.cpp
         # Zone loading pipeline (same sources as zone_line_editor + extras)
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp

@@ -13,6 +13,8 @@
 #include "zone_bench_loader.h"
 #include "zone_bench_camera.h"
 #include "zone_bench_histogram.h"
+#include "zone_bench_merge.h"
+#include "zone_bench_merge_probe.h"
 #include "zone_bench_metrics.h"
 #include "common/logging.h"
 
@@ -196,6 +198,15 @@ struct Options {
 
     // Synthetic (Z5)
     bool syntheticDraws = false;
+
+    // P09 A-gate: cross-region merge primitive probe (separate-vbo vs
+    // shared-coalesced vs streamed-ibo vs client-index).
+    bool mergeProbe = false;
+    std::string mergeProbeCsv;
+
+    // P09 Phase B: cross-region same-material zone draw merge prototype.
+    // Default OFF everywhere (visual gate / all existing paths untouched).
+    bool mergeZoneDraws = false;
 
     // H02d: shader debug mode for offline diagnostic capture (mirrors the
     // renderer's /shaderdebug console command). 0 = off.
@@ -493,6 +504,9 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--dump-path") == 0 && i + 1 < argc) opts.dumpPathFile = argv[++i];
         else if (strcmp(argv[i], "--path-file") == 0 && i + 1 < argc) opts.pathFile = argv[++i];
         else if (strcmp(argv[i], "--synthetic-draws") == 0) opts.syntheticDraws = true;
+        else if (strcmp(argv[i], "--merge-probe") == 0) opts.mergeProbe = true;
+        else if (strcmp(argv[i], "--merge-probe-csv") == 0 && i + 1 < argc) opts.mergeProbeCsv = argv[++i];
+        else if (strcmp(argv[i], "--merge-zone-draws") == 0) opts.mergeZoneDraws = true;
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
         else if (strcmp(argv[i], "--lighting-model") == 0 && i + 1 < argc) {
@@ -791,10 +805,20 @@ static void setupCamera(ZoneBench::ZoneBenchData& data,
 // wall time (steady_clock, no syscalls) of just the setMaterial+
 // drawMeshBuffer loop below -- the "submission phase" for CSV reporting.
 // Excludes the depth-test toggle (negligible, one GL call each way).
+// P09: when mergeZoneDraws is set, the actual glDrawElements-equivalent
+// call count issued (after cross-region same-material coalescing) is
+// written to *outActualDraws (left untouched -- not written -- when null or
+// when mergeZoneDraws is false, in which case it equals entries.size() at
+// the call site as before). stateChanges (the return value) is unaffected
+// by merging -- it is still a property of the input entries list (distinct
+// materialKey runs), which is exactly the P08 C5 "ceiling" quantity to
+// compare the merged draw count against.
 static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
                         const std::vector<ZoneBench::DrawEntry>& entries,
                         bool depthTest,
-                        float* outSubmitMs = nullptr) {
+                        float* outSubmitMs = nullptr,
+                        bool mergeZoneDraws = false,
+                        int* outActualDraws = nullptr) {
 #ifdef EQT_HAS_GLES2
     if (!depthTest) {
         glDisable(GL_DEPTH_TEST);
@@ -805,25 +829,32 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
 
     int stateChanges = 0;
     uint32_t prevMatKey = UINT32_MAX;
-
-    const auto submitStart = std::chrono::steady_clock::now();
     for (const auto& de : entries) {
-        data.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
-
-        if (de.materialOverride >= 0) {
-            // Apply material with overridden shader type
-            irr::video::SMaterial mat = de.buffer->getMaterial();
-            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
-            data.driver->setMaterial(mat);
-        } else {
-            data.driver->setMaterial(de.buffer->getMaterial());
-        }
-        data.driver->drawMeshBuffer(de.buffer);
-
         if (de.materialKey != prevMatKey) {
             ++stateChanges;
             prevMatKey = de.materialKey;
         }
+    }
+
+    const auto submitStart = std::chrono::steady_clock::now();
+    if (mergeZoneDraws) {
+        int actualDraws = ZoneBench::renderMergedDrawEntries(data, data.driver, entries);
+        if (outActualDraws) *outActualDraws = actualDraws;
+    } else {
+        for (const auto& de : entries) {
+            data.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
+
+            if (de.materialOverride >= 0) {
+                // Apply material with overridden shader type
+                irr::video::SMaterial mat = de.buffer->getMaterial();
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+                data.driver->setMaterial(mat);
+            } else {
+                data.driver->setMaterial(de.buffer->getMaterial());
+            }
+            data.driver->drawMeshBuffer(de.buffer);
+        }
+        if (outActualDraws) *outActualDraws = static_cast<int>(entries.size());
     }
     if (outSubmitMs) {
         *outSubmitMs = std::chrono::duration<float, std::milli>(
@@ -1223,6 +1254,13 @@ int main(int argc, char** argv) {
     if (opts.reportLoadTime) {
         double loadMs = std::chrono::duration<double, std::milli>(loadT1 - loadT0).count();
         printf("LOAD_PHASE_MS=%.2f\n", loadMs);
+    }
+
+    // P09 Phase B: build the cross-region same-material merge buffers once,
+    // right after zone geometry load, before any draw. No-op cost when the
+    // flag is off (function not called at all).
+    if (opts.mergeZoneDraws) {
+        ZoneBench::buildMergedZoneBuffers(*data);
     }
 
     // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
@@ -2123,6 +2161,12 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // ── P09 A-gate: cross-region merge primitive probe ──
+    if (opts.mergeProbe) {
+        ZoneBench::runMergeProbeTest(*data, opts.frames, opts.mergeProbeCsv.c_str());
+        return 0;
+    }
+
     ZoneBench::MetricsCollector metrics;
 
     // ── H02b: static multi-pose capture ──
@@ -2172,9 +2216,11 @@ int main(int argc, char** argv) {
                     opts.pvsCull, opts.frustumCull, opts.occlusionCull,
                     drawEntries, objDraws, objPolys);
             }
-            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+            int actualDraws = 0;
+            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
+                                                  nullptr, opts.mergeZoneDraws, &actualDraws);
             int polyCount = countPolygons(drawEntries);
-            metrics.endDraw(static_cast<int>(drawEntries.size()), stateChanges, polyCount,
+            metrics.endDraw(actualDraws, stateChanges, polyCount,
                             regionsVisible, regionsDrawn, regionsOccluded);
             if (opts.materialCounts) {
                 auto counts = countMaterialFamilies(drawEntries, data->zoneShader.get());
@@ -2546,11 +2592,13 @@ int main(int argc, char** argv) {
                     drawEntries, entityDrawCalls, entityPolys, entitiesVisible);
                 phaseCollectCullMs += std::chrono::duration<float, std::milli>(
                     std::chrono::steady_clock::now() - entCollectStart).count();
-                int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
+                int actualDraws = 0;
+                int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
+                                                      &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws);
                 int polyCount = countPolygons(drawEntries);
 
                 if (measuring) {
-                    metrics.endDraw(static_cast<int>(drawEntries.size()),
+                    metrics.endDraw(actualDraws,
                                    stateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
                     metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
@@ -2561,11 +2609,13 @@ int main(int argc, char** argv) {
         } else {
             // No entities — zone only (P08 canonical isolation config, used
             // to quantify entity draw-call contribution separately).
-            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
+            int actualDraws = 0;
+            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
+                                                  &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws);
             int polyCount = countPolygons(drawEntries);
 
             if (measuring) {
-                metrics.endDraw(static_cast<int>(drawEntries.size()),
+                metrics.endDraw(actualDraws,
                                stateChanges, polyCount,
                                regionsVisible, regionsDrawn);
                 metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
