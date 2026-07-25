@@ -156,12 +156,27 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      index rebasing, overflow; leading hypothesis: per-mesh-buffer
      SMaterial-carried shader state, e.g. the MaterialTypeParam
      atlas-page pattern, copied from the run's FIRST buffer only).
-     STOP condition honored — Pi perf phase not run. **NEXT: P09b
-     root-cause unit** (per-run isolation bisection + shader-variant
-     bisection + per-buffer SMaterial field audit across run members),
-     then the Pi measurement + landing sketch execution. Landing sketch
-     (cell-scoped mesh-cache eviction etc.) already drafted in P09's
-     review.
+     STOP condition honored — Pi perf phase not run.
+     **P09b (2026-07-25) root-caused the big corruption: a PRE-EXISTING
+     PRODUCTION DRIVER BUG** — COpenGLES2Driver::getOpaqueAlphaFallback()
+     lazily binds its 1x1 white fallback WITHOUT glActiveTexture(unit 1)
+     first, clobbering unit 0's diffuse texture for the process's first
+     no-companion draw (invisible one-buffer glitch unmerged; whole-
+     surface corruption when that draw is a coalesced run). Benchmark
+     worked around it (first-draw-unmerged + SMaterial::operator==
+     grouping); **the driver itself still has the bug — fix it in
+     production (tiny: select unit 1 before the lazy-init bind), which
+     also removes the benchmark workaround.** Remaining P09b status:
+     canonical repro 148k→2k px, but 14/15 poses keep residuals — (a)
+     ±1-3px alpha-test edge FP noise from baked-world-space vs
+     per-region-matrix transform order (inherent to the design; the fair
+     bar is bake-vs-bake, or a one-time visual bless of the FP delta),
+     (b) at least one MORE unattributed contributor at qeynos2/befallen
+     goldens (max_delta up to 209; suspects named in review: wind-shader
+     per-buffer uMeshYBounds packing, atlas unit-1/AtlasSolid3D paths).
+     Pi measurement still deferred. **NEXT: P09c** — driver fix (prod) +
+     attribute remaining contributor + settle the FP-noise comparison
+     baseline, then finally the Pi measurement.
   3. **Occlusion occluder-budget increase** — unchanged; cheap interim.
   4. Within-region merges: DEAD (~0% ceiling).
   - P08b method notes: --animate is nonrepresentative in the benchmark
