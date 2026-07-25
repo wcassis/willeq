@@ -1,0 +1,6 @@
+[occlusion-headroom] frame=355 regions_pvs=89 occluded_capped=29 occluded_uncapped=29 headroom=0
+[occlusion-headroom] frame=472 regions_pvs=766 occluded_capped=62 occluded_uncapped=287 headroom=225
+[occlusion-headroom] frame=626 regions_pvs=2 occluded_capped=0 occluded_uncapped=0 headroom=0
+[occlusion-headroom] frame=791 regions_pvs=100 occluded_capped=0 occluded_uncapped=4 headroom=4
+[occlusion-headroom] frame=917 regions_pvs=119 occluded_capped=30 occluded_uncapped=47 headroom=17
+[occlusion-headroom] frame=987 regions_pvs=480 occluded_capped=84 occluded_uncapped=152 headroom=68

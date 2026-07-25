@@ -1,0 +1,103 @@
+WARNING: no navmesh path available (opts.navmeshPath=<empty>); falling back to a synthetic ORBIT camera path, not the real navmesh-driven path. Pass --navmesh-path /mnt/projects/maps/nav (or wherever the zone's .nav file lives) for the real moving path.
+=== gles2_zone_benchmark ===
+Zone: befallen, Resolution: 800x600, Frames: 300
+Toggles: materialSort=1 pvsCull=1 frustumCull=1 occlusionCull=1 frontToBack=1 depthTest=1 entities=0 animate=0
+
+Creating Irrlicht device: 800x600, DRM=1
+Irrlicht Engine version 1.8.5
+DRM: Opened /dev/dri/card0 (fd=3)
+DRM: Available mode [0]: 2560x1440@60Hz (preferred)
+DRM: Available mode [1]: 1920x1440@60Hz
+DRM: Available mode [2]: 1920x1200@60Hz
+DRM: Available mode [3]: 1920x1080@60Hz
+DRM: Available mode [4]: 1920x1080@60Hz
+DRM: Available mode [5]: 1920x1080@60Hz
+DRM: Available mode [6]: 1920x1080@60Hz
+DRM: Available mode [7]: 1920x1080@50Hz
+DRM: Available mode [8]: 1920x1080@50Hz
+DRM: Available mode [9]: 1680x1050@60Hz
+DRM: Available mode [10]: 1400x1050@60Hz
+DRM: Available mode [11]: 1280x1024@75Hz
+DRM: Available mode [12]: 1280x1024@60Hz
+DRM: Available mode [13]: 1440x900@60Hz
+DRM: Available mode [14]: 1152x864@75Hz
+DRM: Available mode [15]: 1280x720@60Hz
+DRM: Available mode [16]: 1280x720@60Hz
+DRM: Available mode [17]: 1280x720@50Hz
+DRM: Available mode [18]: 1440x576@50Hz
+DRM: Available mode [19]: 1024x768@75Hz
+DRM: Available mode [20]: 1024x768@70Hz
+DRM: Available mode [21]: 1024x768@60Hz
+DRM: Available mode [22]: 832x624@75Hz
+DRM: Available mode [23]: 800x600@75Hz
+DRM: Available mode [24]: 800x600@72Hz
+DRM: Available mode [25]: 800x600@60Hz
+DRM: Available mode [26]: 800x600@56Hz
+DRM: Available mode [27]: 720x576@50Hz
+DRM: Available mode [28]: 720x480@60Hz
+DRM: Available mode [29]: 720x480@60Hz
+DRM: Available mode [30]: 640x480@75Hz
+DRM: Available mode [31]: 640x480@73Hz
+DRM: Available mode [32]: 640x480@67Hz
+DRM: Available mode [33]: 640x480@60Hz
+DRM: Available mode [34]: 640x480@60Hz
+DRM: Available mode [35]: 720x400@70Hz
+DRM: Found matching mode 800x600@75Hz for requested 800x600
+DRM: Using mode 800x600@75Hz
+DRM: Initialization successful
+GBM: Surface created 800x600 XRGB8888
+EGL: Version 1.5
+EGL: Using OpenGL ES API
+EGL: Config depth=24 stencil=8
+EGL: Context created and made current
+evdev: No keyboard found
+evdev: No mouse found
+GLES2 Driver: Mali400 (Mesa) [OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1]
+GLES2: GL_EXT_multisampled_render_to_texture (max 4 samples)
+GLES2: GL_EXT_discard_framebuffer
+GLES2: GL_OES_standard_derivatives
+GLES2: GL_OES_get_program_binary (1 formats)
+GLES2: Shader binary cache enabled (config/shader_cache)
+GLES2: Using fwidth() alpha threshold (standard_derivatives)
+GLES2: Color2D shader compiled
+GLES2: UI2D shader compiled
+GLES2: Solid3D shader compiled
+GLES2: AlphaTest3D shader compiled
+GLES2: AtlasSolid3D shader compiled
+GLES2: AtlasAlpha3D shader compiled
+GLES2 Driver initialized
+  Driver: OpenGL ES 2.0
+Loading zone: befallen
+  S3D loaded: 4046 regions, 19 textures (316 ms)
+  Shader system: available (solid=256, alphaTest=257)
+  Meshes built: 3596 regions (450 skipped), 6445 buffers, 0 textures uploaded (1505 ms)
+  Occlusion culler: 5497 occluder triangles from 1230 regions (64x32 depth buffer)
+Zone loaded in 2386 ms
+  Zone bounds (EQ): X=[-1008,-42] Y=[-282,196] Z=[-86,21]
+  Center (EQ): (-525, -43, -32)
+  Surface position: (-359.9, 84.0, -5.0) [97 polys in region]
+Using orbit fallback: center=(-525,-43,-5) radius=290
+  Orbit path: 361 waypoints, radius=290, 1820 EQ units total
+
+=== Synthetic Draw Call Overhead Test ===
+  Test buffer: 13 vertices, 7 polys
+
+  --- Same material (no state changes) ---
+     Draws      CPU ms      GPU ms    Total ms     us/draw
+         1        0.05        1.98        2.07        49.2
+        10        0.21        2.09        2.35        21.3
+        50        0.79        2.58        3.42        15.9
+       100        1.53        3.20        4.80        15.3
+       200        3.11        3.62        6.81        15.6
+       500        8.71        5.62       14.44        17.4
+      1000       20.84       11.23       32.21        20.8
+
+  --- Material switch per draw ---
+     Draws      CPU ms      GPU ms    Total ms     us/draw
+         1        0.06        1.98        2.07        64.8
+        10        0.52        2.13        2.68        52.1
+        50        2.39        2.70        5.13        47.7
+       100        5.03        3.48        8.56        50.3
+       200       11.20        5.18       16.44        56.0
+       500       37.82       10.44       48.34        75.6
+      1000      117.96       35.14      153.19       118.0

@@ -1,0 +1,124 @@
+=== gles2_zone_benchmark ===
+Zone: befallen, Resolution: 800x600, Frames: 1000
+Toggles: materialSort=1 pvsCull=1 frustumCull=1 occlusionCull=1 frontToBack=1 depthTest=1 entities=200 animate=0
+
+Creating Irrlicht device: 800x600, DRM=1
+Irrlicht Engine version 1.8.5
+DRM: Opened /dev/dri/card0 (fd=3)
+DRM: Available mode [0]: 2560x1440@60Hz (preferred)
+DRM: Available mode [1]: 1920x1440@60Hz
+DRM: Available mode [2]: 1920x1200@60Hz
+DRM: Available mode [3]: 1920x1080@60Hz
+DRM: Available mode [4]: 1920x1080@60Hz
+DRM: Available mode [5]: 1920x1080@60Hz
+DRM: Available mode [6]: 1920x1080@60Hz
+DRM: Available mode [7]: 1920x1080@50Hz
+DRM: Available mode [8]: 1920x1080@50Hz
+DRM: Available mode [9]: 1680x1050@60Hz
+DRM: Available mode [10]: 1400x1050@60Hz
+DRM: Available mode [11]: 1280x1024@75Hz
+DRM: Available mode [12]: 1280x1024@60Hz
+DRM: Available mode [13]: 1440x900@60Hz
+DRM: Available mode [14]: 1152x864@75Hz
+DRM: Available mode [15]: 1280x720@60Hz
+DRM: Available mode [16]: 1280x720@60Hz
+DRM: Available mode [17]: 1280x720@50Hz
+DRM: Available mode [18]: 1440x576@50Hz
+DRM: Available mode [19]: 1024x768@75Hz
+DRM: Available mode [20]: 1024x768@70Hz
+DRM: Available mode [21]: 1024x768@60Hz
+DRM: Available mode [22]: 832x624@75Hz
+DRM: Available mode [23]: 800x600@75Hz
+DRM: Available mode [24]: 800x600@72Hz
+DRM: Available mode [25]: 800x600@60Hz
+DRM: Available mode [26]: 800x600@56Hz
+DRM: Available mode [27]: 720x576@50Hz
+DRM: Available mode [28]: 720x480@60Hz
+DRM: Available mode [29]: 720x480@60Hz
+DRM: Available mode [30]: 640x480@75Hz
+DRM: Available mode [31]: 640x480@73Hz
+DRM: Available mode [32]: 640x480@67Hz
+DRM: Available mode [33]: 640x480@60Hz
+DRM: Available mode [34]: 640x480@60Hz
+DRM: Available mode [35]: 720x400@70Hz
+DRM: Found matching mode 800x600@75Hz for requested 800x600
+DRM: Using mode 800x600@75Hz
+DRM: Initialization successful
+GBM: Surface created 800x600 XRGB8888
+EGL: Version 1.5
+EGL: Using OpenGL ES API
+EGL: Config depth=24 stencil=8
+EGL: Context created and made current
+evdev: No keyboard found
+evdev: No mouse found
+GLES2 Driver: Mali400 (Mesa) [OpenGL ES 2.0 Mesa 25.2.8-0ubuntu0.24.04.1]
+GLES2: GL_EXT_multisampled_render_to_texture (max 4 samples)
+GLES2: GL_EXT_discard_framebuffer
+GLES2: GL_OES_standard_derivatives
+GLES2: GL_OES_get_program_binary (1 formats)
+GLES2: Shader binary cache enabled (config/shader_cache)
+GLES2: Using fwidth() alpha threshold (standard_derivatives)
+GLES2: Color2D shader compiled
+GLES2: UI2D shader compiled
+GLES2: Solid3D shader compiled
+GLES2: AlphaTest3D shader compiled
+GLES2: AtlasSolid3D shader compiled
+GLES2: AtlasAlpha3D shader compiled
+GLES2 Driver initialized
+  Driver: OpenGL ES 2.0
+Loading zone: befallen
+  S3D loaded: 4046 regions, 19 textures (452 ms)
+  Shader system: available (solid=256, alphaTest=257)
+  Meshes built: 3596 regions (450 skipped), 6445 buffers, 0 textures uploaded (1513 ms)
+  Occlusion culler: 5497 occluder triangles from 1230 regions (64x32 depth buffer)
+  Loading entity models...
+  Loaded 12 race meshes
+  Entity models loaded in 7594 ms (200 entities, 12 race meshes)
+Zone loaded in 15503 ms
+  Zone bounds (EQ): X=[-1008,-42] Y=[-282,196] Z=[-86,21]
+  Center (EQ): (-525, -43, -32)
+  Surface position: (-359.9, 84.0, -5.0) [97 polys in region]
+Replaying camera path from /tmp/befallen_seed42_1000f.path (1000 of 1000 poses)
+  Placed 200 entities along camera path (1 target, 5 group, 5 raid, rest default/idle)
+Adaptive lighting: entity PP budget=15, zone PP budget=20
+
+Starting benchmark: 10 warmup + 1000 measured frames
+  Frame 100/1010...
+  Frame 200/1010...
+  Frame 300/1010...
+[occlusion-headroom] frame=355 regions_pvs=89 occluded_capped=29 occluded_uncapped=29 headroom=0
+  Frame 400/1010...
+[occlusion-headroom] frame=472 regions_pvs=766 occluded_capped=62 occluded_uncapped=287 headroom=225
+  Frame 500/1010...
+  Frame 600/1010...
+[occlusion-headroom] frame=626 regions_pvs=2 occluded_capped=0 occluded_uncapped=0 headroom=0
+  Frame 700/1010...
+  Frame 800/1010...
+[occlusion-headroom] frame=791 regions_pvs=100 occluded_capped=0 occluded_uncapped=4 headroom=4
+  Frame 900/1010...
+[occlusion-headroom] frame=917 regions_pvs=119 occluded_capped=30 occluded_uncapped=47 headroom=17
+[occlusion-headroom] frame=987 regions_pvs=480 occluded_capped=84 occluded_uncapped=152 headroom=68
+  Frame 1000/1010...
+
+=== Zone Benchmark Summary (1000 frames) ===
+  CPU draw              min=2.90     avg=68.85    p95=197.74   max=365.31   ms
+    collect/cull        min=1.31     avg=2.80     p95=4.38     max=5.71     ms
+    sort                min=0.00     avg=0.15     p95=0.61     max=1.13     ms
+    submission          min=1.57     avg=65.64    p95=192.25   max=357.84   ms
+    other               min=0.02     avg=0.27     p95=0.69     max=4.69     ms
+  GPU sync              min=9.38     avg=33.93    p95=81.53    max=90.74    ms
+  Swap/present          min=0.17     avg=0.25     p95=0.29     max=1.13     ms
+  Total frame           min=12.30    avg=102.80   p95=285.55   max=452.15   ms
+  Draw calls            min=26       avg=699      max=1809    
+  State changes         min=5        avg=451      max=523     
+  Polygons              min=174      avg=15717    max=18528   
+  Regions visible       min=0        avg=134      max=788     
+  Regions drawn         min=0        avg=134      max=788     
+  Regions occluded      min=0        avg=28       max=389     
+  Avg FPS: 9.7
+=========================================
+
+CSV written: /tmp/p08_befallen_pi_replay.csv (1000 frames)
+Draw histogram written: /tmp/p08_befallen_pi_histogram.csv
+Texture cache: 5526098 / 67108864 bytes (163 textures)
+Benchmark complete.
