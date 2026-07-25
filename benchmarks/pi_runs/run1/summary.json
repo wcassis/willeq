@@ -1,0 +1,353 @@
+{
+  "run_name": "run1",
+  "zones": {
+    "befallen": {
+      "eqe1": {
+        "fps_p95": 23.273133494693724,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 368,
+            "draws_set": [
+              368
+            ],
+            "polys": 1241,
+            "polys_set": [
+              1241
+            ],
+            "state_changes": 7,
+            "state_changes_set": [
+              7
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 75,
+            "draws_set": [
+              75
+            ],
+            "polys": 384,
+            "polys_set": [
+              384
+            ],
+            "state_changes": 5,
+            "state_changes_set": [
+              5
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 170,
+            "draws_set": [
+              170
+            ],
+            "polys": 526,
+            "polys_set": [
+              526
+            ],
+            "state_changes": 5,
+            "state_changes_set": [
+              5
+            ]
+          }
+        },
+        "total_ms_max": 80.276,
+        "total_ms_mean": 28.780684210526317,
+        "total_ms_min": 16.506,
+        "total_ms_p95": 42.968,
+        "warmup_frames_discarded": 3
+      },
+      "rgba": {
+        "fps_p95": 22.373366744227674,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 368,
+            "draws_set": [
+              368
+            ],
+            "polys": 1241,
+            "polys_set": [
+              1241
+            ],
+            "state_changes": 7,
+            "state_changes_set": [
+              7
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 75,
+            "draws_set": [
+              75
+            ],
+            "polys": 384,
+            "polys_set": [
+              384
+            ],
+            "state_changes": 5,
+            "state_changes_set": [
+              5
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 170,
+            "draws_set": [
+              170
+            ],
+            "polys": 526,
+            "polys_set": [
+              526
+            ],
+            "state_changes": 5,
+            "state_changes_set": [
+              5
+            ]
+          }
+        },
+        "total_ms_max": 47.183,
+        "total_ms_mean": 29.330859649122807,
+        "total_ms_min": 17.691,
+        "total_ms_p95": 44.696,
+        "warmup_frames_discarded": 3
+      }
+    },
+    "gfaydark": {
+      "eqe1": {
+        "fps_p95": 23.602719033232628,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 143,
+            "draws_set": [
+              143
+            ],
+            "polys": 3338,
+            "polys_set": [
+              3338
+            ],
+            "state_changes": 10,
+            "state_changes_set": [
+              10
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 134,
+            "draws_set": [
+              134
+            ],
+            "polys": 3633,
+            "polys_set": [
+              3633
+            ],
+            "state_changes": 7,
+            "state_changes_set": [
+              7
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 203,
+            "draws_set": [
+              203
+            ],
+            "polys": 4421,
+            "polys_set": [
+              4421
+            ],
+            "state_changes": 9,
+            "state_changes_set": [
+              9
+            ]
+          }
+        },
+        "total_ms_max": 50.987,
+        "total_ms_mean": 32.432614035087724,
+        "total_ms_min": 24.159,
+        "total_ms_p95": 42.368,
+        "warmup_frames_discarded": 3
+      },
+      "rgba": {
+        "fps_p95": 24.364690690251688,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 143,
+            "draws_set": [
+              143
+            ],
+            "polys": 3338,
+            "polys_set": [
+              3338
+            ],
+            "state_changes": 10,
+            "state_changes_set": [
+              10
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 134,
+            "draws_set": [
+              134
+            ],
+            "polys": 3633,
+            "polys_set": [
+              3633
+            ],
+            "state_changes": 7,
+            "state_changes_set": [
+              7
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 203,
+            "draws_set": [
+              203
+            ],
+            "polys": 4421,
+            "polys_set": [
+              4421
+            ],
+            "state_changes": 9,
+            "state_changes_set": [
+              9
+            ]
+          }
+        },
+        "total_ms_max": 44.315,
+        "total_ms_mean": 33.67031578947368,
+        "total_ms_min": 25.928,
+        "total_ms_p95": 41.043,
+        "warmup_frames_discarded": 3
+      }
+    },
+    "qeynos2": {
+      "eqe1": {
+        "fps_p95": 32.61259498418289,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 236,
+            "draws_set": [
+              236
+            ],
+            "polys": 885,
+            "polys_set": [
+              885
+            ],
+            "state_changes": 20,
+            "state_changes_set": [
+              20
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 119,
+            "draws_set": [
+              119
+            ],
+            "polys": 542,
+            "polys_set": [
+              542
+            ],
+            "state_changes": 16,
+            "state_changes_set": [
+              16
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 228,
+            "draws_set": [
+              228
+            ],
+            "polys": 663,
+            "polys_set": [
+              663
+            ],
+            "state_changes": 8,
+            "state_changes_set": [
+              8
+            ]
+          }
+        },
+        "total_ms_max": 31.209,
+        "total_ms_mean": 25.860719298245613,
+        "total_ms_min": 18.058,
+        "total_ms_p95": 30.663,
+        "warmup_frames_discarded": 3
+      },
+      "rgba": {
+        "fps_p95": 28.835063437139564,
+        "n_frames": 60,
+        "n_frames_steady": 57,
+        "per_pose": {
+          "0": {
+            "deterministic": true,
+            "draws": 236,
+            "draws_set": [
+              236
+            ],
+            "polys": 885,
+            "polys_set": [
+              885
+            ],
+            "state_changes": 20,
+            "state_changes_set": [
+              20
+            ]
+          },
+          "1": {
+            "deterministic": true,
+            "draws": 119,
+            "draws_set": [
+              119
+            ],
+            "polys": 542,
+            "polys_set": [
+              542
+            ],
+            "state_changes": 16,
+            "state_changes_set": [
+              16
+            ]
+          },
+          "2": {
+            "deterministic": true,
+            "draws": 228,
+            "draws_set": [
+              228
+            ],
+            "polys": 663,
+            "polys_set": [
+              663
+            ],
+            "state_changes": 8,
+            "state_changes_set": [
+              8
+            ]
+          }
+        },
+        "total_ms_max": 34.816,
+        "total_ms_mean": 28.894315789473687,
+        "total_ms_min": 19.468,
+        "total_ms_p95": 34.68,
+        "warmup_frames_discarded": 3
+      }
+    }
+  }
+}
