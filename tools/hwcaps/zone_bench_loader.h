@@ -294,7 +294,25 @@ void collectDrawEntries(
     // fraction for this frame (e.g. for --csv reporting). Left untouched
     // (not written) when zonePPRadiusMode is off.
     float* outLightRadius = nullptr,
-    int* outRegionsDemotedRadius = nullptr);
+    int* outRegionsDemotedRadius = nullptr,
+    // P08: optional per-phase CPU timing (steady_clock, no syscalls --
+    // near-zero overhead). Non-null only when the caller wants the
+    // collect/cull-vs-sort split for CSV reporting; left untouched
+    // (not written) when null. outCollectCullMs covers everything in this
+    // function EXCEPT the final material-key sort; outSortMs covers only
+    // the std::sort call (0 if materialSort is false).
+    float* outCollectCullMs = nullptr,
+    float* outSortMs = nullptr,
+    // P08 (--draw-histogram, one-shot diagnostic, not per-frame): when
+    // non-null, outDrawsPerRegion receives one entry per DRAWN region
+    // (region visitation order, i.e. BEFORE the material sort reorders
+    // outEntries) counting how many draw entries that region contributed;
+    // outPolysPerDraw receives one entry per draw entry (poly count of
+    // that entry's mesh buffer), same order as outEntries pre-sort. Both
+    // left empty (not cleared/touched) when null -- zero overhead for
+    // ordinary timed runs.
+    std::vector<int>* outDrawsPerRegion = nullptr,
+    std::vector<int>* outPolysPerDraw = nullptr);
 
 // Place entities at evenly-spaced positions along a camera path.
 // Positions are in EQ coords; entities face random directions.

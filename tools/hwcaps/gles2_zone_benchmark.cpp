@@ -12,6 +12,7 @@
 
 #include "zone_bench_loader.h"
 #include "zone_bench_camera.h"
+#include "zone_bench_histogram.h"
 #include "zone_bench_metrics.h"
 #include "common/logging.h"
 
@@ -143,6 +144,11 @@ struct Options {
     std::string dumpPngPrefix;    // H02: save designated measured frames as PREFIX_f<N>.png
     std::vector<int> dumpFrames;  // H02: measured-frame indices (0-based) to dump when dumpPngPrefix is set
     std::string memoryJsonPath;   // H02: write texture-cache memory stats as JSON
+    // P08: draw-composition histogram (draws/region, polys/draw distribution,
+    // tiny-draw count) at designated frames (reuses --dump-frames), one CSV
+    // row per listed frame appended to this file. Independent of
+    // --dump-png-prefix -- only --dump-frames + this flag are required.
+    std::string drawHistogramFile;
 
     // H02: orbit-fallback camera anchoring (opt-in; default preserves the
     // original zone-bounding-box-center behavior exactly). Anchoring the
@@ -303,6 +309,9 @@ static void printUsage(const char* prog) {
     printf("  --dump-frames LIST   Comma-separated measured-frame indices to dump (H02, e.g. 0,30,59)\n");
     printf("  --dump-png-prefix P  With --dump-frames: write P_f<N>.png per listed frame\n");
     printf("  --memory-json FILE   Write texture-cache memory stats (bytes used/limit/count) as JSON (H02)\n");
+    printf("  --draw-histogram FILE  With --dump-frames: append one CSV row per listed frame with\n");
+    printf("                       zone draw-composition stats (draws/region, polys/draw distribution,\n");
+    printf("                       tiny-draw (<32 polys) count -- P08, one-shot, not per-frame)\n");
     printf("\nOrbit-fallback camera anchoring (H02, opt-in, default off):\n");
     printf("  --orbit-anchor-surface  Anchor the orbit-fallback camera to the surface-position\n");
     printf("                          finder's XY instead of the zone bounding-box center\n");
@@ -459,6 +468,7 @@ static Options parseArgs(int argc, char** argv) {
         }
         else if (strcmp(argv[i], "--dump-png-prefix") == 0 && i + 1 < argc) opts.dumpPngPrefix = argv[++i];
         else if (strcmp(argv[i], "--memory-json") == 0 && i + 1 < argc) opts.memoryJsonPath = argv[++i];
+        else if (strcmp(argv[i], "--draw-histogram") == 0 && i + 1 < argc) opts.drawHistogramFile = argv[++i];
         else if (strcmp(argv[i], "--orbit-anchor-surface") == 0) opts.orbitAnchorSurface = true;
         else if (strcmp(argv[i], "--orbit-radius") == 0 && i + 1 < argc) opts.orbitRadius = atof(argv[++i]);
         else if (strcmp(argv[i], "--orbit-height-offset") == 0 && i + 1 < argc) opts.orbitHeightOffset = atof(argv[++i]);
@@ -777,10 +787,14 @@ static void setupCamera(ZoneBench::ZoneBenchData& data,
 }
 
 // Draw all entries: setMaterial + drawMeshBuffer for each.
-// Returns state change count.
+// Returns state change count. P08: outSubmitMs, if non-null, receives the
+// wall time (steady_clock, no syscalls) of just the setMaterial+
+// drawMeshBuffer loop below -- the "submission phase" for CSV reporting.
+// Excludes the depth-test toggle (negligible, one GL call each way).
 static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
                         const std::vector<ZoneBench::DrawEntry>& entries,
-                        bool depthTest) {
+                        bool depthTest,
+                        float* outSubmitMs = nullptr) {
 #ifdef EQT_HAS_GLES2
     if (!depthTest) {
         glDisable(GL_DEPTH_TEST);
@@ -792,6 +806,7 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
     int stateChanges = 0;
     uint32_t prevMatKey = UINT32_MAX;
 
+    const auto submitStart = std::chrono::steady_clock::now();
     for (const auto& de : entries) {
         data.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
 
@@ -809,6 +824,10 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
             ++stateChanges;
             prevMatKey = de.materialKey;
         }
+    }
+    if (outSubmitMs) {
+        *outSubmitMs = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - submitStart).count();
     }
 
 #ifdef EQT_HAS_GLES2
@@ -2227,6 +2246,17 @@ int main(int argc, char** argv) {
     std::vector<ZoneBench::DrawEntry> drawEntries;
     drawEntries.reserve(2048);
 
+    // P08: draw-composition histogram (--draw-histogram + --dump-frames).
+    FILE* histFile = nullptr;
+    bool histHeaderWritten = false;
+    if (!opts.drawHistogramFile.empty()) {
+        histFile = fopen(opts.drawHistogramFile.c_str(), "w");
+        if (!histFile) {
+            fprintf(stderr, "ERROR: cannot open --draw-histogram file: %s\n",
+                    opts.drawHistogramFile.c_str());
+        }
+    }
+
     // Q01: totalFrames/fullTrace were resolved above (before entity
     // placement) -- both record (navmesh/orbit) and replay (--path-file)
     // populate the same per-frame trace, so the loop below no longer cares
@@ -2331,29 +2361,62 @@ int main(int argc, char** argv) {
         int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
         float lightRadius = 0.0f;
         int regionsDemotedRadius = 0;
+        // P08: phaseCollectCullMs accumulates zone-region collection/culling
+        // (from collectDrawEntries' own timing) plus object/entity draw-entry
+        // collection below (small relative to zone collection); phaseSortMs
+        // is the zone material-key sort only; phaseSubmitMs (set per-branch
+        // below) is the setMaterial+drawMeshBuffer loop time.
+        float phaseCollectCullMs = 0.0f, phaseSortMs = 0.0f, phaseSubmitMs = 0.0f;
+        int measuredFrameIdx = frame - opts.warmup;
+        bool wantHistogram = measuring && histFile != nullptr && !opts.dumpFrames.empty() &&
+            std::find(opts.dumpFrames.begin(), opts.dumpFrames.end(), measuredFrameIdx)
+                != opts.dumpFrames.end();
+        std::vector<int> histDrawsPerRegion, histPolysPerDraw;
         ZoneBench::collectDrawEntries(
             *data, camState,
             opts.materialSort, opts.pvsCull, opts.frustumCull, opts.occlusionCull,
             opts.frontToBack, opts.maxDraws, opts.maxPolys,
             drawEntries, regionsVisible, regionsDrawn, regionsOccluded,
-            &lightRadius, &regionsDemotedRadius);
+            &lightRadius, &regionsDemotedRadius,
+            &phaseCollectCullMs, &phaseSortMs,
+            wantHistogram ? &histDrawsPerRegion : nullptr,
+            wantHistogram ? &histPolysPerDraw : nullptr);
         if (measuring) metrics.setRadiusStats(lightRadius, regionsDemotedRadius);
+        if (wantHistogram) {
+            ZoneBench::DrawHistogram hist;
+            hist.frame = measuredFrameIdx;
+            hist.regionsVisible = regionsVisible;
+            hist.regionsDrawn = regionsDrawn;
+            hist.regionsOccluded = regionsOccluded;
+            hist.stateChanges = 0;  // zone-only state changes not separately tracked at this point
+            hist.drawsPerRegion = histDrawsPerRegion;
+            hist.polysPerDraw = histPolysPerDraw;
+            ZoneBench::writeDrawHistogramCSV(histFile, hist, !histHeaderWritten);
+            histHeaderWritten = true;
+            if (opts.dump) ZoneBench::printDrawHistogram(hist);
+        }
 
         // Collect object draw entries (trees, lamps, etc.)
         int objectDrawCalls = 0, objectPolys = 0;
         if (!data->objects.empty()) {
+            const auto objCollectStart = std::chrono::steady_clock::now();
             ZoneBench::collectObjectDrawEntries(
                 *data, camState, opts.objectRenderDist,
                 opts.pvsCull, opts.frustumCull, opts.occlusionCull,
                 drawEntries, objectDrawCalls, objectPolys);
+            phaseCollectCullMs += std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - objCollectStart).count();
         }
 
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
             if (opts.directGLEntities && opts.compositeEntities) {
-                // Direct GL + composite: 1 draw per entity via raw GL
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // Direct GL + composite: 1 draw per entity via raw GL.
+                // P08: out of scope (entity draw path) -- phaseSubmitMs here
+                // covers only the zone-geometry renderDrawEntries() call;
+                // the direct-GL entity submission below falls into otherMs.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 entityDrawCalls = ZoneBench::renderDirectGLCompositeEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     entityPolys);
@@ -2364,10 +2427,13 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else if (opts.directGLEntities) {
-                // Direct GL per-body-part: bypass Irrlicht, same draw count as unbatched
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // Direct GL per-body-part: bypass Irrlicht, same draw count as unbatched.
+                // P08: out of scope (entity draw path), same caveat as above.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 entityDrawCalls = ZoneBench::renderDirectGLEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     entityPolys);
@@ -2378,10 +2444,13 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else if (opts.adaptiveLod) {
-                // Adaptive LOD: proactive frame-time prediction with billboard fallback
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // Adaptive LOD: proactive frame-time prediction with billboard fallback.
+                // P08: out of scope (entity draw path), same caveat as above.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 int tier1 = 0, tier2 = 0;
                 float entityMs = 0;
                 float prevFrameMs = metrics.frames().empty() ? 0 :
@@ -2396,10 +2465,13 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else if (opts.lodEntities) {
-                // LOD: composite near + batched billboards far
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // LOD: composite near + batched billboards far.
+                // P08: out of scope (entity draw path), same caveat as above.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 int tier1 = 0, tier2 = 0;
                 entityDrawCalls = ZoneBench::renderLodEntities(
                     *data, camState, opts.entityRenderDist, opts.lodTier2Dist,
@@ -2411,10 +2483,13 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else if (opts.compositeEntities) {
-                // Composite: 1 draw per entity (simulates pre-baked composite texture)
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // Composite: 1 draw per entity (simulates pre-baked composite texture).
+                // P08: out of scope (entity draw path), same caveat as above.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 entityDrawCalls = ZoneBench::renderCompositeEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     entityPolys);
@@ -2425,10 +2500,13 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else if (opts.batchEntities) {
-                // Batched: merge same-material entity parts into single draws
-                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                // Batched: merge same-material entity parts into single draws.
+                // P08: out of scope (entity draw path), same caveat as above.
+                int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 entityDrawCalls = ZoneBench::renderBatchedEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     entityPolys);
@@ -2439,31 +2517,46 @@ int main(int argc, char** argv) {
                 if (measuring) {
                     metrics.endDraw(totalDraws, totalStateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             } else {
-                // Unbatched: individual draw calls per entity mesh buffer
+                // Unbatched (P08 canonical config -- default, no entity mode
+                // flag set): entity draw entries are appended to the SAME
+                // drawEntries vector as zone entries (sorted together), so
+                // the single renderDrawEntries() call below submits zone +
+                // entity draws combined -- phaseSubmitMs is a true combined
+                // submission-phase number here, not zone-only.
+                const auto entCollectStart = std::chrono::steady_clock::now();
                 ZoneBench::collectEntityDrawEntries(
                     *data, camState, opts.entityRenderDist,
                     opts.frustumCull, opts.occlusionCull,
                     drawEntries, entityDrawCalls, entityPolys);
-                int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+                phaseCollectCullMs += std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - entCollectStart).count();
+                int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 int polyCount = countPolygons(drawEntries);
 
                 if (measuring) {
                     metrics.endDraw(static_cast<int>(drawEntries.size()),
                                    stateChanges, polyCount,
                                    regionsVisible, regionsDrawn, regionsOccluded);
+                    metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                    metrics.finalizePhaseTiming();
                 }
             }
         } else {
-            // No entities — zone only
-            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest);
+            // No entities — zone only (P08 canonical isolation config, used
+            // to quantify entity draw-call contribution separately).
+            int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
             int polyCount = countPolygons(drawEntries);
 
             if (measuring) {
                 metrics.endDraw(static_cast<int>(drawEntries.size()),
                                stateChanges, polyCount,
                                regionsVisible, regionsDrawn);
+                metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
+                metrics.finalizePhaseTiming();
             }
         }
 
@@ -2509,7 +2602,17 @@ int main(int argc, char** argv) {
             }
         }
 
+        // P08: time endScene() (buffer swap / page flip) separately -- it
+        // happens after totalMs is already stamped (comment above), so this
+        // is genuinely new information, not a subset of any existing column.
+        // Patches the frame record already pushed by endFrame() above.
+        const auto swapStart = std::chrono::steady_clock::now();
         data->driver->endScene();
+        if (measuring) {
+            float swapMs = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - swapStart).count();
+            metrics.setSwapMsForLastFrame(swapMs);
+        }
 
         // Progress
         if (frame > 0 && frame % 100 == 0) {
@@ -2522,6 +2625,11 @@ int main(int argc, char** argv) {
 
     if (!opts.csvFile.empty()) {
         metrics.writeCSV(opts.csvFile);
+    }
+
+    if (histFile) {
+        fclose(histFile);
+        printf("Draw histogram written: %s\n", opts.drawHistogramFile.c_str());
     }
 
     // H02: report/emit texture-cache memory usage for the memory-ceiling CI gate.

@@ -851,8 +851,16 @@ void collectDrawEntries(
     int& outRegionsDrawn,
     int& outRegionsOccluded,
     float* outLightRadius,
-    int* outRegionsDemotedRadius)
+    int* outRegionsDemotedRadius,
+    float* outCollectCullMs,
+    float* outSortMs,
+    std::vector<int>* outDrawsPerRegion,
+    std::vector<int>* outPolysPerDraw)
 {
+    // P08: collect/cull phase starts here; the sort block below (right
+    // before this function returns) is timed separately and excluded.
+    const auto collectCullStart = std::chrono::steady_clock::now();
+
     outEntries.clear();
     outRegionsVisible = 0;
     outRegionsDrawn = 0;
@@ -1077,6 +1085,7 @@ void collectDrawEntries(
         worldMat.setTranslation(rd.position);
 
         bool budgetExceeded = false;
+        int drawsThisRegion = 0;
         for (irr::u32 i = 0; i < rd.mesh->getMeshBufferCount(); ++i) {
             irr::scene::IMeshBuffer* buf = rd.mesh->getMeshBuffer(i);
             if (!buf || buf->getVertexCount() == 0) continue;
@@ -1107,14 +1116,23 @@ void collectDrawEntries(
 
             outEntries.push_back({matKey, re.distSq, buf, worldMat, matOverride});
             polysCollected += bufPolys;
+            drawsThisRegion++;
+            if (outPolysPerDraw) outPolysPerDraw->push_back(bufPolys);
         }
+        if (outDrawsPerRegion && drawsThisRegion > 0) outDrawsPerRegion->push_back(drawsThisRegion);
 
         regionIdx++;
         outRegionsDrawn++;
         if (budgetExceeded) break;
     }
 
+    if (outCollectCullMs) {
+        *outCollectCullMs = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - collectCullStart).count();
+    }
+
     // Material sort (primary key: material, secondary: distance)
+    const auto sortStart = std::chrono::steady_clock::now();
     if (materialSort) {
         std::sort(outEntries.begin(), outEntries.end(),
                   [](const DrawEntry& a, const DrawEntry& b) {
@@ -1122,6 +1140,10 @@ void collectDrawEntries(
                           return a.materialKey < b.materialKey;
                       return a.distanceSq < b.distanceSq;
                   });
+    }
+    if (outSortMs) {
+        *outSortMs = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - sortStart).count();
     }
 }
 

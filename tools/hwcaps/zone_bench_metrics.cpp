@@ -19,12 +19,19 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
     // P07d: light_radius/regions_demoted_radius are further trailing columns,
     // always present (0 unless --pp-budget-mode radius was passed), same
     // backward-compatible-append convention.
+    // P08: collect_cull_ms/sort_ms/submission_ms/other_ms/swap_ms are the
+    // newest trailing columns -- always present (steady_clock reads only,
+    // near-zero overhead), same append-only convention. See
+    // zone_bench_metrics.h's FrameMetrics comment for exactly what each
+    // phase covers.
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
                "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
-               "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius\n");
+               "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,"
+               "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms\n");
 
     for (const auto& m : frames_) {
-        fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d\n",
+        fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d,"
+                   "%.3f,%.3f,%.3f,%.3f,%.3f\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
@@ -32,7 +39,8 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
                 m.regionsVisible, m.regionsDrawn, m.regionsOccluded,
                 m.animationCpuMs,
                 m.alphaTestDraws, m.solidDraws,
-                m.lightRadius, m.regionsDemotedRadius);
+                m.lightRadius, m.regionsDemotedRadius,
+                m.collectCullMs, m.sortMs, m.submissionMs, m.otherMs, m.swapMs);
     }
 
     fclose(f);
@@ -72,6 +80,7 @@ void MetricsCollector::printSummary() const {
     printf("\n=== Zone Benchmark Summary (%zu frames) ===\n", frames_.size());
 
     std::vector<float> cpuMs, gpuMs, totalMs, draws, stateChanges, polys, regVis, regDrawn, regOccl, animMs;
+    std::vector<float> collectCullMs, sortMs, submissionMs, otherMs, swapMs;
     for (const auto& m : frames_) {
         cpuMs.push_back(m.cpuDrawMs);
         gpuMs.push_back(m.gpuMs);
@@ -83,6 +92,11 @@ void MetricsCollector::printSummary() const {
         regDrawn.push_back(static_cast<float>(m.regionsDrawn));
         regOccl.push_back(static_cast<float>(m.regionsOccluded));
         animMs.push_back(m.animationCpuMs);
+        collectCullMs.push_back(m.collectCullMs);
+        sortMs.push_back(m.sortMs);
+        submissionMs.push_back(m.submissionMs);
+        otherMs.push_back(m.otherMs);
+        swapMs.push_back(m.swapMs);
     }
 
     // Only print animation stats if any frame had animation time
@@ -91,7 +105,12 @@ void MetricsCollector::printSummary() const {
 
     if (hasAnimation) printStats("Animation CPU", "ms", animMs);
     printStats("CPU draw", "ms", cpuMs);
+    printStats("  collect/cull", "ms", collectCullMs);
+    printStats("  sort", "ms", sortMs);
+    printStats("  submission", "ms", submissionMs);
+    printStats("  other", "ms", otherMs);
     printStats("GPU sync", "ms", gpuMs);
+    printStats("Swap/present", "ms", swapMs);
     printStats("Total frame", "ms", totalMs);
     printStatsInt("Draw calls", draws);
     printStatsInt("State changes", stateChanges);
