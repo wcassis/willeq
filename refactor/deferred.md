@@ -140,10 +140,28 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      (the benchmark's composite stand-in is not representative) + tier-2
      impact. Projected befallen p95 279.7 → ~187ms — real but NOT
      KPI-closing alone; lever #2 still needed after.
-  2. **Cross-region same-material zone draw merge** — still real
-     (97.8% zone-draw ceiling; Pi zone-only submission is 21.7ms avg, not
-     negligible; zone-only replay also misses KPI at p95 174.3ms). Needs
-     the proper design unit per P08's C5 interaction list.
+  2. **Cross-region same-material zone draw merge — P09 (2026-07-25)
+     designed it, prototype BLOCKED on a rendering defect.** A-gate
+     settled the architecture: per-frame client-side-index gather ("the
+     1999 way") costs 0.147ms where N=1000 separate VBO draws cost
+     59.17ms on Lima (~400x; streamed-IBO/coalescing also fine) — Lima
+     dynamic-index handling is NOT pathological. Prototype
+     (--merge-zone-draws, default off, in tree) hits P08's ceiling
+     exactly (bf472: 1308→14 draws, 98.9%) but pixel-identity FAILS two
+     ways: (a) small 2-44px z-fight diffs from intra-run reorder —
+     expected class, needs a stable secondary sort key or documented
+     tolerance; (b) UNATTRIBUTED texture corruption at golden views
+     (up to 31% of frame — textured surfaces render as flat lit
+     gradients; ruled out: hash collisions, GL errors, vertex format,
+     index rebasing, overflow; leading hypothesis: per-mesh-buffer
+     SMaterial-carried shader state, e.g. the MaterialTypeParam
+     atlas-page pattern, copied from the run's FIRST buffer only).
+     STOP condition honored — Pi perf phase not run. **NEXT: P09b
+     root-cause unit** (per-run isolation bisection + shader-variant
+     bisection + per-buffer SMaterial field audit across run members),
+     then the Pi measurement + landing sketch execution. Landing sketch
+     (cell-scoped mesh-cache eviction etc.) already drafted in P09's
+     review.
   3. **Occlusion occluder-budget increase** — unchanged; cheap interim.
   4. Within-region merges: DEAD (~0% ceiling).
   - P08b method notes: --animate is nonrepresentative in the benchmark
