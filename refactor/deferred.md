@@ -217,16 +217,29 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      mechanism confirmed active (draw-count INFO line). Bonus fixes:
      /screenshot debug command + EGL-surfaceless capture; a real
      game/render-thread GL-context violation in --script dispatch.
-     **FLIP NOW BLOCKED — LIVE CRASH FOUND (anim-capture session 2,
-     2026-07-26): mergeZoneDraws=true SIGSEGVs 100% deterministically in
-     ZoneMergeBuffers::build()/textureGroupId() on the first frame in
-     qeynos2 (real x86 client, 5/5, gdb backtrace in
-     /mnt/projects/fable/videos/p12_anim_check/README.txt).** P10's own
-     A/B (befallen, likely runtime-toggle after load) did not exercise
-     this path/zone. NEEDS P10b: root-cause (suspect: null/dangling
-     texture or material in a qeynos2 region at load-time build) + fix +
-     A/B re-verify in BOTH zones + enable-at-load AND runtime-toggle
-     paths. Only after P10b: Will's bless + preset flip. Perf case = P09c benchmark numbers (befallen zone-only
+     **CRASH FIXED by P10b (2026-07-27) — flip UNBLOCKED, pending
+     Will's bless.** Real root cause (deferred-loading hypothesis
+     falsified): ConstrainedTextureCache eviction under qeynos2's 64MB
+     budget left DANGLING ITexture* in region materials because
+     clearTextureReferences() only scans the live scene graph while
+     manual-draw mode detaches ALL region nodes (1898/1898 detached) —
+     **a latent PRODUCTION bug: the unmerged path carried the same
+     dangling pointers and escaped only because it touches just the
+     visible subset per frame.** Fixed properly: RegionMeshTextureGuard
+     eviction listener scans regionMeshNodes_ directly (both paths now
+     safe); build() defensive (skip+WARN); merge-activation gate now
+     also watches the TEXTURE cache (merge auto-disables in zones that
+     evict — qeynos2 provably never activates under the current 64MB
+     budget; befallen engages: 10→4 draws, 60% on the sampled view).
+     6/6 matrix crash-free; A/B FP-class only (max_delta=1). Bonus
+     fixes: dangling softwareCursorTexture_; ParticleManager race
+     workaround properly applied (real fix still owed). NEW small
+     items: (a) qeynos2 merge coverage requires either a texture-budget
+     bump or merge-under-eviction tolerance (only matters if qeynos2
+     ever drops below KPI — it is above KPI today); (b) Testchar's
+     befallen restore coordinate hits a pre-existing local map/BSP
+     FATAL (flagged, unfixed); (c) two pre-existing post-camp
+     shutdown-thread aborts (already documented class). Perf case = P09c benchmark numbers (befallen zone-only
      p95 173.8→25.5ms). FUTURE follow-ups: full shared-VBO/eviction
      reconciliation (unit-sized; needed only when lazy streaming gets
      wired); zone objects remain unmerged (inspection-verified).
