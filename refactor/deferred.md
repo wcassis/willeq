@@ -174,9 +174,25 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      (b) at least one MORE unattributed contributor at qeynos2/befallen
      goldens (max_delta up to 209; suspects named in review: wind-shader
      per-buffer uMeshYBounds packing, atlas unit-1/AtlasSolid3D paths).
-     Pi measurement still deferred. **NEXT: P09c** — driver fix (prod) +
-     attribute remaining contributor + settle the FP-noise comparison
-     baseline, then finally the Pi measurement.
+     **P09c (2026-07-26) CLOSED the thread: driver fixed in production**
+     (glActiveTexture before lazy-init bind; the bug was BAKED INTO 2/9
+     goldens — persistent corruption, re-blessed by Will 2026-07-25),
+     merge mechanism PROVEN correct (merged vs baked-unmerged:
+     max_delta=0 at 13/15 poses, 1 LSB at 2 — narrowed, documented), the
+     old "unattributed contributor" fully attributed to the
+     architecturally-inherent FP transform-order delta (baked
+     world-space vs per-region matrices; up to 44k px / max_delta ≤104;
+     contact sheet at benchmarks/contact_sheets/p09c_fp_delta/ — needs
+     Will's one-time judgment when scoping the landing), and **the Pi
+     numbers are in: befallen zone-only p95 173.8→25.5ms (draws
+     253→7.9, 96.9%); befallen combined e205 p95 279.4→65.8ms (-76.4%);
+     qeynos2 zone-only 19.3→17.1ms.** KPI: merged+today's-entities
+     measured 65.8ms; projected ~44ms (~23fps) stacked with P08c
+     composite — merge alone doesn't close 30fps; entity work needed in
+     addition. **NEXT: the production landing unit** (sketch drafted in
+     P09/P09c reviews: cell-or-zone-scoped baked VBOs, mesh-cache
+     eviction keys, per-region lighting/occlusion preserved by the
+     gather design, FP-delta bless).
   3. **Occlusion occluder-budget increase** — unchanged; cheap interim.
   4. Within-region merges: DEAD (~0% ceiling).
   - P08b method notes: --animate is nonrepresentative in the benchmark
