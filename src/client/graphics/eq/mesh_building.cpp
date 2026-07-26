@@ -127,14 +127,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
         originalVerticesForAnimation_.push_back(vert);
     }
 
-    // Initialize vertex mapping (original index -> buffer location)
+    // Initialize vertex mapping (original index -> ALL destination buffer locations).
+    // P08D-RETAKE: was a single VertexMapping per original vertex, silently dropping
+    // every duplicate but the last-registered one for vertices shared across texture
+    // groups (UV seams) -- see the VertexMappingList comment in
+    // animated_mesh_scene_node.h. Each vIdx now gets a list; empty list = unmapped.
     vertexMappingForAnimation_.clear();
     vertexMappingForAnimation_.resize(geometry->vertices.size());
-    // Initialize all mappings to invalid
-    for (auto& m : vertexMappingForAnimation_) {
-        m.bufferIndex = 0xFFFFFFFF;
-        m.localIndex = 0xFFFFFFFF;
-    }
 
     irr::u32 bufferIndex = 0;
     for (const auto& [texIdx, triIndices] : trianglesByTexture) {
@@ -288,10 +287,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     globalToLocal[vidx] = localIdx;
                     buffer->Vertices.push_back(vert);
 
-                    // Record vertex mapping for animation
+                    // Record vertex mapping for animation. P08D-RETAKE: APPEND (not
+                    // overwrite) -- this vertex may already have a mapping from an
+                    // earlier texture group's buffer if it's a UV-seam vertex shared
+                    // across materials; both duplicates must be tracked so skinning
+                    // updates all of them, not just the last one registered.
                     if (vidx < vertexMappingForAnimation_.size()) {
-                        vertexMappingForAnimation_[vidx].bufferIndex = bufferIndex;
-                        vertexMappingForAnimation_[vidx].localIndex = localIdx;
+                        vertexMappingForAnimation_[vidx].push_back({bufferIndex, localIdx});
                     }
                 }
             }
@@ -354,13 +356,14 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
         originalVerticesForAnimation_.push_back(vert);
     }
 
-    // Initialize vertex mapping (all go to buffer 0 for composite)
+    // Initialize vertex mapping (P08D-RETAKE: one-to-many, see mesh_building.cpp's
+    // buildMeshFromGeometry comment / animated_mesh_scene_node.h's VertexMappingList
+    // comment -- a composite mesh still duplicates an original vertex once per
+    // distinct (vertex, texture) pair it's used with, even though every duplicate
+    // shares the same destination BUFFER, because each duplicate needs a different
+    // remapped UV into the composite sheet).
     vertexMappingForAnimation_.clear();
     vertexMappingForAnimation_.resize(geometry->vertices.size());
-    for (auto& m : vertexMappingForAnimation_) {
-        m.bufferIndex = 0xFFFFFFFF;
-        m.localIndex = 0xFFFFFFFF;
-    }
 
     // ── Pass 1: Scan UV extents per texture ──
     // Character models use flipV (1.0 - v.v) for individual textures (see
@@ -511,9 +514,9 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
                 buffer->Vertices.push_back(vert);
                 buffer->Indices.push_back(localIdx);
 
+                // P08D-RETAKE: append, don't overwrite -- see comment above.
                 if (vidx < vertexMappingForAnimation_.size()) {
-                    vertexMappingForAnimation_[vidx].bufferIndex = currentBufferIndex;
-                    vertexMappingForAnimation_[vidx].localIndex = localIdx;
+                    vertexMappingForAnimation_[vidx].push_back({currentBufferIndex, localIdx});
                 }
             }
         }

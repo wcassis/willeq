@@ -459,13 +459,20 @@ ENDIF()
 # Integration test: Inventory Window Model View (connects to real EQEmu server with graphics enabled)
 # This test verifies the inventory window paperdoll character model loads, has textures, and animates.
 # Run manually with: DISPLAY=:99 ./bin/test_inventory_model_view
+#
+# P12B: most fixtures in this file (InventoryModelViewTest) still need a live
+# EQEmu server + DISPLAY + the (deleted) paperdoll WindowManager UI, and
+# self-skip via GTEST_SKIP() when those aren't available. But
+# RaceModelAnimationHeadlessTest (added P12B) needs neither — EDT_NULL device,
+# no window, no server — so it's safe to let ctest discover and actually run
+# this binary now; the still-unrunnable fixtures just report SKIPPED.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_inventory_model_view
         test_inventory_model_view.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_inventory_model_view PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
-    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+    GTEST_DISCOVER_TESTS(test_inventory_model_view)
 ENDIF()
 
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)

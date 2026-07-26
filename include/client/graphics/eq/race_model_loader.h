@@ -460,7 +460,7 @@ private:
     // Temporary storage for vertex data during animated mesh building
     // (populated by buildMeshFromGeometry, consumed by getAnimatedMeshForRace)
     std::vector<irr::video::S3DVertex> originalVerticesForAnimation_;
-    std::vector<VertexMapping> vertexMappingForAnimation_;
+    std::vector<VertexMappingList> vertexMappingForAnimation_;  // one-to-many, see P08D-RETAKE note
 };
 
 } // namespace Graphics

@@ -832,6 +832,23 @@ sheet structural integrity sweep) is untouched — independent of this bug.
   against `EQAnimatedMesh`) plus a live-client play session to confirm production animation is
   unaffected.
 
+  **P12b closure (2026-07-26)**: the animation unit this section deferred to has landed. P12
+  (`refactor/P12_animate_root_cause.md`) root-caused the crumple's MECHANISM space (ruling out this
+  patch — byte-identical garbled-vs-garbled A/B — among other candidates) but hit STOP without a fix.
+  P12b (`refactor/P12b_benchmark_node_wiring.md`) found the actual delta: benchmark-only
+  (`tools/hwcaps/zone_bench_loader.cpp`) construction/wiring registered the animated per-instance mesh
+  as a GLES2 STATIC hardware buffer before its first real pose was ever applied, so every frame drew a
+  frozen, pre-animation (raw per-bone-local) vertex snapshot — nothing to do with `VertexMapping`, and
+  nothing in shared/production code. With that fixed and animated evidence finally trustworthy, this
+  patch was re-tested (`refactor/scratch/P08d_vertexmapping_one_to_many.patch`, applies cleanly) against
+  real coherent walk/idle poses across multiple races and frames: **byte-identical output with and
+  without the patch** (0 differing pixels at every frame checked) — the same "no visible effect" result
+  P12 found, now on a correctly-matched coherent-vs-coherent comparison instead of garbled-vs-garbled.
+  Given zero regressions (full ctest, static byte-identity, visual_gate, ARM cross-build all green with
+  the patch applied) and a real (if narrow/unexercised-by-this-repro) correctness fix underneath, P12b
+  **landed** the patch rather than leaving it parked indefinitely. See
+  `refactor/P12b_benchmark_node_wiring.md` Review for the full writeup and evidence paths.
+
 ### Orchestrator addendum (2026-07-26): bless record + overlap verification
 
 - Will identified during round-5c review that the defect-check frame's

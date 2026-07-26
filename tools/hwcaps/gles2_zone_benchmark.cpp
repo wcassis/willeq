@@ -1896,6 +1896,13 @@ int main(int argc, char** argv) {
                 }
             }
 
+            if (frame == testFrames - 1 && !opts.dumpPngPath.empty()) {
+                irr::video::IImage* shot = data->driver->createScreenShot();
+                if (shot) {
+                    data->driver->writeImageToFile(shot, opts.dumpPngPath.c_str());
+                    shot->drop();
+                }
+            }
             data->driver->endScene();
         }
 

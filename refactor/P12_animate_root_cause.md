@@ -314,6 +314,15 @@ bug. No changes made to the patch file or to `refactor/P08d_npc_composite_landin
 (the P08d review already points here for the deferred animation root-cause; this Review
 section is the promised follow-up).
 
+**P12b update (2026-07-26)**: the actual crumple fix landed in P12b
+(`refactor/P12b_benchmark_node_wiring.md`) — a benchmark-only node-construction/wiring
+bug (a stale GLES2 static hardware-buffer snapshot), not `VertexMapping`. With animation
+now genuinely trustworthy, P12b re-tested this patch against real coherent poses and
+confirmed the same "zero visible difference" verdict found here — and, since that
+confirmation is now on a valid (not garbled-vs-garbled) comparison and the patch is a real
+correctness fix with no regressions, P12b **landed** it. This patch file is now applied to
+the tree; it is kept here for history only.
+
 ### Verification
 
 - `cmake --build build -j24`: clean (working tree has zero net diff vs `fable` — no

@@ -680,15 +680,33 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                         raceId, 0, data->smgr->getRootSceneNode());
                     if (node) {
                         data->animatedNodes[i] = node;
-                        // Set stream mapping hint for animated vertex buffers
-                        // (vertices change every frame via skeletal skinning)
-                        if (node->getInstanceMesh()) {
-                            node->getInstanceMesh()->setHardwareMappingHint(
-                                irr::scene::EHM_STREAM, irr::scene::EBT_VERTEX);
-                            node->getInstanceMesh()->setHardwareMappingHint(
-                                irr::scene::EHM_STATIC, irr::scene::EBT_INDEX);
-                            uploadMeshHWBuffers(data->driver, node->getInstanceMesh());
-                        }
+                        // P12B: do NOT register the per-instance animated mesh
+                        // (node->getInstanceMesh()) as a GLES2 hardware buffer here.
+                        // uploadMeshHWBuffers()/gles2CreateStaticHWBuffer() ->
+                        // COpenGLES2Driver::createStaticHardwareBuffer() uploads a
+                        // ONE-TIME GPU-side VBO snapshot; COpenGLES2Driver::drawMeshBuffer()
+                        // then draws straight from that frozen VBO forever for any
+                        // mesh buffer found in HWBufferMap -- it never checks
+                        // IMeshBuffer::setDirty()/ChangedID, so it never re-uploads.
+                        // EHM_STREAM here was aspirational (the comment's intent),
+                        // but the actual call always creates a STATIC buffer
+                        // regardless of the hint. Since applyAnimation() re-skins
+                        // instanceMesh_'s CPU vertex data every frame (OnAnimate ->
+                        // applyAnimation -> applyBoneTransformsToMeshImpl), and this
+                        // upload ran BEFORE the first real pose was ever applied
+                        // (createAnimatedNode() only calls playAnimation(), not
+                        // forceAnimationUpdate()), every animated entity was drawn
+                        // from a frozen snapshot of the RAW, per-bone-local unposed
+                        // mesh (each body piece stacked near its own bone origin) --
+                        // the "crumpled blob" root cause. Production's
+                        // EQAnimatedMeshSceneNode::render() never registers a static
+                        // hardware buffer for instanceMesh_ either (see
+                        // animated_mesh_creation.cpp/entity_renderer.cpp) -- it always
+                        // draws from the live CPU vertex array via the driver's
+                        // client-side-array fallback in drawMeshBuffer(), which is
+                        // what correctly picks up each frame's re-skinned vertices.
+                        // Leaving instanceMesh_ unregistered here makes this
+                        // benchmark path do the same thing.
                         // Assign animation with variety: cycle through codes
                         const char* animCode = animCodes[i % numAnims];
                         if (!node->playAnimation(animCode, true)) {
