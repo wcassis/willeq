@@ -130,10 +130,20 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      && !hasEquipmentTint; static quality evidence pixel-identical).
      Preset flip CARRIED 2026-07-26 ("bless flip") — composites live on
      the orangepi preset for eligible NPCs. Remaining work in this lever:**
-     - **Builder-extension unit**: entity_composite_builder can't read
-       zone-specific _chr archives → real rosters only ~10-21% eligible;
-       extend + generate sheets, then flip the preset (the P08c 33/56%
-       win scales with coverage).
+     - ~~Builder-extension unit~~ **DONE by P08f (2026-07-26,
+       b9e1a2a)**: --zone/--all-zones support, 76 new sheets (286 total,
+       all audits clean), golden-zone coverage befallen 10.5→100%,
+       qeynos2 21.4→100%, gfaydark 5.6→94.4%; 5/5 spot-checks
+       pixel-identical; 8/8 befallen races resolve compositeData=YES.
+       Sheets on NFS — live everywhere immediately. Residuals:
+       (a) WOL_HS_DEF collision (gfaydark vs global6, different content;
+       needs zone-qualified naming or runtime disambiguation — small
+       follow-up if that model matters); (b) --all-zones sweep not yet
+       run (documented invocation: entity_composite_builder --all-zones
+       --zones-json docs/reference/pre_luclin_zones.json --eqe1; run it
+       before playing non-golden zones with composites); (c) several new
+       race codes lack numeric EQ race-ID mappings in race_codes.cpp
+       (found in passing, unfixed).
      - **Benchmark --animate garbling unit (pre-existing, found via
        P08d's evidence rounds)**: the benchmark's animated scenegraph
        path crumples model geometry and always has (repro in
