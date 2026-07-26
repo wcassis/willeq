@@ -846,9 +846,11 @@ sheet structural integrity sweep) is untouched — independent of this bug.
   composite's changed draw order — a benchmark fixture quirk, not a
   composite defect. Final quality verdict: composite vs multi-buffer is
   pixel-identical on valid static geometry, no exceptions.
-- **BLESSED by Will 2026-07-26** (static evidence; T-pose-only confirmed
-  intended). Implementation merged (631ec16..5010216). The orangepi
-  preset flip was NOT carried — Will blessed without directing the flip;
-  it is parked on branch `task/P08d-preset-flip` (bb9a795) and can be
-  cherry-picked the moment he says "flip" (recommended after the
-  builder-extension unit raises roster coverage past ~10-21%).
+- **BLESSED by Will 2026-07-26 — WITH the flip** ("bless flip"; static
+  evidence; T-pose-only confirmed intended). Implementation merged
+  (631ec16..5010216) and the orangepi preset flip cherry-picked onto
+  fable — composite entities are ENABLED for eligible NPCs on the Pi
+  preset as of this bless. Effective coverage is ~10-21% of real zone
+  rosters until the builder-extension unit lands (sheets for
+  zone-specific archives), scaling toward P08c's measured 33/56% p95
+  win as coverage rises.

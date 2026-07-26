@@ -128,8 +128,8 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   1. **Entity draw-path: composite entities LANDED by P08d (2026-07-26,
      blessed by Will; eligibility-gated: !isPlayer && !hasBodyPartOverride
      && !hasEquipmentTint; static quality evidence pixel-identical).
-     Preset flip NOT yet carried — parked on branch task/P08d-preset-flip
-     (bb9a795), one cherry-pick away. Remaining work in this lever:**
+     Preset flip CARRIED 2026-07-26 ("bless flip") — composites live on
+     the orangepi preset for eligible NPCs. Remaining work in this lever:**
      - **Builder-extension unit**: entity_composite_builder can't read
        zone-specific _chr archives → real rosters only ~10-21% eligible;
        extend + generate sheets, then flip the preset (the P08c 33/56%
