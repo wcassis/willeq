@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -24,6 +25,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -158,6 +160,8 @@ struct BodyPartTexture {
     float minU = 1e9f, maxU = -1e9f;
     float minV = 1e9f, maxV = -1e9f;
     int texWidth = 0, texHeight = 0;
+    bool isAnimated = false;      // P08f: true if any triangle referencing this texture
+                                   // uses an animated (multi-frame) material (0x30/0x31 fragment)
 
     int tilesU() const { return std::max(1, static_cast<int>(std::ceil(maxU - minU))); }
     int tilesV() const { return std::max(1, static_cast<int>(std::ceil(maxV - minV))); }
@@ -414,6 +418,12 @@ struct ModelResult {
     int sheetW = 0, sheetH = 0;
     std::vector<PlacedTexture> placements;
     bool success = false;
+    // P08f: animated-texture exclusion (plan A3, the Z35-class builder gap).
+    // Set when checkAnimatedTextures was requested and a used body-part texture
+    // is a multi-frame animated material — the model is skipped entirely rather
+    // than silently baking frame 0.
+    bool skippedAnimated = false;
+    std::string animatedTextureName;
 };
 
 // Get texture dimensions from BMP header in archive
@@ -479,7 +489,8 @@ static ModelResult processModel(const std::string& eqPath,
                                  int maxSheetSize,
                                  const std::string& outputDir,
                                  bool writeEqe1,
-                                 bool verbose) {
+                                 bool verbose,
+                                 bool checkAnimatedTextures = false) {
     ModelResult result;
     result.raceName = toUpper(model->name);
     result.gender = 0;  // TODO: parse from model name if needed
@@ -492,6 +503,7 @@ static ModelResult processModel(const std::string& eqPath,
         if (!part || part->vertices.empty() || part->triangles.empty()) continue;
 
         const auto& texNames = part->textureNames();
+        const auto& texAnims = part->textureAnimations();  // same indexing as texNames()
 
         for (const auto& tri : part->triangles) {
             if (tri.textureIndex >= texNames.size()) continue;
@@ -500,6 +512,10 @@ static ModelResult processModel(const std::string& eqPath,
             auto& bp = bodyParts[texName];
             if (bp.textureName.empty()) {
                 bp.textureName = texName;
+            }
+            if (checkAnimatedTextures && tri.textureIndex < texAnims.size() &&
+                texAnims[tri.textureIndex].isAnimated) {
+                bp.isAnimated = true;
             }
 
             for (uint32_t vi : {tri.v1, tri.v2, tri.v3}) {
@@ -516,6 +532,22 @@ static ModelResult processModel(const std::string& eqPath,
     if (bodyParts.empty()) {
         if (verbose) std::cerr << "  No body-part textures found for " << model->name << std::endl;
         return result;
+    }
+
+    // P08f plan A3: animated-texture exclusion (the Z35-class builder gap). Baking a
+    // single frame of a multi-frame material would silently freeze it — skip the whole
+    // model instead and let the caller report it as ineligible-by-animation.
+    if (checkAnimatedTextures) {
+        for (const auto& [key, bp] : bodyParts) {
+            if (bp.isAnimated) {
+                result.skippedAnimated = true;
+                result.animatedTextureName = key;
+                if (verbose) {
+                    std::cerr << "  SKIP (animated texture " << key << "): " << model->name << std::endl;
+                }
+                return result;
+            }
+        }
     }
 
     // Get texture dimensions and apply variant substitution
@@ -814,6 +846,311 @@ static std::vector<ArchiveModels> loadGlobalArchives(const std::string& eqPath,
     return results;
 }
 
+// ── P08f: zone-archive support ──────────────────────────────────────────────
+//
+// entity_composite_builder originally saw only the 7 hardcoded global*_chr.s3d
+// archives (GLOBAL_CHR_ARCHIVES above), so zone-native NPC models (the
+// CAZ/INN/BEA-shaped majority of a typical dungeon/city roster) were
+// structurally unbuildable — not a missing sweep, the tool literally never
+// opened the file. This mirrors RaceModelLoader's own zone-archive access
+// (RaceModelLoader::loadZoneModels, model_loading.cpp:140 — a SINGLE
+// `{zone}_chr.s3d` file, no numbered/sibling archives for zone-specific
+// content; confirmed by reading the runtime loader rather than assumed) —
+// zone models live in exactly one file per zone.
+//
+// Sheet naming/keying is intentionally UNCHANGED from the global path
+// (`{racename}_0_{variant}`, no zone qualifier) because that is what the
+// runtime looks up: RaceModelLoader::preloadModelData
+// (race_model_loader.cpp:807-810) builds `compositeBaseName = modelName +
+// "_0_" + textureVariant` from the model's race name alone and never
+// consults the zone name — confirmed by reading the runtime code, not
+// assumed. This is exactly why name collisions between a zone model and a
+// global (or another zone's) model of the same race name matter: writing
+// both would mean one silently clobbers the other's sheet on disk.
+
+// Loads character models from a SINGLE archive file (global or zone). Returns
+// std::nullopt if the archive doesn't exist or has no usable characters —
+// callers treat that as "not present for this zone", not an error.
+static std::optional<ArchiveModels> tryLoadArchiveModels(const std::string& archivePath,
+                                                           const std::string& archiveName,
+                                                           const std::string& filterRace,
+                                                           bool verbose) {
+    if (!fs::exists(archivePath)) return std::nullopt;
+
+    if (verbose) std::cerr << "Loading " << archiveName << "..." << std::endl;
+
+    S3DLoader loader;
+    if (!loader.loadZone(archivePath)) {
+        if (verbose) std::cerr << "  Could not load " << archiveName << std::endl;
+        return std::nullopt;
+    }
+
+    auto zone = loader.getZone();
+    if (!zone || zone->characters.empty()) return std::nullopt;
+
+    ArchiveModels am;
+    am.archiveName = archiveName;
+    am.archivePath = archivePath;
+
+    for (const auto& character : zone->characters) {
+        if (!character) continue;
+
+        if (!filterRace.empty()) {
+            std::string upperName = toUpper(character->name);
+            std::string upperFilter = toUpper(filterRace);
+            if (upperName.find(upperFilter) == std::string::npos) continue;
+        }
+
+        bool hasParts = false;
+        for (const auto& part : character->parts) {
+            if (part && !part->vertices.empty()) { hasParts = true; break; }
+        }
+        if (!hasParts) continue;
+
+        am.models.push_back(character);
+    }
+
+    if (am.models.empty()) return std::nullopt;
+
+    if (verbose) std::cerr << "  Found " << am.models.size() << " models" << std::endl;
+    return am;
+}
+
+// Opens the single zone-specific character archive, mirroring
+// RaceModelLoader::loadZoneModels exactly (one file, `{zone}_chr.s3d`, no
+// numbered siblings — zone chr archives are never split like the globals are).
+static std::optional<ArchiveModels> loadZoneArchive(const std::string& eqPath,
+                                                     const std::string& zoneShortName,
+                                                     bool verbose) {
+    std::string archiveName = zoneShortName + "_chr.s3d";
+    std::string archivePath = eqPath + "/" + archiveName;
+    return tryLoadArchiveModels(archivePath, archiveName, "", verbose);
+}
+
+// Builds a per-model "content signature" — the sorted set of body-part
+// texture names a model's triangles actually reference (pre-variant,
+// pre-helm-filter — deliberately the rawest available discriminator so two
+// models are only judged identical if their geometry/texture usage truly
+// matches). Used for A2's collision detection: two archives producing a
+// model with the SAME race name are the same model only if this matches.
+static std::vector<std::string> collectSignature(const std::shared_ptr<CharacterModel>& model) {
+    std::set<std::string> names;
+    for (const auto& part : model->parts) {
+        if (!part || part->vertices.empty() || part->triangles.empty()) continue;
+        const auto& texNames = part->textureNames();
+        for (const auto& tri : part->triangles) {
+            if (tri.textureIndex >= texNames.size()) continue;
+            names.insert(toLower(texNames[tri.textureIndex]));
+        }
+    }
+    return std::vector<std::string>(names.begin(), names.end());
+}
+
+struct RegisteredModel {
+    std::string sourceArchive;
+    std::vector<std::string> signature;
+};
+
+// Registers every model from `archives` into `registry` keyed by uppercase
+// race name — used to seed the collision registry with the global set before
+// any zone archive is processed (plan A2).
+static void registerArchives(const std::vector<ArchiveModels>& archives,
+                              std::map<std::string, RegisteredModel>& registry) {
+    for (const auto& am : archives) {
+        for (const auto& model : am.models) {
+            std::string key = toUpper(model->name);
+            if (registry.count(key)) continue;  // first writer wins within this pass
+            registry[key] = RegisteredModel{am.archiveName, collectSignature(model)};
+        }
+    }
+}
+
+// P08f plan A4: discover the texture-variant set that actually exists for a
+// model in its archive, instead of a fixed 0-4 sweep (which — for zone
+// models not curated the way the 42 global defs were — would silently
+// rebuild N duplicate copies of variant 0 whenever a higher variant number
+// isn't actually present; applyVariant() falls back to the base texture
+// when the variant file is missing, so a naive sweep can't tell the
+// difference between "distinct variant" and "no such variant").
+// Variant v is considered to exist if ANY of the model's resolved body-part
+// textures has a distinct v-suffixed file in the archive.
+static std::vector<int> discoverVariants(PfsArchive& archive,
+                                          const std::shared_ptr<CharacterModel>& model,
+                                          int maxVariant) {
+    std::set<std::string> baseTexNames;
+    for (const auto& part : model->parts) {
+        if (!part || part->vertices.empty() || part->triangles.empty()) continue;
+        const auto& texNames = part->textureNames();
+        for (const auto& tri : part->triangles) {
+            if (tri.textureIndex >= texNames.size()) continue;
+            baseTexNames.insert(toLower(texNames[tri.textureIndex]));
+        }
+    }
+
+    std::vector<int> variants = {0};
+    for (int v = 1; v <= maxVariant; ++v) {
+        bool found = false;
+        for (const auto& name : baseTexNames) {
+            std::string variantName = applyVariant(name, v);
+            if (variantName == name) continue;  // applyVariant no-op (name too short etc.)
+            std::vector<char> testData;
+            if (archive.get(variantName, testData)) { found = true; break; }
+        }
+        if (found) variants.push_back(v);
+    }
+    return variants;
+}
+
+// Whole-model animated-texture probe, checked once per model (independent of
+// variant — the animation flag lives on the base material, not the variant
+// substitution) so the zone-mode driver can skip a model's entire variant
+// set in one shot instead of re-discovering it per variant.
+static bool detectAnimatedTexture(const std::shared_ptr<CharacterModel>& model,
+                                   std::string& outTextureName) {
+    for (const auto& part : model->parts) {
+        if (!part || part->vertices.empty() || part->triangles.empty()) continue;
+        const auto& texNames = part->textureNames();
+        const auto& texAnims = part->textureAnimations();
+        for (const auto& tri : part->triangles) {
+            if (tri.textureIndex >= texNames.size()) continue;
+            if (tri.textureIndex < texAnims.size() && texAnims[tri.textureIndex].isAnimated) {
+                outTextureName = toLower(texNames[tri.textureIndex]);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Merges newly-built index entries into any pre-existing composite_index.json
+// in outputDir, WITHOUT touching existing keys (the 210 global entries this
+// unit must leave byte-identical) — zone-mode additions are always new keys
+// by construction (the collision registry guarantees no key this function
+// writes was already registered under a matching or colliding signature).
+static void mergeCompositeIndex(const std::string& outputDir,
+                                 const std::vector<ModelResult>& newResults) {
+    std::string indexPath = outputDir + "/composite_index.json";
+    Json::Value index(Json::objectValue);
+
+    std::ifstream existing(indexPath);
+    if (existing.is_open()) {
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        if (!Json::parseFromStream(rb, existing, &index, &errs)) {
+            std::cerr << "WARNING: could not parse existing " << indexPath
+                      << " (" << errs << ") — starting a fresh index" << std::endl;
+            index = Json::Value(Json::objectValue);
+        }
+    }
+
+    for (const auto& r : newResults) {
+        std::string key = toLower(r.raceName) + "_" + std::to_string(r.gender)
+                        + "_" + std::to_string(r.variant);
+        if (index.isMember(key)) continue;  // never overwrite (collision registry should prevent this)
+        Json::Value entry;
+        entry["race"] = r.raceName;
+        entry["gender"] = r.gender;
+        entry["variant"] = r.variant;
+        entry["sheetWidth"] = r.sheetW;
+        entry["sheetHeight"] = r.sheetH;
+        entry["textureCount"] = static_cast<int>(r.placements.size());
+        entry["bmpFile"] = key + ".bmp";
+        entry["jsonFile"] = key + ".json";
+        index[key] = entry;
+    }
+
+    std::ofstream indexOut(indexPath);
+    if (indexOut.is_open()) {
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "  ";
+        std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        writer->write(index, &indexOut);
+        indexOut << std::endl;
+    }
+}
+
+// Persists the zone-sourced portion of the collision registry to a sidecar
+// file in outputDir, and loads it back on a later run. This closes the gap
+// a purely in-memory, single-process registry would otherwise leave: two
+// SEPARATE tool invocations (e.g. golden zones today, --all-zones next
+// week) must still detect a collision between a model built in an earlier
+// run and one found in a later run — A2 requires this regardless of how
+// many processes it takes to build the full roster.
+static const char* SIGNATURE_REGISTRY_FILENAME = "p08f_zone_signature_registry.json";
+
+static void loadPersistedRegistry(const std::string& outputDir,
+                                   std::map<std::string, RegisteredModel>& registry) {
+    std::string path = outputDir + "/" + SIGNATURE_REGISTRY_FILENAME;
+    std::ifstream in(path);
+    if (!in.is_open()) return;
+
+    Json::Value root;
+    Json::CharReaderBuilder rb;
+    std::string errs;
+    if (!Json::parseFromStream(rb, in, &root, &errs)) {
+        std::cerr << "WARNING: could not parse " << path << " (" << errs
+                  << ") — ignoring persisted collision registry" << std::endl;
+        return;
+    }
+
+    for (const auto& key : root.getMemberNames()) {
+        if (registry.count(key)) continue;  // global entries always win
+        RegisteredModel rm;
+        rm.sourceArchive = root[key]["source"].asString();
+        for (const auto& t : root[key]["signature"]) rm.signature.push_back(t.asString());
+        registry[key] = rm;
+    }
+}
+
+static void savePersistedRegistry(const std::string& outputDir,
+                                   const std::map<std::string, RegisteredModel>& registry,
+                                   const std::map<std::string, RegisteredModel>& globalOnly) {
+    std::string path = outputDir + "/" + SIGNATURE_REGISTRY_FILENAME;
+    Json::Value root(Json::objectValue);
+    for (const auto& [key, rm] : registry) {
+        if (globalOnly.count(key)) continue;  // global entries are reproducible, don't persist
+        Json::Value entry;
+        entry["source"] = rm.sourceArchive;
+        Json::Value sig(Json::arrayValue);
+        for (const auto& t : rm.signature) sig.append(t);
+        entry["signature"] = sig;
+        root[key] = entry;
+    }
+    std::ofstream out(path);
+    if (out.is_open()) {
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "  ";
+        std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        writer->write(root, &out);
+        out << std::endl;
+    }
+}
+
+// Reads docs/reference/pre_luclin_zones.json's flattened list of short_name
+// values (all expansions' zones concatenated) — the --all-zones roster.
+static std::vector<std::string> loadZoneShortNames(const std::string& zonesJsonPath) {
+    std::vector<std::string> names;
+    std::ifstream in(zonesJsonPath);
+    if (!in.is_open()) return names;
+
+    Json::Value root;
+    Json::CharReaderBuilder rb;
+    std::string errs;
+    if (!Json::parseFromStream(rb, in, &root, &errs)) {
+        std::cerr << "ERROR: could not parse " << zonesJsonPath << ": " << errs << std::endl;
+        return names;
+    }
+
+    const Json::Value& expansions = root["expansions"];
+    for (const auto& expName : expansions.getMemberNames()) {
+        const Json::Value& zones = expansions[expName]["zones"];
+        for (const auto& z : zones) {
+            if (z.isMember("short_name")) names.push_back(z["short_name"].asString());
+        }
+    }
+    return names;
+}
+
 // ── Usage / main ────────────────────────────────────────────────────────────
 
 static void printUsage(const char* prog) {
@@ -830,6 +1167,19 @@ static void printUsage(const char* prog) {
               << "  --sheet-size <N>     Max composite sheet dimension (default: 1024)\n"
               << "  --eqe1               Also output ETC1-compressed .eqe1 files\n"
               << "  --verbose            Per-texture stats\n"
+              << "\n"
+              << "P08f zone-archive options:\n"
+              << "  --zone <shortname>   Build sheets for one zone's {shortname}_chr.s3d\n"
+              << "                       archive (e.g., befallen, qeynos2, gfaydark)\n"
+              << "  --all-zones          Build sheets for every zone in --zones-json\n"
+              << "  --zones-json <path>  docs/reference/pre_luclin_zones.json (required\n"
+              << "                       with --all-zones)\n"
+              << "  --max-variant <N>    Highest variant number to probe for existence\n"
+              << "                       when discovering a zone model's variant set\n"
+              << "                       (default: 9)\n"
+              << "  --report-json <path> Write a structured build report (per-zone\n"
+              << "                       model status: built/duplicate/collision/\n"
+              << "                       animated-skip/failed) to this path\n"
               << std::endl;
 }
 
@@ -844,6 +1194,18 @@ int main(int argc, char** argv) {
     int maxSheetSize = 1024;
     bool writeEqe1 = false;
     bool verbose = false;
+    // P08f additions. --zone may be repeated (accumulates) — processing every
+    // requested zone within ONE process run is what lets the in-memory
+    // collision registry (A2) catch cross-zone collisions too, not just
+    // zone-vs-global; two separate tool invocations would each start from a
+    // fresh registry and could each independently overwrite the other's
+    // same-named sheet without ever detecting it. --all-zones adds the full
+    // pre_luclin_zones.json roster to whatever --zone(s) were also given.
+    std::vector<std::string> zoneArgs;
+    bool allZones = false;
+    std::string zonesJsonPath;
+    int maxVariantProbe = 9;
+    std::string reportJsonPath;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -857,11 +1219,24 @@ int main(int argc, char** argv) {
         else if (arg == "--sheet-size" && i + 1 < argc) maxSheetSize = std::atoi(argv[++i]);
         else if (arg == "--eqe1") writeEqe1 = true;
         else if (arg == "--verbose") verbose = true;
+        else if (arg == "--zone" && i + 1 < argc) zoneArgs.push_back(argv[++i]);
+        else if (arg == "--all-zones") allZones = true;
+        else if (arg == "--zones-json" && i + 1 < argc) zonesJsonPath = argv[++i];
+        else if (arg == "--max-variant" && i + 1 < argc) maxVariantProbe = std::atoi(argv[++i]);
+        else if (arg == "--report-json" && i + 1 < argc) reportJsonPath = argv[++i];
         else if (arg == "--help" || arg == "-h") { printUsage(argv[0]); return 0; }
     }
 
-    if (eqPath.empty() || outputDir.empty() || (!allRaces && filterRace.empty())) {
+    bool zoneMode = !zoneArgs.empty() || allZones;
+
+    if (eqPath.empty() || outputDir.empty() ||
+        (!zoneMode && !allRaces && filterRace.empty())) {
         printUsage(argv[0]);
+        return 1;
+    }
+    if (allZones && zonesJsonPath.empty()) {
+        std::cerr << "Error: --all-zones requires --zones-json <path to pre_luclin_zones.json>"
+                  << std::endl;
         return 1;
     }
 
@@ -871,6 +1246,245 @@ int main(int argc, char** argv) {
     }
 
     fs::create_directories(outputDir);
+
+    if (zoneMode) {
+        // ── P08f zone-archive build path (plan A1-A4, B5-B7) ────────────────
+        // Deliberately a SEPARATE code path from the original global-only flow
+        // below (not a refactor of it) so that no plain `--race`/`--all`
+        // invocation's behavior or output changes at all — see plan A1's
+        // "keep global behavior byte-identical" requirement.
+        auto overallStart = std::chrono::steady_clock::now();
+
+        std::vector<std::string> zoneNames = zoneArgs;
+        if (allZones) {
+            auto allNames = loadZoneShortNames(zonesJsonPath);
+            for (auto& n : allNames) {
+                if (std::find(zoneNames.begin(), zoneNames.end(), n) == zoneNames.end())
+                    zoneNames.push_back(n);
+            }
+        }
+
+        // Seed the collision registry with every global model (A2) — loaded
+        // quietly, purely for name/signature comparison; global sheets are
+        // NOT (re)written by this path.
+        auto globalArchives = loadGlobalArchives(eqPath, "", false);
+        std::map<std::string, RegisteredModel> registry;
+        registerArchives(globalArchives, registry);
+        std::map<std::string, RegisteredModel> globalOnly = registry;  // snapshot before zone entries
+        std::cout << "Collision registry seeded with " << registry.size()
+                  << " global model names" << std::endl;
+        loadPersistedRegistry(outputDir, registry);
+        std::cout << "Collision registry after loading prior-run zone entries: "
+                  << registry.size() << " model names" << std::endl;
+
+        // A REGISTERED model name (known signature, from a global archive or an
+        // earlier zone in this registry) is NOT necessarily already BUILT — the
+        // 210 pre-existing sheets cover only 42 of the ~59 distinct global race
+        // defs (the rest were apparently never included in whatever invocation
+        // produced the original set). Registry membership alone is therefore the
+        // wrong signal for "skip, already covered": it must be cross-checked
+        // against sheets that actually exist on disk, or a same-named,
+        // same-signature model that has no sheet yet would be wrongly skipped
+        // forever as a false "duplicate" (caught empirically: IMP_HS_DEF is a
+        // real global2_chr.s3d model with no pre-existing sheet).
+        std::set<std::string> existingSheetRaces;
+        if (fs::exists(outputDir)) {
+            for (const auto& entry : fs::directory_iterator(outputDir)) {
+                if (!entry.is_regular_file()) continue;
+                std::string fn = entry.path().filename().string();
+                if (fn.size() < 4 || fn.substr(fn.size() - 4) != ".bmp") continue;
+                std::string stem = fn.substr(0, fn.size() - 4);
+                auto lastUnderscore = stem.rfind('_');
+                if (lastUnderscore == std::string::npos) continue;
+                auto secondLast = stem.rfind('_', lastUnderscore - 1);
+                if (secondLast == std::string::npos) continue;
+                existingSheetRaces.insert(stem.substr(0, secondLast));
+            }
+        }
+        std::cout << "Found " << existingSheetRaces.size()
+                  << " distinct race names with an existing sheet on disk in " << outputDir
+                  << std::endl;
+
+        Json::Value report(Json::objectValue);
+        Json::Value zonesReport(Json::objectValue);
+        std::vector<ModelResult> allNewResults;
+        int totalBuilt = 0, totalDuplicate = 0, totalCollision = 0,
+            totalAnimatedSkip = 0, totalFailed = 0, totalNoArchive = 0;
+
+        for (const auto& zoneName : zoneNames) {
+            auto zoneStart = std::chrono::steady_clock::now();
+            Json::Value zoneReport(Json::objectValue);
+            Json::Value modelsReport(Json::objectValue);
+
+            auto archiveOpt = loadZoneArchive(eqPath, zoneName, verbose);
+            if (!archiveOpt) {
+                zoneReport["archiveFound"] = false;
+                zonesReport[zoneName] = zoneReport;
+                totalNoArchive++;
+                std::cout << "[" << zoneName << "] no " << zoneName
+                          << "_chr.s3d (or no usable characters) — skipped" << std::endl;
+                continue;
+            }
+            const ArchiveModels& am = *archiveOpt;
+            zoneReport["archiveFound"] = true;
+            zoneReport["archiveName"] = am.archiveName;
+            zoneReport["modelsTotal"] = static_cast<int>(am.models.size());
+
+            PfsArchive archive;
+            if (!archive.open(am.archivePath)) {
+                std::cerr << "Cannot open archive: " << am.archivePath << std::endl;
+                zoneReport["archiveOpenFailed"] = true;
+                zonesReport[zoneName] = zoneReport;
+                continue;
+            }
+
+            int zoneBuilt = 0;
+            for (const auto& model : am.models) {
+                std::string raceKey = toUpper(model->name);
+                Json::Value modelReport(Json::objectValue);
+
+                auto regIt = registry.find(raceKey);
+                bool hasExistingSheet = existingSheetRaces.count(toLower(raceKey)) > 0;
+                if (regIt != registry.end()) {
+                    auto sig = collectSignature(model);
+                    if (sig == regIt->second.signature) {
+                        if (hasExistingSheet) {
+                            // Genuinely already covered — a sheet for this exact
+                            // model exists on disk (either the original 210 or an
+                            // earlier zone/model in this same run).
+                            modelReport["status"] = "duplicate";
+                            modelReport["existingSource"] = regIt->second.sourceArchive;
+                            modelsReport[raceKey] = modelReport;
+                            totalDuplicate++;
+                            continue;
+                        }
+                        // Known model, matching signature, but NO sheet actually
+                        // built yet (e.g. a global race def outside the original
+                        // 210) — fall through to the normal build path below
+                        // instead of skipping.
+                    } else {
+                        modelReport["status"] = "collision";
+                        modelReport["existingSource"] = regIt->second.sourceArchive;
+                        modelReport["reason"] = "same race name, different texture signature — "
+                                                 "not rebuilt to avoid silently overwriting the "
+                                                 "existing sheet";
+                        modelsReport[raceKey] = modelReport;
+                        totalCollision++;
+                        std::cerr << "COLLISION: " << raceKey << " in " << am.archiveName
+                                  << " has a different texture set than the existing "
+                                  << regIt->second.sourceArchive << " model of the same name — skipped"
+                                  << std::endl;
+                        continue;
+                    }
+                }
+
+                std::string animTexName;
+                if (detectAnimatedTexture(model, animTexName)) {
+                    modelReport["status"] = "animatedSkip";
+                    modelReport["animatedTexture"] = animTexName;
+                    modelsReport[raceKey] = modelReport;
+                    totalAnimatedSkip++;
+                    std::cout << "  [" << raceKey << "] SKIP animated texture: "
+                              << animTexName << std::endl;
+                    // Still register the name (with its signature) so a LATER zone/global
+                    // archive with the identical model is recognized as a duplicate, not
+                    // re-flagged as a fresh animated-skip.
+                    registry[raceKey] = RegisteredModel{am.archiveName, collectSignature(model)};
+                    continue;
+                }
+
+                auto variantsToBuild = discoverVariants(archive, model, maxVariantProbe);
+                Json::Value variantsBuiltArr(Json::arrayValue);
+                Json::Value variantsDiscoveredArr(Json::arrayValue);
+                for (int v : variantsToBuild) variantsDiscoveredArr.append(v);
+
+                bool anyBuilt = false;
+                for (int v : variantsToBuild) {
+                    std::cout << "\n[" << model->name << " variant=" << v << "] "
+                              << am.archiveName << " (zone=" << zoneName << ")" << std::endl;
+                    auto result = processModel(eqPath, model, am.archivePath, archive,
+                                                v, maxTiles, maxSheetSize, outputDir,
+                                                writeEqe1, verbose, /*checkAnimatedTextures=*/true);
+                    if (result.success) {
+                        variantsBuiltArr.append(v);
+                        allNewResults.push_back(result);
+                        anyBuilt = true;
+                        zoneBuilt++;
+                        totalBuilt++;
+                        existingSheetRaces.insert(toLower(raceKey));
+                    } else if (result.skippedAnimated) {
+                        // Shouldn't normally trigger (whole-model probe already caught it),
+                        // but a per-variant substituted texture could in principle differ —
+                        // report defensively rather than silently drop.
+                        std::cout << "  variant=" << v << " SKIP (animated texture "
+                                  << result.animatedTextureName << ")" << std::endl;
+                    } else {
+                        std::cout << "  variant=" << v << " FAILED to build" << std::endl;
+                        totalFailed++;
+                    }
+                }
+
+                modelReport["status"] = anyBuilt ? "built" : "failed";
+                modelReport["variantsDiscovered"] = variantsDiscoveredArr;
+                modelReport["variantsBuilt"] = variantsBuiltArr;
+                modelsReport[raceKey] = modelReport;
+
+                registry[raceKey] = RegisteredModel{am.archiveName, collectSignature(model)};
+            }
+
+            auto zoneEnd = std::chrono::steady_clock::now();
+            double zoneSecs = std::chrono::duration<double>(zoneEnd - zoneStart).count();
+            zoneReport["sheetsBuilt"] = zoneBuilt;
+            zoneReport["elapsedSeconds"] = zoneSecs;
+            zoneReport["models"] = modelsReport;
+            zonesReport[zoneName] = zoneReport;
+
+            std::cout << "\n[" << zoneName << "] " << zoneBuilt << " sheets built in "
+                      << zoneSecs << "s" << std::endl;
+        }
+
+        mergeCompositeIndex(outputDir, allNewResults);
+        savePersistedRegistry(outputDir, registry, globalOnly);
+
+        auto overallEnd = std::chrono::steady_clock::now();
+        double overallSecs = std::chrono::duration<double>(overallEnd - overallStart).count();
+
+        report["zones"] = zonesReport;
+        report["summary"]["sheetsBuilt"] = totalBuilt;
+        report["summary"]["duplicates"] = totalDuplicate;
+        report["summary"]["collisions"] = totalCollision;
+        report["summary"]["animatedSkips"] = totalAnimatedSkip;
+        report["summary"]["buildFailures"] = totalFailed;
+        report["summary"]["zonesWithNoArchive"] = totalNoArchive;
+        report["summary"]["elapsedSeconds"] = overallSecs;
+
+        std::cout << "\n=== P08f Zone Build Summary ===" << std::endl;
+        std::cout << "  Sheets built: " << totalBuilt << std::endl;
+        std::cout << "  Duplicates (already covered, skipped): " << totalDuplicate << std::endl;
+        std::cout << "  Collisions (reported, NOT built): " << totalCollision << std::endl;
+        std::cout << "  Animated-texture skips: " << totalAnimatedSkip << std::endl;
+        std::cout << "  Build failures: " << totalFailed << std::endl;
+        std::cout << "  Zones with no _chr.s3d: " << totalNoArchive << std::endl;
+        std::cout << "  Elapsed: " << overallSecs << "s" << std::endl;
+
+        if (!reportJsonPath.empty()) {
+            std::ofstream reportOut(reportJsonPath);
+            if (reportOut.is_open()) {
+                Json::StreamWriterBuilder builder;
+                builder["indentation"] = "  ";
+                std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+                writer->write(report, &reportOut);
+                reportOut << std::endl;
+                std::cout << "Report: " << reportJsonPath << std::endl;
+            } else {
+                std::cerr << "WARNING: could not write report to " << reportJsonPath << std::endl;
+            }
+        }
+
+        return 0;
+    }
+
+    // ── Original global-only build path (UNCHANGED — byte-identical output) ──
 
     // Determine variants to process
     std::vector<int> variants;

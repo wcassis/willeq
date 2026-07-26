@@ -600,9 +600,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // Upload any textures decoded during model loading
         data->textureCache->uploadAllPending();
 
-        // Common EQ race IDs for variety
-        uint16_t raceIds[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-        int numRaces = sizeof(raceIds) / sizeof(raceIds[0]);
+        static const uint16_t kDefaultRaceIds[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};  // or --test-races
+        const uint16_t* raceIds = config.testRaceIds.empty() ? kDefaultRaceIds : config.testRaceIds.data();
+        int numRaces = config.testRaceIds.empty() ? (int)(sizeof(kDefaultRaceIds) / sizeof(kDefaultRaceIds[0])) : (int)config.testRaceIds.size();
 
         // When composite entities are enabled, use preloadModelData() to populate
         // composite texture data (JSON + EQE1 lookup) before building meshes.
@@ -1198,6 +1198,7 @@ void placeEntitiesAlongPath(ZoneBenchData& data,
     }
 
     printf("  Placed %d entities along camera path (1 target, 5 group, 5 raid, rest default/idle)\n", n);
+    for (int i = 0; i < n; ++i) printf("    entity[%d] EQ pos: (%.1f, %.1f, %.1f)\n", i, data.entities[i].eqX, data.entities[i].eqY, data.entities[i].eqZ);
 }
 
 void collectObjectDrawEntries(

@@ -1,0 +1,25 @@
+{
+  "befallen": {
+    "total": 19,
+    "before": 2,
+    "after": 19,
+    "residual": []
+  },
+  "qeynos2": {
+    "total": 14,
+    "before": 3,
+    "after": 14,
+    "residual": []
+  },
+  "gfaydark": {
+    "total": 18,
+    "before": 1,
+    "after": 17,
+    "residual": [
+      [
+        "WOL_HS_DEF",
+        "collision vs global6_chr.s3d"
+      ]
+    ]
+  }
+}

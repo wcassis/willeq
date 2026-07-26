@@ -152,6 +152,7 @@ struct Options {
     bool compositeEntityTest = false; // Render 1 of each race/gender, screenshot, exit
     int testRace = 0;                 // Race ID to test (0 = all)
     int testVariant = 0;              // Texture variant (0=naked, 1=cloth, 2=chain, 3=plate)
+    std::vector<uint16_t> testRaceIds; // P08f --test-races: explicit race-ID cycle for --entities
 
     // Output
     bool dump = false;            // Print per-frame stats to stdout
@@ -378,6 +379,10 @@ static void printUsage(const char* prog) {
     printf("  --tree-test          Render single tree, screenshot, exit\n");
     printf("  --composite-entity-test  Render 1 of each race/gender with composite textures\n");
     printf("  --test-race N            Test specific race ID (1=HUM, 2=BAM, etc.) default: all\n");
+    printf("  --test-races R1,R2,...   P08f: place --entities N cycling through these EQ race\n");
+    printf("                       IDs instead of the default player-race set {1..12} -- lets\n");
+    printf("                       zone-native NPC races (e.g. BAT=34,ORC=17,RAT=35,ZOM=67) be\n");
+    printf("                       placed for composite spot-checks. Requires --entities N.\n");
     printf("  --test-variant N         Texture variant (0=naked, 1=cloth, 2=chain, 3=plate, 4=leather)\n");
     printf("\nSynthetic tests:\n");
     printf("  --synthetic-draws    Run draw call overhead isolation test\n");
@@ -482,6 +487,17 @@ static Options parseArgs(int argc, char** argv) {
             if (opts.entityCount == 0) opts.entityCount = 24;
         }
         else if (strcmp(argv[i], "--test-race") == 0 && i + 1 < argc) opts.testRace = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--test-races") == 0 && i + 1 < argc) {
+            std::string list = argv[++i];
+            size_t pos = 0;
+            while (pos < list.size()) {
+                size_t comma = list.find(',', pos);
+                std::string tok = list.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                if (!tok.empty()) opts.testRaceIds.push_back(static_cast<uint16_t>(atoi(tok.c_str())));
+                if (comma == std::string::npos) break;
+                pos = comma + 1;
+            }
+        }
         else if (strcmp(argv[i], "--test-variant") == 0 && i + 1 < argc) opts.testVariant = atoi(argv[++i]);
         else if (strcmp(argv[i], "--object-dist") == 0 && i + 1 < argc) opts.objectRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--dump") == 0) opts.dump = true;
@@ -1266,6 +1282,7 @@ int main(int argc, char** argv) {
     benchConfig.height = opts.height;
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
     benchConfig.entityCount = opts.entityCount;
+    benchConfig.testRaceIds = opts.testRaceIds;
     benchConfig.animate = opts.animate;
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;

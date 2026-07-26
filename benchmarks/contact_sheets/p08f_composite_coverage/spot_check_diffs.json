@@ -1,0 +1,42 @@
+{
+  "BAT": {
+    "frame": "f20",
+    "differing_px": 0,
+    "total_px": 480000,
+    "pct": 0.0,
+    "mean_abs_delta": 0.0,
+    "max_delta": 0
+  },
+  "ZOM": {
+    "frame": "f30",
+    "differing_px": 0,
+    "total_px": 480000,
+    "pct": 0.0,
+    "mean_abs_delta": 0.0,
+    "max_delta": 0
+  },
+  "SPI": {
+    "frame": "f20",
+    "differing_px": 0,
+    "total_px": 480000,
+    "pct": 0.0,
+    "mean_abs_delta": 0.0,
+    "max_delta": 0
+  },
+  "ORC": {
+    "frame": "f20",
+    "differing_px": 0,
+    "total_px": 480000,
+    "pct": 0.0,
+    "mean_abs_delta": 0.0,
+    "max_delta": 0
+  },
+  "WIL": {
+    "frame": "f20",
+    "differing_px": 0,
+    "total_px": 480000,
+    "pct": 0.0,
+    "mean_abs_delta": 0.0,
+    "max_delta": 0
+  }
+}

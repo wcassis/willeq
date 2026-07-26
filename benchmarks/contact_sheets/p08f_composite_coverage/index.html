@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>P08f — Composite coverage: zone-archive spot-checks</title>
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #1b1c20; color: #e8e8e8; margin: 24px; }
+  h1 { font-size: 20px; }
+  .row { display: flex; gap: 16px; align-items: flex-start; border-top: 1px solid #444; padding: 16px 0; }
+  .row h2 { width: 160px; flex: 0 0 160px; font-size: 16px; margin: 0; }
+  .row img { width: 360px; border: 1px solid #555; }
+  .stats { font-family: monospace; font-size: 13px; white-space: pre; margin-left: 8px; }
+  .verdict { color: #7cff7c; font-weight: bold; }
+  table { border-collapse: collapse; margin: 16px 0; }
+  td, th { border: 1px solid #555; padding: 4px 10px; font-family: monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>P08f — Composite coverage spot-checks (baseline multi-buffer vs composite, static geometry, no --animate)</h1>
+<p>Method: <code>gles2_zone_benchmark --entities 1 --test-races &lt;id&gt; --orbit-anchor-surface --orbit-radius 6
+--dump-frames &lt;f&gt;</code> for baseline (default entity draw path), and the identical camera path replayed via
+<code>--path-file</code> with <code>--composite-scenegraph</code> (real composite mesh + production
+<code>compositeEntityPath</code> lookup, routed through the SAME draw dispatch as baseline — the P08d
+apples-to-apples fix) for the composite side. Single entity per run (no co-located fixtures, avoiding the P08d
+z-fight lesson). All 5 models below are NEW coverage from this unit (befallen_chr.s3d / gfaydark_chr.s3d
+zone-native NPCs, previously structurally unbuildable). Bar (P08d precedent): 0 differing pixels.</p>
+
+<table>
+<tr><th>race</th><th>zone</th><th>body type</th><th>differing px</th><th>%</th><th>mean abs Δ</th><th>max Δ</th><th>verdict</th></tr>
+<tr><td>BAT_HS_DEF</td><td>befallen</td><td>non-humanoid (bat)</td><td>0</td><td>0.000%</td><td>0.000</td><td>0</td><td class="verdict">PASS</td></tr>
+<tr><td>ZOM_HS_DEF</td><td>befallen</td><td>humanoid (undead)</td><td>0</td><td>0.000%</td><td>0.000</td><td>0</td><td class="verdict">PASS</td></tr>
+<tr><td>SPI_HS_DEF</td><td>gfaydark</td><td>non-humanoid (spider)</td><td>0</td><td>0.000%</td><td>0.000</td><td>0</td><td class="verdict">PASS</td></tr>
+<tr><td>ORC_HS_DEF</td><td>gfaydark</td><td>humanoid (orc)</td><td>0</td><td>0.000%</td><td>0.000</td><td>0</td><td class="verdict">PASS</td></tr>
+<tr><td>WIL_HS_DEF</td><td>gfaydark</td><td>non-humanoid (will-o-wisp)</td><td>0</td><td>0.000%</td><td>0.000</td><td>0</td><td class="verdict">PASS</td></tr>
+</table>
+
+<div class="row">
+  <h2>BAT_HS_DEF<br><small>befallen, non-humanoid</small></h2>
+  <div><div>baseline (multi-buffer)</div><img src="BAT_base_f20.png"></div>
+  <div><div>composite</div><img src="BAT_comp_f20.png"></div>
+  <div class="stats">0 / 480000 px differ (0.000%)
+mean |Δ| = 0.000
+max channel Δ = 0
+PASS — pixel-identical</div>
+</div>
+
+<div class="row">
+  <h2>ZOM_HS_DEF<br><small>befallen, humanoid</small></h2>
+  <div><div>baseline (multi-buffer)</div><img src="ZOM_base_f30.png"></div>
+  <div><div>composite</div><img src="ZOM_comp_f30.png"></div>
+  <div class="stats">0 / 480000 px differ (0.000%)
+mean |Δ| = 0.000
+max channel Δ = 0
+PASS — pixel-identical</div>
+</div>
+
+<div class="row">
+  <h2>SPI_HS_DEF<br><small>gfaydark, non-humanoid</small></h2>
+  <div><div>baseline (multi-buffer)</div><img src="SPI_base_f20.png"></div>
+  <div><div>composite</div><img src="SPI_comp_f20.png"></div>
+  <div class="stats">0 / 480000 px differ (0.000%)
+mean |Δ| = 0.000
+max channel Δ = 0
+PASS — pixel-identical</div>
+</div>
+
+<div class="row">
+  <h2>ORC_HS_DEF<br><small>gfaydark, humanoid</small></h2>
+  <div><div>baseline (multi-buffer)</div><img src="ORC_base_f20.png"></div>
+  <div><div>composite</div><img src="ORC_comp_f20.png"></div>
+  <div class="stats">0 / 480000 px differ (0.000%)
+mean |Δ| = 0.000
+max channel Δ = 0
+PASS — pixel-identical</div>
+</div>
+
+<div class="row">
+  <h2>WIL_HS_DEF<br><small>gfaydark, non-humanoid</small></h2>
+  <div><div>baseline (multi-buffer)</div><img src="WIL_base_f20.png"></div>
+  <div><div>composite</div><img src="WIL_comp_f20.png"></div>
+  <div class="stats">0 / 480000 px differ (0.000%)
+mean |Δ| = 0.000
+max channel Δ = 0
+PASS — pixel-identical</div>
+</div>
+
+<p style="margin-top:24px; color:#999; font-size:13px;">
+Not self-declared acceptable — for Will's spot-review. Sheets audited structurally clean
+(sheet_audit_new.json, sheet_audit_all286.json). Coverage before/after per golden zone in
+coverage_before_after.json. Full build report in report_golden_zones.json.
+</p>
+</body>
+</html>

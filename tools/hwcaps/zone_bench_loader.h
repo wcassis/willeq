@@ -39,6 +39,12 @@ struct BenchConfig {
     int height = 600;
     bool useDRM = true;
     int entityCount = 0;         // Number of static entities to place in scene
+    // P08f: explicit EQ race IDs to cycle entities through, overriding the
+    // default hardcoded player-race set {1..12} — lets a caller place
+    // specific zone-native NPC race models (e.g. BAT/ORC/RAT/ZOM) for
+    // composite-vs-baseline spot-checks. Empty = default behavior (byte-
+    // identical to pre-P08f invocations that don't pass --test-races).
+    std::vector<uint16_t> testRaceIds;
     bool animate = false;        // Enable skeletal animation on entities
     bool compositeEntities = false; // Use composite textures for entities (single draw per entity)
     bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)

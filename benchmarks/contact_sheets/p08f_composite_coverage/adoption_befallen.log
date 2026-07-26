@@ -1,0 +1,16 @@
+=== gles2_zone_benchmark ===
+  Composite: compositeEntityPath='/mnt/projects/EverQuest_ETC1'
+  Composite: preloaded 8 OK, 0 failed
+  Composite: promotePreparedModels() done
+    race=34: raceName='BAT_HS_DEF' compositeData=YES compositeBmpPath='bat_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=17: raceName='ORC_HS_DEF' compositeData=YES compositeBmpPath='orc_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=35: raceName='RAT_HS_DEF' compositeData=YES compositeBmpPath='rat_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=67: raceName='ZOM_HS_DEF' compositeData=YES compositeBmpPath='zom_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=89: raceName='IMP_HS_DEF' compositeData=YES compositeBmpPath='imp_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=53: raceName='MIN_HS_DEF' compositeData=YES compositeBmpPath='min_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=33: raceName='GHU_HS_DEF' compositeData=YES compositeBmpPath='ghu_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+    race=31: raceName='FPM_HS_DEF' compositeData=YES compositeBmpPath='fpm_hs_def_0_0' rawGeometry=yes combinedGeometry=yes
+=== Zone Benchmark Summary (1 frames) ===
+  Draw calls            min=66       avg=66       max=66      
+  Avg FPS: 1.6
+=========================================

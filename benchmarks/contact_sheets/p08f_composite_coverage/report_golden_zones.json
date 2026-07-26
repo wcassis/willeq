@@ -1,0 +1,636 @@
+{
+  "summary" : 
+  {
+    "animatedSkips" : 0,
+    "buildFailures" : 0,
+    "collisions" : 1,
+    "duplicates" : 14,
+    "elapsedSeconds" : 49.924614927,
+    "sheetsBuilt" : 76,
+    "zonesWithNoArchive" : 0
+  },
+  "zones" : 
+  {
+    "befallen" : 
+    {
+      "archiveFound" : true,
+      "archiveName" : "befallen_chr.s3d",
+      "elapsedSeconds" : 27.134261980000002,
+      "models" : 
+      {
+        "BAT_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        },
+        "CAZ_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "CUB_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "DEN_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "FPM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2
+          ]
+        },
+        "GAR_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "GHU_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "GOL_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2
+          ]
+        },
+        "IMP_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "INN_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "MIM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "MIN_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "ORC_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2
+          ]
+        },
+        "RAT_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2
+          ]
+        },
+        "REA_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "TEN_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        },
+        "WIL_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "ZOF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "ZOM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        }
+      },
+      "modelsTotal" : 19,
+      "sheetsBuilt" : 28
+    },
+    "gfaydark" : 
+    {
+      "archiveFound" : true,
+      "archiveName" : "gfaydark_chr.s3d",
+      "elapsedSeconds" : 10.132055416,
+      "models" : 
+      {
+        "BAT_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "BRF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "BRM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "DRI_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "FAF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "FEM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        },
+        "GFF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "GFM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        },
+        "GOL_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "INN_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "ORC_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "PIF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "SPI_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "TRE_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "UNI_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1
+          ]
+        },
+        "WAS_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "WIL_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "WOL_HS_DEF" : 
+        {
+          "existingSource" : "global6_chr.s3d",
+          "reason" : "same race name, different texture signature \u2014 not rebuilt to avoid silently overwriting the existing sheet",
+          "status" : "collision"
+        }
+      },
+      "modelsTotal" : 18,
+      "sheetsBuilt" : 19
+    },
+    "qeynos2" : 
+    {
+      "archiveFound" : true,
+      "archiveName" : "qeynos2_chr.s3d",
+      "elapsedSeconds" : 10.538227012,
+      "models" : 
+      {
+        "BAT_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "BEA_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "BET_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            2,
+            3
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            2,
+            3
+          ]
+        },
+        "BGM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0
+          ],
+          "variantsDiscovered" : 
+          [
+            0
+          ]
+        },
+        "CAZ_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "FIS_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "GNN_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "IMP_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "INN_HS_DEF" : 
+        {
+          "existingSource" : "global2_chr.s3d",
+          "status" : "duplicate"
+        },
+        "QCF_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "QCM_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        "RAT_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        },
+        "SNA_HS_DEF" : 
+        {
+          "status" : "built",
+          "variantsBuilt" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ],
+          "variantsDiscovered" : 
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "ZOM_HS_DEF" : 
+        {
+          "existingSource" : "befallen_chr.s3d",
+          "status" : "duplicate"
+        }
+      },
+      "modelsTotal" : 14,
+      "sheetsBuilt" : 29
+    }
+  }
+}
