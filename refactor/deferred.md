@@ -196,9 +196,16 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      mechanism confirmed active (draw-count INFO line). Bonus fixes:
      /screenshot debug command + EGL-surfaceless capture; a real
      game/render-thread GL-context violation in --script dispatch.
-     PENDING: Will's bless + orangepi preset flip (mergeZoneDraws=true —
-     one-line commit at bless; recommend after a live Pi /mergedraws
-     session). Perf case = P09c benchmark numbers (befallen zone-only
+     **FLIP NOW BLOCKED — LIVE CRASH FOUND (anim-capture session 2,
+     2026-07-26): mergeZoneDraws=true SIGSEGVs 100% deterministically in
+     ZoneMergeBuffers::build()/textureGroupId() on the first frame in
+     qeynos2 (real x86 client, 5/5, gdb backtrace in
+     /mnt/projects/fable/videos/p12_anim_check/README.txt).** P10's own
+     A/B (befallen, likely runtime-toggle after load) did not exercise
+     this path/zone. NEEDS P10b: root-cause (suspect: null/dangling
+     texture or material in a qeynos2 region at load-time build) + fix +
+     A/B re-verify in BOTH zones + enable-at-load AND runtime-toggle
+     paths. Only after P10b: Will's bless + preset flip. Perf case = P09c benchmark numbers (befallen zone-only
      p95 173.8→25.5ms). FUTURE follow-ups: full shared-VBO/eviction
      reconciliation (unit-sized; needed only when lazy streaming gets
      wired); zone objects remain unmerged (inspection-verified).
