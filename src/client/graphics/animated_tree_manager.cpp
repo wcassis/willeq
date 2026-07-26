@@ -32,7 +32,7 @@ void AnimatedTreeManager::setConstrainedTextureCache(ConstrainedTextureCache* ca
     }
 }
 
-void AnimatedTreeManager::onTextureEvicted(const std::string& name) {
+void AnimatedTreeManager::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     // Tree textures are registered with "tree_" prefix
     if (name.substr(0, 5) != "tree_") return;
     std::string stripped = name.substr(5);

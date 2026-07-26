@@ -45,7 +45,7 @@ void SkyRenderer::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
     }
 }
 
-void SkyRenderer::onTextureEvicted(const std::string& name) {
+void SkyRenderer::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
         it->second = nullptr;

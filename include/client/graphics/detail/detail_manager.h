@@ -39,7 +39,7 @@ public:
     void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
     // TextureEvictionListener
-    void onTextureEvicted(const std::string& name) override;
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
     // Frame update - call from IrrlichtRenderer::processFrame
     // playerPos/playerVelocity: for foliage disturbance (grass bending when walking)

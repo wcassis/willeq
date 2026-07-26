@@ -24,10 +24,21 @@ class EQE1Loader;
 // Listener interface for texture eviction notifications.
 // Subsystems that register textures with the cache can implement this
 // to null out local pointers when their textures are evicted.
+//
+// P10b: the texture pointer is passed alongside the name (in addition to
+// the pre-existing name-only contract) because the pointer is still valid
+// and resolvable at notification time (evictTexture() notifies listeners
+// BEFORE erasing the cache entry / calling driver_->removeTexture()), and
+// at least one listener (RegionMeshTextureGuard, renderer_zone_merge.h)
+// needs to scan raw SMaterial texture slots by pointer identity -- calling
+// back into the cache (e.g. getTexture(name)) from inside this callback
+// would deadlock (evictTexture() runs under a non-recursive mutex_ held by
+// the calling uploadTexture()/evictUntilAvailable() frame). Existing
+// listeners that only need the name may ignore the second parameter.
 class TextureEvictionListener {
 public:
     virtual ~TextureEvictionListener() = default;
-    virtual void onTextureEvicted(const std::string& name) = 0;
+    virtual void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) = 0;
 };
 
 // Decoded texture pixels waiting for GPU upload
@@ -165,6 +176,18 @@ public:
 
     // Get placeholder texture (used when a texture is evicted from a mesh material)
     irr::video::ITexture* getPlaceholderTexture();
+
+    // P10b: reverse-lookup liveness check by GPU texture pointer -- true if
+    // this pointer is currently a live cache entry OR the placeholder itself
+    // (both safe to dereference); false for anything else, including a
+    // pointer that WAS a cache entry and has since been evicted/freed via
+    // driver_->removeTexture(). Linear scan over the cache, same precedent
+    // as getAlphaTexture(ITexture*)/isETC1Texture(ITexture*) above — fine
+    // given the current (small, mesh-build-time) call volume. Defense in
+    // depth for ZoneMergeBuffers::build() (see renderer_zone_merge.h); the
+    // actual fix for the dangling-pointer root cause is
+    // RegionMeshTextureGuard, not this check.
+    bool isLiveTexture(irr::video::ITexture* texture) const;
 
     // T04: queueDecoded, queueDecodedARGB, processUploadQueue, drainDecodedQueue,
     // processOneUpload, getStagedUploadCount removed. Use getOrLoad() + uploadTexture() instead.

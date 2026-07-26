@@ -56,7 +56,7 @@ public:
     void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
     // TextureEvictionListener
-    void onTextureEvicted(const std::string& name) override;
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
     // Initialize sky renderer with EQ client path
     // Loads sky.s3d and sky.ini

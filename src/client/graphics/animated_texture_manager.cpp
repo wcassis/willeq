@@ -31,7 +31,7 @@ void AnimatedTextureManager::setConstrainedTextureCache(ConstrainedTextureCache*
     }
 }
 
-void AnimatedTextureManager::onTextureEvicted(const std::string& name) {
+void AnimatedTextureManager::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     auto it = textureCache_.find(name);
     if (it == textureCache_.end()) return;
 
