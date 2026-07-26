@@ -30,7 +30,7 @@ void StormCloudLayer::setConstrainedTextureCache(ConstrainedTextureCache* cache)
     }
 }
 
-void StormCloudLayer::onTextureEvicted(const std::string& name) {
+void StormCloudLayer::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     // Cloud blend frame textures: registered as "storm_cloud_blend_N"
     for (size_t i = 0; i < cloudFrames_.size(); ++i) {
         if (name == "storm_cloud_blend_" + std::to_string(i)) {

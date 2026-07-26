@@ -48,11 +48,13 @@ struct ZoneMergeBuffers::RegionBufferRange {
 ZoneMergeBuffers::ZoneMergeBuffers() = default;
 ZoneMergeBuffers::~ZoneMergeBuffers() { destroy(); }
 
-void ZoneMergeBuffers::build(const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes) {
+void ZoneMergeBuffers::build(const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes,
+                              const std::function<bool(irr::video::ITexture*)>& isTextureLive) {
     destroy();
 
     int skippedNodes = 0;
     int skippedNonStandardBuffers = 0;
+    int skippedInvalidTextures = 0;
 
     for (const auto& [regionIdx, node] : regionMeshNodes) {
         if (!node) { ++skippedNodes; continue; }
@@ -75,6 +77,20 @@ void ZoneMergeBuffers::build(const std::map<size_t, irr::scene::IMeshSceneNode*>
             if (buf->getVertexType() != irr::video::EVT_STANDARD) {
                 ++skippedNonStandardBuffers;
                 continue;
+            }
+
+            // P10b defensive check (see header comment + RegionMeshTextureGuard):
+            // validate the texture BEFORE textureGroupId() ever dereferences
+            // it. A non-null-but-invalid (freed) ITexture* is exactly the
+            // qeynos2 SIGSEGV's mechanism -- skip this one buffer (falls
+            // back to unmerged for this region's draw, never drops
+            // geometry, never crashes) rather than trust the raw pointer.
+            if (isTextureLive) {
+                irr::video::ITexture* tex0 = buf->getMaterial().getTexture(0);
+                if (tex0 && !isTextureLive(tex0)) {
+                    ++skippedInvalidTextures;
+                    continue;
+                }
             }
 
             uint32_t texId = textureGroupId(buf->getMaterial());
@@ -128,9 +144,15 @@ void ZoneMergeBuffers::build(const std::map<size_t, irr::scene::IMeshSceneNode*>
     }
 
     built_ = true;
+    if (skippedInvalidTextures > 0) {
+        LOG_WARN(MOD_GRAPHICS, "[mergedraws] {} buffer(s) skipped for an invalid/stale texture "
+                 "(see RegionMeshTextureGuard/P10b) -- those regions fall back to unmerged draw",
+                 skippedInvalidTextures);
+    }
     LOG_INFO(MOD_GRAPHICS, "[mergedraws] built {} texture buckets ({} generations, {} bytes), "
-             "{} nodes skipped, {} non-EVT_STANDARD buffers skipped",
-             totalBuckets, totalGens, totalBytes_, skippedNodes, skippedNonStandardBuffers);
+             "{} nodes skipped, {} non-EVT_STANDARD buffers skipped, {} invalid-texture buffers skipped",
+             totalBuckets, totalGens, totalBytes_, skippedNodes, skippedNonStandardBuffers,
+             skippedInvalidTextures);
 }
 
 void ZoneMergeBuffers::destroy() {
@@ -253,6 +275,53 @@ int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
     }
 
     return drawCalls;
+}
+
+// ---------------------------------------------------------------------------
+// RegionMeshTextureGuard -- P10b root-cause fix (see header comment)
+// ---------------------------------------------------------------------------
+
+RegionMeshTextureGuard::RegionMeshTextureGuard(
+    const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes,
+    irr::video::ITexture* placeholder)
+    : regionMeshNodes_(regionMeshNodes), placeholder_(placeholder) {}
+
+void RegionMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
+                                               irr::video::ITexture* texture) {
+    if (!texture) return;
+
+    // MUST NOT call back into ConstrainedTextureCache here (mutex_ is held
+    // by the calling evictTexture()/evictUntilAvailable()/uploadTexture()
+    // frame, non-recursive -- see header comment). placeholder_ was
+    // resolved once, safely, at construction time.
+    irr::video::ITexture* placeholder = placeholder_;
+    int swapped = 0;
+
+    for (const auto& [regionIdx, node] : regionMeshNodes_) {
+        if (!node) continue;
+        irr::scene::IMesh* mesh = node->getMesh();
+        if (!mesh) continue;
+
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+            if (!buf) continue;
+
+            irr::video::SMaterial& mat = buf->getMaterial();
+            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+                if (mat.getTexture(t) == texture) {
+                    mat.setTexture(t, placeholder);
+                    ++swapped;
+                }
+            }
+        }
+    }
+
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[mergedraws] RegionMeshTextureGuard: swapped {} region-mesh material "
+                  "reference(s) to evicted texture -> placeholder (covers nodes detached from the "
+                  "scene graph for front-to-back manual draw, which clearTextureReferences() cannot "
+                  "reach)", swapped);
+    }
 }
 
 } // namespace Graphics

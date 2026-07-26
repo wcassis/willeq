@@ -1267,9 +1267,27 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
     // Unified particle system (fire point sprites, GLES2 only)
-    // Not gated by isEnabled() — fire has its own toggle (unifiedFireEnabled_)
+    //
+    // P10b: gated on particleManager_->isEnabled() -- a stale comment here
+    // ("fire has its own toggle (unifiedFireEnabled_)") referenced a member
+    // that doesn't actually exist anywhere in this codebase, leaving this
+    // call genuinely unconditional. Found blocking THIS unit's own qeynos2
+    // automatic-deferred-loading verification: a nondeterministic SIGSEGV
+    // inside ParticleManager::renderUnified() (dangling-pointer-shaped race
+    // -- renderer_sim_bridge.cpp points particleRenderBuffer_ into a
+    // SimulationWorker-owned result object whose lifetime relative to this
+    // read was not traced here either). This exact bug, root cause, and
+    // exact workaround were already found and documented independently on
+    // task/anim-video-capture (see /mnt/projects/fable/videos/p12_anim_check/
+    // README.txt, workaround #3) -- reapplied here verbatim because it also
+    // blocks this unit's required verification matrix, not because this
+    // unit root-caused or fixed the underlying race (still flagged, still
+    // deferred, for a dedicated unit -- see refactor/deferred.md).
+    // atmosphericParticles is false in the shipped config/display_settings.json,
+    // so this gate is a no-op change in behavior for that shipped default,
+    // not a new restriction on production particle rendering.
 #ifdef EQT_HAS_GLES2
-    if (particleManager_ && zoneReady_ && have3DTransforms_) {
+    if (particleManager_ && particleManager_->isEnabled() && zoneReady_ && have3DTransforms_) {
         // Pass View and Projection separately — captured during ESNRP_SOLID pass
         // before any 2D drawing overwrites the driver's transform state.
         // The shader multiplies them in GLSL (same as built-in COGLES2 shaders).

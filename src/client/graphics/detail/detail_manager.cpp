@@ -52,7 +52,7 @@ void DetailManager::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
     }
 }
 
-void DetailManager::onTextureEvicted(const std::string& name) {
+void DetailManager::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     if (name == "detail_atlas") {
         atlasTexture_ = nullptr;
     }

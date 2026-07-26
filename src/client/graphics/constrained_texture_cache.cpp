@@ -403,12 +403,22 @@ bool ConstrainedTextureCache::isETC1Texture(irr::video::ITexture* texture) const
     return false;
 }
 
+bool ConstrainedTextureCache::isLiveTexture(irr::video::ITexture* texture) const {
+    if (!texture) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (texture == placeholderTexture_) return true;
+    for (const auto& [name, entry] : cache_) {
+        if (entry.texture == texture) return true;
+    }
+    return false;
+}
+
 void ConstrainedTextureCache::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     // Notify listeners for each texture being cleared
     for (auto& pair : cache_) {
         for (auto* listener : evictionListeners_) {
-            listener->onTextureEvicted(pair.first);
+            listener->onTextureEvicted(pair.first, pair.second.texture);
         }
         if (pair.second.texture) {
             driver_->removeTexture(pair.second.texture);
@@ -886,7 +896,7 @@ void ConstrainedTextureCache::evictTexture(const std::string& name) {
 
     // Notify listeners before clearing references and removing texture
     for (auto* listener : evictionListeners_) {
-        listener->onTextureEvicted(name);
+        listener->onTextureEvicted(name, texture);
     }
 
     // CRITICAL: Clear all references to this texture from mesh materials BEFORE removing

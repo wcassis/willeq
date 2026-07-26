@@ -38,12 +38,15 @@
 // budget. Zone objects/placeables are always excluded (out of scope, matches
 // the P09 prototype -- build() only reads region mesh nodes).
 
+#include "client/graphics/constrained_texture_cache.h"  // TextureEvictionListener
+
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <vector>
 
 namespace irr {
-namespace video { class IVideoDriver; }
+namespace video { class IVideoDriver; class ITexture; }
 namespace scene { class IMeshSceneNode; }
 }
 
@@ -74,7 +77,23 @@ public:
     // normal per-entry unmerged draw at render time (defensive; matches
     // buildTexturedMesh/buildColoredMesh's actual output for zone geometry --
     // never observed to trigger, see zone_bench_merge.h precedent).
-    void build(const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes);
+    //
+    // P10b: isTextureLive, if provided, is called with each buffer's
+    // material's unit-0 texture BEFORE it is ever dereferenced (before
+    // textureGroupId() touches it). A buffer whose texture fails this check
+    // is skipped (counted, WARNed once in aggregate) rather than merged --
+    // defense in depth against a dangling ITexture* reaching this point at
+    // all (root cause: P10b_merge_crash_fix.md -- ConstrainedTextureCache
+    // eviction couldn't null out materials on region mesh nodes detached
+    // from the scene graph for front-to-back manual draw; fixed at the
+    // source by RegionMeshTextureGuard below, but this call is intentionally
+    // defensive regardless, per the plan's explicit requirement, in case any
+    // other path ever leaves a stale texture pointer in a region buffer's
+    // material). Omitting the callback (default) preserves prior behavior
+    // (every non-null texture is trusted), for callers outside production
+    // (e.g. tools/tests) that have no cache to validate against.
+    void build(const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes,
+               const std::function<bool(irr::video::ITexture*)>& isTextureLive = {});
 
     // Releases all merge buffers. Safe to call when not built.
     void destroy();
@@ -104,6 +123,128 @@ private:
     std::map<const void*, RegionBufferRange> ranges_;
     bool built_ = false;
     size_t totalBytes_ = 0;
+};
+
+// P10b root-cause fix: ConstrainedTextureCache::clearTextureReferences()
+// (called on every eviction, BEFORE driver_->removeTexture()) only reaches
+// materials on scene nodes still attached to the scene graph -- it scans
+// from smgr_->getRootSceneNode() down. Production's front-to-back manual
+// zone draw (loadZoneStep4_Regions(), manualZoneDrawEnabled_) explicitly
+// DETACHES every region mesh node from the graph right after building it
+// (node->remove()) so it can be drawn manually instead of via
+// CSceneManager::drawAll(). In any zone whose full texture set (zone +
+// entity/equipment textures loaded afterward) exceeds the constrained
+// texture budget, ConstrainedTextureCache evicts LRU zone-region textures
+// to make room -- but since their owning nodes are unreachable from the
+// scene graph root, clearTextureReferences() never finds and nulls those
+// materials' texture pointers. The region buffer's SMaterial is left
+// holding a non-null but freed (driver_->removeTexture()'d) ITexture*,
+// which is what ZoneMergeBuffers::build()/textureGroupId() dereferences on
+// the first frame -- the qeynos2 SIGSEGV (P10b_merge_crash_fix.md). This
+// is a general production bug (the unmerged draw path is equally exposed,
+// it just usually escapes because it only touches the CURRENTLY VISIBLE
+// subset of regions per frame, whereas build() unconditionally scans EVERY
+// region every time it runs) -- fixing it here benefits both paths, not
+// just the merge.
+//
+// RegionMeshTextureGuard closes the gap: it registers as a
+// TextureEvictionListener and, on eviction, scans the renderer's
+// regionMeshNodes_ map directly (which includes BOTH in-graph and
+// detached/out-of-graph nodes -- it is the renderer's own bookkeeping of
+// "every region mesh node that exists this zone visit", unlike the scene
+// graph) and swaps any material texture slot matching the evicted pointer
+// to the cache's placeholder texture, mirroring exactly what
+// clearTextureReferences() already does for in-graph nodes.
+class RegionMeshTextureGuard : public TextureEvictionListener {
+public:
+    // regionMeshNodes: renderer-owned, persists for the renderer's lifetime
+    // (cleared, never destroyed/recreated, between zone visits -- see
+    // renderer_zone_lifecycle.cpp) -- safe to hold a reference for the
+    // guard's own lifetime (also renderer-owned, constructed once in
+    // initLoadingScreen()).
+    //
+    // placeholder: the cache's placeholder ITexture*, resolved ONCE by the
+    // caller BEFORE constructing this guard (via a plain, non-reentrant
+    // ConstrainedTextureCache::getPlaceholderTexture() call at init time --
+    // see irrlicht_renderer.cpp, "Pre-create placeholder texture before
+    // render loop starts", which already runs before any eviction can
+    // occur) and cached here as a plain pointer. THIS IS LOAD-BEARING, not
+    // a style choice: onTextureEvicted() runs on the SAME thread and INSIDE
+    // the SAME call stack as ConstrainedTextureCache::evictTexture(), which
+    // is only ever reached via evictUntilAvailable() from uploadTexture()/
+    // uploadAllPending()/uploadCompressedETC1() etc. -- all of which hold
+    // ConstrainedTextureCache::mutex_ (a plain, non-recursive std::mutex)
+    // for their entire body. An earlier version of this class took a
+    // std::function<ITexture*()> callback that called BACK into
+    // getPlaceholderTexture() (which itself locks mutex_) from inside
+    // onTextureEvicted() -- a same-thread re-lock of a non-recursive mutex,
+    // i.e. a guaranteed self-deadlock. Caught via gdb on a hung
+    // loading-thread backtrace during this unit's own qeynos2 verification
+    // (Thread stuck in getPlaceholderTexture()'s lock_guard, called from
+    // RegionMeshTextureGuard::onTextureEvicted(), called from
+    // evictTexture(), called from evictUntilAvailable(), called from
+    // uploadTexture() -- which still held mutex_ the whole way down). The
+    // placeholder texture itself is never entered into cache_ (created via
+    // driver_->addTexture() directly into placeholderTexture_, never
+    // eligible for its own eviction), so caching the pointer once is safe
+    // for the guard's/renderer's entire lifetime.
+    RegionMeshTextureGuard(const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes,
+                            irr::video::ITexture* placeholder);
+
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
+
+private:
+    const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes_;
+    irr::video::ITexture* placeholder_;
+};
+
+// P10b: found while verifying the qeynos2 automatic-deferred-loading combo
+// (post RegionMeshTextureGuard fix) -- a SEPARATE, pre-existing, unrelated
+// dangling-texture-pointer bug in the same eviction-safety class as the
+// merge crash, just in a different subsystem: IrrlichtRenderer's
+// `softwareCursorTexture_` (irrlicht_renderer.h) is a raw ITexture* set
+// once from ConstrainedTextureCache and read directly by
+// renderer_frame.cpp's draw2DImage() cursor-draw call -- it was NEVER
+// registered as a TextureEvictionListener (unlike every other
+// texture-caching subsystem in this codebase: AnimatedTextureManager,
+// SkyRenderer, DetailManager, StormCloudLayer, AnimatedTreeManager all
+// null their own cached pointers on eviction; this one didn't). Since
+// "softwareCursor" is created once at startup and never touched again, it
+// is always the LRU-oldest entry -- the very FIRST texture evicted under
+// any budget pressure (confirmed: first eviction in every qeynos2 run's
+// log). Once evicted, draw2DImage(softwareCursorTexture_, ...) dereferences
+// a freed ITexture -- SIGSEGV in COpenGLES2Driver::draw2DImage(), on the
+// first frame, independent of mergeZoneDraws entirely (reproduced with
+// mergeZoneDraws's own crash already fixed). This is not a mergeZoneDraws
+// bug and was not introduced by this unit's changes -- it is a pre-existing
+// gap in the same "texture cache eviction leaves dangling raw pointers
+// outside its own bookkeeping" class this unit's investigation already
+// established as qeynos2's structural hazard (P10b_merge_crash_fix.md).
+// Fixed with the exact same precedented pattern the other 5 subsystems
+// already use (see TextureEvictionListener's own doc comment) because it
+// blocked this unit's own step-4 verification matrix (qeynos2 automatic
+// mode could not otherwise render a single crash-free frame) -- not a
+// mergeZoneDraws-specific fix, but necessary, minimal, and isolated,
+// exactly the P10/anim-video-capture precedent for pre-existing blockers
+// found while building required verification evidence.
+class SingleTexturePointerGuard : public TextureEvictionListener {
+public:
+    // target: reference to the caller-owned raw pointer to null out on
+    // eviction (e.g. IrrlichtRenderer::softwareCursorTexture_). The caller
+    // must already null-check this pointer before every use (confirmed for
+    // softwareCursorTexture_ in renderer_frame.cpp) -- this guard only
+    // prevents the pointer from going dangling, it does not draw a
+    // placeholder in its place (unlike RegionMeshTextureGuard, there is no
+    // "placeholder cursor" concept; simply not drawing the cursor for the
+    // rest of this zone visit is the correct, safe fallback).
+    explicit SingleTexturePointerGuard(irr::video::ITexture*& target) : target_(target) {}
+
+    void onTextureEvicted(const std::string& /*name*/, irr::video::ITexture* texture) override {
+        if (texture && target_ == texture) target_ = nullptr;
+    }
+
+private:
+    irr::video::ITexture*& target_;
 };
 
 } // namespace Graphics

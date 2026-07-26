@@ -692,6 +692,30 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
             constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
         // Pre-create placeholder texture before render loop starts
         constrainedTextureCache_->getPlaceholderTexture();
+
+        // P10b: register the region-mesh texture guard so evictions can
+        // never leave a dangling ITexture* in a region mesh buffer's
+        // material, even for nodes detached from the scene graph for
+        // front-to-back manual draw (see renderer_zone_merge.h). Bound to
+        // regionMeshNodes_ (a persistent member, cleared not recreated
+        // between zone visits) once here, for the renderer's lifetime. The
+        // placeholder texture is resolved ONCE, right here (before any
+        // eviction can occur, safe to lock the cache's mutex_) and handed
+        // to the guard as a plain pointer -- the guard must NEVER call back
+        // into constrainedTextureCache_ from inside onTextureEvicted() (see
+        // RegionMeshTextureGuard's header comment for the self-deadlock
+        // this avoids).
+        regionMeshTextureGuard_ = std::make_unique<RegionMeshTextureGuard>(
+            regionMeshNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        constrainedTextureCache_->addEvictionListener(regionMeshTextureGuard_.get());
+
+        // P10b: softwareCursorTexture_ was already set by createSoftwareCursor()
+        // above (runs earlier in this function) -- guard it against the same
+        // dangling-pointer class (see SingleTexturePointerGuard's doc comment
+        // in renderer_zone_merge.h; pre-existing, unrelated to mergeZoneDraws,
+        // found while verifying this unit's own fix).
+        softwareCursorTextureGuard_ = std::make_unique<SingleTexturePointerGuard>(softwareCursorTexture_);
+        constrainedTextureCache_->addEvictionListener(softwareCursorTextureGuard_.get());
     }
 
     // Create event receiver
@@ -1282,6 +1306,18 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
 }
 
 void IrrlichtRenderer::shutdown() {
+    // P10b: unregister before constrainedTextureCache_ (owned by Application,
+    // outlives IrrlichtRenderer in the normal shutdown order, but don't rely
+    // on that) can call into a soon-to-be-destroyed regionMeshTextureGuard_.
+    if (constrainedTextureCache_ && regionMeshTextureGuard_) {
+        constrainedTextureCache_->removeEvictionListener(regionMeshTextureGuard_.get());
+    }
+    regionMeshTextureGuard_.reset();
+    if (constrainedTextureCache_ && softwareCursorTextureGuard_) {
+        constrainedTextureCache_->removeEvictionListener(softwareCursorTextureGuard_.get());
+    }
+    softwareCursorTextureGuard_.reset();
+
     // Stop GPU upload thread before any other cleanup (must stop before EGL context destroyed)
 #ifdef EQT_HAS_GLES2
     if (gpuUploadThread_) {

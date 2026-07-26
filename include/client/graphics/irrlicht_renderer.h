@@ -458,6 +458,16 @@ struct SortedRegionEntry {
 // Forward declaration -- full definition + implementation in
 // renderer_zone_merge.h/.cpp (P10 cross-region zone draw merge).
 class ZoneMergeBuffers;
+// Forward declaration -- full definition + implementation in
+// renderer_zone_merge.h/.cpp (P10b root-cause fix: keeps region mesh
+// materials' texture pointers valid across ConstrainedTextureCache
+// evictions even when the owning node is detached from the scene graph).
+class RegionMeshTextureGuard;
+// Forward declaration -- full definition in renderer_zone_merge.h (P10b:
+// generic single-raw-pointer eviction guard; used here for
+// softwareCursorTexture_, a separate pre-existing dangling-pointer bug
+// found while verifying P10b's fix).
+class SingleTexturePointerGuard;
 
 // Entry for material-sorted zone draw list (mesh buffer level)
 struct ZoneDrawEntry {
@@ -1326,6 +1336,22 @@ private:
     bool mergeZoneDrawsDisabledForZone_ = false;
     size_t mergeZoneDrawsBuildEvictionCount_ = 0;
     std::unique_ptr<ZoneMergeBuffers> zoneMergeBuffers_;
+
+    // P10b: root-cause fix for the qeynos2 mergeZoneDraws SIGSEGV -- keeps
+    // regionMeshNodes_'s materials (including nodes detached from the scene
+    // graph for front-to-back manual draw) from ever holding a dangling
+    // ITexture* after a ConstrainedTextureCache eviction. Constructed once
+    // in initLoadingScreen() (regionMeshNodes_ is a persistent member, safe
+    // to bind a reference to for the renderer's lifetime) and registered
+    // with constrainedTextureCache_ as a TextureEvictionListener. See
+    // renderer_zone_merge.h for the full mechanism.
+    std::unique_ptr<RegionMeshTextureGuard> regionMeshTextureGuard_;
+
+    // P10b: guards softwareCursorTexture_ (declared below) against the same
+    // class of dangling-pointer bug -- see renderer_zone_merge.h's
+    // SingleTexturePointerGuard doc comment for the full story (found while
+    // verifying P10b's own fix, pre-existing, unrelated to mergeZoneDraws).
+    std::unique_ptr<SingleTexturePointerGuard> softwareCursorTextureGuard_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);

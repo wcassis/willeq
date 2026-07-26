@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <limits>
 
 #ifdef EQT_HAS_DRM
@@ -596,21 +597,37 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // buffers are a derived snapshot, never a source of truth, so this is
     // always safe -- worst case is losing the merge benefit for a zone that
     // doesn't fit the mesh-cache budget, never drawing stale geometry).
+    //
+    // P10b: the eviction count that gates rebuild/teardown MUST also include
+    // constrainedTextureCache_'s own eviction count, not just the (currently
+    // always-inactive-in-production, per P10's own finding) mesh cache's.
+    // The qeynos2 SIGSEGV happened precisely because this gate only ever
+    // watched constrainedMeshCache_ (nullptr in production -- evictionCount
+    // was always 0 from that source), completely blind to the texture cache
+    // evicting LRU zone-region textures once entity/equipment texture load
+    // pushed total usage over budget -- a live, active mechanism this gate
+    // never accounted for. RegionMeshTextureGuard (renderer_zone_merge.h)
+    // now keeps materials from ever going dangling on a texture-cache
+    // eviction, so this combined count is defense in depth (mirrors the
+    // existing safe-fallback pattern exactly), not the sole fix.
     bool mergeActive = false;
     if (mergeZoneDrawsEnabled_ && !mergeZoneDrawsDisabledForZone_) {
         if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
 
-        const size_t evictionCount = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
+        const size_t meshEvictionCount = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
+        const size_t texEvictionCount = constrainedTextureCache_ ? constrainedTextureCache_->getEvictionCount() : 0;
+        const size_t evictionCount = meshEvictionCount + texEvictionCount;
 
         if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
-            // A region evicted after we built the merge -- the merge buffers
-            // may reference geometry that's no longer resident/valid. Bail
-            // permanently for this zone visit rather than rebuild every
-            // eviction (rebuild-on-every-eviction would thrash for any zone
-            // near its mesh-cache budget, defeating the point of merging).
-            LOG_WARN(MOD_GRAPHICS, "[mergedraws] mesh-cache eviction after merge build ({} regions "
-                     "evicted) -- disabling merge for the rest of this zone visit (falls back to "
-                     "the unmerged path)", evictionCount);
+            // A region (or its texture) evicted after we built the merge --
+            // the merge buffers may reference geometry/textures that are no
+            // longer resident/valid. Bail permanently for this zone visit
+            // rather than rebuild every eviction (rebuild-on-every-eviction
+            // would thrash for any zone near its budget, defeating the
+            // point of merging).
+            LOG_WARN(MOD_GRAPHICS, "[mergedraws] cache eviction after merge build ({} mesh + {} texture "
+                     "evictions) -- disabling merge for the rest of this zone visit (falls back to "
+                     "the unmerged path)", meshEvictionCount, texEvictionCount);
             zoneMergeBuffers_->destroy();
             mergeZoneDrawsDisabledForZone_ = true;
         } else if (!zoneMergeBuffers_->isBuilt() && !isLoading() && !regionMeshNodes_.empty() &&
@@ -634,7 +651,16 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             //     count) rather than the raw BSP region count, for the same
             //     reason -- these counts already exclude empty regions
             //     (registerRegion() is only called for regions that got a mesh).
-            zoneMergeBuffers_->build(regionMeshNodes_);
+            //
+            // P10b: pass the texture-liveness check (see
+            // renderer_zone_merge.h's build() doc comment) -- defense in
+            // depth so a stale/dangling texture pointer, however it got
+            // there, is skipped rather than dereferenced.
+            auto isTextureLive = constrainedTextureCache_
+                ? std::function<bool(irr::video::ITexture*)>(
+                      [this](irr::video::ITexture* tex) { return constrainedTextureCache_->isLiveTexture(tex); })
+                : std::function<bool(irr::video::ITexture*)>();
+            zoneMergeBuffers_->build(regionMeshNodes_, isTextureLive);
             mergeZoneDrawsBuildEvictionCount_ = evictionCount;
         }
 

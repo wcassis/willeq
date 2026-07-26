@@ -94,7 +94,7 @@ public:
     void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
     // TextureEvictionListener
-    void onTextureEvicted(const std::string& name) override;
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
     // Non-copyable
     StormCloudLayer(const StormCloudLayer&) = delete;
