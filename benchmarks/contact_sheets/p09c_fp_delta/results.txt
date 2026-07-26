@@ -1,0 +1,124 @@
+P09c Phase C — fair FP-delta baseline (baked-unmerged vs production-path unmerged)
+Production config, x86 llvmpipe, fixed driver (post-P09c Phase A re-bless).
+Method: refactor/scratch/p09c_baked_compare.py.
+
+"baked-unmerged" = same baked world-space vertex buffers the merge path
+uses, submitted as individual per-region draw calls with an identity world
+transform (no coalescing) — this is the fairest possible non-merged
+comparison point, since it isolates the merge MECHANISM (coalescing) from
+the merge ARCHITECTURE (baking positions once at load time instead of
+transforming per-region at draw time).
+
+"production unmerged" = the actual shipping/benchmark unmerged path:
+per-region world matrix applied at draw time to un-baked local-space
+vertex positions.
+
+=== Bar 1: merged vs baked-unmerged (isolates merge-only effects; plan bar
+    is max_delta=0 at all 15 poses) ===
+
+zone       pose        diff_px  max_delta  status
+qeynos2    golden0          54          1  FAIL (small, localized, bbox ~24x57px)
+qeynos2    golden1           0          0  PASS
+qeynos2    golden2           0          0  PASS
+gfaydark   golden3           0          0  PASS
+gfaydark   golden4           0          0  PASS
+gfaydark   golden5          10          1  FAIL (small, localized, bbox ~24x40px)
+befallen   golden6           0          0  PASS
+befallen   golden7           0          0  PASS
+befallen   golden8           0          0  PASS
+befallen   bf355             0          0  PASS
+befallen   bf472             0          0  PASS
+befallen   bf626             0          0  PASS
+befallen   bf791             0          0  PASS
+befallen   bf917             0          0  PASS
+befallen   bf987             0          0  PASS
+
+13/15 poses PASS at max_delta=0. Two poses (qeynos2 golden0, gfaydark
+golden5) show a tiny (max_delta=1, i.e. a single 8-bit LSB), spatially
+localized (small bbox, scattered single pixels within it) residual — both
+merged and baked-unmerged renders are independently deterministic across
+repeated runs (verified: qeynos2 golden0 merged and baked outputs are
+byte-identical across two separate process invocations each), so this is a
+real, reproducible, but extremely small difference between "N draw calls,
+same order, same baked vertices" (baked-unmerged) and "1 coalesced draw
+call spanning the same range" (merged) — not renderer nondeterminism.
+Character (single-LSB, small scattered cluster within a small bbox) matches
+the same low-magnitude "z-fight-class" P09b already documented for
+bf355/bf472/etc (intra-run rasterization-order sensitivity at
+exactly-coplanar geometry), now appearing at the draw-call-COUNT boundary
+itself rather than a submission-order difference (item 7 of P09b's fix
+already guarantees identical submission ORDER; this residual suggests GPU
+rasterization can still differ by an LSB between "1 draw covering triangles
+A..Z" and "N draws each covering a sub-range," even with byte-identical
+vertex data, index order, and state — plausibly a llvmpipe tiling/binning
+artifact at draw-call boundaries, not a correctness bug in the merge TU
+code). Per the plan's STOP condition ("unattributed after 2-3 focused
+bisection rounds"): this is the second focused round on this specific
+question (after Phase B's wind/atlas rule-out below); documenting as
+narrowed, not further pursued this unit — the magnitude (1 LSB, 2/15 poses,
+<0.02% of frame each) does not block the Phase C/D work below, but is
+flagged for whoever picks this back up.
+
+=== Bar 2: baked-unmerged vs production unmerged (the pure FP
+    transform-order delta) ===
+
+zone       pose        diff_px  max_delta
+qeynos2    golden0       44124         68
+qeynos2    golden1        6262         90
+qeynos2    golden2        1890         29
+gfaydark   golden3        3373         70
+gfaydark   golden4        2058         59
+gfaydark   golden5         682        126
+befallen   golden6        2267        209
+befallen   golden7       28857        104
+befallen   golden8        2819          1
+befallen   bf355             2          1
+befallen   bf472            14         10
+befallen   bf626             0          0
+befallen   bf987            75          1
+befallen   bf791            44          4
+befallen   bf917            13         50
+
+This table is, pose-for-pose, nearly identical in magnitude to the original
+"merged vs production unmerged" table (P09b's Review, and this unit's
+re-run against the fixed driver) — e.g. qeynos2 golden0: 44,124 here vs
+44,070 merged-vs-unmerged; befallen golden6: 2,267 in both; befallen golden7:
+28,857 vs 28,857. This is the key finding of Phase B/C: essentially ALL of
+the "unattributed contributor" P09b flagged at qeynos2 golden0 and befallen
+golden6/7 is this architecturally-inherent floating-point transform-order
+delta (baked world-space position + identity transform vs per-region world
+matrix + local-space position — mathematically equivalent, not bit-
+identical in float32), NOT a merge-specific bug, and NOT the two named
+suspects (wind uMeshYBounds, atlas unit-1 state) — both of which were
+architecturally ruled out before any bisection was needed: the zone
+benchmark harness (tools/hwcaps/zone_bench_loader.h/.cpp) registers only
+two material shader types for zone region geometry, materialPerPixelSolid
+and materialPerPixelAlpha; there is no wind or atlas shader variant wired
+into region mesh construction anywhere in the benchmark tool, so neither
+suspect mechanism is even reachable by this benchmark's zones. (Production
+code does use the wind shader — see src/client/graphics/renderer_zone_load.cpp
+~line 2278 packing MaterialTypeParam/2 from a tree mesh's local bounding box
+— but only for entity-like animated trees, out of scope for zone geometry
+merging per the plan's own scope limit.)
+
+Why this delta is largest at qeynos2 golden0 and befallen golden6/7
+specifically: these are the poses with the most on-screen coplanar/
+near-coplanar geometry at oblique viewing angles (qeynos2 golden0: gate
+plaza with many wall/ground seams in view; befallen golden6/7: crypt
+architecture with checkerboard floors and stacked stonework) — exactly
+where a sub-ULP floating-point difference in a transformed vertex position
+is most likely to flip which of two near-coincident triangles' fragments
+wins the depth test at a given pixel, and where alpha-tested foliage/detail
+edges (if any in view) are most numerous. befallen bf626 (a near-empty,
+mostly flat corridor pose) shows 0 delta at every stage, consistent with
+this explanation (fewer near-coplanar surfaces in view).
+
+This is exactly the class of delta Phase C's own design anticipated
+("mathematically equivalent, not bit-identical in float32... large enough
+at fwidth()-based alpha-test edges to occasionally flip a border pixel" —
+P09b Review, Root cause B). Per the plan: this magnitude is reported here
+for Will's one-time judgment, NOT self-declared acceptable. See
+contact_sheet.png (4 worst poses: befallen golden7, qeynos2 golden0,
+gfaydark golden5, befallen golden6) and the individual
+{zone}_{pose}_{baked,unmerged,diffmask}.png files in this directory for
+visual inspection.

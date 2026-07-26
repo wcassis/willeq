@@ -60,12 +60,6 @@ std::unordered_map<uint32_t, std::vector<MergedGeneration>> g_buckets;
 std::unordered_map<const void*, RegionBufferRange> g_ranges;
 bool g_built = false;
 
-// P09b root-cause fix (item 6/7 support): see the long comment at the top
-// of renderMergedDrawEntries() for why the process's very first draw call
-// must go through the exact unmerged single-buffer path once, regardless
-// of merging, before any coalesced draw runs.
-bool g_firstDrawDone = false;
-
 } // namespace
 
 void buildMergedZoneBuffers(ZoneBenchData& data) {
@@ -154,62 +148,17 @@ int renderMergedDrawEntries(ZoneBenchData& data,
     int drawCalls = 0;
     size_t startIdx = 0;
 
-    // P09b root cause (see Review): COpenGLES2Driver::getOpaqueAlphaFallback()
-    // (docker/irrlicht-drm/COpenGLES2Driver.cpp -- shared production driver,
-    // out of scope for this benchmark-only unit to edit) lazily creates its
-    // 1x1 white "no companion texture" fallback on first use by calling
-    // glBindTexture() WITHOUT first selecting texture unit 1 -- so on its
-    // FIRST-EVER invocation in the process it binds the white fallback to
-    // whatever unit is *currently active* (unit 0, left over from the
-    // diffuse-texture bind moments earlier in the same
-    // applyMaterialRenderState() call), clobbering the real diffuse texture
-    // on unit 0 for that one draw call. This is a pre-existing latent bug,
-    // not introduced by merging: in the unmerged path every draw call
-    // re-binds its own unit-0 texture at the very start of its own
-    // setMaterial(), so only the process's single very-first "no companion
-    // texture" draw is ever affected -- historically an invisible one-
-    // triangle-fan sliver (present today in the unmerged/production path
-    // and its goldens; out of scope to fix here). The merge prototype
-    // coalesces many regions into ONE setMaterial()+drawMeshBuffer() call,
-    // so when that single call happens to BE the process's first "no
-    // companion texture" draw (materialKey-sorted order makes this
-    // reproducible -- it's exactly gfaydark's fayroof1.bmp run in the
-    // golden4 pose), the corruption blast radius grows from one sliver to
-    // the entire merged surface: textured surfaces render as a flat,
-    // fully-lit gradient -- the "UNATTRIBUTED texture corruption" P09 hit.
-    // P09's SMaterial field audit (and this unit's exhaustive operator!=
-    // audit above) never had a chance to catch it: it is a texture-UNIT
-    // binding ORDER bug in the driver, not a material-field mismatch
-    // between coalesced buffers -- outside what any per-buffer SMaterial
-    // comparison could ever detect.
-    //
-    // Fix, kept entirely inside the merge TU per this unit's scope, and
-    // provably byte-identical to the unmerged path rather than a guess at
-    // the driver's internals: draw the process's very first entry
-    // (sortedEntries[0], on the very first call ever) through the EXACT
-    // SAME single-buffer setMaterial()+drawMeshBuffer() sequence the
-    // unmerged path uses for its own first entry, before any coalesced
-    // draw runs. Whatever the driver does on that first call -- corrupt or
-    // not -- now happens identically in both paths, and the driver's
-    // lazy fallback cache is warm for every subsequent draw either way
-    // (merged or not), so no coalesced run can ever inherit the blast-
-    // radius amplification. Costs exactly one extra draw call, once, for
-    // the lifetime of the process.
-    if (!g_firstDrawDone) {
-        g_firstDrawDone = true;
-        const DrawEntry& de0 = sortedEntries[0];
-        driver->setTransform(irr::video::ETS_WORLD, de0.worldMat);
-        if (de0.materialOverride >= 0) {
-            irr::video::SMaterial mat0 = de0.buffer->getMaterial();
-            mat0.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de0.materialOverride);
-            driver->setMaterial(mat0);
-        } else {
-            driver->setMaterial(de0.buffer->getMaterial());
-        }
-        driver->drawMeshBuffer(de0.buffer);
-        ++drawCalls;
-        startIdx = 1;
-    }
+    // P09c: the P09b benchmark-side workaround that used to live here (force
+    // the process's very first draw entry through the exact unmerged
+    // setMaterial()+drawMeshBuffer() sequence, to dodge
+    // COpenGLES2Driver::getOpaqueAlphaFallback()'s texture-unit-0 clobber on
+    // its lazy-init call) has been REMOVED. The driver bug itself is now
+    // fixed at the source (docker/irrlicht-drm/COpenGLES2Driver.cpp:
+    // getOpaqueAlphaFallback() now glActiveTexture(GL_TEXTURE1) before its
+    // glBindTexture -- see refactor/P09b_merge_fix.md Root cause A and
+    // refactor/P09c_driver_fix_and_measure.md), so the merge path no longer
+    // needs to special-case the first draw at all; it goes through the
+    // normal coalesced run below like every other entry.
 
     // P09b Phase A debug tooling: P09_MERGE_ONLY_RUN=<index> renders ONLY
     // the coalesced run at that index (0-based over materialKey-runs of
@@ -460,6 +409,61 @@ int renderMergedDrawEntries(ZoneBenchData& data,
 #endif
 
         i = j;
+    }
+
+    return drawCalls;
+}
+
+// P09c Phase C: baked-unmerged comparison mode. See zone_bench_merge.h for
+// the rationale. One drawMeshBuffer call per DrawEntry, in the exact same
+// order the unmerged path walks sortedEntries, but sourcing indices from the
+// already-baked (world-space) per-texture buffer instead of the original
+// per-region buffer, with an identity world transform instead of
+// de.worldMat.
+int renderBakedUnmergedDrawEntries(ZoneBenchData& data,
+                                    irr::video::IVideoDriver* driver,
+                                    const std::vector<DrawEntry>& sortedEntries) {
+    (void)data;
+    if (!g_built) return 0;
+
+    irr::core::matrix4 identity;
+    int drawCalls = 0;
+
+    for (const DrawEntry& de : sortedEntries) {
+        auto it = g_ranges.find(de.buffer);
+        if (it == g_ranges.end()) {
+            // Defensive fallback, matches renderMergedDrawEntries: buffers
+            // not captured at build time (non-EVT_STANDARD) draw via the
+            // normal per-region path -- not expected to trigger on real
+            // zone data (see buildMergedZoneBuffers's own comment).
+            driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
+            irr::video::SMaterial mat = de.buffer->getMaterial();
+            if (de.materialOverride >= 0) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+            }
+            driver->setMaterial(mat);
+            driver->drawMeshBuffer(de.buffer);
+            ++drawCalls;
+            continue;
+        }
+
+        const RegionBufferRange& rr = it->second;
+        MergedGeneration& gen = g_buckets[rr.texId][rr.generation];
+        gen.buf->Indices.set_used(0);
+        for (int off = rr.indexOffset; off < rr.indexOffset + rr.indexCount; ++off) {
+            gen.buf->Indices.push_back(gen.templateIndices[off]);
+        }
+
+        irr::video::SMaterial mat = de.buffer->getMaterial();
+        if (de.materialOverride >= 0) {
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+        }
+        gen.buf->Material = mat;
+
+        driver->setTransform(irr::video::ETS_WORLD, identity);
+        driver->setMaterial(mat);
+        driver->drawMeshBuffer(gen.buf);
+        ++drawCalls;
     }
 
     return drawCalls;

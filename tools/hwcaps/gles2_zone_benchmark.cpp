@@ -208,6 +208,13 @@ struct Options {
     // Default OFF everywhere (visual gate / all existing paths untouched).
     bool mergeZoneDraws = false;
 
+    // P09c Phase C: baked-unmerged comparison mode (same baked world-space
+    // buffers as --merge-zone-draws, but one draw call per region/buffer,
+    // identity transform, no coalescing). Benchmark-only, default OFF.
+    // Mutually exclusive with --merge-zone-draws (mergeZoneDraws wins if
+    // both are passed -- see the dispatch in renderDrawEntries()).
+    bool bakedUnmergedZoneDraws = false;
+
     // H02d: shader debug mode for offline diagnostic capture (mirrors the
     // renderer's /shaderdebug console command). 0 = off.
     int shaderDebugMode = 0;
@@ -507,6 +514,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--merge-probe") == 0) opts.mergeProbe = true;
         else if (strcmp(argv[i], "--merge-probe-csv") == 0 && i + 1 < argc) opts.mergeProbeCsv = argv[++i];
         else if (strcmp(argv[i], "--merge-zone-draws") == 0) opts.mergeZoneDraws = true;
+        else if (strcmp(argv[i], "--baked-unmerged-zone-draws") == 0) opts.bakedUnmergedZoneDraws = true;
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
         else if (strcmp(argv[i], "--lighting-model") == 0 && i + 1 < argc) {
@@ -818,7 +826,8 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
                         bool depthTest,
                         float* outSubmitMs = nullptr,
                         bool mergeZoneDraws = false,
-                        int* outActualDraws = nullptr) {
+                        int* outActualDraws = nullptr,
+                        bool bakedUnmergedZoneDraws = false) {
 #ifdef EQT_HAS_GLES2
     if (!depthTest) {
         glDisable(GL_DEPTH_TEST);
@@ -839,6 +848,11 @@ static int renderDrawEntries(ZoneBench::ZoneBenchData& data,
     const auto submitStart = std::chrono::steady_clock::now();
     if (mergeZoneDraws) {
         int actualDraws = ZoneBench::renderMergedDrawEntries(data, data.driver, entries);
+        if (outActualDraws) *outActualDraws = actualDraws;
+    } else if (bakedUnmergedZoneDraws) {
+        // P09c Phase C: fair baked-vs-baked comparison mode -- see
+        // zone_bench_merge.h's renderBakedUnmergedDrawEntries for rationale.
+        int actualDraws = ZoneBench::renderBakedUnmergedDrawEntries(data, data.driver, entries);
         if (outActualDraws) *outActualDraws = actualDraws;
     } else {
         for (const auto& de : entries) {
@@ -1257,9 +1271,11 @@ int main(int argc, char** argv) {
     }
 
     // P09 Phase B: build the cross-region same-material merge buffers once,
-    // right after zone geometry load, before any draw. No-op cost when the
-    // flag is off (function not called at all).
-    if (opts.mergeZoneDraws) {
+    // right after zone geometry load, before any draw. No-op cost when both
+    // flags are off (function not called at all). P09c Phase C's
+    // baked-unmerged mode reuses the exact same baked buffers (see
+    // renderBakedUnmergedDrawEntries), so it needs them built too.
+    if (opts.mergeZoneDraws || opts.bakedUnmergedZoneDraws) {
         ZoneBench::buildMergedZoneBuffers(*data);
     }
 
@@ -2218,7 +2234,8 @@ int main(int argc, char** argv) {
             }
             int actualDraws = 0;
             int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
-                                                  nullptr, opts.mergeZoneDraws, &actualDraws);
+                                                  nullptr, opts.mergeZoneDraws, &actualDraws,
+                                                  opts.bakedUnmergedZoneDraws);
             int polyCount = countPolygons(drawEntries);
             metrics.endDraw(actualDraws, stateChanges, polyCount,
                             regionsVisible, regionsDrawn, regionsOccluded);
@@ -2594,7 +2611,8 @@ int main(int argc, char** argv) {
                     std::chrono::steady_clock::now() - entCollectStart).count();
                 int actualDraws = 0;
                 int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
-                                                      &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws);
+                                                      &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws,
+                                                      opts.bakedUnmergedZoneDraws);
                 int polyCount = countPolygons(drawEntries);
 
                 if (measuring) {
@@ -2611,7 +2629,8 @@ int main(int argc, char** argv) {
             // to quantify entity draw-call contribution separately).
             int actualDraws = 0;
             int stateChanges = renderDrawEntries(*data, drawEntries, opts.depthTest,
-                                                  &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws);
+                                                  &phaseSubmitMs, opts.mergeZoneDraws, &actualDraws,
+                                                  opts.bakedUnmergedZoneDraws);
             int polyCount = countPolygons(drawEntries);
 
             if (measuring) {

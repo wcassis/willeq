@@ -1,0 +1,12 @@
+1785023361	befallen_zone_unmerged (pre)	76004	395880
+1785023412	befallen_zone_unmerged (post, invocation #1)	75848	396216
+1785023429	befallen_zone_merged (pre)	75848	395008
+1785023456	befallen_zone_merged (post, invocation #2)	75728	395428
+1785023473	befallen_combined_unmerged (pre)	75728	396904
+1785023598	befallen_combined_unmerged (post, invocation #3)	60956	391268
+1785023615	befallen_combined_merged (pre)	60956	394936
+1785023692	befallen_combined_merged (post, invocation #4)	60960	393956
+1785023710	qeynos2_zone_unmerged (pre)	61244	395116
+1785023740	qeynos2_zone_unmerged (post, invocation #5)	61200	393128
+1785023757	qeynos2_zone_merged (pre)	61200	394220
+1785023785	qeynos2_zone_merged (post, invocation #6)	61080	394528

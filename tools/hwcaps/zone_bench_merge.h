@@ -69,4 +69,28 @@ int renderMergedDrawEntries(ZoneBenchData& data,
                              irr::video::IVideoDriver* driver,
                              const std::vector<DrawEntry>& sortedEntries);
 
+// P09c Phase C: the "fair baked-vs-baked" comparison mode. Draws the SAME
+// baked world-space vertex data buildMergedZoneBuffers() already built (one
+// persistent per-texture buffer per bucket/generation), but submitted as
+// INDIVIDUAL per-region-buffer draws (one drawMeshBuffer call per DrawEntry,
+// identity world transform, same per-entry order as the unmerged path) --
+// i.e. everything renderMergedDrawEntries() does EXCEPT the coalescing.
+// Isolates whether a merged-vs-unmerged pixel diff is caused by the merge
+// mechanism itself (coalescing/run-splitting) or by the baked-position
+// architecture generally (which this mode shares with the merged path):
+//   - merged vs baked-unmerged diff => a real merge-only bug (loop back to
+//     the merge fix).
+//   - baked-unmerged vs production-path (per-region-matrix) unmerged diff =>
+//     the pure floating-point transform-order delta, architecturally
+//     inherent to baking world-space positions once at load time instead of
+//     applying a per-region world matrix at draw time (mathematically
+//     equivalent, not bit-identical in float32).
+// Requires buildMergedZoneBuffers() to have already been called (same
+// precondition as renderMergedDrawEntries). Returns the draw call count
+// (always sortedEntries.size(), since nothing is coalesced here -- kept as
+// a return value for call-site symmetry with renderMergedDrawEntries).
+int renderBakedUnmergedDrawEntries(ZoneBenchData& data,
+                                    irr::video::IVideoDriver* driver,
+                                    const std::vector<DrawEntry>& sortedEntries);
+
 } // namespace ZoneBench

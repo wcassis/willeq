@@ -239,31 +239,332 @@ budget on numbers that would need re-taking after re-bless either way.
    WARN) on `fable` before this unit's 8-line addition; the ceiling
    classification (WARN, not FAIL) is unchanged.
 
-### Phases B, C, D — not executed (blocked by the Phase A STOP)
+### Will's re-bless (2026-07-25) and Phase A completion
 
-Per the plan's design, all three are gated behind a clean Phase A gate.
-None were started. No Pi contact was made this session (nothing ready to
-measure — the Pi invocation budget was not touched). No
-`benchmarks/pi_runs/p09c_measure/` CSVs exist. No
-`benchmarks/contact_sheets/p09c_fp_delta/` contact sheet exists.
+Will reviewed the before/after comparison for qeynos2 frame 0 and gfaydark
+frame 0 and blessed the fixed rendering: the OLD goldens contained the
+`getOpaqueAlphaFallback()` corruption, not the fix. Regenerated via
+`scripts/ci/visual_gate.sh --bless` with the fixed driver; confirmed by
+diff that ONLY the two anticipated frames changed (`git diff --stat --
+tests/goldens` showed exactly `qeynos2_f0.png`, `gfaydark_f0.png`,
+`manifest.json`, `contact_sheet.html` — no other golden PNG touched).
+`manifest.json`'s `approval` block updated to record the P09c re-bless
+(status/by/date/note). Gate re-verified clean with no `--bless`:
+`scripts/ci/visual_gate.sh` → PASS, and the `visual_gate` ctest entry →
+PASS. Committed separately from the driver fix (see Commits below). Phase A
+is now fully closed; Phases B–D proceed below.
+
+### Phase B — the remaining contributor: re-examined against the fixed driver
+
+Re-ran the 15-pose merged-vs-unmerged pixel-identity check
+(`refactor/scratch/p09_pixel_identity.py`) with the fixed driver AND with
+P09b's now-redundant first-draw workaround removed from
+`tools/hwcaps/zone_bench_merge.cpp` (see "Workaround removal" below).
+Result: magnitudes are essentially unchanged from P09b's own
+already-fixed-driver-adjacent table (e.g. qeynos2 golden0: 44,070px/max_delta
+68 here vs 44,054px/max_delta 68 in P09b; befallen golden6: 2,267px/max_delta
+209 in both; befallen golden7: 28,857px vs 28,446px) — the driver fix, now
+landed, does **not** meaningfully shrink the residual. This answers the
+coordinator's open question directly: the "unattributed contributor" P09b
+saw was **not** (or only negligibly) the driver bug; P09b's own item-7
+first-draw workaround had already absorbed that interaction for the
+merged-vs-unmerged *comparison* specifically (both sides went through the
+same first-draw path either way), even though the driver itself stayed
+buggy in general until this unit's Phase A.
+
+**Named suspects ruled out architecturally, before any bisection run**: the
+plan's two suspects (wind-shader per-buffer `uMeshYBounds` packing,
+atlas/unit-1 companion-texture state) are both **unreachable by this
+benchmark's zone geometry, by construction**. `tools/hwcaps/
+zone_bench_loader.h` registers exactly two material shader types for zone
+region meshes — `materialPerPixelSolid` and `materialPerPixelAlpha` — and
+`grep`ping the loader for any wind- or atlas-shader wiring into region mesh
+construction (`buildTexturedMesh`/`buildColoredMesh` and their material
+assignment) finds none. `uMeshYBounds`/`MaterialTypeParam` packing DOES
+exist in production (`src/client/graphics/renderer_zone_load.cpp` ~line
+2278-2302), but only for animated TREES (`AnimatedTreeManager`/
+`TreeWindController`), which are entity-like objects, explicitly out of
+scope for this zone-geometry-only merge (plan: "Zone geometry only —
+entities and objects out of scope"). This matches the plan's own hint
+("gate config is RGBA/non-EQE1 — verify what atlas-like state is actually
+active before theorizing") — verifying first showed neither suspect
+mechanism is even wired up in the harness under test, so no bisection
+against either was warranted.
+
+**Root cause, established via the new Phase C machinery (below) rather than
+further P09b-style bisection**: building the "baked-unmerged" comparison
+mode (same baked world-space vertex buffers as the merge path, but NOT
+coalesced — one draw call per region, identity transform) and diffing it
+against BOTH the merged path and the production-path (per-region-matrix)
+unmerged path in one pass showed, decisively:
+- **merged vs baked-unmerged: max_delta=0 (or max_delta=1, tiny) at 15/15
+  poses** — the merge MECHANISM (coalescing/run-splitting) itself is
+  correct; see the table in Phase C below.
+- **baked-unmerged vs production-path unmerged: numbers that track the
+  ORIGINAL "merged vs unmerged" residual almost exactly**, pose for pose
+  (e.g. qeynos2 golden0: 44,124px here vs 44,070px merged-vs-unmerged;
+  befallen golden7: 28,857px in both).
+
+This means essentially the ENTIRE residual P09b flagged as "unattributed"
+is the architecturally-inherent floating-point transform-order delta
+(baked world-space position + identity transform, vs. per-region world
+matrix + local-space position at draw time) that P09b's own Root cause B
+already named as a hypothesis but couldn't fully separate from a possible
+merge-mechanism bug — because P09b had no baked-but-unmerged comparison
+point to isolate the two. **This IS the attribution the plan's Phase B
+asked for**: not a new merge bug requiring a fix in the merge TU, but
+confirmation that the residual is the Phase C FP-delta class, quantified
+properly in Phase C below. No merge-TU code fix was needed as a result (the
+merge mechanism was already correct); Phase B's "fix" is therefore: none
+required, root cause reassigned from "unattributed" to "architectural FP
+delta, quantified in Phase C."
+
+**Workaround removal** (plan step A3, done as part of this reconciliation):
+removed P09b's `g_firstDrawDone`/first-draw-through-unmerged-path workaround
+from `renderMergedDrawEntries()` in `tools/hwcaps/zone_bench_merge.cpp` (kept
+the `SMaterial::operator==` run-splitting from the same fix, per the plan —
+that part is correctness hardening, not a workaround). Rebuilt x86-gles2,
+re-ran the 15-pose check (numbers above already reflect the workaround
+removed): no regression from removing it — expected, since the driver bug it
+worked around is now fixed at the source.
+
+A small, secondary residual DOES remain in the merge mechanism itself: 2/15
+poses (qeynos2 golden0, gfaydark golden5) show a tiny `max_delta=1`
+(single 8-bit-LSB) difference between merged and baked-unmerged, in small
+localized clusters (54px and 10px respectively, out of 480,000). Both
+merged and baked-unmerged outputs are independently deterministic across
+repeated invocations (verified for qeynos2 golden0). Character (single-LSB,
+small scattered cluster) matches the same low-magnitude rasterization-order
+sensitivity class P09b already documented for bf355/bf472/etc, now appearing
+at the draw-call-COUNT boundary (1 coalesced call vs N individual calls
+covering the identical vertex data/order/state) rather than a
+submission-ORDER difference (which item 7's exact-order gather already
+guarantees is identical). Per the plan's STOP condition ("unattributed after
+2-3 focused bisection rounds"): documented as narrowed (not a state/logic
+bug — same vertices, same order, same material, same transform; plausibly a
+GPU rasterization/tiling artifact at draw-call boundaries on llvmpipe) but
+not further pursued this unit; magnitude (1 LSB, 2/15 poses, <0.02% of frame
+each) does not block Phase C/D. Full detail in
+`benchmarks/contact_sheets/p09c_fp_delta/results.txt`.
+
+### Phase C — the fair baked-vs-baked baseline
+
+Added `ZoneBench::renderBakedUnmergedDrawEntries()` (`tools/hwcaps/
+zone_bench_merge.cpp/.h`) and a new CLI flag `--baked-unmerged-zone-draws`
+(`tools/hwcaps/gles2_zone_benchmark.cpp`, default off, mutually exclusive in
+practice with `--merge-zone-draws`): draws the SAME baked world-space vertex
+buffers `buildMergedZoneBuffers()` already builds for the merge path, but
+submitted as one `drawMeshBuffer()` call per region/buffer (no coalescing),
+identity world transform, same per-entry order as the unmerged path. This is
+the plan's "unmerged-but-baked comparison mode" (design step 7).
+
+**Bar 1 — merged vs baked-unmerged (isolates merge-only effects)**:
+
+| zone | pose | diff_px | max_delta | status |
+|---|---|---|---|---|
+| qeynos2 | golden0 | 54 | 1 | FAIL (tiny, see Phase B) |
+| qeynos2 | golden1 | 0 | 0 | PASS |
+| qeynos2 | golden2 | 0 | 0 | PASS |
+| gfaydark | golden3 | 0 | 0 | PASS |
+| gfaydark | golden4 | 0 | 0 | PASS |
+| gfaydark | golden5 | 10 | 1 | FAIL (tiny, see Phase B) |
+| befallen | golden6 | 0 | 0 | PASS |
+| befallen | golden7 | 0 | 0 | PASS |
+| befallen | golden8 | 0 | 0 | PASS |
+| befallen | bf355 | 0 | 0 | PASS |
+| befallen | bf472 | 0 | 0 | PASS |
+| befallen | bf626 | 0 | 0 | PASS |
+| befallen | bf791 | 0 | 0 | PASS |
+| befallen | bf917 | 0 | 0 | PASS |
+| befallen | bf987 | 0 | 0 | PASS |
+
+13/15 poses achieve the plan's unqualified max_delta=0 bar; 2/15 show a
+max_delta=1 (single LSB) residual, addressed in Phase B above (narrowed,
+not a state/logic bug, not pursued further this unit per the plan's own
+STOP guidance).
+
+**Bar 2 — baked-unmerged vs production-path unmerged (the pure FP
+transform-order delta)**: full 15-pose table, discussion of WHY it's larger
+at qeynos2 golden0/befallen golden6/7 (oblique views of coplanar-heavy
+architecture), and the contact sheet are in
+`benchmarks/contact_sheets/p09c_fp_delta/results.txt` and
+`benchmarks/contact_sheets/p09c_fp_delta/contact_sheet.png` (4 worst poses:
+befallen golden7, qeynos2 golden0, gfaydark golden5, befallen golden6, each
+with baked/production/diff-mask panels). Headline numbers: qeynos2 golden0
+44,124px/max_delta 68; befallen golden7 28,857px/max_delta 104; gfaydark
+golden5 682px/max_delta 126; befallen golden6 2,267px/max_delta 209;
+befallen bf626 0px/max_delta 0 (the one pose with almost no coplanar
+geometry in view). **Per the plan: this magnitude is reported for Will's
+one-time judgment, not self-declared acceptable.**
+
+### Phase D — the Pi measurement (P02 protocol)
+
+Pi session: `user@10.0.30.192`, reachable throughout, cleaned of leftover
+`/tmp` artifacts from a prior (P09 A-gate) session before starting
+(`/tmp/agate_pi.csv`, `/tmp/gles2_zone_benchmark_p09` removed), 6/12
+invocations used (1 session, well under the cap), CmaFree stable throughout
+(76,004→60,956→61,080 kB across the session, no monotonic ratchet, no
+SessionAbort), governor restored to `ondemand` on exit, Pi left pristine
+(verified `/tmp` empty of run artifacts after cleanup). Script:
+`refactor/scratch/p09c_pi_merge_replay.py` (bespoke — reuses `scripts/pi/
+pi_common.py`'s primitives directly rather than `pi_bench_run.py`, which is
+specialized for the H04 EQE1 repeating-pose-cycle case, not a
+`--path-file` moving replay). `ARM_BUILD_BIN_DIR` explicitly overridden to
+THIS worktree's `build-arm-noble/bin` (the plan's named trap) before any Pi
+contact; ARM binary rebuilt immediately before the session to include the
+driver fix + workaround removal + Phase C's new mode.
+
+Canonical replays: `benchmarks/paths/befallen_seed42_1000f.path` and
+`benchmarks/paths/qeynos2_seed42_1000f.path` (1000 frames each, `--seed 42`,
+production config), merged vs unmerged, 800x600, matching the manifest/gate
+resolution.
+
+**Whole-run summary** (total_ms = frame time, submission_ms = the
+setMaterial+drawMeshBuffer-loop CSV column; all times ms):
+
+| run | n | total avg | total p95 | submission avg | submission p95 | draws avg |
+|---|---|---|---|---|---|---|
+| befallen zone-only, unmerged | 1000 | 36.557 | 173.827 | 21.675 | 101.558 | 253.0 |
+| befallen zone-only, merged | 1000 | 11.255 | 25.497 | 2.072 | 5.777 | 7.9 |
+| befallen combined (e205), unmerged | 1000 | 104.261 | 279.391 | 67.035 | 186.953 | 710.1 |
+| befallen combined (e205), merged | 1000 | 54.666 | 65.806 | 31.504 | 39.514 | 465.1 |
+| qeynos2 zone-only, unmerged | 1000 | 14.691 | 19.261 | 2.946 | 5.846 | 58.9 |
+| qeynos2 zone-only, merged | 1000 | 12.582 | 17.102 | 1.166 | 2.071 | 10.0 |
+
+Sanity check against prior baselines: befallen zone-only unmerged p95
+(173.827ms) matches P08/P08b's own baseline (174.3ms) to within run-to-run
+noise; befallen combined (e205) unmerged p95 (279.391ms) matches the
+279.7ms baseline the same way — confirms this session measured the same
+underlying scenario P08/P08b did, not a different one.
+
+**Draw reduction, merged vs unmerged (whole-run draws avg)**:
+
+| scenario | unmerged draws avg | merged draws avg | reduction |
+|---|---|---|---|
+| befallen zone-only | 253.0 | 7.9 | 96.9% |
+| befallen combined (e205) | 710.1 | 465.1 | 34.5% |
+| qeynos2 zone-only | 58.9 | 10.0 | 83.1% |
+
+The combined-scenario reduction (34.5%) is much smaller than the zone-only
+reduction (96.9%) for the mechanical reason the plan anticipated: entity
+draws are untouched by this merge (out of scope) and dominate `draws_avg`
+in the combined scenario (710.1 total vs 253.0 zone-only unmerged ⇒ ~457
+entity draws), so a near-total elimination of the ~253 zone draws only
+moves the combined total by ~35%. This is expected, not a shortfall of the
+merge mechanism (which independently achieves the P09 ceiling on the
+zone-only slice, matching P09's original single-pose table).
+
+**Pinned-pose extraction** (befallen path frames 355/472/626/791/917/987 —
+the file-name convention IS the frame index in the 1000-frame path):
+draws/state_changes/polys/timing at each pinned frame, all four befallen
+run variants, are recorded in full in `benchmarks/pi_runs/p09c_measure/`
+(see the CSVs) and the script's stdout capture; headline: `state_changes`
+(the P08 ceiling quantity) is identical between merged and unmerged at
+every pinned frame in every variant (e.g. frame 472: unmerged draws=1297
+state_changes=14 vs merged draws=14 state_changes=14 — merged draws equal
+the ceiling exactly, matching P09's single-pose table), confirming the
+merge mechanism still hits the ceiling under full moving-path replay, not
+just static single-pose captures.
+
+**Unmerged geometry columns vs P08/P08b baselines**: compared `draws`,
+`state_changes`, `polys` frame-by-frame (all 1000 frames) between this
+session's unmerged CSVs and P08b's own Pi baseline CSVs
+(`benchmarks/pi_runs/p08b_entity_reality/befallen_pi_e0_replay.csv`,
+`befallen_pi_e205_replay.csv`): **0 mismatches at all 1000 frames, both
+befallen zone-only and befallen combined** — byte-identical geometry,
+confirming the unmerged path (and this session's replay setup) changed
+nothing. No P08/P08b Pi baseline exists for qeynos2 ZONE-ONLY (e0) — P08/P08b's
+qeynos2 Pi work was combined-only (`qeynos2_pi_e205_replay.csv`,
+`qeynos2_pi_e205_composite.csv`), not directly comparable to this unit's
+qeynos2 zone-only replay — so this check could not be performed for
+qeynos2; flagged as a gap, not a failure (there was nothing to compare
+against).
+
+**CSVs**: `benchmarks/pi_runs/p09c_measure/` — `befallen_zone_unmerged.csv`,
+`befallen_zone_merged.csv`, `befallen_combined_unmerged.csv`,
+`befallen_combined_merged.csv`, `qeynos2_zone_unmerged.csv`,
+`qeynos2_zone_merged.csv`, `cma_telemetry.tsv`.
 
 ### KPI projection
 
-Not computed — Phase D (Pi measurement) did not run, for the same reason
-P09 and P09b both withheld a KPI projection when their own gates were not
-clean: projecting Pi timing against a render path whose visual correctness
-is an open question for Will would misrepresent the state of the work.
+Direct measurement (not a projection): zone merge stacked with TODAY's
+shipping (unmerged) entity path, at befallen's e205 gameplay-representative
+combined load — p95 279.391ms → 65.806ms, a **76.4% reduction**, comfortably
+past the 97.8% zone-draw ceiling's expected real-world dilution by
+untouched entity draws.
+
+Projection (flagged per the plan, "multiply out the isolated effects
+honestly"): P08c projected composite-entities alone would take befallen
+combined p95 279.67ms → ~187ms (33.1% reduction) if it landed alone. Naively
+compounding the two isolated fractional reductions on the same p95 base
+(zone-merge fraction remaining × entity-composite fraction remaining):
+279.391 × (65.806/279.391) × (187/279.67) ≈ 65.806 × 0.6687 ≈ **44.0ms** if
+BOTH land together — this would put befallen's worst-case combined frame
+just outside the 30fps/33.3ms budget (≈22.7fps), a large step closer than
+either lever alone, but still short. This is explicitly a projection (p95
+does not decompose multiplicatively in general; the two levers were
+measured in separate sessions/units against slightly different baseline
+runs) — not a substitute for measuring both together.
 
 ### Landing-sketch update
 
-Unchanged from P09b's sketch for now, with one addition: the driver fix
-recommended there as a "small, separate, low-risk follow-up unit" turned
-out to have a real (if small, 2/9-frame) visible-output consequence in the
-production-representative gate, contradicting the "one historically-invisible
-sliver" framing P09b used to justify calling it low-risk. Recommendation for
-whoever picks this back up: do not assume "warmup absorbs it" for any future
-driver-level fix in this area without an explicit before/after gate run, as
-done here — the assumption was wrong once already.
+P09b's sketch (driver fix as a recommended low-risk follow-up; run-key
+`operator==` grouping; first-draw safeguard) is updated:
+1. **Driver fix landed** (this unit, `docker/irrlicht-drm/
+   COpenGLES2Driver.cpp`, `getOpaqueAlphaFallback()`): production's merge
+   landing no longer needs ANY first-draw special-casing — the upstream bug
+   is fixed at the source. The `SMaterial::operator==` run-splitting
+   (P09b) remains recommended for production's coalescing loop regardless
+   (real correctness hardening, independent of the driver bug).
+2. **Wind/atlas are non-issues for zone-geometry merging as currently
+   scoped** — confirmed architecturally (not just empirically) that neither
+   mechanism is wired into zone region material assignment; production's
+   landing does not need special-case handling for either UNLESS a future
+   unit extends the merge to also cover zone-embedded wind-shaded geometry
+   (none currently exists) or an atlas-backed zone path (RGBA is what ships
+   today per the gate's own config).
+3. **The fair-baseline finding matters for what "pixel-identical" should
+   mean in the production landing's own acceptance bar**: don't chase
+   max_delta=0 against the PRODUCTION (non-baked) path — that bar is
+   architecturally unreachable by design once positions are baked. The
+   right bar is max_delta=0 (achieved, 13/15, 2/15 at a tiny 1-LSB residual)
+   against a baked-but-unmerged reference, with the baked-vs-production
+   delta reported separately for a one-time design-acceptance judgment
+   (already given by Will in spirit for the driver fix; the FP-delta
+   magnitude itself is a NEW judgment call for whoever scopes the
+   production landing unit, not resolved here).
+4. **Combined-scenario dilution is real and should be sized into any KPI
+   commitment**: don't quote the 97.8%/96.9% zone-only reduction as "the"
+   number production stakeholders will see — the combined-load number
+   (34.5% draw reduction, 76.4% p95 reduction at befallen e205) is what a
+   player experiences, and it's still large, but a materially different
+   headline.
+5. Entity-path work (P08c's composite entities, `--batch-entities`, or a
+   future equivalent) remains necessary IN ADDITION to this merge to close
+   the KPI gap — confirmed again by this unit's own projection (~44ms,
+   still short of 33.3ms) — not instead of it, consistent with P08c's own
+   conclusion.
+
+### Verification results (full bar, all changes)
+
+1. `cmake --build build -j24`: **PASS** (re-run after Phase B/C/D code
+   changes to `tools/hwcaps/zone_bench_merge.cpp/.h` and
+   `tools/hwcaps/gles2_zone_benchmark.cpp`).
+2. `ctest --test-dir build --output-on-failure`: **PASS** (final run, all
+   code changes landed) — the ONLY failure is the documented host exception
+   `AudioManagerTest.PreloadCommonSounds`; `visual_gate` **PASSED** in this
+   run (confirms the re-blessed goldens are clean end-to-end via ctest, not
+   just the standalone script) and `RDPServerFrameTest.
+   UpdateFrameMultipleTimes` also passed this run (it's a documented
+   flaky/host exception, not a per-run guarantee of failure).
+3. `bash scripts/build-gles2-x86.sh`: **PASS** (re-run multiple times
+   across Phase A/B/C iterations, all clean).
+4. `bash scripts/ci/visual_gate.sh`: **PASS** (post-re-bless, confirmed
+   twice — once standalone, once via the `visual_gate` ctest entry).
+5. `bash scripts/build-arm-noble.sh`: **PASS**, re-run immediately before
+   the Pi session to include all Phase A/B/C source changes.
+6. `bash scripts/refactor/check_file_sizes.sh fable`: re-run after all
+   changes (see below) — no new FAILs.
 
 ### Deviations from the plan
 
