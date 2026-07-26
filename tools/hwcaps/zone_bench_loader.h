@@ -56,6 +56,10 @@ struct BenchConfig {
     int shaderDebugMode = 0;
     // P04: log [LOAD-MEM-AUDIT] RSS + pool samples at each load step boundary
     bool loadMemAudit = false;
+    // P11: run-time occluder budget override (maxOccluderRegions). -1 = prior
+    // hardcoded 16 (production's default too); a large value approximates
+    // "uncapped" for the raised-budget variants.
+    int occluderBudget = -1;
 };
 
 // Per-region data stored for rendering
