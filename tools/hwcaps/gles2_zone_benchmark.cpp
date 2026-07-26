@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <unordered_set>
 #include <utility>
@@ -93,6 +94,18 @@ struct Options {
     float entityRenderDist = 300.0f;
     bool batchEntities = false;   // Merge same-material entity buffers into single draws
     bool compositeEntities = false; // Simulate 1-draw-per-entity (pre-baked composite texture)
+    // P08D-RETAKE: --composite-entities' draw dispatch uses renderCompositeEntities(), a
+    // custom manual-draw stand-in (P08c-era) with its OWN frustum-cull test
+    // (data.frustumCuller->testSphere), NOT Irrlicht's normal scene-graph draw that
+    // production's EntityRenderer actually uses for every entity, composite or not. That
+    // mismatch (different cull test, different draw call, different z/state handling) is a
+    // confound for A/B quality comparisons: it changes MORE than just "which texture",
+    // so a diff against the default (non-composite) path isn't isolating what P08d's
+    // production composite-mesh-building code actually changes. This flag keeps the real
+    // composite mesh-building/loading (setCompositeEntityPath + preloadModelData) but
+    // renders entities through the SAME default Irrlicht scene-graph path as the baseline
+    // -- an apples-to-apples comparison of production's actual render mechanism.
+    bool compositeSceneGraph = false;
     bool directGLEntities = false; // Bypass Irrlicht, direct GL calls per entity
     bool lodEntities = false;     // LOD tiers: composite near, billboard far
     float lodTier2Dist = 80.0f;   // Distance for billboard switch
@@ -436,6 +449,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entity-dist") == 0 && i + 1 < argc) opts.entityRenderDist = atof(argv[++i]);
         else if (strcmp(argv[i], "--batch-entities") == 0) opts.batchEntities = true;
         else if (strcmp(argv[i], "--composite-entities") == 0) opts.compositeEntities = true;
+        else if (strcmp(argv[i], "--composite-scenegraph") == 0) { opts.compositeEntities = true; opts.compositeSceneGraph = true; }
         else if (strcmp(argv[i], "--direct-gl") == 0) opts.directGLEntities = true;
         else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
         else if (strcmp(argv[i], "--adaptive-lod") == 0) opts.adaptiveLod = true;
@@ -2560,9 +2574,12 @@ int main(int argc, char** argv) {
                     metrics.setPhaseTiming(phaseCollectCullMs, phaseSortMs, phaseSubmitMs);
                     metrics.finalizePhaseTiming();
                 }
-            } else if (opts.compositeEntities) {
+            } else if (opts.compositeEntities && !opts.compositeSceneGraph) {
                 // Composite: 1 draw per entity (simulates pre-baked composite texture).
                 // P08: out of scope (entity draw path), same caveat as above.
+                // P08D-RETAKE: --composite-scenegraph skips this branch (see opts struct
+                // comment) so real composite meshes fall through to the default entity
+                // path below instead of this custom stand-in draw.
                 int stateChangesZone = renderDrawEntries(*data, drawEntries, opts.depthTest, &phaseSubmitMs);
                 entityDrawCalls = ZoneBench::renderCompositeEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,

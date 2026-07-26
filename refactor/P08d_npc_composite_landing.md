@@ -400,6 +400,178 @@ avg 7.12ms→6.34ms, p95 11.20ms→9.33ms (x86 llvmpipe, not representative of
 Pi timing but directionally consistent with P08c's real-hardware measurement
 and free evidence from runs already needed for the contact sheet).
 
+### RETAKE — Will flagged frame 50 (arm-only shot); the quality evidence above was unsound
+
+Will reviewed the bless package and flagged the f50 shot (only an arm visible).
+Investigating, the orchestrator found the evidence itself was disqualified:
+re-running the exact same evidence command at finer frame granularity
+(1024x768, frames 5/10/.../55) showed baseline and composite diverging by up
+to **38,728 differing pixels** at frame 15 (vs the committed table's cherry-picked
+f10/30/50, which happened to land on frames where the two paths agreed) — at
+f15 composite showed a coherent running figure while baseline showed a
+collapsed heap on the ground, and the relationship reversed at f25. **The
+"0.4-2.3%, near-identical" claim in the table above is WRONG and must not be
+read as evidence of composite-vs-baseline visual parity — it was measured at
+frames that happened to agree, not because the two paths generally agree.**
+This section documents the root-cause investigation and supersedes that table
+with correctly-aligned evidence. The table above is left in place (not
+deleted) so the record of what was originally (wrongly) claimed is visible,
+per the instruction not to leave unsound numbers standing unannotated.
+
+**Root cause.** A temporary diagnostic (added to `gles2_zone_benchmark`,
+removed before this commit) logged, every frame, every entity, both runs: the
+selected animation code and the animator's playback progress. Result: **0
+differences, every frame, every entity, both runs.** This directly refutes
+the plan's prime suspect (animation clip/ordering divergence between
+`buildMeshFromGeometry` and `buildCompositeMeshFromGeometry`) — clip
+selection and timing are byte-identical between the two paths. A second
+diagnostic dumped the world-space bounding box of the actually-rendered
+merged mesh at draw time: normal, tight, humanoid-sized boxes at every frame
+checked — ruling out gross vertex/geometry corruption in the real composite
+mesh as well.
+
+The actual cause: **`gles2_zone_benchmark --composite-entities` routes
+composite entities through `ZoneBench::renderCompositeEntities()`** — a
+P08c-era manual-draw stand-in (`zone_bench_loader.cpp`) with its own,
+separate frustum-cull test (`data.frustumCuller->testSphere(...)`), instead
+of the SAME default-path cull test (`collectEntityDrawEntries`) that the
+baseline (no entity-mode flag) uses. This is a genuinely different
+CULLING/RENDER DISPATCH mechanism, not just "a different texture" — for
+entities near the frustum boundary the two cull tests can (and did)
+disagree, so a **different subset of the 6 placed entities was visible, at
+different apparent screen positions, in the two runs at the same simulated
+frame** — the "collapsed heap" and "coherent running figure" were each real,
+correctly-animated renders of *different* (or differently-culled) entities,
+not the same entity rendered two different ways. Confirmed empirically: once
+this mismatch is removed (see fix below), baseline and composite render
+**pixel-identical** at the frame this was first spotted on (f15, verified via
+a tight zoomed crop).
+
+Note this ALSO means the pre-retake evidence's mesh-building/animation
+`buildCompositeMeshFromGeometry` code itself was never actually shown to be
+wrong by the flagged frames — the divergence was 100% a benchmark-harness
+draw-dispatch artifact, unrelated to the production `RaceModelLoader`
+composite pipeline P08d's implementation commit changed.
+
+**Fix (harness only, not production).** Added a new `--composite-scenegraph`
+flag to `tools/hwcaps/gles2_zone_benchmark.cpp` (+ `tools/hwcaps/
+zone_bench_loader.cpp`, net zero diff there after diagnostic cleanup — see
+below): loads the real composite mesh data exactly as `--composite-entities`
+does (`setCompositeEntityPath` → `preloadModelData` → real single-buffer
+`buildCompositeMeshFromGeometry` meshes, confirmed via the same
+`compositeData=YES` log lines as before), but skips the
+`renderCompositeEntities()` branch and falls through to the SAME default
+entity draw path (`collectEntityDrawEntries`/`renderDrawEntries`) the
+baseline uses — an apples-to-apples comparison of what the real composite
+mesh looks like through the same cull/draw mechanism as multi-buffer,
+instead of comparing two different draw dispatch systems. This is the
+correct vehicle for A/B composite-vs-baseline quality evidence going
+forward; `--composite-entities` (unchanged) remains correct for what P08c
+used it for (draw-count/perf comparison against the crude stand-in), just
+not for pixel-level A/B quality comparisons.
+
+**Corrected, aligned evidence** (same qeynos2 6-entity `--animate --seed 42`
+setup, `--composite-scenegraph` instead of `--composite-entities`, frames
+5/10/15/20/25/30/35/40/45/50/55 all checked):
+
+| frame | differing px % | mean abs Δ (0-255) | max channel Δ |
+|---|---|---|---|
+| f5 | 0.094% | — | — |
+| f10 | 0.029% | — | — |
+| f15 | 0.187% | 0.0076 | 209 |
+| f20 | 0.038% | — | — |
+| f25 | 0.204% | 0.0155 | 222 |
+| f30 | 0.024% | — | — |
+| f35 | 0.077% | 0.0076 | 216 |
+| f40 | 0.020% | — | — |
+| f45 | 0.075% | — | — |
+| f50 | 0.177% | — | — |
+| f55 | 0.000% | — | — |
+
+An order of magnitude tighter than even the original (unsound) table's
+numbers, and with no frame showing anything close to the previous tens-of-
+thousands-of-pixels divergence — this is the real, honest measure of
+composite-vs-baseline agreement once the two paths are compared through the
+same render mechanism.
+
+**Close-up evidence** (plan's explicit ask: "at least one CLOSE-UP full-body
+view"). The default orbit-fallback camera (radius fixed by zone bounding-box
+geometry, ~677 units) never brings an entity close enough to fill a
+meaningful part of the frame — this is WHY the original evidence only ever
+had small/distant subjects, the root cause of Will's "arm shot" complaint
+independent of the render-dispatch bug above. Used `--orbit-radius 15`
+(deterministic, same on both runs) to force a close pass; frame 30 puts one
+entity in a proper close-up. This capture surfaces a real, small,
+composite-specific visual artifact:
+
+| capture | differing px % | mean abs Δ | max channel Δ |
+|---|---|---|---|
+| f30 close-up, full frame | 0.923% | 0.107 | 201 |
+| f30 close-up, tight crop on the affected texture region | 18.99% | 3.17 | 201 |
+
+Visual inspection: faint dark patches/bleeding at a few points on the skin
+texture in the composite render, absent in baseline — consistent with
+bilinear-filtering texel bleed at composite-sheet tile boundaries (the
+composite sheet packs many distinct source textures into one atlas with
+`EMF_BILINEAR_FILTER` enabled and no visible per-tile gutter/padding logic in
+`buildCompositeMeshFromGeometry`; sampling near a tile edge can blend with an
+adjacent tile's or the atlas background's texels). Checked and ruled out as
+the cause: unmapped/skipped triangles (`buildCompositeMesh: N triangles not
+in composite (skipped)` — 0 for every race in this run, confirmed via
+`--log-level=INFO --log-only=GRAPHICS`) and the vertex-mapping duplicate-
+freezing bug described below (fixed, made no visible difference to this
+artifact — confirming it's a texture-sampling issue, not a skinning one).
+This is genuinely small (0.9% of the full close-up frame, concentrated in a
+handful of texel-scale patches) but real, and — unlike the harness bug above
+— IS a property of the real production composite pipeline. Not fixed in this
+retake (root-causing atlas-packing/padding is a deeper change than this
+retake's budget allows and is not what Will flagged); reported for Will's
+bless judgment alongside the numbers, not self-declared acceptable. Flagged
+as a known-minor open item for the landing decision.
+
+**A real (but unrelated to the flagged frames) bug found and fixed along the
+way.** While investigating, also found and fixed a genuine latent bug in the
+shared animation-vertex-mapping code (`animated_mesh_scene_node.h/.cpp`,
+`mesh_building.cpp`): `VertexMapping` recorded only ONE destination
+(buffer index, local index) per original S3D vertex, but a vertex shared by
+triangles using DIFFERENT textures (a UV seam — e.g. where a chest texture
+meets an arm texture) is legitimately duplicated into MULTIPLE destination
+buffer slots by BOTH mesh builders (`buildMeshFromGeometry`: once per
+distinct texture group; `buildCompositeMeshFromGeometry`: once per distinct
+(vertex, texture) pair). The single-slot design silently dropped every
+duplicate but the last one registered, leaving it frozen at bind pose while
+its sibling animated normally — a bug in BOTH mesh-building paths (not
+composite-specific, not introduced by P08d), just never noticed because nothing
+previously animated a composite mesh in a way that would surface it, and
+apparently rare/subtle enough on the multi-buffer path to go unreported.
+Fixed by changing `vertexMapping_`/`vertexMappingForAnimation_` to
+`std::vector<VertexMappingList>` (one-to-many) and updating the skinning loop
+in `applyBoneTransformsToMeshImpl` to write every duplicate, not just one.
+**This fix did NOT change the rendered output for the frames investigated**
+(confirmed by re-rendering before/after: pixel-identical) — meaning this
+particular latent bug was not actually the cause of anything visible in this
+unit's evidence, but it is a genuine correctness bug worth having fixed
+regardless (both production paths — multi-buffer and composite — now handle
+UV-seam vertex duplication correctly). Kept in the implementation commit.
+Full standard verification bar (build/ctest/gles2-x86/visual-gate/arm/file-size)
+re-run clean after this change — see the verification section above, which
+reflects the state including this fix.
+
+**Diagnostic cleanup.** All temporary `P08D_ANIM_DIAG`-gated `fprintf`
+instrumentation added to `zone_bench_loader.cpp`, `gles2_zone_benchmark.cpp`,
+and `animated_mesh_scene_node.cpp` during this investigation was removed
+before committing; `zone_bench_loader.cpp` has a net-zero diff vs the
+implementation commit as a result (confirmed via `git diff --stat`) — only
+the new `--composite-scenegraph` flag and its dispatch-skip condition in
+`gles2_zone_benchmark.cpp` remain as a lasting change.
+
+**Updated contact sheet**:
+`benchmarks/contact_sheets/p08d_composite_landing/index.html` (+
+`stats.json`) was regenerated with the aligned f15/f25/f35 comparison and the
+orbit-radius-15 close-up (full frame + tight defect crop), replacing the
+unsound f10/30/50 images from the original pass. `sheet_audit.json` (the 210-
+sheet structural integrity sweep) is untouched — independent of this bug.
+
 ### Deviations from the plan
 
 - `gles2_composite_audit`'s intended full sweep was not completed as literally
@@ -426,3 +598,14 @@ and free evidence from runs already needed for the contact sheet).
   flip is the separate final commit per plan B5); `willeq.json` was not
   touched. `tools/hwcaps/gles2_composite_audit.cpp` was edited then fully
   reverted (net zero diff) during the device-creation debugging attempt.
+- **Retake**: the unit was reopened after Will flagged the f50 shot; see the
+  "RETAKE" section above for the full root-cause writeup. Net effect on
+  production code: one additional real fix (the one-to-many vertex-mapping
+  correctness bug in `animated_mesh_scene_node.h/.cpp` + `mesh_building.cpp`,
+  shared by both mesh-building paths, not composite-specific, verified to not
+  change any of this unit's rendered evidence). Net effect on tooling: a new
+  `--composite-scenegraph` flag on `gles2_zone_benchmark` for apples-to-apples
+  composite-vs-baseline quality comparisons (the harness bug's fix); all debug
+  instrumentation added during the investigation was removed before
+  committing. The contact sheet and this Review were corrected in place rather
+  than leaving the original (unsound) numbers unannotated.

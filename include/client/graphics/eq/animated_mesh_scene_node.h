@@ -17,6 +17,21 @@ struct VertexMapping {
     irr::u32 localIndex;     // Index within that buffer
 };
 
+// P08D-RETAKE root-cause fix: an original S3D vertex shared by triangles that use
+// DIFFERENT textures/materials (a UV seam -- e.g. where a chest texture meets an
+// arm texture) is legitimately duplicated into MULTIPLE destination buffer slots
+// by both mesh builders (buildMeshFromGeometry: once per distinct texture group;
+// buildCompositeMeshFromGeometry: once per distinct (vertex, texture) pair even
+// though there's only one destination BUFFER). A single VertexMapping per original
+// vertex can only remember the LAST-registered duplicate, silently leaving every
+// other duplicate frozen at its initial bind-pose position while its sibling
+// animates normally -- a latent bug in both mesh-building paths (not introduced by
+// composite entities, but made visually severe there since composite meshes pack
+// many original textures' worth of duplicate seams into far fewer buffers).
+// VertexMappingList holds ALL destinations for one original vertex so skinning can
+// update every duplicate, not just the last one registered.
+using VertexMappingList = std::vector<VertexMapping>;
+
 // Custom animated mesh that supports EQ skeletal animation
 // This mesh stores vertex data that can be transformed by bone matrices
 class EQAnimatedMesh : public irr::scene::IAnimatedMesh {
@@ -49,7 +64,7 @@ public:
 
     // Set original vertices (in order for bone transforms) and vertex-to-buffer mapping
     void setOriginalVertices(const std::vector<irr::video::S3DVertex>& verts);
-    void setVertexMapping(const std::vector<VertexMapping>& mapping);
+    void setVertexMapping(const std::vector<VertexMappingList>& mapping);
 
     // Get the animator for this mesh (shared - use scene node's animator for per-instance animation)
     SkeletalAnimator& getAnimator() { return animator_; }
@@ -63,13 +78,16 @@ public:
     std::shared_ptr<CharacterSkeleton> getSkeleton() const { return animator_.getSkeleton(); }
     const std::vector<VertexPiece>& getVertexPieces() const { return vertexPieces_; }
     const std::vector<irr::video::S3DVertex>& getOriginalVertices() const { return originalVertices_; }
-    const std::vector<VertexMapping>& getVertexMapping() const { return vertexMapping_; }
+    const std::vector<VertexMappingList>& getVertexMapping() const { return vertexMapping_; }
 
     // Memory usage estimate (CPU-side working data, not counting shared skeleton/base mesh)
     size_t estimateMemoryUsage() const {
         size_t total = sizeof(EQAnimatedMesh);
         total += originalVertices_.capacity() * sizeof(irr::video::S3DVertex);
-        total += vertexMapping_.capacity() * sizeof(VertexMapping);
+        total += vertexMapping_.capacity() * sizeof(VertexMappingList);
+        for (const auto& list : vertexMapping_) {
+            total += list.capacity() * sizeof(VertexMapping);
+        }
         total += vertexPieces_.capacity() * sizeof(VertexPiece);
         // animatedMesh_ is an SMesh with copies of base mesh buffers
         if (animatedMesh_) {
@@ -92,7 +110,7 @@ private:
     irr::scene::SMesh* animatedMesh_;                // Mesh with animated vertices
     std::vector<VertexPiece> vertexPieces_;          // Vertex-to-bone mapping
     std::vector<irr::video::S3DVertex> originalVertices_;  // Original vertices in order
-    std::vector<VertexMapping> vertexMapping_;       // Maps original index -> buffer location
+    std::vector<VertexMappingList> vertexMapping_;   // Maps original index -> ALL destination buffer locations (P08D-RETAKE)
     SkeletalAnimator animator_;
     irr::core::aabbox3df boundingBox_;
     mutable int lastAppliedFrame_;
