@@ -480,7 +480,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         OcclusionCullerConfig occConfig;
         occConfig.width = 64;
         occConfig.height = 32;
-        occConfig.maxOccluderRegions = 16;
+        occConfig.maxOccluderRegions = (config.occluderBudget > 0) ? config.occluderBudget : 16;  // P11: run-time override, -1 = prior hardcoded 16
         occConfig.minOccluderArea = 20.0f;
         occConfig.maxTrianglesPerRegion = 12;
         data->occlusionCuller = std::make_unique<SoftwareOcclusionCuller>(occConfig);

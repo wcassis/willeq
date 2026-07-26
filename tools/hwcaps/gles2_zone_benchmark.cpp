@@ -69,6 +69,9 @@ struct Options {
     bool reportLoadTime = false;
     // P04: flag-gated per-step RSS/pool sampling during zone load.
     bool loadMemAudit = false;
+    // P11: run-time occluder budget override (maxOccluderRegions). -1 =
+    // unset, matches the prior hardcoded default (16, same as production).
+    int occluderBudget = -1;
 
     // Benchmark
     int frames = 300;
@@ -314,6 +317,7 @@ static void printUsage(const char* prog) {
     printf("  --direct-gl          Bypass Irrlicht for entities (direct GL calls)\n");
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
+    printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: 16, matches production)\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
@@ -545,6 +549,14 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--merge-probe-csv") == 0 && i + 1 < argc) opts.mergeProbeCsv = argv[++i];
         else if (strcmp(argv[i], "--merge-zone-draws") == 0) opts.mergeZoneDraws = true;
         else if (strcmp(argv[i], "--baked-unmerged-zone-draws") == 0) opts.bakedUnmergedZoneDraws = true;
+        else if (strcmp(argv[i], "--occluder-budget") == 0 && i + 1 < argc) {
+            // P11: accept an integer, or "uncapped" (approximated as a very
+            // large region count -- the loader has fewer regions than this
+            // in every canonical zone, so it behaves as unlimited).
+            const char* v = argv[++i];
+            if (strcmp(v, "uncapped") == 0) opts.occluderBudget = 1 << 20;
+            else opts.occluderBudget = atoi(v);
+        }
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
         else if (strcmp(argv[i], "--lighting-model") == 0 && i + 1 < argc) {
@@ -1288,6 +1300,7 @@ int main(int argc, char** argv) {
     benchConfig.loadObjects = opts.loadObjects;
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
     benchConfig.loadMemAudit = opts.loadMemAudit;
+    benchConfig.occluderBudget = opts.occluderBudget;
 
     auto loadT0 = std::chrono::steady_clock::now();
     auto data = ZoneBench::loadZone(benchConfig);
