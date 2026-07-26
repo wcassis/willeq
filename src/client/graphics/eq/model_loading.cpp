@@ -1489,6 +1489,7 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
 
         // Erase animated mesh caches
         animatedMeshCache_.erase(key);
+        compositeAnimatedMeshCache_.erase(key);  // P08d
 
         auto vaIt = variantAnimatedMeshCache_.begin();
         while (vaIt != variantAnimatedMeshCache_.end()) {
@@ -1499,6 +1500,19 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
                 vaIt = variantAnimatedMeshCache_.erase(vaIt);
             } else {
                 ++vaIt;
+            }
+        }
+
+        // P08d: composite variant animated mesh cache
+        auto cvaIt = compositeVariantAnimatedMeshCache_.begin();
+        while (cvaIt != compositeVariantAnimatedMeshCache_.end()) {
+            uint64_t vkey = cvaIt->first;
+            uint16_t vRace = static_cast<uint16_t>(vkey >> 32);
+            uint8_t vGender = static_cast<uint8_t>((vkey >> 24) & 0xFF);
+            if (vRace == raceId && vGender == gender) {
+                cvaIt = compositeVariantAnimatedMeshCache_.erase(cvaIt);
+            } else {
+                ++cvaIt;
             }
         }
 
@@ -1575,7 +1589,8 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     stats.loadedModelCount = loadedModels_.size();
     stats.meshCacheCount = meshCache_.size();
     stats.variantMeshCacheCount = variantMeshCache_.size();
-    stats.animatedMeshCacheCount = animatedMeshCache_.size() + variantAnimatedMeshCache_.size();
+    stats.animatedMeshCacheCount = animatedMeshCache_.size() + variantAnimatedMeshCache_.size() +
+        compositeAnimatedMeshCache_.size() + compositeVariantAnimatedMeshCache_.size();  // P08d
 
     // --- Geometry and skeleton data in loadedModels_ ---
     auto calcSkeletonBytes = [](const std::shared_ptr<CharacterSkeleton>& skel) -> size_t {
@@ -1631,6 +1646,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     for (const auto& [key, mesh] : animatedMeshCache_)
         if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
     for (const auto& [key, mesh] : variantAnimatedMeshCache_)
+        if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
+    for (const auto& [key, mesh] : compositeAnimatedMeshCache_)  // P08d
+        if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
+    for (const auto& [key, mesh] : compositeVariantAnimatedMeshCache_)  // P08d
         if (mesh) stats.animatedMeshBytes += mesh->estimateMemoryUsage();
 
     // --- Irrlicht IMesh vertex/index buffers ---

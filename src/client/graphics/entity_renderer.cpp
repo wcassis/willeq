@@ -481,12 +481,58 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
             }
         }
 
+        // P08d: per-entity composite-entity eligibility gate. Composite meshes merge every
+        // body part into ONE mesh buffer/material, so per-slot equipment texture overrides
+        // and per-slot tints (applied post-build by matching individual body-part texture
+        // names on the node's materials — see RaceModelLoader::createAnimatedNodeWithEquipment)
+        // silently CANNOT apply to a composite mesh: there is only one material to match
+        // against, and its name is the composite sheet's name, not a body-part texture name.
+        // Ground truth (P08d review): per-slot equipment[] overrides via WearChange DO render
+        // in production today (the textureVariant==0 per-material swap path), so an entity
+        // with any per-slot override set must NEVER receive a composite mesh, or its gear
+        // would silently vanish. Per Will's 2026-07-25/26 strategy: players are ALWAYS
+        // ineligible this unit (even with zero equipment set — per-player runtime baking is
+        // deferred); only NPCs with a uniform texture variant and no per-slot data are
+        // eligible, and only if a composite sheet actually exists for their
+        // (race, gender, textureVariant) — checked at mesh-build time, not here.
+        bool hasEquipmentTint = false;
+        for (int i = 0; i < 9; i++) {
+            if (appearance.equipment_tint[i] != 0) {
+                hasEquipmentTint = true;
+                break;
+            }
+        }
+        // equipment[] slots 0-6 are body-part textures (Head, Chest, Arms, Wrist, Hands,
+        // Legs, Feet — EquipSlot enum order in equipment_textures.h); slots 7-8 are
+        // Primary/Secondary weapon models, attached as separate scene nodes, not body
+        // textures, so they don't affect composite-mesh eligibility.
+        bool hasBodyPartOverride = false;
+        for (int i = 0; i <= 6; i++) {
+            if (appearance.equipment[i] != 0) {
+                hasBodyPartOverride = true;
+                break;
+            }
+        }
+        bool compositeEligible = !isPlayer && !hasBodyPartOverride && !hasEquipmentTint;
+
+        // P08d: adoption tally for the per-zone-load INFO summary (see clearEntities()).
+        // Only tracked when the feature is actually configured on — counting it
+        // unconditionally would be pointless overhead/noise on every hardware tier that
+        // never sets enableCompositeEntities.
+        if (constrainedConfig_ && constrainedConfig_->enableCompositeEntities) {
+            ++compositeTotalCount_;
+            if (compositeEligible) {
+                ++compositeEligibleCount_;
+            }
+        }
+
         // Use full equipment appearance if any equipment is set
         if (hasEquipment || appearance.face != 0 || appearance.texture != 0) {
             animNode = raceModelLoader_->createAnimatedNodeWithEquipment(
-                raceId, gender, appearance, smgr_->getRootSceneNode());
+                raceId, gender, appearance, smgr_->getRootSceneNode(), -1, compositeEligible);
         } else {
-            animNode = raceModelLoader_->createAnimatedNode(raceId, gender, smgr_->getRootSceneNode());
+            animNode = raceModelLoader_->createAnimatedNode(
+                raceId, gender, smgr_->getRootSceneNode(), -1, compositeEligible);
         }
 
         auto nodeEnd = std::chrono::steady_clock::now();
@@ -2427,6 +2473,22 @@ void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, u
 }
 
 void EntityRenderer::clearEntities() {
+    // P08d: emit the per-zone-load composite-entity adoption summary before tearing
+    // down this zone's entities (plan B6). Only fires when the tally is non-empty (i.e.
+    // enableCompositeEntities was on and at least one entity was built).
+    if (compositeTotalCount_ > 0) {
+        size_t sheetHits = raceModelLoader_ ? raceModelLoader_->getCompositeSheetHits() : 0;
+        size_t sheetMisses = raceModelLoader_ ? raceModelLoader_->getCompositeSheetMisses() : 0;
+        LOG_INFO(MOD_GRAPHICS,
+                 "Composite entity adoption: {}/{} entities eligible, {} sheet hits, {} sheet misses",
+                 compositeEligibleCount_, compositeTotalCount_, sheetHits, sheetMisses);
+        compositeEligibleCount_ = 0;
+        compositeTotalCount_ = 0;
+        if (raceModelLoader_) {
+            raceModelLoader_->resetCompositeAdoptionStats();
+        }
+    }
+
     for (auto& [spawnId, visual] : entities_) {
         // Remove equipment nodes first
         if (visual.primaryEquipNode) {

@@ -57,6 +57,21 @@ RaceModelLoader::~RaceModelLoader() {
         }
     }
     variantAnimatedMeshCache_.clear();
+
+    // P08d: composite mesh caches
+    for (auto& [key, mesh] : compositeAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeAnimatedMeshCache_.clear();
+
+    for (auto& [key, mesh] : compositeVariantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeVariantAnimatedMeshCache_.clear();
 }
 
 void RaceModelLoader::setClientPath(const std::string& path) {
@@ -126,6 +141,20 @@ void RaceModelLoader::clearCache() {
     }
     variantAnimatedMeshCache_.clear();
 
+    // P08d: composite mesh caches
+    for (auto& [key, mesh] : compositeAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeAnimatedMeshCache_.clear();
+    for (auto& [key, mesh] : compositeVariantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeVariantAnimatedMeshCache_.clear();
+
     // Clear cached _chr.s3d files from other zones
     otherChrCaches_.clear();
     chrCacheLruOrder_.clear();
@@ -163,6 +192,21 @@ void RaceModelLoader::clearMeshCaches() {
         }
     }
     variantAnimatedMeshCache_.clear();
+
+    // P08d: composite mesh caches
+    for (auto& [key, mesh] : compositeAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeAnimatedMeshCache_.clear();
+
+    for (auto& [key, mesh] : compositeVariantAnimatedMeshCache_) {
+        if (mesh) {
+            mesh->drop();
+        }
+    }
+    compositeVariantAnimatedMeshCache_.clear();
 
     // Keep meshBuilder_->textureCache_ intact - the ITexture* pointers are still valid
     // in the Irrlicht driver (character textures are never removed during zone transitions).

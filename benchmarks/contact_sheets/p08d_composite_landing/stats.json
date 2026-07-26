@@ -1,0 +1,35 @@
+{
+  "10": {
+    "size": [
+      800,
+      600
+    ],
+    "total_pixels": 480000,
+    "differing_pixels": 3139,
+    "differing_pct": 0.654,
+    "max_channel_diff": 231,
+    "mean_abs_channel_diff": 0.43997
+  },
+  "30": {
+    "size": [
+      800,
+      600
+    ],
+    "total_pixels": 480000,
+    "differing_pixels": 2072,
+    "differing_pct": 0.4317,
+    "max_channel_diff": 232,
+    "mean_abs_channel_diff": 0.43646
+  },
+  "50": {
+    "size": [
+      800,
+      600
+    ],
+    "total_pixels": 480000,
+    "differing_pixels": 10962,
+    "differing_pct": 2.2837,
+    "max_channel_diff": 170,
+    "mean_abs_channel_diff": 1.11963
+  }
+}

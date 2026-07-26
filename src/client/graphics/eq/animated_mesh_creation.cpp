@@ -15,26 +15,31 @@
 namespace EQT {
 namespace Graphics {
 
-EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t gender) {
+EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t gender, bool compositeAllowed) {
     uint32_t key = makeCacheKey(raceId, gender);
 
-    // Check animated mesh cache first
-    auto cacheIt = animatedMeshCache_.find(key);
-    if (cacheIt != animatedMeshCache_.end()) {
+    // P08d: composite-allowed and composite-disallowed builds of the same race/gender
+    // are cached in separate maps (see race_model_loader.h) so an eligible NPC and an
+    // ineligible player never share a cached mesh.
+    auto& cache = compositeAllowed ? compositeAnimatedMeshCache_ : animatedMeshCache_;
+
+    // Check the appropriate animated mesh cache first
+    auto cacheIt = cache.find(key);
+    if (cacheIt != cache.end()) {
         return cacheIt->second;
     }
 
     // Ensure the model is loaded (this populates modelData with raw geometry)
     irr::scene::IMesh* staticMesh = getMeshForRace(raceId, gender);
     if (!staticMesh) {
-        animatedMeshCache_[key] = nullptr;
+        cache[key] = nullptr;
         return nullptr;
     }
 
     // Get the model data
     auto modelData = getRaceModelData(raceId, gender);
     if (!modelData) {
-        animatedMeshCache_[key] = nullptr;
+        cache[key] = nullptr;
         return nullptr;
     }
 
@@ -140,13 +145,13 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
 
     if (!modelData->skeleton || modelData->skeleton->animations.empty()) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No animation data for race {} - using static mesh", raceId);
-        animatedMeshCache_[key] = nullptr;
+        cache[key] = nullptr;
         return nullptr;
     }
 
     if (!modelData->rawGeometry) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No raw geometry for race {} - using static mesh", raceId);
-        animatedMeshCache_[key] = nullptr;
+        cache[key] = nullptr;
         return nullptr;
     }
 
@@ -154,32 +159,45 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     // This is critical - animated meshes need the original vertex positions
     irr::scene::IMesh* rawMesh = nullptr;
 
-    // If composite data is available, build single-buffer mesh with remapped UVs
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeData={} compositeBmpPath='{}' meshBuilder_={}",
-             raceId, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
-    if (modelData->compositeData && !modelData->compositeBmpPath.empty() && meshBuilder_) {
+    // If composite data is available AND this call is composite-eligible (P08d gate),
+    // build single-buffer mesh with remapped UVs. compositeAllowed=false forces the
+    // multi-buffer path below unconditionally, regardless of whether a sheet exists.
+    // P08d: downgraded to LOG_DEBUG (was LOG_INFO) — this fires once per entity mesh
+    // build, which would spam production logs continuously once composite entities are
+    // enabled. The per-zone-load adoption summary (EntityRenderer::clearEntities) is the
+    // intended INFO-level signal (plan B6).
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeAllowed={} compositeData={} compositeBmpPath='{}' meshBuilder_={}",
+             raceId, compositeAllowed, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
+    if (compositeAllowed && modelData->compositeData && !modelData->compositeBmpPath.empty() && meshBuilder_) {
         // compositeBmpPath holds the EQE1 entry name (e.g., "hum_hs_def_0_0")
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: calling getOrLoadTexture('{}')",
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: calling getOrLoadTexture('{}')",
                  raceId, modelData->compositeBmpPath);
         irr::video::ITexture* compositeTexture = meshBuilder_->getOrLoadTexture(modelData->compositeBmpPath);
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeTexture={} ({})",
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: compositeTexture={} ({})",
                  raceId, (bool)compositeTexture,
                  compositeTexture ? compositeTexture->getName().getPath().c_str() : "null");
         if (compositeTexture) {
             rawMesh = buildCompositeMeshFromGeometry(
                 modelData->rawGeometry, compositeTexture, *modelData->compositeData);
             if (rawMesh) {
-                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Built composite animated mesh for race {} ({} buffers)",
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Built composite animated mesh for race {} ({} buffers)",
                           raceId, rawMesh->getMeshBufferCount());
+                ++compositeSheetHits_;  // P08d adoption tracking
             } else {
                 LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: buildCompositeMeshFromGeometry returned null for race {}", raceId);
+                ++compositeSheetMisses_;  // P08d adoption tracking
             }
         } else {
             LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Composite texture not yet uploaded for race {} — falling back to multi-buffer", raceId);
+            ++compositeSheetMisses_;  // P08d adoption tracking
         }
     } else {
-        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: composite path NOT taken (compositeData={} bmpPath='{}' meshBuilder={})",
-                 raceId, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
+        if (compositeAllowed) {
+            // Composite-eligible but no sheet available for this race/gender — a miss.
+            ++compositeSheetMisses_;  // P08d adoption tracking
+        }
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::getAnimatedMeshForRace race={}: composite path NOT taken (compositeAllowed={} compositeData={} bmpPath='{}' meshBuilder={})",
+                 raceId, compositeAllowed, (bool)modelData->compositeData, modelData->compositeBmpPath, (bool)meshBuilder_);
     }
 
     // Fall back to standard multi-buffer mesh
@@ -190,7 +208,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     }
     if (!rawMesh) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Failed to build raw mesh for race {}", raceId);
-        animatedMeshCache_[key] = nullptr;
+        cache[key] = nullptr;
         return nullptr;
     }
 
@@ -208,7 +226,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     // Apply initial pose (this will transform vertices using bone data)
     animMesh->applyAnimation();
 
-    animatedMeshCache_[key] = animMesh;
+    cache[key] = animMesh;
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Created animated mesh for race {} with {} animations, {} vertex pieces, {} texture buffers",
               raceId, modelData->skeleton->animations.size(), modelData->vertexPieces.size(), rawMesh->getMeshBufferCount());
@@ -218,8 +236,9 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
 
 EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, uint8_t gender,
                                                               irr::scene::ISceneNode* parent,
-                                                              irr::s32 id) {
-    EQAnimatedMesh* animMesh = getAnimatedMeshForRace(raceId, gender);
+                                                              irr::s32 id,
+                                                              bool compositeAllowed) {
+    EQAnimatedMesh* animMesh = getAnimatedMeshForRace(raceId, gender, compositeAllowed);
     if (!animMesh) {
         return nullptr;
     }
@@ -254,11 +273,12 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
 EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithAppearance(uint16_t raceId, uint8_t gender,
                                                                             uint8_t headVariant, uint8_t bodyVariant,
                                                                             irr::scene::ISceneNode* parent,
-                                                                            irr::s32 id) {
-    EQAnimatedMesh* animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, bodyVariant);
+                                                                            irr::s32 id,
+                                                                            bool compositeAllowed) {
+    EQAnimatedMesh* animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, bodyVariant, 0, compositeAllowed);
     if (!animMesh) {
         // Fall back to default appearance
-        return createAnimatedNode(raceId, gender, parent, id);
+        return createAnimatedNode(raceId, gender, parent, id, compositeAllowed);
     }
 
     // Use parent's scene manager if provided, otherwise use our default smgr_
@@ -290,7 +310,8 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithAppearance(uint1
 EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16_t raceId, uint8_t gender,
                                                                            const EntityAppearance& appearance,
                                                                            irr::scene::ISceneNode* parent,
-                                                                           irr::s32 id) {
+                                                                           irr::s32 id,
+                                                                           bool compositeAllowed) {
     // Appearance fields:
     // - helm: Head mesh variant for NPCs (selects HE01, HE02, etc.)
     // - texture: Body armor texture for NPCs (0=naked, 1-4=armor, 11-16=robes)
@@ -324,23 +345,23 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
 
     // First try to get the base animated mesh with head/body/texture variants
     // The texture variant is passed to apply equipment texture overrides during mesh building
-    EQAnimatedMesh* animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, bodyVariant, textureVariant);
+    EQAnimatedMesh* animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, bodyVariant, textureVariant, compositeAllowed);
 
     // If robe body variant (01) not found, fall back to default body mesh with robe textures
     if (!animMesh && bodyVariant == 1) {
         LOG_DEBUG(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: Robe body variant 01 not found for race {}, using default body with robe textures", raceId);
-        animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, 0, textureVariant);
+        animMesh = getAnimatedMeshWithAppearance(raceId, gender, headVariant, 0, textureVariant, compositeAllowed);
     }
 
     // If head variant not found (e.g., SKEHE01 doesn't exist), fall back to head variant 0
     if (!animMesh && headVariant > 0) {
         LOG_DEBUG(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: Head variant {} not found for race {}, falling back to head variant 0", (int)headVariant, raceId);
-        animMesh = getAnimatedMeshWithAppearance(raceId, gender, 0, bodyVariant, textureVariant);
+        animMesh = getAnimatedMeshWithAppearance(raceId, gender, 0, bodyVariant, textureVariant, compositeAllowed);
     }
 
     // Final fallback to default mesh (no robe textures)
     if (!animMesh) {
-        animMesh = getAnimatedMeshForRace(raceId, gender);
+        animMesh = getAnimatedMeshForRace(raceId, gender, compositeAllowed);
     }
 
     if (!animMesh) {

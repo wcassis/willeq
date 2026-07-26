@@ -215,18 +215,35 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariants(uint16_t raceId, uint8_
 
 EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, uint8_t gender,
                                                                 uint8_t headVariant, uint8_t bodyVariant,
-                                                                uint8_t textureVariant) {
+                                                                uint8_t textureVariant,
+                                                                bool compositeAllowed) {
     // For non-default variants, use variant cache (includes texture variant now)
     if (headVariant == 0 && bodyVariant == 0 && textureVariant == 0) {
-        return getAnimatedMeshForRace(raceId, gender);
+        return getAnimatedMeshForRace(raceId, gender, compositeAllowed);
     }
+
+    // P08d: composite sheets only exist for the default body/head geometry (headVariant==0,
+    // bodyVariant==0) — entity_composite_builder bakes texture variants of the base mesh
+    // only, never a distinct mesh (robe body, alternate head). A uniform-texture-variant
+    // NPC (e.g. appearance.texture=2, chain armor, no per-slot overrides) reaches this
+    // function with headVariant==0, bodyVariant==0, textureVariant!=0 — eligible for a
+    // composite lookup keyed by (race, gender, textureVariant), which the pre-P08d code
+    // never attempted (it only ever checked compositeData for textureVariant==0, via the
+    // getAnimatedMeshForRace delegation above). Any other combination (headVariant!=0 or
+    // bodyVariant!=0) falls straight through to the existing multi-buffer path, unchanged.
+    bool tryVariantComposite = compositeAllowed && headVariant == 0 && bodyVariant == 0 &&
+                                textureVariant != 0 && !compositeEntityPath_.empty() && meshBuilder_;
 
     // Include texture variant in cache key
     uint64_t key = makeVariantCacheKey(raceId, gender, headVariant, bodyVariant, textureVariant);
 
-    // Check variant animated mesh cache first
-    auto cacheIt = variantAnimatedMeshCache_.find(key);
-    if (cacheIt != variantAnimatedMeshCache_.end()) {
+    // Composite-eligible and non-eligible builds of the same variant key are cached
+    // separately (mirrors getAnimatedMeshForRace's split — see race_model_loader.h).
+    auto& variantCache = tryVariantComposite ? compositeVariantAnimatedMeshCache_ : variantAnimatedMeshCache_;
+
+    // Check the appropriate variant animated mesh cache first
+    auto cacheIt = variantCache.find(key);
+    if (cacheIt != variantCache.end()) {
         return cacheIt->second;
     }
 
@@ -246,19 +263,19 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
 
     if (!modelData) {
         if (!loadModelFromGlobalChrWithVariantsForAnimation(raceId, gender, headVariant, bodyVariant)) {
-            variantAnimatedMeshCache_[key] = nullptr;
+            variantCache[key] = nullptr;
             return nullptr;
         }
         std::lock_guard<std::mutex> lock(variantModelsMutex_);
         auto modelIt = variantModels_.find(modelKey);
         if (modelIt == variantModels_.end()) {
-            variantAnimatedMeshCache_[key] = nullptr;
+            variantCache[key] = nullptr;
             return nullptr;
         }
         modelData = modelIt->second;
     }
     if (!modelData) {
-        variantAnimatedMeshCache_[key] = nullptr;
+        variantCache[key] = nullptr;
         return nullptr;
     }
 
@@ -266,23 +283,66 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
     if (!modelData->skeleton || modelData->skeleton->animations.empty()) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No animation data for race {} variant (head={}, body={}) - falling back to default",
                   raceId, (int)headVariant, (int)bodyVariant);
-        variantAnimatedMeshCache_[key] = nullptr;
+        variantCache[key] = nullptr;
         return nullptr;
     }
 
     if (!modelData->rawGeometry) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No raw geometry for race {} variant - falling back to default", raceId);
-        variantAnimatedMeshCache_[key] = nullptr;
+        variantCache[key] = nullptr;
         return nullptr;
     }
 
-    // Build mesh from RAW (unskinned) geometry for animation
-    // Pass texture variant and race code for equipment texture override
-    irr::scene::IMesh* rawMesh = buildMeshFromGeometry(modelData->rawGeometry, modelData->textures,
-                                                        textureVariant, modelData->raceName);
+    // Build mesh from RAW (unskinned) geometry for animation.
+    // P08d: composite-eligible uniform-texture-variant NPCs (tryVariantComposite) try the
+    // pre-baked composite sheet for this (race, gender, textureVariant) FIRST. Falls back
+    // to the existing per-slot-capable multi-buffer build (byte-identical to pre-P08d) if
+    // no sheet exists or the texture isn't uploaded yet — same fallback discipline as
+    // getAnimatedMeshForRace's default-variant composite path.
+    irr::scene::IMesh* rawMesh = nullptr;
+    if (tryVariantComposite) {
+        std::string modelName = modelData->raceName;
+        std::transform(modelName.begin(), modelName.end(), modelName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        // entity_composite_builder output naming: {modelname}_0_{variant}.json/.eqe1
+        // (gender is always folded into modelName, so the middle field is always "0" —
+        // same convention as preloadModelData's default-variant composite lookup).
+        std::string compositeBaseName = modelName + "_0_" + std::to_string(textureVariant);
+        std::string jsonPath = compositeEntityPath_ + "/" + compositeBaseName + ".json";
+        CompositeTextureData compositeData;
+        if (compositeData.loadFromJson(jsonPath)) {
+            irr::video::ITexture* compositeTexture = meshBuilder_->getOrLoadTexture(compositeBaseName);
+            if (compositeTexture) {
+                rawMesh = buildCompositeMeshFromGeometry(modelData->rawGeometry, compositeTexture, compositeData);
+                if (rawMesh) {
+                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Built composite variant animated mesh for race {} (head={}, body={}, texture={}, {} buffers)",
+                             raceId, (int)headVariant, (int)bodyVariant, (int)textureVariant, rawMesh->getMeshBufferCount());
+                    ++compositeSheetHits_;  // P08d adoption tracking
+                } else {
+                    LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: buildCompositeMeshFromGeometry returned null for race {} variant texture {}", raceId, (int)textureVariant);
+                    ++compositeSheetMisses_;  // P08d adoption tracking
+                }
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: composite texture '{}' not yet uploaded — falling back to multi-buffer for race {} variant texture {}",
+                          compositeBaseName, raceId, (int)textureVariant);
+                ++compositeSheetMisses_;  // P08d adoption tracking
+            }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: no composite sheet at {} — falling back to multi-buffer for race {} variant texture {}",
+                      jsonPath, raceId, (int)textureVariant);
+            ++compositeSheetMisses_;  // P08d adoption tracking
+        }
+    }
+
+    // Fall back to standard multi-buffer mesh (pass texture variant and race code for
+    // equipment texture override — unchanged from pre-P08d)
+    if (!rawMesh) {
+        rawMesh = buildMeshFromGeometry(modelData->rawGeometry, modelData->textures,
+                                         textureVariant, modelData->raceName);
+    }
     if (!rawMesh) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Failed to build raw mesh for race {} variant", raceId);
-        variantAnimatedMeshCache_[key] = nullptr;
+        variantCache[key] = nullptr;
         return nullptr;
     }
 
@@ -299,7 +359,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
     // Apply initial pose
     animMesh->applyAnimation();
 
-    variantAnimatedMeshCache_[key] = animMesh;
+    variantCache[key] = animMesh;
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Created variant animated mesh for race {} (head={}, body={}, texture={}) with {} animations",
               raceId, (int)headVariant, (int)bodyVariant, (int)textureVariant, modelData->skeleton->animations.size());

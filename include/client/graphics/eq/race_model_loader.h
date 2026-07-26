@@ -101,33 +101,51 @@ public:
 
     // Get an animated mesh for a specific race/gender
     // Returns nullptr if not found or no animation data available
-    EQAnimatedMesh* getAnimatedMeshForRace(uint16_t raceId, uint8_t gender = 0);
+    // compositeAllowed (P08d): per-entity eligibility gate for the composite-texture-sheet
+    // mesh path. Defaults to true so every EXISTING caller (model_viewer, the composite
+    // audit tool, the P08c benchmark tools) keeps its prior (dormant-unless-config-enabled)
+    // behavior unchanged. The production entity path (entity_renderer.cpp) is the only
+    // caller that explicitly passes false for ineligible entities (players, NPCs with
+    // per-slot equipment overrides or tints) — see EntityRenderer::buildEntityMesh.
+    // Composite-allowed and composite-disallowed builds for the SAME race/gender are
+    // cached in SEPARATE maps (compositeAnimatedMeshCache_ vs animatedMeshCache_) so an
+    // eligible NPC and an ineligible player of the same race never share a cached mesh.
+    EQAnimatedMesh* getAnimatedMeshForRace(uint16_t raceId, uint8_t gender = 0, bool compositeAllowed = true);
 
     // Get an animated mesh with appearance-based variant selection
     // headVariant: which head mesh to use (0 = default)
     // bodyVariant: which body mesh to use (0 = default)
     // textureVariant: equipment texture (0=naked, 1=leather, 2=chain, 3=plate, 10+=robes)
+    // compositeAllowed: see getAnimatedMeshForRace. Only consulted when headVariant==0 &&
+    // bodyVariant==0 (entity_composite_builder only bakes the default body mesh geometry;
+    // head/body mesh variants are structurally ineligible for a composite sheet).
     EQAnimatedMesh* getAnimatedMeshWithAppearance(uint16_t raceId, uint8_t gender,
                                                    uint8_t headVariant, uint8_t bodyVariant,
-                                                   uint8_t textureVariant = 0);
+                                                   uint8_t textureVariant = 0,
+                                                   bool compositeAllowed = true);
 
     // Create an animated mesh scene node for a race
     // The caller is responsible for adding the node to the scene
     EQAnimatedMeshSceneNode* createAnimatedNode(uint16_t raceId, uint8_t gender,
                                                   irr::scene::ISceneNode* parent = nullptr,
-                                                  irr::s32 id = -1);
+                                                  irr::s32 id = -1,
+                                                  bool compositeAllowed = true);
 
     // Create an animated mesh scene node with appearance-based variants
     EQAnimatedMeshSceneNode* createAnimatedNodeWithAppearance(uint16_t raceId, uint8_t gender,
                                                                uint8_t headVariant, uint8_t bodyVariant,
                                                                irr::scene::ISceneNode* parent = nullptr,
-                                                               irr::s32 id = -1);
+                                                               irr::s32 id = -1,
+                                                               bool compositeAllowed = true);
 
     // Create an animated mesh scene node with full equipment appearance
+    // compositeAllowed (P08d): the production per-entity eligibility gate. Callers other
+    // than entity_renderer.cpp should leave this at its default (true).
     EQAnimatedMeshSceneNode* createAnimatedNodeWithEquipment(uint16_t raceId, uint8_t gender,
                                                               const EntityAppearance& appearance,
                                                               irr::scene::ISceneNode* parent = nullptr,
-                                                              irr::s32 id = -1);
+                                                              irr::s32 id = -1,
+                                                              bool compositeAllowed = true);
 
     // Get race model data
     std::shared_ptr<RaceModelData> getRaceModelData(uint16_t raceId, uint8_t gender = 0);
@@ -215,6 +233,16 @@ public:
         size_t irrlichtMeshBytes = 0;      // Irrlicht IMesh vertex/index buffers in mesh caches
     };
     MemoryStats getMemoryStats() const;
+
+    // P08d: composite sheet hit/miss counters, tracked across all composite-ALLOWED mesh
+    // build attempts (getAnimatedMeshForRace / getAnimatedMeshWithAppearance) since the
+    // last reset. "Hit" = a pre-baked sheet was found and successfully built into a
+    // composite mesh; "miss" = compositeAllowed was true but no usable sheet existed
+    // (missing JSON, texture not yet uploaded, or build failure) and the call fell back
+    // to the multi-buffer path. Used for the per-zone-load adoption summary log.
+    size_t getCompositeSheetHits() const { return compositeSheetHits_; }
+    size_t getCompositeSheetMisses() const { return compositeSheetMisses_; }
+    void resetCompositeAdoptionStats() { compositeSheetHits_ = 0; compositeSheetMisses_ = 0; }
 
     // Reference counting for mesh cache eviction
     // Call addMeshRef when creating an entity with this race/gender
@@ -356,11 +384,24 @@ private:
     // Cache of Irrlicht meshes (separate from model data for memory management)
     std::map<uint32_t, irr::scene::IMesh*> meshCache_;
 
-    // Cache of animated meshes
+    // Cache of animated meshes (non-composite / multi-buffer builds; also the fallback
+    // destination when a composite-allowed build has no sheet available)
     std::map<uint32_t, EQAnimatedMesh*> animatedMeshCache_;
 
     // Cache of variant animated meshes (key includes head/body variant)
     std::map<uint64_t, EQAnimatedMesh*> variantAnimatedMeshCache_;
+
+    // P08d: composite-mesh caches, kept SEPARATE from animatedMeshCache_/
+    // variantAnimatedMeshCache_ so the same race/gender/variant can have both a composite
+    // build (for eligible entities) and a multi-buffer build (for ineligible entities)
+    // cached side by side without one clobbering the other. Same key schemes as their
+    // non-composite counterparts (makeCacheKey / makeVariantCacheKey).
+    std::map<uint32_t, EQAnimatedMesh*> compositeAnimatedMeshCache_;
+    std::map<uint64_t, EQAnimatedMesh*> compositeVariantAnimatedMeshCache_;
+
+    // P08d: composite sheet adoption counters (see getCompositeSheetHits/Misses above)
+    size_t compositeSheetHits_ = 0;
+    size_t compositeSheetMisses_ = 0;
 
     // Cache for variant-specific meshes (key includes head/body variant)
     // variantModels_ is written by worker thread (preloadVariantModel) and read by

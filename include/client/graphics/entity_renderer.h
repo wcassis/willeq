@@ -543,6 +543,11 @@ private:
     // Race model loader for actual 3D models
     std::unique_ptr<RaceModelLoader> raceModelLoader_;
 
+    // P08d: composite-entity adoption tally for the CURRENT zone (since the last
+    // clearEntities() call). Logged as one INFO line and reset in clearEntities().
+    size_t compositeEligibleCount_ = 0;
+    size_t compositeTotalCount_ = 0;
+
     // Equipment model loader for weapons/items
     std::unique_ptr<EquipmentModelLoader> equipmentModelLoader_;
 
