@@ -1,0 +1,92 @@
+P10 — cross-region zone draw merge production landing: in-app A/B results
+============================================================================
+
+Setup: real x86 GLES2 client (build-gles2/bin/willeq, EGL surfaceless, H01),
+eqemu server automation (scripts/eqemu/up.sh, H03 sanctioned flow), account
+willeq_test / character Testchar relocated to befallen (zone_id 36) via a
+documented DB write (standard GM-relocation operation, H03-sanctioned:
+"MAY start/stop containers and modify the database"). Entity build disabled
+via config/debug.json's skipEntityBuild (temporary, reverted before commit)
+to work around an unrelated pre-existing data-completeness bug (a befallen
+NPC's equipped item has no item_models.json entry, aborting the sequential
+loader) — out of scope for this unit (zone geometry merge only; entities
+are out of scope per the P09 prototype and this landing).
+
+3 poses in befallen, all via /screenshot + /mergedraws toggled at runtime.
+For each pose: capture flag-off, toggle on, capture flag-on, toggle off,
+capture flag-off again (repeatability/byte-identity check).
+
+Diff methodology: decoded-pixel RGB compare (like scripts/ci/visual_gate.py).
+Two numbers reported per pose:
+  - total_diff_px: raw diff count including the on-screen chat-log/HUD
+    overlay (which legitimately differs between captures because the
+    /mergedraws toggle itself prints a chat line, e.g. "Zone draw merge:
+    ENABLED" — unrelated to 3D rendering correctness).
+  - scene_only_diff_px / scene_max_delta: same diff with a crude rectangular
+    mask excluding the known HUD/chat-text/hotbar regions (top-left status
+    box, bottom-left chat log, bottom hotbar strip) — isolates the actual
+    3D zone-geometry rendering.
+
+Pose 1 (spawn point, crypt hallway — real, populated 3D geometry in view):
+  off vs on:        total_diff_px=795   scene_only_diff_px=94  scene_max_delta=1
+  off vs off2 (repeat, flag stays off): scene_only_diff_px=0   scene_max_delta=0
+
+Pose 2 (moved to 35,-60,3 — ceiling/upper wall of same room in view):
+  off vs on:        total_diff_px=705   scene_only_diff_px=51  scene_max_delta=1
+  off vs off2 (repeat): scene_only_diff_px=51  scene_max_delta=1
+
+Pose 3 (moved to 20,-82,3 — camera facing an empty/void area, no meaningful
+  zone geometry in view; diff dominated by chat-log text overflowing the
+  crude UI-exclusion mask, not scene content):
+  off vs on:        total_diff_px=6935  scene_only_diff_px=0   scene_max_delta=0
+  off vs off2 (repeat): scene_only_diff_px=107 scene_max_delta=254 (chat-text-region
+    overflow past the mask boundary, confirmed by visual inspection — this pose has
+    no rendered geometry at all, see diff_overlay_pose3.png)
+
+Verdict: at every pose with actual zone geometry in view (poses 1-2), the
+merged-vs-unmerged diff is EXACTLY the P09c-documented FP class — scattered
+single-pixel, max_delta<=1, no structural/silhouette/texture difference
+(visually confirmed, see diff_overlay_pose1.png / diff_overlay_pose2.png:
+isolated red dots on ceiling/wall surfaces, same content otherwise). No
+STOP-triggering structural diff was observed. Flag-off repeatability
+(off vs off2) is likewise clean: pose 1 is byte-identical (0 diff) in the
+scene region; pose 2's small 51px/max_delta=1 repeat-diff is NOT
+merge-related (same magnitude appears in ITS OWN off-vs-off2, i.e. before
+merge is ever toggled on) — attributed to an unrelated small source of
+frame-to-frame rendering nondeterminism (not investigated further; out of
+scope, magnitude is negligible: 0.01% of frame, 1 LSB).
+
+Draw-count evidence (debug-level log, same pose as pose 1, sampled every
+120 frames via the production adoption-line):
+  merge=off: unmerged_would_be_draws=11 actual_draws=11 (0.0% reduction)
+  merge=ON:  unmerged_would_be_draws=11 actual_draws=8  (27.3% reduction)
+  "[mergedraws] built 9 texture buckets (9 generations, 1729050 bytes),
+   0 nodes skipped, 0 non-EVT_STANDARD buffers skipped"
+This is a small zone-fragment sample (11 draws, a single crypt room) — not
+comparable in magnitude to the P09c Pi benchmark numbers (which measured
+whole befallen zone traversal, 253 unmerged zone draws avg, 96.9% reduction);
+it confirms the production mechanism activates and reduces draws correctly,
+it is not a restatement of the benchmark's KPI.
+
+Two real bugs found and fixed during this verification (both narrow,
+independent of the merge design itself):
+1. IrrlichtRenderer::saveScreenshot() returned garbage/noise pixels under
+   the x86 EGL-surfaceless dev build (H01) because its glReadPixels-based
+   capture path was gated on config_.constrainedConfig.useDRM, which is
+   false for this build (no --drm flag). Fixed by widening the gate to
+   `useDRM || driver_->getDriverType() == EDT_OGLES2` (irrlicht_renderer.cpp).
+2. Application::updateScript() (the --script tour mechanism) ran on the GAME
+   thread and called m_renderer->processSlashCommand() directly — a GL-context
+   thread-safety violation (glReadPixels executed without the EGL context
+   current on that thread), producing deterministic-but-garbage screenshot
+   pixels rather than a crash. Fixed by routing unrecognized script commands
+   through the existing GameEventType::RendererCommand bridge queue (drained
+   on the render thread), the same path EverQuest's own chat-triggered slash
+   commands already use (application.cpp).
+Also found and fixed a bug in this unit's OWN merge-activation gate (see
+refactor/P10_merge_production_landing.md Review): comparing regionMeshNodes_
+against the raw BSP region count instead of the mesh cache's own registered
+count (or, when the cache is inactive, just "loading complete") meant merge
+never activated in the first pass of this A/B (regions without geometry are
+correctly never given mesh nodes, so the raw BSP count is never reached).
+Fixed before any evidence in this results file was captured.
