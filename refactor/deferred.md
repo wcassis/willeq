@@ -144,8 +144,29 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
        before playing non-golden zones with composites); (c) several new
        race codes lack numeric EQ race-ID mappings in race_codes.cpp
        (found in passing, unfixed).
-     - **Animated-path crumple — P12 (2026-07-26) bisected, STOP fired,
-       ESCALATED IN SEVERITY**: ownership verdict is SHARED PRODUCTION
+     - **Animated-path crumple — RESOLVED by P12b (2026-07-27)**: the
+       benchmark uploaded each entity's per-instance animated
+       instanceMesh_ as a STATIC GLES2 hardware buffer before the first
+       pose; COpenGLES2Driver::drawMeshBuffer() draws HWBufferMap
+       entries from the frozen VBO snapshot forever (never checks
+       setDirty/ChangedID) → CPU animation silently discarded.
+       Benchmark-only (differential-tested); fix = drop the HW-buffer
+       registration, use production's CPU-vertex-array path. Animated
+       benchmark evidence is TRUSTWORTHY again. VertexMapping
+       one-to-many patch LANDED (loop closed, byte-identical rendering,
+       zero regressions); ModelAnimatesProperly replaced with a running
+       headless variant + test_inventory_model_view wired into ctest
+       (suite now 1235). NEW follow-ups: (a) **driver footgun**:
+       COpenGLES2Driver static HW buffers never honor dirty updates —
+       document/guard so production never HW-buffers an animated mesh;
+       (b) **Z35 seam diff under animation**: composite vs multi-buffer
+       animated = matching pose/silhouette but 17-29% px at LOW
+       magnitude (mean ~0.1-2/255) localized to a texture-atlas seam —
+       needs its own small unit (likely same gutter/padding class as
+       the P08d static bleed suspicion); (c) **P11b**: true composite
+       perf magnitude on Pi (animated e205 replay) — P12b's optional
+       phase was skipped.
+       P12's original escalation record:** ownership verdict is SHARED PRODUCTION
        CODE (RaceModelLoader/EQAnimatedMesh/SkeletalAnimator) — the
        benchmark drives the identical path with the identical idiom;
        "production animates fine" is UNVERIFIED belief (the one test
