@@ -48,7 +48,7 @@
       "textureMemoryBytes": 67108864,
       "framebufferMemoryBytes": 10485760,
       "enableCompositeEntities": true,
-      "compositeEntityPath": "/opt/willeq/composite_entities",
+      "compositeEntityPath": "/mnt/projects/EverQuest_ETC1",
       "enableMipmaps": true,
       "enableCompressedTextures": false,
       "enableNPOT": true,

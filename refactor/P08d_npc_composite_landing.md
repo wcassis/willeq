@@ -854,3 +854,17 @@ sheet structural integrity sweep) is untouched — independent of this bug.
   rosters until the builder-extension unit lands (sheets for
   zone-specific archives), scaling toward P08c's measured 33/56% p95
   win as coverage rises.
+
+### Orchestrator addendum 2 (2026-07-26): deployment path corrected to NFS
+
+Will's direction supersedes the local-copy deployment recommendation
+above: on the Pi, the NFS mount is FASTER than the local SD card; the
+only usable local mount is /tmp (tmpfs, very limited). Game files live
+on NFS; the design budget is NFS response latency, which the existing
+no-I/O-on-render-thread architecture already accommodates (composite
+JSON/sheet loading runs on the loading thread / background pool, not the
+render thread; the /tmp-only rule applies to WRITES during timed
+benchmark runs, not asset reads). `compositeEntityPath` in the orangepi
+preset now points at `/mnt/projects/EverQuest_ETC1` — valid on both the
+Pi and the dev VM, zero deployment steps; composites are effective
+immediately wherever the preset is used.
