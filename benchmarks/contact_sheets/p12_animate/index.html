@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>P12 — benchmark animated-path geometry garbling, root-cause evidence</title>
+<style>
+  body { font-family: sans-serif; background: #111; color: #eee; margin: 2em; }
+  h1, h2 { color: #fff; }
+  .row { display: flex; flex-wrap: wrap; gap: 1.5em; margin-bottom: 2em; }
+  figure { margin: 0; background: #1c1c1c; padding: 0.75em; border-radius: 6px; }
+  figure img { max-width: 420px; display: block; border: 1px solid #444; }
+  figcaption { margin-top: 0.5em; font-size: 0.9em; color: #ccc; max-width: 420px; }
+  code { color: #9cf; }
+</style>
+</head>
+<body>
+<h1>P12 — root-cause evidence: benchmark's --animate scenegraph garbling</h1>
+<p>qeynos2, <code>--entities 6 --seed 42</code>, gles2-x86 llvmpipe under Xvfb. Static control uses the
+identical command minus <code>--animate</code>.</p>
+
+<h2>1. Static (no --animate) — correct reference</h2>
+<div class="row">
+  <figure><img src="static_f15.png"><figcaption>static_f15.png — far view, f15. Correctly formed, correctly
+  textured character silhouettes (small, distant).</figcaption></figure>
+  <figure><img src="static_closeup_f35.png"><figcaption>static_closeup_f35.png — --orbit-radius 15 close-up,
+  f35. A perfectly-formed barbarian: face paint, kilt, proportions all correct.</figcaption></figure>
+</div>
+
+<h2>2. Animated (--animate) — the crumple, reproduced</h2>
+<div class="row">
+  <figure><img src="animate_f15.png"><figcaption>animate_f15.png — same camera/entities as static_f15, only
+  --animate added. Entities render as small collapsed blobs, not recognizable figures.</figcaption></figure>
+  <figure><img src="animate_f25.png"><figcaption>animate_f25.png — f25. One entity is a flattened brown mass
+  lying on the ground — the "crumpled heap" the plan describes.</figcaption></figure>
+  <figure><img src="animate_closeup_f35.png"><figcaption>animate_closeup_f35.png — same close-up camera as
+  static_closeup_f35.png. The SAME barbarian is now a compact, folded blob: skin-tone mass topped with a
+  wedge of the plaid kilt texture. Geometry and texturing are otherwise intact (correct materials, just
+  wrong vertex positions).</figcaption></figure>
+  <figure><img src="animate_frame0_multi_race.png"><figcaption>animate_frame0_multi_race.png — frame 0 of a
+  10-frame run (before the per-frame OnAnimate loop even executes more than once). Already crumpled — three
+  different races' entities all show the same collapsed-blob symptom immediately, not something that
+  develops gradually over many frames.</figcaption></figure>
+</div>
+
+<h2>3. Prime suspect tested and eliminated</h2>
+<div class="row">
+  <figure><img src="animate_closeup_f35_with_vertexmapping_patch_applied.png"><figcaption>
+  animate_closeup_f35_with_vertexmapping_patch_applied.png — identical camera/frame/seed, with
+  <code>refactor/scratch/P08d_vertexmapping_one_to_many.patch</code> (the parked
+  VertexMapping&rarr;VertexMappingList one-to-many fix) applied and rebuilt. <b>Byte-for-byte pixel-identical</b>
+  to animate_closeup_f35.png (verified via PIL ImageChops diff: bbox=None, max diff=0, 0 differing pixels).
+  The UV-seam duplicate-vertex-freezing bug is real but is NOT the cause of this crumple.</figcaption></figure>
+</div>
+
+<p>See the P12 plan's Review section (<code>refactor/P12_animate_root_cause.md</code>) for the full
+bisection writeup, exclusions, and STOP-condition narrowing.</p>
+</body>
+</html>
