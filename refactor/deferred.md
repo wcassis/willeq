@@ -172,8 +172,24 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      (the benchmark's composite stand-in is not representative) + tier-2
      impact. Projected befallen p95 279.7 → ~187ms — real but NOT
      KPI-closing alone; lever #2 still needed after.
-  2. **Cross-region same-material zone draw merge — P09 (2026-07-25)
-     designed it, prototype BLOCKED on a rendering defect.** A-gate
+  2. **Cross-region zone draw merge — LANDED IN PRODUCTION by P10
+     (2026-07-26, fable; flag-gated mergeZoneDraws default OFF +
+     /mergedraws toggle; REDUCED shape per plan authorization: merge
+     active only when the zone is fully resident, permanent per-visit
+     fallback on first eviction — which covers ALL zones today because
+     ConstrainedMeshCache is NEVER CONSTRUCTED in production, see new
+     item below). In-app A/B on real x86 client vs eqemu: FP-class-only
+     diffs (scattered singles, max_delta<=1) at every geometry pose;
+     mechanism confirmed active (draw-count INFO line). Bonus fixes:
+     /screenshot debug command + EGL-surfaceless capture; a real
+     game/render-thread GL-context violation in --script dispatch.
+     PENDING: Will's bless + orangepi preset flip (mergeZoneDraws=true —
+     one-line commit at bless; recommend after a live Pi /mergedraws
+     session). Perf case = P09c benchmark numbers (befallen zone-only
+     p95 173.8→25.5ms). FUTURE follow-ups: full shared-VBO/eviction
+     reconciliation (unit-sized; needed only when lazy streaming gets
+     wired); zone objects remain unmerged (inspection-verified).
+     P09-series history for the record:** A-gate
      settled the architecture: per-frame client-side-index gather ("the
      1999 way") costs 0.147ms where N=1000 separate VBO draws cost
      59.17ms on Lima (~400x; streamed-IBO/coalescing also fine) — Lima
@@ -380,6 +396,18 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   its own golden/tier-2 re-bless. Will has conceptually endorsed
   radius-limited pp lighting ("what's stopping efficient light calculation
   in a radius around the player") — the remaining question is purely perf.
+
+## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
+
+- Exhaustive grep (verified independently by orchestrator): no
+  construction site exists for ConstrainedMeshCache anywhere in src/ —
+  the lazy/progressive region-mesh streaming documented in
+  src/client/graphics/CLAUDE.md ("mesh cache active → texture pixel
+  data retained", 24MB budget, eviction) is NOT wired into production;
+  regions are always built eagerly. Docs overstate reality; either wire
+  it (with the P10 full shared-VBO reconciliation) or trim the docs and
+  the dead conditional paths (renderer_zone_stream.cpp/renderer_zone_draw
+  guard on a pointer that is never non-null).
 
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
