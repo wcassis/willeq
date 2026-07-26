@@ -410,6 +410,40 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   radius-limited pp lighting ("what's stopping efficient light calculation
   in a radius around the player") — the remaining question is purely perf.
 
+## KPI status + the composite measurement gap (P11 synthesis, 2026-07-26)
+
+- **Stacked measurement (P11, befallen combined e205 canonical replay)**:
+  merge+composite-scenegraph = avg 54.66 / p95 65.93ms (15.2 fps p95) —
+  does NOT cross 30fps. BUT the composite half of the stack measured ~0%
+  because the benchmark's scenegraph route uses STATIC entities
+  (getMeshForRace), and composite meshes are built ONLY on the ANIMATED
+  path (getAnimatedMeshForRace → buildCompositeMeshFromGeometry, single
+  SMeshBuffer = 1 draw/entity — orchestrator-verified in code).
+  So: P08c's -33% (stand-in) unreliable; P11's ~0% (static scenegraph)
+  measured the wrong route; **the TRUE production composite magnitude
+  has never been measured and is gated on fixing the animated-path
+  crumple (P12b)**. Production's flipped flag is directionally real
+  (1 draw per animated entity) with unmeasured magnitude.
+- **Occluder budget: DEAD lever on befallen** (P11: +0.9-2.7% at 2x and
+  uncapped). Production knob exists
+  (occlusionMaxOccluderRegions, default 16) — one-line flip if another
+  zone ever shows headroom; do not spend more on this.
+- **Residual to 30fps** (at merge + static-entity dispatch): ~57-60%
+  submission (entity draws dominate), ~37-39% GPU sync. The entity
+  lever through the REAL animated path is the critical path.
+- **--all-zones sweep DONE** (P11 side deliverable): 120 zones, 191 new
+  sheets (477 total on NFS), 184s, 97 collisions logged, 39 failures
+  all sleeper (DR2_HS_DEF texture won't fit 2048) — audit clean.
+- Gate arbitration: P11's slot1 visual gate PASSED → P12's slot2
+  zero-source-diff foliage mismatch is environment-specific
+  (Xvfb-session suspected), not a gate regression.
+- **NEXT: P12b** — fix the animated-path crumple (bind-pose lead in the
+  P12 review), un-skip ModelAnimatesProperly, THEN re-measure the
+  stacked number through animated composite entities = the real KPI
+  verdict. Will's live-animation answer is load-bearing twice over
+  (crumple liveness + whether flipped composites render correctly in
+  play).
+
 ## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
 
 - Exhaustive grep (verified independently by orchestrator): no
