@@ -110,7 +110,7 @@ static void applyBoneTransformsToMeshImpl(
     const std::vector<AnimatedBoneState>& boneStates,
     const std::vector<VertexPiece>& vertexPieces,
     const std::vector<irr::video::S3DVertex>& originalVertices,
-    const std::vector<VertexMappingList>& vertexMapping,
+    const std::vector<VertexMapping>& vertexMapping,
     irr::scene::IMesh* baseMesh,
     float extraRotCos,
     float extraRotSin)
@@ -182,12 +182,13 @@ static void applyBoneTransformsToMeshImpl(
                 size_t vIdx = vertexIdx + i;
                 if (vIdx >= totalOrigVerts || vIdx >= vertexMapping.size()) break;
 
-                // P08D-RETAKE: a vertex shared across texture groups/UV seams may have
-                // MULTIPLE destinations (see VertexMappingList) -- compute the transform
-                // once, then write it to every duplicate so none are left frozen at bind
-                // pose. Empty list = unmapped vertex (skipped entirely), same as before.
-                const auto& mappings = vertexMapping[vIdx];
-                if (mappings.empty()) continue;
+                // Get the destination buffer and local index
+                const auto& mapping = vertexMapping[vIdx];
+                if (mapping.bufferIndex >= bufferCount) continue;
+
+                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
+                    destMesh->getMeshBuffer(mapping.bufferIndex));
+                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
 
                 // Get original vertex position and normal (in EQ Z-up coordinates)
                 const auto& srcVert = originalVertices[vIdx];
@@ -221,24 +222,15 @@ static void applyBoneTransformsToMeshImpl(
 
                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
                 float ix = px, iy = pz, iz = py;  // Irrlicht coords
+                dstBuffer->Vertices[mapping.localIndex].Pos.X = ix;
+                dstBuffer->Vertices[mapping.localIndex].Pos.Y = iy;
+                dstBuffer->Vertices[mapping.localIndex].Pos.Z = iz;
+                dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
+                dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
+                dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
 
-                for (const auto& mapping : mappings) {
-                    if (mapping.bufferIndex >= bufferCount) continue;
-
-                    irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
-                        destMesh->getMeshBuffer(mapping.bufferIndex));
-                    if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
-
-                    dstBuffer->Vertices[mapping.localIndex].Pos.X = ix;
-                    dstBuffer->Vertices[mapping.localIndex].Pos.Y = iy;
-                    dstBuffer->Vertices[mapping.localIndex].Pos.Z = iz;
-                    dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
-                    dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
-                    dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
-
-                    // Track bounding box inline — no second vertex pass needed
-                    updateBounds(mapping.bufferIndex, ix, iy, iz);
-                }
+                // Track bounding box inline — no second vertex pass needed
+                updateBounds(mapping.bufferIndex, ix, iy, iz);
             }
 
             vertexIdx += piece.count;
@@ -467,7 +459,7 @@ void EQAnimatedMesh::setOriginalVertices(const std::vector<irr::video::S3DVertex
     originalVertices_ = verts;
 }
 
-void EQAnimatedMesh::setVertexMapping(const std::vector<VertexMappingList>& mapping) {
+void EQAnimatedMesh::setVertexMapping(const std::vector<VertexMapping>& mapping) {
     vertexMapping_ = mapping;
 }
 

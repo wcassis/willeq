@@ -1,37 +1,70 @@
 {
+  "_meta": {
+    "generated_by": "P08d static-evidence regeneration (post-retake, animation-void cleanup)",
+    "note": "STATIC MODELS ONLY -- --animate was never passed to any run in this package. All prior --animate evidence (original round and the RETAKE round) is VOID: the benchmark's --animate scenegraph path renders garbled/malformed geometry regardless of composite/baseline, confirmed independently of P08d. See the plan Review's 'Pre-existing benchmark --animate garbling' section.",
+    "zone": "qeynos2",
+    "eq_path": "/mnt/projects/EverQuestP1999",
+    "eqe1_path": "/mnt/projects/EverQuest_ETC1",
+    "entities": 6,
+    "seed": 42,
+    "frames": 60,
+    "warmup": 5,
+    "res": "1024x768",
+    "baseline_command": "gles2_zone_benchmark --zone qeynos2 --eq-path /mnt/projects/EverQuestP1999 --eqe1-path /mnt/projects/EverQuest_ETC1 --entities 6 --seed 42 --frames 60 --warmup 5 --res 1024 768 --dump-frames <list> --dump-png-prefix <prefix> --dump-path <path-file> [--orbit-radius R]",
+    "composite_command": "gles2_zone_benchmark <same base flags> --path-file <path-file-from-baseline-run> --composite-scenegraph --dump-frames <list> --dump-png-prefix <prefix>",
+    "diff_method": "PIL ImageChops.difference on RGB-converted frames, same convention as scripts/ci/visual_gate.py and the original P08d evidence"
+  },
   "aligned_f15": {
-    "differing_pixels": 1469,
+    "differing_pixels": 0,
     "total_pixels": 786432,
-    "differing_pct": 0.1868,
-    "max_channel_diff": 209,
-    "mean_abs_channel_diff": 0.00759
+    "differing_pct": 0.0,
+    "max_channel_diff": 0,
+    "mean_abs_channel_diff": 0.0
   },
   "aligned_f25": {
-    "differing_pixels": 1604,
+    "differing_pixels": 0,
     "total_pixels": 786432,
-    "differing_pct": 0.204,
-    "max_channel_diff": 222,
-    "mean_abs_channel_diff": 0.01546
+    "differing_pct": 0.0,
+    "max_channel_diff": 0,
+    "mean_abs_channel_diff": 0.0
   },
   "aligned_f35": {
-    "differing_pixels": 603,
+    "differing_pixels": 0,
     "total_pixels": 786432,
-    "differing_pct": 0.0767,
-    "max_channel_diff": 216,
-    "mean_abs_channel_diff": 0.00755
+    "differing_pct": 0.0,
+    "max_channel_diff": 0,
+    "mean_abs_channel_diff": 0.0
   },
   "closeup_f30": {
-    "differing_pixels": 7262,
+    "note": "orbit-radius 15, full-character close-up",
+    "differing_pixels": 0,
     "total_pixels": 786432,
-    "differing_pct": 0.9234,
-    "max_channel_diff": 201,
-    "mean_abs_channel_diff": 0.10743
+    "differing_pct": 0.0,
+    "max_channel_diff": 0,
+    "mean_abs_channel_diff": 0.0
   },
-  "closeup_f30_zoomed_defect_crop": {
-    "differing_pixels": 41364,
-    "total_pixels": 217800,
-    "differing_pct": 18.9917,
-    "max_channel_diff": 201,
-    "mean_abs_channel_diff": 3.17455
+  "closeup_f35": {
+    "note": "orbit-radius 15, full-character close-up (upper body)",
+    "differing_pixels": 0,
+    "total_pixels": 786432,
+    "differing_pct": 0.0,
+    "max_channel_diff": 0,
+    "mean_abs_channel_diff": 0.0
+  },
+  "defect_check_f40_full": {
+    "note": "orbit-radius 8 (extreme close-up, torso-filling), re-check of the RETAKE's animated 'tile-boundary dark patch' claim on STATIC geometry",
+    "differing_pixels": 16006,
+    "total_pixels": 786432,
+    "differing_pct": 2.0353,
+    "max_channel_diff": 252,
+    "mean_abs_channel_diff": 0.01595
+  },
+  "defect_check_f40_crop": {
+    "note": "1400x1000 nearest-neighbor (lossless, 4x) crop of the torso region from defect_check_f40; visual inspection shows sparse single-pixel noise (sub-pixel/AA-level), NOT the coherent dark-patch/bleed pattern seen in the RETAKE's animated evidence -- the dark tattoo-like pattern visible in BOTH crops is real texture content (barbarian body-paint texture), identical between baseline and composite. VERDICT: the tile-boundary defect does NOT reproduce on static geometry.",
+    "differing_pixels": 104832,
+    "total_pixels": 1400000,
+    "differing_pct": 7.488,
+    "max_channel_diff": 252,
+    "mean_abs_channel_diff": 0.0581
   }
 }

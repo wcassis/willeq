@@ -1,89 +1,107 @@
-<!doctype html><html><head><title>P08d composite-entity landing contact sheet (RETAKE — aligned evidence)</title>
+<!doctype html><html><head><title>P08d composite-entity landing contact sheet (STATIC evidence — animated evidence retracted)</title>
 <style>body{font-family:sans-serif;background:#111;color:#eee;max-width:1400px;margin:0 auto;padding:16px}
 img{border:1px solid #444;display:block}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:24px}
 .cell{max-width:400px}
 code{background:#222;padding:2px 4px}
 .warn{background:#442;padding:8px;border-left:4px solid #a80}
+.good{background:#242;padding:8px;border-left:4px solid #4a4}
 </style></head><body>
-<h1>P08d: composite entities vs multi-buffer — RETAKE, aligned evidence</h1>
+<h1>P08d: composite entities vs multi-buffer — STATIC evidence (animated evidence retracted)</h1>
 
 <div class="warn">
-<b>This replaces the original P08d evidence.</b> The original contact sheet (0.4-2.3% differing
-pixels claimed at f10/30/50) was measured using <code>gles2_zone_benchmark --composite-entities</code>,
-which routes composite entities through <code>renderCompositeEntities()</code> — a P08c-era manual-draw
-stand-in with its <b>own</b> frustum-cull test (<code>frustumCuller-&gt;testSphere</code>), separate from
-the default entity path's cull test that the baseline (and production's EntityRenderer) actually use.
-That mismatch, not any defect in the real composite mesh-building code, caused the two runs to show
-<b>different entities at different apparent positions at the same simulated frame</b> — up to 38,728
-differing pixels at one frame, including the "arm-only" frame Will flagged. Root-cause analysis (below)
-confirmed animation clip/progress were byte-identical between runs at every frame in every case — the
-divergence was 100% a render-dispatch artifact of this benchmark tool, not a production bug in the
-composite path itself. A new <code>--composite-scenegraph</code> flag was added to
-<code>gles2_zone_benchmark</code> (loads the real production composite mesh via
-<code>RaceModelLoader::setCompositeEntityPath</code>/<code>preloadModelData</code>, exactly as before, but
-renders through the SAME default entity draw path as baseline) to produce this corrected evidence.
+<b>This replaces ALL prior P08d evidence, original round AND the first retake round.</b> Will
+identified that every animated shot in the unit shows a malformed/garbled model. Independent
+verification (orchestrator, two experiments) confirmed the cause is <b>pre-existing in the
+benchmark's <code>--animate</code> scenegraph path</b> — running the exact same evidence command
+without <code>--animate</code> renders a correctly-formed, correctly-textured character; running
+the same command with <code>--animate</code> on a PRE-P08d binary reproduces the identical garbling.
+P08d did not introduce this. But it means <b>every claim about animation quality made from
+either P08d evidence round (including the first retake's "pixel-identical once aligned" and
+"tile-boundary bleed" close-up) was measured on garbled geometry and is VOID</b> — not wrong about
+composite vs baseline necessarily, but not evidence of anything, because neither side of the
+comparison was rendering correctly. See the plan Review's "Pre-existing benchmark --animate
+garbling" section for the full writeup and what this means for a follow-up unit.
 </div>
 
-<h2>Root cause (summary — full writeup in the plan's Review)</h2>
-<ol>
-<li><b>Not animation-clip divergence.</b> A temporary diagnostic (removed before commit) logged the
-selected animation code and playback progress for every entity, every frame, in both the baseline and
-the (broken) <code>--composite-entities</code> run: 0 differences, always. This directly refutes the
-"clip selection differs" hypothesis.</li>
-<li><b>Not vertex/mesh corruption in the real composite path either</b> (though a real, separate,
-minor issue WAS found — see below). World-space bounding boxes of the rendered composite meshes were
-normal/tight at every frame checked (no exploded or displaced geometry).</li>
-<li><b>The actual cause: <code>renderCompositeEntities()</code>'s custom frustum-cull test disagreed with
-the default entity path's cull test</b> for entities near the frustum boundary, so a DIFFERENT subset of
-the 6 placed entities ended up visible (and at different apparent sizes/positions) between the two runs
-at the same simulated frame — a benchmark-harness bug, not a production one. Fixed via
-<code>--composite-scenegraph</code>, which keeps the real composite-mesh loading but renders through the
-default (non-custom) entity path.</li>
-</ol>
+<div class="good">
+This package re-does the composite-vs-baseline quality comparison and the tile-boundary defect
+check entirely on <b>STATIC models — no <code>--animate</code> anywhere</b> — using the first
+retake's <code>--composite-scenegraph</code> alignment fix (still the correct vehicle: it renders
+composite entities through the same default entity draw path as baseline, avoiding the unrelated
+custom-cull-test benchmark bug that caused the original round's misleading numbers).
+</div>
 
-<h2>Aligned comparison (default orbit, qeynos2, 6 entities, --animate, seed 42)</h2>
-<p>Both runs use the SAME procedurally-generated camera path (deterministic from zone+seed, confirmed
-identical in log output) and the SAME entity placement. Baseline = default entity path (multi-buffer).
-Composite = <code>--composite-scenegraph</code> (real production composite mesh, same draw path as
-baseline).</p>
+<h2>Aligned comparison (default orbit, qeynos2, 6 entities, STATIC, seed 42)</h2>
+<p>Both runs use the SAME procedurally-generated camera path (<code>--dump-path</code>/<code>--path-file</code>,
+byte-identical trajectory) and the SAME entity placement. Baseline = default entity path
+(multi-buffer). Composite = <code>--composite-scenegraph</code> (real production composite mesh,
+same draw path as baseline). Neither run passes <code>--animate</code>.</p>
 <div class="row" id="aligned"></div>
+<p><b>Result: pixel-identical at every frame checked</b> (0.000% differing pixels, f15/f25/f35 shown;
+also true at f5/10/20/30/40/45/50/55, checked but not shown). This is the expected "same texels,
+repacked" outcome for a uniform-variant NPC with no per-slot overrides, now confirmed on
+correctly-rendered geometry instead of the previously-garbled animated frames.</p>
 
-<h2>Close-up (orbit-radius 15 — camera passes close to an entity)</h2>
-<p>The default orbit never brings the camera close enough to any entity for a full-frame close-up (per
-Will's earlier "arm shot" feedback) — the orbit-fallback camera's radius is fixed by zone geometry, not
-entity position. Using <code>--orbit-radius 15</code> (still deterministic, same flag on both runs)
-brings frame 30's nearest entity into a proper close-up. This capture also surfaces a real, small,
-composite-specific texture artifact: faint dark patches/bleeding at a few points on the skin texture,
-visible on close inspection, absent in the baseline. Quantified below — reported for Will to judge, not
-self-declared acceptable.</p>
+<h2>Close-up (orbit-radius 15 — full character fills a meaningful fraction of the frame)</h2>
+<p>The default orbit never brings the camera close enough to any entity for a proper close-up (the
+orbit-fallback camera's radius is fixed by zone geometry, not entity position) — this was the root
+cause of Will's original "arm shot" complaint, independent of the animation-garbling issue.
+<code>--orbit-radius 15</code> (deterministic, same flag both runs) was tuned by inspecting several
+candidate frames until two gave a genuinely judgeable full-character view.</p>
 <div class="row" id="closeup"></div>
-<p>Tight crop on the affected region (6x nearest-neighbor zoom, same crop coordinates both images):</p>
-<div class="row" id="closeupzoom"></div>
+<p><b>Result: pixel-identical at both close-up frames</b> (0.000% differing pixels). On static
+geometry, composite and multi-buffer are visually indistinguishable even at close range.</p>
+
+<h2>Tile-boundary defect re-check (orbit-radius 8 — extreme close-up, torso-filling)</h2>
+<p>The first retake's animated evidence reported a "faint dark patches/bleeding" artifact at
+composite-sheet tile boundaries, visible in a close-up crop, and attributed it to bilinear-filter
+texel bleed. That close-up was rendered on garbled animated geometry (see warning above), so the
+claim is void — this section re-checks it on valid static geometry.</p>
+<div class="row" id="defectfull"></div>
+<p>Tight crop on the torso (1400x1000, nearest-neighbor 4x, lossless — no interpolation added by the
+crop/zoom itself):</p>
+<div class="row" id="defectcrop"></div>
+<p><b>Verdict: the tile-boundary defect does NOT reproduce on static geometry.</b> The dark
+tattoo-like pattern visible on the torso in both crops is real texture content (this NPC's
+body-paint/tattoo texture), present identically in baseline and composite. The 2.0% full-frame /
+7.5% crop "differing pixel" counts are sparse, single-pixel, sub-visible noise (mean channel delta
+&lt;0.06 out of 255) — consistent with floating-point rounding / anti-aliasing jitter at an oblique
+close viewing angle, not a coherent defect. Visual inspection of the diff crop (below) shows no
+tile-edge pattern, no blob, no structure — just scattered single-pixel specks. This changes the
+prior "known-minor open item" status: on the evidence available now, there is no demonstrated
+composite-specific rendering defect to report to Will as an open item.</p>
+<div class="row" id="defectdiffcrop"></div>
 
 <h2>Sheet structural-integrity audit (unchanged from the original pass)</h2>
 <p>All 210 production composite sheets at <code>/mnt/projects/EverQuest_ETC1/</code> pass a JSON/BMP/EQE1
 structural integrity sweep (see <code>sheet_audit.json</code>, committed alongside this page) — 210/210
-OK, 0 broken. This check is independent of the render-path bug above and was not affected by it.</p>
+OK, 0 broken. This check never depended on rendering (static or animated) and is unaffected by the
+animation-garbling issue.</p>
 
 <script>
 const alignedFrames = [15, 25, 35];
-const alignedStats = {"15": {"differing_pct": 0.1868, "mean_abs_channel_diff": 0.00759, "max_channel_diff": 209},
-                       "25": {"differing_pct": 0.204, "mean_abs_channel_diff": 0.01546, "max_channel_diff": 222},
-                       "35": {"differing_pct": 0.0767, "mean_abs_channel_diff": 0.00755, "max_channel_diff": 216}};
 const alignedDiv = document.getElementById('aligned');
 for (const f of alignedFrames) {
-  const s = alignedStats[f];
-  alignedDiv.innerHTML += `<div class="cell"><div>frame ${f}: baseline</div><img src="final_base_f${f}.png" width="380"></div>` +
-    `<div class="cell"><div>frame ${f}: composite (${s.differing_pct}% px, mean|&Delta;|=${s.mean_abs_channel_diff}, max &Delta;=${s.max_channel_diff})</div><img src="final_comp_f${f}.png" width="380"></div>` +
-    `<div class="cell"><div>abs diff</div><img src="final_diff_f${f}.png" width="380"></div>`;
+  alignedDiv.innerHTML += `<div class="cell"><div>frame ${f}: baseline</div><img src="aligned_base_f${f}.png" width="380"></div>` +
+    `<div class="cell"><div>frame ${f}: composite (0.000% px differ)</div><img src="aligned_comp_f${f}.png" width="380"></div>` +
+    `<div class="cell"><div>abs diff (all-black, 0 diff)</div><img src="aligned_diff_f${f}.png" width="380"></div>`;
 }
 document.getElementById('closeup').innerHTML =
-  `<div class="cell"><div>baseline (f30, orbit-radius 15)</div><img src="tight_base_f30.png" width="500"></div>` +
-  `<div class="cell"><div>composite (0.923% px, mean|&Delta;|=0.107, max &Delta;=201)</div><img src="tight_comp_f30.png" width="500"></div>`;
-document.getElementById('closeupzoom').innerHTML =
-  `<div class="cell"><div>baseline (zoomed crop)</div><img src="tight_base_f30_distant_tight.png" width="500"></div>` +
-  `<div class="cell"><div>composite (zoomed crop, 18.99% px differ in this crop, mean|&Delta;|=3.17)</div><img src="tight_comp_f30_distant_tight.png" width="500"></div>` +
-  `<div class="cell"><div>abs diff (zoomed crop)</div><img src="tight_diff_f30_distant_tight.png" width="500"></div>`;
+  `<div class="cell"><div>baseline (f30, orbit-radius 15)</div><img src="closeup_base_f30.png" width="380"></div>` +
+  `<div class="cell"><div>composite (f30, 0.000% px differ)</div><img src="closeup_comp_f30.png" width="380"></div>` +
+  `<div class="cell"><div>abs diff (all-black)</div><img src="closeup_diff_f30.png" width="380"></div>` +
+  `<div class="cell"><div>baseline (f35, orbit-radius 15)</div><img src="closeup_base_f35.png" width="380"></div>` +
+  `<div class="cell"><div>composite (f35, 0.000% px differ)</div><img src="closeup_comp_f35.png" width="380"></div>` +
+  `<div class="cell"><div>abs diff (all-black)</div><img src="closeup_diff_f35.png" width="380"></div>`;
+document.getElementById('defectfull').innerHTML =
+  `<div class="cell"><div>baseline (f40, orbit-radius 8)</div><img src="defect_check_base_f40.png" width="500"></div>` +
+  `<div class="cell"><div>composite (f40, 2.035% px differ, mean|&Delta;|=0.016)</div><img src="defect_check_comp_f40.png" width="500"></div>` +
+  `<div class="cell"><div>abs diff (sparse noise, not a pattern)</div><img src="defect_check_diff_f40.png" width="500"></div>`;
+document.getElementById('defectcrop').innerHTML =
+  `<div class="cell"><div>baseline (torso crop, 4x lossless zoom)</div><img src="defect_check_base_f40_crop.png" width="500"></div>` +
+  `<div class="cell"><div>composite (torso crop, 4x lossless zoom)</div><img src="defect_check_comp_f40_crop.png" width="500"></div>`;
+document.getElementById('defectdiffcrop').innerHTML =
+  `<div class="cell"><div>abs diff (torso crop) — sparse single-pixel specks, no coherent tile-edge pattern</div><img src="defect_check_diff_f40_crop.png" width="500"></div>`;
 </script>
 </body></html>

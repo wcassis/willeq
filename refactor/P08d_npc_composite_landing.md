@@ -341,6 +341,11 @@ never `RaceModelLoader::setCompositeEntityPath`/the JSON+EQE1 lookup at all):
    compositeBmpPath='hum_hs_def_0_0'`), unlike the audit tool. See animation
    verification below for what this run demonstrates.
 
+**[VOID — see "VOID NOTICE" section below: this evidence was rendered through the benchmark's
+pre-existing `--animate` garbling bug and does not show what it claims to show. Retained
+unannotated-in-place per the plan's own precedent of not deleting superseded findings; do not treat
+anything below this point up to the RETAKE heading as validated animation evidence.]**
+
 **Animation verification on the production path** (Z35-era risk class):
 `gles2_zone_benchmark --animate --composite-entities --eqe1-path
 /mnt/projects/EverQuest_ETC1 --entities 6 --seed 42` on qeynos2, dumping
@@ -368,6 +373,10 @@ EQ-data audit of which of the 42 covered race defs carry animated-texture
 materials, out of budget this unit) — flagged for whoever does the live
 production quality pass before shipping the preset flip.
 
+**[VOID — same reason as above; this run also used `--animate`. Superseded first by the RETAKE's
+"corrected, aligned evidence" for the cull-dispatch bug, and that in turn superseded by the STATIC
+RE-RETAKE below for the animation-garbling bug — see "VOID NOTICE".]**
+
 **Side-by-side contact sheet** (plan C10):
 `benchmarks/contact_sheets/p08d_composite_landing/index.html` (+
 `stats.json`), composite vs baseline multi-buffer, same 3 frames, on an
@@ -393,12 +402,207 @@ not a content defect (visual inspection: clothing colors, proportions, and
 animation pose all match between baseline and composite frames). **Per the
 plan: this is reported for Will to judge, not self-declared acceptable.**
 
+**[VOID as animation evidence — ran with `--animate`; see "VOID NOTICE" below. Draw-call/state-change
+counts are dispatch-path artifacts and not geometry-dependent, so likely still directionally
+meaningful, but frame-time numbers are not re-verified in the static re-retake and should not be
+cited as confirmed without a fresh non-animated measurement.]**
+
 **Perf spot-check** (plan C11, optional, done cheaply on x86 alongside the
 evidence runs above — P08c's Pi numbers stand as the perf case): same
 qeynos2 run, draw calls avg 44→12, state changes avg 38→6, total frame time
 avg 7.12ms→6.34ms, p95 11.20ms→9.33ms (x86 llvmpipe, not representative of
 Pi timing but directionally consistent with P08c's real-hardware measurement
 and free evidence from runs already needed for the contact sheet).
+
+### VOID NOTICE — all animated evidence in this unit (both rounds) is retracted; see the STATIC RE-RETAKE section below
+
+**Every animated-evidence claim in the original round AND the RETAKE round below is VOID.** Will
+observed that ALL animated evidence in the unit shows a malformed/garbled model. The orchestrator
+confirmed the root cause with two experiments:
+- The evidence command WITHOUT `--animate` on the P08d build: a perfectly-formed, correctly-textured
+  character. Geometry and textures are fine — applying ANIMATION is what garbles the render.
+- The IDENTICAL command WITH `--animate` run on a PRE-P08d binary (before this unit touched anything):
+  the SAME crumpled-heap garbling.
+
+This proves the garbling is **pre-existing in the benchmark's animated scenegraph path** — nobody
+ever visually validated `gles2_zone_benchmark --animate`'s output before this unit; P08b's
+"nonrepresentative" flag (mentioned in `refactor/deferred.md`) was an earlier, unresolved symptom of
+the same underlying issue. **P08d did not introduce this garbling** — but it also means neither round
+of this unit's animated evidence shows anything real. Specifically retracted, with reasons:
+
+| Claim | Round | Status | Why void |
+|---|---|---|---|
+| "Composite meshes animated correctly... no vertex corruption... no misaligned UVs" (original C, "Animation verification on the production path") | original | **VOID** | Rendered through the garbled `--animate` scenegraph path; both baseline and composite sides were malformed, so "no visible difference between them" proves nothing about correctness, only that both were equally broken. |
+| "0.4-2.3% differing pixels... near-identical" contact-sheet table (original C10) | original | **VOID** (already superseded by the RETAKE below for a *different* reason — harness cull-dispatch bug — but ALSO void for this animation-garbling reason independently) | Same as above: both sides of the diff were garbled frames. |
+| Perf spot-check frame-time numbers (original C11) | original | **VOID as animation evidence, perf numbers themselves not necessarily wrong** | Ran with `--animate`; draw-call/state-change counts are dispatch-path artifacts (not geometry-dependent) and likely still directionally valid, but are not re-verified in this pass and should not be cited as "confirmed" without a static/non-animated re-run. |
+| "Corrected, aligned evidence" table, f5-f55 (RETAKE) | RETAKE | **VOID** | `--composite-scenegraph` fixed the cull-dispatch mismatch, but the run still passed `--animate`, so every frame in this table was rendered through the garbled animation path on BOTH sides. The alignment fix was real and worth keeping (see STATIC RE-RETAKE below, which reuses it) but the numbers in that table are not evidence of anything. |
+| "Close-up evidence" / tile-boundary dark-patch defect (RETAKE) | RETAKE | **VOID as originally characterized** | Captured on garbled animated geometry. Re-checked on static geometry below (STATIC RE-RETAKE) — **does not reproduce**. The RETAKE's causal explanation ("bilinear-filtering texel bleed at composite-sheet tile boundaries") was speculative and is now superseded by the static finding: the dark pattern visible in that animated close-up was very likely an artifact of the garbled animated mesh itself (e.g. malformed normals/skinning interacting with lighting), not a composite-sheet-specific defect. |
+| "VertexMapping" latent-bug fix and its "changes nothing" verification (RETAKE) | RETAKE | **VOID verification, but the revert below is what actually matters** | The claim "this fix did NOT change the rendered output... pixel-identical" was a before/after comparison done ENTIRELY on the garbled `--animate` path — not a meaningful verification either way. The fix itself is not evaluated as right or wrong here; it is reverted out of this landing branch below (see "VertexMapping revert" section) because static evidence cannot vouch for an animation-path-only change, and it belongs with a future unit that actually fixes and validates animation. |
+
+**Animation verification for composite entities is NOT covered by this unit.** It is explicitly
+deferred to a future animation-focused unit (root-causing `EQAnimatedMesh`'s application path as
+driven by this benchmark) plus a live-client play session — production live play is understood to
+animate characters correctly today (players see normal animation in actual gameplay), so the
+benchmark-vs-production delta is either a harness-side rendering setup difference or a masked
+production edge case; either way it needs its own investigation, not a guess bolted onto this
+landing unit. See "Pre-existing benchmark --animate garbling" below for the repro and framing.
+
+### Pre-existing benchmark --animate garbling (root-cause repro, scoped OUT of this unit, handed to a future unit)
+
+**What was observed.** Every dumped frame in both P08d evidence rounds that used `--animate` shows a
+collapsed/crumpled character mesh — limbs and torso pulled into an incoherent heap rather than a
+recognizable animated pose. This was initially investigated (in the RETAKE) as a composite-vs-baseline
+cull-dispatch mismatch (real bug, real fix, kept — see `--composite-scenegraph` above) but that fix
+did not address the garbling itself, because the garbling is present on BOTH the baseline and
+composite sides whenever `--animate` is passed.
+
+**Repro (orchestrator, two experiments, both confirmed against this branch's evidence commands):**
+1. `gles2_zone_benchmark --zone qeynos2 ... --dump-frames ...` (same command family as this unit's
+   evidence, resolution 1024x768, frame ~25) **WITHOUT** `--animate`, on the P08d build: renders a
+   perfectly-formed, correctly-textured, recognizable character — confirms geometry and texturing are
+   fine on this branch.
+2. The IDENTICAL command **WITH** `--animate`, run on a **PRE-P08d** binary (i.e. before any commit in
+   this unit touched anything): renders the SAME crumpled-heap garbling as this unit's `--animate`
+   evidence. This proves the garbling predates P08d entirely and is not a regression this unit
+   introduced anywhere (gate logic, cache changes, or the VertexMapping change all postdate this
+   binary).
+
+**Conclusion:** the garbling lives in the benchmark's animated-scenegraph rendering path itself
+(`--animate`'s interaction with `EQAnimatedMesh`/skeletal application in `gles2_zone_benchmark` /
+`zone_bench_loader.cpp`, or upstream in how the tool drives animation state), not in anything P08d's
+production `RaceModelLoader`/`entity_renderer.cpp` gate changed. It is a **pre-existing, previously
+unnoticed defect** — nobody had visually validated `--animate`'s output before Will's review of this
+unit's evidence. It also retroactively explains why P08b flagged its own animated benchmark evidence
+as "nonrepresentative" (`refactor/deferred.md`) — an earlier symptom of the same root problem, never
+root-caused at the time.
+
+**Framing for the future unit:** production live play is believed to animate NPCs/players correctly
+today (this is ordinary, well-exercised gameplay functionality, not something users have reported as
+broken) — so the delta between "benchmark tool with --animate: garbled" and "production: presumably
+fine" is either (a) a harness-side setup difference specific to `gles2_zone_benchmark`'s use of the
+animation system (most likely: it may be missing some initialization/update step that the full
+`Application`/`IrrlichtRenderer` production path performs, or driving frame/time state differently),
+or (b) a real but currently-masked production edge case that happens not to trigger in normal play
+(e.g. specific to the benchmark's synthetic entity placement/pathing). Distinguishing these requires:
+1. Root-causing `EQAnimatedMesh`'s application as actually driven by `gles2_zone_benchmark` — compare
+   its per-frame animation-update call sequence against the production `Application`/`IrrlichtRenderer`
+   path and find the divergence.
+2. A live-client play session (not just the offline benchmark tool) to positively confirm production
+   NPC/player animation is unaffected, rather than relying on institutional belief that it "should" be
+   fine.
+3. Only once both are done should any composite-vs-baseline ANIMATED quality comparison be trusted;
+   until then, all animated evidence for this feature — composite or not — should be treated as
+   unverified.
+
+This unit does not attempt either of those two steps; both are out of scope here and explicitly
+deferred, per the P08d retake instructions.
+
+### STATIC RE-RETAKE — quality package regenerated entirely on static (non-animated) models
+
+Per the void notice above, the full quality/tile-defect evidence package was regenerated from
+scratch, with `--animate` never passed to any command. The RETAKE's harness fix
+(`--composite-scenegraph`, described above — real, worth keeping, orthogonal to the animation-garbling
+issue) is reused as the alignment vehicle for composite-vs-baseline comparison; only the
+animation-garbling issue required a redo, not the cull-dispatch fix.
+
+**Method.** Same evidence-command family as before (`gles2_zone_benchmark --zone qeynos2 --eq-path
+/mnt/projects/EverQuestP1999 --eqe1-path /mnt/projects/EverQuest_ETC1 --entities 6 --seed 42 --frames
+60 --warmup 5 --res 1024 768`), baseline and composite runs each use `--dump-path`/`--path-file` to
+guarantee byte-identical camera trajectories (any diff is attributable only to entity texturing, never
+camera drift), composite runs add `--composite-scenegraph`. No run in this package passes `--animate`.
+
+**Aligned comparison (default orbit, frames 15/25/35, checked also at 5/10/20/30/40/45/50/55):**
+
+| frame | differing px % | mean abs Δ (0-255) | max channel Δ |
+|---|---|---|---|
+| f15 | 0.000% | 0.000 | 0 |
+| f25 | 0.000% | 0.000 | 0 |
+| f35 | 0.000% | 0.000 | 0 |
+
+**Pixel-identical at every frame checked**, not merely "near-identical" — the expected "same texels,
+repacked" result for a uniform-variant NPC with no per-slot overrides, now demonstrated on
+correctly-rendered (static) geometry instead of the previously-garbled animated frames.
+
+**Close-up evidence (plan's explicit ask, ≥2 close-up shots with a full character filling a
+meaningful fraction of the frame).** The default orbit-fallback camera never brings an entity close
+enough (same finding as the RETAKE — this is a framing issue independent of the animation-garbling
+bug). Iterated `--orbit-radius` and frame choice by inspecting candidate dumps until two frames gave
+a genuinely judgeable full-character close-up: `--orbit-radius 15`, frames 30 (full-body, T-pose,
+elf) and 35 (upper-body, barbarian with face paint and kilt, clearly detailed).
+
+| capture | differing px % | mean abs Δ | max channel Δ |
+|---|---|---|---|
+| f30 close-up (orbit-radius 15) | 0.000% | 0.000 | 0 |
+| f35 close-up (orbit-radius 15) | 0.000% | 0.000 | 0 |
+
+Pixel-identical at both. Visual inspection (`benchmarks/contact_sheets/p08d_composite_landing/`)
+confirms both are genuinely judgeable close-ups (character fills 25-40% of frame height, faces and
+clothing detail clearly legible) — a human can actually evaluate composite quality from these, unlike
+the original round's small/distant subjects or the "arm-only" f50 shot Will flagged.
+
+**Tile-boundary defect re-check on static geometry (plan step 2, explicit ask).** The RETAKE's
+"faint dark patches/bleeding... at composite-sheet tile boundaries" close-up was captured on garbled
+animated geometry and is void (see above). Re-checked here on static geometry with an even tighter
+framing (`--orbit-radius 8`, torso-filling) to give the defect, if real, maximum opportunity to show:
+
+| capture | differing px % | mean abs Δ | max channel Δ |
+|---|---|---|---|
+| f40 full frame (orbit-radius 8) | 2.035% | 0.016 | 252 |
+| f40 tight torso crop (1400x1000, nearest-neighbor 4x, lossless) | 7.488% | 0.058 | 252 |
+
+**Verdict: the defect does NOT reproduce on static geometry.** Visual inspection of the lossless
+crop pair (`defect_check_base_f40_crop.png` / `defect_check_comp_f40_crop.png` /
+`defect_check_diff_f40_crop.png`) shows: (1) a dark, mottled pattern IS visible on the torso in BOTH
+baseline and composite — but it is identical between them and is real texture content (this
+character's body-paint/tribal-tattoo texture, also visible clearly in the wider close-up shots at
+f35/f45 earlier in this document), not a rendering artifact; (2) the diff crop itself shows only
+sparse, single-pixel, low-magnitude specks scattered with no spatial structure (no tile-edge line, no
+blob, no coherent boundary pattern) — consistent with ordinary floating-point/anti-aliasing rounding
+noise at an oblique close viewing angle, not a texture-sampling defect. The RETAKE's causal
+explanation (bilinear tile-bleed at composite-sheet UV-seam boundaries) is not supported by this
+static evidence — it was more likely an artifact of the garbled animated mesh (malformed
+normals/skinning positions interacting with per-pixel lighting) than a property of the composite
+texture pipeline. **This changes Will's decision-relevant picture**: there is no demonstrated
+composite-specific visual defect to weigh in the bless decision on the evidence gathered so far.
+
+Updated contact sheet: `benchmarks/contact_sheets/p08d_composite_landing/index.html` (+
+`stats.json`), fully regenerated — all animated-evidence PNGs from both prior rounds (`final_*.png`,
+`tight_*_distant_tight.png`, etc.) removed from the directory and from git; replaced with
+`aligned_*`, `closeup_*`, and `defect_check_*` PNGs, all rendered without `--animate`.
+`sheet_audit.json` (the 210-sheet structural integrity sweep) is untouched — it never depended on
+rendering, static or animated, and is unaffected either way.
+
+### VertexMapping one-to-many fix REVERTED out of this landing branch
+
+The RETAKE's `VertexMapping`→`VertexMappingList` (one-to-many) change in
+`animated_mesh_scene_node.h/.cpp`, `race_model_loader.h`, and `mesh_building.cpp` is **reverted out
+of this branch** in the static re-retake commit. Rationale:
+- It is exclusively an animation-path correctness fix (`applyBoneTransformsToMeshImpl`'s skinning
+  loop) — it has zero effect on anything this unit's static evidence renders or verifies.
+- Its own "verification" (RETAKE: "did NOT change the rendered output... pixel-identical
+  before/after") was performed entirely on the garbled `--animate` path, per the VOID NOTICE above —
+  that comparison is not meaningful evidence either way, for or against the fix being correct or safe.
+- Per the retake instructions for this pass: "the landing branch must contain only what static
+  evidence vouches for." Static evidence cannot vouch for an animation-only code path change.
+
+This is **not** a judgment that the fix is wrong — the underlying reasoning (a vertex shared across
+texture groups at a UV seam legitimately needs multiple destination slots, and the old code silently
+dropped all but the last-registered one) reads as sound on inspection, and it affects both
+`buildMeshFromGeometry` and `buildCompositeMeshFromGeometry` (not composite-specific). It is deferred,
+not discarded: the full diff is preserved at
+`refactor/scratch/P08d_vertexmapping_one_to_many.patch` (git diff format, applies cleanly on top of
+this unit's implementation commit `631ec16`) for a future animation unit to pick up, re-verify against
+CORRECTLY-rendered animated evidence (once the pre-existing `--animate` garbling above is root-caused
+and fixed), and land on its own merits with real verification behind it.
+
+**What stays from the RETAKE commit:** the `--composite-scenegraph` flag in
+`tools/hwcaps/gles2_zone_benchmark.cpp` (harness-only, fixes a genuine cull-dispatch mismatch bug,
+unaffected by and unrelated to the animation-garbling issue — reused as-is for the static re-retake
+evidence above). `zone_bench_loader.cpp` remains net-zero diff (temporary diagnostics were already
+removed before the RETAKE commit). The plan Review edits from the RETAKE remain (this document).
+**What is removed:** the `VertexMapping`/`VertexMappingList` production-code change (4 files, see
+above) and its evidence PNGs from the RETAKE's contact sheet (superseded by the static re-retake
+evidence).
 
 ### RETAKE — Will flagged frame 50 (arm-only shot); the quality evidence above was unsound
 
@@ -609,3 +813,21 @@ sheet structural integrity sweep) is untouched — independent of this bug.
   instrumentation added during the investigation was removed before
   committing. The contact sheet and this Review were corrected in place rather
   than leaving the original (unsound) numbers unannotated.
+- **Static re-retake**: Will identified that ALL animated evidence in the unit (both rounds) shows a
+  malformed/garbled model; the orchestrator confirmed this is a pre-existing bug in the benchmark's
+  `--animate` scenegraph path, not something P08d introduced — see "VOID NOTICE" and "Pre-existing
+  benchmark --animate garbling" above for the full writeup. Net effect on production code: the RETAKE's
+  `VertexMapping`→`VertexMappingList` one-to-many fix (`animated_mesh_scene_node.h/.cpp`,
+  `race_model_loader.h`, `mesh_building.cpp`) is **reverted** — animation-path-only, unverifiable by
+  static evidence, preserved as `refactor/scratch/P08d_vertexmapping_one_to_many.patch` for a future
+  animation unit. The `--composite-scenegraph` harness flag (unrelated bug, unaffected by the
+  animation-garbling issue) is kept. Net effect on evidence: the full quality/tile-defect package in
+  `benchmarks/contact_sheets/p08d_composite_landing/` was regenerated entirely on static (non-animated)
+  models — aligned comparison pixel-identical at every frame checked, two close-up shots
+  (`--orbit-radius 15`, f30/f35) also pixel-identical, and the RETAKE's tile-boundary dark-patch defect
+  claim does NOT reproduce on static geometry (re-checked at `--orbit-radius 8`, tight lossless crop
+  shows only sub-pixel noise, no coherent pattern; the dark tattoo-like appearance in both crops is
+  real, shared texture content). Animation verification for composites remains explicitly out of scope
+  for this unit — deferred to a future animation unit (root-cause the benchmark's `--animate` path
+  against `EQAnimatedMesh`) plus a live-client play session to confirm production animation is
+  unaffected.

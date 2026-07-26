@@ -1,0 +1,225 @@
+diff --git a/include/client/graphics/eq/animated_mesh_scene_node.h b/include/client/graphics/eq/animated_mesh_scene_node.h
+index 4abafd5..6fb8ac2 100644
+--- a/include/client/graphics/eq/animated_mesh_scene_node.h
++++ b/include/client/graphics/eq/animated_mesh_scene_node.h
+@@ -17,6 +17,21 @@ struct VertexMapping {
+     irr::u32 localIndex;     // Index within that buffer
+ };
+ 
++// P08D-RETAKE root-cause fix: an original S3D vertex shared by triangles that use
++// DIFFERENT textures/materials (a UV seam -- e.g. where a chest texture meets an
++// arm texture) is legitimately duplicated into MULTIPLE destination buffer slots
++// by both mesh builders (buildMeshFromGeometry: once per distinct texture group;
++// buildCompositeMeshFromGeometry: once per distinct (vertex, texture) pair even
++// though there's only one destination BUFFER). A single VertexMapping per original
++// vertex can only remember the LAST-registered duplicate, silently leaving every
++// other duplicate frozen at its initial bind-pose position while its sibling
++// animates normally -- a latent bug in both mesh-building paths (not introduced by
++// composite entities, but made visually severe there since composite meshes pack
++// many original textures' worth of duplicate seams into far fewer buffers).
++// VertexMappingList holds ALL destinations for one original vertex so skinning can
++// update every duplicate, not just the last one registered.
++using VertexMappingList = std::vector<VertexMapping>;
++
+ // Custom animated mesh that supports EQ skeletal animation
+ // This mesh stores vertex data that can be transformed by bone matrices
+ class EQAnimatedMesh : public irr::scene::IAnimatedMesh {
+@@ -49,7 +64,7 @@ public:
+ 
+     // Set original vertices (in order for bone transforms) and vertex-to-buffer mapping
+     void setOriginalVertices(const std::vector<irr::video::S3DVertex>& verts);
+-    void setVertexMapping(const std::vector<VertexMapping>& mapping);
++    void setVertexMapping(const std::vector<VertexMappingList>& mapping);
+ 
+     // Get the animator for this mesh (shared - use scene node's animator for per-instance animation)
+     SkeletalAnimator& getAnimator() { return animator_; }
+@@ -63,13 +78,16 @@ public:
+     std::shared_ptr<CharacterSkeleton> getSkeleton() const { return animator_.getSkeleton(); }
+     const std::vector<VertexPiece>& getVertexPieces() const { return vertexPieces_; }
+     const std::vector<irr::video::S3DVertex>& getOriginalVertices() const { return originalVertices_; }
+-    const std::vector<VertexMapping>& getVertexMapping() const { return vertexMapping_; }
++    const std::vector<VertexMappingList>& getVertexMapping() const { return vertexMapping_; }
+ 
+     // Memory usage estimate (CPU-side working data, not counting shared skeleton/base mesh)
+     size_t estimateMemoryUsage() const {
+         size_t total = sizeof(EQAnimatedMesh);
+         total += originalVertices_.capacity() * sizeof(irr::video::S3DVertex);
+-        total += vertexMapping_.capacity() * sizeof(VertexMapping);
++        total += vertexMapping_.capacity() * sizeof(VertexMappingList);
++        for (const auto& list : vertexMapping_) {
++            total += list.capacity() * sizeof(VertexMapping);
++        }
+         total += vertexPieces_.capacity() * sizeof(VertexPiece);
+         // animatedMesh_ is an SMesh with copies of base mesh buffers
+         if (animatedMesh_) {
+@@ -92,7 +110,7 @@ private:
+     irr::scene::SMesh* animatedMesh_;                // Mesh with animated vertices
+     std::vector<VertexPiece> vertexPieces_;          // Vertex-to-bone mapping
+     std::vector<irr::video::S3DVertex> originalVertices_;  // Original vertices in order
+-    std::vector<VertexMapping> vertexMapping_;       // Maps original index -> buffer location
++    std::vector<VertexMappingList> vertexMapping_;   // Maps original index -> ALL destination buffer locations (P08D-RETAKE)
+     SkeletalAnimator animator_;
+     irr::core::aabbox3df boundingBox_;
+     mutable int lastAppliedFrame_;
+diff --git a/include/client/graphics/eq/race_model_loader.h b/include/client/graphics/eq/race_model_loader.h
+index 2dd9b06..6839215 100644
+--- a/include/client/graphics/eq/race_model_loader.h
++++ b/include/client/graphics/eq/race_model_loader.h
+@@ -460,7 +460,7 @@ private:
+     // Temporary storage for vertex data during animated mesh building
+     // (populated by buildMeshFromGeometry, consumed by getAnimatedMeshForRace)
+     std::vector<irr::video::S3DVertex> originalVerticesForAnimation_;
+-    std::vector<VertexMapping> vertexMappingForAnimation_;
++    std::vector<VertexMappingList> vertexMappingForAnimation_;  // one-to-many, see P08D-RETAKE note
+ };
+ 
+ } // namespace Graphics
+diff --git a/src/client/graphics/eq/animated_mesh_scene_node.cpp b/src/client/graphics/eq/animated_mesh_scene_node.cpp
+index f4964e5..f06cc30 100644
+--- a/src/client/graphics/eq/animated_mesh_scene_node.cpp
++++ b/src/client/graphics/eq/animated_mesh_scene_node.cpp
+@@ -110,7 +110,7 @@ static void applyBoneTransformsToMeshImpl(
+     const std::vector<AnimatedBoneState>& boneStates,
+     const std::vector<VertexPiece>& vertexPieces,
+     const std::vector<irr::video::S3DVertex>& originalVertices,
+-    const std::vector<VertexMapping>& vertexMapping,
++    const std::vector<VertexMappingList>& vertexMapping,
+     irr::scene::IMesh* baseMesh,
+     float extraRotCos,
+     float extraRotSin)
+@@ -182,13 +182,12 @@ static void applyBoneTransformsToMeshImpl(
+                 size_t vIdx = vertexIdx + i;
+                 if (vIdx >= totalOrigVerts || vIdx >= vertexMapping.size()) break;
+ 
+-                // Get the destination buffer and local index
+-                const auto& mapping = vertexMapping[vIdx];
+-                if (mapping.bufferIndex >= bufferCount) continue;
+-
+-                irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
+-                    destMesh->getMeshBuffer(mapping.bufferIndex));
+-                if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
++                // P08D-RETAKE: a vertex shared across texture groups/UV seams may have
++                // MULTIPLE destinations (see VertexMappingList) -- compute the transform
++                // once, then write it to every duplicate so none are left frozen at bind
++                // pose. Empty list = unmapped vertex (skipped entirely), same as before.
++                const auto& mappings = vertexMapping[vIdx];
++                if (mappings.empty()) continue;
+ 
+                 // Get original vertex position and normal (in EQ Z-up coordinates)
+                 const auto& srcVert = originalVertices[vIdx];
+@@ -222,15 +221,24 @@ static void applyBoneTransformsToMeshImpl(
+ 
+                 // Convert from EQ (Z-up) to Irrlicht (Y-up): (x, y, z) -> (x, z, y)
+                 float ix = px, iy = pz, iz = py;  // Irrlicht coords
+-                dstBuffer->Vertices[mapping.localIndex].Pos.X = ix;
+-                dstBuffer->Vertices[mapping.localIndex].Pos.Y = iy;
+-                dstBuffer->Vertices[mapping.localIndex].Pos.Z = iz;
+-                dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
+-                dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
+-                dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
+-
+-                // Track bounding box inline — no second vertex pass needed
+-                updateBounds(mapping.bufferIndex, ix, iy, iz);
++
++                for (const auto& mapping : mappings) {
++                    if (mapping.bufferIndex >= bufferCount) continue;
++
++                    irr::scene::SMeshBuffer* dstBuffer = static_cast<irr::scene::SMeshBuffer*>(
++                        destMesh->getMeshBuffer(mapping.bufferIndex));
++                    if (!dstBuffer || mapping.localIndex >= dstBuffer->Vertices.size()) continue;
++
++                    dstBuffer->Vertices[mapping.localIndex].Pos.X = ix;
++                    dstBuffer->Vertices[mapping.localIndex].Pos.Y = iy;
++                    dstBuffer->Vertices[mapping.localIndex].Pos.Z = iz;
++                    dstBuffer->Vertices[mapping.localIndex].Normal.X = tnx;
++                    dstBuffer->Vertices[mapping.localIndex].Normal.Y = tnz;  // EQ Z -> Irrlicht Y
++                    dstBuffer->Vertices[mapping.localIndex].Normal.Z = tny;  // EQ Y -> Irrlicht Z
++
++                    // Track bounding box inline — no second vertex pass needed
++                    updateBounds(mapping.bufferIndex, ix, iy, iz);
++                }
+             }
+ 
+             vertexIdx += piece.count;
+@@ -459,7 +467,7 @@ void EQAnimatedMesh::setOriginalVertices(const std::vector<irr::video::S3DVertex
+     originalVertices_ = verts;
+ }
+ 
+-void EQAnimatedMesh::setVertexMapping(const std::vector<VertexMapping>& mapping) {
++void EQAnimatedMesh::setVertexMapping(const std::vector<VertexMappingList>& mapping) {
+     vertexMapping_ = mapping;
+ }
+ 
+diff --git a/src/client/graphics/eq/mesh_building.cpp b/src/client/graphics/eq/mesh_building.cpp
+index e6af37b..37eec78 100644
+--- a/src/client/graphics/eq/mesh_building.cpp
++++ b/src/client/graphics/eq/mesh_building.cpp
+@@ -127,14 +127,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
+         originalVerticesForAnimation_.push_back(vert);
+     }
+ 
+-    // Initialize vertex mapping (original index -> buffer location)
++    // Initialize vertex mapping (original index -> ALL destination buffer locations).
++    // P08D-RETAKE: was a single VertexMapping per original vertex, silently dropping
++    // every duplicate but the last-registered one for vertices shared across texture
++    // groups (UV seams) -- see the VertexMappingList comment in
++    // animated_mesh_scene_node.h. Each vIdx now gets a list; empty list = unmapped.
+     vertexMappingForAnimation_.clear();
+     vertexMappingForAnimation_.resize(geometry->vertices.size());
+-    // Initialize all mappings to invalid
+-    for (auto& m : vertexMappingForAnimation_) {
+-        m.bufferIndex = 0xFFFFFFFF;
+-        m.localIndex = 0xFFFFFFFF;
+-    }
+ 
+     irr::u32 bufferIndex = 0;
+     for (const auto& [texIdx, triIndices] : trianglesByTexture) {
+@@ -288,10 +287,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
+                     globalToLocal[vidx] = localIdx;
+                     buffer->Vertices.push_back(vert);
+ 
+-                    // Record vertex mapping for animation
++                    // Record vertex mapping for animation. P08D-RETAKE: APPEND (not
++                    // overwrite) -- this vertex may already have a mapping from an
++                    // earlier texture group's buffer if it's a UV-seam vertex shared
++                    // across materials; both duplicates must be tracked so skinning
++                    // updates all of them, not just the last one registered.
+                     if (vidx < vertexMappingForAnimation_.size()) {
+-                        vertexMappingForAnimation_[vidx].bufferIndex = bufferIndex;
+-                        vertexMappingForAnimation_[vidx].localIndex = localIdx;
++                        vertexMappingForAnimation_[vidx].push_back({bufferIndex, localIdx});
+                     }
+                 }
+             }
+@@ -354,13 +356,14 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
+         originalVerticesForAnimation_.push_back(vert);
+     }
+ 
+-    // Initialize vertex mapping (all go to buffer 0 for composite)
++    // Initialize vertex mapping (P08D-RETAKE: one-to-many, see mesh_building.cpp's
++    // buildMeshFromGeometry comment / animated_mesh_scene_node.h's VertexMappingList
++    // comment -- a composite mesh still duplicates an original vertex once per
++    // distinct (vertex, texture) pair it's used with, even though every duplicate
++    // shares the same destination BUFFER, because each duplicate needs a different
++    // remapped UV into the composite sheet).
+     vertexMappingForAnimation_.clear();
+     vertexMappingForAnimation_.resize(geometry->vertices.size());
+-    for (auto& m : vertexMappingForAnimation_) {
+-        m.bufferIndex = 0xFFFFFFFF;
+-        m.localIndex = 0xFFFFFFFF;
+-    }
+ 
+     // ── Pass 1: Scan UV extents per texture ──
+     // Character models use flipV (1.0 - v.v) for individual textures (see
+@@ -511,9 +514,9 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
+                 buffer->Vertices.push_back(vert);
+                 buffer->Indices.push_back(localIdx);
+ 
++                // P08D-RETAKE: append, don't overwrite -- see comment above.
+                 if (vidx < vertexMappingForAnimation_.size()) {
+-                    vertexMappingForAnimation_[vidx].bufferIndex = currentBufferIndex;
+-                    vertexMappingForAnimation_[vidx].localIndex = localIdx;
++                    vertexMappingForAnimation_[vidx].push_back({currentBufferIndex, localIdx});
+                 }
+             }
+         }
