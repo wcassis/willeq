@@ -831,3 +831,24 @@ sheet structural integrity sweep) is untouched — independent of this bug.
   for this unit — deferred to a future animation unit (root-cause the benchmark's `--animate` path
   against `EQAnimatedMesh`) plus a live-client play session to confirm production animation is
   unaffected.
+
+### Orchestrator addendum (2026-07-26): bless record + overlap verification
+
+- Will identified during round-5c review that the defect-check frame's
+  chest artifacts coincided with TWO test entities interpenetrating at
+  near-identical positions (visible in defect_check_comp_f40.png: a
+  second model's head/arms poke through the barbarian). Orchestrator
+  verification: re-running the identical extreme close-up with
+  non-overlapping entities (--entities 2 --seed 7 --orbit-radius 8, f40)
+  gives **0/786,432 differing pixels, max_delta=0 — byte-identical**.
+  The round-5c 2.035% scatter at that one frame was z-fighting between
+  the co-located fixture entities resolving depth ties differently under
+  composite's changed draw order — a benchmark fixture quirk, not a
+  composite defect. Final quality verdict: composite vs multi-buffer is
+  pixel-identical on valid static geometry, no exceptions.
+- **BLESSED by Will 2026-07-26** (static evidence; T-pose-only confirmed
+  intended). Implementation merged (631ec16..5010216). The orangepi
+  preset flip was NOT carried — Will blessed without directing the flip;
+  it is parked on branch `task/P08d-preset-flip` (bb9a795) and can be
+  cherry-picked the moment he says "flip" (recommended after the
+  builder-extension unit raises roster coverage past ~10-21%).

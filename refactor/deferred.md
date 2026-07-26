@@ -125,8 +125,30 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   gameplay-load reality check; calibrated N=205 → median 38 visible
   entities, matching H04's live cap; P08's 200-entity "stress" config
   turned out already gameplay-representative by visible count):
-  1. **Entity draw-path reduction — P08c (2026-07-25) picked the winner:
-     COMPOSITE ENTITIES.** Head-to-head at gameplay load (befallen replay
+  1. **Entity draw-path: composite entities LANDED by P08d (2026-07-26,
+     blessed by Will; eligibility-gated: !isPlayer && !hasBodyPartOverride
+     && !hasEquipmentTint; static quality evidence pixel-identical).
+     Preset flip NOT yet carried — parked on branch task/P08d-preset-flip
+     (bb9a795), one cherry-pick away. Remaining work in this lever:**
+     - **Builder-extension unit**: entity_composite_builder can't read
+       zone-specific _chr archives → real rosters only ~10-21% eligible;
+       extend + generate sheets, then flip the preset (the P08c 33/56%
+       win scales with coverage).
+     - **Benchmark --animate garbling unit (pre-existing, found via
+       P08d's evidence rounds)**: the benchmark's animated scenegraph
+       path crumples model geometry and always has (repro in
+       P08d review; static renders valid; pre-P08d binaries identical);
+       root-cause EQAnimatedMesh-as-driven-by-the-harness. Until fixed,
+       NO animated benchmark evidence is trustworthy. Related parked
+       change: refactor/scratch/P08d_vertexmapping_one_to_many.patch
+       (one-to-many VertexMapping fix, animation-path-only, reverted
+       from P08d because it could only be verified against garbled
+       renders — re-validate in this unit).
+     - **Live-client animation verification** of composites (production
+       clip selection + Will's eyes) before/with the preset flip.
+     - gles2_composite_audit has an unrelated pre-existing
+       device-creation bug (P08d worked around it; small fix someday).
+     P08c original verdict for the record:** Head-to-head at gameplay load (befallen replay
      p95 speedup): batch 18.1% / composite 33.1% / lod 35.5% (worst
      visuals — flat silhouettes) / direct-gl BROKEN (garbled textures, no
      perf win — disqualified; genuine bug, undebugged per plan).
