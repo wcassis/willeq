@@ -444,6 +444,30 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   (crumple liveness + whether flipped composites render correctly in
   play).
 
+## Live x86 client bugs (anim-video-capture session, 2026-07-26)
+
+Found while recording the P12 animation-evidence videos (real client,
+llvmpipe, eqemu). Workarounds live on parked branch
+task/anim-video-capture (6c48bb4, slot2) — NOT merged; each needs a
+proper fix:
+- **befallen SIGSEGVs on the very first rendered frame** on x86 GLES2
+  even with vanilla `--constrained orangepi`, no capture flags —
+  pre-existing, severe (adjacent to the H02-era blackburrow/crushbone
+  blank-render item?). Zone had to be substituted (qeynos2) for capture.
+- renderer_zone_load.cpp: one NPC with a missing item_models.json
+  equipment entry ABORTS the whole zone load (FATAL) — should be
+  WARN+skip.
+- saveScreenshot()'s safe glReadPixels path compiled out on x86 GLES2
+  dev builds (EQT_HAS_DRM guard); fallback createScreenShot() segfaults
+  nondeterministically in llvmpipe — widen the guard properly.
+- ParticleManager::renderUnified nondeterministic crash
+  (dangling-pointer-shaped race vs SimulationWorker result buffer) —
+  gated on isEnabled() as a workaround; real race needs fixing
+  (compare RDP frame race in this file's history).
+- Even with workarounds, sessions end in crashes rather than clean
+  /camp — x86 llvmpipe client stability needs a pass before it can be
+  a routine evidence harness.
+
 ## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
 
 - Exhaustive grep (verified independently by orchestrator): no
