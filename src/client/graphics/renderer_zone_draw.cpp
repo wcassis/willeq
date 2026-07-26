@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_mesh_cache.h"
+#include "client/graphics/renderer_zone_merge.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <chrono>
@@ -586,25 +587,100 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             return a.distanceSq < b.distanceSq;
         });
 
-    // Draw — setMaterial() is called every time because custom shader callbacks
-    // need the current world matrix. However, sorting by material ensures the
-    // driver's state tracking (SOGLES2State) skips redundant GL calls for
-    // blend/depth/cull/texture/program when consecutive draws share the same material.
-    for (const auto& de : sortedDrawEntries_) {
-        driver_->setTransform(irr::video::ETS_WORLD, de.worldMat);
-        if (de.materialOverride >= 0) {
-            // Adaptive lighting: override material type (per-pixel → lightweight)
-            irr::video::SMaterial mat = de.buffer->getMaterial();
-            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
-            driver_->setMaterial(mat);
-        } else {
-            driver_->setMaterial(de.buffer->getMaterial());
+    // P10: cross-region zone draw merge (flag-gated, default off; see
+    // renderer_zone_merge.h). Decide whether the merge path is usable THIS
+    // frame before drawing. Reduced-landing contract: only ever build the
+    // merge buffers once the zone's region set is fully resident with zero
+    // mesh-cache evictions so far; destroy + permanently disable for the
+    // rest of this zone visit the instant an eviction occurs (the merge
+    // buffers are a derived snapshot, never a source of truth, so this is
+    // always safe -- worst case is losing the merge benefit for a zone that
+    // doesn't fit the mesh-cache budget, never drawing stale geometry).
+    bool mergeActive = false;
+    if (mergeZoneDrawsEnabled_ && !mergeZoneDrawsDisabledForZone_) {
+        if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
+
+        const size_t evictionCount = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
+
+        if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
+            // A region evicted after we built the merge -- the merge buffers
+            // may reference geometry that's no longer resident/valid. Bail
+            // permanently for this zone visit rather than rebuild every
+            // eviction (rebuild-on-every-eviction would thrash for any zone
+            // near its mesh-cache budget, defeating the point of merging).
+            LOG_WARN(MOD_GRAPHICS, "[mergedraws] mesh-cache eviction after merge build ({} regions "
+                     "evicted) -- disabling merge for the rest of this zone visit (falls back to "
+                     "the unmerged path)", evictionCount);
+            zoneMergeBuffers_->destroy();
+            mergeZoneDrawsDisabledForZone_ = true;
+        } else if (!zoneMergeBuffers_->isBuilt() && !isLoading() && !regionMeshNodes_.empty() &&
+                   evictionCount == 0 &&
+                   (!constrainedMeshCache_ ||
+                    constrainedMeshCache_->getLoadedCount() >= constrainedMeshCache_->getTotalCount())) {
+            // "Fully resident" -- two cases:
+            //   - constrainedMeshCache_ is null: the mesh cache is INACTIVE for
+            //     this preset/config (production builds region meshes eagerly at
+            //     load in that case, see loadZoneStep4_Regions() -- there is no
+            //     streaming/eviction concept to reconcile with at all, so once
+            //     loading is done every region that will ever exist already has
+            //     a node). NOTE: zoneBspTree_->regions.size() is NOT the right
+            //     comparator here (an earlier version of this gate compared
+            //     against it and never fired) -- BSP trees commonly contain
+            //     "empty" regions with no geometry that never get a mesh node
+            //     even in fully-eager mode, so regionMeshNodes_.size() can
+            //     never reach that raw count.
+            //   - constrainedMeshCache_ is active: use ITS OWN bookkeeping
+            //     (getLoadedCount() vs getTotalCount(), the registered-region
+            //     count) rather than the raw BSP region count, for the same
+            //     reason -- these counts already exclude empty regions
+            //     (registerRegion() is only called for regions that got a mesh).
+            zoneMergeBuffers_->build(regionMeshNodes_);
+            mergeZoneDrawsBuildEvictionCount_ = evictionCount;
         }
-        driver_->drawMeshBuffer(de.buffer);
+
+        mergeActive = zoneMergeBuffers_->isBuilt();
+    }
+
+    int drawCalls = 0;
+    if (mergeActive) {
+        drawCalls = zoneMergeBuffers_->renderMerged(driver_, sortedDrawEntries_);
+    } else {
+        // Draw — setMaterial() is called every time because custom shader callbacks
+        // need the current world matrix. However, sorting by material ensures the
+        // driver's state tracking (SOGLES2State) skips redundant GL calls for
+        // blend/depth/cull/texture/program when consecutive draws share the same material.
+        for (const auto& de : sortedDrawEntries_) {
+            driver_->setTransform(irr::video::ETS_WORLD, de.worldMat);
+            if (de.materialOverride >= 0) {
+                // Adaptive lighting: override material type (per-pixel → lightweight)
+                irr::video::SMaterial mat = de.buffer->getMaterial();
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
+                driver_->setMaterial(mat);
+            } else {
+                driver_->setMaterial(de.buffer->getMaterial());
+            }
+            driver_->drawMeshBuffer(de.buffer);
+        }
+        drawCalls = static_cast<int>(sortedDrawEntries_.size());
+    }
+
+    // P08d-style adoption-line: unmerged-would-be draws vs actual (merged or
+    // not) draws, sampled every 120 frames (~2s at 60fps) so live sessions
+    // show the reduction without an instrumentation build. sortedDrawEntries_.size()
+    // is always the unmerged-would-be draw count, regardless of mergeActive.
+    static int mergeSampleCounter = 0;
+    if (++mergeSampleCounter >= 120) {
+        mergeSampleCounter = 0;
+        const int unmergedWouldBe = static_cast<int>(sortedDrawEntries_.size());
+        const float reductionPct = unmergedWouldBe > 0
+            ? 100.0f * (1.0f - static_cast<float>(drawCalls) / static_cast<float>(unmergedWouldBe))
+            : 0.0f;
+        LOG_INFO(MOD_GRAPHICS, "[mergedraws] zone={} merge={} unmerged_would_be_draws={} actual_draws={} reduction={:.1f}%",
+                 currentZoneName_, mergeActive ? "ON" : "off", unmergedWouldBe, drawCalls, reductionPct);
     }
 
     frameTimings_.manualZoneRegionsDrawn = regionsDrawn;
-    frameTimings_.manualZoneDrawCalls = static_cast<int>(sortedDrawEntries_.size());
+    frameTimings_.manualZoneDrawCalls = drawCalls;
 }
 
 // ======== drawRegionMesh ========

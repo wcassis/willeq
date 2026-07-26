@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/entity_prep_worker.h"
@@ -999,6 +1000,18 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     if (cmd == "/sort") {
         toggleManualZoneDraw();
         chat(fmt::format("Front-to-back zone sorting: {}", isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/mergedraws") {
+        toggleMergeZoneDraws();
+        chat(fmt::format("Zone draw merge: {}", isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/screenshot") {
+        // P10: smallest additive hook for the in-app A/B capture (no other
+        // scriptable screenshot command existed — F12 is a raw key event,
+        // not reachable from --script's slash-command tour list). Explicit
+        // filename arg so a tour script can capture deterministic
+        // before/after pairs at a fixed pose.
+        std::string path = args.empty() ? "screenshot.png" : args;
+        bool ok = saveScreenshot(path);
+        chat(fmt::format("Screenshot {}: {}", path, ok ? "saved" : "FAILED"));
     } else if (cmd == "/upload") {
         toggleGPUUploadThread();
         chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
@@ -2618,8 +2631,15 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
 
 #ifdef EQT_HAS_DRM
     // DRM/EGL: Irrlicht's createScreenShot() reads GL_FRONT which doesn't exist
-    // in EGL (only GLX has separate front/back read targets).  Read GL_BACK instead.
-    if (config_.constrainedConfig.useDRM) {
+    // in EGL (only GLX has separate front/back read targets). Read GL_BACK instead.
+    // P10: gated on the GLES2 driver type generally, not just useDRM — this branch
+    // is also required for the x86 EGL-surfaceless dev build (H01; useDRM is false
+    // there since --drm isn't passed, but it's still the same EQT_HAS_DRM-defined
+    // GLES2/EGL device with no real GL_FRONT/window-system default framebuffer).
+    // createScreenShot() was found to return garbage (uninitialized-looking noise)
+    // under the surfaceless case during P10's in-app A/B screenshot verification —
+    // this widened gate is the fix, discovered and applied there.
+    if (config_.constrainedConfig.useDRM || driver_->getDriverType() == irr::video::EDT_OGLES2) {
         irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
         uint32_t w = screenSize.Width;
         uint32_t h = screenSize.Height;

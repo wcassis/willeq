@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/renderer_zone_merge.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_mesh_cache.h"
@@ -155,6 +156,13 @@ void IrrlichtRenderer::unloadZone() {
     manualZoneDrawEnabled_ = false;
     sortedZoneDrawList_.clear();
     sortedDrawEntries_.clear();
+
+    // P10: reset cross-region zone draw merge state — the merge buffers are
+    // scoped to a single zone visit's region set; destroy them and clear the
+    // "disabled for this zone" latch so the next zone gets a fresh attempt.
+    if (zoneMergeBuffers_) zoneMergeBuffers_->destroy();
+    mergeZoneDrawsDisabledForZone_ = false;
+    mergeZoneDrawsBuildEvictionCount_ = 0;
     portalSystem_.reset();
     portalOcclusionEnabled_ = false;
     portalOcclusionEligible_ = false;

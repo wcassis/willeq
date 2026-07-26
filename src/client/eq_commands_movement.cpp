@@ -685,6 +685,24 @@ void EverQuest::RegisterMovementCommands()
 	sortcmd.handler = rendererCmd("sort");
 	m_command_registry->registerCommand(sortcmd);
 
+	Command mergedrawscmd;
+	mergedrawscmd.name = "mergedraws";
+	mergedrawscmd.aliases = {};
+	mergedrawscmd.usage = "/mergedraws";
+	mergedrawscmd.description = "Toggle cross-region zone draw merge (P10, flag-gated production landing)";
+	mergedrawscmd.category = "Utility";
+	mergedrawscmd.handler = rendererCmd("mergedraws");
+	m_command_registry->registerCommand(mergedrawscmd);
+
+	Command screenshotcmd;
+	screenshotcmd.name = "screenshot";
+	screenshotcmd.aliases = {};
+	screenshotcmd.usage = "/screenshot <path>";
+	screenshotcmd.description = "Save a screenshot to the given path (P10: scriptable A/B capture hook)";
+	screenshotcmd.category = "Utility";
+	screenshotcmd.handler = rendererCmd("screenshot");
+	m_command_registry->registerCommand(screenshotcmd);
+
 	Command uploadcmd;
 	uploadcmd.name = "upload";
 	uploadcmd.aliases = {};

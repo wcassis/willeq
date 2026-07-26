@@ -683,6 +683,13 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                       (bool)currentZone_, currentZone_ ? (bool)currentZone_->wldLoader : false, (bool)zoneBspTree_);
         }
 
+        // P10: initialize cross-region zone draw merge from config (default
+        // false everywhere; runtime-toggleable via /mergedraws regardless of
+        // this initial value). renderer_zone_lifecycle.cpp resets this +
+        // destroys any built merge buffers on zone teardown, so each zone
+        // visit starts from the config default again.
+        mergeZoneDrawsEnabled_ = config_.constrainedConfig.mergeZoneDraws;
+
         // Setup front-to-back sorting
         if (usePvsCulling_ && !regionMeshNodes_.empty() && !config_.constrainedConfig.skipManualZoneDraw) {
 #ifdef EQT_HAS_GLES2

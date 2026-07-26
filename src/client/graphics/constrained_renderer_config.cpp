@@ -588,6 +588,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         enableItemIcons = preset["enableItemIcons"].asBool();
     if (preset.isMember("chrCacheMaxEntries"))
         chrCacheMaxEntries = static_cast<size_t>(preset["chrCacheMaxEntries"].asUInt());
+    if (preset.isMember("mergeZoneDraws"))
+        mergeZoneDraws = preset["mergeZoneDraws"].asBool();
 
     return true;
 }
@@ -621,9 +623,10 @@ bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) 
     applyBool("skipObjectBuild", skipObjectBuild);
     applyBool("skipConstrainedTextureUpload", skipConstrainedTextureUpload);
     applyBool("skipSkyTextureUpload", skipSkyTextureUpload);
+    applyBool("mergeZoneDraws", mergeZoneDraws);
 
     if (anySet) {
-        LOG_WARN(MOD_GRAPHICS, "Debug overrides active from {}: ManualZone={} VBO={} EntityTex={} EntityBuild={} ObjBuild={} TexCache={} SkyTex={}",
+        LOG_WARN(MOD_GRAPHICS, "Debug overrides active from {}: ManualZone={} VBO={} EntityTex={} EntityBuild={} ObjBuild={} TexCache={} SkyTex={} MergeZoneDraws={}",
                  jsonPath,
                  skipManualZoneDraw ? "SKIP" : "ok",
                  skipVBOUpload ? "SKIP" : "ok",
@@ -631,7 +634,8 @@ bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) 
                  skipEntityBuild ? "SKIP" : "ok",
                  skipObjectBuild ? "SKIP" : "ok",
                  skipConstrainedTextureUpload ? "SKIP" : "ok",
-                 skipSkyTextureUpload ? "SKIP" : "ok");
+                 skipSkyTextureUpload ? "SKIP" : "ok",
+                 mergeZoneDraws ? "ON" : "off");
     }
 
     return true;

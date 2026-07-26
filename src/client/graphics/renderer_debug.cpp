@@ -1,4 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/renderer_zone_merge.h"
+#include "client/graphics/constrained_mesh_cache.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
@@ -462,6 +464,31 @@ void IrrlichtRenderer::toggleManualZoneDraw() {
     }
     LOG_INFO(MOD_GRAPHICS, "Manual zone draw (front-to-back sorting): {}",
              manualZoneDrawEnabled_ ? "ENABLED" : "DISABLED");
+}
+
+// P10: cross-region zone draw merge runtime toggle (/mergedraws). Mirrors
+// /sort's pattern — no scene-graph manipulation needed here (the merge
+// decision/build lives entirely inside drawZoneGeometrySorted(), gated on
+// this bool); toggling off just makes the next frame take the unmerged
+// branch, toggling on lets the next eligible frame attempt a build.
+void IrrlichtRenderer::toggleMergeZoneDraws() {
+    if (isLoading()) return;
+    mergeZoneDrawsEnabled_ = !mergeZoneDrawsEnabled_;
+    if (!mergeZoneDrawsEnabled_ && zoneMergeBuffers_) {
+        // Free the merge buffers immediately when turned off — no reason to
+        // hold the duplicated vertex/index memory while unused.
+        zoneMergeBuffers_->destroy();
+    }
+    // Re-arm the "disabled for this zone" latch when explicitly re-enabled,
+    // so a user flipping /mergedraws off/on after an eviction-triggered
+    // auto-disable gets a fresh attempt (at the cost of possibly hitting the
+    // same eviction-driven fallback again — that's expected, not a bug).
+    if (mergeZoneDrawsEnabled_) {
+        mergeZoneDrawsDisabledForZone_ = false;
+        mergeZoneDrawsBuildEvictionCount_ = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
+    }
+    LOG_INFO(MOD_GRAPHICS, "Zone draw merge (/mergedraws): {}",
+             mergeZoneDrawsEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 bool IrrlichtRenderer::loadIndoorRegionMap(const std::string& zoneName) {

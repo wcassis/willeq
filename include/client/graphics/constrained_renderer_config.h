@@ -116,6 +116,18 @@ struct ConstrainedRendererConfig {
     int antiAliasLevel = 0;                  // MSAA sample count (0=off, 4=4x, etc.)
     int anisotropicFilterLevel = 0;          // Anisotropic filtering (0=off, 4=4x, etc.)
 
+    // P10: cross-region same-material zone draw merge (production landing of the
+    // P09/P09b/P09c-validated design). Default false everywhere -- flag OFF is the
+    // byte-untouched existing per-region draw path. When true, drawZoneGeometrySorted()
+    // may coalesce consecutive same-SMaterial runs of RESIDENT zone-region geometry
+    // into single client-side-index glDrawElements calls (see renderer_zone_merge.h).
+    // Reduced-landing scope (see refactor/P10_merge_production_landing.md Review):
+    // merge only activates for zones where ConstrainedMeshCache never evicts (fully
+    // resident); falls back to the unmerged path for the rest of that zone visit the
+    // instant an eviction occurs. Zone objects/placeables always stay unmerged (out
+    // of scope, matches the P09 prototype). Runtime-toggleable via /mergedraws.
+    bool mergeZoneDraws = false;
+
     // Adaptive per-pixel lighting: nearest N regions/objects get per-pixel player light,
     // the rest use lightweight per-vertex shaders. Requires /plight enabled.
     // 0 = disabled (all per-pixel when /plight on, all per-vertex when off).

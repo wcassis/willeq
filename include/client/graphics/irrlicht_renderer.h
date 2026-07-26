@@ -455,6 +455,10 @@ struct SortedRegionEntry {
     irr::scene::IMeshSceneNode* node;
 };
 
+// Forward declaration -- full definition + implementation in
+// renderer_zone_merge.h/.cpp (P10 cross-region zone draw merge).
+class ZoneMergeBuffers;
+
 // Entry for material-sorted zone draw list (mesh buffer level)
 struct ZoneDrawEntry {
     uint32_t materialKey;   // (materialType << 16) | textureIdHash
@@ -800,6 +804,13 @@ public:
     // Front-to-back sorting and portal occlusion controls
     void toggleManualZoneDraw();
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
+
+    // P10: cross-region zone draw merge (see renderer_zone_merge.h). Runtime
+    // toggle mirrors /sort's pattern -- a renderer-owned bool separate from
+    // the config-loaded mergeZoneDraws, which only supplies the initial value
+    // at zone load.
+    void toggleMergeZoneDraws();
+    bool isMergeZoneDrawsEnabled() const { return mergeZoneDrawsEnabled_; }
 
     // Toggle GPU upload thread on/off at runtime (for A/B frame timing comparison)
     void toggleGPUUploadThread();
@@ -1302,6 +1313,19 @@ private:
     std::vector<SortedRegionEntry> sortedZoneDrawList_;
     std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
     void drawZoneGeometrySorted();
+
+    // P10: cross-region zone draw merge state (see renderer_zone_merge.h).
+    // mergeZoneDrawsEnabled_ is initialized from config_.constrainedConfig.mergeZoneDraws
+    // at zone load and independently runtime-toggleable via /mergedraws.
+    // zoneMergeBuffers_ is built lazily (once the region set is fully resident
+    // with zero mesh-cache evictions so far) and destroyed + permanently
+    // disabled for the rest of the zone visit the instant an eviction occurs
+    // (mergeZoneDrawsDisabledForZone_) -- see renderer_zone_merge.h's header
+    // comment for the reduced-landing rationale.
+    bool mergeZoneDrawsEnabled_ = false;
+    bool mergeZoneDrawsDisabledForZone_ = false;
+    size_t mergeZoneDrawsBuildEvictionCount_ = 0;
+    std::unique_ptr<ZoneMergeBuffers> zoneMergeBuffers_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
