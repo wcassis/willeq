@@ -857,7 +857,32 @@ void Application::updateScript(float deltaTime) {
     if (m_commandProcessor) {
         LOG_INFO(MOD_MAIN, "Script: executing '{}' (step {}/{})",
             step.commandText, m_scriptIndex + 1, m_scriptSteps.size());
-        m_commandProcessor->processCommand(step.commandText);
+        eqt::action::ActionResult result = m_commandProcessor->processCommand(step.commandText);
+        // P10: action::CommandProcessor only covers game-logic commands
+        // (chat/movement/combat/group/...) — renderer-only debug toggles
+        // (/sort, /mergedraws, /screenshot, /portal, ...) live in a
+        // completely separate registry (EverQuest::m_command_registry,
+        // reachable only from live chat-window input, not --script). Rather
+        // than build a second parallel scripting path, forward whatever
+        // action::CommandProcessor didn't recognize to the SAME
+        // GameEventType::RendererCommand queue EverQuest's own chat-command
+        // handling already uses (eq_commands_movement.cpp's rendererCmd
+        // lambda) — critically, this is drained on the RENDER thread
+        // (IrrlichtBridge's event switch, see irrlicht_bridge.cpp), whereas
+        // updateScript() itself runs on the GAME thread (processInput() is
+        // called from gameThreadLoop()). Calling m_renderer->processSlashCommand()
+        // directly from here would run renderer/GL code (e.g. saveScreenshot's
+        // glReadPixels) on the wrong thread without the EGL context current —
+        // discovered during P10's in-app A/B verification (produced
+        // deterministic-but-garbage screenshot pixels, not a crash, since
+        // Mesa doesn't fail loudly on this misuse). Going through m_bridge
+        // instead reuses the existing, already-thread-safe, already-proven
+        // command path unchanged.
+        if (!result.success && m_bridge) {
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::RendererCommand,
+                eqt::state::RendererCommandData{step.commandText}));
+        }
     }
     ++m_scriptIndex;
 
