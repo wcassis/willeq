@@ -144,16 +144,29 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
        before playing non-golden zones with composites); (c) several new
        race codes lack numeric EQ race-ID mappings in race_codes.cpp
        (found in passing, unfixed).
-     - **Benchmark --animate garbling unit (pre-existing, found via
-       P08d's evidence rounds)**: the benchmark's animated scenegraph
-       path crumples model geometry and always has (repro in
-       P08d review; static renders valid; pre-P08d binaries identical);
-       root-cause EQAnimatedMesh-as-driven-by-the-harness. Until fixed,
-       NO animated benchmark evidence is trustworthy. Related parked
-       change: refactor/scratch/P08d_vertexmapping_one_to_many.patch
-       (one-to-many VertexMapping fix, animation-path-only, reverted
-       from P08d because it could only be verified against garbled
-       renders — re-validate in this unit).
+     - **Animated-path crumple — P12 (2026-07-26) bisected, STOP fired,
+       ESCALATED IN SEVERITY**: ownership verdict is SHARED PRODUCTION
+       CODE (RaceModelLoader/EQAnimatedMesh/SkeletalAnimator) — the
+       benchmark drives the identical path with the identical idiom;
+       "production animates fine" is UNVERIFIED belief (the one test
+       that would catch it, test_inventory_model_view
+       ModelAnimatesProperly, is unconditionally GTEST_SKIP'd). Crumple
+       present from frame 0 (not drift). Parked VertexMapping patch
+       EMPIRICALLY NOT this bug (byte-identical A/B; real latent issue,
+       still parked). Ruled out: synthetic OnAnimate driving, P05
+       animation-track merge, per-buffer mapping population, bone-index
+       correspondence, matrix convention, bone scale/translation.
+       BEST LEAD for P12b: a raw vertex piece with bounding box wider
+       than the whole skeleton's bone span → suspected per-vertex
+       bind-pose disagreement between applySkinning's load-time bake
+       and runtime frame-0 reconstruction. P12b should also UN-SKIP/
+       repair ModelAnimatesProperly, and FIRST answer the discriminating
+       question: do NPCs visibly animate correctly in live play
+       (Pi/GLES2 and desktop paths)? If yes, there IS a path delta the
+       bisection missed; if no one can confirm, this may be a live
+       defect. Also noted by P12: a visual_gate foliage pixel mismatch
+       on slot2 with ZERO source diff (environment/Xvfb suspected —
+       cross-check against P11's slot1 gate run before trusting).
      - **Live-client animation verification** of composites (production
        clip selection + Will's eyes) before/with the preset flip.
      - gles2_composite_audit has an unrelated pre-existing
