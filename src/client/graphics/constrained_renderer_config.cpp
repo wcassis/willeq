@@ -281,7 +281,11 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.portalOcclusion = true;     // Auto-enable stencil portal vis in indoor zones
             config.occlusionBufferWidth = 64;
             config.occlusionBufferHeight = 32;
-            config.occlusionMaxOccluderRegions = 16;
+            // P14 (2026-07-27, blessed by Will): 256 closes befallen's p95 KPI gap
+            // under the merge+composite stack (35.32→32.31ms; uncapped ties 256).
+            // GPU-sync −9.5% and submission −23.1% at the dense bf472 pose for
+            // +0.44ms of CPU occlusion-test cost. 16 predates the stack era.
+            config.occlusionMaxOccluderRegions = 256;
             // GPU feature flags (Mali 400 via Lima supports these)
             config.enableMipmaps = true;
             config.enableNPOT = true;
