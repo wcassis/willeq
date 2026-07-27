@@ -432,3 +432,13 @@ unmerged behavior by construction, since the code path is never taken).
    documented (confirmed via `SELECT`) — this is a pre-existing local
    client/map-data quirk at that specific coordinate, flagged for whoever
    next touches map loading, not investigated further (out of scope).
+
+### Orchestrator addendum (2026-07-27): BLESSED + FLIPPED
+
+Will blessed the merge flip ("bless flip") after P11b's full-stack KPI
+measurement (merge + animated composites: befallen avg 25.11ms/39.8fps,
+p95 35.32ms/28.3fps on the canonical replay). mergeZoneDraws=true added
+to the orangepi preset. With composites already live, the Pi preset now
+ships the full measured stack. The P10 landing arc (P09 design → P09b/c
+correctness → P10 landing → P10b crash fix → P11b measurement) is
+closed.
