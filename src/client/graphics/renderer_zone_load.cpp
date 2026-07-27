@@ -2286,7 +2286,14 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                 ++fixupProcessed;
                 const std::string& objName = objInstance.placeable->getName();
 
-                // Wind shader for trees
+                // Wind shader for trees.
+                // H02d (Option A): classify per-material instead of blanket-
+                // assigning the ETC1-companion alpha-test variant. Masked
+                // RGBA/DDS-decoded foliage (e.g. gfaydark's nekpine.bmp) has
+                // no companion alpha texture, so an unconditional override
+                // put it on a shader sampling an unbound unit 1 — the GLES2
+                // driver's opaque-white 1x1 fallback never discards, so the
+                // foliage rendered as solid opaque quads (P20b root cause).
                 if (windCheckEnabled) {
                     std::string primaryTexture;
                     if (!objInstance.geometry->textureNames().empty())
@@ -2297,20 +2304,49 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
                         if (treeMesh) {
                             irr::core::aabbox3df meshBbox = treeMesh->getBoundingBox();
-                            irr::s32 windMatType = zoneShader_->getActiveWindAlphaTest();
+                            const auto& textureNames = objInstance.geometry->textureNames();
+                            const auto& textureMasked = objInstance.geometry->textureMasked();
+                            // Classify one texture (by name) into the correct wind
+                            // material type: masked+ETC1 -> companion-alpha wind
+                            // variant; masked+RGBA -> wind variant reading
+                            // uTexture.a; non-masked -> wind/solid variant.
+                            auto classify = [&](const std::string& texName) -> irr::s32 {
+                                bool isMaskedMaterial = false;
+                                for (size_t ti = 0; ti < textureNames.size(); ++ti) {
+                                    if (textureNames[ti] == texName) {
+                                        isMaskedMaterial = (ti < textureMasked.size()) && textureMasked[ti];
+                                        break;
+                                    }
+                                }
+                                if (!isMaskedMaterial) {
+                                    irr::s32 windSolidType = zoneShader_->getActiveWindSolid();
+                                    return windSolidType >= 0 ? windSolidType : zoneShader_->getActiveWindAlphaTest();
+                                }
+                                bool isETC1 = constrainedTextureCache_ && !texName.empty() &&
+                                    constrainedTextureCache_->isETC1Texture(texName);
+                                if (isETC1) {
+                                    return zoneShader_->getActiveWindAlphaTest();
+                                }
+                                irr::s32 windRGBAType = zoneShader_->getActiveWindAlphaTestRGBA();
+                                return windRGBAType >= 0 ? windRGBAType : zoneShader_->getActiveWindAlphaTest();
+                            };
                             // Update BOTH node materials AND mesh buffer materials.
                             // Node materials are used by Irrlicht's scene graph rendering.
                             // Mesh buffer materials are used by drawZoneGeometrySorted().
                             for (irr::u32 mi = 0; mi < treeMesh->getMeshBufferCount(); ++mi) {
                                 auto& bufMat = treeMesh->getMeshBuffer(mi)->getMaterial();
+                                std::string texName = bufMat.TextureLayer[0].Texture
+                                    ? std::string(bufMat.TextureLayer[0].Texture->getName().getPath().c_str())
+                                    : primaryTexture;
+                                irr::s32 windMatType = classify(texName);
                                 bufMat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
                                 bufMat.MaterialTypeParam = meshBbox.MinEdge.Y;
                                 bufMat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
                                 bufMat.BackfaceCulling = false;
                                 if (constrainedTextureCache_ && bufMat.TextureLayer[0].Texture && !bufMat.TextureLayer[1].Texture) {
-                                    irr::core::stringc texName = bufMat.TextureLayer[0].Texture->getName().getPath();
+                                    irr::core::stringc texNameStr = bufMat.TextureLayer[0].Texture->getName().getPath();
                                     irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
-                                        std::string(texName.c_str()));
+                                        std::string(texNameStr.c_str()));
                                     if (alphaTex) bufMat.setTexture(1, alphaTex);
                                 }
                             }
@@ -2318,6 +2354,10 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                 auto& mat = objNode->getMaterial(mi);
                                 irr::s32 prevMatType = mat.MaterialType;
                                 irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
+                                std::string texName = tex0
+                                    ? std::string(tex0->getName().getPath().c_str())
+                                    : primaryTexture;
+                                irr::s32 windMatType = classify(texName);
                                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
                                 mat.MaterialTypeParam = meshBbox.MinEdge.Y;
                                 mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
@@ -2325,9 +2365,9 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                 // Ensure ETC1 alpha companion is on layer 1 (may already be set by mesh builder)
                                 if (constrainedTextureCache_ && tex0 && !mat.TextureLayer[1].Texture) {
                                     // Look up alpha companion by texture name
-                                    irr::core::stringc texName = tex0->getName().getPath();
+                                    irr::core::stringc texNameStr = tex0->getName().getPath();
                                     irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
-                                        std::string(texName.c_str()));
+                                        std::string(texNameStr.c_str()));
                                     if (alphaTex) mat.setTexture(1, alphaTex);
                                 }
                                 LOG_DEBUG(MOD_SHADER, "fixup tree '{}' mat[{}]: prevType={} -> windType={} "

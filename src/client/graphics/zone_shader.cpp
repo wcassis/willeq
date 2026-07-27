@@ -2217,6 +2217,45 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
                  materialWindAlphaTest_);
     }
 
+    // Wind RGBA alpha-test material (H02d, Option A): reads uTexture.a
+    // directly — the wind counterpart of materialAlphaTestRGBA_, for masked
+    // tree foliage on the direct RGBA/DDS decode path (no ETC1 companion
+    // texture exists or is needed). Non-fatal if it fails to compile —
+    // callers fall back to the base wind alpha-test variant.
+    WindShaderCallback* windRGBACallback = new WindShaderCallback(this);
+    materialWindAlphaTestRGBA_ = gpu->addHighLevelShaderMaterial(
+        WIND_VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
+        fragmentAlphaRGBASrc, "main", irr::video::EPST_PS_1_1,
+        windRGBACallback,
+        irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+    windRGBACallback->drop();
+
+    if (materialWindAlphaTestRGBA_ < 0) {
+        LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile wind RGBA alpha-test shader");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: Wind RGBA GLSL shader compiled (alphaTestRGBA={})",
+                 materialWindAlphaTestRGBA_);
+    }
+
+    // Wind solid material (H02d, Option A): for tree materials that are NOT
+    // masked (e.g. trunk textures) — wind vertex displacement without
+    // alpha-test discard semantics. Non-fatal if it fails to compile —
+    // callers fall back to the base wind alpha-test variant.
+    WindShaderCallback* windSolidCallback = new WindShaderCallback(this);
+    materialWindSolid_ = gpu->addHighLevelShaderMaterial(
+        WIND_VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
+        FRAGMENT_SHADER_SOLID_SRC, "main", irr::video::EPST_PS_1_1,
+        windSolidCallback,
+        irr::video::EMT_SOLID);
+    windSolidCallback->drop();
+
+    if (materialWindSolid_ < 0) {
+        LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile wind solid shader");
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: Wind solid GLSL shader compiled (windSolid={})",
+                 materialWindSolid_);
+    }
+
 #ifdef EQT_HAS_GLES2
     // Compile lightweight variants (no per-pixel player light, 3 varyings only)
     // These reuse existing ShaderCallback/AtlasShaderCallback/WindShaderCallback —
@@ -2295,10 +2334,38 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
             LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight wind shader");
         }
 
+        // Lightweight wind RGBA alpha-test (H02d, Option A) — main-texture-alpha
+        // equivalent of materialLWAlphaTestRGBA_, with wind vertex displacement.
+        // Non-fatal if it fails.
+        WindShaderCallback* lwWindRGBACb = new WindShaderCallback(this);
+        materialLWWindAlphaTestRGBA_ = gpu->addHighLevelShaderMaterial(
+            WIND_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_ALPHA_RGBA_SRC, "main", irr::video::EPST_PS_1_1,
+            lwWindRGBACb, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF);
+        lwWindRGBACb->drop();
+
+        if (materialLWWindAlphaTestRGBA_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight wind RGBA shader");
+        }
+
+        // Lightweight wind solid (H02d, Option A) — non-masked tree material
+        // equivalent of materialWindSolid_. Non-fatal if it fails.
+        WindShaderCallback* lwWindSolidCb = new WindShaderCallback(this);
+        materialLWWindSolid_ = gpu->addHighLevelShaderMaterial(
+            WIND_VERTEX_SHADER_LIGHTWEIGHT_SRC, "main", irr::video::EVST_VS_1_1,
+            FRAGMENT_SHADER_LIGHTWEIGHT_SOLID_SRC, "main", irr::video::EPST_PS_1_1,
+            lwWindSolidCb, irr::video::EMT_SOLID);
+        lwWindSolidCb->drop();
+
+        if (materialLWWindSolid_ < 0) {
+            LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile lightweight wind solid shader");
+        }
+
         LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: Lightweight shaders compiled (solid={}, alpha={}, "
-                 "atlasSolid={}, atlasAlpha={}, wind={})",
+                 "atlasSolid={}, atlasAlpha={}, wind={}, windRGBA={}, windSolid={})",
                  materialLWSolid_, materialLWAlphaTest_,
-                 materialLWAtlasSolid_, materialLWAtlasAlpha_, materialLWWindAlphaTest_);
+                 materialLWAtlasSolid_, materialLWAtlasAlpha_, materialLWWindAlphaTest_,
+                 materialLWWindAlphaTestRGBA_, materialLWWindSolid_);
     }
 
     // Compile debug visualization shader (expensive FS with branches — only used with /shaderdebug)
@@ -2405,6 +2472,16 @@ irr::s32 ZoneShaderManager::getActiveAtlasAlpha() const {
 irr::s32 ZoneShaderManager::getActiveWindAlphaTest() const {
     if (perPixelPlayerLight_ || materialLWWindAlphaTest_ < 0) return materialWindAlphaTest_;
     return materialLWWindAlphaTest_;
+}
+
+irr::s32 ZoneShaderManager::getActiveWindAlphaTestRGBA() const {
+    if (perPixelPlayerLight_ || materialLWWindAlphaTestRGBA_ < 0) return materialWindAlphaTestRGBA_;
+    return materialLWWindAlphaTestRGBA_;
+}
+
+irr::s32 ZoneShaderManager::getActiveWindSolid() const {
+    if (perPixelPlayerLight_ || materialLWWindSolid_ < 0) return materialWindSolid_;
+    return materialLWWindSolid_;
 }
 
 void ZoneShaderManager::setPerPixelPlayerLight(bool enabled) {

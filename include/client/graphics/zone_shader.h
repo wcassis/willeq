@@ -47,6 +47,21 @@ public:
     // Wind material types (vertex shader wind displacement for trees)
     irr::s32 getMaterialTypeWindAlphaTest() const { return materialWindAlphaTest_; }
     bool isWindAvailable() const { return materialWindAlphaTest_ >= 0; }
+    // H02d (Option A) wind counterpart: reads uTexture.a directly for masked
+    // tree foliage on the direct RGBA/DDS decode path (no ETC1 companion
+    // texture exists). Mirrors getMaterialTypeAlphaTestRGBA() but with wind
+    // vertex displacement. -1 if compilation failed (callers fall back to
+    // the base wind alpha-test variant, matching the non-wind RGBA fallback
+    // pattern).
+    irr::s32 getMaterialTypeWindAlphaTestRGBA() const { return materialWindAlphaTestRGBA_; }
+    bool isWindAlphaTestRGBAAvailable() const { return materialWindAlphaTestRGBA_ >= 0; }
+    // H02d (Option A): wind variant for NON-masked tree materials (e.g. tree
+    // trunk textures that carry no alpha), so wind vertex displacement still
+    // applies without dragging in alpha-test discard semantics. -1 if
+    // compilation failed (callers fall back to the base wind alpha-test
+    // variant, matching the other wind-family fallbacks).
+    irr::s32 getMaterialTypeWindSolid() const { return materialWindSolid_; }
+    bool isWindSolidAvailable() const { return materialWindSolid_ >= 0; }
 
     // Lightweight material types (no per-pixel player light, 3 varyings)
     irr::s32 getMaterialTypeLWSolid() const { return materialLWSolid_; }
@@ -54,6 +69,8 @@ public:
     irr::s32 getMaterialTypeLWAtlasSolid() const { return materialLWAtlasSolid_; }
     irr::s32 getMaterialTypeLWAtlasAlpha() const { return materialLWAtlasAlpha_; }
     irr::s32 getMaterialTypeLWWindAlphaTest() const { return materialLWWindAlphaTest_; }
+    irr::s32 getMaterialTypeLWWindAlphaTestRGBA() const { return materialLWWindAlphaTestRGBA_; }
+    irr::s32 getMaterialTypeLWWindSolid() const { return materialLWWindSolid_; }
     bool isLightweightAvailable() const { return materialLWSolid_ >= 0; }
 
     // Active material resolution — returns lightweight or per-pixel variant
@@ -63,6 +80,8 @@ public:
     irr::s32 getActiveAtlasSolid() const;
     irr::s32 getActiveAtlasAlpha() const;
     irr::s32 getActiveWindAlphaTest() const;
+    irr::s32 getActiveWindAlphaTestRGBA() const;  // H02d: wind RGBA main-texture-alpha variant
+    irr::s32 getActiveWindSolid() const;  // H02d: wind variant for non-masked tree materials
     void setPerPixelPlayerLight(bool enabled);
     bool isPerPixelPlayerLight() const { return perPixelPlayerLight_; }
 
@@ -205,6 +224,8 @@ private:
     irr::s32 materialAtlasSolid_ = -1;
     irr::s32 materialAtlasAlpha_ = -1;
     irr::s32 materialWindAlphaTest_ = -1;
+    irr::s32 materialWindAlphaTestRGBA_ = -1;  // H02d: wind main-texture-alpha variant (heavy/per-pixel)
+    irr::s32 materialWindSolid_ = -1;  // H02d: wind variant for non-masked tree materials (heavy/per-pixel)
 
     // Lightweight material types (no per-pixel player light, 3 varyings)
     irr::s32 materialLWSolid_ = -1;
@@ -213,6 +234,8 @@ private:
     irr::s32 materialLWAtlasSolid_ = -1;
     irr::s32 materialLWAtlasAlpha_ = -1;
     irr::s32 materialLWWindAlphaTest_ = -1;
+    irr::s32 materialLWWindAlphaTestRGBA_ = -1;  // H02d: wind main-texture-alpha variant (lightweight)
+    irr::s32 materialLWWindSolid_ = -1;  // H02d: wind variant for non-masked tree materials (lightweight)
     irr::s32 materialDebug_ = -1;  // Debug visualization program (expensive, only used with /shaderdebug)
     bool perPixelPlayerLight_ = false;  // Default OFF (lightweight)
 

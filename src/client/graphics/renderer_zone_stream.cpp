@@ -557,7 +557,18 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
         node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
     }
 
-    // Apply wind shader to tree meshes on GPU path (deferred build)
+    // Apply wind shader to tree meshes on GPU path (deferred build).
+    // H02d (Option A): do NOT blanket-assign the ETC1-companion wind variant
+    // to every tree material — masked RGBA/DDS-decoded foliage (e.g.
+    // gfaydark's nekpine.bmp) has no companion alpha texture, so an
+    // unconditional override lands it on a shader that samples an unbound
+    // unit 1, which the GLES2 driver's opaque-white 1x1 fallback never
+    // discards, producing solid opaque quads (P20b root cause). Classify
+    // per-material exactly like ZoneMeshBuilder::buildTexturedMesh does:
+    // masked+ETC1 -> companion-alpha wind variant (bind companion on unit
+    // 1); masked+RGBA -> wind variant reading uTexture.a; non-masked ->
+    // plain wind/solid variant (still gets wind vertex displacement, no
+    // alpha-test discard).
     if (treeManager_ && zoneShader_ && zoneShader_->isWindAvailable()) {
         std::string primaryTexture;
         if (!objInstance.geometry->textureNames().empty()) {
@@ -567,12 +578,44 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
             irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
             float meshMinY = meshBbox.MinEdge.Y;
             float meshMaxY = meshBbox.MaxEdge.Y;
+            const auto& textureNames = objInstance.geometry->textureNames();
+            const auto& textureMasked = objInstance.geometry->textureMasked();
             for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                    zoneShader_->getActiveWindAlphaTest());
-                node->getMaterial(i).MaterialTypeParam = meshMinY;
-                node->getMaterial(i).MaterialTypeParam2 = meshMaxY;
-                node->getMaterial(i).BackfaceCulling = false;
+                auto& mat = node->getMaterial(i);
+                irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
+                std::string texName = tex0 ? std::string(tex0->getName().getPath().c_str())
+                                            : primaryTexture;
+                bool isMaskedMaterial = false;
+                for (size_t ti = 0; ti < textureNames.size(); ++ti) {
+                    if (textureNames[ti] == texName) {
+                        isMaskedMaterial = (ti < textureMasked.size()) && textureMasked[ti];
+                        break;
+                    }
+                }
+                if (isMaskedMaterial) {
+                    bool isETC1 = constrainedTextureCache_ && !texName.empty() &&
+                        constrainedTextureCache_->isETC1Texture(texName);
+                    if (isETC1) {
+                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                            zoneShader_->getActiveWindAlphaTest());
+                        if (constrainedTextureCache_ && !mat.TextureLayer[1].Texture) {
+                            irr::video::ITexture* alphaTex =
+                                constrainedTextureCache_->getAlphaTexture(texName);
+                            if (alphaTex) mat.setTexture(1, alphaTex);
+                        }
+                    } else {
+                        irr::s32 windRGBAType = zoneShader_->getActiveWindAlphaTestRGBA();
+                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                            windRGBAType >= 0 ? windRGBAType : zoneShader_->getActiveWindAlphaTest());
+                    }
+                } else {
+                    irr::s32 windSolidType = zoneShader_->getActiveWindSolid();
+                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
+                        windSolidType >= 0 ? windSolidType : zoneShader_->getActiveWindAlphaTest());
+                }
+                mat.MaterialTypeParam = meshMinY;
+                mat.MaterialTypeParam2 = meshMaxY;
+                mat.BackfaceCulling = false;
             }
         }
     }

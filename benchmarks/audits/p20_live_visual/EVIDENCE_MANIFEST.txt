@@ -90,3 +90,50 @@ Part B — geometry pop-in
   NOT a multi-second progressive fill like the automatic sequence shows.
   This is the controlled comparison that supports the Part B verdict
   (progressive-build-by-design, not a culling bug).
+
+P20b — wind-shader MaterialType clobber fix (completes Part A)
+----------------------------------------------------------------
+Fixes the true live-client root cause named in P20's correction block:
+renderer_zone_stream.cpp:559-576 and renderer_zone_load.cpp:2288-2334
+unconditionally overwrote tree MaterialType with no masked/ETC1-vs-RGBA
+classification. Fix applies H02d Option-A classification at both sites
+(mirroring ZoneMeshBuilder::buildTexturedMesh) and adds wind-family shader
+variants (materialWindAlphaTestRGBA_, materialWindSolid_ + lightweight
+counterparts) in zone_shader.{h,cpp} so masked+RGBA and non-masked tree
+materials no longer land on the ETC1-companion variant with an unbound
+unit 1.
+
+Same-pose before/after pairs, both captured live against eqemu
+(scripts/eqemu/up.sh/down.sh), willeq --script tour files (identical
+/turn or /move + wait sequences between BEFORE/AFTER runs, screenshot
+filenames differing only in the _BEFORE/_AFTER suffix), stills at
+/mnt/projects/fable/videos/p20_live_visual/stills/ (p20b_ prefix):
+
+- gfaydark (nekpine ground-truth case): p20b_gfay_00/01/02/03_BEFORE.png
+  vs. p20b_gfay_00/01/02/03_AFTER.png. Tour: data/captures/*.txt
+  scratch (gitignored, contents reproduced in the plan's Review) —
+  `#zone gfaydark` -> `#time 12` -> `/move 10 20 0` -> `/move 10 60 0`
+  -> `/move 0 100 0`, screenshot after each move. BEFORE frames (_02,
+  _03) show the large center pine's canopy as a solid, hard-edged,
+  opaque dark-green rectangular panel blocking the sky, matching Will's
+  original report. AFTER frames (_01, _02) show the same pine canopy
+  rendering as a proper needle-shaped silhouette with sky visible
+  through the negative space — same camera pose, only the foliage
+  material changed.
+- qeynos2 (gates trees, Will's original complaint scene): p20b_qeynos2_
+  00/01/02_BEFORE.png vs. p20b_qeynos2_00/01/02_AFTER.png. Tour:
+  `#zone qeynos2` -> `#time 12` -> `/turn 180` -> `/turn 165` ->
+  `/turn 195`, screenshot after each turn (turn-only, no /move, so
+  same-pose-by-construction is trivial — identical starting position,
+  identical heading sequence). BEFORE frames show a pine (right of the
+  willow) as a solid opaque rectangular panel. AFTER frames show the
+  same pine with a correct needle-shaped canopy silhouette. A pale,
+  fog-tinted background pine visible behind the "Testchar" nametag in
+  both BEFORE and AFTER is NOT a rectangle — zoomed inspection confirms
+  it already has a correct tapered pine silhouette in both frames
+  (distant fog attenuation, not a foliage-alpha bug); no unexplained
+  rectangles found in either scene's AFTER frames.
+
+Verification: full 6-step bar passed (see plan Review); goldens untouched
+(visual gate PASS both before and after the fix, run explicitly via
+scripts/ci/visual_gate.sh in addition to the ctest visual_gate case).
