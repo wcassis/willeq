@@ -253,6 +253,7 @@ void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
 #endif
 }
 
+#ifdef EQT_HAS_GRAPHICS
 const std::vector<eqt::ui::PendingHotbarButton>& EverQuest::GetPendingHotbarButtons() const
 {
 	return m_pending_hotbar_buttons;
@@ -268,6 +269,7 @@ size_t EverQuest::GetPendingHotbarButtonCount() const
 {
 	return m_pending_hotbar_buttons.size();
 }
+#endif
 
 void EverQuest::ProcessChatInput(const std::string &input)
 {

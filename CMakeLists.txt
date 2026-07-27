@@ -751,6 +751,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(s3d_dump
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -777,6 +778,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(uv_analysis
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -803,6 +805,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(entity_composite_builder
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -930,6 +933,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(analyze_hum_model
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -955,6 +959,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(test_animation
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -981,6 +986,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(extract_zone_lines
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -1007,6 +1013,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(bsp_coordinate_finder
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
@@ -1033,6 +1040,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_LINK_LIBRARIES(generate_surface_map
         ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )

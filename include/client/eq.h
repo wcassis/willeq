@@ -758,11 +758,15 @@ public:
 	EQ::SpellTypeProcessor* GetSpellTypeProcessor() { return m_spell_type_processor.get(); }
 	EQ::SkillManager* GetSkillManager() { return m_skill_manager.get(); }
 
-	// Hotbar button management (stub for future implementation)
+	// Hotbar button management (stub for future implementation).
+	// AddPendingHotbarButton stays available headless (no-op body); the
+	// accessors depend on eqt::ui types that only exist with graphics.
 	void AddPendingHotbarButton(uint8_t skill_id);
+#ifdef EQT_HAS_GRAPHICS
 	const std::vector<eqt::ui::PendingHotbarButton>& GetPendingHotbarButtons() const;
 	void ClearPendingHotbarButtons();
 	size_t GetPendingHotbarButtonCount() const;
+#endif
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
@@ -1556,7 +1560,9 @@ private:
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
 
 	// Pending hotbar buttons (stub for future hotbar implementation)
+#ifdef EQT_HAS_GRAPHICS
 	std::vector<eqt::ui::PendingHotbarButton> m_pending_hotbar_buttons;
+#endif
 
 	// Group state
 	bool m_in_group = false;
