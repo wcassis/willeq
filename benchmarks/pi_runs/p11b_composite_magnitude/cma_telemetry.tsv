@@ -1,0 +1,10 @@
+1785150806	befallen_combined_animate_multibuffer (pre)	49164	397512
+1785150942	befallen_combined_animate_multibuffer (post, invocation #1)	46068	396060
+1785150959	befallen_combined_animate_merge_composite (pre)	46068	398776
+1785151036	befallen_combined_animate_merge_composite (post, invocation #2)	45004	397664
+1785151053	befallen_combined_animate_composite (pre)	45008	396936
+1785151188	befallen_combined_animate_composite (post, invocation #3)	44776	394540
+1785151291	befallen_combined_animate_composite (pre)	45076	393736
+1785151377	befallen_combined_animate_composite (post, invocation #1)	76408	392472
+1785151394	befallen_combined_animate_merge_composite (pre)	76412	395508
+1785151455	befallen_combined_animate_merge_composite (post, invocation #2)	70360	396284
