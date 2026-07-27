@@ -485,6 +485,7 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             auto bspTree = wldLoader->getBspTree();
 
             ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+            builder.setUploadCategory("zone_region");  // P13
             if (constrainedTextureCache_)
                 builder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -885,6 +886,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
         // Build all object meshes eagerly inline (no deferred/PVS-gated build at runtime)
         {
             ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
+            objBuilder.setUploadCategory("object");  // P13
             if (constrainedTextureCache_)
                 objBuilder.setConstrainedTextureCache(constrainedTextureCache_);
             if (zoneShader_ && zoneShader_->isAvailable()) {
@@ -1461,7 +1463,8 @@ void IrrlichtRenderer::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
                 if (loadedNames.count(lowerName) > 0) return;
-                constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
+                constrainedTextureCache_->getOrLoad(lowerName, texInfo->data,
+                                                     "entity_perpart", "loadZoneStep8c_VariantTextures");
                 loadedNames.insert(lowerName);
                 ++ctx.variantTextureCount;
             };
@@ -1580,7 +1583,8 @@ bool IrrlichtRenderer::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
                 const auto& texInfo = texIt->second;
                 if (texInfo->data.empty()) continue;
 
-                constrainedTextureCache_->getOrLoad(ln, texInfo->data);
+                constrainedTextureCache_->getOrLoad(ln, texInfo->data,
+                                                     "entity_perpart", "loadZoneStep8d_EquipmentPrep");
             }
             ctx.equipmentData.push_back(std::move(prepData));
         };
@@ -1743,7 +1747,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                         std::string lowerName = texName;
                         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
-                        constrainedTextureCache_->getOrLoad(lowerName, texInfo->data);
+                        constrainedTextureCache_->getOrLoad(lowerName, texInfo->data, "sky", "loadZoneStep10_Sky");
                         loadedSkyTextureNames.push_back(texName);  // Save for upload step after skyLoader is moved
                         ++skyTexLoaded;
                     }
@@ -2852,6 +2856,15 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - ctx.totalStart).count();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: complete for zone '{}' in {}ms", currentZoneName_, totalMs);
+
+    // P13: dump the texture upload/eviction ledger at the zone-in-complete
+    // marker (no-op unless --texture-ledger was passed — see
+    // ConstrainedRendererConfig::textureUploadLedgerPath).
+    if (constrainedTextureCache_ && constrainedTextureCache_->isLedgerEnabled()) {
+        constrainedTextureCache_->dumpLedger(config_.constrainedConfig.textureUploadLedgerPath,
+                                              currentZoneName_);
+    }
+
     dumpScene();
     FlushThreadLog();
 }

@@ -244,7 +244,9 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
     // Route through constrained texture cache: decode + upload
     if (constrainedCache_) {
         // getOrLoad decodes to RGBA (no GL). Returns ITexture* if already uploaded.
-        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data);
+        // P13: tag with this builder's upload category (set via setUploadCategory,
+        // "zone_region" or "object" — see renderer_zone_load.cpp step4/step6).
+        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP");
         if (!texture) {
             // Not yet uploaded — upload now (requires GL context on this thread)
             texture = constrainedCache_->uploadTexture(name);

@@ -822,7 +822,13 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             // getOrLoad() will find it via findCompressedEntry() in the composite EQE1 loader.
             if (constrainedTextureCache_) {
                 std::vector<char> emptyData;  // No raw data — EQE1 lookup provides the data
-                constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData);
+                // P13: tagged "composite_sheet" — see the T05 loop just below, which
+                // (confirmed during the P13 audit) unconditionally ALSO queues every
+                // individual per-part texture for this race regardless of whether this
+                // composite lookup just succeeded — the double-load the P13 plan asked
+                // to test for. Not fixed here (P13 is report-only); flagged in its Review.
+                constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData,
+                                                     "composite_sheet", "preloadModelData:compositeLookup");
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no composite at {}", jsonPath);
@@ -862,7 +868,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             }
 
             LOG_TRACE(MOD_GRAPHICS, "  T05: decoding texName='{}' ({} bytes)", lowerName, rawData.size());
-            constrainedTextureCache_->getOrLoad(lowerName, rawData);
+            // P13: tagged "entity_perpart" — this loop is UNCONDITIONAL (runs even when
+            // the composite-sheet lookup above just succeeded for this same race), which
+            // the P13 audit identified as the double-load hypothesis's concrete mechanism.
+            constrainedTextureCache_->getOrLoad(lowerName, rawData, "entity_perpart", "preloadModelData:T05");
             ++decoded;
         }
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={} (notFound={} null={} empty={})",

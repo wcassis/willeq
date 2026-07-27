@@ -358,6 +358,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
@@ -588,6 +589,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
@@ -738,6 +740,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -763,6 +766,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -788,6 +792,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -914,6 +919,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -938,6 +944,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -963,6 +970,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -988,6 +996,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -1013,6 +1022,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
@@ -1046,6 +1056,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1396,6 +1407,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1485,6 +1497,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1555,6 +1568,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp

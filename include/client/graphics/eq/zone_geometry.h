@@ -87,6 +87,14 @@ public:
     // Get the constrained texture cache (may be nullptr)
     ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
 
+    // P13: tag this builder instance with an upload-ledger category (e.g.
+    // "zone_region", "object") — a plain string, not threaded through every
+    // call, since each ZoneMeshBuilder instance is already scoped to one
+    // source (regions vs objects use separate instances in
+    // renderer_zone_load.cpp). Passed through to getOrLoad() by
+    // loadTextureFromBMP(). No-op when the ledger is disabled.
+    void setUploadCategory(const std::string& category) { uploadCategory_ = category; }
+
     // Info about a fallback mesh buffer whose texture was deferred (background mesh building).
     // Used by the render thread to assign real textures or placeholders after finalization.
     struct FallbackBufferInfo {
@@ -158,6 +166,7 @@ private:
 
     // Optional constrained texture cache for memory-limited rendering
     ConstrainedTextureCache* constrainedCache_ = nullptr;
+    std::string uploadCategory_ = "uncategorized";  // P13
 
     // Textures that resolved to null during mesh build (async upload pending)
     std::vector<std::string> missingTextures_;

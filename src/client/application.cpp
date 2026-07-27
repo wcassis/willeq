@@ -366,6 +366,11 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.loadMemAudit = true;
                 LOG_DEBUG(MOD_GRAPHICS, "CLI override: load-mem-audit enabled");
             }
+            // CLI override: --texture-ledger <path> (P13)
+            if (!config.textureUploadLedgerPath.empty()) {
+                builtConfig.textureUploadLedgerPath = config.textureUploadLedgerPath;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: texture-ledger -> '{}'", config.textureUploadLedgerPath);
+            }
             // CLI override: --composite-entities
             if (!config.compositeEntityPath.empty()) {
                 builtConfig.enableCompositeEntities = true;
@@ -1676,6 +1681,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             }
         } else if (arg == "--load-mem-audit") {
             config.loadMemAudit = true;
+        } else if (arg == "--texture-ledger") {
+            if (i + 1 < argc) {
+                config.textureUploadLedgerPath = argv[++i];
+            }
         } else if (arg == "--drm") {
             config.useDRM = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {

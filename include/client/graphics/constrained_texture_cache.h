@@ -3,6 +3,7 @@
 
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_format.h"
+#include "client/graphics/texture_upload_ledger.h"
 #include <irrlicht.h>
 #include <map>
 #include <list>
@@ -77,8 +78,17 @@ public:
     // If already decoded (DecodedEntry), returns nullptr (call uploadTexture to promote).
     // If not in cache, decodes raw bytes to RGBA and stores as DecodedEntry, returns nullptr.
     // Returns nullptr on decode failure.
+    //
+    // P13: category/callsite are optional ledger tags (e.g. "zone_region",
+    // "object", "entity_perpart", "composite_sheet", "sky") recorded against
+    // this name for the upload-ledger row emitted when this actually gets
+    // uploaded (see uploadTexture()/uploadCompressed*()). Only stored when
+    // the ledger is enabled (textureUploadLedgerPath non-empty) — no-op
+    // otherwise, so passing these costs nothing when the audit is off.
     irr::video::ITexture* getOrLoad(const std::string& name,
-                                     const std::vector<char>& data);
+                                     const std::vector<char>& data,
+                                     const std::string& category = "uncategorized",
+                                     const std::string& callsite = "");
 
     // Upload a decoded texture to the GPU.
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
@@ -106,7 +116,8 @@ public:
     // Performs LRU bookkeeping and eviction but skips decode/upload.
     // Returns true if registered, false if texture is too large for budget.
     bool registerTexture(const std::string& name, irr::video::ITexture* texture,
-                         size_t sizeBytes, bool hasAlpha = false);
+                         size_t sizeBytes, bool hasAlpha = false,
+                         const std::string& category = "uncategorized");
 
     // Check if a cached texture has alpha transparency
     bool hasAlpha(const std::string& name) const;
@@ -226,6 +237,18 @@ public:
     // Returns true if found, with data pointer and size. Data is owned by the EQE1 loader.
     bool getEQE1RawData(const std::string& name, const uint8_t*& data, uint32_t& size) const;
 
+    // P13: enable the upload/eviction ledger (off by default — see
+    // ConstrainedRendererConfig::textureUploadLedgerPath). When disabled,
+    // getOrLoad's category/callsite arguments are discarded immediately and
+    // no ledger bookkeeping happens anywhere in this class — behavior and
+    // performance are unchanged from pre-P13 code.
+    void setLedgerEnabled(bool enabled) { ledgerEnabled_ = enabled; }
+    bool isLedgerEnabled() const { return ledgerEnabled_; }
+
+    // Dump the ledger collected so far to `path` (see TextureUploadLedger::
+    // dumpToFile). No-op (returns false) if the ledger isn't enabled.
+    bool dumpLedger(const std::string& path, const std::string& runLabel);
+
 private:
     // Look up a texture name in registered EQE1 loaders.
     // Strips .bmp extension and lowercases before lookup.
@@ -326,6 +349,11 @@ private:
         // alpha), false if uploaded via uploadTexture (direct RGBA/DDS decode,
         // alpha lives in the main texture's own alpha channel).
         bool isETC1 = false;
+        // P13: source category recorded at upload time (only populated when
+        // ledgerEnabled_; "" otherwise), consulted by evictTexture() so the
+        // eviction-ledger row can carry the same category as the original
+        // upload row for that name.
+        std::string category;
         std::list<std::string>::iterator lruIterator;
     };
 
@@ -395,6 +423,18 @@ private:
 
     // P04: lazy-open callback for global EQE1 archives (see setEQE1LazyOpener).
     std::function<const EQE1Loader*()> eqe1LazyOpener_;
+
+    // P13: texture-upload audit ledger (see setLedgerEnabled/dumpLedger).
+    // Disabled by default; when disabled, none of the record*() calls below
+    // are ever made (checked at each call site) so this is a zero-cost,
+    // zero-behavior-change addition when off.
+    bool ledgerEnabled_ = false;
+    TextureUploadLedger ledger_;
+    // name -> (category, callsite) recorded by getOrLoad(), consumed by
+    // whichever upload path (uploadTexture/uploadCompressedETC1/
+    // uploadCompressedV2) actually promotes this name to a GPU texture.
+    // Only populated/consulted when ledgerEnabled_.
+    std::map<std::string, std::pair<std::string, std::string>> pendingLedgerTag_;
 };
 
 } // namespace Graphics

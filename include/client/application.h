@@ -92,6 +92,7 @@ struct ApplicationConfig {
     int backgroundThreadCount = 0;  // 0 = use preset default
     int zoneLoadMode = -1;  // -1 = use preset default, 0 = manual (all at load), 1 = automatic (progressive)
     bool loadMemAudit = false;  // P04: --load-mem-audit — per-step RSS logging during zone load
+    std::string textureUploadLedgerPath;  // P13: --texture-ledger <path> — texture upload/eviction ledger dump
 
     // Profiling
     bool frameTimingEnabled = false;

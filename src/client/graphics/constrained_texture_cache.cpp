@@ -46,6 +46,11 @@ ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig
 void ConstrainedTextureCache::setDriver(irr::video::IVideoDriver* driver) {
     driver_ = driver;
     probeCompressedTextureSupport();
+    // P13: ledger is enabled purely by config (non-empty output path) — see
+    // ConstrainedRendererConfig::textureUploadLedgerPath.
+    if (!config_.textureUploadLedgerPath.empty()) {
+        ledgerEnabled_ = true;
+    }
 }
 
 ConstrainedTextureCache::~ConstrainedTextureCache() {
@@ -89,6 +94,10 @@ irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTextureInternal() {
     if (image) {
         placeholderTexture_ = driver_->addTexture("_placeholder_", image);
         image->drop();
+        if (ledgerEnabled_ && placeholderTexture_) {
+            ledger_.recordUpload("_placeholder_", size, size, calculateTextureSize(size, size),
+                                  "RGBA8888", "placeholder", "getPlaceholderTextureInternal");
+        }
     }
 
     return placeholderTexture_;
@@ -100,7 +109,9 @@ irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTextureInternal() {
 // ---------------------------------------------------------------------------
 
 irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name,
-                                                          const std::vector<char>& data) {
+                                                          const std::vector<char>& data,
+                                                          const std::string& category,
+                                                          const std::string& callsite) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // Check if already uploaded
@@ -124,6 +135,15 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     }
 
     ++cacheMisses_;
+
+    // P13: record the caller's category/callsite tag for this name so the
+    // ledger row emitted at actual upload time (uploadTexture()/
+    // uploadCompressed*()) can carry it. This covers all three upload
+    // sub-paths (RGBA decode, ETC1, v2) uniformly since it's set before any
+    // of the branches below. No-op when the ledger is disabled.
+    if (ledgerEnabled_) {
+        pendingLedgerTag_[name] = {category, callsite};
+    }
 
     // Debug: skip all texture uploads to isolate endScene regression
     if (config_.skipConstrainedTextureUpload) {
@@ -267,6 +287,23 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.sizeBytes = textureSize;
     cached.hasAlpha = hasAlpha;
     cached.lruIterator = std::prev(lruOrder_.end());
+
+    // P13: consume this name's pending ledger tag (set by getOrLoad) and
+    // record the upload row. No-op when disabled.
+    if (ledgerEnabled_) {
+        std::string ledgerCategory = "uncategorized";
+        std::string ledgerCallsite;
+        auto tagIt = pendingLedgerTag_.find(name);
+        if (tagIt != pendingLedgerTag_.end()) {
+            ledgerCategory = tagIt->second.first;
+            ledgerCallsite = tagIt->second.second;
+            pendingLedgerTag_.erase(tagIt);
+        }
+        cached.category = ledgerCategory;
+        ledger_.recordUpload(name, width, height, textureSize, "RGBA8888",
+                              ledgerCategory, ledgerCallsite);
+    }
+
     cache_[name] = cached;
     currentUsage_ += textureSize;
 
@@ -327,7 +364,8 @@ irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& nam
 
 bool ConstrainedTextureCache::registerTexture(const std::string& name,
                                                irr::video::ITexture* texture,
-                                               size_t sizeBytes, bool hasAlphaFlag) {
+                                               size_t sizeBytes, bool hasAlphaFlag,
+                                               const std::string& category) {
     if (!texture) return false;
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -360,6 +398,14 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
     entry.sizeBytes = sizeBytes;
     entry.hasAlpha = hasAlphaFlag;
     entry.lruIterator = std::prev(lruOrder_.end());
+
+    if (ledgerEnabled_) {
+        entry.category = category;
+        int w = static_cast<int>(texture->getSize().Width);
+        int h = static_cast<int>(texture->getSize().Height);
+        ledger_.recordUpload(name, w, h, sizeBytes, "external", category, "registerTexture");
+    }
+
     cache_[name] = entry;
     currentUsage_ += sizeBytes;
 
@@ -485,6 +531,18 @@ void ConstrainedTextureCache::resetStatistics() {
     cacheHits_ = 0;
     cacheMisses_ = 0;
     evictionCount_ = 0;
+}
+
+bool ConstrainedTextureCache::dumpLedger(const std::string& path, const std::string& runLabel) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!ledgerEnabled_) {
+        return false;
+    }
+    bool ok = ledger_.dumpToFile(path, runLabel);
+    LOG_INFO(MOD_GRAPHICS, "P13 texture ledger: {} uploads, {} evictions, {} thrash re-uploads -> {} ({})",
+             ledger_.uploadCount(), ledger_.evictionCount(), ledger_.thrashCount(), path,
+             ok ? "ok" : "FAILED to write");
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -893,6 +951,12 @@ void ConstrainedTextureCache::evictTexture(const std::string& name) {
     size_t sizeBytes = it->second.sizeBytes;
 
     LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, sizeBytes);
+
+    // P13: record the eviction (name/bytes/category) and thrash-detect any
+    // later re-upload of this same name. No-op when disabled.
+    if (ledgerEnabled_) {
+        ledger_.recordEviction(name, sizeBytes, it->second.category);
+    }
 
     // Notify listeners before clearing references and removing texture
     for (auto* listener : evictionListeners_) {
@@ -1594,6 +1658,22 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     cached.hasAlpha = entry.hasAlpha;
     cached.isETC1 = true;  // H02d: companion-based alpha pipeline
     cached.lruIterator = std::prev(lruOrder_.end());
+
+    if (ledgerEnabled_) {
+        std::string ledgerCategory = "uncategorized";
+        std::string ledgerCallsite;
+        auto tagIt = pendingLedgerTag_.find(name);
+        if (tagIt != pendingLedgerTag_.end()) {
+            ledgerCategory = tagIt->second.first;
+            ledgerCallsite = tagIt->second.second;
+            pendingLedgerTag_.erase(tagIt);
+        }
+        cached.category = ledgerCategory;
+        ledger_.recordUpload(name, entry.width, entry.height, gpuSize,
+                              entry.hasAlpha ? "ETC1+alpha" : "ETC1",
+                              ledgerCategory, ledgerCallsite);
+    }
+
     cache_[name] = cached;
     currentUsage_ += gpuSize;
     ++compressedUploadCount_;
@@ -1707,6 +1787,23 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     cached.hasAlpha = entry.hasAlpha;
     cached.isETC1 = false;
     cached.lruIterator = std::prev(lruOrder_.end());
+
+    static const char* kPayloadNames[] = {"etc1", "rgb565", "rgba4444", "rgba8888"};
+    if (ledgerEnabled_) {
+        std::string ledgerCategory = "uncategorized";
+        std::string ledgerCallsite;
+        auto tagIt = pendingLedgerTag_.find(name);
+        if (tagIt != pendingLedgerTag_.end()) {
+            ledgerCategory = tagIt->second.first;
+            ledgerCallsite = tagIt->second.second;
+            pendingLedgerTag_.erase(tagIt);
+        }
+        cached.category = ledgerCategory;
+        const char* fmtName = (entry.payloadFormat < 4) ? kPayloadNames[entry.payloadFormat] : "v2?";
+        ledger_.recordUpload(name, entry.width, entry.height, gpuSize, fmtName,
+                              ledgerCategory, ledgerCallsite);
+    }
+
     cache_[name] = cached;
     currentUsage_ += gpuSize;
     ++compressedUploadCount_;
@@ -1715,7 +1812,6 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
         meshBuilder_->registerUploadedTexture(name, texture, entry.hasAlpha);
     }
 
-    static const char* kPayloadNames[] = {"etc1", "rgb565", "rgba4444", "rgba8888"};
     const char* payloadName = (entry.payloadFormat < 4) ? kPayloadNames[entry.payloadFormat] : "?";
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] v2 texture '{}' uploaded ({}x{}, {} mips, {} bytes, {}{})",
               name, entry.width, entry.height, entry.mipLevels, gpuSize, payloadName,

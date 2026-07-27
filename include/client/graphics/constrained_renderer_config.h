@@ -203,6 +203,13 @@ struct ConstrainedRendererConfig {
     bool deferredAssetLoading = false;  // Defer mesh building to per-frame budget
     bool loadMemAudit = false;  // P04: log per-step RSS + known-pool bytes during loadZoneSequential
 
+    // P13: when non-empty, ConstrainedTextureCache records every GPU texture
+    // upload + eviction during the zone load to an in-memory ledger and
+    // dumps it to this file path at zone-in-complete. Off by default (empty
+    // string = ledger disabled, zero behavior/perf change) — see
+    // refactor/P13_texture_upload_audit.md and texture_upload_ledger.h.
+    std::string textureUploadLedgerPath;
+
     // Background thread pool size (shared by all BackgroundWorkQueues)
     int backgroundThreadCount = 1;
 
