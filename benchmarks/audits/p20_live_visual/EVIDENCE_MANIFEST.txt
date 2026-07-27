@@ -1,0 +1,64 @@
+P20 live-visual pair — evidence manifest
+=========================================
+
+The project's .gitignore excludes *.png repo-wide (no prior benchmarks/
+audits/* unit has committed PNG stills either — see e.g.
+benchmarks/audits/p17_eviction_hygiene/, text/log evidence only). Following
+that same convention, all P20 still screenshots live on NFS at
+/mnt/projects/fable/videos/p20_live_visual/stills/ (sibling to where videos
+would go per the plan's own "keep videos out of git" instruction) rather
+than in this directory. This manifest (committed) records what exists and
+what each still shows, so the evidence trail is traceable from git history
+even though the image bytes themselves are not committed.
+
+Capture mechanism: live eqemu session (scripts/eqemu/up.sh/down.sh),
+willeq's --script tour file ('wait N' + slash-command lines, see
+data/captures/*.txt — gitignored scratch, not committed) + the existing
+/screenshot slash command (irrlicht_renderer.cpp, P10). Config:
+build-gles2/bin/willeq --renderer gles2 --constrained orangepi_p20 (see
+Deviation 1 in the plan Review for why orangepi_p20 vs. stock orangepi).
+
+Part A — foliage alpha
+-----------------------
+- scout_h000/045/090/135/180/225/270/315.png — initial qeynos2-gates
+  heading scan (turned out camera doesn't track /turn; all near-identical,
+  superseded by the gfaydark session below).
+- approach_00_start.png .. approach_03.png — qeynos2 walk-in sequence;
+  approach_01/02.png show citywlivy.bmp (qeynos ivy) rendering correctly
+  OPAQUE by design (H02c/H02d background note — not a bug, not chased) and
+  a separate magenta/black checkerboard missing-texture placeholder on a
+  building roof (genuine but unrelated bug, not chased, flagged in Review).
+- gfay_00_start.png, gfay_01.png, gfay_02.png, gfay_03.png — gfaydark
+  approach to a tree cluster. gfay_02.png / gfay_03.png are the BEFORE
+  evidence: solid, hard-edged, opaque rectangular tree-canopy quads
+  blocking the sky.
+- gfay_tree_normal.png, gfay_tree_alpha_mode7.png,
+  gfay_tree_rawtexalpha_mode11.png, gfay_tree_companionalpha_mode12.png —
+  pre-fix /shaderdebug 0/7/11/12 stills at the same pose; inconclusive (no
+  visible difference between modes) — root cause was found by code
+  inspection, not this tool; kept as evidence of what was tried.
+- gfay_03_AFTER.png, gfay_tree_normal_AFTER.png — AFTER evidence, same
+  tree/pose, post-fix rebuild: correct leaf-shaped silhouette, sky visible
+  through the canopy's negative space.
+
+Part B — geometry pop-in
+--------------------------
+- popin_auto_00.png .. popin_auto_05.png — qeynos2 walk-in sequence toward
+  the gates (~211 unit approach), automatic/default deferredAssetLoading;
+  natural-perspective differences dominate frame-to-frame (not a clean
+  pop-in demonstration on their own — see the timed experiment below,
+  which is the actual Part B evidence). popin_auto_02.png through
+  popin_auto_05.png also show the same missing-texture roof placeholder
+  noted above.
+- popin_timed_auto_t0/t1/t3/t6.png — THE Part B evidence: same camera pose
+  (one long teleport-equivalent jump to a fresh area, no further movement),
+  screenshots at +0.2s/+1.2s/+3.2s/+6.2s under automatic loading. t0
+  partially built, t1 (worst) almost entirely flat sky/ground placeholder
+  colors with barely any real geometry, t3 onward fully resolved.
+- popin_timed_manual_t0/t1/t3/t6.png — same experiment with
+  --zone-load manual (control). Geometry present immediately at t0 and
+  stays present at t3/t6; t1 is a single fully-blank gray frame (UI still
+  drawn on top) consistent with a one-frame camera-transition artifact,
+  NOT a multi-second progressive fill like the automatic sequence shows.
+  This is the controlled comparison that supports the Part B verdict
+  (progressive-build-by-design, not a culling bug).

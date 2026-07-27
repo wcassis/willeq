@@ -270,6 +270,7 @@ private:
     bool initialized_ = false;
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
+    irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P20: H02d Option-A main-texture-alpha variant
 
 public:
     /**
@@ -279,10 +280,23 @@ public:
     void setRenderDistance(float distance) { renderDistance_ = distance; }
     float getRenderDistance() const { return renderDistance_; }
 
-    // Set GLSL shader material type IDs for tree meshes (-1 = not available)
-    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+    // Set GLSL shader material type IDs for tree meshes (-1 = not available).
+    // P20: added alphaTestRGBAType (H02d Option A), matching
+    // ZoneMeshBuilder::setShaderMaterialTypes (zone_geometry.h) — see the
+    // rationale comment there. Before this fix, tree materials always used
+    // alphaTestType (the ETC1-companion uAlphaTexture variant) even for
+    // direct RGBA/DDS-decoded tree textures, which never bind a companion
+    // texture on unit 1 — the GLES2 driver's opaque-white 1x1 fallback for
+    // an unbound unit 1 never discards, so masked tree foliage rendered
+    // fully opaque on the live (non-ETC1) client path. Defaults to -1
+    // (not wired) for callers that don't set it; masked RGBA tree textures
+    // then safely fall back to EMT_TRANSPARENT_ALPHA_CHANNEL_REF, which
+    // already reads the main texture's own alpha.
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType,
+                                 irr::s32 alphaTestRGBAType = -1) {
         shaderMaterialSolid_ = solidType;
         shaderMaterialAlphaTest_ = alphaTestType;
+        shaderMaterialAlphaTestRGBA_ = alphaTestRGBAType;
     }
 };
 

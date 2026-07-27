@@ -820,7 +820,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         }
         if (zoneShader_ && zoneShader_->isAvailable()) {
             treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                 zoneShader_->getActiveAlphaTest());
+                                                 zoneShader_->getActiveAlphaTest(),
+                                                 zoneShader_->getActiveAlphaTestRGBA());
         }
     }
 
