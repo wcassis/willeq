@@ -509,6 +509,30 @@ proper fix:
   /camp — x86 llvmpipe client stability needs a pass before it can be
   a routine evidence harness.
 
+## KPI STATUS — befallen at the 30fps line (P11b, 2026-07-27)
+
+- **The true composite magnitude (animated production path, Pi,
+  canonical befallen e205 replay): p95 −36.9%, avg −54.6%, entity
+  draws/entity −66%.** Retires P08c's −33.1% (stand-in path, own cull
+  bug, not a real dispatch) and P11's ~0% (static route — composite
+  meshes only build under animation).
+- **Full stack (merge + animated composites): avg 25.11ms = 39.8 fps
+  (8.2ms UNDER budget — first time in the campaign); p95 35.32ms =
+  28.3 fps (2.02ms over).**
+- **Residual is now GPU-BOUND**: at full-stack p95, GPU sync 17.5ms
+  (49.6%) vs submission 9.3ms (26.5%) — a reversal of every prior
+  unit's CPU-submission-dominant finding. The p95 tail is driven by
+  bf472's dense zone-geometry pose specifically.
+- Next lever: a bf472-TARGETED occluder-budget experiment (P11's
+  whole-path occluder verdict of "not worth it" predates the stack;
+  the dense-pose GPU tail is exactly where occlusion cuts fill).
+- Calibration notes: N=205 → median 38 visible holds on the animated
+  path (P08b's 4.5-5x inflation bug is gone post-P12b); watch the
+  --frames-vs-path-length placement-density artifact documented in
+  P11b's review.
+- NOTE: achieving these numbers in live play requires the
+  mergeZoneDraws preset flip (composites already live).
+
 ## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
 
 - Exhaustive grep (verified independently by orchestrator): no
