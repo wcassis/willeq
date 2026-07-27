@@ -512,6 +512,29 @@ proper fix:
   /camp — x86 llvmpipe client stability needs a pass before it can be
   a routine evidence harness.
 
+## Eviction mystery SOLVED + re-zone crash fixed (P15, 2026-07-27)
+
+- **Re-zone snapshot crash FIXED**: ProcessDeferredZoneChange signaled
+  the zone load AFTER CleanupZone cleared m_current_zone_name → empty
+  snapshot zoneName → loadZoneGraphicsOnThread FATAL. Path shared by GM
+  #zone AND real zone-line crossings. Fix: OnGameStateComplete is now
+  the sole re-zone trigger (matches initial zone-in). 8 crash-free
+  teleport sessions + one full clean befallen→qeynos2 transition.
+- **EVICTION MYSTERY SOLVED — REPRODUCED**: cross-zone accumulation.
+  ConstrainedTextureCache (and the ledger) is NEVER reset across zone
+  unloads — befallen→qeynos2 in one process = 27 evictions (all
+  zone_region, cumulative uploads 817). P10b's 71-eviction scenario =
+  a longer multi-zone session. **FOLLOW-UP UNIT NEEDED: release the
+  outgoing zone's textures at zone unload** (the 1999-honest behavior;
+  also shrinks the merge-activation gate's false trips).
+- **TWO NEW BUGS found (documented, unfixed, blocked the 3+ hop
+  verification)**: (a) intermittent dangling-ITexture* in ENTITY mesh
+  materials post-eviction — the P10b RegionMeshTextureGuard protects
+  REGION nodes only; entity nodes have the same hazard class and need
+  the same guard; (b) a stale-zone-name-vs-position snapshot race
+  (separate from the fixed bug).
+- mergeZoneDraws regression spot: clean (matches P10b behavior).
+
 ## KPI STATUS — befallen at the 30fps line (P11b, 2026-07-27)
 
 - **The true composite magnitude (animated production path, Pi,
