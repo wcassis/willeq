@@ -574,9 +574,9 @@ proper fix:
   p95 from 35.320ms to **32.313ms (0.99ms UNDER the 30fps line)**;
   uncapped ties 256 (saturated). bf472: total −10.6%, GPU-sync −9.5%,
   submission −23.1%, CPU occlusion cost +0.44ms. Reverses P11's
-  pre-stack "not worth it" verdict. RECOMMENDED LANDING (one line,
-  pending Will's bless): occlusionMaxOccluderRegions=256 in the
-  orangepi preset. With it: befallen avg 39.8fps / p95 30.9fps —
+  pre-stack "not worth it" verdict. LANDED 2026-07-27 (blessed by Will;
+  note: the C++ preset default was the real landing site — no JSON
+  plumbing exists for this key, contrary to P14's claim). With it: befallen avg 39.8fps / p95 30.9fps —
   **the 30fps KPI fully met at p95 for the first time.**
 - Calibration notes: N=205 → median 38 visible holds on the animated
   path (P08b's 4.5-5x inflation bug is gone post-P12b); watch the
