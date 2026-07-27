@@ -451,7 +451,25 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   moving-path run WITHOUT replay places entities differently than the
   P05-P07-era runs did (those were never cross-comparable anyway).
 
-## Radius mode as production default — OPEN flip candidate (Q03, 2026-07-25)
+## Radius mode as production default — RESOLVED: NOT a flip candidate (P19, 2026-07-27)
+
+- **P19 re-measured under the FULL final stack** (merge + composite
+  scenegraph + --animate + occluder 256 + production config, N=205,
+  canonical 1000f replays, both zones, Pi/Mali400): radius is slower
+  than count everywhere — befallen +3.3% avg / +6.2% p95, qeynos2
+  +1.3% avg / +1.8% p95. Decisive detail: befallen count p95 = 32.39ms
+  (under the 33.3ms 30fps line) vs radius p95 = 34.38ms (over it) —
+  the flip alone would surrender the KPI that occluder-256 just closed.
+  Radius losslessness RE-CONFIRMED under the new stack (x86 pixel spot:
+  0/480000 px diff vs full-PP, with and without the stack). Verdict:
+  keep count as shipped default; radius stays flag-gated as the
+  provably-lossless option. Re-open only if a future unit changes the
+  demotion-path cost structure (befallen demoted on 44.3% of frames —
+  the per-frame demotion recompute is the plausible overhead locus).
+  Full tables in refactor/P19_radius_flip_remeasure.md Review +
+  benchmarks/pi_runs/p19_radius_flip_remeasure/.
+
+## Radius mode as production default — original Q03 analysis (2026-07-25, superseded by P19 above)
 
 - Under the honest Greater-Lightstone fixture (Q03; level 9, ×3 boost,
   R=336), radius mode is PROVABLY lossless (pixel-identical to full-PP at
