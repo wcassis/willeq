@@ -159,16 +159,24 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
        (suite now 1235). NEW follow-ups: (a) **driver footgun**:
        COpenGLES2Driver static HW buffers never honor dirty updates —
        document/guard so production never HW-buffers an animated mesh;
-       (b) **Animated composite low-magnitude discrepancy — REFRAMED by
-       P16 (2026-07-27)**: the 17-29% px diff did NOT move after the
-       seam fix; inspection shows it spans nearly the WHOLE model
-       silhouette, not a seam line — a broader composite-vs-multibuffer
-       rendering delta under animation (suspects for its root-cause
-       unit: lighting/normals handling on the merged single buffer —
-       note buildCompositeMeshFromGeometry sets Material.Lighting
-       differently — or per-vertex attribute divergence in the merged
-       path). Static remains pixel-identical; magnitude stays low
-       (mean ~0.1-2/255); needs its own unit; (c) **P11b**: true composite
+       (b) **Animated composite delta — P18 INVESTIGATED, STOP with
+       narrowed evidence (2026-07-27)**: original suspect list exhausted.
+       Lighting flag is dead code at runtime (entity_renderer.cpp
+       overrides mat.Lighting=false uniformly under the GLSL shader);
+       normals through instance-mesh skinning disproven EMPIRICALLY
+       (vertex-dump diagnostic: bit-identical Pos/Normal between 13-buffer
+       and 1-buffer paths at the same anim frame); vertex color ruled out
+       (both builders hardcode white). Note max_channel_delta is 182-224/255
+       — the "low magnitude" was the MEAN only; the delta is structural,
+       not FP noise. NEW LEAD: composite forces TextureWrapU/V=CLAMP_TO_EDGE,
+       multi-buffer leaves REPEAT; a UV-extent-aware clamp patch REGRESSED
+       the diff to 83-92% (reverted), pointing at GLES2 driver texture-object
+       wrap-param state caching when a shared/cached ITexture* is used by
+       materials wanting different wrap modes (draw-order-dependent stomping).
+       Follow-up unit would instrument COGLES2Texture/COpenGLES2Driver
+       glTexParameteri reapplication. Static remains pixel-identical.
+       Full findings in refactor/P18_animated_composite_delta.md Review;
+       (c) **P11b**: true composite
        perf magnitude on Pi (animated e205 replay) — P12b's optional
        phase was skipped.
        P12's original escalation record:** ownership verdict is SHARED PRODUCTION
