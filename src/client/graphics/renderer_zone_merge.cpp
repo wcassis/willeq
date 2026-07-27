@@ -1,5 +1,6 @@
 #include "client/graphics/renderer_zone_merge.h"
 #include "client/graphics/irrlicht_renderer.h"  // ZoneDrawEntry
+#include "client/graphics/entity_renderer.h"    // EntityVisual, EQAnimatedMeshSceneNode
 #include "common/logging.h"
 
 #include <irrlicht.h>
@@ -321,6 +322,65 @@ void RegionMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
                   "reference(s) to evicted texture -> placeholder (covers nodes detached from the "
                   "scene graph for front-to-back manual draw, which clearTextureReferences() cannot "
                   "reach)", swapped);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EntityMeshTextureGuard — P17 (entity-mesh sibling of RegionMeshTextureGuard)
+// ---------------------------------------------------------------------------
+
+EntityMeshTextureGuard::EntityMeshTextureGuard(const std::map<uint16_t, EntityVisual>& entities,
+                                                irr::video::ITexture* placeholder)
+    : entities_(entities), placeholder_(placeholder) {}
+
+void EntityMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
+                                               irr::video::ITexture* texture) {
+    if (!texture) return;
+
+    // Same load-bearing constraint as RegionMeshTextureGuard: MUST NOT call
+    // back into ConstrainedTextureCache here (mutex_ is held by the calling
+    // frame). placeholder_ was resolved once, safely, at construction time.
+    irr::video::ITexture* placeholder = placeholder_;
+    int swapped = 0;
+
+    for (const auto& [spawnId, visual] : entities_) {
+        EQAnimatedMeshSceneNode* node = visual.animatedNode;
+        if (!node) continue;
+
+        // 1. The node's own materials_ vector (what render() actually binds
+        //    at draw time — see class doc comment in renderer_zone_merge.h).
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+            irr::video::SMaterial& mat = node->getMaterial(i);
+            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+                if (mat.getTexture(t) == texture) {
+                    mat.setTexture(t, placeholder);
+                    ++swapped;
+                }
+            }
+        }
+
+        // 2. The per-instance mesh buffers' own materials (e.g. attached
+        //    equipment pieces as separate buffers).
+        if (irr::scene::SMesh* instMesh = node->getInstanceMesh()) {
+            for (irr::u32 i = 0; i < instMesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = instMesh->getMeshBuffer(i);
+                if (!buf) continue;
+                irr::video::SMaterial& mat = buf->getMaterial();
+                for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+                    if (mat.getTexture(t) == texture) {
+                        mat.setTexture(t, placeholder);
+                        ++swapped;
+                    }
+                }
+            }
+        }
+    }
+
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[entitytex] EntityMeshTextureGuard: swapped {} entity-mesh material "
+                  "reference(s) to evicted texture -> placeholder (P17 — closes the entity-mesh gap "
+                  "RegionMeshTextureGuard's own doc comment already flagged: region meshes were "
+                  "covered by P10b, entity meshes were not)", swapped);
     }
 }
 

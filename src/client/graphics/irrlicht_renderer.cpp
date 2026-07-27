@@ -769,6 +769,17 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     LOG_TRACE(MOD_GRAPHICS, "Creating entity renderer...");
     createEntityRenderer();
 
+    // P17: register the entity-mesh texture guard (constructed here, not
+    // alongside regionMeshTextureGuard_/softwareCursorTextureGuard_ above,
+    // because it needs entityRenderer_ to exist first). Same placeholder-
+    // resolved-once-up-front pattern as the other two guards -- see
+    // EntityMeshTextureGuard's doc comment in renderer_zone_merge.h.
+    if (constrainedTextureCache_ && entityRenderer_) {
+        entityMeshTextureGuard_ = std::make_unique<EntityMeshTextureGuard>(
+            entityRenderer_->getEntities(), constrainedTextureCache_->getPlaceholderTexture());
+        constrainedTextureCache_->addEvictionListener(entityMeshTextureGuard_.get());
+    }
+
     // Create sky renderer (skyRendering preset flag controls whether it renders, not whether it exists)
     LOG_TRACE(MOD_GRAPHICS, "Creating sky renderer...");
     skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
@@ -1317,6 +1328,11 @@ void IrrlichtRenderer::shutdown() {
         constrainedTextureCache_->removeEvictionListener(softwareCursorTextureGuard_.get());
     }
     softwareCursorTextureGuard_.reset();
+    // P17: same unregister-before-destroy discipline for the entity-mesh guard.
+    if (constrainedTextureCache_ && entityMeshTextureGuard_) {
+        constrainedTextureCache_->removeEvictionListener(entityMeshTextureGuard_.get());
+    }
+    entityMeshTextureGuard_.reset();
 
     // Stop GPU upload thread before any other cleanup (must stop before EGL context destroyed)
 #ifdef EQT_HAS_GLES2

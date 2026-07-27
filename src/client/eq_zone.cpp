@@ -255,6 +255,7 @@ void EverQuest::CleanupZone()
 
 	// Clear pathfinding, BSP, and zone source data
 	m_zone_bsp_tree.reset();
+	m_zone_bsp_tree_zone_name.clear();  // P17: keep the tag consistent with the tree
 	m_zone_wld.reset();
 	m_zone_archive.reset();
 	if (m_bridge) {
@@ -280,12 +281,20 @@ void EverQuest::CleanupZone()
 	m_zone_change_requested = false;
 
 #ifdef EQT_HAS_GRAPHICS
-	// D20e3: Unload zone graphics via bridge
-	if (m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::RendererCommand,
-			eqt::state::RendererCommandData{"/unloadzone_internal"}));
-	}
+	// P17: the "/unloadzone_internal" RendererCommand push that used to live
+	// here is REMOVED — it was a real bug, not just redundant. It's only
+	// ever applied by PreRenderTick() -> ProcessBridgeEvents(), which
+	// Application::render() only reaches on its "normal gameplay" branch;
+	// every early-return branch taken during a zone transition (network
+	// handshake, loading-thread-active) skips it. So the queued unload sat
+	// unapplied until AFTER the NEW zone had already fully loaded and
+	// gameplay resumed -- at which point applying it would have wiped the
+	// zone that had just finished loading, not the one being left. The old
+	// zone's renderer state is now unloaded synchronously and correctly by
+	// Application::loadZoneGraphicsOnThread() (application.cpp), right
+	// before the new zone's own load begins. See
+	// refactor/P17_eviction_hygiene.md Review for the eviction-mystery
+	// mechanism this closes.
 	// Player entity will need to be recreated on renderer after zoning
 	m_player_graphics_entity_pending = true;
 #endif

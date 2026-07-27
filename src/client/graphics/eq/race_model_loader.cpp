@@ -223,10 +223,33 @@ void RaceModelLoader::clearMeshCaches() {
     }
     compositeVariantAnimatedMeshCache_.clear();
 
-    // Keep meshBuilder_->textureCache_ intact - the ITexture* pointers are still valid
-    // in the Irrlicht driver (character textures are never removed during zone transitions).
-    // Clearing it would force re-reading raw TextureInfo data which may have been released
-    // by releaseRawTextureData() after the first zone's entity loading.
+    // P17: this comment used to justify KEEPING meshBuilder_->textureCache_
+    // intact ("character textures are never removed during zone
+    // transitions") -- that assumption is now FALSE. It was only ever true
+    // because ConstrainedTextureCache::clear() (called right after this, by
+    // IrrlichtRenderer::unloadZone()) was starved out by a bridge-event
+    // ordering race and essentially never fired during a live zone
+    // transition (see refactor/P17_eviction_hygiene.md Review) -- so the
+    // driver-level textures this map's raw ITexture* pointers reference
+    // never actually went away, in practice, before now. With that race
+    // fixed, clear() reliably calls driver_->removeTexture() for every
+    // cached texture on every zone unload, which invalidates any pointer
+    // this map is still holding for a race reused across zone visits.
+    // Reproduced live: a race's cached ITexture* read here (via
+    // getOrLoadTexture()/hasTexture()) survived the wipe as a dangling
+    // pointer, crashing createAnimatedNodeWithEquipment() on
+    // currentTex->getName() on the SECOND zone visit that needed the same
+    // race (befallen -> qeynos2 -> befallen, 0 evictions logged -- the
+    // full-clear path, not eviction pressure). clearTextureCache() already
+    // existed for exactly this (textureCache_/pendingTextures_/
+    // texturesWithAlpha_) but had no caller anywhere in the codebase before
+    // this fix -- calling it here re-derives from meshBuilder_'s own
+    // pendingTextures_/raw S3D data or, for names it doesn't have pending
+    // data for, forces a clean re-upload through
+    // ConstrainedTextureCache::getOrLoad() the next time this race is
+    // built, which is always safe (just re-does upload work), unlike
+    // leaving a stale pointer in place (which crashes).
+    meshBuilder_->clearTextureCache();
 
     // Keep loadedModels_, variantModels_, global data, S3D archives, skeletons, etc.
     // These are expensive to load and their data is still valid
