@@ -581,6 +581,67 @@ proper fix:
   victim-order/thrash reconstruction the moment ANY future session actually
   reproduces eviction pressure — nothing further needs building, only a
   session shape that reaches it.
+- **CLOSED by P15 (2026-07-27)**: the `#zone` empty-zone-name crash above is
+  fixed (`ProcessDeferredZoneChange` in `src/client/eq_zone.cpp` no longer
+  sets `m_zone_load_requested` immediately after `CleanupZone()` clears
+  `m_current_zone_name` — that premature signal raced the game thread's
+  snapshot creation ahead of the new zone's actual data arriving via
+  `OnGameStateComplete()`, which is now the sole trigger for both initial
+  zone-in and every re-zone, GM-teleport or zone-line alike). And the
+  eviction mystery is **answered**: cross-zone texture accumulation
+  reproduces evictions — a `befallen` (safe spot) → `#zone qeynos2` session
+  hit 27 evictions (all `category=zone_region`, i.e. `befallen`'s now-stale
+  geometry textures evicted to make room for `qeynos2`'s), cumulative
+  uploads=817, 0 thrash. Root mechanism: `ConstrainedTextureCache` /
+  `TextureUploadLedger` are never reset on zone unload (persist for the
+  process lifetime), so a second zone's uploads share the first zone's
+  budget headroom. Full ledger + condensed console evidence in
+  `benchmarks/audits/p15_eviction/`. See `refactor/P15_zone_crash_eviction.md`
+  Review for the complete writeup, including two NEW, separate, NOT-fixed
+  bugs uncovered while verifying (both out of P15's scope, flagged below).
+
+## Entity mesh materials hold dangling ITexture* after eviction (found by P15, NOT fixed)
+
+- `RaceModelLoader::createAnimatedNodeWithEquipment` (`src/client/graphics/eq/animated_mesh_creation.cpp:433`)
+  reads `currentTex->getName()` off an `ITexture*` cached on a mesh buffer's
+  material without checking whether `ConstrainedTextureCache` has since
+  evicted (and thus destroyed) that texture. Intermittent SIGSEGV/SIGABRT
+  (heap-corruption-class, not always reproducible — sometimes the freed
+  memory hasn't been reused yet) during entity mesh building whenever
+  eviction pressure hits while building a populated zone's entities.
+  Confirmed independent of eviction volume — a 256MB no-eviction
+  `--constrained` budget still crashed at the same call site, so this is a
+  general dangling-reference bug, not strictly gated on eviction. **Region**
+  meshes already have the equivalent protection (P10b's
+  `RegionMeshTextureGuard`, confirmed live in this unit's regression-spot
+  log: `"RegionMeshTextureGuard: swapped N region-mesh material
+  reference(s) to evicted texture -> placeholder"`) — entity meshes have no
+  such guard. Shape of the fix: extend an equivalent guard/listener to
+  `EntityRenderer`/`RaceModelLoader`'s cached `ITexture*` references, or
+  have `ConstrainedTextureCache::evictTexture()` null out entity-held
+  references the same way it already does for region meshes. Not attempted
+  here (P15 is scoped to the `#zone` snapshot crash + eviction *recording*,
+  not eviction fixes) — flagged for whoever picks up the eviction fix, since
+  it's the direct answer to "why does eviction matter beyond a budget
+  number."
+
+## "Player BSP region is SIZE_MAX" with stale zone name (found by P15, NOT chased)
+
+- Separately from the above, one `#zone` verification run hit `[FATAL]
+  [MAIN] Player BSP region is SIZE_MAX! pos=(428.00,-74.00,3.00)
+  zone=befallen` — i.e. the *target* zone's (qeynos2) coordinates paired
+  with the *source* zone's name/BSP tree still resident, inside
+  `CreateZoneLoadSnapshot()`. This is a different inconsistent-snapshot
+  timing window than the one P15 fixed (that one was empty-name; this one
+  is stale-name-with-new-position) and was not root-caused — reproduced at
+  higher debug levels (`-d 5`) and under `gdb`, not reliably at `-d 3`,
+  suggesting a timing-sensitive race in how position vs. zone-name updates
+  land relative to snapshot creation across the `#zone`/re-zone sequence.
+  Out of P15's scope (the assigned crash's signature — empty zone name —
+  never recurred once fixed); flagged for whoever next touches zone-load
+  snapshot timing. Per this same plan's own precedent (the pre-existing
+  BSP-FATAL at Testchar's documented restore coordinate), not chased
+  further here.
 
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
