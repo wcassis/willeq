@@ -9,23 +9,27 @@ the commit. Sources are historical docs — do not edit those.
 An external benchmark setup building at `412d457` with
 `-DCMAKE_BUILD_TYPE=Release` exposed two defects our default builds
 (empty build type, -O0) never trip:
-- **8 tool targets missing `${IRRLICHT_LIBRARY}` link dep**
-  (analyze_hum_model, test_animation, s3d_dump, entity_composite_builder,
-  bsp_coordinate_finder, extract_zone_lines, uv_analysis,
-  generate_surface_map): they compile `constrained_texture_cache.cpp`
-  (includes Irrlicht headers) but link only zlib/jsoncpp/fmt. At -O0 no
-  reference to `irr::video::IdentityMaterial` is emitted so they link by
-  luck; at -O3 the `ISceneNode::getMaterial` comdat is emitted with its
-  extern reference → undefined symbol. The symbol IS exported by Ubuntu
-  24.04's libIrrlicht (verified) — the bug is ours, not the distro's.
-  Fix: add `${IRRLICHT_LIBRARY}` to those targets (or stop compiling the
-  cache TU into tools that don't need eviction logic). Small unit.
-- **`EQT_GRAPHICS=OFF` no longer compiles**: `include/client/eq.h`
-  762-765 + 1559 reference `eqt::ui::PendingHotbarButton` outside the
-  `#ifdef EQT_HAS_GRAPHICS` guard (the struct itself is defined inside
-  the guard at ~line 101). 414 compile errors. Headless-compile support
-  has bitrotted — either re-guard (the client began life headless) or
-  formally drop the option; decide, don't leave it half-alive.
+- **8 tool targets missing `${IRRLICHT_LIBRARY}` link dep — FIXED
+  `55b101e` (2026-07-27)**: added the library per the zone_line_editor
+  precedent. Root mechanism for the record: at -O0 no reference to
+  `irr::video::IdentityMaterial` is emitted so they linked by luck; at
+  -O3 the `ISceneNode::getMaterial` comdat carries the extern reference.
+  Verified: Release+tests build clean (103 binaries), Release ctest
+  1234/1235 (only the documented RDP intermittent; note the Audio ALSA
+  exception PASSES on this host in Release — env-dependent as always).
+- **`EQT_GRAPHICS=OFF` no longer compiles — WORSE than first assessed**:
+  the reported `eq.h:763` hotbar-stub error is fixed (`55b101e` guards
+  the eqt::ui-typed accessors), but a full GRAPHICS=OFF build still
+  fails at MANY further sites: eq.h ~1094 (EQT::Graphics members
+  unguarded), eq.h ~775 (m_quit_requested declaration ordering under
+  guards), combat.cpp (m_loot_complete_corpse_id), eq_bridge.cpp
+  (m_constrained_config / ConstrainedRendererConfig), eq_chat.cpp
+  (eqt::ui::CommandRegistry throughout). Headless-compile support has
+  bitrotted extensively — needs its own unit: either restore the
+  guards properly (the client began life headless; CI could then cover
+  it) or formally drop the option from CMake; don't leave it
+  half-alive. Error inventory: scratchpad buildfix/build-nogfx.log
+  (session 2026-07-27).
 
 ## Decoupling residue — CLOSED by S2 (2026-07-23, see refactor/S2_decoupling.md)
 
