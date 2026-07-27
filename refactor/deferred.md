@@ -4,6 +4,29 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+## Build-config latent defects (found 2026-07-27 by an outside Release build)
+
+An external benchmark setup building at `412d457` with
+`-DCMAKE_BUILD_TYPE=Release` exposed two defects our default builds
+(empty build type, -O0) never trip:
+- **8 tool targets missing `${IRRLICHT_LIBRARY}` link dep**
+  (analyze_hum_model, test_animation, s3d_dump, entity_composite_builder,
+  bsp_coordinate_finder, extract_zone_lines, uv_analysis,
+  generate_surface_map): they compile `constrained_texture_cache.cpp`
+  (includes Irrlicht headers) but link only zlib/jsoncpp/fmt. At -O0 no
+  reference to `irr::video::IdentityMaterial` is emitted so they link by
+  luck; at -O3 the `ISceneNode::getMaterial` comdat is emitted with its
+  extern reference → undefined symbol. The symbol IS exported by Ubuntu
+  24.04's libIrrlicht (verified) — the bug is ours, not the distro's.
+  Fix: add `${IRRLICHT_LIBRARY}` to those targets (or stop compiling the
+  cache TU into tools that don't need eviction logic). Small unit.
+- **`EQT_GRAPHICS=OFF` no longer compiles**: `include/client/eq.h`
+  762-765 + 1559 reference `eqt::ui::PendingHotbarButton` outside the
+  `#ifdef EQT_HAS_GRAPHICS` guard (the struct itself is defined inside
+  the guard at ~line 101). 414 compile errors. Headless-compile support
+  has bitrotted — either re-guard (the client began life headless) or
+  formally drop the option; decide, don't leave it half-alive.
+
 ## Decoupling residue — CLOSED by S2 (2026-07-23, see refactor/S2_decoupling.md)
 
 EntityPoseState moved to state layer; dual movement channel collapsed to
