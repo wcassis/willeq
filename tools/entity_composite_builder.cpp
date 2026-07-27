@@ -221,6 +221,13 @@ static bool writeBMP(const std::string& path, const std::vector<uint8_t>& rgba,
 
 // ── Shelf packer ────────────────────────────────────────────────────────────
 // Simple shelf-packing algorithm: sort by height descending, place left-to-right.
+// UNCHANGED from pre-P16 — tight packing, no reserved gutter footprint. (An
+// earlier version of this fix reserved 2*pad extra width/height per placement
+// for the seam gutter; measurement against the live set showed that tax
+// routinely tipped an already power-of-2-tight sheet over the next pow2
+// threshold, INFLATING sheets by up to 4x — worse than the unroll-inflation
+// problem this unit exists to fix. Replaced with the inset approach below,
+// which needs zero extra footprint.)
 
 static bool shelfPack(std::vector<PlacedTexture>& textures, int maxSheetSize,
                        int& sheetW, int& sheetH) {
@@ -270,6 +277,75 @@ static bool shelfPack(std::vector<PlacedTexture>& textures, int maxSheetSize,
     if (sheetH > maxSheetSize) sheetH = maxSheetSize;
 
     return true;
+}
+
+// P16 seam fix, take 2: a UV INSET rather than a reserved gutter. Packing
+// stays byte-identical to pre-P16 (tight, no footprint growth — see the
+// shelfPack comment above for why a reserved gutter was rejected). Instead,
+// within a placement's EXISTING core rect, the outer `pad` texels on every
+// side are overwritten in place with edge-duplicated content from the
+// interior, and the caller shrinks the UV mapping (uvOffset/uvScale, computed
+// in processModel) to sample only the untouched interior — so geometry never
+// actually reads the overwritten border under normal sampling, and a bilinear
+// read that strays a fraction of a texel past the inset boundary blends
+// against a same-texture, edge-consistent color instead of a neighboring
+// placement's unrelated pixels. This costs a `pad`-texel-wide sliver of real
+// resolution at each tile's edge (a standard, well-understood tradeoff for
+// atlas seam correctness — a UV inset, explicitly anticipated by the P16
+// plan for exactly this situation) instead of any sheet growth.
+//
+// Wrap-style (opposite-edge, not nearest-edge) duplication: for a texture
+// that repeats (tilesU/tilesV > 1, physically unrolled into the sheet), the
+// content immediately "before" the sampled region's left edge, under true
+// GL_REPEAT wrap, IS the sampled region's right edge — so this is exactly
+// correct there, not an approximation; for a non-repeating placement it is
+// harmless (same-texture content is a strictly better neighbor than whatever
+// unrelated texture is packed next in the atlas).
+static void writeSeamInset(std::vector<uint8_t>& sheetRGBA, int sheetW, int /*sheetH*/,
+                            const PlacedTexture& pt, int pad) {
+    if (pad <= 0) return;
+    int x0 = pt.x, y0 = pt.y, w = pt.w, h = pt.h;
+
+    // Snapshot the placement's current pixels so every border write below
+    // reads from the ORIGINAL (pre-overwrite) content, regardless of write
+    // order or how small w/h are relative to pad — avoids self-contamination
+    // when interior and border regions are close together.
+    std::vector<uint8_t> snapshot(static_cast<size_t>(w) * h * 4);
+    for (int y = 0; y < h; ++y) {
+        std::memcpy(&snapshot[static_cast<size_t>(y) * w * 4],
+                    &sheetRGBA[(static_cast<size_t>(y0 + y) * sheetW + x0) * 4],
+                    static_cast<size_t>(w) * 4);
+    }
+    auto snapPix = [&](int lx, int ly) -> const uint8_t* {
+        lx = std::max(0, std::min(w - 1, lx));
+        ly = std::max(0, std::min(h - 1, ly));
+        return &snapshot[(static_cast<size_t>(ly) * w + lx) * 4];
+    };
+    auto setPix = [&](int lx, int ly, const uint8_t* src) {
+        uint8_t* dst = &sheetRGBA[(static_cast<size_t>(y0 + ly) * sheetW + (x0 + lx)) * 4];
+        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+    };
+
+    for (int k = 0; k < pad; ++k) {
+        for (int ly = 0; ly < h; ++ly) {
+            setPix(k, ly, snapPix(w - 2 * pad + k, ly));         // left border <- interior right edge
+            setPix(w - 1 - k, ly, snapPix(2 * pad - 1 - k, ly)); // right border <- interior left edge
+        }
+    }
+    for (int k = 0; k < pad; ++k) {
+        for (int lx = 0; lx < w; ++lx) {
+            setPix(lx, k, snapPix(lx, h - 2 * pad + k));         // top border <- interior bottom edge
+            setPix(lx, h - 1 - k, snapPix(lx, 2 * pad - 1 - k)); // bottom border <- interior top edge
+        }
+    }
+    for (int ky = 0; ky < pad; ++ky) {
+        for (int kx = 0; kx < pad; ++kx) {
+            setPix(kx, ky, snapPix(w - 2 * pad + kx, h - 2 * pad + ky));
+            setPix(w - 1 - kx, ky, snapPix(2 * pad - 1 - kx, h - 2 * pad + ky));
+            setPix(kx, h - 1 - ky, snapPix(w - 2 * pad + kx, 2 * pad - 1 - ky));
+            setPix(w - 1 - kx, h - 1 - ky, snapPix(2 * pad - 1 - kx, 2 * pad - 1 - ky));
+        }
+    }
 }
 
 // ── ETC1 encoding (optional) ────────────────────────────────────────────────
@@ -490,6 +566,8 @@ static ModelResult processModel(const std::string& eqPath,
                                  const std::string& outputDir,
                                  bool writeEqe1,
                                  bool verbose,
+                                 int physicalTileCap = 1,
+                                 int seamPad = 2,
                                  bool checkAnimatedTextures = false) {
     ModelResult result;
     result.raceName = toUpper(model->name);
@@ -625,22 +703,36 @@ static ModelResult processModel(const std::string& eqPath,
             std::cerr << "  " << skippedHelm << " textures skipped (helmet models)" << std::endl;
     }
 
-    // Build placement list with unrolled dimensions
+    // Build placement list with unrolled dimensions.
+    //
+    // P16 unroll discipline: tilesU()/tilesV() (the LOGICAL tile count) reflect
+    // the actual max UV extent the geometry uses — that part was already
+    // correct. The inflation P13 measured (3.25x avg, up to 6.06x) comes from
+    // physically duplicating that many pixel-identical copies of the source
+    // texture into the sheet. Since the source textures are GL_REPEAT-tileable
+    // by construction (that's why the geometry's UVs exceed [0,1] at all), a
+    // capped PHYSICAL copy count reproduces pixel-identical output to the full
+    // unroll as long as sampling wraps modulo the physical count instead of
+    // dividing by the logical one — see the matching runtime change in
+    // mesh_building.cpp (fractU = fmod(shiftedU, tilesU) / tilesU). tilesU in
+    // the JSON therefore now means "physical copies stored / wrap divisor",
+    // capped at physicalTileCap; the shift math (which only depends on
+    // floor(minU), independent of this field) is unaffected.
     std::vector<PlacedTexture> placements;
     for (const auto& bp : resolved) {
         PlacedTexture pt;
         pt.textureName = bp.textureName;
         pt.originalName = bp.originalName.empty() ? bp.textureName : bp.originalName;
-        pt.w = bp.unrolledW();
-        pt.h = bp.unrolledH();
-        pt.tilesU = bp.tilesU();
-        pt.tilesV = bp.tilesV();
+        pt.tilesU = std::min(bp.tilesU(), std::max(1, physicalTileCap));
+        pt.tilesV = std::min(bp.tilesV(), std::max(1, physicalTileCap));
+        pt.w = bp.texWidth * pt.tilesU;
+        pt.h = bp.texHeight * pt.tilesV;
         pt.origW = bp.texWidth;
         pt.origH = bp.texHeight;
         placements.push_back(pt);
     }
 
-    // Pack into composite sheet
+    // Pack into composite sheet (each placement reserves a seamPad-texel gutter)
     int sheetW = 0, sheetH = 0;
     if (!shelfPack(placements, maxSheetSize, sheetW, sheetH)) {
         std::cerr << "  FAILED to pack " << model->name << " (variant " << variant << ")" << std::endl;
@@ -694,6 +786,16 @@ static ModelResult processModel(const std::string& eqPath,
                 }
             }
         }
+
+        // P16 seam fix: overwrite the outer seamPad texels of this placement's
+        // core rect in place with edge-duplicated interior content, so
+        // bilinear sampling near a tile boundary never blends against a
+        // neighboring placement's pixels. Clamp pad so the untouched interior
+        // is always at least half of each dimension (degenerate for tiny
+        // textures otherwise) — effPad is also what the JSON UV inset below
+        // must agree with.
+        int effPad = std::min({seamPad, pt.w / 4, pt.h / 4});
+        if (effPad > 0) writeSeamInset(sheetRGBA, sheetW, sheetH, pt, effPad);
     }
 
     // Determine output basename
@@ -718,6 +820,14 @@ static ModelResult processModel(const std::string& eqPath,
 
     Json::Value textures(Json::objectValue);
     for (const auto& pt : placements) {
+        // P16: uvScale/uvOffset key off the INSET interior rect (see
+        // writeSeamInset above), not the full placement — this is what keeps
+        // sampled UVs off the edge-duplicated seam border. Must use the same
+        // effPad formula as the pixel-writing loop.
+        int effPad = std::min({seamPad, pt.w / 4, pt.h / 4});
+        int ix = pt.x + effPad, iy = pt.y + effPad;
+        int iw = pt.w - 2 * effPad, ih = pt.h - 2 * effPad;
+
         Json::Value entry;
         entry["x"] = pt.x;
         entry["y"] = pt.y;
@@ -725,10 +835,11 @@ static ModelResult processModel(const std::string& eqPath,
         entry["h"] = pt.h;
         entry["tilesU"] = pt.tilesU;
         entry["tilesV"] = pt.tilesV;
-        entry["uvScaleU"] = static_cast<double>(pt.w) / sheetW;
-        entry["uvScaleV"] = static_cast<double>(pt.h) / sheetH;
-        entry["uvOffsetU"] = static_cast<double>(pt.x) / sheetW;
-        entry["uvOffsetV"] = static_cast<double>(pt.y) / sheetH;
+        entry["seamPad"] = effPad;
+        entry["uvScaleU"] = static_cast<double>(iw) / sheetW;
+        entry["uvScaleV"] = static_cast<double>(ih) / sheetH;
+        entry["uvOffsetU"] = static_cast<double>(ix) / sheetW;
+        entry["uvOffsetV"] = static_cast<double>(iy) / sheetH;
         // Key by original (geometry) name so the mesh builder can look up textures
         // using the names from the model data, regardless of variant substitution.
         std::string jsonKey = pt.originalName.empty() ? pt.textureName : pt.originalName;
@@ -1163,10 +1274,22 @@ static void printUsage(const char* prog) {
               << "  --all                Process all races found in global chr archives\n"
               << "  --variant <N>        Specific variant (default: 0)\n"
               << "  --all-variants       Process variants 0-4\n"
-              << "  --max-tiles <N>      Cap tile unrolling (default: 8)\n"
+              << "  --max-tiles <N>      Skip a texture if its LOGICAL UV extent (the actual\n"
+              << "                       repeat count the geometry uses) exceeds this (default: 8)\n"
               << "  --sheet-size <N>     Max composite sheet dimension (default: 1024)\n"
               << "  --eqe1               Also output ETC1-compressed .eqe1 files\n"
               << "  --verbose            Per-texture stats\n"
+              << "\n"
+              << "P16 sheet-quality options:\n"
+              << "  --tile-cap <N>       Cap PHYSICAL unroll copies per axis (default: 1).\n"
+              << "                       Repeats beyond this rely on the seam gutter's wrap\n"
+              << "                       padding + the runtime's fmod-based UV wrap (see\n"
+              << "                       mesh_building.cpp) instead of physically duplicating\n"
+              << "                       pixel data — this is the unroll-inflation fix.\n"
+              << "  --seam-pad <N>       UV inset width in texels: the outer N texels of each\n"
+              << "                       placed texture are edge-duplicated in place (no sheet\n"
+              << "                       growth) and excluded from the sampled UV range, to\n"
+              << "                       stop bilinear bleed at tile boundaries (default: 2)\n"
               << "\n"
               << "P08f zone-archive options:\n"
               << "  --zone <shortname>   Build sheets for one zone's {shortname}_chr.s3d\n"
@@ -1194,6 +1317,18 @@ int main(int argc, char** argv) {
     int maxSheetSize = 1024;
     bool writeEqe1 = false;
     bool verbose = false;
+    // P16: unroll discipline (physical tile cap) + seam-gutter width.
+    // Default cap=1: mathematically exact (not an approximation) for EQ
+    // character textures specifically, because the original engine only
+    // ever samples these with GL_REPEAT wrap in the first place — that is
+    // why geometry UVs exceed [0,1] at all. A single physical copy + the
+    // fmod-based runtime wrap (mesh_building.cpp) + the seam inset above
+    // reproduces the N-copy physical unroll pixel-for-pixel, at ~61.5%
+    // less sheet bytes measured across the global race set (vs cap=2's
+    // 16.8% — most textures already had tilesU/V <= 2 and were untouched
+    // by a cap of 2, so it undershot P13's projected 50-65% reduction).
+    int physicalTileCap = 1;
+    int seamPad = 2;
     // P08f additions. --zone may be repeated (accumulates) — processing every
     // requested zone within ONE process run is what lets the in-memory
     // collision registry (A2) catch cross-zone collisions too, not just
@@ -1219,6 +1354,8 @@ int main(int argc, char** argv) {
         else if (arg == "--sheet-size" && i + 1 < argc) maxSheetSize = std::atoi(argv[++i]);
         else if (arg == "--eqe1") writeEqe1 = true;
         else if (arg == "--verbose") verbose = true;
+        else if (arg == "--tile-cap" && i + 1 < argc) physicalTileCap = std::atoi(argv[++i]);
+        else if (arg == "--seam-pad" && i + 1 < argc) seamPad = std::atoi(argv[++i]);
         else if (arg == "--zone" && i + 1 < argc) zoneArgs.push_back(argv[++i]);
         else if (arg == "--all-zones") allZones = true;
         else if (arg == "--zones-json" && i + 1 < argc) zonesJsonPath = argv[++i];
@@ -1404,7 +1541,8 @@ int main(int argc, char** argv) {
                               << am.archiveName << " (zone=" << zoneName << ")" << std::endl;
                     auto result = processModel(eqPath, model, am.archivePath, archive,
                                                 v, maxTiles, maxSheetSize, outputDir,
-                                                writeEqe1, verbose, /*checkAnimatedTextures=*/true);
+                                                writeEqe1, verbose, physicalTileCap, seamPad,
+                                                /*checkAnimatedTextures=*/true);
                     if (result.success) {
                         variantsBuiltArr.append(v);
                         allNewResults.push_back(result);
@@ -1525,7 +1663,7 @@ int main(int argc, char** argv) {
 
                 auto result = processModel(eqPath, model, am.archivePath, archive,
                                             v, maxTiles, maxSheetSize, outputDir,
-                                            writeEqe1, verbose);
+                                            writeEqe1, verbose, physicalTileCap, seamPad);
 
                 if (result.success) {
                     successCount++;

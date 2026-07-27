@@ -1,0 +1,17 @@
+{
+  "15": {
+    "differing_pct": 17.223230997721355,
+    "mean_abs_delta": 0.21827782524956596,
+    "max_channel_delta": 182
+  },
+  "25": {
+    "differing_pct": 29.312388102213543,
+    "mean_abs_delta": 1.5454012552897136,
+    "max_channel_delta": 224
+  },
+  "35": {
+    "differing_pct": 25.97198486328125,
+    "mean_abs_delta": 2.102360619439019,
+    "max_channel_delta": 220
+  }
+}

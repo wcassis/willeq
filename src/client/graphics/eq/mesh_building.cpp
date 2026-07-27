@@ -4,6 +4,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "common/logging.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 namespace EQT {
@@ -487,11 +488,25 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
                 // path (zone_geometry.cpp buildCompositeMesh).
                 //
                 // Shift handles negative/tiled UVs: bring correctedV into [0, tilesV].
+                //
+                // P16 unroll discipline: entry->tilesU/V is the PHYSICAL tile count
+                // the builder actually unrolled into the sheet, which may be capped
+                // below the geometry's logical UV extent (entity_composite_builder.cpp,
+                // --tile-cap). shiftedU/V can therefore legitimately exceed tilesU/V —
+                // fmod folds it back into the physically-stored, seam-gutter-padded
+                // region instead of dividing by a logical count that has no matching
+                // pixel data. When physical == logical (the untapped-cap common case)
+                // shiftedU < tilesU always holds and fmod(x, n) == x, so this is exactly
+                // the previous plain-division behavior — no change for uncapped textures.
                 float shiftedU = v.u + shiftU;
                 float correctedV = 1.0f - v.v;
                 float shiftedV = correctedV + shiftCorrV;
-                float fractU = shiftedU / static_cast<float>(entry->tilesU);
-                float fractV = shiftedV / static_cast<float>(entry->tilesV);
+                float tilesUf = static_cast<float>(entry->tilesU);
+                float tilesVf = static_cast<float>(entry->tilesV);
+                float fractU = (tilesUf > 0.0f) ? std::fmod(shiftedU, tilesUf) / tilesUf : 0.0f;
+                float fractV = (tilesVf > 0.0f) ? std::fmod(shiftedV, tilesVf) / tilesVf : 0.0f;
+                if (fractU < 0.0f) fractU += 1.0f;  // fmod can return negative for edge cases
+                if (fractV < 0.0f) fractV += 1.0f;
                 vert.TCoords.X = entry->uvOffsetU + fractU * entry->uvScaleU;
                 vert.TCoords.Y = entry->uvOffsetV + fractV * entry->uvScaleV;
 

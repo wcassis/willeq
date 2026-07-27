@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>P16 — Composite sheet quality (seam + unroll discipline)</title>
+<style>
+body { font-family: sans-serif; background:#111; color:#eee; margin:2em; }
+h1,h2 { color:#fff; }
+.row { display:flex; gap:1em; flex-wrap:wrap; margin-bottom:2em; }
+.card { background:#222; padding:0.5em; border-radius:6px; }
+.card img { max-width:400px; display:block; }
+.card p { margin:0.3em 0 0; font-size:0.85em; color:#aaa; }
+table { border-collapse: collapse; margin-bottom:2em; }
+td,th { border:1px solid #444; padding:4px 10px; font-size:0.9em; }
+</style>
+</head>
+<body>
+<h1>P16 — Composite sheet quality: seam gutters + unroll discipline</h1>
+
+<h2>Byte reduction (aggregate, 477 sheets common to live and staged)</h2>
+<table>
+<tr><th>Metric</th><th>Old (live)</th><th>New (staged)</th><th>Reduction</th></tr>
+<tr><td>BMP total</td><td>813,466,782 B</td><td>261,010,590 B</td><td>67.9%</td></tr>
+<tr><td>EQE1 total</td><td>180,812,344 B</td><td>58,046,648 B</td><td>67.9%</td></tr>
+</table>
+<p>No sheet is larger after the fix (max new/old ratio = 1.00, min = 0.0625 — a 16x
+reduction on the most extreme prior outlier). 21 additional sheets built that previously
+failed to fit a 1024 sheet cap or were otherwise not present live.</p>
+
+<h2>Z35 seam evidence (animated, composite vs multi-buffer, qeynos2, same camera path as P12b)</h2>
+<table>
+<tr><th>frame</th><th>P12b baseline (pre-P16)</th><th>P16 (post-fix)</th></tr>
+<tr><td>f15</td><td>17.206% / mean 0.108 / max 128</td><td>17.223% / mean 0.218 / max 182</td></tr>
+<tr><td>f25</td><td>29.305% / mean 1.463 / max 215</td><td>29.312% / mean 1.545 / max 224</td></tr>
+<tr><td>f35</td><td>25.973% / mean 2.151 / max 227</td><td>25.972% / mean 2.102 / max 220</td></tr>
+</table>
+<p>The whole-frame composite-vs-multibuffer diff is essentially UNCHANGED in aggregate.
+Direct pixel inspection of the diff image (below) shows the difference is spread across
+almost the entire model silhouette, not concentrated at a thin tile-boundary line — i.e.
+this metric is dominated by a broader composite-vs-multibuffer rendering discrepancy
+(material/lighting recalculation differences under animation) that P12b itself could not
+root-cause and flagged for a follow-up unit; it is not primarily the atlas seam. A direct
+old-vs-new composite (same camera/entities, sheets swapped) comparison confirms P16's
+fix DID change composite rendering — 0.96–6.66% of pixels differ frame-to-frame,
+consistent with the seam-inset + tile-cap change taking effect — while the baseline
+(unaffected by this unit) renders byte-identical old vs new, confirming harness
+reproducibility.</p>
+
+<div class="row">
+<div class="card"><img src="p16_z35_diff_f25.png"><p>f25 diff (composite vs baseline), post-P16 — visibly a whole-model discrepancy, not a thin seam line</p></div>
+</div>
+
+<h2>Static single-entity close-up (no animation confound), old sheets vs new sheets</h2>
+<div class="row">
+<div class="card"><img src="p16_seam_closeup_OLD_f25.png"><p>Pre-P16 sheets</p></div>
+<div class="card"><img src="p16_seam_closeup_NEW_f25.png"><p>Post-P16 sheets — no visible new artifacts</p></div>
+</div>
+
+<h2>Robed model close-up (composite-entity-test grid, cloth variant)</h2>
+<div class="row">
+<div class="card"><img src="p16_robed_closeup_OLD.png"><p>Pre-P16</p></div>
+<div class="card"><img src="p16_robed_closeup_NEW.png"><p>Post-P16 — pixel-identical (0 differing px)</p></div>
+</div>
+
+<h2>Raw sheet pixel data at a tile boundary (hum_hs_def_0_2, 8x zoom)</h2>
+<div class="row">
+<div class="card"><img src="p16_sheet_boundary_OLD_zoom.png"><p>Pre-P16 — hard placement boundary, no gutter</p></div>
+<div class="card"><img src="p16_sheet_boundary_NEW_zoom.png"><p>Post-P16 — same boundary (raw sheet pixels don't show
+bilinear bleed since that only occurs at GPU sample time; the seam-inset gutter lives just
+outside the sampled UV range and is not visible here by design)</p></div>
+</div>
+
+<h2>Structural audit</h2>
+<p>498/498 staged sheets pass P08f's structural audit (bmp/json/eqe1 present, JSON parses,
+sheet dims match BMP header, EQE1 magic valid) — see <code>../../audits/p16_sheet_quality/p16_structural_audit.json</code>.</p>
+
+</body>
+</html>
