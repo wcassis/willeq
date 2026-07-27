@@ -217,8 +217,11 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
      mechanism confirmed active (draw-count INFO line). Bonus fixes:
      /screenshot debug command + EGL-surfaceless capture; a real
      game/render-thread GL-context violation in --script dispatch.
-     **CRASH FIXED by P10b (2026-07-27) — flip UNBLOCKED, pending
-     Will's bless.** Real root cause (deferred-loading hypothesis
+     **CRASH FIXED by P10b — and FLIPPED 2026-07-27 (a8a9b03): Will
+     blessed after P11b's full-stack measurement. mergeZoneDraws=true
+     on the orangepi preset; the Pi now ships merge + composites
+     (befallen avg 25.11ms/39.8fps, p95 35.32ms/28.3fps on the
+     canonical replay). The P09→P11b arc is closed.** Real root cause (deferred-loading hypothesis
      falsified): ConstrainedTextureCache eviction under qeynos2's 64MB
      budget left DANGLING ITexture* in region materials because
      clearTextureReferences() only scans the live scene graph while
