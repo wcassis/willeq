@@ -585,6 +585,42 @@ proper fix:
   render verified. NOTE: also cuts the composite share of texture
   memory ~3x — relevant to the cross-zone eviction fix sizing.
 
+## P20 live-visual pair: pop-in RESOLVED (by design), foliage alpha real site found (2026-07-27)
+
+- **Geometry pop-in: NOT a bug** — controlled same-pose experiment
+  (`--zone-load manual` vs automatic) proves it's deferredAssetLoading's
+  progressive build; ~1-3s wall-clock fill after arriving in an unbuilt
+  area (real-time measurement, not a capture-rate artifact; likely
+  LONGER on Pi hardware). Mitigation candidates (proposed only):
+  (a) camera-heading/velocity-aware WorkPriorityKey prioritization;
+  (b) larger pre-warm halo at zone-in/teleport before releasing the
+  loading screen; (c) per-tier deferredAssetLoading knob. Evidence:
+  benchmarks/audits/p20_live_visual/EVIDENCE_MANIFEST.txt.
+- **Foliage alpha REAL site identified (P20 follow-up), fix = P20b**:
+  AnimatedTreeManager is DEAD CODE on the GLES2 client (only runs under
+  EDT_BURNINGSVIDEO — loadZoneStep11_Env gate); on the real GPU path
+  trees build correctly via ZoneMeshBuilder::buildTexturedMesh
+  (H02d-correct) and then a WIND-SHADER pass UNCONDITIONALLY CLOBBERS
+  MaterialType (`renderer_zone_stream.cpp:559-576`,
+  `renderer_zone_load.cpp:2288-2334`) with no masked/ETC1-vs-RGBA
+  classification → companion variant with unbound unit 1 → opaque-white
+  fallback → solid quads. Ground truth: nekpine.bmp is WLD
+  TransparentMasked with REAL DXT5 alpha (47/53% hard cutout) — NOT
+  citywlivy-class. P20's ed310e1 tree-path change is a correct H02d
+  mirror but dormant on GLES2.
+- **Related same-class gap (unfixed, needs own evidence)**:
+  `door_manager.h` / `entity_renderer.h` `setShaderMaterialTypes()` are
+  still 2-arg (no RGBA alpha-test variant) — doors/entities with masked
+  RGBA textures would hit the same opaque-white fallback.
+- **New unrelated bug spotted**: magenta/black checkerboard
+  missing-texture placeholder on some qeynos2 rooftops/awnings
+  (approach_01/02 stills). Not chased.
+- **Stale-crash retraction for the record**: the P08d-retake qeynos2
+  first-frame mergeZoneDraws SIGSEGV does NOT reproduce on current fable
+  (direct observation, stock orangepi preset, clean session +
+  screenshots) — consistent with P10b's fix. No capture preset
+  workaround needed anymore.
+
 ## Eviction hygiene LANDED (P17, 2026-07-27) — closes the P15 follow-ups
 
 - **Cross-zone accumulation FIXED, mechanism deeper than P15 thought**:
