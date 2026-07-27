@@ -1057,7 +1057,15 @@ public:
 	// U07c3: SetWindowManager removed — old UI deleted
 	// D20g: SetRDPServer removed — RDP audio setup moved to Application
 	// D20f2: Typed BSP tree for water detection / zone lines
-	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) { m_zone_bsp_tree = std::move(bsp); }
+	// P17: tags the tree with the zone name that was current when it was set,
+	// so CreateZoneLoadSnapshot() can detect a stale (previous-zone) tree
+	// left over from the graphicsCompleteReady finalization racing a
+	// same/next-iteration re-zone (see P17_eviction_hygiene.md Review --
+	// "stale-zone-name-vs-position snapshot race").
+	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) {
+		m_zone_bsp_tree = std::move(bsp);
+		m_zone_bsp_tree_zone_name = m_zone_bsp_tree ? m_current_zone_name : std::string();
+	}
 	// U07b: Standalone hotbar model
 	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
 	// Phase 7.3: Zone accessors read from GameState
@@ -1080,6 +1088,10 @@ private:
 
 	// D20f2: Typed BSP tree for water detection, zone lines, collision
 	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
+	// P17: zone name m_zone_bsp_tree was captured for (see SetZoneBspTree).
+	// Empty whenever m_zone_bsp_tree is null. Used by CreateZoneLoadSnapshot()
+	// to detect a stale tree that outlived a CleanupZone() reset.
+	std::string m_zone_bsp_tree_zone_name;
 
 	// Zone S3D/WLD sources — opened/parsed once at game state layer, shared with sequential loader
 	std::shared_ptr<EQT::Graphics::PfsArchive> m_zone_archive;

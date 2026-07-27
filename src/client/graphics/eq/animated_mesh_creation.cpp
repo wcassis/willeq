@@ -6,6 +6,7 @@
 #include "client/graphics/eq/animation_mapping.h"
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/entity_renderer.h"  // For EntityAppearance
+#include "client/graphics/constrained_texture_cache.h"  // P17: isLiveTexture() defensive check
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
@@ -429,6 +430,34 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                 irr::video::ITexture* currentTex = buffer->getMaterial().getTexture(0);
                 LOG_DEBUG(MOD_GRAPHICS, "  buffer[{}] currentTex={}", b, (currentTex ? "yes" : "no"));
                 if (!currentTex) continue;
+
+                // P17 defensive check (refactor/deferred.md, "found by P15,
+                // NOT chased"): `buffer` is a mesh buffer on this race's
+                // SHARED, RaceModelLoader-cached base mesh (node->getMesh()
+                // ->getMesh(0)) -- not per-instance state EntityMeshTextureGuard
+                // covers (that guard protects EQAnimatedMeshSceneNode's OWN
+                // materials_/instanceMesh_, a different set of objects). A
+                // texture referenced by this shared cached mesh's material
+                // can go dangling either from ordinary LRU eviction or from
+                // the P17 zone-unload full clear() (ConstrainedTextureCache::
+                // clear() calls driver_->removeTexture() for every entry) if
+                // this race's base mesh survives clearMeshCaches() -- reused
+                // for the same race across zone visits -- with the OLD
+                // zone's now-freed texture pointer still baked into its
+                // material. Reproduced live: befallen -> qeynos2 -> befallen
+                // (2nd visit) SIGSEGV'd here on currentTex->getName() with 0
+                // evictions logged (confirming this is the full-clear path,
+                // not eviction pressure -- matches deferred.md's own
+                // "confirmed independent of eviction volume" note). Mirrors
+                // ZoneMergeBuffers::build()'s isTextureLive defensive check
+                // (P10b) at the equivalent dereference point: same pattern,
+                // same isLiveTexture() reverse-pointer lookup, applied here
+                // instead of trusting the raw pointer.
+                if (constrainedTextureCache_ && !constrainedTextureCache_->isLiveTexture(currentTex)) {
+                    LOG_DEBUG(MOD_GRAPHICS, "  buffer[{}] currentTex is stale (evicted/cleared) -- "
+                              "skipping body-part-texture remap for this buffer", b);
+                    continue;
+                }
 
                 std::string currentTexName = currentTex->getName().getPath().c_str();
                 LOG_DEBUG(MOD_GRAPHICS, "    texName: {}", currentTexName);

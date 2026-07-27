@@ -1,0 +1,19 @@
+# P17 multi-hop eviction-hygiene verification script.
+# befallen (initial) -> qeynos2 -> befallen -> qeynos2 -> gfaydark, all in
+# one process, texture ledger on (--texture-ledger), to exercise the P17
+# unload-release fix across 4 zone TRANSITIONS (5 zone visits total).
+# Each wait is generous to cover network handshake + full sequential load
+# + a settle period for progressive/deferred asset loading before the next
+# hop is issued.
+
+wait 45
+/say #zone qeynos2
+wait 45
+/say #zone befallen
+wait 45
+/say #zone qeynos2
+wait 45
+/say #zone gfaydark
+wait 45
+/camp
+wait 5

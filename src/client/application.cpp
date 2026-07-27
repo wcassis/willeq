@@ -1079,6 +1079,32 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     // Temporarily clear loading flag so renderer methods work on this thread.
     m_renderer->setLoading(false);
 
+    // P17: unload the PREVIOUS zone's renderer state (region meshes, entities,
+    // constrained texture cache, etc.) synchronously, right here, before this
+    // (new) zone touches any of it. This replaces relying on EverQuest's
+    // queued "/unloadzone_internal" RendererCommand (pushed from
+    // CleanupZone(), applied only by PreRenderTick -> ProcessBridgeEvents()),
+    // which is a real bug: PreRenderTick is only reached from the "normal
+    // gameplay" branch of Application::render() -- during the entire
+    // network-handshake phase and the whole loading-thread-active phase of a
+    // zone transition, render() takes early-return branches that never call
+    // it. That queued event therefore sits unapplied until AFTER this new
+    // zone's own load has already finished and normal gameplay resumes,
+    // meaning the OLD zone's textures were still resident in
+    // ConstrainedTextureCache the entire time this zone's textures were
+    // being uploaded -- the root mechanism behind the P13/P15 cross-zone
+    // eviction findings (P15: "ConstrainedTextureCache is never reset
+    // across zone unloads"; true in effect, though the reset code itself
+    // does exist -- it was just starved out by this ordering). Calling
+    // unloadZone() here, synchronously, on the loading thread (which owns
+    // the GL context for the entire duration of this function), guarantees
+    // the old zone's cache/scene state is gone before a single byte of the
+    // new zone uploads. See CleanupZone() (eq_zone.cpp) for the matching
+    // removal of the now-redundant (and, if left in, actively harmful --
+    // it would fire AFTER this zone loads and wipe ITS textures instead)
+    // queued push.
+    m_renderer->unloadZone();
+
     // 1. Collision map
     if (snap.zoneMap && m_bridge) {
         m_bridge->pushEvent(eqt::state::GameEvent(

@@ -1,0 +1,9 @@
+{
+  "host": "127.0.0.1",
+  "port": 5998,
+  "user": "willeq_test",
+  "pass": "WillEqH03Pass",
+  "server": "WillEQ",
+  "character": "Testchar",
+  "eq_client_path": "/mnt/projects/EverQuestP1999"
+}

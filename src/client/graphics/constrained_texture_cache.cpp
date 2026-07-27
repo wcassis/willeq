@@ -473,6 +473,19 @@ void ConstrainedTextureCache::clear() {
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
+
+    // P17: clear() is the sole zone-unload hook (called once from
+    // IrrlichtRenderer::unloadZone(), plus harmlessly from the destructor) --
+    // reset the P13 ledger here too so each zone's dump
+    // (loadZoneSequential's "zone-in complete" marker) reflects only that
+    // zone's own uploads/evictions, not every zone visited earlier in the
+    // same process. Segmenting the ledger this way is what actually makes
+    // "near-zero evictions post-release" measurable per zone instead of
+    // accumulating a session-wide count that would mask the fix. Safe to
+    // call unconditionally: TextureUploadLedger::reset() is a no-op-shaped
+    // clear of empty vectors when the ledger was never enabled.
+    ledger_.reset();
+    pendingLedgerTag_.clear();
 }
 
 // ---------------------------------------------------------------------------

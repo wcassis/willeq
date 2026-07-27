@@ -468,6 +468,9 @@ class RegionMeshTextureGuard;
 // softwareCursorTexture_, a separate pre-existing dangling-pointer bug
 // found while verifying P10b's fix).
 class SingleTexturePointerGuard;
+// Forward declaration -- full definition in renderer_zone_merge.h (P17:
+// entity-mesh sibling of RegionMeshTextureGuard, see its own doc comment).
+class EntityMeshTextureGuard;
 
 // Entry for material-sorted zone draw list (mesh buffer level)
 struct ZoneDrawEntry {
@@ -1352,6 +1355,15 @@ private:
     // SingleTexturePointerGuard doc comment for the full story (found while
     // verifying P10b's own fix, pre-existing, unrelated to mergeZoneDraws).
     std::unique_ptr<SingleTexturePointerGuard> softwareCursorTextureGuard_;
+
+    // P17: entity-mesh sibling of regionMeshTextureGuard_ above -- closes
+    // the gap RegionMeshTextureGuard's own doc comment flagged (region
+    // meshes protected since P10b, entity meshes were not). Constructed
+    // once right after createEntityRenderer() (needs entityRenderer_ to
+    // exist first, unlike the other two guards constructed earlier in
+    // initLoadingScreen()) and registered the same way. See
+    // renderer_zone_merge.h's EntityMeshTextureGuard doc comment.
+    std::unique_ptr<EntityMeshTextureGuard> entityMeshTextureGuard_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);

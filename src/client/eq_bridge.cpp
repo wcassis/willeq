@@ -313,7 +313,19 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	// P04: zoneArchive/zoneWld snapshot fields removed (never read; see
 	// zone_load_snapshot.h) — LoadZoneSources now releases both right after
 	// BSP extraction.
-	if (m_zone_bsp_tree) {
+	// P17: only trust m_zone_bsp_tree if it was captured for the CURRENT
+	// zone. A stale (previous-zone) tree can still be resident here if the
+	// game thread's graphicsCompleteReady finalization for a just-completed
+	// load (SetZoneBspTree()) lands in the same/adjacent iteration as a
+	// fast re-zone's CleanupZone() reset -- observed by P15 as a FATAL with
+	// the *target* zone's position paired with the *source* zone's stale
+	// name/BSP tree ("Player BSP region is SIZE_MAX" with a mismatched
+	// zone= in the log). Falling back to "no tree yet" (leaving
+	// playerBspRegion at its SIZE_MAX default, same as the pre-existing
+	// null-tree case just below) is always safe: the loading thread builds
+	// a fresh BSP tree from the new zone's own map data regardless of what
+	// this snapshot carries.
+	if (m_zone_bsp_tree && m_zone_bsp_tree_zone_name == m_current_zone_name) {
 		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(m_x, m_y, m_z);
 		if (snap.playerBspRegion == SIZE_MAX) {
 			LOG_FATAL(MOD_MAIN, "Player BSP region is SIZE_MAX! pos=({:.2f},{:.2f},{:.2f}) zone={}",
@@ -322,6 +334,10 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		}
 		LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f})",
 		         snap.playerBspRegion, m_x, m_y, m_z);
+	} else if (m_zone_bsp_tree) {
+		LOG_WARN(MOD_MAIN, "Snapshot: m_zone_bsp_tree is stale (captured for '{}', current zone '{}') -- "
+		         "skipping region lookup, falling back to no-tree-yet (P17)",
+		         m_zone_bsp_tree_zone_name, m_current_zone_name);
 	}
 
 	return snap;

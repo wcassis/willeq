@@ -50,6 +50,8 @@ namespace video { class IVideoDriver; class ITexture; }
 namespace scene { class IMeshSceneNode; }
 }
 
+namespace EQT { namespace Graphics { struct EntityVisual; } }
+
 namespace EQT {
 namespace Graphics {
 
@@ -245,6 +247,64 @@ public:
 
 private:
     irr::video::ITexture*& target_;
+};
+
+// P17: entity-mesh sibling of RegionMeshTextureGuard above. P10b protected
+// region mesh nodes only ("region meshes already have the equivalent
+// protection... entity meshes have no such guard" -- P15's finding,
+// refactor/deferred.md); this closes that gap. EQAnimatedMeshSceneNode
+// (animated_mesh_scene_node.h) holds TWO independent places a dangling
+// evicted ITexture* can hide, neither reachable from the scene graph scan
+// ConstrainedTextureCache::clearTextureReferences() does for ordinary
+// nodes (this class exists for the SAME reason RegionMeshTextureGuard
+// does -- direct member access beats scene-graph reachability -- not
+// because entity nodes are detached like region nodes are):
+//   1. materials_ (the node's own per-submesh SMaterial vector, exposed via
+//      the IAnimatedMeshSceneNode::getMaterial(i)/getMaterialCount()
+//      interface) -- these are the materials actually bound at render time
+//      (render() draws instanceMesh_'s buffers using THESE materials, not
+//      the buffers' own, per EQAnimatedMeshSceneNode::render()'s existing
+//      pattern of copying eqMesh_'s base materials in once and letting
+//      callers mutate them for texture-variant swaps).
+//   2. instanceMesh_ (the node's own per-instance SMesh copy, returned by
+//      getInstanceMesh()) -- each buffer's own SMaterial can also carry a
+//      texture reference (e.g. equipment pieces attached as separate
+//      buffers/materials), independent of the materials_ vector above.
+// Confirmed hazard (refactor/deferred.md, "found by P15, NOT chased"):
+// RaceModelLoader::createAnimatedNodeWithEquipment reads
+// currentTex->getName() off a cached ITexture* without checking eviction --
+// an intermittent SIGSEGV/SIGABRT reproduced even under a 256MB
+// (no-eviction) budget, i.e. a general dangling-reference bug. This guard
+// makes the eviction side of that hazard impossible (evicted textures are
+// swapped to the placeholder the instant they're freed, mirroring exactly
+// what RegionMeshTextureGuard/clearTextureReferences() already do for
+// region/ordinary nodes) -- it does not by itself audit every entity-mesh
+// build-time read site for missing null/liveness checks (out of this
+// unit's scope; the eviction-time dangling-pointer window is what's fixed
+// here).
+class EntityMeshTextureGuard : public TextureEvictionListener {
+public:
+    // entities: EntityRenderer::entities_ (via getEntities()) -- renderer-
+    // owned, persists for the renderer's lifetime (cleared via
+    // clearEntities(), never destroyed/recreated, on every zone unload --
+    // see renderer_zone_lifecycle.cpp), safe to hold a reference for the
+    // guard's own lifetime (also renderer-owned, constructed once
+    // alongside EntityRenderer itself).
+    //
+    // placeholder: see RegionMeshTextureGuard's constructor doc -- same
+    // load-bearing constraint (resolved ONCE, safely, before any eviction
+    // can occur; NEVER re-derive it from inside onTextureEvicted(), which
+    // would self-deadlock on ConstrainedTextureCache::mutex_ -- see
+    // TextureEvictionListener's own doc comment in
+    // constrained_texture_cache.h).
+    EntityMeshTextureGuard(const std::map<uint16_t, EntityVisual>& entities,
+                            irr::video::ITexture* placeholder);
+
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
+
+private:
+    const std::map<uint16_t, EntityVisual>& entities_;
+    irr::video::ITexture* placeholder_;
 };
 
 } // namespace Graphics
