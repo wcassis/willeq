@@ -596,7 +596,9 @@ proper fix:
   (b) larger pre-warm halo at zone-in/teleport before releasing the
   loading screen; (c) per-tier deferredAssetLoading knob. Evidence:
   benchmarks/audits/p20_live_visual/EVIDENCE_MANIFEST.txt.
-- **Foliage alpha REAL site identified (P20 follow-up), fix = P20b**:
+- **Foliage alpha FIXED by P20b (`ece11f0`), BLESSED by Will
+  2026-07-27** (same-pose evidence, qeynos2 gates + gfaydark nekpine;
+  bless page on the standing artifact). Historical diagnosis:
   AnimatedTreeManager is DEAD CODE on the GLES2 client (only runs under
   EDT_BURNINGSVIDEO — loadZoneStep11_Env gate); on the real GPU path
   trees build correctly via ZoneMeshBuilder::buildTexturedMesh
