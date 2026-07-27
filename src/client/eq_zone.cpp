@@ -365,11 +365,21 @@ void EverQuest::ProcessDeferredZoneChange()
 	DisconnectFromZone();
 	LOG_TRACE(MOD_ZONE, "Step 1 complete: Zone disconnected");
 
-#ifdef EQT_HAS_GRAPHICS
-	// D20e2: Signal Application to start a new loading thread for the re-zone.
-	// Application checks m_zone_load_requested in its render loop.
-	m_zone_load_requested = true;
-#endif
+	// P15 fix: do NOT signal a zone-load request here. CleanupZone() (inside
+	// DisconnectFromZone(), just above) clears m_current_zone_name, so a
+	// snapshot created off of live game state at this point
+	// (CreateZoneLoadSnapshot() reads m_current_zone_name) would always be
+	// empty — gameThreadLoop consumes m_zone_load_requested in the same tick,
+	// well before the world/zone reconnect handshake below can repopulate the
+	// new zone's name. That produced "loadZoneGraphicsOnThread: snapshot has
+	// empty zone name" (GM #zone teleport and, in principle, any zone-line
+	// crossing — both funnel through this same re-zone path). The correct,
+	// single signal point is OnGameStateComplete() (eq.cpp), which only fires
+	// once the new zone's NewZone packet (and thus m_current_zone_name) has
+	// actually been received — exactly how the initial zone-in already
+	// works. Was previously D20e2's early pre-start signal; removed rather
+	// than guarded, since it was always redundant with OnGameStateComplete's
+	// later, correct signal for the same re-zone.
 
 	// Reconnect to world server to get new zone info
 	if (!m_world_server_host.empty()) {
