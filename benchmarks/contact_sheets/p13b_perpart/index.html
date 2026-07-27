@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>P13b — lazy per-part textures visual spot check</title>
+<style>
+body { font-family: sans-serif; background: #111; color: #eee; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 32px; }
+figure { margin: 0; }
+img { max-width: 480px; border: 1px solid #444; display: block; }
+figcaption { font-size: 13px; margin-top: 4px; color: #aaa; }
+h2 { border-bottom: 1px solid #444; padding-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>P13b — lazy per-part textures on composite hit: visual spot check</h1>
+<p>Two entity classes exercised post-change: an ELIGIBLE entity (composite mesh, per-part
+textures stay fully deferred) and INELIGIBLE entities (multi-buffer mesh, per-part textures
+loaded on demand the first time this specific entity needed them). All render correctly with
+real textures — no missing/gray fallback material anywhere.</p>
+
+<h2>Eligible: composite-mesh entities (P08d harness, gles2_zone_benchmark --composite-scenegraph,
+static/non-animated per P08d's own precedent, --orbit-radius 15)</h2>
+<div class="row">
+<figure><img src="eligible_composite_pose1.png"><figcaption>pose 1 (f30) — barbarian + erudite-shaped composite entities, close orbit</figcaption></figure>
+<figure><img src="eligible_composite_pose2.png"><figcaption>pose 2 (f20) — same two entities, wider orbit angle</figcaption></figure>
+</div>
+
+<h2>Ineligible: player character (Testchar, always ineligible per P08d gate — multi-buffer
+path, per-part textures loaded on demand)</h2>
+<div class="row">
+<figure><img src="ineligible_player_pose1.png"><figcaption>Testchar (human, race 1 — a composite-HIT race this unit deferred) rendering correctly in
+qeynos2, real client session</figcaption></figure>
+</div>
+
+<h2>Ineligible: equipment-wearing NPC (per-slot override — multi-buffer path, per-part
+textures loaded on demand)</h2>
+<div class="row">
+<figure><img src="ineligible_equipped_npc_pose2.png"><figcaption>Guard_Erabb000 (qeynos2, full armor/helm — per-slot equipment override makes this NPC
+ineligible for the composite mesh) rendering correctly, real client session</figcaption></figure>
+</div>
+
+</body>
+</html>

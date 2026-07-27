@@ -1523,9 +1523,27 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
 size_t RaceModelLoader::releaseRawTextureData() {
     size_t freed = 0;
 
-    auto releaseMap = [&freed](std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+    // P13b: names in deferredPerPartTextureNames_ are per-part textures whose
+    // decode/upload was DEFERRED because their race got a composite-sheet hit (see
+    // race_model_loader.cpp's T05 loop guard) — no ineligible entity has needed them
+    // yet, but one might, in this zone or a future one (races persist in
+    // loadedModels_/preparedModelData_ across zone transitions). Their raw
+    // TextureInfo::data is the ONLY copy of what an on-demand load
+    // (buildMeshFromGeometry / createAnimatedNodeWithEquipment's texture-swap) would
+    // decode from — clearing it here (this function only runs when
+    // releaseTextureDataAfterUpload is on, e.g. the orangepi preset) would silently
+    // break that on-demand load the first time it's actually needed, with no upload
+    // ever having happened to make the loss safe. Every OTHER texture this function
+    // touches has already been eagerly decoded+uploaded to GPU by the time this runs
+    // (T05's eager branch, or the composite sheet itself), so releasing those is safe
+    // exactly as before this unit.
+    std::lock_guard<std::mutex> deferredLock(preparedDataMutex_);
+    const auto& deferredNames = deferredPerPartTextureNames_;
+
+    auto releaseMap = [&freed, &deferredNames](std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
         for (auto& [name, tex] : texMap) {
             if (!tex) continue;
+            if (deferredNames.count(name)) continue;
             freed += tex->rawDataBytes();
             tex->data.clear();
             tex->data.shrink_to_fit();

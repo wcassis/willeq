@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 #include <list>
@@ -149,6 +150,18 @@ public:
 
     // Get race model data
     std::shared_ptr<RaceModelData> getRaceModelData(uint16_t raceId, uint8_t gender = 0);
+
+    // P13b: ensures loadedModels_[raceId,gender] is populated (running the same
+    // S3D-archive search/load fallback chain getMeshForRace() used to run inline),
+    // WITHOUT building a textured static mesh (buildTexturedMesh()'s eager per-part
+    // texture decode/upload) as a side effect. getMeshForRace() calls this then
+    // builds+caches its static mesh as before; getAnimatedMeshForRace() (which
+    // previously called getMeshForRace() purely for this side effect, discarding
+    // the returned mesh) now calls this directly so an eligible entity whose race
+    // got a composite-sheet hit doesn't have its "deferred" per-part textures
+    // eagerly decoded anyway by the static-mesh path. Returns nullptr if the race
+    // model cannot be found by any search path (caller should use placeholder).
+    std::shared_ptr<RaceModelData> ensureModelDataLoaded(uint16_t raceId, uint8_t gender = 0);
 
     // Get mesh builder (for registering pre-uploaded textures in multi-frame pipeline)
     ZoneMeshBuilder* getMeshBuilder() { return meshBuilder_.get(); }
@@ -370,6 +383,22 @@ private:
     // Promoted to loadedModels_ on main thread via promotePreparedModels().
     mutable std::mutex preparedDataMutex_;
     std::map<uint32_t, std::shared_ptr<RaceModelData>> preparedModelData_;
+
+    // P13b: per-part texture names DEFERRED (decode/upload skipped) because
+    // preloadModelData() got a composite-sheet HIT for that (race, gender) —
+    // see race_model_loader.cpp's T05 loop guard. Populated under
+    // preparedDataMutex_ (same lock preloadModelData already holds when
+    // touching preparedModelData_). Never cleared: an entry stays "deferred"
+    // for the RaceModelLoader's whole lifetime (races persist across zone
+    // transitions in loadedModels_/preparedModelData_, and a still-ineligible
+    // entity of this race could appear in ANY future zone). Consulted by
+    // releaseRawTextureData() (model_loading.cpp) to keep these specific raw
+    // TextureInfo bytes alive across the releaseTextureDataAfterUpload
+    // memory-reclaim pass, so the on-demand load (buildMeshFromGeometry /
+    // createAnimatedNodeWithEquipment's texture-swap, mesh_building.cpp /
+    // animated_mesh_creation.cpp) has real bytes to decode from whenever an
+    // ineligible entity of this race first actually needs one.
+    std::set<std::string> deferredPerPartTextureNames_;
 
     // Search character archive for race model, build RaceModelData without modifying caches.
     // Pure computation helper for preloadModelData() (thread-safe reads only).

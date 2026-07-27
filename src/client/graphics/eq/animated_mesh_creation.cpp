@@ -29,15 +29,19 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
         return cacheIt->second;
     }
 
-    // Ensure the model is loaded (this populates modelData with raw geometry)
-    irr::scene::IMesh* staticMesh = getMeshForRace(raceId, gender);
-    if (!staticMesh) {
-        cache[key] = nullptr;
-        return nullptr;
-    }
-
-    // Get the model data
-    auto modelData = getRaceModelData(raceId, gender);
+    // Ensure the model is loaded (this populates modelData with raw geometry).
+    // P13b: was getMeshForRace(raceId, gender) — its returned IMesh* was only ever
+    // null-checked and then discarded, but building it ALSO ran
+    // buildTexturedMesh()'s eager, unconditional per-part texture decode/upload as
+    // a side effect (every call, for every entity, composite-eligible or not) —
+    // silently defeating preloadModelData's T05 composite-hit deferral (a
+    // composite-hit race's per-part textures would get decoded+uploaded here
+    // anyway, just under a different ledger category, before this function even
+    // reached the composite-vs-multi-buffer branch below). ensureModelDataLoaded()
+    // does the same "find or load the race's model data" work WITHOUT the
+    // wasted static-mesh build. See race_model_loader.h's comment on that method
+    // and the plan Review for how this was caught (the ledger acceptance run).
+    auto modelData = ensureModelDataLoaded(raceId, gender);
     if (!modelData) {
         cache[key] = nullptr;
         return nullptr;

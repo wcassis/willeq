@@ -521,6 +521,34 @@ proper fix:
   the dead conditional paths (renderer_zone_stream.cpp/renderer_zone_draw
   guard on a pointer that is never non-null).
 
+## P10b's "71 evictions" scenario still unreproduced; new zone-transition crash found (P13b, 2026-07-27)
+
+- P13's own audit (three measurement runs) and P13b's bounded side-quest (two
+  more, ledger-instrumented) — four independent single/multi-zone qeynos2
+  configurations total across two units — have now all measured **0
+  evictions** under the shipped 64MB `orangepi` budget, whether composites
+  are on/off, `mergeZoneDraws` is on/off, or a shipped vs custom-mirrored
+  preset is used. P10b's original "71 evictions" (befallen→qeynos zone
+  transition, mergeZoneDraws crash repro session) remains the only recorded
+  observation of it.
+- P13b's multi-zone-in-one-process attempt (befallen → `#zone qeynos2` GM
+  teleport, no teardown — the leading hypothesis per P13's own Deviations:
+  "evictions accumulating across MULTIPLE zone visits in one process
+  lifetime") hit a **new, reproducible crash** before it could observe
+  qeynos2's cumulative eviction count:
+  `[FATAL] [GRAPHICS] loadZoneGraphicsOnThread: snapshot has empty zone name
+  — aborting` (SIGSEGV), triggered specifically by the `#zone <shortname>`
+  GM-command zone-transition path. Not investigated (out of P13b's bounded
+  side-quest scope) — this is now the concrete blocker for whoever next
+  attempts the multi-zone-accumulation repro: either fix this crash, or find
+  a different zone-transition mechanism (a real client-walked zone line
+  instead of the GM teleport command) that doesn't hit it.
+- The eviction-tracing ledger machinery (P13's `TextureUploadLedger`) is
+  fully built, verified working, and ready to capture the exact
+  victim-order/thrash reconstruction the moment ANY future session actually
+  reproduces eviction pressure — nothing further needs building, only a
+  session shape that reaches it.
+
 ## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens (H02c/H02d observation)
 
 - Distant geometry renders as flat fog-colored (pale) shapes against the

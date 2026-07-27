@@ -25,6 +25,21 @@ RaceModelLoader::RaceModelLoader(irr::scene::ISceneManager* smgr,
                                   irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
     meshBuilder_ = std::make_unique<ZoneMeshBuilder>(smgr, driver, fileSystem);
+    // P13b: deliberately did NOT tag this builder "entity_perpart" (tried it, reverted —
+    // see the plan's Review "Deviations"). This ZoneMeshBuilder's loadTextureFromBMP()
+    // is shared by TWO different call patterns: (1) equipment-texture-VARIANT overrides
+    // (buildMeshFromGeometry's bodyTextureVariant>0 branch, createAnimatedNodeWithEquipment's
+    // texture-swap loop) — pre-existing, unconditional, composite-independent, already
+    // landing in "uncategorized" in P13's own baseline ledger; (2) the NEW on-demand
+    // per-part load this unit's T05 deferral relies on. Tagging this "entity_perpart"
+    // would have reclassified (1) too, making entity_perpart's before/after ledger count
+    // look WORSE (confirmed empirically: 268->323 uploads) despite the fix genuinely
+    // working — a measurement artifact, not a regression. Leaving the default
+    // ("uncategorized", unchanged from P13) keeps the entity_perpart bucket an
+    // apples-to-apples comparison against P13's own numbers: it now contains ONLY the
+    // three callsites P13's own audit named (T05 eager, loadZoneStep8c_VariantTextures,
+    // loadZoneStep8d_EquipmentPrep), so a drop there is unambiguously attributable to
+    // fewer eager decodes, not a category relabel.
 }
 
 RaceModelLoader::~RaceModelLoader() {
@@ -219,18 +234,8 @@ void RaceModelLoader::clearMeshCaches() {
     LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Mesh caches cleared for zone transition");
 }
 
-irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gender) {
-    auto funcStart = std::chrono::steady_clock::now();
+std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t raceId, uint8_t gender) {
     uint32_t key = makeCacheKey(raceId, gender);
-
-    // Check mesh cache first
-    auto meshIt = meshCache_.find(key);
-    if (meshIt != meshCache_.end()) {
-        return meshIt->second;
-    }
-
-    // Not cached - this will involve actual loading
-    auto loadStart = std::chrono::steady_clock::now();
 
     // Check if model data is loaded
     auto modelIt = loadedModels_.find(key);
@@ -365,15 +370,42 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
             }
         }
 
-        // Still not found - return nullptr (caller should use placeholder)
+        // Still not found
         if (modelIt == loadedModels_.end()) {
-            meshCache_[key] = nullptr;
             return nullptr;
         }
     }
 
+    return modelIt->second;
+}
+
+irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gender) {
+    auto funcStart = std::chrono::steady_clock::now();
+    uint32_t key = makeCacheKey(raceId, gender);
+
+    // Check mesh cache first
+    auto meshIt = meshCache_.find(key);
+    if (meshIt != meshCache_.end()) {
+        return meshIt->second;
+    }
+
+    // Not cached - this will involve actual loading
+    auto loadStart = std::chrono::steady_clock::now();
+
+    // P13b: model-data search/load extracted to ensureModelDataLoaded() so
+    // getAnimatedMeshForRace() (animated_mesh_creation.cpp) can ensure a race's
+    // model data is loaded WITHOUT also paying for buildTexturedMesh()'s eager,
+    // unconditional per-part texture decode/upload below — that call previously
+    // ran as an unwanted side effect of getMeshForRace()'s null-check-only usage
+    // there, silently defeating the T05 composite-hit deferral (preloadModelData
+    // would skip decoding a composite-hit race's per-part set, but this static
+    // mesh build — called first thing inside getAnimatedMeshForRace, for EVERY
+    // entity, eligible or not — would immediately decode+upload the very same
+    // set anyway, just tagged differently). Found and fixed while validating
+    // this unit's own ledger acceptance evidence; see the plan Review.
+    auto modelData = ensureModelDataLoaded(raceId, gender);
+
     // Build mesh from model data
-    auto modelData = modelIt->second;
     if (!modelData || !modelData->combinedGeometry) {
         meshCache_[key] = nullptr;
         return nullptr;
@@ -838,7 +870,41 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
     // T05: Decode textures via constrained cache (single decoder path).
     // getOrLoad() decodes raw bytes to RGBA and stores as DecodedEntry.
     // uploadTexture() promotes to GPU later (on the loading thread or render thread).
-    if (modelData->combinedGeometry && !modelData->textures.empty() && constrainedTextureCache_) {
+    //
+    // P13b: on a composite-sheet HIT (modelData->compositeData just got set above),
+    // DEFER this decode/upload instead of running it unconditionally — this is the
+    // fix for the double-load the P13 audit confirmed (entity_perpart upload count
+    // was identical, 268, whether composites were on or off: every composite-eligible
+    // race's per-part textures were being decoded+uploaded ANYWAY, on top of the
+    // sheet). Per-ENTITY eligibility (P08d: players and per-slot-override NPCs are
+    // ALWAYS ineligible and need the individual per-part textures for their
+    // multi-buffer mesh) means we cannot just skip these forever — record the
+    // texture names in deferredPerPartTextureNames_ so a later ineligible entity of
+    // this race can still load them ON DEMAND. No GPU touch, no decode here at all.
+    if (modelData->compositeData) {
+        size_t newlyDeferred = 0;
+        size_t alreadyKnown = 0;
+        if (modelData->combinedGeometry) {
+            std::lock_guard<std::mutex> lock(preparedDataMutex_);
+            for (const auto& texName : modelData->combinedGeometry->textureNames()) {
+                std::string lowerName = texName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (modelData->textures.count(lowerName) == 0) {
+                    continue;  // Not actually decodable (matches T05's own notFound skip)
+                }
+                if (deferredPerPartTextureNames_.insert(lowerName).second) {
+                    ++newlyDeferred;
+                } else {
+                    ++alreadyKnown;
+                }
+            }
+        }
+        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite sheet hit for race={} gender={} — "
+                 "deferred {} per-part texture(s) ({} already known from a prior race/gender) instead of eager "
+                 "decode/upload; loaded on demand only if an ineligible entity of this race needs the multi-buffer path",
+                 raceId, gender, newlyDeferred, alreadyKnown);
+    } else if (modelData->combinedGeometry && !modelData->textures.empty() && constrainedTextureCache_) {
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: T05 decode loop for race={} gender={} — combinedGeometry textureNames={} textures map size={}",
                   raceId, gender, modelData->combinedGeometry->textureNames().size(), modelData->textures.size());
         size_t decoded = 0;
@@ -868,9 +934,12 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             }
 
             LOG_TRACE(MOD_GRAPHICS, "  T05: decoding texName='{}' ({} bytes)", lowerName, rawData.size());
-            // P13: tagged "entity_perpart" — this loop is UNCONDITIONAL (runs even when
-            // the composite-sheet lookup above just succeeded for this same race), which
-            // the P13 audit identified as the double-load hypothesis's concrete mechanism.
+            // P13/P13b: tagged "entity_perpart". Only reached when this race/gender did
+            // NOT get a composite-sheet hit this preload call (see the
+            // modelData->compositeData branch above) — composite MISS or composites off,
+            // so this is the same eager, unconditional-per-race decode P13's audit
+            // measured (behavior byte-identical to before P13b for every race that
+            // reaches this branch).
             constrainedTextureCache_->getOrLoad(lowerName, rawData, "entity_perpart", "preloadModelData:T05");
             ++decoded;
         }

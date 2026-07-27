@@ -1,0 +1,16 @@
+run,category,upload_count,total_bytes,total_mb
+qeynos2_composites_on,zone_region,126,5280160,5.28
+qeynos2_composites_on,object,84,3627704,3.628
+qeynos2_composites_on,uncategorized,234,3505714,3.506
+qeynos2_composites_on,composite_sheet,14,3195376,3.195
+qeynos2_composites_on,entity_perpart,95,374040,0.374
+qeynos2_composites_on,sky,4,35552,0.036
+qeynos2_composites_on,placeholder,1,341,0.0
+qeynos2_composites_on,TOTAL,558,16018887,16.019
+qeynos2_composites_off,zone_region,126,5280160,5.28
+qeynos2_composites_off,object,84,3627704,3.628
+qeynos2_composites_off,uncategorized,173,3164994,3.165
+qeynos2_composites_off,entity_perpart,268,1039856,1.04
+qeynos2_composites_off,sky,4,35552,0.036
+qeynos2_composites_off,placeholder,1,341,0.0
+qeynos2_composites_off,TOTAL,656,13148607,13.149
