@@ -149,7 +149,134 @@ live zone-load route instead of the offline benchmark loader. Reproduced in
 that exact path throughout (no need to also check desktop-GL — the videos
 never used it).
 
-### Part A — foliage alpha: ROOT-CAUSED AND FIXED
+### Part A — foliage alpha: PARTIALLY DIAGNOSED — committed fix is real but INERT on the live GLES2 client; the true live-client root cause was found in a follow-up pass and is a separate, still-unfixed site (STOP per plan, not expanded here)
+
+**CORRECTION (follow-up pass, post-commit review)**: this section was rewritten
+after orchestrator review found the original "ROOT-CAUSED AND FIXED" verdict
+did not hold up under a crop-level before/after comparison (the large center
+pine and an adjacent white-trunk tree render on unchanged, pixel-identical
+opaque rectangles in the "AFTER" evidence). Investigating why surfaced a
+larger problem than one unfixed tree: **the code fix this unit committed to
+`AnimatedTreeManager::buildAnimatedMesh()` never executes on the live x86
+GLES2 client that produced these screenshots.** Full corrected account below;
+the original root-cause writeup for the *code bug itself* (paragraph below,
+"Original root cause") is accurate as far as it goes — it is simply describing
+a code path that is dead on this renderer backend.
+
+**Why the fix is inert here**: `IrrlichtRenderer::loadZoneStep11_Env()`
+(`src/client/graphics/renderer_zone_load.cpp:1986-2003`) only calls
+`treeManager_->beginInitialize()` (which is what invokes
+`AnimatedTreeManager::buildAnimatedMesh()`, the function this unit's fix
+modified) when `driver_->getDriverType() == irr::video::EDT_BURNINGSVIDEO`
+(the software renderer). The live x86 GLES2 client used for every capture in
+this unit reports `EDT_OGLES2` (`docker/irrlicht-drm/COpenGLES2Driver.h:272`)
+— it takes the explicit `else` branch, logged as `"GPU renderer path, trees
+handled as normal objects with wind shaders"`, and never calls
+`beginInitialize()` at all. `AnimatedTreeManager` is constructed but its tree
+mesh-building code is simply never reached on this backend. The committed fix
+is a legitimate correctness improvement for the software-renderer path (and
+harmless — it doesn't fire there either, in the capture sessions), but it does
+not touch anything the GLES2 screenshots exercise.
+
+**What the GLES2/live path actually does for trees**: placeable tree objects
+are built as ordinary zone geometry via `ZoneMeshBuilder::buildTexturedMesh()`
+(`src/client/graphics/eq/zone_geometry.cpp:396-445` etc.) — which already has
+correct masked/ETC1-vs-RGBA classification (the same H02d Option-A logic this
+unit mirrored into `animated_tree_manager.cpp`). But immediately after,
+**every mesh whose object name/texture matches `TreeIdentifier`'s tree
+patterns has its `MaterialType` unconditionally overwritten** by a "wind
+shader" pass, in two sites this unit did not touch:
+- `src/client/graphics/renderer_zone_stream.cpp:559-576` (deferred/streamed
+  object build)
+- `src/client/graphics/renderer_zone_load.cpp:2288-2334` (Step11 "fixup pass"
+  for eagerly-built objects)
+
+Both force `MaterialType = zoneShader_->getActiveWindAlphaTest()` — a single
+material-type constant — with **no check of the WLD masked flag and no
+ETC1-vs-RGBA branching**. Both sites do attempt to bind a companion alpha
+texture on unit 1 via `constrainedTextureCache_->getAlphaTexture(texName)`,
+but that call only returns non-null for ETC1-sourced textures; for
+RGBA/DDS-decoded textures (the live x86 GLES2 build's actual texture source,
+per this unit's own root-cause narrative) it returns null, unit 1 stays
+unbound, and the GLES2 driver's opaque-white 1×1 fallback for an unbound unit
+1 never discards — **the exact same bug class this unit fixed in
+`animated_tree_manager.cpp`, reproduced verbatim in a different file that
+remains unfixed.** `treeManager_->isTreeObject()` (used by both clobber sites
+to decide "is this a tree") delegates to `TreeIdentifier::isTreeMesh()`,
+which matches on name/texture patterns including `*pine*` — `nekpine.bmp`
+(gfaydark's primary conifer foliage texture, confirmed below) matches.
+
+**Confirmed the texture itself is a genuine bug, not a citywlivy-style
+by-design opaque case**: extracted `gfaydark_obj.s3d`/`gfaydark.wld` with the
+repo's `wld_dump`/S3D tools (temporary, uncommitted local build of a small
+WLD-flag dump using `WldLoader`, deleted after use — no repo files changed)
+and confirmed `nekpine.bmp` (pine foliage — actor `NEKPINE1_ACTORDEF` /
+`NEKPINE2_ACTORDEF`, both reference `TREECALLBACK`) has WLD materialType
+TransparentMasked (Fragment 0x30, `masked=YES`), stored as DXT5 (256×256)
+with a genuine hard binary alpha cutout in the decoded pixel data (47.1% of
+texels near-zero alpha, 52.9% near-full alpha, ~0% mid-range — a real
+leaf-silhouette mask, not a flat-opaque bitmap). This is unlike
+`citywlivy.bmp`, which is masked-but-painted-opaque by design. `nekpine.bmp`
+foliage genuinely should render as a leaf-shaped cutout; it does not, because
+of the still-unfixed clobber sites above, not because of any by-design
+opacity.
+
+**STOP per plan condition (i)/(iv)-adjacent**: per this unit's own rule ("If
+it's another unfixed rendering site, name the site precisely and STOP — do
+not expand the fix"), `renderer_zone_stream.cpp:559-576` and
+`renderer_zone_load.cpp:2288-2334` are named here as the real live-client
+root cause and were NOT touched. Fixing them is a new, separate unit's work
+(they are shared "wind shader" infrastructure touching all GPU-path tree
+rendering, and P18 has an open wrap-param investigation in nearby GLES2
+texture/state-caching territory worth checking for overlap first).
+
+**Corrected evidence reading** (verified by direct crop/pixel-diff comparison
+of the committed stills, not just visual inspection):
+- `gfay_03.png` / `gfay_03_AFTER.png` used the **identical** `/move` target
+  sequence (`data/captures/p20_gfay.txt` vs `p20_after.txt`, both
+  `/move 10 20 0` → `/move 10 60 0` → `/move 0 100 0`; `/move` is an
+  absolute-target command, "Moving to (x,y,z)", confirmed in
+  `src/client/eq_commands_movement.cpp:130-145`) — this pair IS a valid
+  same-pose comparison. `compare -metric AE` + visual diff confirms the large
+  center pine's canopy (dark rectangle) and an adjacent white-trunk tree's
+  panel are **pixel-identical, zero visible change**, between before and
+  after. Only background grass detail and sky/lighting differ (expected
+  session-to-session noise), not the trees. **This is the reliable,
+  apples-to-apples evidence, and it shows no improvement.**
+- `gfay_tree_normal.png` / `gfay_tree_normal_AFTER.png` — previously cited as
+  showing a small pine cluster's "solid rectangle became a leaf-shaped
+  cutout" — is **NOT a valid same-pose comparison and that claim is
+  retracted**. Both reach the same absolute XY target (`/move 40 120 0`), but
+  `gfay_tree_normal.png` (`data/captures/p20_shaderdebug.txt`) arrives there
+  in a single hop directly from the zone-in spawn point, while
+  `gfay_tree_normal_AFTER.png` (`data/captures/p20_after.txt`) arrives at the
+  same coordinate only after three prior hops. Because `/move` walks the
+  character to the target (not an instant teleport with a fixed facing), the
+  two captures almost certainly arrive facing different headings — confirmed
+  by a full-frame pixel diff between the two stills showing very large,
+  scene-wide differences (mushroom structure, bridge, and tree trunk all in
+  different screen positions), consistent with a rotated camera, not a fixed
+  camera with only the tree's material changed. The apparent "leaf-shaped
+  fix" in that pair is most likely a different tree/viewing angle, not
+  evidence of the code change working.
+
+**Original root cause** (accurate description of the code bug fixed, scope
+now understood to be software-renderer-only —
+`AnimatedTreeManager::createAnimatedTree()`
+(`src/client/graphics/animated_tree_manager.cpp`, was lines 375-388)
+unconditionally force-switched **every** tree material to
+`shaderMaterialAlphaTest_` — the H02d ETC1-companion-alpha shader variant
+(reads alpha from `uAlphaTexture` on texture unit 1) — regardless of (a)
+whether the WLD material was actually masked at all, and (b) whether the
+tree's texture was ETC1-sourced or direct RGBA/DDS-decoded.
+`buildAnimatedMesh()` never bound a companion texture on unit 1 for tree
+quads, so on the software-renderer (`EDT_BURNINGSVIDEO`) path, unit 1 always
+resolved to the GLES2 driver's documented opaque-white 1x1 fallback
+(background, `COpenGLES2Driver` ~1090-1101) — which never discards — so
+masked tree foliage would have rendered fully opaque there too, had this fix
+not landed. This is real, and is the same bug class as the live client's
+actual problem — just in a file that isn't reached by the live client's
+actual renderer backend.
 
 **Reproduction**: gfaydark (richest foliage zone), live session against
 eqemu. `gfay_02.png` / `gfay_03.png` (path note below) show tree canopies
@@ -165,27 +292,18 @@ at `/mnt/projects/fable/videos/p20_live_visual/stills/` rather than in
 `EVIDENCE_MANIFEST.txt` describing every still). Filenames below are
 relative to that NFS directory.
 
-**Root cause**: `AnimatedTreeManager::createAnimatedTree()`
-(`src/client/graphics/animated_tree_manager.cpp`, was lines 375-388)
-unconditionally force-switched **every** tree material to
-`shaderMaterialAlphaTest_` — the H02d ETC1-companion-alpha shader variant
-(reads alpha from `uAlphaTexture` on texture unit 1) — regardless of (a)
-whether the WLD material was actually masked at all, and (b) whether the
-tree's texture was ETC1-sourced or direct RGBA/DDS-decoded.
-`buildAnimatedMesh()` never bound a companion texture on unit 1 for tree
-quads, so on this (non-ETC1) live x86 GLES2 path, unit 1 always resolved to
-the GLES2 driver's documented opaque-white 1x1 fallback (background,
-`COpenGLES2Driver` ~1090-1101) — which never discards — so masked tree
-foliage rendered fully opaque. This is exactly the "H02d-class site the fix
-didn't cover" the plan called out as suspect (b): H02d's Option-A branching
-(`isETC1Texture()` → companion vs. main-texture-alpha variant) was applied
-to 3 sites in `zone_geometry.cpp` (the WLD zone-mesh builder) but never to
-`animated_tree_manager.cpp`, which builds tree billboard quads via its own,
-separate, simpler mesh path — trees are NOT part of the WLD zone-geometry
-mesh-build route zone_geometry.cpp handles. (Confirmed the same 2-argument-
-only gap also exists in `door_manager.h`/`entity_renderer.h`
-`setShaderMaterialTypes()` — flagged here as a related-but-out-of-scope
-finding, not fixed, since Part A's territory is tree foliage.)
+**Root cause of the committed code change**: see "Original root cause" in the
+correction block above — summary: `AnimatedTreeManager::createAnimatedTree()`
+unconditionally force-switched every tree material to the ETC1-companion-alpha
+variant with no companion ever bound, which would opaque-render masked
+foliage on the software-renderer path. This is exactly the "H02d-class site
+the fix didn't cover" the plan called out as suspect (b) — but, as the
+correction above establishes, the *live GLES2 client's* actual H02d-class gap
+is in `renderer_zone_stream.cpp` / `renderer_zone_load.cpp`'s wind-shader
+clobber, not here. (Confirmed the same 2-argument-only gap also exists in
+`door_manager.h`/`entity_renderer.h` `setShaderMaterialTypes()` — flagged here
+as a related-but-out-of-scope finding, not fixed, since Part A's territory is
+tree foliage.)
 
 **Fix** (`src/client/graphics/animated_tree_manager.{h,cpp}`,
 `src/client/graphics/irrlicht_renderer.cpp`,
@@ -206,20 +324,29 @@ only sets the universal Lighting/BackfaceCulling/FogEnable properties) so
 
 **Evidence** (`/mnt/projects/fable/videos/p20_live_visual/stills/`, see
 evidence path note above; manifest committed at
-`benchmarks/audits/p20_live_visual/EVIDENCE_MANIFEST.txt`):
-- Before: `gfay_02.png`, `gfay_03.png` — opaque rectangular tree quads.
-- After (same pose/tree, post-fix rebuild): `gfay_03_AFTER.png`,
-  `gfay_tree_normal_AFTER.png` — same tree now renders with a correct
-  leaf-shaped silhouette, sky/clouds visible through the negative space
-  around branches.
+`benchmarks/audits/p20_live_visual/EVIDENCE_MANIFEST.txt`) — **reread per the
+correction above; this is now a negative result on the live client**:
+- Before: `gfay_02.png`, `gfay_03.png` — opaque rectangular tree quads,
+  including the large center pine and an adjacent white-trunk tree.
+- After (verified same pose — identical `/move` target sequence —
+  post-fix rebuild): `gfay_03_AFTER.png` — the center pine and the
+  white-trunk tree's panel are **pixel-identical to the before frame**; no
+  visible change. `gfay_tree_normal_AFTER.png` is NOT a valid same-pose
+  comparison against its nominal "before" (`gfay_tree_normal.png`) — see
+  correction above — and is not usable as evidence either way.
 - Shader-debug stills (`gfay_tree_normal.png`,
   `gfay_tree_alpha_mode7.png`, `gfay_tree_rawtexalpha_mode11.png`,
-  `gfay_tree_companionalpha_mode12.png`) were captured pre-fix but showed
-  no visible difference across modes 0/7/11/12 — inconclusive on their own
-  (not the tool that found the bug); the fix was root-caused by code
-  inspection (tracing `setShaderMaterialTypes` call sites and comparing
-  `zone_geometry.cpp`'s H02d fix against `animated_tree_manager.cpp`) and
-  confirmed by the before/after visual pair above.
+  `gfay_tree_companionalpha_mode12.png`) were captured pre-fix and showed no
+  visible difference across modes 0/7/11/12 — inconclusive, as originally
+  noted, and now understood to be additionally inconclusive because
+  `AnimatedTreeManager` (what `/shaderdebug` modes 7/11/12 were built to
+  inspect for this fix) never executes on this renderer backend in the first
+  place.
+- The committed code fix is real for the software-renderer path (no visual
+  evidence exists either way for that path — it wasn't captured; the software
+  renderer isn't the shipped/live path per the plan's own path note above).
+  It does not explain, and does not fix, any pixel in the live GLES2
+  screenshots above.
 - Aside (not chased, out of scope): a separate pre-existing magenta/black
   checkerboard missing-texture placeholder appears on some qeynos2
   building rooftops/awnings (visible in `approach_01.png`, `approach_02.png`,
@@ -290,17 +417,29 @@ baked into the `orangepi` preset.
 
 ### Deviations
 
-1. **`config/constrained_presets.json`**: added an additive
+1. **RETRACTED, follow-up pass**: `config/constrained_presets.json`'s
    `orangepi_p20` preset (exact copy of `orangepi` with
-   `mergeZoneDraws: false`) — the shipped `orangepi` preset ships
-   `mergeZoneDraws: true`, which the P08d retake (already on `fable`,
-   `f75007e`) found reproducibly SIGSEGVs on the very first frame in
-   qeynos2 (`ZoneMergeBuffers::build()` / `textureGroupId()`, unrelated to
-   P20). Used `orangepi_p20` for every capture session in this unit instead
-   of stock `orangepi`, following the same precedent P08d/P12 set for their
-   own capture-only presets. Committed (not left uncommitted) since it's
-   evidence-gathering infrastructure, not a production behavior change, and
-   the shipped `orangepi` preset is untouched.
+   `mergeZoneDraws: false`) has been REMOVED from this branch. It was
+   originally added and justified by citing the P08d-retake-era qeynos2
+   `mergeZoneDraws` first-frame SIGSEGV (`ZoneMergeBuffers::build()` /
+   `textureGroupId()`) — but that crash was root-caused and fixed by **P10b**
+   (already on `fable` before this unit started), whose own validation matrix
+   already showed qeynos2 crash-free with `mergeZoneDraws: true` (automatic
+   mode) through a full session. The original executor here cited the
+   stale, pre-P10b finding without re-observing it. Re-verified by direct
+   observation in this follow-up pass: brought up eqemu on qeynos2, ran
+   `build-gles2/bin/willeq --renderer gles2 --constrained orangepi` (STOCK
+   preset, `mergeZoneDraws: true`) through a first-frames session
+   (`data/captures/p20_orangepi_stock_test.txt`: screenshots at +0.2s/+1.2s/
+   +3.2s/+6.2s after zone-in, then `/camp`) — clean exit, no crash, 4 valid
+   non-garbled screenshots saved
+   (`/mnt/projects/fable/videos/p20_live_visual/stills/orangepi_stock_qeynos2_t0..t6.png`).
+   Confirms P10b's fix holds and `orangepi_p20` was unnecessary baggage in a
+   production config file; the capture sessions that used it are already
+   done, so removing it doesn't affect any evidence already collected under
+   the (identical apart from `mergeZoneDraws`) `orangepi` name. The shipped
+   `orangepi` preset itself was never touched by either the original
+   executor or this follow-up.
 2. **Local, UNCOMMITTED workarounds applied during investigation, then
    reverted before the final commit** (per EXECUTOR_PROTOCOL.md's
    instruction for parked live-client crashes): (a) widened

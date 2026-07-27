@@ -20,6 +20,17 @@ Deviation 1 in the plan Review for why orangepi_p20 vs. stock orangepi).
 
 Part A — foliage alpha
 -----------------------
+CORRECTED (follow-up pass, post-commit orchestrator review): the original
+manifest text below claimed the AFTER stills showed a fixed leaf-shaped
+silhouette. A crop-level comparison at the large center pine found it
+pixel-identical before/after, which led to discovering the committed fix
+(AnimatedTreeManager::buildAnimatedMesh) never executes on the live x86
+GLES2 client at all (gated to EDT_BURNINGSVIDEO only in
+renderer_zone_load.cpp:1986-2003) — see the plan's Review Part A correction
+block for the full account and the actual still-unfixed live-client root
+cause (renderer_zone_stream.cpp:559-576, renderer_zone_load.cpp:2288-2334).
+Descriptions below are corrected accordingly.
+
 - scout_h000/045/090/135/180/225/270/315.png — initial qeynos2-gates
   heading scan (turned out camera doesn't track /turn; all near-identical,
   superseded by the gfaydark session below).
@@ -31,15 +42,32 @@ Part A — foliage alpha
 - gfay_00_start.png, gfay_01.png, gfay_02.png, gfay_03.png — gfaydark
   approach to a tree cluster. gfay_02.png / gfay_03.png are the BEFORE
   evidence: solid, hard-edged, opaque rectangular tree-canopy quads
-  blocking the sky.
+  blocking the sky, including the large center pine and an adjacent
+  white-trunk tree.
 - gfay_tree_normal.png, gfay_tree_alpha_mode7.png,
   gfay_tree_rawtexalpha_mode11.png, gfay_tree_companionalpha_mode12.png —
-  pre-fix /shaderdebug 0/7/11/12 stills at the same pose; inconclusive (no
-  visible difference between modes) — root cause was found by code
-  inspection, not this tool; kept as evidence of what was tried.
-- gfay_03_AFTER.png, gfay_tree_normal_AFTER.png — AFTER evidence, same
-  tree/pose, post-fix rebuild: correct leaf-shaped silhouette, sky visible
-  through the canopy's negative space.
+  pre-fix /shaderdebug 0/7/11/12 stills; inconclusive (no visible difference
+  between modes) for an additional reason beyond the original note — the
+  AnimatedTreeManager code these debug modes were built to inspect doesn't
+  run on this renderer backend, so there was nothing for them to show either
+  way. gfay_tree_normal.png reaches its camera position via a DIFFERENT
+  `/move` path than gfay_tree_normal_AFTER.png below (one direct hop vs.
+  three prior hops to the same XY target) — NOT a same-pose pair, do not
+  compare the two directly.
+- gfay_03_AFTER.png — verified same pose as gfay_03.png (identical `/move`
+  target sequence). Pixel-diffed against gfay_03.png: the center pine and
+  the white-trunk tree's panel are UNCHANGED, pixel-identical — no visible
+  fix. This is the reliable before/after evidence for Part A and it is a
+  negative result on the live client.
+- gfay_tree_normal_AFTER.png — reaches the same XY target as
+  gfay_tree_normal.png but via a different `/move` path (see above); not a
+  valid same-pose comparison against it. The previously-claimed "leaf-shaped
+  silhouette" difference between this pair is retracted — most likely a
+  different camera heading/framing, not a fix. Not usable as Part A evidence
+  either way.
+- orangepi_stock_qeynos2_t0/t1/t3/t6.png — unrelated to Part A foliage;
+  Task 2 (stock `orangepi` preset qeynos2 crash-reobservation) evidence, see
+  Review Deviation 1.
 
 Part B — geometry pop-in
 --------------------------
