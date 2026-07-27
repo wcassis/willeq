@@ -558,7 +558,42 @@ proper fix:
   render verified. NOTE: also cuts the composite share of texture
   memory ~3x — relevant to the cross-zone eviction fix sizing.
 
-## Eviction mystery SOLVED + re-zone crash fixed (P15, 2026-07-27)
+## Eviction hygiene LANDED (P17, 2026-07-27) — closes the P15 follow-ups
+
+- **Cross-zone accumulation FIXED, mechanism deeper than P15 thought**:
+  ConstrainedTextureCache::clear() existed and was correct, but its sole
+  trigger — the queued "/unloadzone_internal" RendererCommand pushed by
+  CleanupZone() — is only drained by PreRenderTick(), which
+  Application::render() SKIPS on every early-return branch taken during
+  a zone transition (handshake + loading-thread-active). The unload sat
+  unapplied until after the NEW zone finished loading. Fix: unloadZone()
+  now runs synchronously in Application::loadZoneGraphicsOnThread() (on
+  the loading thread, which owns the GL context) before the new zone
+  uploads anything; the queued push is removed (late-firing, it would
+  have wiped the NEW zone's textures). PROOF: 5-hop multi-hop session
+  (befallen↔qeynos2×2 + gfaydark) with per-zone ledger reset — eviction
+  counts flat and zone-local (befallen 0, qeynos2 30, every visit), no
+  accumulation.
+- **Entity-node dangling-ITexture* guard LANDED** (P15 bug (a)):
+  EntityMeshTextureGuard mirrors P10b's RegionMeshTextureGuard, covers
+  EQAnimatedMeshSceneNode materials_ + instanceMesh_. Verification also
+  surfaced a SECOND dangling-pointer hole: RaceModelLoader's shared
+  per-race mesh cache's own ZoneMeshBuilder::textureCache_ was never
+  cleared on zone unload (clearTextureCache() had zero callers) — wired
+  into clearMeshCaches() + defensive isLiveTexture() at the crash site.
+- **Stale-zone-name-vs-position snapshot race FIXED** (P15 bug (b)):
+  SetZoneBspTree() tags the tree with its zone; CreateZoneLoadSnapshot()
+  only trusts a tag-matching tree, else falls back to the safe
+  no-tree-yet path instead of the SIZE_MAX FATAL.
+- mergeZoneDraws spot: qeynos2 still correctly gated OFF — its own
+  standalone footprint exceeds the 64MB budget (not cross-zone leakage;
+  the P13b "would merge ACTIVATE in qeynos2 post-fix" hypothesis is
+  answered: no, qeynos2 is genuinely over budget on its own).
+- **NEW (unfixed, pre-existing, graceful)**: gfaydark zone-in FATAL —
+  missing race model data, race=330; unrelated to eviction work, needs
+  its own look (likely race_codes.cpp mapping gap class).
+
+## Eviction mystery SOLVED + re-zone crash fixed (P15, 2026-07-27) — follow-ups CLOSED by P17 above
 
 - **Re-zone snapshot crash FIXED**: ProcessDeferredZoneChange signaled
   the zone load AFTER CleanupZone cleared m_current_zone_name → empty
