@@ -309,7 +309,8 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
     }
     if (treeManager_ && zoneShader_->isAvailable()) {
         treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                             zoneShader_->getActiveAlphaTest());
+                                             zoneShader_->getActiveAlphaTest(),
+                                             zoneShader_->getActiveAlphaTestRGBA());
     }
 }
 

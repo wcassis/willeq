@@ -372,19 +372,18 @@ void AnimatedTreeManager::createAnimatedTree(const ObjectInstance& object,
         float scaleZ = placeable->getScaleZ();
         tree.node->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
 
-        // Set material properties with alpha transparency for tree leaves
+        // Common render-state properties for all tree materials. P20: the
+        // per-material MaterialType (solid vs. the correct alpha-source-
+        // aware alpha-test variant) is now decided per-texture in
+        // buildAnimatedMesh() above, using the WLD masked flag and ETC1/RGBA
+        // texture-source check — this loop must not blanket-override it back
+        // to a single alpha-test variant (that was the root cause of P20's
+        // opaque-foliage bug; see buildAnimatedMesh for the full rationale).
         for (irr::u32 i = 0; i < tree.node->getMaterialCount(); ++i) {
             auto& mat = tree.node->getMaterial(i);
             mat.Lighting = false;
             mat.BackfaceCulling = false;
             mat.FogEnable = true;
-            // Use GLSL shader alpha-test material if available, else fixed-function
-            if (shaderMaterialAlphaTest_ >= 0) {
-                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
-            } else {
-                mat.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                mat.MaterialTypeParam = 0.5f;  // Alpha threshold (0-1)
-            }
         }
 
         // Grab the node so it survives scene graph removal during PVS culling
@@ -563,10 +562,50 @@ irr::scene::SMesh* AnimatedTreeManager::buildAnimatedMesh(
 
         if (texture) {
             buffer->Material.setTexture(0, texture);
-            buffer->Material.MaterialType = irr::video::EMT_SOLID;
             buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
             buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
             buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
+
+            // P20: alpha-source-aware shader variant selection (H02d Option
+            // A), mirroring ZoneMeshBuilder::buildTexturedMesh
+            // (zone_geometry.cpp). Fragment 0x30 materialType ==
+            // TransparentMasked (0x13) is the ground-truth signal for tree
+            // leaf textures that need alpha test — previously EVERY tree
+            // material (masked or not) was force-switched to the ETC1
+            // companion-alpha variant in createAnimatedTree() below, with no
+            // companion texture ever bound (buildAnimatedMesh never called
+            // getAlphaTexture) — the unbound unit 1 read the GLES2 driver's
+            // opaque-white 1x1 fallback, which never discards, so masked
+            // tree foliage rendered fully opaque on this (RGBA/DDS, non-
+            // ETC1) live client path.
+            bool isMaskedMaterial = (texIdx < geometry.textureMasked().size()) &&
+                geometry.textureMasked()[texIdx];
+            if (isMaskedMaterial) {
+                bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(texName);
+                if (isETC1) {
+                    if (shaderMaterialAlphaTest_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                    } else {
+                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
+                    if (constrainedCache_) {
+                        irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                        if (alphaTex) {
+                            buffer->Material.setTexture(1, alphaTex);
+                        }
+                    }
+                } else {
+                    if (shaderMaterialAlphaTestRGBA_ >= 0) {
+                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+                    } else {
+                        buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+                    }
+                }
+            } else if (shaderMaterialSolid_ >= 0) {
+                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
+            } else {
+                buffer->Material.MaterialType = irr::video::EMT_SOLID;
+            }
         } else {
             buffer->Material.MaterialType = irr::video::EMT_SOLID;
         }
