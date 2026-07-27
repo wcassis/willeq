@@ -159,11 +159,16 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
        (suite now 1235). NEW follow-ups: (a) **driver footgun**:
        COpenGLES2Driver static HW buffers never honor dirty updates —
        document/guard so production never HW-buffers an animated mesh;
-       (b) **Z35 seam diff under animation**: composite vs multi-buffer
-       animated = matching pose/silhouette but 17-29% px at LOW
-       magnitude (mean ~0.1-2/255) localized to a texture-atlas seam —
-       needs its own small unit (likely same gutter/padding class as
-       the P08d static bleed suspicion); (c) **P11b**: true composite
+       (b) **Animated composite low-magnitude discrepancy — REFRAMED by
+       P16 (2026-07-27)**: the 17-29% px diff did NOT move after the
+       seam fix; inspection shows it spans nearly the WHOLE model
+       silhouette, not a seam line — a broader composite-vs-multibuffer
+       rendering delta under animation (suspects for its root-cause
+       unit: lighting/normals handling on the merged single buffer —
+       note buildCompositeMeshFromGeometry sets Material.Lighting
+       differently — or per-vertex attribute divergence in the merged
+       path). Static remains pixel-identical; magnitude stays low
+       (mean ~0.1-2/255); needs its own unit; (c) **P11b**: true composite
        perf magnitude on Pi (animated e205 replay) — P12b's optional
        phase was skipped.
        P12's original escalation record:** ownership verdict is SHARED PRODUCTION
@@ -511,6 +516,21 @@ proper fix:
 - Even with workarounds, sessions end in crashes rather than clean
   /camp — x86 llvmpipe client stability needs a pass before it can be
   a routine evidence harness.
+
+## Sheet quality DONE + deployed (P16, 2026-07-27)
+
+- UV-inset seam fix (gutters rejected — would have inflated
+  power-of-2-tight sheets up to 4x; inset keeps packing byte-identical,
+  shrinks JSON uvOffset/uvScale to the safe interior). Tile-cap
+  unroll discipline (cap=1, mathematically exact for GL_REPEAT-sampled
+  character textures) + a justified one-line backward-compatible
+  runtime change (fmod UV wrap in mesh_building.cpp, no-op when
+  uncapped). **67.9% aggregate sheet reduction (813→261MB), worst
+  outlier 16x smaller, no sheet grew.** Audit 498/498 clean. DEPLOYED
+  to live NFS with full dated backup
+  (/mnt/projects/EverQuest_ETC1_backup_20260727); post-swap spot
+  render verified. NOTE: also cuts the composite share of texture
+  memory ~3x — relevant to the cross-zone eviction fix sizing.
 
 ## Eviction mystery SOLVED + re-zone crash fixed (P15, 2026-07-27)
 
