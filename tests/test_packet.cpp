@@ -79,6 +79,67 @@ TEST_F(PacketTest, DynamicPacket_PutGetCString) {
     EXPECT_EQ(result, test_str);
 }
 
+// T08: GetCString used to build a std::string straight from the raw
+// pointer, so an unterminated string field read past the end of the
+// packet — a real out-of-bounds read. The scan is now bounded by the
+// packet, treating the end as a terminator. These use StaticPacket over
+// an exactly-sized buffer so the packet end is a hard boundary: with a
+// DynamicPacket the surrounding heap slack could mask the over-read.
+
+TEST_F(PacketTest, GetCString_UnterminatedRunsToPacketEnd) {
+    // No NUL anywhere in the buffer. Pre-fix this ran off the end.
+    char buffer[4] = { 'a', 'b', 'c', 'd' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(0), std::string("abcd"));
+}
+
+TEST_F(PacketTest, GetCString_UnterminatedFromOffsetRunsToPacketEnd) {
+    char buffer[6] = { 'x', 'y', 'a', 'b', 'c', 'd' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(2), std::string("abcd"));
+}
+
+TEST_F(PacketTest, GetCString_StopsAtEmbeddedTerminator) {
+    // Terminated well before the end: unchanged behavior, and the trailing
+    // bytes must not leak into the result.
+    char buffer[8] = { 'a', 'b', '\0', 'j', 'u', 'n', 'k', '!' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(0), std::string("ab"));
+}
+
+TEST_F(PacketTest, GetCString_TerminatorAtFinalByte) {
+    char buffer[3] = { 'h', 'i', '\0' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(0), std::string("hi"));
+}
+
+TEST_F(PacketTest, GetCString_EmptyStringAtOffset) {
+    char buffer[3] = { '\0', 'x', 'y' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(0), std::string(""));
+}
+
+TEST_F(PacketTest, GetCString_LastByteOfPacketIsBounded) {
+    // offset == Length()-1 with no terminator: exactly one readable byte.
+    char buffer[3] = { 'a', 'b', 'c' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_EQ(packet.GetCString(2), std::string("c"));
+}
+
+TEST_F(PacketTest, GetCString_OffsetPastEndStillThrows) {
+    char buffer[3] = { 'a', 'b', 'c' };
+    EQ::Net::StaticPacket packet(buffer, sizeof(buffer));
+
+    EXPECT_THROW(packet.GetCString(3), std::out_of_range);
+    EXPECT_THROW(packet.GetCString(99), std::out_of_range);
+}
+
 TEST_F(PacketTest, DynamicPacket_GetString_WithLength) {
     EQ::Net::DynamicPacket packet;
     packet.Resize(64);
