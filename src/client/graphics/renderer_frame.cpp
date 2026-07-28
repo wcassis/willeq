@@ -1268,26 +1268,33 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
     // Unified particle system (fire point sprites, GLES2 only)
     //
-    // P10b: gated on particleManager_->isEnabled() -- a stale comment here
-    // ("fire has its own toggle (unifiedFireEnabled_)") referenced a member
-    // that doesn't actually exist anywhere in this codebase, leaving this
-    // call genuinely unconditional. Found blocking THIS unit's own qeynos2
-    // automatic-deferred-loading verification: a nondeterministic SIGSEGV
-    // inside ParticleManager::renderUnified() (dangling-pointer-shaped race
-    // -- renderer_sim_bridge.cpp points particleRenderBuffer_ into a
-    // SimulationWorker-owned result object whose lifetime relative to this
-    // read was not traced here either). This exact bug, root cause, and
-    // exact workaround were already found and documented independently on
-    // task/anim-video-capture (see /mnt/projects/fable/videos/p12_anim_check/
-    // README.txt, workaround #3) -- reapplied here verbatim because it also
-    // blocks this unit's required verification matrix, not because this
-    // unit root-caused or fixed the underlying race (still flagged, still
-    // deferred, for a dedicated unit -- see refactor/deferred.md).
-    // atmosphericParticles is false in the shipped config/display_settings.json,
-    // so this gate is a no-op change in behavior for that shipped default,
-    // not a new restriction on production particle rendering.
+    // P10b (history): gated this call on particleManager_->isEnabled() as a
+    // workaround for a nondeterministic SIGSEGV inside
+    // ParticleManager::renderUnified() -- a dangling-pointer-shaped race
+    // against the SimulationWorker double-buffered result object
+    // (particleRenderBuffer_ points into it). isEnabled() reflects the
+    // *atmosphericParticles* setting (weather/dust/pollen billboard
+    // emitters), which has no semantic relationship to unified fire/spell
+    // particles -- it only "worked" as a workaround because
+    // atmosphericParticles is false in the shipped
+    // config/display_settings.json, so the gate happened to be a no-op for
+    // that default while masking the crash whenever someone actually
+    // enabled it.
+    //
+    // P23: root-caused and fixed for real in SimulationWorker
+    // (simulation_worker.cpp workerLoop()/swapAndGetResults() -- see the
+    // comments there, and tools/particle_race_stress.cpp for the
+    // ThreadSanitizer reproduction: 55 races including two confirmed
+    // heap-use-after-free reports pre-fix, zero races across repeated
+    // 100k-iteration soaks post-fix). The isEnabled() gate here is now
+    // redundant for the race it was covering, so it is REMOVED -- fire and
+    // spell-effect particles should render whenever the zone/3D transforms
+    // are ready, independent of the atmosphericParticles toggle. The
+    // billboard emitter render() call above (checkpoint 4) is intentionally
+    // still gated on isEnabled() -- that one IS the atmospheric particle
+    // system it's named for.
 #ifdef EQT_HAS_GLES2
-    if (particleManager_ && particleManager_->isEnabled() && zoneReady_ && have3DTransforms_) {
+    if (particleManager_ && zoneReady_ && have3DTransforms_) {
         // Pass View and Projection separately — captured during ESNRP_SOLID pass
         // before any 2D drawing overwrites the driver's transform state.
         // The shader multiplies them in GLSL (same as built-in COGLES2 shaders).

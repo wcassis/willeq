@@ -577,6 +577,20 @@ TARGET_LINK_LIBRARIES(willeq_core ${LINK_LIBS})
 # willeq executable links to the core library (which brings in all dependencies)
 TARGET_LINK_LIBRARIES(willeq willeq_core ${LINK_LIBS})
 
+# P23: SimulationWorker input/output-buffer race stress harness. Manual
+# tool (not ctest-registered — it's a bounded soak, not a fast deterministic
+# unit test); see refactor/P23_particle_race_stability.md Review for the
+# TSAN/ASAN invocation used to gather race evidence. Links against
+# willeq_core directly since it needs SimulationWorker plus its full compute
+# dependency set (portal_system, wld_loader, hc_map, weather_system, ...),
+# which is simplest to pull in as the already-built core library rather than
+# re-enumerating every TU.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(particle_race_stress tools/particle_race_stress.cpp)
+    TARGET_INCLUDE_DIRECTORIES(particle_race_stress PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    TARGET_LINK_LIBRARIES(particle_race_stress willeq_core ${LINK_LIBS})
+ENDIF()
+
 # Model Viewer tool (for debugging character models)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(model_viewer

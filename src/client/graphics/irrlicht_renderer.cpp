@@ -2682,7 +2682,7 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
         return false;
     }
 
-#ifdef EQT_HAS_DRM
+#if defined(EQT_HAS_DRM) || defined(EQT_HAS_GLES2)
     // DRM/EGL: Irrlicht's createScreenShot() reads GL_FRONT which doesn't exist
     // in EGL (only GLX has separate front/back read targets). Read GL_BACK instead.
     // P10: gated on the GLES2 driver type generally, not just useDRM — this branch
@@ -2692,6 +2692,16 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
     // createScreenShot() was found to return garbage (uninitialized-looking noise)
     // under the surfaceless case during P10's in-app A/B screenshot verification —
     // this widened gate is the fix, discovered and applied there.
+    // P23: widened again to `EQT_HAS_DRM || EQT_HAS_GLES2`. The x86 GLES2 dev
+    // build (build-gles2-x86.sh) configures EQT_DRM=OFF / EQT_GLES2=ON, so
+    // EQT_HAS_DRM was never defined there and this whole safe-readback branch
+    // was compiled OUT, falling through to driver_->createScreenShot() (which
+    // segfaults nondeterministically under llvmpipe — see deferred.md, P20
+    // Review deviation 2a). EQT_HAS_GLES2 is defined on both the x86 GLES2
+    // build and ARM (which also always defines EQT_HAS_DRM, so ARM's path
+    // through this #if is unchanged — this is additive for x86-without-DRM
+    // only). The runtime check below (useDRM || EDT_OGLES2) already covers
+    // the x86 case correctly once the branch is compiled in at all.
     if (config_.constrainedConfig.useDRM || driver_->getDriverType() == irr::video::EDT_OGLES2) {
         irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
         uint32_t w = screenSize.Width;
