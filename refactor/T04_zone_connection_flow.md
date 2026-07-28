@@ -169,12 +169,193 @@ Visual gate and ARM build do not apply (tests-only diff). Say so.
 
 ## Review
 
-Per the protocol. Specifically state:
-- Which of the four gating prerequisites you were able to test
-  independently, and which you could not isolate.
-- Every robustness case that crashed or misbehaved, with evidence.
-- What you would need a seam for, if anything — that feeds the next
-  unit's decision.
+Executed 2026-07-28 on `task/T04-zone-connection-flow` (from fable tip
+703db1e). `tests/test_zone_connection_flow.cpp` created (16 tests, 3 test
+suites); `tests/CMakeLists.txt` gained one new target block mirroring
+`test_session_replay`'s. No other files touched; no changes under
+`src/` or `include/`.
 
-An honest "I covered the gating thoroughly and could not meaningfully
-reach X" is worth more than broad coverage I cannot trust.
+### Acceptance criteria
+
+1. `tests/test_zone_connection_flow.cpp` exists, wired into
+   `tests/CMakeLists.txt` in the existing style (own target block
+   immediately after `test_session_replay`'s, no new library target, no
+   restructuring). **PASS.**
+2. Target links `willeq_core` — same as `test_session_replay`, not a
+   hand-picked source list. In this tree (P30, GLES2-config-only)
+   `willeq_core` is ONE static library built from `ALL_CORE_SOURCES`,
+   which unconditionally includes the graphics sources and the patched
+   GLES2 Irrlicht fork whenever `EQT_GRAPHICS=ON` (it always is here) —
+   there is no graphics-free flavor of the library to link against
+   instead. So the target does pull in the patched Irrlicht fork
+   transitively, same as `test_session_replay` already does; this is more
+   than the plan's literal "links no Irrlicht" wording implied, but it
+   matches the one precedent this unit was told to follow, and the test
+   binary itself never touches any graphics API (no window, no GL calls,
+   no `InitGraphics`). Flagging as instructed. **Deviation, not a
+   regression** — pre-existing structural fact about `willeq_core`, not
+   something this unit introduced.
+3. Build clean (`cmake --build build -j24`, full project, 0 errors).
+   Binary runtime: **0.139s wall** for all 16 tests (measured via `time`;
+   gtest reports 58ms of actual test time). Well under the 5s bar.
+4. Full suite, 3 consecutive runs (1378 tests total):
+   - Run 1: 1376 passed, 2 failed — `AudioManagerTest.PreloadCommonSounds`
+     (documented host ALSA exception) and
+     `RDPServerFrameTest.UpdateFrameMultipleTimes` (SEGFAULT — the known
+     T03b `RDPServer::stop()` use-after-free, not caused by this diff and
+     not a flake to wave through).
+   - Run 2: 1377 passed, 1 failed — `AudioManagerTest.PreloadCommonSounds`
+     only. RDP test passed this time (matches its documented
+     intermittent nature).
+   - Run 3: 1377 passed, 1 failed — `AudioManagerTest.PreloadCommonSounds`
+     only.
+   - All 16 new tests passed in all 3 runs. **PASS** (documented
+     exceptions only).
+5. `bash build-related check_file_sizes.sh fable`: exit 0, no output, no
+   new FAILs. **PASS.**
+
+Visual gate and ARM build: N/A, tests-only diff, per the plan. Confirmed.
+
+### Gating prerequisites — what was isolated
+
+All four were tested independently, holding back exactly one at a time
+while supplying the other three via the zone-stream replay seam:
+- `m_new_zone_received` withheld (`WithholdingNewZone_DoesNotAdvance`)
+- `m_aa_table_count` withheld (`WithholdingAATable_DoesNotAdvance` — note
+  `HC_OP_RespondAA` was deliberately included in this case to prove it
+  does NOT substitute for `HC_OP_SendAATable`; `ZoneProcessRespondAA`
+  calls the check but never increments the AA counter)
+- `m_tribute_count` withheld (`WithholdingTributeInfo_DoesNotAdvance`)
+- `m_guild_tribute_count` withheld (`WithholdingGuildTributes_DoesNotAdvance`)
+
+Each asserts both `GetLoadingPhase() != ZONE_REQUEST_PHASE` and that
+`GetReplaySuppressedSendCount()` stopped at the NewZone-only baseline (4,
+or 0 if NewZone itself was the withheld one) — i.e. `ZoneSendReqClientSpawn`
+provably never ran. Also covered: all-four-present fires exactly once
+(`AllFourPresent_AdvancesExactlyOnce`), the fire-once guard survives
+repeated/duplicate delivery of all four afterwards
+(`FireOnceGuard_AdditionalPacketsDoNotRefire`), and two different
+permutations of the trailing three packets converge to the same state
+(`OrderIndependent_DifferentOrderingsOfTrailingThreeConverge`). Nothing
+here needed a seam beyond the existing `ReplayZonePacket` /
+`GetReplaySuppressedSendCount()` / `GetLoadingPhase()` triad.
+
+### A real gating bug found (not fixed — out of territory)
+
+**`CheckZoneRequestPhaseComplete()` is called only from
+`ZoneProcessSendAATable`, `ZoneProcessRespondAA`, `ZoneProcessTributeInfo`,
+and `ZoneProcessSendGuildTributes` (`eq_player_info.cpp:54,62,71,80`).
+`ZoneProcessNewZone` (`eq.cpp:1849-1974`) sets `m_new_zone_received = true`
+but never calls the check itself.**
+
+Consequence, proven by
+`NewZoneArrivingLast_DoesNotFireUntilAnotherGateArrives`: if
+`HC_OP_NewZone` is the *last* of the four gate-relevant packets to arrive
+(server order is explicitly not promised — the plan's own words), all
+four prerequisites become true in memory simultaneously, but nothing
+re-invokes `CheckZoneRequestPhaseComplete()`, so `ZoneSendReqClientSpawn`
+is never sent. The client would hang in `ZONE_RECEIVING_SPAWNS`/pre-request
+phase indefinitely — recoverable only if the server happens to send a
+*fifth* gate-relevant packet afterward (a duplicate/late AA table,
+RespondAA, tribute info, or guild tributes). The test also demonstrates
+that recovery path explicitly. This directly contradicts the plan's
+"order-independence" assumption for real bursts and is exactly the kind
+of gating bug the plan warned would cause a production zone-load hang.
+**Reported, not fixed** (territory is `tests/` only; fixing would mean
+adding a `CheckZoneRequestPhaseComplete()` call to `ZoneProcessNewZone`,
+a one-line, low-risk `src/` change — flagging for Will to authorize as a
+follow-up, likely a tiny dedicated unit rather than folded into this one).
+
+### Robustness cases
+
+- Unknown opcode (`0xFFFF`, absent from the `HC_OP_*` enum): ignored via
+  the `default:` case in `DispatchZonePacket` (`eq.cpp:1583-1585`), no
+  throw, state untouched. **PASS.**
+- Zero-length and one-byte-short-of-minimum payloads for every guarded
+  handler reachable from the four gate opcodes plus
+  `DeleteSpawn`/`ZoneSpawns`/`NewSpawn`/`ClientUpdate`/`GuildMOTD`: all
+  safe (each either guards on `p.Length()` before reading, or its read
+  loop's bound condition naturally skips). **PASS.**
+- Duplicate delivery (repeated `ZoneSpawns` for the same entity, then
+  `DeleteSpawn` for it twice): harmless, idempotent from the caller's
+  point of view. **PASS.**
+
+**Two real bugs found and captured (STOP condition — reported, not
+fixed):**
+1. `ZoneProcessTimeOfDay` (`eq_entities.cpp:484-490`) has **no length
+   guard at all** — it unconditionally calls `p.GetUInt8(2..5)` and
+   `p.GetUInt16(6)`. A zero-length (or any <8-byte) `HC_OP_TimeOfDay`
+   payload throws `std::out_of_range` from
+   `EQ::Net::Packet::GetUInt8`/`GetUInt16` (`packet.cpp:207-223`, which
+   throw rather than read OOB — so this is a well-defined C++ exception,
+   not memory corruption). Confirmed via
+   `BUG_TimeOfDay_ZeroLengthPayload_ThrowsOutOfRange`.
+2. `ZoneProcessPlayerProfile` (`eq.cpp:1985-2010`) logs a `LOG_WARN` when
+   the packet is shorter than the full 19588-byte `PlayerProfile_Struct`
+   but **does not `return`** — it falls through to unconditional field
+   reads (`GetUInt32(base+4)` etc.), so any short `HC_OP_PlayerProfile`
+   payload throws the same way. Confirmed via
+   `BUG_PlayerProfile_TruncatedPayload_ThrowsOutOfRange`.
+
+Neither throw is caught anywhere between `DispatchZonePacket` and the
+network receive callback in production (`ZoneOnPacketRecv`,
+`eq.cpp:717-733`, has no try/catch, and grep found no wrapping catch
+higher up that path). A truncated packet — exactly what a lossy network
+produces, which is the stated motivation for this whole robustness
+section — reaching either handler would propagate an uncaught exception
+out of the zone receive path in the real client. Both tests pin this
+*current* (buggy) behavior with `EXPECT_THROW` rather than silently
+passing over it, so the suite stays deterministic/green while the bug is
+on record with a reproducible automated case; this is not a fix and not a
+weakening of the assertion — the assertion is exactly what the code does
+today. Not fixed here (territory is `tests/` only); flagging for Will.
+
+### Seam needed for the next unit
+
+None needed for *this* unit's territory — the existing `ReplayZonePacket`
+/ `GetReplaySuppressedSendCount()` / `GetLoadingPhase()` /
+`IsGameStateReady()` / `IsFullyZonedIn()` accessors were sufficient for
+every case in the plan.
+
+Per the plan's own scope boundary, login and world stages remain
+completely untested and **would need a new seam**: every handler there
+(`LoginOnPacketRecv`, `LoginProcessLoginResponse`, `WorldOnPacketRecv`,
+`WorldProcessCharacterSelect`) is `private` with no `ReplayZonePacket`
+equivalent and no live-connection-optional dispatch path. A
+`ReplayLoginPacket`/`ReplayWorldPacket` pair mirroring the zone one (same
+pattern: build a synthetic packet, dispatch through the same opcode
+switch the real `*OnPacketRecv` uses, with sends suppressed when there's
+no live connection) would unlock the same style of coverage for
+character-select and authentication sequencing. That is a base-layer
+`include/client/eq.h` decision, not this unit's to make — reported per
+the plan's STOP instructions, not attempted.
+
+### Observable zone state
+
+`ObservableZoneState.FullHandshake_ProducesCoherentState` drives
+NewZone -> PlayerProfile -> (AATable, TributeInfo, SendGuildTributes) ->
+GuildMOTD -> ClientUpdate (self spawn id) and asserts `GetCurrentZoneName()`,
+`GetLoadingPhase()` (reaches `COMPLETE`, since no graphics is initialized
+in this test binary), `IsGameStateReady()` (true), and `IsFullyZonedIn()`
+(false — `m_zone_connected` is only ever set by the real
+`DaybreakConnection` status callback, `eq.cpp:687`, unreachable through
+the replay seam; documented as a known ceiling of `ReplayZonePacket`, not
+a bug).
+
+### Deviations from the plan
+
+- Plan's description of ordering assumed the four gate prerequisites are
+  order-independent; the code does not actually guarantee that (see "A
+  real gating bug found" above) — trusted the code per the plan's own
+  instruction and wrote the test to match reality.
+- Plan asked to assert "the target links no Irrlicht" (acceptance
+  criterion 2); in this GLES2-config-only tree that's not literally true
+  for anything linking `willeq_core` (see criterion 2 above) — followed
+  precedent (`test_session_replay`) instead and flagged the wording gap.
+- Two robustness findings are real production bugs, deliberately pinned
+  with `EXPECT_THROW` rather than left failing, to keep the 3x-green bar
+  meaningful while still making the bug reproducible and visible in the
+  test names (`BUG_*` prefix) and this Review. If Will would rather see
+  these as failing/disabled tests instead, that's a one-line change to
+  flip `EXPECT_THROW` to `EXPECT_NO_THROW` and mark them
+  `DISABLED_`/skip.
