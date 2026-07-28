@@ -4,6 +4,20 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
+
+- `TreeWindController::update()` — the only code advancing wind time
+  and the weather-multiplier transition — was ALREADY unreachable on
+  the live GLES2 path before P32 (gated on a CPU-instancing tree count
+  only the deleted software path populated). The weather multiplier
+  has always been effectively frozen at 1.0. P32 preserved that exact
+  behavior. OPEN QUESTION for Will (era-authenticity call): should
+  trees visibly sway at all? 1999-era clients did not animate
+  foliage; if era-honest stillness is preferred this item closes as
+  "keep frozen — document"; if sway is wanted, a small unit wires
+  update() into the frame loop (then needs a fresh golden check since
+  wind time becomes frame-dependent — likely keep goldens at t=0).
+
 **STANDING CROSS-SESSION POINTER (2026-07-28): the testing campaign
 tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
