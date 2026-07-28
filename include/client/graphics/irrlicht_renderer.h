@@ -27,7 +27,8 @@
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/detail/detail_manager.h"
-#include "client/graphics/animated_tree_manager.h"
+#include "client/graphics/tree_wind_controller.h"
+#include "client/graphics/tree_identifier.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/texture_atlas.h"
@@ -888,10 +889,10 @@ public:
         if (entityRenderer_) {
             entityRenderer_->setRenderDistance(renderDistance_);
         }
-        // Sync render distance to tree manager
-        if (treeManager_) {
-            treeManager_->setRenderDistance(renderDistance_);
-        }
+        // P32: the tree-manager render-distance sync was removed along with
+        // AnimatedTreeManager — it only fed the CPU-instancing distance
+        // culling (dead on GLES2; that code path was reachable only via
+        // the removed EDT_BURNINGSVIDEO branch).
         // Force visibility update on next frame
         forcePvsUpdate_ = true;
     }
@@ -1154,7 +1155,10 @@ private:
     void setupLighting();
     // SimulationWorker helpers
     void startSimulationWorkerEarly();     // Build core zone data (BSP/regions/objects/lights) and start worker
-    void registerSimulationWorkerTreeData();    // Add tree wind data after progressive tree init
+    // registerSimulationWorkerTreeData() removed (P32): it fed
+    // AnimatedTreeManager's CPU-instancing tree buffers into the
+    // SimulationWorker, but was never called from anywhere in the tree —
+    // dead code, confirmed uncalled before deletion. Went with the class.
     void registerSimulationWorkerVertexAnimData();  // Add vertex anim data after objects are installed
     void stopSimulationWorker();     // Stop worker (zone transition)
     void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
@@ -1261,7 +1265,12 @@ private:
     ConstrainedTextureCache* constrainedTextureCache_ = nullptr;  // Owned by Application, mandatory
     std::unique_ptr<ConstrainedMeshCache> constrainedMeshCache_;      // Optional, lazy mesh loading in constrained mode
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
-    std::unique_ptr<AnimatedTreeManager> treeManager_;  // Tree wind animation
+    // P32: AnimatedTreeManager (CPU-instancing tree wind facade) deleted —
+    // its live GLES2 consumers used only wind config/classification, which
+    // now live directly here via TreeWindController + TreeIdentifier (both
+    // were already separate TUs; AnimatedTreeManager was just a wrapper).
+    TreeWindController treeWindController_;  // Wind config, weather multiplier
+    TreeIdentifier treeIdentifier_;          // Tree mesh classification (isTreeMesh)
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)

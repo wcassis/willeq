@@ -421,21 +421,11 @@ void IrrlichtRenderer::indexObjectMeshes() {
             continue;
         }
 
-        // Skip trees on software path (handled by tree manager)
-        // On GPU path, trees are indexed normally for PVS/distance culling
-        if (treeManager_) {
-            const std::string& objName = objInstance.placeable->getName();
-            std::string primaryTexture;
-            if (!objInstance.geometry->textureNames().empty()) {
-                primaryTexture = objInstance.geometry->textureNames()[0];
-            }
-            if (treeManager_->isTreeObject(objName, primaryTexture)) {
-                bool hasGpuShaders = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
-                if (!hasGpuShaders) {
-                    continue;
-                }
-            }
-        }
+        // P32: the software-path tree skip (isTreeObject + EDT_BURNINGSVIDEO
+        // check) was removed — GLES2 is the only backend now, so
+        // hasGpuShaders was always true here and this never actually
+        // skipped anything on the surviving path. Trees are always indexed
+        // normally for PVS/distance culling.
 
         DeferredObject deferred;
         deferred.objectIndex = i;
@@ -569,12 +559,12 @@ void IrrlichtRenderer::buildDeferredObject(size_t idx) {
     // 1); masked+RGBA -> wind variant reading uTexture.a; non-masked ->
     // plain wind/solid variant (still gets wind vertex displacement, no
     // alpha-test discard).
-    if (treeManager_ && zoneShader_ && zoneShader_->isWindAvailable()) {
+    if (zoneShader_ && zoneShader_->isWindAvailable()) {
         std::string primaryTexture;
         if (!objInstance.geometry->textureNames().empty()) {
             primaryTexture = objInstance.geometry->textureNames()[0];
         }
-        if (treeManager_->isTreeObject(objName, primaryTexture)) {
+        if (treeIdentifier_.isTreeMesh(objName, primaryTexture)) {
             irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
             float meshMinY = meshBbox.MinEdge.Y;
             float meshMaxY = meshBbox.MaxEdge.Y;

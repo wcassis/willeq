@@ -185,26 +185,11 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
              currentZoneName_);
 }
 
-void IrrlichtRenderer::registerSimulationWorkerTreeData() {
-    if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
-    if (!treeManager_ || treeManager_->getAnimatedTreeCount() == 0) return;
-
-    const auto& trees = treeManager_->getAnimatedTrees();
-    std::vector<SimulationZoneData::AnimatedTreeData> treeData(trees.size());
-    for (size_t i = 0; i < trees.size(); ++i) {
-        auto& td = treeData[i];
-        td.worldPosition = trees[i].worldPosition;
-        td.meshSeed = trees[i].meshSeed;
-        td.buffers.resize(trees[i].buffers.size());
-        for (size_t b = 0; b < trees[i].buffers.size(); ++b) {
-            td.buffers[b].basePositions = trees[i].buffers[b].basePositions;
-            td.buffers[b].vertexHeights = trees[i].buffers[b].vertexHeights;
-        }
-    }
-
-    simulationWorker_->updateTreeData(std::move(treeData));
-    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: registered {} animated trees", trees.size());
-}
+// registerSimulationWorkerTreeData() removed (P32): it fed
+// AnimatedTreeManager's CPU-instancing tree buffers (populated only via the
+// removed EDT_BURNINGSVIDEO branch) into SimulationWorker::updateTreeData().
+// Confirmed uncalled anywhere in the tree before deletion — dead code, went
+// with the class.
 
 void IrrlichtRenderer::registerSimulationWorkerVertexAnimData() {
     if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
@@ -312,8 +297,8 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     // Tree wind state snapshot
-    if (treeManager_ && treeManager_->isEnabled()) {
-        const auto& wc = treeManager_->getWindController();
+    if (treeWindController_.isEnabled()) {
+        const auto& wc = treeWindController_;
         const auto& cfg = wc.getConfig();
         input.treeWind.enabled = cfg.enabled;
         input.treeWind.time = wc.getTime();
@@ -861,25 +846,12 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
     }
 
-    // Apply tree wind shadow vertices
-    if (treeManager_ && !results->treeShadows.empty()) {
-        const auto& trees = treeManager_->getAnimatedTrees();
-        for (size_t t = 0; t < results->treeShadows.size() && t < trees.size(); ++t) {
-            const auto& tree = trees[t];
-            for (size_t b = 0; b < results->treeShadows[t].size() && b < tree.buffers.size(); ++b) {
-                const auto& shadow = results->treeShadows[t][b];
-                if (!shadow.dirty) continue;
-                auto* buffer = tree.buffers[b].buffer;
-                if (!buffer) continue;
-                auto* vertices = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
-                irr::u32 vertexCount = buffer->getVertexCount();
-                for (irr::u32 v = 0; v < vertexCount && v < shadow.positions.size(); ++v) {
-                    vertices[v].Pos = shadow.positions[v];
-                }
-                buffer->setDirty(irr::scene::EBT_VERTEX);
-            }
-        }
-    }
+    // P32: the tree wind shadow-vertex apply block was removed along with
+    // AnimatedTreeManager. results->treeShadows was only ever populated by
+    // SimulationWorker::updateTreeData(), which registerSimulationWorkerTreeData()
+    // called — and that function was confirmed uncalled anywhere, so
+    // results->treeShadows was always empty and this block was already
+    // fully dead (its `!results->treeShadows.empty()` guard never passed).
 
     // Apply spell VFX results from worker (desktop GL path)
     if (results->spellVfxOutput.valid && spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
@@ -1050,9 +1022,11 @@ std::vector<std::string> IrrlichtRenderer::getSimWorkerDebugInfo() const {
     lines.push_back(fmt::format("  Last compute: {:.2f}ms", info.lastComputeTimeMs));
     lines.push_back(fmt::format("  Avg compute: {:.2f}ms", info.avgComputeTimeMs));
     lines.push_back(fmt::format("  Worker busy: {}", info.workerBusy ? "YES" : "no"));
+    // P32: tree count is always 0 now (AnimatedTreeManager's CPU-instancing
+    // count removed — it was always 0 on GLES2 already, since that path was
+    // only reachable via the removed EDT_BURNINGSVIDEO branch).
     lines.push_back(fmt::format("  Trees: {}, VertAnims: {}",
-        treeManager_ ? treeManager_->getAnimatedTreeCount() : 0,
-        vertexAnimatedMeshes_.size()));
+        0, vertexAnimatedMeshes_.size()));
     lines.push_back("  Offloaded: visibility, lighting, trees, vertex anims, fire flicker, boids, tumbleweeds");
     lines.push_back("  Ungated: detail wind, particles, sky, weather (30Hz)");
 

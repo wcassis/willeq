@@ -444,11 +444,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/seasonal_controller.cpp
         src/client/graphics/detail/foliage_disturbance.cpp
         src/client/graphics/detail/footprint_manager.cpp
-        # Tree wind animation system
+        # Tree wind animation system (P32: animated_tree_manager.{h,cpp}
+        # deleted — its live consumers now use tree_wind_controller/
+        # tree_identifier directly, see irrlicht_renderer.h)
         src/client/graphics/tree_wind_config.cpp
         src/client/graphics/tree_identifier.cpp
         src/client/graphics/tree_wind_controller.cpp
-        src/client/graphics/animated_tree_manager.cpp
         src/client/graphics/weather_system.cpp
         src/client/graphics/weather_effects_controller.cpp
         src/client/graphics/weather_config_loader.cpp
@@ -596,6 +597,11 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         IF(EQT_DRM)
             ADD_DEFINITIONS(-DEQT_HAS_DRM)
         ENDIF()
+        # P32 (Phase 4, docs/decisions.md 2026-07-28 addendum): the
+        # EQT_GLES2=OFF "Desktop GL mode via Lima" ELSE() branch (ARM board,
+        # EQT_DRM=ON EQT_GLES2=OFF) was retired — GLES2 is the only backend
+        # now, on ARM same as x86. scripts/build-arm-noble.sh no longer
+        # offers a --no-gles2 flag to reach this configuration.
         IF(EQT_GLES2)
             # GLES2 mode: link GLESv2 only (no desktop GL)
             ADD_DEFINITIONS(-DEQT_HAS_GLES2)
@@ -606,11 +612,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             IF(NOT EQT_DRM)
                 LIST(APPEND LINK_LIBS X11)
             ENDIF()
-        ELSE()
-            # Desktop GL mode via Lima (ARM board, EQT_DRM=ON EQT_GLES2=OFF —
-            # legacy platform, CLAUDE.md "Legacy platforms" note; not the
-            # X11-GLX desktop path removed by P30, no X11 involved)
-            LIST(APPEND LINK_LIBS EGL GL GLESv2 drm gbm)
         ENDIF()
         # drm_fourcc.h is in a libdrm subdirectory — add include path
         FIND_PATH(LIBDRM_INCLUDE_DIR drm.h PATH_SUFFIXES libdrm drm)

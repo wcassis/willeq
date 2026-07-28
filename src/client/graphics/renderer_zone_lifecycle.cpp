@@ -85,10 +85,10 @@ void IrrlichtRenderer::unloadZone() {
         detailManager_->onZoneExit();
     }
 
-    // Clear tree wind animation system
-    if (treeManager_) {
-        treeManager_->cleanup();
-    }
+    // P32: AnimatedTreeManager::cleanup() (scene nodes/meshes owned by the
+    // CPU-instancing animatedTrees_ list, always empty on GLES2) removed
+    // along with the class. treeWindController_/treeIdentifier_ own no
+    // Irrlicht scene-graph resources, so there is nothing to clear here.
 
     // Clear environmental particle system
     if (particleManager_) {

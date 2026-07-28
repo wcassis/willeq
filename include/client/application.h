@@ -58,9 +58,13 @@ struct ApplicationConfig {
     // Mode settings
     mode::OperatingMode operatingMode = mode::OperatingMode::GraphicalInteractive;
 
-    // Renderer backend (--renderer CLI arg, overrides preset if set)
-    // -1 = not specified (use preset default), 0 = Software, 1 = OpenGL, 2 = GLES2
-    int rendererBackend = -1;
+    // Renderer backend (--renderer CLI arg). GLES2 is the only supported
+    // renderer (docs/decisions.md 2026-07-28 addendum, P32 Phase 4) —
+    // "software"/"opengl" were removed and now fail CLI parsing fast
+    // (see parseArguments' fatalArgError handling). This flag no longer
+    // changes anything at runtime (GLES2 is used regardless); it is kept
+    // so `--renderer gles2` keeps working as a documented explicit no-op.
+    bool rendererGles2Requested = false;
 
     // Feature flags
     bool pathfindingEnabled = true;
@@ -111,6 +115,12 @@ struct ApplicationConfig {
 
     // Help flag
     bool showHelp = false;
+
+    // P32: set when parseArguments() rejects a CLI value outright (fail
+    // fast) — e.g. --renderer software/opengl. The offending message is
+    // already printed to stderr; main() checks this and exits non-zero
+    // without proceeding to config load / app init.
+    bool parseError = false;
 };
 
 /**

@@ -546,25 +546,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Item model mappings handled on-demand via SQLite — no pre-loading needed
 
-    // Choose driver type from constrained config backend
-    irr::video::E_DRIVER_TYPE driverType;
-    switch (config_.constrainedConfig.renderingBackend) {
-#ifdef EQT_HAS_GLES2
-        case RenderingBackend::GLES2:
-            driverType = irr::video::EDT_OGLES2;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL ES 2.0");
-            break;
-#endif
-        case RenderingBackend::OpenGL:
-            driverType = irr::video::EDT_OPENGL;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL");
-            break;
-        case RenderingBackend::Software:
-        default:
-            driverType = irr::video::EDT_BURNINGSVIDEO;
-            LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: Burnings Software");
-            break;
-    }
+    // P32: driver type is always GLES2 now (RenderingBackend::Software/
+    // OpenGL removed — docs/decisions.md 2026-07-28 addendum). Collapsed
+    // from a switch since RenderingBackend has exactly one value.
+    irr::video::E_DRIVER_TYPE driverType = irr::video::EDT_OGLES2;
+    LOG_DEBUG(MOD_GRAPHICS, "[GL] Loading screen driver: OpenGL ES 2.0");
 
     // Create device
     irr::SIrrlichtCreationParameters params;
@@ -609,14 +595,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     device_ = irr::createDeviceEx(params);
 
     if (!device_) {
-        LOG_WARN(MOD_GRAPHICS, "[GL] Failed to create device with {} driver, falling back to software",
-                 backendName(config_.constrainedConfig.renderingBackend));
-        params.DriverType = irr::video::EDT_SOFTWARE;
-        device_ = irr::createDeviceEx(params);
-    }
-
-    if (!device_) {
-        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device (all drivers failed)");
+        // P32: the EDT_SOFTWARE retry fallback was removed along with
+        // RenderingBackend::Software (docs/decisions.md 2026-07-28
+        // addendum) — GLES2 device creation failure is now fatal, not
+        // silently downgraded to the software renderer.
+        LOG_ERROR(MOD_GRAPHICS, "Failed to create Irrlicht device with {} driver",
+                  backendName(config_.constrainedConfig.renderingBackend));
         return false;
     }
 
@@ -751,9 +735,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     debugPlayerLightEnabled_ = config_.constrainedConfig.playerLight;
     lightingEnabled_ = config.lighting;
 
-    // Initialize GLSL shader pipeline (if enabled and driver supports it)
-    if (config_.constrainedConfig.enableShaders &&
-        config_.constrainedConfig.renderingBackend != RenderingBackend::Software) {
+    // Initialize GLSL shader pipeline (if enabled and driver supports it).
+    // P32: the "!= RenderingBackend::Software" guard was removed — GLES2
+    // is the only backend now, so it was always true.
+    if (config_.constrainedConfig.enableShaders) {
         LOG_TRACE(MOD_GRAPHICS, "Initializing GLSL shader pipeline...");
         auto* gpu = driver_->getGPUProgrammingServices();
         if (gpu) {
@@ -824,30 +809,22 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     renderPassTimer_->setRenderer(this);
     LOG_INFO(MOD_GRAPHICS, "Render pass timer initialized");
 
-    // Create tree wind animation manager (needed before zone loading)
-    if (!treeManager_) {
-        LOG_TRACE(MOD_GRAPHICS, "Creating tree manager...");
-        treeManager_ = std::make_unique<AnimatedTreeManager>(smgr_, driver_);
-        treeManager_->setRenderDistance(renderDistance_);
-        if (constrainedTextureCache_) {
-            treeManager_->setConstrainedTextureCache(constrainedTextureCache_);
-        }
-        if (zoneShader_ && zoneShader_->isAvailable()) {
-            treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                 zoneShader_->getActiveAlphaTest(),
-                                                 zoneShader_->getActiveAlphaTestRGBA());
-        }
-    }
+    // P32: AnimatedTreeManager (CPU-instancing wrapper) deleted. Its
+    // construction here did three things: setRenderDistance/
+    // setConstrainedTextureCache/setShaderMaterialTypes — all three fed
+    // ONLY the CPU-instancing path (createAnimatedTree/updateTreeAnimation),
+    // which was reachable only via the now-removed EDT_BURNINGSVIDEO branch
+    // in loadZoneStep11_Env(). treeWindController_/treeIdentifier_ are
+    // plain default-constructed members needing no init here — their
+    // per-zone config load happens in loadZoneStep11_Env() same as before.
 
     // Create weather system (needed before zone loading)
     if (!weatherSystem_) {
         LOG_TRACE(MOD_GRAPHICS, "Creating weather system...");
         weatherSystem_ = std::make_unique<WeatherSystem>();
-        // Connect weather system to tree manager via callback
+        // Connect weather system to tree wind controller via callback
         weatherSystem_->addCallback([this](WeatherType weather) {
-            if (treeManager_) {
-                treeManager_->setWeather(weather);
-            }
+            treeWindController_.setWeather(weather);
         });
     }
 
@@ -1390,7 +1367,8 @@ void IrrlichtRenderer::shutdown() {
     boidsManager_.reset();
     tumbleweedManager_.reset();
     weatherSystem_.reset();
-    treeManager_.reset();
+    // treeWindController_/treeIdentifier_ are plain members (P32) — no
+    // reset needed, they hold no Irrlicht scene-graph resources.
     detailManager_.reset();
     // constrainedTextureCache_ is owned by Application, not reset here
     spellVisualFX_.reset();
@@ -1988,11 +1966,9 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
                  skyAllowed, settings.skyEnabled, isIndoorZone_);
     }
 
-    // --- Animated Tree Manager: toggle wind animation ---
-    if (treeManager_) {
-        treeManager_->setEnabled(settings.animatedTrees);
-        LOG_DEBUG(MOD_GRAPHICS, "Applied tree animation settings: enabled={}", settings.animatedTrees);
-    }
+    // --- Tree Wind Controller: toggle wind animation ---
+    treeWindController_.setEnabled(settings.animatedTrees);
+    LOG_DEBUG(MOD_GRAPHICS, "Applied tree animation settings: enabled={}", settings.animatedTrees);
 
     // --- Fire Glow Lighting + Icospheres ---
     // fireEffects is the master gate for all fire-based effects

@@ -1064,11 +1064,20 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
                                    playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
         }
-        // Worker computes tree vertex positions — just advance wind controller time
-        if (treeManager_ && treeManager_->isEnabled()
-            && treeManager_->getAnimatedTreeCount() > 0) {
-            treeManager_->getWindController().update(deltaTime);
-        }
+        // P32 finding (preserved, not "fixed"): this call to
+        // TreeWindController::update(deltaTime) was gated on
+        // getAnimatedTreeCount() > 0, which is populated only by
+        // AnimatedTreeManager's CPU-instancing path (beginInitialize/
+        // initializeNextBatch, reachable only via the now-removed
+        // EDT_BURNINGSVIDEO branch in loadZoneStep11_Env()). That means
+        // update() — the only place that advances TreeWindController's
+        // time_ and weatherMultiplier_ transition — was ALREADY never
+        // called on the live GLES2 path before this unit; weatherMultiplier_
+        // has always been frozen at its default (1.0f) here. Deleting this
+        // dead call preserves that exact (if surprising) existing behavior;
+        // do NOT "fix" it by calling update() unconditionally — that would
+        // be a new, unreviewed behavior change (see docs/decisions.md /
+        // refactor/P32_phase4_final.md Review for detail).
     }
     } // tier2 detail+tree block
     frameTimings_.tier2Update = measureSection();
@@ -1154,10 +1163,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         windTime_ += deltaTime;
         zoneShader_->setWindTime(windTime_);
         // Wind params from tree wind config (or defaults) with weather multiplier
-        float weatherMult = 1.0f;
-        if (treeManager_) {
-            weatherMult = treeManager_->getWindController().getWeatherMultiplier();
-        }
+        float weatherMult = treeWindController_.getWeatherMultiplier();
         // Default config values scaled by weather
         zoneShader_->setWindParams(
             0.3f * weatherMult,   // baseStrength

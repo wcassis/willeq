@@ -195,7 +195,9 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
         case ConstrainedRenderingPreset::Voodoo1:
             // 3dfx Voodoo 1: 2MB FBI + 2MB TMU
             // Very constrained - use 64x64 textures to fit ~128 textures in 2MB
-            config.renderingBackend = RenderingBackend::Software;
+            // P32: presets are renderer-independent (budgets/features only) —
+            // no renderingBackend assignment here; GLES2 is the only backend
+            // (docs/decisions.md 2026-07-28 addendum).
             config.framebufferMemoryBytes = 2 * 1024 * 1024;  // 2MB
             config.textureMemoryBytes = 2 * 1024 * 1024;      // 2MB
             config.colorDepthBits = 16;
@@ -215,7 +217,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
         case ConstrainedRenderingPreset::Voodoo2:
             // 3dfx Voodoo 2: 4MB FBI + 8MB TMU (with SLI could be more)
             // Use 128x128 textures to fit ~128 textures in 8MB
-            config.renderingBackend = RenderingBackend::Software;
+            // P32: renderer-independent preset (see Voodoo1 comment above).
             config.framebufferMemoryBytes = 4 * 1024 * 1024;  // 4MB
             config.textureMemoryBytes = 8 * 1024 * 1024;      // 8MB
             config.colorDepthBits = 16;
@@ -234,7 +236,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
 
         case ConstrainedRenderingPreset::TNT:
             // NVIDIA RIVA TNT: unified memory, typically 16MB total
-            config.renderingBackend = RenderingBackend::OpenGL;
+            // P32: renderer-independent preset (see Voodoo1 comment above).
             config.framebufferMemoryBytes = 8 * 1024 * 1024;   // 8MB for framebuffer
             config.textureMemoryBytes = 16 * 1024 * 1024;      // 16MB for textures
             config.colorDepthBits = 16;
@@ -259,11 +261,8 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 10MB framebuffer: 1280x720 @ 16-bit + D24S8 = 7.03MB + headroom for FBO RTTs
             // (MSAA is free on tile-based Mali 400 — resolved in on-chip tile SRAM)
             // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
-#ifdef EQT_HAS_GLES2
-            config.renderingBackend = RenderingBackend::GLES2;
-#else
-            config.renderingBackend = RenderingBackend::OpenGL;
-#endif
+            // P32: renderer-independent preset (see Voodoo1 comment above) —
+            // GLES2 is the only backend, no #ifdef needed.
             config.useDRM = true;
             config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
             config.textureMemoryBytes = 64 * 1024 * 1024;      // 64MB
@@ -542,18 +541,20 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
     if (preset.isMember("backgroundThreadCount"))
         backgroundThreadCount = preset["backgroundThreadCount"].asInt();
 
-    // Rendering backend
+    // Rendering backend — P32: GLES2 is the only supported backend
+    // (docs/decisions.md 2026-07-28 addendum). "renderingBackend"/"useGLES2"
+    // JSON keys are accepted but no longer change anything; kept only so
+    // old preset files with these keys don't fail to load.
     if (preset.isMember("renderingBackend")) {
         std::string backend = preset["renderingBackend"].asString();
         std::string lowerBackend = backend;
         std::transform(lowerBackend.begin(), lowerBackend.end(), lowerBackend.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-        if (lowerBackend == "software") renderingBackend = RenderingBackend::Software;
-        else if (lowerBackend == "opengl" || lowerBackend == "gl") renderingBackend = RenderingBackend::OpenGL;
-        else if (lowerBackend == "gles2" || lowerBackend == "opengles2") renderingBackend = RenderingBackend::GLES2;
-    } else if (preset.isMember("useGLES2") && preset["useGLES2"].asBool()) {
-        // Backward compatibility: "useGLES2": true → GLES2 backend
-        renderingBackend = RenderingBackend::GLES2;
+        if (lowerBackend != "gles2" && lowerBackend != "opengles2") {
+            LOG_WARN(MOD_GRAPHICS, "Preset '{}' requests removed renderingBackend '{}' — "
+                     "only gles2 is supported (docs/decisions.md 2026-07-28); ignoring",
+                     presetName, backend);
+        }
     }
 
     // Display mode
