@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T06 | Login/world flow coverage | DONE (merged `bae9c83`) | 18 tests incl. real-capture replay of both streams. Found a replay-path segfault in `LoginDisableReconnect` (not live-reachable) that exposed an incomplete guard sweep in T05. `LoginProcessLoginResponse` underflow confirmed as `bad_alloc`, not worse. |
 | T05 | Login/world seam + packet guards | DONE (merged `6f2e434`) | **First source-touching unit.** Dispatchers extracted, 12 QueuePacket sites guarded, `ReplayLoginPacket`/`ReplayWorldPacket` public. Both T04 truncated-packet crashes FIXED. Golden matched, ARM build green. Login/world flow coverage deferred to T06. |
 | T04 | Zone connection-flow sequencing | DONE (merged `2042490`) | 16 tests via the existing public `ReplayZonePacket` seam; all four gating prerequisites isolated. Found 2 real robustness bugs + 1 latent gating gap (below). Login/world still uncovered — needs a seam decision from Will. |
 | T03b | Suite hygiene | DONE (merged `41fe719`) | Part A: Hotkey fixtures made parallel-safe (unique per-PID/per-test temp dirs) — verified 10/10 green under `-j8`, no `/tmp` residue. Part B: RDP segfault diagnosed as a real use-after-free in `RDPServer::stop()` and handed to the perf session, correctly NOT fixed. See `refactor/TESTING_HANDBACK.md` Round 3. |
@@ -440,10 +441,87 @@ Until resolved, login/world stay uncovered and the recorded
 `session.pcap` login/world streams (5998 and 9000, ~1511 packets) go
 unused by any state-level test.
 
+## T06 findings
+
+### 1. `LoginDisableReconnect` segfaults in replay mode (pinned, not fixed)
+
+`eq_login_world.cpp:310` dereferences `m_login_connection_manager`
+(`->OnConnectionStateChange`) and `m_login_connection` (`->Close`) with
+**no null guard**, and `LoginProcessServerPlayResponse` reaches it from
+the ordinary `HC_OP_PlayEverquestResponse` opcode.
+
+**Not live-reachable.** In production both members are set
+(`LoginOnNewConnection`, `ConnectToLogin`) before any packet can
+arrive. This is a replay/test-mode crash. Pinned with `EXPECT_DEATH`;
+the one record is excluded from the capture replay.
+
+**It exposed an incomplete sweep in T05, and that is the plan's fault
+(mine).** T05 scoped its guard sweep by *"`QueuePacket` call sites"* —
+12 of them. `LoginDisableReconnect` dereferences via `->Close()` and
+`->OnConnectionStateChange()`, so the sweep missed it **by
+construction**. The correct predicate was "connection dereferences
+reachable from the dispatch path".
+
+Re-checked with the right predicate — 16 dereference sites in
+`eq_login_world.cpp`:
+
+| site | guarded? | seam-reachable? |
+|------|----------|-----------------|
+| 12 `QueuePacket` sites (T05) | yes | yes |
+| `:59` `m_login_connection_manager->Connect` | no | no (status-change handler) |
+| `:340` `m_world_connection_manager->Connect` | no | no (status-change handler) |
+| `:312-313` `LoginDisableReconnect` | **no** | **yes** |
+
+So T05's guards are correct as far as they go and the live path is
+unaffected — but one seam-reachable hole remained. Fixing it is a
+2-line guard in the same shape; **needs Will's authorization**, as
+T05's was single-use.
+
+### 2. `LoginProcessLoginResponse` underflow — confirmed, not worse than predicted
+
+`Length() < 12` underflows `p.Length() - 12` to ~1.8e19;
+`new char[]` throws `std::bad_alloc` cleanly. No corruption, no
+sanitizer report. `Length() == 12` exactly throws `std::out_of_range`
+from the subsequent bounds-checked read. Still worth a guard, but it is
+not the memory-safety problem the shape suggested.
+
+### 3. RDP start/stop family has another member
+
+`RDPServerLifecycleTest.MultipleStartStop` failed in 1 of 3
+orchestrator runs — an assertion failure with **no** kernel oops, so a
+different manifestation from the `RDPServerFrameTest` GP fault, but the
+same start/stop lifecycle. Further corroboration that
+`RDPServer::stop()` is racy. Still the perf session's to fix.
+
+### 4. Behaviors that could NOT be asserted (evidence for an accessor request)
+
+No public accessor exists for: character-list contents and selected
+index, server-list field contents, `m_dbid`, `m_key`, `m_world_ready`,
+`m_enter_world_sent` (only inferable indirectly from send-count
+deltas), UCS/chat-server parsed fields, the `WorldSendClientAuth`
+zoning flag, and `m_zone_server_host`/`m_zone_server_port`.
+
+Deep login/world state assertions remain impossible without read-only
+accessors. Not requested yet — the sequencing and robustness coverage
+landed first so any request comes with this concrete list behind it.
+
+### Fixture note
+
+The executor's report claimed the capture holds "4 login S→C records,
+not 10" and that "no 0x0000 records exist". **That is incorrect.**
+Re-parsed independently, consuming the file to exact EOF (2949
+records): there are 10 login S→C records — six zero-length `0x0000`
+plus `0x0016`, `0x0017`, `0x0018`, `0x0021`. Skipping the zero-length
+ones is a defensible test choice; the claim about the fixture is not.
+
 ## Needs seam
 
-- **Login/world replay seam** — see the decision item above. This is the
-  only thing blocking the remaining half of backlog item 4.
+- ~~Login/world replay seam~~ — **BUILT in T05**.
+- **Open, needs Will:** the `LoginDisableReconnect` null guard (T06
+  finding 1) and optionally the `LoginProcessLoginResponse` length
+  guard (finding 2). Both are small, same shape as T05's Part B.
+- **Open, needs Will:** read-only accessors for login/world state, if
+  deep state assertions are wanted (finding 4 lists exactly which).
 
 ## T02 findings (state-layer bugs, documented in tests, NOT fixed)
 
