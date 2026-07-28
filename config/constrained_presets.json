@@ -1,7 +1,6 @@
 {
   "presets": {
     "128x32x10": {
-      "renderingBackend": "software",
       "useDRM": false,
       "maxTextureDimension": 128,
       "maxPolygonsPerFrame": 40000,
@@ -39,7 +38,6 @@
       "adaptiveLightingObjectBudget": 5
     },
     "orangepi": {
-      "renderingBackend": "gles2",
       "useDRM": true,
       "maxTextureDimension": 256,
       "maxPolygonsPerFrame": 40000,

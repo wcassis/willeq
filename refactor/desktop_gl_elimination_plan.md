@@ -372,6 +372,26 @@ to also retire the CLI surface (`--renderer software|opengl`, `--constrained
 voodoo1|voodoo2|tnt`) and the ARM `--no-gles2` build, which is the actual
 precondition for these deletions to be safe.
 
+**Phase 4 — EXECUTED (P32, 2026-07-28, `refactor/P32_phase4_final.md`).**
+Will's 2026-07-28 scope-ruling addendum (`docs/decisions.md`) resolved the
+precondition P31 identified: `--renderer` limited to `gles2` (software/opengl
+removed, CLI fails fast on them), constrained presets made
+renderer-independent, ARM `--no-gles2` Lima build retired. With entry points
+closed first, all three deletions became provably dead and were executed:
+`RenderingBackend::Software`/`::OpenGL` and every call site
+(`EDT_BURNINGSVIDEO`/`EDT_OPENGL` client branches, the `EDT_SOFTWARE` retry
+fallback) removed; `AnimatedTreeManager` deleted — its two live GLES2
+consumers (tree classification via `isTreeObject`, wind config/weather
+multiplier via `getWindController()`) were extracted onto
+`TreeIdentifier`/`TreeWindController` directly (pre-existing separate TUs;
+`AnimatedTreeManager` was a thin facade over them plus dead CPU-instancing
+machinery, confirmed via full call-graph trace that the CPU-instancing tree
+list was populated only by the now-removed `EDT_BURNINGSVIDEO` branch, so
+every "if (treeManager_)" consumer was safe to convert to unconditional
+direct calls). **The elimination is now COMPLETE.** Full verification
+evidence, the extraction's consumer-by-consumer mapping, and the grep-proof
+table are in `refactor/P32_phase4_final.md`'s Review.
+
 **Phase 4 item 4 (docker/Dockerfile) and Phase 5 — EXECUTED (P31).**
 `docker/Dockerfile` (non-ARM image) had a live, currently-documented workflow
 (`docker/docker-compose.yml`'s `builder`/`willeq`/`willeq-vnc` services,

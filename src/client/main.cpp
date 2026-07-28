@@ -8,6 +8,9 @@ int main(int argc, char* argv[]) {
     if (config.showHelp) {
         return 0;  // parseArguments already printed help
     }
+    if (config.parseError) {
+        return 1;  // parseArguments already printed the fatal message
+    }
 
     // Initialize logging from CLI args (--log-level, --log-module)
     InitLogging(argc, argv);

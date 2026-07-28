@@ -8,18 +8,19 @@
 namespace EQT {
 namespace Graphics {
 
-// Rendering backend selection
+// Rendering backend selection.
+// P32 (Phase 4, docs/decisions.md 2026-07-28 addendum): Software (Irrlicht
+// Burnings) and OpenGL (desktop GL 2.1) were removed — GLES2
+// (COpenGLES2Driver) is the sole supported renderer. The enum/function are
+// kept (rather than deleted outright) because callers still name the
+// backend for logging/config purposes; there is exactly one value.
 enum class RenderingBackend {
-    Software,   // Irrlicht Burnings software renderer (no GPU)
-    OpenGL,     // Desktop OpenGL 2.1
-    GLES2       // OpenGL ES 2.0 (COpenGLES2Driver)
+    GLES2       // OpenGL ES 2.0 (COpenGLES2Driver) — the only supported backend
 };
 
 // Get backend name as string
 inline std::string backendName(RenderingBackend backend) {
     switch (backend) {
-        case RenderingBackend::Software: return "Software";
-        case RenderingBackend::OpenGL:   return "OpenGL";
         case RenderingBackend::GLES2:    return "GLES2";
         default:                         return "Unknown";
     }
@@ -38,7 +39,7 @@ enum class ConstrainedRenderingPreset {
 // Enforces hard memory limits for both framebuffer and texture memory
 struct ConstrainedRendererConfig {
     // Rendering backend and display mode
-    RenderingBackend renderingBackend = RenderingBackend::Software;
+    RenderingBackend renderingBackend = RenderingBackend::GLES2;
     bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
     bool useEglX11 = false;        // P25: X11-windowed EGL surface (x86 GLES2 dev
                                     // builds only; explicit opt-in, never DISPLAY-

@@ -694,11 +694,9 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
 
         // Setup front-to-back sorting
         if (usePvsCulling_ && !regionMeshNodes_.empty() && !config_.constrainedConfig.skipManualZoneDraw) {
-#ifdef EQT_HAS_GLES2
+            // P32: GLES2 is the only backend now, so this was always true —
+            // collapsed from an #ifdef EQT_HAS_GLES2 / EDT_BURNINGSVIDEO check.
             manualZoneDrawEnabled_ = true;
-#else
-            manualZoneDrawEnabled_ = (driver_->getDriverType() != irr::video::EDT_BURNINGSVIDEO);
-#endif
             if (manualZoneDrawEnabled_) {
                 // S05: renderPassTimer_ already created in initLoadingScreen()
                 if (smgr_ && renderPassTimer_) {
@@ -981,8 +979,9 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     objNode->getMaterial(mi).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
                 }
 
-                // Note: treeManager_ wind shaders and animatedTextureManager_ are not yet
-                // created (Step 11). A fixup pass after Step 11 applies these to objects.
+                // Note: tree wind shaders (treeIdentifier_/zoneShader_ config)
+                // and animatedTextureManager_ are not yet created (Step 11).
+                // A fixup pass after Step 11 applies these to objects.
 
                 // Register vertex-animated objects (flags, banners)
                 if (objInstance.geometry && objInstance.geometry->animatedVertices &&
@@ -1971,50 +1970,30 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
     ctx.updateProgress(93, "Initializing environment...");
     {
         auto stepStart = std::chrono::steady_clock::now();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_={}, detailManager_={}, particleManager_={}, "
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_={}, particleManager_={}, "
                   "boidsManager_={}, tumbleweedManager_={}, weatherEffects_={}",
-                  (bool)treeManager_, (bool)detailManager_, (bool)particleManager_,
+                  (bool)detailManager_, (bool)particleManager_,
                   (bool)boidsManager_, (bool)tumbleweedManager_, (bool)weatherEffects_);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE fire glow flags: lightingEnabled={}, icospheresEnabled={}, "
                   "maxLights={}, fireEffectsEnabled_={}",
                   fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
                   maxFireGlowLights_, fireEffectsEnabled_);
 
-        // Trees — on software path, tree manager handles CPU wind animation
-        // On GPU path, trees are normal objects with wind shaders applied in fixup pass
-        if (treeManager_ && currentZone_ && !currentZone_->objects.empty()) {
-            treeManager_->loadConfig("", currentZoneName_);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_ loadConfig for zone '{}'", currentZoneName_);
-            if (driver_->getDriverType() == irr::video::EDT_BURNINGSVIDEO) {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software renderer tree init path, objects={}", currentZone_->objects.size());
-                if (!treeManager_->isInitializing()) {
-                    treeManager_->beginInitialize(currentZone_->objects, currentZone_->objectTextures);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: beginInitialize started, objects={}, textures={}",
-                              currentZone_->objects.size(), currentZone_->objectTextures.size());
-                } else {
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: treeManager_ already initializing, skipping beginInitialize");
-                }
-                size_t batchCount = 0;
-                while (!treeManager_->initializeNextBatch(100)) { ++batchCount; }
-                ++batchCount;
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree init batches={}", batchCount);
-                if (zoneBspTree_) {
-                    treeManager_->assignBspRegions(zoneBspTree_);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree assignBspRegions done");
-                }
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: software tree init complete");
-            } else {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, trees handled as normal objects with wind shaders");
-            }
+        // Trees — always the GPU path now (P32: the EDT_BURNINGSVIDEO
+        // CPU-instancing branch and AnimatedTreeManager were removed along
+        // with RenderingBackend::Software). Trees are normal objects with
+        // wind shaders applied in the fixup pass below; only the wind +
+        // classification config needs (re)loading per zone.
+        if (currentZone_ && !currentZone_->objects.empty()) {
+            treeWindController_.loadConfig("", currentZoneName_);
+            treeIdentifier_.loadZoneOverrides(currentZoneName_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree wind config loaded for zone '{}'", currentZoneName_);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, trees handled as normal objects with wind shaders");
         } else {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree init SKIPPED: treeManager_={}, currentZone_={}, objects={}",
-                      (bool)treeManager_, (bool)currentZone_,
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree init SKIPPED: currentZone_={}, objects={}",
+                      (bool)currentZone_,
                       currentZone_ ? currentZone_->objects.size() : 0);
         }
-
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: trees done, initialized={}, count={}",
-                  treeManager_ ? treeManager_->isInitialized() : false,
-                  treeManager_ ? treeManager_->getAnimatedTreeCount() : 0);
 
         // S05: detailManager_ already created in initLoadingScreen()
         if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
@@ -2257,21 +2236,26 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
         }
 
         // Fixup pass: apply tree wind shaders and animated textures to objects
-        // built eagerly in Step 6 (before treeManager_ / animatedTextureManager_ existed)
-        if (treeManager_ || animatedTextureManager_) {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass starting, deferredObjects_={}, treeManager_={}, "
+        // built eagerly in Step 6 (before treeIdentifier_'s per-zone config /
+        // animatedTextureManager_ existed).
+        // P32: this pass always ran previously (treeManager_ was
+        // unconditionally constructed in InitGraphics, so the old
+        // "if (treeManager_ || animatedTextureManager_)" was always true) —
+        // now unconditional, matching that exact prior behavior.
+        {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass starting, deferredObjects_={}, "
                       "animatedTextureManager_={}, zoneShader_={}, windAvailable={}",
-                      deferredObjects_.size(), (bool)treeManager_, (bool)animatedTextureManager_,
+                      deferredObjects_.size(), (bool)animatedTextureManager_,
                       (bool)zoneShader_, zoneShader_ ? zoneShader_->isWindAvailable() : false);
             size_t fixupProcessed = 0, fixupSkipNotBuilt = 0, fixupSkipBadIndex = 0;
             size_t fixupSkipNullNode = 0, fixupSkipNoGeomPlaceable = 0;
             size_t treesFound = 0, treesWindApplied = 0, treesNullMesh = 0;
             size_t animatedApplied = 0;
-            bool windCheckEnabled = treeManager_ && zoneShader_ && zoneShader_->isWindAvailable();
+            bool windCheckEnabled = zoneShader_ && zoneShader_->isWindAvailable();
             if (!windCheckEnabled) {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup wind shader check DISABLED: treeManager_={}, "
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup wind shader check DISABLED: "
                           "zoneShader_={}, windAvailable={}",
-                          (bool)treeManager_, (bool)zoneShader_,
+                          (bool)zoneShader_,
                           zoneShader_ ? zoneShader_->isWindAvailable() : false);
             }
             for (size_t oi = 0; oi < deferredObjects_.size(); ++oi) {
@@ -2300,7 +2284,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     std::string primaryTexture;
                     if (!objInstance.geometry->textureNames().empty())
                         primaryTexture = objInstance.geometry->textureNames()[0];
-                    bool isTree = treeManager_->isTreeObject(objName, primaryTexture);
+                    bool isTree = treeIdentifier_.isTreeMesh(objName, primaryTexture);
                     if (isTree) {
                         ++treesFound;
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
@@ -2403,9 +2387,6 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                      fixupProcessed, deferredObjects_.size(), treesFound, treesWindApplied,
                      treesNullMesh, animatedApplied, fixupSkipNotBuilt, fixupSkipBadIndex,
                      fixupSkipNullNode, fixupSkipNoGeomPlaceable);
-        } else {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass SKIPPED: treeManager_={}, animatedTextureManager_={}",
-                      (bool)treeManager_, (bool)animatedTextureManager_);
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: complete");

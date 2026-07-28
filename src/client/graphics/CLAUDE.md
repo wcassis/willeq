@@ -35,17 +35,24 @@
 
 ## Renderer Tiers
 
-GLES2 (`COpenGLES2Driver`) is the only 3D renderer maintained going forward
-(`docs/decisions.md`, 2026-07-28; `refactor/desktop_gl_elimination_plan.md`).
+GLES2 (`COpenGLES2Driver`) is the only 3D renderer, full stop — as of P32
+(Phase 4, `docs/decisions.md` 2026-07-28 addendum) the desktop-GL
+elimination is COMPLETE: `RenderingBackend::Software`/`::OpenGL`,
+`EDT_BURNINGSVIDEO`/`EDT_OPENGL` client-side branches, `AnimatedTreeManager`,
+and the ARM `--no-gles2` Lima build were all removed/retired. `--renderer`
+only accepts `gles2`; `software`/`opengl` now fail CLI parsing fast.
 Headless/VNC/RDP no longer imply the software driver — they run the same
 GLES2 driver via Mesa's surfaceless EGL (llvmpipe), same as the interactive
 default; only `--egl-x11` (P25) switches to a windowed EGL surface.
 
 | Tier | Driver | GPU | Reachable via | Status |
 |------|--------|-----|----------------|--------|
-| GLES2 | Custom `EDT_OGLES2` (`COpenGLES2Driver`) | Mali 400 (ARM), llvmpipe (x86, surfaceless/windowed EGL) | default (no flag needed) | Live — the only supported renderer |
-| Software | Irrlicht `EDT_BURNINGSVIDEO` | None | `--renderer software`, `--constrained voodoo1/voodoo2` | Explicit opt-in only, unmaintained since the 2026-07-28 decision; P31 found it still functionally reachable (`docker/irrlicht-drm-x86/CIrrDeviceFB.cpp`'s `createDriver()` compiles `EDT_BURNINGSVIDEO` unconditionally) so it was kept rather than deleted (ambiguous-reachability rule) — do not rely on it |
-| Desktop GL (GL 2.1) | Irrlicht `EDT_OPENGL` | Desktop/Lima GPU | `--renderer opengl`, `--constrained tnt`; also the default backend on an ARM build configured `--no-gles2` (`scripts/build-arm-noble.sh --no-gles2`, "Legacy platforms" note below) | On x86 this is a dead end in practice — `_IRR_COMPILE_WITH_OPENGL_` is disabled in the patched GLES2 Irrlicht (`scripts/build-gles2-x86.sh`), so device creation fails and falls back to `EDT_SOFTWARE`. On the ARM `--no-gles2` Lima build it is still the live, compiled driver — P31 kept the code for that reason (a still-buildable configuration, not something this elimination was scoped to break) |
+| GLES2 | Custom `EDT_OGLES2` (`COpenGLES2Driver`) | Mali 400 (ARM), llvmpipe (x86, surfaceless/windowed EGL) | default (no flag needed); `--renderer gles2` is an explicit, equivalent no-op | Live — the only renderer, no fallback |
+
+Constrained presets (voodoo1/voodoo2/tnt/orangepi) are renderer-independent
+(P32): they set memory/feature budgets only and always run on GLES2 — the
+old preset→renderer coupling (voodoo1/voodoo2 implying
+`RenderingBackend::Software`, tnt implying `::OpenGL`) was removed.
 
 The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
 - `Solid3D` / `AlphaTest3D` — Non-atlas zone geometry, entities, doors (per-vertex lighting + fog)
