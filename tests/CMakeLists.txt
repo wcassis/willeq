@@ -577,6 +577,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_login_world_seam)
 
+# T06: login/world flow coverage (real-capture replay, synthetic sequencing,
+# and robustness cases) -- the thing the T05 seam above was built for. Same
+# replay-seam idiom -- no network, no graphics, no live connection -- so safe
+# to auto-discover. Real-capture replay self-skips when data/captures/session.sleq
+# is absent.
+ADD_EXECUTABLE(test_login_world_flow
+    test_login_world_flow.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_world_flow GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_world_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_world_flow)
+
 # Integration test: Zoning with Graphics (connects to real EQEmu server with graphics enabled)
 # This test is NOT auto-discovered because it requires a running server and X display.
 # Run manually with: DISPLAY=:99 ./bin/test_zoning_graphics_integration
