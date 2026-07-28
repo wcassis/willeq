@@ -669,7 +669,11 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${IOKIT_FRAMEWORK}
             ${CARBON_FRAMEWORK}
         )
-    ELSEIF(EQT_DRM)
+    ELSEIF(EQT_DRM OR EQT_GLES2)
+        # P26: EQT_DRM OR EQT_GLES2 (not EQT_DRM alone) — the x86 GLES2 dev
+        # tree (EQT_DRM=OFF, EQT_GLES2=ON) was falling into the desktop X11/GL
+        # ELSE() branch below and failing to link against the static
+        # GLES2-patched Irrlicht archive (missing eglGetError/gbm symbols).
         IF(EQT_GLES2)
             TARGET_LINK_LIBRARIES(model_viewer
                 ${IRRLICHT_LIBRARY}
@@ -700,47 +704,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ENDIF()
 ENDIF()
 
-# Texture Generator tool (offline procedural texture generation)
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
-    ADD_EXECUTABLE(generate_textures
-        tools/generate_textures.cpp
-        src/client/graphics/texture_generators.cpp
-        src/client/graphics/detail/detail_texture_atlas.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(generate_textures PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${IRRLICHT_INCLUDE_DIR}
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    IF(APPLE)
-        TARGET_LINK_LIBRARIES(generate_textures
-            ${IRRLICHT_LIBRARY}
-            ${ZLIB_LIBRARIES}
-            fmt::fmt
-            ${COCOA_FRAMEWORK}
-            ${OPENGL_FRAMEWORK}
-            ${IOKIT_FRAMEWORK}
-            ${CARBON_FRAMEWORK}
-        )
-    ELSEIF(EQT_DRM)
-        TARGET_LINK_LIBRARIES(generate_textures
-            ${IRRLICHT_LIBRARY}
-            ${ZLIB_LIBRARIES}
-            fmt::fmt
-            EGL GL drm gbm
-        )
-    ELSE()
-        TARGET_LINK_LIBRARIES(generate_textures
-            ${IRRLICHT_LIBRARY}
-            ${ZLIB_LIBRARIES}
-            fmt::fmt
-            X11
-            Xxf86vm
-            GL
-        )
-    ENDIF()
-ENDIF()
+# generate_textures tool RETIRED per Will's decision (2026-07-28, P26):
+# offline procedural texture generator, no found consumer (§3 tools table,
+# refactor/desktop_gl_elimination_plan.md). Source moved to
+# tools/retired/generate_textures.cpp; git history has the buildable version.
 
 # S3D Dump tool (for analyzing S3D archive contents)
 IF(EQT_GRAPHICS)
@@ -758,6 +725,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(s3d_dump PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(s3d_dump PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
@@ -769,33 +740,19 @@ IF(EQT_GRAPHICS)
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(s3d_dump EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(s3d_dump X11 Xxf86vm GL)
+    ENDIF()
 
-    # UV Analysis tool (character model UV wrapping analysis for entity atlas feasibility)
-    ADD_EXECUTABLE(uv_analysis
-        tools/uv_analysis.cpp
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
-        src/client/zone_bsp.cpp
-        src/client/graphics/eq/s3d_loader.cpp
-        src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/dds_decoder.cpp
-        src/client/graphics/constrained_renderer_config.cpp
-        src/client/graphics/constrained_texture_cache.cpp
-        src/client/graphics/texture_upload_ledger.cpp
-        src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/background_thread_pool.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(uv_analysis PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(uv_analysis
-        ${ZLIB_LIBRARIES}
-        ${IRRLICHT_LIBRARY}
-        ${JSONCPP_LIBRARIES}
-        fmt::fmt
-    )
+    # uv_analysis tool RETIRED per Will's decision (2026-07-28, P26): no live
+    # usage found beyond a prior bug report (§3 tools table,
+    # refactor/desktop_gl_elimination_plan.md). Source moved to
+    # tools/retired/uv_analysis.cpp; git history has the buildable version.
 
     # Entity Composite Texture Builder (offline composite sheet generation for single-draw entity rendering)
     ADD_EXECUTABLE(entity_composite_builder
@@ -812,6 +769,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(entity_composite_builder PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(entity_composite_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
@@ -823,6 +784,14 @@ IF(EQT_GRAPHICS)
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(entity_composite_builder EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(entity_composite_builder X11 Xxf86vm GL)
+    ENDIF()
 
     # S3D Extract tool (for extracting files from S3D archives)
     ADD_EXECUTABLE(s3d_extract
@@ -926,111 +895,11 @@ IF(EQT_GRAPHICS)
         fmt::fmt
     )
 
-    ADD_EXECUTABLE(analyze_hum_model
-        tools/analyze_hum_model.cpp
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
-        src/client/zone_bsp.cpp
-        src/client/graphics/eq/s3d_loader.cpp
-        src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/dds_decoder.cpp
-        src/client/graphics/constrained_renderer_config.cpp
-        src/client/graphics/constrained_texture_cache.cpp
-        src/client/graphics/texture_upload_ledger.cpp
-        src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/background_thread_pool.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(analyze_hum_model PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(analyze_hum_model
-        ${ZLIB_LIBRARIES}
-        ${IRRLICHT_LIBRARY}
-        ${JSONCPP_LIBRARIES}
-        fmt::fmt
-    )
-
-    ADD_EXECUTABLE(test_animation
-        tools/test_animation.cpp
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
-        src/client/zone_bsp.cpp
-        src/client/graphics/eq/s3d_loader.cpp
-        src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/dds_decoder.cpp
-        src/client/graphics/constrained_renderer_config.cpp
-        src/client/graphics/constrained_texture_cache.cpp
-        src/client/graphics/texture_upload_ledger.cpp
-        src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/background_thread_pool.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(test_animation PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(test_animation
-        ${ZLIB_LIBRARIES}
-        ${IRRLICHT_LIBRARY}
-        ${JSONCPP_LIBRARIES}
-        fmt::fmt
-    )
-
-    # Zone Line Extraction tool (for extracting zone line bounding boxes to JSON)
-    ADD_EXECUTABLE(extract_zone_lines
-        tools/extract_zone_lines.cpp
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
-        src/client/zone_bsp.cpp
-        src/client/graphics/eq/s3d_loader.cpp
-        src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/dds_decoder.cpp
-        src/client/graphics/constrained_renderer_config.cpp
-        src/client/graphics/constrained_texture_cache.cpp
-        src/client/graphics/texture_upload_ledger.cpp
-        src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/background_thread_pool.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(extract_zone_lines PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(extract_zone_lines
-        ${ZLIB_LIBRARIES}
-        ${IRRLICHT_LIBRARY}
-        ${JSONCPP_LIBRARIES}
-        fmt::fmt
-    )
-
-    # BSP Coordinate Finder tool (for diagnosing BSP coordinate systems)
-    ADD_EXECUTABLE(bsp_coordinate_finder
-        tools/bsp_coordinate_finder.cpp
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
-        src/client/zone_bsp.cpp
-        src/client/graphics/eq/s3d_loader.cpp
-        src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/dds_decoder.cpp
-        src/client/graphics/constrained_renderer_config.cpp
-        src/client/graphics/constrained_texture_cache.cpp
-        src/client/graphics/texture_upload_ledger.cpp
-        src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/background_thread_pool.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(bsp_coordinate_finder PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(bsp_coordinate_finder
-        ${ZLIB_LIBRARIES}
-        ${IRRLICHT_LIBRARY}
-        ${JSONCPP_LIBRARIES}
-        fmt::fmt
-    )
+    # analyze_hum_model, test_animation, extract_zone_lines,
+    # bsp_coordinate_finder tools RETIRED per Will's decision (2026-07-28,
+    # P26): no live usage found beyond a prior bug report (§3 tools table,
+    # refactor/desktop_gl_elimination_plan.md). Sources moved to
+    # tools/retired/; git history has the buildable versions.
 
     # Surface Map Generator tool (for pre-computing surface type maps)
     ADD_EXECUTABLE(generate_surface_map
@@ -1047,6 +916,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(generate_surface_map PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(generate_surface_map PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
@@ -1058,6 +931,14 @@ IF(EQT_GRAPHICS)
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(generate_surface_map EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(generate_surface_map X11 Xxf86vm GL)
+    ENDIF()
 
     # Surface Map Query tool (for debugging surface maps)
     ADD_EXECUTABLE(query_surface_map
@@ -1088,6 +969,10 @@ IF(EQT_GRAPHICS)
         src/client/raycast_mesh.cpp
         src/common/util/compression.cpp
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(zone_line_editor PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(zone_line_editor PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
@@ -1102,6 +987,14 @@ IF(EQT_GRAPHICS)
         ${JSONCPP_LIBRARIES}
         fmt::fmt
     )
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(zone_line_editor EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(zone_line_editor X11 Xxf86vm GL)
+    ENDIF()
 ENDIF()
 
 # Zone Atlas Builder tool (offline ETC1 texture atlas generation)

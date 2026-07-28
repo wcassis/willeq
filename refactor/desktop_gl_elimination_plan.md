@@ -13,6 +13,20 @@ Sibling unit **P25** (slot2) is building an X11-EGL window backend in
 `docker/irrlicht-drm-x86/` for interactive dev use once desktop GL is gone;
 this doc flags where phases must wait on it landing.
 
+**Phase 0 — EXECUTED (P26, `refactor/P26_phase0_gles2_links.md`).** The 6
+near-zero-reference Class-B tools were RETIRED (not ported) per Will's
+2026-07-28 decision; the remaining 8 Class-B targets (`model_viewer`,
+`entity_composite_builder`, `generate_surface_map`, `zone_line_editor`,
+`s3d_dump`, `test_asset_loading`, `test_door_loading`, `test_graphics`) got
+the explicit `EGL GLESv2 drm gbm` (+ `gpu_upload_thread.cpp` where the
+target touches `constrained_texture_cache`) link fix, gated the same way as
+`willeq`'s `LINK_LIBS`. Both trees now build 100% of their (reduced) target
+sets; `ctest` registers the identical 1235 test cases in both trees
+(0 net delta), with the sole remaining GLES2-tree failure being the
+documented Phase 1 blocker below (confirmed still the only genuine
+failure — not investigated, per this unit's rules). See the P26 plan's
+Review section for full evidence.
+
 ## 1. Evidence base — the two trees actually built
 
 | Tree | Configure | Irrlicht | Result |
@@ -151,13 +165,13 @@ No other tests differ between trees.
 
 | Tool | Class | External refs (scripts/docs/refactor grep) | Verdict |
 |---|---|---|---|
-| model_viewer | B | 8 files (active — spell-fx debugging, model QA) | **Port** (add EGL/GLESv2/drm/gbm link set) |
-| entity_composite_builder | B | 9 files (active — composite atlas pipeline) | **Port** |
-| generate_surface_map | B | 2 files, incl. `docs/plans/surface_map_expansion_plan.md` (active feature history) | **Port** |
-| zone_line_editor | B | 2 files (`refactor/deferred.md`, this plan) | **Port** (2D editor, low GL surface — cheap to fix) |
-| s3d_dump | B | 6 files (active — archive analysis) | **Port** |
-| uv_analysis, analyze_hum_model, test_animation, bsp_coordinate_finder, extract_zone_lines | B | 1 file each — only `refactor/F04_ucs_guild_gm.md`'s "these fail to link, unrelated to F04" note, i.e. **no live usage instructions found**, just a prior bug report mentioning them | **Retire candidates** — confirm with Will before deleting; cheap enough to just fix alongside the others in Phase 0 if in doubt, since the fix is identical one-liner-per-target |
-| generate_textures | B | 0 external refs (only this plan mentions it) | **Retire candidate** — offline procedural texture generator, no found consumer |
+| model_viewer | B | 8 files (active — spell-fx debugging, model QA) | **Ported** (P26: `EGL GLESv2 drm gbm` link set added — the target already had the conditional idiom but gated on `EQT_DRM` alone, missing the `EQT_GLES2`-without-`EQT_DRM` x86 dev case; fixed to `EQT_DRM OR EQT_GLES2`) |
+| entity_composite_builder | B | 9 files (active — composite atlas pipeline) | **Ported** (P26) |
+| generate_surface_map | B | 2 files, incl. `docs/plans/surface_map_expansion_plan.md` (active feature history) | **Ported** (P26) |
+| zone_line_editor | B | 2 files (`refactor/deferred.md`, this plan) | **Ported** (P26, 2D editor, low GL surface — cheap to fix) |
+| s3d_dump | B | 6 files (active — archive analysis) | **Ported** (P26) |
+| uv_analysis, analyze_hum_model, test_animation, bsp_coordinate_finder, extract_zone_lines | B | 1 file each — only `refactor/F04_ucs_guild_gm.md`'s "these fail to link, unrelated to F04" note, i.e. **no live usage instructions found**, just a prior bug report mentioning them | **RETIRED** (Will's decision 2026-07-28, executed P26) — CMake targets removed, sources moved to `tools/retired/` |
+| generate_textures | B | 0 external refs (only this plan mentions it) | **RETIRED** (Will's decision 2026-07-28, executed P26) — offline procedural texture generator, no found consumer; CMake target removed, source moved to `tools/retired/` |
 | All Class A tools | A | — | Already GLES2-clean, no action |
 
 None of the Class B tools "genuinely test desktop-GL behavior" — every one
@@ -243,18 +257,25 @@ Validated against evidence above — the plan bends to the finding, not the
 other way round. Each phase is its own executor unit, its own PASS bar,
 tree stays green throughout.
 
-**Phase 0 — Fix the 14 Class-B link failures.** Add the same explicit
-`EGL GLESv2 drm gbm` (+ `gpu_upload_thread.cpp` source where the target
-touches `constrained_texture_cache`/atlas code, matching
-`gles2_zone_benchmark`'s pattern) to all 14 targets, gated the same way
-`willeq`'s own `LINK_LIBS` already is (`EQT_DRM OR EQT_GLES2` →
-EGL/GLESv2/drm/gbm; else desktop `X11 Xxf86vm GL`) so **both** configs keep
-building. Zero behavior change, mechanical, low risk. Bar: both trees build
-100% of targets; `ctest` delta between trees drops from 120 desktop-only
-test cases to 0 (net of the RaceModelAnimation finding below). Decide
-retire-vs-port for the 6 near-zero-reference tools (§3) as part of this
-unit — cheapest to resolve while already touching every one of their
-CMakeLists entries.
+**Phase 0 — EXECUTED (P26).** Originally scoped as "fix all 14 Class-B link
+failures"; landed as 6 RETIRED (Will's 2026-07-28 decision — CMake targets
+removed, sources moved to `tools/retired/`) + 8 PORTED (`model_viewer`,
+`entity_composite_builder`, `generate_surface_map`, `zone_line_editor`,
+`s3d_dump`, `test_asset_loading`, `test_door_loading`, `test_graphics`),
+each getting the explicit `EGL GLESv2 drm gbm` link set (+
+`gpu_upload_thread.cpp` source where the target touches
+`constrained_texture_cache`, matching `gles2_zone_benchmark`'s pattern),
+gated the same way `willeq`'s own `LINK_LIBS` already is (`EQT_DRM OR
+EQT_GLES2` → EGL/GLESv2/drm/gbm; else desktop `X11 Xxf86vm GL`) so **both**
+configs keep building. `model_viewer` had a latent bug in its existing
+idiom (gated on `EQT_DRM` alone, so the x86 GLES2 dev config — `EQT_DRM=OFF,
+EQT_GLES2=ON` — fell through to the desktop `X11/GL` branch and failed to
+link against the static GLES2 archive); fixed to `EQT_DRM OR EQT_GLES2`.
+Zero behavior change otherwise, mechanical, low risk. Bar met: both trees
+build 100% of their (now-reduced) target sets; `ctest` registers the
+identical 1235 test cases in both trees (delta 0, net of the
+RaceModelAnimation finding below, which is the only genuine remaining
+GLES2-tree failure — confirmed, not investigated).
 
 **Phase 1 — Root-cause `RaceModelAnimationHeadlessTest.ModelAnimatesProperly_Headless`.**
 Small, focused investigation unit (not a fix-everything unit): why does an
