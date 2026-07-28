@@ -241,3 +241,14 @@ so it was updated (not retired) to bootstrap the same patched GLES2 Irrlicht
 `scripts/build-gles2-x86.sh`/`docker/Dockerfile.arm-noble` use, verified by a
 full local `docker build` through all three stages (builder/runtime/vnc) plus
 running the resulting binary's `--help`.
+
+### 2026-07-28 addendum — Phase 4 scope ruling (Will)
+
+- `--renderer` is limited to `gles2` only (for now); the `software` and
+  `opengl` options are removed, along with `RenderingBackend::Software`
+  / `::OpenGL` and the EDT_BURNINGSVIDEO/EDT_OPENGL client paths.
+- Constrained presets are RENDERER-INDEPENDENT by definition: they set
+  memory budgets/features and are applied after renderer selection.
+  voodoo1/voodoo2/tnt etc. stay, but any preset→renderer coupling is
+  removed — every preset runs on GLES2.
+- The ARM `--no-gles2` Lima desktop-GL build is retired.
