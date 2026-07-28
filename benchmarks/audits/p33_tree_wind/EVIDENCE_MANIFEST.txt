@@ -271,3 +271,175 @@ reverted, gitignored scratch under `data/captures/` left in place per the
 existing convention — see `p33b_qeynos2_wind_on.txt`/`_off.txt`/
 `_willeq.json` alongside the pre-existing `p33_*` files from the blocked
 P33 session).
+
+P33c — video capture (2026-07-28)
+====================================
+
+STATUS: Wind ON/OFF captured as VIDEO (not just stills) per Will's request
+that sway "reads much better in motion." Two mp4s at
+`/mnt/projects/fable/videos/p33_tree_wind/`:
+
+| File | Frames | Duration | fps (real-time) | Scene |
+|---|---|---|---|---|
+| `wind_on.mp4` | 151 | 55.47s | 2.7222 | qeynos2 gates, willow+pines, `animatedTrees: true` (shipped default, unmodified) |
+| `wind_off.mp4` | 85 | 25.17s | 3.3770 | same scene/pose, `animatedTrees: false` (session-local config copy only) |
+
+Raw per-frame PNGs backing each video (not just the encoded mp4) are kept
+at `frames_wind_on/` (454 frames, full session incl. login/zone-load) and
+`frames_wind_off/` (380 frames) alongside the mp4s, for independent
+re-verification. The mp4s use only the trimmed, camera-fixed sub-ranges
+(ON: `frame_000221`-`frame_000371`; OFF: `frame_000194`-`frame_000278`) —
+see "Capture mechanism" below for how the trim points were derived.
+
+Capture mechanism
+------------------
+New LOCAL/UNCOMMITTED capability added for this session only (reverted
+before commit, see "Reverted workaround" below): a `--dump-frames-dir
+<dir> --dump-every N` client flag (N=1: every rendered frame), modeled
+directly on the (unmerged, read-only-reference) `task/anim-video-capture`
+branch's P12 mechanism but reimplemented fresh against the current
+`fable` tip (that branch predates P32's CLI rework and would not apply
+cleanly) — two `ApplicationConfig` fields
+(`dumpFramesDir`/`dumpFramesEvery`), CLI parsing in `parseArguments()`,
+and a hook in `Application::render()` right after a successful
+`IrrlichtRenderer::processFrame()` that calls the existing
+`saveScreenshot()` machinery every Nth frame. Off by default, zero
+production impact, touched only `include/client/application.h` +
+`src/client/application.cpp`.
+
+Both runs used `scripts/eqemu/up.sh qeynos2` (single dedicated qeynos2
+zone process, sidestepping the gfaydark/fleet port-collision bug the same
+way P33b did) and the same `--script` tour pattern as P33b: `wait 30`
+(login -> befallen) -> `/say #zone qeynos2` -> `wait 25` (zone load) ->
+`/say #time 12` -> `wait 3` -> `/turn 180` (camera fixed from here on, by
+construction — no further movement/turn commands) -> `wait N` (the
+recording window: 55s for ON, 25s for OFF) -> `/camp`. Scripts:
+`data/captures/p33c_qeynos2_wind_on.txt` / `_wind_off.txt` (gitignored
+scratch, not committed). `--dump-frames-dir`/`--dump-every 1` ran for the
+full process lifetime (captures login/zone-load frames too), so the mp4s
+were built from a trimmed sub-range, not the raw frame directories
+directly — trim points were derived by cross-referencing each frame
+file's mtime against the in-client "Turned to heading 180.0 degrees"
+system-message timestamp (visible in the captured stdout log), then
+visually confirmed (Read on the boundary frames) to show the stable
+gates-trees pose before including a frame.
+
+Wind OFF used a session-local config copy, NOT the committed
+`config/display_settings.json`: `data/captures/runs/windoff/` (scratch,
+deleted after the session — not committed) held symlinks to every
+top-level repo entry EXCEPT `config/` (all of willeq's config/data reads
+are cwd-relative, confirmed by grep, same finding P33b made — `data/`
+alone is not enough, e.g. `data/item_models.json` is also cwd-relative
+and the first attempt failed fast with "Required files missing" until
+`data/` itself was symlinked in too) plus a real copied `config/` tree
+with only `environmentEffects.animatedTrees` flipped to `false`. The
+client was launched via a small wrapper script
+(`data/captures/run_windoff.sh`, gitignored scratch) that `cd`s into that
+scratch dir before exec'ing the binary with otherwise-absolute paths for
+`-c`/`--script`/`--dump-frames-dir`. `git status` confirms
+`config/display_settings.json` was never touched on disk in the slot1
+checkout; the wind-ON run used the committed file unmodified.
+
+Assembly: `ffmpeg -framerate <measured fps> -i frame_%06d.png -c:v libx264
+-pix_fmt yuv420p -crf 24 <out>.mp4`, one ffmpeg invocation per video
+against a temporary renumbered copy of each trimmed frame range. Measured
+fps (not assumed) was computed from the trimmed range's first/last frame
+mtimes: ON = 150 frames / 55.10s = 2.7222 fps, OFF = 84 frames / 24.87s =
+3.3770 fps — llvmpipe + per-frame PNG write on this x86 dev VM is slow
+(same order of magnitude as the P12 method notes' ~4-7fps), so motion in
+the video is less smooth than 30/60fps live play would look, but playback
+speed matches real elapsed wall-clock time (NOT a time-lapse/sped-up
+video) — `ffprobe` on the encoded mp4s confirms `nb_frames`/`duration`
+match: `wind_on.mp4` 151 frames/55.469841s (r_frame_rate 13611/5000 =
+2.7222), `wind_off.mp4` 85 frames/25.170269s (r_frame_rate 3377/1000 =
+3.3770). (The encoded mp4 has one extra frame each vs. the trim-range
+frame count because `ffmpeg`'s frame-rate-driven duration rounds up by
+one input frame at the boundary — negligible, ~0.4s at this fps.)
+
+Reverted workaround (evidence-only, same precedent as P33b's own)
+---------------------------------------------------------------------
+Both the P33b-documented `ParticleManager::renderUnified()`
+dangling-`atlasTexture_` SIGSEGV (still live, unrelated to tree wind —
+not fixed, only worked around) and the new `--dump-frames-dir` capability
+above were applied as LOCAL, UNCOMMITTED changes for this session only:
+`&& false` added to the `renderUnified()` call-site condition in
+`renderer_frame.cpp` (same one-line workaround P33b used), plus the two
+files described above for frame dumping. Crash was still intermittent
+even with the workaround in place: the first wind-ON attempt and the
+first wind-OFF attempt both crashed (SIGABRT at shutdown, a known benign
+post-`/camp` shutdown-path issue documented in the P12 method notes
+`std::system_error`/`StopUpdateLoop()` finding — occurred AFTER the full
+script had already run and all frames were safely written, so it cost no
+capture time); a second wind-OFF attempt additionally hit one SIGSEGV
+BEFORE reaching the `/turn 180` step (0 usable frames, discarded, not
+shipped) before a clean run succeeded. All shipped frames come from runs
+that reached `/turn 180`, ran the full fixed-camera recording window, and
+either completed cleanly or crashed only at the post-`/camp` shutdown
+stage (frames unaffected either way). After capture: `git checkout --
+include/client/application.h src/client/application.cpp
+src/client/graphics/renderer_frame.cpp`, rebuilt
+(`scripts/build-gles2-x86.sh`, clean build with no code changes),
+`git status`/`git diff --stat` both confirm zero diff from `fable` in the
+final slot1 checkout state.
+
+Verification of the evidence (own playback check, per plan step 5)
+----------------------------------------------------------------------
+`ffprobe` confirms frame counts/durations above match the intended
+fps/trim exactly. Spot-extracted 3 frames each from the ENCODED mp4s
+(`ffmpeg -vf select`, frames 0/75/150 of `wind_on.mp4`, frames 0/42/84 of
+`wind_off.mp4`) and diffed a canopy-only crop (willow drooping-vine
+region, box `(300,150)-(500,350)` in 800x600 source coordinates — the
+box was re-derived for this session's own camera framing by visual
+inspection, since P33b's own box did not transfer: their manifest itself
+notes the ON/OFF poses across P33b's two live sessions differed from each
+other, and this session's camera pose differs from both of theirs):
+
+| Pair (canopy crop, from encoded mp4) | mean | max | %px>15 |
+|---|---|---|---|
+| ON f0 vs f75 (~27.5s apart) | 2.34 | 130 | 5.19% |
+| ON f0 vs f150 (~55s apart) | 1.95 | 105 | 4.45% |
+| ON f75 vs f150 | 1.96 | 126 | 4.46% |
+| OFF f0 vs f42 (~12.4s apart) | 0.03 | 4 | 0.00% |
+| OFF f0 vs f84 (~24.9s apart) | 0.03 | 4 | 0.00% |
+| OFF f42 vs f84 | 0.01 | 3 | 0.00% |
+
+Also cross-checked directly against the RAW (pre-encode) PNG frames at
+the trim boundaries (`frame_000221`/`frame_000371` for ON,
+`frame_000194`/`frame_000278` for OFF) with the same crop box: ON t0 vs
+t55 mean 1.78/max 115/%px>15 3.84%; OFF t0 vs t25 mean 0.09/max 105 (one
+small-area artifact, not the canopy)/%px>15 0.03%. A denser sample across
+the ON window (12 frames at 10-frame/~3.7s spacing) found a max pairwise
+canopy-crop diff of 6.42% px>15 (frames 231 vs 321).
+
+Honest caveat: these percentages are meaningfully SMALLER than P33b's
+stills-based canopy-crop diffs (30-38% px>15 for ON, vs. 4-6% here) —
+plausible contributors, none independently confirmed: (1) this session's
+crop box is larger/less tightly isolated to the highest-motion vine
+strands than P33b's, since it was re-derived by eye for a different
+camera framing; (2) H.264 encoding (crf 24) softens high-frequency
+per-pixel detail in the mp4-extracted comparisons (though the raw-PNG
+comparison shows the same lower magnitude, so encoding is not the sole
+explanation); (3) this session's camera stands at a different
+distance/angle to the willow than P33b's, so the same absolute wind
+displacement subtends fewer screen pixels. The DIRECTION of the finding
+matches P33b exactly and is unambiguous either way: ON is consistently
+nonzero and OFF is consistently at/near the ~4/255 encoder-and-readback
+noise floor across every pairing tried, at every time separation tried,
+in both the encoded video and the raw frames. Will should watch the
+actual mp4s — motion that's subtle in a numeric pixel-diff table over
+large frame gaps can still read clearly as sway to the eye in continuous
+playback, which is the entire reason this errand asked for video instead
+of stills.
+
+Server/lock state at end of P33c session
+-------------------------------------------
+`scripts/eqemu/down.sh` run, confirmed clean (`docker ps -a` shows no
+containers). Testchar restored via direct DB UPDATE (`character_data`
+`zone_id=36, x=-77.9232, y=21.9086, z=3, heading=190`, verified by
+re-SELECT). `/mnt/projects/fable/.eqemu-lock` removed. `git status` in
+`/mnt/projects/fable/wt/slot1` clean — zero source diff from `fable`.
+Gitignored scratch left in `data/captures/`: `p33c_qeynos2_wind_on.txt`,
+`p33c_qeynos2_wind_off.txt`, `p33c_willeq.json`, `run_windoff.sh`, and the
+three run logs (`p33c_windon_run.log`, `p33c_windoff_run.log`,
+`p33c_windoff_run2.log` — the discarded pre-`/turn` SIGSEGV attempt and
+the clean successor, respectively, for the OFF side).

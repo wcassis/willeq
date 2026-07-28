@@ -226,3 +226,32 @@ two of the four frames; the wind-OFF canopy crop changes 0% of pixels by
 Will still needs to eyeball the actual PNGs before blessing — the pixel
 diffs are supporting evidence, not a self-declaration of visual
 acceptability.
+
+**P33c video addendum (2026-07-28)**: a further follow-up errand
+(task/P33c-wind-video, evidence-only, no code changes to this unit's
+committed diff) captured wind ON/OFF as VIDEO rather than stills, per
+Will's request that motion "reads much better" that way. Same qeynos2
+gates-trees scene and capture convention as P33b (`up.sh qeynos2`, login
+-> befallen -> `#zone qeynos2` -> `#time 12` -> fixed `/turn 180`, then a
+real-time recording window instead of discrete `/screenshot`s), using a
+new LOCAL/UNCOMMITTED `--dump-frames-dir`/`--dump-every` capture flag
+(reimplemented fresh against current `fable`, not cherry-picked from the
+stale unmerged `task/anim-video-capture` reference branch) plus the same
+`ParticleManager::renderUnified()` workaround P33b needed for live
+qeynos2 stability — both fully reverted before commit (`git status`
+clean, confirmed by a post-revert rebuild). Two videos at
+`/mnt/projects/fable/videos/p33_tree_wind/`: `wind_on.mp4` (151 frames,
+55.47s, 2.7222fps, `animatedTrees: true` shipped default) and
+`wind_off.mp4` (85 frames, 25.17s, 3.3770fps, `animatedTrees: false` via
+a session-local config copy — committed config untouched). Both fps
+values are measured (from frame mtimes), not assumed, and playback is
+real-time (not time-lapsed). Own verification (frame-count/duration via
+`ffprobe`, canopy-crop pixel diffs on spot-extracted and raw frames) shows
+ON consistently nonzero motion (2-6% of the canopy crop changing by
+>15/255 across various frame separations) and OFF consistently at the
+~4/255 encoder/readback noise floor — same direction as P33b's stills but
+smaller magnitude (full analysis and an honest discussion of why in
+`benchmarks/audits/p33_tree_wind/EVIDENCE_MANIFEST.txt`'s "P33c — video
+capture" section). Will still needs to watch the actual mp4s before
+blessing — pixel diffs over sparse frame samples understate what
+continuous playback shows, which is the whole point of using video here.
