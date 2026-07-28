@@ -11,7 +11,22 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
 ## Handback items owned by the perf session (Will, 2026-07-28)
 
-- **eq.h EQT_HAS_GRAPHICS misclassification** (TESTING_HANDBACK item 1
+- **eq.h EQT_HAS_GRAPHICS misclassification — FIXED by P28 (`1cae489`,
+  merged `1c4...`/`06cfed7`-adjacent; 2026-07-28)**: all five guard
+  blocks reclassified (only renderer-facing API stays guarded);
+  headless compile restored 351→0 errors; nogfx suite 812/813; all
+  graphics trees at baseline. Combined-tree verification post
+  P28+P30 merge: canonical GLES2 tree 1234/1235 equiv (segfault+gate
+  failures were STALE main artifacts from Jul 25 — rebuilt, both
+  green: gate PASS, headless test PASS). Two flagged seams for later:
+  InitializeAudio's constrained-preset read is graphics-gated (no
+  headless memory-budget concept — seam documented in P28 Review);
+  BspTree/PfsArchive/WldLoader formally reclassified as base data
+  (pfs/wld_loader moved to CLIENT_CORE_SOURCES). ORCHESTRATOR
+  PRACTICE NOTE: main's gitignored artifacts (third_party static
+  Irrlicht, build-gles2 binaries) age silently while slots rebuild —
+  any verification run from main MUST rebuild them first (this cost a
+  false-alarm investigation on 2026-07-28). Original diagnosis:
   — supersedes the earlier "GRAPHICS=OFF bitrot" framing below with a
   SHARPER diagnosis): the five guard blocks in eq.h enclose large
   amounts of NON-graphics code (GameTick, m_quit_requested,
@@ -121,19 +136,10 @@ An external benchmark setup building at `412d457` with
   Verified: Release+tests build clean (103 binaries), Release ctest
   1234/1235 (only the documented RDP intermittent; note the Audio ALSA
   exception PASSES on this host in Release — env-dependent as always).
-- **`EQT_GRAPHICS=OFF` no longer compiles — WORSE than first assessed**:
-  the reported `eq.h:763` hotbar-stub error is fixed (`55b101e` guards
-  the eqt::ui-typed accessors), but a full GRAPHICS=OFF build still
-  fails at MANY further sites: eq.h ~1094 (EQT::Graphics members
-  unguarded), eq.h ~775 (m_quit_requested declaration ordering under
-  guards), combat.cpp (m_loot_complete_corpse_id), eq_bridge.cpp
-  (m_constrained_config / ConstrainedRendererConfig), eq_chat.cpp
-  (eqt::ui::CommandRegistry throughout). Headless-compile support has
-  bitrotted extensively — needs its own unit: either restore the
-  guards properly (the client began life headless; CI could then cover
-  it) or formally drop the option from CMake; don't leave it
-  half-alive. Error inventory: scratchpad buildfix/build-nogfx.log
-  (session 2026-07-27).
+- **`EQT_GRAPHICS=OFF` — RESOLVED by P28 (2026-07-28)**: the real fix
+  was the eq.h guard DECLASSIFICATION (move non-graphics members out),
+  not more guards — see the handback section near the top of this
+  file. Headless compile + suite fully restored (812/813).
 
 ## Decoupling residue — CLOSED by S2 (2026-07-23, see refactor/S2_decoupling.md)
 
