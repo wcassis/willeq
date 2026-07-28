@@ -87,9 +87,22 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   line P25's windowed backend requires (isolated via stash — not the
   segfault fix's doing). **GLES2 TREE NOW CERTIFIED: both trees
   1234/1235 with only the ALSA exception; 5x-consecutive pass proof
-  both trees.** REMAINING: Phase 2/3 (CMake desktop-branch removal +
-  system-Irrlicht find logic + benchmark-clone guidance update in
-  lockstep + CLAUDE.md updates) — awaits Will's go. The
+  both trees.** **Phases 2+3 EXECUTED (P30, merged `06cfed7`,
+  2026-07-28)**: GLES2 config is THE primary tree (CLAUDE.md +
+  EXECUTOR_PROTOCOL bar updated); system-Irrlicht FIND fallback and all
+  X11/Xxf86vm/GL branches removed; resolved-Irrlicht now mandatory via
+  either EQT_GLES2_IRRLICHT_DIR or ARM's direct cache vars, with clean
+  configure-time FATAL naming the bootstrap (negative-tested); APPLE
+  branches kept (ambiguous, never-supported target — flagged);
+  X11/GLX log message fixed. Lockstep done by orchestrator:
+  benchmark-clone addendum (build_errors_response.md) + charter
+  wording. NEW SMALL ITEM: `docker/Dockerfile` (non-ARM image) still
+  apt-installs desktop Irrlicht and configures plain — now fails at
+  configure BY DESIGN; retire or update that image (fold into Phase
+  4/5). REMAINING: Phase 4 (delete dead source paths: BURNINGSVIDEO /
+  AnimatedTreeManager / RenderingBackend::Software+OpenGL / EDT_OPENGL
+  loading-screen branch) + Phase 5 (full doc sweep + decisions.md
+  completion marker) — await Will's go. The
   willeq-benchmark clone's
   build_errors_response.md guidance (desktop build as default) stays
   CORRECT until the migration phases land — update it in lockstep with
