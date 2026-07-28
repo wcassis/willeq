@@ -348,6 +348,63 @@ decision's elimination complete), remove/update
 `scripts/build-gles2-x86.sh`'s "sidesteps system libirrlicht" framing since
 there will be no other kind left.
 
+**Phase 4 — ATTEMPTED, NOT EXECUTED (P31, 2026-07-28,
+`refactor/P31_phase4_5_dead_code_docs.md`).** Verification (the plan's own
+"name the gate" requirement) found none of the three deletions are provably
+dead: `RenderingBackend::Software`/`EDT_BURNINGSVIDEO` is directly reachable
+via the documented `--renderer software` / `--constrained voodoo1|voodoo2`
+flags on the exact tree the verification bar builds, and
+`docker/irrlicht-drm-x86/CIrrDeviceFB.cpp::createDriver()` compiles
+`createBurningVideoDriver()` unconditionally; `AnimatedTreeManager` is
+unconditionally constructed and its wind-shader classification/
+`getWindController()` are live on the GLES2 path (only its CPU-instancing
+branch is runtime-gated on `EDT_BURNINGSVIDEO`) — deleting the class cascades
+well beyond call-site cleanup; `RenderingBackend::OpenGL`/`EDT_OPENGL` is a
+dead end on x86 specifically (`_IRR_COMPILE_WITH_OPENGL_` disabled in the
+patched Irrlicht) but is the live compiled driver for the still-buildable ARM
+`--no-gles2` Lima configuration (unaffected by Phase 3, still named in root
+CLAUDE.md's "Legacy platforms" note). Per this unit's ambiguous-reachability
+rule, all three were KEPT and flagged rather than deleted — full evidence in
+`docs/decisions.md`'s 2026-07-28 entry and `src/client/graphics/CLAUDE.md`'s
+Renderer Tiers table. **The elimination is therefore NOT complete** — Phase 4
+is open, blocked on a product decision (not an executor call) about whether
+to also retire the CLI surface (`--renderer software|opengl`, `--constrained
+voodoo1|voodoo2|tnt`) and the ARM `--no-gles2` build, which is the actual
+precondition for these deletions to be safe.
+
+**Phase 4 item 4 (docker/Dockerfile) and Phase 5 — EXECUTED (P31).**
+`docker/Dockerfile` (non-ARM image) had a live, currently-documented workflow
+(`docker/docker-compose.yml`'s `builder`/`willeq`/`willeq-vnc` services,
+`docker/README.md`) so it was UPDATED, not retired: apt packages swapped from
+`libirrlicht-dev libxxf86vm-dev libx11-dev libgl1-mesa-dev` to
+`libegl1-mesa-dev libgles2-mesa-dev libgbm-dev libdrm-dev libx11-dev`
+(build stage) / `libegl1 libgles2 libgbm1 libdrm2 libx11-6` (runtime stage),
+and the builder stage now bootstraps the same patched GLES2 Irrlicht
+`scripts/build-gles2-x86.sh` builds (wget the pristine 1.8.5 source instead
+of reading the host's `/mnt/projects/irrlicht-1.8.5` reference checkout,
+apply `irrlicht-drm-patch.py` + the `docker/irrlicht-drm(-x86)/` sources,
+disable `_IRR_COMPILE_WITH_OPENGL_`, `make staticlib` natively) before
+configuring with `-DEQT_GLES2=ON -DEQT_DRM=OFF
+-DEQT_GLES2_IRRLICHT_DIR=/opt/irrlicht-gles2`. Verified with a full local
+`docker build` through all three stages (builder → runtime → vnc) — CMake
+correctly logged `Display backend: EGL + OpenGL ES 2.0` and linked against
+the bootstrapped Irrlicht, `willeq` built, and the final image's `willeq
+--help` ran successfully. A root `.dockerignore` was added (none existed) —
+without it the build context copied `build*/`/`third_party/` (~12GB of local
+build trees) into every `docker build`, which is what caused the first
+build attempt to time out; `third_party/irrlicht-gles2-x86/` (gitignored,
+rebuilt in-image) is excluded but the rest of `third_party/` (vendored
+sqlite3/miniaudio/etc., checked into git) is not. Doc sweep also done:
+`scripts/build-gles2-x86.sh`'s stale "default `build/` tree is desktop GL"
+comment corrected (P30 already made `build/` GLES2-mandatory), root
+`CLAUDE.md`'s Running section and Display Options table updated to describe
+the actual default (surfaceless EGL, no display needed) and `--egl-x11`
+instead of implying plain "Direct X11" GPU rendering, and
+`src/client/graphics/CLAUDE.md`'s Renderer Tiers table rewritten with the
+Phase-4 reachability findings above (see `docs/decisions.md` for the full
+version). The "collapse Desktop-GL row" instruction was NOT done — see Phase
+4 above.
+
 ## 7. Risk register
 
 - **RaceModelAnimationHeadlessTest regression** (§2 Class C) — could

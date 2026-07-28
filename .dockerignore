@@ -1,0 +1,10 @@
+# Keep Docker build context small — local build trees, the gitignored
+# bootstrapped Irrlicht, and VCS metadata are never needed inside the image
+# (docker/Dockerfile bootstraps its own patched Irrlicht from source; see
+# P31, refactor/desktop_gl_elimination_plan.md).
+.git
+build/
+build-*/
+third_party/irrlicht-gles2-x86/
+wt/
+*.log

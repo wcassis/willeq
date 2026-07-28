@@ -192,3 +192,52 @@ libirrlicht, X11/GLX) is to be eliminated, not maintained.
   (goldens/visual gate carry that role); anything still referencing
   `EDT_BURNINGSVIDEO`/desktop driver types is dead code to remove during the
   elimination, not to preserve.
+
+**Elimination progress:** Phase 0 (P26, tool link fixes), Phase 2+3 (P30,
+`build`/`build-gles2` become GLES2-config trees, system-Irrlicht CMake
+fallback removed, mandatory-Irrlicht configure gate added) executed
+2026-07-24..28. Phase 4 (delete `EDT_BURNINGSVIDEO`/`AnimatedTreeManager`/
+`RenderingBackend::Software`/`RenderingBackend::OpenGL`) attempted 2026-07-28
+(P31, `refactor/P31_phase4_5_dead_code_docs.md`) but **not executed** —
+verification found these are not provably dead:
+- `RenderingBackend::Software` (→ `EDT_BURNINGSVIDEO`) is directly reachable
+  today via the documented `--renderer software` / `--constrained
+  voodoo1|voodoo2` flags on the exact GLES2-config `willeq` binary the
+  verification bar builds, and `docker/irrlicht-drm-x86/CIrrDeviceFB.cpp`'s
+  `createDriver()` compiles `createBurningVideoDriver()` unconditionally (no
+  `#ifdef` gate) — so it very likely still constructs a working device.
+- `AnimatedTreeManager` is not solely a software-path relic: it is
+  unconditionally constructed in `IrrlichtRenderer::InitGraphics` and its
+  wind-shader classification (`isTreeObject`) and `getWindController()` are
+  used on the live GLES2 path (`renderer_zone_stream.cpp`,
+  `renderer_frame.cpp`, `renderer_sim_bridge.cpp` — weather multiplier, tree
+  shadows, diagnostics). Only its CPU-instancing branch
+  (`beginInitialize`/`initializeNextBatch`/`assignBspRegions`, gated by a
+  runtime `driver_->getDriverType() == EDT_BURNINGSVIDEO` check in
+  `renderer_zone_load.cpp`'s `loadZoneStep11_Env()`) is unreachable in the
+  GLES2-config tree — deleting the whole class would break the live wind
+  path, i.e. exactly the "forces cascading signature changes" STOP condition.
+- `RenderingBackend::OpenGL` (→ `EDT_OPENGL`) is a dead end specifically on
+  x86 (the patched GLES2 Irrlicht disables `_IRR_COMPILE_WITH_OPENGL_`,
+  `scripts/build-gles2-x86.sh`), but is the live, compiled driver for the
+  still-buildable ARM `--no-gles2` configuration (`scripts/build-arm-noble.sh
+  --no-gles2`, CMakeLists.txt's "Desktop GL mode via Lima" branch,
+  unaffected by P30) — CLAUDE.md's own "Legacy platforms" note documents this
+  build as present, if superseded, not removed.
+
+Per this unit's own ambiguous-reachability rule (KEEP + flag, same
+discipline as P30's `APPLE` branches), none of Phase 4's deletions were
+made. Phase 4 remains open pending a decision (Will's, not an executor's) on
+whether to also retire `--renderer software|opengl`, `--constrained
+voodoo1|voodoo2|tnt`, and the ARM `--no-gles2` Lima build — the actual
+precondition for the code deletions to be safe. See `src/client/graphics/
+CLAUDE.md`'s Renderer Tiers table (updated by P31 with this finding) for the
+per-path detail.
+
+Phase 4 item 4 (docker/Dockerfile) and Phase 5 (doc sweep) were executed by
+P31 independent of the above: `docker/Dockerfile` still had a live
+in-repo/documented workflow (`docker/docker-compose.yml`, `docker/README.md`)
+so it was updated (not retired) to bootstrap the same patched GLES2 Irrlicht
+`scripts/build-gles2-x86.sh`/`docker/Dockerfile.arm-noble` use, verified by a
+full local `docker build` through all three stages (builder/runtime/vnc) plus
+running the resulting binary's `--help`.
