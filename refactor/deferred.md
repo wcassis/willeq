@@ -4,6 +4,27 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+## Desktop-GL elimination — ROADMAP LANDED (P24, 2026-07-28)
+
+- Standing decision (docs/decisions.md 2026-07-28): GLES2 is the only
+  3D renderer. Full evidence-backed inventory + phased unit plan:
+  **`refactor/desktop_gl_elimination_plan.md`** (the authority — this
+  entry is just the pointer). Headlines: ~76/90 targets already
+  GLES2-clean; 14 link-broken in the GLES2 tree (mechanical, Phase 0 —
+  same never-declared-full-link-deps family as the IdentityMaterial
+  item below); GLES2-tree ctest 1112 passing with ONE genuine new
+  regression: **RaceModelAnimationHeadlessTest.ModelAnimatesProperly_
+  Headless segfaults 100% on the GLES2 tree, passes on desktop
+  (EDT_NULL fixture, crash in TestBody per gdb)** — Phase 1
+  investigation unit, hard blocker for suite certification. Phase 3
+  (CMake removal) gated on P25 (X11-EGL backend). Tools: 5 port /
+  6 retire-candidates pending Will's go/no-go (uv_analysis,
+  analyze_hum_model, test_animation, bsp_coordinate_finder,
+  extract_zone_lines, generate_textures). The willeq-benchmark clone's
+  build_errors_response.md guidance (desktop build as default) stays
+  CORRECT until the migration phases land — update it in lockstep with
+  Phase 2/3.
+
 ## Build-config latent defects (found 2026-07-27 by an outside Release build)
 
 An external benchmark setup building at `412d457` with
