@@ -175,3 +175,20 @@ changed files. Legacy files are exempt until their split unit lands.
 
 Open work items deferred out of "done" batches live in `refactor/deferred.md`,
 not inside completed batch files.
+
+## 2026-07-28 — GLES2 is the only 3D renderer
+
+**Decision (Will):** The custom GLES2 backend (`COpenGLES2Driver`, six GLSL ES
+programs) is the sole 3D renderer going forward. The desktop-GL path (system
+libirrlicht, X11/GLX) is to be eliminated, not maintained.
+
+- x86 rendering runs the same GLES2 driver via Mesa EGL: surfaceless/llvmpipe
+  for CI, goldens, and benchmarks (H01), and an X11-window EGL surface for
+  interactive dev use (P25). The Pi keeps DRM/KMS.
+- The full test suite and all retained tools must build against the patched
+  GLES2 Irrlicht; desktop-GL-only tools are ported or retired (survey: P24,
+  plan doc `refactor/desktop_gl_elimination_plan.md`).
+- Consequences: desktop GL stops being a diagnostic cross-check baseline
+  (goldens/visual gate carry that role); anything still referencing
+  `EDT_BURNINGSVIDEO`/desktop driver types is dead code to remove during the
+  elimination, not to preserve.
