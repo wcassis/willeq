@@ -68,8 +68,22 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   EQT_DRM-only conditional gate; the other 7 targets had no backend
   conditional at all. GLES2 full-suite recipe: separate tree with
   EQT_BUILD_TESTS=ON WITH_RDP=ON (the build script's own config
-  intentionally builds only willeq+benchmark). NEXT: Phase 1 (segfault
-  investigation) awaits Will's go. The willeq-benchmark clone's
+  intentionally builds only willeq+benchmark). **Phase 1 EXECUTED
+  (P27, merged `7521f32`)**: root cause was class (a) — the patched
+  device fork never implemented EDT_NULL (constructor probed DRM/EGL
+  unconditionally; createDriver() had no EDT_NULL case → null
+  VideoDriver → no scene manager; createDeviceEx expects EDT_NULL
+  devices to self-construct a null driver, an invariant every stock
+  device upholds). Fixed EDT_NULL-scoped in BOTH device files (ARM
+  path provably inert — only EDT_OGLES2 ever constructed there);
+  bonus pre-existing fix: P26's 8 targets were missing the X11 link
+  line P25's windowed backend requires (isolated via stash — not the
+  segfault fix's doing). **GLES2 TREE NOW CERTIFIED: both trees
+  1234/1235 with only the ALSA exception; 5x-consecutive pass proof
+  both trees.** REMAINING: Phase 2/3 (CMake desktop-branch removal +
+  system-Irrlicht find logic + benchmark-clone guidance update in
+  lockstep + CLAUDE.md updates) — awaits Will's go. The
+  willeq-benchmark clone's
   build_errors_response.md guidance (desktop build as default) stays
   CORRECT until the migration phases land — update it in lockstep with
   Phase 2/3.
