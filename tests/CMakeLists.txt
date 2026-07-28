@@ -551,6 +551,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_session_replay)
 
+# T04: zone connection-flow sequencing tests (CheckZoneRequestPhaseComplete
+# gating, dispatcher robustness, observable post-handshake state). Same
+# replay-seam idiom as test_session_replay above -- no network, no graphics,
+# no live connection -- so safe to auto-discover.
+ADD_EXECUTABLE(test_zone_connection_flow
+    test_zone_connection_flow.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_connection_flow GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_connection_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_connection_flow)
+
 # Integration test: Zoning with Graphics (connects to real EQEmu server with graphics enabled)
 # This test is NOT auto-discovered because it requires a running server and X display.
 # Run manually with: DISPLAY=:99 ./bin/test_zoning_graphics_integration
