@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T07 | Login guards | DONE (merged `b6b3502`) | Executed inline by the orchestrator. `LoginDisableReconnect` null-guarded (closes T05's sweep gap); `LoginProcessLoginResponse` underflow + undersized-buffer guarded. Whole recorded login stream now replays; no death test remains. Corrects the orchestrator's wrong fixture-count claim from T06. |
 | T06 | Login/world flow coverage | DONE (merged `bae9c83`) | 18 tests incl. real-capture replay of both streams. Found a replay-path segfault in `LoginDisableReconnect` (not live-reachable) that exposed an incomplete guard sweep in T05. `LoginProcessLoginResponse` underflow confirmed as `bad_alloc`, not worse. |
 | T05 | Login/world seam + packet guards | DONE (merged `6f2e434`) | **First source-touching unit.** Dispatchers extracted, 12 QueuePacket sites guarded, `ReplayLoginPacket`/`ReplayWorldPacket` public. Both T04 truncated-packet crashes FIXED. Golden matched, ARM build green. Login/world flow coverage deferred to T06. |
 | T04 | Zone connection-flow sequencing | DONE (merged `2042490`) | 16 tests via the existing public `ReplayZonePacket` seam; all four gating prerequisites isolated. Found 2 real robustness bugs + 1 latent gating gap (below). Login/world still uncovered — needs a seam decision from Will. |
@@ -505,23 +506,57 @@ Deep login/world state assertions remain impossible without read-only
 accessors. Not requested yet — the sequencing and robustness coverage
 landed first so any request comes with this concrete list behind it.
 
-### Fixture note
+### Fixture note — RETRACTED, the orchestrator was wrong
 
-The executor's report claimed the capture holds "4 login S→C records,
-not 10" and that "no 0x0000 records exist". **That is incorrect.**
-Re-parsed independently, consuming the file to exact EOF (2949
-records): there are 10 login S→C records — six zero-length `0x0000`
-plus `0x0016`, `0x0017`, `0x0018`, `0x0021`. Skipping the zero-length
-ones is a defensible test choice; the claim about the fixture is not.
+This section previously claimed the T06 executor's fixture count was
+incorrect, asserting 10 login S→C records including six zero-length
+`0x0000`. **That claim was wrong and is withdrawn. The executor's count
+of 4 was right.**
+
+`SessionLogFileHeader` is **112 bytes** (`static_assert`,
+`session_log.h:53`) — `magic`/`version`/`reserved`/`startTimestampUs`
+plus `character[64]` and `zone[32]`. The orchestrator's ad-hoc parser
+assumed a 16-byte header, so it began 96 bytes early and misread the
+header's zeroed name fields as 96/16 = **exactly six** phantom `0x0000`
+size-0 records.
+
+Correct parse: **2943 records, 4 login S→C** — `0x16` (17B), `0x17`
+(90B), `0x18` (60B), `0x21` (20B). No `0x0000` records exist.
+
+Both the wrong and the right parse ended exactly at EOF, which is why
+the orchestrator's sanity check gave false confidence: the phantom
+records consumed precisely the 96 bytes that had been skipped.
+
+Process lesson: the T06 plan explicitly told the executor to use the
+`session_log.h` structs rather than hand-roll a parser — and the
+orchestrator then overrode their correct result using exactly the
+hand-rolled parser the plan had warned against. Corrected in T07
+(`b6b3502`); the T06 merge commit message still carries the wrong
+claim and cannot be rewritten now that it is merged.
 
 ## Needs seam
 
 - ~~Login/world replay seam~~ — **BUILT in T05**.
-- **Open, needs Will:** the `LoginDisableReconnect` null guard (T06
-  finding 1) and optionally the `LoginProcessLoginResponse` length
-  guard (finding 2). Both are small, same shape as T05's Part B.
+- ~~`LoginDisableReconnect` null guard, `LoginProcessLoginResponse`
+  length guard~~ — **DONE in T07** (`b6b3502`).
 - **Open, needs Will:** read-only accessors for login/world state, if
-  deep state assertions are wanted (finding 4 lists exactly which).
+  deep state assertions are wanted (T06 finding 4 lists exactly which).
+  Deliberately not requested yet — the sequencing coverage may prove
+  sufficient.
+
+## Known, not fixed — `Packet::GetCString` can read past the buffer
+
+`src/common/net/packet.cpp:270` bounds-checks only `offset + 1`, then
+constructs a `std::string` from the raw pointer, reading until the
+first NUL — which can run past the end of the buffer if the data is
+not NUL-terminated. Noticed while scoping T07's
+`LoginProcessLoginResponse` guards.
+
+Unlike the `GetUInt*` accessors, this is a genuine out-of-bounds
+**read**, not a bounds-checked throw. It is in `src/common/net`
+(base layer, ours by territory) and affects every caller, so it is a
+wider change than a single handler guard and was deliberately left
+alone by T07. Worth its own unit if Will wants it.
 
 ## T02 findings (state-layer bugs, documented in tests, NOT fixed)
 
