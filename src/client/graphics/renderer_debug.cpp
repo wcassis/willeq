@@ -195,17 +195,19 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
     // return the new and old types respectively (or vice versa).
     // We need to map both directions: per-pixel ↔ lightweight.
     struct MaterialMap {
-        irr::s32 ppSolid, ppAlpha, ppAtlasSolid, ppAtlasAlpha, ppWind;
-        irr::s32 lwSolid, lwAlpha, lwAtlasSolid, lwAtlasAlpha, lwWind;
+        irr::s32 ppSolid, ppAlpha, ppAlphaRGBA, ppAtlasSolid, ppAtlasAlpha, ppWind;
+        irr::s32 lwSolid, lwAlpha, lwAlphaRGBA, lwAtlasSolid, lwAtlasAlpha, lwWind;
     };
     MaterialMap m;
     m.ppSolid = zoneShader_->getMaterialTypeSolid();
     m.ppAlpha = zoneShader_->getMaterialTypeAlphaTest();
+    m.ppAlphaRGBA = zoneShader_->getMaterialTypeAlphaTestRGBA();  // P21: H02d Option-A RGBA variant
     m.ppAtlasSolid = zoneShader_->getMaterialTypeAtlasSolid();
     m.ppAtlasAlpha = zoneShader_->getMaterialTypeAtlasAlpha();
     m.ppWind = zoneShader_->getMaterialTypeWindAlphaTest();
     m.lwSolid = zoneShader_->getMaterialTypeLWSolid();
     m.lwAlpha = zoneShader_->getMaterialTypeLWAlphaTest();
+    m.lwAlphaRGBA = zoneShader_->getMaterialTypeLWAlphaTestRGBA();  // P21: H02d Option-A RGBA variant
     m.lwAtlasSolid = zoneShader_->getMaterialTypeLWAtlasSolid();
     m.lwAtlasAlpha = zoneShader_->getMaterialTypeLWAtlasAlpha();
     m.lwWind = zoneShader_->getMaterialTypeLWWindAlphaTest();
@@ -275,7 +277,8 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
     int doorSwapped = 0;
     if (doorManager_) {
         doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                             zoneShader_->getActiveAlphaTest());
+                                             zoneShader_->getActiveAlphaTest(),
+                                             zoneShader_->getActiveAlphaTestRGBA());
         // Swap materials on existing door scene nodes
         for (auto* node : doorManager_->getDoorSceneNodes()) {
             swapNode(node);
@@ -299,13 +302,16 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
     if (entityRenderer_ && zoneShader_->isAvailable()) {
         entityRenderer_->swapShaderMaterials(
             m.ppSolid, zoneShader_->getActiveSolid(),
-            m.ppAlpha, zoneShader_->getActiveAlphaTest());
+            m.ppAlpha, zoneShader_->getActiveAlphaTest(),
+            m.ppAlphaRGBA, zoneShader_->getActiveAlphaTestRGBA());
         // Also swap lw→active in case entities had lightweight materials
         entityRenderer_->swapShaderMaterials(
             m.lwSolid, zoneShader_->getActiveSolid(),
-            m.lwAlpha, zoneShader_->getActiveAlphaTest());
+            m.lwAlpha, zoneShader_->getActiveAlphaTest(),
+            m.lwAlphaRGBA, zoneShader_->getActiveAlphaTestRGBA());
         entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                zoneShader_->getActiveAlphaTest());
+                                                zoneShader_->getActiveAlphaTest(),
+                                                zoneShader_->getActiveAlphaTestRGBA());
     }
     if (treeManager_ && zoneShader_->isAvailable()) {
         treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),

@@ -277,15 +277,23 @@ public:
     // Enable/disable lighting on entity materials
     void setLightingEnabled(bool enabled);
 
-    // Set GLSL shader material type IDs for entity meshes (-1 = not available)
-    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
+    // Set GLSL shader material type IDs for entity meshes (-1 = not available).
+    // P21: added alphaTestRGBAType (H02d Option A), mirroring
+    // DoorManager::setShaderMaterialTypes / ZoneMeshBuilder — same bug class
+    // P20b fixed for tree foliage: masked RGBA/DDS textures must read their
+    // own alpha (uTexture.a) rather than land on the ETC1-companion variant
+    // with nothing bound on unit 1. Defaults to -1 for callers that don't set it.
+    void setShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType, irr::s32 alphaTestRGBAType = -1) {
         shaderMaterialSolid_ = solidType;
         shaderMaterialAlphaTest_ = alphaTestType;
+        shaderMaterialAlphaTestRGBA_ = alphaTestRGBAType;
     }
 
-    // Swap shader materials on all existing entity mesh nodes (old → new mapping)
+    // Swap shader materials on all existing entity mesh nodes (old → new mapping).
+    // P21: added oldAlphaRGBA/newAlphaRGBA for the RGBA alpha-test variant.
     void swapShaderMaterials(irr::s32 oldSolid, irr::s32 newSolid,
-                             irr::s32 oldAlpha, irr::s32 newAlpha);
+                             irr::s32 oldAlpha, irr::s32 newAlpha,
+                             irr::s32 oldAlphaRGBA = -1, irr::s32 newAlphaRGBA = -1);
 
     // Get race model loader (for preloading)
     RaceModelLoader* getRaceModelLoader() { return raceModelLoader_.get(); }
@@ -530,6 +538,13 @@ private:
     irr::scene::IMesh* getMeshForRace(uint16_t raceId, uint8_t gender = 0,
                                        const EntityAppearance& appearance = EntityAppearance());
     irr::scene::IMesh* createPlaceholderMesh(float size, irr::video::SColor color);
+    // P21: H02d Option-A classification for an entity/equipment material that
+    // has already been assigned EMT_TRANSPARENT_ALPHA_CHANNEL_REF (fixed-
+    // function alpha-test) upstream. Picks the ETC1-companion shader variant
+    // (with unit-1 binding) when the material's bound texture came through
+    // the ETC1/EQE1 pipeline, else the RGBA main-texture-alpha variant.
+    // No-op (leaves mat.MaterialType alone) if neither shader variant is set.
+    void applyAlphaTestMaterialType(irr::video::SMaterial& mat) const;
     float getScaleForRace(uint16_t raceId) const;
     irr::video::SColor getColorForRace(uint16_t raceId) const;
 
@@ -565,6 +580,7 @@ private:
     bool lightingEnabled_ = false;
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
+    irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P21: H02d Option-A main-texture-alpha variant
     irr::gui::IGUIFont* nameFont_ = nullptr;
 
     // Visibility settings

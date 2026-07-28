@@ -169,7 +169,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         ZoneMeshBuilder builder(smgr_, driver_, nullptr);
         if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
         if (shaderMaterialSolid_ >= 0)
-            builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
+            builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_, shaderMaterialAlphaTestRGBA_);
         if (!currentZone_->objectTextures.empty() && !geomIt->second->textureNames().empty()) {
             mesh = builder.buildTexturedMesh(*geomIt->second, currentZone_->objectTextures);
         } else {
@@ -202,7 +202,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
             if (shaderMaterialSolid_ >= 0)
-                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
+                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_, shaderMaterialAlphaTestRGBA_);
             if (!currentZone_->objectTextures.empty() && !geom->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*geom, currentZone_->objectTextures);
             } else {
@@ -236,7 +236,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             ZoneMeshBuilder builder(smgr_, driver_, nullptr);
             if (constrainedCache_) builder.setConstrainedTextureCache(constrainedCache_);
             if (shaderMaterialSolid_ >= 0)
-                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_);
+                builder.setShaderMaterialTypes(shaderMaterialSolid_, shaderMaterialAlphaTest_, shaderMaterialAlphaTestRGBA_);
             if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
                 mesh = builder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
             } else {
