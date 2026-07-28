@@ -282,18 +282,41 @@ void SimulationWorker::postInput(const SimulationInput& input) {
 
 const SimulationOutput* SimulationWorker::swapAndGetResults() {
     if (resultReady_.load(std::memory_order_acquire)) {
-        // Worker finished — swap buffers
+        // Worker finished — swap buffers.
+        // P23: frontIdx_/backIdx_ are plain ints (not atomics); this swap
+        // (main thread) and workerLoop()'s read of backIdx_ (worker thread)
+        // now share mutex_ — see workerLoop() for the fuller writeup of why
+        // that read needed a lock at all (it's not just about frontIdx_/
+        // backIdx_ visibility — see the notify_one() below for the actual
+        // race this closes).
+        std::lock_guard<std::mutex> lock(mutex_);
         std::swap(frontIdx_, backIdx_);
         resultReady_.store(false, std::memory_order_release);
+        // P23: wake a worker that may already be parked waiting for
+        // !resultReady_ (see workerLoop()). Without this, a worker that
+        // finished computing into backIdx_ before this swap ran (i.e. it
+        // saw workReady_ already true from an earlier postInput() that
+        // happened while it was still busy) would sit correctly parked
+        // here — but only because the wait predicate now includes
+        // !resultReady_. This notify is what lets it wake up promptly once
+        // that becomes true, instead of waiting for some unrelated future
+        // notify_one() from postInput().
+        cv_.notify_one();
         return &output_[frontIdx_];
     }
 
-    // Worker hasn't finished yet — use stale data (graceful degradation)
+    // Worker hasn't finished yet — use stale data (graceful degradation).
+    // P23: this branch also touches frontIdx_/output_[frontIdx_] and must
+    // take the same mutex_ as the swap branch above and workerLoop()'s
+    // snapshot — TSAN reproduction (tools/particle_race_stress.cpp) caught
+    // a real race here between this read and the worker's writes into
+    // output_[backIdx_] during computeAll() when this branch ran unlocked.
     {
         std::lock_guard<std::mutex> lock(debugMutex_);
         framesSkipped_++;
     }
 
+    std::lock_guard<std::mutex> lock(mutex_);
     // Return front buffer if it has valid data from a previous frame
     if (output_[frontIdx_].valid) {
         return &output_[frontIdx_];
@@ -321,16 +344,80 @@ void SimulationWorker::workerLoop() {
     LOG_DEBUG(MOD_GRAPHICS, "SimulationWorker thread started");
 
     while (running_.load(std::memory_order_relaxed)) {
-        // Wait for work
+        // Wait for work, then snapshot input_ and backIdx_ while still
+        // holding mutex_.
+        //
+        // P23 root-cause has two parts, both stemming from the same
+        // assumption: that "one postInput() call always pairs with exactly
+        // one prior swapAndGetResults() call" is enough to keep the
+        // double-buffered handoff safe. It isn't, because postInput() is
+        // called unconditionally once per frame — including frames where
+        // the worker hasn't finished (or even started consuming) the
+        // previous one — and swapAndGetResults() explicitly degrades
+        // gracefully (serves stale front-buffer data) instead of blocking
+        // when that happens. Under sustained load where the worker can't
+        // keep up with the frame rate (exactly what framesSkipped_ is
+        // already tracking as a normal condition, not a bug), both of the
+        // following become reachable:
+        //
+        // (1) input_ read unsynchronized. This used to release the lock as
+        //     soon as the cv predicate was satisfied and read
+        //     input_/backIdx_ afterwards, unsynchronized. A postInput()
+        //     call arriving while this thread was still mid-computeAll()
+        //     would reassign input_ (destroying/reallocating its
+        //     std::vector/std::unordered_map members) while this thread
+        //     iterated those same containers with no lock held — vectors
+        //     reallocated out from under an in-progress iterator.
+        //
+        // (2) backIdx_'s buffer overwritten before being consumed. Because
+        //     workReady_ can already be true (from a postInput() that
+        //     arrived while this thread was busy) by the time this thread
+        //     finishes a compute and loops back here, it could immediately
+        //     start a *second* compute into output_[backIdx_] before the
+        //     main thread's swapAndGetResults() had actually consumed the
+        //     first one (i.e. before resultReady_ was reset to false and
+        //     frontIdx_/backIdx_ were swapped). If swapAndGetResults() then
+        //     ran concurrently with that second compute, it would swap
+        //     frontIdx_ to the very index this thread was mid-write on,
+        //     handing the render path a buffer being actively mutated —
+        //     the "dangling-pointer-shaped" result-buffer race reported
+        //     against ParticleManager::renderUnified() (its renderBuffer
+        //     comes straight out of output_[backIdx_].particleOutput).
+        //     Waiting for !resultReady_ too (not just workReady_) closes
+        //     this: the worker won't start a new compute until the
+        //     previous one has actually been swapped out from under it.
+        //
+        // Both reproduce reliably in tools/particle_race_stress.cpp under
+        // ThreadSanitizer (unthrottled postInput()/swapAndGetResults()
+        // calls, no frame-rate cap — the condition needed to hit either
+        // race on nearly every iteration instead of rarely).
+        //
+        // Fix: (1) copy input_ into a local, private snapshot under mutex_
+        // (the same lock postInput() uses to publish it), then run
+        // computeAll() against the stable local copy with no lock held.
+        // (2) don't start that compute at all until !resultReady_ — i.e.
+        // until the main thread has actually swapped the previous result
+        // out. Neither adds a lock around the (expensive) compute itself
+        // or around the render path — only around the handoff, mirroring
+        // the file's existing double-buffered-output discipline (worker
+        // computes privately, publishes atomically) and extending it to
+        // cover input_ and the compute-start gate that output_'s
+        // double-buffering alone didn't cover.
+        SimulationInput localInput;
+        int myBackIdx;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [this] {
-                return workReady_.load(std::memory_order_relaxed) ||
+                return (workReady_.load(std::memory_order_relaxed) &&
+                        !resultReady_.load(std::memory_order_relaxed)) ||
                        !running_.load(std::memory_order_relaxed);
             });
 
             if (!running_.load(std::memory_order_relaxed)) break;
             workReady_.store(false, std::memory_order_relaxed);
+
+            localInput = input_;
+            myBackIdx = backIdx_;
         }
 
         if (!zoneDataValid_) continue;
@@ -338,8 +425,8 @@ void SimulationWorker::workerLoop() {
         // Compute
         auto start = std::chrono::steady_clock::now();
 
-        computeAll(input_, output_[backIdx_]);
-        output_[backIdx_].valid = true;
+        computeAll(localInput, output_[myBackIdx]);
+        output_[myBackIdx].valid = true;
 
         auto end = std::chrono::steady_clock::now();
         float computeMs = std::chrono::duration<float, std::milli>(end - start).count();
