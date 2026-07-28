@@ -209,9 +209,31 @@ void EverQuest::LoginSendPlayRequest(uint32_t id)
 
 void EverQuest::LoginProcessLoginResponse(const EQ::Net::Packet & p)
 {
+	// T07: Length() is size_t, so a packet shorter than the 12-byte header
+	// would underflow this subtraction to ~1.8e19 and feed it straight to
+	// new char[] (T06 pinned that as a std::bad_alloc). Guard the underflow
+	// before it happens.
+	if (p.Length() < 12) {
+		LOG_WARN(MOD_WORLD, "LoginAccepted packet too small: {} bytes (expected at least {})",
+			p.Length(), 12);
+		return;
+	}
+
 	auto encrypt_size = p.Length() - 12;
 	if (encrypt_size % 8 > 0) {
 		encrypt_size = (encrypt_size / 8) * 8;
+	}
+
+	// T07: the decrypted buffer is read at offsets 1 (uint16), 8 (uint32)
+	// and 12 (cstring), so it needs at least 13 bytes. Without this, a
+	// packet of exactly 12 bytes yields a zero-length buffer and the reads
+	// below throw std::out_of_range out of the network callback. Real
+	// LoginAccepted packets decrypt to 80 bytes, so this cannot reject
+	// legitimate traffic.
+	if (encrypt_size < 13) {
+		LOG_WARN(MOD_WORLD, "LoginAccepted payload too small after decrypt sizing: {} bytes (expected at least {})",
+			encrypt_size, 13);
+		return;
 	}
 
 	std::unique_ptr<char[]> decrypted(new char[encrypt_size]);
@@ -309,8 +331,17 @@ void EverQuest::LoginProcessServerPlayResponse(const EQ::Net::Packet &p)
 
 void EverQuest::LoginDisableReconnect()
 {
-	m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectDisabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	m_login_connection->Close();
+	// T07: both members are always set in production (LoginOnNewConnection /
+	// ConnectToLogin) before any packet can arrive, but this is reachable
+	// from HC_OP_PlayEverquestResponse via the replay seam, where they are
+	// null — T06 pinned that as a SIGSEGV. Guard both, matching the pattern
+	// used by every other connection use in this file.
+	if (m_login_connection_manager) {
+		m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectDisabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	}
+	if (m_login_connection) {
+		m_login_connection->Close();
+	}
 }
 
 void EverQuest::WorldOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)

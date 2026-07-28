@@ -163,29 +163,12 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
         const bool isServerToClient =
             rec.direction == static_cast<uint8_t>(EQT::Net::SessionDirection::ServerToClient);
 
-        if (isServerToClient && rec.stream == static_cast<uint8_t>(EQT::Net::SessionStream::Login) &&
-            rec.opcode == HC_OP_PlayEverquestResponse) {
-            // FINDING (discovered by this unit, reported prominently -- see
-            // Review and the dedicated death test below):
-            // LoginProcessServerPlayResponse (eq_login_world.cpp:284) calls
-            // LoginDisableReconnect() UNCONDITIONALLY on both its branches
-            // (allowed-and-server-found, and not-allowed). LoginDisableReconnect
-            // (eq_login_world.cpp:310) is the ONLY call site in this file that
-            // dereferences m_login_connection_manager/m_login_connection
-            // without the `if (m_x) {...} else {++m_replay_suppressed_sends;}`
-            // guard used at every other send site -- so replaying this
-            // opcode through the T05 seam on a headless EverQuest that never
-            // ran the real Connect() sequence SEGFAULTS (raw null-pointer
-            // dereference, not a C++ exception -- verified with gdb, see
-            // Review). This happens on realistic well-formed data, not a
-            // malformed packet, so it cannot be skipped by "expect a throw":
-            // there is no way to safely replay this record in-process. It is
-            // excluded from this loop deliberately; do not remove this
-            // exclusion without first adding a null guard in
-            // LoginDisableReconnect() (out of this unit's territory -- tests/
-            // only) or otherwise resolving Review's finding with Will.
-            continue;
-        }
+        // T07: HC_OP_PlayEverquestResponse used to be excluded here, because
+        // LoginProcessServerPlayResponse reaches LoginDisableReconnect, which
+        // dereferenced m_login_connection_manager/m_login_connection with no
+        // null guard and SEGFAULTed under replay. Those guards now exist, so
+        // the record replays like any other and the exclusion is gone — the
+        // whole recorded login stream is now covered.
 
         if (isServerToClient && rec.stream == static_cast<uint8_t>(EQT::Net::SessionStream::Login)) {
             ASSERT_NO_THROW(eq.ReplayLoginPacket(rec.opcode, payload.data(), payload.size()))
@@ -214,14 +197,21 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
     // stream contains exactly 4 S->C application records (ChatMessage,
     // LoginAccepted, ServerListResponse, PlayEverquestResponse -- one each,
     // covering the entire DispatchLoginPacket switch), and the world stream
-    // contains 22 (11 opcodes x 2 zone-ins). The plan text quoted "10 login,
-    // 22 world" and mentioned "six 0x0000 records" on the login side; those
-    // do not appear in the actual fixture. Pinning the real counts here per
-    // the plan's own instruction ("use the real number") -- see Review.
-    // Of the 4 login records, only 3 are actually replayed through the seam
-    // in this loop -- PlayEverquestResponse is deliberately excluded above
-    // due to the LoginDisableReconnect() segfault finding.
-    EXPECT_EQ(loginRecords, 3u);
+    // contains 22 (11 opcodes x 2 zone-ins).
+    //
+    // The T06 plan quoted "10 login, 22 world" with "six 0x0000 records";
+    // the orchestrator then repeated that when reviewing T06 and wrongly
+    // overrode this file's count. Settled in T07: SessionLogFileHeader is
+    // **112 bytes** (static_assert, session_log.h), not the 16 the
+    // orchestrator's ad-hoc parser assumed. Starting at offset 16 misreads
+    // the header's zeroed character[64]/zone[32] tail as 96/16 = exactly
+    // six phantom 0x0000 size-0 records. This count of 4 is correct; the
+    // lesson is to use the session_log.h structs, which is what this file
+    // does.
+    //
+    // T07: all 4 login records now replay -- PlayEverquestResponse is no
+    // longer excluded, because LoginDisableReconnect's null guards landed.
+    EXPECT_EQ(loginRecords, 4u);
     EXPECT_EQ(worldRecords, 22u);
 
     EXPECT_TRUE(sawLoginAuthenticating)
@@ -473,16 +463,29 @@ TEST(LoginWorldRobustness, BUG_WorldProcessZoneServerInfo_ZeroLengthPacket_Throw
 // login path, before any authentication -- worth escalating to Will on its
 // own merits; not fixed here per the plan's territory restriction.
 
-TEST(LoginWorldRobustness, BUG_LoginProcessLoginResponse_ZeroLengthPacket_UnderflowsAndThrowsBadAlloc) {
+// T07 FIXED the underflow: LoginProcessLoginResponse now returns early when
+// the packet is under the 12-byte header, and again when the decrypt-sized
+// buffer is under the 13 bytes its reads require. These tests, which
+// previously pinned the std::bad_alloc / std::out_of_range failure modes,
+// now assert the guards hold.
+
+TEST(LoginWorldRobustness, LoginProcessLoginResponse_ZeroLengthPacket_ReturnsSafely) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     // packet length = 2 (opcode only), well under the 12-byte minimum.
-    EXPECT_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, EmptyPayload()), std::bad_alloc);
+    EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, EmptyPayload()));
 }
 
-TEST(LoginWorldRobustness, BUG_LoginProcessLoginResponse_OneByteUnderMinimum_UnderflowsAndThrowsBadAlloc) {
+TEST(LoginWorldRobustness, LoginProcessLoginResponse_OneByteUnderMinimum_ReturnsSafely) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     // payload size 9 -> packet length 11, one byte short of the 12-byte minimum.
-    EXPECT_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, std::vector<uint8_t>(9, 0)), std::bad_alloc);
+    EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, std::vector<uint8_t>(9, 0)));
+}
+
+TEST(LoginWorldRobustness, LoginProcessLoginResponse_ExactlyHeaderLength_ReturnsSafely) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    // payload 10 -> packet length 12: no underflow, but a zero-length
+    // decrypted buffer. Previously threw std::out_of_range from the reads.
+    EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, std::vector<uint8_t>(10, 0)));
 }
 
 // --- LoginDisableReconnect() (eq_login_world.cpp:310): discovered while
@@ -526,35 +529,17 @@ TEST(LoginWorldRobustness, BUG_LoginProcessLoginResponse_OneByteUnderMinimum_Und
 // pattern (worth Will's judgment on whether to add it, matching every
 // other send site). Not fixed here -- tests/ only.
 //
-// Uses an EXPECT_DEATH death test (gtest forks a subprocess for the
-// statement under test) specifically so this crash is pinned without
-// taking down the rest of the suite -- there is no other way to observe it
-// safely, since a SIGSEGV cannot be caught with try/catch.
-TEST(LoginWorldRobustness, BUG_LoginProcessServerPlayResponse_NotAllowed_SegfaultsInLoginDisableReconnect) {
+// T07 FIXED this: LoginDisableReconnect now null-guards both members,
+// matching every other connection use in the file. The death test that
+// pinned the SIGSEGV is replaced by its inverse — the same packet that
+// used to kill the process must now be handled cleanly. No death test
+// remains in this suite.
+TEST(LoginWorldRobustness, LoginProcessServerPlayResponse_NotAllowed_DoesNotCrash) {
     auto payload = BuildPayload(2 + 15, [](EQ::Net::DynamicPacket& p) {
         p.PutUInt8(12, 0);     // allowed = false
-        p.PutUInt16(13, 0);    // message id (unused by the crash path)
+        p.PutUInt16(13, 0);    // message id (unused by the former crash path)
     });
 
-    EXPECT_DEATH(
-        {
-            EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-            ReplayLogin(eq, HC_OP_PlayEverquestResponse, payload);
-        },
-        "");
-}
-
-TEST(LoginWorldRobustness, LoginProcessLoginResponse_ExactlyTwelveBytePacket_ThrowsOutOfRangeInstead) {
-    // At exactly 12 bytes, encrypt_size == 0 -- no underflow. `new char[0]`
-    // succeeds (a valid, zero-size allocation); eqcrypt_block's own guard
-    // (`if (!enc && buffer_in_sz && ...)`) short-circuits false on
-    // buffer_in_sz == 0 and DES_ncbc_encrypt is called with length 0 (a
-    // no-op). The subsequent StaticPacket over that zero-length buffer then
-    // hits Packet::GetUInt16(1), which correctly bounds-checks and throws
-    // std::out_of_range -- a different, milder failure mode than the
-    // underflow case above, and the boundary at which the underflow bug
-    // stops applying.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    // payload size 10 -> packet length 12 exactly.
-    EXPECT_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, std::vector<uint8_t>(10, 0)), std::out_of_range);
+    EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_PlayEverquestResponse, payload));
 }
