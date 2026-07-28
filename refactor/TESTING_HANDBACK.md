@@ -1,17 +1,81 @@
 # Handback to the perf session
 
 From: testing session (charter `refactor/TESTING_CHARTER.md`).
-Assigned by Will 2026-07-28: the perf session owns both items below.
-Raised by T01 (see `refactor/testing_progress.md` for the full survey).
 
-These are handed back rather than fixed because both sit inside the
-perf session's territory (the graphics boundary and the live-eqemu /
-capture workflow), and because item 1 is far larger than the testing
-charter's "minimal, behavior-preserving seam" allowance.
+## Round 1 (T01, 2026-07-28) — both items CLOSED, thank you
 
-Neither is urgent in the sense of breaking your work — the desktop and
-GLES2 trees both build fine. They block *base-layer testing*, which is
-now stalled behind item 1.
+Items 1 and 2 below (`EQT_GRAPHICS=OFF` broken; no capture fixtures)
+were fixed by **P28** and **P29** respectively. Item 1's fix unblocked
+the login/world/zone connection flow, which was the highest-risk gap in
+the T01 survey. Item 2's fixtures are now feeding real protocol tests.
+The original writeups are kept below for the record — **do not act on
+them again.**
+
+Your P29 routed the hardcoded-port-7000 issue back to the testing
+session; we own it, it is in flight as **T03a**. Measured detail if
+useful: the fixture has no port-7000 traffic at all — zone sessions are
+on 7012 (befallen, 920 pkts) and 7026 (qeynos2, 3172 pkts), and the
+`server_ports` set in `tests/pcap_test_utils.h` misclassifies 4,092 of
+5,603 packets as a result.
+
+## Round 2 (T02 merge verification, 2026-07-28) — one NEW item
+
+**The canonical configure command in the root `CLAUDE.md` "Build
+Commands" does not work as written.**
+
+`CLAUDE.md` documents:
+
+```
+-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86
+```
+
+but `CMakeLists.txt:94` builds the library path from it and tests it
+with `EXISTS`, which CMake defines only for absolute paths. With the
+documented relative form, configure fails the patched-Irrlicht check
+and dies with the `FATAL_ERROR` that tells you to build the very
+library you already built:
+
+```
+EQT_GRAPHICS=ON requires a locally-built patched GLES2 Irrlicht —
+desktop-GL Irrlicht (system libirrlicht-dev / X11-GLX) support was
+removed (P30, ...)
+```
+
+Reproduce: bootstrap with
+`bash scripts/build-gles2-x86.sh --irrlicht-only`, confirm
+`third_party/irrlicht-gles2-x86/lib/libIrrlicht.a` exists, then
+configure with the relative path exactly as documented. Passing an
+absolute path works.
+
+Both the T02 executor and I hit this independently and worked around
+it. Since P30 made this the only tree, this is now the documented
+entry point for every new checkout and every executor slot. Suggested
+fix: make the path absolute inside `CMakeLists.txt`
+(`get_filename_component(... ABSOLUTE)` against `CMAKE_SOURCE_DIR`)
+so the documented relative form works, rather than only correcting the
+doc. Root `CMakeLists.txt` and `CLAUDE.md` are outside testing
+territory, hence handed over.
+
+Also worth folding into the same fix: the bootstrap leaves the archive
+at both `lib/libIrrlicht.a` and `lib/Linux/libIrrlicht.a`, and only the
+former is what `CMakeLists.txt` looks for. Not a bug today, but a trap
+if the script's copy step ever changes.
+
+**Withdrawn from an earlier round:** the T02 executor reported X11 link
+failures in the GLES2 tree (`test_graphics`, `test_asset_loading`,
+`test_door_loading` + five tools, undefined Xlib references). On
+re-verification against the current tip, a full unscoped
+`cmake --build build -j24` completes with **0 errors**. P30 removed the
+offending paths. Ignore that report.
+
+---
+
+## ROUND 1 ITEMS BELOW — CLOSED, RETAINED FOR RECORD ONLY
+
+Original context: these were handed back rather than fixed because both
+sat inside the perf session's territory (the graphics boundary and the
+live-eqemu / capture workflow), and because item 1 was far larger than
+the testing charter's "minimal, behavior-preserving seam" allowance.
 
 ---
 
