@@ -349,16 +349,64 @@ change**: every handler is private and needs a live connection
 (`LoginOnPacketRecv` eq.h:1146, `LoginProcessLoginResponse` 1152,
 `WorldOnPacketRecv` 1168, `WorldProcessCharacterSelect` 1178).
 
-The ask would be a `ReplayLoginPacket` / `ReplayWorldPacket` pair in
-`include/client/eq.h`, mirroring Batch R's existing `ReplayZonePacket`
-exactly — same shape, same send-suppression behavior. Precedent is
-strong (the zone seam is public, documented, and already carries two
-test binaries), and the diff would be small and behavior-preserving.
+### Full survey of network surfaces (done 2026-07-28, answering "how many more spots?")
 
-But it is base-layer source, beyond the charter's "minimal seam"
-latitude for a testing unit, so it is Will's call. Until then,
-login/world stay uncovered and the recorded `session.pcap` login/world
-streams (5998 and 9000, 1511 packets) go unused by any state-level test.
+The gap is **bounded at two**, not open-ended. Live packet-receive
+entry points:
+
+| surface | entry point | seam? |
+|---------|-------------|-------|
+| Zone | `ZoneOnPacketRecv` (eq.cpp:717) | **yes** — `DispatchZonePacket` + public `ReplayZonePacket` (Batch R) |
+| Login | `LoginOnPacketRecv` (eq_login_world.cpp:70) | no |
+| World | `WorldOnPacketRecv` (eq_login_world.cpp:319) | no |
+| UCS | `UCSOnPacketRecv` (eq.cpp:2808) | **dead code** — the whole block from eq.cpp:2753 is inside `/* */`, and the only caller (`eq_login_world.cpp:644`) is commented out. The separate `UCSConnection` class in `src/client/ucs.cpp` (234 lines, 0% coverage) is likewise never connected. Not a live surface; do not build a seam for it. |
+
+### What the work actually is (bigger than "add two methods")
+
+The zone seam works because Batch R did **two** things, and only the
+first is obvious:
+
+1. Split the opcode switch out of `ZoneOnPacketRecv` into
+   `DispatchZonePacket`, so a test can enter at the switch.
+2. Retrofitted **every zone sender** with a null-connection guard that
+   no-ops and bumps `m_replay_suppressed_sends` (11 such guards in
+   `eq.cpp`). Without this, replaying a packet whose handler sends
+   would dereference a null connection.
+
+Login/world have neither. Their switches are inline in `*OnPacketRecv`,
+and their senders call `m_login_connection->QueuePacket(p)` /
+`m_world_connection->QueuePacket(p)` **unguarded** — e.g.
+`LoginSendSessionReady` (eq_login_world.cpp:109). And this is not
+avoidable by picking safe opcodes: `LoginOnPacketRecv`'s very first
+case (`HC_OP_ChatMessage`) calls `LoginSendLogin()`.
+
+Measured scope: **11 sender functions, 12 unguarded `QueuePacket` call
+sites, 2 dispatcher extractions, 2 new public methods** — across
+`eq_login_world.cpp` and `eq.h`. That is almost exactly the size of
+what Batch R already did once for zone (11 guards), so the precedent
+covers the shape and the risk, but it is not a 10-line diff.
+
+### Territory: this is probably NOT a perf-session item
+
+`include/client/eq.h` and `src/client/eq_login_world.cpp` are
+**base-layer, non-graphics client code** — the charter's "read freely,
+modify only for a testability seam" zone, i.e. ours. The perf session
+owns `src/client/graphics/**`, docker, goldens, presets. P28 went to
+them because it was a graphics-`#ifdef` problem; this is not.
+
+So the blocker is not ownership, it is the charter's "minimal-diff"
+wording versus a 12-call-site change. That is a latitude question for
+Will, not a handoff.
+
+**Separately — and this one genuinely has no owner:** the
+truncated-packet crashes (finding 1 above) are a *behavior* fix, not a
+testability seam, so they fall outside the seam clause entirely
+regardless of how the latitude question is settled. Base-layer,
+non-graphics, ~4 lines. Someone has to be assigned it.
+
+Until resolved, login/world stay uncovered and the recorded
+`session.pcap` login/world streams (5998 and 9000, ~1511 packets) go
+unused by any state-level test.
 
 ## Needs seam
 
