@@ -103,10 +103,11 @@ IF(EQT_GRAPHICS)
         # in-tree default (with a notice).
         IF(NOT EXISTS "${EQT_GLES2_IRRLICHT_DIR_ABS}/lib/libIrrlicht.a"
            AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/irrlicht-gles2-x86/lib/libIrrlicht.a")
-            MESSAGE(STATUS "EQT_GLES2_IRRLICHT_DIR resolved to "
+            MESSAGE(WARNING "EQT_GLES2_IRRLICHT_DIR resolved to "
                 "'${EQT_GLES2_IRRLICHT_DIR_ABS}' (no libIrrlicht.a there); "
                 "using the in-tree default third_party/irrlicht-gles2-x86 "
-                "instead")
+                "instead. If you intended an alternate Irrlicht tree, pass "
+                "an absolute path to it.")
             SET(EQT_GLES2_IRRLICHT_DIR_ABS
                 "${CMAKE_SOURCE_DIR}/third_party/irrlicht-gles2-x86")
         ENDIF()
