@@ -79,8 +79,13 @@ targets; keep using it for the visual gate, it is unaffected by the above.
 ## Running
 
 ```bash
-# With graphics (requires display or VNC)
+# With graphics (default: surfaceless EGL, no display required — same
+# llvmpipe backend the GLES2 tree's tests and visual gate use)
 ./build/bin/willeq -c willeq.json
+
+# With graphics, X11-windowed (P25; opt-in only, never DISPLAY-autodetected —
+# see "Orange Pi (ARM) Cross-Compilation" below)
+./build/bin/willeq -c willeq.json --egl-x11
 
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
@@ -107,7 +112,8 @@ targets; keep using it for the visual gate, it is unaffected by the above.
 
 | Method | Use Case | Audio | Client |
 |--------|----------|-------|--------|
-| Direct X11 | Local display with GPU/software rendering | Local | Native |
+| Surfaceless EGL (default) | No display needed at all — llvmpipe GPU emulation | Local | Native |
+| X11-windowed EGL (`--egl-x11`, P25) | Local display, GLES2 in a window | Local | Native |
 | Xvfb + VNC | Remote access, cross-platform | None | VNC client |
 | Xvfb + VNC + Audio | Remote with sound | HTTP stream | VNC + VLC |
 | Native RDP | Windows users, better compression | RDP audio | mstsc.exe, xfreerdp |

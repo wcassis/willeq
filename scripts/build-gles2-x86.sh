@@ -143,8 +143,14 @@ fi
 # ------------------------------------------------------------------
 # Configure + build the second build tree (build-gles2/), EQT_GLES2=ON,
 # linking against the local patched Irrlicht instead of any system copy.
-# The default build/ tree (desktop GL, EQT_GLES2=OFF) is untouched by this
-# script.
+# There is no other kind of Irrlicht to link against any more (P30, desktop-GL
+# system libirrlicht-dev/X11-GLX was removed) -- `<slot>/build` (the tree
+# EXECUTOR_PROTOCOL.md's verification bar builds) is configured the same way
+# (EQT_GLES2=ON, tests on); this script's `build-gles2/` is the smaller
+# tests-off tree the visual gate (scripts/ci/visual_gate.sh) targets. This
+# script's own job is only to (re)bootstrap the local patched Irrlicht static
+# lib both trees link against (third_party/irrlicht-gles2-x86/), not to
+# distinguish a "GLES2 tree" from some other still-supported desktop tree.
 # ------------------------------------------------------------------
 BUILD_DIR="$PROJECT_DIR/build-gles2"
 echo "=== Configuring $BUILD_DIR (EQT_GLES2=ON) ==="

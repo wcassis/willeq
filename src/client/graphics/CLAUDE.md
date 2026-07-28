@@ -35,11 +35,17 @@
 
 ## Renderer Tiers
 
-| Tier | Driver | GPU | Use Case |
-|------|--------|-----|----------|
-| Software | Irrlicht `EDT_BURNINGSVIDEO` | None | Headless, VNC, RDP |
-| Desktop GL | Irrlicht `EDT_OPENGL` (GL 2.1) | Desktop GPU | PC/laptop with X11 |
-| GLES2 | Custom `EDT_OGLES2` (`COpenGLES2Driver`) | Mali 400, mobile | Orange Pi, Android |
+GLES2 (`COpenGLES2Driver`) is the only 3D renderer maintained going forward
+(`docs/decisions.md`, 2026-07-28; `refactor/desktop_gl_elimination_plan.md`).
+Headless/VNC/RDP no longer imply the software driver — they run the same
+GLES2 driver via Mesa's surfaceless EGL (llvmpipe), same as the interactive
+default; only `--egl-x11` (P25) switches to a windowed EGL surface.
+
+| Tier | Driver | GPU | Reachable via | Status |
+|------|--------|-----|----------------|--------|
+| GLES2 | Custom `EDT_OGLES2` (`COpenGLES2Driver`) | Mali 400 (ARM), llvmpipe (x86, surfaceless/windowed EGL) | default (no flag needed) | Live — the only supported renderer |
+| Software | Irrlicht `EDT_BURNINGSVIDEO` | None | `--renderer software`, `--constrained voodoo1/voodoo2` | Explicit opt-in only, unmaintained since the 2026-07-28 decision; P31 found it still functionally reachable (`docker/irrlicht-drm-x86/CIrrDeviceFB.cpp`'s `createDriver()` compiles `EDT_BURNINGSVIDEO` unconditionally) so it was kept rather than deleted (ambiguous-reachability rule) — do not rely on it |
+| Desktop GL (GL 2.1) | Irrlicht `EDT_OPENGL` | Desktop/Lima GPU | `--renderer opengl`, `--constrained tnt`; also the default backend on an ARM build configured `--no-gles2` (`scripts/build-arm-noble.sh --no-gles2`, "Legacy platforms" note below) | On x86 this is a dead end in practice — `_IRR_COMPILE_WITH_OPENGL_` is disabled in the patched GLES2 Irrlicht (`scripts/build-gles2-x86.sh`), so device creation fails and falls back to `EDT_SOFTWARE`. On the ARM `--no-gles2` Lima build it is still the live, compiled driver — P31 kept the code for that reason (a still-buildable configuration, not something this elimination was scoped to break) |
 
 The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
 - `Solid3D` / `AlphaTest3D` — Non-atlas zone geometry, entities, doors (per-vertex lighting + fog)
