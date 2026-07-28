@@ -4,6 +4,41 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+**STANDING CROSS-SESSION POINTER (2026-07-28): the testing campaign
+tracks its work in `refactor/testing_progress.md` (charter:
+`refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
+section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
+
+## Handback items owned by the perf session (Will, 2026-07-28)
+
+- **eq.h EQT_HAS_GRAPHICS misclassification** (TESTING_HANDBACK item 1
+  — supersedes the earlier "GRAPHICS=OFF bitrot" framing below with a
+  SHARPER diagnosis): the five guard blocks in eq.h enclose large
+  amounts of NON-graphics code (GameTick, m_quit_requested,
+  InventoryManager, CommandRegistry, hotbar model, EQ client path, the
+  163-line member block at ~1689-1853). Correct fix = move non-graphics
+  members OUT of the guards (leaving only renderer-facing API), NOT
+  adding matching guards to the .cpp files — note this reverses the
+  direction of the small hotbar-accessor guards added by the 55b101e
+  quick fix. ~33k lines of base-layer source (all 18 eq*.cpp, combat,
+  inventory, spell/skill managers, application) are in no test binary
+  because of this; blocks the testing campaign's highest-risk backlog
+  item (connection flow). Macro-name indirection to confirm:
+  CMake option EQT_GRAPHICS vs macro EQT_HAS_GRAPHICS. Unit-sized;
+  needs judgment on the mixed 163-line block.
+- **Capture fixtures missing** (TESTING_HANDBACK item 2): data/captures/
+  does not exist → ~50 pcap/session-replay tests skip →
+  daybreak_connection.cpp (1195 lines, reliable-UDP core) at 0.0%
+  coverage. Fix = one recorded live-eqemu session (login → world →
+  zone-in → movement/chat): `--record-session data/captures/session.sleq`
+  + a pcap of the same session (WILLEQ_PCAP paths in
+  tests/pcap_test_utils.h). test_session_replay self-creates its
+  golden. Small unit; needs eqemu (honor .eqemu-lock).
+- **Process fix DONE**: .eqemu-lock protocol added to
+  EXECUTOR_PROTOCOL.md (the testing session correctly called out that
+  P25's session ran the server without a lock — the protocol predated
+  the charter; now every executor checks/creates/removes the lock).
+
 ## Desktop-GL elimination — ROADMAP LANDED (P24, 2026-07-28)
 
 - Standing decision (docs/decisions.md 2026-07-28): GLES2 is the only
