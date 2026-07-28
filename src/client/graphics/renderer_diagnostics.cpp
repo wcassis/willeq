@@ -101,18 +101,13 @@ void IrrlichtRenderer::dumpScene() const {
     }
 
     // --- Animated Trees ---
+    // P32: AnimatedTreeManager (CPU-instancing) removed. treeManager_ was
+    // unconditionally constructed, so this always took the "0 total" branch
+    // on GLES2 (animatedTrees_ was populated only via the removed
+    // EDT_BURNINGSVIDEO path) — preserved verbatim as a fixed 0/0/0.
     size_t treeInGraph = 0, treeTotal = 0;
-    if (treeManager_) {
-        const auto& trees = treeManager_->getAnimatedTrees();
-        treeTotal = trees.size();
-        for (const auto& tree : trees) {
-            if (tree.node && tree.node->getParent()) treeInGraph++;
-        }
-        LOG_INFO(MOD_GRAPHICS, "  ANIMATED TREES: {} total, {} in-graph, {} out-of-graph",
-                 treeTotal, treeInGraph, treeTotal - treeInGraph);
-    } else {
-        LOG_INFO(MOD_GRAPHICS, "  ANIMATED TREES: no TreeManager (GPU wind path or disabled)");
-    }
+    LOG_INFO(MOD_GRAPHICS, "  ANIMATED TREES: {} total, {} in-graph, {} out-of-graph",
+             treeTotal, treeInGraph, treeTotal - treeInGraph);
 
     // --- Object Lights ---
     {
@@ -217,12 +212,11 @@ void IrrlichtRenderer::dumpScene() const {
     if (camera_) { otherNodes--; knownNodes.insert(camera_); }
     if (sunLight_) { otherNodes--; knownNodes.insert(sunLight_); }
     if (playerLightNode_) { otherNodes--; knownNodes.insert(playerLightNode_); }
-    // Subtract animated tree nodes that are in the scene graph
-    if (treeManager_) {
-        for (const auto& tree : treeManager_->getAnimatedTrees()) {
-            if (tree.node && tree.node->getParent()) knownNodes.insert(tree.node);
-        }
-    }
+    // P32: the animated-tree scene-node loop was removed along with
+    // AnimatedTreeManager — animatedTrees_ (and this loop) was always empty
+    // on GLES2, so it never inserted anything into knownNodes. treeInGraph
+    // (always 0, see above) is kept for this subtraction's exact prior
+    // arithmetic (a no-op).
     otherNodes -= static_cast<int>(treeInGraph);
     LOG_INFO(MOD_GRAPHICS, "  OTHER: camera={}, sunLight={}, playerLight={}, unaccounted={}",
              camera_ != nullptr, sunLight_ != nullptr, playerLightNode_ != nullptr, otherNodes);

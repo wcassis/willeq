@@ -252,3 +252,28 @@ running the resulting binary's `--help`.
   voodoo1/voodoo2/tnt etc. stay, but any preset→renderer coupling is
   removed — every preset runs on GLES2.
 - The ARM `--no-gles2` Lima desktop-GL build is retired.
+
+### 2026-07-28 — Phase 4 executed (P32)
+
+Per the scope ruling above, P32 (`refactor/P32_phase4_final.md`) executed
+Phase 4 in full: `--renderer` is gles2-only (removed values fail CLI parsing
+fast); `RenderingBackend::Software`/`::OpenGL` and every call site deleted
+(`EDT_BURNINGSVIDEO`/`EDT_OPENGL` client branches, the `EDT_SOFTWARE` device-
+creation retry fallback); constrained presets decoupled from renderer
+selection (voodoo1/voodoo2/tnt keep their budgets/features, no longer set
+`renderingBackend`); `AnimatedTreeManager` (the CPU-instancing wrapper)
+deleted — its live GLES2 consumers (tree classification, wind config,
+weather multiplier) now use `TreeWindController`/`TreeIdentifier` directly
+(both were already separate TUs; `AnimatedTreeManager` was just a facade
+over them plus dead CPU-instancing machinery); the ARM `--no-gles2` Lima
+build retired (`scripts/build-arm-noble.sh` flag removed, CMakeLists.txt's
+"Desktop GL mode via Lima" `ELSE()` branch removed). The desktop-GL
+elimination (`refactor/desktop_gl_elimination_plan.md`) is now COMPLETE.
+See `refactor/P32_phase4_final.md`'s Review for full verification evidence,
+the extraction's consumer-by-consumer mapping, and one notable finding
+preserved (not fixed): `TreeWindController::update()` — the only thing that
+advances wind time/weather-multiplier transition — was already unreachable
+on the live GLES2 path before this unit (gated on a CPU-instancing tree
+count that only the deleted software path ever populated), so the wind
+weather multiplier has always been frozen at 1.0 in practice; this unit
+preserves that exact behavior rather than silently "fixing" it.

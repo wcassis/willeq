@@ -313,11 +313,13 @@ void IrrlichtRenderer::swapZoneMeshMaterials() {
                                                 zoneShader_->getActiveAlphaTest(),
                                                 zoneShader_->getActiveAlphaTestRGBA());
     }
-    if (treeManager_ && zoneShader_->isAvailable()) {
-        treeManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                             zoneShader_->getActiveAlphaTest(),
-                                             zoneShader_->getActiveAlphaTestRGBA());
-    }
+    // P32: AnimatedTreeManager::setShaderMaterialTypes() removed along with
+    // the class — it fed shaderMaterialSolid_/AlphaTest_/AlphaTestRGBA_
+    // members used only by createAnimatedTree() (CPU-instancing, dead on
+    // GLES2; reachable only via the removed EDT_BURNINGSVIDEO branch). Tree
+    // wind material types are set directly on mesh/node materials in the
+    // Step 11 fixup pass (renderer_zone_load.cpp) and renderer_zone_stream.cpp
+    // instead, which this debug shader-swap path does not touch.
 }
 
 void IrrlichtRenderer::swapToDebugShader(irr::s32 debugMat) {

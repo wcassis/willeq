@@ -4,32 +4,44 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
+
+- `TreeWindController::update()` — the only code advancing wind time
+  and the weather-multiplier transition — was ALREADY unreachable on
+  the live GLES2 path before P32 (gated on a CPU-instancing tree count
+  only the deleted software path populated). The weather multiplier
+  has always been effectively frozen at 1.0. P32 preserved that exact
+  behavior. RULED by Will 2026-07-28: "trees are supposed to move.
+  the only time when they should not animate is if the tree wind
+  animation setting is disabled" → P33 dispatched: wire
+  TreeWindController::update() into the frame loop, gated on the wind
+  setting; goldens/gate stay deterministic (wind pinned in the
+  benchmark path); live sway evidence for Will's bless.
+
 **STANDING CROSS-SESSION POINTER (2026-07-28): the testing campaign
 tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
 section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
-## Desktop-GL elimination — Phase 4 BLOCKED on product decision (P31, 2026-07-28)
+## Desktop-GL elimination — COMPLETE (P32, 2026-07-28)
 
-- P31 executed Phase 5 (doc sweep) + Dockerfile GLES2 update (merged
-  `d0051a3`) but CORRECTLY REFUSED all three Phase-4 deletions: the
-  roadmap's "dead code" claims failed reachability audit. Reality:
-  (a) `--renderer software` / `--constrained voodoo1|voodoo2` reach
-  EDT_BURNINGSVIDEO today (CLI override wins, no safety net);
-  (b) AnimatedTreeManager is unconditionally constructed and its
-  wind-controller/classification serve the LIVE GLES2 wind path (only
-  the CPU-instancing branch is BURNINGSVIDEO-gated) — deletion is a
-  refactor (extract wind controller), not a deletion;
-  (c) EDT_OPENGL is the live driver of the still-buildable ARM
-  `--no-gles2` Lima build. Evidence in decisions.md 2026-07-28 + P31
-  Review. **WILL'S DECISION NEEDED before Phase 4 can proceed**:
-  retire `--renderer software|opengl`, the voodoo/tnt constrained
-  presets, and the ARM `--no-gles2` Lima build? If yes → Phase 4
-  becomes: remove those entry points, extract the wind controller out
-  of AnimatedTreeManager, then delete.
-- NEW BASELINES (testing session's suites landing): GLES2 tree
-  1361/1362, headless tree 939/940 (sole failure = ALSA exception in
-  both). Executor protocol baseline note should track ~136x, not 1235.
+- P31 identified Phase 4 as blocked on a product decision (entry points
+  had to close before the deletions were provably safe). Will's
+  2026-07-28 scope-ruling addendum (`docs/decisions.md`) resolved it:
+  `--renderer` limited to `gles2`, constrained presets made
+  renderer-independent, ARM `--no-gles2` Lima build retired. P32
+  (`refactor/P32_phase4_final.md`) executed exactly that sequence —
+  entry points removed first, then `RenderingBackend::Software`/
+  `::OpenGL` + `EDT_BURNINGSVIDEO`/`EDT_OPENGL` call sites deleted,
+  `AnimatedTreeManager` deleted (its two live consumers extracted onto
+  the pre-existing `TreeWindController`/`TreeIdentifier` TUs), and the
+  ARM Lima build retired. The desktop-GL elimination roadmap
+  (`refactor/desktop_gl_elimination_plan.md`) is now COMPLETE — see its
+  Phase 4 entry and `refactor/P32_phase4_final.md`'s Review for full
+  evidence.
+- NEW BASELINES (P32): GLES2 tree 1361/1362, headless tree 939/940
+  (sole failure = ALSA exception in both). Executor protocol baseline
+  note should track ~136x, not 1235.
 - Root `.dockerignore` added (P31) — docker builds no longer copy
   ~12GB of local build trees.
 

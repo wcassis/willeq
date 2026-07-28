@@ -79,7 +79,9 @@ TEST_F(ConstrainedRendererConfigTest, PresetName_OrangePi) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo1);
 
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
+    // P32: presets are renderer-independent (budgets/features only) —
+    // GLES2 is the only backend, regardless of preset.
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_EQ(config.framebufferMemoryBytes, 2 * 1024 * 1024);  // 2MB
     EXPECT_EQ(config.textureMemoryBytes, 2 * 1024 * 1024);      // 2MB
     EXPECT_EQ(config.maxTextureDimension, 64);  // Very constrained - fits ~128 textures
@@ -89,7 +91,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo2);
 
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_EQ(config.framebufferMemoryBytes, 4 * 1024 * 1024);  // 4MB
     EXPECT_EQ(config.textureMemoryBytes, 8 * 1024 * 1024);      // 8MB
     EXPECT_EQ(config.maxTextureDimension, 128);  // Fits ~128 textures in 8MB
@@ -99,7 +101,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
 
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_EQ(config.framebufferMemoryBytes, 8 * 1024 * 1024);  // 8MB
     EXPECT_EQ(config.textureMemoryBytes, 16 * 1024 * 1024);     // 16MB
     EXPECT_EQ(config.maxTextureDimension, 512);
@@ -110,11 +112,8 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
-#ifdef EQT_HAS_GLES2
+    // P32: GLES2 is the only backend now, no #ifdef needed.
     EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
-#else
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
-#endif
     EXPECT_TRUE(config.useDRM);
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
     EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
@@ -574,7 +573,12 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
     std::remove(testJsonPath.c_str());
 }
 
-TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackend) {
+// P32: RenderingBackend is GLES2-only now (docs/decisions.md 2026-07-28
+// addendum) — the "renderingBackend"/"useGLES2" JSON preset keys no longer
+// change anything (accepted for backward file-compat, ignored/warned).
+// This test now covers that ignoring behavior, plus that other overrides
+// in the same preset still apply normally.
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackendKeyIgnored) {
     const std::string testJsonPath = "/tmp/test_constrained_presets_rb.json";
     {
         std::ofstream f(testJsonPath);
@@ -591,14 +595,13 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackend) {
     }
 
     ConstrainedRendererConfig config;
-    config.renderingBackend = RenderingBackend::Software;
     config.fog = true;
     config.playerLight = true;
     config.frameTimingEnabled = false;
 
     bool applied = config.loadJsonOverrides("custom", testJsonPath);
     EXPECT_TRUE(applied);
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::OpenGL);
+    EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_FALSE(config.fog);
     EXPECT_FALSE(config.playerLight);
     EXPECT_TRUE(config.frameTimingEnabled);
@@ -606,7 +609,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackend) {
     std::remove(testJsonPath.c_str());
 }
 
-TEST_F(ConstrainedRendererConfigTest, JsonOverride_BackwardCompat_UseGLES2) {
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_UseGLES2KeyIgnored) {
     const std::string testJsonPath = "/tmp/test_constrained_presets_bc.json";
     {
         std::ofstream f(testJsonPath);
@@ -620,36 +623,10 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_BackwardCompat_UseGLES2) {
     }
 
     ConstrainedRendererConfig config;
-    config.renderingBackend = RenderingBackend::Software;
 
     bool applied = config.loadJsonOverrides("custom", testJsonPath);
     EXPECT_TRUE(applied);
     EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
-
-    std::remove(testJsonPath.c_str());
-}
-
-TEST_F(ConstrainedRendererConfigTest, JsonOverride_ExplicitBackendOverridesUseGLES2) {
-    // When both renderingBackend and useGLES2 are present, renderingBackend wins
-    const std::string testJsonPath = "/tmp/test_constrained_presets_eo.json";
-    {
-        std::ofstream f(testJsonPath);
-        f << R"({
-            "presets": {
-                "custom": {
-                    "renderingBackend": "software",
-                    "useGLES2": true
-                }
-            }
-        })";
-    }
-
-    ConstrainedRendererConfig config;
-    config.renderingBackend = RenderingBackend::OpenGL;
-
-    bool applied = config.loadJsonOverrides("custom", testJsonPath);
-    EXPECT_TRUE(applied);
-    EXPECT_EQ(config.renderingBackend, RenderingBackend::Software);
 
     std::remove(testJsonPath.c_str());
 }

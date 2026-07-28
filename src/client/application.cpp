@@ -263,9 +263,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     modeConfig.eqClientPath = config.eqClientPath;
     modeConfig.regionMapsPath = config.regionMapsPath;
 
-    // Game mode created with Software initially; updated to GPU after constrained config resolves
+    // Game mode created with Software initially; updated to GPU after constrained config resolves.
+    // P32: --renderer only ever requests gles2 now (software/opengl removed).
     auto rendererType = mode::GraphicalRendererType::IrrlichtSoftware;
-    if (config.rendererBackend == 1 || config.rendererBackend == 2) {
+    if (config.rendererGles2Requested) {
         rendererType = mode::GraphicalRendererType::IrrlichtGPU;
     }
     LOG_INFO(MOD_MAIN, "Creating game mode with renderer type: {}",
@@ -349,9 +350,9 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
             }
 
-            // CLI override: --renderer always wins over preset
-            if (config.rendererBackend >= 0) {
-                builtConfig.renderingBackend = static_cast<EQT::Graphics::RenderingBackend>(config.rendererBackend);
+            // CLI override: --renderer gles2 is a no-op (GLES2 is the only
+            // backend, P32) — kept for explicit-confirmation logging only.
+            if (config.rendererGles2Requested) {
                 LOG_DEBUG(MOD_GRAPHICS, "CLI override: renderer backend -> {}",
                           EQT::Graphics::backendName(builtConfig.renderingBackend));
             }
@@ -398,13 +399,12 @@ bool Application::initialize(const ApplicationConfig& config) {
                           builtConfig.deferredAssetLoading ? "automatic" : "manual");
             }
 
-            // Runtime validation: GLES2 backend requires EQT_HAS_GLES2
-#ifndef EQT_HAS_GLES2
-            if (builtConfig.renderingBackend == EQT::Graphics::RenderingBackend::GLES2) {
-                LOG_WARN(MOD_GRAPHICS, "GLES2 backend requested but EQT_HAS_GLES2 not defined; falling back to OpenGL");
-                builtConfig.renderingBackend = EQT::Graphics::RenderingBackend::OpenGL;
-            }
-#endif
+            // P32: the EQT_HAS_GLES2-not-defined fallback (GLES2 -> OpenGL)
+            // was removed along with RenderingBackend::OpenGL — a build with
+            // EQT_HAS_GRAPHICS but not EQT_HAS_GLES2 is no longer a
+            // supported configuration (CMakeLists.txt's mandatory-Irrlicht
+            // gate requires EQT_DRM or EQT_GLES2; the ARM EQT_DRM-only Lima
+            // path was retired this same unit).
 
             // Load debug overrides (skip* flags from config/debug.json)
             LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
@@ -445,10 +445,10 @@ bool Application::initialize(const ApplicationConfig& config) {
 
             m_eqClient->SetConstrainedConfig(builtConfig);
 
-            // Update mode if preset resolved to GPU backend and CLI didn't override
-            if (builtConfig.renderingBackend != EQT::Graphics::RenderingBackend::Software) {
-                m_config.rendererBackend = static_cast<int>(builtConfig.renderingBackend);
-            }
+            // P32: builtConfig.renderingBackend is always GLES2 now (the only
+            // value); this bookkeeping write is unconditional (was previously
+            // gated on "!= Software", which is now always true).
+            m_config.rendererGles2Requested = true;
 
             LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
                      EQT::Graphics::backendName(builtConfig.renderingBackend),
@@ -1667,14 +1667,18 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
         } else if (arg == "--renderer") {
             if (i + 1 < argc) {
                 std::string backend = argv[++i];
-                if (backend == "software") {
-                    config.rendererBackend = 0;
-                } else if (backend == "opengl") {
-                    config.rendererBackend = 1;
-                } else if (backend == "gles2") {
-                    config.rendererBackend = 2;
+                if (backend == "gles2") {
+                    config.rendererGles2Requested = true;
+                } else if (backend == "software" || backend == "opengl") {
+                    std::cerr << "Renderer '" << backend << "' was removed: only gles2 is "
+                                 "supported; software/opengl were removed — "
+                                 "docs/decisions.md 2026-07-28\n";
+                    config.parseError = true;
                 } else {
-                    std::cerr << "Unknown renderer: " << backend << " (use: software, opengl, gles2)\n";
+                    std::cerr << "Unknown renderer: " << backend << " (use: gles2) — "
+                                 "only gles2 is supported; software/opengl were removed — "
+                                 "docs/decisions.md 2026-07-28\n";
+                    config.parseError = true;
                 }
             }
         } else if (arg == "--constrained") {
@@ -1763,7 +1767,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
-            std::cout << "  --renderer <backend>     Rendering backend: software, opengl, gles2\n";
+            std::cout << "  --renderer <backend>     Rendering backend: gles2 (only option; software/opengl were removed, docs/decisions.md 2026-07-28)\n";
             std::cout << "  --constrained <preset|NxNxN>  Rendering preset (default: orangepi; voodoo1, voodoo2, tnt, orangepi, or 128x32x4)\n";
             std::cout << "  --eqe1-path <dir>        Directory containing .eqe1 ETC1 texture files\n";
             std::cout << "  --composite-entities <dir>  Directory containing composite entity texture sheets\n";
