@@ -273,8 +273,26 @@ std::string EQ::Net::Packet::GetCString(size_t offset) const
 		throw std::out_of_range("Packet read out of range.");
 	}
 
-	char *str = ((char*)Data() + offset);
-	return std::string(str);
+	// T08: bound the terminator scan to the packet. This previously built a
+	// std::string straight from the raw pointer, which reads to the first
+	// NUL *wherever that happens to be* — past the end of the buffer when a
+	// packet's string field is not NUL-terminated within it. That is a real
+	// out-of-bounds read, unlike the bounds-checked GetUInt* accessors.
+	//
+	// When no terminator is found before the end of the packet, the end of
+	// the packet is treated as one. That keeps malformed input safe and
+	// bounded rather than throwing, which matters because this is reached
+	// from the network receive path where an uncaught exception kills the
+	// client. Behavior is unchanged for any string that IS terminated
+	// inside the packet, which is every well-formed case.
+	const char* base = static_cast<const char*>(Data()) + offset;
+	const size_t available = Length() - offset;
+	const void* terminator = memchr(base, '\0', available);
+	const size_t length = terminator
+		? static_cast<size_t>(static_cast<const char*>(terminator) - base)
+		: available;
+
+	return std::string(base, length);
 }
 
 static char ToSafePrint(unsigned char in) {
