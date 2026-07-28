@@ -345,8 +345,20 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(test_graphics PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(test_graphics EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(test_graphics X11 Xxf86vm GL)
+    ENDIF()
     GTEST_DISCOVER_TESTS(test_graphics)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
@@ -391,8 +403,20 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(test_asset_loading PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(test_asset_loading EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(test_asset_loading X11 Xxf86vm GL)
+    ENDIF()
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
 
@@ -417,8 +441,20 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
     )
+    # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
+    IF(EQT_GLES2)
+        TARGET_SOURCES(test_door_loading PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
     TARGET_INCLUDE_DIRECTORIES(test_door_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES})
+    IF(EQT_DRM OR EQT_GLES2)
+        # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
+        # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
+        # static GLES2-patched Irrlicht archive doesn't bring in transitively.
+        TARGET_LINK_LIBRARIES(test_door_loading EGL GLESv2 drm gbm)
+    ELSEIF(NOT APPLE)
+        TARGET_LINK_LIBRARIES(test_door_loading X11 Xxf86vm GL)
+    ENDIF()
     GTEST_DISCOVER_TESTS(test_door_loading)
 ENDIF()
 

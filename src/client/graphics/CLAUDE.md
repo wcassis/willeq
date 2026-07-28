@@ -153,7 +153,6 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - `zone_atlas_builder` - Offline ETC1-compressed texture atlas generator for GLES2 (`--zone <name>` or `--all`)
 - `s3d_dump` / `s3d_extract` - S3D archive analysis and extraction
 - `wld_dump` - WLD file content analyzer
-- `generate_textures` - Offline procedural texture generator
 - GPU capability tools: `gpu_texture_formats`, `gles2_etc1_benchmark`, `egl_image_sharing_test`
 - Shader benchmarks: `gles2_shader_perpixel_benchmark` (FS optimization variants), `gles2_program_switch_benchmark` (per-light-count programs, switching cost, program count pressure)
 
