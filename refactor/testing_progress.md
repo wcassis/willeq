@@ -195,6 +195,47 @@ highest-risk gap but is currently untestable in isolation.
    plus `refactor/TESTING_HANDBACK.md`. No `deferred.md` pointer was
    added (outside testing territory).
 
+## Both handback items RESOLVED by the perf session (2026-07-28)
+
+Landed while T02 was executing — fable moved 13 commits under it.
+
+- **Finding 1 → DONE (P28, merged `e9d808f`)**: `eq.h`
+  `EQT_HAS_GRAPHICS` guards declassified, 351 errors → 0.
+  `EQT_GRAPHICS=OFF` compiles. **Backlog item 4 (login/world/zone
+  connection flow) is now UNBLOCKED** — it was the only thing gating it.
+- **Finding 2 → DONE (P29, merged `8fdcd24`)**: capture fixtures
+  recorded and live at `/mnt/projects/fable/captures/` (NFS), reached
+  via a `data/captures` symlink — **each worktree must create its own**
+  (`ln -s /mnt/projects/fable/captures <worktree>/data/captures`); t1
+  has one as of T02. session.sleq (2,943 records) + session.pcap (5,603
+  pkts) + self-created golden. 10 tests skip→PASS.
+- Also landed: P30 (desktop-GL CMake removed; the GLES2 config is now
+  the ONLY tree) and a charter amendment rewriting the merge bar from
+  "both trees green" to "the GLES2-config full suite green". P27 fixed
+  the `RaceModelAnimationHeadlessTest` segfault that KICKOFF listed as
+  a known GLES2-tree failure — it is no longer an expected failure.
+- Process: the `.eqemu-lock` protocol was added to
+  `EXECUTOR_PROTOCOL.md` as a direct result of this session flagging
+  that P25's run used the server without a lock.
+
+## Incoming — routed TO the testing session by the perf session
+
+- **Hardcoded zone port 7000** (`refactor/deferred.md`, from P29):
+  `tests/pcap_test_utils.h` plus three test files hardcode zone port
+  7000, but the akk-stack image auto-boots ~15 static zones claiming
+  7000–7011, so real captures land on 7012+ (befallen 7012, qeynos2
+  7026 in the current fixture). One root cause behind **4 remaining
+  FAILs + 8 skips**. Fix = `WILLEQ_ZONE_PORT` override or port
+  autodiscovery from the pcap (SessionRequest/Response scan). Every
+  future capture against this image hits the same thing. `tests/`
+  territory — ours. Proposed as **T03a**, ahead of the action layer:
+  it is small, it unblocks real protocol coverage, and it is the
+  difference between the new fixtures paying off or not.
+
+## Needs seam
+
+Nothing yet — no source modification has been attempted.
+
 ## Needs seam
 
 Nothing yet — no source modification has been attempted.
@@ -226,29 +267,34 @@ Full detail: `refactor/T02_state_event_bus.md` Review section.
 
 Full detail: **`refactor/TESTING_HANDBACK.md`**.
 
-- Finding 1 (`EQT_GRAPHICS=OFF`, 351 errors, 12 TUs) — assigned to the
-  perf session by Will 2026-07-28. Root cause is a *misclassification*,
-  not missing guards: `eq.h` has five `#ifdef EQT_HAS_GRAPHICS` blocks
-  that enclose non-graphics members (`GameTick`, `m_quit_requested`,
-  `m_inventory_manager`, `m_hotbar_model`, `m_command_registry`, the
-  EQ client path, and all command registration). Blocks backlog item 4.
-- Finding 2 (no `data/captures/`, `daybreak_connection.cpp` at 0.0%) —
-  assigned to the perf session by Will 2026-07-28; needs live eqemu.
+- ~~Finding 1 (`EQT_GRAPHICS=OFF`)~~ — **CLOSED, fixed by P28**.
+- ~~Finding 2 (no capture fixtures)~~ — **CLOSED, fixed by P29**.
 - `src/client/bridge/irrlicht_bridge.cpp` (876 lines) is in no test
   binary; perf territory, noted not touched.
-- **T02 finding**: the GLES2-x86 tree (`third_party/irrlicht-gles2-x86`,
-  built via `scripts/build-gles2-x86.sh`) fails to link `test_graphics`,
-  `test_asset_loading`, `test_door_loading`, and five standalone tools
-  (`zone_line_editor`, `model_viewer`, `s3d_dump`,
-  `generate_surface_map`, `entity_composite_builder`) — undefined
-  references to Xlib symbols (`XOpenDisplay`, `XCreateWindow`, etc.)
-  from `CIrrDeviceFB_X11.cpp` in the patched archive; the link line for
-  these particular targets doesn't pull in `-lX11`. Only surfaces on a
-  full unscoped `cmake --build build-gles2 -j24` — the build script
-  itself avoids it by building only `willeq` + `gles2_zone_benchmark`.
-  Discovered incidentally while verifying T02's GLES2 acceptance
-  criterion; not fixed (graphics/Irrlicht territory, off-limits to the
-  testing session).
+- ~~**T02 finding**: GLES2-x86 tree X11 link failures~~ — **CLOSED.**
+  The executor reported `test_graphics`, `test_asset_loading`,
+  `test_door_loading` and five tools failing to link with undefined
+  Xlib references. On re-verification by the orchestrator against the
+  current fable tip, a full unscoped `cmake --build build -j24` of the
+  GLES2 config completes with **0 errors** and all targets link. P30
+  removed the desktop-GL/X11 paths that caused it. Recorded as closed
+  rather than deleted so the perf session doesn't chase a stale report.
+- **NEW (orchestrator, T02 merge verification)**: the canonical
+  configure command in the root `CLAUDE.md` "Build Commands" does not
+  work as written. It documents
+  `-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86` (relative),
+  but `CMakeLists.txt:94` tests that path with `EXISTS`, which CMake
+  only defines for absolute paths — so configure fails the
+  patched-Irrlicht check and dies with the "requires a locally-built
+  patched GLES2 Irrlicht" FATAL_ERROR even when the library is present
+  and correctly built. An absolute
+  `-DEQT_GLES2_IRRLICHT_DIR=<abs>/third_party/irrlicht-gles2-x86`
+  configures fine. The T02 executor hit this independently and worked
+  around it. Since P30 made this the only tree and this is the
+  documented entry point for every future checkout, it is worth a
+  one-line fix (make the path absolute in `CMakeLists.txt`, or correct
+  the doc). Root `CMakeLists.txt` + `CLAUDE.md` are outside testing
+  territory, hence handed over rather than fixed.
 - Coordination gap: nothing in the perf session's docs points at this
   tracker, so the handoff channel is write-only on the testing side.
   See the closing section of `TESTING_HANDBACK.md`.
