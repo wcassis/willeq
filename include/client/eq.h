@@ -696,6 +696,11 @@ public:
 	// Any handler-triggered sends no-op safely (see m_replay_suppressed_sends).
 	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size);
 
+	// T05: same replay/test seam as ReplayZonePacket, for the login and
+	// world opcode switches.
+	void ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t size);
+	void ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t size);
+
 	// Count of zone packet sends suppressed because m_zone_connection was
 	// null (replay/test mode). Only incremented by the Zone packet senders
 	// reachable from S->C handlers (see ReplayZonePacket).
@@ -1144,6 +1149,8 @@ private:
 	void LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void LoginOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
+	// Opcode switch shared by LoginOnPacketRecv and the ReplayLoginPacket test seam.
+	void DispatchLoginPacket(const EQ::Net::Packet &p);
 
 	void LoginSendSessionReady();
 	void LoginSendLogin();
@@ -1166,6 +1173,8 @@ private:
 	void WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void WorldOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
+	// Opcode switch shared by WorldOnPacketRecv and the ReplayWorldPacket test seam.
+	void DispatchWorldPacket(const EQ::Net::Packet &p);
 
 	void WorldSendSessionReady();
 	void WorldSendClientAuth();

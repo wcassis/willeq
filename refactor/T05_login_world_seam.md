@@ -181,13 +181,209 @@ rather than silently omitting it.
 
 ## Review
 
-Per the protocol, and additionally:
-- Quote the final `LoginOnPacketRecv`/`WorldOnPacketRecv` bodies so the
-  recorder placement can be checked without reading the whole diff.
-- List every guarded call site.
-- State explicitly that the replay golden matched.
-- Confirm the ARM build result.
+Executed 2026-07-28 on slot t1, branch `task/T05-login-world-seam` off
+fable @ 67beab7.
 
-This unit changes shipped client behavior on the receive path. If any
-part of it is uncertain, say so plainly — I will re-verify the diff
-myself either way.
+### Part A — login/world replay seam
+
+**A1/A3. Dispatcher extraction + public seam.** `LoginOnPacketRecv` and
+`WorldOnPacketRecv` (`src/client/eq_login_world.cpp`) now call
+`DispatchLoginPacket`/`DispatchWorldPacket` instead of switching directly.
+Final bodies:
+
+```cpp
+void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
+{
+	auto opcode = p.GetUInt16(0);
+	DumpPacket("S->C", opcode, p);
+
+	// T05: record real network traffic only (replayed packets enter via
+	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
+	// mirrors R01's rule for zone (see eq.cpp:725).
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
+			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
+
+	DispatchLoginPacket(p);
+}
+```
+
+```cpp
+void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
+{
+	LOG_TRACE(MOD_WORLD, "WorldOnPacketRecv called");
+	auto opcode = p.GetUInt16(0);
+	DumpPacket("S->C", opcode, p);
+
+	// T05: record real network traffic only (replayed packets enter via
+	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
+	// mirrors R01's rule for zone (see eq.cpp:725).
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
+			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
+
+	DispatchWorldPacket(p);
+}
+```
+
+The session-recorder call is confirmed still inside `*OnPacketRecv`, above
+the `Dispatch*Packet(p)` call, in both bodies — it does NOT appear inside
+`DispatchLoginPacket`/`DispatchWorldPacket`. Replayed packets (which enter
+via `Replay*Packet -> Dispatch*Packet`, never touching `*OnPacketRecv`)
+cannot be re-recorded.
+
+`ReplayLoginPacket`/`ReplayWorldPacket` are public in `include/client/eq.h`,
+declared immediately after `ReplayZonePacket` with a doc comment pointing
+back at it, and implemented in `eq_login_world.cpp` as exact structural
+mirrors of `ReplayZonePacket` (2-byte opcode prefix + payload into a
+`DynamicPacket`, then call the dispatcher).
+
+**A2. Guarded call sites.** Found and guarded exactly the count the plan
+predicted: **11 sender functions, 12 `QueuePacket` call sites**, all using
+the existing `m_replay_suppressed_sends` counter (no second counter added):
+
+| # | Function | Connection | Notes |
+|---|----------|-----------|-------|
+| 1 | `LoginSendSessionReady` | `m_login_connection` | |
+| 2 | `LoginSendLogin` | `m_login_connection` | |
+| 3 | `LoginSendServerRequest` | `m_login_connection` | |
+| 4 | `LoginSendPlayRequest` | `m_login_connection` | |
+| 5 | `WorldSendClientAuth` | `m_world_connection` | |
+| 6 | `WorldSendEnterWorld` | `m_world_connection` | |
+| 7 | `WorldSendApproveWorld` | `m_world_connection` | |
+| 8 | `WorldSendWorldClientCRC` (CRC1) | `m_world_connection` | 2 calls in this one function |
+| 9 | `WorldSendWorldClientCRC` (CRC2) | `m_world_connection` | (counted above) |
+| 10 | `WorldSendWorldClientReady` | `m_world_connection` | |
+| 11 | `WorldSendWorldComplete` | `m_world_connection` | |
+| 12 | `WorldProcessExpansionInfo` (inline ack packet) | `m_world_connection` | not a `*Send*`-named function, but an unguarded inline `QueuePacket` |
+
+Every site follows the exact zone pattern (`if (m_*_connection) { ...
+QueuePacket(p); } else { ++m_replay_suppressed_sends; }`). Verified with
+`grep -n QueuePacket src/client/eq_login_world.cpp`: all 12 occurrences are
+now inside an `if (m_*_connection)` guard.
+
+**A4. Smoke test.** New `tests/test_login_world_seam.cpp`
+(`LoginWorldReplaySeam` suite, 5 tests, registered in `tests/CMakeLists.txt`
+next to `test_zone_connection_flow`):
+- `LoginChatMessage_TriggersLoginSendLogin_SuppressedSend` — replays
+  `HC_OP_ChatMessage` on the login seam, asserts `LoadingPhase` becomes
+  `LOGIN_AUTHENTICATING` (observable state change) and
+  `GetReplaySuppressedSendCount()` increments by 1 (guarded send).
+- `LoginUnknownOpcode_IgnoredSafely` — unknown login opcode, no throw, no
+  state/counter change.
+- `WorldSendCharInfo_TriggersCharacterSelectPhase` — replays
+  `HC_OP_SendCharInfo` with an empty payload, asserts `LoadingPhase` becomes
+  `WORLD_CHARACTER_SELECT` (set unconditionally before
+  `WorldProcessCharacterSelect`'s own length guard).
+- `WorldChatMessage_TriggersSuppressedSend` — replays `HC_OP_ChatMessage` on
+  the world seam, asserts the suppressed-send counter increments by 1.
+- `WorldUnknownOpcode_IgnoredSafely` — unknown world opcode, no throw, no
+  state/counter change.
+
+All 5 pass. No thorough login/world flow suite was added, per A4's explicit
+scope limit.
+
+### Part B — truncated-packet guards
+
+**B1.** `ZoneProcessPlayerProfile` (`src/client/eq.cpp:1999`) now has
+`return;` immediately after the existing `LOG_WARN` for a too-small
+PlayerProfile packet, before any field reads.
+
+**B2.** `ZoneProcessTimeOfDay` (`src/client/eq_entities.cpp:484`) gained a
+new guard at the top: `if (p.Length() < 8) { LOG_WARN(...); return; }`
+before any `GetUInt8`/`GetUInt16` reads. I did not re-derive the
+19588/8-byte thresholds — I used the plan's verified table as given (the
+plan states Will confirmed these against the real capture); no discrepancy
+was found in my own testing (see B3 below — the previously-skipped
+`ObservableZoneState.FullHandshake_ProducesCoherentState` test, which uses
+a full-size PlayerProfile payload, still passes).
+
+**B3.** The two `BUG_`-prefixed tests in `tests/test_zone_connection_flow.cpp`
+are renamed and flipped:
+- `BUG_TimeOfDay_ZeroLengthPayload_ThrowsOutOfRange` →
+  `TimeOfDay_ZeroLengthPayload_ReturnsSafely` (`EXPECT_NO_THROW`).
+- `BUG_PlayerProfile_TruncatedPayload_ThrowsOutOfRange` →
+  `PlayerProfile_TruncatedPayload_ReturnsSafely` (`EXPECT_NO_THROW` on both
+  the empty and 10-byte payloads, plus `EXPECT_EQ(eq.GetEntities().size(),
+  0u)` to confirm the truncated profile produced no observable state
+  change).
+
+Both pass. A stale comment elsewhere in the same file (pointing at "the
+BUG_PlayerProfile test above") was updated to the new test name — this is
+the one incidental touch outside the enumerated Part A/B hunks, done
+because it directly references code this unit renamed; no other
+opportunistic changes were made.
+
+### Verification (per acceptance criteria)
+
+1. **PASS** — both dispatchers extracted; session-recorder calls verified
+   still in `*OnPacketRecv`, above the dispatch call (bodies quoted above).
+2. **PASS** — 12 `QueuePacket` call sites found and guarded, matching the
+   plan's predicted count exactly (table above).
+3. **PASS** — `ReplayLoginPacket`/`ReplayWorldPacket` public in `eq.h`;
+   5-test seam smoke suite passes.
+4. **PASS** — both Part B guards added; both pinned tests flipped and
+   passing.
+5. **PASS — golden matched.** `test_session_replay` (run with
+   `WILLEQ_SESSION_LOG=<slot>/data/captures/session.sleq` so the relative
+   default path resolves regardless of cwd) ran
+   `SessionReplayGolden.MatchesRecordedSessionOrCreatesBaseline` against
+   the pre-existing `session.golden` (not created fresh — the file was
+   already present) and it **passed**, i.e. matched byte-for-byte, not
+   re-blessed. This test only exercises the zone stream
+   (`ReplayZonePacket`), which Part A did not touch structurally (only
+   Login/World got the dispatcher split) — it serves as the
+   behavior-preservation oracle for "nothing else broke," and Part A's
+   login/world extraction is structurally identical to the untouched zone
+   pattern it mirrors.
+6. **PASS, with the documented exceptions.** 3 consecutive full-suite runs
+   (`ctest --test-dir <slot>/build --output-on-failure`,
+   `WILLEQ_SESSION_LOG` set as above):
+   - Run 1: 1382/1383 passed. `AudioManagerTest.PreloadCommonSounds` FAILED
+     (documented host ALSA exception).
+   - Run 2: same — `AudioManagerTest.PreloadCommonSounds` FAILED only.
+   - Run 3: `AudioManagerTest.PreloadCommonSounds` FAILED, **and**
+     `RDPServerFrameTest.UpdateFrameMultipleTimes` SEGFAULTed. This is the
+     known T03b use-after-free in `RDPServer::stop()` — not a flake
+     introduced by this unit (this unit touches no RDP code) — named per
+     instructions, not called clean.
+7. **PASS** — `bash <slot>/scripts/refactor/check_file_sizes.sh fable`
+   produced no FAIL lines (only pre-existing WARNs on unrelated graphics
+   files: `irrlicht_renderer.h/.cpp`, `application.cpp`,
+   `renderer_frame.cpp`, `renderer_zone_load.cpp`). None of
+   `eq.cpp`/`eq_entities.cpp`/`eq_login_world.cpp` were flagged.
+8. **PASS** — `bash <slot>/scripts/build-arm-noble.sh` completed with
+   `=== Success ===` and produced
+   `<slot>/build-arm-noble/bin/willeq` (ELF 32-bit ARM, EABI5, dynamically
+   linked, ~340MB unstripped with debug info).
+
+**Visual gate does not apply** — no rendering change in this unit.
+
+### Deviations from the plan
+
+- Added a new test file `tests/test_login_world_seam.cpp` (registered in
+  `tests/CMakeLists.txt`) rather than folding the smoke test into
+  `test_zone_connection_flow.cpp`, since that file's own header states its
+  scope is "zone stream ONLY." This is a `tests/**`-territory addition, not
+  a source-territory deviation.
+- Updated one stale comment in `tests/test_zone_connection_flow.cpp` that
+  named the old `BUG_PlayerProfile...` test, since it now points at a
+  renamed test. Flagged here per the "no opportunistic changes" rule, even
+  though it's inside `tests/**` (unrestricted territory) rather than the
+  narrower source territory.
+- Did not independently re-verify the 19588/8-byte thresholds against the
+  raw capture bytes (e.g. with a hex dump) beyond running the existing test
+  suite, which exercises both boundary sizes without regression. If Will
+  wants the thresholds independently re-derived from the capture, that is
+  outstanding.
+
+### Confidence note
+
+This changes shipped client behavior on the receive path (Part A
+dispatcher extraction, Part A2 guarded sends, Part B truncated-packet
+returns). I'm confident in the mechanical correctness of the mirroring
+(diffed against the zone template line-by-line) and in the test evidence
+above, but per the unit's own framing, this warrants your independent
+diff review regardless.

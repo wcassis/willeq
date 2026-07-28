@@ -1999,6 +1999,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	if (p.Length() < base + 19588) {  // PlayerProfile_Struct is 19588 bytes
 		LOG_WARN(MOD_MAIN, "PlayerProfile packet too small: {} bytes (expected at least {})",
 			p.Length(), base + 19588);
+		return;
 	}
 	
 	// Basic attributes (offsets from struct)

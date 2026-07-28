@@ -72,10 +72,35 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 	auto opcode = p.GetUInt16(0);
 	DumpPacket("S->C", opcode, p);
 
+	// T05: record real network traffic only (replayed packets enter via
+	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
+	// mirrors R01's rule for zone (see eq.cpp:725).
 	if (m_session_recorder && p.Length() >= 2) {
 		m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
+
+	DispatchLoginPacket(p);
+}
+
+// T05 replay/test seam (mirrors Batch R's ReplayZonePacket): build a
+// synthetic app packet (2-byte opcode prefix + payload, matching
+// session_log.h's on-disk layout) and run it through the same opcode switch
+// LoginOnPacketRecv uses.
+void EverQuest::ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t size)
+{
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + size);
+	p.PutUInt16(0, opcode);
+	if (size > 0 && data != nullptr) {
+		memcpy(static_cast<char*>(p.Data()) + 2, data, size);
+	}
+	DispatchLoginPacket(p);
+}
+
+void EverQuest::DispatchLoginPacket(const EQ::Net::Packet & p)
+{
+	auto opcode = p.GetUInt16(0);
 
 	switch (opcode) {
 	case HC_OP_ChatMessage:
@@ -106,7 +131,11 @@ void EverQuest::LoginSendSessionReady()
 	p.PutUInt32(10, 2048);  // max length
 
 	DumpPacket("C->S", HC_OP_SessionReady, p);
-	m_login_connection->QueuePacket(p);
+	if (m_login_connection) {
+		m_login_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::LoginSendLogin()
@@ -136,7 +165,11 @@ void EverQuest::LoginSendLogin()
 	eqcrypt_block(&buffer[0], buffer_len, (char*)p.Data() + 12, true);
 
 	DumpPacket("C->S", HC_OP_Login, p);
-	m_login_connection->QueuePacket(p);
+	if (m_login_connection) {
+		m_login_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::LoginSendServerRequest()
@@ -149,7 +182,11 @@ void EverQuest::LoginSendServerRequest()
 	p.PutUInt16(10, 0);  // unknown
 
 	DumpPacket("C->S", HC_OP_ServerListRequest, p);
-	m_login_connection->QueuePacket(p);
+	if (m_login_connection) {
+		m_login_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::LoginSendPlayRequest(uint32_t id)
@@ -163,7 +200,11 @@ void EverQuest::LoginSendPlayRequest(uint32_t id)
 	p.PutUInt32(12, id);  // server id
 
 	DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
-	m_login_connection->QueuePacket(p);
+	if (m_login_connection) {
+		m_login_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::LoginProcessLoginResponse(const EQ::Net::Packet & p)
@@ -322,10 +363,35 @@ void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 	auto opcode = p.GetUInt16(0);
 	DumpPacket("S->C", opcode, p);
 
+	// T05: record real network traffic only (replayed packets enter via
+	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
+	// mirrors R01's rule for zone (see eq.cpp:725).
 	if (m_session_recorder && p.Length() >= 2) {
 		m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
+
+	DispatchWorldPacket(p);
+}
+
+// T05 replay/test seam (mirrors Batch R's ReplayZonePacket): build a
+// synthetic app packet (2-byte opcode prefix + payload, matching
+// session_log.h's on-disk layout) and run it through the same opcode switch
+// WorldOnPacketRecv uses.
+void EverQuest::ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t size)
+{
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + size);
+	p.PutUInt16(0, opcode);
+	if (size > 0 && data != nullptr) {
+		memcpy(static_cast<char*>(p.Data()) + 2, data, size);
+	}
+	DispatchWorldPacket(p);
+}
+
+void EverQuest::DispatchWorldPacket(const EQ::Net::Packet & p)
+{
+	auto opcode = p.GetUInt16(0);
 
 	switch (opcode) {
 	case HC_OP_ChatMessage:
@@ -417,7 +483,11 @@ void EverQuest::WorldSendClientAuth()
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
 
 	DumpPacket("C->S", HC_OP_SendLoginInfo, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::WorldSendEnterWorld(const std::string &character)
@@ -442,7 +512,11 @@ void EverQuest::WorldSendEnterWorld(const std::string &character)
 	p.PutUInt32(70, 0);  // unknown
 
 	DumpPacket("C->S", HC_OP_EnterWorld, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 	m_enter_world_sent = true;
 }
 
@@ -505,7 +579,11 @@ void EverQuest::WorldSendApproveWorld()
 	// The rest is character-specific data which we'll leave as zeros for now
 
 	DumpPacket("C->S", HC_OP_ApproveWorld, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::WorldSendWorldClientCRC()
@@ -521,12 +599,20 @@ void EverQuest::WorldSendWorldClientCRC()
 	}
 
 	DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 
 	// Send CRC2
 	p.PutUInt16(0, HC_OP_World_Client_CRC2);
 	DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::WorldSendWorldClientReady()
@@ -537,7 +623,11 @@ void EverQuest::WorldSendWorldClientReady()
 	p.PutUInt16(0, HC_OP_WorldClientReady);
 
 	DumpPacket("C->S", HC_OP_WorldClientReady, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 	m_world_ready = true;
 }
 
@@ -549,7 +639,11 @@ void EverQuest::WorldSendWorldComplete()
 	p.PutUInt16(0, HC_OP_WorldComplete);
 
 	DumpPacket("C->S", HC_OP_WorldComplete, p);
-	m_world_connection->QueuePacket(p);
+	if (m_world_connection) {
+		m_world_connection->QueuePacket(p);
+	} else {
+		++m_replay_suppressed_sends;
+	}
 }
 
 void EverQuest::WorldProcessGuildsList(const EQ::Net::Packet &p)
@@ -594,7 +688,11 @@ void EverQuest::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		ack.PutUInt16(0, HC_OP_AckPacket);
 		ack.PutUInt32(2, 0);  // sequence or something
 		DumpPacket("C->S", HC_OP_AckPacket, ack);
-		m_world_connection->QueuePacket(ack);
+		if (m_world_connection) {
+			m_world_connection->QueuePacket(ack);
+		} else {
+			++m_replay_suppressed_sends;
+		}
 
 		// Then send WorldClientReady
 		WorldSendWorldClientReady();
