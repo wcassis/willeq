@@ -571,16 +571,27 @@ proper fix:
 - renderer_zone_load.cpp: one NPC with a missing item_models.json
   equipment entry ABORTS the whole zone load (FATAL) — should be
   WARN+skip.
-- saveScreenshot()'s safe glReadPixels path compiled out on x86 GLES2
-  dev builds (EQT_HAS_DRM guard); fallback createScreenShot() segfaults
-  nondeterministically in llvmpipe — widen the guard properly.
-- ParticleManager::renderUnified nondeterministic crash
-  (dangling-pointer-shaped race vs SimulationWorker result buffer) —
-  gated on isEnabled() as a workaround; real race needs fixing
-  (compare RDP frame race in this file's history).
-- Even with workarounds, sessions end in crashes rather than clean
-  /camp — x86 llvmpipe client stability needs a pass before it can be
-  a routine evidence harness.
+- saveScreenshot() guard — FIXED by P23 (`e702341`, 2026-07-28):
+  widened to EQT_HAS_DRM || EQT_HAS_GLES2; x86 GLES2 build now compiles
+  the safe glReadPixels path (nm-verified), ARM path byte-identical.
+- ParticleManager::renderUnified race — FIXED FOR REAL by P23
+  (`e702341`, 2026-07-28): TWO races in SimulationWorker (unsynchronized
+  input_ read during computeAll; worker starting a new compute into a
+  buffer not yet consumed → swap onto mid-write index). TSAN evidence:
+  55 warnings incl. 2 heap-use-after-free before; 0 across 3×100k-iter
+  soaks after. Stress tool committed: tools/particle_race_stress.cpp
+  (manual, TSAN invocation documented in P23 Review). The P10b-era
+  isEnabled() gate on renderUnified REMOVED — NOTE the behavior
+  restoration: unified fire/spell particles now render whenever
+  zoneReady, independent of atmosphericParticles (they were incorrectly
+  suppressed under the shipped default since the workaround landed).
+  WATCH ITEM: if any zone's KPI replay contains fire emitters
+  (befallen braziers?), the next Pi measurement may show a small
+  frame-time delta from particles rendering again — attribute it here,
+  don't treat it as a regression mystery.
+- Post-camp shutdown-thread aborts remain (documented class, still
+  open) — sessions still may not end in a fully clean /camp; the two
+  fixes above remove the main mid-session crashers.
 
 ## Sheet quality DONE + deployed (P16, 2026-07-27)
 
