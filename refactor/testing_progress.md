@@ -4,13 +4,14 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-28 (T01).
+Last updated: 2026-07-28 (T02).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
+| T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
 
 ## T01 — how the numbers were produced
 
@@ -198,6 +199,29 @@ highest-risk gap but is currently untestable in isolation.
 
 Nothing yet — no source modification has been attempted.
 
+## T02 findings (state-layer bugs, documented in tests, NOT fixed)
+
+Full detail: `refactor/T02_state_event_bus.md` Review section.
+
+1. `CombatState::fireTargetChangedEvent()` / `fireCombatEvent()`
+   (`src/client/state/combat_state.cpp`) are empty stubs — `setTarget()`,
+   `clearTarget()`, `setAutoAttacking()` never actually publish anything
+   on the `EventBus` despite `GameEventType::TargetChanged` /
+   `CombatEvent` existing for exactly this. Pinned in
+   `CombatStateTest.KNOWN_GAP_SetTargetDoesNotActuallyPublishAnyEvent`.
+2. `InventoryState::fireInventoryChangedEvent()` always reports
+   `hasItem=true`/`itemId=0` regardless of the actual slot state passed
+   in (source comment acknowledges this). Pinned in
+   `InventoryStateTest.InventorySlotChangedEventAlwaysReportsHasItemTrue`.
+3. `WorldState::fireZoneChangedEvent()` reads position from the
+   pending-zone fields, not from `setZone()`/`setZoneName()` args —
+   calling `setZone()` alone publishes position (0,0,0). Pinned in
+   `WorldStateTest.ZoneChangedEventPositionComesFromPendingZoneNotSetZoneArgs`.
+4. `EventBus` listener lifetime is a genuine, unexercised UB hazard (a
+   listener capturing `this` of an object destroyed mid-dispatch) — not
+   tested per the plan's instruction (UB, cannot be asserted safely),
+   noted here as an observation only.
+
 ## Handoffs to the perf session
 
 Full detail: **`refactor/TESTING_HANDBACK.md`**.
@@ -212,6 +236,19 @@ Full detail: **`refactor/TESTING_HANDBACK.md`**.
   assigned to the perf session by Will 2026-07-28; needs live eqemu.
 - `src/client/bridge/irrlicht_bridge.cpp` (876 lines) is in no test
   binary; perf territory, noted not touched.
+- **T02 finding**: the GLES2-x86 tree (`third_party/irrlicht-gles2-x86`,
+  built via `scripts/build-gles2-x86.sh`) fails to link `test_graphics`,
+  `test_asset_loading`, `test_door_loading`, and five standalone tools
+  (`zone_line_editor`, `model_viewer`, `s3d_dump`,
+  `generate_surface_map`, `entity_composite_builder`) — undefined
+  references to Xlib symbols (`XOpenDisplay`, `XCreateWindow`, etc.)
+  from `CIrrDeviceFB_X11.cpp` in the patched archive; the link line for
+  these particular targets doesn't pull in `-lX11`. Only surfaces on a
+  full unscoped `cmake --build build-gles2 -j24` — the build script
+  itself avoids it by building only `willeq` + `gles2_zone_benchmark`.
+  Discovered incidentally while verifying T02's GLES2 acceptance
+  criterion; not fixed (graphics/Irrlicht territory, off-limits to the
+  testing session).
 - Coordination gap: nothing in the perf session's docs points at this
   tracker, so the handoff channel is write-only on the testing side.
   See the closing section of `TESTING_HANDBACK.md`.
