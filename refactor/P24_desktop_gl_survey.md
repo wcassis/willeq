@@ -73,6 +73,69 @@ A new committed doc `refactor/desktop_gl_elimination_plan.md` with:
 
 ## Review
 
-(executor fills in: headline counts — targets/tests/tools per class,
-GLES2-tree ctest result, surprises, and anything that changes the
-expected phase ordering)
+Full inventory + phased plan committed as `refactor/desktop_gl_elimination_plan.md`.
+Evidence: pre-existing desktop tree `build/` (system libIrrlicht.so.1.8,
+1235 ctest tests), plus a fresh scratch tree `build-gles2-tests/`
+(`EQT_GLES2=ON`, `EQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86`,
+`EQT_BUILD_TESTS=ON`, `WITH_RDP=ON`) configured, built (`-j24 -- -k`), and
+ctested this unit, then removed (scratch, gitignored).
+
+**Headline counts** (~90 real targets total, both trees share the same
+CMake target list):
+- Class A (already GLES2-clean, build clean in both trees): ~76 targets —
+  `willeq`/`willeq_core`, all hwcaps/GLES2 probes, all non-Irrlicht-linking
+  tools, all ~63 non-graphics tests, `test_rdp_server`/`test_rdp_input_handler`.
+- Class B (link-broken in the GLES2 tree, mechanical one-line-per-target
+  fix — missing explicit EGL/GLESv2/drm/gbm): **14 targets** — 11 tools
+  (`model_viewer`, `generate_textures`, `zone_line_editor`, `s3d_dump`,
+  `uv_analysis`, `analyze_hum_model`, `test_animation`,
+  `bsp_coordinate_finder`, `extract_zone_lines`, `generate_surface_map`,
+  `entity_composite_builder`) + 3 tests (`test_asset_loading`,
+  `test_door_loading`, `test_graphics`).
+- Tools verdicts: 5 active (model_viewer, entity_composite_builder,
+  generate_surface_map, zone_line_editor, s3d_dump) → port; 6 near-zero
+  external references (uv_analysis, analyze_hum_model, test_animation,
+  bsp_coordinate_finder, extract_zone_lines, generate_textures) → retire
+  candidates pending Will's go/no-go.
+
+**GLES2-tree ctest result**: 1118/1235 registered (delta = exactly the 3
+Class-B test binaries' `GTEST_DISCOVER_TESTS` `_NOT_BUILT` placeholders,
+120 test cases). Of the runnable 1118: 1112 passed, 3 expected NOT_BUILT
+placeholders, `AudioManagerTest.PreloadCommonSounds` (known host ALSA
+exception), `RDPServerFrameTest.UpdateFrameAfterStart` (SEGFAULT under
+`-j4` only — reran 3x isolated on both trees, passes every time; same
+already-documented `RDPServerFrameTest.*` parallel-execution flake family
+as `UpdateFrameMultipleTimes`), and one genuinely new failure:
+`RaceModelAnimationHeadlessTest.ModelAnimatesProperly_Headless` — SEGFAULT,
+100% reproducible on the GLES2 tree, 100% passing on desktop (3x each,
+both trees). `gdb` backtrace puts the crash directly in `TestBody()` under
+an `EDT_NULL` (no GPU/window) fixture — not an EGL/render-thread issue on
+its face, needs its own investigation unit.
+
+**Surprises that change phase ordering**:
+1. The 14 Class-B failures are the *second* occurrence of an
+   already-documented pattern (`refactor/deferred.md`'s 2026-07-27
+   `IdentityMaterial`/Release-build entry, same ~7-tool membership) —
+   these tool targets have never declared a complete, backend-agnostic
+   Irrlicht link-dependency set. This promotes "fix the 14" to Phase 0
+   (mechanical, low-risk, do first) rather than folding it into a later
+   "port tools" phase.
+2. `RaceModelAnimationHeadlessTest` is a hard blocker on ever claiming
+   "the GLES2 tree carries the full suite" — added as Phase 1
+   (investigation-only unit) ahead of flipping CI default.
+3. `/mnt/projects/willeq-benchmark` (external harness, pinned at `b68c32a`)
+   has a same-session-authored `build_errors_response.md` explicitly
+   telling its operator "the desktop-GL build ... is the right default"
+   — directly contradicted by the 2026-07-28 decision. Needs a guidance
+   update shipped in lockstep with whichever phase removes the desktop-GL
+   CMake path (Phase 2/3), not left implicit.
+4. Phase 3 (CMake branch removal) must wait on sibling unit P25
+   (X11-EGL window backend) landing, or x86 loses its only windowed dev
+   path.
+5. Source sweep found no fixed-function-pipeline reliance to delete beyond
+   the already-known `EDT_BURNINGSVIDEO`/`AnimatedTreeManager` dead code —
+   `EMT_*` material-type enum usage (29 files) is a false positive, shared
+   identically by both drivers.
+
+Working tree clean apart from the two committed docs (verified via
+`git status --short`).
