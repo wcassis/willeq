@@ -633,10 +633,28 @@ proper fix:
   TransparentMasked with REAL DXT5 alpha (47/53% hard cutout) — NOT
   citywlivy-class. P20's ed310e1 tree-path change is a correct H02d
   mirror but dormant on GLES2.
-- **Related same-class gap (unfixed, needs own evidence)**:
-  `door_manager.h` / `entity_renderer.h` `setShaderMaterialTypes()` are
-  still 2-arg (no RGBA alpha-test variant) — doors/entities with masked
-  RGBA textures would hit the same opaque-white fallback.
+- **Door/entity setShaderMaterialTypes gap — FIXED by P21 (`6bde3e9`,
+  2026-07-28)**: 2→3-arg RGBA variant plumbed through door_manager +
+  entity_renderer + all call sites. REAL for doors: PAWHOOK chain doors
+  (pchain.bmp, 6 placed instances in qeynos2; masked, RGBA-decoded)
+  previously got EMT_TRANSPARENT_ALPHA_CHANNEL_REF=14 — NOT one of the
+  GLES2 driver's compiled programs — now get the compiled RGBA
+  alpha-test shader (258); numeric MaterialType trace is the evidence
+  (door too small for salient stills, honestly noted). Entity side
+  LATENT: correctly wired but currently unreachable, because of the
+  next item.
+- **NEW (P21 audit): RaceModelLoader/equipment_model_loader IGNORE
+  textureMasked()** — `mesh_building.cpp` (both buildMeshFromGeometry
+  AND buildCompositeMeshFromGeometry) and `equipment_model_loader.cpp`
+  hardcode EMT_SOLID for every material, never consulting the WLD
+  masked flag. Masked character-archive textures exist (zomch0001/
+  zomlg0001 befallen zombies, beahe0008 qeynos2) and render OPAQUE
+  today via this upstream gap. If/when fixed, P21's classification in
+  entity_renderer is already wired to route them correctly. Needs its
+  own unit with live visual evidence (zombie flesh gaps / bone helm
+  holes are era-authentic transparency candidates) + composite-path
+  care (composite meshes share one buffer — per-material alpha-test
+  may not compose; check before promising).
 - **New unrelated bug spotted**: magenta/black checkerboard
   missing-texture placeholder on some qeynos2 rooftops/awnings
   (approach_01/02 stills). Not chased.
