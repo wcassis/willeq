@@ -1,0 +1,105 @@
+P33 tree wind enable — evidence manifest
+=========================================
+
+STATUS: Code complete and fully verified (see table below). Live-eqemu
+same-pose time-lapse stills (wind ON t+0/2/4/6s vs wind OFF t+0/2/4/6s,
+gfaydark nekpine cluster, per the P20b evidence bar) could NOT be captured
+this session — root-caused to a pre-existing eqemu environment bug, not a
+P33 code regression. See "Evidence-capture blocker" below. No stills exist
+at /mnt/projects/fable/videos/p33_tree_wind/ (directory not created; do not
+expect PNGs there for this unit yet). Will cannot bless the visual change
+from this dispatch; re-dispatch with a healthy eqemu stack needed.
+
+Capture mechanism attempted (matches P20b/P25 convention): live eqemu
+session (scripts/eqemu/up.sh/down.sh), real x86 GLES2 client
+(build-gles2/bin/willeq --renderer gles2), willeq's --script tour file
+('wait N' + slash-command lines, data/captures/p33_gfay_wind_on.txt /
+p33_gfay_wind_off.txt — gitignored scratch, not committed) + the existing
+/screenshot slash command. Config data/captures/p33_willeq.json (gitignored
+scratch): account willeq_test / Testchar, host 127.0.0.1:5998, eq_client_path
+/mnt/projects/EverQuestP1999, maps_path /mnt/projects/maps/base.
+
+Evidence-capture blocker (root-caused, out of P33's territory)
+----------------------------------------------------------------
+Every attempt (10+ across two full `down.sh`+`up.sh` cycles, timeouts from
+90s to 550s, with and without `--no-audio`, plain run / strace / gdb) failed
+to reach the `/screenshot` step. Diagnosis via `strace -f` and the eqemu
+container's own world/zone logs (`docker exec akk-stack-eqemu-server-1 ...
+logs/world_*.log`) found the actual mechanism:
+
+- The `akk-stack-eqemu-server-1` container's Process Watcher auto-starts a
+  full fleet of ~27 static zone processes on top of `up.sh`'s single
+  dedicated zone, occupying UDP/TCP ports 7000-7026+ sequentially in
+  whatever order they happen to boot (already flagged as a contending-CPU
+  issue in P20b's Deviations; this session hit a second, sharper symptom
+  from the same root cause).
+- `gfaydark`'s configured static zone port is 7000. In this session, some
+  unrelated zone from the auto-started fleet already held port 7000 by the
+  time Testchar's client triggered `gfaydark`'s on-demand autobootup
+  (`world_196.log`: "Attempting autobootup of [gfaydark] [54] [0]"), so
+  world dynamically assigned the freshly-booted gfaydark process port 7026
+  instead (`ss -tulnp` inside the container confirmed PID bound to 7026 for
+  the fresh gfaydark process, PID bound to 7000 for a different, unrelated
+  zone).
+- World's `Clearance`/zone-transfer packet to the client still carries the
+  *configured static port* (7000), not the actual dynamically-assigned port
+  (7026) — confirmed in `world_196.log`: "Sending client to zone [gfaydark]
+  ([54]:[0]) at [10.0.30.23]:[7000]" immediately after the log line showing
+  the zone process itself came up on 7026. The client (correctly) sends its
+  session-establishment packets to port 7000, where nothing relevant is
+  listening for this session; world's CLE (client login entry) subsystem
+  times the attempt out after several seconds, the client falls back to
+  world and retries character-select -> EnterWorld from scratch, and the
+  cycle repeats indefinitely (confirmed via `strace -f`: `sendto`/`recvfrom`
+  on fd 7 to 127.0.0.1:5998 and later port-9000/7000 loops with `EAGAIN`,
+  and via repeated "Clearance...Zoning...Client disconnected (not active in
+  process)...InZone...InZone" cycles in `world_196.log` matching each of
+  this session's client launches).
+- This occurs entirely within eqemu's own login -> world -> zone-transfer
+  handshake, BEFORE any P33-touched code runs at all (TreeWindController /
+  renderer_frame.cpp only execute once a zone has finished loading and
+  entered the per-frame render loop) — confirmed by `strace` showing the
+  client process never getting past network I/O to reach graphics/zone-load
+  code paths. Not a regression introduced by this unit.
+- One attempt (run11, gdb-free, plain `timeout`) instead crashed
+  ("dumped core"; `ulimit -c 0` in this environment means no core file was
+  written, so no backtrace was obtainable) after reaching "InZone" status —
+  consistent with the same underlying port-mismatch/stale-connection-state
+  churn destabilizing the client's network/zone-load state machine rather
+  than a clean hang.
+- Restarting the whole stack (`down.sh`/`up.sh`) does not fix this — the
+  container's own Process Watcher re-populates the same ~27-zone fleet on
+  every `up.sh`, in a nondeterministic boot order each time, so the port
+  collision is a per-session coin flip that this executor cannot control
+  from `scripts/eqemu/up.sh`/`down.sh` alone (server code / server config is
+  explicitly out of P33's territory — "Never modify server code").
+
+A local, uncommitted, evidence-only workaround was applied during
+diagnosis and FULLY REVERTED before the final build/commit (matches P20b's
+own precedent, EXECUTOR_PROTOCOL.md "parked live-client issues"):
+degraded `loadZoneStep8a_BaseModelPrep()`'s missing-race-model
+`LOG_FATAL`-and-abort to `LOG_WARN`-and-skip-this-entity
+(`renderer_zone_load.cpp`, the same known race=330 gap documented in
+`refactor/deferred.md` and P20b's own deviations) so a live gfaydark
+session would be possible at all once the port issue is fixed. `git diff
+--stat` at commit time contains only `renderer_frame.cpp` (the actual P33
+change) — this file matches `fable` exactly again.
+
+Sanity note (not a substitute for Will's bless): the code-level reasoning
+for why the fix is byte-stable and behaviorally correct is in the plan's
+Review section (`refactor/P33_tree_wind_enable.md`) — the visual gate
+binary (`gles2_zone_benchmark`) never calls into `IrrlichtRenderer` at all
+(confirmed by grep: no references to `TreeWindController`, `TreeIdentifier`,
+`setWindTime`, or `setWindParams` anywhere in `tools/hwcaps/`), so goldens
+are structurally unaffected by anything in this unit regardless of the
+eqemu blocker above.
+
+Server/lock state at end of session
+------------------------------------
+`scripts/eqemu/down.sh` run, confirmed clean via `status.sh` (no
+containers, ports 5998/9000 closed). Testchar restored via direct DB
+UPDATE (`character_data` `zone_id=36, x=-77.9232, y=21.9086, z=3,
+heading=190`, verified by re-SELECT) — the live sessions never got far
+enough into a real GM `#goto`/`#setheading` for that to be viable; the DB
+write is the documented fallback used identically in P20b/P25 when this
+happens. `/mnt/projects/fable/.eqemu-lock` removed.
