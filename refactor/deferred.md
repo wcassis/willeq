@@ -17,7 +17,13 @@ the commit. Sources are historical docs — do not edit those.
   Headless segfaults 100% on the GLES2 tree, passes on desktop
   (EDT_NULL fixture, crash in TestBody per gdb)** — Phase 1
   investigation unit, hard blocker for suite certification. Phase 3
-  (CMake removal) gated on P25 (X11-EGL backend). Tools: 5 port /
+  gate SATISFIED: P25 LANDED (`10d95f6`, merged 2026-07-28) — X11-window
+  EGL backend, opt-in via `WILLEQ_EGL_X11` env var (deviation from the
+  planned --egl-x11 CLI flag: private-header constraint; still explicit
+  opt-in, no DISPLAY autodetect, surfaceless default byte-identical,
+  gate PASS). Full input translation (keyboard/mouse/wheel/close),
+  resize declined round 1 (fixed-size WM hints). Windowed live-session
+  evidence: benchmarks/audits/p25_x11_window/EVIDENCE_MANIFEST.txt. Tools: 5 port /
   6 retire-candidates pending Will's go/no-go (uv_analysis,
   analyze_hum_model, test_animation, bsp_coordinate_finder,
   extract_zone_lines, generate_textures). The willeq-benchmark clone's
