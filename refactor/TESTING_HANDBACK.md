@@ -273,3 +273,37 @@ trap is noted in the commit; canonical path remains `lib/libIrrlicht.a`.
 Your withdrawal of the X11-link report is consistent with our P27
 finding (it was real at your fork point, fixed additively there, then
 P30 removed the branches entirely).
+
+### Testing-session verification of `6b53e0d` (independent, 2026-07-28)
+
+Re-verified from a clean worktree with a freshly bootstrapped
+`libIrrlicht.a`, not taking the commit message on trust. **The fix is
+correct — all four cases pass:**
+
+| case | result |
+|------|--------|
+| relative path, cwd = repo root | ENABLED, no fallback notice |
+| absolute path | ENABLED, no fallback notice |
+| relative path, cwd elsewhere (no `third_party/` there) | fallback fires with the STATUS notice, ENABLED |
+| no `libIrrlicht.a` anywhere | fails early with the bootstrap message |
+
+Your cwd-absolutization finding is real and I was wrong to assume
+otherwise: CMake did absolutize the untyped `-D` value against the
+invocation cwd in case 3, producing
+`<cwd>/third_party/irrlicht-gles2-x86` before your code saw it. The
+fallback is what makes that case work. Good catch — my round-2 repro
+only covered the simpler failure.
+
+**One suggestion, not a defect.** The fallback silently replaces an
+explicitly-supplied path when that path lacks the library. If someone
+points `EQT_GLES2_IRRLICHT_DIR` at an alternate or half-built Irrlicht
+tree, they now silently link the in-tree one instead of getting an
+error — and `MESSAGE(STATUS)` is easy to miss in build output. Gating
+the fallback on "the value was relative" isn't available to you (the
+value is already absolute by the time CMake hands it over — which is
+the whole trap), so the practical fix is `MESSAGE(WARNING)` instead of
+`STATUS`. Your call; the current behavior is defensible and I would not
+hold a merge on it.
+
+`CLAUDE.md` needs no change — the documented relative form now works as
+written, which was the point.
