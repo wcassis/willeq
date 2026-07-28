@@ -84,6 +84,11 @@ struct ApplicationConfig {
     // DRM/KMS settings (guarded by EQT_HAS_DRM at usage sites)
     bool useDRM = false;
 
+    // P25: X11-windowed EGL surface for the x86 GLES2 device (--egl-x11).
+    // Explicit opt-in only — never derived from $DISPLAY. No effect outside
+    // the x86 EQT_HAS_GLES2 build.
+    bool useEglX11 = false;
+
     // Constrained rendering
     std::string constrainedPreset;
     std::string eqe1Path;   // Directory containing .eqe1 ETC1 flat pack files

@@ -113,6 +113,16 @@ enum LinuxKey {
 #include "os.h"
 #include "CTimer.h"
 
+// P25: X11 headers for the opt-in windowed EGL backend. Included after all
+// Irrlicht headers (same ordering discipline as linux/input.h above) since
+// Xlib.h defines plain macros/typedefs (None, Bool, Status, True, False)
+// that could otherwise shadow identifiers parsed earlier. Nothing in this
+// file uses those names for its own symbols, so no #undef dance is needed
+// here — X11 headers just have to come last.
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/keysym.h>
+
 // Signal handler to restore VT keyboard mode on abnormal exit.
 // Without this, SIGINT/SIGTERM/SIGSEGV leaves the keyboard stuck in K_OFF mode
 // and the console becomes unresponsive to local keyboard input.
@@ -174,7 +184,8 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
       Close(false), firstFrame_(true), flipPending_(false), useGLES2_(false),
-      surfaceless_(false)
+      surfaceless_(false),
+      x11Display_(nullptr), x11Window_(0), x11WmDeleteMsg_(0), x11Active_(false)
 {
     Width = param.WindowSize.Width;
     Height = param.WindowSize.Height;
@@ -188,27 +199,52 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
 
     initKeyMap();
 
-    // Setup DRM/GBM/EGL pipeline
-    bool drmOk = initDRM();
-    bool gbmOk = drmOk ? initGBM() : false;
-    bool eglOk = gbmOk ? initEGL() : false;
+    bool eglOk = false;
 
-    if (!eglOk) {
-        // x86/Xvfb fallback: no real DRM/KMS display available (headless dev VM,
-        // no /dev/dri permission, or no connected connector). Fall back to a
-        // Mesa surfaceless EGL platform + pbuffer surface so the real
-        // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
-        os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
-        eglOk = initEGLSurfaceless();
+    // P25: explicit opt-in X11-windowed EGL backend. WILLEQ_EGL_X11 is only
+    // ever set by irrlicht_renderer.cpp, only when the --egl-x11 CLI flag
+    // was passed — never derived from $DISPLAY, so surfaceless remains the
+    // default and this branch is inert for CI/goldens/benchmarks. Skips the
+    // DRM/GBM path entirely when requested. (An env var, not a direct call,
+    // because application code doesn't have this private device header on
+    // its include path — see the file-header comment above.)
+    bool x11Requested = (getenv("WILLEQ_EGL_X11") != nullptr);
+    if (x11Requested) {
+        eglOk = initEGLX11();
         if (eglOk) {
-            surfaceless_ = true;
+            x11Active_ = true;
         } else {
-            os::Printer::log("Surfaceless EGL fallback also failed", ELL_ERROR);
+            os::Printer::log("--egl-x11 requested but X11/EGL init failed - falling back to DRM/surfaceless path", ELL_ERROR);
         }
     }
 
-    // Open evdev input devices
-    initEvdev();
+    if (!eglOk) {
+        // Setup DRM/GBM/EGL pipeline
+        bool drmOk = initDRM();
+        bool gbmOk = drmOk ? initGBM() : false;
+        eglOk = gbmOk ? initEGL() : false;
+
+        if (!eglOk) {
+            // x86/Xvfb fallback: no real DRM/KMS display available (headless dev VM,
+            // no /dev/dri permission, or no connected connector). Fall back to a
+            // Mesa surfaceless EGL platform + pbuffer surface so the real
+            // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
+            os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
+            eglOk = initEGLSurfaceless();
+            if (eglOk) {
+                surfaceless_ = true;
+            } else {
+                os::Printer::log("Surfaceless EGL fallback also failed", ELL_ERROR);
+            }
+        }
+    }
+
+    // Open evdev input devices. Not used in X11-windowed mode: input comes
+    // from X11 events instead (pollX11Events()) - see run(). evdev also
+    // requires /dev/input access, which X11/Xvfb sessions don't grant.
+    if (!x11Active_) {
+        initEvdev();
+    }
 
     // Create cursor control
     CursorControl = new CCursorControl(this);
@@ -251,6 +287,11 @@ CIrrDeviceFB::~CIrrDeviceFB()
     // Close DRM
     if (drmFd_ >= 0)
         close(drmFd_);
+
+    // P25: close the X11 window/display if the windowed EGL backend was used
+    if (x11Active_) {
+        closeX11Window();
+    }
 
     // Restore VT keyboard mode before closing evdev
     if (ttyFd_ >= 0) {
@@ -672,6 +713,10 @@ bool CIrrDeviceFB::initEGLSurfaceless()
                      ELL_INFORMATION);
     return true;
 }
+
+// P25: initEGLX11()/pollX11Events()/closeX11Window() and the X11 keysym
+// map moved to CIrrDeviceFB_X11.cpp (same class, split out to stay under
+// the file-size warning threshold - docs/decisions.md Batch F ceilings).
 
 // ============================================================
 // DRM Page Flip
@@ -1234,7 +1279,10 @@ bool CIrrDeviceFB::run()
 {
     os::Timer::tick();
 
-    pollEvdev();
+    if (x11Active_)
+        pollX11Events();
+    else
+        pollEvdev();
 
     return !Close;
 }
@@ -1258,11 +1306,28 @@ void CIrrDeviceFB::sleep(u32 timeMs, bool pauseTimer)
 
 void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
 {
-    // No window caption in DRM/framebuffer mode
+    // P25: set the real X11 window title in windowed mode. No window
+    // caption otherwise (DRM/framebuffer/surfaceless modes have no window).
+    if (x11Active_ && x11Display_ && x11Window_) {
+        char buf[256];
+        size_t n = 0;
+        while (text[n] && n < sizeof(buf) - 1) {
+            buf[n] = (text[n] < 128) ? (char)text[n] : '?';
+            n++;
+        }
+        buf[n] = '\0';
+        XStoreName((Display*)x11Display_, x11Window_, buf);
+    }
 }
 
 bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s32>* srcClip)
 {
+    // P25: X11-windowed backend - swap the real window surface.
+    if (x11Active_) {
+        eglSwapBuffers(eglDisplay_, eglSurface_);
+        return true;
+    }
+
     // Surfaceless fallback (x86/Xvfb): no DRM/KMS scanout to flip to. Swapping
     // the pbuffer surface is a harmless no-op on Mesa but keeps EGL state
     // consistent; callers that need the pixels use glReadPixels directly.

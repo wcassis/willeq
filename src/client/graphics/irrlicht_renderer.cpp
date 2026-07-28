@@ -583,6 +583,20 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 #endif
 
+#ifdef EQT_HAS_GLES2
+    // P25: X11-windowed EGL backend opt-in (x86 GLES2 dev builds only —
+    // this is inert on ARM, whose CIrrDeviceFB.cpp is the untouched shared
+    // DRM device and never reads this variable). Plumbed via an env var
+    // rather than a direct call into CIrrDeviceFB, because that device
+    // header is private to the patched Irrlicht build and isn't on this
+    // translation unit's include path (only Irrlicht's public API is).
+    // Explicit opt-in only: never set based on $DISPLAY.
+    if (config_.constrainedConfig.useEglX11) {
+        setenv("WILLEQ_EGL_X11", "1", 1);
+        LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: X11-windowed EGL backend requested (--egl-x11)");
+    }
+#endif
+
     LOG_DEBUG(MOD_GRAPHICS, "[GL] Creating Irrlicht device: {}x{}, fullscreen={}, vsync={}, stencil={}, AA={}",
               config.width, config.height, config.fullscreen, true,
               config_.constrainedConfig.enableStencilBuffer,

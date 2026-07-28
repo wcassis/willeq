@@ -356,6 +356,11 @@ bool Application::initialize(const ApplicationConfig& config) {
                 builtConfig.useDRM = true;
                 LOG_DEBUG(MOD_GRAPHICS, "CLI override: DRM mode enabled");
             }
+            // CLI override: --egl-x11 sets the X11-windowed EGL backend (P25)
+            if (config.useEglX11) {
+                builtConfig.useEglX11 = true;
+                LOG_DEBUG(MOD_GRAPHICS, "CLI override: X11-windowed EGL backend enabled");
+            }
             // CLI override: --eqe1-path
             if (!config.eqe1Path.empty()) {
                 builtConfig.eqe1Path = config.eqe1Path;
@@ -1713,6 +1718,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             }
         } else if (arg == "--drm") {
             config.useDRM = true;
+        } else if (arg == "--egl-x11") {
+            config.useEglX11 = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {
             config.rdpEnabled = true;
         } else if (arg == "--rdp-port") {
@@ -1757,6 +1764,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --eqe1-path <dir>        Directory containing .eqe1 ETC1 texture files\n";
             std::cout << "  --composite-entities <dir>  Directory containing composite entity texture sheets\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
+            std::cout << "  --egl-x11                Use X11-windowed EGL surface (x86 GLES2 dev builds; opt-in, never auto-detected)\n";
             std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
             std::cout << "  --zone-load <mode>       Zone loading mode: manual (all at load) or automatic (progressive)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";

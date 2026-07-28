@@ -87,6 +87,10 @@ cp "$DRM_SRC/COGLES2MaterialRenderer.cpp" "$DEST_SRC/COGLES2MaterialRenderer.cpp
 # x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
 cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
 cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"
+# P25: X11-windowed EGL backend member functions, split into their own TU to
+# keep CIrrDeviceFB.cpp under the file-size warning threshold (same class,
+# not a separate device) - x86-only, no ARM equivalent.
+cp "$DRM_X86_SRC/CIrrDeviceFB_X11.cpp"  "$DEST_SRC/CIrrDeviceFB_X11.cpp"
 
 # ------------------------------------------------------------------
 # Step 3: Apply the shared DRM/GLES2 compile-config patch (identical to ARM;
@@ -108,6 +112,10 @@ sed -i 's|^#define _IRR_COMPILE_WITH_OPENGL_|//#define _IRR_COMPILE_WITH_OPENGL_
 echo "--- Patching Makefile (IRRMESHOBJ; no ARM NEON libpng objects) ---"
 MAKEFILE="$DEST_SRC/Makefile"
 sed -i 's|^IRRMESHOBJ = |IRRMESHOBJ = COpenGLES2Driver.o COGLES2Texture.o COGLES2Shaders.o COGLES2MaterialRenderer.o |' \
+    "$MAKEFILE"
+# P25: register the split-out X11 backend TU so `make staticlib` compiles and
+# archives it (CIrrDeviceFB.o's IRROTHEROBJ entry doesn't cover new files).
+sed -i 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o |' \
     "$MAKEFILE"
 
 # ------------------------------------------------------------------
