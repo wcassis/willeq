@@ -204,16 +204,18 @@ TEST_F(PcapExtractorTest, VerifySessionResponse) {
 TEST_F(PcapExtractorTest, FilterByZoneServerPort) {
     PcapReadOptions options;
     options.remove_duplicates = true;
-    options.filter_src_port = 7000;  // Zone server port
+    uint16_t zone_port = getTestZonePort();
+    options.filter_src_port = zone_port;  // Zone server port (autodiscovered)
 
     auto result = readPcapFile(TEST_PCAP_FILE, options);
     ASSERT_TRUE(result.success);
 
-    std::cout << "\nPackets from zone server (port 7000): " << result.packets.size() << std::endl;
+    std::cout << "\nPackets from zone server (port " << zone_port << "): " << result.packets.size() << std::endl;
+    EXPECT_GT(result.packets.size(), 0u) << "No packets found from discovered zone port " << zone_port;
 
-    // All packets should be from port 7000
+    // All packets should be from the discovered zone server port
     for (const auto& pkt : result.packets) {
-        EXPECT_EQ(pkt.src_port, 7000u);
+        EXPECT_EQ(pkt.src_port, zone_port);
     }
 
     auto stats = getPacketStats(result.packets);

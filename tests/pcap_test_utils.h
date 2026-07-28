@@ -7,6 +7,7 @@
  * DaybreakConnection packet processing.
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -138,12 +139,23 @@ struct PcapReadResult {
     size_t duplicate_packets;
 };
 
+// Forward declaration: the default server_ports set below is derived from
+// discovery against the active test capture (see discoverPorts() further
+// down this header). Only a declaration is needed here — by the time any
+// PcapReadOptions is actually constructed at runtime, the definition further
+// down this same header is available.
+inline std::set<uint16_t> defaultServerPorts();
+
 /**
  * Options for filtering packets when reading pcap.
  */
 struct PcapReadOptions {
-    // Server ports to filter for (S->C = src_port in this set)
-    std::set<uint16_t> server_ports = {5998, 5999, 7000, 7001, 7002, 7003, 7004, 7005, 7006, 7007, 9000};
+    // Server ports to filter for (S->C = src_port in this set). Seeded with
+    // the well-known login/world ports (5998/5999/9000) plus whatever zone
+    // server ports discovery finds via the OP_SessionResponse handshake in
+    // the active capture (see getTestZonePort()/discoverPorts()). Falls back
+    // to the bare well-known set if no capture is available.
+    std::set<uint16_t> server_ports = defaultServerPorts();
 
     // If true, only include S->C packets (src_port in server_ports)
     bool server_to_client_only = false;
@@ -199,13 +211,20 @@ inline size_t getLinkHeaderSize(uint32_t network) {
 }
 
 /**
- * Read and parse a pcap file, extracting UDP packets.
+ * Read and parse a pcap file, extracting EVERY UDP packet with no port
+ * filtering and no deduplication.
+ *
+ * This is the shared low-level parser: readPcapFile() applies
+ * PcapReadOptions filtering/dedup/limits on top of this, and discoverPorts()
+ * (below) uses it directly so port discovery never depends on
+ * PcapReadOptions (which itself derives its default server_ports from
+ * discovery — going through readPcapFile()/PcapReadOptions here would be
+ * circular).
  *
  * @param filename Path to the pcap file
- * @param options Options for filtering packets
- * @return PcapReadResult containing packets and statistics
+ * @return PcapReadResult containing every UDP packet found, unfiltered
  */
-inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOptions& options = PcapReadOptions()) {
+inline PcapReadResult readPcapFileRaw(const std::string& filename) {
     PcapReadResult result;
     result.success = false;
     result.total_frames = 0;
@@ -244,9 +263,6 @@ inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOp
         result.error = "Unsupported network type: " + std::to_string(result.network_type);
         return result;
     }
-
-    // Track seen packet data for deduplication
-    std::set<std::string> seen_data;
 
     // Read packets
     while (file) {
@@ -315,37 +331,8 @@ inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOp
 
         result.udp_packets++;
 
-        // Apply port filters
-        bool is_s2c = options.server_ports.count(src_port) > 0;
-        bool is_c2s = options.server_ports.count(dst_port) > 0;
-
-        if (options.server_to_client_only && !is_s2c) {
-            continue;
-        }
-        if (options.client_to_server_only && !is_c2s) {
-            continue;
-        }
-
-        // Apply specific port filter
-        if (options.filter_src_port != 0 && src_port != options.filter_src_port) {
-            continue;
-        }
-        if (options.filter_dst_port != 0 && dst_port != options.filter_dst_port) {
-            continue;
-        }
-
         // Extract payload
         std::vector<uint8_t> payload(raw_data.begin() + offset, raw_data.begin() + offset + payload_len);
-
-        // Check for duplicates
-        if (options.remove_duplicates) {
-            std::string data_hash(payload.begin(), payload.end());
-            if (seen_data.count(data_hash) > 0) {
-                result.duplicate_packets++;
-                continue;
-            }
-            seen_data.insert(data_hash);
-        }
 
         // Create packet record
         CapturedPacket pkt;
@@ -359,6 +346,69 @@ inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOp
         pkt.data = std::move(payload);
 
         result.packets.push_back(std::move(pkt));
+    }
+
+    result.success = true;
+    return result;
+}
+
+/**
+ * Read and parse a pcap file, extracting UDP packets, applying
+ * PcapReadOptions filtering/deduplication/limits on top of the raw packet
+ * list from readPcapFileRaw().
+ *
+ * @param filename Path to the pcap file
+ * @param options Options for filtering packets
+ * @return PcapReadResult containing packets and statistics
+ */
+inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOptions& options = PcapReadOptions()) {
+    PcapReadResult raw = readPcapFileRaw(filename);
+
+    PcapReadResult result;
+    result.success = raw.success;
+    result.error = raw.error;
+    result.network_type = raw.network_type;
+    result.total_frames = raw.total_frames;
+    result.udp_packets = raw.udp_packets;
+    result.duplicate_packets = 0;
+
+    if (!raw.success) {
+        return result;
+    }
+
+    std::set<std::string> seen_data;
+
+    for (const auto& pkt : raw.packets) {
+        // Apply port filters
+        bool is_s2c = options.server_ports.count(pkt.src_port) > 0;
+        bool is_c2s = options.server_ports.count(pkt.dst_port) > 0;
+
+        if (options.server_to_client_only && !is_s2c) {
+            continue;
+        }
+        if (options.client_to_server_only && !is_c2s) {
+            continue;
+        }
+
+        // Apply specific port filter
+        if (options.filter_src_port != 0 && pkt.src_port != options.filter_src_port) {
+            continue;
+        }
+        if (options.filter_dst_port != 0 && pkt.dst_port != options.filter_dst_port) {
+            continue;
+        }
+
+        // Check for duplicates
+        if (options.remove_duplicates) {
+            std::string data_hash(pkt.data.begin(), pkt.data.end());
+            if (seen_data.count(data_hash) > 0) {
+                result.duplicate_packets++;
+                continue;
+            }
+            seen_data.insert(data_hash);
+        }
+
+        result.packets.push_back(pkt);
 
         // Check packet limit
         if (options.max_packets > 0 && result.packets.size() >= options.max_packets) {
@@ -366,8 +416,158 @@ inline PcapReadResult readPcapFile(const std::string& filename, const PcapReadOp
         }
     }
 
-    result.success = true;
     return result;
+}
+
+/**
+ * Discovered server ports/IPs for a capture, keyed off the OP_SessionResponse
+ * handshake rather than a hardcoded port heuristic (see getTestZonePort()).
+ */
+struct DiscoveredZoneSession {
+    std::string server_ip;
+    uint16_t server_port = 0;
+    size_t packet_count = 0;  // total packets (either direction) touching this port
+};
+
+struct DiscoveredPorts {
+    bool valid = false;  // true once a scan of a readable capture has run
+    std::set<uint16_t> server_ports;             // well-known + discovered
+    std::vector<DiscoveredZoneSession> zone_sessions;  // busiest first
+};
+
+/**
+ * Scan a pcap capture for OP_SessionResponse (opcode 0x02) handshake
+ * packets. The port that SENDS OP_SessionResponse is a server port; its peer
+ * is the client. This is robust against client ephemeral ports landing
+ * anywhere in the range, unlike a fixed port-number heuristic.
+ *
+ * Well-known login/world ports (5998/5999/9000) are classified as such;
+ * any other discovered server port is a zone-session candidate. If more than
+ * one zone session is found (e.g. multiple zones visited in one capture),
+ * all are returned, busiest (by total packet count) first.
+ *
+ * Cached per path so repeated calls (one per test fixture) do not re-scan
+ * the capture file. Never throws/crashes on a missing or corrupt file —
+ * returns a DiscoveredPorts with valid=false and only the well-known seed
+ * ports.
+ */
+inline const DiscoveredPorts& discoverPorts(const std::string& path) {
+    static std::map<std::string, DiscoveredPorts> cache;
+
+    auto it = cache.find(path);
+    if (it != cache.end()) {
+        return it->second;
+    }
+
+    DiscoveredPorts& result = cache[path];
+    static const std::set<uint16_t> well_known = {5998, 5999, 9000};
+    result.server_ports = well_known;
+
+    PcapReadResult raw = readPcapFileRaw(path);
+    if (!raw.success) {
+        // Missing/corrupt capture: leave valid=false, well-known-only seed.
+        return result;
+    }
+
+    // Find the server side (src) of every OP_SessionResponse.
+    std::map<uint16_t, std::string> session_response_ports;  // port -> server ip
+    for (const auto& pkt : raw.packets) {
+        if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == 0x02) {
+            session_response_ports[pkt.src_port] = pkt.src_ip;
+        }
+    }
+
+    std::vector<std::pair<uint16_t, std::string>> zone_candidates;
+    for (const auto& entry : session_response_ports) {
+        result.server_ports.insert(entry.first);
+        if (well_known.count(entry.first) == 0) {
+            zone_candidates.emplace_back(entry.first, entry.second);
+        }
+    }
+
+    // Count total packets (either direction) touching each zone-candidate
+    // port so getTestZonePort() can pick the busiest session.
+    for (const auto& candidate : zone_candidates) {
+        uint16_t port = candidate.first;
+        size_t count = 0;
+        for (const auto& pkt : raw.packets) {
+            if (pkt.src_port == port || pkt.dst_port == port) {
+                count++;
+            }
+        }
+        DiscoveredZoneSession session;
+        session.server_ip = candidate.second;
+        session.server_port = port;
+        session.packet_count = count;
+        result.zone_sessions.push_back(session);
+    }
+
+    std::sort(result.zone_sessions.begin(), result.zone_sessions.end(),
+              [](const DiscoveredZoneSession& a, const DiscoveredZoneSession& b) {
+                  return a.packet_count > b.packet_count;
+              });
+
+    result.valid = true;
+    return result;
+}
+
+/**
+ * Default server_ports set for PcapReadOptions: well-known login/world
+ * ports seeded, plus whatever zone-server ports discovery finds in the
+ * active test capture. Falls back to just the well-known seed if no capture
+ * is available (matches pre-discovery behavior enough that direction
+ * classification degrades gracefully rather than crashing).
+ */
+inline std::set<uint16_t> defaultServerPorts() {
+    return discoverPorts(getTestPcapPath()).server_ports;
+}
+
+/**
+ * Resolve the zone server port to use in tests.
+ *
+ * Resolution order:
+ *   1. WILLEQ_ZONE_PORT environment variable, if set and non-empty.
+ *   2. Autodiscovery from the capture (busiest zone session found via the
+ *      OP_SessionResponse handshake).
+ *
+ * Returns 0 if neither source yields a port (e.g. no capture present) —
+ * callers already gate on hasPcapData()/GTEST_SKIP() before using this, so a
+ * 0 simply yields no matching packets rather than a crash.
+ */
+inline uint16_t getTestZonePort() {
+    const char* env = std::getenv("WILLEQ_ZONE_PORT");
+    if (env && *env) {
+        return static_cast<uint16_t>(std::atoi(env));
+    }
+    const DiscoveredPorts& discovered = discoverPorts(getTestPcapPath());
+    if (!discovered.zone_sessions.empty()) {
+        return discovered.zone_sessions.front().server_port;
+    }
+    return 0;
+}
+
+/**
+ * Resolve the zone server IP to use in tests (companion to
+ * getTestZonePort()). Same resolution order, via WILLEQ_ZONE_IP.
+ */
+inline std::string getTestZoneIp() {
+    const char* env = std::getenv("WILLEQ_ZONE_IP");
+    if (env && *env) {
+        return env;
+    }
+    const DiscoveredPorts& discovered = discoverPorts(getTestPcapPath());
+    if (!discovered.zone_sessions.empty()) {
+        return discovered.zone_sessions.front().server_ip;
+    }
+    return "";
+}
+
+/**
+ * Expose the full list of discovered zone sessions (busiest first) for
+ * tests that want to iterate more than just "the" zone server.
+ */
+inline const std::vector<DiscoveredZoneSession>& getTestZoneSessions() {
+    return discoverPorts(getTestPcapPath()).zone_sessions;
 }
 
 /**

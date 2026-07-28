@@ -67,7 +67,7 @@ protected:
         PcapReadOptions options;
         options.remove_duplicates = true;
         options.server_to_client_only = true;
-        options.filter_src_port = 7000;  // Zone server only
+        options.filter_src_port = getTestZonePort();  // Zone server only (autodiscovered)
 
         auto result = readPcapFile(TEST_PCAP_FILE, options);
         if (result.success) {
@@ -190,7 +190,7 @@ TEST_F(DaybreakConnectionPcapTest, ReplayZoneServerPackets) {
     }
 
     createTestManager();
-    createTestConnection("172.18.0.3", 7000);
+    createTestConnection(getTestZoneIp(), getTestZonePort());
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "REPLAYING " << pcap_packets_.size() << " ZONE SERVER PACKETS" << std::endl;
@@ -299,7 +299,7 @@ TEST_F(DaybreakConnectionPcapTest, DetailedFragmentTracking) {
     }
 
     createTestManager();
-    createTestConnection("172.18.0.3", 7000);
+    createTestConnection(getTestZoneIp(), getTestZonePort());
 
     // Find and process SessionResponse
     for (const auto& pkt : pcap_packets_) {
@@ -390,7 +390,7 @@ TEST_F(DaybreakConnectionPcapTest, SingleCompressedFragmentDebug) {
     }
 
     createTestManager();
-    createTestConnection("172.18.0.3", 7000);
+    createTestConnection(getTestZoneIp(), getTestZonePort());
 
     // Find and process SessionResponse
     for (const auto& pkt : pcap_packets_) {
@@ -461,7 +461,7 @@ TEST_F(DaybreakConnectionPcapTest, ReplayWithCRCBypassed) {
     }
 
     createTestManager();
-    createTestConnection("172.18.0.3", 7000);
+    createTestConnection(getTestZoneIp(), getTestZonePort());
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "REPLAYING WITH CRC BYPASSED" << std::endl;

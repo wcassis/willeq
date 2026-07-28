@@ -448,10 +448,13 @@ class PcapStepThroughTest : public ::testing::Test {
 protected:
     StepThroughHarness harness;
     std::vector<CapturedPacket> pcap_packets;
+    uint16_t zone_port = 0;
 
     void SetUp() override {
         std::ifstream f(TEST_PCAP_FILE);
         if (!f.good()) return;
+
+        zone_port = getTestZonePort();
 
         PcapReadOptions options;
         options.remove_duplicates = true;
@@ -493,13 +496,13 @@ TEST_F(PcapStepThroughTest, StepThroughZoneServerSession) {
     }
 
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "STEP-THROUGH: Zone Server Session (port 7000)" << std::endl;
+    std::cout << "STEP-THROUGH: Zone Server Session (port " << zone_port << ")" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
 
     // Filter for zone server packets
     std::vector<const CapturedPacket*> zone_packets;
     for (const auto& pkt : pcap_packets) {
-        if (pkt.src_port == 7000) {
+        if (pkt.src_port == zone_port) {
             zone_packets.push_back(&pkt);
         }
     }
@@ -531,7 +534,7 @@ TEST_F(PcapStepThroughTest, StepThroughFragmentSequence) {
 
     // Find and process session response first
     for (const auto& pkt : pcap_packets) {
-        if (pkt.src_port == 7000 && pkt.data.size() >= 2 &&
+        if (pkt.src_port == zone_port && pkt.data.size() >= 2 &&
             pkt.data[0] == 0x00 && pkt.data[1] == 0x02) {
             harness.processWithSteps(pkt);
             break;
@@ -547,7 +550,7 @@ TEST_F(PcapStepThroughTest, StepThroughFragmentSequence) {
     int fragment_count = 0;
 
     for (const auto& pkt : pcap_packets) {
-        if (pkt.src_port != 7000) continue;
+        if (pkt.src_port != zone_port) continue;
         if (pkt.data.size() < 2) continue;
         if (pkt.data[0] != 0x00) continue;
 
@@ -583,7 +586,7 @@ TEST_F(PcapStepThroughTest, WriteDetailedLogToFile) {
     // Process first 100 zone server packets
     int count = 0;
     for (const auto& pkt : pcap_packets) {
-        if (pkt.src_port == 7000) {
+        if (pkt.src_port == zone_port) {
             harness.processWithSteps(pkt);
             count++;
             if (count >= 100) break;
