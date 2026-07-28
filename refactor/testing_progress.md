@@ -183,22 +183,16 @@ Deferred until Will rules on Finding 1: everything touching `eq*.cpp`
 (the connection flow, backlog item 4), which is the largest and
 highest-risk gap but is currently untestable in isolation.
 
-## Decisions needed from Will
+## Decisions taken by Will (2026-07-28)
 
-1. **Finding 1 — who fixes `EQT_GRAPHICS=OFF`?** Options: (a) the
-   testing session takes it as a unit, accepting that it is a large
-   base-layer source change outside the charter's "minimal seam" rule;
-   (b) it goes to the perf session, which already owns the graphics
-   elimination plan; (c) it stays broken and base-layer tests are built
-   against the GLES2 tree instead, accepting that every test binary
-   drags in the renderer. My recommendation is (b) — it is a graphics
-   #ifdef problem and the perf session owns that boundary — but it
-   blocks backlog item 4 until done.
-2. **Finding 2 — should a capture be recorded?** A single recorded
-   session (`--record-session`) would activate ~50 currently-inert
-   tests and give `daybreak_connection.cpp` real coverage. That needs
-   live eqemu, which is currently in use by another session. Worth
-   scheduling, or stick to synthetic fixtures (T04 as proposed)?
+1. **Finding 1 (`EQT_GRAPHICS=OFF` broken) — perf session owns it.**
+   Not a testing-session unit.
+2. **Finding 2 (missing capture fixtures) — perf session owns it.**
+   The testing session proceeds on synthetic/replay fixtures only and
+   is not blocked on a recording.
+3. Handoff delivered by Will relaying directly to the perf session,
+   plus `refactor/TESTING_HANDBACK.md`. No `deferred.md` pointer was
+   added (outside testing territory).
 
 ## Needs seam
 
@@ -206,7 +200,18 @@ Nothing yet — no source modification has been attempted.
 
 ## Handoffs to the perf session
 
-- Finding 1 (`EQT_GRAPHICS=OFF` broken, 351 errors, 12 TUs) is a
-  graphics-boundary defect. Pending Will's ruling in decision 1 above.
+Full detail: **`refactor/TESTING_HANDBACK.md`**.
+
+- Finding 1 (`EQT_GRAPHICS=OFF`, 351 errors, 12 TUs) — assigned to the
+  perf session by Will 2026-07-28. Root cause is a *misclassification*,
+  not missing guards: `eq.h` has five `#ifdef EQT_HAS_GRAPHICS` blocks
+  that enclose non-graphics members (`GameTick`, `m_quit_requested`,
+  `m_inventory_manager`, `m_hotbar_model`, `m_command_registry`, the
+  EQ client path, and all command registration). Blocks backlog item 4.
+- Finding 2 (no `data/captures/`, `daybreak_connection.cpp` at 0.0%) —
+  assigned to the perf session by Will 2026-07-28; needs live eqemu.
 - `src/client/bridge/irrlicht_bridge.cpp` (876 lines) is in no test
   binary; perf territory, noted not touched.
+- Coordination gap: nothing in the perf session's docs points at this
+  tracker, so the handoff channel is write-only on the testing side.
+  See the closing section of `TESTING_HANDBACK.md`.
