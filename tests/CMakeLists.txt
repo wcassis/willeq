@@ -363,9 +363,11 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(test_graphics X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_graphics X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — the
+    # mandatory-Irrlicht gate in the top-level CMakeLists.txt guarantees
+    # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
+    # (refactor/desktop_gl_elimination_plan.md §6 Phase 3).
     GTEST_DISCOVER_TESTS(test_graphics)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
@@ -427,9 +429,9 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(test_asset_loading X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_asset_loading X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # test_graphics comment above (same mandatory-Irrlicht gate).
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
 
@@ -471,9 +473,9 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(test_door_loading X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_door_loading X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # test_graphics comment above (same mandatory-Irrlicht gate).
     GTEST_DISCOVER_TESTS(test_door_loading)
 ENDIF()
 
