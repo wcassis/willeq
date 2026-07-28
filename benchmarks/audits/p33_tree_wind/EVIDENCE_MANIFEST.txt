@@ -103,3 +103,171 @@ heading=190`, verified by re-SELECT) — the live sessions never got far
 enough into a real GM `#goto`/`#setheading` for that to be viable; the DB
 write is the documented fallback used identically in P20b/P25 when this
 happens. `/mnt/projects/fable/.eqemu-lock` removed.
+
+P33b — evidence capture SUCCEEDED via qeynos2 (2026-07-28)
+============================================================
+
+STATUS: 8 stills captured live against eqemu, both wind ON and wind OFF,
+same qeynos2-gates willow+pine scene P20b/P21/P29 used. Stills committed
+to NFS (not git, per this project's *.png .gitignore convention) at
+`/mnt/projects/fable/videos/p33_tree_wind/stills/`:
+p33b_windON_t0/t2/t4/t6.png, p33b_windOFF_t0/t2/t4/t6.png.
+
+Per the dispatching instructions, gfaydark was not retried — it carries
+the pre-existing port-collision bug documented above (unrelated to P33's
+code, out of this errand's territory to fix). qeynos2 was used instead,
+matching P20b/P21/P29's own proven zone-in path: login -> befallen
+(Testchar's home zone, zone_id=36) -> GM `#zone qeynos2`.
+
+Capture mechanism (matches P20b/P29 convention): live eqemu session
+(`scripts/eqemu/up.sh qeynos2` / `down.sh`), real x86 GLES2 client
+(`build-gles2/bin/willeq --renderer gles2 --no-audio`), a `--script` tour
+file (`wait N` + slash-command lines: `data/captures/p33b_qeynos2_wind_on.txt`
+/ `p33b_qeynos2_wind_off.txt` — gitignored scratch, not committed) driving
+`/say #zone qeynos2` -> `/say #time 12` -> a single `/turn 180` (camera
+fixed from that point on, by construction — no further movement/turn
+commands) -> `/screenshot` x4 at 2s intervals -> `/camp`. Config
+`data/captures/p33b_willeq.json` (gitignored scratch): account
+willeq_test / Testchar, host 127.0.0.1:5998, eq_client_path
+/mnt/projects/EverQuestP1999, maps_path /mnt/projects/maps/base.
+
+Wind OFF used a session-local config copy, NOT the committed
+`config/display_settings.json`: a scratch working directory
+(`data/captures/runs/windoff/`, deleted after the session, never
+committed) held its own `config/` tree (copied from the real one) with
+only `environmentEffects.animatedTrees` changed to `false`, and the
+client was launched with that directory as its cwd (all of willeq's
+config/data reads are cwd-relative — confirmed by grep across
+`src/client/graphics/*.cpp`, `src/client/application.cpp`,
+`src/client/zone_lines.cpp`). The committed `config/display_settings.json`
+(`animatedTrees: true`, the shipped default) was used unmodified for the
+wind-ON run. `git status` confirms `config/display_settings.json` was
+never touched on disk in the slot1 checkout.
+
+New client-side blocker found and worked around (evidence-only, reverted)
+---------------------------------------------------------------------------
+qeynos2 zone-in itself worked immediately (no port-collision repeat of
+the gfaydark bug) but every unmodified run crashed with SIGSEGV within
+~1-2s of process start, well before the `/screenshot` script step, with
+stdout truncated by output buffering (making the crash look earlier than
+it actually was until re-run with `stdbuf -oL -eL`). `gdb -batch -ex run
+-ex bt` isolated the fault:
+
+  Thread 1 "willeq" SIGSEGV in
+  EQT::Graphics::Environment::ParticleManager::renderUnified() ->
+  IrrlichtRenderer::processFrameRender() -> processFrame() ->
+  Application::render() -> mainLoop() -> run()
+
+Disassembly at the fault address (no debug symbols in the release build)
+showed a virtual-function call through `atlasTexture_` (an `ITexture*`
+member of `ParticleManager`) — the object's own `!atlasTexture_` null
+check upstream passes, but the vtable read at the call site faults,
+consistent with a dangling/already-freed pointer (use-after-free), not a
+null pointer. `renderer_frame.cpp` already carries an existing comment
+block (lines ~1290-1316) documenting a *related* but distinct
+`renderUnified()` race, "P23: root-caused and fixed for real in
+SimulationWorker" (a different dangling-pointer source,
+`particleRenderBuffer_`) — this session's crash is apparently a second,
+still-live race in the same function, most plausibly tied to
+`atlasTexture_` lifecycle across the befallen->qeynos2 zone change
+(atlas texture likely recreated at zone load; `ParticleManager`'s cached
+pointer to the old one not safely invalidated). This is a pre-existing
+graphics/particle-system defect, entirely outside P33/P33b's territory
+(`TreeWindController` + `renderer_frame.cpp`'s wind block only) to
+actually fix, and is NOT flagged as fixed by this unit.
+
+Evidence-only workaround applied and FULLY REVERTED before the final
+commit (same precedent as P33's own gfaydark workaround and P20b's):
+temporarily added `&& false` to the `renderUnified()` call-site condition
+in `renderer_frame.cpp` (disabling only the unified fire/spell
+point-sprite particle system for the capture session; unrelated to tree
+wind, which is driven entirely by the GPU vertex shader wind uniforms,
+not `ParticleManager`). Rebuilt, captured, then ran
+`git checkout -- src/client/graphics/renderer_frame.cpp` and rebuilt
+again — `git status` confirms zero diff from `fable` in the final
+checkout state (verified before this manifest's own commit).
+
+Crash was still intermittent even with the workaround in place (one
+gdb-timing run reached only the first screenshot before the outer 60s
+`gdb`-batch timeout expired, not a crash — see below); a plain
+`stdbuf -oL -eL`-wrapped run (no gdb) completed the full 4-shot ON
+sequence cleanly (`EXIT=0`) on the first attempt after the workaround,
+and the OFF sequence also completed cleanly on the first attempt.
+
+Verification of the evidence (crop-compare, per plan step 6)
+----------------------------------------------------------------
+Both ON and OFF stills land in the P20b qeynos2-gates scene (willow +
+pines, brick wall visible in the OFF framing) at 800x600. Note: the ON
+and OFF sequences do NOT share the exact same camera pose as each other
+(Testchar's saved position/heading at zone-in differed slightly between
+the two separate live sessions — the OFF run's `#zone qeynos2` landed at
+a position facing more directly down the wall than the ON run's).
+Same-pose discipline is honored WITHIN each series (a single `/turn 180`
+per run, zero camera movement between that run's own 4 screenshots), which
+is what the internal ON-vs-ON / OFF-vs-OFF comparisons below depend on —
+this is honestly noted, not glossed over, since it is a real deviation
+from a literal same-pose-for-both-runs ideal.
+
+Whole-frame pixel diffs (800x600, mean/max absolute per-channel diff,
+percent of pixels with any-channel diff >5 and >15) are contaminated by
+non-wind motion in both series (chat-log text accumulating line-by-line,
+FPS counter, nearby NPC nameplates changing, Testchar's own idle/walk
+animation) and were NOT used as the primary evidence for that reason:
+
+| Pair | mean | max | %px>5 | %px>15 |
+|---|---|---|---|---|
+| ON t0 vs t2 | 2.12 | 223 | 9.00% | 5.43% |
+| ON t0 vs t4 | 2.60 | 218 | 9.54% | 6.22% |
+| ON t0 vs t6 | 2.46 | 215 | 8.47% | 5.53% |
+| OFF t0 vs t2 | 0.24 | 252 | 0.16% | 0.15% |
+| OFF t0 vs t4 | 0.43 | 252 | 0.32% | 0.29% |
+| OFF t0 vs t6 | 0.58 | 252 | 0.40% | 0.39% |
+
+Primary evidence: a tight crop isolating ONLY the willow canopy's
+drooping-vine region (chosen per-series since ON/OFF framing differs;
+ON box (390,60)-(660,230), OFF box (330,170)-(560,300) in source-image
+pixel coordinates), excluding sky/clouds, HUD, chat text, and the
+character model:
+
+| Pair (canopy crop only) | mean | max | %px>5 | %px>15 |
+|---|---|---|---|---|
+| ON t0 vs t2 | 10.12 | 161 | 49.73% | 30.03% |
+| ON t0 vs t4 | 13.45 | 161 | 55.24% | 37.92% |
+| ON t0 vs t6 | 12.61 | 161 | 52.99% | 36.00% |
+| ON t2 vs t4 | 10.88 | 165 | 50.18% | 32.13% |
+| ON t4 vs t6 | 6.22 | 148 | 38.33% | 17.01% |
+| OFF t0 vs t2 | 0.02 | 2 | 0.00% | 0.00% |
+| OFF t0 vs t4 | 0.03 | 2 | 0.00% | 0.00% |
+| OFF t0 vs t6 | 0.05 | 2 | 0.00% | 0.00% |
+| OFF t2 vs t4 | 0.04 | 3 | 0.00% | 0.00% |
+| OFF t4 vs t6 | 0.07 | 4 | 0.00% | 0.00% |
+
+The wind-ON canopy crop shows roughly HALF its pixels changing by more
+than 15/255 per channel between any two of the four time-lapse frames
+(visually confirmed: the drooping vine strands visibly sway/shift
+position between t0 and t6 in side-by-side crops), while the wind-OFF
+canopy crop is pixel-static to within 4/255 (JPEG-free PNG encoder/GL
+readback noise floor, i.e. genuinely zero motion) across all four
+frames and all pairwise comparisons — the true rest pose the plan's Review
+section predicted (`weatherMult = 0` -> `strength = 0` exactly).
+
+Honest caveat: this is stronger, cleaner evidence than P33's own gfaydark
+attempt could have produced even had it succeeded (this crop technique
+wasn't available then), but Will should still eyeball the actual PNGs at
+`/mnt/projects/fable/videos/p33_tree_wind/stills/` before blessing —
+this manifest describes what the pixel diffs show, it does not substitute
+for that judgment call.
+
+Server/lock state at end of P33b session
+-------------------------------------------
+`scripts/eqemu/down.sh` run, confirmed clean via `status.sh` (no
+containers, ports 5998/9000 closed). Testchar restored via direct DB
+UPDATE (`character_data` `zone_id=36, x=-77.9232, y=21.9086, z=3,
+heading=190`, verified by re-SELECT) — same fallback P20b/P25/P33 used,
+since the script tour's `/camp` does not guarantee a specific final
+position. `/mnt/projects/fable/.eqemu-lock` removed. `git status` in
+`/mnt/projects/fable/wt/slot1` clean (renderer_frame.cpp workaround fully
+reverted, gitignored scratch under `data/captures/` left in place per the
+existing convention — see `p33b_qeynos2_wind_on.txt`/`_off.txt`/
+`_willeq.json` alongside the pre-existing `p33_*` files from the blocked
+P33 session).
