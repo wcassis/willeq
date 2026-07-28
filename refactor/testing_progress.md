@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T05 | Login/world seam + packet guards | DONE (merged `6f2e434`) | **First source-touching unit.** Dispatchers extracted, 12 QueuePacket sites guarded, `ReplayLoginPacket`/`ReplayWorldPacket` public. Both T04 truncated-packet crashes FIXED. Golden matched, ARM build green. Login/world flow coverage deferred to T06. |
 | T04 | Zone connection-flow sequencing | DONE (merged `2042490`) | 16 tests via the existing public `ReplayZonePacket` seam; all four gating prerequisites isolated. Found 2 real robustness bugs + 1 latent gating gap (below). Login/world still uncovered — needs a seam decision from Will. |
 | T03b | Suite hygiene | DONE (merged `41fe719`) | Part A: Hotkey fixtures made parallel-safe (unique per-PID/per-test temp dirs) — verified 10/10 green under `-j8`, no `/tmp` residue. Part B: RDP segfault diagnosed as a real use-after-free in `RDPServer::stop()` and handed to the perf session, correctly NOT fixed. See `refactor/TESTING_HANDBACK.md` Round 3. |
 | T03a | Unhardcode pcap zone port | DONE (merged `02d591d`) | 4 FAILs + 8 SKIPs → 12 PASS. Handshake-based port/IP discovery in `pcap_test_utils.h` + `WILLEQ_ZONE_PORT`/`WILLEQ_ZONE_IP` overrides. Compression assertions NOT weakened — 1017/1682 S→C packets genuinely carry the 0x5a marker once direction classification is fixed. |
@@ -295,7 +296,17 @@ than counting the run as clean.
 
 All three verified against source by the orchestrator during review.
 
-### 1. Truncated-packet crashes in the zone receive path (REAL, actionable)
+### 1. Truncated-packet crashes — **FIXED in T05** (`6f2e434`)
+
+Both guards landed: a `return` after `ZoneProcessPlayerProfile`'s
+existing warning, and a length guard in `ZoneProcessTimeOfDay`.
+Thresholds were verified against the real capture first (PlayerProfile
+records are 19592 bytes vs the 19588 guard; TimeOfDay 8 vs a need of 6),
+so neither can skip legitimate traffic. The pinned `BUG_` tests are
+flipped to assert the fixed behavior. Original writeup below for the
+record.
+
+### 1a. Original finding (historical)
 
 - `ZoneProcessTimeOfDay` (`src/client/eq_entities.cpp:484`) has **no
   length guard at all** — reads `GetUInt8(2)`…`GetUInt16(6)`
@@ -341,7 +352,28 @@ rests on request/response causality rather than on the gate itself —
 but it is **not** a demonstrated production hang and should not be
 reported as one.
 
-## Decision needed from Will — a login/world replay seam
+## Login/world replay seam — GRANTED and BUILT (T05, `6f2e434`)
+
+Will authorized the seam 2026-07-28; T05 delivered it. Both
+`ReplayLoginPacket` and `ReplayWorldPacket` are now public in `eq.h`,
+mirroring `ReplayZonePacket`. All three network surfaces now have a
+replay seam, so **no further seam work is needed** — see the survey
+below, which remains accurate.
+
+**Known limitation, recorded deliberately:** the session-replay golden
+exercises only the ZONE stream, so it did not independently validate
+login/world behavior preservation. That rests on line-by-line review
+(switch bodies moved verbatim, recorder placement confirmed in both
+functions, guards additive-only so the live path is bit-identical when a
+connection exists). If login/world behavior ever looks suspect, this is
+the seam of least evidence.
+
+**Next: T06 — thorough login/world flow coverage.** T05 shipped only a
+5-test seam smoke suite so the base-layer refactor stayed reviewable.
+The recorded login/world streams (5998 and 9000, ~1511 packets) are now
+reachable and still unused by any state-level test.
+
+## Original decision writeup (historical) — a login/world replay seam
 
 T04 covered the zone half of backlog item 4. The login and world stages
 remain at zero coverage and **cannot be reached without a source
