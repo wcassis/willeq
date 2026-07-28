@@ -2,8 +2,28 @@
 #include "client/input/hotkey_manager.h"
 #include <fstream>
 #include <filesystem>
+#include <atomic>
+#include <sstream>
+#include <unistd.h>
 
 using namespace eqt::input;
+
+// Each Hotkey fixture below needs its own scratch directory for a config
+// file. GTEST_DISCOVER_TESTS registers every TEST_F as an independent
+// ctest entry, so under `ctest -jN` several test_hotkey_manager processes
+// run concurrently. A path shared across fixtures/processes lets one
+// process's TearDown() delete a directory a sibling process is still
+// using mid-test. Make the directory unique per process (PID) and per
+// test (gtest test name) so no two concurrently-running instances of
+// this binary can collide, even if a test name were somehow reused.
+static std::filesystem::path MakeUniqueHotkeyTestDir() {
+    const auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::ostringstream oss;
+    oss << "hotkey_test_" << getpid() << "_"
+        << (test_info ? test_info->test_suite_name() : "unknown") << "_"
+        << (test_info ? test_info->name() : "unknown");
+    return std::filesystem::temp_directory_path() / oss.str();
+}
 
 // =============================================================================
 // Key Name Parsing Tests
@@ -213,7 +233,7 @@ protected:
 
     void SetUp() override {
         // Create a temporary directory for test files
-        m_tempDir = std::filesystem::temp_directory_path() / "hotkey_test";
+        m_tempDir = MakeUniqueHotkeyTestDir();
         std::filesystem::create_directories(m_tempDir);
         m_tempConfigPath = m_tempDir + "/test_hotkeys.json";
 
@@ -362,7 +382,7 @@ protected:
     std::string m_tempConfigPath;
 
     void SetUp() override {
-        m_tempDir = std::filesystem::temp_directory_path() / "hotkey_test";
+        m_tempDir = MakeUniqueHotkeyTestDir();
         std::filesystem::create_directories(m_tempDir);
         m_tempConfigPath = m_tempDir + "/test_hotkeys.json";
 
@@ -519,7 +539,7 @@ protected:
     std::string m_tempConfigPath;
 
     void SetUp() override {
-        m_tempDir = std::filesystem::temp_directory_path() / "hotkey_test";
+        m_tempDir = MakeUniqueHotkeyTestDir();
         std::filesystem::create_directories(m_tempDir);
         m_tempConfigPath = m_tempDir + "/test_hotkeys.json";
 
@@ -669,7 +689,7 @@ protected:
     std::string m_tempConfigPath;
 
     void SetUp() override {
-        m_tempDir = std::filesystem::temp_directory_path() / "hotkey_test";
+        m_tempDir = MakeUniqueHotkeyTestDir();
         std::filesystem::create_directories(m_tempDir);
         m_tempConfigPath = m_tempDir + "/test_hotkeys.json";
 
