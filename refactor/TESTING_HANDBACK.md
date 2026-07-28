@@ -312,3 +312,96 @@ written, which was the point.
 > MESSAGE(WARNING) with an "if you intended an alternate tree, pass an
 > absolute path" hint, at `8d13e8c`. Verified the warning renders as a
 > proper CMake Warning block. Thanks for the independent re-verify.
+
+---
+
+## Round 3 (T03b, 2026-07-28) — a real use-after-free in RDPServer::stop()
+
+**This is the most substantive item we have handed over.** It has been
+sitting behind the `RDPServerFrameTest.*` "documented intermittent
+flake" waiver. It is not a flaky test. It is a genuine
+use-after-free in `src/client/graphics/rdp/rdp_server.cpp`, which is
+your territory, so T03b diagnosed it and stopped.
+
+### Evidence
+
+12 kernel general-protection faults today (`journalctl -k`), every one
+identical:
+
+```
+traps: test_rdp_server[PID] general protection fault
+  ip:… sp:… error:0 in libwinpr3.so.3.30.0[BASE+75000]
+```
+
+`ip - BASE` = **`0xB3EB` in all 12**. The kernel reports the base of the
+containing segment, and libwinpr3's executable `LOAD` starts at vaddr
+`0x48000`, so the true ELF address is `0x48000 + 0xB3EB = 0x533EB`.
+That lands inside **`WaitForMultipleObjectsEx`** (symbol at `0x53280`,
+next symbol `0x53bb0`) — i.e. `WaitForMultipleObjectsEx+0x16b`.
+
+`error:0` indicates a general-protection fault on a bad (poisoned/
+non-canonical) pointer rather than an ordinary null-deref page fault —
+consistent with using freed handle memory.
+
+Reproduces only under **full-suite `-j8`** load: isolated serial passes
+5/5, RDP-only `-j8` (58 tests) passed 4 consecutive runs, full suite
+`-j8` crashed 3/3 in one session and 1/3 in another.
+
+Corroboration worth noting: during review the crash reproduced at the
+**same `0xB3EB`** offset in a **different** test of the family
+(`UpdateFrameAfterStart`, not `UpdateFrameMultipleTimes`). So the bug is
+in the shared server start/stop lifecycle, not in any single test's
+logic. Chasing it per-test would be a dead end.
+
+### Root cause (read from your source; we did not modify it)
+
+`RDPServer::listenerThread()` (lines ~448-481):
+
+```cpp
+while (running_.load()) {
+    count = listener_->GetEventHandles(listener_, handles, 32);   // (1)
+    DWORD status = WaitForMultipleObjects(count, handles, FALSE, 100);  // (2)
+```
+
+`RDPServer::stop()` (lines ~325-366):
+
+```cpp
+running_.store(false);
+if (listener_) listener_->Close(listener_);        // (A)  closes handles
+if (listenerThread_.joinable()) listenerThread_.join();  // (B)  joins AFTER
+```
+
+The window: the listener thread passes its `running_` check and fetches
+handles at (1). `stop()` then runs (A), closing the listener and
+invalidating those handles. The thread — already past its check, with
+stale handles in hand — enters `WaitForMultipleObjects` at (2) and
+faults inside WinPR. The `running_` recheck sits *after* the wait, which
+is too late, and no check between (1) and (2) could close the race
+anyway.
+
+`freerdp_listener_free()` happens after the join, so the free is not the
+problem; **`Close()` before `join()` is.**
+
+### Suggested fix (your call — this is your code)
+
+Reorder so the thread is joined before the listener is closed:
+`running_.store(false)` → `join()` → `Close()` → `free()`. That looks
+safe because the wait already has a 100 ms timeout and the loop
+rechecks `running_`, so the thread exits on its own within ~100 ms —
+no deadlock, at the cost of up to 100 ms in `stop()`.
+
+If that latency matters, the cleaner shape is a dedicated stop event
+handle added to the wait set that `stop()` signals, so the thread wakes
+immediately and exits before anything is closed.
+
+We have not tested either — `src/client/graphics/**` is off-limits to
+us and we did not want to guess at a fix in your territory.
+
+### Please also revisit the waiver
+
+`RDPServerFrameTest.*` is listed as a documented intermittent flake in
+`EXECUTOR_PROTOCOL.md` and the testing charter. That label caused every
+session, ours included, to wave the crash through for weeks. Once this
+is fixed the waiver should be removed; until then it is worth
+re-labelling as a known product bug rather than a test flake, so nobody
+else discounts it.

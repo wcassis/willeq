@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T03b | Suite hygiene | DONE (merged `41fe719`) | Part A: Hotkey fixtures made parallel-safe (unique per-PID/per-test temp dirs) — verified 10/10 green under `-j8`, no `/tmp` residue. Part B: RDP segfault diagnosed as a real use-after-free in `RDPServer::stop()` and handed to the perf session, correctly NOT fixed. See `refactor/TESTING_HANDBACK.md` Round 3. |
 | T03a | Unhardcode pcap zone port | DONE (merged `02d591d`) | 4 FAILs + 8 SKIPs → 12 PASS. Handshake-based port/IP discovery in `pcap_test_utils.h` + `WILLEQ_ZONE_PORT`/`WILLEQ_ZONE_IP` overrides. Compression assertions NOT weakened — 1017/1682 S→C packets genuinely carry the 0x5a marker once direction classification is fixed. |
 
 ## T01 — how the numbers were produced
@@ -263,13 +264,31 @@ its current rate. It is a documented exception so it did not block the
 merge, but a segfault reproducing 3/3 deserves a real diagnosis rather
 than a standing waiver.
 
-**Proposed as T03b** (tests/ territory, no source changes expected):
-make the Hotkey tests parallel-safe (unique temp paths per test, no
-shared fixture file), then characterize the RDP segfault properly —
-under what parallelism it reproduces, and whether it is a test bug or a
-real crash in RDP frame handling. If the latter, it is a genuine
-product bug hiding behind a "known flake" label, and it stops being a
-test-suite problem.
+**RESOLVED by T03b** (merged `41fe719`):
+
+- **Hotkey family — FIXED.** All four fixtures now build a unique temp
+  dir from PID + suite + test name. Verified 10 consecutive green
+  `ctest -R Hotkey -j8` runs, serial still green, no `/tmp` residue.
+  This family is no longer a flake and must **not** be added to the
+  documented-exception list.
+- **RDP family — NOT a flake. It is a product bug.** T03b traced it to
+  a use-after-free in `RDPServer::stop()`: the listener is `Close()`d
+  while `listenerThread()` may already hold fetched handles and be
+  entering `WaitForMultipleObjects`, and the thread is only joined
+  *after* that close. 12 kernel GP faults, all at the identical
+  libwinpr3 offset (`0xB3EB` → `WaitForMultipleObjectsEx+0x16b`), and
+  it reproduces in more than one test of the family — so it is the
+  shared start/stop lifecycle, not any single test.
+  Handed to the perf session (`TESTING_HANDBACK.md` Round 3); the fix
+  is in `src/client/graphics/**`, off-limits to us.
+
+**Consequence for our own bar:** the `RDPServerFrameTest.*` entry in the
+charter and `EXECUTOR_PROTOCOL.md` is mislabelled. It is a known
+*product* bug, not a test flake, and the "intermittent" wording caused
+every session to wave a real crash through. Until the perf session
+lands a fix, T-unit reviews should treat an RDP segfault as an expected
+manifestation of that known bug — and should say so explicitly rather
+than counting the run as clean.
 
 ## Needs seam
 
