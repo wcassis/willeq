@@ -16,11 +16,11 @@
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
 
-#ifdef EQT_HAS_GRAPHICS
+// P28: renderer-free inventory data model, used unconditionally below
+// (m_inventory_manager->processCharInventory).
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
-#endif
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
@@ -39,13 +39,16 @@ void EverQuest::ZoneProcessCharInventory(const EQ::Net::Packet &p)
 		LOG_ERROR(MOD_INVENTORY, "No inventory manager!");
 	}
 
-#ifdef EQT_HAS_GRAPHICS
 	// Update stats after inventory changes
 	UpdateInventoryStats();
-#endif
 }
 
-#ifdef EQT_HAS_GRAPHICS
+// P28: the rest of this file (ZoneProcessMoveItem through the tradeskill
+// recipe handlers just above the #endif that used to close here) is plain
+// "Player mode" bridge-driven inventory/trade/loot/vendor/bank/trainer logic
+// with no Irrlicht/renderer usage anywhere in it — un-guarded to match the
+// unconditional eq.h declarations (55b101e had folded it under
+// EQT_HAS_GRAPHICS alongside the genuinely renderer-only code elsewhere).
 void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 {
 	// Server response to our MoveItem request
@@ -407,13 +410,11 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 	}
 }
 
-#ifdef EQT_HAS_GRAPHICS
 void EverQuest::RequestReadBook(const std::string& filename, uint8_t type)
 {
 	// Send read book request with new window flag (0xFF)
 	SendReadBookRequest(0xFF, type, filename);
 }
-#endif
 
 bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
 {
@@ -1453,7 +1454,6 @@ void EverQuest::CloseTrainerWindow()
 	m_trainer_npc_id = 0;
 	m_trainer_name.clear();
 }
-#endif
 // ============================================================================
 // Phase 4: Tradeskill Recipes
 // ============================================================================

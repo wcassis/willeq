@@ -51,11 +51,12 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 
-#ifdef EQT_HAS_GRAPHICS
+// P28: entity_pose_state.h is game-state-owned (S2 decoupling comment in the
+// header), and inventory_manager.h/item_instance.h are the same
+// renderer-free data model used unconditionally elsewhere — un-guarded.
 #include "client/state/entity_pose_state.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/item_instance.h"
-#endif
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
