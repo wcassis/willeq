@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T08 | `GetCString` bounds | DONE (merged `b2fee49`) | Real OOB read fixed in `common/net`, inherited by 35 call sites. Confirmed with ASan (heap-buffer-overflow READ of size 5) rather than inferred. Golden md5 unchanged, so real traffic parses identically. 7 new tests. |
 | T07 | Login guards | DONE (merged `b6b3502`) | Executed inline by the orchestrator. `LoginDisableReconnect` null-guarded (closes T05's sweep gap); `LoginProcessLoginResponse` underflow + undersized-buffer guarded. Whole recorded login stream now replays; no death test remains. Corrects the orchestrator's wrong fixture-count claim from T06. |
 | T06 | Login/world flow coverage | DONE (merged `bae9c83`) | 18 tests incl. real-capture replay of both streams. Found a replay-path segfault in `LoginDisableReconnect` (not live-reachable) that exposed an incomplete guard sweep in T05. `LoginProcessLoginResponse` underflow confirmed as `bad_alloc`, not worse. |
 | T05 | Login/world seam + packet guards | DONE (merged `6f2e434`) | **First source-touching unit.** Dispatchers extracted, 12 QueuePacket sites guarded, `ReplayLoginPacket`/`ReplayWorldPacket` public. Both T04 truncated-packet crashes FIXED. Golden matched, ARM build green. Login/world flow coverage deferred to T06. |
@@ -544,19 +545,29 @@ claim and cannot be rewritten now that it is merged.
   Deliberately not requested yet — the sequencing coverage may prove
   sufficient.
 
-## Known, not fixed — `Packet::GetCString` can read past the buffer
+## `Packet::GetCString` OOB read — FIXED in T08 (`b2fee49`)
 
-`src/common/net/packet.cpp:270` bounds-checks only `offset + 1`, then
-constructs a `std::string` from the raw pointer, reading until the
-first NUL — which can run past the end of the buffer if the data is
-not NUL-terminated. Noticed while scoping T07's
-`LoginProcessLoginResponse` guards.
+`src/common/net/packet.cpp` bounds-checked only `offset + 1` and then
+built a `std::string` from the raw pointer, reading to the first NUL
+wherever it fell — past the end of the buffer for any unterminated
+string field. 35 call sites inherited it.
 
-Unlike the `GetUInt*` accessors, this is a genuine out-of-bounds
-**read**, not a bounds-checked throw. It is in `src/common/net`
-(base layer, ours by territory) and affects every caller, so it is a
-wider change than a single handler guard and was deliberately left
-alone by T07. Worth its own unit if Will wants it.
+**Confirmed with AddressSanitizer, not inferred:** over an
+exactly-sized 4-byte heap buffer with no terminator, the old logic
+reports `heap-buffer-overflow READ of size 5` via `strlen` inside the
+`std::string` constructor. New logic clean.
+
+Why it survived: with a `DynamicPacket`, heap slack after the buffer
+usually contains a zero byte and masks the over-read. It only shows on
+an exactly-sized allocation — which is why T08's tests use
+`StaticPacket` over exact-size buffers, and a lesson for any future
+buffer-bounds test in this codebase.
+
+Fix: `memchr` bounded by the packet, end-of-packet treated as a
+terminator when none is found. Chosen over throwing because this is the
+receive path, where an uncaught exception kills the client. Behavior
+identical for well-formed data — the session-replay golden matched with
+`session.golden` md5 unchanged.
 
 ## T02 findings (state-layer bugs, documented in tests, NOT fixed)
 
