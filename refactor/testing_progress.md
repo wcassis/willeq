@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T04 | Zone connection-flow sequencing | DONE (merged `2042490`) | 16 tests via the existing public `ReplayZonePacket` seam; all four gating prerequisites isolated. Found 2 real robustness bugs + 1 latent gating gap (below). Login/world still uncovered — needs a seam decision from Will. |
 | T03b | Suite hygiene | DONE (merged `41fe719`) | Part A: Hotkey fixtures made parallel-safe (unique per-PID/per-test temp dirs) — verified 10/10 green under `-j8`, no `/tmp` residue. Part B: RDP segfault diagnosed as a real use-after-free in `RDPServer::stop()` and handed to the perf session, correctly NOT fixed. See `refactor/TESTING_HANDBACK.md` Round 3. |
 | T03a | Unhardcode pcap zone port | DONE (merged `02d591d`) | 4 FAILs + 8 SKIPs → 12 PASS. Handshake-based port/IP discovery in `pcap_test_utils.h` + `WILLEQ_ZONE_PORT`/`WILLEQ_ZONE_IP` overrides. Compression assertions NOT weakened — 1017/1682 S→C packets genuinely carry the 0x5a marker once direction classification is fixed. |
 
@@ -290,9 +291,79 @@ lands a fix, T-unit reviews should treat an RDP segfault as an expected
 manifestation of that known bug — and should say so explicitly rather
 than counting the run as clean.
 
+## T04 findings (zone flow — pinned as tests, NOT fixed)
+
+All three verified against source by the orchestrator during review.
+
+### 1. Truncated-packet crashes in the zone receive path (REAL, actionable)
+
+- `ZoneProcessTimeOfDay` (`src/client/eq_entities.cpp:484`) has **no
+  length guard at all** — reads `GetUInt8(2)`…`GetUInt16(6)`
+  unconditionally.
+- `ZoneProcessPlayerProfile` (`src/client/eq.cpp:1999`) logs
+  `"PlayerProfile packet too small"` and then **falls through and reads
+  anyway** — the guard warns but does not `return`.
+
+`EQ::Net::Packet::GetUInt*` throws `std::out_of_range` rather than
+reading out of bounds (`src/common/net/packet.cpp:207`), so this is an
+exception rather than memory corruption. But **the zone receive path
+has no exception handling**: `ZoneOnPacketRecv` (`eq.cpp:717`) calls
+`DispatchZonePacket` bare, and the `try`/`catch` blocks at
+`eq.cpp:3480-3516` guard `SafeQueueZonePacket` — the *send* path. So a
+truncated packet propagates out of the network callback and takes the
+client down.
+
+Not hypothetical: `CLAUDE.md` documents packet loss during zone-load
+bursts as a known failure mode, and truncation is what that produces.
+
+Pinned as `DispatcherRobustness.BUG_TimeOfDay_ZeroLengthPayload_*` and
+`BUG_PlayerProfile_TruncatedPayload_*`. **Fix is base-layer source —
+needs Will's go-ahead** (a `return` after the PlayerProfile warning and
+a length guard on TimeOfDay would be a ~4-line change, but it is not
+`tests/` territory).
+
+### 2. `CheckZoneRequestPhaseComplete` is evaluated on 3 of its 4 inputs (latent)
+
+The gate needs `m_new_zone_received` + three counters. Three of those
+are set by handlers that then call `CheckZoneRequestPhaseComplete()`
+(`eq_player_info.cpp:54,62,71,80`). `ZoneProcessNewZone` sets
+`m_new_zone_received` and **never calls it**.
+
+The T04 executor reported this as "a genuine zone-load hang". **That
+overstates it, corrected during review:** `ZoneProcessNewZone` is
+itself what *sends* the AA/tribute/guild requests (`eq.cpp:1965+`), so
+their responses cannot arrive before it; and the counters are reset on
+zone change (`eq_zone.cpp:323-325`), which closes the re-zone path too.
+The dangerous ordering should not arise in the real protocol.
+
+It remains worth a one-line defensive call — correctness currently
+rests on request/response causality rather than on the gate itself —
+but it is **not** a demonstrated production hang and should not be
+reported as one.
+
+## Decision needed from Will — a login/world replay seam
+
+T04 covered the zone half of backlog item 4. The login and world stages
+remain at zero coverage and **cannot be reached without a source
+change**: every handler is private and needs a live connection
+(`LoginOnPacketRecv` eq.h:1146, `LoginProcessLoginResponse` 1152,
+`WorldOnPacketRecv` 1168, `WorldProcessCharacterSelect` 1178).
+
+The ask would be a `ReplayLoginPacket` / `ReplayWorldPacket` pair in
+`include/client/eq.h`, mirroring Batch R's existing `ReplayZonePacket`
+exactly — same shape, same send-suppression behavior. Precedent is
+strong (the zone seam is public, documented, and already carries two
+test binaries), and the diff would be small and behavior-preserving.
+
+But it is base-layer source, beyond the charter's "minimal seam"
+latitude for a testing unit, so it is Will's call. Until then,
+login/world stay uncovered and the recorded `session.pcap` login/world
+streams (5998 and 9000, 1511 packets) go unused by any state-level test.
+
 ## Needs seam
 
-Nothing yet — no source modification has been attempted.
+- **Login/world replay seam** — see the decision item above. This is the
+  only thing blocking the remaining half of backlog item 4.
 
 ## T02 findings (state-layer bugs, documented in tests, NOT fixed)
 
