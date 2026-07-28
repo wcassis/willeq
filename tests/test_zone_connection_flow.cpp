@@ -324,39 +324,38 @@ TEST(DispatcherRobustness, DuplicateDelivery_Harmless) {
     EXPECT_EQ(eq.GetEntities().count(kSpawnId), 0u);
 }
 
-// --- Real bugs found while probing robustness (STOP condition; reported,
-// not fixed -- tests/ territory only). Both handlers below skip the initial
-// EQ::Net::Packet accessor bounds check (Packet::GetUInt8/16/32/GetFloat
-// throw std::out_of_range rather than reading out of bounds -- see
-// src/common/net/packet.cpp:207-250 -- so this is a well-defined C++
-// exception, not memory corruption, but it is UNCAUGHT anywhere between
-// DispatchZonePacket and the network receive callback in production. A
-// truncated packet on this path -- exactly what a lossy network produces --
-// would propagate the exception out of ZoneOnPacketRecv uncaught.
+// --- Truncated-packet guards (T05 Part B). Both handlers below used to skip
+// the initial EQ::Net::Packet accessor bounds check (Packet::GetUInt8/16/32/
+// GetFloat throw std::out_of_range rather than reading out of bounds -- see
+// src/common/net/packet.cpp:207-250), which was UNCAUGHT anywhere between
+// DispatchZonePacket and the network receive callback in production. T05
+// added length guards to both handlers (src/client/eq_entities.cpp:484,
+// src/client/eq.cpp:1999) so a truncated packet -- exactly what a lossy
+// network produces -- now returns safely instead of throwing.
 //
-// These two tests pin the CURRENT (buggy) behavior with EXPECT_THROW so the
-// suite stays deterministic and green while the bug is on record; they are
-// not a substitute for a fix, which is out of this unit's territory. See
-// the Review section of refactor/T04_zone_connection_flow.md.
+// These tests were pinned as BUG_*_ThrowsOutOfRange in T04; T05 flips them to
+// assert the fixed (return-safely, no state change) behavior. See the Review
+// section of refactor/T05_login_world_seam.md.
 
-TEST(DispatcherRobustness, BUG_TimeOfDay_ZeroLengthPayload_ThrowsOutOfRange) {
-    // ZoneProcessTimeOfDay (eq_entities.cpp:484-490) has NO p.Length() guard
-    // at all -- it unconditionally reads GetUInt8(2)/GetUInt8(3)/GetUInt8(4)/
-    // GetUInt8(5)/GetUInt16(6). A zero-length (or any <8-byte) TimeOfDay
-    // payload throws std::out_of_range from Packet::GetUInt8.
+TEST(DispatcherRobustness, TimeOfDay_ZeroLengthPayload_ReturnsSafely) {
+    // ZoneProcessTimeOfDay (eq_entities.cpp:484) now guards p.Length() < 8
+    // before reading GetUInt8(2)/GetUInt8(3)/GetUInt8(4)/GetUInt8(5)/
+    // GetUInt16(6). A zero-length (or any <8-byte) TimeOfDay payload no
+    // longer throws, and time-of-day state is left unchanged.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_THROW(Replay(eq, HC_OP_TimeOfDay, EmptyPayload()), std::out_of_range);
+    EXPECT_NO_THROW(Replay(eq, HC_OP_TimeOfDay, EmptyPayload()));
 }
 
-TEST(DispatcherRobustness, BUG_PlayerProfile_TruncatedPayload_ThrowsOutOfRange) {
-    // ZoneProcessPlayerProfile (eq.cpp:1985-2010) logs a LOG_WARN when
-    // p.Length() < base+19588, but does NOT return -- it falls through to
-    // unconditional field reads (GetUInt32(base+4) etc.), so any payload
-    // shorter than the full 19588-byte PlayerProfile_Struct throws
-    // std::out_of_range instead of being handled gracefully.
+TEST(DispatcherRobustness, PlayerProfile_TruncatedPayload_ReturnsSafely) {
+    // ZoneProcessPlayerProfile (eq.cpp:1986) logs a LOG_WARN when
+    // p.Length() < base+19588 and now returns immediately instead of
+    // falling through to unconditional field reads (GetUInt32(base+4)
+    // etc.), so any payload shorter than the full 19588-byte
+    // PlayerProfile_Struct is handled gracefully instead of throwing.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_THROW(Replay(eq, HC_OP_PlayerProfile, EmptyPayload()), std::out_of_range);
-    EXPECT_THROW(Replay(eq, HC_OP_PlayerProfile, std::vector<uint8_t>(10, 0)), std::out_of_range);
+    EXPECT_NO_THROW(Replay(eq, HC_OP_PlayerProfile, EmptyPayload()));
+    EXPECT_NO_THROW(Replay(eq, HC_OP_PlayerProfile, std::vector<uint8_t>(10, 0)));
+    EXPECT_EQ(eq.GetEntities().size(), 0u);
 }
 
 // ============================================================================
@@ -381,7 +380,8 @@ TEST(ObservableZoneState, FullHandshake_ProducesCoherentState) {
     EXPECT_FALSE(eq.IsFullyZonedIn());
 
     // PlayerProfile: establishes our own spawn id (full-size payload -- see
-    // the BUG_PlayerProfile test above for what a short one does).
+    // PlayerProfile_TruncatedPayload_ReturnsSafely above for what a short
+    // one does).
     {
         auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
             p.PutUInt32(2 + 8, 1);

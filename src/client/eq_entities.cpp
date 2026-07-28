@@ -483,6 +483,12 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 {
+	if (p.Length() < 8) {  // needs GetUInt8(2..5) + GetUInt16(6)
+		LOG_WARN(MOD_ZONE, "TimeOfDay packet too small: {} bytes (expected at least {})",
+			p.Length(), 8);
+		return;
+	}
+
 	m_time_hour = p.GetUInt8(2);
 	m_time_minute = p.GetUInt8(3);
 	m_time_day = p.GetUInt8(4);
