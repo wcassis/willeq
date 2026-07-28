@@ -9,6 +9,30 @@ tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
 section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
+## Desktop-GL elimination — Phase 4 BLOCKED on product decision (P31, 2026-07-28)
+
+- P31 executed Phase 5 (doc sweep) + Dockerfile GLES2 update (merged
+  `d0051a3`) but CORRECTLY REFUSED all three Phase-4 deletions: the
+  roadmap's "dead code" claims failed reachability audit. Reality:
+  (a) `--renderer software` / `--constrained voodoo1|voodoo2` reach
+  EDT_BURNINGSVIDEO today (CLI override wins, no safety net);
+  (b) AnimatedTreeManager is unconditionally constructed and its
+  wind-controller/classification serve the LIVE GLES2 wind path (only
+  the CPU-instancing branch is BURNINGSVIDEO-gated) — deletion is a
+  refactor (extract wind controller), not a deletion;
+  (c) EDT_OPENGL is the live driver of the still-buildable ARM
+  `--no-gles2` Lima build. Evidence in decisions.md 2026-07-28 + P31
+  Review. **WILL'S DECISION NEEDED before Phase 4 can proceed**:
+  retire `--renderer software|opengl`, the voodoo/tnt constrained
+  presets, and the ARM `--no-gles2` Lima build? If yes → Phase 4
+  becomes: remove those entry points, extract the wind controller out
+  of AnimatedTreeManager, then delete.
+- NEW BASELINES (testing session's suites landing): GLES2 tree
+  1361/1362, headless tree 939/940 (sole failure = ALSA exception in
+  both). Executor protocol baseline note should track ~136x, not 1235.
+- Root `.dockerignore` added (P31) — docker builds no longer copy
+  ~12GB of local build trees.
+
 ## Handback items owned by the perf session (Will, 2026-07-28)
 
 - **eq.h EQT_HAS_GRAPHICS misclassification — FIXED by P28 (`1cae489`,
