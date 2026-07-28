@@ -16,6 +16,23 @@
 // needed at all. On real hardware (Orange Pi), initDRM() succeeds and this class
 // behaves identically to the ARM version — the fallback path never triggers there.
 // See docker/irrlicht-drm/CIrrDeviceFB.* for the canonical ARM version (untouched).
+//
+// P25: second addition — an explicit opt-in X11-windowed EGL backend
+// (--egl-x11 CLI flag), for interactive x86 dev use with a real on-screen
+// window instead of the invisible surfaceless pbuffer. This is NEVER
+// auto-detected from $DISPLAY: surfaceless stays the default so CI, goldens,
+// and benchmarks are unaffected. The opt-in is plumbed via the
+// WILLEQ_EGL_X11 environment variable (set by irrlicht_renderer.cpp before
+// createDeviceEx() when --egl-x11 is passed) rather than a direct call into
+// this class, because application code only has the public Irrlicht include
+// path available, not this private device header (same reason
+// gpu_upload_thread.cpp reads eglGetCurrentDisplay() instead of reaching
+// into CIrrDeviceFB). When requested, initEGLX11() opens an X11 window via
+// eglGetPlatformDisplay(EGL_PLATFORM_X11_KHR) + eglCreateWindowSurface and
+// replaces the evdev input path with X11 event translation
+// (pollX11Events()). See CIrrDeviceFB_X11.cpp for the implementation (split
+// out from CIrrDeviceFB.cpp to stay under the file-size warning threshold)
+// and refactor/P25_x11_egl_backend.md for the design record.
 
 #ifndef __C_IRR_DEVICE_FB_H_INCLUDED__
 #define __C_IRR_DEVICE_FB_H_INCLUDED__
@@ -125,6 +142,11 @@ private:
     void initEvdev();
     void pollEvdev();
 
+    // P25: X11-windowed EGL backend (opt-in via requestX11Window()/--egl-x11)
+    bool initEGLX11();
+    void pollX11Events();
+    void closeX11Window();
+
     // Keymap: Linux KEY_* -> Irrlicht EKEY_CODE
     void initKeyMap();
     EKEY_CODE linuxKeyToIrrlicht(int linuxKey) const;
@@ -183,6 +205,17 @@ private:
     // True when running on the x86/Xvfb surfaceless-EGL fallback (no DRM/GBM).
     // present() and the destructor skip all GBM/KMS page-flip work in this mode.
     bool surfaceless_;
+
+    // P25: X11-windowed EGL backend state. x11Display_/x11Window_/
+    // x11WmDeleteMsg_ are stored as void*/unsigned long (rather than
+    // Display*/Window/Atom) so this header doesn't need to include
+    // <X11/Xlib.h> — only CIrrDeviceFB.cpp does, keeping X11 types out of
+    // every other translation unit that includes this header for the EGL
+    // accessors (COpenGLES2Driver.cpp, GPUUploadThread, etc.).
+    void* x11Display_;            // Display*
+    unsigned long x11Window_;     // Window (XID)
+    unsigned long x11WmDeleteMsg_; // Atom (WM_DELETE_WINDOW)
+    bool x11Active_;              // true when the X11-windowed backend is in use
 };
 
 } // end namespace irr

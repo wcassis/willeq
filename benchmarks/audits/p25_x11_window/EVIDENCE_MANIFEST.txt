@@ -1,0 +1,94 @@
+P25 X11-windowed EGL backend — evidence manifest
+=================================================
+
+Following the same convention as prior units (e.g.
+benchmarks/audits/p20_live_visual/EVIDENCE_MANIFEST.txt): PNGs are not
+committed to git (repo-wide .gitignore excludes *.png). All stills live on
+NFS at /mnt/projects/fable/videos/p25_x11_window/stills/. This manifest
+(committed) records what exists and what each still shows.
+
+Build: docker/irrlicht-drm-x86/CIrrDeviceFB.{h,cpp} + new
+docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp (split out to stay under the
+file-size warning threshold — same class, member functions only). CLI flag
+--egl-x11 wired through include/client/application.h,
+src/client/application.cpp, include/client/graphics/constrained_renderer_config.h,
+src/client/graphics/irrlicht_renderer.cpp. CMakeLists.txt links X11 only for
+the x86 GLES2 build (EQT_GLES2 AND NOT EQT_DRM) — both the main willeq
+target and gles2_zone_benchmark.
+
+Capture mechanism: live eqemu session (scripts/eqemu/up.sh qeynos2 /
+down.sh), Xvfb :99 (1024x768x24), willeq built via scripts/build-gles2-x86.sh
+(binary: build-gles2/bin/willeq), invoked as:
+
+    DISPLAY=:99 ./build-gles2/bin/willeq -c data/captures/p25_willeq.json \
+        --renderer gles2 --egl-x11
+
+Config: data/captures/p25_willeq.json (host 127.0.0.1:5998, user
+willeq_test, character Testchar, server WillEQ) — same akk-stack/eqemu
+credentials used by prior H03/P15/P20 units.
+
+Window/input capture tools: `xwininfo -root -tree` to find the window ID,
+`import -window <id>` (ImageMagick) for stills, `xdotool` for synthetic
+keyboard/mouse input. xdotool and x11-apps (xwd) were installed via apt for
+this unit (previously absent). `python-xlib` was installed via pip to send a
+literal WM_DELETE_WINDOW ClientMessage directly to the window — see the
+window-close deviation note below.
+
+Stills (chronological, all from the same live eqemu qeynos2 session,
+Testchar zoned in at night — server clock, not scripted):
+
+- 01_initial.png — first still after zone load completes (HUD, hotbar,
+  health/mana/endurance bars, Testchar's back visible, "FPS: 49" — confirms
+  rendering lands IN the X11 window, not just that the process is alive).
+- 02_after_turn_right.png — after xdotool
+  `key --clearmodifiers --repeat 60 --delay 50 d` (TurnRight hotkey,
+  hotkey_manager.cpp:461). A fence/railing structure and an NPC nameplate
+  ("a plague rat") rotate into view that were not visible in 01_initial.png
+  — unambiguous proof the synthetic keyboard sequence drove a real camera
+  rotation, not just a redraw of the same frame.
+- 03_after_mouselook_drag.png — after xdotool
+  `mousemove --window <id> 400 300`, `mousedown 3`,
+  `mousemove_relative -- -200 0` (x2, 0.2s apart), `mouseup 3` (right-button
+  drag mouselook — irrlicht_renderer.cpp:413-428, EMIE_RMOUSE_PRESSED_DOWN +
+  EMIE_MOUSE_MOVED with isRightPressed()). Same fence/plague-rat still in
+  view (this drag didn't rotate far); a server-driven chat/loot debug line
+  appears in the corner (unrelated to input, confirms the live session is
+  still ticking).
+- 04_after_mouselook_retry.png — a second, slower right-drag (5x
+  `mousemove_relative -- -60 0` with 0.2s pauses between). The fence and
+  plague-rat nameplate are now OUT of view (camera rotated further than in
+  03) — this is the reliable mouse-input proof: 03 -> 04 shows a visible
+  camera-rotation delta driven purely by synthetic mouse motion while the
+  right button was held.
+
+Window-close proof (not captured as a still — process exit is the
+evidence): `xdotool windowclose <id>` was tried first and did NOT close the
+window — confirmed via debug instrumentation (temporary fprintf, removed
+before commit) that this is because xdotool's windowclose sends
+_NET_CLOSE_WINDOW to the ROOT window per the modern WM convention, which
+requires a window manager to translate into WM_DELETE_WINDOW; Xvfb has no
+WM running. Sending a literal WM_DELETE_WINDOW ClientMessage directly to the
+window (via a short python-xlib script, simulating what a real WM does) was
+received by pollX11Events()'s ClientMessage case and the process exited
+cleanly on its own (not via SIGTERM/SIGKILL) within ~1s both times it was
+tried (once mid-development, once as the final evidence-session teardown).
+
+Resize proof (not captured as a still — process survival + still content is
+the evidence): `xdotool windowsize <id> 1200 900` was issued directly at the
+X11 level (not through a WM's interactive drag, since Xvfb has none) and DID
+resize the raw X window to 1200x900 — WM_NORMAL_HINTS min/max are advisory
+to window managers, not enforced against a client's own direct
+XResizeWindow-equivalent call. The app's EGL surface/render viewport stayed
+fixed at the original 800x600 (rendering confined to the top-left of the
+now-larger window) and the process did NOT crash — this is exactly the
+documented round-1 behavior (fixed-size render, no crash on
+ConfigureNotify), just demonstrated via a path that bypasses the interactive
+resize-decline a real WM would enforce.
+
+Headless invariance: `ctest -R visual_gate` PASSED (goldens untouched) on
+the default desktop build/. `gles2_zone_benchmark --zone qeynos2 --eq-path
+/mnt/projects/EverQuestP1999 --eqe1-path data/eqe1 --frames 60 --warmup 5
+--navmesh-path /mnt/projects/maps/nav` (no --egl-x11 concept in this tool;
+default surfaceless path, unaffected by this unit) ran to completion with no
+crash: Avg FPS 122.4, frame times/draw-call counts in the expected range
+(see full output in the plan Review). No goldens moved.

@@ -535,6 +535,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             # GLES2 mode: link GLESv2 only (no desktop GL)
             ADD_DEFINITIONS(-DEQT_HAS_GLES2)
             LIST(APPEND LINK_LIBS EGL GLESv2 drm gbm)
+            # P25: X11 for the x86-only windowed EGL backend (--egl-x11).
+            # ARM (EQT_DRM=ON) never links X11 - its CIrrDeviceFB.cpp is the
+            # untouched shared DRM-only device with no X11 code at all.
+            IF(NOT EQT_DRM)
+                LIST(APPEND LINK_LIBS X11)
+            ENDIF()
         ELSE()
             # Desktop GL mode via Lima
             LIST(APPEND LINK_LIBS EGL GL GLESv2 drm gbm)
@@ -1496,6 +1502,13 @@ IF(EQT_GRAPHICS)
         # H01: x86 GLES2 dev builds have EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
         # still references drm/gbm symbols even with the surfaceless fallback.
         LIST(APPEND ZONE_BENCH_LIBS EGL GLESv2 drm gbm)
+        # P25: x86-only CIrrDeviceFB.cpp always references X11 symbols now
+        # (the windowed EGL backend is compiled in even though it's an
+        # opt-in runtime path) - link X11 whenever EQT_GLES2 without
+        # EQT_DRM, same condition as the main willeq target.
+        IF(EQT_GLES2 AND NOT EQT_DRM)
+            LIST(APPEND ZONE_BENCH_LIBS X11)
+        ENDIF()
     ELSE()
         # Desktop GL for texture_atlas.cpp glGenTextures etc.
         LIST(APPEND ZONE_BENCH_LIBS GL)

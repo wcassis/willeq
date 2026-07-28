@@ -40,6 +40,9 @@ struct ConstrainedRendererConfig {
     // Rendering backend and display mode
     RenderingBackend renderingBackend = RenderingBackend::Software;
     bool useDRM = false;           // Use DRM/KMS framebuffer device (no X11)
+    bool useEglX11 = false;        // P25: X11-windowed EGL surface (x86 GLES2 dev
+                                    // builds only; explicit opt-in, never DISPLAY-
+                                    // detected — surfaceless stays the default)
 
     // Rendering feature toggles (startup defaults, may be overridden at runtime)
     bool fog = true;
