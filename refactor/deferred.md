@@ -4,6 +4,23 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
+## CRITICAL: ParticleManager::renderUnified use-after-free (found by P33b, 2026-07-29)
+
+- **Live qeynos2 sessions SIGSEGV within ~1-2s of zone-in** — gdb bt +
+  disassembly: use-after-free on a dangling `atlasTexture_` inside
+  `ParticleManager::renderUnified()`. This is NOT the SimulationWorker
+  race P23 fixed (that was result-buffer lifetime; this is texture
+  lifetime) — but it was EXPOSED by P23's removal of the isEnabled()
+  gate: renderUnified never ran in production while the gate was in
+  place, so this latent bug never fired. Likely the P10b/P17
+  dangling-ITexture* class (texture evicted/freed while a raw pointer
+  is retained) — the particle atlas needs the same guard pattern
+  (isLiveTexture()/eviction listener) the region/entity paths got.
+  P33b worked around with a LOCAL uncommitted gag to capture its
+  evidence. BLOCKS all live-client evidence work and, plausibly, Pi
+  gameplay (renderUnified is GLES2-only and runs whenever zoneReady).
+  NEEDS A UNIT NOW — highest-priority item on the deck.
+
 ## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
 
 - `TreeWindController::update()` — the only code advancing wind time
