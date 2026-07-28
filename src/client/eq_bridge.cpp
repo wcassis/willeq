@@ -33,23 +33,29 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
+// P28: entity_pose_state.h, wld_loader.h, and the inventory/chat/hotbar/
+// command-registry data-model headers have no renderer dependency — used
+// unconditionally below (OnSpawnAddedGraphics's EntityPoseState, the
+// Player-mode inventory/loot/vendor/bank/hotbar methods). Only the
+// genuinely renderer-only headers (used solely inside InitGraphics/
+// ShutdownGraphics below) stay gated.
 #include "client/state/entity_pose_state.h"
-#include "client/graphics/loading_thread.h"
-#include "client/graphics/constrained_renderer_config.h"
-#include "client/graphics/weather_effects_controller.h"
-#include "client/graphics/weather_config_loader.h"
-#include "client/graphics/weather_quality_preset.h"
-#include "client/graphics/eq/wld_loader.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
-#include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/loading_thread.h"
+#include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/weather_effects_controller.h"
+#include "client/graphics/weather_config_loader.h"
+#include "client/graphics/weather_quality_preset.h"
+#include "client/graphics/eq/wld_loader.h"
+#include "client/input/hotkey_manager.h"
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/seasonal_controller.h"
@@ -206,11 +212,22 @@ void EverQuest::ShutdownGraphics() {
 	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
 }
+#endif // EQT_HAS_GRAPHICS
 
+// P28: GameTick/PreRenderTick/PostRenderTick and everything below through the
+// end of this file (spawn/pet bridge callbacks, ProcessBridgeIntents/Events,
+// inventory stats, loot/vendor/bank/trainer window methods, hotbar config
+// persistence) are plain game-thread/bridge logic called unconditionally by
+// Application regardless of EQT_HAS_GRAPHICS — un-guarded to match their
+// unconditional eq.h declarations. Only InitGraphics/ShutdownGraphics above
+// and CreateZoneLoadSnapshot below (its own narrower guard) are genuinely
+// renderer-lifetime-only.
 // D20c1: Pre-render game state tick — spell/buff managers + bridge
 // D21a: Game-side tick — runs on game thread (spell/buff updates + intent processing)
 void EverQuest::GameTick(float deltaTime) {
+#ifdef EQT_HAS_GRAPHICS
 	if (!m_graphics_initialized) return;
+#endif
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)
 	if (m_spell_manager) {
@@ -228,7 +245,9 @@ void EverQuest::GameTick(float deltaTime) {
 
 // D21a: Render-side tick — runs on render thread (applies events to renderer)
 void EverQuest::PreRenderTick(float /*deltaTime*/) {
+#ifdef EQT_HAS_GRAPHICS
 	if (!m_graphics_initialized) return;
+#endif
 
 	// Drain bridge events and apply to renderer
 	ProcessBridgeEvents();
@@ -236,7 +255,9 @@ void EverQuest::PreRenderTick(float /*deltaTime*/) {
 
 // D20c1: Post-render tick — audio sync, progressive loading check
 void EverQuest::PostRenderTick(float deltaTime) {
+#ifdef EQT_HAS_GRAPHICS
 	if (!m_graphics_initialized) return;
+#endif
 
 #ifdef WITH_AUDIO
 	// D20c2: Audio listener at player position, not camera position.
@@ -1684,8 +1705,6 @@ void EverQuest::LoadHotbarConfig() {
 	}
 }
 
-#endif // EQT_HAS_GRAPHICS
-
 // =============================================================================
 // Audio System
 // =============================================================================
@@ -1727,7 +1746,11 @@ void EverQuest::InitializeAudio() {
 		return;
 	}
 
-	// Apply memory constraints from constrained rendering config
+	// Apply memory constraints from constrained rendering config.
+	// P28: m_constrained_config/m_constrained_preset are renderer-startup-only
+	// state (no meaning without a renderer to constrain); skip when graphics
+	// is compiled out rather than guessing at a headless equivalent.
+#ifdef EQT_HAS_GRAPHICS
 	if (m_constrained_config && m_constrained_config->totalMemoryBudgetBytes > 0) {
 		m_audio_manager->setMemoryConstraints(
 			m_constrained_config->soundBufferCacheBytes,
@@ -1743,6 +1766,7 @@ void EverQuest::InitializeAudio() {
 				cfg.soundBufferCacheBytes / 1024, cfg.lazyPfsLoading ? "yes" : "no");
 		}
 	}
+#endif
 
 	// Apply configured volume levels
 	m_audio_manager->setMasterVolume(m_audio_config_master_volume);

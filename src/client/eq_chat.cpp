@@ -16,12 +16,13 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
-
-#ifdef EQT_HAS_GRAPHICS
+// P28: these are plain data-model headers (chat channel enum/buffer, chat
+// command registry, hotbar model) with no renderer dependency — used
+// unconditionally below (ChatChannel, m_command_registry). Un-guarded to
+// match their declassified eq.h forward decls.
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
-#endif
 
 #include <cstring>
 
@@ -241,7 +242,6 @@ void EverQuest::AddChatMissMessage(const std::string &text)
 
 void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
 {
-#ifdef EQT_HAS_GRAPHICS
 	const char* skill_name = EQ::getSkillName(skill_id);
 	m_pending_hotbar_buttons.emplace_back(
 		eqt::ui::HotbarButtonType::Skill,
@@ -250,10 +250,8 @@ void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
 	);
 	LOG_INFO(MOD_MAIN, "Queued skill {} ({}) for hotbar (total pending: {})",
 		skill_id, skill_name ? skill_name : "Unknown", m_pending_hotbar_buttons.size());
-#endif
 }
 
-#ifdef EQT_HAS_GRAPHICS
 const std::vector<eqt::ui::PendingHotbarButton>& EverQuest::GetPendingHotbarButtons() const
 {
 	return m_pending_hotbar_buttons;
@@ -269,7 +267,6 @@ size_t EverQuest::GetPendingHotbarButtonCount() const
 {
 	return m_pending_hotbar_buttons.size();
 }
-#endif
 
 void EverQuest::ProcessChatInput(const std::string &input)
 {

@@ -20,12 +20,18 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
-#ifdef EQT_HAS_GRAPHICS
+// P28: inventory/chat/hotbar/command-registry are plain data-model headers
+// with no renderer dependency (used unconditionally below: m_inventory_manager,
+// m_hotbar_model, m_command_registry are complete-type-required here). Only
+// hotkey_manager.h (pulls in <irrlicht.h>) and json_config.h/loading_thread.h
+// (renderer-only helpers) stay gated.
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/hotbar/hotbar_model.h"
+#include "client/graphics/ui/command_registry.h"
+#ifdef EQT_HAS_GRAPHICS
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #endif
@@ -33,7 +39,6 @@
 #include "client/bridge/game_state_bridge.h"
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/loading_thread.h"
-#include "client/graphics/ui/command_registry.h"
 #endif
 #include "client/bridge/irrlicht_bridge.h"
 
@@ -323,9 +328,11 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 	         phaseNum, progress * 100.0f, m_loading_status_text);
 
 	// Write to LoadingStatus for the loading thread's passive display loop
+#ifdef EQT_HAS_GRAPHICS
 	if (m_loading_status_ptr) {
 		m_loading_status_ptr->setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
 	}
+#endif
 
 	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
 	if (m_bridge) {
@@ -3670,9 +3677,11 @@ void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 }
 
 
-#ifdef EQT_HAS_GRAPHICS
-// Graphics renderer integration methods
-
+// P28: SetEQClientPath is plain game config (EQ install path, string-file
+// loading) with no renderer dependency — un-guarded to match its
+// unconditional eq.h declaration. SetConstrainedConfig genuinely needs the
+// renderer-only ConstrainedRendererConfig/ConstrainedRenderingPreset types
+// and stays gated.
 void EverQuest::SetEQClientPath(const std::string& path) {
 	m_eq_client_path = path;
 
@@ -3680,10 +3689,9 @@ void EverQuest::SetEQClientPath(const std::string& path) {
 	LoadStringFiles(path);
 }
 
+#ifdef EQT_HAS_GRAPHICS
 void EverQuest::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) {
 	m_constrained_config = config;
 	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
 }
-
-
 #endif // EQT_HAS_GRAPHICS

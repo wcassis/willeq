@@ -25,6 +25,15 @@
 #include <signal.h>
 #endif
 
+// P28: GameStateBridge/ConsoleBridge are the headless bridge pair — needed
+// unconditionally (ConsoleBridge is attached in headless mode; m_bridge is
+// used from updateScript() regardless of graphics). Only the renderer/input
+// headers that actually require Irrlicht stay gated.
+#include "client/bridge/console_bridge.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/events/renderer_intents.h"
+#include "client/state/event_bus.h"
+#include "client/hotbar/hotbar_model.h"
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
@@ -33,11 +42,6 @@
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
-#include "client/bridge/console_bridge.h"
-#include "client/bridge/game_state_bridge.h"
-#include "client/events/renderer_intents.h"
-#include "client/state/event_bus.h"
-#include "client/hotbar/hotbar_model.h"
 #endif
 
 #ifdef WITH_AUDIO

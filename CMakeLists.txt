@@ -230,6 +230,22 @@ SET(CLIENT_CORE_SOURCES
     src/client/hc_map.cpp
     src/client/zone_bsp.cpp
     src/client/zone_lines.cpp
+    # P28: PfsArchive/WldLoader have no renderer dependency (zone_bsp.h: "no
+    # graphics dependencies") and are used unconditionally by base game logic
+    # regardless of EQT_GRAPHICS — audio_manager.cpp scans sound archives via
+    # PfsArchive, and eq_zone.cpp's LoadZoneSources() parses the zone WLD for
+    # the BSP tree (water detection / zone lines). Both were mis-listed under
+    # GRAPHICS_SOURCES.
+    src/client/graphics/eq/pfs.cpp
+    src/client/graphics/eq/wld_loader.cpp
+    # P28: same misclassification — inventory manager, hotbar model, chat
+    # buffer, and chat command registry are plain data models with no
+    # renderer dependency (declassified in eq.h; see the P28 unit).
+    src/client/inventory/inventory_constants.cpp
+    src/client/inventory/inventory_manager.cpp
+    src/client/hotbar/hotbar_model.cpp
+    src/client/chat/chat_message_buffer.cpp
+    src/client/graphics/ui/command_registry.cpp
     # State management sources
     src/client/state/event_bus.cpp
     src/client/state/player_state.cpp
@@ -246,7 +262,6 @@ SET(CLIENT_CORE_SOURCES
     # Input handling sources
     src/client/input/null_input_handler.cpp
     src/client/input/console_input_handler.cpp
-    src/client/input/hotkey_manager.cpp
     # Output/rendering sources
     src/client/output/output_renderer.cpp
     src/client/output/null_renderer.cpp
@@ -258,7 +273,6 @@ SET(CLIENT_CORE_SOURCES
     src/client/mode/headless_mode.cpp
     src/client/mode/graphical_mode.cpp
     # Bridge sources
-    src/client/bridge/irrlicht_bridge.cpp
     src/client/bridge/console_bridge.cpp
     # Action system sources
     src/client/action/action_dispatcher.cpp
@@ -295,9 +309,12 @@ IF(EQT_GRAPHICS)
     SET(GRAPHICS_SOURCES
         # Graphics input handling
         src/client/input/graphics_input_handler.cpp
-        # EQ file loaders
-        src/client/graphics/eq/pfs.cpp
-        src/client/graphics/eq/wld_loader.cpp
+        # P28: unconditionally includes <irrlicht.h> — was mis-listed in
+        # CLIENT_CORE_SOURCES (always compiled), which made it impossible to
+        # build EQT_GRAPHICS=OFF at all regardless of eq.h's own guards.
+        src/client/input/hotkey_manager.cpp
+        src/client/bridge/irrlicht_bridge.cpp
+        # EQ file loaders (pfs.cpp/wld_loader.cpp moved to CLIENT_CORE_SOURCES — P28, see there)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -363,12 +380,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/client/graphics/load_mem_audit.cpp
-        # Inventory UI sources
-        src/client/inventory/inventory_constants.cpp
-        src/client/inventory/inventory_manager.cpp
-        src/client/hotbar/hotbar_model.cpp
-        src/client/chat/chat_message_buffer.cpp
-        src/client/graphics/ui/command_registry.cpp
+        # Inventory UI sources (inventory_constants/inventory_manager,
+        # hotbar_model, chat_message_buffer, command_registry moved to
+        # CLIENT_CORE_SOURCES — P28, see there: no renderer dependency, used
+        # unconditionally by base game logic)
         src/client/graphics/ui/ui_atlas.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/ui_renderer.cpp

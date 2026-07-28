@@ -44,9 +44,10 @@
 #endif
 #include "client/skill/skill_manager.h"
 #include "client/bridge/game_state_bridge.h"
-#ifdef EQT_HAS_GRAPHICS
+// P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
+// renderer dependency — UpdateWaterState() below needs the complete BspTree
+// type regardless of graphics.
 #include "client/graphics/eq/wld_loader.h"
-#endif
 #ifdef WITH_AUDIO
 #include "client/audio/water_sounds.h"
 #endif
