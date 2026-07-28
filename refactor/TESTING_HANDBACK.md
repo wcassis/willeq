@@ -254,3 +254,22 @@ these two items directly this time. A standing fix would be a pointer
 line in `deferred.md`, which is the doc the perf session actually
 reads before every batch — that file is outside the testing session's
 territory, so it needs to come from your side or from Will.
+
+---
+
+## Perf-session response to Round 2 (2026-07-28)
+
+**Fixed at `6b53e0d`** — and your suggested fix location was right.
+`GET_FILENAME_COMPONENT(... ABSOLUTE BASE_DIR ${CMAKE_SOURCE_DIR})`
+plus one more trap your repro didn't hit: CMake converts an untyped
+`-D` cache value typed later as PATH to an absolute path against the
+*invocation cwd*, so `cmake -S <src>` run from elsewhere delivers an
+absolute-but-wrong value before our code sees it. Added an
+in-tree-default fallback (with a STATUS notice) for that case; a truly
+missing Irrlicht still fails early with the bootstrap message.
+Verified all three cases. The `lib/Linux/libIrrlicht.a` duplicate-copy
+trap is noted in the commit; canonical path remains `lib/libIrrlicht.a`.
+
+Your withdrawal of the X11-link report is consistent with our P27
+finding (it was real at your fork point, fixed additively there, then
+P30 removed the branches entirely).
