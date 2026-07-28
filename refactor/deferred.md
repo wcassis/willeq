@@ -11,12 +11,30 @@ the commit. Sources are historical docs — do not edit those.
   the live GLES2 path before P32 (gated on a CPU-instancing tree count
   only the deleted software path populated). The weather multiplier
   has always been effectively frozen at 1.0. P32 preserved that exact
-  behavior. RULED by Will 2026-07-28: "trees are supposed to move.
-  the only time when they should not animate is if the tree wind
-  animation setting is disabled" → P33 dispatched: wire
-  TreeWindController::update() into the frame loop, gated on the wind
-  setting; goldens/gate stay deterministic (wind pinned in the
-  benchmark path); live sway evidence for Will's bless.
+  behavior. RULED by Will 2026-07-28 ("trees are supposed to move;
+  only still when the tree wind animation setting is disabled") →
+  **P33 LANDED (merged `dd0912e`) with a REFRAMING finding**: the GPU
+  wind trees run off IrrlichtRenderer::windTime_, which was ALREADY
+  incrementing unconditionally — trees were already animating in
+  production, and the real bug was the INVERSE: the animatedTrees
+  setting gated nothing. P33 fix: update() restored (weather
+  multiplier transitions live again) + weatherMult forced to exactly
+  0.0 when disabled (traced GLSL: strength becomes exactly 0 → true
+  rest pose). Gate byte-stable by construction (benchmark never calls
+  IrrlichtRenderer) + double-run proof; bar green 1376/1377.
+  EVIDENCE PENDING: P33's gfaydark session hit the eqemu static-fleet
+  port-collision bug (below) — P33b dispatched to capture ON/OFF
+  time-lapse in qeynos2 for Will's bless.
+- **eqemu ENVIRONMENT bug (pre-existing, now bit twice)**: the
+  akk-stack image's entrypoint static-zone fleet collides with
+  configured static zone ports — P29 measured captures landing on
+  7012+/7026 (vs tests' hardcoded 7000, testing session's T03a), and
+  P33 found gfaydark's configured static port occupied → world
+  redirects to a wrong port → infinite login/world/zone-transfer loop
+  (gfaydark UNREACHABLE for live sessions). qeynos2-via-#zone remains
+  the reliable route. Real fix is server-container config (outside
+  sanctioned executor scope) — needs Will's call on whether/how to
+  adjust the akk-stack zone fleet.
 
 **STANDING CROSS-SESSION POINTER (2026-07-28): the testing campaign
 tracks its work in `refactor/testing_progress.md` (charter:

@@ -1064,20 +1064,25 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
                                    playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
         }
-        // P32 finding (preserved, not "fixed"): this call to
-        // TreeWindController::update(deltaTime) was gated on
-        // getAnimatedTreeCount() > 0, which is populated only by
-        // AnimatedTreeManager's CPU-instancing path (beginInitialize/
-        // initializeNextBatch, reachable only via the now-removed
-        // EDT_BURNINGSVIDEO branch in loadZoneStep11_Env()). That means
-        // update() — the only place that advances TreeWindController's
-        // time_ and weatherMultiplier_ transition — was ALREADY never
-        // called on the live GLES2 path before this unit; weatherMultiplier_
-        // has always been frozen at its default (1.0f) here. Deleting this
-        // dead call preserves that exact (if surprising) existing behavior;
-        // do NOT "fix" it by calling update() unconditionally — that would
-        // be a new, unreviewed behavior change (see docs/decisions.md /
-        // refactor/P32_phase4_final.md Review for detail).
+        // P33: TreeWindController::update(deltaTime) is now wired live
+        // (Will's ruling: trees animate unless the tree-wind-animation
+        // setting is disabled — see display_settings.json "animatedTrees",
+        // config_.enabled here). P32 found this call dead (gated on
+        // getAnimatedTreeCount() > 0, which was always false post
+        // CPU-instancing removal); that gate is gone now, replaced with
+        // an explicit isEnabled() check so weatherMultiplier_'s transition
+        // (setWeather -> targetMultiplier_) actually advances. deltaTime is
+        // the real per-frame delta passed in from the caller (never a
+        // wall-clock read inside the controller), so this stays
+        // deterministic frame-to-frame for the benchmark/gate. The visual
+        // gate (gles2_zone_benchmark) never calls into IrrlichtRenderer at
+        // all — it drives ZoneShaderManager directly and never calls
+        // setWindTime/setWindParams, so windTime_ there is permanently 0
+        // regardless of anything in this file; goldens are unaffected by
+        // this change (see refactor/P33_tree_wind_enable.md Review).
+        if (treeWindController_.isEnabled()) {
+            treeWindController_.update(deltaTime);
+        }
     }
     } // tier2 detail+tree block
     frameTimings_.tier2Update = measureSection();
@@ -1162,8 +1167,18 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         // Update wind shader uniforms each frame
         windTime_ += deltaTime;
         zoneShader_->setWindTime(windTime_);
-        // Wind params from tree wind config (or defaults) with weather multiplier
-        float weatherMult = treeWindController_.getWeatherMultiplier();
+        // Wind params from tree wind config (or defaults) with weather multiplier.
+        // P33: gate the actual displacement magnitude on the tree-wind-animation
+        // setting (treeWindController_.isEnabled(), backed by
+        // display_settings.json "animatedTrees") — when disabled, force the
+        // multiplier to 0 so uWindParams collapses strength = baseStr + gustStr*gust
+        // to exactly 0 in the vertex shader (zone_shader.cpp), i.e. zero
+        // displacement, not merely a frozen nonzero pose. windTime_ keeps
+        // advancing either way (cheap, avoids a discontinuity if re-enabled
+        // mid-session); it has zero visual effect while strength is 0.
+        float weatherMult = treeWindController_.isEnabled()
+            ? treeWindController_.getWeatherMultiplier()
+            : 0.0f;
         // Default config values scaled by weather
         zoneShader_->setWindParams(
             0.3f * weatherMult,   // baseStrength
