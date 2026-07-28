@@ -76,6 +76,65 @@ P25 landed (windowed dev path exists), GLES2 tree certified 1234/1235.
 
 ## Review
 
-(executor fills in: removal inventory vs roadmap §5 [each item:
-removed/kept+why], the new configure UX + bootstrap docs, the negative
-test output, all verification numbers, deviations)
+### Removal inventory vs roadmap §5
+
+| Item | Disposition | Why |
+|---|---|---|
+| System-Irrlicht `FIND_PATH`/`FIND_LIBRARY` fallback (~L84-94) | **REMOVED** | Replaced with: use `EQT_GLES2_IRRLICHT_DIR` if set; else use whatever `IRRLICHT_INCLUDE_DIR`/`IRRLICHT_LIBRARY` are already cache-set (this is how `docker/Dockerfile.arm-noble`/`scripts/build-arm-noble.sh` inject the ARM patched Irrlicht — confirmed by reading the Dockerfile, not assumed); else `FATAL_ERROR` naming the bootstrap command. |
+| Main `LINK_LIBS` `X11 Xxf86vm GL` branch (~L549/555) | **REMOVED** | Was the bare `ELSE()` after `IF(APPLE) ELSEIF(EQT_DRM OR EQT_GLES2)`; converted `ELSEIF` to `ELSE()` and dropped the desktop tail — a new configure-time gate (see below) guarantees `EQT_DRM OR EQT_GLES2` whenever this code runs, so the branch was unreachable dead code. |
+| `model_viewer`'s own `X11`/`GL` `ELSE()` | **REMOVED** | Same pattern as main `LINK_LIBS`. |
+| `generate_textures`'s `ELSE()` | **N/A — already gone** | Tool was RETIRED in P26 (Phase 0); no branch left to remove. Noted, not touched. |
+| `gles2_zone_benchmark`'s desktop-`GL`-only `ELSE()` in `ZONE_BENCH_LIBS` | **REMOVED** | Same pattern. |
+| "8 P26/P27 per-target blocks' desktop halves" | **REMOVED (7 of 8 have a desktop half; 1 didn't)** | `s3d_dump`, `entity_composite_builder`, `generate_surface_map`, `zone_line_editor` (main CMakeLists.txt) + `test_graphics`, `test_asset_loading`, `test_door_loading` (tests/CMakeLists.txt) each had an `ELSEIF(NOT APPLE) TARGET_LINK_LIBRARIES(... X11 Xxf86vm GL)` tail — removed, leaving only the `IF(EQT_DRM OR EQT_GLES2) ... ENDIF()` body. `model_viewer` is counted above (its ELSE() had no ELSEIF form). |
+| `APPLE` branches | **KEPT** | Ambiguous whether they're "desktop-GL-only" (they use Cocoa/OpenGL/IOKit/Carbon frameworks, not X11) and Apple has never been a supported target — kept per the plan's explicit fallback rule, noted here rather than silently left. |
+| `EQT_GLES2_IRRLICHT_DIR` mandatory | **DONE, with a caveat** | Made effectively mandatory via the FATAL_ERROR gate above — but the *literal* variable stays optional as a name, because the ARM path (correctly, per §6 Phase 3's own architecture) never sets it, injecting `IRRLICHT_INCLUDE_DIR`/`IRRLICHT_LIBRARY` directly instead. What's now mandatory is "a resolved Irrlicht path, by one of the two sanctioned mechanisms" — verified this doesn't regress ARM (build-arm-noble.sh ran clean, see Verification). |
+| Cosmetic `Display backend: X11/GLX` bug (§1) | **FIXED** | Root `CMakeLists.txt`'s final `MESSAGE(STATUS ...)` block (not a P28-owned file). Added an explicit `ELSEIF(EQT_GLES2)` branch ("EGL + OpenGL ES 2.0 …"); the residual bare `ELSE()` (now unreachable given the mandatory-Irrlicht gate) reports "UNKNOWN (unreachable …)" instead of the misleading "X11/GLX", left in place defensively rather than deleted. |
+
+New configure-time gate added (not explicitly named in §5 but required to make the mandatory-Irrlicht claim hold without a link-time failure): after Irrlicht resolves, `IF(NOT (EQT_DRM OR EQT_GLES2)) MESSAGE(FATAL_ERROR ...)`. Without it, `-DEQT_GLES2_IRRLICHT_DIR=... ` alone (forgetting `-DEQT_GLES2=ON`) would have fallen through the (now-removed) desktop `ELSE()` with nothing appended, failing at *link* time — exactly what the plan forbids.
+
+### New configure UX + bootstrap docs
+
+- `CLAUDE.md` "Build Commands": replaced the plain `mkdir build && cd build && cmake ..` guidance with the GLES2-config equivalent (`-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF -DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86 -DEQT_BUILD_TESTS=ON`), the one-time `bash scripts/build-gles2-x86.sh --irrlicht-only` bootstrap (verified this flag exists — `scripts/build-gles2-x86.sh` line ~30 `--irrlicht-only`), and a note that `build-gles2/` (produced by the no-args form of that script) is untouched and still what `scripts/ci/visual_gate.sh` targets. Also fixed the stale "Dependencies" line (`libirrlicht-dev, libxxf86vm-dev`) to point at the patched-Irrlicht bootstrap instead of an apt package.
+- `refactor/EXECUTOR_PROTOCOL.md` verification-bar steps 1-2: now spell out the exact GLES2-config `cmake` invocation for `<slot>/build`, plus the bootstrap-if-absent note and the 1234/1235 P27 baseline.
+- `refactor/desktop_gl_elimination_plan.md`: Phase 2 and Phase 3 marked EXECUTED with what actually happened (see the doc itself — kept in sync with this table rather than duplicated further here), including the `docker/Dockerfile` casualty finding (below).
+
+### Negative test output (configure with no patched Irrlicht available)
+
+```
+$ cmake -S . -B /tmp/cmake_negative_check
+...
+-- Found Boost: ... found components: graph
+CMake Error at CMakeLists.txt:106 (MESSAGE):
+  EQT_GRAPHICS=ON requires a locally-built patched GLES2 Irrlicht —
+  desktop-GL Irrlicht (system libirrlicht-dev / X11-GLX) support was removed
+  (P30, refactor/desktop_gl_elimination_plan.md).  For x86 dev builds: run
+  'bash scripts/build-gles2-x86.sh --irrlicht-only' once, then configure with
+  -DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86 -DEQT_GLES2=ON (see
+  CLAUDE.md 'Build Commands').  For ARM cross-compiles, use
+  scripts/build-arm-noble.sh, which supplies
+  IRRLICHT_INCLUDE_DIR/IRRLICHT_LIBRARY directly.  To build without graphics
+  at all, configure with -DEQT_GRAPHICS=OFF.
+
+-- Configuring incomplete, errors occurred!
+```
+Fails at configure (no build/link attempted), names the exact bootstrap command, exit is a CMake hard error (not a silent fallback). Ran against a scratch tree with no `-D` flags at all — `EQT_GRAPHICS` defaults ON, `EQT_GLES2_IRRLICHT_DIR` defaults empty, no `IRRLICHT_INCLUDE_DIR`/`IRRLICHT_LIBRARY` cache vars present.
+
+### Verification numbers (NEW bar, this unit)
+
+1. GLES2-config full tree, tests on (`<slot>/build`, reconfigured from the pre-existing desktop tree — old cache wiped since the config fundamentally changed): `cmake --build build -j24` — **100% built clean**, no errors (pre-existing narrowing warnings in `inventory_manager.cpp` only, unrelated to this unit).
+2. `ctest --test-dir build --output-on-failure`: **1234/1235 passed** — sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host exception). Matches the P27 baseline exactly. Full run took ~300s.
+3. `bash scripts/build-gles2-x86.sh` (full run, not `--irrlicht-only`): **clean**, rebuilt `third_party/irrlicht-gles2-x86/libIrrlicht.a` + `build-gles2/bin/{willeq,gles2_zone_benchmark}`.
+4. Visual gate: `bash scripts/ci/visual_gate.sh` — first run FAILed on CPU-time ceilings (qeynos2, befallen — `p95 CPU ms` over 2x baseline), immediately re-ran clean 5s later: **PASS**. Attributed to transient host load from the concurrent full-tree build+ctest run this unit had just finished (evidence discipline: re-ran rather than accepting either result on faith; PASS is the reproducible steady-state result). Goldens untouched — `git status` shows no changes under any golden/image path, confirmed no `--bless` was ever invoked.
+5. `bash scripts/build-arm-noble.sh`: **clean**, full target list built (`willeq`, `model_viewer`, `gpu_texture_formats`, 10 `gles2_*`/hwcaps probes, `gles2_zone_benchmark`, `gles2_shader_diagnostic`, `gles2_composite_audit`), `willeq` binary produced (340M unstripped ARM ELF). Confirms the ARM path is unaffected by the removals, as the plan required verifying rather than assuming.
+6. `bash scripts/refactor/check_file_sizes.sh fable`: **no output, exit 0** — no new FAILs (expected: this unit only edits CMake/docs, no new large C++ files).
+
+### Deviations
+
+- The plan named `EQT_GLES2_IRRLICHT_DIR` as becoming "non-optional/always-on" (roadmap §6 Phase 3 wording); literally making it a required CMake variable would have broken the ARM build, which never sets it (confirmed by reading `docker/Dockerfile.arm-noble` — it injects `IRRLICHT_INCLUDE_DIR`/`IRRLICHT_LIBRARY` directly as cache variables instead). Implemented the equivalent *intent* — a resolved Irrlicht is now mandatory, sourced from either mechanism, with an early `FATAL_ERROR` if neither is present — verified ARM still builds clean. Flagged here rather than silently reinterpreting the plan.
+- Found and documented (not fixed — out of this unit's territory) that `docker/Dockerfile` (the non-ARM Docker image, `apt-get install libirrlicht-dev libxxf86vm-dev libx11-dev libgl1-mesa-dev` + plain `-DEQT_GRAPHICS=ON`) now fails at configure by design, since it was exactly a desktop-GL build with no `EQT_GLES2_IRRLICHT_DIR`/`EQT_GLES2`/`EQT_DRM`. `docker/` is not in this unit's assigned territory (CMakeLists.txt/tests/CMakeLists.txt/scripts//CLAUDE.md/EXECUTOR_PROTOCOL.md/roadmap doc only) — flagged in the roadmap doc's Phase 3 section and here for the orchestrator to schedule a fix or retirement alongside the `willeq-benchmark` guidance update (§4, also not touched — orchestrator's per the plan).
+- `build/` (the pre-existing desktop-config tree, 103 binaries) was wiped and reconfigured in-place as the new GLES2-config tree rather than left as a stale desktop cache, since Phase 2 makes it the primary tree and its old cache (`EQT_GLES2:BOOL=OFF`) was incompatible with the new mandatory-Irrlicht gate. `build/` is gitignored — no tracked-file impact.
+- The `data/eq_client` symlink (`ln -s /mnt/projects/EverQuestP1999 data/eq_client`, gitignored, per `refactor/test_baseline.txt`) did not exist in this worktree; created it to get the full 1235-test count rather than 3 fewer asset-dependent tests silently skipping. Standard per-worktree setup, not a code change.
+
+### Final commit
+
+See branch `task/P30-phase2-3`, commit created immediately after this Review section was filled in (see the executor's final report for the hash).

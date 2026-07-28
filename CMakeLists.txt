@@ -68,29 +68,52 @@ FIND_LIBRARY(RECAST_LIBRARY NAMES Recast)
 FIND_PATH(DETOUR_INCLUDE_DIR DetourNavMesh.h PATH_SUFFIXES recastnavigation)
 FIND_LIBRARY(DETOUR_LIBRARY NAMES Detour)
 
-# Find Irrlicht (optional, for graphics rendering)
+# Find Irrlicht (required for graphics rendering, when EQT_GRAPHICS=ON).
+#
+# P30 (Phase 3, desktop_gl_elimination_plan.md): the system-Irrlicht
+# FIND_PATH/FIND_LIBRARY fallback (searching for an apt-installed
+# libirrlicht-dev, i.e. desktop GL / X11-GLX) was REMOVED — that backend no
+# longer exists in this project. EQT_GLES2_IRRLICHT_DIR (a locally-built
+# patched GLES2 Irrlicht, see scripts/build-gles2-x86.sh) is now the only
+# supported way to provide Irrlicht for a from-scratch configure.
+#
+# ARM cross-compiles (docker/Dockerfile.arm-noble, scripts/build-arm-noble.sh)
+# don't set EQT_GLES2_IRRLICHT_DIR at all — they pass -DIRRLICHT_INCLUDE_DIR /
+# -DIRRLICHT_LIBRARY directly as CMake cache variables pointing at the
+# ARM sysroot's own patched Irrlicht (installed via `cmake --install` earlier
+# in the Dockerfile). Both mechanisms funnel into the same IRRLICHT_INCLUDE_DIR
+# / IRRLICHT_LIBRARY variables checked below, so the ARM path is unaffected by
+# this removal.
 IF(EQT_GRAPHICS)
     IF(EQT_GLES2_IRRLICHT_DIR)
         # H01: use the locally-built patched Irrlicht (x86 GLES2 dev builds)
         # instead of searching the system for one.
         SET(IRRLICHT_INCLUDE_DIR "${EQT_GLES2_IRRLICHT_DIR}/include")
         SET(IRRLICHT_LIBRARY "${EQT_GLES2_IRRLICHT_DIR}/lib/libIrrlicht.a")
-        IF(EXISTS "${IRRLICHT_INCLUDE_DIR}/irrlicht.h" AND EXISTS "${IRRLICHT_LIBRARY}")
-            ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
-            MESSAGE(STATUS "Irrlicht graphics support: ENABLED (local GLES2 build: ${EQT_GLES2_IRRLICHT_DIR})")
-        ELSE()
-            MESSAGE(FATAL_ERROR "EQT_GLES2_IRRLICHT_DIR set to '${EQT_GLES2_IRRLICHT_DIR}' but irrlicht.h / libIrrlicht.a not found there. Run scripts/build-gles2-x86.sh first.")
+    ENDIF()
+    IF(IRRLICHT_INCLUDE_DIR AND IRRLICHT_LIBRARY AND EXISTS "${IRRLICHT_INCLUDE_DIR}/irrlicht.h" AND EXISTS "${IRRLICHT_LIBRARY}")
+        ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
+        MESSAGE(STATUS "Irrlicht graphics support: ENABLED (${IRRLICHT_LIBRARY})")
+        IF(NOT (EQT_DRM OR EQT_GLES2))
+            MESSAGE(FATAL_ERROR
+                "EQT_GRAPHICS=ON with a patched Irrlicht requires -DEQT_GLES2=ON "
+                "(x86 GLES2 dev builds) or -DEQT_DRM=ON (ARM DRM/KMS builds) — "
+                "desktop GL (X11/GLX) support was removed (P30, "
+                "refactor/desktop_gl_elimination_plan.md). Configure with "
+                "-DEQT_GLES2=ON.")
         ENDIF()
     ELSE()
-        FIND_PATH(IRRLICHT_INCLUDE_DIR irrlicht.h PATH_SUFFIXES irrlicht)
-        FIND_LIBRARY(IRRLICHT_LIBRARY NAMES Irrlicht)
-        IF(IRRLICHT_INCLUDE_DIR AND IRRLICHT_LIBRARY)
-            ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
-            MESSAGE(STATUS "Irrlicht graphics support: ENABLED")
-        ELSE()
-            MESSAGE(STATUS "Irrlicht graphics support: DISABLED (Irrlicht not found)")
-            SET(EQT_GRAPHICS OFF)
-        ENDIF()
+        MESSAGE(FATAL_ERROR
+            "EQT_GRAPHICS=ON requires a locally-built patched GLES2 Irrlicht — "
+            "desktop-GL Irrlicht (system libirrlicht-dev / X11-GLX) support was "
+            "removed (P30, refactor/desktop_gl_elimination_plan.md). "
+            "For x86 dev builds: run 'bash scripts/build-gles2-x86.sh "
+            "--irrlicht-only' once, then configure with "
+            "-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86 "
+            "-DEQT_GLES2=ON (see CLAUDE.md 'Build Commands'). For ARM "
+            "cross-compiles, use scripts/build-arm-noble.sh, which supplies "
+            "IRRLICHT_INCLUDE_DIR/IRRLICHT_LIBRARY directly. To build without "
+            "graphics at all, configure with -DEQT_GRAPHICS=OFF.")
     ENDIF()
 ENDIF()
 
@@ -523,11 +546,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)
         FIND_LIBRARY(CARBON_FRAMEWORK Carbon)
         LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK} ${OPENGL_FRAMEWORK} ${IOKIT_FRAMEWORK} ${CARBON_FRAMEWORK})
-    ELSEIF(EQT_DRM OR EQT_GLES2)
+    ELSE()
         # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost, and for
         # H01's x86 GLES2 dev builds (EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
         # still needs the drm/gbm symbols even though it falls back to a
         # surfaceless EGL context at runtime when no DRM display is available).
+        # P30: this is now the only non-APPLE path — the mandatory-Irrlicht
+        # gate above guarantees EQT_DRM OR EQT_GLES2 whenever we get here; the
+        # desktop X11/Xxf86vm/GL fallback branch was removed
+        # (refactor/desktop_gl_elimination_plan.md §5/§6 Phase 3).
         IF(EQT_DRM)
             ADD_DEFINITIONS(-DEQT_HAS_DRM)
         ENDIF()
@@ -542,7 +569,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
                 LIST(APPEND LINK_LIBS X11)
             ENDIF()
         ELSE()
-            # Desktop GL mode via Lima
+            # Desktop GL mode via Lima (ARM board, EQT_DRM=ON EQT_GLES2=OFF —
+            # legacy platform, CLAUDE.md "Legacy platforms" note; not the
+            # X11-GLX desktop path removed by P30, no X11 involved)
             LIST(APPEND LINK_LIBS EGL GL GLESv2 drm gbm)
         ENDIF()
         # drm_fourcc.h is in a libdrm subdirectory — add include path
@@ -550,9 +579,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         IF(LIBDRM_INCLUDE_DIR)
             INCLUDE_DIRECTORIES(${LIBDRM_INCLUDE_DIR})
         ENDIF()
-    ELSE()
-        # Linux/X11
-        LIST(APPEND LINK_LIBS X11 Xxf86vm GL)
     ENDIF()
 ENDIF()
 
@@ -675,10 +701,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${IOKIT_FRAMEWORK}
             ${CARBON_FRAMEWORK}
         )
-    ELSEIF(EQT_DRM OR EQT_GLES2)
+    ELSE()
+        # P30: this is now the only non-APPLE path (desktop X11/Xxf86vm/GL
+        # ELSE() removed — refactor/desktop_gl_elimination_plan.md §6 Phase 3;
+        # the mandatory-Irrlicht gate guarantees EQT_DRM OR EQT_GLES2 here).
         # P26: EQT_DRM OR EQT_GLES2 (not EQT_DRM alone) — the x86 GLES2 dev
-        # tree (EQT_DRM=OFF, EQT_GLES2=ON) was falling into the desktop X11/GL
-        # ELSE() branch below and failing to link against the static
+        # tree (EQT_DRM=OFF, EQT_GLES2=ON) was falling into the (now-removed)
+        # desktop X11/GL branch and failing to link against the static
         # GLES2-patched Irrlicht archive (missing eglGetError/gbm symbols).
         IF(EQT_GLES2)
             TARGET_LINK_LIBRARIES(model_viewer
@@ -708,16 +737,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
                 EGL GL drm gbm
             )
         ENDIF()
-    ELSE()
-        TARGET_LINK_LIBRARIES(model_viewer
-            ${IRRLICHT_LIBRARY}
-            ${ZLIB_LIBRARIES}
-            ${JSONCPP_LIBRARIES}
-            fmt::fmt
-            X11
-            Xxf86vm
-            GL
-        )
     ENDIF()
 ENDIF()
 
@@ -767,9 +786,11 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(s3d_dump X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(s3d_dump X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — the
+    # mandatory-Irrlicht gate guarantees EQT_DRM OR EQT_GLES2 whenever
+    # IRRLICHT_LIBRARY is set (refactor/desktop_gl_elimination_plan.md §6
+    # Phase 3).
 
     # uv_analysis tool RETIRED per Will's decision (2026-07-28, P26): no live
     # usage found beyond a prior bug report (§3 tools table,
@@ -816,9 +837,9 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(entity_composite_builder X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(entity_composite_builder X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # s3d_dump comment above (same mandatory-Irrlicht gate).
 
     # S3D Extract tool (for extracting files from S3D archives)
     ADD_EXECUTABLE(s3d_extract
@@ -968,9 +989,9 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(generate_surface_map X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(generate_surface_map X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # s3d_dump comment above (same mandatory-Irrlicht gate).
 
     # Surface Map Query tool (for debugging surface maps)
     ADD_EXECUTABLE(query_surface_map
@@ -1029,9 +1050,9 @@ IF(EQT_GRAPHICS)
         IF(NOT EQT_DRM)
             TARGET_LINK_LIBRARIES(zone_line_editor X11)
         ENDIF()
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(zone_line_editor X11 Xxf86vm GL)
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # s3d_dump comment above (same mandatory-Irrlicht gate).
 ENDIF()
 
 # Zone Atlas Builder tool (offline ETC1 texture atlas generation)
@@ -1433,10 +1454,11 @@ IF(EQT_GRAPHICS)
         IF(EQT_GLES2 AND NOT EQT_DRM)
             LIST(APPEND ZONE_BENCH_LIBS X11)
         ENDIF()
-    ELSE()
-        # Desktop GL for texture_atlas.cpp glGenTextures etc.
-        LIST(APPEND ZONE_BENCH_LIBS GL)
     ENDIF()
+    # P30: desktop-GL-only ELSE() (plain "GL" for texture_atlas.cpp
+    # glGenTextures etc.) removed — the mandatory-Irrlicht gate guarantees
+    # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
+    # (refactor/desktop_gl_elimination_plan.md §5/§6 Phase 3).
     IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
         LIST(APPEND ZONE_BENCH_LIBS ${RECAST_LIBRARY} ${DETOUR_LIBRARY})
     ENDIF()
@@ -1655,8 +1677,20 @@ IF(EQT_GRAPHICS)
         MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL + OpenGL ES 2.0 (no X11, no desktop GL)")
     ELSEIF(EQT_DRM)
         MESSAGE(STATUS "Display backend: DRM/KMS/GBM/EGL + desktop GL 2.1 (no X11)")
+    ELSEIF(EQT_GLES2)
+        # P30 cosmetic fix (roadmap §1): this branch (EQT_DRM=OFF,
+        # EQT_GLES2=ON — the x86 GLES2 dev tree) used to fall into the bare
+        # ELSE() below and misreport "X11/GLX", even though the actual
+        # LINK_LIBS logic (EQT_GLES2 branch above) links EGL/GLESv2/drm/gbm
+        # (+X11 only for the optional windowed --egl-x11 backend). Was never
+        # a functional defect, log-message only.
+        MESSAGE(STATUS "Display backend: EGL + OpenGL ES 2.0 (surfaceless llvmpipe, or windowed via --egl-x11; no desktop GL)")
     ELSE()
-        MESSAGE(STATUS "Display backend: X11/GLX")
+        # P30: desktop GL (X11/GLX) is no longer a reachable configuration —
+        # the mandatory-Irrlicht gate (above) requires EQT_DRM or EQT_GLES2
+        # whenever EQT_GRAPHICS=ON. This branch is dead but left as a
+        # defensive default rather than deleted outright.
+        MESSAGE(STATUS "Display backend: UNKNOWN (unreachable — EQT_GRAPHICS=ON requires EQT_DRM or EQT_GLES2)")
     ENDIF()
 ELSE()
     MESSAGE(STATUS "Irrlicht: NOT FOUND (graphics disabled)")

@@ -284,23 +284,57 @@ print an EGL/DRI permission warning at all under `EDT_NULL`. **Blocks** the
 claim "the GLES2 tree carries the full test suite" — must close before
 Phase 2 can declare the GLES2 tree the sole CI target.
 
-**Phase 2 — Make the GLES2 tree the CI default.** Once Phases 0-1 close,
-flip whichever script/doc currently treats `build/` (desktop) as the
-primary `ctest` tree to `build-gles2-tests`-equivalent config as the
-default, keeping desktop buildable as a fallback for now (removed in Phase
-3). Ship the `willeq-benchmark` guidance update in this phase or before it
-(§4) — do not let it be discovered by that harness's next `git pull`.
+**Phase 2 — EXECUTED (P30, `refactor/P30_phase2_3_desktop_removal.md`).**
+Root `CLAUDE.md` "Build Commands" now documents the GLES2-config tree
+(`-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF
+-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86
+-DEQT_BUILD_TESTS=ON`) as the primary `mkdir build && cmake ..` guidance,
+including the one-time `scripts/build-gles2-x86.sh --irrlicht-only`
+bootstrap. `EXECUTOR_PROTOCOL.md`'s verification-bar steps 1-2 now spell out
+the same GLES2-config tree for `<slot>/build`. No script in `scripts/` or
+`scripts/ci/` configured its own desktop-GL tree from scratch (grepped both
+dirs) — the ones referencing `build/bin/...` (e.g. `run-model-viewer.sh`,
+`generate_s3d_reference.sh`) just run whatever binary is there and need no
+change now that `build/`'s semantics have flipped to GLES2.
+`scripts/ci/visual_gate.sh` already hardcoded `build-gles2/` and is
+unaffected. `willeq-benchmark` guidance is the ORCHESTRATOR's to update at
+merge time (§4), noted not touched.
 
-**Phase 3 — Remove desktop-GL CMake branches.** Delete the system-Irrlicht
-`FIND_PATH`/`FIND_LIBRARY` fallback, the `X11 Xxf86vm GL` link branches
-(main + `model_viewer` + `generate_textures` + `gles2_zone_benchmark`'s
-desktop `ELSE()`), make `EQT_GLES2_IRRLICHT_DIR` non-optional/always-on.
-**Depends on P25 landing first** — P25's X11-EGL window backend is the
-replacement for interactive dev use once the desktop-GL windowed path is
-gone; removing desktop GL before P25 lands would leave no windowed dev path
-on x86 at all (surfaceless llvmpipe has no visible window). Fix the
-cosmetic `Display backend: X11/GLX` log-message bug (§1) here too, once the
-branch it's nested under is being touched anyway.
+**Phase 3 — EXECUTED (P30).** Deleted the system-Irrlicht
+`FIND_PATH`/`FIND_LIBRARY` fallback (CMakeLists.txt's Irrlicht-detection
+block is now: use `EQT_GLES2_IRRLICHT_DIR` if set, else use whatever
+`IRRLICHT_INCLUDE_DIR`/`IRRLICHT_LIBRARY` were already supplied as cache
+variables — which is how the ARM Docker build injects its own patched
+Irrlicht — else `FATAL_ERROR` naming the bootstrap command). Added a second
+configure-time gate: `EQT_GRAPHICS=ON` with a resolved Irrlicht now also
+requires `EQT_DRM` or `EQT_GLES2`, else `FATAL_ERROR` (desktop GL is not
+reachable any other way). Removed every `X11 Xxf86vm GL` desktop link
+branch: main `LINK_LIBS`, `model_viewer`, `s3d_dump`,
+`entity_composite_builder`, `generate_surface_map`, `zone_line_editor`, the
+3 equivalent test binaries in `tests/CMakeLists.txt`
+(`test_graphics`/`test_asset_loading`/`test_door_loading`), and
+`gles2_zone_benchmark`'s desktop-`GL`-only `ELSE()`. (`generate_textures`
+was already retired in P26 — no branch left to remove.) `APPLE` branches
+kept as-is (ambiguous/never a supported target — per this unit's rules, not
+touched). Fixed the cosmetic `Display backend: X11/GLX` bug (§1) in the same
+pass: added an explicit `EQT_GLES2`-without-`EQT_DRM` branch reporting "EGL +
+OpenGL ES 2.0", and the final bare `ELSE()` (now dead — the mandatory-Irrlicht
+gate guarantees `EQT_DRM OR EQT_GLES2`) reports "UNKNOWN (unreachable...)"
+rather than the misleading "X11/GLX". P25's X11-EGL window backend
+(confirmed already landed — `CIrrDeviceFB_X11.cpp`, `--egl-x11`, in the
+worktree before this unit started) remains the interactive dev-use
+replacement, unaffected by this phase.
+
+**Known casualty (flagged, not fixed — out of this unit's territory):**
+`docker/Dockerfile` (the non-ARM, non-`build-arm-noble.sh` Docker image) apt-
+installs `libirrlicht-dev libxxf86vm-dev libx11-dev libgl1-mesa-dev` and
+configures with plain `-DEQT_GRAPHICS=ON` — no `EQT_GLES2_IRRLICHT_DIR`, no
+`EQT_GLES2`/`EQT_DRM`. This now fails at configure with the new
+mandatory-Irrlicht `FATAL_ERROR`, by design (that was exactly a desktop-GL
+build). `docker/` is not in this unit's assigned territory (CMakeLists.txt /
+tests/CMakeLists.txt / scripts/ / CLAUDE.md / EXECUTOR_PROTOCOL.md /
+this roadmap doc only) — orchestrator should schedule a fix or retirement of
+that Dockerfile alongside the willeq-benchmark guidance update (§4).
 
 **Phase 4 — Delete dead source paths.** `EDT_BURNINGSVIDEO`/
 `AnimatedTreeManager`/`RenderingBackend::Software`/`RenderingBackend::OpenGL`
