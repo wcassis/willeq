@@ -28,9 +28,30 @@ WillEQ is a standalone EverQuest client targeting the Titanium client version wi
 
 **IMPORTANT: `-j$(nproc)` causes problems when executed directly in a Bash tool command (the shell expansion doesn't work reliably in Claude Code interactive sessions). Use a hardcoded value instead, e.g. `cmake --build build -j24` for this 24-core host. If building from a script (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.**
 
+**Desktop-GL Irrlicht support has been removed (P30,
+`refactor/desktop_gl_elimination_plan.md`).** `EQT_GRAPHICS=ON` (the default)
+now requires a locally-built patched GLES2 Irrlicht — there is no more
+system-`libirrlicht-dev`/X11-GLX fallback. Configuring without one fails
+early at `cmake` time with a message naming the bootstrap command below (not
+a build/link-time failure).
+
+**One-time bootstrap** (only needed once per checkout, or after the patched
+Irrlicht is deleted — `third_party/irrlicht-gles2-x86/` is gitignored):
+
 ```bash
-# Configure (from project root)
-mkdir -p build && cd build && cmake ..
+bash scripts/build-gles2-x86.sh --irrlicht-only
+```
+
+```bash
+# Configure (from project root) — the GLES2-config tree is now the primary
+# dev/test tree (tests on, full ctest suite, ~1234/1235 passing — the sole
+# known exception is the documented ALSA host quirk below)
+mkdir -p build && cmake -S . -B build \
+    -DEQT_GRAPHICS=ON \
+    -DEQT_GLES2=ON \
+    -DEQT_DRM=OFF \
+    -DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86 \
+    -DEQT_BUILD_TESTS=ON
 
 # Build (no -j flag!)
 cmake --build build
@@ -46,6 +67,14 @@ cd build && ctest -R TestName --output-on-failure
 # Build output
 ./build/bin/willeq
 ```
+
+This is the same patched Irrlicht / EGL+GLESv2 (surfaceless llvmpipe on this
+dev VM, native GLES2 on the Orange Pi) backend as `scripts/build-gles2-x86.sh`
+and `scripts/build-arm-noble.sh` use — see "Orange Pi (ARM)
+Cross-Compilation" below. `scripts/build-gles2-x86.sh` (no args) additionally
+produces a second, smaller tree (`build-gles2/`, tests off) with just
+`willeq` + `gles2_zone_benchmark` — that is what `scripts/ci/visual_gate.sh`
+targets; keep using it for the visual gate, it is unaffected by the above.
 
 ## Running
 
@@ -141,7 +170,9 @@ Required: OpenSSL, zlib, fmt, GLM (header-only), jsoncpp
 Optional:
 - Boost (waypoint pathfinding)
 - librecast-dev (navmesh pathfinding via Recast/Detour)
-- libirrlicht-dev, libxxf86vm-dev (3D graphics rendering)
+- A locally-built patched GLES2 Irrlicht (3D graphics rendering) — see "Build
+  Commands" above. Not an apt package: `libirrlicht-dev`/`libxxf86vm-dev`
+  (desktop-GL Irrlicht) are no longer used (P30).
 - freerdp3-dev, libwinpr3-dev (native RDP streaming)
 - Audio uses header-only libraries: miniaudio.h (output), tsf.h + tml.h (MIDI synthesis), dr_wav.h (WAV loading)
 

@@ -403,9 +403,18 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_graphics EGL GLESv2 drm gbm)
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_graphics X11 Xxf86vm GL)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap: CIrrDeviceFB.cpp's windowed-EGL backend references X11
+        # symbols the static archive needs resolved at link time).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_graphics X11)
+        ENDIF()
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — the
+    # mandatory-Irrlicht gate in the top-level CMakeLists.txt guarantees
+    # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
+    # (refactor/desktop_gl_elimination_plan.md §6 Phase 3).
     GTEST_DISCOVER_TESTS(test_graphics)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
@@ -461,9 +470,15 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_asset_loading EGL GLESv2 drm gbm)
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_asset_loading X11 Xxf86vm GL)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_asset_loading X11)
+        ENDIF()
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # test_graphics comment above (same mandatory-Irrlicht gate).
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
 
@@ -499,9 +514,15 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_door_loading EGL GLESv2 drm gbm)
-    ELSEIF(NOT APPLE)
-        TARGET_LINK_LIBRARIES(test_door_loading X11 Xxf86vm GL)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_door_loading X11)
+        ENDIF()
     ENDIF()
+    # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
+    # test_graphics comment above (same mandatory-Irrlicht gate).
     GTEST_DISCOVER_TESTS(test_door_loading)
 ENDIF()
 

@@ -78,10 +78,22 @@ namespace Graphics {
     enum class ZoneLoadStep : uint8_t;
 }
 }
-namespace eqt { namespace events { struct PlayerPositionChanged; } }
 #include "client/graphics/constrained_renderer_config.h"
-// D20e3: forward declarations for types used as pointers/shared_ptr
-namespace EQT { namespace Graphics { struct LoadingStatus; struct BspTree; class PfsArchive; class WldLoader; } }
+// D20e3: forward declaration for the renderer's own progress-screen type
+// (owned by Application, signalled via a pointer). BspTree/PfsArchive/
+// WldLoader moved out below — P28: they are zone-load data types with no
+// renderer dependency (see zone_bsp.h/pfs.h/wld_loader.h), used by base
+// zone loading (LoadZoneSources in eq_zone.cpp) regardless of graphics.
+namespace EQT { namespace Graphics { struct LoadingStatus; } }
+#endif
+
+// P28: these are plain game-state/data types (inventory manager, chat command
+// registry, hotbar button model, zone BSP/archive/WLD loading, the movement
+// intent struct) with no renderer dependency — they were misclassified
+// under EQT_HAS_GRAPHICS by 55b101e. Un-guarded so the headless
+// (EQT_GRAPHICS=OFF) build can see them.
+namespace EQT { namespace Graphics { struct BspTree; class PfsArchive; class WldLoader; } }
+namespace eqt { namespace events { struct PlayerPositionChanged; } }
 namespace eqt {
 namespace inventory {
     class InventoryManager;
@@ -107,7 +119,6 @@ namespace ui {
     };
 }
 }
-#endif
 
 // Titanium login opcodes
 enum TitaniumLoginOpcodes {
@@ -759,14 +770,13 @@ public:
 	EQ::SkillManager* GetSkillManager() { return m_skill_manager.get(); }
 
 	// Hotbar button management (stub for future implementation).
-	// AddPendingHotbarButton stays available headless (no-op body); the
-	// accessors depend on eqt::ui types that only exist with graphics.
+	// P28: eqt::ui::PendingHotbarButton is now unconditionally declared
+	// (moved out of the graphics guard above), so these accessors no longer
+	// need to be graphics-only either.
 	void AddPendingHotbarButton(uint8_t skill_id);
-#ifdef EQT_HAS_GRAPHICS
 	const std::vector<eqt::ui::PendingHotbarButton>& GetPendingHotbarButtons() const;
 	void ClearPendingHotbarButtons();
 	size_t GetPendingHotbarButtonCount() const;
-#endif
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
@@ -1029,33 +1039,47 @@ public:
 	// Not FATAL if missing — falls back to legacy file loading.
 	void OpenDatabase(const std::string& dbPath);
 
-#ifdef EQT_HAS_GRAPHICS
-	// Graphics renderer methods
-	bool InitGraphics(int width, int height,
-	                  EQT::Graphics::IrrlichtRenderer* renderer,
-	                  eqt::bridge::GameStateBridge* bridge);
-	void ShutdownGraphics();
+	// P28: game-thread tick, config-path accessors, hotbar persistence, and
+	// state-publishing are plain game logic — called unconditionally from
+	// Application::updateGameState()/OnGameStateComplete() et al regardless
+	// of EQT_HAS_GRAPHICS. Un-guarded (55b101e had folded these into the
+	// graphics block along with the genuinely renderer-only methods below).
 	// D21a: Split tick — game thread vs render thread
 	void GameTick(float deltaTime);        // Game thread: spell/buff updates + intent processing
 	void PreRenderTick(float deltaTime);   // Render thread: drain events, apply to renderer
 	void PostRenderTick(float deltaTime);  // Game thread: audio sync
-	eqt::ZoneLoadSnapshot CreateZoneLoadSnapshot() const;  // D20c3: snapshot for loading thread
 	void SetEQClientPath(const std::string& path);
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	const std::string& GetEQClientPath() const { return m_eq_client_path; }
-	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
-	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
-	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
-	std::optional<EQT::Graphics::ConstrainedRendererConfig> GetConstrainedConfig() const { return m_constrained_config; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
 	void LoadHotbarConfig();  // Load hotbar assignments from config file
+	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
+	// U07b: Standalone hotbar model
+	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
+	// Phase 7.3: Zone accessors read from GameState
+	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
+	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
+	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);  // S2: takes the movement intent directly (name predates this being a plain bridge-intent handler)
+	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
+
+#ifdef EQT_HAS_GRAPHICS
+	// Graphics renderer methods — genuinely require the renderer/loading-thread
+	// lifecycle and stay gated.
+	bool InitGraphics(int width, int height,
+	                  EQT::Graphics::IrrlichtRenderer* renderer,
+	                  eqt::bridge::GameStateBridge* bridge);
+	void ShutdownGraphics();
+	eqt::ZoneLoadSnapshot CreateZoneLoadSnapshot() const;  // D20c3: snapshot for loading thread
+	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
+	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
+	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
+	std::optional<EQT::Graphics::ConstrainedRendererConfig> GetConstrainedConfig() const { return m_constrained_config; }
 	// D20e3: GetRenderer() removed — EverQuest no longer holds a renderer pointer
 	void SetPlayerGraphicsEntityPending(bool v) { m_player_graphics_entity_pending = v; }
 	// D20e2: Application owns loading status; EverQuest signals it via this pointer
 	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
-	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
 	// D20e2: Flag for Application to detect re-zone loading requests
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
 	// U07c3: SetWindowManager removed — old UI deleted
@@ -1070,14 +1094,7 @@ public:
 		m_zone_bsp_tree = std::move(bsp);
 		m_zone_bsp_tree_zone_name = m_zone_bsp_tree ? m_current_zone_name : std::string();
 	}
-	// U07b: Standalone hotbar model
-	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
-	// Phase 7.3: Zone accessors read from GameState
-	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
-	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
 	// D20e2: LoadZoneGraphics moved to Application
-	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);  // S2: takes the movement intent directly
-	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 #endif
 
 private:
@@ -1560,9 +1577,8 @@ private:
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
 
 	// Pending hotbar buttons (stub for future hotbar implementation)
-#ifdef EQT_HAS_GRAPHICS
+	// P28: eqt::ui::PendingHotbarButton is unconditional now (see above).
 	std::vector<eqt::ui::PendingHotbarButton> m_pending_hotbar_buttons;
-#endif
 
 	// Group state
 	bool m_in_group = false;
@@ -1686,20 +1702,19 @@ private:
 	void WorldSendChannelMessage(const std::string &channel, const std::string &message, const std::string &target = "");
 	void WorldProcessChannelMessage(const EQ::Net::Packet &p);
 
-#ifdef EQT_HAS_GRAPHICS
-	// Graphics renderer and bridge
-	// D20b5: Raw pointers — Application owns renderer + bridge lifetime
+	// P28: the bulk of this block (eq client/config paths, quit flag, hotbar
+	// model, inventory manager, command registry, "Player mode" loot/vendor/
+	// bank/trainer state + packet handlers, spawn/pet callbacks) is plain
+	// game state and network logic with no renderer dependency — it was
+	// folded under EQT_HAS_GRAPHICS by 55b101e alongside the genuinely
+	// renderer-only members that remain guarded just below (D20b5 raw
+	// pointers, constrained-rendering config, loading-thread signaling,
+	// zone-load-request handshake).
 	// D20e3: m_renderer removed — Application owns the renderer
 	std::string m_eq_client_path;
 	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file
-	bool m_graphics_initialized = false;
 	bool m_quit_requested = false;  // D20c4: Application checks this flag
-	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
-	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
-	// D20e2: Loading thread owned by Application; EverQuest holds pointer to signal it
-	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
-	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
 	// U07c3: m_hotbar_window_manager removed — old UI deleted
 	std::unique_ptr<eqt::HotbarModel> m_hotbar_model;  // U07b: standalone hotbar
 	// D20g: m_rdp_server removed — Application owns RDP setup
@@ -1850,6 +1865,19 @@ public:
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);
+
+private:
+#ifdef EQT_HAS_GRAPHICS
+	// Genuinely renderer-lifetime-only state: raw pointers Application wires
+	// up around InitGraphics/ShutdownGraphics, the constrained-rendering
+	// (NxNxN) startup preset/config, the loading-thread progress signal, and
+	// the re-zone handshake flag consumed only from the graphics render loop.
+	bool m_graphics_initialized = false;
+	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
+	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
+	// D20e2: Loading thread owned by Application; EverQuest holds pointer to signal it
+	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
+	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
 #endif
 
 #ifdef WITH_AUDIO

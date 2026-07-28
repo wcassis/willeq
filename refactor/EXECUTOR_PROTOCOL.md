@@ -56,10 +56,20 @@ references this file; plans carry only unit-specific content.
   Assets are read from NFS everywhere (never copy to Pi-local).
 
 ## Verification bar (every unit unless the plan narrows it)
-1. `cmake --build <slot>/build -j24`
-2. `ctest --test-dir <slot>/build --output-on-failure` — known host
-   exceptions: AudioManagerTest.PreloadCommonSounds,
-   RDPServerFrameTest.UpdateFrameMultipleTimes (intermittent)
+1. `cmake --build <slot>/build -j24` — `<slot>/build` is the GLES2-config
+   tree (P30, `refactor/desktop_gl_elimination_plan.md`): configured with
+   `-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF
+   -DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86
+   -DEQT_BUILD_TESTS=ON` (bootstrap the patched Irrlicht once per worktree
+   with `bash <slot>/scripts/build-gles2-x86.sh --irrlicht-only` if
+   `third_party/irrlicht-gles2-x86/` is absent). Desktop-GL Irrlicht
+   (system `libirrlicht-dev`/X11-GLX) is no longer a supported configure —
+   there is no fallback.
+2. `ctest --test-dir <slot>/build --output-on-failure` (same GLES2-config
+   tree as step 1) — known host exceptions:
+   AudioManagerTest.PreloadCommonSounds,
+   RDPServerFrameTest.UpdateFrameMultipleTimes (intermittent). Baseline:
+   1234/1235 (P27 certification).
 3. `bash <slot>/scripts/build-gles2-x86.sh`
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)

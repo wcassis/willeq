@@ -70,11 +70,14 @@ real behavior are the deliverable, not coverage theater.
 - Tests assert behavior, not implementation details, so base-layer
   refactors don't shed tests. Binary protocol layouts (packet structs)
   are the exception — layout IS the behavior there.
-- Every new test binary must build in BOTH trees (desktop `build/` and
-  GLES2 `EQT_GLES2_IRRLICHT_DIR` tree) or link no Irrlicht at all
-  (preferred for base layers). The GLES2-only migration
-  (refactor/desktop_gl_elimination_plan.md) is in progress — don't add
-  new desktop-GL dependencies.
+- Every new test binary links no Irrlicht at all (preferred for base
+  layers) or builds in the GLES2-config tree — which as of P30
+  (2026-07-28, authorized by Will with elimination Phases 2+3) is the
+  ONLY tree: desktop-GL Irrlicht is removed; the canonical configure is
+  in the root CLAUDE.md "Build Commands". "Both trees green" in the
+  merge bar now reads: the GLES2-config full suite green.
+  [Wording updated by the perf-session orchestrator 2026-07-28 as a
+  direct consequence of Will's Phase 2/3 authorization.]
 - Verification bar for merges: full ctest both trees green (minus
   documented exceptions) + the 3x-consecutive rule above. Graphics
   bar steps (visual gate, ARM build) only when a unit touches

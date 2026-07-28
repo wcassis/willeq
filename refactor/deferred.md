@@ -26,14 +26,21 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   item (connection flow). Macro-name indirection to confirm:
   CMake option EQT_GRAPHICS vs macro EQT_HAS_GRAPHICS. Unit-sized;
   needs judgment on the mixed 163-line block.
-- **Capture fixtures missing** (TESTING_HANDBACK item 2): data/captures/
-  does not exist → ~50 pcap/session-replay tests skip →
-  daybreak_connection.cpp (1195 lines, reliable-UDP core) at 0.0%
-  coverage. Fix = one recorded live-eqemu session (login → world →
-  zone-in → movement/chat): `--record-session data/captures/session.sleq`
-  + a pcap of the same session (WILLEQ_PCAP paths in
-  tests/pcap_test_utils.h). test_session_replay self-creates its
-  golden. Small unit; needs eqemu (honor .eqemu-lock).
+- **Capture fixtures — DONE (P29, merged `8fdcd24`, 2026-07-28)**:
+  canonical home `/mnt/projects/fable/captures/` (NFS, README inside),
+  `data/captures` symlinks in main + slot3 (other worktrees: create the
+  same symlink as needed; .gitignore fixed to match the symlink).
+  session.sleq (2,943 records) + session.pcap (5,603 pkts, login/world/
+  befallen/qeynos2) + self-created golden; replay deterministic (3
+  runs). 10 tests skip→PASS; desktop skips 38→24.
+  **→ FOR THE TESTING SESSION (tests/ territory)**: the remaining 4
+  FAILs + 8 skips share ONE root cause — `tests/pcap_test_utils.h` +
+  three test files hardcode zone port 7000, but the akk-stack image's
+  entrypoint auto-boots ~15 static zones claiming 7000-7011, so real
+  captures land on 7012+ (befallen 7012, qeynos2 7026 in this
+  fixture). Fix = WILLEQ_ZONE_PORT env override or port autodiscovery
+  from the pcap (SessionRequest/Response scan). Every future capture
+  against this image hits the same thing.
 - **Process fix DONE**: .eqemu-lock protocol added to
   EXECUTOR_PROTOCOL.md (the testing session correctly called out that
   P25's session ran the server without a lock — the protocol predated
@@ -68,8 +75,35 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   EQT_DRM-only conditional gate; the other 7 targets had no backend
   conditional at all. GLES2 full-suite recipe: separate tree with
   EQT_BUILD_TESTS=ON WITH_RDP=ON (the build script's own config
-  intentionally builds only willeq+benchmark). NEXT: Phase 1 (segfault
-  investigation) awaits Will's go. The willeq-benchmark clone's
+  intentionally builds only willeq+benchmark). **Phase 1 EXECUTED
+  (P27, merged `7521f32`)**: root cause was class (a) — the patched
+  device fork never implemented EDT_NULL (constructor probed DRM/EGL
+  unconditionally; createDriver() had no EDT_NULL case → null
+  VideoDriver → no scene manager; createDeviceEx expects EDT_NULL
+  devices to self-construct a null driver, an invariant every stock
+  device upholds). Fixed EDT_NULL-scoped in BOTH device files (ARM
+  path provably inert — only EDT_OGLES2 ever constructed there);
+  bonus pre-existing fix: P26's 8 targets were missing the X11 link
+  line P25's windowed backend requires (isolated via stash — not the
+  segfault fix's doing). **GLES2 TREE NOW CERTIFIED: both trees
+  1234/1235 with only the ALSA exception; 5x-consecutive pass proof
+  both trees.** **Phases 2+3 EXECUTED (P30, merged `06cfed7`,
+  2026-07-28)**: GLES2 config is THE primary tree (CLAUDE.md +
+  EXECUTOR_PROTOCOL bar updated); system-Irrlicht FIND fallback and all
+  X11/Xxf86vm/GL branches removed; resolved-Irrlicht now mandatory via
+  either EQT_GLES2_IRRLICHT_DIR or ARM's direct cache vars, with clean
+  configure-time FATAL naming the bootstrap (negative-tested); APPLE
+  branches kept (ambiguous, never-supported target — flagged);
+  X11/GLX log message fixed. Lockstep done by orchestrator:
+  benchmark-clone addendum (build_errors_response.md) + charter
+  wording. NEW SMALL ITEM: `docker/Dockerfile` (non-ARM image) still
+  apt-installs desktop Irrlicht and configures plain — now fails at
+  configure BY DESIGN; retire or update that image (fold into Phase
+  4/5). REMAINING: Phase 4 (delete dead source paths: BURNINGSVIDEO /
+  AnimatedTreeManager / RenderingBackend::Software+OpenGL / EDT_OPENGL
+  loading-screen branch) + Phase 5 (full doc sweep + decisions.md
+  completion marker) — await Will's go. The
+  willeq-benchmark clone's
   build_errors_response.md guidance (desktop build as default) stays
   CORRECT until the migration phases land — update it in lockstep with
   Phase 2/3.

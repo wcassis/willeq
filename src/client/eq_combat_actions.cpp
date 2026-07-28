@@ -22,9 +22,9 @@
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
 
-#ifdef EQT_HAS_GRAPHICS
+// P28: renderer-free chat data model, used unconditionally below
+// (eqt::ui::ChatChannel).
 #include "client/chat/chat_message_buffer.h"
-#endif
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"

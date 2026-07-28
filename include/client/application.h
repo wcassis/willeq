@@ -291,7 +291,11 @@ private:
     void joinLoadingThread();
     void loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status);
     void loadZoneGraphics();  // Synchronous path
+#ifdef EQT_HAS_GRAPHICS
     bool isLoadingThreadActive() const { return m_loadingThread != nullptr; }
+#else
+    bool isLoadingThreadActive() const { return false; }
+#endif
     bool checkLoadingComplete();
     void setupHotbarCallback();  // Wire hotbar changed callback to renderer
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
@@ -323,24 +327,34 @@ private:
     std::unique_ptr<EverQuest> m_eqClient;
     std::unique_ptr<EqActionHandler> m_actionHandler;
 
+    // P28: these all require complete Irrlicht-dependent types at
+    // ~Application() (unique_ptr's deleter instantiates their destructor),
+    // which isn't available under EQT_GRAPHICS=OFF — guarded. ConsoleBridge/
+    // GameStateBridge (the headless bridge pair) stay unconditional below.
+#ifdef EQT_HAS_GRAPHICS
     // Constrained asset cache — created at startup, shared across all subsystems
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> m_constrainedCache;
 
     // D20b5: Renderer and bridge owned by Application
     std::unique_ptr<EQT::Graphics::IrrlichtRenderer> m_renderer;
     std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;
+#endif
     std::unique_ptr<eqt::bridge::ConsoleBridge> m_consoleBridge;  // D25: headless mode
     eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
+#ifdef EQT_HAS_GRAPHICS
     // Graphics input handler (bridges RendererEventReceiver → InputActionBridge)
     std::unique_ptr<input::GraphicsInputHandler> m_graphicsInputHandler;
 
     // D20e2: Loading thread (moved from EverQuest)
     std::unique_ptr<EQT::Graphics::LoadingThread> m_loadingThread;
+#endif
     EQT::Graphics::LoadingStatus m_loadingStatus;
     EQT::Graphics::GLContextHandles m_glHandles;
     eqt::ZoneLoadSnapshot m_zoneLoadSnapshot;
+#ifdef EQT_HAS_GRAPHICS
     irr::gui::IGUIFont* m_loadingScreenFont = nullptr;  // Cached for render thread loading screen
+#endif
 
     // ========== State ==========
 
