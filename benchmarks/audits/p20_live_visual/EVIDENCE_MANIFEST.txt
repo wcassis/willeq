@@ -137,3 +137,75 @@ filenames differing only in the _BEFORE/_AFTER suffix), stills at
 Verification: full 6-step bar passed (see plan Review); goldens untouched
 (visual gate PASS both before and after the fix, run explicitly via
 scripts/ci/visual_gate.sh in addition to the ctest visual_gate case).
+
+P21 — door/entity masked-RGBA alpha gap (setShaderMaterialTypes 2->3 arg)
+----------------------------------------------------------------
+Extends door_manager.h/.cpp and entity_renderer.h/.cpp
+setShaderMaterialTypes() from 2 to 3 args (mirroring
+DoorManager/AnimatedTreeManager/ZoneMeshBuilder's existing 3-arg
+signature), carrying the H02d Option-A RGBA alpha-test shader variant.
+Same bug class as P20b (trees): masked RGBA-decoded textures previously
+had no route to the RGBA-aware shader for doors/entities.
+
+Ground truth (real vs latent, per-territory):
+- DOORS — REAL, confirmed live. WLD ground truth: PAWHOOK_DMSPRITEDEF
+  (qeynos2_obj.wld and befallen_obj.wld) is Fragment 0x30
+  TransparentMasked, texIdx=0 pchain.bmp. Live DB ground truth: the
+  qeynos2 `doors` table has 6 real placed PAWHOOK door instances (ids
+  42,43,44,57,58,59 / DB ids 5972-5985), opentype=58, size=100 — not a
+  decorative-only WLD object, an actual server-placed door. Live client
+  run (build-gles2/bin/willeq, no --eqe1-path so the RGBA/DDS decode
+  path is exercised) confirms: `pchain.bmp` decoded via the direct
+  `[CONSTRAINED] texture 'pchain.bmp' decoded/uploaded` path (never the
+  ETC1 path — no matching "ETC1 texture 'pchain'" log line anywhere in
+  the run), and `ZoneShaderManager: RGBA alpha-test shader compiled
+  (alphaTestRGBA=258)`.
+- ENTITIES — LATENT-only, code evidence. WLD ground truth: multiple
+  masked character-archive textures exist (e.g. befallen_chr.wld
+  zomch0001.bmp/zomlg0001.bmp, qeynos2_chr.wld beahe0008.bmp, etc. —
+  grepped via a throwaway WldLoader-based tool, not committed). BUT: a
+  full audit of `MaterialType = ` assignments across
+  src/client/graphics/eq/*.cpp shows only zone_geometry.cpp
+  (ZoneMeshBuilder) ever assigns `EMT_TRANSPARENT_ALPHA_CHANNEL_REF`;
+  the character/equipment mesh-build paths (mesh_building.cpp,
+  equipment_model_loader.cpp — RaceModelLoader, outside this unit's
+  territory) unconditionally hardcode `EMT_SOLID` regardless of the WLD
+  masked flag. entity_renderer.cpp's classification extension
+  (`applyAlphaTestMaterialType`) is therefore currently unreachable on
+  the live non-composite entity path — masked entity textures never
+  reach alpha-test at all today, a separate, larger, out-of-territory
+  gap (RaceModelLoader ignoring textureMasked()). The fix is
+  latent-correctness: it corrects the RGBA-vs-ETC1 selection for
+  whichever future/composite path does reach that branch, matching the
+  same bug-class pattern P20b used for trees, verified by full build +
+  test suite passing.
+
+Before/after code-level evidence (doors, PAWHOOK, qeynos2 — same-pose
+live capture at `#goto -352 184 3`, identical `--script` file, identical
+wait timings between runs; screenshots at
+/mnt/projects/fable/videos/p20_live_visual/stills/
+p21_qeynos2_pawhook_00_BEFORE.png / _AFTER.png). A temporary,
+uncommitted diagnostic (reverted before the final build/commit, same
+pattern as P20b's own uncommitted evidence workarounds) traced the
+`MaterialType` actually applied to the PAWHOOK door mesh buffer at build
+time:
+- BEFORE (door_manager forced to drop the RGBA arg, reproducing pre-fix
+  2-arg behavior): `P21_EVIDENCE door='PAWHOOK' buf0.MaterialType=14`
+  — Irrlicht's `EMT_TRANSPARENT_ALPHA_CHANNEL_REF` (fixed-function),
+  which the GLES2 driver's all-shader pipeline (6 compiled programs,
+  see src/client/graphics/CLAUDE.md) does not implement.
+- AFTER (fix restored): `P21_EVIDENCE door='PAWHOOK'
+  buf0.MaterialType=258` — the compiled GLES2 RGBA alpha-test shader
+  (`alphaTestRGBA=258`), which reads `uTexture.a` directly.
+This numeric MaterialType trace is the decisive evidence for this unit:
+the PAWHOOK door mesh itself is small and not visually prominent at the
+`-352,184,3` establishing-shot vantage used (same wall/willow/pine scene
+P20b's own qeynos2 evidence used) — the BEFORE/AFTER stills are
+same-pose-by-construction but do not show an obvious visual delta on the
+door object itself, honestly noted rather than overclaimed. The
+MaterialType 14->258 transition is unambiguous, deterministic, and
+directly tied to the exact real WLD/DB-confirmed masked door texture.
+
+Verification: full 6-step bar passed (see plan Review, file-size check
+run against the actual branch point since `fable` advanced mid-session
+from concurrent P22/P23 merges); goldens untouched (visual gate PASS).

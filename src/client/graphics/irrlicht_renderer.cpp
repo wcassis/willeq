@@ -952,7 +952,8 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         }
         if (zoneShader_ && zoneShader_->isAvailable()) {
             doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                 zoneShader_->getActiveAlphaTest());
+                                                 zoneShader_->getActiveAlphaTest(),
+                                                 zoneShader_->getActiveAlphaTestRGBA());
         }
     }
 
@@ -2193,7 +2194,8 @@ void IrrlichtRenderer::createEntityRenderer() {
     }
     if (zoneShader_ && zoneShader_->isAvailable()) {
         entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                zoneShader_->getActiveAlphaTest());
+                                                zoneShader_->getActiveAlphaTest(),
+                                                zoneShader_->getActiveAlphaTestRGBA());
     }
     if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
         entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);

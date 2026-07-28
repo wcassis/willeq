@@ -212,6 +212,36 @@ float EntityRenderer::getScaleForRace(uint16_t raceId) const {
     }
 }
 
+void EntityRenderer::applyAlphaTestMaterialType(irr::video::SMaterial& mat) const {
+    // H02d Option A (P21, mirrors ZoneMeshBuilder/DoorManager): ETC1-sourced
+    // textures carry a companion alpha texture on unit 1 (uAlphaTexture) —
+    // use the existing companion variant, binding the companion if available.
+    // The direct RGBA/DDS decode path has real alpha in the main texture's
+    // own alpha channel and never builds a companion; using the companion
+    // variant there reads whatever the driver's opaque-white fallback puts on
+    // unit 1, which never discards — the RGBA variant reads uTexture.a
+    // directly instead.
+    irr::video::ITexture* tex = mat.getTexture(0);
+    bool isETC1 = constrainedTextureCache_ && tex && constrainedTextureCache_->isETC1Texture(tex);
+    if (isETC1) {
+        if (shaderMaterialAlphaTest_ >= 0) {
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+        }
+        if (constrainedTextureCache_) {
+            irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(tex);
+            if (alphaTex) {
+                mat.setTexture(1, alphaTex);
+            }
+        }
+    } else if (shaderMaterialAlphaTestRGBA_ >= 0) {
+        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+    } else if (shaderMaterialAlphaTest_ >= 0) {
+        // No RGBA variant wired — fall back to the companion variant (pre-P21
+        // behavior) rather than leaving MaterialType unset.
+        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+    }
+}
+
 irr::scene::IMesh* EntityRenderer::createPlaceholderMesh(float size, irr::video::SColor color) {
     // Create a simple colored cube as placeholder
     irr::scene::SMesh* mesh = new irr::scene::SMesh();
@@ -604,7 +634,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 			if (mat.MaterialType == irr::video::EMT_SOLID) {
 				mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
 			} else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
-				mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+				applyAlphaTestMaterialType(mat);
 			}
 			mat.Lighting = false;  // Shader handles lighting
 		} else {
@@ -762,7 +792,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
             if (mat.MaterialType == irr::video::EMT_SOLID) {
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
             } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
-                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                applyAlphaTestMaterialType(mat);
             }
             mat.Lighting = false;  // Shader handles lighting
         } else {
@@ -1205,7 +1235,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                     if (mat.MaterialType == irr::video::EMT_SOLID) {
                         mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
                     } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
-                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+                        applyAlphaTestMaterialType(mat);
                     }
                     mat.Lighting = false;
                 } else {
@@ -2582,14 +2612,17 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
 }
 
 void EntityRenderer::swapShaderMaterials(irr::s32 oldSolid, irr::s32 newSolid,
-                                         irr::s32 oldAlpha, irr::s32 newAlpha) {
-    if (oldSolid == newSolid && oldAlpha == newAlpha) return;
+                                         irr::s32 oldAlpha, irr::s32 newAlpha,
+                                         irr::s32 oldAlphaRGBA, irr::s32 newAlphaRGBA) {
+    if (oldSolid == newSolid && oldAlpha == newAlpha && oldAlphaRGBA == newAlphaRGBA) return;
 
     auto swapMat = [&](irr::video::SMaterial& mat) {
         if (mat.MaterialType == static_cast<irr::video::E_MATERIAL_TYPE>(oldSolid))
             mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(newSolid);
         else if (mat.MaterialType == static_cast<irr::video::E_MATERIAL_TYPE>(oldAlpha))
             mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(newAlpha);
+        else if (oldAlphaRGBA >= 0 && mat.MaterialType == static_cast<irr::video::E_MATERIAL_TYPE>(oldAlphaRGBA))
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(newAlphaRGBA);
     };
 
     auto swapSceneNode = [&](irr::scene::ISceneNode* node) {
@@ -2606,8 +2639,8 @@ void EntityRenderer::swapShaderMaterials(irr::s32 oldSolid, irr::s32 newSolid,
         swapSceneNode(visual.secondaryEquipNode);
         ++swapped;
     }
-    LOG_INFO(MOD_GRAPHICS, "EntityRenderer::swapShaderMaterials: {} entities swapped (old={}/{} new={}/{})",
-             swapped, oldSolid, oldAlpha, newSolid, newAlpha);
+    LOG_INFO(MOD_GRAPHICS, "EntityRenderer::swapShaderMaterials: {} entities swapped (old={}/{}/{} new={}/{}/{})",
+             swapped, oldSolid, oldAlpha, oldAlphaRGBA, newSolid, newAlpha, newAlphaRGBA);
 }
 
 void EntityRenderer::setLightingEnabled(bool enabled) {

@@ -204,7 +204,8 @@ bool IrrlichtRenderer::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
         }
         if (zoneShader_ && zoneShader_->isAvailable()) {
             doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                 zoneShader_->getActiveAlphaTest());
+                                                 zoneShader_->getActiveAlphaTest(),
+                                                 zoneShader_->getActiveAlphaTestRGBA());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: doorManager_ shader materials set (solid={}, alphaTest={})",
                       zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
         }
@@ -1231,7 +1232,8 @@ void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
             doorManager_->setRegionNeighbors(regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
             if (zoneShader_ && zoneShader_->isAvailable())
                 doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                     zoneShader_->getActiveAlphaTest());
+                                                     zoneShader_->getActiveAlphaTest(),
+                                                     zoneShader_->getActiveAlphaTestRGBA());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: created DoorManager (zone={}, bsp={}, frustum={}, neighbors={}, shader={})",
                       (bool)currentZone_, (bool)zoneBspTree_, (bool)frustumCuller_,
                       !regionNeighbors_.empty(), zoneShader_ && zoneShader_->isAvailable());

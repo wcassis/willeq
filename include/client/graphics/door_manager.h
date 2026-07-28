@@ -82,10 +82,21 @@ public:
     // Set constrained texture cache (for memory-managed texture loading after pixel data release)
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
 
-    // Set custom shader material types for door mesh building
-    void setShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest) {
+    // Set custom shader material types for door mesh building.
+    // P21: added alphaTestRGBAType (H02d Option A), matching
+    // ZoneMeshBuilder::setShaderMaterialTypes (zone_geometry.h) — DoorManager
+    // delegates all door mesh building to a per-call ZoneMeshBuilder instance
+    // (findDoorMesh()), which already classifies masked materials per-texture
+    // (ETC1-companion vs direct RGBA/DDS alpha). Before this fix, doors only
+    // ever forwarded the 2-arg (solid, alphaTest) pair, so masked RGBA door
+    // textures fell back to the ETC1-companion variant with nothing bound on
+    // unit 1 — GLES2's opaque-white fallback never discards, so masked door
+    // materials rendered fully solid (the same class P20b fixed for tree
+    // foliage). Defaults to -1 for callers that don't set it.
+    void setShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest, irr::s32 alphaTestRGBA = -1) {
         shaderMaterialSolid_ = solid;
         shaderMaterialAlphaTest_ = alphaTest;
+        shaderMaterialAlphaTestRGBA_ = alphaTestRGBA;
     }
 
     // Set BSP tree for occlusion region lookup
@@ -205,6 +216,7 @@ private:
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
+    irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P21: H02d Option-A main-texture-alpha variant
     std::shared_ptr<S3DZone> currentZone_;
     ConstrainedTextureCache* constrainedCache_ = nullptr;
     const BspTree* bspTree_ = nullptr;
