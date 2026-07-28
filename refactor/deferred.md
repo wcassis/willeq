@@ -26,14 +26,21 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   item (connection flow). Macro-name indirection to confirm:
   CMake option EQT_GRAPHICS vs macro EQT_HAS_GRAPHICS. Unit-sized;
   needs judgment on the mixed 163-line block.
-- **Capture fixtures missing** (TESTING_HANDBACK item 2): data/captures/
-  does not exist → ~50 pcap/session-replay tests skip →
-  daybreak_connection.cpp (1195 lines, reliable-UDP core) at 0.0%
-  coverage. Fix = one recorded live-eqemu session (login → world →
-  zone-in → movement/chat): `--record-session data/captures/session.sleq`
-  + a pcap of the same session (WILLEQ_PCAP paths in
-  tests/pcap_test_utils.h). test_session_replay self-creates its
-  golden. Small unit; needs eqemu (honor .eqemu-lock).
+- **Capture fixtures — DONE (P29, merged `8fdcd24`, 2026-07-28)**:
+  canonical home `/mnt/projects/fable/captures/` (NFS, README inside),
+  `data/captures` symlinks in main + slot3 (other worktrees: create the
+  same symlink as needed; .gitignore fixed to match the symlink).
+  session.sleq (2,943 records) + session.pcap (5,603 pkts, login/world/
+  befallen/qeynos2) + self-created golden; replay deterministic (3
+  runs). 10 tests skip→PASS; desktop skips 38→24.
+  **→ FOR THE TESTING SESSION (tests/ territory)**: the remaining 4
+  FAILs + 8 skips share ONE root cause — `tests/pcap_test_utils.h` +
+  three test files hardcode zone port 7000, but the akk-stack image's
+  entrypoint auto-boots ~15 static zones claiming 7000-7011, so real
+  captures land on 7012+ (befallen 7012, qeynos2 7026 in this
+  fixture). Fix = WILLEQ_ZONE_PORT env override or port autodiscovery
+  from the pcap (SessionRequest/Response scan). Every future capture
+  against this image hits the same thing.
 - **Process fix DONE**: .eqemu-lock protocol added to
   EXECUTOR_PROTOCOL.md (the testing session correctly called out that
   P25's session ran the server without a lock — the protocol predated
