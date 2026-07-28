@@ -356,6 +356,13 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_graphics EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap: CIrrDeviceFB.cpp's windowed-EGL backend references X11
+        # symbols the static archive needs resolved at link time).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_graphics X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(test_graphics X11 Xxf86vm GL)
     ENDIF()
@@ -414,6 +421,12 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_asset_loading EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_asset_loading X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(test_asset_loading X11 Xxf86vm GL)
     ENDIF()
@@ -452,6 +465,12 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(test_door_loading EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment in the top-level CMakeLists.txt (same P25/P26
+        # parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_door_loading X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(test_door_loading X11 Xxf86vm GL)
     ENDIF()
