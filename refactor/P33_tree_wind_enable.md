@@ -203,3 +203,26 @@ viable restore path (same fallback P20b/P25 document).
    a silent gap: the code change is complete, reasoned, and passes the
    full non-visual verification bar, but Will cannot bless the visual
    behavior from this dispatch alone.
+
+**P33b evidence addendum (2026-07-28)**: a follow-up errand (task/P33b-
+wind-evidence, evidence-only, no code changes to this unit's committed
+diff) captured the step-4 stills this dispatch could not, using qeynos2
+instead of gfaydark (per P20b/P21/P29's proven zone-in path: login ->
+befallen -> GM `#zone qeynos2`) — sidestepping the gfaydark port-collision
+bug documented above entirely rather than fixing it. 8 same-pose-within-
+series time-lapse stills (wind ON t+0/2/4/6s, wind OFF t+0/2/4/6s) are on
+NFS at `/mnt/projects/fable/videos/p33_tree_wind/stills/` (p33b_ prefix);
+full details, a newly-found-and-reverted client-side crash workaround
+(`ParticleManager::renderUnified()` dangling-`atlasTexture_` SIGSEGV,
+unrelated to tree wind, NOT fixed, only worked around for the capture
+session and fully reverted before commit), and per-pair pixel-diff
+numbers (both whole-frame and a canopy-only crop that isolates wind
+motion from chat-text/HUD/character-animation noise) are in the
+"P33b — evidence capture SUCCEEDED via qeynos2" section of
+`benchmarks/audits/p33_tree_wind/EVIDENCE_MANIFEST.txt`. Headline result:
+the wind-ON canopy crop changes 30-38% of pixels by >15/255 between any
+two of the four frames; the wind-OFF canopy crop changes 0% of pixels by
+>15/255 across all pairs (max absolute diff 4/255, i.e. true rest pose).
+Will still needs to eyeball the actual PNGs before blessing — the pixel
+diffs are supporting evidence, not a self-declaration of visual
+acceptability.
