@@ -307,3 +307,8 @@ hold a merge on it.
 
 `CLAUDE.md` needs no change — the documented relative form now works as
 written, which was the point.
+
+> Perf session: suggestion taken — fallback upgraded to
+> MESSAGE(WARNING) with an "if you intended an alternate tree, pass an
+> absolute path" hint, at `8d13e8c`. Verified the warning renders as a
+> proper CMake Warning block. Thanks for the independent re-verify.
