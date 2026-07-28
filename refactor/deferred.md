@@ -200,9 +200,21 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
        the diff to 83-92% (reverted), pointing at GLES2 driver texture-object
        wrap-param state caching when a shared/cached ITexture* is used by
        materials wanting different wrap modes (draw-order-dependent stomping).
-       Follow-up unit would instrument COGLES2Texture/COpenGLES2Driver
-       glTexParameteri reapplication. Static remains pixel-identical.
-       Full findings in refactor/P18_animated_composite_delta.md Review;
+       P22 (2026-07-28) then REFUTED the wrap-param cache lead by
+       instrumentation: wrap glTexParameteri is applied UNCONDITIONALLY
+       per setMaterial (no dedup exists), 7,707 instrumented draws show
+       0 readback mismatches and 0 shared-texture wrap conflicts
+       (composite atlas textures are per-entity unique GL objects,
+       never shared with multibuffer's) — the stomping scenario cannot
+       arise. Bonus driver fact: NO mipmaps exist anywhere
+       (regenerateMipMapLevels has zero callers; MIN_FILTER never
+       *_MIPMAP_*), killing the mip-pollution framing too. The delta
+       REMAINS OPEN; surviving suspect = per-path mesh construction
+       differences (mesh_building.cpp caller-side "fixes" proved
+       REGRESSIVE per P18 — a future unit needs a different angle,
+       e.g. per-buffer UV/geometry stream comparison at the GL level).
+       Static remains pixel-identical; not visually user-reported.
+       Reviews: P18 + P22 plan files;
        (c) **P11b**: true composite
        perf magnitude on Pi (animated e205 replay) — P12b's optional
        phase was skipped.
