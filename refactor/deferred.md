@@ -24,9 +24,17 @@ the commit. Sources are historical docs — do not edit those.
   gate PASS). Full input translation (keyboard/mouse/wheel/close),
   resize declined round 1 (fixed-size WM hints). Windowed live-session
   evidence: benchmarks/audits/p25_x11_window/EVIDENCE_MANIFEST.txt. Tools: 5 port /
-  6 retire-candidates pending Will's go/no-go (uv_analysis,
-  analyze_hum_model, test_animation, bsp_coordinate_finder,
-  extract_zone_lines, generate_textures). The willeq-benchmark clone's
+  6 tools RETIRED by Will 2026-07-28, executed by P26 (`2c6a1f9`,
+  merged `daefaf8`: sources → tools/retired/, targets removed).
+  **Phase 0 EXECUTED (P26)**: both trees register identical 1235 tests
+  (byte-identical name lists); GLES2 tree 1233 pass — only the ALSA
+  host exception + the Phase-1 RaceModelAnimationHeadlessTest segfault
+  (re-confirmed sole genuine failure). model_viewer's break was an
+  EQT_DRM-only conditional gate; the other 7 targets had no backend
+  conditional at all. GLES2 full-suite recipe: separate tree with
+  EQT_BUILD_TESTS=ON WITH_RDP=ON (the build script's own config
+  intentionally builds only willeq+benchmark). NEXT: Phase 1 (segfault
+  investigation) awaits Will's go. The willeq-benchmark clone's
   build_errors_response.md guidance (desktop build as default) stays
   CORRECT until the migration phases land — update it in lockstep with
   Phase 2/3.
