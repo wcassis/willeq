@@ -199,51 +199,65 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
 
     initKeyMap();
 
-    bool eglOk = false;
+    // P27: EDT_NULL (headless/no-GPU tests, e.g. RaceModelAnimationHeadlessTest)
+    // must skip DRM/GBM/EGL/evdev probing entirely, exactly like stock Irrlicht's
+    // CIrrDeviceLinux/CIrrDeviceConsole guard every hardware-init step on
+    // `DriverType != EDT_NULL`. This device previously ran the full DRM/EGL
+    // pipeline unconditionally (hence spurious "/dev/dri/... Permission denied"
+    // warnings even under EDT_NULL) and createDriver()'s switch had no EDT_NULL
+    // case, so VideoDriver stayed null and createGUIAndScene() below was
+    // skipped — leaving getSceneManager()/getVideoDriver() null on a device
+    // the caller was told succeeded (Irrlicht.cpp's createDeviceEx() never
+    // closes an EDT_NULL device even if getVideoDriver() is null). See
+    // docker/irrlicht-drm-patch.py / build-gles2-x86.sh --irrlicht-only for
+    // how this file lands in the built tree.
+    if (CreationParams.DriverType != video::EDT_NULL) {
+        bool eglOk = false;
 
-    // P25: explicit opt-in X11-windowed EGL backend. WILLEQ_EGL_X11 is only
-    // ever set by irrlicht_renderer.cpp, only when the --egl-x11 CLI flag
-    // was passed — never derived from $DISPLAY, so surfaceless remains the
-    // default and this branch is inert for CI/goldens/benchmarks. Skips the
-    // DRM/GBM path entirely when requested. (An env var, not a direct call,
-    // because application code doesn't have this private device header on
-    // its include path — see the file-header comment above.)
-    bool x11Requested = (getenv("WILLEQ_EGL_X11") != nullptr);
-    if (x11Requested) {
-        eglOk = initEGLX11();
-        if (eglOk) {
-            x11Active_ = true;
-        } else {
-            os::Printer::log("--egl-x11 requested but X11/EGL init failed - falling back to DRM/surfaceless path", ELL_ERROR);
-        }
-    }
-
-    if (!eglOk) {
-        // Setup DRM/GBM/EGL pipeline
-        bool drmOk = initDRM();
-        bool gbmOk = drmOk ? initGBM() : false;
-        eglOk = gbmOk ? initEGL() : false;
-
-        if (!eglOk) {
-            // x86/Xvfb fallback: no real DRM/KMS display available (headless dev VM,
-            // no /dev/dri permission, or no connected connector). Fall back to a
-            // Mesa surfaceless EGL platform + pbuffer surface so the real
-            // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
-            os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
-            eglOk = initEGLSurfaceless();
+        // P25: explicit opt-in X11-windowed EGL backend. WILLEQ_EGL_X11 is only
+        // ever set by irrlicht_renderer.cpp, only when the --egl-x11 CLI flag
+        // was passed — never derived from $DISPLAY, so surfaceless remains the
+        // default and this branch is inert for CI/goldens/benchmarks. Skips the
+        // DRM/GBM path entirely when requested. (An env var, not a direct call,
+        // because application code doesn't have this private device header on
+        // its include path — see the file-header comment above.)
+        bool x11Requested = (getenv("WILLEQ_EGL_X11") != nullptr);
+        if (x11Requested) {
+            eglOk = initEGLX11();
             if (eglOk) {
-                surfaceless_ = true;
+                x11Active_ = true;
             } else {
-                os::Printer::log("Surfaceless EGL fallback also failed", ELL_ERROR);
+                os::Printer::log("--egl-x11 requested but X11/EGL init failed - falling back to DRM/surfaceless path", ELL_ERROR);
             }
         }
-    }
 
-    // Open evdev input devices. Not used in X11-windowed mode: input comes
-    // from X11 events instead (pollX11Events()) - see run(). evdev also
-    // requires /dev/input access, which X11/Xvfb sessions don't grant.
-    if (!x11Active_) {
-        initEvdev();
+        if (!eglOk) {
+            // Setup DRM/GBM/EGL pipeline
+            bool drmOk = initDRM();
+            bool gbmOk = drmOk ? initGBM() : false;
+            eglOk = gbmOk ? initEGL() : false;
+
+            if (!eglOk) {
+                // x86/Xvfb fallback: no real DRM/KMS display available (headless dev VM,
+                // no /dev/dri permission, or no connected connector). Fall back to a
+                // Mesa surfaceless EGL platform + pbuffer surface so the real
+                // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
+                os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
+                eglOk = initEGLSurfaceless();
+                if (eglOk) {
+                    surfaceless_ = true;
+                } else {
+                    os::Printer::log("Surfaceless EGL fallback also failed", ELL_ERROR);
+                }
+            }
+        }
+
+        // Open evdev input devices. Not used in X11-windowed mode: input comes
+        // from X11 events instead (pollX11Events()) - see run(). evdev also
+        // requires /dev/input access, which X11/Xvfb sessions don't grant.
+        if (!x11Active_) {
+            initEvdev();
+        }
     }
 
     // Create cursor control
@@ -863,6 +877,13 @@ void CIrrDeviceFB::createDriver()
             break;
         case video::EDT_SOFTWARE:
             VideoDriver = video::createSoftwareDriver(CreationParams.WindowSize, CreationParams.Fullscreen, FileSystem, this);
+            break;
+        case video::EDT_NULL:
+            // P27: stock Irrlicht devices (CIrrDeviceLinux, CIrrDeviceConsole)
+            // all handle EDT_NULL here via createNullDriver() — this forked
+            // device was missing the case, silently leaving VideoDriver null
+            // (and, transitively, the scene manager never created below).
+            VideoDriver = video::createNullDriver(FileSystem, CreationParams.WindowSize);
             break;
         default:
             os::Printer::log("Unable to create driver for requested type.", ELL_ERROR);

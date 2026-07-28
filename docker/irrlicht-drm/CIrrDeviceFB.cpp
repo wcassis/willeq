@@ -187,17 +187,32 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
 
     initKeyMap();
 
-    // Setup DRM/GBM/EGL pipeline
-    bool drmOk = initDRM();
-    bool gbmOk = drmOk ? initGBM() : false;
-    bool eglOk = gbmOk ? initEGL() : false;
+    // P27: EDT_NULL (headless/no-GPU tests) must skip DRM/GBM/EGL/evdev
+    // probing entirely, exactly like stock Irrlicht's CIrrDeviceLinux/
+    // CIrrDeviceConsole guard every hardware-init step on
+    // `DriverType != EDT_NULL`. This device previously ran the full DRM/EGL
+    // pipeline unconditionally and createDriver()'s switch had no EDT_NULL
+    // case, so VideoDriver stayed null and createGUIAndScene() below was
+    // skipped — leaving getSceneManager()/getVideoDriver() null on a device
+    // the caller was told succeeded (Irrlicht.cpp's createDeviceEx() never
+    // closes an EDT_NULL device even if getVideoDriver() is null). Confirmed
+    // via the x86 fork (docker/irrlicht-drm-x86/CIrrDeviceFB.cpp) — this ARM
+    // file shares the bug but ARM production only ever requests EDT_OGLES2,
+    // so this branch is inert on the DRM/KMS path; it only changes behavior
+    // for a driver type ARM never constructs.
+    if (CreationParams.DriverType != video::EDT_NULL) {
+        // Setup DRM/GBM/EGL pipeline
+        bool drmOk = initDRM();
+        bool gbmOk = drmOk ? initGBM() : false;
+        bool eglOk = gbmOk ? initEGL() : false;
 
-    if (!eglOk) {
-        os::Printer::log("DRM/GBM/EGL initialization failed", ELL_ERROR);
+        if (!eglOk) {
+            os::Printer::log("DRM/GBM/EGL initialization failed", ELL_ERROR);
+        }
+
+        // Open evdev input devices
+        initEvdev();
     }
-
-    // Open evdev input devices
-    initEvdev();
 
     // Create cursor control
     CursorControl = new CCursorControl(this);
@@ -701,6 +716,13 @@ void CIrrDeviceFB::createDriver()
             break;
         case video::EDT_SOFTWARE:
             VideoDriver = video::createSoftwareDriver(CreationParams.WindowSize, CreationParams.Fullscreen, FileSystem, this);
+            break;
+        case video::EDT_NULL:
+            // P27: stock Irrlicht devices (CIrrDeviceLinux, CIrrDeviceConsole)
+            // all handle EDT_NULL here via createNullDriver() — this forked
+            // device was missing the case, silently leaving VideoDriver null
+            // (and, transitively, the scene manager never created below).
+            VideoDriver = video::createNullDriver(FileSystem, CreationParams.WindowSize);
             break;
         default:
             os::Printer::log("Unable to create driver for requested type.", ELL_ERROR);

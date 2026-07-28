@@ -688,6 +688,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
                 fmt::fmt
                 EGL GLESv2 drm gbm
             )
+            # P27: x86 GLES2 dev tree (EQT_DRM=OFF) needs X11 too — the P25
+            # windowed-EGL backend in CIrrDeviceFB.cpp references X11 symbols
+            # unconditionally (used only at runtime behind --egl-x11, but the
+            # static archive still needs the symbols resolved at link time).
+            # Same parity gap as the willeq_core LINK_LIBS block above
+            # (line ~538) — P26 copied the EGL/GLESv2/drm/gbm set to this
+            # target but missed X11, discovered by P27 while verifying the
+            # GLES2 tree's full ctest baseline.
+            IF(NOT EQT_DRM)
+                TARGET_LINK_LIBRARIES(model_viewer X11)
+            ENDIF()
         ELSE()
             TARGET_LINK_LIBRARIES(model_viewer
                 ${IRRLICHT_LIBRARY}
@@ -751,6 +762,11 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(s3d_dump EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment above (same P25/P26 parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(s3d_dump X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(s3d_dump X11 Xxf86vm GL)
     ENDIF()
@@ -795,6 +811,11 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(entity_composite_builder EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment above (same P25/P26 parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(entity_composite_builder X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(entity_composite_builder X11 Xxf86vm GL)
     ENDIF()
@@ -942,6 +963,11 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(generate_surface_map EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment above (same P25/P26 parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(generate_surface_map X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(generate_surface_map X11 Xxf86vm GL)
     ENDIF()
@@ -998,6 +1024,11 @@ IF(EQT_GRAPHICS)
         # CIrrDeviceFB/gpu_upload_thread reference drm/gbm/EGL symbols the
         # static GLES2-patched Irrlicht archive doesn't bring in transitively.
         TARGET_LINK_LIBRARIES(zone_line_editor EGL GLESv2 drm gbm)
+        # P27: x86 GLES2 dev tree (EQT_DRM=OFF) also needs X11 — see the
+        # model_viewer comment above (same P25/P26 parity gap).
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(zone_line_editor X11)
+        ENDIF()
     ELSEIF(NOT APPLE)
         TARGET_LINK_LIBRARIES(zone_line_editor X11 Xxf86vm GL)
     ENDIF()
