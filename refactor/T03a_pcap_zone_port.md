@@ -188,7 +188,171 @@ Visual gate and ARM build do not apply (tests-only diff). Say so.
 
 ## Review
 
-Per the protocol: evidence per criterion, the before/after table for
-all 12 tests, the three green runs, deviations flagged. State plainly
-anything you could not make pass and why. An honest partial beats an
-overclaim I will catch reading the diff.
+**Territory respected**: only `tests/pcap_test_utils.h` and the four named
+test files changed. No `src/` or `include/` touched, not even a seam.
+`git diff --stat`: 5 files, +250/-45.
+
+### Implementation summary
+
+`pcap_test_utils.h`:
+- Split the old single-pass `readPcapFile()` into `readPcapFileRaw()`
+  (parses every UDP packet, no port filtering, no dedup — the new shared
+  low-level parser) and `readPcapFile(filename, options)` (applies
+  `PcapReadOptions` filtering/dedup/`max_packets` on top of the raw list).
+  Output is behaviourally identical to the old single-pass version for
+  existing callers; this split exists so port discovery does not need to
+  go through `PcapReadOptions` (which would be circular, since
+  `PcapReadOptions::server_ports`'s default now comes from discovery).
+- Added `discoverPorts(path)`: scans the raw packet list for
+  `OP_SessionResponse` (opcode `0x02`); the *source* of that packet is a
+  server port/IP, its peer the client — the handshake-based method the
+  plan called for, not a port-number heuristic. Classifies well-known
+  ports (5998/5999/9000) as login/world; any other discovered server port
+  is a zone-session candidate. Counts total packets (either direction)
+  touching each zone candidate to rank sessions busiest-first. Cached
+  per-path in a `static std::map`, so each test binary scans the 1.3MB
+  capture once regardless of how many fixtures/tests call it. Never
+  crashes on a missing/corrupt file — returns `valid=false` with just the
+  well-known seed ports.
+- `PcapReadOptions::server_ports` default now calls `defaultServerPorts()`
+  (well-known seed + discovered ports), replacing the old hardcoded
+  `{5998, 5999, 7000..7007, 9000}` literal.
+- Added `getTestZonePort()` (env `WILLEQ_ZONE_PORT` override, else busiest
+  discovered zone session), `getTestZoneIp()` (companion, `WILLEQ_ZONE_IP`
+  override), and `getTestZoneSessions()` (full list, busiest-first, for
+  tests that want to iterate more than "the" zone server).
+
+Four test files: replaced every hardcoded `filter_src_port = 7000` /
+`src_port == 7000` / `src_port != 7000` comparison with `getTestZonePort()`
+(cached per-fixture in `test_pcap_step_through.cpp` to avoid repeated
+lookups within one test body). `test_daybreak_connection_pcap.cpp`'s
+`createTestConnection("172.18.0.3", 7000)` (4 call sites) now reads
+`createTestConnection(getTestZoneIp(), getTestZonePort())` — chose true
+discovery over an IP-override env var since discovery already had to find
+the source IP to classify the handshake, so reusing it was not awkward;
+`WILLEQ_ZONE_IP` is still available as an override for anyone who needs one
+without re-recording.
+
+`test_pcap_extractor.cpp`'s `FilterByZoneServerPort` test also gained an
+`EXPECT_GT(result.packets.size(), 0u)` it did not have before — under the
+old hardcoded-7000 filter this test always matched 0 packets and passed
+vacuously (the `EXPECT_EQ` loop body never ran). This is a strengthening,
+not a weakening: it now asserts the discovered zone port actually yields
+packets, which is what the test's name always implied.
+
+### Discovered ground truth (matches the plan's measured values)
+
+Busiest zone session found by `discoverPorts()`: qeynos2, IP from the
+`OP_SessionResponse` source, port **7026**. This matches the plan's table
+(7026, 3172 raw packets) exactly, and the resulting session is confirmed
+via `test_daybreak_harness`'s output: `Session established:
+compression=1`, `crc=2 enc1=1 enc2=0`. `PacketStats_ServerToClient` now
+sees 1682 total packets (1415 protocol / 267 app) instead of 222
+login-only packets.
+
+### Compression finding — not weakened, genuinely found
+
+The plan flagged that compression might not exist in this server's traffic
+and, if so, the test should stay red rather than be weakened.
+**It exists**: `FindCompressedPackets` / `PacketStats_ServerToClient` find
+**1017 compressed packets** (0x5a marker) out of 1682 S->C packets once
+direction classification covers the full zone session. No assertion was
+weakened; both tests pass on real, non-vacuous data.
+
+### Before/after table — all 12 named tests
+
+| Test | Before | After |
+|---|---|---|
+| `PcapExtractorTest.PacketStats_ServerToClient` | FAIL | PASS |
+| `PcapExtractorTest.FindCompressedPackets` | FAIL | PASS |
+| `PcapStepThroughTest.StepThroughZoneServerSession` | FAIL | PASS |
+| `PcapStepThroughTest.WriteDetailedLogToFile` | FAIL | PASS |
+| `DaybreakConnectionPcapTest.ReplayZoneServerPackets` | SKIP | PASS |
+| `DaybreakConnectionPcapTest.DetailedFragmentTracking` | SKIP | PASS |
+| `DaybreakConnectionPcapTest.SingleCompressedFragmentDebug` | SKIP | PASS |
+| `DaybreakConnectionPcapTest.ReplayWithCRCBypassed` | SKIP | PASS |
+| `PcapDaybreakHarnessTest.ProcessZoneServerPackets` | SKIP | PASS |
+| `PcapDaybreakHarnessTest.ProcessFirstFewPackets_Verbose` | SKIP | PASS |
+| `PcapDaybreakHarnessTest.AnalyzeCompressedFragments` | SKIP | PASS |
+| `PcapStepThroughTest.StepThroughFragmentSequence` | SKIP | PASS |
+
+All 12 came back — no partial. (`PcapExtractorTest.FilterByZoneServerPort`,
+not in the named 12, also went from a vacuous pass to a genuine pass with
+1178 packets, see above.)
+
+### Acceptance criteria
+
+1. **PASS** — no hardcoded `7000` remains as a zone-port assumption in
+   `tests/`. Verified with
+   `grep -rn "7000" tests/pcap_test_utils.h tests/test_daybreak_harness.cpp
+   tests/test_daybreak_connection_pcap.cpp tests/test_pcap_extractor.cpp
+   tests/test_pcap_step_through.cpp` → no matches.
+   `tests/test_formatted_message.cpp:75` (`"...000070000000..."` hex item
+   link string) left untouched, per the plan's carve-out.
+2. **PASS** — GLES2-config build clean:
+   `cmake --build /mnt/projects/fable/wt/t1/build -j24` full build and the
+   four affected test targets both built with no errors/warnings from the
+   changed files. Bootstrap/config were already in place in this slot
+   (`third_party/irrlicht-gles2-x86/lib/libIrrlicht.a` present,
+   `EQT_GLES2_IRRLICHT_DIR` already absolute in `build/CMakeCache.txt`) —
+   no reconfigure needed.
+3. **PASS** — `data/captures` symlink already present in the slot
+   (`/mnt/projects/fable/wt/t1/data/captures -> /mnt/projects/fable/captures`),
+   confirmed before starting.
+4. **PASS** — all 4 FAILs fixed, all 8 SKIPs now run and pass. See table
+   above.
+5. **PASS** — 3 consecutive full `ctest --test-dir build --output-on-failure`
+   runs with `WILLEQ_PCAP=/mnt/projects/fable/captures/session.pcap`:
+   - Run 1: 1360/1362 passed. Failures:
+     `AudioManagerTest.PreloadCommonSounds` (documented),
+     `RDPServerFrameTest.UpdateFrameMultipleTimes` (documented,
+     intermittent — SEGFAULT this run).
+   - Run 2: 1361/1362 passed. Failure: `AudioManagerTest.PreloadCommonSounds`
+     (documented). RDP test passed this run (matches "intermittent").
+   - Run 3: 1361/1362 passed. Same as run 2.
+   - All 21 pcap/daybreak-family test cases (the 12 fixed plus the 9
+     already-passing ones) passed in all 3 runs — no flakiness introduced.
+   - No other regressions in any of the three runs.
+6. **PASS** — no-capture path still skips cleanly. Demonstrated by pointing
+   `WILLEQ_PCAP=/tmp/nonexistent_capture.pcap` at all four binaries: all
+   exit 0, all pcap-dependent tests report `SKIPPED` (10+4+4+3 = 21
+   skips), zero crashes. `discoverPorts()` on the missing file returns
+   `valid=false` with the well-known-only seed set, as designed.
+7. **PASS** — `bash scripts/refactor/check_file_sizes.sh fable` exit 0, no
+   output (no FAILs). `pcap_test_utils.h` grew by ~250 lines but is a
+   header full of small inline functions, well under any size threshold
+   the script flags (confirmed by exit 0/empty output rather than
+   asserting a specific line count, since the script itself is the source
+   of truth here).
+
+Visual gate and ARM build: **not applicable** — tests-only diff, per the
+plan and the Testing Charter ("Graphics bar steps ... only when a unit
+touches something they cover").
+
+### Deviations from the plan
+
+- **IP resolution for `createTestConnection`**: the plan offered a choice
+  between full IP autodiscovery and a `WILLEQ_ZONE_IP`-style override.
+  Implemented **both**: `getTestZoneIp()` defaults to the discovered
+  `OP_SessionResponse` source IP (true discovery, the plan's preferred
+  option) but still honors `WILLEQ_ZONE_IP` as an override, mirroring
+  `getTestZonePort()`'s `WILLEQ_ZONE_PORT` pattern for symmetry. This is
+  additive, not a deviation from intent — flagging it since the plan
+  treated the two as alternatives rather than "do both."
+- **`FilterByZoneServerPort` strengthened**: not explicitly requested by
+  the plan (it named the file/line for the hardcoded literal but didn't
+  call out this specific test's vacuous-pass problem), but leaving an
+  `EXPECT_EQ` loop that iterates zero elements felt like exactly the kind
+  of "test that asserts nothing" the plan explicitly said it did not want
+  to see left standing. Added one `EXPECT_GT` line; flagging it as a
+  scope judgment call rather than doing it silently.
+- Nothing was STOPped. No `src/`/`include/` change was needed, the
+  fixture was not found to be wrong, and no assertion needed weakening —
+  the compression finding came back positive, so the "honest red" fallback
+  path in the plan was not exercised.
+
+### What I could not make pass
+
+Nothing. All 12 named tests pass, all acceptance criteria pass, 3
+consecutive green full-suite runs achieved with only the two
+charter-documented host exceptions.

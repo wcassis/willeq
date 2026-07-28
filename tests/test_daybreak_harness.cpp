@@ -176,7 +176,7 @@ protected:
         PcapReadOptions options;
         options.remove_duplicates = true;
         options.server_to_client_only = true;
-        options.filter_src_port = 7000;  // Zone server
+        options.filter_src_port = getTestZonePort();  // Zone server (autodiscovered)
 
         auto result = readPcapFile(TEST_PCAP_FILE, options);
         if (result.success) {
