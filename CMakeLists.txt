@@ -88,8 +88,31 @@ IF(EQT_GRAPHICS)
     IF(EQT_GLES2_IRRLICHT_DIR)
         # H01: use the locally-built patched Irrlicht (x86 GLES2 dev builds)
         # instead of searching the system for one.
-        SET(IRRLICHT_INCLUDE_DIR "${EQT_GLES2_IRRLICHT_DIR}/include")
-        SET(IRRLICHT_LIBRARY "${EQT_GLES2_IRRLICHT_DIR}/lib/libIrrlicht.a")
+        # Absolutize first: CMake's EXISTS is only defined for absolute
+        # paths, so the documented relative form
+        # (-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86) would
+        # otherwise fail the check below even when the library is present.
+        GET_FILENAME_COMPONENT(EQT_GLES2_IRRLICHT_DIR_ABS
+            "${EQT_GLES2_IRRLICHT_DIR}" ABSOLUTE
+            BASE_DIR "${CMAKE_SOURCE_DIR}")
+        # Second trap: CMake itself absolutizes an untyped -D value against
+        # the *invocation* cwd when the cache entry is typed PATH — so a
+        # relative value passed while running `cmake -S` from elsewhere
+        # arrives here already absolute-but-wrong. If the resolved location
+        # lacks the library but the in-tree default has it, prefer the
+        # in-tree default (with a notice).
+        IF(NOT EXISTS "${EQT_GLES2_IRRLICHT_DIR_ABS}/lib/libIrrlicht.a"
+           AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/irrlicht-gles2-x86/lib/libIrrlicht.a")
+            MESSAGE(WARNING "EQT_GLES2_IRRLICHT_DIR resolved to "
+                "'${EQT_GLES2_IRRLICHT_DIR_ABS}' (no libIrrlicht.a there); "
+                "using the in-tree default third_party/irrlicht-gles2-x86 "
+                "instead. If you intended an alternate Irrlicht tree, pass "
+                "an absolute path to it.")
+            SET(EQT_GLES2_IRRLICHT_DIR_ABS
+                "${CMAKE_SOURCE_DIR}/third_party/irrlicht-gles2-x86")
+        ENDIF()
+        SET(IRRLICHT_INCLUDE_DIR "${EQT_GLES2_IRRLICHT_DIR_ABS}/include")
+        SET(IRRLICHT_LIBRARY "${EQT_GLES2_IRRLICHT_DIR_ABS}/lib/libIrrlicht.a")
     ENDIF()
     IF(IRRLICHT_INCLUDE_DIR AND IRRLICHT_LIBRARY AND EXISTS "${IRRLICHT_INCLUDE_DIR}/irrlicht.h" AND EXISTS "${IRRLICHT_LIBRARY}")
         ADD_DEFINITIONS(-DEQT_HAS_GRAPHICS)
