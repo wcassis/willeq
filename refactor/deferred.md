@@ -824,9 +824,20 @@ proper fix:
   (befallen braziers?), the next Pi measurement may show a small
   frame-time delta from particles rendering again — attribute it here,
   don't treat it as a regression mystery.
-- Post-camp shutdown-thread aborts remain (documented class, still
-  open) — sessions still may not end in a fully clean /camp; the two
-  fixes above remove the main mid-session crashers.
+- Post-camp shutdown aborts — CLOSED by P36 (`4b30404`, merged
+  `e8efd87`, 2026-07-29). Root cause: UpdateMovement() ran on TWO
+  threads (game thread + the 500ms m_update_thread); when the update
+  thread won the race to process the deferred post-logout disconnect,
+  CleanupZone → StopUpdateLoop → join() ran ON m_update_thread =
+  self-join EDEADLK abort. Fix: update thread no longer calls
+  UpdateMovement (game thread already drives it; CombatManager tick
+  kept) — self-join structurally impossible. Causality proven by
+  revert-and-reproduce. ALSO: SIGTERM had no handler (default-killed;
+  now flag + requestQuit). Exit matrix all clean: 5×/camp exit-0
+  (2 post-transition) + SIGTERM + script-end + headless.
+  Residual small items: window-close exit verified by inspection only
+  (no WM in sandbox); action::CommandProcessor's /q is dead code
+  (chat-registry /q works) — cleanup candidate.
 
 ## Sheet quality DONE + deployed (P16, 2026-07-27)
 
