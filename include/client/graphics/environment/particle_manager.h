@@ -33,7 +33,7 @@ class UnifiedParticleRenderer;  // Forward declaration
  * - Enforces particle budget limits
  * - Responds to quality settings changes
  */
-class ParticleManager {
+class ParticleManager : public TextureEvictionListener {
 public:
     ParticleManager(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver);
     ~ParticleManager();
@@ -42,8 +42,15 @@ public:
     ParticleManager(const ParticleManager&) = delete;
     ParticleManager& operator=(const ParticleManager&) = delete;
 
-    // Set constrained texture cache (mandatory, must be called before init)
-    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedCache_ = cache; }
+    // Set constrained texture cache (mandatory, must be called before init).
+    // P34: registers/deregisters `this` as a TextureEvictionListener (same
+    // idiom as AnimatedTextureManager/SkyRenderer/StormCloudLayer/
+    // DetailManager) so atlasTexture_ can never go dangling on eviction —
+    // see onTextureEvicted()'s doc comment for the bug this closes.
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener — see .cpp for the P34 root-cause writeup.
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
     /**
      * Initialize the particle system.
@@ -371,6 +378,11 @@ private:
      * Load the particle texture atlas.
      */
     bool loadParticleAtlas(const std::string& path);
+
+    // Path passed to loadParticleAtlas() by init() — retained so onZoneEnter()
+    // can re-acquire the atlas via the exact same path if a prior eviction
+    // (onTextureEvicted()) nulled atlasTexture_ (P34).
+    static constexpr const char* kAtlasTexturePath = "data/textures/particle_atlas.bmp";
 
     /**
      * Render a single billboard-oriented quad.

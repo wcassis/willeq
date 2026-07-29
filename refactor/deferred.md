@@ -4,22 +4,78 @@ Live list of open work items extracted from "done" batches and audits
 (2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
 the commit. Sources are historical docs — do not edit those.
 
-## CRITICAL: ParticleManager::renderUnified use-after-free (found by P33b, 2026-07-29)
+## FIXED: ParticleManager::renderUnified use-after-free (P34, 2026-07-29)
 
-- **Live qeynos2 sessions SIGSEGV within ~1-2s of zone-in** — gdb bt +
-  disassembly: use-after-free on a dangling `atlasTexture_` inside
-  `ParticleManager::renderUnified()`. This is NOT the SimulationWorker
-  race P23 fixed (that was result-buffer lifetime; this is texture
-  lifetime) — but it was EXPOSED by P23's removal of the isEnabled()
-  gate: renderUnified never ran in production while the gate was in
-  place, so this latent bug never fired. Likely the P10b/P17
-  dangling-ITexture* class (texture evicted/freed while a raw pointer
-  is retained) — the particle atlas needs the same guard pattern
-  (isLiveTexture()/eviction listener) the region/entity paths got.
-  P33b worked around with a LOCAL uncommitted gag to capture its
-  evidence. BLOCKS all live-client evidence work and, plausibly, Pi
-  gameplay (renderUnified is GLES2-only and runs whenever zoneReady).
-  NEEDS A UNIT NOW — highest-priority item on the deck.
+- Root cause confirmed: `atlasTexture_` was loaded once (init(), one-shot,
+  guarded by `initialized_`) via `ConstrainedTextureCache::getOrLoad`/
+  `uploadTexture("particle_atlas")` — an ordinary LRU cache entry — but
+  `ParticleManager` was NEVER registered as a `TextureEvictionListener`,
+  unlike every sibling texture-caching subsystem (AnimatedTextureManager,
+  SkyRenderer, DetailManager, StormCloudLayer self-register; region/entity
+  meshes and the software cursor have their own guards — see
+  renderer_zone_merge.h). Exact freeing sequence:
+  `IrrlichtRenderer::unloadZone()` runs SYNCHRONOUSLY on every zone
+  transition (P17) and unconditionally calls
+  `constrainedTextureCache_->clear()`, which notifies listeners then
+  `driver_->removeTexture()`s every cached entry including
+  `"particle_atlas"` — with no listener, `atlasTexture_` (and
+  `particleMaterial_`'s texture slot) were left dangling. The next zone's
+  first `renderUnified()` call dereferences it
+  (`atlasTexture_->getDriverTextureHandle()`) — SIGSEGV, matching P33b's
+  gdb backtrace exactly. Unconditional on every zone unload (not
+  memory-pressure-gated like most of this bug class), hence the
+  reliable ~1-2s-after-zone-in timing.
+  **Fix**: `ParticleManager` now implements `TextureEvictionListener`
+  (self-registers/deregisters in `setConstrainedTextureCache()`/
+  `~ParticleManager()`, mirroring AnimatedTextureManager's idiom — the
+  single-named-entry variant of this codebase's established two-layer
+  pattern, not the scene-graph-scanning RegionMeshTextureGuard variant,
+  since there's no node collection to scan here); `onTextureEvicted()`
+  nulls `atlasTexture_` + clears `particleMaterial_`'s texture slot the
+  instant eviction happens, and `onZoneEnter()` (runs every zone visit,
+  always after `unloadZone()`'s `clear()`) re-acquires the atlas if null.
+  particle_manager.h/.cpp only. Verified: 6-step bar clean,
+  `particle_race_stress` clean (100k iters), and 8 live eqemu qeynos2
+  sessions post-fix (including a 3m45s single-zone stay) show zero
+  atlas-related crashes — see refactor/P34_particle_atlas_uaf.md Review.
+
+## CRITICAL: SimulationWorker HCMap use-after-free on zone transition (found by P34, 2026-07-29)
+
+- **A SEPARATE, newly-found, still-open bug** — discovered live while
+  P34 was gathering qeynos2/befallen zone-transition evidence for the
+  (unrelated, now-fixed) particle atlas UAF above. gdb bt (4 independent
+  captures, identical stack every time):
+  `HCMap::FindBestZ()` → `SimulationWorker::computeEntityInterpolation()`
+  → `computeAll()` → `workerLoop()`, SIGSEGV on the SimulationWorker
+  thread. `sim_entity_sync.cpp`'s NPC ground-snap
+  (`state.isNPC && zoneData_.hcMap && ...` → `zoneData_.hcMap->FindBestZ()`)
+  dereferences `zoneData_.hcMap`, a raw `const HCMap*` snapshotted from
+  `IrrlichtRenderer::collisionMap_` in `buildSimulationZoneData()`
+  (renderer_sim_bridge.cpp) — `collisionMap_` itself is set via
+  `setCollisionMap()` off a bridge event carrying the game thread's
+  `EverQuest::m_zone_map` (`std::unique_ptr<HCMap>`, eq.h). Root cause not
+  chased (out of P34's territory — NOT SimulationWorker/zone-loader code)
+  but the shape strongly suggests a synchronization gap between the game
+  thread's zone-map lifecycle (owns/destroys `m_zone_map` on zone change)
+  and the render thread's `SimulationWorker::stop()`/`clearZoneData()`
+  pairing (renderer_sim_bridge.cpp `stopSimulationWorker()`) — `stop()`
+  does properly `thread_->join()` before `clearZoneData()`, so if this is
+  the gap, it's on the OTHER side (game thread freeing/replacing
+  `m_zone_map` before the renderer-side stop/clear has run), not a missing
+  join.
+  **Reproduction**: highly transition-triggered, not zone-specific —
+  7 of 7 live sessions that crossed a `#zone` transition (befallen→qeynos2
+  or qeynos2→befallen, single-hop and multi-hop scripts alike) crashed
+  within ~5-25s of the transition; the 1 session that stayed in a single
+  zone for its whole 3m45s duration (no transition at all) was clean.
+  This reads as at least as severe as the atlas bug this unit fixed
+  (near-100% reproduction on transition in this environment) and
+  currently blocks any live multi-zone-hop evidence gathering.
+  **NOT caused by and unrelated to P34's atlas fix** — confirmed by
+  backtrace on all 4 gdb captures: zero frames touch `ParticleManager`,
+  `atlasTexture_`, or `ConstrainedTextureCache`. NEEDS A UNIT — territory
+  is `sim_entity_sync.cpp` / `renderer_sim_bridge.cpp` / `eq.h`'s
+  `m_zone_map` lifecycle, not particle/texture-cache code.
 
 ## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
 
