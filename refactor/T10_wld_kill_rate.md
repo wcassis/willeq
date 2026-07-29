@@ -166,8 +166,195 @@ Visual gate and ARM build: not applicable (tests-only commit) — say so.
 
 ## Review
 
-Per the protocol, plus:
-- Both kill-rate tables, before and after.
-- Any value you judged implausible.
-- Which mutations still survive and what that says about the suite.
-- Explicit confirmation that no `src/` change was committed.
+### Part A — baseline kill rate (before Part B): 0/8 KILLED
+
+All 8 mutations were applied one at a time to
+`src/client/graphics/eq/wld_loader.cpp`, built (`cmake --build build
+--target test_wld -j24`), measured against the **unmodified** `test_wld`
+(103 tests), then reverted (`git checkout -- src/...`) before the next
+mutation.
+
+| # | Mutation | Location | Result |
+|---|----------|----------|--------|
+| M1 | Swapped y/z vertex components on decode (`v.z`/`v.y` transposed) | `parseFragment36`, vertex decode loop (~line 666) | SURVIVED |
+| M2 | Dropped the winding-order reversal (`index[0..2]` instead of `index[2..0]`) | `parseFragment36`, polygon read loop (~line 737) | SURVIVED |
+| M3 | Appended a bogus suffix to the resolved texture name (`animInfo.frames[0] + "_MUTATED"`) | `parseFragment36`/`parseFragment2C` texture resolution (~line 856, ~1476, both mutated via `replace_all`) | SURVIVED |
+| M4 | Dropped the fragment-type dispatch for `case 0x30` (materials never parsed) | `parseWldBuffer` fragment switch (~line 385) | SURVIVED |
+| M5 | Swapped min/max extent assignment on the per-mesh header-derived bounding box | `parseFragment36`/`parseFragment2C` bbox copy (~line 639, ~1293, both mutated) | SURVIVED |
+| M6 | `getGeometryForRegion` looks up by `regionIndex` instead of the region's `meshReference` | `getGeometryForRegion` (~line 1052) | SURVIVED |
+| M7 | Off-by-one on the assigned triangle `textureIndex` (`tm.tex + 1`) | `parseFragment36` texture-mapping loop (~line 787) | SURVIVED |
+| M8 | Swapped the x/y slice ranges when decoding zone-line coordinates | `decodeZoneLineString` (~line 2574) | SURVIVED |
+
+**Baseline: 0/8 killed — worse than the benchmark session's 1/8, not
+better.** This is reported plainly per the plan's instruction to route
+back honest intel either direction: our 8 mutations, though inspired by
+the plan's suggested areas, evidently probe different code paths than
+whatever the benchmark session mutated, and our mutation set turned out
+to land entirely inside the "coverage without assertion" gap the plan
+diagnosed. That is consistent with, not contradictory to, the diagnosed
+mechanism (`WldLoader_ParseZone` asserts only `success` and
+`geometries.size() > 0`) — it just means the gap is even wider than one
+sample data point suggested.
+
+### Part B — strengthened assertions
+
+Added to `WldIntegrationTest.WldLoader_ParseZone` in `tests/test_wld.cpp`
+(zone `qeynos2`/`qeynos2.wld`, characterized 2026-07-29):
+
+- Exact mesh count (1915), total vertex count (36218), total triangle
+  count (19470). **Cross-validated, not just characterization**: these
+  three numbers are independently reproduced by
+  `WldMeshFragmentTest.WldLoader_ZoneGeometry` and
+  `WldMeshFragmentTest.Fragment36_RealZoneMeshes`, which re-parse the raw
+  Fragment 0x36 records directly from the archive bytes — two independent
+  parses agree, so this isn't merely "whatever the loader emits."
+- World-space bounding box via `getCombinedGeometry()` (adds each mesh's
+  center back onto its locally-stored vertices), pinned with
+  `EXPECT_NEAR` (±1.0 unit): min(-258.906, -1099.56, -390.844),
+  max(1999.19, 1099.56, 79.9688). **Sanity-checked**: a ~2258 x 2199 x 470
+  unit footprint is plausible for qeynos2 ("Qeynos Hills"), an outdoor
+  connector zone between the two Qeynos city zones — not implausible.
+- Vertex sanity: no NaNs, and every combined vertex falls inside the
+  bounding box computed from those same vertices. This part is a true
+  invariant, not characterization.
+- Distinct resolved texture count (128) and one specific known name
+  (`wawall1.bmp`, present in the list). **Sanity-checked**: all 128 names
+  are lowercase `.bmp` basenames consistent with real Titanium client
+  texture naming; 136 Fragment 0x30 materials (confirmed via the existing
+  `Fragment30_RealZoneFlags` raw-parse test) resolve down to 128 distinct
+  texture names, i.e. some materials legitimately share a texture — not
+  an inconsistency.
+- PVS/BSP region counts: `hasPvsData()` true, 2074 total BSP regions,
+  1898/2074 (91.5%) mapping back to geometry via `getGeometryForRegion()`.
+  Plausible: the remainder are solid/void BSP volumes with no polygon
+  data, expected for a zone with outdoor terrain.
+
+No implausible value was found — everything checked cross-validated or
+sanity-checked as noted above. `<cmath>` was added to the include list
+for `std::isnan`.
+
+### Part C — re-measured kill rate: 4/8 KILLED (up from 0/8)
+
+Same 8 mutations, same one-at-a-time apply/build/measure/revert cycle,
+now against the strengthened suite:
+
+| # | Mutation | Result (after Part B) |
+|---|----------|------------------------|
+| M1 | Vertex y/z swap | **KILLED** — caught by the vertex-count/bbox/no-NaN block (bbox values shift outside tolerance) |
+| M2 | Dropped winding reversal | SURVIVED |
+| M3 | Bogus texture-name suffix | **KILLED** — caught by the known-texture-name check (`wawall1.bmp` no longer present) |
+| M4 | Dropped Fragment 0x30 dispatch | **KILLED** — caught by the distinct-texture-count assertion (materials never resolve, texture list collapses) |
+| M5 | Swapped per-mesh header min/max | SURVIVED |
+| M6 | `getGeometryForRegion` region/mesh mismatch | **KILLED** — caught by the `regionsWithGeometry == 1898` assertion |
+| M7 | Off-by-one triangle `textureIndex` | SURVIVED |
+| M8 | Swapped zone-line x/y slices | SURVIVED |
+
+**Before/after: 0/8 → 4/8.** A real, substantial increase, not inflation
+from assertions that happen not to catch anything — each KILLED row above
+is annotated with which specific new assertion caught it.
+
+**Mutations that still survive, and what that says about the suite:**
+
+- **M2 (winding reversal dropped)**: none of the new assertions look at
+  triangle *orientation* (index order / implied normal direction) — only
+  counts, positions, and texture resolution. The suite has no assertion
+  that would catch a winding-order regression. This is a real, named gap.
+- **M5 (per-mesh header bbox swapped)**: investigated why — `geom->minX`
+  /`maxX`/etc. (the fields parsed directly from the WLD fragment header)
+  are **read by nothing in the test suite**. `getCombinedGeometry()`
+  independently recomputes its own bbox from actual vertex positions
+  (`combined->minX = std::min(...)` over `worldV.x`, `wld_loader.cpp`
+  ~line 1022), so my new bbox assertion never touches this code path at
+  all. Confirmed via `grep` that no test reads `geom->minX`/`maxX`
+  directly. This per-mesh field is effectively unverified dead output as
+  far as the test suite is concerned — a distinct finding from the
+  general "gap," specific enough to route back.
+- **M7 (triangle textureIndex off-by-one)**: no assertion checks
+  per-triangle `textureIndex` values or bounds — only the resolved
+  texture *name list*, which is built from `geom->textureNames()`
+  independently of which index any given triangle points at.
+- **M8 (zone-line x/y slice swap)**: the suite counts/logs zone-line
+  regions (`BspTreeZoneLines`, `ZoneLineInfoParsing`) but never asserts
+  the actual decoded `x`/`y`/`z`/`heading` values for any real zone line.
+
+Findings not fixed (per STOP conditions — reported, not patched):
+resolveTextureName() (wld_loader.cpp ~line 612) is dead code — declared
+in the header, defined, and never called anywhere in `src/` or `tests/`.
+It always returns `""`. Confirmed via repo-wide grep. Not mutated for
+Part A because a mutation with no call site can never be killed by
+construction; the plan's suggested mutation target (item 3,
+`resolveTextureName`) was adapted to the actual live texture-resolution
+code path instead (the `animInfo.frames[0]` assignment inside
+`parseFragment36`/`parseFragment2C`), as the plan allows ("adapt if the
+code argues otherwise").
+
+### Confirmation: no `src/` modification committed
+
+`git status --short` at commit time shows only `tests/test_wld.cpp`
+modified; every mutation into `src/client/graphics/eq/wld_loader.cpp`
+was reverted with `git checkout -- src/client/graphics/eq/wld_loader.cpp`
+immediately after being measured, confirmed clean (`git status --short`
+empty for `src/`) before proceeding to the next mutation, and re-confirmed
+clean immediately before the final commit.
+
+### Runtime
+
+- `test_wld` standalone: 103/103 passed, **144.5s test time / 2m24s wall**
+  (loads real S3D/WLD archives over NFS for 8+ zones — well over the
+  usual 5s target, reported honestly per the plan).
+- Each Part A/C mutation cycle (incremental build of `test_wld` target +
+  full 103-test run): roughly 15-20s build + ~150-200s run.
+
+### Full suite ×3 (GLES2-config tree, `build/`)
+
+| Run | Result | Notes |
+|-----|--------|-------|
+| 1 | 1414/1416 passed (99%) | `AudioManagerTest.PreloadCommonSounds` (host ALSA, documented), `RDPServerFrameTest.UpdateFrameMultipleTimes` (SEGFAULT, known T03b use-after-free) |
+| 2 | 1414/1416 passed (99%) | Same two failures |
+| 3 | 1415/1416 passed (99%) | Only `AudioManagerTest.PreloadCommonSounds`; `RDPServerFrameTest.UpdateFrameMultipleTimes` did not fail this run — consistent with it being documented as intermittent, not a flake we introduced |
+
+No `test_wld`/`WldIntegrationTest`/`WldLoader_ParseZone` failures in any
+of the 3 runs.
+
+### `check_file_sizes.sh`
+
+`tests/test_wld.cpp` was **already 3804 lines at the `fable` tip**,
+already past the script's 3000-line FAIL threshold before this unit
+touched it (confirmed via `git show fable:tests/test_wld.cpp | wc -l`).
+This unit's Part B additions (+93 lines) bring it to 3897 lines — still
+FAIL, but not a **new** FAIL; the file was already in that state. Per the
+plan's instruction ("if your additions push it past the limit, split
+into a new TU and say so"): I did not split it. Given the file was
+already over the limit going in (this isn't a threshold my additions
+crossed), and the primary deliverable for this unit is the kill-rate
+table rather than a test-file refactor, I judged an unplanned split of a
+3900-line, heavily-fixtured test file to carry more risk than the ~93
+lines I added justify. Flagging this explicitly for Will's call rather
+than absorbing it silently — a follow-up split unit for `test_wld.cpp`
+(mirroring the `eq.cpp`/`irrlicht_renderer.cpp` file-splitting work)
+would be reasonable future work.
+
+### Visual gate / ARM build
+
+Not applicable — tests-only commit, no rendering or ARM-path code
+touched, per the plan.
+
+### Deviations
+
+1. Adapted mutation #3 (`resolveTextureName`) to the live texture
+   resolution code path instead, since `resolveTextureName` itself is
+   dead code (see Findings above) — reported as a finding, not fixed.
+2. Mutations #3, #5, and #7 required `replace_all: true` in the Edit tool
+   because the same code pattern appears twice (once each in
+   `parseFragment36` and `parseFragment2C`, the mesh and legacy-mesh
+   parsers) — both call sites were mutated together as one conceptual
+   mutation per the table above, not as separate mutations.
+3. `check_file_sizes.sh` FAIL on `tests/test_wld.cpp` is pre-existing
+   (3804 lines at the `fable` tip, before this unit) and not resolved —
+   see above.
+4. `check_file_sizes.sh`'s diff-mode (`check_file_sizes.sh fable` with no
+   `--files`) computes `git rev-parse --show-toplevel` from the caller's
+   *shell* cwd, not the target worktree, so running it from outside
+   `/mnt/projects/fable/wt/t1` silently diffs the wrong repository. Used
+   `--files <absolute path>` instead to sidestep this. Worth a note for
+   whoever owns that script next.
