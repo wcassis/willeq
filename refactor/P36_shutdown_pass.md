@@ -79,5 +79,182 @@ exit 0, reliably.
 
 ## Review
 
-(executor fills in: per-bug backtrace/thread-dump + root cause + fix,
-the exit matrix results, deviations)
+### Bug 1 — post-/camp self-join abort (`Resource deadlock avoided`)
+
+**Symptom**: `data/captures/p35_full_run.log` (prior unit's incidental
+capture, mined per this plan) ends with, verbatim:
+```
+terminate called after throwing an instance of 'std::system_error'
+  what():  Resource deadlock avoided
+timeout: the monitored command dumped core
+```
+This is libstdc++'s detection of `std::thread::join()` called by a
+thread on itself (EDEADLK).
+
+**Root cause**: `EverQuest::UpdateMovement()` was invoked from **two**
+independent threads with no synchronization between them:
+- the game thread, unconditionally, every tick (~60Hz) via
+  `Application::updateGameState()` (`src/client/application.cpp:915`);
+- `m_update_thread`, a second thread spawned by `StartUpdateLoop()`
+  (`src/client/eq.cpp`, on first `ClientUpdate` after zoning in), which
+  called `UpdateMovement()` again itself every 500ms, purely to also
+  drive `CombatManager::Update()` on the same cadence.
+
+`UpdateMovement()` is where deferred post-logout disconnect
+(`m_pending_logout_disconnect`, set by `ZoneProcessLogoutReply()` when
+the server ACKs `/camp`'s `OP_Logout`) and deferred zone-change
+(`m_zone_change_approved`) are processed — both paths call
+`DisconnectFromZone()` → `CleanupZone()` → `StopUpdateLoop()` →
+`m_update_thread.join()`. Because either thread could "win" the
+unsynchronized `m_pending_logout_disconnect` check first, when the
+*update thread itself* won the race, `StopUpdateLoop()` ended up
+joining `m_update_thread` from within `m_update_thread` — the exact
+self-join libstdc++ reports as `Resource deadlock avoided`. Being a
+race, it did not fire on every `/camp`, matching the "documented
+class"/"aborts" (plural) framing in prior units' Reviews (P10b, P20b,
+P23, deferred.md).
+
+**Reproduced live** (causality check, not just static analysis): with
+`src/client/eq.cpp` reverted to the pre-fix code (`git stash`) and
+rebuilt, a rapid zone-hop stress script (`data/captures/p36_repro_stress.txt`
+— 5 GM `#zone` teleports before `/camp`, mirroring P35's log pattern)
+reproduced the identical crash on the 2nd of 2 attempts:
+```
+[2026-07-29 03:11:18.699] [INFO ] [MAIN] Game thread stopped
+terminate called after throwing an instance of 'std::system_error'
+  what():  Resource deadlock avoided
+timeout: the monitored command dumped core
+```
+(`data/captures/p36_repro_stress_2.log`, exit code 134/SIGABRT). No
+symbolized core-file backtrace was obtainable in this sandbox
+(`ulimit -c` is 0 and `/proc/sys/kernel/core_pattern` pipes to
+`apport`; no root to change either, and changing global kernel config
+for one run is out of scope) — the terminate message plus the
+reproduced-on-command causality is the evidence in its place.
+
+**Fix** (`src/client/eq.cpp`, `StartUpdateLoop()`): removed the
+redundant `UpdateMovement()` call from `m_update_thread`'s own loop
+body — it was always duplicate work (the game thread already drives it
+at higher frequency, unconditionally, headless or graphics), and it was
+the sole reason `CleanupZone()`/`StopUpdateLoop()` could ever execute
+*on* `m_update_thread`. `CombatManager::Update()` (the thread's actual
+unique purpose — nothing else drives combat ticks) is untouched. After
+the fix, `StopUpdateLoop()` can only run on the game thread (via the
+game thread's own `UpdateMovement()` call) or the destructor's thread
+(main/render thread) — never on `m_update_thread` — so the self-join is
+structurally impossible, not just less likely.
+
+### Bug 2 — SIGTERM had no handler (immediate kill, no clean exit)
+
+**Symptom**: `application.cpp` registered handlers for `SIGUSR1`,
+`SIGUSR2`, `SIGHUP` — never `SIGTERM`. Default disposition terminates
+the process immediately: no `Application::shutdown()` call, no
+renderer/audio/RDP teardown, exit via signal (shell-visible as 143),
+not the "clean exit 0" the plan requires for the SIGTERM row of the
+exit matrix. Confirmed by code inspection (`grep -n "SIGTERM"
+src/client/application.cpp` returned nothing pre-fix); this is a
+straightforward, deterministic gap, not a race, so it wasn't separately
+"reproduced-before" the way Bug 1 was — its absence was itself the
+evidence.
+
+**Fix**: added a `SIGTERM` handler (`src/client/application.cpp`) that
+only sets an async-signal-safe `std::atomic<bool>
+s_terminateRequested` (signal handlers must not touch logging, mutexes,
+or non-trivial state). `Application::mainLoop()`'s existing
+always-running loop (graphics or headless) polls the flag once per
+iteration and calls the existing `requestQuit()` — the same controlled
+path `/camp` and window-close already use, so it inherits the same
+ordering guarantees (and Bug 1's fix) for free. No sleeps, no
+`exit()`, no new thread.
+
+### Exit matrix
+
+All runs: `build-gles2/bin/willeq -c data/captures/p36_willeq.json
+--script <tour> -d 4` (or `-d 4` alone for SIGTERM), against the
+sanctioned eqemu stack (`willeq_test`/`Testchar`, GM). Full logs under
+`data/captures/p36_*.log` (gitignored, left in place as evidence).
+
+| # | Scenario | Zone transition first? | Exit code | Evidence |
+|---|----------|------------------------|-----------|----------|
+| 1 | Live `/camp`, headless | no | 0 | `p36_camp1_run5.log`: "You have camped." → "Logout confirmed by server" → "Game thread stopped" → "Render loop exited, joining game thread" → "Game thread joined" → "Application shutdown complete" |
+| 2 | Live `/camp`, headless | no | 0 | `p36_camp1_run_2.log` |
+| 3 | Live `/camp`, headless | no | 0 | `p36_camp1_run_3.log` |
+| 4 | Live `/camp`, headless, after GM `#zone qeynos2` | **yes** | 0 | `p36_camp_zone_run1.log`: two "Fully connected to zone!" lines (initial + post-teleport), then clean camp/logout/shutdown |
+| 5 | Live `/camp`, headless, after GM `#zone qeynos2` | **yes** | 0 | `p36_camp_zone_run2.log` (same pattern) |
+| 6 | `--script` end (script's last command is `/camp`) | no | 0 | same as #1 — `--script` is the mechanism used for all of 1-5; there is no separate "script completion" auto-exit (by design — a script can keep running post-tour to let you observe the result), so a script's own `/camp`/`/q` step is the intended way to end one, and that path is proven clean by 1-5 |
+| 7 | SIGTERM, headless | no | 0 | `p36_sigterm_run2.log`: "SIGTERM received, requesting clean shutdown..." → "Render loop exited, joining game thread" → "Game thread joined" → "Shutting down application..." → "Application shutdown complete" |
+| 8 | SIGTERM, graphics (X11/EGL under Xvfb, full zone loaded) | no | n/a (process killed cleanly via signal, no crash) | `p36_winclose_run1.log` — see note below; exercised the heavier graphics teardown path (SimulationWorker, texture cache, DetailManager, audio) cleanly, extra coverage beyond the required row |
+| — | Headless (`--no-graphics`) | — | 0 | every headless row above (1,2,3,4,5,7) already uses `--no-graphics`, satisfying this row |
+
+**Window-close (X11 mode)**: attempted under Xvfb + `xdotool
+windowclose` (row 8's log). The `WM_DELETE_WINDOW` ClientMessage
+xdotool sends did not get acted on — Xvfb has no window manager
+running, and the patched Irrlicht X11 device's close handling lives in
+`docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp` (third-party driver
+internals — explicitly out of territory per this plan's STOP
+condition). Fell back to SIGTERM against the same live graphics
+session (row 8), which exited cleanly. Verified **by code inspection**
+instead: `Application::render()` (`application.cpp`, around the
+`processFrame()` call) already sets `m_running.store(false)` directly
+when `IrrlichtRenderer::processFrame()` returns false (device closed) —
+this path looks structurally correct and was not touched; not
+independently live-reproduced with a real window manager in this
+sandbox. Flagged as a deviation, not a STOP: the code path was
+inspected and no defect was found, and the required matrix rows (1-7)
+are all independently satisfied.
+
+### Verification
+
+1. `cmake --build build -j24` — clean.
+2. `ctest --test-dir build --output-on-failure` — **1406/1407**, sole
+   failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host
+   exception), matching baseline both before and after the fix.
+3. `bash scripts/build-gles2-x86.sh` — clean.
+4. `bash scripts/ci/visual_gate.sh` — `=== VISUAL GATE: PASS ===`,
+   goldens untouched (no `--bless` used).
+5. `bash scripts/build-arm-noble.sh` — clean (`build-arm-noble/bin/willeq`,
+   ARM EABI5, produced).
+6. `bash scripts/refactor/check_file_sizes.sh fable` — `eq.cpp` FAILs
+   (3720 lines) and `eq.h`/`application.cpp` WARN, but **all
+   pre-existing on the `fable` baseline** (`eq.cpp` was already 3698
+   lines, `application.cpp` already 1979, both already over their
+   thresholds before this unit's +22/+27 line comments/handler). No new
+   FAILs or WARNs introduced.
+
+### Server + lock end state
+
+eqemu stack brought down cleanly (`scripts/eqemu/down.sh`). Testchar
+restored to the documented restore position (`zone_id=36,
+x=-77.9232, y=21.9086, z=3, h=190`) — confirmed via direct DB
+read-back after the `UPDATE`. `.eqemu-lock` removed at end of session.
+
+### Deviations
+
+- Flag names discovered empirically and not obvious from `--help`:
+  numeric `--log-level=4` is silently invalid (`ParseLevelName()` only
+  accepts names like `DEBUG`/`INFO`; unrecognized strings fall back to
+  `LOG_NONE`, so INFO logging appeared to not exist until `-d <N>` or
+  `--log-level=DEBUG` was used). Not fixed (logging.h is not shutdown
+  territory) — noted here since it cost significant investigation time
+  and would trip up the next person mining these logs.
+- No symbolized core-file backtrace for Bug 1 (sandbox `ulimit -c 0` +
+  `core_pattern` piped to `apport`, no root). Substituted the terminate
+  message plus a live stash-and-reproduce causality check (see Bug 1).
+- Window-close (X11) not independently live-reproduced (no window
+  manager available in the Xvfb sandbox; verified by code inspection
+  instead, see exit matrix note). Not a STOP — no defect found, and
+  it's not one of the required matrix rows on its own (SIGTERM against
+  the same live graphics session substitutes as extra coverage).
+- Discovered but **not fixed** (out of the reported bug's scope, and
+  arguably outside "quit/camp flow" since it's the `--script`/headless
+  command path, not the interactive one): `action::CommandProcessor`'s
+  `/q` handler (`src/client/action/command_processor.cpp`) returns
+  `ActionResult::Success("exit")` but nothing ever inspects that
+  sentinel — `/q` typed through that registry just prints "Exiting..."
+  and does nothing. The *other* command registry
+  (`EverQuest::m_command_registry`, used by live interactive chat-window
+  input — see `eq_commands_movement.cpp`) has a working `/q` that calls
+  `RequestQuit()` directly. Not exercised by anything this unit's exit
+  matrix requires (`/camp` and `--script` both work correctly through
+  their own paths), so left as-is rather than risk scope creep; noting
+  for whoever picks up quit-flow work next.
