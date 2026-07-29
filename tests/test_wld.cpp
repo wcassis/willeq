@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <tuple>
 #include <cctype>
+#include <cmath>
 
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/pfs.h"
@@ -328,6 +329,98 @@ TEST_F(WldIntegrationTest, WldLoader_ParseZone) {
     // Verify geometries were loaded
     const auto& geometries = loader.getGeometries();
     EXPECT_GT(geometries.size(), 0u) << "No geometries loaded";
+
+    // ------------------------------------------------------------------
+    // CHARACTERIZATION ASSERTIONS (T10, 2026-07-29, zone=qeynos2/qeynos2.wld)
+    //
+    // These pin the parser's CURRENT observed output over a real archive.
+    // They are not a spec derived independently of the code — if the
+    // parser has a latent bug, these assertions pin the buggy value too.
+    // That's an accepted trade for regression protection (see
+    // refactor/T10_wld_kill_rate.md Part B). Values below were sanity
+    // checked where an independent check was possible; each check says so.
+    // ------------------------------------------------------------------
+
+    // Exact mesh/vertex/triangle counts. Cross-validated two ways: the
+    // WldMeshFragmentTest.WldLoader_ZoneGeometry test (below) independently
+    // re-parses the raw Fragment 0x36 records for this same archive and
+    // reports identical totals (1915 meshes / 36218 vertices / 19470
+    // polygons) — so this is not just "whatever the loader emits," it
+    // agrees with a second, independent parse of the raw bytes.
+    size_t totalVertices = 0, totalTriangles = 0;
+    for (const auto& g : geometries) {
+        totalVertices += g->vertices.size();
+        totalTriangles += g->triangles.size();
+    }
+    EXPECT_EQ(geometries.size(), 1915u) << "qeynos2 mesh (Fragment 0x36) count changed";
+    EXPECT_EQ(totalVertices, 36218u) << "qeynos2 total vertex count changed";
+    EXPECT_EQ(totalTriangles, 19470u) << "qeynos2 total triangle count changed";
+
+    // World-space bounding box (via getCombinedGeometry(), which adds each
+    // mesh's center back onto its locally-stored vertices — see D20f1).
+    // Sanity check: qeynos2 ("Qeynos Hills") is an outdoor zone connecting
+    // the two Qeynos city zones; a ~2250 x 2200 x 470 unit footprint is
+    // plausible for that role and in line with sibling zones' BSP/mesh
+    // scale reported by ComprehensiveZoneTest. Not implausible.
+    auto combined = loader.getCombinedGeometry();
+    ASSERT_NE(combined, nullptr);
+    EXPECT_NEAR(combined->minX, -258.906f, 1.0f);
+    EXPECT_NEAR(combined->minY, -1099.56f, 1.0f);
+    EXPECT_NEAR(combined->minZ, -390.844f, 1.0f);
+    EXPECT_NEAR(combined->maxX, 1999.19f, 1.0f);
+    EXPECT_NEAR(combined->maxY, 1099.56f, 1.0f);
+    EXPECT_NEAR(combined->maxZ, 79.9688f, 1.0f);
+
+    // Vertex data sanity: no NaNs, and every combined (world-space) vertex
+    // falls inside the combined bounding box we just pinned above. This is
+    // a real invariant (not characterization) — it must hold regardless of
+    // the exact values, since the bbox is computed as min/max over these
+    // same vertices.
+    bool anyNaN = false;
+    bool anyOutsideBbox = false;
+    const float bboxTol = 0.01f;
+    for (const auto& v : combined->vertices) {
+        if (std::isnan(v.x) || std::isnan(v.y) || std::isnan(v.z)) anyNaN = true;
+        if (v.x < combined->minX - bboxTol || v.x > combined->maxX + bboxTol ||
+            v.y < combined->minY - bboxTol || v.y > combined->maxY + bboxTol ||
+            v.z < combined->minZ - bboxTol || v.z > combined->maxZ + bboxTol) {
+            anyOutsideBbox = true;
+        }
+    }
+    EXPECT_FALSE(anyNaN) << "Combined geometry contains NaN vertex coordinates";
+    EXPECT_FALSE(anyOutsideBbox) << "Combined geometry has a vertex outside its own bounding box";
+
+    // Distinct resolved texture count, and one specific known name. All 128
+    // names in this archive are lowercase 8.3-style basenames ending
+    // ".bmp" — consistent with real Titanium client texture naming
+    // (confirmed independently against the sibling Fragment 0x30/0x31 raw
+    // fragment counts: 136 Fragment 0x30 materials resolve down to 128
+    // distinct texture names here, i.e. some materials share a texture).
+    EXPECT_EQ(combined->textureNames().size(), 128u) << "qeynos2 distinct texture count changed";
+    bool foundKnownTexture = false;
+    for (const auto& texName : combined->textureNames()) {
+        if (texName == "wawall1.bmp") {  // Qeynos-wall texture; plausible EQ Titanium name
+            foundKnownTexture = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundKnownTexture) << "Expected known texture 'wawall1.bmp' not found in qeynos2 texture list";
+
+    // BSP/PVS region counts (D20f1 BSP tree, shared with game state).
+    // 1898/2074 regions (91.5%) map back to a mesh via getGeometryForRegion()
+    // — plausible: some regions are solid/void space with no polygon data,
+    // which is expected in a BSP built over an outdoor zone with terrain.
+    EXPECT_TRUE(loader.hasPvsData()) << "qeynos2 should have PVS visibility data";
+    auto bspTree = loader.getBspTree();
+    ASSERT_NE(bspTree, nullptr);
+    EXPECT_EQ(bspTree->regions.size(), 2074u) << "qeynos2 BSP region count changed";
+    size_t regionsWithGeometry = 0;
+    for (size_t i = 0; i < bspTree->regions.size(); ++i) {
+        if (loader.getGeometryForRegion(i)) {
+            regionsWithGeometry++;
+        }
+    }
+    EXPECT_EQ(regionsWithGeometry, 1898u) << "qeynos2 region-to-geometry mapping count changed";
 }
 
 // ============================================================================
