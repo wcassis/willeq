@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T10 | WLD mutation kill rate | DONE (merged `bd60ee3`) | Measured baseline **0/8**, strengthened to **4/8**. Confirms the benchmark session's signal. Found `resolveTextureName` is dead code and the per-mesh header bbox fields are read by nothing. |
 | T09 | Login/world accessors | DONE (merged `b531b97`) | 11 read-only accessors + 9 tests asserting login/world **state** for the first time. Found that chat-server info is silently discarded on this server (4-field payload vs a 5-field parser). Character-list contents correctly NOT exposed — would need new storage. |
 | T08 | `GetCString` bounds | DONE (merged `b2fee49`) | Real OOB read fixed in `common/net`, inherited by 35 call sites. Confirmed with ASan (heap-buffer-overflow READ of size 5) rather than inferred. Golden md5 unchanged, so real traffic parses identically. 7 new tests. |
 | T07 | Login guards | DONE (merged `b6b3502`) | Executed inline by the orchestrator. `LoginDisableReconnect` null-guarded (closes T05's sweep gap); `LoginProcessLoginResponse` underflow + undersized-buffer guarded. Whole recorded login stream now replays; no death test remains. Corrects the orchestrator's wrong fixture-count claim from T06. |
@@ -545,6 +546,50 @@ claim and cannot be rewritten now that it is merged.
   deep state assertions are wanted (T06 finding 4 lists exactly which).
   Deliberately not requested yet — the sequencing coverage may prove
   sufficient.
+
+## T10 — mutation kill rate is a better signal than coverage (confirmed)
+
+The benchmark session's intel was right. Measured on `wld_loader.cpp`,
+the most-covered file in the repo (952 lines):
+
+| | kill rate |
+|---|---|
+| before T10 | **0 of 8** |
+| after T10 | **4 of 8** |
+
+Our 0/8 baseline is *worse* than their reported 1/8 — recorded as
+measured, not reconciled. Our mutation set simply landed entirely
+inside the gap.
+
+**Cause, for the record:** `WldIntegrationTest.WldLoader_ParseZone`
+drove the entire parser and asserted only that it returned `true` and
+produced ≥1 geometry. The file's other 296 assertions are real but sit
+on synthetic fragment structs, so coverage came from 5 integration
+tests while assertions came from the other 78.
+
+**Still surviving after T10**, with reasons rather than a round number:
+winding order (M2), per-mesh header bbox (M5), per-triangle
+`textureIndex` (M7), zone-line coordinate slices (M8).
+
+### Two dead-code findings (not fixed — `src/client/graphics/`)
+
+- `WldLoader::resolveTextureName` (`wld_loader.cpp:612`) is **declared,
+  defined, and called from nowhere** in `src/`, `include/` or `tests/`.
+  Independently confirmed.
+- The **per-mesh header bounding-box fields are read by nothing** in
+  `src/` or `tests/` — which is why M5 is unkillable. That is a sharper
+  statement than "untested": the data is dead-end, so no assertion can
+  legitimately depend on it without inventing a consumer.
+
+Both are graphics-territory; handed over rather than fixed.
+
+### Practice note for future T-units
+
+Kill-rate spot checks are cheap and worth running on any file whose
+coverage looks reassuring. The technique — mutate, build the single
+test target, run, revert — costs a few minutes per mutation, and the
+plan-level guardrail that made it safe was requiring `git status` to
+show no `src/` modification at commit time.
 
 ## T09 finding — chat-server info is silently discarded (needs Will)
 
