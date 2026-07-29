@@ -817,6 +817,20 @@ public:
 	const std::string& GetMyName() const { return m_character; }
 	const std::string& GetMyLastName() const { return m_last_name; }
 
+	// Read-only observers of login/world state (T09). Trivial inline
+	// returns of existing members -- no new storage, no logic.
+	uint32_t GetAccountId() const { return m_dbid; }
+	const std::string& GetSessionKey() const { return m_key; }
+	bool IsWorldReady() const { return m_world_ready; }
+	bool HasSentEnterWorld() const { return m_enter_world_sent; }
+	const std::string& GetZoneServerHost() const { return m_zone_server_host; }
+	uint16_t GetZoneServerPort() const { return m_zone_server_port; }
+	const std::map<uint32_t, WorldServer>& GetWorldServers() const { return m_world_servers; }
+	int GetCharacterSelectIndex() const { return m_character_select_index; }
+	const std::string& GetChatServerHost() const { return m_ucs_host; }
+	uint16_t GetChatServerPort() const { return m_ucs_port; }
+	const std::string& GetMailKey() const { return m_mail_key; }
+
 	// Group actions (send packets to server)
 	void SendGroupInvite(const std::string& target_name);
 	void SendGroupFollow(const std::string& inviter_name);  // Accept invite
