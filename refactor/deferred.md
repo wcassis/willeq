@@ -39,9 +39,9 @@ the commit. Sources are historical docs — do not edit those.
   0.0 when disabled (traced GLSL: strength becomes exactly 0 → true
   rest pose). Gate byte-stable by construction (benchmark never calls
   IrrlichtRenderer) + double-run proof; bar green 1376/1377.
-  EVIDENCE PENDING: P33's gfaydark session hit the eqemu static-fleet
-  port-collision bug (below) — P33b dispatched to capture ON/OFF
-  time-lapse in qeynos2 for Will's bless.
+  Evidence: P33b stills + P33c videos (qeynos2; gfaydark blocked by
+  the eqemu port bug below). **BLESSED by Will 2026-07-29** (video
+  verdict). Wind amplitude stays tunable (uWindParams) if ever wanted.
 - **eqemu ENVIRONMENT bug (pre-existing, now bit twice)**: the
   akk-stack image's entrypoint static-zone fleet collides with
   configured static zone ports — P29 measured captures landing on
