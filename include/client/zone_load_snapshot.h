@@ -50,8 +50,11 @@ struct ZoneLoadSnapshot {
     // Zone line bounding boxes (pre-computed from zone_lines)
     std::vector<EQT::ZoneLineBoundingBox> zoneLineBBoxes;
 
-    // Zone map (read-only pointer — owned by EverQuest, valid during loading)
-    HCMap* zoneMap = nullptr;
+    // Zone map (P35: shared ownership — was a raw "owned by EverQuest,
+    // valid during loading" pointer; a shared_ptr copy keeps the object
+    // alive for the loading thread even if EverQuest's own m_zone_map is
+    // reset by a subsequent zone change before this snapshot is consumed)
+    std::shared_ptr<const HCMap> zoneMap;
 
     // P04: zoneArchive/zoneWld ("pre-parsed zone sources") removed — never read
     // by any consumer (the sequential loader parses its own S3D copy in

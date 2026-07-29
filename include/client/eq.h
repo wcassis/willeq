@@ -1528,8 +1528,18 @@ private:
 	// R01: Session recorder (null unless --record-session was passed)
 	std::unique_ptr<EQT::Net::SessionRecorder> m_session_recorder;
 
-	// Map for Z-height calculations
-	std::unique_ptr<HCMap> m_zone_map;
+	// Map for Z-height calculations. shared_ptr<const HCMap> (P35): the
+	// renderer/SimulationWorker boundary holds copies of this same
+	// shared_ptr (via CollisionMapChangedData / SimulationZoneData::hcMap),
+	// so a zone-change reset() here only drops the game thread's
+	// reference -- the object survives until every renderer-side holder
+	// (collisionMap_, SimulationWorker's zoneData_.hcMap) also releases
+	// it, closing the P34-adjacent CRITICAL UAF where the game thread
+	// freed the old HCMap out from under the SimulationWorker thread
+	// mid-zone-transition. HCMap is immutable zone data (all read paths
+	// are const methods) so const-ness costs nothing on the game-thread
+	// side.
+	std::shared_ptr<const HCMap> m_zone_map;
 
 	// Zone lines for zone transitions
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
