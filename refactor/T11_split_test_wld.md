@@ -156,8 +156,111 @@ Visual gate and ARM build: not applicable (tests-only) — say so.
 
 ## Review
 
-Per the protocol, plus:
-- The new file list with line counts.
-- The sorted before/after test-set diff.
-- Confirmation that no assertion was changed — the diff should read as
-  pure movement plus the fixture-header extraction.
+Executed 2026-07-29. Slot t1, x86 only, no Pi/eqemu (as scoped).
+
+### New file list (with line counts)
+
+| file | lines |
+|------|------:|
+| `tests/wld_test_fixtures.h` | 108 |
+| `tests/test_wld_header.cpp` | 339 |
+| `tests/test_wld_fragments_mesh.cpp` | 500 |
+| `tests/test_wld_fragments_skeleton.cpp` | 524 |
+| `tests/test_wld_fragments_light.cpp` | 545 |
+| `tests/test_wld_fragments_bsp.cpp` | 437 |
+| `tests/test_wld_conversions.cpp` | 247 |
+| `tests/test_wld_texture_loading.cpp` | 365 |
+| `tests/test_wld_zones.cpp` | 495 |
+| `tests/test_wld_zones_comprehensive.cpp` | 442 |
+
+`tests/test_wld.cpp` (3897 lines) is deleted. All ten files are within
+the 400-800 line target (the fixture header, at 108, is intentionally
+smaller — it's shared declarations, not a test file). Nothing in
+`tests/` exceeds 1500 lines; the largest file in the directory is now
+`test_graphics.cpp` at 1073 (pre-existing, untouched).
+
+`bash scripts/refactor/check_file_sizes.sh --files <all 10 new files>`:
+all `ok`, no WARN/FAIL.
+
+### Deviation from the suggested split
+
+The plan's suggested cut put `IntegrationTest` + `ComprehensiveZoneTest`
+together in one `test_wld_zones.cpp` (~903 combined lines — still under
+the 1500 FAIL threshold but above the 400-800 target). Split those two
+suites into separate files instead — `test_wld_zones.cpp`
+(`IntegrationTest`, 495 lines) and `test_wld_zones_comprehensive.cpp`
+(`ComprehensiveZoneTest`, 442 lines) — to keep every file in target
+range. This is a superset of the suggested split (9 TUs instead of 7),
+still a single `test_wld` target, no additional test binaries.
+
+### Before/after test-set diff
+
+Captured via the CMake-generated `add_test(...)` list for the
+`test_wld` target specifically (more precise than the plan's `ctest -N`
+regex, which also matches unrelated suites like
+`CombatMusicIntegrationTest` and `WldLoaderTest` from other binaries —
+used the CTestTestfile-scoped list instead to avoid that noise):
+
+```
+diff <(sort before_wld_only.txt) <(sort after_wld_only.txt)
+```
+
+Result: **empty diff**. Both before and after: **103 tests**, sorted
+sets identical, byte for byte. No test added, removed, or renamed.
+
+### Assertion integrity
+
+Every `TEST_F` body was moved with `sed` line-range extraction directly
+from the original file (line ranges verified against `grep -n "^class
+\|^TEST_F"` boundaries first) — no manual retyping of assertions.
+`WldHeaderTest` and `WldIntegrationTest` (plus `fileExists`,
+`eqClientPath_`, `parseWldHeader`, `decodeStringHash`, `getString`,
+`loadWldFromArchive`) were extracted once into
+`tests/wld_test_fixtures.h`, included by the four files whose fixtures
+derive from them (`test_wld_header.cpp`,
+`test_wld_fragments_mesh.cpp`, `test_wld_fragments_skeleton.cpp`,
+`test_wld_fragments_light.cpp`) — no class defined in two `.cpp`s, no
+ODR violation. `WldBspFragmentTest`, `CoordinateSystemTest`,
+`TextureLoadingTest`, `IntegrationTest`, `ComprehensiveZoneTest` are
+independent fixtures (derive directly from `::testing::Test`) and stay
+self-contained in their own TU, matching the plan's structure map.
+Only additions beyond pure code movement: per-file `#include` lists
+(each new TU explicitly includes what it uses — e.g. `<map>` for
+fixture-local `std::map` stat counters, `<iomanip>` for `std::setw` in
+`test_wld_zones_comprehensive.cpp` — rather than relying on transitive
+includes pulled in by the original single TU) and a top-of-file comment
+banner per new file. No test logic, assertion, or expected value
+changed anywhere. No bug found while moving.
+
+### Verification results
+
+1. `cmake --build build -j24` (also `-j24 -- -k` for the full-suite
+   build) — succeeds for `test_wld` and every other target except the
+   pre-existing, unrelated `gles2_zone_benchmark` tool
+   (`tools/hwcaps/gles2_zone_benchmark.cpp`, undefined reference to
+   `irr::video::g_glCounters`). Confirmed pre-existing by stashing this
+   unit's changes and rebuilding just that target on the unmodified T11
+   plan commit (4f21fea) — identical link failure. Outside `tests/`
+   territory; not touched or fixed here.
+2. `test_wld` specifically: **103/103 passed**, runtime **143.2s**
+   (expected ~169s serial; in range — loads real S3D/WLD archives from
+   `data/eq_client` → `/mnt/projects/EverQuestP1999`, symlink already
+   present in this slot).
+3. Full suite ×3 (`ctest --output-on-failure`, same `build/` tree):
+   - Run 1: 1416 total, 2 failed — `AudioManagerTest.PreloadCommonSounds`
+     (host ALSA exception) + `RDPServerFrameTest.UpdateFrameMultipleTimes`
+     (SEGFAULT, the documented T03b use-after-free).
+   - Run 2: 1416 total, 1 failed — `AudioManagerTest.PreloadCommonSounds`
+     only (RDP one didn't reproduce this run — matches "intermittent"
+     framing in the protocol/plan).
+   - Run 3: 1416 total, 2 failed — same pair as run 1.
+   - Total count held at 1416 across all three runs; every failure was
+     one of the two documented exceptions, never anything in `test_wld`
+     or elsewhere.
+4. Visual gate / ARM build: **not applicable** — tests-only unit, no
+   `src/` or `include/` changes.
+
+### Summary
+
+Pure mechanical split, invariant held: 103/103 tests identical before
+and after, one `test_wld` target, no assertion changed, no bug found.
