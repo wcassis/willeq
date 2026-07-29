@@ -257,7 +257,20 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
         buffer->Material.BackfaceCulling = false;
         if (texture) {
             buffer->Material.setTexture(0, texture);
-            buffer->Material.MaterialType = irr::video::EMT_SOLID;
+            // P37: WLD Fragment 0x30 materialType (TransparentMasked) is the
+            // ground-truth signal for era-authentic per-material transparency
+            // (zombie flesh gaps, helm holes) — mirrors ZoneMeshBuilder's H02d
+            // check (zone_geometry.cpp). Marking EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+            // here feeds EntityRenderer::applyAlphaTestMaterialType() (P21),
+            // which picks the ETC1-companion or RGBA-direct alpha-test shader
+            // variant at material-assignment time. Masked-but-decode-opaque
+            // textures (citywlivy class) still render solid: the shader's
+            // alpha-test simply never discards when the source alpha is 255.
+            bool isMaskedMaterial = (texIdx < geometry->textureMasked().size()) &&
+                                     geometry->textureMasked()[texIdx];
+            buffer->Material.MaterialType = isMaskedMaterial
+                ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+                : irr::video::EMT_SOLID;
         } else {
             buffer->Material.DiffuseColor = irr::video::SColor(255, 200, 180, 160);
         }
@@ -331,6 +344,23 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
     irr::scene::SMesh* mesh = new irr::scene::SMesh();
     irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
+    // P37 investigation: composite sheets carry NO alpha data in either deployed
+    // form — entity_composite_builder.cpp's writeEQE1() hardcodes hasAlpha=0 and
+    // encodes EQE1_TYPE_ETC1_RGB (opaque-only ETC1, no companion), and its
+    // writeBMP() emits a 24bpp BMP with no alpha channel at all, even though the
+    // intermediate RGBA compose buffer does copy source-part alpha byte-for-byte.
+    // Alpha-testing this single merged material would therefore be a no-op at
+    // best (opaque-format textures read back alpha=1.0) and is not a safe
+    // "flip a flag" fix. Per the plan's investigation-before-change requirement,
+    // the chosen fix is eligibility-side: RaceModelLoader::preloadModelData()
+    // excludes any race/gender/variant whose composite includes a WLD-masked
+    // source texture from composite eligibility entirely (falls back to the
+    // per-material buildMeshFromGeometry() path above, which now honors
+    // textureMasked()). This function is therefore never called with masked
+    // source data reaching it, and intentionally still assigns EMT_SOLID
+    // unconditionally below — regenerating the sheets to carry real alpha is a
+    // separate, Will-visible sheet-redeploy operation (out of this unit's
+    // territory).
     // Single composite texture, CLAMP_TO_EDGE (tiling is pre-baked in the sheet)
     buffer->Material.Lighting = false;
     buffer->Material.BackfaceCulling = false;
