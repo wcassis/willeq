@@ -112,6 +112,21 @@ tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
 section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
+## → FOR THE TESTING SESSION: mutation-testing intel (benchmark session, 2026-07-29)
+
+- The model-eval benchmark session (separate clone) ran mutation
+  testing against b68c32a and found: **`wld_loader.cpp` has the most
+  covered lines in the repo (952) but killed only 1 of 8 injected
+  faults** — the suite executes the parser broadly and asserts almost
+  nothing about it. Coverage there is misleading; kill rate is the
+  better prioritization signal. Consider assertion-strengthening for
+  the WLD parser (and kill-rate spot checks on other "well-covered"
+  parsers) in a future T-batch.
+- Their coverage numbers also confirm the T01 gap map: renderer/
+  simulation splits (irrlicht_renderer, simulation_worker,
+  entity_renderer) at 0% — their benchmark would use coverage there
+  as task-verification oracles if it ever exists (FYI, not a request).
+
 ## Desktop-GL elimination — COMPLETE (P32, 2026-07-28)
 
 - P31 identified Phase 4 as blocked on a product decision (entry points
