@@ -37,7 +37,97 @@ ParticleManager::ParticleManager(irr::scene::ISceneManager* smgr, irr::video::IV
 }
 
 ParticleManager::~ParticleManager() {
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
     clearEmitters();
+}
+
+void ParticleManager::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    // P34: mirrors AnimatedTextureManager::setConstrainedTextureCache — this
+    // is where the previously-missing eviction-listener registration was
+    // added (see onTextureEvicted()'s doc comment below for the crash this
+    // fixes).
+    if (constrainedCache_) {
+        constrainedCache_->removeEvictionListener(this);
+    }
+    constrainedCache_ = cache;
+    if (constrainedCache_) {
+        constrainedCache_->addEvictionListener(this);
+    }
+}
+
+// P34 — ParticleManager::renderUnified() use-after-free root cause and fix.
+//
+// Root cause (gdb-confirmed by P33b, root-caused here): atlasTexture_ is
+// loaded ONCE, in init() (guarded by initialized_, never re-entered), via
+// constrainedCache_->getOrLoad("particle_atlas", ...) /
+// uploadTexture("particle_atlas") — an ordinary entry in
+// ConstrainedTextureCache's LRU-evicting cache_ map, identical in every
+// respect to any zone texture. Unlike EVERY other subsystem that caches a
+// raw ITexture* from this cache (AnimatedTextureManager, SkyRenderer,
+// DetailManager, StormCloudLayer all self-register as
+// TextureEvictionListener; RegionMeshTextureGuard/EntityMeshTextureGuard/
+// SingleTexturePointerGuard cover region meshes, entity meshes, and the
+// software cursor respectively — see renderer_zone_merge.h),
+// ParticleManager was never registered as a listener at all.
+//
+// The exact freeing sequence: IrrlichtRenderer::unloadZone()
+// (renderer_zone_lifecycle.cpp) runs SYNCHRONOUSLY on every zone transition
+// (P17) and unconditionally calls constrainedTextureCache_->clear()
+// (renderer_zone_lifecycle.cpp:294-295), which — per
+// ConstrainedTextureCache::clear() — notifies every registered
+// TextureEvictionListener for each cached entry (including
+// "particle_atlas") and THEN calls driver_->removeTexture() on it,
+// freeing the underlying ITexture. Because ParticleManager was never a
+// listener, atlasTexture_ (and the copy cached in particleMaterial_'s
+// texture slot 0) were never nulled — they were left pointing at freed
+// memory. The next zone's loadZoneSequential() runs
+// particleManager_->onZoneEnter() (SEQ Step11) but that never re-loaded
+// the atlas either (loadParticleAtlas() was only ever called from init(),
+// which is a one-shot). The first subsequent frame that reaches
+// renderUnified() calls atlasTexture_->getDriverTextureHandle() — a
+// virtual call through the dangling pointer — SIGSEGV. This matches
+// P33b's gdb backtrace (fault inside renderUnified(), disassembly showing
+// a vtable read through atlasTexture_) and the "~1-2s after zone-in"
+// timing (exactly the zone-load + first-render-frame window), and befallen
+// -> qeynos2 hits it on literally the very first zone transition of any
+// session, unconditionally — not a memory-pressure-dependent LRU eviction
+// like most of this bug class, since clear() wipes the ENTIRE cache on
+// every zone unload regardless of budget.
+//
+// Fix (two-layer pattern, matching this bug class's established idiom):
+// layer 1 — ParticleManager now implements TextureEvictionListener and
+// self-registers/deregisters in setConstrainedTextureCache()/~ParticleManager()
+// (the AnimatedTextureManager/SkyRenderer/StormCloudLayer/DetailManager
+// self-registering variant, not the scene-graph-scanning
+// RegionMeshTextureGuard/EntityMeshTextureGuard variant — ParticleManager
+// has no node collection to scan, just the one named cache entry plus one
+// SMaterial texture slot, structurally identical to what
+// AnimatedTextureManager already does for its own per-name texture
+// pointers). onTextureEvicted() nulls atlasTexture_ and clears
+// particleMaterial_'s texture slot the instant the pointer goes dangling —
+// closing the UAF window entirely, independent of when/whether anything
+// re-acquires it. Layer 2 — the existing defensive liveness check in
+// renderUnified() (`if (!atlasTexture_) return;`, already present
+// pre-P34) is now actually load-bearing instead of a no-op, since
+// atlasTexture_ is guaranteed non-dangling whenever it's non-null.
+// Re-acquisition (so particles keep working across zones instead of going
+// dark after the first eviction) is added to onZoneEnter() — the one
+// per-zone hook that already runs unconditionally every zone visit, after
+// unloadZone()'s clear() has already run: if atlasTexture_ is null, reload
+// it via the same loadParticleAtlas()/kAtlasTexturePath path init() used,
+// and refresh particleMaterial_'s texture slot. This is the "clear +
+// re-acquire via the existing per-zone hook" half of the plan's mandated
+// pattern; it does not invent a new lifetime scheme — loadParticleAtlas()
+// already existed and is simply now callable more than once.
+void ParticleManager::onTextureEvicted(const std::string& name, irr::video::ITexture* texture) {
+    (void)name;
+    if (!texture || texture != atlasTexture_) return;
+    atlasTexture_ = nullptr;
+    particleMaterial_.setTexture(0, nullptr);
+    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: atlas texture evicted, cleared dangling reference "
+                             "(will reload on next onZoneEnter)");
 }
 
 bool ParticleManager::init(const std::string& eqClientPath) {
@@ -52,7 +142,7 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     SpellEffectsConfig::instance().load("config/spell_effects.json");
 
     // Load particle atlas texture via constrained cache
-    std::string atlasPath = "data/textures/particle_atlas.bmp";
+    std::string atlasPath = kAtlasTexturePath;
     if (!loadParticleAtlas(atlasPath)) {
         LOG_FATAL(MOD_GRAPHICS, "ParticleManager: Required texture {} not found — run generate_textures first", atlasPath);
         std::exit(1);
@@ -146,6 +236,21 @@ void ParticleManager::render() {
 void ParticleManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome) {
     LOG_INFO(MOD_GRAPHICS, "ParticleManager: Entering zone '{}' with biome {}",
              zoneName, static_cast<int>(biome));
+
+    // P34: re-acquire the atlas texture if a prior zone unload's
+    // ConstrainedTextureCache::clear() evicted it (see onTextureEvicted()'s
+    // doc comment above). onZoneEnter() runs on every zone visit, always
+    // after unloadZone()'s clear() has already executed (P17 synchronous
+    // unload), making this the correct per-zone re-acquisition point.
+    if (initialized_ && !atlasTexture_) {
+        if (loadParticleAtlas(kAtlasTexturePath)) {
+            particleMaterial_.setTexture(0, atlasTexture_);
+            LOG_INFO(MOD_GRAPHICS, "ParticleManager: re-acquired atlas texture for zone '{}'", zoneName);
+        } else {
+            LOG_ERROR(MOD_GRAPHICS, "ParticleManager: failed to re-acquire atlas texture for zone '{}' "
+                                     "— particles will not render this zone visit", zoneName);
+        }
+    }
 
     currentZoneName_ = zoneName;
     currentBiome_ = biome;
