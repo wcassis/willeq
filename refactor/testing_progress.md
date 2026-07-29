@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T09 | Login/world accessors | DONE (merged `b531b97`) | 11 read-only accessors + 9 tests asserting login/world **state** for the first time. Found that chat-server info is silently discarded on this server (4-field payload vs a 5-field parser). Character-list contents correctly NOT exposed — would need new storage. |
 | T08 | `GetCString` bounds | DONE (merged `b2fee49`) | Real OOB read fixed in `common/net`, inherited by 35 call sites. Confirmed with ASan (heap-buffer-overflow READ of size 5) rather than inferred. Golden md5 unchanged, so real traffic parses identically. 7 new tests. |
 | T07 | Login guards | DONE (merged `b6b3502`) | Executed inline by the orchestrator. `LoginDisableReconnect` null-guarded (closes T05's sweep gap); `LoginProcessLoginResponse` underflow + undersized-buffer guarded. Whole recorded login stream now replays; no death test remains. Corrects the orchestrator's wrong fixture-count claim from T06. |
 | T06 | Login/world flow coverage | DONE (merged `bae9c83`) | 18 tests incl. real-capture replay of both streams. Found a replay-path segfault in `LoginDisableReconnect` (not live-reachable) that exposed an incomplete guard sweep in T05. `LoginProcessLoginResponse` underflow confirmed as `bad_alloc`, not worse. |
@@ -544,6 +545,50 @@ claim and cannot be rewritten now that it is merged.
   deep state assertions are wanted (T06 finding 4 lists exactly which).
   Deliberately not requested yet — the sequencing coverage may prove
   sufficient.
+
+## T09 finding — chat-server info is silently discarded (needs Will)
+
+`WorldProcessSetChatServer` (`eq_login_world.cpp:743`) requires **≥5**
+comma-separated fields, documented as
+`"host,port,server.character,connection_type,mail_key"`.
+
+Independently verified against the capture — all four real records
+carry exactly **four**:
+
+```
+['10.0.30.23', '7778', 'WillEQ Private Server.Testchar', 'B48FB5F37']
+```
+
+No `connection_type`, and the mail key sits at index **3**, not 4. So
+`m_ucs_host` / `m_ucs_port` / `m_mail_key` are **never populated**
+against this server; the handler takes its else branch and warns every
+time.
+
+**Severity is lower than it first looks:** nothing consumes those
+fields today. `ConnectToUCS` is commented out (both the call site at
+`eq_login_world.cpp:644` and the whole UCS block in `eq.cpp`), and the
+separate `UCSConnection` class is never connected. So this is a latent
+bug that bites whenever UCS is implemented, not a live breakage — which
+is also why it went unnoticed.
+
+Two possible readings, and it needs Will: either the expected 5-field
+format is wrong for Titanium, or this server build omits a field. Pinned
+as `BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors`
+with a synthetic contrast test proving the split logic works on 5 fields.
+
+## Open question for Will — character-list storage
+
+T06 asked for character-list contents; T09 correctly did not build it.
+`WorldProcessCharacterSelect` parses all ten slots (name, level, class,
+race, zone) and keeps **only** `m_character_select_index` — everything
+else is logged and discarded. Exposing it means **adding a member and
+populating it**, a functional change to the client made for tests.
+
+Cost is genuinely small: one POD list of ≤10 entries filled inside the
+existing loop, plus an accessor. Nothing currently reads the discarded
+values, so there is no behavior-change risk. The real question is
+whether any product code will ever want them — if not, this is test-only
+state in a shipped class, which is a reasonable thing to decline.
 
 ## `Packet::GetCString` OOB read — FIXED in T08 (`b2fee49`)
 
