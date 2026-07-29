@@ -319,7 +319,7 @@ void ZoneLines::clear() {
     serverZonePoints_.clear();
 }
 
-void ZoneLines::expandZoneLinesToGeometry(HCMap* collisionMap) {
+void ZoneLines::expandZoneLinesToGeometry(const HCMap* collisionMap) {
     if (!collisionMap || !collisionMap->IsLoaded()) {
         LOG_INFO(MOD_MAP, "No collision map available for zone line expansion");
         return;

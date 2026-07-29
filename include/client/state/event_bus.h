@@ -6,6 +6,7 @@
 #include <string>
 #include <cstdint>
 #include <mutex>
+#include <memory>
 #include <glm/glm.hpp>
 
 class HCMap;
@@ -718,7 +719,13 @@ struct SwimmingStateChangedData {
 // --- Zone lifecycle events ---
 
 struct CollisionMapChangedData {
-    HCMap* map;  // S2: typed handoff (non-owning; game thread retains ownership)
+    // P35: shared ownership (was S2's non-owning raw HCMap*, game thread
+    // retained ownership) -- the game thread can reset/replace its
+    // m_zone_map on the next zone change at any time, independent of when
+    // the renderer/SimulationWorker side finishes with the old map; a
+    // shared_ptr copy lets the object simply outlive every holder instead
+    // of dangling under the renderer.
+    std::shared_ptr<const HCMap> map;
 };
 
 struct ZoneLineBoundingBoxesData {

@@ -39,43 +39,41 @@ the commit. Sources are historical docs — do not edit those.
   sessions post-fix (including a 3m45s single-zone stay) show zero
   atlas-related crashes — see refactor/P34_particle_atlas_uaf.md Review.
 
-## CRITICAL: SimulationWorker HCMap use-after-free on zone transition (found by P34, 2026-07-29)
+## FIXED: SimulationWorker HCMap use-after-free on zone transition (P35, 2026-07-29)
 
-- **A SEPARATE, newly-found, still-open bug** — discovered live while
-  P34 was gathering qeynos2/befallen zone-transition evidence for the
-  (unrelated, now-fixed) particle atlas UAF above. gdb bt (4 independent
-  captures, identical stack every time):
-  `HCMap::FindBestZ()` → `SimulationWorker::computeEntityInterpolation()`
-  → `computeAll()` → `workerLoop()`, SIGSEGV on the SimulationWorker
-  thread. `sim_entity_sync.cpp`'s NPC ground-snap
-  (`state.isNPC && zoneData_.hcMap && ...` → `zoneData_.hcMap->FindBestZ()`)
-  dereferences `zoneData_.hcMap`, a raw `const HCMap*` snapshotted from
-  `IrrlichtRenderer::collisionMap_` in `buildSimulationZoneData()`
-  (renderer_sim_bridge.cpp) — `collisionMap_` itself is set via
-  `setCollisionMap()` off a bridge event carrying the game thread's
-  `EverQuest::m_zone_map` (`std::unique_ptr<HCMap>`, eq.h). Root cause not
-  chased (out of P34's territory — NOT SimulationWorker/zone-loader code)
-  but the shape strongly suggests a synchronization gap between the game
-  thread's zone-map lifecycle (owns/destroys `m_zone_map` on zone change)
-  and the render thread's `SimulationWorker::stop()`/`clearZoneData()`
-  pairing (renderer_sim_bridge.cpp `stopSimulationWorker()`) — `stop()`
-  does properly `thread_->join()` before `clearZoneData()`, so if this is
-  the gap, it's on the OTHER side (game thread freeing/replacing
-  `m_zone_map` before the renderer-side stop/clear has run), not a missing
-  join.
-  **Reproduction**: highly transition-triggered, not zone-specific —
-  7 of 7 live sessions that crossed a `#zone` transition (befallen→qeynos2
-  or qeynos2→befallen, single-hop and multi-hop scripts alike) crashed
-  within ~5-25s of the transition; the 1 session that stayed in a single
-  zone for its whole 3m45s duration (no transition at all) was clean.
-  This reads as at least as severe as the atlas bug this unit fixed
-  (near-100% reproduction on transition in this environment) and
-  currently blocks any live multi-zone-hop evidence gathering.
-  **NOT caused by and unrelated to P34's atlas fix** — confirmed by
-  backtrace on all 4 gdb captures: zero frames touch `ParticleManager`,
-  `atlasTexture_`, or `ConstrainedTextureCache`. NEEDS A UNIT — territory
-  is `sim_entity_sync.cpp` / `renderer_sim_bridge.cpp` / `eq.h`'s
-  `m_zone_map` lifecycle, not particle/texture-cache code.
+- Root cause confirmed: NOT a missing join on the renderer side (that
+  pairing — `stop()` -> `thread_->join()` -> `clearZoneData()` in
+  `stopSimulationWorker()` — was always correct). The bug was on the GAME
+  thread: `EverQuest::CleanupZone()` (`eq_zone.cpp`) queues a
+  `CollisionMapChanged{nullptr}` bridge event and then IMMEDIATELY
+  synchronously frees the outgoing zone's `HCMap` (`m_zone_map.reset()`),
+  well before the renderer even starts the new zone's loading thread (the
+  only place `stopSimulationWorker()`/`unloadZone()` actually runs). In
+  the window between those two points — which can be seconds — the
+  outgoing zone's `SimulationWorker` thread is still running with its
+  `zoneData_.hcMap` pointing at the now-freed `HCMap`; every NPC
+  ground-snap tick in that window (`sim_entity_sync.cpp` ->
+  `HCMap::FindBestZ()`) was a use-after-free, matching all 4 recorded gdb
+  backtraces exactly. Confirms the hypothesis this entry was filed with.
+  **Fix**: `EverQuest::m_zone_map` (`eq.h`) is now
+  `std::shared_ptr<const HCMap>` instead of `std::unique_ptr<HCMap>`, with
+  the same shared_ptr (not a raw `.get()`) copied through every boundary
+  it crosses — `CollisionMapChangedData::map` (event_bus.h),
+  `ZoneLoadSnapshot::zoneMap`, `IrrlichtRenderer::collisionMap_`/
+  `setCollisionMap()`, and `SimulationZoneData::hcMap`
+  (simulation_worker.h). The game thread's `reset()` now only drops ITS
+  reference; the object survives until every renderer-side holder also
+  releases its copy (via `clearZoneData()`/`setCollisionMap()`), so it
+  simply outlives every holder instead of dangling under whichever thread
+  is slowest to finish with it. `HCMap` is accessed as `const` everywhere
+  now (all its read paths were already const methods). 9 files touched
+  (payload-type plumbing); all other consumers needed zero code changes
+  (`operator->`/`operator bool` work identically on the shared_ptr).
+  Verified: 6-step bar clean (1406/1407 ctest, ARM clean, goldens
+  untouched), `particle_race_stress` clean, and a live eqemu session
+  driving 6 consecutive befallen<->qeynos2 transitions (the exact P34 7/7
+  repro) plus a 243s single-zone soak, both crash-free — see
+  refactor/P35_hcmap_transition_uaf.md Review.
 
 ## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
 

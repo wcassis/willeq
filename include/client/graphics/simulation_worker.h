@@ -13,6 +13,7 @@
 #include <string>
 #include <chrono>
 #include <random>
+#include <memory>
 #include <irrlicht.h>
 #include <glm/glm.hpp>
 #include "client/graphics/environment/unified_particle.h"
@@ -689,8 +690,13 @@ struct SimulationZoneData {
     // Empty = no classification data, treat all regions as outdoor
     std::unordered_set<size_t> indoorRegions;
 
-    // Collision map for ground snapping (non-owning, immutable after zone load)
-    const ::HCMap* hcMap = nullptr;
+    // Collision map for ground snapping (shared ownership, immutable after
+    // zone load — P35: was a non-owning raw pointer that could dangle if
+    // the game thread reset its own HCMap before setZoneData()/
+    // clearZoneData() (called only while the worker is stopped, per
+    // setZoneData()'s contract) had run; a shared_ptr copy keeps the
+    // object alive for as long as the worker holds this snapshot)
+    std::shared_ptr<const ::HCMap> hcMap;
 
     // Region occluder triangles for software occlusion culling
     // Keyed by region index → vector of wall triangles

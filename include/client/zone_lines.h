@@ -114,7 +114,7 @@ public:
 
     // Expand zone line trigger boxes to fill passages using collision detection
     // This should be called after loading zone lines and setting the collision map
-    void expandZoneLinesToGeometry(HCMap* collisionMap);
+    void expandZoneLinesToGeometry(const HCMap* collisionMap);
 
 private:
     // Check extracted zone lines (trigger box detection)

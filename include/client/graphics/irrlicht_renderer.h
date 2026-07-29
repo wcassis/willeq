@@ -970,8 +970,12 @@ public:
     uint16_t getCurrentTargetId() const { return currentTargetId_; }
     const TargetInfo& getCurrentTargetInfo() const { return currentTargetInfo_; }
 
-    // Collision map for player mode movement
-    void setCollisionMap(HCMap* map) { if (isLoading()) return; collisionMap_ = map; }
+    // Collision map for player mode movement. shared_ptr<const HCMap>
+    // (P35): shares ownership with the game thread's m_zone_map and
+    // SimulationWorker's zoneData_.hcMap so the object outlives every
+    // holder instead of dangling when the game thread resets/replaces
+    // its own copy on the next zone change.
+    void setCollisionMap(std::shared_ptr<const HCMap> map) { if (isLoading()) return; collisionMap_ = std::move(map); }
 
     // Navmesh pathfinder for navmesh overlay visualization
     void setNavmesh(PathfinderNavmesh* navmesh) { if (isLoading()) return; navmesh_ = navmesh; }
@@ -1705,8 +1709,8 @@ private:
     PlayerModeConfig playerConfig_;
     eqt::bridge::GameStateBridge* bridge_ = nullptr;  // For pushing intents (D14+)
 
-    // Collision detection for player mode
-    HCMap* collisionMap_ = nullptr;
+    // Collision detection for player mode (shared ownership — P35)
+    std::shared_ptr<const HCMap> collisionMap_;
 
     // Target selection and loot
     TargetCallback targetCallback_;
