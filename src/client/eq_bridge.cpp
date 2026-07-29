@@ -155,11 +155,11 @@ bool EverQuest::InitGraphics(int width, int height,
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
 	TickNetwork();
 
-	// Set collision map via bridge
+	// Set collision map via bridge (shared_ptr copy, P35 — see eq.h)
 	if (m_zone_map && m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{m_zone_map.get()}));
+			eqt::state::CollisionMapChangedData{m_zone_map}));
 	}
 
 	// One-time deferred renderer init (render distance, spell VFX)
@@ -328,7 +328,7 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		}
 		snap.zoneLineBBoxes = m_zone_lines->getZoneLineBoundingBoxes();
 	}
-	snap.zoneMap = m_zone_map.get();
+	snap.zoneMap = m_zone_map;
 	snap.eqClientPath = m_eq_client_path;
 
 	// P04: zoneArchive/zoneWld snapshot fields removed (never read; see

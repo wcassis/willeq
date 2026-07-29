@@ -474,10 +474,13 @@ void EverQuest::LoadZoneMap(const std::string& zone_name)
 		LOG_WARN(MOD_MAP, "Failed to load map for zone: {}", zone_name);
 	}
 
-	// Publish CollisionMapChanged event to bridge
+	// Publish CollisionMapChanged event to bridge. Shares ownership
+	// (shared_ptr copy, not a raw pointer) so the renderer/SimulationWorker
+	// side can keep the map alive past the point this game thread later
+	// resets m_zone_map on the next zone change (P35).
 	if (m_bridge) {
 		eqt::state::CollisionMapChangedData data;
-		data.map = m_zone_map.get();
+		data.map = m_zone_map;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged, std::move(data)));
 	}
