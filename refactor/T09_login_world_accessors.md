@@ -155,8 +155,130 @@ Visual gate: not applicable — say so.
 
 ## Review
 
-Per the protocol, plus:
-- Confirm `GetSessionKey()` was added and that no test logs its value.
-- Any parser finding, prominently.
-- Whether the character-list storage question is worth raising to Will,
-  with your read on what it would cost.
+**Status: DONE.**
+
+### Acceptance criteria
+
+1. **Exactly the eleven accessors in `eq.h`, nothing else changed there.**
+   PASS. Diffed against the actual checkout base (`f570b2b`, not the
+   `fable` ref, which moved forward mid-unit — see "Deviations" below):
+   `include/client/eq.h` gained exactly 14 lines (11 accessors + 3
+   comment lines), one hunk, nothing else touched.
+2. **Tests exercising each one, driven from real recorded records where
+   available.** PASS. 9 new tests in a new `LoginWorldAccessors` suite
+   in `tests/test_login_world_flow.cpp` (extended, not a new file —
+   794 lines total, well under the 1500-line warn ceiling). 6 of the 9
+   drive from the real capture (`GTEST_SKIP` if absent, matching
+   section 1's existing idiom); the other 3 are synthetic where the
+   plan called for specific/contrast values (character-not-found,
+   5-field chat-server happy path, ExpansionInfo world-ready flags).
+   Every one of the 11 accessors is exercised by at least one test.
+3. **Build clean; test binaries under 5 seconds each.** PASS.
+   `test_login_world_flow` (36 tests total including the pre-existing
+   T05-T08 suite): ~0.07-0.08s wall time across 3 standalone runs.
+4. **`test_session_replay` golden matched, `session.golden` md5
+   unchanged.** PASS. `4d55b40a672cec0ae6022f60a21b7b25` before and
+   after all 3 full-suite runs below — unchanged throughout.
+5. **Full suite x3, documented exceptions only.** PASS, 1415/1416 all
+   three runs, only `AudioManagerTest.PreloadCommonSounds` (host ALSA)
+   failed each time. No `RDPServerFrameTest`/`RDPServerLifecycleTest`
+   failures occurred in any of the 3 runs (that family is intermittent,
+   not "always fails" — its absence here doesn't contradict T03b).
+   Run times: 315.96s, 283.12s, 280.71s.
+6. **`check_file_sizes.sh` — no new FAILs.** PASS, with a process note:
+   running the script unmodified from this agent's own cwd (a sibling
+   worktree, not this slot) makes its internal `git rev-parse
+   --show-toplevel` resolve to the wrong repo root and diff the wrong
+   tree. Verified correctly two ways instead: (a) `git -C <slot> diff
+   --name-only fable -- '*.cpp' '*.h' '*.hpp'` lists exactly the two
+   changed files; (b) `check_file_sizes.sh --files <slot>/include/client/eq.h
+   <slot>/tests/test_login_world_flow.cpp` (absolute paths, bypasses the
+   cwd issue) → `eq.h` WARN at 1949 lines (pre-existing: 1935 lines on
+   the checkout base already, so T09 only added 14 — not a new
+   crossing), `test_login_world_flow.cpp` ok at 794 lines. Exit 0.
+7. **`build-arm-noble.sh` passes.** PASS, clean cross-compile,
+   `build-arm-noble/bin/willeq` produced (ARM ELF, 338M unstripped,
+   debug symbols retained per the script's default).
+
+Visual gate: not applicable — no graphics/rendering code touched, no
+new visual assertions added.
+
+### `GetSessionKey()`
+
+Added exactly as specified (`const std::string& GetSessionKey() const {
+return m_key; }`, eq.h, grouped with the other 10 T09 accessors). No
+test logs, prints, or otherwise surfaces its value beyond a single
+`EXPECT_EQ(eq.GetSessionKey(), "BW8BZW8UW4")` comparison against the
+real capture's known decoded value (gtest only prints comparison
+operands on assertion *failure*, which is standard/unavoidable test
+practice, not logging).
+
+### Parser finding (prominent)
+
+**`WorldProcessSetChatServer` never populates its accessors on this
+server's real wire format.** The handler
+(`eq_login_world.cpp:743`) splits the chat-server string on `,` and
+requires `parts.size() >= 5` (host, port, `server.character`,
+connection_type, mail_key) before writing `m_ucs_host`/`m_ucs_port`/
+`m_mail_key`; otherwise it logs a warning and leaves them untouched.
+The real capture's `SetChatServer` payload
+(`data/captures/session.sleq`, both zone-ins) is:
+
+    10.0.30.23,7778,WillEQ Private Server.Testchar,B48FB5F37
+
+— exactly **4** comma-separated fields (host, port, "server.character"
+containing an embedded space but no comma, mail_key), one short of the
+5 the parser requires. Verified by direct split of the decoded payload
+bytes (not guessed) before writing
+`BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors`,
+which pins the real observed behavior: `GetChatServerHost()`/
+`GetChatServerPort()`/`GetMailKey()` all stay at their construction
+defaults after replaying the real record. A second synthetic test
+(`SetChatServer_FiveFieldSynthetic_ParsesHostPortMailKey`) confirms the
+split logic itself is correct when actually given 5 fields — so this
+is specifically a field-count mismatch between what the handler expects
+and what this server (WillEQ Private Server, P29 recording) sends, not
+a broken parser overall. Two readings, Will's call: either the expected
+5-field format is wrong for Titanium (should be 4), or this server
+build never sends a working `connection_type` field and UCS/mail never
+actually connects on it. Not fixed here — territory is tests/ only.
+
+### Character-list storage question — is it worth raising to Will?
+
+Yes, worth a short ask, low cost either way. The plan is right that
+`WorldProcessCharacterSelect` currently discards 9 of 10 slots' worth
+of parsed data (name/level/class/race/zone for every non-matching
+character) and keeps only `m_character_select_index` for the one that
+matches `m_character`. Cost to expose it properly: one new member (e.g.
+`std::vector<CharacterSelectEntry> m_character_list;`, 10 or fewer
+entries, POD-ish struct) populated in the existing loop instead of
+discarded, plus one accessor — a small, mechanical, behavior-preserving
+change (nothing currently reads or depends on the discarded values, so
+there's no risk of behavior change, only added storage). The real
+payoff isn't more test coverage of parsing (this unit already got that
+for free by reading the fields locally in the real-capture test's
+decode step, without needing the accessor) — it's whether any *product*
+code (a character-select UI, `/who`-style tooling) will ever want the
+list. If not, it's pure unused storage and not worth it. Flagging for
+Will rather than deciding either way.
+
+### Deviations
+
+- `git diff fable -- include/client/eq.h` (comparing to the *branch
+  ref* `fable`, not this task's checkout point) shows a second,
+  unrelated hunk reverting P35's `m_zone_map` shared_ptr fix. This is
+  **not** a T09 change — `fable` moved forward mid-unit (P36 planning
+  commit `8eb2fb7`, on top of P35's `a376db2` which touched
+  `m_zone_map`) after this branch was cut from `f570b2b`. Confirmed via
+  `git merge-base fable task/T09-login-world-accessors` == `f570b2b`,
+  and `git diff f570b2b -- include/client/eq.h` shows only the 14-line
+  T09 hunk. Not rebased onto the newer `fable` tip — out of scope for
+  this unit, and the orchestrator's merge will resolve it normally.
+- `check_file_sizes.sh fable` (no explicit repo_root override) can't be
+  run correctly from this agent's own shell cwd (a different worktree);
+  worked around per criterion 6 above rather than `cd`-ing (shell
+  discipline forbids it). Flagging in case other T-unit executors hit
+  the same thing.
+- No other deviations. No accessor requested outside the IN list, no
+  new member variables, no `.cpp` changes, no STOP conditions
+  triggered.

@@ -543,3 +543,252 @@ TEST(LoginWorldRobustness, LoginProcessServerPlayResponse_NotAllowed_DoesNotCras
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_PlayEverquestResponse, payload));
 }
+
+// ============================================================================
+// 4. T09: eleven read-only login/world accessors + the state assertions they
+// unlock. See refactor/T09_login_world_accessors.md. Real values below (dbid,
+// key, server list, character slot, zone host/port, chat-server string) are
+// decoded directly from data/captures/session.sleq (the same P29 recording
+// used by section 1's real-capture replay), verified independently with a
+// scratch DES-CBC decrypt (all-zero key/IV, matching eqcrypt_block) before
+// being pinned here -- not guessed.
+// ============================================================================
+
+namespace {
+
+// Locates the first S->C record on the given stream/opcode in the session
+// capture. Used by the accessor tests below, each of which only needs one
+// representative record rather than section 1's full sequential walk.
+// Returns false (leaving outPayload untouched) if the capture is absent or
+// no matching record exists -- callers GTEST_SKIP in that case, same as
+// section 1.
+bool FindFirstCaptureRecord(EQT::Net::SessionStream stream, uint16_t opcode,
+                             std::vector<uint8_t>& outPayload) {
+    std::ifstream logFile(DefaultSessionLogPath(), std::ios::binary);
+    if (!logFile.is_open()) {
+        return false;
+    }
+    EQT::Net::SessionLogFileHeader header{};
+    logFile.read(reinterpret_cast<char*>(&header), sizeof(header));
+    if (!logFile.good() || header.magic != EQT::Net::SESSION_LOG_MAGIC) {
+        return false;
+    }
+    while (logFile.good()) {
+        EQT::Net::SessionLogRecordHeader rec{};
+        logFile.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+        if (!logFile.good()) {
+            break;
+        }
+        std::vector<uint8_t> payload(rec.size);
+        if (rec.size > 0) {
+            logFile.read(reinterpret_cast<char*>(payload.data()), rec.size);
+            if (!logFile.good()) {
+                break;
+            }
+        }
+        if (rec.stream == static_cast<uint8_t>(stream) &&
+            rec.direction == static_cast<uint8_t>(EQT::Net::SessionDirection::ServerToClient) &&
+            rec.opcode == opcode) {
+            outPayload = std::move(payload);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Builds a Titanium CharacterSelect_Struct payload (1706-byte full packet,
+// matching WorldProcessCharacterSelect's >=1706 guard) with a single named
+// character in slot 0. Used for the not-found accessor case; the real
+// capture (used for the found case) already exercises the true field
+// layout.
+std::vector<uint8_t> BuildCharacterSelectPayload(const std::string& slot0Name) {
+    return BuildPayload(2 + 1704, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2 + 1024, slot0Name.c_str());  // names[0] at payload offset 1024
+    });
+}
+
+}  // namespace
+
+TEST(LoginWorldAccessors, LoginAccepted_RealCapture_ParsesAccountIdAndSessionKey) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::Login, HC_OP_LoginAccepted, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture LoginAccepted accessor test.";
+    }
+
+    EverQuest eq("127.0.0.1", 0, "test", "test", "WillEQ", "Testchar");
+    EXPECT_EQ(eq.GetAccountId(), 0u);
+    EXPECT_TRUE(eq.GetSessionKey().empty());
+
+    ASSERT_NO_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, payload));
+
+    // Real capture values: response_error=101 (the <=101 "success" branch),
+    // dbid=1, key="BW8BZW8UW4". Comparing GetSessionKey() to a known literal
+    // here (not printing/logging it) is the extent of this unit's use of the
+    // new accessor, per the plan's note on m_key being a live credential.
+    EXPECT_EQ(eq.GetAccountId(), 1u);
+    EXPECT_EQ(eq.GetSessionKey(), "BW8BZW8UW4");
+}
+
+TEST(LoginWorldAccessors, ServerListResponse_RealCapture_PopulatesWorldServers) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::Login, HC_OP_ServerListResponse, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture ServerListResponse accessor test.";
+    }
+
+    // "WillEQ" matches the recorded server's long_name (same fixture fact
+    // section 1 documents), so this replays the found/LoginSendPlayRequest
+    // branch rather than LoginDisableReconnect's not-found branch -- either
+    // is safe post-T07, but this keeps the test on the branch real replay
+    // actually takes.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "WillEQ", "Testchar");
+
+    ASSERT_NO_THROW(ReplayLogin(eq, HC_OP_ServerListResponse, payload));
+
+    const auto& servers = eq.GetWorldServers();
+    ASSERT_EQ(servers.size(), 1u);
+    ASSERT_NE(servers.find(2u), servers.end()) << "expected world-server id 2 (real capture)";
+    const auto& ws = servers.at(2u);
+    EXPECT_EQ(ws.long_name, "WillEQ");
+    EXPECT_EQ(ws.address, "10.0.30.23");
+    EXPECT_EQ(ws.lang, "us");
+    EXPECT_EQ(ws.region, "en");
+}
+
+TEST(LoginWorldAccessors, ServerListResponse_NoMatchingServer_StillPopulatesWorldServers) {
+    // T06 finding: the "not found" branch calls LoginDisableReconnect(),
+    // guarded since T07, so this is a safe no-crash path. GetWorldServers()
+    // is populated BEFORE the match loop runs, so it holds the entry
+    // regardless of whether m_server matched -- this is the "server-list
+    // contents" visibility the plan authorizes (in contrast to the OUT
+    // character-list contents, which are never stored at all).
+    EverQuest eq("127.0.0.1", 0, "test", "test", "NoSuchServer", "Testchar");
+    auto payload = BuildServerListResponsePayload("127.0.0.1", "TestServer", "us", "en");
+
+    EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_ServerListResponse, payload));
+
+    const auto& servers = eq.GetWorldServers();
+    ASSERT_EQ(servers.size(), 1u);
+    ASSERT_NE(servers.find(42u), servers.end());
+    EXPECT_EQ(servers.at(42u).long_name, "TestServer");
+    EXPECT_EQ(servers.at(42u).address, "127.0.0.1");
+}
+
+TEST(LoginWorldAccessors, SendCharInfo_RealCapture_FindsConfiguredCharacter) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_SendCharInfo, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture SendCharInfo accessor test.";
+    }
+
+    // Real capture slot layout (P29 recording): 0="Testcaster", 1="Testchar",
+    // 2="Testmelee", slots 3-9 empty. "Testchar" is this test's configured
+    // character, so the expected match index is 1.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_EQ(eq.GetCharacterSelectIndex(), -1);
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+
+    EXPECT_EQ(eq.GetCharacterSelectIndex(), 1);
+}
+
+TEST(LoginWorldAccessors, SendCharInfo_CharacterNotInList_LeavesIndexAtNegativeOne) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    auto payload = BuildCharacterSelectPayload("SomeoneElse");
+
+    EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+
+    EXPECT_EQ(eq.GetCharacterSelectIndex(), -1);
+}
+
+TEST(LoginWorldAccessors, ZoneServerInfo_RealCapture_ParsesHostAndPort) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_ZoneServerInfo, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture ZoneServerInfo accessor test.";
+    }
+
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_TRUE(eq.GetZoneServerHost().empty());
+    EXPECT_EQ(eq.GetZoneServerPort(), 0);
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_ZoneServerInfo, payload));
+
+    // Real capture values (first ZoneServerInfo record, record index 14).
+    EXPECT_EQ(eq.GetZoneServerHost(), "10.0.30.23");
+    EXPECT_EQ(eq.GetZoneServerPort(), 7012);
+}
+
+// --- WorldProcessSetChatServer: a parser finding, not a fix (tests/ only
+// territory). ---
+//
+// The handler splits chat_info on ',' and requires >=5 parts (host, port,
+// server.character, connection_type, mail_key) before populating
+// m_ucs_host/m_ucs_port/m_mail_key -- otherwise it logs a warning and
+// leaves them untouched. The real capture's SetChatServer payload is:
+//
+//   "10.0.30.23,7778,WillEQ Private Server.Testchar,B48FB5F37"
+//
+// which is exactly 4 comma-separated fields (host, port, "server.character"
+// containing an embedded space but no comma, mail_key) -- one short of the
+// >=5 the parser requires. Verified by direct split of the decoded payload
+// before writing this test, not guessed. So on THIS real server's actual
+// wire format, WorldProcessSetChatServer silently discards the record every
+// time; GetChatServerHost/Port/MailKey() never leave their construction
+// defaults. This is a real parser/protocol mismatch worth Will's attention
+// -- either the expected format is wrong (4 fields, not 5) or this server
+// build never sends a working connection_type field. Not fixed here.
+TEST(LoginWorldAccessors, BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_SetChatServer, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture SetChatServer accessor test.";
+    }
+
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer, payload));
+
+    EXPECT_TRUE(eq.GetChatServerHost().empty());
+    EXPECT_EQ(eq.GetChatServerPort(), 0);
+    EXPECT_TRUE(eq.GetMailKey().empty());
+}
+
+TEST(LoginWorldAccessors, SetChatServer_FiveFieldSynthetic_ParsesHostPortMailKey) {
+    // Contrast case: the format WorldProcessSetChatServer actually expects
+    // (5 comma-separated fields) does parse correctly -- confirming the
+    // accessors and the split logic both work; the real capture just never
+    // sends this shape.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    const std::string chat_info = "chat.example.com,9876,TestServer.Testchar,0,ABC123MAILKEY";
+    auto payload = BuildPayload(2 + chat_info.size() + 1, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2, chat_info.c_str());
+    });
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer, payload));
+
+    EXPECT_EQ(eq.GetChatServerHost(), "chat.example.com");
+    EXPECT_EQ(eq.GetChatServerPort(), 9876);
+    EXPECT_EQ(eq.GetMailKey(), "ABC123MAILKEY");
+}
+
+TEST(LoginWorldAccessors, ExpansionInfo_FirstDelivery_SetsWorldReadyAndEnterWorldSent) {
+    // WorldSendWorldClientReady() sets m_world_ready=true;
+    // WorldSendEnterWorld() sets m_enter_world_sent=true. Both fire on the
+    // first ExpansionInfo delivery per WorldProcessExpansionInfo's
+    // !m_world_ready guard (already pinned via send-count deltas in section
+    // 2's WorldExpansionInfo_FirstDelivery_TriggersThreeSends -- this test
+    // observes the same transition directly via the new accessors instead).
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_FALSE(eq.IsWorldReady());
+    EXPECT_FALSE(eq.HasSentEnterWorld());
+
+    auto payload = BuildPayload(2 + 4, [](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, 0x1);  // expansions bitmask
+    });
+    EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_ExpansionInfo, payload));
+
+    EXPECT_TRUE(eq.IsWorldReady());
+    EXPECT_TRUE(eq.HasSentEnterWorld());
+}
