@@ -52,6 +52,23 @@ namespace eqt {
 
 // ========== Signal Handlers ==========
 
+// P36: SIGTERM previously had no handler at all -- default disposition
+// terminates the process immediately (exit via signal, no shutdown()
+// call, no clean exit code), which is one of the "shutdown aborts"
+// exit-matrix rows this unit is required to make clean. A signal handler
+// must stay async-signal-safe, so it does only the one thing that's
+// actually safe: set an atomic flag. mainLoop() (the always-running main
+// thread loop, graphics or headless) polls the flag once per iteration
+// and calls requestQuit() from ordinary code -- reusing the exact same
+// controlled-shutdown path /camp and window-close already use, so it
+// gets the same ordering guarantees (and the same self-join fix above)
+// for free.
+static std::atomic<bool> s_terminateRequested{false};
+
+static void HandleSigTerm(int /*sig*/) {
+    s_terminateRequested.store(true, std::memory_order_relaxed);
+}
+
 #ifndef _WIN32
 static void HandleSigUsr1(int /*sig*/) {
     LogLevelIncrease();
@@ -147,10 +164,11 @@ bool Application::initialize(const ApplicationConfig& config) {
 #ifndef _WIN32
     signal(SIGUSR1, HandleSigUsr1);
     signal(SIGUSR2, HandleSigUsr2);
+    signal(SIGTERM, HandleSigTerm);
 #ifdef EQT_HAS_GRAPHICS
     signal(SIGHUP, HandleSigHup);
 #endif
-    LOG_DEBUG(MOD_MAIN, "Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGHUP=hotkey reload)");
+    LOG_DEBUG(MOD_MAIN, "Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGTERM=clean shutdown, SIGHUP=hotkey reload)");
 #endif
 
     // Create game state
@@ -748,6 +766,15 @@ void Application::mainLoop() {
 
     while (m_running.load()) {
         try {
+            // P36: SIGTERM handler (above) only sets a flag -- do the actual
+            // quit request here, in ordinary (non-signal-handler) code on the
+            // main thread, going through the same requestQuit() path as
+            // /camp and window-close.
+            if (s_terminateRequested.load(std::memory_order_relaxed)) {
+                LOG_INFO(MOD_MAIN, "SIGTERM received, requesting clean shutdown...");
+                requestQuit();
+            }
+
             // Render
             render(0.0f);  // deltaTime computed inside render()
 
