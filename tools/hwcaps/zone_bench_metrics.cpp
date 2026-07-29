@@ -27,14 +27,19 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
     // P08b: entities_visible is the newest trailing column -- distinct
     // entities surviving cull this frame (0 for zone-only/non-default entity
     // modes; see FrameMetrics comment). Same append-only convention.
+    // P38: tex_binds/tex_param_calls are the newest trailing columns --
+    // driver-side glBindTexture/glTexParameteri call counts for the frame,
+    // 0/0 unless --gl-counters was passed (see gl_call_counters.h). Same
+    // append-only convention as every prior trailing-column addition.
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
                "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
                "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,"
-               "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible\n");
+               "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible,"
+               "tex_binds,tex_param_calls\n");
 
     for (const auto& m : frames_) {
         fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d,"
-                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d\n",
+                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
@@ -44,7 +49,8 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
                 m.alphaTestDraws, m.solidDraws,
                 m.lightRadius, m.regionsDemotedRadius,
                 m.collectCullMs, m.sortMs, m.submissionMs, m.otherMs, m.swapMs,
-                m.entitiesVisible);
+                m.entitiesVisible,
+                m.texBinds, m.texParamCalls);
     }
 
     fclose(f);
@@ -84,7 +90,7 @@ void MetricsCollector::printSummary() const {
     printf("\n=== Zone Benchmark Summary (%zu frames) ===\n", frames_.size());
 
     std::vector<float> cpuMs, gpuMs, totalMs, draws, stateChanges, polys, regVis, regDrawn, regOccl, animMs;
-    std::vector<float> collectCullMs, sortMs, submissionMs, otherMs, swapMs;
+    std::vector<float> collectCullMs, sortMs, submissionMs, otherMs, swapMs, texBinds, texParams;
     for (const auto& m : frames_) {
         cpuMs.push_back(m.cpuDrawMs);
         gpuMs.push_back(m.gpuMs);
@@ -101,6 +107,8 @@ void MetricsCollector::printSummary() const {
         submissionMs.push_back(m.submissionMs);
         otherMs.push_back(m.otherMs);
         swapMs.push_back(m.swapMs);
+        texBinds.push_back(static_cast<float>(m.texBinds));
+        texParams.push_back(static_cast<float>(m.texParamCalls));
     }
 
     // Only print animation stats if any frame had animation time
@@ -122,6 +130,12 @@ void MetricsCollector::printSummary() const {
     printStatsInt("Regions visible", regVis);
     printStatsInt("Regions drawn", regDrawn);
     printStatsInt("Regions occluded", regOccl);
+    bool hasGLCounters = false;
+    for (float v : texBinds) { if (v > 0) { hasGLCounters = true; break; } }
+    if (hasGLCounters) {
+        printStatsInt("Tex binds", texBinds);
+        printStatsInt("TexParam calls", texParams);
+    }
 
     float avgTotal = std::accumulate(totalMs.begin(), totalMs.end(), 0.0f) / totalMs.size();
     printf("  Avg FPS: %.1f\n", 1000.0f / avgTotal);

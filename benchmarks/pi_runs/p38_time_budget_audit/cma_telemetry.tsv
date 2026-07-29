@@ -1,0 +1,32 @@
+1785331603	budget_moving_e5 (pre)	82644	400632
+1785331670	budget_moving_e5 (post, invocation #1)	3632	399112
+1785331732	budget_fixedpose_e5 (pre)	80040	399976
+1785331762	budget_fixedpose_e5 (post, invocation #1)	43364	400904
+1785331779	mipmap_on (pre)	43584	398808
+1785331837	mipmap_on (post, invocation #2)	45892	399560
+1785331854	statededup_on (pre)	45892	401632
+1785331913	statededup_on (post, invocation #3)	45884	399832
+1785331930	both_protos_on (pre)	45884	400916
+1785331988	both_protos_on (post, invocation #4)	45884	398812
+1785332005	lightweight_lighting (pre)	45884	399092
+1785332062	lightweight_lighting (post, invocation #5)	26240	399048
+1785332129	res_400x300 (pre)	78844	398676
+1785332239	res_400x300 (post, invocation #1)	66368	400856
+1785332448	budget_moving_e5_shipped (pre)	66520	399068
+1785332497	budget_moving_e5_shipped (post, invocation #1)	60440	398716
+1785332514	budget_fixedpose_e5_shipped (pre)	60440	399808
+1785332547	budget_fixedpose_e5_shipped (post, invocation #2)	58916	398228
+1785332633	mipmap_on_shipped (pre)	32	397992
+1785332682	mipmap_on_shipped (pre)	79820	399352
+1785332733	mipmap_on_shipped (post, invocation #1)	56392	399636
+1785332863	statededup_on_shipped (pre)	58888	401772
+1785332907	statededup_on_shipped (post, invocation #1)	51088	398984
+1785332924	lightweight_lighting_shipped (pre)	136	402396
+1785332977	lightweight_lighting_shipped (pre)	62948	401764
+1785333027	lightweight_lighting_shipped (post, invocation #1)	20304	401516
+1785333151	res_400x300_shipped (pre)	76684	403316
+1785333227	res_400x300_shipped (post, invocation #1)	66556	390684
+1785334665	statededup_on_v2 (pre)	66540	403912
+1785334726	statededup_on_v2 (post, invocation #1)	72168	398224
+1785334743	statededup_on_shipped_v2 (pre)	72168	402204
+1785334788	statededup_on_shipped_v2 (post, invocation #2)	47560	399896

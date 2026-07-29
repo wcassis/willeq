@@ -67,6 +67,11 @@ struct FrameMetrics {
     // config); 0 for the batched/composite/LOD/direct-GL entity modes and
     // for zone-only (--entities 0) runs.
     int entitiesVisible = 0;
+    // P38 audit: driver-side GL call counters (docker/irrlicht-drm/
+    // gl_call_counters.h), populated only when --gl-counters is passed;
+    // 0/0 otherwise (counters disabled, no overhead).
+    unsigned texBinds = 0;
+    unsigned texParamCalls = 0;
 };
 
 class MetricsCollector {
@@ -152,6 +157,12 @@ public:
     // being built (call any time between beginFrame() and endFrame()).
     void setEntitiesVisible(int entitiesVisible) {
         current_.entitiesVisible = entitiesVisible;
+    }
+
+    // P38: record this frame's GL call counters (see gl_call_counters.h).
+    void setGLCounters(unsigned texBinds, unsigned texParamCalls) {
+        current_.texBinds = texBinds;
+        current_.texParamCalls = texParamCalls;
     }
 
     void endGpuSync() {
