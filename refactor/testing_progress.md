@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T11 | Split `test_wld.cpp` | DONE (merged `2e8f8c5`) | 3897 lines → 9 TUs (247–545) + a 108-line fixture header. Test set verified identical: 103 → 103, empty diff. No file in `tests/` now exceeds 1500 lines. |
 | T10 | WLD mutation kill rate | DONE (merged `bd60ee3`) | Measured baseline **0/8**, strengthened to **4/8**. Confirms the benchmark session's signal. Found `resolveTextureName` is dead code and the per-mesh header bbox fields are read by nothing. |
 | T09 | Login/world accessors | DONE (merged `b531b97`) | 11 read-only accessors + 9 tests asserting login/world **state** for the first time. Found that chat-server info is silently discarded on this server (4-field payload vs a 5-field parser). Character-list contents correctly NOT exposed — would need new storage. |
 | T08 | `GetCString` bounds | DONE (merged `b2fee49`) | Real OOB read fixed in `common/net`, inherited by 35 call sites. Confirmed with ASan (heap-buffer-overflow READ of size 5) rather than inferred. Golden md5 unchanged, so real traffic parses identically. 7 new tests. |
@@ -546,6 +547,33 @@ claim and cannot be rewritten now that it is merged.
   deep state assertions are wanted (T06 finding 4 lists exactly which).
   Deliberately not requested yet — the sequencing coverage may prove
   sufficient.
+
+## Trap worth knowing — a stale BOOTSTRAP, not just stale artifacts
+
+Found while reviewing T11. Symptom: `gles2_zone_benchmark` fails to link
+with `undefined reference to irr::video::g_glCounters`, so
+`cmake --build` returns non-zero even though nothing in the diff is
+related.
+
+Cause: `g_glCounters` is defined in
+`docker/irrlicht-drm/COpenGLES2Driver.cpp`, which
+`scripts/build-gles2-x86.sh` **copies into**
+`third_party/irrlicht-gles2-x86/`. A worktree bootstrapped before the
+perf session added the GL call counters has a `third_party` **source
+tree** that predates the definition — so neither the archive nor the
+copied source contains it. Re-running
+`bash scripts/build-gles2-x86.sh --irrlicht-only` fixes it; the build
+then goes clean.
+
+This is the perf session's documented stale-artifact trap one level
+deeper: their note covers stale *build artifacts*, this is a stale
+*copied source tree*.
+
+**Diagnostic caution:** a `git stash` test cannot tell "pre-existing repo
+breakage" apart from "stale local artifact" — both reproduce without your
+diff. T11's executor correctly concluded the failure wasn't theirs but
+attributed it to the repo. If an unresolved Irrlicht symbol appears,
+re-bootstrap before believing the repo is broken.
 
 ## T10 — mutation kill rate is a better signal than coverage (confirmed)
 
