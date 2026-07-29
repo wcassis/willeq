@@ -866,24 +866,54 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::string jsonPath = compositeEntityPath_ + "/" + compositeBaseName + ".json";
         auto compositeData = std::make_shared<CompositeTextureData>();
         if (compositeData->loadFromJson(jsonPath)) {
-            modelData->compositeData = compositeData;
-            // Store the EQE1 texture name (matches the entry name inside the .eqe1 file)
-            modelData->compositeBmpPath = compositeBaseName;
-            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite found for race={} gender={}: '{}' ({} textures, {}x{})",
-                     raceId, gender, compositeBaseName,
-                     compositeData->textures.size(), compositeData->sheetWidth, compositeData->sheetHeight);
+            // P37: composite sheets carry NO alpha data in either deployed form
+            // (entity_composite_builder.cpp hardcodes hasAlpha=0 for the ETC1
+            // sheet and writes a 24bpp-only BMP) — a WLD-masked source texture
+            // baked into a composite would silently render fully opaque with no
+            // way to alpha-test it without regenerating the sheets (a separate,
+            // Will-visible sheet-redeploy operation). Rather than accept that
+            // silent-wrong-render, exclude this race/gender/variant from
+            // composite eligibility whenever any of its source parts is
+            // WLD-masked; it falls through to the per-part buildMeshFromGeometry()
+            // path below (T05 decode loop), which now honors textureMasked().
+            bool compositeHasMaskedTexture = false;
+            std::string maskedTexName;
+            if (modelData->combinedGeometry) {
+                const auto& texNames = modelData->combinedGeometry->textureNames();
+                const auto& masked = modelData->combinedGeometry->textureMasked();
+                for (size_t i = 0; i < texNames.size(); ++i) {
+                    if (i < masked.size() && masked[i] && compositeData->lookup(texNames[i])) {
+                        compositeHasMaskedTexture = true;
+                        maskedTexName = texNames[i];
+                        break;
+                    }
+                }
+            }
+            if (compositeHasMaskedTexture) {
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite EXCLUDED for race={} gender={} ('{}') — "
+                         "source includes WLD-masked texture '{}' and composite sheets carry no alpha data (P37); "
+                         "falling back to the per-part path",
+                         raceId, gender, compositeBaseName, maskedTexName);
+            } else {
+                modelData->compositeData = compositeData;
+                // Store the EQE1 texture name (matches the entry name inside the .eqe1 file)
+                modelData->compositeBmpPath = compositeBaseName;
+                LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite found for race={} gender={}: '{}' ({} textures, {}x{})",
+                         raceId, gender, compositeBaseName,
+                         compositeData->textures.size(), compositeData->sheetWidth, compositeData->sheetHeight);
 
-            // Trigger EQE1 lookup so the composite texture gets queued for GPU upload.
-            // getOrLoad() will find it via findCompressedEntry() in the composite EQE1 loader.
-            if (constrainedTextureCache_) {
-                std::vector<char> emptyData;  // No raw data — EQE1 lookup provides the data
-                // P13: tagged "composite_sheet" — see the T05 loop just below, which
-                // (confirmed during the P13 audit) unconditionally ALSO queues every
-                // individual per-part texture for this race regardless of whether this
-                // composite lookup just succeeded — the double-load the P13 plan asked
-                // to test for. Not fixed here (P13 is report-only); flagged in its Review.
-                constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData,
-                                                     "composite_sheet", "preloadModelData:compositeLookup");
+                // Trigger EQE1 lookup so the composite texture gets queued for GPU upload.
+                // getOrLoad() will find it via findCompressedEntry() in the composite EQE1 loader.
+                if (constrainedTextureCache_) {
+                    std::vector<char> emptyData;  // No raw data — EQE1 lookup provides the data
+                    // P13: tagged "composite_sheet" — see the T05 loop just below, which
+                    // (confirmed during the P13 audit) unconditionally ALSO queues every
+                    // individual per-part texture for this race regardless of whether this
+                    // composite lookup just succeeded — the double-load the P13 plan asked
+                    // to test for. Not fixed here (P13 is report-only); flagged in its Review.
+                    constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData,
+                                                         "composite_sheet", "preloadModelData:compositeLookup");
+                }
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no composite at {}", jsonPath);

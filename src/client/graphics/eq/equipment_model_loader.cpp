@@ -545,8 +545,24 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
             }
         }
 
+        // P37: WLD Fragment 0x30 materialType (TransparentMasked) ground-truth
+        // check, mirroring mesh_building.cpp's RaceModelLoader::buildMeshFromGeometry
+        // and ZoneMeshBuilder's H02d check — equipped-item masked textures (e.g.
+        // helm eyeholes) get the same alpha-test classification handoff to
+        // EntityRenderer::applyAlphaTestMaterialType() (P21). All triangles in
+        // this group share the same texName, hence the same textureIndex/masked
+        // flag; use the first triangle's index.
+        bool isMaskedMaterial = false;
+        if (!tris.empty()) {
+            uint32_t texIdx = tris.front().textureIndex;
+            const auto& masked = geometry->textureMasked();
+            isMaskedMaterial = (texIdx < masked.size()) && masked[texIdx];
+        }
+
         // Set material
-        buffer->Material.MaterialType = irr::video::EMT_SOLID;
+        buffer->Material.MaterialType = isMaskedMaterial
+            ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+            : irr::video::EMT_SOLID;
         buffer->Material.Lighting = true;
         buffer->Material.BackfaceCulling = false;
 
@@ -561,7 +577,12 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
                 irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerTexName);
                 if (tex) {
                     buffer->Material.setTexture(0, tex);
-                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    // Re-assign after setTexture (mirrors the pre-existing
+                    // pattern) — MaterialType itself is texture-independent,
+                    // no need to recompute isMaskedMaterial here.
+                    buffer->Material.MaterialType = isMaskedMaterial
+                        ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+                        : irr::video::EMT_SOLID;
                 }
             }
         }

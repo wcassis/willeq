@@ -62,6 +62,14 @@ std::shared_ptr<ZoneGeometry> combineCharacterParts(
             combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
+        // P37: merge masked flags too — previously dropped entirely, so every
+        // combined character geometry's textureMasked() came back empty
+        // regardless of source data, silently defeating any masked-material
+        // classification done against the combined geometry (mesh_building.cpp).
+        for (bool m : part->textureMasked()) {
+            combined->mutableMaterialData().textureMasked.push_back(m);
+        }
+
         // Merge vertex pieces
         for (const auto& piece : part->vertexPieces) {
             combined->vertexPieces.push_back(piece);
@@ -201,6 +209,11 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsWithTransforms(
             combined->mutableMaterialData().textureInvisible.push_back(inv);
         }
 
+        // P37: merge masked flags too (see combineCharacterParts's comment above).
+        for (bool m : part.geometry->textureMasked()) {
+            combined->mutableMaterialData().textureMasked.push_back(m);
+        }
+
         // Merge vertex pieces with adjusted vertex offsets
         for (const auto& piece : part.geometry->vertexPieces) {
             VertexPiece adjustedPiece = piece;
@@ -283,6 +296,11 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
         // Merge invisible flags
         for (bool inv : part.geometry->textureInvisible()) {
             combined->mutableMaterialData().textureInvisible.push_back(inv);
+        }
+
+        // P37: merge masked flags too (see combineCharacterParts's comment above).
+        for (bool m : part.geometry->textureMasked()) {
+            combined->mutableMaterialData().textureMasked.push_back(m);
         }
 
         // Merge vertex pieces (critical for animation!)

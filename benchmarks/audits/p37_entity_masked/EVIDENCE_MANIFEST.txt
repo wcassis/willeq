@@ -1,0 +1,117 @@
+P37 — entity/equipment WLD-masked texture rendering — evidence manifest
+=========================================================================
+
+Per the repo convention (P20's manifest, benchmarks/audits/p20_live_visual/
+EVIDENCE_MANIFEST.txt), PNG stills are not committed (gitignored repo-wide);
+they live on NFS at /mnt/projects/fable/videos/p37_entity_masked/stills/.
+This manifest (committed) records what exists and what each still shows.
+
+Capture mechanism: live eqemu session (scripts/eqemu/up.sh/down.sh, zone
+befallen), build-gles2/bin/willeq's --script tour file ('wait N' +
+slash-command lines, data/captures/p37_*.txt — gitignored scratch, not
+committed) + the existing /screenshot slash command. Config:
+data/captures/p21_willeq.json (account willeq_test / Testchar, no
+--eqe1-path — direct RGBA/DDS decode path, matching P21's convention).
+
+PRIMARY evidence: numeric MaterialType trace (not pixel stills)
+-----------------------------------------------------------------
+Live in-frame stills of a specific zombie's masked leg/chest texture proved
+unreliable to pin down in this session (zombies wander from their spawn2
+coordinates; #goto/moveto GM-teleport attempts repeatedly landed the camera
+in open space with no target in frame — see "stills" section below for what
+WAS captured). Rather than keep spending session budget chasing exact
+framing, this unit falls back to the SAME numeric-trace technique P21 used
+for its own entity-side evidence (P21 Review, "Entity (latent) case"): two
+temporary, uncommitted LOG_INFO diagnostics (one in
+RaceModelLoader::buildMeshFromGeometry, mesh_building.cpp; one right after
+EntityRenderer::applyAlphaTestMaterialType()'s call site in
+entity_renderer.cpp's createEntity path), both fully reverted (verified via
+`git diff` showing no trace) before the final build/verification pass and
+commit.
+
+Trace, live befallen zone-in (all 3 test-zone ground-truth masked textures
+that are actually befallen-resident: zomch0001.bmp, zomlg0001.bmp; per-race
+unmasked siblings zomch0002-5.bmp/zomlg0002.bmp shown for contrast):
+
+| texture         | isMasked (WLD, post-fix) | MaterialType assigned by mesh_building.cpp |
+|-----------------|--------------------------|---------------------------------------------|
+| zomch0001.bmp   | true                     | 14 (EMT_TRANSPARENT_ALPHA_CHANNEL_REF marker) |
+| zomlg0001.bmp   | true                     | 14 (EMT_TRANSPARENT_ALPHA_CHANNEL_REF marker) |
+| zomch0002-5.bmp | false                    | 0 (EMT_SOLID, unchanged)                     |
+| zomlg0002.bmp   | false                    | 0 (EMT_SOLID, unchanged)                     |
+
+Downstream, EntityRenderer::createEntity's material-assignment loop (the
+EMT_TRANSPARENT_ALPHA_CHANNEL_REF branch, entity_renderer.cpp ~line 636)
+converts marker 14 into the compiled GLES2 RGBA alpha-test shader:
+
+| stage                                         | MaterialType | meaning |
+|------------------------------------------------|--------------|---------|
+| mesh_building.cpp (masked, before entity_renderer) | 14        | EMT_TRANSPARENT_ALPHA_CHANNEL_REF — fixed-function marker, not a compiled GLES2 program |
+| entity_renderer.cpp (after applyAlphaTestMaterialType) | 258   | compiled RGBA alpha-test shader (alphaTestRGBA) — SAME numeric ID P21's door evidence table documented for the identical shader |
+
+This is decisive: before this unit, mesh_building.cpp hardcoded EMT_SOLID
+(0) unconditionally, so masked entity materials NEVER reached
+applyAlphaTestMaterialType() at all (P21's own audit, confirmed again by
+re-running this trace against the pre-fix code — isMasked always false,
+MaterialType always 0). After this unit, the two masked befallen zombie
+textures are correctly classified, marked, and routed to the compiled
+alpha-test shader — P21's dead code is now live.
+
+Root-cause note (why the fix needed a 4th file beyond the plan's named
+territory): the FIRST version of this fix (mesh_building.cpp alone) traced
+isMasked=false for zomlg0001.bmp/zomch0001.bmp despite WLD ground truth
+being masked=true. Root cause: RaceModelLoader builds character meshes from
+a COMBINED geometry (geometry_combiner.cpp's combineCharacterParts /
+combineCharacterPartsWithTransforms / combineCharacterPartsRaw, merging
+per-body-part DMSPRITEDEF geometries into one ZoneGeometry for the animator)
+— all three combiner functions copied textureNames and textureInvisible
+into the merged materialData but silently DROPPED textureMasked entirely,
+so every combined character geometry's textureMasked() always came back
+empty regardless of source WLD data. This is upstream of mesh_building.cpp
+and race_model_loader.cpp, in the same data-flow path (the geometry object
+mesh_building.cpp directly consumes) — without this fix the unit's stated
+goal (masked entity textures actually render masked) is unreachable no
+matter what mesh_building.cpp does. Flagged as a deviation in the plan's
+Review (in-territory by necessity, not scope creep for its own sake).
+
+Stills (NFS, not committed)
+-----------------------------
+- p37_befallen_general.png — zone-in at the standard Testchar restore point
+  (zone_id=36, x=-77.9232, y=21.9086, z=3, heading=190) with the AFTER
+  (fixed) binary. Real zone geometry confirmed rendering (stone
+  bridge/catwalk, rock ceiling texture, purple plant prop) — no zombie in
+  frame at this vantage; included as proof the fix builds/runs/zones
+  cleanly, not as masked-texture evidence.
+- p37_befallen_zombie.png / p37_befallen_zombie_AFTER.png — GM-teleport
+  attempts toward known a_zombie spawn2 coordinates
+  (-161,-373,-38.13 and a #goto-then-/moveto sequence). Both landed the
+  camera near open space / the same bridge structure, no zombie visible in
+  frame — honestly reported as inconclusive framing, not usable as
+  before/after masked-texture pixel evidence. Not chased further given
+  the decisive numeric trace above and session time already spent (zombies
+  wander from spawn2 coordinates once the zone has been running; repeated
+  #goto calls each re-triggered a same-zone reload adding ~25s per retry).
+- p37_unmasked_spotcheck_BEFORE.png / _AFTER.png — the unmasked-race spot
+  check (see Review "Behavior scope" below): Testchar (Human, fully
+  unmasked) at the same restore point, captured with the BEFORE (fix
+  reverted via `git stash`) and AFTER (fix applied) binaries via identical
+  script/wait timings. Visually indistinguishable; pixel-diffed
+  (480,000 px, RGB): max_delta=7, 234/480000 px nonzero (0.05%),
+  mean_delta=0.00026 — FP-noise-class (anti-aliasing/compression variance
+  between two independent process renders), not a structural change,
+  matching the "FP-class-only diffs (scattered singles, max_delta<=1)"
+  convention P10 established for this same kind of A/B comparison (here
+  slightly higher, still visually and statistically negligible against an
+  entirely-unmasked model).
+
+Ground-truth WLD scan tool
+-----------------------------
+A throwaway diagnostic (not committed, mirrors P21's own throwaway WLD
+scanner) built against wld_loader.cpp/pfs.cpp using
+WldLoader::getGeometries()/textureMasked() directly — the same ground-truth
+signal zone_geometry.cpp/mesh_building.cpp consult — enumerated all
+Fragment 0x30 TransparentMasked materials in befallen_chr.wld,
+qeynos2_chr.wld, gfaydark_chr.wld, and global_chr.wld. A second throwaway
+tool (EQE1Loader-based) queried the deployed /mnt/projects/EverQuest_ETC1/
+*.eqe1 archives for each masked texture's `hasAlpha`/companion-alpha
+presence. See the plan Review's ground-truth table for full results.
