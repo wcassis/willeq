@@ -342,7 +342,15 @@ ENDIF()
 # Test WLD file parsing (Phase 2: Header and String Table)
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_wld
-        test_wld.cpp
+        test_wld_header.cpp
+        test_wld_fragments_mesh.cpp
+        test_wld_fragments_skeleton.cpp
+        test_wld_fragments_light.cpp
+        test_wld_fragments_bsp.cpp
+        test_wld_conversions.cpp
+        test_wld_texture_loading.cpp
+        test_wld_zones.cpp
+        test_wld_zones_comprehensive.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
