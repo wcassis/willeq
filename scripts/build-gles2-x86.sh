@@ -84,6 +84,7 @@ cp "$DRM_SRC/COGLES2Shaders.h"          "$DEST_SRC/COGLES2Shaders.h"
 cp "$DRM_SRC/COGLES2Shaders.cpp"        "$DEST_SRC/COGLES2Shaders.cpp"
 cp "$DRM_SRC/COGLES2MaterialRenderer.h" "$DEST_SRC/COGLES2MaterialRenderer.h"
 cp "$DRM_SRC/COGLES2MaterialRenderer.cpp" "$DEST_SRC/COGLES2MaterialRenderer.cpp"
+cp "$DRM_SRC/gl_call_counters.h"        "$DEST_SRC/gl_call_counters.h"
 # x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
 cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
 cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"

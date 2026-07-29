@@ -1475,6 +1475,11 @@ IF(EQT_GRAPHICS)
     ENDIF()
     IF(EQT_GLES2)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_GLES2)
+        # P38: gl_call_counters.h (driver-side glBindTexture/glTexParameteri
+        # counters, disabled by default) -- header-only, shared with the
+        # patched Irrlicht copy at docker/irrlicht-drm/COpenGLES2Driver.cpp.
+        TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE
+            ${CMAKE_SOURCE_DIR}/docker/irrlicht-drm)
     ENDIF()
     SET(ZONE_BENCH_LIBS
         ${ZLIB_LIBRARIES}

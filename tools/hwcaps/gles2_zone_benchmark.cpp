@@ -46,7 +46,7 @@
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
-
+#include "gl_call_counters.h"  // P38: driver-side glBindTexture/glTexParameteri counters
 
 #endif
 
@@ -88,6 +88,7 @@ struct Options {
     bool occlusionCull = true;    // Software occlusion culling (on by default, disable with --no-occlusion-cull)
     bool frontToBack = true;
     bool depthTest = true;
+    bool glCounters = false;  // P38: enable driver glBindTexture/glTexParameteri call counters (off by default)
     int maxDraws = 0;         // 0 = unlimited
     int maxPolys = 0;         // 0 = unlimited
     int lightCount = -1;      // -1 = use zone defaults
@@ -318,6 +319,7 @@ static void printUsage(const char* prog) {
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
     printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: 16, matches production)\n");
+    printf("  --gl-counters        P38: record driver glBindTexture/glTexParameteri calls per frame (tex_binds/tex_param_calls CSV columns; off by default, zero overhead when absent)\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
@@ -549,6 +551,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--merge-probe-csv") == 0 && i + 1 < argc) opts.mergeProbeCsv = argv[++i];
         else if (strcmp(argv[i], "--merge-zone-draws") == 0) opts.mergeZoneDraws = true;
         else if (strcmp(argv[i], "--baked-unmerged-zone-draws") == 0) opts.bakedUnmergedZoneDraws = true;
+        else if (strcmp(argv[i], "--gl-counters") == 0) opts.glCounters = true;
         else if (strcmp(argv[i], "--occluder-budget") == 0 && i + 1 < argc) {
             // P11: accept an integer, or "uncapped" (approximated as a very
             // large region count -- the loader has fewer regions than this
@@ -1313,6 +1316,9 @@ int main(int argc, char** argv) {
         double loadMs = std::chrono::duration<double, std::milli>(loadT1 - loadT0).count();
         printf("LOAD_PHASE_MS=%.2f\n", loadMs);
     }
+#ifdef EQT_HAS_GLES2
+    if (opts.glCounters) eqtEnableGLCallCounters(true);
+#endif
 
     // P09 Phase B: build the cross-region same-material merge buffers once,
     // right after zone geometry load, before any draw. No-op cost when both
@@ -2399,6 +2405,9 @@ int main(int argc, char** argv) {
         if (measuring) {
             metrics.beginFrame(frame - opts.warmup, camPos.x, camPos.y, camPos.z,
                                tp.heading, tp.pitch);
+#ifdef EQT_HAS_GLES2
+            if (opts.glCounters) eqtResetGLCallCounters();
+#endif
         }
 
         // Tick entity animations (skeletal skinning)
@@ -2695,6 +2704,15 @@ int main(int argc, char** argv) {
                 metrics.finalizePhaseTiming();
             }
         }
+
+        // P38: snapshot driver GL call counters before glFinish() -- they
+        // count submission-phase glBindTexture/glTexParameteri calls, not
+        // GPU-side work, so must be read before the sync point below.
+#ifdef EQT_HAS_GLES2
+        if (measuring && opts.glCounters) {
+            metrics.setGLCounters(eqtGetGLTexBinds(), eqtGetGLTexParams());
+        }
+#endif
 
         // GPU sync
 #ifdef EQT_HAS_GLES2

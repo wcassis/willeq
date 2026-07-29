@@ -9,6 +9,7 @@
 #include "COGLES2Texture.h"
 #include "os.h"
 #include "CImage.h"
+#include "gl_call_counters.h"
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -20,6 +21,10 @@ namespace irr
 {
 namespace video
 {
+
+// P38 audit: process-wide counter instance, disabled by default. See
+// gl_call_counters.h for the zero-cost-when-off justification.
+GLCallCounters g_glCounters;
 
 // ============================================================================
 // Constructor / Destructor
@@ -361,6 +366,7 @@ void COpenGLES2Driver::bindTexture(GLuint unit, GLuint tex)
     // Always bind — external code (TextureAtlas, ShaderCallback) may change
     // bound textures via raw GL calls, making our tracked state stale.
     glBindTexture(GL_TEXTURE_2D, tex);
+    if (g_glCounters.enabled) g_glCounters.texBinds++;
     state_.boundTexture[idx] = tex;
 }
 
@@ -1155,6 +1161,8 @@ void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
                      material.TextureLayer[0].TextureWrapU == ETC_CLAMP_TO_EDGE;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+        // P38 audit instrumentation (kept, flag-gated -- see gl_call_counters.h).
+        if (g_glCounters.enabled) g_glCounters.texParams += 4;
     }
 
     // Second texture unit (for ETC1 alpha companion or atlas alpha)
