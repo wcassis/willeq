@@ -1147,3 +1147,20 @@ proper fix:
 
 - Batch E table in progress.md has empty commit columns (work is committed;
   hashes were never recorded).
+
+## P37 follow-ups (2026-07-29, merged `0019ba6`)
+
+- **Pi KPI attribution + re-measure needed**: P37 excludes ~15 masked
+  races (incl. SKE globally + ZOM in befallen — befallen's population)
+  from composite eligibility per-variant → their draw counts revert to
+  multibuffer. The befallen KPI (p95 30.9fps, margin 0.99ms) was
+  measured with those races composited. Next Pi canonical replay may
+  shift — attribute HERE. A KPI spot re-measure is the prudent next Pi
+  unit; if it regresses below 30fps, options: composite-sheet alpha
+  support (builder change + redeploy) or accept the loss for era
+  correctness (Will's call).
+- **Bless evidence pending**: P37's live stills failed to frame a
+  zombie (bad vantage + night). Numeric trace is solid but Will's
+  visual bless needs a follow-up errand: #time 12, camera on befallen
+  skeletons/zombies (SKE rib gaps most dramatic) + qeynos2 beahe0008,
+  same-pose before/after via a pre-P37 binary or config toggle.
