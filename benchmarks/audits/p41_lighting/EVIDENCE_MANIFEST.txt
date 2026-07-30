@@ -1,0 +1,79 @@
+P41 — lighting-model lever characterization — evidence manifest
+=================================================================
+
+Per the repo convention (P20's manifest, benchmarks/audits/p20_live_visual/
+EVIDENCE_MANIFEST.txt), PNG stills are not committed (gitignored repo-wide);
+they live on NFS at /mnt/projects/fable/videos/p41_lighting/. This manifest
+(committed) records what exists and what each still shows.
+
+Capture mechanism: build-gles2/bin/gles2_zone_benchmark (x86, llvmpipe/EGL
+surfaceless), befallen zone, the exact 3 Q03-blessed golden camera poses
+(tests/goldens/manifest.json's "befallen" zone entry, unchanged --
+GLS level 9 / Greater Lightstone / x3 color boost, count-mode budget 20,
+i.e. tests/goldens/manifest.json's productionConfig args):
+
+  --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count
+  --player-light-level 9
+
+Per-pixel variant: exactly productionConfig (no extra flag -- default).
+Lightweight variant: productionConfig + --lighting-model lightweight.
+Both at 800x600, --dump-frames 0,1,2, same 3 camera poses:
+
+  f0: -554.8,-186.9,-50.1,270.0,-5.0  (crypt altar/pillar room, checkerboard
+      floor, wooden-lattice walls, staircase in background)
+  f1: -299.9,-181.9,-9.0,0.0,-5.0     (crypt doorway/archway onto stone-
+      railed hall, checkerboard floor)
+  f2: -149.9,-5.8,7.1,180.0,-5.0      (crypt balcony hall: checkerboard
+      floor, stone balustrade railing, vaulted ceiling)
+
+Stills (NFS, /mnt/projects/fable/videos/p41_lighting/):
+  perpixel_f{0,1,2}.png       -- per-pixel (current shipped/blessed default)
+  lightweight_f{0,1,2}.png    -- lightweight (all-per-vertex) variant
+  diff_f{0,1,2}.png           -- ImageChops.difference() heatmap (RGB)
+  crop_perpixel_f{0,1,2}.png  -- 200x200 crop centered on the single
+                                  largest-delta pixel, per-pixel variant
+  crop_lightweight_f{0,1,2}.png -- same crop window, lightweight variant
+  diff_stats.json             -- per-frame stats (below)
+
+CSVs (this repo, committed): x86_perpixel.csv, x86_lightweight.csv (same
+directory as this manifest).
+
+Diff stats (RGB channel-max delta per pixel, PIL ImageChops.difference;
+"pct pixels differ" = fraction with any nonzero delta):
+
+| frame | pose (short)      | % pixels differ | mean delta | max delta | crop window (px) |
+|-------|--------------------|------------------|------------|-----------|-------------------|
+| f0    | altar/pillar room  | 28.5%            | 1.17       | 22        | (0,60)-(100,260)  |
+| f1    | doorway/archway    | 89.9%            | 11.04      | 112       | (480,336)-(680,536) |
+| f2    | balcony hall       | 30.3%            | 3.18       | 74        | (314,0)-(514,126) |
+
+Objective read (report, not spin, per the plan's instruction): f1 (the
+doorway/archway view, closest camera distance to the large checkerboard-
+floor polygons and stone-railed hall walls) shows by far the largest and
+most widespread difference -- 90% of pixels differ, mean channel delta
+11/255. This is consistent with the plan's predicted "1999-era signature":
+per-vertex lighting on large, sparsely-tessellated polys (the checkerboard
+floor, hall walls) produces visible banding/gradient-interpolation
+artifacts across the polygon face that per-pixel shading avoids -- the
+lightweight crop at f1 shows a visibly flatter, more uniformly-lit floor
+with coarser light falloff versus the per-pixel crop's smoother radial
+falloff around the player-light position. f0 and f2 (rooms/halls with
+smaller, more numerous polys and a farther/more oblique light) show
+smaller, more localized differences (~30%, mean delta 1-3/255) -- the
+banding effect is present but far less visually obvious with finer
+tessellation. Will may find the lightweight look period-appropriate
+(Voodoo1-era EQ shipped exactly this); no acceptability judgment is made
+here.
+
+Performance context at these exact 3 poses (x86 llvmpipe, not
+representative of Pi hardware -- see refactor/perf_truth_audit.md's
+2026-07-30 P41 section for the Pi numbers that matter for the decision):
+
+| variant     | total avg/p95 (ms) | GPU avg/p95 (ms) | state changes avg |
+|-------------|---------------------|-------------------|--------------------|
+| per-pixel   | 10.66 / 19.58       | 3.32 / 3.84       | 10                 |
+| lightweight | 9.11 / 17.47        | 2.63 / 2.90       | 6                  |
+
+draws/polys/regions identical between variants at all 3 poses (204/717/79
+avg -- lighting model does not change geometry/visibility decisions, only
+shading), confirming the A/B is a clean shading-only comparison.
