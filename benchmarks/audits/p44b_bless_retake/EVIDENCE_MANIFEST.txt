@@ -1,0 +1,299 @@
+P44b — P37 bless-evidence RETAKE (static gles2_zone_benchmark, pose-identical)
+================================================================================
+
+Purpose: Will REJECTED P44's live-client before/after pairs (see
+refactor/P44_p37_bless_evidence.md Review, now annotated VOID) because (1)
+live aggroed-mob animation timing was not synchronized with /screenshot, so
+BEFORE/AFTER caught different poses, and (2) the vantage put dark stone
+behind the ribcages, making pre-P37 masked-opaque and post-P37 alpha-test
+visually indistinguishable against a dark background. This unit re-attempts
+the SAME underlying claim (P37's entity-texture alpha-test fix is visible)
+using gles2_zone_benchmark's deterministic camera/entity placement instead
+of a live client, specifically to make pose-desync structurally impossible.
+
+HEADLINE RESULT (lead with this, per plan instruction): the visual claim is
+a NULL RESULT on this instrument — BEFORE and AFTER binaries render
+PIXEL-IDENTICAL entity silhouettes for skeleton (SKE, race 21) and zombie
+(ZOM, race 70) at every camera angle, orbit radius, and zoom level tested in
+befallen (3 angles x 3 radii x close-up scale checks, see below). This is
+NOT evidence that P37's fix is wrong -- a temporary numeric diagnostic
+(method below) confirms the AFTER binary's mesh_building.cpp correctly
+classifies the exact ground-truth masked textures (skech0001/skefa0001/
+skeft0001/skeft0002/skelg0001, zomch0001/zomlg0001) and assigns
+MaterialType=14 (EMT_TRANSPARENT_ALPHA_CHANNEL_REF), matching P37's own
+Review trace precisely, texture-for-texture. The null pixel result is
+root-caused to a GAP IN THE BENCHMARK TOOL, not the production fix: see
+"Root cause" below.
+
+Binaries
+--------
+- AFTER  = current fable tip (branch task/P44b-bless-retake, ff-merged to
+  fable commit 74eb486), rebuilt fresh in this slot:
+  build/bin/gles2_zone_benchmark (14,388,464 bytes), build/bin/willeq
+  (79,278,680 bytes). Non-stub, rebuilt via
+  `cmake --build build --target willeq gles2_zone_benchmark -j24`, clean.
+- BEFORE = commit fda2e34 (P37's real merge parent, 0019ba6^1 -- same
+  hash P44 used and P45 independently confirmed), built in a scratch tree
+  at build-preP37/ (gitignored `build-*/`). The pre-existing build-preP37/
+  from P44 had `willeq` but NOT `gles2_zone_benchmark`; verified it was
+  really at fda2e34 (git log -1 on the checked-out HEAD at build time) and
+  rebuilt BOTH targets there (gles2_zone_benchmark: 14,383,392 bytes,
+  willeq: 79,261,280 bytes) after temporarily checking out fda2e34 in this
+  worktree (git status was clean before/after; branch checkout restored
+  immediately after the build, verified via `git status`).
+- x86 GLES2 (llvmpipe) only, both via gles2_zone_benchmark. No Pi, no eqemu
+  (evidence gathered entirely offline via the benchmark tool -- no live
+  server session this unit, unlike P44/P37).
+
+Method
+------
+- `gles2_zone_benchmark --zone befallen --eq-path /mnt/projects/EverQuestP1999
+  --eqe1-path /mnt/projects/EverQuest_ETC1 --entities 1 --test-races <id>
+  --orbit-radius <R> --orbit-height-offset 6 --animate --frames 48 --warmup 2
+  --dump-frames <F1,F2,F3> --dump-png-prefix <path>` -- IDENTICAL flags/args
+  for BEFORE and AFTER, only the binary path differs. Zone bounds/geometry
+  are identical between binaries (P37 never touched zone_geometry.cpp --
+  confirmed via `git diff fda2e34 74eb486 -- src/client/graphics/eq/
+  zone_geometry.cpp` = empty), so the synthetic orbit-fallback camera path
+  (deterministic function of zone bounds + --orbit-radius/-height-offset,
+  360 fixed waypoints) is byte-identical between binaries by construction.
+  Entity placement (`placeEntitiesAlongPath`) is a deterministic function of
+  that same path + entity index, also identical by construction.
+- POSE DETERMINISM WITH --animate: initially attempted the plan's literal
+  suggestion (no --animate, "static scenegraph route"). Empirically this
+  does NOT hit P37's fix at all -- see Deviation 1 below -- so --animate was
+  required. This reintroduces an animation clock, but the benchmark's clock
+  is FRAME-INDEX-DRIVEN, not wall-clock (`simTimeMs = frame * 33.3f` in
+  gles2_zone_benchmark.cpp), so `OnAnimate(simTimeMs)` at a fixed
+  --dump-frames index produces an IDENTICAL bone pose on every run of either
+  binary -- pose-identical by construction, same guarantee the plan wanted
+  from the static path, just reached via a different (still fully
+  deterministic) route. This is NOT the live-client wall-clock animation
+  that broke P44.
+- Alignment verification: file sizes of same-frame BEFORE/AFTER PNGs match
+  almost exactly (within ~40 bytes, PNG compression variance) for identical
+  poses; ImageMagick `compare -metric AE` confirms 0 or near-0 differing
+  pixels at every angle (see Pairs below) -- i.e., the images ARE aligned;
+  the null result is a real pixel-level null, not a misalignment artifact.
+- Entity race IDs: SKE=21 (race_codes.cpp case 21 "Skeleton" -- the global
+  masked textures skech0001/skefa0001/skeft0001/skeft0002/skelg0001 match
+  P37's ground-truth table exactly), ZOM=70 (race_codes.cpp case 70
+  "Zombie" -- zomch0001/zomlg0001 match P37's table). Both races' meshes
+  load from the global _chr archives (befallen's own _chr.s3d lacks them,
+  as the plan warned); confirmed via the benchmark's own load log
+  ("Loaded N race meshes", global_chr*.eqe1 mmap lines) -- no separate
+  archive-loading workaround was needed, RaceModelLoader::loadGlobalModels()
+  already covers this.
+- Bear (beahe0008, qeynos2): DROPPED, per the plan's explicit allowance
+  ("only if the benchmark can select that variant cleanly; otherwise drop
+  it with a note"). `--test-variant` only accepts 0-4 (naked/cloth/chain/
+  plate/leather body-armor variants); `beahe0008.bmp` is a head-texture
+  PAGE 8, not a body-armor variant, and the benchmark has no CLI hook to
+  select a specific texture page number for a race (that was done in P44
+  only via a live GM `#set texture 8` command, which has no benchmark
+  equivalent). Not pursued further -- P37's own numeric trace for this
+  texture (beahe0008.bmp, 5480B companion alpha, FIXED) is already solid
+  per its ground-truth table, and this unit's SKE/ZOM findings below cover
+  the "does the benchmark demonstrate the effect at all" question
+  sufficiently without it.
+
+Alpha-test-path verification (the "log or counter, not assumption" requirement)
+---------------------------------------------------------------------------------
+Added a TEMPORARY diagnostic (single fprintf(stderr, ...) call) immediately
+after mesh_building.cpp's `RaceModelLoader::buildMeshFromGeometry` masked-
+material assignment (the exact line P37's Review documents as the fix),
+printing texture name / isMaskedMaterial / resulting MaterialType for every
+entity mesh buffer built. Rebuilt gles2_zone_benchmark (AFTER binary only),
+ran once each for --test-races 21 and --test-races 70 with --animate (the
+diagnostic is load-time, not per-frame, so any --frames/--dump-frames works),
+captured stdout, then reverted the diagnostic (`git checkout --
+src/client/graphics/eq/mesh_building.cpp`) and rebuilt again before any
+final capture -- `git status` clean throughout, confirmed before and after.
+Same technique/precedent as P37's own Review ("Both diagnostics were
+temporary and fully reverted... before the final build/verification pass").
+
+Trace output (AFTER binary, --test-races 21, befallen):
+  skehe0001.bmp isMasked=0 MaterialType=0
+  skeua0001.bmp isMasked=0 MaterialType=0
+  skefa0001.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth
+  skeft0001.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth
+  skech0003.bmp isMasked=0 MaterialType=0
+  skech0005.bmp isMasked=0 MaterialType=0
+  skeft0002.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth
+  skech0001.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth
+  skech0002.bmp isMasked=0 MaterialType=0
+  skech0004.bmp isMasked=0 MaterialType=0
+  skehn0001.bmp isMasked=0 MaterialType=0
+  skehn0002.bmp isMasked=0 MaterialType=0
+  skelg0001.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth
+
+Trace output (AFTER binary, --test-races 70, befallen):
+  zomhe0001.bmp isMasked=0 MaterialType=0
+  zomua0001.bmp isMasked=0 MaterialType=0
+  zomfa0001.bmp isMasked=0 MaterialType=0
+  zomft0001.bmp isMasked=0 MaterialType=0
+  zomch0003.bmp isMasked=0 MaterialType=0
+  zomch0005.bmp isMasked=0 MaterialType=0
+  zomft0002.bmp isMasked=0 MaterialType=0
+  zomch0001.bmp isMasked=1 MaterialType=14   <- matches P37 (citywlivy-class, expect visual null)
+  zomch0002.bmp isMasked=0 MaterialType=0
+  zomch0004.bmp isMasked=0 MaterialType=0
+  zomhn0001.bmp isMasked=0 MaterialType=0
+  zomhn0002.bmp isMasked=0 MaterialType=0
+  zomlg0001.bmp isMasked=1 MaterialType=14   <- matches P37 ground truth (real alpha)
+  zomlg0002.bmp isMasked=0 MaterialType=0
+
+Every masked/unmasked classification matches P37's own committed
+ground-truth table exactly, texture name for texture name, with no
+exceptions. Source-level confirmation this is AFTER-only behavior: `git
+diff fda2e34 74eb486 -- src/client/graphics/eq/mesh_building.cpp` shows the
+isMaskedMaterial branch was added by P37 and does not exist at fda2e34 (pre-
+P37 hardcodes EMT_SOLID unconditionally at this call site) -- so BEFORE is
+guaranteed, by source inspection alone, to never emit MaterialType=14 here.
+
+ROOT CAUSE of the pixel-level null (why "verified taking the alpha-test
+path" does not equal "visibly different pixels")
+---------------------------------------------------------------------------------
+mesh_building.cpp's fix only sets `buffer->Material.MaterialType` and binds
+the MAIN texture on unit 0 (`setTexture(0, texture)`) -- it does NOT bind a
+companion alpha texture on unit 1. In production, that companion-binding
+(ETC1-masked -> unit-1 companion / RGBA-masked -> direct-alpha shader
+variant) is done exclusively by `EntityRenderer::applyAlphaTestMaterialType()`
+in entity_renderer.cpp (P21's plumbing, P37's Review explicitly names this
+as the consumer of its MaterialType marker). `entity_renderer.cpp` is NOT
+compiled into gles2_zone_benchmark (confirmed: `nm -C build/bin/
+gles2_zone_benchmark | grep applyAlphaTestMaterialType` -> no match, and the
+tool's CMake source list has no entity_renderer.cpp). Without
+applyAlphaTestMaterialType(), the entity mesh buffer keeps Irrlicht's
+built-in `EMT_TRANSPARENT_ALPHA_CHANNEL_REF` material type, which the GLES2
+driver (`COpenGLES2Driver::applyMaterialState`, docker/irrlicht-drm/
+COpenGLES2Driver.cpp) maps to the built-in `EOGLES2SP_ALPHA3D` shader
+program -- and that shader (`ALPHA3D_FS_BASE`/`_DERIVATIVES`,
+COGLES2Shaders.cpp) reads its discard alpha from `texture2D(uTexture,
+vTexCoord).a` on unit 0 ONLY. For ETC1-loaded textures (--eqe1-path), unit 0
+is an ETC1_RGB-compressed texture with NO alpha plane at all (opaque
+format) -- alpha always reads 1.0, so the discard never fires, regardless
+of camera distance or angle. Re-ran without --eqe1-path (forcing raw BMP
+decode instead) to test whether the BMP's own alpha/color-key data would
+work through unit 0 directly -- still 0 pixel difference at all 3 angles,
+meaning the raw BMP decode path also does not deliver a real alpha channel
+that this generic shader can discard on for these textures. This is a real
+gap in gles2_zone_benchmark's entity rendering fidelity relative to
+production, not evidence against P37's fix -- P37's fix demonstrably DOES
+change what production's entity_renderer.cpp receives (mesh_building.cpp's
+correct MaterialType marker, confirmed above), it is simply not visually
+exercised by this offline tool.
+
+Pairs delivered (all 800x600 PNG, /mnt/projects/fable/videos/p44b_bless_retake/, NFS, gitignored)
+-----------------------------------------------------------------------------------------------------
+pairs/{ske,zom}_{BEFORE,AFTER}_f{12,26,42}.png -- 3 orbit angles (frames 12,
+26, 42 of a 48-frame, --orbit-radius 8, --orbit-height-offset 6 orbit;
+entity visible and well-framed at all 3, silhouetted against the zone's
+flat navy clear-color "sky" (RGB 40,40,60), which is exactly the
+high-contrast background the plan asked for -- see crops/).
+
+| pair | frame | AE (differing px / 480000) | location of diff | verdict |
+|---|---|---|---|---|
+| ske | f12 | 44 (0.0092%) | x=5-7,y=497-513, a small gray zone-geometry gradient edge FAR from either skeleton -- confirmed via direct pixel dump, not on the entity | FP-noise-class (below P37's own 0.05% documented independent-process noise floor), unrelated to P37 |
+| ske | f26 | 0 | n/a | pixel-identical |
+| ske | f42 | 0 | n/a | pixel-identical |
+| zom | f12 | 44 (0.0092%) | identical x/y region as ske f12 (zone geometry, race-independent) | same FP-noise, unrelated to P37 |
+| zom | f26 | 0 | n/a | pixel-identical |
+| zom | f42 | 0 | n/a | pixel-identical |
+
+Additional close-up scale check (radius 3, i.e. ~2.5x closer than the
+32-radius pairs above, entity fills much more of frame where in view):
+0 AE at all 3 sampled frames -- rules out "the effect exists but is too
+small to register a pixel" as an alternative explanation; the null holds
+at close range too, consistent with the root-cause explanation above
+(the discard literally never fires, independent of scale).
+
+Diff-confinement verification (the plan's byte-identical-except-alpha-
+regions requirement): the ONLY non-zero diff across all 6 delivered pairs
+(ske/zom x f12/26/42) is the 44-pixel f12 zone-geometry noise above, which
+is (a) off the entity entirely, (b) present identically for both races
+(confirms it's zone-geometry, race-independent), and (c) below P37's own
+established FP-noise floor. Nothing else differs between BEFORE and AFTER
+at identical invocation -- verified by direct per-pixel Python diff (not
+just ImageMagick's summary AE count) for f12, and PNG bybyte-size
+near-equality for all frames. Investigated per the plan's STOP-if-anything-
+else-differs rule; concluded it is ordinary independent-process render
+variance, not a regression, and does not block delivery.
+
+Contact sheets (/mnt/projects/fable/videos/p44b_bless_retake/contact_sheet/)
+-----------------------------------------------------------------------------
+AFTER-binary-only (angle/elevation survey used to SELECT f12/26/42 above):
+- montage_ske_r8h6.png / montage_zom_r8h6.png: 16 frames (every 3rd of 48)
+  at orbit-radius 8, height-offset 6. Entity visible in ~5-6 of 16 tiles
+  (frames roughly 9-27 and 36-45); the other tiles show empty zone geometry
+  (dark stone, no bright-background problem, but the entity is simply
+  off-camera at that point in the orbit -- occluded/out of frustum, not a
+  lighting failure).
+- montage_ske_r15h6.png (wider orbit, entity visible ~f21-27 only, smaller
+  in frame) and montage_ske_r25h6.png (widest orbit, entity visible f36-45,
+  largest/closest apparent size of the three radii tested) included for
+  completeness -- r8 was selected as the primary radius because it gave the
+  most consistent multi-angle coverage of the entity against the navy sky
+  background without ever putting dark stone directly behind the torso.
+- Angles that FAILED (entity not in frame): roughly 2/3 of every orbit's
+  frames, at every radius -- because the orbit path is anchored at the
+  ZONE'S bounding-box center (not at the entity), while the entity sits
+  offset ~5-8 EQ units to the side of the path per-frame; only the arc of
+  the orbit where the camera's forward direction happens to sweep across
+  that offset position shows the entity at all. This is a benchmark
+  framing mechanic (entities are placed near, not ON, the camera path, to
+  avoid the camera clipping through them), not a P37-relevant failure.
+
+Crops (/mnt/projects/fable/videos/p44b_bless_retake/crops/)
+-------------------------------------------------------------
+- ske_{BEFORE,AFTER}_f26_torso_zoom.png: 400%-upscaled ribcage crop, f26.
+  Visually near-identical (confirmed pixel-identical above) -- both show
+  apparent "gaps" between individual ribs, but these are 3D mesh-geometry
+  negative space (separate rib-bone sub-meshes with real empty space
+  between them), NOT texture alpha-test punch-through -- consistent with
+  the root-cause finding that alpha-test never actually discards any texel
+  on this tool. Included so a viewer can confirm for themselves that yes,
+  the two images really are indistinguishable, not just "AE says so".
+- zom_AFTER_f26_legs_zoom.png / zom_AFTER_f26_chest_zoom.png: AFTER-only
+  (BEFORE is pixel-identical per the table above) close-ups of zomlg0001
+  (legs, real alpha per P37's table) and zomch0001 (chest, citywlivy-class,
+  expected null per P37's table and the plan's own upfront framing). Legs
+  render as a solid bright-green flesh tone with no visible holes; chest is
+  almost entirely occluded by an equipped leather chest-piece mesh at this
+  race/variant, consistent with P37's OWN Review noting the chest crop
+  "sits at background-noise-level" in its own live captures.
+
+Zombie chest (zomch0001) null confirmation
+--------------------------------------------
+Per the plan's upfront framing: zomch0001 is P37's documented
+citywlivy-class case (WLD masked=true, decode-opaque, unchanged BY DESIGN).
+The diagnostic trace above confirms it STILL gets MaterialType=14 (masked
+classification fires) exactly as P37 intended -- the null is expected and
+correct at the texture-decode level (alpha channel is opaque, so even a
+working discard shader would never discard any texel), independent of and
+in addition to this unit's separate tool-level finding that the benchmark's
+discard shader doesn't fire on ANY masked texture (real-alpha or not) due
+to the missing companion-texture wiring. Both null explanations apply
+simultaneously for zomch0001; only the tool-wiring one applies to
+zomlg0001/skech0001/etc.
+
+Verification
+------------
+- No production source changes: `git status` on task/P44b-bless-retake
+  shows only this manifest + the plan file + (gitignored) capture scripts/
+  outputs under build-*/ and videos/. The temporary mesh_building.cpp
+  diagnostic was reverted (`git checkout --`) before any commit; confirmed
+  clean via `git status`/`git diff --stat` immediately after revert AND
+  again after the final rebuild.
+- Both binaries verified non-stub by size (AFTER gles2_zone_benchmark
+  14,388,464 bytes / willeq 79,278,680 bytes; BEFORE gles2_zone_benchmark
+  14,383,392 bytes / willeq 79,261,280 bytes) before any capture.
+- Builds clean: `cmake --build build --target willeq gles2_zone_benchmark
+  -j24` (AFTER) and the equivalent in build-preP37/ (BEFORE, after
+  temporarily checking out fda2e34) both completed with zero errors/
+  warnings-as-diagnostics beyond normal compiler output.
+- Pairs pose-aligned by construction (deterministic camera/entity
+  placement + frame-index-driven animation clock, not visual eyeballing) --
+  see Method above.
+- Full ctest/gate NOT run -- no production source changes ship from this
+  branch (errand bar, same as P44's own narrowed verification bar).

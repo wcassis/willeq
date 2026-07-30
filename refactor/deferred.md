@@ -1175,13 +1175,35 @@ proper fix:
   aggroed mobs' attack animation made before/after pose-mismatched
   (diff = pose, not alpha), and the dark-stone background makes
   masked-opaque fill indistinguishable from alpha cutout. P44's
-  "textbook evidence" claim is UNSOUND (annotation owed by P44b).
-  **P44b retake IN FLIGHT** (task/P44b-bless-retake, slot2): static
-  benchmark rendering (pose-identical by construction), bright-
-  background close-up contact sheet, diff-confined-to-mask-regions
-  assertion. Zombie chest (zomch0001) remains an expected null by
-  design. LESSON: never use live animated mobs for visual A/B
-  evidence; always check what's behind the alpha regions.
+  "textbook evidence" claim is UNSOUND — annotated VOID in
+  `refactor/P44_p37_bless_evidence.md`'s Review by P44b.
+  **P44b retake COMPLETE (task/P44b-bless-retake, slot2) — STILL NO
+  VISUAL EVIDENCE, new root cause found**: pose-identical static-
+  benchmark method worked as designed (deterministic camera/entity
+  placement + frame-index animation clock, bright-navy-sky close-up
+  framing), but BEFORE/AFTER renders came back PIXEL-IDENTICAL for
+  both SKE and ZOM at every angle/radius/scale tried. Root cause is a
+  `gles2_zone_benchmark` TOOL GAP, not a P37 regression: the tool
+  never links `entity_renderer.cpp`, so `mesh_building.cpp`'s
+  MaterialType marker (confirmed correct via a reverted diagnostic
+  trace, texture-for-texture match to P37's ground-truth table) never
+  gets its companion-alpha-texture binding — the built-in alpha-test
+  shader the tool falls back to reads unit-0 alpha only, which is
+  always opaque for ETC1-loaded entity textures, so the discard never
+  fires regardless of framing. RECOMMENDATION (not actioned, out of
+  P44b's errand scope): wire `applyAlphaTestMaterialType()`-equivalent
+  companion-texture binding into `gles2_zone_benchmark`'s entity path
+  so future entity-rendering blesses have a working offline visual
+  instrument — this would unblock a THIRD bless attempt without
+  needing a live client at all. Zombie chest (zomch0001) remains an
+  expected null by design (confirmed independently, doubly-so).
+  Full writeup: `refactor/P44b_bless_retake.md`,
+  `benchmarks/audits/p44b_bless_retake/EVIDENCE_MANIFEST.txt`.
+  LESSON (P44): never use live animated mobs for visual A/B evidence;
+  always check what's behind the alpha regions. LESSON (P44b): before
+  trusting an offline benchmark tool as a stand-in for production
+  visual behavior, verify it actually links the production code path
+  in question, not just a marker the production path would consume.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);

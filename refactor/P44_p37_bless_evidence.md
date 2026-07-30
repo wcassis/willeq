@@ -53,6 +53,28 @@ production source changes.
 
 ## Review
 
+**P44b ANNOTATION (retake dispatched, see refactor/P44b_bless_retake.md)**:
+Will REJECTED this unit's live-client visual pairs. The rejection is
+CORRECT, confirmed independently by P44b's own investigation, for two
+compounding reasons: (1) the live aggroed mobs ran attack animations and
+`/screenshot` timing was not animation-synchronized, so BEFORE/AFTER caught
+different POSES -- the pixel diff below is dominated by pose mismatch, not
+alpha; (2) the vantage put dark stone/shadow directly behind the ribcages,
+where pre-P37 masked-opaque (dark texture fill) and post-P37 alpha-test
+(background bleed-through) are visually indistinguishable against a near-
+black background. Per the below, specifically VOID the "textbook alpha-test
+evidence" characterization of the skeleton pair and the "STRUCTURAL
+DIFFERENCE CONFIRMED" framing of the qeynos2 bear pair as VISUAL bless
+evidence -- the underlying pixel diffs are real (not fabricated) but do not
+demonstrate what the prose around them claims a human viewer can see. The
+zombie honest-null finding (zomch0001 citywlivy-class) is NOT void -- it
+was independently re-confirmed by P44b via a different method (source-level
+numeric trace) and still holds. See refactor/P44b_bless_retake.md for the
+retake's own (also inconclusive, for a different and newly-discovered
+reason -- a benchmark-tool wiring gap, not a framing problem) result. This
+annotation follows the P08d-retake precedent: annotate in place, do not
+delete the original prose below.
+
 **Delivered**: three same-pose before/after PNG pairs (befallen
 skeletons, befallen zombies, qeynos2 bear/"bone helm") at
 `/mnt/projects/fable/videos/p44_p37_bless/stills/` (NFS, gitignored),
