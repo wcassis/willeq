@@ -1176,18 +1176,29 @@ proper fix:
   2-invocation clean Pi A/B (400x300 vs 800x600, shipped flags) to
   close it — ride along the next Pi unit.~~ Non-4:3 aspect changes DO
   move the frustum (correct behavior, noted for future res work).
-- **REOPENED by P41's Pi ride-along (2026-07-30, merged `edcd72a`)**:
-  the clean shipped-flags Pi A/B REPRODUCES the anomaly on real
-  hardware — 400x300 vs 800x600: draws 8.7→10.6 (+22%), triangles
-  1,379.6→1,917.8 (+39%), GPU time >3x WORSE at the LOWER resolution.
-  P40's x86 null stands (llvmpipe counters byte-identical) but does
-  not transfer: the mechanism is Pi/Lima-driver-specific and P40's
-  x86-only method could not see it. Follow-up unit: rerun P40's
-  root-cause approach against the actual hardware (counter capture on
-  the Pi, Lima-side suspects). Higher priority than the other P41
-  residuals — lower-res-as-perf-escape-hatch is broken until
-  understood. CSV: benchmarks/pi_runs/p41_lighting_lever/
-  befallen_res_400x300_e5_shipped.csv.
+- ~~REOPENED by P41's Pi ride-along~~ — **ROOT-CAUSED + CLOSED by P43
+  (2026-07-30, merged `330aa10`; full narrative in
+  refactor/P43_res_visibility_root_cause.md Review)**: NOT a culling
+  bug, NOT Lima. `docker/irrlicht-drm/CIrrDeviceFB.cpp:335-382`
+  silently substitutes the connector's PREFERRED mode when --res has
+  no exact DRM match and overwrites Width/Height downstream — every
+  historical "400x300" Pi run actually rendered **2560x1440** (16:9,
+  7.68x the pixels of 800x600), log-confirmed on hardware. Wider
+  frustum explains +22% draws/+39% tris to the decimal; "GPU
+  inversion" = plain fill-bound scaling at the real pixel count.
+  P40's x86 null was correct all along (P43 re-confirmed
+  byte-identical in both flag configs). **CAUTION for all past/future
+  data: any Pi CSV at a non-native resolution is mislabeled — the
+  only trustworthy Pi resolutions are the connector's exact modes
+  (800x600@75 confirmed; check the mode list before any res sweep).**
+  Shipped 800x600 unaffected (exact mode match) → P43 correctly
+  STOPPED, no code change.
+- **NEW follow-up (small unit, needs Will's go — it's a real behavior
+  change)**: make the DRM mode fallback FAIL LOUD (error out, or at
+  minimum a WARNING-level log + benchmark CSV column with the ACTUAL
+  mode) instead of silently substituting. Until then the benchmark
+  methodology trap remains armed for anyone requesting a non-native
+  resolution.
 
 ## P41 landed (2026-07-30, merged `edcd72a`): lighting lever characterized, report-only
 
