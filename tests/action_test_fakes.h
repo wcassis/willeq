@@ -10,6 +10,10 @@
 // not fail silently in a test.
 
 #include "client/action/action_dispatcher.h"
+#include "client/input/input_handler.h"
+#include <optional>
+#include <queue>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -286,6 +290,82 @@ private:
     template <typename T>
     static std::string toStr(T v) {
         return std::to_string(v);
+    }
+};
+
+// T15: scriptable IInputHandler fake for InputActionBridge tests. Like
+// RecordingActionHandler, it implements every pure virtual so interface
+// drift breaks the compile, not the tests. Test code loads the public
+// members directly; the bridge drains them through the interface.
+class FakeInputHandler : public input::IInputHandler {
+public:
+    // Scriptable state
+    std::set<input::InputAction> pendingActions;
+    input::InputState state;
+    std::queue<input::SpellCastRequest> spellCasts;
+    std::queue<input::HotbarRequest> hotbarRequests;
+    std::queue<input::TargetRequest> targetRequests;
+    std::queue<input::LootRequest> lootRequests;
+    std::queue<input::ChatMessage> chatMessages;
+    std::queue<input::MoveCommand> moveCommands;
+    std::queue<std::string> rawCommands;
+
+    // Recording
+    int updateCalls = 0;
+    int resetMouseDeltasCalls = 0;
+    std::vector<input::InputAction> consumedActions;  // every consumeAction hit
+
+    void update() override { ++updateCalls; }
+    bool isActive() const override { return true; }
+
+    bool hasAction(input::InputAction action) const override {
+        return pendingActions.count(action) > 0;
+    }
+    bool consumeAction(input::InputAction action) override {
+        if (pendingActions.erase(action) > 0) {
+            consumedActions.push_back(action);
+            return true;
+        }
+        return false;
+    }
+
+    const input::InputState& getState() const override { return state; }
+    void resetMouseDeltas() override { ++resetMouseDeltasCalls; }
+
+    std::optional<input::SpellCastRequest> consumeSpellCastRequest() override {
+        return pop(spellCasts);
+    }
+    std::optional<input::HotbarRequest> consumeHotbarRequest() override {
+        return pop(hotbarRequests);
+    }
+    std::optional<input::TargetRequest> consumeTargetRequest() override {
+        return pop(targetRequests);
+    }
+    std::optional<input::LootRequest> consumeLootRequest() override {
+        return pop(lootRequests);
+    }
+
+    bool hasPendingKeyEvents() const override { return false; }
+    std::optional<input::KeyEvent> popKeyEvent() override { return std::nullopt; }
+    void clearPendingKeyEvents() override {}
+
+    std::optional<input::ChatMessage> consumeChatMessage() override {
+        return pop(chatMessages);
+    }
+    std::optional<input::MoveCommand> consumeMoveCommand() override {
+        return pop(moveCommands);
+    }
+    std::optional<std::string> consumeRawCommand() override {
+        return pop(rawCommands);
+    }
+
+private:
+    template <typename T>
+    static std::optional<T> pop(std::queue<T>& q) {
+        if (q.empty()) return std::nullopt;
+        T v = q.front();
+        q.pop();
+        return v;
     }
 };
 
