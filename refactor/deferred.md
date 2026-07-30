@@ -1172,10 +1172,42 @@ proper fix:
   cost). Occlusion buffer is fixed 64x32 from the preset (never
   res-derived); frustum aspect identical at 4:3 points; no LOD-by-
   pixel code exists. Likeliest explanation = P38's own flagged
-  methodology drift (res run lacked shipped flags). PENDING: a
+  methodology drift (res run lacked shipped flags). ~~PENDING: a
   2-invocation clean Pi A/B (400x300 vs 800x600, shipped flags) to
-  close it — ride along the next Pi unit. Non-4:3 aspect changes DO
+  close it — ride along the next Pi unit.~~ Non-4:3 aspect changes DO
   move the frustum (correct behavior, noted for future res work).
+- **REOPENED by P41's Pi ride-along (2026-07-30, merged `edcd72a`)**:
+  the clean shipped-flags Pi A/B REPRODUCES the anomaly on real
+  hardware — 400x300 vs 800x600: draws 8.7→10.6 (+22%), triangles
+  1,379.6→1,917.8 (+39%), GPU time >3x WORSE at the LOWER resolution.
+  P40's x86 null stands (llvmpipe counters byte-identical) but does
+  not transfer: the mechanism is Pi/Lima-driver-specific and P40's
+  x86-only method could not see it. Follow-up unit: rerun P40's
+  root-cause approach against the actual hardware (counter capture on
+  the Pi, Lima-side suspects). Higher priority than the other P41
+  residuals — lower-res-as-perf-escape-hatch is broken until
+  understood. CSV: benchmarks/pi_runs/p41_lighting_lever/
+  befallen_res_400x300_e5_shipped.csv.
+
+## P41 landed (2026-07-30, merged `edcd72a`): lighting lever characterized, report-only
+
+- **AWAITING WILL — the lighting decision (keep per-pixel / flip to
+  lightweight / per-tier knob)**: evidence staged at
+  refactor/perf_truth_audit.md "2026-07-30 — P41" section (tables +
+  options note), stills at /mnt/projects/fable/videos/p41_lighting/
+  (manifest: benchmarks/audits/p41_lighting/EVIDENCE_MANIFEST.txt).
+  Headline: −15.1%/−22.1% total/GPU at realistic e5 but only
+  −6.4%/−11.2% at e205 stress (absolute ~1.3ms GPU savings constant,
+  diluted as entity submission grows); visually the doorway pose
+  differs on 89.9% of pixels (per-vertex banding on large flat polys
+  — the 1999-era signature). Per-pixel is Q03-blessed territory; no
+  flip without Will.
+- **Swap-floor (audit item 5) narrowed**: eglSwapInterval(0) =
+  decisive null (swap_ms 3.805 vs 3.873 control). EGL default swap
+  interval ruled out; next hypothesis = the DRM page-flip's own
+  waitForFlipComplete() wait in docker/irrlicht-drm/CIrrDeviceFB.cpp
+  (named, not proven). Future diagnostic unit if the ~14.4-15.0ms
+  wall floor matters.
 
 ## P39 landed (2026-07-30): occluder-256 plumbing + corrected framing
 
