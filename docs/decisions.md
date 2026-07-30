@@ -277,3 +277,20 @@ on the live GLES2 path before this unit (gated on a CPU-instancing tree
 count that only the deleted software path ever populated), so the wind
 weather multiplier has always been frozen at 1.0 in practice; this unit
 preserves that exact behavior rather than silently "fixing" it.
+
+### 2026-07-30 — Lighting model: per-pixel STAYS (Will's decision, P41 characterization)
+
+Will reviewed P41's evidence (Pi A/B at e5 + e205 on the canonical
+befallen replay; x86 stills at the three Q03-blessed golden poses,
+worst case f1 doorway = 89.9% of pixels differ with per-vertex banding
+on large flat polys) and decided: **keep per-pixel adaptive lighting as
+shipped.** The lightweight flip's saving is ~1.3ms GPU/frame absolute
+(−15.1% total at realistic e5 load, −6.4% at e205 stress); the 30fps
+KPI is already met with the current stack, so the flip's re-bless cost
+buys headroom the project doesn't currently need at the price of a
+visual change to personally-tuned Q03 territory. The per-tier-knob
+option was not pursued. Lightweight mode remains flag-gated in tree
+for future re-evaluation if the Pi tier ever needs the headroom;
+evidence preserved in refactor/perf_truth_audit.md ("2026-07-30 — P41")
+and benchmarks/audits/p41_lighting/. Q03's blessed visual state is
+unchanged and remains the quality bar.

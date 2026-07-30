@@ -1191,8 +1191,10 @@ proper fix:
 
 ## P41 landed (2026-07-30, merged `edcd72a`): lighting lever characterized, report-only
 
-- **AWAITING WILL — the lighting decision (keep per-pixel / flip to
-  lightweight / per-tier knob)**: evidence staged at
+- ~~**AWAITING WILL — the lighting decision**~~ — **DECIDED 2026-07-30:
+  KEEP PER-PIXEL** (docs/decisions.md 2026-07-30 entry; lightweight
+  stays flag-gated for future re-evaluation). Original staging note
+  kept for the record: evidence staged at
   refactor/perf_truth_audit.md "2026-07-30 — P41" section (tables +
   options note), stills at /mnt/projects/fable/videos/p41_lighting/
   (manifest: benchmarks/audits/p41_lighting/EVIDENCE_MANIFEST.txt).
