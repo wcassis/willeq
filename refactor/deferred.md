@@ -1170,11 +1170,21 @@ proper fix:
   synthetic roster hides any masked/exotic-race effect — future
   entity-rendering units should add a --test-races real-roster leg
   when the change touches race-conditional paths.
-- **Bless evidence pending**: P37's live stills failed to frame a
-  zombie (bad vantage + night). Numeric trace is solid but Will's
-  visual bless needs a follow-up errand: #time 12, camera on befallen
-  skeletons/zombies (SKE rib gaps most dramatic) + qeynos2 beahe0008,
-  same-pose before/after via a pre-P37 binary or config toggle.
+- ~~Bless evidence pending~~ — **DELIVERED by P44 (2026-07-30, merged
+  `2246de5`). AWAITING WILL's look**: 3 same-pose before/after pairs
+  at /mnt/projects/fable/videos/p44_p37_bless/stills/ (manifest:
+  benchmarks/audits/p44_p37_bless/EVIDENCE_MANIFEST.txt).
+  Skeleton pair = decisive (solid ribcage → see-through rib gaps,
+  orchestrator-viewed, genuinely judgeable). Zombie = honest null BY
+  DESIGN (zomch0001 is the one citywlivy-class no-op). Bear pair =
+  real structural diff but vantage too dark to judge visually.
+- **P44 live-client findings (flagged, not fixed)**: (1)
+  non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
+  (zone-object-mesh-build; would not reproduce under gdb, no core);
+  (2) pre-existing bind-point respawn FATAL "Player BSP region is
+  SIZE_MAX!" (missing maps/qeynos.map — related to the P10b
+  local-map/BSP FATAL family); (3) qeynos2 sky stays black despite
+  /time 12 (zone-lighting quirk, unrooted).
 
 ## P40 verdict: resolution-visibility "anomaly" NOT a code bug (2026-07-30, merged `e3b61ee`)
 
