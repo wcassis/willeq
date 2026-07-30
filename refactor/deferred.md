@@ -1244,6 +1244,24 @@ proper fix:
   `refactor/P44b_bless_retake.md`'s Review addendum and
   `benchmarks/audits/p44b_bless_retake/EVIDENCE_MANIFEST.txt`'s RGBA-leg
   section.
+  **BOTH GAPS CLOSED BY P46 (2026-07-30, merged `b49337b`)**: (A)
+  runtime palette-index-0 masking in decodeBMP, gated on
+  WLD-textureMasked via applyPaletteMask param — only the two
+  call sites that already compute the masked flag pass true; zone
+  path untouched; unmasked/zone renders md5-identical; (B) benchmark
+  companion binding mirroring entity_renderer line-for-line.
+  **BLESS EVIDENCE DELIVERED, NON-NULL, AWAITING WILL**: lead pair =
+  videos/p46_bless/primary_etc1/crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png
+  (ETC1 leg, isolates P37 alone, Pi-representative); secondary RGBA
+  leg = P37+P46 jointly (x86-representative); diffs entity-confined
+  (tight silhouette bounding boxes); zomch0001 null by design.
+  ORCHESTRATOR OBSERVATION for the bless review: besides the rib-gap
+  cutout, AFTER limbs render visibly warmer/more saturated
+  (skelg0001 legs are masked → material switched EMT_SOLID →
+  alpha-test → different shader path; hue delta not explained in the
+  manifest). If Will flags it: root-cause the AlphaTest3D-vs-Solid3D
+  shading difference as a follow-up before treating the pair as
+  settled.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
