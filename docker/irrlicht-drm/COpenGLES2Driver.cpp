@@ -1154,15 +1154,28 @@ void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
 
         GLint magFilter = material.TextureLayer[0].BilinearFilter ? GL_LINEAR : GL_NEAREST;
         GLint minFilter = material.TextureLayer[0].BilinearFilter ? GL_LINEAR : GL_NEAREST;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
-
         bool clamp = material.TextureLayer[0].TextureWrapU == ETC_CLAMP ||
                      material.TextureLayer[0].TextureWrapU == ETC_CLAMP_TO_EDGE;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
-        // P38 audit instrumentation (kept, flag-gated -- see gl_call_counters.h).
-        if (g_glCounters.enabled) g_glCounters.texParams += 4;
+        GLenum wrapS = clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+        GLenum wrapT = wrapS;  // driver only reads TextureWrapU today; S/T always set together (pre-existing behavior)
+
+        // P42 (P38 state-dedup prototype, productionized): skip the 4
+        // glTexParameteri calls when the filter/wrap combo is unchanged
+        // since the last time this GL texture object had it applied — see
+        // COGLES2Texture::texParamsMatch() for the safety argument (P22
+        // GL-readback finding). MUST be behavior-identical: the GL texture
+        // object's actual filter/wrap state is unchanged either way, we
+        // just avoid reissuing calls that would set it to what it already is.
+        if (!tex->texParamsMatch(magFilter, minFilter, wrapS, wrapT)) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+            tex->cacheTexParams(magFilter, minFilter, wrapS, wrapT);
+            // P38 audit instrumentation (kept, flag-gated -- see gl_call_counters.h).
+            // Counts only calls actually issued -- that's the point of the A/B.
+            if (g_glCounters.enabled) g_glCounters.texParams += 4;
+        }
     }
 
     // Second texture unit (for ETC1 alpha companion or atlas alpha)
