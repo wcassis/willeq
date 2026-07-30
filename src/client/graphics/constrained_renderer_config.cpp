@@ -284,6 +284,12 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // under the merge+composite stack (35.32→32.31ms; uncapped ties 256).
             // GPU-sync −9.5% and submission −23.1% at the dense bf472 pose for
             // +0.44ms of CPU occlusion-test cost. 16 predates the stack era.
+            // P39: this C++ default is also now mirrored explicitly in
+            // config/constrained_presets.json's "orangepi" block (JSON
+            // overrides this on top, per loadJsonOverrides() below) — the
+            // JSON preset load previously had no parse for this key at all,
+            // so it was silently un-tunable from the config file and
+            // invisible to anyone reading the JSON as the source of truth.
             config.occlusionMaxOccluderRegions = 256;
             // GPU feature flags (Mali 400 via Lima supports these)
             config.enableMipmaps = true;
@@ -595,6 +601,29 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         chrCacheMaxEntries = static_cast<size_t>(preset["chrCacheMaxEntries"].asUInt());
     if (preset.isMember("mergeZoneDraws"))
         mergeZoneDraws = preset["mergeZoneDraws"].asBool();
+
+    // P39: occlusionMaxOccluderRegions previously had NO isMember() parse
+    // here, even though fromPreset()'s OrangePi case sets it to the P14-
+    // blessed 256 (constrained_renderer_config.cpp's OrangePi block).
+    // Precedence, now coherent end to end: fromPreset() establishes the
+    // tier baseline (256 for OrangePi, 16 struct-default otherwise); this
+    // JSON key, when present, overrides that baseline (last-writer-wins,
+    // same as every other field in this function). The gap this closes:
+    // any caller that skips fromPreset() and builds a config via
+    // default-construct + loadJsonOverrides() only (the test-fixture
+    // pattern in test_constrained_renderer.cpp, and the general shape of
+    // "load from JSON" call sites) previously fell through to the struct
+    // default of 16 with zero way to recover 256 short of hardcoding it —
+    // the JSON preset file could not express this budget at all. It now
+    // can, and the shipped orangepi preset sets it explicitly (see
+    // config/constrained_presets.json) so the blessed value is
+    // version-controlled and visible in the JSON, not just buried in a
+    // C++ switch-case default.
+    if (preset.isMember("occlusionMaxOccluderRegions"))
+        occlusionMaxOccluderRegions = preset["occlusionMaxOccluderRegions"].asInt();
+    LOG_INFO(MOD_GRAPHICS, "Preset '{}': occlusionMaxOccluderRegions={} ({})",
+             presetName, occlusionMaxOccluderRegions,
+             preset.isMember("occlusionMaxOccluderRegions") ? "from JSON" : "C++ preset default (JSON silent)");
 
     return true;
 }

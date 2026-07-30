@@ -75,7 +75,8 @@
       "chrCacheMaxEntries": 8,
       "pvsNeighborhoodHops": 3,
       "adaptiveLightingZoneBudget": 5,
-      "adaptiveLightingObjectBudget": 5
+      "adaptiveLightingObjectBudget": 5,
+      "occlusionMaxOccluderRegions": 256
     }
   }
 }
