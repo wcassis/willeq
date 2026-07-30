@@ -1150,15 +1150,26 @@ proper fix:
 
 ## P37 follow-ups (2026-07-29, merged `0019ba6`)
 
-- **Pi KPI attribution + re-measure needed**: P37 excludes ~15 masked
-  races (incl. SKE globally + ZOM in befallen — befallen's population)
-  from composite eligibility per-variant → their draw counts revert to
-  multibuffer. The befallen KPI (p95 30.9fps, margin 0.99ms) was
-  measured with those races composited. Next Pi canonical replay may
-  shift — attribute HERE. A KPI spot re-measure is the prudent next Pi
-  unit; if it regresses below 30fps, options: composite-sheet alpha
-  support (builder change + redeploy) or accept the loss for era
-  correctness (Will's call).
+- ~~Pi KPI attribution + re-measure needed~~ — **MEASURED by P45
+  (2026-07-30, merged `6944a3a`; full tables in
+  refactor/P45_p37_kpi_remeasure.md Review). AWAITING WILL's
+  regress-response decision.** Canonical e205 replay: p95
+  32.240/32.263ms, flat vs P14/P39 and under the line — but this is a
+  BENCHMARK-COVERAGE GAP, not neutrality: the default race cycle (IDs
+  1-12) structurally never contains P37's excluded races. Real-roster
+  A/B (ZOM-heavy --test-races, tip vs pre-P37 fda2e34): draws_avg
+  113.6→348.3 (+207%), p95 39.304→57.650ms (**P37 costs +18.3ms p95**,
+  ~all submission: +19.4ms sub p95 vs +0.3ms GPU). Caveat: e205
+  stress + that roster ≠ production encounter density; translation to
+  player experience is Will's call. OPTIONS (neither implemented):
+  (1) composite-sheet alpha support in the builder + NFS redeploy —
+  restores composite eligibility for masked races; (2) accept the
+  loss for era correctness. SIDE FINDING: canonical-replay draws_avg
+  41.9 vs P11b's 287.7 for a similar stack — route/pose-mix
+  difference, noted not alarming. Also: the canonical replay's
+  synthetic roster hides any masked/exotic-race effect — future
+  entity-rendering units should add a --test-races real-roster leg
+  when the change touches race-conditional paths.
 - **Bless evidence pending**: P37's live stills failed to frame a
   zombie (bad vantage + night). Numeric trace is solid but Will's
   visual bless needs a follow-up errand: #time 12, camera on befallen
