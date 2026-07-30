@@ -12,6 +12,7 @@ Last updated: 2026-07-28 (T02).
 |------|------|--------|-------|
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
+| T12 | Action layer (dispatcher + commands) | DONE (merged `15af1d9`) | 68 tests over 2609 lines that were at 0%. No mis-wiring found (verified independently). Guard split pinned: 12 checkHandler-only vs 81 zone-gated. `InputActionBridge` (391 lines) not reached — follow-on. |
 | T11 | Split `test_wld.cpp` | DONE (merged `2e8f8c5`) | 3897 lines → 9 TUs (247–545) + a 108-line fixture header. Test set verified identical: 103 → 103, empty diff. No file in `tests/` now exceeds 1500 lines. |
 | T10 | WLD mutation kill rate | DONE (merged `bd60ee3`) | Measured baseline **0/8**, strengthened to **4/8**. Confirms the benchmark session's signal. Found `resolveTextureName` is dead code and the per-mesh header bbox fields are read by nothing. |
 | T09 | Login/world accessors | DONE (merged `b531b97`) | 11 read-only accessors + 9 tests asserting login/world **state** for the first time. Found that chat-server info is silently discarded on this server (4-field payload vs a 5-field parser). Character-list contents correctly NOT exposed — would need new storage. |
@@ -547,6 +548,55 @@ claim and cannot be rewritten now that it is merged.
   deep state assertions are wanted (T06 finding 4 lists exactly which).
   Deliberately not requested yet — the sequencing coverage may prove
   sufficient.
+
+## T12 observations (action layer)
+
+### The guard split is real behavior, now pinned
+
+**12** dispatcher methods are `checkHandler()`-only and work while
+disconnected: `stopMoving`, `stopAllMovement`, `stopFollow`,
+`clearTarget`, `disableAutoAttack`, `interruptCast`, `openReplyToTell`,
+`declineGroupInvite`, `cancelCamp`, `closeSpellbook`, `cancelTrade`,
+`setPathfinding`. The other **81** require a zone connection.
+
+That mostly tracks the stop/cancel/decline/interrupt naming. **One
+asymmetry worth a look:** `setRoleplay` requires a zone connection while
+its apparent sibling `setPathfinding` does not. Not obviously wrong —
+pathfinding is arguably a client-side toggle — but the pair reads
+symmetric and behaves differently, so it is worth a glance from whoever
+owns that code.
+
+`openReplyToTell` is guarded but never touches `m_handler` on success —
+a UI stub. Pinned separately so a future implementation doesn't silently
+change its contract.
+
+### No mis-wiring — and how that null result was verified
+
+A "no bugs found" result is only worth something if the search was real,
+so the orchestrator re-checked it mechanically rather than accepting it:
+
+- Of 91 dispatcher methods, **78** delegate to the identically-named
+  handler method.
+- All **13** that differ are legitimate: `faceLocation`/`faceEntity`
+  compute a heading then call `setHeading`; `interactNearest` is a
+  composite (`targetEntity` + `hailTarget` + `clickNearestDoor`);
+  `toggleAFK` calls `setAFK`; and 9 `pet*` wrappers call
+  `sendPetCommand`.
+- The pet family is the one place name-matching is blind to a
+  copy-paste error, so its command IDs were extracted directly:
+  **0, 2, 4, 5, 6, 12, 15, 24, 28 — all distinct.**
+
+### The no-handler sweep is a regression guard, not a finding
+
+All 91 methods were already guarded before T12 (checked while planning).
+The sweep passes and is recorded as protection against a future method
+92 added without a guard — not as a discovered bug.
+
+## Still open — `InputActionBridge`
+
+391 lines at 0%. The plan's explicitly lowest-priority item; T12's first
+three sections filled the unit and it stopped rather than rushing.
+Cheap follow-on when wanted.
 
 ## Trap worth knowing — a stale BOOTSTRAP, not just stale artifacts
 
