@@ -58,6 +58,33 @@ public:
     // Upload raw ETC1 compressed data (native, no conversion)
     void uploadETC1(const void* data, u32 dataSize, u32 width, u32 height);
 
+    // P42 (P38 state-dedup prototype, productionized): per-texture-object
+    // cache of the last-applied mag/min-filter + wrap-S/T combo, so
+    // COpenGLES2Driver::applyMaterialRenderState() can skip the 4
+    // glTexParameteri calls when nothing changed since the last draw that
+    // used this texture. P22 proved (via GL-readback instrumentation) that
+    // every texture requests exactly ONE filter/wrap combo for its whole
+    // lifetime in the traced paths, so a simple last-value cache is safe —
+    // no eviction/invalidation needed. Cache lives on the C++ texture
+    // object (not a driver-side GLuint-keyed map) so a deleted+recreated
+    // texture that happens to reuse a GL name never sees a stale hit: the
+    // new COGLES2Texture instance starts with TexParamsCached=false.
+    // Mutable because this is a cache, called through a `const
+    // COGLES2Texture*` in applyMaterialRenderState().
+    bool texParamsMatch(GLint magFilter, GLint minFilter, GLenum wrapS, GLenum wrapT) const
+    {
+        return TexParamsCached && CachedMagFilter == magFilter && CachedMinFilter == minFilter &&
+               CachedWrapS == wrapS && CachedWrapT == wrapT;
+    }
+    void cacheTexParams(GLint magFilter, GLint minFilter, GLenum wrapS, GLenum wrapT) const
+    {
+        TexParamsCached = true;
+        CachedMagFilter = magFilter;
+        CachedMinFilter = minFilter;
+        CachedWrapS = wrapS;
+        CachedWrapT = wrapT;
+    }
+
 private:
     void uploadImage(IImage* image);
     void createRenderTarget(const core::dimension2d<u32>& size);
@@ -79,6 +106,13 @@ private:
 
     // GPU memory usage tracking (set during upload)
     u32 GpuBytes;
+
+    // P42 state-dedup cache (see texParamsMatch()/cacheTexParams() above).
+    mutable bool TexParamsCached = false;
+    mutable GLint CachedMagFilter = 0;
+    mutable GLint CachedMinFilter = 0;
+    mutable GLenum CachedWrapS = 0;
+    mutable GLenum CachedWrapT = 0;
 
 public:
     // Get GPU memory usage for this texture

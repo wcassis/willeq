@@ -677,6 +677,103 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarries256) 
 #endif
 }
 
+// P42: same-pattern fix for the 3 keys P39's audit flagged as sharing the
+// exact occlusionMaxOccluderRegions loss pattern (non-default fromPreset()
+// value, no isMember() parse) — totalMemoryBudgetBytes, occlusionBufferWidth,
+// occlusionBufferHeight.
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_TotalMemoryBudgetBytes) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_membudget.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "totalMemoryBudgetBytes": 67108864
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.totalMemoryBudgetBytes = 0;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.totalMemoryBudgetBytes, static_cast<size_t>(67108864));
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionBufferWidthHeight) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_occbuf.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "occlusionBufferWidth": 128,
+                    "occlusionBufferHeight": 64
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.occlusionBufferWidth = 0;
+    config.occlusionBufferHeight = 0;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.occlusionBufferWidth, 128);
+    EXPECT_EQ(config.occlusionBufferHeight, 64);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_MemoryAndOcclusionBufferKeys_AbsentLeavesBaseline) {
+    // Same optionality guarantee as occlusionMaxOccluderRegions: a preset
+    // block that omits these keys leaves whatever fromPreset()/the caller
+    // already set untouched.
+    const std::string testJsonPath = "/tmp/test_constrained_presets_membuf_absent.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.totalMemoryBudgetBytes = 128 * 1024 * 1024;
+    config.occlusionBufferWidth = 64;
+    config.occlusionBufferHeight = 32;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.totalMemoryBudgetBytes, static_cast<size_t>(128 * 1024 * 1024));
+    EXPECT_EQ(config.occlusionBufferWidth, 64);
+    EXPECT_EQ(config.occlusionBufferHeight, 32);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesMemoryAndOcclusionBufferKeys) {
+    // Active-proof against the REAL shipped config/constrained_presets.json:
+    // the same fromPreset()-then-loadJsonOverrides() sequence must resolve
+    // totalMemoryBudgetBytes/occlusionBufferWidth/occlusionBufferHeight to
+    // their P42-documented shipped values (which match the C++ preset
+    // defaults — the JSON now makes them explicit/tunable, not a change in
+    // the resolved values).
+#ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.totalMemoryBudgetBytes, static_cast<size_t>(128 * 1024 * 1024));
+    EXPECT_EQ(config.occlusionBufferWidth, 64);
+    EXPECT_EQ(config.occlusionBufferHeight, 32);
+#else
+    GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
+#endif
+}
+
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_UseGLES2KeyIgnored) {
     const std::string testJsonPath = "/tmp/test_constrained_presets_bc.json";
     {

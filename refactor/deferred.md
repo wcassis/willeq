@@ -1219,7 +1219,28 @@ proper fix:
   ~35.3ms "shipped" number. P39 landed the key parse + explicit JSON
   preset entry + resolved-value log + ctest regression on the real
   shipped JSON; Pi spot 36.9→32.5ms p95 tracks P14's bless.
-- Same-pattern keys reported NOT fixed: totalMemoryBudgetBytes,
+- ~~Same-pattern keys reported NOT fixed: totalMemoryBudgetBytes,
   occlusionBufferWidth/Height (JSON cannot express them) — small
   follow-up candidate. Benchmark default-16 fix = separate small item
-  (affects future measurement honesty).
+  (affects future measurement honesty).~~ **Both CLOSED by P42
+  (2026-07-30, merged `4781815`).**
+
+## P42 landed (2026-07-30, merged `4781815`): perf-hygiene bundle, all 4 items
+
+- Closes P38 ranked items 2 (enableMipmaps dead flags — honesty branch,
+  dead DRM-only branches simplified, no default change) and 4
+  (glTexParameteri state-dedup productionized: per-texture-object param
+  cache, 100→1 calls/frame, frames md5-identical) plus both P39
+  residuals above.
+- **Residual — gate config drift, Will's call someday**: the benchmark
+  now correctly defaults occluder budget from ConstrainedRendererConfig
+  (256 on orangepi), but scripts/ci/visual_gate.py pins its own
+  invocation to --occluder-budget 16 because the blessed goldens were
+  captured under 16 and budget-256 occlusion changes visible pixels.
+  Options: leave pinned (gate = pixel-regression detector, fine), or
+  re-bless goldens under the shipped 256 (needs Will). Noted so the pin
+  isn't mistaken for drift later.
+- P38's remaining open ranks: 3 (resolution-visibility — REOPENED
+  Pi-specific, see P40/P41 entry above), 5 (swap floor — narrowed to
+  DRM waitForFlipComplete), 6 (residual GPU-sync — queued behind the
+  lighting decision).

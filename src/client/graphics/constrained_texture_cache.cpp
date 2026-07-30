@@ -264,17 +264,23 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     }
 
 #ifdef EQT_HAS_DRM
-    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround).
+    // P42 (P38 finding, refactor/perf_truth_audit.md): this used to branch on
+    // config_.enableMipmaps to request GL_LINEAR_MIPMAP_LINEAR here, but
+    // COpenGLES2Driver::applyMaterialRenderState() unconditionally
+    // overwrites MIN_FILTER to plain GL_LINEAR/GL_NEAREST on every single
+    // draw before this texture is ever sampled -- the mipmap filter mode
+    // set here was always stomped before use, a total no-op (and, while
+    // live, requested filtering against an incomplete mip chain -- no code
+    // path here ever called glGenerateMipmap). Simplified to the filter
+    // that actually took effect; no behavior change, this branch never
+    // affected rendering.
     {
         irr::u32 glName = texture->getDriverTextureHandle();
         if (glName != 0) {
             glBindTexture(GL_TEXTURE_2D, glName);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            if (config_.enableMipmaps) {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            } else {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            }
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
@@ -728,17 +734,18 @@ int ConstrainedTextureCache::processUploadQueue() {
         }
 
 #ifdef EQT_HAS_DRM
-        // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+        // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround).
+        // P42 (P38 finding, refactor/perf_truth_audit.md): simplified -- see
+        // the getOrLoad() sibling block's comment; MIN_FILTER here was always
+        // stomped by applyMaterialRenderState() before this texture was ever
+        // sampled, so the enableMipmaps branch was a dead no-op. No behavior
+        // change.
         {
             irr::u32 glName = texture->getDriverTextureHandle();
             if (glName != 0) {
                 glBindTexture(GL_TEXTURE_2D, glName);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                if (config_.enableMipmaps) {
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                } else {
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                }
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
         }
@@ -856,17 +863,23 @@ bool ConstrainedTextureCache::processOneUpload() {
     }
 
 #ifdef EQT_HAS_DRM
-    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround)
+    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround).
+    // P42 (P38 finding, refactor/perf_truth_audit.md): this used to branch on
+    // config_.enableMipmaps to request GL_LINEAR_MIPMAP_LINEAR here, but
+    // COpenGLES2Driver::applyMaterialRenderState() unconditionally
+    // overwrites MIN_FILTER to plain GL_LINEAR/GL_NEAREST on every single
+    // draw before this texture is ever sampled -- the mipmap filter mode
+    // set here was always stomped before use, a total no-op (and, while
+    // live, requested filtering against an incomplete mip chain -- no code
+    // path here ever called glGenerateMipmap). Simplified to the filter
+    // that actually took effect; no behavior change, this branch never
+    // affected rendering.
     {
         irr::u32 glName = texture->getDriverTextureHandle();
         if (glName != 0) {
             glBindTexture(GL_TEXTURE_2D, glName);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            if (config_.enableMipmaps) {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            } else {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            }
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
@@ -1000,6 +1013,18 @@ size_t ConstrainedTextureCache::calculateTextureSize(int width, int height) cons
     size_t base = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
     if (config_.enableMipmaps) {
         // Mipmap chain adds ~33% overhead (sum of 1/4 + 1/16 + ... converges to 1/3)
+        // NOTE (P42, P38 finding #4, refactor/perf_truth_audit.md): this
+        // budget inflation is charged even though no code path actually
+        // uploads mip levels (getOrLoad()/uploadPending()/processOne()'s
+        // filter-setting sites were always stomped before use -- see their
+        // P42 comments -- and this class's own upload paths never call
+        // glGenerateMipmap). For the orangepi preset, where enableMipmaps
+        // is true, this is real phantom memory pressure that could trigger
+        // unnecessary LRU eviction. P38 named this a candidate follow-up,
+        // not measured/closed there; left unfixed here too -- changing the
+        // budget accounting changes eviction timing under memory pressure,
+        // a real behavior change out of scope for a no-default-behavior-
+        // change hygiene pass. Flagging honestly rather than fixing silently.
         return base + base / 3;
     }
     return base;
@@ -1398,13 +1423,17 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
         }
     }
 
-    // Set bilinear filtering directly on GL texture (see getOrLoad comment)
+    // Set bilinear filtering directly on GL texture (see getOrLoad comment).
+    // P42 (P38 finding): same dead-branch simplification as getOrLoad() --
+    // this MIN_FILTER value is stomped by applyMaterialRenderState() before
+    // first sample regardless of texture format, so the enableMipmaps
+    // branch here was equally a no-op. No behavior change. (The
+    // glGenerateMipmap() call just above is left as-is -- this whole
+    // function is unreachable in the shipped orangepi preset,
+    // enableCompressedTextures=false, so it does not affect production
+    // either way; out of scope for this hygiene pass.)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    if (config_.enableMipmaps) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    } else {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 

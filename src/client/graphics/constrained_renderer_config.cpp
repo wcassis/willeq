@@ -625,6 +625,23 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
              presetName, occlusionMaxOccluderRegions,
              preset.isMember("occlusionMaxOccluderRegions") ? "from JSON" : "C++ preset default (JSON silent)");
 
+    // P42 (P39 same-pattern audit): totalMemoryBudgetBytes, occlusionBufferWidth,
+    // and occlusionBufferHeight shared the exact loss pattern P39 fixed for
+    // occlusionMaxOccluderRegions above — a non-default value set in
+    // fromPreset()'s OrangePi case with no isMember() parse here, so the JSON
+    // preset file could not express or override them. Same precedence: the
+    // fromPreset() tier baseline applies first, this JSON key (when present)
+    // overrides it (last-writer-wins, same as every other field in this
+    // function). Shipped config/constrained_presets.json's "orangepi" block
+    // now sets all three explicitly (see fromPreset()'s OrangePi case for the
+    // C++ defaults these mirror).
+    if (preset.isMember("totalMemoryBudgetBytes"))
+        totalMemoryBudgetBytes = static_cast<size_t>(preset["totalMemoryBudgetBytes"].asUInt64());
+    if (preset.isMember("occlusionBufferWidth"))
+        occlusionBufferWidth = preset["occlusionBufferWidth"].asInt();
+    if (preset.isMember("occlusionBufferHeight"))
+        occlusionBufferHeight = preset["occlusionBufferHeight"].asInt();
+
     return true;
 }
 

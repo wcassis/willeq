@@ -76,7 +76,10 @@
       "pvsNeighborhoodHops": 3,
       "adaptiveLightingZoneBudget": 5,
       "adaptiveLightingObjectBudget": 5,
-      "occlusionMaxOccluderRegions": 256
+      "occlusionMaxOccluderRegions": 256,
+      "totalMemoryBudgetBytes": 134217728,
+      "occlusionBufferWidth": 64,
+      "occlusionBufferHeight": 32
     }
   }
 }

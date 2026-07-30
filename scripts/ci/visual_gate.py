@@ -71,6 +71,21 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
         "--dump-png-prefix", str(prefix),
         "--csv", str(csv_path),
         "--memory-json", str(mem_path),
+        # P42 item 3: the benchmark's --occluder-budget default now resolves
+        # from ConstrainedRendererConfig (orangepi preset -> 256) instead of
+        # the old hardcoded 16 -- correct for perf measurement (matches
+        # shipped production), but these committed goldens (pixel PNGs +
+        # draws/polys counts in manifest.json) were captured under the old
+        # default and are untouched by this unit ("goldens untouched" is a
+        # hard rule). Pin the gate's own invocation to the prior literal
+        # value so it stays on the exact code path the goldens were blessed
+        # against; --occluder-budget is an explicit-flag-wins override (see
+        # zone_bench_loader.cpp), so this does not fight item 3's default
+        # fix -- Pi measurements (scripts/pi/pi_common.py) and any other
+        # caller that doesn't pass this flag still get the corrected 256
+        # default. A future re-bless (Will's call, out of this unit's scope)
+        # can drop this pin once goldens are regenerated under the new default.
+        "--occluder-budget", "16",
     ] + (production_args or []) + zone_cfg.get("extraArgs", [])
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
