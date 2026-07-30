@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-30 (T15).
+Last updated: 2026-07-30 (T16).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T16 | Spell-cast off-by-one fix | DONE (merged `3253126`) | Closes the T15 finding, go-ahead from Will. `processSpellCasts()` now converts the 0-based request to the dispatcher's 1-based contract (`+1`, matching the hotbar path). Gem 1 castable again; `/cast N` casts gem N. Both `BUG_` pins re-pointed (gem 0→`castSpell(1)`, gems 4/7→5/8). Executed inline. |
 | T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG pinned, not fixed (needs Will):** spell-cast gem off-by-one — see section below. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
 | T14 | Character-select list storage | DONE (merged `4414a92`) | Closes the T06/T09 open question, go-ahead from Will. Occupied slots stored (`CharacterSelectEntry`: slot/name/level/class/race/zone) behind `GetCharacterSelectList()`, rebuilt per delivery; first-match index semantics preserved but the loop now parses all ten slots instead of returning at the match. **Finding:** eqemu fills empty Titanium slots with literal name `<none>` (other fields zero) — hidden until now by the early return; filtered ('<' is not legal in names). Real-capture list pinned exactly (3 entries); synthetic decode, sentinel/empty skip, parse-past-match, redelivery-rebuild tests. Executed inline. |
 | T13 | `OP_SetChatServer` 4-field parse | DONE (merged `9d456c1`) | Closes the T09 finding, go-ahead from Will. Parser rewritten to the real eqemu format (`host,port,shortname.charname,<type><mail_key:08X>`); connection-type char stored (new accessor) for the future UCS implementation; receive path guarded (field count, empty field 4, non-numeric AND out-of-uint16-range port — `stoi` alone doesn't catch 70000). BUG_ pin re-pointed at fixed behavior + `OP_SetChatServer2` 'b' case. Executed inline; interrupted by the 07-30 VM crash and recovered from the t1 working tree. |
@@ -753,7 +754,7 @@ BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
 
-## T15 finding — spell-cast gem off-by-one (needs Will)
+## T15 finding — spell-cast gem off-by-one — FIXED in T16 (merged `3253126`)
 
 `InputActionBridge::processSpellCasts()` forwards
 `SpellCastRequest.gemSlot` unchanged into `ActionDispatcher::castSpell`.
@@ -774,13 +775,12 @@ Live effect: `/cast 1` and clicking spell gem 1 fail validation
 dispatcher — the asymmetry between two paths feeding the same call is
 the tell.
 
-Fix is one line in `processSpellCasts()`:
-`m_dispatcher.castSpell(spellReq->gemSlot + 1)`. Pinned meanwhile as
-`BUG_SpellCastRequest_GemOneIsRejectedByDispatcher` and
-`BUG_SpellCastRequest_OtherGemsCastOneGemLow`; both should be
-re-pointed at correct behavior when the fix lands. Alternative fix
-(make the producers 1-based) touches three files and the documented
-field contract — not recommended.
+**Fixed in T16** (go-ahead from Will, 2026-07-30): the bridge converts
+with `+1` in `processSpellCasts()`, matching the hotbar path. Both
+`BUG_` pins re-pointed at correct behavior (gem 0 → `castSpell(1)`;
+gems 4/7 → 5/8, pinning mid and top of the producers' range). The
+alternative (making the producers 1-based) was rejected — it touches
+three files and the documented field contract.
 
 ## Character-list storage — RESOLVED in T14 (merged `4414a92`)
 
