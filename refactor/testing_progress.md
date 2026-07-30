@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-30 (T13).
+Last updated: 2026-07-30 (T14).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T14 | Character-select list storage | DONE (merged `4414a92`) | Closes the T06/T09 open question, go-ahead from Will. Occupied slots stored (`CharacterSelectEntry`: slot/name/level/class/race/zone) behind `GetCharacterSelectList()`, rebuilt per delivery; first-match index semantics preserved but the loop now parses all ten slots instead of returning at the match. **Finding:** eqemu fills empty Titanium slots with literal name `<none>` (other fields zero) — hidden until now by the early return; filtered ('<' is not legal in names). Real-capture list pinned exactly (3 entries); synthetic decode, sentinel/empty skip, parse-past-match, redelivery-rebuild tests. Executed inline. |
 | T13 | `OP_SetChatServer` 4-field parse | DONE (merged `9d456c1`) | Closes the T09 finding, go-ahead from Will. Parser rewritten to the real eqemu format (`host,port,shortname.charname,<type><mail_key:08X>`); connection-type char stored (new accessor) for the future UCS implementation; receive path guarded (field count, empty field 4, non-numeric AND out-of-uint16-range port — `stoi` alone doesn't catch 70000). BUG_ pin re-pointed at fixed behavior + `OP_SetChatServer2` 'b' case. Executed inline; interrupted by the 07-30 VM crash and recovered from the t1 working tree. |
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
@@ -751,19 +752,21 @@ BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
 
-## Open question for Will — character-list storage
+## Character-list storage — RESOLVED in T14 (merged `4414a92`)
 
-T06 asked for character-list contents; T09 correctly did not build it.
-`WorldProcessCharacterSelect` parses all ten slots (name, level, class,
-race, zone) and keeps **only** `m_character_select_index` — everything
-else is logged and discarded. Exposing it means **adding a member and
-populating it**, a functional change to the client made for tests.
+T06 asked for character-list contents; T09 correctly did not build it,
+since exposing it means adding a member and populating it. Will
+green-lit the storage 2026-07-30 (rationale: name/level/class/race/zone
+is exactly what a Titanium character-select UI displays, so the state
+is product-plausible, not test-only). `GetCharacterSelectList()` now
+returns the occupied slots.
 
-Cost is genuinely small: one POD list of ≤10 entries filled inside the
-existing loop, plus an accessor. Nothing currently reads the discarded
-values, so there is no behavior-change risk. The real question is
-whether any product code will ever want them — if not, this is test-only
-state in a shipped class, which is a reasonable thing to decline.
+The unit also produced a real protocol finding: eqemu marks empty
+Titanium slots with the literal name `<none>` (remaining fields zero).
+The old loop's early return at the configured character's slot had
+hidden this — nothing had ever parsed past the match. The handler now
+filters the sentinel; without it the list carries seven phantom
+entries on a 3-character account.
 
 ## `Packet::GetCString` OOB read — FIXED in T08 (`b2fee49`)
 
