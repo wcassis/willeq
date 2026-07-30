@@ -720,26 +720,23 @@ TEST(LoginWorldAccessors, ZoneServerInfo_RealCapture_ParsesHostAndPort) {
     EXPECT_EQ(eq.GetZoneServerPort(), 7012);
 }
 
-// --- WorldProcessSetChatServer: a parser finding, not a fix (tests/ only
-// territory). ---
+// --- WorldProcessSetChatServer: FIXED in T13. ---
 //
-// The handler splits chat_info on ',' and requires >=5 parts (host, port,
-// server.character, connection_type, mail_key) before populating
-// m_ucs_host/m_ucs_port/m_mail_key -- otherwise it logs a warning and
-// leaves them untouched. The real capture's SetChatServer payload is:
+// T09 found that the handler required >=5 comma-separated fields and read
+// the mail key from parts[4], so it never populated anything against a real
+// server. T13 settled it from the eqemu source
+// (akk-stack/code/world/client.cpp), which formats
+// "{},{},{}.{},{}{:08X}" -- FOUR fields, era-independent:
 //
-//   "10.0.30.23,7778,WillEQ Private Server.Testchar,B48FB5F37"
+//     host , port , shortname.charname , <connection_type><mail_key:08X>
 //
-// which is exactly 4 comma-separated fields (host, port, "server.character"
-// containing an embedded space but no comma, mail_key) -- one short of the
-// >=5 the parser requires. Verified by direct split of the decoded payload
-// before writing this test, not guessed. So on THIS real server's actual
-// wire format, WorldProcessSetChatServer silently discards the record every
-// time; GetChatServerHost/Port/MailKey() never leave their construction
-// defaults. This is a real parser/protocol mismatch worth Will's attention
-// -- either the expected format is wrong (4 fields, not 5) or this server
-// build never sends a working connection_type field. Not fixed here.
-TEST(LoginWorldAccessors, BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors) {
+// The connection type is one character concatenated onto the 8-hex-digit
+// mail key with no separator. Titanium uses 'B' for chat
+// (OP_SetChatServer) and 'b' for mail (OP_SetChatServer2), per
+// emu_versions.h ucsTitaniumChat / ucsTitaniumMail. So the client was
+// wrong, not the server, and there is no 5-field shape to contrast
+// against -- the old contrast test asserted a format nothing produces.
+TEST(LoginWorldAccessors, SetChatServer_RealCapture_PopulatesHostPortTypeAndMailKey) {
     std::vector<uint8_t> payload;
     if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_SetChatServer, payload)) {
         GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
@@ -750,18 +747,39 @@ TEST(LoginWorldAccessors, BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopu
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer, payload));
 
-    EXPECT_TRUE(eq.GetChatServerHost().empty());
-    EXPECT_EQ(eq.GetChatServerPort(), 0);
-    EXPECT_TRUE(eq.GetMailKey().empty());
+    // Recorded payload:
+    //   "10.0.30.23,7778,WillEQ Private Server.Testchar,B48FB5F37"
+    EXPECT_EQ(eq.GetChatServerHost(), "10.0.30.23");
+    EXPECT_EQ(eq.GetChatServerPort(), 7778);
+    EXPECT_EQ(eq.GetChatConnectionType(), 'B');  // ucsTitaniumChat
+    EXPECT_EQ(eq.GetMailKey(), "48FB5F37");      // 8 hex digits, type char stripped
 }
 
-TEST(LoginWorldAccessors, SetChatServer_FiveFieldSynthetic_ParsesHostPortMailKey) {
-    // Contrast case: the format WorldProcessSetChatServer actually expects
-    // (5 comma-separated fields) does parse correctly -- confirming the
-    // accessors and the split logic both work; the real capture just never
-    // sends this shape.
+TEST(LoginWorldAccessors, SetChatServer2_RealCapture_UsesLowercaseMailConnectionType) {
+    // The world server sends the same string twice with a different type
+    // character: 'B' on OP_SetChatServer and 'b' on OP_SetChatServer2. That
+    // case difference is the chat-vs-mail discriminator, which is why the
+    // type is now stored rather than discarded.
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_SetChatServer2, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture SetChatServer2 accessor test.";
+    }
+
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    const std::string chat_info = "chat.example.com,9876,TestServer.Testchar,0,ABC123MAILKEY";
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer2, payload));
+
+    EXPECT_EQ(eq.GetChatConnectionType(), 'b');  // ucsTitaniumMail
+    EXPECT_EQ(eq.GetMailKey(), "48FB5F37");
+}
+
+TEST(LoginWorldAccessors, SetChatServer_FourFieldSynthetic_StripsTypeCharacterFromMailKey) {
+    // Synthetic case in the real 4-field shape, with values chosen so a
+    // regression that returned the whole field (or the wrong substring)
+    // would be visible.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    const std::string chat_info = "chat.example.com,9876,TestServer.Testchar,XDEADBEEF";
     auto payload = BuildPayload(2 + chat_info.size() + 1, [&](EQ::Net::DynamicPacket& p) {
         p.PutCString(2, chat_info.c_str());
     });
@@ -770,7 +788,37 @@ TEST(LoginWorldAccessors, SetChatServer_FiveFieldSynthetic_ParsesHostPortMailKey
 
     EXPECT_EQ(eq.GetChatServerHost(), "chat.example.com");
     EXPECT_EQ(eq.GetChatServerPort(), 9876);
-    EXPECT_EQ(eq.GetMailKey(), "ABC123MAILKEY");
+    EXPECT_EQ(eq.GetChatConnectionType(), 'X');
+    EXPECT_EQ(eq.GetMailKey(), "DEADBEEF");
+}
+
+TEST(LoginWorldAccessors, SetChatServer_MalformedInputsLeaveStateUntouched) {
+    // T13 added guards for four shapes that previously either warned-and-
+    // ignored, threw out of the network callback, or silently truncated.
+    // None may crash, and none may half-populate.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    auto replay = [&](const std::string& s) {
+        auto payload = BuildPayload(2 + s.size() + 1, [&](EQ::Net::DynamicPacket& p) {
+            p.PutCString(2, s.c_str());
+        });
+        ReplayWorld(eq, HC_OP_SetChatServer, payload);
+    };
+
+    // Too few fields.
+    EXPECT_NO_THROW(replay("host,1234,only.three"));
+    // Empty type/mail-key field -- substr(1) would have thrown.
+    EXPECT_NO_THROW(replay("host,1234,server.char,"));
+    // Non-numeric port -- std::stoi would have thrown out of the callback.
+    EXPECT_NO_THROW(replay("host,notaport,server.char,Xkey"));
+    // In-int-range but out-of-uint16-range port -- stoi succeeds, so this
+    // would have silently truncated to 4464 without the range check.
+    EXPECT_NO_THROW(replay("host,70000,server.char,Xkey"));
+
+    EXPECT_TRUE(eq.GetChatServerHost().empty());
+    EXPECT_EQ(eq.GetChatServerPort(), 0);
+    EXPECT_EQ(eq.GetChatConnectionType(), 0);
+    EXPECT_TRUE(eq.GetMailKey().empty());
 }
 
 TEST(LoginWorldAccessors, ExpansionInfo_FirstDelivery_SetsWorldReadyAndEnterWorldSent) {
