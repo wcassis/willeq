@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-30 (T14).
+Last updated: 2026-07-30 (T15).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG pinned, not fixed (needs Will):** spell-cast gem off-by-one — see section below. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
 | T14 | Character-select list storage | DONE (merged `4414a92`) | Closes the T06/T09 open question, go-ahead from Will. Occupied slots stored (`CharacterSelectEntry`: slot/name/level/class/race/zone) behind `GetCharacterSelectList()`, rebuilt per delivery; first-match index semantics preserved but the loop now parses all ten slots instead of returning at the match. **Finding:** eqemu fills empty Titanium slots with literal name `<none>` (other fields zero) — hidden until now by the early return; filtered ('<' is not legal in names). Real-capture list pinned exactly (3 entries); synthetic decode, sentinel/empty skip, parse-past-match, redelivery-rebuild tests. Executed inline. |
 | T13 | `OP_SetChatServer` 4-field parse | DONE (merged `9d456c1`) | Closes the T09 finding, go-ahead from Will. Parser rewritten to the real eqemu format (`host,port,shortname.charname,<type><mail_key:08X>`); connection-type char stored (new accessor) for the future UCS implementation; receive path guarded (field count, empty field 4, non-numeric AND out-of-uint16-range port — `stoi` alone doesn't catch 70000). BUG_ pin re-pointed at fixed behavior + `OP_SetChatServer2` 'b' case. Executed inline; interrupted by the 07-30 VM crash and recovered from the t1 working tree. |
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
@@ -751,6 +752,35 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T15 finding — spell-cast gem off-by-one (needs Will)
+
+`InputActionBridge::processSpellCasts()` forwards
+`SpellCastRequest.gemSlot` unchanged into `ActionDispatcher::castSpell`.
+The contract mismatch:
+
+- Both real producers are **0-based**: `ConsoleInputHandler` pushes
+  `gem - 1` for `/cast 1..8` (`console_input_handler.cpp:411`);
+  `GraphicsInputHandler` accepts gem clicks `0..7`
+  (`graphics_input_handler.cpp:191`). The field is documented "0-7 for
+  gem slots 1-8" (`input_handler.h:85`).
+- The dispatcher is **1-based**: `castSpell` validates 1-12
+  (`action_dispatcher.cpp:308`) and the real handler does
+  `gemSlot - 1` into the `SpellSlot` enum (`eq_action_handler.cpp:285`).
+
+Live effect: `/cast 1` and clicking spell gem 1 fail validation
+("Invalid gem slot"); `/cast N` for N≥2 casts gem N−1. The hotbar path
+(`processHotbarRequests`, `slot + 1`) is correct against the same
+dispatcher — the asymmetry between two paths feeding the same call is
+the tell.
+
+Fix is one line in `processSpellCasts()`:
+`m_dispatcher.castSpell(spellReq->gemSlot + 1)`. Pinned meanwhile as
+`BUG_SpellCastRequest_GemOneIsRejectedByDispatcher` and
+`BUG_SpellCastRequest_OtherGemsCastOneGemLow`; both should be
+re-pointed at correct behavior when the fix lands. Alternative fix
+(make the producers 1-based) touches three files and the documented
+field contract — not recommended.
 
 ## Character-list storage — RESOLVED in T14 (merged `4414a92`)
 
