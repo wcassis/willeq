@@ -1176,3 +1176,18 @@ proper fix:
   2-invocation clean Pi A/B (400x300 vs 800x600, shipped flags) to
   close it — ride along the next Pi unit. Non-4:3 aspect changes DO
   move the frustum (correct behavior, noted for future res work).
+
+## P39 landed (2026-07-30): occluder-256 plumbing + corrected framing
+
+- CORRECTION to P38's ranking item 1: the real client ALREADY resolved
+  256 by accident (fromPreset baseline; JSON no-op'd the unknown key).
+  The silent-16 was (a) any JSON-only config path incl. unit tests,
+  and (b) the BENCHMARK: zone_bench_loader hardcodes --occluder-budget
+  default 16 and never reads the config — likely the source of P38's
+  ~35.3ms "shipped" number. P39 landed the key parse + explicit JSON
+  preset entry + resolved-value log + ctest regression on the real
+  shipped JSON; Pi spot 36.9→32.5ms p95 tracks P14's bless.
+- Same-pattern keys reported NOT fixed: totalMemoryBudgetBytes,
+  occlusionBufferWidth/Height (JSON cannot express them) — small
+  follow-up candidate. Benchmark default-16 fix = separate small item
+  (affects future measurement honesty).
