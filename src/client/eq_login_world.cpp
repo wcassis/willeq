@@ -787,20 +787,27 @@ void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 		return;
 	}
 
-	// T13: std::stoi throws on a non-numeric or out-of-range port, and this
-	// runs on the network receive path where nothing catches — the same
-	// crash-on-malformed-packet class T04/T05/T07 closed elsewhere.
-	uint16_t parsed_port = 0;
+	// T13: std::stoi throws on a non-numeric port, and this runs on the
+	// network receive path where nothing catches — the same
+	// crash-on-malformed-packet class T04/T05/T07 closed elsewhere. stoi only
+	// throws above INT_MAX, so the uint16_t range needs its own check or a
+	// port like 70000 would silently truncate.
+	int parsed_port = 0;
 	try {
-		parsed_port = static_cast<uint16_t>(std::stoi(parts[1]));
+		parsed_port = std::stoi(parts[1]);
 	} catch (const std::exception&) {
 		LOG_WARN(MOD_WORLD, "Chat server info has a non-numeric port '{}'. Raw: '{}'",
 			parts[1], chat_info);
 		return;
 	}
+	if (parsed_port < 1 || parsed_port > 65535) {
+		LOG_WARN(MOD_WORLD, "Chat server info has an out-of-range port '{}'. Raw: '{}'",
+			parts[1], chat_info);
+		return;
+	}
 
 	m_ucs_host = parts[0];
-	m_ucs_port = parsed_port;
+	m_ucs_port = static_cast<uint16_t>(parsed_port);
 	// parts[2] is shortname.charname
 	m_ucs_connection_type = parts[3][0];
 	m_mail_key = parts[3].substr(1);

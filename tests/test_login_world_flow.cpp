@@ -793,9 +793,9 @@ TEST(LoginWorldAccessors, SetChatServer_FourFieldSynthetic_StripsTypeCharacterFr
 }
 
 TEST(LoginWorldAccessors, SetChatServer_MalformedInputsLeaveStateUntouched) {
-    // T13 added guards for three shapes that previously either warned-and-
-    // ignored or threw out of the network callback. None may crash, and none
-    // may half-populate.
+    // T13 added guards for four shapes that previously either warned-and-
+    // ignored, threw out of the network callback, or silently truncated.
+    // None may crash, and none may half-populate.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
     auto replay = [&](const std::string& s) {
@@ -811,6 +811,9 @@ TEST(LoginWorldAccessors, SetChatServer_MalformedInputsLeaveStateUntouched) {
     EXPECT_NO_THROW(replay("host,1234,server.char,"));
     // Non-numeric port -- std::stoi would have thrown out of the callback.
     EXPECT_NO_THROW(replay("host,notaport,server.char,Xkey"));
+    // In-int-range but out-of-uint16-range port -- stoi succeeds, so this
+    // would have silently truncated to 4464 without the range check.
+    EXPECT_NO_THROW(replay("host,70000,server.char,Xkey"));
 
     EXPECT_TRUE(eq.GetChatServerHost().empty());
     EXPECT_EQ(eq.GetChatServerPort(), 0);
