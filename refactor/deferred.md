@@ -1204,6 +1204,46 @@ proper fix:
   trusting an offline benchmark tool as a stand-in for production
   visual behavior, verify it actually links the production code path
   in question, not just a marker the production path would consume.
+  **P44c RGBA leg COMPLETE (same branch/slot) — ALSO NULL, but
+  root-caused one level deeper than P44b, and this one is NOT a
+  benchmark-tool-only gap.** Hypothesis tested: dropping `--eqe1-path`
+  (forcing the direct-BMP/RGBA decode path, the same path production
+  `willeq` uses whenever no ETC1 pack is configured) should let the
+  built-in `EOGLES2SP_ALPHA3D` shader's unit-0-alpha read actually see
+  real alpha, since `EntityRenderer::applyAlphaTestMaterialType()`
+  (entity_renderer.cpp) documents the RGBA/DDS path as carrying "real
+  alpha in the main texture's own alpha channel." FOUND INSTEAD: alpha
+  is lost one step earlier, at decode. `ConstrainedTextureCache::
+  decodeBMP()` (`src/client/graphics/constrained_texture_cache.cpp`,
+  ~line 1151) handles EQ's masked entity textures — confirmed 8bpp
+  paletted BMPs via a temporary trace (skefa0001/skeft0001/skeft0002/
+  skech0001/skelg0001 all 8bpp) — by hardcoding alpha=255 for every
+  pixel ("ignore palette alpha", the code's own comment). It does NOT
+  implement the EQ masking convention ("palette index 0 = transparent")
+  that `tools/eqe1_builder.cpp`'s BMP decoder (~line 88) already
+  implements correctly for the ETC1/eqe1 offline pipeline. So
+  `hasAlpha` is false for every ground-truth masked entity texture on
+  this path — confirmed via a reverted diagnostic trace, then via an
+  actual BEFORE/AFTER render pair (SKE, befallen, same `--orbit-radius
+  8 --orbit-height-offset 6 --animate` framing as P44b, frame 26,
+  `--eqe1-path` omitted): PIXEL-IDENTICAL, AE=0, byte-identical PNGs
+  (matching md5), same result P44b already got when it tried this as a
+  side-check. This means: unlike the ETC1 leg (P44b, a benchmark-tool
+  linking gap only), **the RGBA path has no way to visually demonstrate
+  P37's fix at all, in ANY tool including production `willeq`, until
+  `ConstrainedTextureCache::decodeBMP()` gets the same palette-index-0
+  masking logic `eqe1_builder.cpp` already has.** Not fixed this unit
+  (diagnostics reverted, no production source changes) — this is a
+  second, more consequential tool-fix candidate than P44b's
+  entity_renderer-linking one, and arguably belongs ahead of it since
+  it affects any RGBA/non-ETC1 rendering path, not just the benchmark.
+  Evidence: `/mnt/projects/fable/videos/p44b_bless_retake/rgba_leg/`
+  (NFS, gitignored) — `pairs/ske_{BEFORE,AFTER}_f26.png`,
+  `crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png` (400%),
+  `diffs/ske_diff_f26{,_torso_zoom}.png` (AE=0 both). Full writeup in
+  `refactor/P44b_bless_retake.md`'s Review addendum and
+  `benchmarks/audits/p44b_bless_retake/EVIDENCE_MANIFEST.txt`'s RGBA-leg
+  section.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);

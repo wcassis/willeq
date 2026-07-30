@@ -297,3 +297,119 @@ Verification
   see Method above.
 - Full ctest/gate NOT run -- no production source changes ship from this
   branch (errand bar, same as P44's own narrowed verification bar).
+
+================================================================================
+P44c ADDENDUM -- RGBA leg (no --eqe1-path), same slot/branch, same day
+================================================================================
+
+Purpose: P44b's own manifest already noted "Re-ran without --eqe1-path
+(forcing raw BMP decode instead) ... still 0 pixel difference," offered
+without a decode-level root cause. This addendum's job: root-cause that null
+one level deeper, per the standing instruction ("if RGBA ALSO comes back
+pixel-identical: root-cause one level -- alpha lost at decode? material
+assignment not reaching shader selection? -- and stop").
+
+Hypothesis (from entity_renderer.cpp's own comment,
+applyAlphaTestMaterialType(), ~line 219): "The direct RGBA/DDS decode path
+has real alpha in the main texture's own alpha channel ... the RGBA variant
+reads uTexture.a directly instead [of a companion texture]." If true, the
+RGBA/no-eqe1-path leg should not need entity_renderer.cpp's companion-
+binding at all -- the built-in EOGLES2SP_ALPHA3D shader (unit-0-alpha-only,
+per P44b's root cause above) should just work on its own, sidestepping
+P44b's tool-linking gap entirely.
+
+FINDING: the hypothesis's premise does not hold for THIS codebase's RGBA
+decode path. Alpha is lost one step earlier than the shader/material layer
+-- at BMP decode.
+
+`ConstrainedTextureCache::decodeBMP()`
+(src/client/graphics/constrained_texture_cache.cpp, ~line 1151), which is
+what BOTH gles2_zone_benchmark's --eqe1-path-less entity path AND
+production willeq's entity texture loading (RaceModelLoader ->
+ZoneMeshBuilder::loadTextureFromBMP -> ConstrainedTextureCache::getOrLoad
+-> processTextureData -> decodeBMP, whenever no --eqe1-path/ETC1 pack is
+configured) both funnel through, handles 8bpp paletted BMPs (confirmed via
+a temporary trace -- see below -- that every ground-truth masked SKE
+texture is 8bpp) by hardcoding alpha=255 for every pixel. The code's own
+comment at the 8bpp branch says it plainly: "// A (ignore palette alpha)".
+
+Contrast with tools/eqe1_builder.cpp's BMP decoder (~line 88), which
+DOES implement EQ's actual masking convention for the offline ETC1
+pipeline: "EQ convention: palette index 0 is the transparent color. Pixels
+referencing index 0 get alpha=0, all others get alpha=255." This logic
+exists exactly once in the codebase, in the eqe1 pack builder -- it was
+never ported to ConstrainedTextureCache::decodeBMP(), the runtime decoder
+used by the direct-BMP/RGBA path.
+
+Diagnostic method (temporary, reverted before final build/commit, same
+idiom as P44b's own): two single-line fprintf(stderr, ...) calls, one in
+ConstrainedTextureCache::getOrLoad() right after processTextureData()
+returns (prints texture name + hasAlpha + dimensions), one in decodeBMP()
+right after reading bitsPerPixel (prints bpp). Ran
+`./build/bin/gles2_zone_benchmark --zone befallen --eq-path
+/mnt/projects/EverQuestP1999 --entities 1 --test-races 21 --orbit-radius 8
+--orbit-height-offset 6 --animate --frames 3 --warmup 0 --dump-frames 1`
+(no --eqe1-path). Trace (ground-truth masked SKE textures only):
+
+  skefa0001.bmp hasAlpha=0 w=32 h=64   (bpp=8)
+  skeft0001.bmp hasAlpha=0 w=32 h=64   (bpp=8)
+  skeft0002.bmp hasAlpha=0 w=32 h=64   (bpp=8)
+  skech0001.bmp hasAlpha=0 w=128 h=128 (bpp=8)
+  skelg0001.bmp hasAlpha=0 w=32 h=32   (bpp=8)
+
+Every one of P37's ground-truth masked textures decodes with hasAlpha=0 on
+this path -- confirming the discard shader (unit-0-alpha-only, per P44b's
+root cause) can never fire here regardless of MaterialType classification,
+tool linking, camera framing, or anything downstream of decode. Reverted
+both diagnostics (`git checkout -- src/client/graphics/
+constrained_texture_cache.cpp`) before the confirmatory render below;
+`git status` clean before, during (isolated to two rebuilds), and after.
+
+Confirmatory render (same P44b framing, --eqe1-path omitted, AFTER-clean
+binary post-revert): SKE, befallen, --orbit-radius 8 --orbit-height-offset
+6 --animate --frames 48 --warmup 2 --dump-frames 26 (frame already known
+well-framed from P44b's own contact-sheet selection). BEFORE = fda2e34
+build (build-preP37/, unaffected by this addendum's source edits --
+diagnostics were only ever built into the AFTER tree). AFTER = current
+tip, rebuilt clean post-revert.
+
+  pairs/ske_BEFORE_f26.png vs pairs/ske_AFTER_f26.png: 91510 bytes each,
+  IDENTICAL md5 (731cd28d5191cebb2973e532c5687723), AE=0
+  (ImageMagick `compare -metric AE`).
+  crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png (400% torso crop, same
+  region P44b used): AE=0.
+
+Verdict: RGBA leg is ALSO a full null, but for a DIFFERENT and more
+consequential reason than P44b's ETC1/entity_renderer-linking gap. P44b's
+gap is a benchmark-tool-only fidelity issue (production willeq DOES link
+entity_renderer.cpp). This addendum's gap is NOT benchmark-only:
+ConstrainedTextureCache::decodeBMP() is the same decoder production willeq
+uses for entity textures whenever no --eqe1-path/ETC1 pack is configured --
+so the RGBA/direct-BMP masked-texture visual effect cannot be demonstrated
+in ANY tool, including a live production client, until decodeBMP() gets
+the same palette-index-0-transparent logic eqe1_builder.cpp already has.
+Per the standing instruction ("lead with this if RGBA also comes back
+null"): the tool-fix unit remains the only path to visual bless evidence,
+and this decodeBMP() gap is now a SECOND, arguably higher-priority
+candidate for it (P44b's entity_renderer-linking fix only helps the
+offline benchmark; this decodeBMP() fix would matter for real RGBA-mode
+rendering, not just the benchmark).
+
+Caveat carried from the task brief: this RGBA leg is offered as a fair
+visual-proxy path for the cutout SHAPE (mask is binary, geometry/UVs
+identical to the ETC1 companion-texture mask) precisely because the live
+x86 client defaults to RGBA (non-ETC1) entity rendering -- but per the
+finding above, that proxy claim is currently moot: the RGBA path cannot
+show the effect at all on this codebase until decodeBMP() is fixed, same
+practical bottom line as the ETC1 leg, reached by an unrelated code path.
+
+Errand bar: no production source diff vs fable tip (`git status` clean --
+only this manifest addendum + the deferred.md/P44b_bless_retake.md updates
++ gitignored NFS/build-tree outputs). Both binaries reused from P44b
+(verified non-stub by size, matching P44b's own reported sizes exactly:
+AFTER gles2_zone_benchmark 14,388,464 bytes / willeq 79,278,680 bytes;
+BEFORE gles2_zone_benchmark 14,383,392 bytes / willeq 79,261,280 bytes --
+BEFORE tree untouched by this addendum). AFTER binary rebuilt twice (once
+with diagnostics, once clean after revert) -- both builds clean, zero
+errors. No eqemu/live-server session -- offline only, x86 only. Full
+ctest/gate not run (no production source changes to gate).

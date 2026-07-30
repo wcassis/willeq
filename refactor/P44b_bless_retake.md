@@ -179,3 +179,70 @@ verified non-stub by size before capture. Builds clean (`willeq` +
 `gles2_zone_benchmark`, both trees). No eqemu/live-server session this
 unit — offline only. Full ctest/gate not run (no source changes to gate,
 same narrowed bar P44 used).
+
+## P44c addendum — RGBA leg (same branch/slot, dropping `--eqe1-path`)
+
+**LEAD WITH THIS**: also a null, but root-caused one level deeper than the
+ETC1 leg above, and this gap is NOT benchmark-tool-only — it affects
+production `willeq` too, whenever no `--eqe1-path`/ETC1 pack is
+configured (i.e. the RGBA rendering mode the live x86 client uses by
+default).
+
+Rationale for the leg: `entity_renderer.cpp`'s own
+`applyAlphaTestMaterialType()` comment claims "the direct RGBA/DDS decode
+path has real alpha in the main texture's own alpha channel," implying the
+RGBA path shouldn't need the companion-texture wiring the ETC1 leg above
+found missing from the benchmark tool. Tested by dropping `--eqe1-path`
+(same P44b framing, SKE, befallen, `--orbit-radius 8 --orbit-height-offset
+6 --animate`, frame 26).
+
+**Root cause: alpha is lost at decode, before the shader/material layer
+even matters.** `ConstrainedTextureCache::decodeBMP()`
+(`src/client/graphics/constrained_texture_cache.cpp` ~line 1151) — the
+decoder both the benchmark's `--eqe1-path`-less entity path AND
+production `willeq`'s entity texture loading funnel through — handles
+EQ's masked entity textures (confirmed 8bpp paletted via a reverted
+diagnostic trace: skefa0001/skeft0001/skeft0002/skech0001/skelg0001 all
+8bpp) by hardcoding alpha=255 for every pixel; its own comment says "//
+A (ignore palette alpha)". It does NOT implement the EQ masking
+convention ("palette index 0 = transparent") that `tools/eqe1_builder.cpp`
+already implements correctly (~line 88) for the offline ETC1 pipeline —
+that logic exists exactly once in the codebase and was never ported to
+the runtime BMP decoder. Confirmed via trace (`hasAlpha=0` for every
+ground-truth masked SKE texture) and via an actual render:
+BEFORE/AFTER PNGs are byte-identical (matching md5
+`731cd28d5191cebb2973e532c5687723`, AE=0), same for a 400% torso crop.
+Diagnostics reverted (`git checkout --`) before the confirmatory render;
+`git status` clean throughout.
+
+**Why this is worse news than the ETC1 leg**: P44b's gap (missing
+`entity_renderer.cpp` linkage) is benchmark-only — production `willeq`
+already links and calls `applyAlphaTestMaterialType()`. This gap is not:
+`ConstrainedTextureCache::decodeBMP()` is real production code, used
+whenever RGBA/non-ETC1 texture loading happens. Until it gets the same
+palette-index-0 masking logic `eqe1_builder.cpp` has, the RGBA-mode
+masked-texture effect cannot be visually demonstrated in ANY tool,
+including a live client — not just this offline benchmark. This makes
+`decodeBMP()` a second, arguably higher-priority tool-fix candidate
+alongside P44b's `entity_renderer.cpp`-linking recommendation.
+
+Deliverables: `/mnt/projects/fable/videos/p44b_bless_retake/rgba_leg/`
+(NFS, gitignored) — `pairs/ske_{BEFORE,AFTER}_f26.png`,
+`crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png` (400%),
+`diffs/ske_diff_f26{,_torso_zoom}.png` (AE=0 both). Full trace and method
+in `benchmarks/audits/p44b_bless_retake/EVIDENCE_MANIFEST.txt`'s "P44c
+ADDENDUM" section. Given the decode-level root cause makes the outcome
+certain (alpha never reaches the shader regardless of angle/race/framing),
+the full 3-angle x 2-race treatment used for the ETC1 leg was not repeated
+here — one confirmatory pair was sufficient given the certainty of the
+mechanism, and ZOM/zomlg0001 would be expected to fail identically for the
+same decode-level reason (not re-verified — not needed to establish the
+root cause, but flagging as an assumption, not independently confirmed for
+ZOM specifically).
+
+Errand bar: no production source changes (diagnostics reverted, `git
+status` clean apart from this doc + the manifest addendum + deferred.md).
+Both binaries reused from P44b, verified non-stub by size matching P44b's
+own reported sizes exactly. AFTER rebuilt twice (with diagnostics, then
+clean after revert), both builds clean. x86 only, no Pi, no eqemu, no
+ctest/gate run (no production source changes to gate).
