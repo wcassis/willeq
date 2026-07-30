@@ -1164,3 +1164,15 @@ proper fix:
   visual bless needs a follow-up errand: #time 12, camera on befallen
   skeletons/zombies (SKE rib gaps most dramatic) + qeynos2 beahe0008,
   same-pose before/after via a pre-P37 binary or config toggle.
+
+## P40 verdict: resolution-visibility "anomaly" NOT a code bug (2026-07-30, merged `e3b61ee`)
+
+- x86 repro at 3 resolutions: visibility counters BYTE-IDENTICAL
+  (5,000/5,000 cells); only GPU time scales with pixels (normal fill
+  cost). Occlusion buffer is fixed 64x32 from the preset (never
+  res-derived); frustum aspect identical at 4:3 points; no LOD-by-
+  pixel code exists. Likeliest explanation = P38's own flagged
+  methodology drift (res run lacked shipped flags). PENDING: a
+  2-invocation clean Pi A/B (400x300 vs 800x600, shipped flags) to
+  close it — ride along the next Pi unit. Non-4:3 aspect changes DO
+  move the frustum (correct behavior, noted for future res work).
