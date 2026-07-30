@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-28 (T02).
+Last updated: 2026-07-30 (T13).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T13 | `OP_SetChatServer` 4-field parse | DONE (merged `9d456c1`) | Closes the T09 finding, go-ahead from Will. Parser rewritten to the real eqemu format (`host,port,shortname.charname,<type><mail_key:08X>`); connection-type char stored (new accessor) for the future UCS implementation; receive path guarded (field count, empty field 4, non-numeric AND out-of-uint16-range port — `stoi` alone doesn't catch 70000). BUG_ pin re-pointed at fixed behavior + `OP_SetChatServer2` 'b' case. Executed inline; interrupted by the 07-30 VM crash and recovered from the t1 working tree. |
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
 | T02 | EventBus + state module unit tests | DONE | 127 new cases across `test_event_bus.cpp`, `test_state_modules.cpp`, `test_state_modules_secondary.cpp` (3-way split — see plan Review). All 11 files in `src/client/state/` now linked into a test binary. Full detail: `refactor/T02_state_event_bus.md` Review section. |
 | T12 | Action layer (dispatcher + commands) | DONE (merged `15af1d9`) | 68 tests over 2609 lines that were at 0%. No mis-wiring found (verified independently). Guard split pinned: 12 checkHandler-only vs 81 zone-gated. `InputActionBridge` (391 lines) not reached — follow-on. |
@@ -738,13 +739,17 @@ The connection-type character is currently discarded entirely; a real
 UCS implementation will need it to distinguish the chat and mail
 connections, so it is worth storing rather than dropping.
 
-**Status: a ~5-line fix in `eq_login_world.cpp`, awaiting Will's
-go-ahead.** Not urgent — nothing consumes these fields until UCS is
-implemented — but now fully specified. Pinned meanwhile as
-`BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors`;
-that test's synthetic 5-field contrast case should be re-pointed at the
-real 4-field shape when the fix lands, since 5 fields is not a format any
-server produces.
+**Status: FIXED in T13 (merged `9d456c1`, 2026-07-30), go-ahead from
+Will.** The parser now implements the 4-field parse above, plus: the
+connection-type character is stored (`m_ucs_connection_type`,
+`GetChatConnectionType()`) rather than discarded, and the receive path
+is guarded against malformed input — too few fields, empty field 4
+(`substr(1)` would throw), non-numeric port (`stoi` throws), and
+out-of-uint16-range port (`stoi` does NOT throw on e.g. 70000; without
+an explicit range check it silently truncated through the cast). The
+BUG_ pin and the synthetic 5-field contrast case were re-pointed as
+prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
+'b'/`OP_SetChatServer2` both populate correctly.
 
 ## Open question for Will — character-list storage
 
