@@ -573,7 +573,14 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
 
             auto texIt = textures.find(lowerTexName);
             if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                constrainedTextureCache_->getOrLoad(lowerTexName, texIt->second->data);
+                // P46: applyPaletteMask=isMaskedMaterial — this texture's
+                // WLD-masked status was already established above (the same
+                // signal that picked EMT_TRANSPARENT_ALPHA_CHANNEL_REF), so
+                // the runtime BMP decode now actually punches palette index
+                // 0 transparent for it instead of hardcoding alpha=255.
+                constrainedTextureCache_->getOrLoad(lowerTexName, texIt->second->data,
+                                                     "uncategorized", "",
+                                                     isMaskedMaterial);
                 irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerTexName);
                 if (tex) {
                     buffer->Material.setTexture(0, tex);

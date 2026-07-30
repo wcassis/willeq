@@ -85,10 +85,20 @@ public:
     // uploaded (see uploadTexture()/uploadCompressed*()). Only stored when
     // the ledger is enabled (textureUploadLedgerPath non-empty) — no-op
     // otherwise, so passing these costs nothing when the audit is off.
+    //
+    // P46: applyPaletteMask, default false, is the gate for the runtime
+    // palette-index-0 masking fix in decodeBMP() — pass true ONLY when the
+    // caller has already confirmed (via the WLD-derived textureMasked()
+    // flag) that this specific texture is WLD-masked. Leaving it false
+    // preserves the pre-P46 behavior byte-for-byte (8bpp palette index 0
+    // decodes opaque, as it always has) — this is load-bearing for zone
+    // geometry, where palette slot 0 is frequently a legitimate opaque
+    // color and must never be punched transparent. See decodeBMP().
     irr::video::ITexture* getOrLoad(const std::string& name,
                                      const std::vector<char>& data,
                                      const std::string& category = "uncategorized",
-                                     const std::string& callsite = "");
+                                     const std::string& callsite = "",
+                                     bool applyPaletteMask = false);
 
     // Upload a decoded texture to the GPU.
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
@@ -317,7 +327,8 @@ private:
     bool processTextureData(const std::vector<char>& rawData,
                             std::vector<uint8_t>& processedData,
                             int& width, int& height,
-                            bool& hasAlpha);
+                            bool& hasAlpha,
+                            bool applyPaletteMask = false);
 
     // Downsample texture data using box filter
     // Halves dimensions until both are <= maxDimension
@@ -334,10 +345,20 @@ private:
     // Detect if texture has meaningful alpha (not all 255)
     bool detectAlpha(const std::vector<uint8_t>& rgba, int width, int height);
 
-    // Decode BMP data to RGBA
+    // Decode BMP data to RGBA.
+    //
+    // P46: applyPaletteMask (default false) gates the EQ palette-index-0
+    // transparency convention for 8bpp paletted BMPs — mirrors
+    // tools/eqe1_builder.cpp's decodeBMPToRGBA() (the only other place this
+    // convention is implemented, offline-only, until this fix). When false
+    // (the pre-P46 and all-non-entity-texture default), palette index 0
+    // decodes as an ordinary opaque color, exactly as before — required
+    // because index 0 is a legitimate color in unmasked 8bpp textures and
+    // in zone textures generally, not a universal transparency marker.
     bool decodeBMP(const std::vector<char>& data,
                    std::vector<uint8_t>& rgba,
-                   int& width, int& height);
+                   int& width, int& height,
+                   bool applyPaletteMask = false);
 
     // Cached texture entry
     struct CachedTexture {

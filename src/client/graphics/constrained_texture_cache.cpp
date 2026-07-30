@@ -111,7 +111,8 @@ irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTextureInternal() {
 irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name,
                                                           const std::vector<char>& data,
                                                           const std::string& category,
-                                                          const std::string& callsite) {
+                                                          const std::string& callsite,
+                                                          bool applyPaletteMask) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // Check if already uploaded
@@ -176,7 +177,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     int width = 0, height = 0;
     bool hasAlpha = false;
 
-    if (!processTextureData(data, rgbaPixels, width, height, hasAlpha)) {
+    if (!processTextureData(data, rgbaPixels, width, height, hasAlpha, applyPaletteMask)) {
         LOG_WARN(MOD_GRAPHICS, "Constrained cache: decode failed for '{}' ({} bytes)", name, data.size());
         return nullptr;
     }
@@ -1033,7 +1034,8 @@ size_t ConstrainedTextureCache::calculateTextureSize(int width, int height) cons
 bool ConstrainedTextureCache::processTextureData(const std::vector<char>& rawData,
                                                   std::vector<uint8_t>& processedData,
                                                   int& width, int& height,
-                                                  bool& hasAlpha) {
+                                                  bool& hasAlpha,
+                                                  bool applyPaletteMask) {
     // Decode based on format
     if (DDSDecoder::isDDS(rawData)) {
         DecodedImage image = DDSDecoder::decode(rawData);
@@ -1045,7 +1047,7 @@ bool ConstrainedTextureCache::processTextureData(const std::vector<char>& rawDat
         processedData = std::move(image.pixels);
     } else {
         // Assume BMP
-        if (!decodeBMP(rawData, processedData, width, height)) {
+        if (!decodeBMP(rawData, processedData, width, height, applyPaletteMask)) {
             return false;
         }
     }
@@ -1150,7 +1152,8 @@ bool ConstrainedTextureCache::detectAlpha(const std::vector<uint8_t>& rgba, int 
 
 bool ConstrainedTextureCache::decodeBMP(const std::vector<char>& data,
                                          std::vector<uint8_t>& rgba,
-                                         int& width, int& height) {
+                                         int& width, int& height,
+                                         bool applyPaletteMask) {
     if (data.size() < 54) return false;  // Minimum BMP header size
 
     const uint8_t* ptr = reinterpret_cast<const uint8_t*>(data.data());
@@ -1224,7 +1227,18 @@ bool ConstrainedTextureCache::decodeBMP(const std::vector<char>& data,
                 rgba[dstIdx + 0] = palette[idx * 4 + 2];  // R (palette is BGRA)
                 rgba[dstIdx + 1] = palette[idx * 4 + 1];  // G
                 rgba[dstIdx + 2] = palette[idx * 4 + 0];  // B
-                rgba[dstIdx + 3] = 255;                    // A (ignore palette alpha)
+                // P46: EQ convention is that palette index 0 is the
+                // transparent color (mirrors tools/eqe1_builder.cpp's
+                // identical decode, previously the only place this was
+                // implemented). Gated on applyPaletteMask — false everywhere
+                // except callers who have already confirmed via the
+                // WLD-derived textureMasked() flag that THIS texture is
+                // WLD-masked (entity/equipment per-part loads only; see
+                // getOrLoad()'s doc comment). Ungated callers (zone
+                // geometry, spell FX, UI, etc.) keep the pre-P46 alpha=255
+                // behavior byte-for-byte, since palette index 0 is
+                // frequently a legitimate opaque color there.
+                rgba[dstIdx + 3] = (applyPaletteMask && idx == 0) ? 0 : 255;  // A
             } else {
                 // Unsupported format
                 return false;

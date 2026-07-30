@@ -37,6 +37,60 @@ using namespace EQT::Graphics;
 
 namespace ZoneBench {
 
+// P46 Part B: benchmark-only mirror of EntityRenderer::applyAlphaTestMaterialType()
+// (src/client/graphics/entity_renderer.cpp). This tool does not link
+// entity_renderer.cpp (P44b's root-caused finding: `nm` shows no
+// applyAlphaTestMaterialType symbol in gles2_zone_benchmark), so mesh_building.cpp's
+// P37 EMT_TRANSPARENT_ALPHA_CHANNEL_REF marker on masked-material mesh buffers was
+// never followed up with production's companion-alpha-texture binding — the shader
+// had a material type telling it to alpha-test, but nothing on unit 1 (ETC1 leg) or
+// a real alpha channel it could trust (RGBA leg, pre-P46-Part-A) to discard against.
+// This function closes that gap for the benchmark's entity path only, so
+// --eqe1-path (ETC1) renders masked entity alpha the way production does. Logic is
+// intentionally identical to entity_renderer.cpp's version, not reinvented:
+//   - ETC1-sourced main texture (unit 0) -> use the companion-alpha shader variant,
+//     bind the ETC1 alpha companion on unit 1.
+//   - Direct RGBA/DDS main texture -> use the RGBA-variant shader that reads alpha
+//     from unit 0's own alpha channel directly (P46 Part A is what makes that alpha
+//     channel meaningful for masked entity BMPs now).
+static void applyEntityAlphaCompanionBinding(irr::scene::IMesh* mesh,
+                                              ConstrainedTextureCache* textureCache,
+                                              irr::s32 shaderMaterialAlphaTest,
+                                              irr::s32 shaderMaterialAlphaTestRGBA) {
+    if (!mesh || !textureCache) return;
+
+    irr::u32 bufCount = mesh->getMeshBufferCount();
+    for (irr::u32 i = 0; i < bufCount; ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (!buf) continue;
+
+        irr::video::SMaterial& mat = buf->getMaterial();
+        // Only touch buffers mesh_building.cpp already flagged masked (P37) --
+        // mirrors applyAlphaTestMaterialType()'s own precondition (called only at
+        // entity_renderer.cpp's material-assignment sites, which only fire when
+        // upstream already set EMT_TRANSPARENT_ALPHA_CHANNEL_REF).
+        if (mat.MaterialType != irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) continue;
+
+        irr::video::ITexture* tex = mat.getTexture(0);
+        bool isETC1 = tex && textureCache->isETC1Texture(tex);
+        if (isETC1) {
+            if (shaderMaterialAlphaTest >= 0) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest);
+            }
+            irr::video::ITexture* alphaTex = textureCache->getAlphaTexture(tex);
+            if (alphaTex) {
+                mat.setTexture(1, alphaTex);
+            }
+        } else if (shaderMaterialAlphaTestRGBA >= 0) {
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA);
+        } else if (shaderMaterialAlphaTest >= 0) {
+            // No RGBA variant wired -- fall back to the companion variant, same
+            // fallback entity_renderer.cpp's version uses.
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest);
+        }
+    }
+}
+
 ZoneBenchData::~ZoneBenchData() {
     // Intentionally skip cleanup — Irrlicht's destruction order with
     // manually-managed meshes, VBOs, and shared textures causes segfaults.
@@ -693,6 +747,19 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                         raceId, 0, data->smgr->getRootSceneNode());
                     if (node) {
                         data->animatedNodes[i] = node;
+                        // P46 Part B: mirror production's companion-alpha binding
+                        // (entity_renderer.cpp's applyAlphaTestMaterialType(), not
+                        // linked into this tool) onto the masked-material buffers
+                        // mesh_building.cpp already flagged (P37). Must happen after
+                        // createAnimatedNode() builds instanceMesh_'s buffers, before
+                        // any texture upload/draw uses this node's material.
+                        if (data->zoneShader && data->zoneShader->isAvailable() &&
+                            node->getInstanceMesh()) {
+                            applyEntityAlphaCompanionBinding(
+                                node->getInstanceMesh(), data->textureCache.get(),
+                                data->zoneShader->getActiveAlphaTest(),
+                                data->zoneShader->getActiveAlphaTestRGBA());
+                        }
                         // P12B: do NOT register the per-instance animated mesh
                         // (node->getInstanceMesh()) as a GLES2 hardware buffer here.
                         // uploadMeshHWBuffers()/gles2CreateStaticHWBuffer() ->

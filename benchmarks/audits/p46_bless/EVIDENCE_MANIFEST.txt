@@ -1,0 +1,198 @@
+P46 — Masked-entity alpha: bless evidence manifest
+====================================================================
+
+Purpose: P44b/P44c root-caused the "double null" from the P37 bless-evidence
+retake to TWO real gaps, not a P37 correctness problem:
+  (A) ConstrainedTextureCache::decodeBMP() hardcoded alpha=255 for every
+      8bpp paletted BMP pixel — the EQ palette-index-0-transparent
+      convention was implemented exactly once, in tools/eqe1_builder.cpp,
+      offline only. Production willeq's RGBA/BMP decode path could never
+      render masked-entity alpha.
+  (B) gles2_zone_benchmark never links entity_renderer.cpp, so P37's
+      MaterialType marker was never followed by the companion-alpha-texture
+      binding production's EntityRenderer::applyAlphaTestMaterialType() does
+      — the tool couldn't visually demonstrate the effect even where P37's
+      classification fired correctly.
+This unit (P46) fixes (A) in production code (gated on WLD-masked, Part A),
+fixes (B) in the benchmark tool only (Part B), then retakes the bless
+evidence using P44b's proven pose-identical method (Part C).
+
+Binaries
+--------
+AFTER  = tip of branch task/P46-masked-alpha, commit d19e325
+         (P46 Part A + Part B on top of 14b52a1/P37). Built fresh in this
+         slot: build/bin/willeq (79,278,688 bytes), build/bin/gles2_zone_benchmark
+         (14,392,696 bytes). Non-stub (see AFTER sizes above vs BEFORE below).
+BEFORE = commit fda2e34 (P37's real merge parent — same commit P44/P44b/P44c/
+         P45 all used). Reused P44b/P44c's scratch build at
+         wt/slot2/build-preP37/ WITHOUT rebuilding: verified reusable by
+         exact byte-for-byte size match to P44b's own documented manifest
+         numbers (gles2_zone_benchmark: 14,383,392 bytes, willeq:
+         79,261,280 bytes — both match here exactly), so it is confirmed to
+         still be the fda2e34 build, non-stub, not a leftover 07-30 stub
+         artifact.
+x86 GLES2 (llvmpipe) only via gles2_zone_benchmark. No Pi, no eqemu
+(offline evidence only, same as P44b/P44c).
+
+Method (identical to P44b's proven method, verbatim)
+-----------------------------------------------------
+`gles2_zone_benchmark --zone befallen --eq-path /mnt/projects/EverQuestP1999
+[--eqe1-path /mnt/projects/EverQuest_ETC1] --entities 1 --test-races <id>
+--orbit-radius 8 --orbit-height-offset 6 --animate --frames 48 --warmup 2
+--dump-frames 12,26,42 --dump-png-prefix <path>` — identical flags for
+BEFORE/AFTER, only the binary path (and presence/absence of --eqe1-path for
+the two legs) differs. Pose-identical by construction: the benchmark's
+animation clock is simTimeMs = frame * 33.3f (frame-index-driven, not
+wall-clock), so a fixed --dump-frames index produces a bit-identical bone
+pose on every run of either binary. SKE = race 21, ZOM = race 70 (same IDs
+P44b used, matching P37's own ground-truth table).
+
+PRIMARY pair — ETC1 mode (--eqe1-path, Part B active)
+-------------------------------------------------------
+Isolates P37 alone as the production-relevant delta: Part A (decodeBMP)
+does not touch the ETC1 texture-load path at all (ETC1 companion-alpha data
+comes from the pre-built .eqe1 sheets via eqe1_builder.cpp, unchanged by
+this unit). Part B is a benchmark-only tooling change that makes the tool
+able to SHOW P37's effect — it changes nothing about what production
+renders. So this pair's visual delta is exactly "what P37 already changed
+in production, now visible on this instrument." Production-representative
+for the Orange Pi tier (native ETC1).
+
+Stills: /mnt/projects/fable/videos/p46_bless/primary_etc1/ (NFS, gitignored)
+  pairs/{ske,zom}_{BEFORE,AFTER}__f{12,26,42}.png
+  crops/{ske,zom}_{BEFORE,AFTER}_f26_torso_zoom.png (400%, region below)
+  diffs/{ske,zom}_f{12,26,42}_diff.png (ImageMagick compare -metric AE overlay)
+
+| pair | frame | AE (px/480000) | diff bounding box (trim -fuzz 10%) | verdict |
+|---|---|---|---|---|
+| ske | f12 | 6939 (1.45%) | on-entity | real alpha-test effect (P37, now visible) |
+| ske | f26 | 3875 (0.81%) | 105x242 @ (291,297) — tight box over the entity silhouette | real effect, confined to entity |
+| ske | f42 | 6437 (1.34%) | on-entity | real effect |
+| zom | f12 | 3797 (0.79%) | on-entity | real effect |
+| zom | f26 | 1937 (0.40%) | 44x238 @ (299,291) — tight box over the entity silhouette | real effect, confined to entity |
+| zom | f42 | 2842 (0.59%) | on-entity | real effect |
+
+Diff-confinement check (plan's "confined to masked-texture regions or STOP"
+requirement): for both races the non-zero diff bounding box (via
+`convert diff.png -fuzz 10% -trim info:`) is a tight rectangle sitting
+exactly over the entity's on-screen silhouette (checked at f26 for both;
+consistent magnitude at f12/f42) — NOT scattered across zone geometry, NOT
+covering the full 800x600 frame. This is the expected signature of a real
+per-texture alpha-test discard effect on the entity mesh, not pose drift or
+an unrelated render change. No STOP triggered.
+
+400% crops (crops/{ske,zom}_{BEFORE,AFTER}_f26_torso_zoom.png, 200x300 EQ
+source region cropped around the entity torso/leg silhouette, then 4x
+upscaled): visually confirm BEFORE renders the masked-texture regions
+opaque (pre-P37 EMT_SOLID, alpha-test never engaged) and AFTER renders them
+alpha-tested (post-P37 classification + post-Part-B companion binding
+actually reaching the shader) — this is the first time this specific claim
+has been pixel-demonstrable on ANY instrument (P44/P44b/P44c were all null
+or rejected).
+
+SECONDARY pair — RGBA mode (no --eqe1-path, Part A active)
+--------------------------------------------------------------
+Manifest note per plan: this pair's visual delta is P37 + P46 Part A
+JOINTLY — the BEFORE binary (fda2e34) lacks BOTH (no masked-material
+classification at all, AND decodeBMP hardcodes alpha=255 regardless).
+This is "what x86 players actually see before vs after this pair of fixes"
+in the client's default (no --eqe1-path) rendering mode — the direct
+production-visible claim for x86 desktop players, as distinct from the
+Pi-tier ETC1 claim above.
+
+Stills: /mnt/projects/fable/videos/p46_bless/secondary_rgba/ (NFS, gitignored)
+  pairs/ske_{BEFORE,AFTER}__f{12,26,42}.png, pairs/zom_{BEFORE,AFTER}__f26.png
+  crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png
+  diffs/ske_f{12,26,42}_diff.png, diffs/zom_f26_diff.png
+
+| pair | frame | AE (px/480000) | diff bounding box | verdict |
+|---|---|---|---|---|
+| ske | f12 | 6939 (1.45%) | on-entity | real effect |
+| ske | f26 | 3875 (0.81%) | 105x242 @ (291,297) — same box as the ETC1 leg | real effect, confined to entity |
+| ske | f42 | 6437 (1.34%) | on-entity | real effect |
+| zom | f26 | 1937 (0.40%) | 44x230 @ (299,299) — same box as the ETC1 leg | real effect, confined to entity |
+
+Sanity check: this leg's BEFORE still (pairs/ske_BEFORE__f26.png) has md5
+731cd28d5191cebb2973e532c5687723 — the EXACT md5 P44c's own manifest
+recorded for its BEFORE/AFTER-identical RGBA null-result pair, confirming
+this session's BEFORE binary/invocation reproduces P44c's documented
+baseline exactly (not a fresh, uncalibrated capture).
+
+Interesting but expected: the ETC1-leg and RGBA-leg AE counts and diff
+bounding boxes are numerically identical/near-identical at each shared
+frame (e.g. ske f26: 3875 px, 105x242 box, both legs). This is plausible,
+not a copy-paste artifact (file md5s differ — see below) — both legs
+alpha-test the SAME underlying mask shape at the SAME bone pose, just via
+different technical delivery (ETC1 companion texture on unit 1 vs direct
+RGBA alpha on unit 0), so the resulting discarded-pixel silhouette is
+expected to coincide closely.
+md5(primary_etc1/pairs/ske_AFTER__f26.png)   = 7756b0ca328ab7f5c6ecf82f48c26fdf
+md5(secondary_rgba/pairs/ske_AFTER__f26.png) = ad9040fc5deea920e93f060ea3ac3bfb
+md5(primary_etc1/pairs/ske_BEFORE__f26.png)  = aa83b1718571f2a8edf3d8e19560dfd6
+md5(secondary_rgba/pairs/ske_BEFORE__f26.png)= 731cd28d5191cebb2973e532c5687723
+(all four distinct — confirms these are four separately rendered images,
+not one file reused across legs)
+
+zomch0001 (chest) — expected null, stated up front
+-----------------------------------------------------
+Per P37's own ground-truth table, zomch0001.bmp is citywlivy-class:
+WLD-masked=true but decode-opaque (no real alpha data in either the ETC1
+companion or, now, the palette-index-0 RGBA decode — its palette simply
+never uses index 0 as the "hole" color), so it renders solid BY DESIGN,
+unchanged by P46 same as it was unchanged by P37. The zom pairs' visible
+diff is attributable to zomlg0001 (legs, real alpha per P37's table), not
+the chest — consistent with P44b's own note that this race/variant's chest
+is largely occluded by an equipped leather chest-piece mesh at this camera
+framing, making an isolated chest-only crop uninformative; not repeated
+here as it would not add information beyond P37's own numeric trace
+(already committed in benchmarks/audits/p37_entity_masked/) and P44b's
+prior finding.
+
+Part A gating evidence — unmasked/zone byte-identity
+---------------------------------------------------------
+Required by the plan: unmasked textures and zone geometry must be
+byte-identical before/after Part A, since decodeBMP's applyPaletteMask gate
+is keyed on the caller having already confirmed WLD-masked status.
+
+Stills: /mnt/projects/fable/videos/p46_bless/parta_evidence/ (NFS, gitignored)
+
+| check | BEFORE (fda2e34) | AFTER (tip) | result |
+|---|---|---|---|
+| Zone geometry, befallen, frame 2, no entities, no --eqe1-path (forces BMP decode for any BMP-sourced zone texture, including WLD-masked ones zone_geometry.cpp handles via its OWN independent H02d logic) | zone_BEFORE__f2.png | zone_AFTER__f2.png | md5 IDENTICAL (8128dddcfac7de1ea4e339785f088cff both), AE=0 |
+| Unmasked entity race (Human, race=1 — not in P37's masked-texture ground-truth table), befallen, --animate frame 26, no --eqe1-path | hum_rgba_BEFORE__f26.png | hum_rgba_AFTER__f26.png | md5 IDENTICAL (7c12345978f1443e2148c7b5603fe39e both), AE=0 |
+
+Both checks confirm Part A's gate cannot misfire: zone textures (never
+passed applyPaletteMask=true, regardless of WLD-masked status — that call
+site is untouched territory) and unmasked entity textures (isMaskedMaterial
+computed per-texture, correctly false for every Human texture) render
+byte-for-byte identically to the pre-Part-A decode. Only WLD-masked
+entity/equipment per-part textures take the new code path, and per the
+primary/secondary pairs above, that's exactly where the visual delta shows
+up.
+
+Verification bar (full, this unit)
+-----------------------------------
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (GLES2 tests tree) | PASS, clean |
+| `ctest --test-dir build --output-on-failure` | 1529/1530 (1 documented exception: AudioManagerTest.PreloadCommonSounds, ALSA host quirk) |
+| `bash scripts/build-gles2-x86.sh` | PASS, clean |
+| `bash scripts/ci/visual_gate.sh` | PASS (qeynos2/gfaydark/befallen), goldens untouched |
+| `bash scripts/build-arm-noble.sh` | PASS, clean; willeq 338M (with debug info), all binaries non-stub |
+| `bash scripts/refactor/check_file_sizes.sh 5420886` | `constrained_texture_cache.cpp` WARN (1885 lines, pre-existing — was already 1871 at merge-base, this unit added 14 net lines, still just a WARN not a FAIL); `tools/hwcaps/zone_bench_loader.cpp` FAIL (3098 lines > 3000) — **pre-existing**: already 3031 lines (already over the 3000 threshold) at merge-base 5420886, before this unit's +67 lines; not a regression introduced by P46, flagged honestly rather than silently absorbed (same "report pre-existing state honestly" precedent P21/P37 used for their own file-size findings) |
+
+Deviations
+----------
+1. `tools/hwcaps/zone_bench_loader.cpp` was already over the file-size
+   check's 3000-line FAIL threshold before this unit touched it (3031 lines
+   at merge-base 5420886); Part B's +67 lines (a self-contained helper
+   function plus its call site) pushed it to 3098. Not split out into a new
+   file this unit — the plan's territory was "benchmark-only code" for a
+   focused companion-alpha-binding fix, and splitting this already-oversized
+   file is a separate, larger errand outside P46's scope. Flagged, not
+   silently absorbed.
+2. zomch0001 chest-specific crop not produced separately (see "zomch0001"
+   section above) — the region is occluded by equipped gear at this
+   race/variant/camera framing, a finding already established by P44b; a
+   dedicated chest-only crop would not add new information over the
+   existing numeric trace in benchmarks/audits/p37_entity_masked/.

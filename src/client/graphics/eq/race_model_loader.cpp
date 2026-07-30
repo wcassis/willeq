@@ -964,7 +964,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         size_t notFound = 0;
         size_t nullTex = 0;
         size_t emptyData = 0;
-        for (const auto& texName : modelData->combinedGeometry->textureNames()) {
+        const auto& combinedTextureNames = modelData->combinedGeometry->textureNames();
+        const auto& combinedTextureMasked = modelData->combinedGeometry->textureMasked();
+        for (size_t texIdx = 0; texIdx < combinedTextureNames.size(); ++texIdx) {
+            const std::string& texName = combinedTextureNames[texIdx];
             std::string lowerName = texName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                            [](unsigned char c) { return std::tolower(c); });
@@ -993,7 +996,16 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             // so this is the same eager, unconditional-per-race decode P13's audit
             // measured (behavior byte-identical to before P13b for every race that
             // reaches this branch).
-            constrainedTextureCache_->getOrLoad(lowerName, rawData, "entity_perpart", "preloadModelData:T05");
+            // P46: applyPaletteMask gated on this exact texture's WLD-derived
+            // textureMasked() flag (same parallel-array signal
+            // mesh_building.cpp's buildMeshFromGeometry() and this class's
+            // own compositeHasMaskedTexture check above already use) — only
+            // WLD-masked per-part entity textures get palette-index-0
+            // punched transparent; every unmasked sibling texture decodes
+            // exactly as before.
+            bool isMaskedMaterial = texIdx < combinedTextureMasked.size() && combinedTextureMasked[texIdx];
+            constrainedTextureCache_->getOrLoad(lowerName, rawData, "entity_perpart", "preloadModelData:T05",
+                                                 isMaskedMaterial);
             ++decoded;
         }
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={} (notFound={} null={} empty={})",
