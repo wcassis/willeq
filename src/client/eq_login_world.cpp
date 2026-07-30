@@ -568,6 +568,13 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 	// Titanium CharacterSelect_Struct has names at offset 1024
 	const size_t names_offset = 1024 + 2; // +2 for opcode
 
+	// T14: keep the occupied slots instead of discarding them after logging,
+	// so a character-select UI (and tests) can read the list. Rebuilt on
+	// every delivery; previously the loop returned at the first name match,
+	// leaving later slots unparsed.
+	m_character_select_list.clear();
+	bool found = false;
+
 	// Check all 10 character slots
 	for (int i = 0; i < 10; i++) {
 		size_t name_offset = names_offset + (i * 64);
@@ -580,7 +587,11 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 		}
 		std::string name(name_buf);
 
-		if (name.length() > 0) {
+		// eqemu fills empty Titanium slots with the literal name "<none>"
+		// (all other fields zero) — verified against the real capture, where
+		// slots 3-9 carry it. '<' is not a legal character-name character,
+		// so this cannot shadow a real character.
+		if (name.length() > 0 && name != "<none>") {
 			// Get other character data using Titanium offsets
 			uint8_t level = p.GetUInt8(1694 + 2 + i);  // Level array at offset 1694
 			uint8_t pclass = p.GetUInt8(1004 + 2 + i); // Class array at offset 1004
@@ -590,15 +601,19 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}",
 				i, name, level, pclass, race, zone);
 
-			if (m_character.compare(name) == 0) {
+			m_character_select_list.push_back({i, name, level, pclass, race, zone});
+
+			if (!found && m_character.compare(name) == 0) {
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", m_character, i);
 				m_character_select_index = i;
-				return;
+				found = true;
 			}
 		}
 	}
 
-	LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", m_character);
+	if (!found) {
+		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", m_character);
+	}
 }
 
 void EverQuest::WorldSendApproveWorld()

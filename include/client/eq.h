@@ -594,6 +594,19 @@ struct WorldServer
 	int players;
 };
 
+// T14: one occupied character-select slot, captured from OP_SendCharInfo.
+// name/level/class/race/zone are exactly what the Titanium select screen
+// displays, so this is product state a select UI can consume, not test-only.
+struct CharacterSelectEntry
+{
+	int slot = -1;              // 0-9 position in the select screen
+	std::string name;
+	uint8_t level = 0;
+	uint8_t char_class = 0;
+	uint32_t race = 0;
+	uint32_t zone = 0;
+};
+
 struct Entity
 {
 	uint16_t spawn_id = 0;
@@ -827,6 +840,9 @@ public:
 	uint16_t GetZoneServerPort() const { return m_zone_server_port; }
 	const std::map<uint32_t, WorldServer>& GetWorldServers() const { return m_world_servers; }
 	int GetCharacterSelectIndex() const { return m_character_select_index; }
+	// T14: unlike the T09 observers above, this one is backed by new
+	// storage — occupied slots only, rebuilt on every OP_SendCharInfo.
+	const std::vector<CharacterSelectEntry>& GetCharacterSelectList() const { return m_character_select_list; }
 	const std::string& GetChatServerHost() const { return m_ucs_host; }
 	uint16_t GetChatServerPort() const { return m_ucs_port; }
 	const std::string& GetMailKey() const { return m_mail_key; }
@@ -1435,6 +1451,7 @@ private:
 	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
 
 	int m_character_select_index = -1;
+	std::vector<CharacterSelectEntry> m_character_select_list;
 
 	// Character stats
 	uint8_t m_level = 1;

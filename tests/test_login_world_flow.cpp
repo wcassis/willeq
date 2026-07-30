@@ -607,6 +607,30 @@ std::vector<uint8_t> BuildCharacterSelectPayload(const std::string& slot0Name) {
     });
 }
 
+// T14: a synthetic slot with every field the handler decodes, written at the
+// documented Titanium offsets (names 1024, levels 1694, classes 1004,
+// races 0, zones 964; +2 for the opcode).
+struct SyntheticCharSlot {
+    int slot;
+    std::string name;
+    uint8_t level;
+    uint8_t char_class;
+    uint32_t race;
+    uint32_t zone;
+};
+
+std::vector<uint8_t> BuildCharacterSelectPayload(const std::vector<SyntheticCharSlot>& slots) {
+    return BuildPayload(2 + 1704, [&](EQ::Net::DynamicPacket& p) {
+        for (const auto& s : slots) {
+            p.PutCString(2 + 1024 + s.slot * 64, s.name.c_str());
+            p.PutUInt8(2 + 1694 + s.slot, s.level);
+            p.PutUInt8(2 + 1004 + s.slot, s.char_class);
+            p.PutUInt32(2 + s.slot * 4, s.race);
+            p.PutUInt32(2 + 964 + s.slot * 4, s.zone);
+        }
+    });
+}
+
 }  // namespace
 
 TEST(LoginWorldAccessors, LoginAccepted_RealCapture_ParsesAccountIdAndSessionKey) {
@@ -700,6 +724,92 @@ TEST(LoginWorldAccessors, SendCharInfo_CharacterNotInList_LeavesIndexAtNegativeO
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
     EXPECT_EQ(eq.GetCharacterSelectIndex(), -1);
+    // T14: the non-matching character still occupies a slot, so it must
+    // appear in the stored list even though the index stayed unset.
+    ASSERT_EQ(eq.GetCharacterSelectList().size(), 1u);
+    EXPECT_EQ(eq.GetCharacterSelectList()[0].name, "SomeoneElse");
+}
+
+TEST(LoginWorldAccessors, SendCharInfo_RealCapture_PopulatesCharacterList) {
+    std::vector<uint8_t> payload;
+    if (!FindFirstCaptureRecord(EQT::Net::SessionStream::World, HC_OP_SendCharInfo, payload)) {
+        GTEST_SKIP() << "No session capture at " << DefaultSessionLogPath()
+                     << " -- skipping real-capture character-list test.";
+    }
+
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_TRUE(eq.GetCharacterSelectList().empty());
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+
+    // Real capture slot layout (P29 recording): 0="Testcaster",
+    // 1="Testchar", 2="Testmelee"; slots 3-9 carry eqemu's "<none>"
+    // empty-slot sentinel and must be filtered out. Numeric values pinned
+    // from a discovery run against the capture: class 12=Wizard/1=Warrior,
+    // race 6=High Elf/1=Human, zones 25/36.
+    const auto& list = eq.GetCharacterSelectList();
+    ASSERT_EQ(list.size(), 3u);
+    EXPECT_EQ(list[0].slot, 0);
+    EXPECT_EQ(list[0].name, "Testcaster");
+    EXPECT_EQ(list[0].level, 1);
+    EXPECT_EQ(list[0].char_class, 12);
+    EXPECT_EQ(list[0].race, 6u);
+    EXPECT_EQ(list[0].zone, 25u);
+    EXPECT_EQ(list[1].slot, 1);
+    EXPECT_EQ(list[1].name, "Testchar");
+    EXPECT_EQ(list[1].level, 1);
+    EXPECT_EQ(list[1].char_class, 1);
+    EXPECT_EQ(list[1].race, 1u);
+    EXPECT_EQ(list[1].zone, 36u);
+    EXPECT_EQ(list[2].slot, 2);
+    EXPECT_EQ(list[2].name, "Testmelee");
+    EXPECT_EQ(list[2].level, 1);
+    EXPECT_EQ(list[2].char_class, 1);
+    EXPECT_EQ(list[2].race, 6u);
+    EXPECT_EQ(list[2].zone, 25u);
+}
+
+TEST(LoginWorldAccessors, SendCharInfo_SyntheticSlots_DecodesAllFieldsAndSkipsEmpty) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    // Configured character in slot 0, a second character in slot 2: the old
+    // handler returned at the slot-0 match, so slot 2 also asserts that later
+    // slots are now parsed. Slot 1 is empty (all-zero names bytes) and slot 3
+    // carries eqemu's "<none>" empty-slot sentinel; both must be skipped.
+    auto payload = BuildCharacterSelectPayload(std::vector<SyntheticCharSlot>{
+        {0, "Testchar", 12, 14, 128, 75},
+        {2, "Otherguy", 60, 1, 2, 8},
+        {3, "<none>", 0, 0, 0, 0},
+    });
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+
+    EXPECT_EQ(eq.GetCharacterSelectIndex(), 0);
+    const auto& list = eq.GetCharacterSelectList();
+    ASSERT_EQ(list.size(), 2u);
+    EXPECT_EQ(list[0].slot, 0);
+    EXPECT_EQ(list[0].name, "Testchar");
+    EXPECT_EQ(list[0].level, 12);
+    EXPECT_EQ(list[0].char_class, 14);
+    EXPECT_EQ(list[0].race, 128u);
+    EXPECT_EQ(list[0].zone, 75u);
+    EXPECT_EQ(list[1].slot, 2);
+    EXPECT_EQ(list[1].name, "Otherguy");
+    EXPECT_EQ(list[1].level, 60);
+    EXPECT_EQ(list[1].char_class, 1);
+    EXPECT_EQ(list[1].race, 2u);
+    EXPECT_EQ(list[1].zone, 8u);
+}
+
+TEST(LoginWorldAccessors, SendCharInfo_RedeliveryRebuildsListInsteadOfAppending) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    auto payload = BuildCharacterSelectPayload(std::vector<SyntheticCharSlot>{
+        {0, "Testchar", 12, 14, 128, 75},
+    });
+
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+    ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
+
+    EXPECT_EQ(eq.GetCharacterSelectList().size(), 1u);
 }
 
 TEST(LoginWorldAccessors, ZoneServerInfo_RealCapture_ParsesHostAndPort) {
