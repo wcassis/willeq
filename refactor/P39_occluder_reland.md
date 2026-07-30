@@ -220,4 +220,5 @@ with no receiving field, the inverse problem, unrelated to this unit's scope.
 
 ### Commit
 
-`<filled after commit>`
+`628bed99b1bfddd66fc1bf7080e09dc0eab25838` — "P39: re-land the blessed
+occluder-256 through the JSON preset path"
