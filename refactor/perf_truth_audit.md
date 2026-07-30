@@ -429,3 +429,164 @@ at final exit.
   this unit needed; reusing the `--path-file --animate` pipeline with a
   repeated pose was the smallest change that kept entities and counters
   in the loop.
+
+## 2026-07-30 — P41: lighting-lever characterization for Will's decision (+ Pi ride-alongs)
+
+Executed on `wt/slot1`, branch `task/P41-lighting-lever`, cut from `fable`
+at `33bf633`. This unit does NOT flip anything — per-pixel adaptive
+lighting is blessed visual territory (Q03: GLS level 9, x3 boost,
+count-mode). It characterizes the lightweight-vs-per-pixel trade P38 found
+(-15% total / -22% GPU at e5) for Will's decision, at both realistic (e5)
+and stress (e205) load, plus three ride-alongs.
+
+### 1. Pi lighting A/B, both loads (canonical befallen replay, shipped
+preset: `--merge-zone-draws --composite-scenegraph --eqe1-path`, GLS
+level 9 production lighting, 800x600, 1000-frame replay)
+
+e5 numbers are P38's own control/lightweight rows, reused verbatim (same
+replay file, same shipped-preset flags, same `--gl-counters` methodology —
+re-measuring would have spent Pi budget on a number this unit would only
+reproduce). e205 is new data from this unit.
+
+| load | variant | total avg/p95 (ms) | GPU avg/p95 (ms) | submission avg/p95 (ms) | draws avg | Δ total | Δ GPU |
+|---|---|---|---|---|---|---|---|
+| e5  | per-pixel (control) | 11.108 / 25.836 | 6.021 / 13.831 | 2.440 / 6.829 | 8.7  | — | — |
+| e5  | lightweight          | 9.429 / 21.577  | 4.692 / 10.138 | (not isolated in P38's table) | 5.5  | **-15.1% / -16.5%** | **-22.1% / -26.7%** |
+| e205 | per-pixel (control) | 24.885 / 35.119 | 11.558 / 17.456 | 6.129 / 9.135  | 42.6 | — | — |
+| e205 | lightweight          | 23.281 / 30.873 | 10.269 / 14.302 | 5.830 / 8.618  | 39.5 | **-6.4% / -12.1%** | **-11.2% / -18.1%** |
+
+`polys_avg` is identical within variant at each load (e5: 1,379.6; e205:
+16,076.1) — lighting model changes shading cost only, never a geometry/
+visibility decision, at either load (same confirmation P38 already made at
+e5).
+
+**The lever shrinks by roughly half at stress load.** At e5 the per-pixel
+tax is -15.1%/-22.1% (total/GPU); at e205 it's -6.4%/-11.2%. The
+per-pixel-vs-lightweight difference is a roughly constant per-frame GPU
+cost (this unit did not isolate the exact ms delta at e205 the way P38 did
+at e5, but the GPU-ms deltas above are consistent with that: e5 Δ≈1.33ms
+GPU, e205 Δ≈1.29ms GPU — nearly identical absolute GPU savings), while
+total frame time at e205 is dominated by a much larger submission/collect-
+cull share (205 entities vs 5) that the lighting model doesn't touch. So
+the lever's *absolute* GPU savings (~1.3ms) is load-independent, but its
+*relative* (%) importance drops as entity count rises — the opposite of
+what "per-pixel is the biggest lever" (P38's framing, an e5-only measurement)
+implies if read as a general statement. At the realistic e5 load the lever
+really is the largest found; at stress e205 load it's a smaller fraction
+of a now CPU-heavier frame.
+
+### 2. Visual A/B for Will (x86 stills at the Q03 golden poses)
+
+Full manifest, diff stats, and objective per-pose read:
+`benchmarks/audits/p41_lighting/EVIDENCE_MANIFEST.txt`. Stills:
+`/mnt/projects/fable/videos/p41_lighting/` (gitignored, NFS, per the P20
+convention — not committed).
+
+Summary: at the doorway/archway pose (f1, closest camera distance to large
+sparsely-tessellated polys), 89.9% of pixels differ (mean channel delta
+11/255, max 112/255) — the clearest case of the expected 1999-era
+per-vertex banding signature on large flat surfaces (checkerboard floor,
+hall walls). The other two poses (altar room f0, balcony hall f2 — smaller,
+more numerous polys) show smaller, more localized differences (~29-30% of
+pixels, mean delta 1-3/255). No acceptability judgment is made here per the
+plan — Will may find the lightweight look period-appropriate; the report is
+objective (where it differs and by how much), not a recommendation.
+
+### 3. Ride-along A (P40 closure): 400x300 vs 800x600 draws/tris, on the
+Pi (real hardware, not x86 llvmpipe)
+
+P40 (slot2, x86-only) found the resolution-dependent visibility anomaly
+(P38 finding d: lower resolution produces MORE draws/triangles, not fewer)
+does **NOT reproduce on x86 llvmpipe** — draws/polys/regions were
+byte-identical across 400x300/800x600/1024x768 there. This unit's Pi
+measurement (shipped preset, e5, canonical befallen replay) gives the
+answer for the actual target hardware:
+
+| res | draws avg | polys avg | total avg/p95 (ms) | GPU avg/p95 (ms) |
+|---|---|---|---|---|
+| 800x600 (P38's e5 control, reused) | 8.7  | 1,379.6 | 11.108 / 25.836 | 6.021 / 13.831 |
+| 400x300 (this unit, new)           | 10.6 | 1,917.8 | 35.985 / 74.065 | 29.125 / 65.066 |
+
+**The anomaly DOES reproduce on the Pi, and far more dramatically than
+P38's original (later-discovered-mistaken) x86 measurement of the same
+question ever showed.** Draws +22% and triangles +39% at the lower
+resolution, exactly matching P38's original draws (8.7→10.6) and polys
+(1,379.6→1,917.8) figures almost to the decimal — this unit's Pi numbers
+and P38's stale x86 numbers agree on the *geometry* counts, while total/GPU
+time is far worse on the Pi at 400x300 (35.985ms/29.125ms GPU) than at
+800x600 (11.108ms/6.021ms GPU) — a >3x GPU-time regression at the LOWER
+resolution, the opposite of what shrinking the framebuffer should ever do.
+
+**This does NOT close the resolution question — it reopens it as a
+Pi/Lima-driver-specific (or occlusion-culler-screen-space-specific)
+mechanism, not a general one.** P40's x86/llvmpipe root-cause work (ruling
+out FOV/aspect and confirming byte-identical counters across resolutions)
+does not apply to the Pi's real driver stack; the occlusion buffer or
+LOD/screen-size threshold P40's plan named as candidate mechanisms may
+behave differently under Lima's actual rasterizer/tiler versus llvmpipe's
+software path. **Recommendation: this is P40's root-cause work, not P41's
+— flagging as a new, higher-priority follow-up** (the 800x600 shipped
+resolution is unaffected today, but any future resolution change, or
+understanding why llvmpipe and Lima disagree, needs its own investigation
+with Pi-side instrumentation P40 never had).
+
+### 4. Ride-along B: `eglSwapInterval(0)` diagnostic (local prototype,
+reverted)
+
+perf_truth_audit's own open item (finding c/e): `total_ms + swap_ms` sits
+at a nearly-constant ~14.4-15.0ms wall-clock floor across P38's variants
+regardless of internal GPU/CPU split, suggesting a display frame-pacing
+floor. `eglSwapInterval` was never called anywhere in the codebase before
+this unit (confirmed by `grep`) — EGL's default (interval 1, vsync-on)
+always applied. Added a local, env-var-gated prototype in
+`docker/irrlicht-drm/CIrrDeviceFB.cpp`'s EGL init (`WILLEQ_SWAP_INTERVAL_PROTOTYPE`,
+calls `eglSwapInterval(eglDisplay_, N)` right after `eglMakeCurrent`),
+reverted before commit — never shippable with vsync off (tearing).
+
+| variant | total avg/p95 (ms) | GPU avg/p95 (ms) | swap avg/p95 (ms) |
+|---|---|---|---|
+| control (P38's e5, vsync default) | 11.108 / 25.836 | 6.021 / 13.831 | 3.873 / 9.250 |
+| `eglSwapInterval(0)` (this unit) | 11.155 / 25.644 | 6.044 / 13.771 | 3.805 / — |
+
+**Decisive null: `swap_ms` does NOT change with vsync disabled** (3.805ms
+vs 3.873ms, within noise; total/GPU also unchanged, within noise).
+`eglSwapInterval` defaulting to interval-1 (vsync-on) is NOT the source of
+the ~14.4-15.0ms wall-clock floor perf_truth_audit's finding (c) named as
+a hypothesis. **This rules out one specific mechanism, it does not explain
+the floor.** Given `docker/irrlicht-drm/CIrrDeviceFB.cpp`'s `drmPageFlip()`
+already does its own explicit, synchronous wait
+(`waitForFlipComplete()` polls the DRM fd for the page-flip completion
+event before the *next* frame's `eglSwapBuffers`, precisely to avoid
+`drmModePageFlip`'s `-EBUSY`→synchronous-`drmModeSetCrtc` fallback that
+blocks ~35ms), the more likely candidate for the floor is that explicit
+DRM page-flip wait itself, not EGL's own swap-interval gate — the DRM
+compositor/vblank cadence is still in the loop via `waitForFlipComplete()`
+regardless of what `eglSwapInterval` is told. Not proven here (would need
+instrumenting `waitForFlipComplete()`'s own wait time directly, out of
+this unit's diagnostic-only scope) — named as the next concrete hypothesis
+for whoever picks up the swap-floor investigation.
+
+### Options note (for Will's decision — not a recommendation)
+
+**Keep per-pixel (status quo, blessed Q03 territory).** Cost: -15.1%
+total / -22.1% GPU at realistic e5 load (P38's number, this unit's
+sole reuse), shrinking to -6.4%/-11.2% at e205 stress load (this unit's new
+number). Benefit: the smooth per-pixel falloff Will personally tuned;
+avoids the f1-pose 90%-of-pixels visual change this unit measured.
+
+**Flip to lightweight (all-per-vertex).** Recovers the above % at whichever
+load is representative of real play (closer to e5 than e205 per Will's own
+P38 steering — "realistic NPC count, not the P11-era stress calibration").
+Cost: visible per-vertex banding on large flat polys at close range (f1-
+class views), a real, era-consistent but different look from what Q03
+blessed. Would require its own re-bless unit (P07c lesson: default flips
+need tier-2 re-bless, never silently).
+
+**Per-tier knob (per-pixel on capable hardware, lightweight on the most
+constrained tier).** Not measured or prototyped in this unit — named as a
+third option because the orangepi preset already has tier-specific budget
+knobs (`zone-pp-budget`, `mergeZoneDraws`, etc.) that this would sit
+alongside. Sizing/complexity not assessed here.
+
+No default is flipped, no golden is changed, no config is touched — this
+section is data for Will's decision, not a recommendation.
