@@ -823,8 +823,21 @@ Full detail: **`refactor/TESTING_HANDBACK.md`**.
   GLES2 config completes with **0 errors** and all targets link. P30
   removed the desktop-GL/X11 paths that caused it. Recorded as closed
   rather than deleted so the perf session doesn't chase a stale report.
-- **NEW (orchestrator, T02 merge verification)**: the canonical
-  configure command in the root `CLAUDE.md` "Build Commands" does not
+- ~~**T02 merge verification finding**: canonical configure command
+  broken (relative `EQT_GLES2_IRRLICHT_DIR` fails the `EXISTS`
+  check)~~ — **CLOSED, fixed by `6b53e0d` + `8d13e8c` 2026-07-28**
+  ("testing handback round 2"; the WARNING-visibility tweak in the
+  second commit was itself testing-session review feedback, so the
+  fix round-tripped through this channel — the entry just never got
+  struck through afterwards, sorry). `CMakeLists.txt` now absolutizes
+  the value against `CMAKE_SOURCE_DIR` before the `EXISTS` check, and
+  falls back (with a WARNING) to the in-tree default when a
+  wrongly-resolved path lacks the library. Perf-orchestrator
+  re-verified 2026-07-30: the documented relative form configures
+  clean from the source root against current fable tip. Original
+  report kept below for the record:
+  The canonical
+  configure command in the root `CLAUDE.md` "Build Commands" did not
   work as written. It documents
   `-DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86` (relative),
   but `CMakeLists.txt:94` tests that path with `EXISTS`, which CMake

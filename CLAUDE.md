@@ -17,6 +17,7 @@ Additional context is in subdirectory CLAUDE.md files:
 - `docs/decisions.md` — standing architecture decisions. Settled; do not re-litigate.
 - `docs/module_map.md` — functional map of the oversized files (eq.cpp, irrlicht_renderer.cpp). Consult it instead of scanning those files.
 - `refactor/deferred.md` — known-open items. `refactor/F_file_split.md` — active file-splitting batch.
+- `refactor/testing_progress.md` — the testing session's tracker; its "Handoffs to the perf session" section is the inbound channel for cross-session handbacks. Check it (and strike items you close) when orchestrating.
 - `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current.
 - Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3`. Task branches: `task/F##-<name>`. The `renderer` branch is reference-only — never merge it.
 
