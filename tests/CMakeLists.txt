@@ -245,6 +245,21 @@ ADD_EXECUTABLE(test_command_processor
 TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_command_processor)
 
+# T15: InputActionBridge tests -- the T12 follow-on. Driven through a
+# scriptable IInputHandler fake (action_test_fakes.h); observes both the
+# ActionCallback and the recording handler behind a real ActionDispatcher.
+# CommandProcessor is linked for the console-forwarding path. Same rule as
+# the other two: no Irrlicht, no EverQuest.
+ADD_EXECUTABLE(test_input_action_bridge
+    test_input_action_bridge.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_input_action_bridge)
+
 # Test combat enums and structures
 ADD_EXECUTABLE(test_combat
     test_combat.cpp
