@@ -480,7 +480,20 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         OcclusionCullerConfig occConfig;
         occConfig.width = 64;
         occConfig.height = 32;
-        occConfig.maxOccluderRegions = (config.occluderBudget > 0) ? config.occluderBudget : 16;  // P11: run-time override, -1 = prior hardcoded 16
+        // P42 (P39 finding): the default used to be a hardcoded 16 that never
+        // consulted the ConstrainedRendererConfig this loader already builds
+        // (step 3, constrainedConfig — fromPreset(OrangePi), P14-blessed 256).
+        // That mismatch is why P38's "shipped orangepi preset" Pi measurements
+        // landed at ~35.3ms p95 (effectively budget-16 behavior) despite 256
+        // being the value the real client ships. Explicit --occluder-budget
+        // still wins; the default now resolves from the config the loader
+        // already has in scope instead of drifting from it silently.
+        occConfig.maxOccluderRegions = (config.occluderBudget > 0)
+            ? config.occluderBudget
+            : constrainedConfig.occlusionMaxOccluderRegions;
+        LOG_INFO(MOD_GRAPHICS, "Occluder budget: {} ({})", occConfig.maxOccluderRegions,
+                 (config.occluderBudget > 0) ? "explicit --occluder-budget"
+                                              : "resolved from ConstrainedRendererConfig");
         occConfig.minOccluderArea = 20.0f;
         occConfig.maxTrianglesPerRegion = 12;
         data->occlusionCuller = std::make_unique<SoftwareOcclusionCuller>(occConfig);

@@ -70,7 +70,10 @@ struct Options {
     // P04: flag-gated per-step RSS/pool sampling during zone load.
     bool loadMemAudit = false;
     // P11: run-time occluder budget override (maxOccluderRegions). -1 =
-    // unset, matches the prior hardcoded default (16, same as production).
+    // unset — P42: the loader now resolves the default from the
+    // ConstrainedRendererConfig it already builds (orangepi -> 256,
+    // P14/P39-blessed) instead of a hardcoded 16 that had drifted from
+    // production (see zone_bench_loader.cpp's Step 10).
     int occluderBudget = -1;
 
     // Benchmark
@@ -318,7 +321,7 @@ static void printUsage(const char* prog) {
     printf("  --direct-gl          Bypass Irrlicht for entities (direct GL calls)\n");
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
-    printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: 16, matches production)\n");
+    printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: resolved from the loader's ConstrainedRendererConfig, orangepi preset -> 256, P14/P39-blessed; P42)\n");
     printf("  --gl-counters        P38: record driver glBindTexture/glTexParameteri calls per frame (tex_binds/tex_param_calls CSV columns; off by default, zero overhead when absent)\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
