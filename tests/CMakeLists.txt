@@ -199,6 +199,48 @@ ADD_EXECUTABLE(test_state_modules_secondary
 TARGET_LINK_LIBRARIES(test_state_modules_secondary GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_state_modules_secondary)
 
+# T12: ActionDispatcher routing + guard behavior tests. Same state-module
+# dependency set as test_state_modules_secondary, plus action_dispatcher.cpp
+# itself. No graphics, no Irrlicht, no EverQuest -- the action layer's only
+# includes are game_state.h, output_renderer.h, logging.h and stdlib.
+SET(ACTION_LAYER_STATE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/client/state/event_bus.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/entity_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/player_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/spell_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/group_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/pet_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/world_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/tradeskill_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/game_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/door_state_manager.cpp
+)
+
+ADD_EXECUTABLE(test_action_dispatcher
+    test_action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_action_dispatcher GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_action_dispatcher)
+
+# T12: CommandProcessor tests -- registration, completion, category
+# consistency, argument parsing, case sensitivity. Needs ActionDispatcher
+# (real, driven through a recording IActionHandler fake) plus the same
+# state-module set. IOutputRenderer is a pure interface satisfied entirely
+# by a local test fake -- output_renderer.cpp / console_renderer.cpp /
+# graphical_renderer.cpp (which pulls in Irrlicht) are NOT linked.
+ADD_EXECUTABLE(test_command_processor
+    test_command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_command_processor)
+
 # Test combat enums and structures
 ADD_EXECUTABLE(test_combat
     test_combat.cpp
