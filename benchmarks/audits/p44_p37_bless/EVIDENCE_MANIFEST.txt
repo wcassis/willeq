@@ -1,0 +1,224 @@
+P44 — P37 bless-evidence errand: framed masked-race stills for Will
+=====================================================================
+
+Purpose: P37 (merged 0019ba6) fixed alpha-test rendering for WLD-masked
+entity/equipment textures (befallen skeletons, befallen/qeynos2 zombies,
+qeynos2 bone-helm-bear) but its own live in-frame stills FAILED to land a
+usable pose (bad vantage + night); P37's Review fell back to a numeric
+MaterialType trace instead of pixel evidence. This unit re-attempts the
+SAME fix with a framing-focused methodology (fixed character-position DB
+writes for deterministic same-pose captures, `#set invulnerable on` GM
+command to survive standing next to live mobs, `/time 12` for daylight,
+`/screenshot`) and delivers actual before/after PNG pairs.
+
+No production source was changed by this unit. All commits are this
+manifest, the plan Review, and scratch capture scripts under
+data/captures/ (gitignored — see .gitignore; not part of this commit).
+
+Binaries
+--------
+- AFTER  = current fable tip (task/P44-bless-evidence branch, commit
+  a805e01, built at build/bin/willeq).
+- BEFORE = pre-P37 rendering, built from commit fda2e34 ("Add T10 plan:
+  WLD parser mutation kill rate...") in a scratch tree at
+  build-preP37/ (gitignored, `build-*/` pattern). fda2e34 is P37's own
+  merge parent (0019ba6^1, i.e. the mainline commit immediately before
+  P37's merge commit 0019ba6 landed) — the correct "pre-P37" baseline.
+
+  DEVIATION FROM PLAN TEXT: the plan named "P37's merge parent e8efd87^"
+  as the before-binary hash. e8efd87 is actually P36's merge commit (an
+  unrelated stability/shutdown-fix unit that landed BEFORE the P37 plan
+  doc was even added at 70492b7) — not P37's merge. P37's actual merge
+  commit is 0019ba6 (git log --oneline --all | grep P37 confirms:
+  0019ba6 "Merge P37: masked entity/equipment textures render masked...",
+  parents fda2e34 and 018bcdc). This unit used fda2e34 (verified via
+  `git log -1 0019ba6^1` and the merge graph) from the start, independent
+  of and consistent with the orchestrator's later fact-check correction
+  (P45) confirming the same hash. No captures were taken against the
+  wrong (e8efd87^) commit at any point in this session.
+
+Method
+------
+- eqemu per scripts/eqemu/ (sanctioned up.sh/down.sh, lock protocol).
+- Server restarted fresh (down.sh + up.sh <zone>) immediately before each
+  BEFORE/AFTER capture pair so static spawn2 mobs (skeletons, zombies)
+  start at their exact DB-configured spawn coordinates every time —
+  removes AI-wander drift as a confound between the two binaries.
+- Testchar's `character_data` row (x/y/z/heading/zone_id) was written
+  directly via the seed.sh-documented mysql_exec helper to a fixed
+  vantage point before each --script run, so the camera pose at zone-in
+  is deterministic by construction (no in-session movement/turning is
+  needed or used) — the same technique both binaries' runs share.
+- `--script <file>` sequence common to every capture: wait for full
+  connect, `/say #set invulnerable on` (GM self-buff — survives standing
+  next to aggro mobs without triggering eqemu's death/bind-point
+  respawn flow, which is a separate known live-client crash path, see
+  Deviations/Known issues below), wait ~22-24s for
+  `[LOADING][Phase 15/15] (100%) Ready!` (zone graphics build is NOT
+  complete at the network "Fully connected to zone!" message — an
+  earlier calibration screenshot mid-load, not kept, caught the loading
+  bar at 50%), `/time 12` (client-local daylight override), a settle
+  wait, `/screenshot <path>`, `/camp`.
+- qeynos2's `beahe0008.bmp` (P37's "bone helm" ground-truth texture,
+  actually the bear race's masked head texture, WLD actor `BEA_ACTORDEF`
+  in qeynos2_chr.s3d — confirmed via `wld_dump`) has NO live spawn2
+  placement in qeynos2 today (P37's own Review deviation #2 already
+  found this — the "bone helm" wording is the plan's own gloss on a
+  bear's masked head texture, not literal equipped headgear). Worked
+  around per the plan's live-bug-workaround allowance: GM `#npctypespawn
+  3003` (`a_brown_bear`, race 43) spawns a same-race bear at the
+  operator's own location, then `#set texture 8` (server GM command,
+  `zone/gm_commands/set/set_texture.cpp`, uses `SendIllusionPacket`)
+  forces its appearance to texture variant 8 (`beahe0008`/`bealg0002`
+  etc.), matching the P37 ground-truth table's texture-8 filename.
+  Honestly labelled GM-spawned, not a naturally-placed qeynos2 NPC.
+
+Pairs delivered (all 800x600 PNG, /mnt/projects/fable/videos/p44_p37_bless/stills/, NFS/gitignored)
+-----------------------------------------------------------------------------------------------------
+
+1. befallen skeletons ("a skeletal excavator" / "a sturdy skeleton",
+   race 367/SKE) — vantage x=-45,y=-83,z=3.75,heading=0 (befallen,
+   zone_id=36), ~6 units from spawn2 id 6954.
+   - befallen_ske_BEFORE.png / befallen_ske_AFTER.png (full frame)
+   - befallen_ske_BEFORE_crop.png / befallen_ske_AFTER_crop.png
+     (220x220 ribcage/torso crop)
+   - befallen_ske_DIFF.png (ImageMagick `compare -metric AE`, full frame)
+   - Full-frame AE (nonzero pixel count): 20380 / 480000 (4.2%)
+   - RESULT: CLEAR, DRAMATIC VISIBLE CHANGE. BEFORE shows the ribcage as
+     a filled/solid mass (opaque-quad rendering, matching the plan's
+     required pre-fix spot-check). AFTER shows individual rib gaps —
+     background visible through the torso between ribs. This is the
+     textbook alpha-test win the plan called "the most dramatic win".
+     Diff overlay shows near-total silhouette coverage on both skeleton
+     figures (not scattered background noise), i.e. a structural
+     rendering change localized to the entities, not frame-to-frame
+     process variance (P37's own unmasked-race spot check found
+     ~0.05% AE as the FP-noise floor for TWO independent renders of an
+     unmasked entity; 4.2% here is ~80x that floor).
+
+2. befallen zombies ("a zombie", race 70/ZOM) — vantage
+   x=-195,y=-982,z=-68.63,heading=0 (befallen), ~6 units from spawn2 id
+   6966.
+   - befallen_zom_BEFORE.png / befallen_zom_AFTER.png (full frame;
+     also shows an "ice boned skeleton" nearby, unrelated bonus mob)
+   - befallen_zom_BEFORE_crop.png / befallen_zom_AFTER_crop.png (upper
+     torso/chest crop), befallen_zom_BEFORE_legcrop.png /
+     _AFTER_legcrop.png (leg crop) + 400%-scaled versions of both plus
+     their AE diffs, and a wider full-body crop
+     (befallen_zom_BEFORE_full_big.png / _AFTER_full_big.png /
+     befallen_zom_full_DIFF_big.png)
+   - Full-frame AE: 12164 / 480000 (2.5%)
+   - Chest-crop AE and leg-crop AE: both near the general background
+     speckle noise floor (~1-2% of pixels) — NOT a solid-silhouette
+     diff the way the skeleton pair shows.
+   - RESULT: HONEST NULL-ISH RESULT FOR THIS SPECIFIC NPC. The
+     full-frame 2.5% AE is real (driven mostly by the "ice boned
+     skeleton" bonus mob's own rib-gap difference, visible in the
+     wide diff), but the zombie's own visible chest/leg texture does
+     NOT show a clearly visible before/after change at this framing.
+     This matches P37's OWN ground-truth table exactly:
+     `zomch0001.bmp` (chest, the dominant visible zombie texture) is
+     the one confirmed "citywlivy-class" case in the whole sweep — WLD
+     masked=true but decode-opaque (no real alpha data), so it is
+     BY-DESIGN unchanged; only `zomlg0001.bmp` (legs) carries real
+     alpha, and any leg-texture change is too subtle to read at this
+     mob's screen size/distance in these captures. Not gakked or
+     forced — reporting the honest result per the plan's "don't gloss"
+     instruction rather than re-selecting a flattering crop.
+
+3. qeynos2 bear / "bone helm" (`a_brown_bear`, race 43, GM-spawned +
+   `#set texture 8`, per Method above) — vantage x=-74,y=422,z=3,
+   heading=0 (qeynos2, zone_id=2), bear spawned at x=-74,y=428,z=3 (6
+   units away).
+   - qeynos2_bea_BEFORE.png / qeynos2_bea_AFTER.png (full frame)
+   - qeynos2_bea_BEFORE_crop.png / qeynos2_bea_AFTER_crop.png (220x180
+     body crop, 3x upscaled) + qeynos2_bea_DIFF.png,
+     qeynos2_bea_crop_DIFF_big.png
+   - Full-frame AE: 16208 / 480000 (3.4%); crop AE: 7610/39600 (19.2%,
+     full bear-silhouette coverage in the diff overlay)
+   - RESULT: STRUCTURAL DIFFERENCE CONFIRMED BUT NOT CLEARLY
+     HUMAN-VISIBLE. The diff overlay shows the bear's entire body
+     silhouette as changed (not scattered noise), the same pattern as
+     the skeleton's clear win — but this qeynos2 outdoor vantage
+     rendered very dark despite `/time 12` (sky stayed black; ambient
+     ground/character lighting was faint). The pixel-level evidence is
+     real and reproducible, but a viewer cannot clearly see an alpha
+     cutout in these particular stills the way they can for the
+     skeleton pair. The dark-sky-despite-/time-12 behavior in this
+     zone was NOT root-caused (out of scope; noted for deferred.md) —
+     `/time 12` visibly worked in befallen's captures (blue daylight
+     sky) but not here; possibly a skybox-texture-vs-lighting-tint
+     distinction (the local /time command may only affect a lighting
+     tint, not the skydome texture, which could be tied to the
+     server's actual real-time clock at zone-in instead). Reported
+     honestly rather than claimed as clean visual evidence.
+
+Alignment verification
+-----------------------
+- Every BEFORE/AFTER pair used the identical DB-written character
+  position/heading and an identical --script command sequence (same
+  wait durations, same command order) — no in-session camera movement
+  in any capture, so pose is deterministic by construction rather than
+  visually eyeballed.
+- Server was restarted (down.sh + up.sh) between the AFTER and BEFORE
+  runs for both befallen captures and both qeynos2 captures, so static
+  spawn2 mobs (skeleton, zombie) begin each run at their exact spawn2
+  coordinates — verified by inspecting each pair's full-frame stills
+  side by side (mob position/pose/heading and UI layout match, only the
+  rendered material differs) and confirmed numerically by the AE diff
+  overlays showing changes concentrated on entity silhouettes, not
+  scene-wide misalignment (which would show as large background
+  position shifts, not localized entity-shaped diffs).
+- The plan's required BEFORE-binary spot-check ("verify the before
+  route actually shows pre-P37 opaque-quad rendering") is satisfied
+  directly by the skeleton pair: befallen_ske_BEFORE_crop.png shows a
+  solid/filled ribcage (opaque-quad), matching pre-fix
+  `EMT_SOLID`-style rendering; befallen_ske_AFTER_crop.png shows the
+  same pose with visible inter-rib gaps.
+
+Known live-client issue hit this session (not fixed, per plan scope)
+----------------------------------------------------------------------
+- One non-deterministic SIGSEGV during early calibration: zoning into
+  befallen at x=-195,y=-982,z=-68.63 (the zombie vantage) crashed once
+  (`timeout: the monitored command dumped core`, exit 139) partway
+  through zone-object mesh building (last log line before the crash:
+  "Sequential: built all 346 object meshes eagerly"). Re-run under
+  `gdb -batch -ex run -ex "thread apply all bt"` at the IDENTICAL
+  position did NOT reproduce (clean exit, screenshot captured
+  successfully) — a plain re-run without gdb also completed cleanly.
+  No core file was produced (ulimit -c was 0 at first crash; a
+  follow-up run with `ulimit -c unlimited` did not crash again to
+  produce one), so no backtrace was captured — the crash did not
+  reproduce under the conditions where a backtrace could be taken.
+  Flagging for deferred.md as a low-frequency, unreproduced
+  zone-object-build-time crash at this specific befallen vantage;
+  worked around by simply re-running (consistent with the plan's
+  "post-P36 stable... if you still hit a crash... work around via
+  vantage/zone choice" allowance) — did not block any capture in the
+  final delivered set.
+- A separate, pre-existing, unrelated crash class was independently
+  re-confirmed (not new, not investigated further): dying at this
+  zone's original bind point (qeynos, zone_id=1) crashes on respawn
+  with "Player BSP region is SIZE_MAX!" / "Unable to open map file:
+  ./maps/qeynos.map" (errno 2). Testchar was killed once by "a
+  skeletal excavator" during the FIRST framing-calibration attempt
+  (before `#set invulnerable on` was added to the script), triggering
+  this crash on the bind-point respawn. Worked around for the rest of
+  the session by adding `/say #set invulnerable on` to every capture
+  script before any mob could land a hit. Not fixed (server/map-data
+  issue, unrelated to P37's rendering fix, out of this unit's
+  territory) — flagging for deferred.md.
+
+Server state at exit
+---------------------
+- `scripts/eqemu/down.sh` run as the final step: containers stopped and
+  removed (`docker compose down`), host ports 5998/9000 closed
+  (verified via `scripts/eqemu/status.sh`).
+- Testchar's `character_data` row restored to the documented standard
+  point: zone_id=36, x=-77.9232, y=21.9086, z=3, heading=190 (matches
+  EXECUTOR_PROTOCOL.md / prior units' convention).
+- `character_corpses`/`character_corpse_items` rows for Testchar
+  (accumulated from this session's and prior sessions' calibration
+  deaths) were deleted as routine Testchar-scoped cleanup (documented
+  character-data writes, not server code).
+- `/mnt/projects/fable/.eqemu-lock` removed.
