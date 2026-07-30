@@ -1170,14 +1170,18 @@ proper fix:
   synthetic roster hides any masked/exotic-race effect — future
   entity-rendering units should add a --test-races real-roster leg
   when the change touches race-conditional paths.
-- ~~Bless evidence pending~~ — **DELIVERED by P44 (2026-07-30, merged
-  `2246de5`). AWAITING WILL's look**: 3 same-pose before/after pairs
-  at /mnt/projects/fable/videos/p44_p37_bless/stills/ (manifest:
-  benchmarks/audits/p44_p37_bless/EVIDENCE_MANIFEST.txt).
-  Skeleton pair = decisive (solid ribcage → see-through rib gaps,
-  orchestrator-viewed, genuinely judgeable). Zombie = honest null BY
-  DESIGN (zomch0001 is the one citywlivy-class no-op). Bear pair =
-  real structural diff but vantage too dark to judge visually.
+- ~~Bless evidence pending~~ — P44's live pairs (merged `2246de5`)
+  were **REJECTED by Will 2026-07-30, rejection verified correct**:
+  aggroed mobs' attack animation made before/after pose-mismatched
+  (diff = pose, not alpha), and the dark-stone background makes
+  masked-opaque fill indistinguishable from alpha cutout. P44's
+  "textbook evidence" claim is UNSOUND (annotation owed by P44b).
+  **P44b retake IN FLIGHT** (task/P44b-bless-retake, slot2): static
+  benchmark rendering (pose-identical by construction), bright-
+  background close-up contact sheet, diff-confined-to-mask-regions
+  assertion. Zombie chest (zomch0001) remains an expected null by
+  design. LESSON: never use live animated mobs for visual A/B
+  evidence; always check what's behind the alpha regions.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
