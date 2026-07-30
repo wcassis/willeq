@@ -93,7 +93,14 @@ struct ConstrainedRendererConfig {
     // Software occlusion culling
     int occlusionBufferWidth = 0;              // Depth buffer width (0 = disabled)
     int occlusionBufferHeight = 0;             // Depth buffer height (0 = disabled)
-    int occlusionMaxOccluderRegions = 16;      // Max nearby regions to rasterize
+    // Max nearby regions to rasterize. Struct default (16) is the pre-P14
+    // baseline; fromPreset() overrides per tier (OrangePi -> 256, P14-
+    // blessed); loadJsonOverrides()'s "occlusionMaxOccluderRegions" JSON
+    // key (P39) overrides that again when present in the preset file —
+    // same fromPreset()-then-JSON precedence as every other tunable field
+    // here. See constrained_renderer_config.cpp's OrangePi case and
+    // loadJsonOverrides() for the full rationale.
+    int occlusionMaxOccluderRegions = 16;
 
     // Helper methods for fog distances
     float fogStart() const { return clipDistance * fogStartRatio; }

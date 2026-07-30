@@ -131,6 +131,12 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
     EXPECT_FALSE(config.frameTimingEnabled);
 }
 
+TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_BlessedOccluderBudget) {
+    // P14 (blessed by Will): 256, not the struct/pre-P14 default of 16.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    EXPECT_EQ(config.occlusionMaxOccluderRegions, 256);
+}
+
 // =============================================================================
 // Framebuffer Usage Calculation Tests
 // =============================================================================
@@ -607,6 +613,68 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackendKeyIgnored) {
     EXPECT_TRUE(config.frameTimingEnabled);
 
     std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionMaxOccluderRegions) {
+    // P39: JSON preset load previously had no parse for this key at all —
+    // it was silently un-tunable from a config file, regardless of the
+    // C++ preset default. Verify the key now round-trips.
+    const std::string testJsonPath = "/tmp/test_constrained_presets_occ.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "occlusionMaxOccluderRegions": 64
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.occlusionMaxOccluderRegions = 16;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.occlusionMaxOccluderRegions, 64);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionMaxOccluderRegions_AbsentLeavesBaseline) {
+    // Confirm the key is genuinely optional: a preset block that omits it
+    // leaves whatever fromPreset()/the caller already set untouched (the
+    // documented last-writer-wins precedence, not a forced reset to the
+    // struct default).
+    const std::string testJsonPath = "/tmp/test_constrained_presets_occ_absent.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.occlusionMaxOccluderRegions = 256;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.occlusionMaxOccluderRegions, 256);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarries256) {
+    // P39 active-proof: the REAL shipped config/constrained_presets.json
+    // (not a synthetic copy) must now carry occlusionMaxOccluderRegions
+    // explicitly, and the exact application.cpp sequence (fromPreset then
+    // loadJsonOverrides) must resolve to the P14-blessed 256.
+#ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.occlusionMaxOccluderRegions, 256);
+#else
+    GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
+#endif
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_UseGLES2KeyIgnored) {

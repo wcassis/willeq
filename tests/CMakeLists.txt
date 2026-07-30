@@ -13,6 +13,10 @@ INCLUDE_DIRECTORIES(
 # Default EQ client path (resolved at configure time, overridable via EQ_CLIENT_PATH env var)
 ADD_COMPILE_DEFINITIONS(EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
 
+# P39: path to the real shipped constrained-presets JSON, so tests can load
+# it directly (not a synthetic copy) and assert against production values.
+ADD_COMPILE_DEFINITIONS(WILLEQ_CONSTRAINED_PRESETS_JSON="${CMAKE_SOURCE_DIR}/config/constrained_presets.json")
+
 # SQLite flags for WilleqDatabase (needed by any target pulling in willeq_database.cpp/sqlite3.c)
 ADD_COMPILE_DEFINITIONS(SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 
