@@ -694,10 +694,57 @@ separate `UCSConnection` class is never connected. So this is a latent
 bug that bites whenever UCS is implemented, not a live breakage — which
 is also why it went unnoticed.
 
-Two possible readings, and it needs Will: either the expected 5-field
-format is wrong for Titanium, or this server build omits a field. Pinned
-as `BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors`
-with a synthetic contrast test proving the split logic works on 5 fields.
+### ANSWERED (2026-07-30) — our parser is wrong; the server is right
+
+Will asked what the eqemu source does for a Titanium-era client. Checked
+`/mnt/projects/akk-stack/code/world/client.cpp:1023` — the server builds
+the string with:
+
+```cpp
+buffer = fmt::format("{},{},{}.{},{}{:08X}",
+    ucs_addr, config->GetUCSPort(), config->ShortName, GetCharName(),
+    static_cast<char>(connection_type), mail_key);
+```
+
+That is **4 comma-separated fields**, and the format string is
+**era-independent** — the version `switch` above it only selects the
+`connection_type` *character*, not the field layout. So no client era
+gets 5 fields.
+
+Field 4 is `<connection_type><mail_key:08X>` **concatenated with no
+separator**. For Titanium (`emu_versions.h:124-125`):
+
+- `ucsTitaniumChat = 'B'` → sent on `OP_SetChatServer`
+- `ucsTitaniumMail = 'b'` → sent on `OP_SetChatServer2`
+
+Which matches the capture exactly: `B48FB5F37` and `b48FB5F37` — one
+type character plus 8 hex digits of mail key.
+
+**So `WorldProcessSetChatServer` is simply wrong.** It treats connection
+type and mail key as separate fields 3 and 4, requires `>= 5`, and reads
+`parts[4]`. The correct parse is:
+
+```cpp
+if (parts.size() >= 4) {
+    m_ucs_host = parts[0];
+    m_ucs_port = std::stoi(parts[1]);
+    // parts[2] is shortname.charname
+    // parts[3] is <connection_type><mail_key>
+    m_mail_key = parts[3].substr(1);      // drop the type character
+}
+```
+
+The connection-type character is currently discarded entirely; a real
+UCS implementation will need it to distinguish the chat and mail
+connections, so it is worth storing rather than dropping.
+
+**Status: a ~5-line fix in `eq_login_world.cpp`, awaiting Will's
+go-ahead.** Not urgent — nothing consumes these fields until UCS is
+implemented — but now fully specified. Pinned meanwhile as
+`BUG_SetChatServer_RealCapture_FourFieldFormatNeverPopulatesAccessors`;
+that test's synthetic 5-field contrast case should be re-pointed at the
+real 4-field shape when the fix lands, since 5 fields is not a format any
+server produces.
 
 ## Open question for Will — character-list storage
 
