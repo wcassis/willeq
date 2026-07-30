@@ -9,11 +9,9 @@
 //   - the RecordingActionHandler behind a real ActionDispatcher, which
 //     sees the calls that survived dispatcher validation.
 //
-// Findings pinned here rather than fixed (tests-only unit):
-//   - BUG: processSpellCasts() forwards SpellCastRequest.gemSlot (0-based
-//     per both real producers) into ActionDispatcher::castSpell (1-based,
-//     validates 1-12). Gem 1 is unrequestable and every other request
-//     casts one gem low. See BUG_SpellCastRequest_* tests.
+// Findings pinned here (T15; the spell-cast off-by-one was then fixed in
+// T16 -- see SpellCastRequest_* tests for the corrected 0-based-request to
+// 1-based-dispatcher conversion):
 //   - "raid" has no mapping in processChatMessages(), so a raid message
 //     silently becomes ChatChannel::Say (as does any unknown channel).
 //   - A tell with an empty target is dropped without any dispatch or
@@ -414,35 +412,35 @@ TEST_F(InputActionBridgeTest, MoveCommands_FaceWithNameFacesEntity_EmptyNameFace
 }
 
 // ===================================================================
-// Spell casts -- the pinned off-by-one bug
+// Spell casts -- 0-based request to 1-based dispatcher (T16 fix)
 // ===================================================================
 
-TEST_F(InputActionBridgeTest, BUG_SpellCastRequest_GemOneIsRejectedByDispatcher) {
+TEST_F(InputActionBridgeTest, SpellCastRequest_GemZeroCastsFirstGem) {
     // Both real producers are 0-based: ConsoleInputHandler pushes
     // (gem - 1) for "/cast 1..8" and GraphicsInputHandler accepts gem
-    // clicks 0..7. The bridge forwards that value unchanged into
-    // ActionDispatcher::castSpell, which validates 1-12 (the handler then
-    // does gemSlot - 1). So requesting gem 1 (gemSlot=0) fails validation:
-    // the player's first spell gem cannot be cast through this path.
+    // clicks 0..7. The dispatcher is 1-based (validates 1-12, handler does
+    // gemSlot - 1), so the bridge must convert. Before T16 it forwarded the
+    // value unchanged, which made gem 1 fail validation outright.
     input.spellCasts.push({0});
 
     update();
 
-    EXPECT_TRUE(reportedOnce("CastSpell", false));
-    EXPECT_TRUE(handler.empty());
+    EXPECT_TRUE(reportedOnce("CastSpell", true));
+    EXPECT_TRUE(handler.calledOnceWith("castSpell(1)"));
 }
 
-TEST_F(InputActionBridgeTest, BUG_SpellCastRequest_OtherGemsCastOneGemLow) {
-    // "/cast 5" -> producer enqueues gemSlot=4 -> dispatcher casts gem 4,
-    // whose handler resolves to SpellSlot 3. Every cast lands one gem below
-    // the one requested. The hotbar path below compensates with slot+1;
-    // this path doesn't.
+TEST_F(InputActionBridgeTest, SpellCastRequest_MidAndTopGemsMapExactly) {
+    // "/cast 5" -> producer enqueues gemSlot=4 -> dispatcher gem 5 -> handler
+    // SpellSlot 4. Before T16 every cast landed one gem low. Gem 8
+    // (gemSlot=7, the producers' upper bound) pins the top of the range.
     input.spellCasts.push({4});
+    input.spellCasts.push({7});
 
     update();
 
-    EXPECT_TRUE(reportedOnce("CastSpell", true));
-    EXPECT_TRUE(handler.calledOnceWith("castSpell(4)"));
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "castSpell(5)");
+    EXPECT_EQ(handler.calls[1], "castSpell(8)");
 }
 
 // ===================================================================

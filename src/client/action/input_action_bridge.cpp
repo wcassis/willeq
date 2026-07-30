@@ -339,8 +339,12 @@ void InputActionBridge::processSpellCasts() {
     if (!m_input) return;
 
     while (auto spellReq = m_input->consumeSpellCastRequest()) {
-        // SpellCastRequest only has gemSlot, so we always cast on current target
-        reportAction("CastSpell", m_dispatcher.castSpell(spellReq->gemSlot));
+        // SpellCastRequest.gemSlot is 0-based (console pushes gem-1, graphics
+        // accepts clicks 0-7) while the dispatcher's contract is 1-based
+        // (validates 1-12, handler does gemSlot-1). Convert here, like the
+        // hotbar path — forwarding it unchanged made gem 1 unrequestable and
+        // cast every other gem one low (T15 finding, fixed in T16).
+        reportAction("CastSpell", m_dispatcher.castSpell(spellReq->gemSlot + 1));
     }
 }
 
