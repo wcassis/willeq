@@ -742,8 +742,23 @@ void EverQuest::WorldProcessMOTD(const EQ::Net::Packet &p)
 
 void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 {
-	// Parse the chat server info from world server
-	// Format: "host,port,server.character,connection_type,mail_key"
+	// Parse the chat server info from the world server.
+	//
+	// T13: the real eqemu format (world/client.cpp, fmt string
+	// "{},{},{}.{},{}{:08X}") is FOUR comma-separated fields, and it is
+	// era-independent — the version switch above it only picks the
+	// connection-type character, not the layout:
+	//
+	//     host , port , shortname.charname , <connection_type><mail_key:08X>
+	//
+	// The connection type is a single character concatenated onto the
+	// 8-hex-digit mail key with NO separator. Titanium sends 'B' on
+	// OP_SetChatServer (chat) and 'b' on OP_SetChatServer2 (mail) — see
+	// emu_versions.h ucsTitaniumChat / ucsTitaniumMail.
+	//
+	// This previously required 5 fields and read the mail key from parts[4],
+	// treating the type and key as separate fields. No server produces that
+	// shape, so it never populated anything and warned on every packet.
 	std::string chat_info = p.GetCString(2);
 
 	if (s_debug_level >= 2) {
@@ -758,23 +773,44 @@ void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 		parts.push_back(part);
 	}
 
-	if (parts.size() >= 5) {
-		m_ucs_host = parts[0];
-		m_ucs_port = std::stoi(parts[1]);
-		// parts[2] is server.character
-		// parts[3] is connection type (we'll use for authentication)
-		m_mail_key = parts[4];
-
-		LOG_DEBUG(MOD_WORLD, "UCS connection info: {}:{}, mail_key: {}",
-			m_ucs_host, m_ucs_port, m_mail_key);
-
-		// Connect to UCS server
-		// TODO: Fix UCS implementation to use correct EQStream API
-		// ConnectToUCS(m_ucs_host, m_ucs_port);
-	} else {
-		LOG_WARN(MOD_WORLD, "Invalid chat server info format: got {} parts, expected 5. Raw: '{}'",
+	if (parts.size() < 4) {
+		LOG_WARN(MOD_WORLD, "Invalid chat server info format: got {} parts, expected at least 4. Raw: '{}'",
 			parts.size(), chat_info);
+		return;
 	}
+
+	// Field 4 is <connection_type><mail_key>, so it needs at least the type
+	// character. substr(1) on an empty string would throw.
+	if (parts[3].empty()) {
+		LOG_WARN(MOD_WORLD, "Chat server info has an empty connection-type/mail-key field. Raw: '{}'",
+			chat_info);
+		return;
+	}
+
+	// T13: std::stoi throws on a non-numeric or out-of-range port, and this
+	// runs on the network receive path where nothing catches — the same
+	// crash-on-malformed-packet class T04/T05/T07 closed elsewhere.
+	uint16_t parsed_port = 0;
+	try {
+		parsed_port = static_cast<uint16_t>(std::stoi(parts[1]));
+	} catch (const std::exception&) {
+		LOG_WARN(MOD_WORLD, "Chat server info has a non-numeric port '{}'. Raw: '{}'",
+			parts[1], chat_info);
+		return;
+	}
+
+	m_ucs_host = parts[0];
+	m_ucs_port = parsed_port;
+	// parts[2] is shortname.charname
+	m_ucs_connection_type = parts[3][0];
+	m_mail_key = parts[3].substr(1);
+
+	LOG_DEBUG(MOD_WORLD, "UCS connection info: {}:{}, type: '{}'",
+		m_ucs_host, m_ucs_port, m_ucs_connection_type);
+
+	// Connect to UCS server
+	// TODO: Fix UCS implementation to use correct EQStream API
+	// ConnectToUCS(m_ucs_host, m_ucs_port);
 }
 
 void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)

@@ -830,6 +830,7 @@ public:
 	const std::string& GetChatServerHost() const { return m_ucs_host; }
 	uint16_t GetChatServerPort() const { return m_ucs_port; }
 	const std::string& GetMailKey() const { return m_mail_key; }
+	char GetChatConnectionType() const { return m_ucs_connection_type; }
 
 	// Group actions (send packets to server)
 	void SendGroupInvite(const std::string& target_name);
@@ -1730,6 +1731,12 @@ private:
 	std::string m_ucs_host;
 	uint16_t m_ucs_port = 0;
 	std::string m_mail_key;
+	// T13: the connection-type character the world server concatenates onto
+	// the mail key. Titanium sends 'B' on OP_SetChatServer (chat) and 'b' on
+	// OP_SetChatServer2 (mail) — see emu_versions.h ucsTitaniumChat/Mail. A
+	// UCS implementation needs it to tell the two connections apart, so it is
+	// stored rather than discarded. 0 = nothing parsed yet.
+	char m_ucs_connection_type = 0;
 
 	// World server channel message routing
 	void WorldSendChannelMessage(const std::string &channel, const std::string &message, const std::string &target = "");
