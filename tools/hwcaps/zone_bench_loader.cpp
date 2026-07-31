@@ -789,7 +789,14 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                         // any real alpha value. Must happen after createAnimatedNode()
                         // builds instanceMesh_'s buffers, before any texture
                         // upload/draw uses this node's material.
-                        if (data->zoneShader && data->zoneShader->isAvailable() &&
+                        // P46c: --no-entity-shader-promotion skips this entirely,
+                        // leaving entity buffers on the driver's built-in
+                        // materials (EMT_SOLID / P37's EMT_TRANSPARENT_ALPHA_CHANNEL_REF)
+                        // -- used to capture a lighting-neutral bless pair that
+                        // isolates the alpha cutout from P46b's promoted-lighting
+                        // delta. Default (flag absent) is unchanged: promotion on.
+                        if (!config.noEntityShaderPromotion &&
+                            data->zoneShader && data->zoneShader->isAvailable() &&
                             node->getInstanceMesh()) {
                             applyEntityShaderMaterialPromotion(
                                 node->getInstanceMesh(), data->textureCache.get(),
