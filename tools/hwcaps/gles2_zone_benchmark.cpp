@@ -65,6 +65,14 @@ struct Options {
     int height = 600;
     bool useDRM = false;
     bool forceX11 = false;
+    // P49 (refactor/P49_drm_fail_loud.md): by default the benchmark REFUSES
+    // to run when the achieved resolution (post device-creation
+    // getScreenSize()) differs from --res -- see the check right after
+    // ZoneBench::loadZone() in main(). Pass this to downgrade that to a
+    // warning and proceed anyway; the CSV always records the ACTUAL
+    // resolution regardless of this flag (see zone_bench_metrics.h's
+    // setActualResolution()).
+    bool allowModeFallback = false;
     // P03: flag-gated load-phase timing (cold/warm zone-load-time claim).
     // Default off — output byte-identical to before when absent.
     bool reportLoadTime = false;
@@ -325,6 +333,9 @@ static void printUsage(const char* prog) {
     printf("  --drm             Use DRM/KMS framebuffer\n");
     printf("  --x11             Use X11/EGL\n");
     printf("  --res W H         Resolution (default: 800 600)\n");
+    printf("  --allow-mode-fallback  Run even if the achieved resolution != --res "
+           "(DRM mode fallback, P43/P49); default: refuse. CSV always records the "
+           "ACTUAL resolution regardless (actual_width/actual_height columns).\n");
     printf("\nBenchmark options:\n");
     printf("  --frames N        Frames to measure (default: 300)\n");
     printf("  --warmup N        Warmup frames (default: 10)\n");
@@ -483,6 +494,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--res") == 0 && i + 2 < argc) {
             opts.width = atoi(argv[++i]); opts.height = atoi(argv[++i]);
         }
+        else if (strcmp(argv[i], "--allow-mode-fallback") == 0) opts.allowModeFallback = true;
         else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) opts.frames = atoi(argv[++i]);
         else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) opts.warmup = atoi(argv[++i]);
         else if (strcmp(argv[i], "--speed") == 0 && i + 1 < argc) opts.speed = atof(argv[++i]);
@@ -1404,6 +1416,41 @@ int main(int argc, char** argv) {
         double loadMs = std::chrono::duration<double, std::milli>(loadT1 - loadT0).count();
         printf("LOAD_PHASE_MS=%.2f\n", loadMs);
     }
+
+    // P49 (refactor/P49_drm_fail_loud.md, P43 follow-up): P43 root-caused
+    // every historical Pi "400x300" run to a DRM mode fallback -- the
+    // requested resolution had no exact match among the connector's
+    // advertised modes, so CIrrDeviceFB silently substituted the
+    // preferred mode (2560x1440) and overwrote Width/Height, with nobody
+    // noticing because nothing compared achieved vs requested. Compare
+    // here, right after device creation, before any frame is measured:
+    // refuse to run (like a hard assertion failure, not a warning) unless
+    // --allow-mode-fallback opts in, and ALWAYS record the achieved
+    // resolution into the CSV (setActualResolution() below) so a dataset
+    // can never again be silently mislabeled even when the caller does
+    // pass --allow-mode-fallback.
+    int actualWidth = static_cast<int>(data->driver->getScreenSize().Width);
+    int actualHeight = static_cast<int>(data->driver->getScreenSize().Height);
+    if (actualWidth != opts.width || actualHeight != opts.height) {
+        fprintf(stderr,
+                "%s: achieved resolution %dx%d != requested %dx%d -- the display "
+                "did not have an exact matching mode and the device silently fell "
+                "back (see docker/irrlicht-drm/CIrrDeviceFB.cpp DRM mode-fallback "
+                "log line above, and refactor/P43_res_visibility_root_cause.md).\n",
+                opts.allowModeFallback ? "WARNING" : "ERROR",
+                actualWidth, actualHeight, opts.width, opts.height);
+        if (!opts.allowModeFallback) {
+            fprintf(stderr,
+                    "Refusing to run at a silently-substituted resolution "
+                    "(pass --allow-mode-fallback to run anyway; the CSV will "
+                    "still record the ACTUAL %dx%d resolution either way).\n",
+                    actualWidth, actualHeight);
+            return 1;
+        }
+    }
+    // metrics.setActualResolution(actualWidth, actualHeight) is called once
+    // `metrics` is declared, below.
+
 #ifdef EQT_HAS_GLES2
     if (opts.glCounters) eqtEnableGLCallCounters(true);
 #endif
@@ -2359,6 +2406,7 @@ int main(int argc, char** argv) {
     }
 
     ZoneBench::MetricsCollector metrics;
+    metrics.setActualResolution(actualWidth, actualHeight);
 
     // ── H02b: static multi-pose capture ──
     // When --camera-pose was given (one or more times), skip the moving

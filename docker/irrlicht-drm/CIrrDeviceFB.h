@@ -168,6 +168,17 @@ private:
 
     // GLES2 mode (set before construction, affects EGL init and driver creation)
     bool useGLES2_;
+
+    // P49 (refactor/P49_drm_fail_loud.md, P43 follow-up): whether initDRM()
+    // silently could not honor the requested resolution and fell back to
+    // the connector's preferred/first mode instead. The requested-vs-actual
+    // ELL_ERROR is logged once at fallback time (in initDRM()) and repeated
+    // once more the first time run() is called, so it isn't buried only in
+    // device-creation-time spew.
+    bool modeFallbackOccurred_ = false;
+    bool modeFallbackPostInitLogged_ = false;
+    u32 fallbackRequestedWidth_ = 0;
+    u32 fallbackRequestedHeight_ = 0;
 };
 
 } // end namespace irr

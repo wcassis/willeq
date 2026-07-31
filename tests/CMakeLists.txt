@@ -51,6 +51,18 @@ ADD_EXECUTABLE(test_crc32
 TARGET_LINK_LIBRARIES(test_crc32 GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_crc32)
 
+# P49: DRM mode-selection decision logic (docker/irrlicht-drm/
+# drm_mode_select.h) -- pure, header-only, no libdrm/gbm/EGL/Irrlicht
+# dependency, so it builds and runs on x86 even though the real DRM device
+# code (CIrrDeviceFB.cpp) only compiles for ARM. See
+# refactor/P49_drm_fail_loud.md.
+ADD_EXECUTABLE(test_drm_mode_select
+    test_drm_mode_select.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_drm_mode_select PRIVATE ${CMAKE_SOURCE_DIR})
+TARGET_LINK_LIBRARIES(test_drm_mode_select GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_drm_mode_select)
+
 # Test packet serialization - packet.cpp uses fmt
 ADD_EXECUTABLE(test_packet
     test_packet.cpp
