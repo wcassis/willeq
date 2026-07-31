@@ -80,6 +80,22 @@ C. **The bless evidence, at last** (P44b's proven method verbatim:
 
 ## Review
 
+**SUPERSEDED (P46b, round-3 rejection): the bless evidence below was
+rejected by Will — "BEFORE looks correct, AFTER has the wrong texture for
+some skeleton body parts and some zombie body parts." Root cause:
+`tools/hwcaps/zone_bench_loader.cpp`'s Part B (`applyEntityAlphaCompanionBinding()`,
+d19e325) ported only the alpha-test half of production's paired
+solid/alpha-test shader promotion, leaving masked and unmasked buffers on
+the SAME entity rendered through different lighting models — a
+benchmark-only shader-consistency bug, not a texture-identity bug (Part A
+and race_model_loader.cpp are exonerated by P46b's bisect matrix: reverting
+Part A changes nothing about the visual delta). Part A (the production
+decodeBMP fix, e55ba17) is UNAFFECTED and remains correct/in production.
+Fixed and bless pairs regenerated in `refactor/P46b_wrong_texture_root_cause.md`
+(Review) / `benchmarks/audits/p46b_bless/EVIDENCE_MANIFEST.txt`. The
+evidence and framing below (round 1/2 of this unit's own delivery) are
+historical — read P46b for the current, Will-facing state.**
+
 **Both root causes closed, in production for (A) and tool-only for (B); bless
 evidence delivered and, for the first time across P37/P44/P44b/P44c/P46, is
 a real (non-null) visual demonstration.**
