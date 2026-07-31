@@ -597,6 +597,26 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
 
+# P47: entity-viewer regression pin. Deliberately lightweight -- shells out
+# to the already-built gles2_zone_benchmark's --entity-viewer mode (see
+# tools/hwcaps/zone_bench_entity_viewer.h/.cpp) and parses its
+# ENTITY_VIEWER_RESULT stdout lines, rather than re-linking the whole
+# graphics/zone-loading pipeline into yet another test binary. Only needs
+# GTest + <filesystem>/popen. Asset-gated exactly like test_asset_loading
+# (EQ_CLIENT_PATH env var, else data/eq_client symlink, else skip) -- plus a
+# second skip guard for the sibling binary not existing (e.g. EQT_GRAPHICS
+# off, or the target simply hasn't been rebuilt yet in this tree).
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_entity_viewer_regression
+        test_entity_viewer_regression.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_entity_viewer_regression PRIVATE
+        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>")
+    TARGET_LINK_LIBRARIES(test_entity_viewer_regression GTest::gtest_main)
+    ADD_DEPENDENCIES(test_entity_viewer_regression gles2_zone_benchmark)
+    GTEST_DISCOVER_TESTS(test_entity_viewer_regression)
+ENDIF()
+
 # Test door loading (unit tests + graphics tests)
 # Unit tests run without display, graphics tests need DISPLAY=:99
 IF(EQT_GRAPHICS)
