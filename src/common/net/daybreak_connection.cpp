@@ -303,7 +303,9 @@ EQ::Net::DaybreakConnection::DaybreakConnection(DaybreakConnectionManager *owner
 	m_endpoint = endpoint;
 	m_port = port;
 	m_connect_code = NetworkToHost(connect.connect_code);
-	m_encode_key = m_owner->m_rand.Int(std::numeric_limits<uint32_t>::min(), std::numeric_limits<uint32_t>::max());
+	// T21: was Int(uint32 min, uint32 max) — the max truncated to -1 as int,
+	// so the draw collapsed to {0, 0xFFFFFFFF}.
+	m_encode_key = m_owner->m_rand.UInt32();
 	m_max_packet_size = (uint32_t)std::min(owner->m_options.max_packet_size, (size_t)NetworkToHost(connect.max_packet_size));
 	m_crc_bytes = (uint32_t)owner->m_options.crc_length;
 	m_encode_passes[0] = owner->m_options.encode_passes[0];
@@ -332,7 +334,10 @@ EQ::Net::DaybreakConnection::DaybreakConnection(DaybreakConnectionManager *owner
 	m_status = StatusConnecting;
 	m_endpoint = endpoint;
 	m_port = port;
-	m_connect_code = m_owner->m_rand.Int(std::numeric_limits<uint32_t>::min(), std::numeric_limits<uint32_t>::max());
+	// T21: same truncation as the server-role ctor above — every client
+	// session identified itself as either 0 or 0xFFFFFFFF. Confirmed against
+	// the recorded capture, whose three sessions use exactly those two values.
+	m_connect_code = m_owner->m_rand.UInt32();
 	m_encode_key = 0;
 	m_max_packet_size = (uint32_t)owner->m_options.max_packet_size;
 	m_crc_bytes = 0;
@@ -878,12 +883,24 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 				if (m_status == StatusConnecting) {
 					auto reply = p.GetSerialize<DaybreakConnectReply>(0);
 
-					if (m_connect_code == reply.connect_code) {
-						m_encode_key = reply.encode_key;
+					// T21: these three fields arrive in network order (the
+					// server-role OP_SessionRequest path below wire-encodes
+					// them with HostToNetwork, and SendConnect does the same
+					// for our own connect_code), but were being compared and
+					// stored raw. The compare and the key were masked by the
+					// RNG collapse above — 0 and 0xFFFFFFFF are byte-swap
+					// palindromes, and the recorded server sends encode_key=0
+					// — which is why fixing the RNG without this would have
+					// broken every handshake. max_packet_size was genuinely
+					// wrong: the capture carries network-order 512, read raw
+					// as 131072, so the client believed it could send packets
+					// 256x larger than the server allows.
+					if (m_connect_code == NetworkToHost(reply.connect_code)) {
+						m_encode_key = NetworkToHost(reply.encode_key);
 						m_crc_bytes = reply.crc_bytes;
 						m_encode_passes[0] = (DaybreakEncodeType)reply.encode_pass1;
 						m_encode_passes[1] = (DaybreakEncodeType)reply.encode_pass2;
-						m_max_packet_size = reply.max_packet_size;
+						m_max_packet_size = NetworkToHost(reply.max_packet_size);
 						ChangeStatus(StatusConnected);
 
 						LOG_TRACE(MOD_NET, "[OP_SessionResponse] Session [{}] encode_passes=[{},{}] crc_bytes={} max_packet={}",
