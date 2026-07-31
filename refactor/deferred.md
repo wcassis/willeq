@@ -1303,7 +1303,17 @@ proper fix:
   instrument couldn't reach the path pre-P46, so production
   exoneration rests on entity_renderer's own always-paired code, not
   the matrix). Fix = applyEntityShaderMaterialPromotion pairing both
-  halves. **ROUND-4 EVIDENCE READY, AWAITING WILL**: lead pair
+  halves. **═══ P37 VISUAL BLESS: CLOSED — WILL BLESSED THE P47
+  MAGENTA CONTACT SHEET 2026-07-31 ("contact sheet looks correct")
+  ═══** Six rounds total; the instrument that finally worked is
+  Will's own design (P47, merged `6b78548`): model rendered large
+  against solid magenta, no zone, enclosed-magenta metric +
+  permanent ctest regression pin (test_entity_viewer_regression).
+  Every earlier round's evidence (P44 live pairs, P46 pairs, P46b
+  pairs, P46d pairs) is historical only — the blessed artifact is
+  benchmarks/contact_sheets/p47_entity_viewer/index.html.
+  Historical record of round 4 follows: ~~ROUND-4 EVIDENCE READY,
+  AWAITING WILL~~: lead pair
   videos/p46b_bless/primary_etc1/crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png
   (+ zom). KNOWN DISCLOSED DELTA: BEFORE leg renders fixed-function
   (pre-promotion instrument history) → pairs show the cutout PLUS a
