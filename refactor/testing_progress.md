@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T18; T17 in flight in t1, T19 planned).
+Last updated: 2026-07-31 (T17 merged; T19 dispatched to t1).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T17 | Daybreak state-machine tests | DONE (merged `f90873b`) | Dispatched executor unit (t1). 23 tests over the reliable-UDP core via injected `FakeUdpTransport`: lifecycle, reorder/dup delivery, fragmentation both ways, ack/retransmit (deterministic via timestamp backdating — no clock seam exists, none needed), CRC/compression/combined. **Three real handshake bugs pinned, needs Will** (section below) — headline: session connect codes and encode keys can only ever be 0 or 0xFFFFFFFF. Orchestrator re-verified all three claims against source. Mutation spot-check 2/2 caught. |
 | T18 | Zone entities + chat tests | DONE (merged `0439de6`) | First direct coverage of `eq_entities.cpp` (2445 lines) + `eq_chat.cpp`. Real capture: 2788 zone records replay to a 184-entity table, pinned exactly (incl. player spawn 261). Synthetic: Spawn_Struct bitfield decode (INVERSEXY, sign extension, 11-bit heading), batch semantics, delete/health handlers, bridge events, all 8 chat channel mappings, /reply tracking. **BUG pinned, needs Will:** exactly-150-byte ChannelMessage → uncaught `std::out_of_range` on the receive path (section below). Suite failures: ALSA quirk + pre-existing deferred RDP race (1-in-5 isolated repro, perf territory). Executed inline in t2. |
 | T16 | Spell-cast off-by-one fix | DONE (merged `3253126`) | Closes the T15 finding, go-ahead from Will. `processSpellCasts()` now converts the 0-based request to the dispatcher's 1-based contract (`+1`, matching the hotbar path). Gem 1 castable again; `/cast N` casts gem N. Both `BUG_` pins re-pointed (gem 0→`castSpell(1)`, gems 4/7→5/8). Executed inline. |
 | T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG pinned, not fixed (needs Will):** spell-cast gem off-by-one — see section below. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
@@ -754,6 +755,32 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T17 findings — three Daybreak handshake bugs (needs Will)
+
+All in `src/common/net/daybreak_connection.cpp`; pinned by passing tests
+in `tests/test_daybreak_state_machine.cpp`; verified independently by
+the orchestrator against the source. Full detail in the plan's Review
+section (`refactor/T17_daybreak_state_machine.md`).
+
+1. **RNG range collapse** (`daybreak_connection.cpp:306/335`):
+   `Random::Int(int, int)` is called with `uint32_t` min/max;
+   `0xFFFFFFFF` truncates to `-1`, `Int` swaps the inverted bounds, and
+   every draw is from `{-1, 0}`. So `m_connect_code` and `m_encode_key`
+   have exactly 2 possible values instead of 2^32. Weakens session
+   identification and the CRC key. Fix: draw two 16-bit halves, or add
+   a proper 32-bit draw to `Random`.
+2. **Missing byte-swap on connect_code compare** (`:881`):
+   `m_connect_code == reply.connect_code` compares host-order vs wire
+   bytes. Masked ONLY because bug 1's two values are byte-swap
+   palindromes — fixing bug 1 alone would break every connection on the
+   response path. **Bugs 1 and 2 must land together.**
+3. **encode_key/max_packet_size stored unswapped** (`:882/:886`):
+   client-role stores raw wire bytes where the mirror server-role path
+   (`:853-863`) swaps correctly. Same masking as bug 2 for the key;
+   `max_packet_size` is genuinely wrong on any server whose value isn't
+   palindromic (512 → 131072 if read swapped) — worth checking what the
+   capture's server actually sent.
 
 ## T18 finding — ChannelMessage exact-size crash (needs Will)
 
