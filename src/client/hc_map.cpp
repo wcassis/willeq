@@ -12,17 +12,50 @@
 #include <vector>
 #include <cerrno>
 #include <cstring>
+#include <stdexcept>
 #include <algorithm>
 #include <limits>
 #include <map>
 
+// T20: every count and length inside a V2 map's decompressed payload is
+// untrusted file data, and the readers below advance a raw pointer. Before
+// T20 none of them checked the buffer end, so a corrupt or hostile count
+// (e.g. an oversized vert_count) walked off the heap and segfaulted. The
+// readers now throw MapParseError, which HCMap::Load catches to fail the
+// load cleanly.
+struct MapParseError : public std::runtime_error {
+	explicit MapParseError(const char* what) : std::runtime_error(what) {}
+};
+
 // Helper for safe unaligned reads from binary buffers (required for ARM)
 template<typename T>
-static inline T read_val(char*& buf) {
+static inline T read_val(char*& buf, const char* end) {
+	if (end - buf < static_cast<ptrdiff_t>(sizeof(T))) {
+		throw MapParseError("read past end of decompressed map buffer");
+	}
 	T value;
 	memcpy(&value, buf, sizeof(T));
 	buf += sizeof(T);
 	return value;
+}
+
+// NUL-terminated inline string; the terminator must lie inside the buffer.
+static inline std::string read_str(char*& buf, const char* end) {
+	const char* nul = static_cast<const char*>(memchr(buf, '\0', static_cast<size_t>(end - buf)));
+	if (!nul) {
+		throw MapParseError("unterminated string in decompressed map buffer");
+	}
+	std::string value(buf);
+	buf += value.length() + 1;
+	return value;
+}
+
+// Skip `bytes` of payload (non-collidable geometry we do not keep).
+static inline void skip_bytes(char*& buf, const char* end, size_t bytes) {
+	if (static_cast<size_t>(end - buf) < bytes) {
+		throw MapParseError("skip past end of decompressed map buffer");
+	}
+	buf += bytes;
 }
 
 struct HCMap::impl {
@@ -267,18 +300,23 @@ bool HCMap::Load(const std::string& filename) {
 			return false;
 		}
 
-		// Parse decompressed data
+		// Parse decompressed data. T20: `end` bounds every read below;
+		// MapParseError from any of them aborts the load cleanly instead of
+		// running off the heap. Only the bytes InflateData actually produced
+		// are in play, which may be fewer than buffer_size claimed.
 		char *buf = &buffer[0];
-		uint32_t vert_count = read_val<uint32_t>(buf);
-		uint32_t ind_count = read_val<uint32_t>(buf);
-		uint32_t nc_vert_count = read_val<uint32_t>(buf);
-		uint32_t nc_ind_count = read_val<uint32_t>(buf);
-		uint32_t model_count = read_val<uint32_t>(buf);
-		uint32_t plac_count = read_val<uint32_t>(buf);
-		uint32_t plac_group_count = read_val<uint32_t>(buf);
-		uint32_t tile_count = read_val<uint32_t>(buf);
-		uint32_t quads_per_tile = read_val<uint32_t>(buf);
-		float units_per_vertex = read_val<float>(buf);
+		const char *end = buffer.data() + std::min<size_t>(decompressed_size, buffer.size());
+		try {
+		uint32_t vert_count = read_val<uint32_t>(buf, end);
+		uint32_t ind_count = read_val<uint32_t>(buf, end);
+		uint32_t nc_vert_count = read_val<uint32_t>(buf, end);
+		uint32_t nc_ind_count = read_val<uint32_t>(buf, end);
+		uint32_t model_count = read_val<uint32_t>(buf, end);
+		uint32_t plac_count = read_val<uint32_t>(buf, end);
+		uint32_t plac_group_count = read_val<uint32_t>(buf, end);
+		uint32_t tile_count = read_val<uint32_t>(buf, end);
+		uint32_t quads_per_tile = read_val<uint32_t>(buf, end);
+		float units_per_vertex = read_val<float>(buf, end);
 
 		LOG_DEBUG(MOD_MAP, "V2 map counts: verts={}, indices={}, models={}, placements={}, tiles={}",
 			vert_count, ind_count, model_count, plac_count, tile_count);
@@ -292,15 +330,15 @@ bool HCMap::Load(const std::string& filename) {
 		// Read main vertices
 		// Note: Map file has INVERSEXY applied (X and Y are swapped), so we swap them back
 		for (uint32_t i = 0; i < vert_count; ++i) {
-			float x = read_val<float>(buf);
-			float y = read_val<float>(buf);
-			float z = read_val<float>(buf);
+			float x = read_val<float>(buf, end);
+			float y = read_val<float>(buf, end);
+			float z = read_val<float>(buf, end);
 			verts.emplace_back(y, x, z);  // Swap X/Y to undo INVERSEXY
 		}
 
 		// Read main indices
 		for (uint32_t i = 0; i < ind_count; ++i) {
-			indices.push_back(read_val<uint32_t>(buf));
+			indices.push_back(read_val<uint32_t>(buf, end));
 		}
 
 		// Mark main geometry triangles as terrain (not placeables)
@@ -308,37 +346,32 @@ bool HCMap::Load(const std::string& filename) {
 		triangleIsPlaceable.resize(mainTerrainTriangles, false);
 
 		// Skip non-collidable geometry
-		for (uint32_t i = 0; i < nc_vert_count; ++i) {
-			buf += sizeof(float) * 3;
-		}
-		for (uint32_t i = 0; i < nc_ind_count; ++i) {
-			buf += sizeof(uint32_t);
-		}
+		skip_bytes(buf, end, static_cast<size_t>(nc_vert_count) * sizeof(float) * 3);
+		skip_bytes(buf, end, static_cast<size_t>(nc_ind_count) * sizeof(uint32_t));
 
 		// Read models
 		std::map<std::string, std::unique_ptr<ModelEntry>> models;
 		for (uint32_t i = 0; i < model_count; ++i) {
 			std::unique_ptr<ModelEntry> me(new ModelEntry);
-			std::string name = buf;
-			buf += name.length() + 1;
+			std::string name = read_str(buf, end);
 
-			uint32_t model_vert_count = read_val<uint32_t>(buf);
-			uint32_t poly_count = read_val<uint32_t>(buf);
+			uint32_t model_vert_count = read_val<uint32_t>(buf, end);
+			uint32_t poly_count = read_val<uint32_t>(buf, end);
 
 			me->verts.reserve(model_vert_count);
 			for (uint32_t j = 0; j < model_vert_count; ++j) {
-				float x = read_val<float>(buf);
-				float y = read_val<float>(buf);
-				float z = read_val<float>(buf);
+				float x = read_val<float>(buf, end);
+				float y = read_val<float>(buf, end);
+				float z = read_val<float>(buf, end);
 				me->verts.emplace_back(x, y, z);
 			}
 
 			me->polys.reserve(poly_count);
 			for (uint32_t j = 0; j < poly_count; ++j) {
-				uint32_t v1 = read_val<uint32_t>(buf);
-				uint32_t v2 = read_val<uint32_t>(buf);
-				uint32_t v3 = read_val<uint32_t>(buf);
-				uint8_t vis = read_val<uint8_t>(buf);
+				uint32_t v1 = read_val<uint32_t>(buf, end);
+				uint32_t v2 = read_val<uint32_t>(buf, end);
+				uint32_t v3 = read_val<uint32_t>(buf, end);
+				uint8_t vis = read_val<uint8_t>(buf, end);
 
 				ModelEntry::Poly p;
 				p.v1 = v1;
@@ -353,20 +386,19 @@ bool HCMap::Load(const std::string& filename) {
 
 		// Read placements - these are placeable objects
 		for (uint32_t i = 0; i < plac_count; ++i) {
-			std::string name = buf;
-			buf += name.length() + 1;
+			std::string name = read_str(buf, end);
 
-			float x = read_val<float>(buf);
-			float y = read_val<float>(buf);
-			float z = read_val<float>(buf);
+			float x = read_val<float>(buf, end);
+			float y = read_val<float>(buf, end);
+			float z = read_val<float>(buf, end);
 
-			float x_rot = read_val<float>(buf);
-			float y_rot = read_val<float>(buf);
-			float z_rot = read_val<float>(buf);
+			float x_rot = read_val<float>(buf, end);
+			float y_rot = read_val<float>(buf, end);
+			float z_rot = read_val<float>(buf, end);
 
-			float x_scale = read_val<float>(buf);
-			float y_scale = read_val<float>(buf);
-			float z_scale = read_val<float>(buf);
+			float x_scale = read_val<float>(buf, end);
+			float y_scale = read_val<float>(buf, end);
+			float z_scale = read_val<float>(buf, end);
 
 			if (models.count(name) == 0)
 				continue;
@@ -411,39 +443,38 @@ bool HCMap::Load(const std::string& filename) {
 
 		// Read placement groups (complex object placements) - also placeables
 		for (uint32_t i = 0; i < plac_group_count; ++i) {
-			float x = read_val<float>(buf);
-			float y = read_val<float>(buf);
-			float z = read_val<float>(buf);
+			float x = read_val<float>(buf, end);
+			float y = read_val<float>(buf, end);
+			float z = read_val<float>(buf, end);
 
-			float x_rot = read_val<float>(buf);
-			float y_rot = read_val<float>(buf);
-			float z_rot = read_val<float>(buf);
+			float x_rot = read_val<float>(buf, end);
+			float y_rot = read_val<float>(buf, end);
+			float z_rot = read_val<float>(buf, end);
 
-			float x_scale = read_val<float>(buf);
-			float y_scale = read_val<float>(buf);
-			float z_scale = read_val<float>(buf);
+			float x_scale = read_val<float>(buf, end);
+			float y_scale = read_val<float>(buf, end);
+			float z_scale = read_val<float>(buf, end);
 
-			float x_tile = read_val<float>(buf);
-			float y_tile = read_val<float>(buf);
-			float z_tile = read_val<float>(buf);
+			float x_tile = read_val<float>(buf, end);
+			float y_tile = read_val<float>(buf, end);
+			float z_tile = read_val<float>(buf, end);
 
-			uint32_t p_count = read_val<uint32_t>(buf);
+			uint32_t p_count = read_val<uint32_t>(buf, end);
 
 			for (uint32_t j = 0; j < p_count; ++j) {
-				std::string name = buf;
-				buf += name.length() + 1;
+				std::string name = read_str(buf, end);
 
-				float p_x = read_val<float>(buf);
-				float p_y = read_val<float>(buf);
-				float p_z = read_val<float>(buf);
+				float p_x = read_val<float>(buf, end);
+				float p_y = read_val<float>(buf, end);
+				float p_z = read_val<float>(buf, end);
 
-				float p_x_rot = read_val<float>(buf) * 3.14159f / 180;
-				float p_y_rot = read_val<float>(buf) * 3.14159f / 180;
-				float p_z_rot = read_val<float>(buf) * 3.14159f / 180;
+				float p_x_rot = read_val<float>(buf, end) * 3.14159f / 180;
+				float p_y_rot = read_val<float>(buf, end) * 3.14159f / 180;
+				float p_z_rot = read_val<float>(buf, end) * 3.14159f / 180;
 
-				float p_x_scale = read_val<float>(buf);
-				float p_y_scale = read_val<float>(buf);
-				float p_z_scale = read_val<float>(buf);
+				float p_x_scale = read_val<float>(buf, end);
+				float p_y_scale = read_val<float>(buf, end);
+				float p_z_scale = read_val<float>(buf, end);
 
 				if (models.count(name) == 0)
 					continue;
@@ -541,13 +572,13 @@ bool HCMap::Load(const std::string& filename) {
 		floats.resize(ter_vert_count);
 
 		for (uint32_t i = 0; i < tile_count; ++i) {
-			bool flat = read_val<bool>(buf);
+			bool flat = read_val<bool>(buf, end);
 
-			float tile_x = read_val<float>(buf);
-			float tile_y = read_val<float>(buf);
+			float tile_x = read_val<float>(buf, end);
+			float tile_y = read_val<float>(buf, end);
 
 			if (flat) {
-				float tile_z = read_val<float>(buf);
+				float tile_z = read_val<float>(buf, end);
 
 				float QuadVertex1X = tile_x;
 				float QuadVertex1Y = tile_y;
@@ -583,12 +614,12 @@ bool HCMap::Load(const std::string& filename) {
 			else {
 				// Read flags
 				for (uint32_t j = 0; j < ter_quad_count; ++j) {
-					flags[j] = read_val<uint8_t>(buf);
+					flags[j] = read_val<uint8_t>(buf, end);
 				}
 
 				// Read floats
 				for (uint32_t j = 0; j < ter_vert_count; ++j) {
-					floats[j] = read_val<float>(buf);
+					floats[j] = read_val<float>(buf, end);
 				}
 
 				int row_number = -1;
@@ -712,6 +743,11 @@ bool HCMap::Load(const std::string& filename) {
 				LOG_INFO(MOD_MAP, "Loaded V2 map: {} vertices, {} faces ({} placeables, {} terrain)",
 				         verts.size(), face_count, placeableCount, face_count - placeableCount);
 			}
+		}
+		} catch (const MapParseError& e) {
+			// T20: truncated or corrupt V2 payload. `loaded` stays false, so
+			// the shared cleanup below frees m_impl and returns false.
+			LOG_ERROR(MOD_MAP, "Malformed V2 map '{}': {}", filename, e.what());
 		}
 	}
 

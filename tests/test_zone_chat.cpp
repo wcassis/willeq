@@ -120,26 +120,38 @@ TEST_F(ZoneChatTest, ChannelMessage_UndersizedRejectedWithoutEvent) {
     EXPECT_TRUE(DrainChat(bridge).empty());
 }
 
-TEST_F(ZoneChatTest, BUG_ChannelMessage_ExactMinimumSizeThrowsOutOfRange) {
-    // PINNED BUG (T18, needs Will): the guard rejects length < 150, so an
-    // exactly-150-byte packet passes -- but the message cstring is then read
-    // at offset 150 == packet end, and the post-T08 bounds-checked
-    // GetCString throws std::out_of_range. This is the zone network receive
-    // path, where nothing catches: a malformed 150-byte ChannelMessage
-    // terminates the client. Real servers always append a message (min real
-    // size 151), so this is hostile/truncated input only -- the same class
-    // T05/T07 fixed on the login path. Correct guard is < 151 (or a
-    // bounds-checked message read). Re-point this test at no-throw +
-    // empty-message when the fix lands.
+TEST_F(ZoneChatTest, ChannelMessage_ExactMinimumSizeRejectedWithoutThrowing) {
+    // T18 found that the old `< 150` guard admitted an exactly-150-byte
+    // packet, which then read the message cstring at offset 150 == packet
+    // end and threw an uncaught std::out_of_range on the zone receive path.
+    // T20 changed the guard to `<= 150`: the packet is rejected like any
+    // other undersized one -- no throw, no event.
     auto payload = BuildPayload(150, [&](EQ::Net::DynamicPacket& p) {
         p.PutCString(2, "");
         p.PutCString(66, "EdgeSender");
         p.PutUInt32(134, CHAT_CHANNEL_SAY);
     });
-    EXPECT_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload), std::out_of_range);
+    EXPECT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
 
-    // Nothing half-published before the throw.
     EXPECT_TRUE(DrainChat(bridge).empty());
+}
+
+TEST_F(ZoneChatTest, ChannelMessage_SmallestValidSizePublishesEmptyMessage) {
+    // The boundary just above: 151 bytes is the smallest real payload (an
+    // empty message is still a NUL terminator). It must parse and publish,
+    // proving the T20 guard didn't over-reject.
+    auto payload = BuildPayload(151, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2, "");
+        p.PutCString(66, "EdgeSender");
+        p.PutUInt32(134, CHAT_CHANNEL_SAY);
+        p.PutCString(150, "");
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
+
+    auto chats = DrainChat(bridge);
+    ASSERT_EQ(chats.size(), 1u);
+    EXPECT_EQ(chats[0].sender, "EdgeSender");
+    EXPECT_TRUE(chats[0].message.empty());
 }
 
 TEST_F(ZoneChatTest, RealCapture_ChannelMessagesReplayAndPublish) {
