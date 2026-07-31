@@ -37,27 +37,46 @@ using namespace EQT::Graphics;
 
 namespace ZoneBench {
 
-// P46 Part B: benchmark-only mirror of EntityRenderer::applyAlphaTestMaterialType()
-// (src/client/graphics/entity_renderer.cpp). This tool does not link
-// entity_renderer.cpp (P44b's root-caused finding: `nm` shows no
-// applyAlphaTestMaterialType symbol in gles2_zone_benchmark), so mesh_building.cpp's
-// P37 EMT_TRANSPARENT_ALPHA_CHANNEL_REF marker on masked-material mesh buffers was
-// never followed up with production's companion-alpha-texture binding — the shader
-// had a material type telling it to alpha-test, but nothing on unit 1 (ETC1 leg) or
-// a real alpha channel it could trust (RGBA leg, pre-P46-Part-A) to discard against.
-// This function closes that gap for the benchmark's entity path only, so
-// --eqe1-path (ETC1) renders masked entity alpha the way production does. Logic is
-// intentionally identical to entity_renderer.cpp's version, not reinvented:
-//   - ETC1-sourced main texture (unit 0) -> use the companion-alpha shader variant,
-//     bind the ETC1 alpha companion on unit 1.
-//   - Direct RGBA/DDS main texture -> use the RGBA-variant shader that reads alpha
-//     from unit 0's own alpha channel directly (P46 Part A is what makes that alpha
-//     channel meaningful for masked entity BMPs now).
-static void applyEntityAlphaCompanionBinding(irr::scene::IMesh* mesh,
-                                              ConstrainedTextureCache* textureCache,
-                                              irr::s32 shaderMaterialAlphaTest,
-                                              irr::s32 shaderMaterialAlphaTestRGBA) {
-    if (!mesh || !textureCache) return;
+// P46 Part B (P46b fix): benchmark-only mirror of EntityRenderer's paired
+// solid/alpha-test shader promotion (src/client/graphics/entity_renderer.cpp,
+// e.g. the loop at ~line 629-648: "if (mat.MaterialType == EMT_SOLID) ...
+// else if (mat.MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF)
+// applyAlphaTestMaterialType(mat); mat.Lighting = false;"). This tool does not
+// link entity_renderer.cpp (P44b's root-caused finding: `nm` shows no
+// applyAlphaTestMaterialType symbol in gles2_zone_benchmark), so
+// mesh_building.cpp's P37 EMT_TRANSPARENT_ALPHA_CHANNEL_REF marker on masked
+// mesh buffers was never followed up with production's companion-alpha-
+// texture binding.
+//
+// P46b root cause (Will's round-3 rejection: wrong-looking textures on
+// skeleton forearms/shins, glowing zombie chest): the ORIGINAL P46 Part B
+// port (commit d19e325) implemented ONLY the alpha-test half of this pair --
+// it promoted masked buffers to the custom per-pixel-lit GLSL alpha-test
+// shader (materialAlphaTest_/materialAlphaTestRGBA_, with real player-light/
+// sun/fog math) but left sibling EMT_SOLID buffers on the SAME entity
+// untouched, still rendered by Irrlicht's built-in fixed-function EMT_SOLID
+// renderer (flat vertex-color modulate, no player light/fog/tint). Every
+// masked-classified body part (skeleton forearms/shins, zombie chest/legs --
+// exactly P37's ground-truth masked list) rendered through a completely
+// different lighting model than its unmasked neighbors on the same mesh,
+// independent of any real per-pixel alpha value -- confirmed by the P46b
+// bisect matrix: AE vs pre-P37 baseline is BYTE-IDENTICAL whether P46 Part A
+// (the decodeBMP alpha fix) is present or reverted, in BOTH ETC1 and RGBA
+// modes, proving the visual delta was never about alpha data at all. Fixed
+// by promoting ALL of the entity's material buffers together, exactly as
+// entity_renderer.cpp does at its 3 call sites: EMT_SOLID buffers get
+// shaderMaterialSolid (the same custom lighting shader masked buffers use),
+// masked buffers get the alpha-test variant, and Lighting is disabled on
+// every promoted buffer (the shader computes lighting itself). This restores
+// per-entity shader consistency; production is unaffected (entity_renderer.cpp
+// already paired these two promotions from the start, at P21 -- this bug
+// existed only in this tool's P46 Part A/B benchmark-only port).
+static void applyEntityShaderMaterialPromotion(irr::scene::IMesh* mesh,
+                                                ConstrainedTextureCache* textureCache,
+                                                irr::s32 shaderMaterialSolid,
+                                                irr::s32 shaderMaterialAlphaTest,
+                                                irr::s32 shaderMaterialAlphaTestRGBA) {
+    if (!mesh) return;
 
     irr::u32 bufCount = mesh->getMeshBufferCount();
     for (irr::u32 i = 0; i < bufCount; ++i) {
@@ -65,29 +84,39 @@ static void applyEntityAlphaCompanionBinding(irr::scene::IMesh* mesh,
         if (!buf) continue;
 
         irr::video::SMaterial& mat = buf->getMaterial();
-        // Only touch buffers mesh_building.cpp already flagged masked (P37) --
-        // mirrors applyAlphaTestMaterialType()'s own precondition (called only at
-        // entity_renderer.cpp's material-assignment sites, which only fire when
-        // upstream already set EMT_TRANSPARENT_ALPHA_CHANNEL_REF).
-        if (mat.MaterialType != irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) continue;
 
-        irr::video::ITexture* tex = mat.getTexture(0);
-        bool isETC1 = tex && textureCache->isETC1Texture(tex);
-        if (isETC1) {
-            if (shaderMaterialAlphaTest >= 0) {
+        if (shaderMaterialSolid < 0) {
+            // No custom shader available at all -- leave every buffer on
+            // fixed-function (matches entity_renderer.cpp's else branch,
+            // which also leaves MaterialType untouched in this case).
+            continue;
+        }
+
+        if (mat.MaterialType == irr::video::EMT_SOLID) {
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid);
+        } else if (mat.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+            // mirrors EntityRenderer::applyAlphaTestMaterialType() -- only
+            // fires for buffers mesh_building.cpp already flagged masked (P37).
+            if (!textureCache) continue;
+            irr::video::ITexture* tex = mat.getTexture(0);
+            bool isETC1 = tex && textureCache->isETC1Texture(tex);
+            if (isETC1) {
+                if (shaderMaterialAlphaTest >= 0) {
+                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest);
+                }
+                irr::video::ITexture* alphaTex = textureCache->getAlphaTexture(tex);
+                if (alphaTex) {
+                    mat.setTexture(1, alphaTex);
+                }
+            } else if (shaderMaterialAlphaTestRGBA >= 0) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA);
+            } else if (shaderMaterialAlphaTest >= 0) {
+                // No RGBA variant wired -- fall back to the companion variant,
+                // same fallback entity_renderer.cpp's version uses.
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest);
             }
-            irr::video::ITexture* alphaTex = textureCache->getAlphaTexture(tex);
-            if (alphaTex) {
-                mat.setTexture(1, alphaTex);
-            }
-        } else if (shaderMaterialAlphaTestRGBA >= 0) {
-            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA);
-        } else if (shaderMaterialAlphaTest >= 0) {
-            // No RGBA variant wired -- fall back to the companion variant, same
-            // fallback entity_renderer.cpp's version uses.
-            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest);
         }
+        mat.Lighting = false;  // Shader handles lighting -- mirrors entity_renderer.cpp
     }
 }
 
@@ -747,16 +776,24 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                         raceId, 0, data->smgr->getRootSceneNode());
                     if (node) {
                         data->animatedNodes[i] = node;
-                        // P46 Part B: mirror production's companion-alpha binding
-                        // (entity_renderer.cpp's applyAlphaTestMaterialType(), not
-                        // linked into this tool) onto the masked-material buffers
-                        // mesh_building.cpp already flagged (P37). Must happen after
-                        // createAnimatedNode() builds instanceMesh_'s buffers, before
-                        // any texture upload/draw uses this node's material.
+                        // P46 Part B (P46b fix): mirror production's PAIRED solid +
+                        // companion-alpha shader promotion (entity_renderer.cpp's
+                        // loop at ~line 629-648, not linked into this tool) onto
+                        // ALL of this node's material buffers -- not just the
+                        // masked-material ones mesh_building.cpp flagged (P37).
+                        // P46b root-caused a wrong-texture-looking regression to
+                        // exactly this being alpha-only: masked buffers got the
+                        // custom per-pixel-lit shader while sibling EMT_SOLID
+                        // buffers stayed on fixed-function lighting, producing a
+                        // visible cross-body-part lighting mismatch independent of
+                        // any real alpha value. Must happen after createAnimatedNode()
+                        // builds instanceMesh_'s buffers, before any texture
+                        // upload/draw uses this node's material.
                         if (data->zoneShader && data->zoneShader->isAvailable() &&
                             node->getInstanceMesh()) {
-                            applyEntityAlphaCompanionBinding(
+                            applyEntityShaderMaterialPromotion(
                                 node->getInstanceMesh(), data->textureCache.get(),
+                                data->zoneShader->getActiveSolid(),
                                 data->zoneShader->getActiveAlphaTest(),
                                 data->zoneShader->getActiveAlphaTestRGBA());
                         }
