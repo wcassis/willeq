@@ -154,6 +154,21 @@ struct Options {
     // Animation
     bool animate = false;         // Enable entity skeletal animation
 
+    // P46c: benchmark-only opt-out from applyEntityShaderMaterialPromotion()
+    // (P46b's fix; zone_bench_loader.cpp). When set, entity mesh buffers are
+    // left on whatever material Irrlicht's driver/mesh_building.cpp assigned
+    // them by default -- EMT_SOLID (built-in fixed-function Solid3D) for
+    // unmasked buffers, EMT_TRANSPARENT_ALPHA_CHANNEL_REF (P37's built-in
+    // AlphaTest3D) for masked buffers -- instead of promoting them to the
+    // custom per-pixel-lit GLSL shader family. Exists to produce a
+    // lighting-neutral BEFORE/AFTER bless pair that isolates the alpha
+    // cutout alone, with zero lighting-model delta between fda2e34 (which
+    // never had promotion at all) and tip (which always promotes by
+    // default). Default false -- promotion stays on unless this flag is
+    // passed; output byte-identical to before this flag existed when
+    // absent.
+    bool noEntityShaderPromotion = false;
+
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
     bool compositeEntityTest = false; // Render 1 of each race/gender, screenshot, exit
@@ -336,6 +351,9 @@ static void printUsage(const char* prog) {
     printf("  --lod-dist F         Billboard switch distance (default: 80)\n");
     printf("  --train              Cluster entities together (train simulation)\n");
     printf("  --animate            Enable skeletal animation on entities\n");
+    printf("  --no-entity-shader-promotion  Skip applyEntityShaderMaterialPromotion() --\n");
+    printf("                       entities stay on built-in EMT_SOLID/EMT_TRANSPARENT_ALPHA_CHANNEL_REF\n");
+    printf("                       materials (P46c: lighting-neutral bless capture). Default off.\n");
     printf("\nObject options:\n");
     printf("  --objects            Load zone objects (trees, lamps, fences)\n");
     printf("  --object-dist F      Object render distance (default: 300)\n");
@@ -484,6 +502,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--lod-dist") == 0 && i + 1 < argc) opts.lodTier2Dist = atof(argv[++i]);
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
+        else if (strcmp(argv[i], "--no-entity-shader-promotion") == 0) opts.noEntityShaderPromotion = true;
         // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
         // else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         // else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
@@ -1307,6 +1326,7 @@ int main(int argc, char** argv) {
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
     benchConfig.loadMemAudit = opts.loadMemAudit;
     benchConfig.occluderBudget = opts.occluderBudget;
+    benchConfig.noEntityShaderPromotion = opts.noEntityShaderPromotion;
 
     auto loadT0 = std::chrono::steady_clock::now();
     auto data = ZoneBench::loadZone(benchConfig);
