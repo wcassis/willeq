@@ -112,7 +112,7 @@ tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
 section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
-## → FOR THE TESTING SESSION: mutation-testing intel (benchmark session, 2026-07-29)
+## → FOR THE TESTING SESSION: mutation-testing intel (benchmark session, 2026-07-29) — ACTIONED
 
 - The model-eval benchmark session (separate clone) ran mutation
   testing against b68c32a and found: **`wld_loader.cpp` has the most
@@ -122,6 +122,16 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   better prioritization signal. Consider assertion-strengthening for
   the WLD parser (and kill-rate spot checks on other "well-covered"
   parsers) in a future T-batch.
+- **DONE — WLD half (T10, merged `bd60ee3`, 2026-07-28).** Independently
+  measured the baseline as **0/8** (marginally worse than the reported
+  1/8) and strengthened it to **4/8**. Confirms the signal. Two dead-code
+  findings fell out: `resolveTextureName` is unreachable and the
+  per-mesh header bbox fields are read by nothing.
+- **OPEN — the other half:** kill-rate spot checks across the remaining
+  "well-covered but unproven" files. Now scoped as **T22**
+  (`refactor/T22_kill_rate_sweep.md`); the technique is cheap (mutate,
+  build one target, run, revert) and has since paid off twice, so this
+  is prioritization, not exploration.
 - Their coverage numbers also confirm the T01 gap map: renderer/
   simulation splits (irrlicht_renderer, simulation_worker,
   entity_renderer) at 0% — their benchmark would use coverage there
@@ -188,14 +198,16 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   session.sleq (2,943 records) + session.pcap (5,603 pkts, login/world/
   befallen/qeynos2) + self-created golden; replay deterministic (3
   runs). 10 tests skip→PASS; desktop skips 38→24.
-  **→ FOR THE TESTING SESSION (tests/ territory)**: the remaining 4
-  FAILs + 8 skips share ONE root cause — `tests/pcap_test_utils.h` +
-  three test files hardcode zone port 7000, but the akk-stack image's
-  entrypoint auto-boots ~15 static zones claiming 7000-7011, so real
-  captures land on 7012+ (befallen 7012, qeynos2 7026 in this
-  fixture). Fix = WILLEQ_ZONE_PORT env override or port autodiscovery
-  from the pcap (SessionRequest/Response scan). Every future capture
-  against this image hits the same thing.
+  **→ FOR THE TESTING SESSION (tests/ territory) — CLOSED, T03a
+  (merged `02d591d`, 2026-07-28)**: the remaining 4 FAILs + 8 skips
+  shared ONE root cause — `tests/pcap_test_utils.h` + three test files
+  hardcoded zone port 7000, but the akk-stack image's entrypoint
+  auto-boots ~15 static zones claiming 7000-7011, so real captures land
+  on 7012+ (befallen 7012, qeynos2 7026 in this fixture). T03a
+  implemented BOTH suggested fixes: handshake-based autodiscovery
+  (`OP_SessionResponse` sender = server port) plus `WILLEQ_ZONE_PORT` /
+  `WILLEQ_ZONE_IP` overrides. 4 FAILs + 8 SKIPs → 12 PASS, and
+  compression assertions were verified rather than weakened.
 - **Process fix DONE**: .eqemu-lock protocol added to
   EXECUTOR_PROTOCOL.md (the testing session correctly called out that
   P25's session ran the server without a lock — the protocol predated
@@ -1131,13 +1143,30 @@ proper fix:
   confirmed no other pointer-derived draw/sort keys in src/ or include/.
   Unblocks the future full-app llvmpipe golden tier.
 
-## RDP frame-update race (observed repeatedly during Batch F, 2026-07-22)
+## RDP frame-update race — ROOT-CAUSED (T03b), fix still open
 
-- **RDPServerFrameTest.UpdateFrameMultipleTimes segfaults intermittently**
-  (~once per <=10 stress repetitions, confirmed on unmodified fable during
-  F18 integration; also seen under parallel ctest load in F01/F09/F24 runs).
-  This is a real race in the RDP frame-update path, not just test noise —
-  worth an actual investigation/fix in renderer_rdp.cpp / rdp_server.cpp.
+- **RDPServerFrameTest.\* segfaults intermittently** (~once per <=10
+  stress repetitions, confirmed on unmodified fable during F18
+  integration; also seen under parallel ctest load in F01/F09/F24 runs).
+  A real race in the RDP path, not test noise.
+- **ROOT CAUSE FOUND — T03b (2026-07-28), handed to the perf session in
+  `refactor/TESTING_HANDBACK.md` Round 3. Do not re-investigate from
+  scratch.** It is a **use-after-free in `RDPServer::stop()`**: `Close()`
+  runs before `join()` while `listenerThread()` is still holding fetched
+  handles. Evidence was 12 kernel GP faults at an identical libwinpr3
+  offset (the symbol resolution was double-checked against
+  `readelf -lW` — the kernel reports the containing segment base, and
+  libwinpr3's executable LOAD starts at vaddr `0x48000`). The correct
+  ordering is `running_.store(false)` → `join()` → `Close()` → `free()`.
+- **Still reproduces at fable tip (2026-07-31, testing session):**
+  1-in-5 standalone in one worktree (`UpdateFrameAfterStart`) and under
+  parallel ctest load in another (`UpdateFrameMultipleTimes`). Which
+  family member fires varies with timing — treat the whole
+  `RDPServerFrameTest`/`RDPServerLifecycleTest` set as one flake family
+  until the ordering is fixed.
+- **Standing caution (T03b lesson):** this sat behind a "known
+  intermittent flake" waiver for weeks. A segfault is never a flake; it
+  is a crash with a timing precondition.
 
 ## From Batch Z
 
