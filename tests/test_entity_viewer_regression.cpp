@@ -70,34 +70,69 @@ bool eqClientAvailable(const std::string& path) {
     return fs::exists(fs::path(path) / "gequip.s3d", ec);
 }
 
+// P48: result of one viewer invocation -- magenta counts plus whether the
+// production composite eligibility gate actually ADMITTED this race (as
+// opposed to falling back to the per-part path, which is ALSO alpha-correct
+// since P46/P46d and would otherwise make the composite leg indistinguishable
+// from a silent composite-path regression that still passes via fallback).
+struct ViewerRunResult {
+    std::vector<int> magentaValues;
+    bool sawCompositeAdmitted = false;
+    bool sawCompositeExcluded = false;
+};
+
 // Runs the viewer for one race and returns the magenta_in_bbox value parsed
-// from each ENTITY_VIEWER_RESULT stdout line (one per rendered angle).
-std::vector<int> runViewer(const std::string& binPath, const std::string& eqPath,
-                            const std::string& outDir, const RaceSpec& race) {
-    std::vector<int> values;
+// from each ENTITY_VIEWER_RESULT stdout line (one per rendered angle), plus
+// (composite leg only, --log-level INFO) whether preloadModelData's
+// composite eligibility gate admitted or excluded this race/sheet.
+// P48: optional eqe1Path/composite params add the ETC1 and composite legs
+// on top of the original RGBA-only signature (default args keep every
+// pre-P48 call site source-identical).
+ViewerRunResult runViewer(const std::string& binPath, const std::string& eqPath,
+                           const std::string& outDir, const RaceSpec& race,
+                           const std::string& eqe1Path = "", bool composite = false) {
+    ViewerRunResult result;
     std::string cmd = "\"" + binPath + "\" --zone befallen --eq-path \"" + eqPath +
         "\" --entity-viewer --entity-viewer-race " + std::to_string(race.id) +
         " --entity-viewer-race-label " + race.label +
-        " --entity-viewer-frame 26 --entity-viewer-out-dir \"" + outDir + "\" 2>&1";
+        " --entity-viewer-frame 26 --entity-viewer-out-dir \"" + outDir + "\"";
+    if (!eqe1Path.empty()) {
+        cmd += " --eqe1-path \"" + eqe1Path + "\"";
+    }
+    if (composite) {
+        cmd += " --entity-viewer-composite --log-level=INFO";
+    }
+    cmd += " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return values;
+    if (!pipe) return result;
 
     char buf[2048];
     const char* marker = "ENTITY_VIEWER_RESULT ";
     const char* magentaKey = "magenta_in_bbox=";
     while (fgets(buf, sizeof(buf), pipe)) {
         std::string line(buf);
+        if (line.find("composite ADMITTED") != std::string::npos) {
+            result.sawCompositeAdmitted = true;
+        } else if (line.find("composite EXCLUDED") != std::string::npos) {
+            result.sawCompositeExcluded = true;
+        }
         if (line.find(marker) == std::string::npos) continue;
         size_t mpos = line.find(magentaKey);
         if (mpos == std::string::npos) continue;
         mpos += std::strlen(magentaKey);
-        values.push_back(std::atoi(line.c_str() + mpos));
+        result.magentaValues.push_back(std::atoi(line.c_str() + mpos));
     }
     pclose(pipe);
-    return values;
+    return result;
 }
 
 }  // namespace
+
+// P48: NFS-hosted composite sheet directory -- same hardcoded-path convention
+// test_eqe1_loader.cpp already uses for this NFS mount (no env var exists for
+// it in this repo). Gated with fs::exists like every other NFS-dependent
+// test; a missing mount SKIPs rather than fails.
+const char* kEqe1Path = "/mnt/projects/EverQuest_ETC1";
 
 class EntityViewerRegressionTest : public ::testing::Test {
 protected:
@@ -129,10 +164,77 @@ protected:
     }
 };
 
+// P48: composite leg -- same races, same reading rule, but routes the
+// entity through the REAL composite eligibility gate
+// (race_model_loader.cpp's sheet-capability check) via --eqe1-path +
+// --entity-viewer-composite instead of the plain per-part legs
+// MaskedRacesShowAlphaGapHumanDoesNot already covers. Masked races (SKE/
+// ZOM/BAT/ORC) all got a real ETC1 alpha companion page in their composite
+// sheet this unit (entity_composite_builder.cpp); Human's composite sheet
+// has none (unmasked) and must stay exactly zero, matching the per-part
+// control's semantics -- a regression here means either the eligibility
+// gate stopped admitting masked-but-alpha-capable sheets, or
+// mesh_building.cpp's buildCompositeMeshFromGeometry() stopped honoring
+// CompositeTextureData::hasAlpha.
+TEST_F(EntityViewerRegressionTest, CompositeLegMaskedRacesShowAlphaGapHumanDoesNot) {
+    std::error_code ec;
+    if (!fs::exists(kEqe1Path, ec)) {
+        GTEST_SKIP() << "Composite sheet directory not found at '" << kEqe1Path
+                     << "' (NFS mount unavailable)";
+        return;
+    }
+    for (const auto& race : kRaces) {
+        SCOPED_TRACE(race.label);
+        ViewerRunResult run =
+            runViewer(binPath_, eqPath_, outDir_, race, kEqe1Path, /*composite=*/true);
+        const auto& values = run.magentaValues;
+        ASSERT_FALSE(values.empty())
+            << "no ENTITY_VIEWER_RESULT lines parsed for composite-leg race " << race.label
+            << " (viewer crashed or produced no output -- rerun manually with "
+            << binPath_ << " --entity-viewer --entity-viewer-composite --entity-viewer-race "
+            << race.id << " --eq-path " << eqPath_ << " --eqe1-path " << kEqe1Path
+            << " --entity-viewer-out-dir /tmp to see why)";
+
+        if (race.masked) {
+            // Discriminate composite-path alpha from the per-part FALLBACK path
+            // (which is also alpha-correct per P46/P46d, and would otherwise make
+            // this leg pass even if the composite eligibility gate silently
+            // reverted to always-excluding masked races -- see
+            // race_model_loader.cpp's "composite ADMITTED"/"composite EXCLUDED"
+            // log lines, both added by this unit).
+            EXPECT_TRUE(run.sawCompositeAdmitted)
+                << race.label << " (composite leg): expected race_model_loader.cpp's "
+                   "eligibility gate to log 'composite ADMITTED' (this race's sheet "
+                   "was regenerated with a real alpha companion, P48) -- if it logged "
+                   "'composite EXCLUDED' instead (sawCompositeExcluded="
+                << run.sawCompositeExcluded << "), the deployed sheet lost its alpha "
+                   "companion or the gate itself regressed, and the magenta signal "
+                   "below (if nonzero) is coming from the FALLBACK path, not composite";
+            int maxV = *std::max_element(values.begin(), values.end());
+            EXPECT_GT(maxV, 0)
+                << race.label << " (composite leg): expected at least one of the "
+                << values.size() << " rendered angles to show a nonzero enclosed-magenta "
+                   "alpha gap -- this race's composite sheet was regenerated with a real "
+                   "ETC1 alpha companion (P48); got all zeros, which means the composite "
+                   "eligibility gate or buildCompositeMeshFromGeometry()'s hasAlpha-gated "
+                   "MaterialType regressed";
+        } else {
+            for (size_t i = 0; i < values.size(); ++i) {
+                EXPECT_EQ(values[i], 0)
+                    << race.label << " (composite leg): unmasked control must show "
+                       "EXACTLY zero enclosed magenta at every angle (angle index " << i
+                    << ") when composited -- a nonzero count here means an unmasked "
+                       "composite sheet is incorrectly getting alpha-tested";
+            }
+        }
+    }
+}
+
 TEST_F(EntityViewerRegressionTest, MaskedRacesShowAlphaGapHumanDoesNot) {
     for (const auto& race : kRaces) {
         SCOPED_TRACE(race.label);
-        std::vector<int> values = runViewer(binPath_, eqPath_, outDir_, race);
+        ViewerRunResult run = runViewer(binPath_, eqPath_, outDir_, race);
+        const auto& values = run.magentaValues;
         ASSERT_FALSE(values.empty())
             << "no ENTITY_VIEWER_RESULT lines parsed for race " << race.label
             << " (viewer crashed or produced no output -- rerun manually with "
