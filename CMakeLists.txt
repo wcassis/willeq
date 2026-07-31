@@ -1407,6 +1407,7 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/gles2_zone_benchmark.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_camera.cpp
+        tools/hwcaps/zone_bench_entity_viewer.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp
         tools/hwcaps/zone_bench_merge_probe.cpp
