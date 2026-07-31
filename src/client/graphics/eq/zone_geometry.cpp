@@ -234,7 +234,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
 }
 
 irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& name,
-                                                          const std::vector<char>& data) {
+                                                          const std::vector<char>& data,
+                                                          bool applyPaletteMask) {
     // Note: fileSystem_ is not actually used in this function - textures are loaded
     // from raw byte data, not from the filesystem. Only driver_ is required.
     if (data.empty() || !driver_) {
@@ -246,10 +247,16 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         // getOrLoad decodes to RGBA (no GL). Returns ITexture* if already uploaded.
         // P13: tag with this builder's upload category (set via setUploadCategory,
         // "zone_region" or "object" — see renderer_zone_load.cpp step4/step6).
-        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP");
+        // P50: applyPaletteMask threaded through to getOrLoad()/uploadTexture()
+        // (P46's pattern, previously only wired to T05 and
+        // equipment_model_loader.cpp's own direct constrainedCache_ calls —
+        // this call site is ZoneMeshBuilder's general-purpose one, used by
+        // mesh_building.cpp's composite-deferred on-demand fallback and
+        // animated_mesh_creation.cpp's equipment texture-variant swap).
+        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP", applyPaletteMask);
         if (!texture) {
             // Not yet uploaded — upload now (requires GL context on this thread)
-            texture = constrainedCache_->uploadTexture(name);
+            texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
         }
         if (texture) {
             textureCache_[name] = texture;
@@ -1535,7 +1542,7 @@ void ZoneMeshBuilder::registerLazyTexture(const std::string& name, std::shared_p
     pendingTextures_[name] = texInfo;
 }
 
-irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name) {
+irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name, bool applyPaletteMask) {
     if (name.empty()) {
         return nullptr;
     }
@@ -1550,7 +1557,7 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name)
     auto pendingIt = pendingTextures_.find(name);
     if (pendingIt != pendingTextures_.end() && pendingIt->second && !pendingIt->second->data.empty()) {
         // Load the texture now
-        irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data);
+        irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data, applyPaletteMask);
 
         // Remove from pending (data no longer needed)
         pendingTextures_.erase(pendingIt);

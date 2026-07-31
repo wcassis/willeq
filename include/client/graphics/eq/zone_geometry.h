@@ -60,15 +60,26 @@ public:
         bool hasAlpha = false,
         bool flipV = true);
 
-    // Load a texture from raw BMP/DDS data
-    irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data);
+    // Load a texture from raw BMP/DDS data.
+    // P50: applyPaletteMask, default false, forwards to
+    // ConstrainedTextureCache::getOrLoad()/uploadTexture() — pass true ONLY
+    // when the caller has already confirmed (via the WLD-derived
+    // textureMasked() flag) that this specific texture is WLD-masked. Same
+    // contract as ConstrainedTextureCache::getOrLoad() (see P46 there);
+    // default false preserves pre-P50 behavior byte-for-byte.
+    irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data,
+                                              bool applyPaletteMask = false);
 
     // Performance: Lazy texture loading
     // Register texture data for deferred loading (doesn't create Irrlicht texture yet)
     void registerLazyTexture(const std::string& name, std::shared_ptr<TextureInfo> texInfo);
 
-    // Get texture, loading lazily if needed
-    irr::video::ITexture* getOrLoadTexture(const std::string& name);
+    // Get texture, loading lazily if needed.
+    // P50: applyPaletteMask is forwarded to loadTextureFromBMP() ONLY for the
+    // lazy-load-now path (pendingTextures_); an already-loaded/-cached
+    // texture (textureCache_ hit) is returned as-is regardless of this flag
+    // since its mask status was already resolved when it was first loaded.
+    irr::video::ITexture* getOrLoadTexture(const std::string& name, bool applyPaletteMask = false);
 
     // Check if a texture is registered (either loaded or pending)
     bool hasTexture(const std::string& name) const;

@@ -648,6 +648,16 @@ TARGET_LINK_LIBRARIES(willeq_core ${LINK_LIBS})
 # willeq executable links to the core library (which brings in all dependencies)
 TARGET_LINK_LIBRARIES(willeq willeq_core ${LINK_LIBS})
 
+# P50 evidence tool: exercises the two applyPaletteMask plumbing gaps closed
+# by this unit (refactor/P50_mask_plumbing_gaps.md) directly against
+# production RaceModelLoader/ConstrainedTextureCache code — no zone load
+# needed. Links willeq_core (same as willeq itself) since it needs the full
+# graphics stack.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(p50_mask_plumbing_probe tools/hwcaps/p50_mask_plumbing_probe.cpp)
+    TARGET_LINK_LIBRARIES(p50_mask_plumbing_probe willeq_core ${LINK_LIBS})
+ENDIF()
+
 # P23: SimulationWorker input/output-buffer race stress harness. Manual
 # tool (not ctest-registered — it's a bounded soak, not a fast deterministic
 # unit test); see refactor/P23_particle_race_stability.md Review for the

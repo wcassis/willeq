@@ -459,6 +459,22 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                     continue;
                 }
 
+                // P50: ground-truth masked status for this slot, read off the
+                // shared cached mesh buffer's material (set at build time by
+                // buildMeshFromGeometry's isMaskedMaterial -> MaterialType
+                // assignment, mesh_building.cpp — P37). EntityRenderer::
+                // applyAlphaTestMaterialType() (P21), which would otherwise
+                // convert this into a custom shader material id, only runs
+                // AFTER createAnimatedNodeWithEquipment() returns (see
+                // entity_renderer.cpp call sites), so this check is reliable
+                // here. Closes P46d Part B gap #2: the per-slot equipment
+                // texture-variant swap below previously called
+                // loadTextureFromBMP() with no mask flag, so a masked base
+                // body texture lost its mask on any equipped (materialId != 0)
+                // slot.
+                bool isMaskedMaterial = buffer->getMaterial().MaterialType ==
+                                         irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
+
                 std::string currentTexName = currentTex->getName().getPath().c_str();
                 LOG_DEBUG(MOD_GRAPHICS, "    texName: {}", currentTexName);
                 std::string lowerTexName = currentTexName;
@@ -529,7 +545,7 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                         auto texIt = modelData->textures.find(equipTexName);
                         if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
                             irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                equipTexName, texIt->second->data);
+                                equipTexName, texIt->second->data, isMaskedMaterial);
                             if (equipTex) {
                                 node->getMaterial(b).setTexture(0, equipTex);
                                 LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);
@@ -546,7 +562,7 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                                 auto legacyIt = modelData->textures.find(lowerLegacyTex);
                                 if (legacyIt != modelData->textures.end() && legacyIt->second && meshBuilder_) {
                                     irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                        legacyTexName, legacyIt->second->data);
+                                        legacyTexName, legacyIt->second->data, isMaskedMaterial);
                                     if (equipTex) {
                                         node->getMaterial(b).setTexture(0, equipTex);
                                         LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with legacy {}", legacyTexName);

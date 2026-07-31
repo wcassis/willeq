@@ -1510,3 +1510,35 @@ proper fix:
   Pi-specific, see P40/P41 entry above), 5 (swap floor — narrowed to
   DRM waitForFlipComplete), 6 (residual GPU-sync — queued behind the
   lighting decision).
+
+## P50 (2026-07-31): ConstrainedTextureCache's public query API doesn't
+## account for the P46d masked-variant key mangling — found, not fixed
+
+While closing P46d Part B's two remaining applyPaletteMask plumbing
+gaps (`refactor/P50_mask_plumbing_gaps.md`), building evidence
+surfaced a separate, pre-existing gap: `ConstrainedTextureCache`'s
+public query methods — `hasAlpha(name)`, `getTexture(name)`,
+`getAlphaTexture(name)` (by-name overload), `isETC1Texture(name)` —
+take only a plain texture `name` and look it up directly in `cache_`.
+But P46d's `uploadTexture()` stores masked-variant entries (uploaded
+with `applyPaletteMask=true`) under the mangled internal key
+`cacheKey(name, true)` = `name + "\x01masked"`, not the plain name. A
+plain-name query for a masked-variant entry therefore always misses
+(returns "no alpha found" / null) even when the masked texture was
+correctly decoded and uploaded.
+
+**Does not affect rendering correctness**: `MaterialType` selection
+(the actual alpha-test-vs-solid material choice) is driven directly by
+the WLD-derived `textureMasked()` flag at mesh-build time
+(`mesh_building.cpp`, `equipment_model_loader.cpp`), never by these
+query methods — confirmed by P50's own evidence (the GPU texture's
+pixel data IS correctly masked; only the diagnostic query missed it).
+No known production caller relies on these methods to detect a masked
+variant's alpha for a decision that matters.
+
+Follow-up candidate: either (a) add an `applyPaletteMask` parameter to
+each of these four query methods (mirroring `getOrLoad()`/
+`uploadTexture()`'s existing pattern), or (b) document that callers
+needing the masked variant must pass the pre-mangled key themselves.
+Not fixed by P50 (outside its two-gap scope; found only while writing
+evidence, not requested).
