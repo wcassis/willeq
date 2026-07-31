@@ -12,6 +12,41 @@ namespace EQT {
 // Special marker value in EQ meaning "use source coordinate"
 static constexpr float SAME_COORD_MARKER = 999999.0f;
 
+// T20: zone-line JSON is data, and jsoncpp's asFloat()/asUInt() THROW
+// Json::LogicError on a value of the wrong type (a string where a
+// coordinate belongs, an object, null). Those throws were uncaught, so one
+// malformed entry aborted the process during zone-line load. These helpers
+// type-check first and fall back, and each loader additionally catches
+// Json::Exception so any site missed here fails the load instead of the
+// process. Missing keys are already handled: operator[] yields null, which
+// is not numeric, so it takes the default.
+static float jsonFloat(const Json::Value& parent, const char* key, float def = 0.0f) {
+    const Json::Value& v = parent[key];
+    if (!v.isNumeric()) {
+        LOG_WARN(MOD_MAP, "zone_lines: field '{}' is not numeric, using {}", key, def);
+        return def;
+    }
+    return v.asFloat();
+}
+
+static uint32_t jsonUInt(const Json::Value& parent, const char* key, uint32_t def = 0) {
+    const Json::Value& v = parent[key];
+    if (!v.isNumeric()) {
+        LOG_WARN(MOD_MAP, "zone_lines: field '{}' is not numeric, using {}", key, def);
+        return def;
+    }
+    return v.asUInt();
+}
+
+static std::string jsonString(const Json::Value& parent, const char* key,
+                              const std::string& def = std::string()) {
+    const Json::Value& v = parent[key];
+    if (!v.isString()) {
+        return def;
+    }
+    return v.asString();
+}
+
 // Zone short name to zone ID mapping (EQ zone IDs are stable)
 static const std::map<std::string, uint16_t> ZONE_NAME_TO_ID = {
     // Classic
@@ -109,6 +144,7 @@ bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqC
 }
 
 bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::string& jsonPath) {
+  try {
     std::ifstream file(jsonPath);
     if (!file.is_open()) {
         LOG_TRACE(MOD_MAP, "Could not open extracted zone lines JSON: {}", jsonPath);
@@ -150,27 +186,27 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
     bool hasTransform = false;
     if (zoneData.isMember("coordinate_transform")) {
         const Json::Value& transform = zoneData["coordinate_transform"];
-        offsetX = transform["offset_x"].asFloat();
-        offsetY = transform["offset_y"].asFloat();
-        offsetZ = transform.get("offset_z", 0.0f).asFloat();
+        offsetX = jsonFloat(transform, "offset_x");
+        offsetY = jsonFloat(transform, "offset_y");
+        offsetZ = jsonFloat(transform, "offset_z");
         hasTransform = true;
         LOG_DEBUG(MOD_MAP, "Zone {} coordinate transform: offset=({}, {}, {})", zoneName, offsetX, offsetY, offsetZ);
     }
 
     for (const auto& zl : zoneLines) {
         ExtractedZoneLine ezl;
-        ezl.zonePointIndex = zl["zone_point_index"].asUInt();
-        ezl.destinationZone = zl["destination_zone"].asString();
-        ezl.destinationZoneId = static_cast<uint16_t>(zl["destination_zone_id"].asUInt());
+        ezl.zonePointIndex = jsonUInt(zl, "zone_point_index");
+        ezl.destinationZone = jsonString(zl, "destination_zone");
+        ezl.destinationZoneId = static_cast<uint16_t>(jsonUInt(zl, "destination_zone_id"));
 
         if (zl.isMember("trigger_box")) {
             const Json::Value& box = zl["trigger_box"];
-            float bspMinX = box["min_x"].asFloat();
-            float bspMinY = box["min_y"].asFloat();
-            float bspMinZ = box["min_z"].asFloat();
-            float bspMaxX = box["max_x"].asFloat();
-            float bspMaxY = box["max_y"].asFloat();
-            float bspMaxZ = box["max_z"].asFloat();
+            float bspMinX = jsonFloat(box, "min_x");
+            float bspMinY = jsonFloat(box, "min_y");
+            float bspMinZ = jsonFloat(box, "min_z");
+            float bspMaxX = jsonFloat(box, "max_x");
+            float bspMaxY = jsonFloat(box, "max_y");
+            float bspMaxZ = jsonFloat(box, "max_z");
 
             if (hasTransform) {
                 // Transform BSP coords to world coords:
@@ -196,10 +232,10 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
 
         if (zl.isMember("destination")) {
             const Json::Value& dest = zl["destination"];
-            ezl.destX = dest["x"].asFloat();
-            ezl.destY = dest["y"].asFloat();
-            ezl.destZ = dest["z"].asFloat();
-            ezl.destHeading = dest["heading"].asFloat();
+            ezl.destX = jsonFloat(dest, "x");
+            ezl.destY = jsonFloat(dest, "y");
+            ezl.destZ = jsonFloat(dest, "z");
+            ezl.destHeading = jsonFloat(dest, "heading");
         }
 
         extractedZoneLines_.push_back(ezl);
@@ -210,9 +246,17 @@ bool ZoneLines::loadFromExtractedJson(const std::string& zoneName, const std::st
     }
 
     return !extractedZoneLines_.empty();
+  } catch (const Json::Exception& e) {
+    // T20: any typed-accessor throw missed by the helpers above fails the
+    // load rather than aborting the process.
+    LOG_ERROR(MOD_MAP, "Malformed zone-lines JSON '{}': {}", jsonPath, e.what());
+    extractedZoneLines_.clear();
+    return false;
+  }
 }
 
 bool ZoneLines::loadFromZoneSpecificJson(const std::string& zoneName, const std::string& jsonPath) {
+  try {
     std::ifstream file(jsonPath);
     if (!file.is_open()) {
         LOG_TRACE(MOD_MAP, "Could not open zone-specific JSON: {}", jsonPath);
@@ -267,12 +311,12 @@ bool ZoneLines::loadFromZoneSpecificJson(const std::string& zoneName, const std:
 
         // Load bounds directly - JSON is already in client coordinate format
         const Json::Value& bounds = zl["bounds"];
-        ezl.minX = bounds["min_x"].asFloat();
-        ezl.maxX = bounds["max_x"].asFloat();
-        ezl.minY = bounds["min_y"].asFloat();
-        ezl.maxY = bounds["max_y"].asFloat();
-        ezl.minZ = bounds["min_z"].asFloat();
-        ezl.maxZ = bounds["max_z"].asFloat();
+        ezl.minX = jsonFloat(bounds, "min_x");
+        ezl.maxX = jsonFloat(bounds, "max_x");
+        ezl.minY = jsonFloat(bounds, "min_y");
+        ezl.maxY = jsonFloat(bounds, "max_y");
+        ezl.minZ = jsonFloat(bounds, "min_z");
+        ezl.maxZ = jsonFloat(bounds, "max_z");
 
         // Parse landing type to determine destination coordinates
         std::string landing = zl.get("landing", "fixed").asString();
@@ -312,6 +356,11 @@ bool ZoneLines::loadFromZoneSpecificJson(const std::string& zoneName, const std:
 
     LOG_INFO(MOD_MAP, "Loaded {} zone lines from zone-specific file", extractedZoneLines_.size());
     return !extractedZoneLines_.empty();
+  } catch (const Json::Exception& e) {
+    LOG_ERROR(MOD_MAP, "Malformed zone-specific JSON '{}': {}", jsonPath, e.what());
+    extractedZoneLines_.clear();
+    return false;
+  }
 }
 
 void ZoneLines::clear() {

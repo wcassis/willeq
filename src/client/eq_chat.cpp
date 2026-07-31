@@ -89,8 +89,13 @@ void EverQuest::ZoneSendChannelMessage(const std::string &message, ChatChannelTy
 
 void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 {
-	// Process incoming channel messages
-	if (p.Length() < 150) { // Minimum size for ChannelMessage_Struct
+	// Process incoming channel messages.
+	// T20: the guard is > 150, not >= 150. The message cstring starts at
+	// offset 150, so an exactly-150-byte packet passed the old check and then
+	// read at the packet end, where the bounds-checked GetCString (T08) throws
+	// std::out_of_range on this receive path with nothing to catch it. Real
+	// payloads are always at least 151 bytes (message + NUL).
+	if (p.Length() <= 150) { // ChannelMessage_Struct + at least the message NUL
 		LOG_WARN(MOD_ZONE, "ChannelMessage packet too small: {} bytes", p.Length());
 		return;
 	}

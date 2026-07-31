@@ -521,39 +521,31 @@ TEST_F(HCMapMalformedTest, V2_ZeroBufferSize_FailsGracefully) {
 }
 
 // ============================================================================
-// 3. BUG_: real defect found and pinned, not fixed (STOP condition -- fix
-//    would require touching src/, out of this unit's territory).
+// 3. Malformed V2 payloads -- was a crash (T19 finding), fixed in T20.
 // ============================================================================
 
-// The V2 branch's decompressed-payload parser (hc_map.cpp, after
-// EQ::InflateData()) reads every field with the unchecked read_val<T>
-// helper -- a raw memcpy-and-advance over a raw `char*` -- and never
-// compares the advancing pointer against `buffer.data() + buffer.size()`.
-// vert_count, ind_count, model_count, plac_count, plac_group_count, and
-// tile_count are all attacker/corruption-controlled counts read from
-// inside the decompressed payload itself (NOT validated against
-// buffer_size, which only bounds the *total* decompressed size, not any
-// individual count). A payload whose vert_count lies about how much
-// vertex data follows causes the parser to read straight past the end of
-// the buffer_size-byte heap-allocated std::vector<char>.
+// T19 found that the V2 branch's decompressed-payload parser read every
+// field with an unchecked memcpy-and-advance over a raw `char*`, never
+// comparing the advancing pointer against the buffer end. vert_count,
+// ind_count, model_count, plac_count, plac_group_count and tile_count are
+// all corruption/attacker-controlled counts read from inside the payload
+// itself (buffer_size bounds only the *total* decompressed size, not any
+// individual count), so a payload lying about how much vertex data follows
+// read straight past the end of the heap buffer -- reproduced as a SIGSEGV.
 //
-// Reproduced standalone outside gtest first (SIGSEGV, discovery run
-// 2026-07-31) to confirm this isn't a query artifact; ASSERT_DEATH below
-// contains the crash in a forked child so it doesn't take down the whole
-// test binary/ctest run.
-TEST(HCMapBugs, BUG_V2_OversizedVertCount_CrashesLoad) {
+// T20 made the readers bounds-checked (they throw MapParseError, caught by
+// Load()), so the same payload must now fail the load cleanly instead of
+// crashing. This test was ASSERT_DEATH before the fix.
+TEST(HCMapMalformedV2, OversizedVertCountFailsLoadWithoutCrashing) {
     std::vector<char> file = BuildMaliciousV2OversizedVertCount();
-    std::string path = TempFilePath("bug_oversized_vertcount");
+    std::string path = TempFilePath("oversized_vertcount");
     WriteFile(path, file);
 
-    ASSERT_DEATH(
-        {
-            HCMap map;
-            map.Load(path); // never returns: SIGSEGV reading past the
-                             // decompressed buffer's end while consuming
-                             // 0x7FFFFFFF phantom vertices.
-        },
-        "");
+    HCMap map;
+    EXPECT_NO_THROW({
+        EXPECT_FALSE(map.Load(path));
+    });
+    EXPECT_FALSE(map.IsLoaded());
 
     ::remove(path.c_str());
 }

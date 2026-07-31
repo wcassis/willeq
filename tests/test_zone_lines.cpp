@@ -330,8 +330,8 @@ TEST_F(ZoneLinesTempFileTest, EmptyZoneLinesArray_FailsGracefully) {
 }
 
 // ============================================================================
-// 5. BUG_: real defect found and pinned, not fixed (STOP condition -- fix
-//    would require touching src/, out of this unit's territory).
+// 5. Wrong-typed JSON fields -- was an uncaught throw (T19 finding), fixed
+//    in T20.
 // ============================================================================
 
 // Both loadFromZoneSpecificJson() and loadFromExtractedJson() call
@@ -359,7 +359,9 @@ TEST_F(ZoneLinesTempFileTest, EmptyZoneLinesArray_FailsGracefully) {
 // exception" failure mode instead of a signal death. ASSERT_THROW pins the
 // same defect (uncaught exception escapes the parser) without depending on
 // that harness's signal-vs-exception distinction.
-TEST_F(ZoneLinesTempFileTest, BUG_SpecificFormat_NonNumericBoundsField_Throws) {
+TEST_F(ZoneLinesTempFileTest, SpecificFormat_NonNumericBoundsFieldFallsBackWithoutThrowing) {
+    // T20: the bad field takes the 0.0f fallback (with a warning) and the
+    // rest of the entry still loads -- one typo no longer aborts the client.
     std::string path = WriteJson("bad_type_specific",
         R"({"zone": "badtypes", "zone_lines": [{"target_zone": "commons",
             "bounds": {"min_x": "not_a_number", "max_x": 10.0, "min_y": 0.0,
@@ -367,17 +369,44 @@ TEST_F(ZoneLinesTempFileTest, BUG_SpecificFormat_NonNumericBoundsField_Throws) {
             "landing": "fixed"}]})");
 
     ZoneLines zl;
-    ASSERT_THROW(zl.loadFromZoneSpecificJson("badtypes", path), std::exception);
+    EXPECT_NO_THROW({
+        EXPECT_TRUE(zl.loadFromZoneSpecificJson("badtypes", path));
+    });
+    ASSERT_EQ(zl.getZoneLineCount(), 1u);
+    auto boxes = zl.getZoneLineBoundingBoxes();
+    ASSERT_EQ(boxes.size(), 1u);
+    EXPECT_FLOAT_EQ(boxes[0].minX, 0.0f);   // the malformed field
+    EXPECT_FLOAT_EQ(boxes[0].maxX, 10.0f);  // well-formed neighbours survive
+    EXPECT_FLOAT_EQ(boxes[0].maxY, 10.0f);
 }
 
-TEST_F(ZoneLinesTempFileTest, BUG_ExtractedFormat_NonNumericTriggerBoxField_Throws) {
-    // Same root cause as the zone-specific case above, confirmed
-    // independently for loadFromExtractedJson's trigger_box parsing path.
+TEST_F(ZoneLinesTempFileTest, ExtractedFormat_NonNumericTriggerBoxFieldFallsBackWithoutThrowing) {
+    // Same fix verified independently on loadFromExtractedJson's
+    // trigger_box path.
     std::string path = WriteJson("bad_type_extracted",
         R"({"anyzone": {"zone_lines": [{"zone_point_index": 5, "destination_zone": "foo",
             "destination_zone_id": 9, "trigger_box": {"min_x":"bad","max_x":1,
             "min_y":0,"max_y":1,"min_z":0,"max_z":1}}]}})");
 
     ZoneLines zl;
-    ASSERT_THROW(zl.loadFromExtractedJson("anyzone", path), std::exception);
+    EXPECT_NO_THROW({
+        EXPECT_TRUE(zl.loadFromExtractedJson("anyzone", path));
+    });
+    ASSERT_EQ(zl.getZoneLineCount(), 1u);
+    auto boxes = zl.getZoneLineBoundingBoxes();
+    ASSERT_EQ(boxes.size(), 1u);
+    EXPECT_FLOAT_EQ(boxes[0].minX, 0.0f);
+    EXPECT_FLOAT_EQ(boxes[0].maxX, 1.0f);
+}
+
+TEST_F(ZoneLinesTempFileTest, WrongTypedContainerStillFailsCleanly) {
+    // A structurally hostile shape (trigger_box is a string, not an object)
+    // must also fail without escaping an exception -- this is the case the
+    // per-field helpers can't cover, so it exercises the loader's catch.
+    std::string path = WriteJson("bad_container",
+        R"({"anyzone": {"zone_lines": [{"zone_point_index": 1, "destination_zone": "foo",
+            "destination_zone_id": 9, "trigger_box": "not_an_object"}]}})");
+
+    ZoneLines zl;
+    EXPECT_NO_THROW(zl.loadFromExtractedJson("anyzone", path));
 }
