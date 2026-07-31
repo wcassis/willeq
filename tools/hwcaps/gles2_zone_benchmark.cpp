@@ -12,6 +12,7 @@
 
 #include "zone_bench_loader.h"
 #include "zone_bench_camera.h"
+#include "zone_bench_entity_viewer.h"
 #include "zone_bench_histogram.h"
 #include "zone_bench_merge.h"
 #include "zone_bench_merge_probe.h"
@@ -168,6 +169,23 @@ struct Options {
     // passed; output byte-identical to before this flag existed when
     // absent.
     bool noEntityShaderPromotion = false;
+
+    // P47: magenta entity viewer -- see zone_bench_entity_viewer.h/.cpp and
+    // refactor/P47_magenta_entity_viewer.md. Renders ONE race model LARGE
+    // against a solid magenta clear color with no zone/object geometry, at
+    // a fixed set of angles, for a trivially human-readable masked-alpha
+    // check (magenta inside the silhouette = alpha gap). Mutually exclusive
+    // with every other run mode below (checked after arg parsing) -- when
+    // set, --entities/--test-races/--animate/--no-entity-shader-promotion
+    // are all overridden to the correct proven configuration for the
+    // requested leg (RGBA: promotion off, per P46c/P46d; ETC1: promotion
+    // on, per P46b) rather than requiring the caller to know that wiring.
+    bool entityViewer = false;
+    int entityViewerRace = 0;               // required: EQ race ID
+    std::string entityViewerRaceLabel;      // cosmetic, e.g. "SKE" (defaults to the numeric ID)
+    std::string entityViewerMode;           // derived: "rgba" or "etc1" (from --eqe1-path presence)
+    int entityViewerFrame = 0;              // deterministic pose = frame * 33.3ms
+    std::string entityViewerOutDir;         // required: existing directory for PNG output
 
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
@@ -354,6 +372,17 @@ static void printUsage(const char* prog) {
     printf("  --no-entity-shader-promotion  Skip applyEntityShaderMaterialPromotion() --\n");
     printf("                       entities stay on built-in EMT_SOLID/EMT_TRANSPARENT_ALPHA_CHANNEL_REF\n");
     printf("                       materials (P46c: lighting-neutral bless capture). Default off.\n");
+    printf("\nMagenta entity viewer (P47 -- renders ONE race model LARGE against solid\n");
+    printf("magenta with no zone/object geometry, at fixed angles; magenta inside the\n");
+    printf("silhouette = an alpha gap. Overrides --entities/--test-races/--animate/\n");
+    printf("--no-entity-shader-promotion to the proven-correct config for the requested\n");
+    printf("leg -- RGBA (no --eqe1-path): promotion off; ETC1 (--eqe1-path set): promotion\n");
+    printf("on. See refactor/P47_magenta_entity_viewer.md):\n");
+    printf("  --entity-viewer             Enable viewer mode (exits after rendering)\n");
+    printf("  --entity-viewer-race N      EQ race ID to render (required)\n");
+    printf("  --entity-viewer-race-label S  Cosmetic label for filenames/logs (default: numeric ID)\n");
+    printf("  --entity-viewer-frame N     Animation frame index -> pose = N*33.3ms (default: 0)\n");
+    printf("  --entity-viewer-out-dir DIR Directory to write PNGs into (required, must exist)\n");
     printf("\nObject options:\n");
     printf("  --objects            Load zone objects (trees, lamps, fences)\n");
     printf("  --object-dist F      Object render distance (default: 300)\n");
@@ -503,6 +532,12 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--train") == 0) opts.trainMode = true;
         else if (strcmp(argv[i], "--animate") == 0) opts.animate = true;
         else if (strcmp(argv[i], "--no-entity-shader-promotion") == 0) opts.noEntityShaderPromotion = true;
+        // P47: magenta entity viewer.
+        else if (strcmp(argv[i], "--entity-viewer") == 0) opts.entityViewer = true;
+        else if (strcmp(argv[i], "--entity-viewer-race") == 0 && i + 1 < argc) opts.entityViewerRace = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--entity-viewer-race-label") == 0 && i + 1 < argc) opts.entityViewerRaceLabel = argv[++i];
+        else if (strcmp(argv[i], "--entity-viewer-frame") == 0 && i + 1 < argc) opts.entityViewerFrame = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--entity-viewer-out-dir") == 0 && i + 1 < argc) opts.entityViewerOutDir = argv[++i];
         // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
         // else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         // else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
@@ -1293,6 +1328,36 @@ int main(int argc, char** argv) {
                "other flags, default off = all regions per-pixel).\n");
     }
 
+    // P47: entity-viewer mode forces the entity-loading options to the
+    // proven-correct one-variable configuration for the requested leg,
+    // rather than requiring the caller to separately pass
+    // --entities/--test-races/--animate/--no-entity-shader-promotion and
+    // risk getting the pairing wrong (see zone_bench_loader.cpp's
+    // applyEntityShaderMaterialPromotion() Review comment and
+    // refactor/P46c_neutral_pair_stop.md / P46d_cache_key_fix.md for why
+    // this pairing matters).
+    if (opts.entityViewer) {
+        if (opts.entityViewerRace <= 0) {
+            fprintf(stderr, "ERROR: --entity-viewer requires --entity-viewer-race N\n");
+            return 1;
+        }
+        if (opts.entityViewerOutDir.empty()) {
+            fprintf(stderr, "ERROR: --entity-viewer requires --entity-viewer-out-dir DIR\n");
+            return 1;
+        }
+        opts.entityCount = 1;
+        opts.testRaceIds = { static_cast<uint16_t>(opts.entityViewerRace) };
+        opts.animate = true;
+        opts.compositeEntities = false;
+        // RGBA leg (no --eqe1-path): the built-in alpha-test discard shader
+        // reads unit-0 alpha directly and needs promotion OFF (P46c/P46d).
+        // ETC1 leg (--eqe1-path set): promotion must stay ON -- it is the
+        // only code path that binds the companion alpha texture to unit 1
+        // (P46b/applyEntityShaderMaterialPromotion()).
+        opts.noEntityShaderPromotion = opts.eqe1Path.empty();
+        opts.entityViewerMode = opts.eqe1Path.empty() ? "rgba" : "etc1";
+    }
+
     if (opts.eqPath.empty()) {
         fprintf(stderr, "ERROR: --eq-path is required\n");
         printUsage(argv[0]);
@@ -1361,6 +1426,36 @@ int main(int argc, char** argv) {
     //     ZoneBench::detectPortalsFromOccluders(*data, opts.portalCsvFile);
     //     return 0;
     // }
+
+    // ── P47: magenta entity viewer ──
+    if (opts.entityViewer) {
+        printf("=== Entity Viewer (P47): race=%d mode=%s frame=%d out-dir=%s ===\n",
+               opts.entityViewerRace, opts.entityViewerMode.c_str(), opts.entityViewerFrame,
+               opts.entityViewerOutDir.c_str());
+        ZoneBench::EntityViewerConfig evCfg;
+        evCfg.raceId = static_cast<uint16_t>(opts.entityViewerRace);
+        evCfg.raceLabel = opts.entityViewerRaceLabel;
+        evCfg.modeLabel = opts.entityViewerMode;
+        evCfg.animFrame = opts.entityViewerFrame;
+        evCfg.outDir = opts.entityViewerOutDir;
+
+        auto results = ZoneBench::runEntityViewer(*data, evCfg);
+        if (results.empty()) {
+            fprintf(stderr, "Entity viewer produced no results (see ENTITY_VIEWER ERROR above)\n");
+            return 1;
+        }
+        int failures = 0;
+        for (const auto& r : results) {
+            printf("ENTITY_VIEWER_RESULT race=%d mode=%s angle=%s magenta_in_bbox=%d "
+                   "bbox=%d,%d,%d,%d png=%s ok=%d\n",
+                   opts.entityViewerRace, evCfg.modeLabel.c_str(), r.angleName.c_str(),
+                   r.magentaInBbox, r.bboxX0, r.bboxY0, r.bboxX1, r.bboxY1,
+                   r.pngPath.c_str(), r.ok ? 1 : 0);
+            if (!r.ok) failures++;
+        }
+        printf("Entity viewer complete: %zu angle(s), %d failure(s).\n", results.size(), failures);
+        return failures > 0 ? 1 : 0;
+    }
 
     // ── Tree test: render one tree, screenshot, exit ──
     if (opts.treeTest) {
