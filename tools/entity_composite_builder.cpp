@@ -73,9 +73,21 @@ static int nextPow2(int v) {
 
 // ── BMP decoder (same as eqe1_builder) ──────────────────────────────────────
 
+// P48: applyPaletteMask defaults false, preserving the pre-P48 decode
+// byte-for-byte for every call site that doesn't pass true — mirrors
+// eqe1_builder.cpp's "EQ convention: palette index 0 is the transparent
+// color" decode (tools/eqe1_builder.cpp ~line 88), applied here ONLY for
+// placements this unit has determined are WLD-masked (part->textureMasked()),
+// not unconditionally the way eqe1_builder.cpp applies it to every 8bpp
+// texture it processes. This keeps unmasked composite sheets' pixel data
+// generation identical to before this unit (and since writeBMP() never reads
+// the alpha channel, and writeEQE1() only emits an alpha companion when the
+// sheet-level masked flag is set, unmasked sheets' on-disk output is
+// byte-identical regardless of this flag's plumbing).
 static bool decodeBMP(const std::vector<char>& data,
                       std::vector<uint8_t>& outRGBA,
-                      int& outWidth, int& outHeight) {
+                      int& outWidth, int& outHeight,
+                      bool applyPaletteMask = false) {
     if (data.size() < 54) return false;
     const uint8_t* d = reinterpret_cast<const uint8_t*>(data.data());
 
@@ -114,7 +126,7 @@ static bool decodeBMP(const std::vector<char>& data,
                 outRGBA[outIdx + 0] = palette[idx * 4 + 2];
                 outRGBA[outIdx + 1] = palette[idx * 4 + 1];
                 outRGBA[outIdx + 2] = palette[idx * 4 + 0];
-                outRGBA[outIdx + 3] = 255;
+                outRGBA[outIdx + 3] = (applyPaletteMask && idx == 0) ? 0 : 255;
             }
         }
         return true;
@@ -162,6 +174,9 @@ struct BodyPartTexture {
     int texWidth = 0, texHeight = 0;
     bool isAnimated = false;      // P08f: true if any triangle referencing this texture
                                    // uses an animated (multi-frame) material (0x30/0x31 fragment)
+    bool isMasked = false;        // P48: true if any triangle referencing this texture is
+                                   // WLD Fragment 0x30 TransparentMasked (part->textureMasked(),
+                                   // same parallel-array indexing as textureAnimations() above)
 
     int tilesU() const { return std::max(1, static_cast<int>(std::ceil(maxU - minU))); }
     int tilesV() const { return std::max(1, static_cast<int>(std::ceil(maxV - minV))); }
@@ -178,6 +193,7 @@ struct PlacedTexture {
     int w = 0, h = 0;            // Unrolled size
     int tilesU = 1, tilesV = 1;  // Tile counts
     int origW = 0, origH = 0;    // Original texture size
+    bool isMasked = false;       // P48: propagated from BodyPartTexture.isMasked
 };
 
 // ── BMP writer ──────────────────────────────────────────────────────────────
@@ -381,6 +397,46 @@ static std::vector<uint8_t> encodeETC1_RGB(const uint8_t* rgba, int width, int h
     return result;
 }
 
+// P48: alpha-as-grayscale-RGB companion encode, mirroring
+// tools/eqe1_builder.cpp's encodeETC1_Alpha exactly (same technique the zone
+// ETC1 companion convention this unit is asked to mirror already uses) — the
+// source alpha channel is replicated into R=G=B and encoded as an opaque
+// ETC1_RGB block; entity_renderer.cpp reads it back via
+// ConstrainedTextureCache::getAlphaTexture() and samples its R channel.
+static std::vector<uint8_t> encodeETC1_Alpha(const uint8_t* rgba, int width, int height) {
+    std::vector<float> floatPixels(width * height * 4);
+    for (int i = 0; i < width * height; ++i) {
+        float a = rgba[i * 4 + 3] / 255.0f;
+        floatPixels[i * 4 + 0] = a;
+        floatPixels[i * 4 + 1] = a;
+        floatPixels[i * 4 + 2] = a;
+        floatPixels[i * 4 + 3] = 1.0f;
+    }
+
+    unsigned char* encodingBits = nullptr;
+    unsigned int encodingBitsBytes = 0;
+    unsigned int extendedWidth = 0, extendedHeight = 0;
+    int encodingTimeMs = 0;
+
+    Etc::Encode(floatPixels.data(),
+                static_cast<unsigned int>(width),
+                static_cast<unsigned int>(height),
+                Etc::Image::Format::ETC1,
+                Etc::ErrorMetric::RGBA,
+                ETCCOMP_DEFAULT_EFFORT_LEVEL,
+                1, 1024,
+                &encodingBits, &encodingBitsBytes,
+                &extendedWidth, &extendedHeight,
+                &encodingTimeMs);
+
+    std::vector<uint8_t> result;
+    if (encodingBits && encodingBitsBytes > 0) {
+        result.assign(encodingBits, encodingBits + encodingBitsBytes);
+        delete[] encodingBits;
+    }
+    return result;
+}
+
 static std::vector<uint8_t> downsample2x(const uint8_t* src, int srcW, int srcH,
                                           int& dstW, int& dstH) {
     dstW = std::max(4, srcW / 2);
@@ -407,12 +463,13 @@ static std::vector<uint8_t> downsample2x(const uint8_t* src, int srcW, int srcH,
 }
 
 static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int height,
-                                              uint8_t& outMipLevels) {
+                                              uint8_t& outMipLevels, bool isAlpha = false) {
     outMipLevels = computeMipLevels(static_cast<uint16_t>(width),
                                      static_cast<uint16_t>(height));
     std::vector<uint8_t> result;
 
-    auto level0 = encodeETC1_RGB(rgba, width, height);
+    auto level0 = isAlpha ? encodeETC1_Alpha(rgba, width, height)
+                          : encodeETC1_RGB(rgba, width, height);
     result.insert(result.end(), level0.begin(), level0.end());
 
     std::vector<uint8_t> current(rgba, rgba + width * height * 4);
@@ -423,7 +480,8 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
         auto downsampled = downsample2x(current.data(), w, h, dw, dh);
         w = dw;
         h = dh;
-        auto encoded = encodeETC1_RGB(downsampled.data(), w, h);
+        auto encoded = isAlpha ? encodeETC1_Alpha(downsampled.data(), w, h)
+                               : encodeETC1_RGB(downsampled.data(), w, h);
         result.insert(result.end(), encoded.begin(), encoded.end());
         current = std::move(downsampled);
     }
@@ -431,15 +489,36 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     return result;
 }
 
+// P48: hasAlpha defaults false, keeping the pre-P48 single-entry, hasAlpha=0,
+// EQE1_TYPE_ETC1_RGB output byte-for-byte identical for every unmasked sheet.
+// When true (sheet-level "any placement was WLD-masked"), this mirrors the
+// zone/per-part ETC1 companion convention (tools/eqe1_builder.cpp
+// writeEQE1File): the main entry becomes EQE1_TYPE_ETC1_RGBA/hasAlpha=1, and a
+// second index entry named "{baseName}_alpha" (EQE1_TYPE_ETC1_RGB, grayscale
+// R=G=B=alpha, palette-0 decoded to 0 upstream in decodeBMP) immediately
+// follows it — the exact layout ConstrainedTextureCache's existing ETC1 upload
+// path (constrained_texture_cache.cpp, "companion" handling, unchanged by this
+// unit) already knows how to find and bind on texture unit 1.
 static bool writeEQE1(const std::string& outputPath,
                        const std::vector<uint8_t>& sheetRGBA,
-                       int sheetW, int sheetH) {
+                       int sheetW, int sheetH,
+                       bool hasAlpha = false) {
     uint8_t mipLevels = 0;
-    auto etc1Data = generateMipChain(sheetRGBA.data(), sheetW, sheetH, mipLevels);
+    auto etc1Data = generateMipChain(sheetRGBA.data(), sheetW, sheetH, mipLevels, false);
     if (etc1Data.empty()) return false;
 
-    // Single-texture EQE1 file
-    uint16_t numEntries = 1;
+    uint8_t alphaMipLevels = 0;
+    std::vector<uint8_t> alphaEtc1Data;
+    if (hasAlpha) {
+        alphaEtc1Data = generateMipChain(sheetRGBA.data(), sheetW, sheetH, alphaMipLevels, true);
+        if (alphaEtc1Data.empty()) {
+            std::cerr << "  WARNING: alpha companion encode failed for " << outputPath
+                      << " — writing opaque-only EQE1 instead" << std::endl;
+            hasAlpha = false;
+        }
+    }
+
+    uint16_t numEntries = hasAlpha ? 2 : 1;
     uint32_t indexEnd = sizeof(EQE1Header) + numEntries * EQE1_INDEX_ENTRY_SIZE;
     uint32_t dataOff = alignTo16(indexEnd);
 
@@ -448,39 +527,66 @@ static bool writeEQE1(const std::string& outputPath,
     header.version = EQE1_VERSION;
     header.numEntries = numEntries;
 
-    EQE1IndexEntry idx = {};
-    // Name from output path filename
     std::string baseName = fs::path(outputPath).stem().string();
-    if (baseName.size() >= EQE1_NAME_SIZE) baseName.resize(EQE1_NAME_SIZE - 1);
-    std::strncpy(idx.name, baseName.c_str(), EQE1_NAME_SIZE - 1);
+    std::string mainName = baseName;
+    if (mainName.size() >= EQE1_NAME_SIZE) mainName.resize(EQE1_NAME_SIZE - 1);
+
+    EQE1IndexEntry idx = {};
+    std::strncpy(idx.name, mainName.c_str(), EQE1_NAME_SIZE - 1);
     idx.width = static_cast<uint16_t>(sheetW);
     idx.height = static_cast<uint16_t>(sheetH);
     idx.mipLevels = mipLevels;
-    idx.hasAlpha = 0;
-    idx.entryType = EQE1_TYPE_ETC1_RGB;
+    idx.hasAlpha = hasAlpha ? 1 : 0;
+    idx.entryType = hasAlpha ? EQE1_TYPE_ETC1_RGBA : EQE1_TYPE_ETC1_RGB;
     idx.dataOffset = dataOff;
     idx.dataSize = static_cast<uint32_t>(etc1Data.size());
+
+    EQE1IndexEntry alphaIdx = {};
+    uint32_t alphaDataOff = 0;
+    if (hasAlpha) {
+        alphaDataOff = alignTo16(dataOff + idx.dataSize);
+        std::string alphaName = baseName + "_alpha";
+        if (alphaName.size() >= EQE1_NAME_SIZE) alphaName.resize(EQE1_NAME_SIZE - 1);
+        std::strncpy(alphaIdx.name, alphaName.c_str(), EQE1_NAME_SIZE - 1);
+        alphaIdx.width = static_cast<uint16_t>(sheetW);
+        alphaIdx.height = static_cast<uint16_t>(sheetH);
+        alphaIdx.mipLevels = alphaMipLevels;
+        alphaIdx.hasAlpha = 0;
+        alphaIdx.entryType = EQE1_TYPE_ETC1_RGB;  // alpha stored as grayscale RGB
+        alphaIdx.dataOffset = alphaDataOff;
+        alphaIdx.dataSize = static_cast<uint32_t>(alphaEtc1Data.size());
+    }
 
     std::ofstream out(outputPath, std::ios::binary);
     if (!out.is_open()) return false;
 
     out.write(reinterpret_cast<const char*>(&header), sizeof(header));
     out.write(reinterpret_cast<const char*>(&idx), sizeof(idx));
-
-    // Alignment padding
-    auto currentPos = static_cast<uint32_t>(out.tellp());
-    if (currentPos < dataOff) {
-        std::vector<uint8_t> padding(dataOff - currentPos, 0);
-        out.write(reinterpret_cast<const char*>(padding.data()), padding.size());
+    if (hasAlpha) {
+        out.write(reinterpret_cast<const char*>(&alphaIdx), sizeof(alphaIdx));
     }
 
+    auto padTo = [&out](uint32_t target) {
+        auto currentPos = static_cast<uint32_t>(out.tellp());
+        if (currentPos < target) {
+            std::vector<uint8_t> padding(target - currentPos, 0);
+            out.write(reinterpret_cast<const char*>(padding.data()), padding.size());
+        }
+    };
+
+    padTo(dataOff);
     out.write(reinterpret_cast<const char*>(etc1Data.data()), etc1Data.size());
+    if (hasAlpha) {
+        padTo(alphaDataOff);
+        out.write(reinterpret_cast<const char*>(alphaEtc1Data.data()), alphaEtc1Data.size());
+    }
     out.close();
 
     std::cout << "    EQE1: " << outputPath << " ("
               << fs::file_size(outputPath) / 1024 << " KB, "
               << sheetW << "x" << sheetH << ", "
-              << (int)mipLevels << " mips)" << std::endl;
+              << (int)mipLevels << " mips"
+              << (hasAlpha ? ", +alpha companion" : "") << ")" << std::endl;
     return true;
 }
 #endif // EQT_HAS_ETC2COMP
@@ -500,6 +606,10 @@ struct ModelResult {
     // than silently baking frame 0.
     bool skippedAnimated = false;
     std::string animatedTextureName;
+    // P48: true if any placement in this sheet is WLD-masked — the sheet gets a
+    // real ETC1 alpha companion page (mirrors the zone ETC1 companion convention)
+    // when this is set; otherwise output is byte-identical to pre-P48.
+    bool sheetHasAlpha = false;
 };
 
 // Get texture dimensions from BMP header in archive
@@ -517,11 +627,14 @@ static bool getTextureDimensions(PfsArchive& archive, const std::string& name,
 // Decode a texture from archive to RGBA pixels
 static bool decodeTextureFromArchive(PfsArchive& archive, const std::string& name,
                                       std::vector<uint8_t>& outRGBA,
-                                      int& outW, int& outH) {
+                                      int& outW, int& outH,
+                                      bool applyPaletteMask = false) {
     std::vector<char> data;
     if (!archive.get(name, data) || data.empty()) return false;
 
     if (DDSDecoder::isDDS(data)) {
+        // DDS carries its own alpha channel already (not an 8bpp-paletted
+        // format) — the WLD-masked palette-0 convention does not apply.
         auto decoded = DDSDecoder::decode(data);
         if (!decoded.isValid()) return false;
         outW = decoded.width;
@@ -530,7 +643,7 @@ static bool decodeTextureFromArchive(PfsArchive& archive, const std::string& nam
         return true;
     }
 
-    return decodeBMP(data, outRGBA, outW, outH);
+    return decodeBMP(data, outRGBA, outW, outH, applyPaletteMask);
 }
 
 // Apply variant substitution to a texture name.
@@ -582,6 +695,7 @@ static ModelResult processModel(const std::string& eqPath,
 
         const auto& texNames = part->textureNames();
         const auto& texAnims = part->textureAnimations();  // same indexing as texNames()
+        const auto& texMasked = part->textureMasked();     // same indexing as texNames()
 
         for (const auto& tri : part->triangles) {
             if (tri.textureIndex >= texNames.size()) continue;
@@ -590,6 +704,15 @@ static ModelResult processModel(const std::string& eqPath,
             auto& bp = bodyParts[texName];
             if (bp.textureName.empty()) {
                 bp.textureName = texName;
+            }
+            // P48: WLD-masked detection, unconditional (unlike the animated-texture
+            // check, which is gated on checkAnimatedTextures to keep the global
+            // --race/--all path's byte-identical guarantee) — this signal only ever
+            // affects OUTPUT (whether an alpha companion page gets written), never
+            // which models get discovered/built, so there is no equivalent byte-
+            // identity risk to gate against for the existing global path.
+            if (tri.textureIndex < texMasked.size() && texMasked[tri.textureIndex]) {
+                bp.isMasked = true;
             }
             if (checkAnimatedTextures && tri.textureIndex < texAnims.size() &&
                 texAnims[tri.textureIndex].isAnimated) {
@@ -729,6 +852,7 @@ static ModelResult processModel(const std::string& eqPath,
         pt.h = bp.texHeight * pt.tilesV;
         pt.origW = bp.texWidth;
         pt.origH = bp.texHeight;
+        pt.isMasked = bp.isMasked;
         placements.push_back(pt);
     }
 
@@ -758,14 +882,19 @@ static ModelResult processModel(const std::string& eqPath,
     // Render composite sheet
     std::vector<uint8_t> sheetRGBA(sheetW * sheetH * 4, 0);
 
+    bool sheetHasAlpha = false;
     for (const auto& pt : placements) {
-        // Load and decode source texture
+        // Load and decode source texture. P48: WLD-masked placements decode with
+        // the palette-index-0 -> alpha=0 convention (mirrors eqe1_builder.cpp);
+        // unmasked placements are untouched (applyPaletteMask=false, same as
+        // pre-P48 — alpha stays a constant 255).
         std::vector<uint8_t> srcRGBA;
         int srcW = 0, srcH = 0;
-        if (!decodeTextureFromArchive(archive, pt.textureName, srcRGBA, srcW, srcH)) {
+        if (!decodeTextureFromArchive(archive, pt.textureName, srcRGBA, srcW, srcH, pt.isMasked)) {
             std::cerr << "    WARNING: Cannot decode " << pt.textureName << std::endl;
             continue;
         }
+        if (pt.isMasked) sheetHasAlpha = true;
 
         // Tile (unroll) the source texture into the sheet
         for (int ty = 0; ty < pt.tilesV; ++ty) {
@@ -817,6 +946,14 @@ static ModelResult processModel(const std::string& eqPath,
     root["variant"] = variant;
     root["sheetWidth"] = sheetW;
     root["sheetHeight"] = sheetH;
+    // P48: sheet-capability gate signal — CompositeTextureData::hasAlpha
+    // (runtime, composite_texture_data.h) reads this to decide eligibility;
+    // true only when at least one placement was WLD-masked and therefore the
+    // EQE1 output below carries a real alpha companion page. Sheets built by
+    // a pre-P48 builder have no "hasAlpha" key at all — CompositeTextureData
+    // defaults it false, which is exactly the safe "exclude" behavior for
+    // stale/global sheets not yet regenerated (per the plan).
+    root["hasAlpha"] = sheetHasAlpha;
 
     Json::Value textures(Json::objectValue);
     for (const auto& pt : placements) {
@@ -862,7 +999,7 @@ static ModelResult processModel(const std::string& eqPath,
 #ifdef EQT_HAS_ETC2COMP
     if (writeEqe1) {
         std::string eqe1Path = outputDir + "/" + baseName + ".eqe1";
-        writeEQE1(eqe1Path, sheetRGBA, sheetW, sheetH);
+        writeEQE1(eqe1Path, sheetRGBA, sheetW, sheetH, sheetHasAlpha);
     }
 #else
     if (writeEqe1) {
@@ -874,6 +1011,7 @@ static ModelResult processModel(const std::string& eqPath,
     }
 #endif
 
+    result.sheetHasAlpha = sheetHasAlpha;
     result.success = true;
     return result;
 }

@@ -191,9 +191,18 @@ struct Options {
     bool entityViewer = false;
     int entityViewerRace = 0;               // required: EQ race ID
     std::string entityViewerRaceLabel;      // cosmetic, e.g. "SKE" (defaults to the numeric ID)
-    std::string entityViewerMode;           // derived: "rgba" or "etc1" (from --eqe1-path presence)
+    std::string entityViewerMode;           // derived: "rgba" / "etc1" / "etc1-composite"
     int entityViewerFrame = 0;              // deterministic pose = frame * 33.3ms
     std::string entityViewerOutDir;         // required: existing directory for PNG output
+    // P48: composite leg. Requires --eqe1-path (composite sheet alpha only
+    // exists in the ETC1/EQE1 format -- see entity_composite_builder.cpp).
+    // Routes the viewer's entity through RaceModelLoader's real composite
+    // eligibility gate (race_model_loader.cpp's sheet-capability check)
+    // instead of forcing compositeEntities=false the way the plain ETC1/RGBA
+    // legs do -- this is what lets the viewer demonstrate P48's masked
+    // composite alpha-test on the SAME production promotion path the
+    // per-part legs already exercise.
+    bool entityViewerComposite = false;
 
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
@@ -394,6 +403,9 @@ static void printUsage(const char* prog) {
     printf("  --entity-viewer-race-label S  Cosmetic label for filenames/logs (default: numeric ID)\n");
     printf("  --entity-viewer-frame N     Animation frame index -> pose = N*33.3ms (default: 0)\n");
     printf("  --entity-viewer-out-dir DIR Directory to write PNGs into (required, must exist)\n");
+    printf("  --entity-viewer-composite   P48: composite leg -- routes the entity through\n");
+    printf("                              the real composite eligibility gate instead of\n");
+    printf("                              forcing multi-buffer; requires --eqe1-path\n");
     printf("\nObject options:\n");
     printf("  --objects            Load zone objects (trees, lamps, fences)\n");
     printf("  --object-dist F      Object render distance (default: 300)\n");
@@ -550,6 +562,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entity-viewer-race-label") == 0 && i + 1 < argc) opts.entityViewerRaceLabel = argv[++i];
         else if (strcmp(argv[i], "--entity-viewer-frame") == 0 && i + 1 < argc) opts.entityViewerFrame = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-viewer-out-dir") == 0 && i + 1 < argc) opts.entityViewerOutDir = argv[++i];
+        else if (strcmp(argv[i], "--entity-viewer-composite") == 0) opts.entityViewerComposite = true;
         // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
         // else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;
         // else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
@@ -1357,17 +1370,37 @@ int main(int argc, char** argv) {
             fprintf(stderr, "ERROR: --entity-viewer requires --entity-viewer-out-dir DIR\n");
             return 1;
         }
+        if (opts.entityViewerComposite && opts.eqe1Path.empty()) {
+            fprintf(stderr, "ERROR: --entity-viewer-composite requires --eqe1-path "
+                            "(composite sheet alpha only exists in the ETC1/EQE1 format)\n");
+            return 1;
+        }
         opts.entityCount = 1;
         opts.testRaceIds = { static_cast<uint16_t>(opts.entityViewerRace) };
         opts.animate = true;
-        opts.compositeEntities = false;
+        // P48: the composite leg routes the entity through the REAL composite
+        // eligibility gate (race_model_loader.cpp's sheet-capability check,
+        // zone_bench_loader.cpp's --composite-entities wiring) instead of
+        // forcing multi-buffer -- this is what lets the viewer demonstrate a
+        // masked race's composite alpha-test rather than only its per-part
+        // alpha-test (which the plain ETC1/RGBA legs already covered, P47).
+        // An unmasked or stale-sheet (no alpha companion) race composited
+        // this way still renders correctly (EMT_SOLID, matches pre-P48) --
+        // the eligibility gate and mesh_building.cpp's hasAlpha-gated
+        // MaterialType make this automatic, no viewer-side branching needed.
+        opts.compositeEntities = opts.entityViewerComposite;
         // RGBA leg (no --eqe1-path): the built-in alpha-test discard shader
         // reads unit-0 alpha directly and needs promotion OFF (P46c/P46d).
-        // ETC1 leg (--eqe1-path set): promotion must stay ON -- it is the
-        // only code path that binds the companion alpha texture to unit 1
-        // (P46b/applyEntityShaderMaterialPromotion()).
+        // ETC1 leg (--eqe1-path set, composite or per-part): promotion must
+        // stay ON -- it is the only code path that binds the companion alpha
+        // texture to unit 1 (P46b/applyEntityShaderMaterialPromotion()), and
+        // mesh_building.cpp's buildCompositeMeshFromGeometry() (P48) marks
+        // composite buffers with the SAME EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+        // marker the per-part path uses, so the SAME promotion call picks it
+        // up with no separate composite-specific plumbing.
         opts.noEntityShaderPromotion = opts.eqe1Path.empty();
-        opts.entityViewerMode = opts.eqe1Path.empty() ? "rgba" : "etc1";
+        opts.entityViewerMode = opts.eqe1Path.empty() ? "rgba"
+                               : (opts.entityViewerComposite ? "etc1-composite" : "etc1");
     }
 
     if (opts.eqPath.empty()) {

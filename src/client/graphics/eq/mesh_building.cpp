@@ -355,28 +355,39 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
     irr::scene::SMesh* mesh = new irr::scene::SMesh();
     irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
-    // P37 investigation: composite sheets carry NO alpha data in either deployed
-    // form — entity_composite_builder.cpp's writeEQE1() hardcodes hasAlpha=0 and
-    // encodes EQE1_TYPE_ETC1_RGB (opaque-only ETC1, no companion), and its
-    // writeBMP() emits a 24bpp BMP with no alpha channel at all, even though the
-    // intermediate RGBA compose buffer does copy source-part alpha byte-for-byte.
-    // Alpha-testing this single merged material would therefore be a no-op at
-    // best (opaque-format textures read back alpha=1.0) and is not a safe
-    // "flip a flag" fix. Per the plan's investigation-before-change requirement,
-    // the chosen fix is eligibility-side: RaceModelLoader::preloadModelData()
-    // excludes any race/gender/variant whose composite includes a WLD-masked
-    // source texture from composite eligibility entirely (falls back to the
-    // per-material buildMeshFromGeometry() path above, which now honors
-    // textureMasked()). This function is therefore never called with masked
-    // source data reaching it, and intentionally still assigns EMT_SOLID
-    // unconditionally below — regenerating the sheets to carry real alpha is a
-    // separate, Will-visible sheet-redeploy operation (out of this unit's
-    // territory).
+    // P37 investigation: composite sheets carried NO alpha data in either
+    // deployed form as of P37/P45 — entity_composite_builder.cpp hardcoded
+    // hasAlpha=0/EQE1_TYPE_ETC1_RGB and a 24bpp-only BMP. P37's fix was
+    // eligibility-side: exclude any race/gender/variant whose composite
+    // includes a WLD-masked source texture from composite eligibility
+    // entirely (falls back to the per-material buildMeshFromGeometry() path,
+    // which honors textureMasked()).
+    //
+    // P48: the builder now CAN emit a real ETC1 alpha companion page for
+    // sheets containing WLD-masked source parts (entity_composite_builder.cpp
+    // writeEQE1(), mirrors the zone ETC1 companion convention). Eligibility
+    // in race_model_loader.cpp is now sheet-capability-gated: a composite
+    // whose masked source parts are covered by a sheet WITH a companion
+    // (CompositeTextureData::hasAlpha, parsed from the builder's JSON
+    // "hasAlpha" key) is allowed through to this function instead of being
+    // excluded. Reusing the SAME production promotion path
+    // EntityRenderer::applyAlphaTestMaterialType() already uses for the
+    // per-part path (P46b: never fork it) needs nothing more than this
+    // function setting the marker MaterialType here — entity_renderer.cpp's
+    // existing generic "iterate every buffer material, promote
+    // EMT_TRANSPARENT_ALPHA_CHANNEL_REF" loop (createEntity()) already
+    // applies to composite mesh buffers exactly the same as multi-buffer
+    // ones, with no call-site change needed. compositeData.hasAlpha is false
+    // for sheets built by a pre-P48 builder (JSON has no "hasAlpha" key), so
+    // this stays EMT_SOLID — correct-by-construction — until sheets are
+    // regenerated.
     // Single composite texture, CLAMP_TO_EDGE (tiling is pre-baked in the sheet)
     buffer->Material.Lighting = false;
     buffer->Material.BackfaceCulling = false;
     buffer->Material.setTexture(0, compositeTexture);
-    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+    buffer->Material.MaterialType = compositeData.hasAlpha
+        ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+        : irr::video::EMT_SOLID;
     buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
     buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
     buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
@@ -502,7 +513,13 @@ irr::scene::IMesh* RaceModelLoader::buildCompositeMeshFromGeometry(
                     buffer->Material.Lighting = false;
                     buffer->Material.BackfaceCulling = false;
                     buffer->Material.setTexture(0, compositeTexture);
-                    buffer->Material.MaterialType = irr::video::EMT_SOLID;
+                    // P48: same hasAlpha-gated MaterialType as the buffer created
+                    // above — a >65535-vertex composite mesh spills into a second
+                    // buffer using the SAME composite texture/sheet, so it must
+                    // carry the identical alpha-test decision.
+                    buffer->Material.MaterialType = compositeData.hasAlpha
+                        ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
+                        : irr::video::EMT_SOLID;
                     buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
                     buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
                     buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;

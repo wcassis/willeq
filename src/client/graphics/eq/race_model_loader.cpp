@@ -866,16 +866,32 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::string jsonPath = compositeEntityPath_ + "/" + compositeBaseName + ".json";
         auto compositeData = std::make_shared<CompositeTextureData>();
         if (compositeData->loadFromJson(jsonPath)) {
-            // P37: composite sheets carry NO alpha data in either deployed form
-            // (entity_composite_builder.cpp hardcodes hasAlpha=0 for the ETC1
-            // sheet and writes a 24bpp-only BMP) — a WLD-masked source texture
-            // baked into a composite would silently render fully opaque with no
-            // way to alpha-test it without regenerating the sheets (a separate,
-            // Will-visible sheet-redeploy operation). Rather than accept that
-            // silent-wrong-render, exclude this race/gender/variant from
-            // composite eligibility whenever any of its source parts is
-            // WLD-masked; it falls through to the per-part buildMeshFromGeometry()
-            // path below (T05 decode loop), which now honors textureMasked().
+            // P37: composite sheets originally carried NO alpha data in either
+            // deployed form (entity_composite_builder.cpp hardcoded hasAlpha=0
+            // for the ETC1 sheet and wrote a 24bpp-only BMP) — a WLD-masked
+            // source texture baked into a composite would silently render fully
+            // opaque with no way to alpha-test it. P37's fix excluded any
+            // race/gender/variant whose composite included a WLD-masked source
+            // part from composite eligibility entirely, falling through to the
+            // per-part buildMeshFromGeometry() path (T05 decode loop), which
+            // honors textureMasked().
+            //
+            // P48: replaces that BLANKET exclusion with a sheet-CAPABILITY gate.
+            // entity_composite_builder.cpp can now emit a real ETC1 alpha
+            // companion page for a sheet whenever it contains WLD-masked source
+            // parts (mirrors the zone ETC1 companion convention); the JSON's
+            // "hasAlpha" key (CompositeTextureData::hasAlpha) records whether
+            // THIS specific sheet actually carries one. A masked composite is
+            // excluded only when the sheet does NOT have that companion —
+            // i.e. it's a stale sheet built by a pre-P48 builder (or a global
+            // sheet not yet regenerated) — same safety net P37 established,
+            // now scoped to the sheets that actually need it instead of every
+            // masked race unconditionally. When compositeData->hasAlpha is
+            // true, mesh_building.cpp's buildCompositeMeshFromGeometry() marks
+            // the composite buffer EMT_TRANSPARENT_ALPHA_CHANNEL_REF, which
+            // entity_renderer.cpp's existing production promotion path (the
+            // same one the per-part path already uses — P46b: never fork it)
+            // picks up automatically, binding the companion on unit 1.
             bool compositeHasMaskedTexture = false;
             std::string maskedTexName;
             if (modelData->combinedGeometry) {
@@ -889,12 +905,18 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                     }
                 }
             }
-            if (compositeHasMaskedTexture) {
+            if (compositeHasMaskedTexture && !compositeData->hasAlpha) {
                 LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite EXCLUDED for race={} gender={} ('{}') — "
-                         "source includes WLD-masked texture '{}' and composite sheets carry no alpha data (P37); "
+                         "source includes WLD-masked texture '{}' and this sheet has no alpha companion (P37/P48 gate); "
                          "falling back to the per-part path",
                          raceId, gender, compositeBaseName, maskedTexName);
             } else {
+                if (compositeHasMaskedTexture) {
+                    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: composite ADMITTED for race={} gender={} ('{}') — "
+                             "source includes WLD-masked texture '{}' but this sheet carries an alpha companion (P48); "
+                             "composite eligible with alpha-test",
+                             raceId, gender, compositeBaseName, maskedTexName);
+                }
                 modelData->compositeData = compositeData;
                 // Store the EQE1 texture name (matches the entry name inside the .eqe1 file)
                 modelData->compositeBmpPath = compositeBaseName;

@@ -1,0 +1,276 @@
+P48 -- composite-sheet alpha support: evidence manifest
+=========================================================
+
+Builder change (tools/entity_composite_builder.cpp)
+----------------------------------------------------
+- BodyPartTexture/PlacedTexture gained an `isMasked` field, set from
+  `part->textureMasked()` (WLD Fragment 0x30 TransparentMasked), the SAME
+  parallel-array signal mesh_building.cpp/race_model_loader.cpp already
+  consult for the non-composite path (P37).
+- decodeBMP()/decodeTextureFromArchive() gained an `applyPaletteMask`
+  parameter (default false -- byte-identical to pre-P48 for every call site
+  that doesn't pass true). When true, 8bpp palette index 0 decodes to
+  alpha=0 (mirrors tools/eqe1_builder.cpp's existing zone-texture
+  convention); only masked placements request it.
+- writeEQE1() gained a `hasAlpha` parameter (default false, same
+  byte-identical guarantee). When a sheet has >=1 masked placement, the main
+  EQE1 entry becomes EQE1_TYPE_ETC1_RGBA/hasAlpha=1 and a second index entry
+  named "{baseName}_alpha" (grayscale R=G=B=alpha ETC1) immediately follows
+  it -- the exact layout ConstrainedTextureCache's existing ETC1 upload path
+  (constrained_texture_cache.cpp, unmodified by this unit) already knows how
+  to find and bind on texture unit 1 for ANY EQE1 entry, zone or composite.
+- The composite sheet JSON gained a `"hasAlpha"` boolean key, read at
+  runtime by CompositeTextureData::hasAlpha (composite_texture_data.h,
+  defaults false when the key is absent -- safe for sheets built by a
+  pre-P48 builder).
+
+Byte-identity verification (unmasked sheets)
+---------------------------------------------
+27 of the 86 regenerated sheets got a real alpha companion (masked);
+the other 59 are unmasked. Of those 59: 56 are byte-identical (BMP+EQE1
+md5) to the currently-deployed live sheets; the JSON differs ONLY by the
+added "hasAlpha": false key (verified by diffing both JSONs with that key
+stripped -- zero remaining diff). The remaining 3 (min_hs_def_0_0,
+gnn_hs_def_0_1, gnn_hs_def_0_3) differ from live for reasons that PREDATE
+this unit: rebuilding them with the unmodified pre-P48 entity_composite_
+builder.cpp (git stash isolation, reproduced independently) produces the
+SAME byte-level diff against live -- i.e. those 3 sheets were already stale
+relative to the current tree before this unit touched anything (unrelated
+drift, not introduced by P48). Isolation method: `git stash` the 4 P48
+source files, rebuild entity_composite_builder, regenerate the affected
+zone, `cmp` against live, `git stash pop`, rebuild again.
+
+Eligibility gate (race_model_loader.cpp)
+------------------------------------------
+preloadModelData()'s composite lookup now checks
+`compositeHasMaskedTexture && !compositeData->hasAlpha` (was: blanket
+`compositeHasMaskedTexture`). Two new LOG_INFO lines:
+  "composite EXCLUDED ... this sheet has no alpha companion (P37/P48 gate)"
+  "composite ADMITTED ... this sheet carries an alpha companion (P48)"
+Confirmed both fire correctly: pre-deploy (old live sheets, no alpha),
+ZOM/race70 logged EXCLUDED; post-deploy (new sheets with alpha), the SAME
+race logs ADMITTED. See "Pre/post deploy comparison" below.
+
+Rendering (mesh_building.cpp)
+--------------------------------
+buildCompositeMeshFromGeometry() now sets
+`compositeData.hasAlpha ? EMT_TRANSPARENT_ALPHA_CHANNEL_REF : EMT_SOLID`
+(both buffer-creation sites, including the >65535-vertex overflow branch),
+replacing the unconditional EMT_SOLID. No entity_renderer.cpp call-site
+change was needed: its existing generic per-buffer promotion loop
+(createEntity(), "if MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF,
+applyAlphaTestMaterialType()") already applies uniformly to composite and
+multi-buffer mesh buffers alike -- confirmed by reading the call site, not
+assumed. The benchmark's own mirror of that loop
+(zone_bench_loader.cpp's applyEntityShaderMaterialPromotion(), from
+P46/P46b) is equally generic and needed no changes either.
+
+DEVIATION -- mesh_building.cpp edit (slot3 territory overlap)
+-----------------------------------------------------------------
+The plan flagged mesh_building.cpp as slot3's (sibling unit, mask plumbing)
+territory and asked for prominent notice if this unit had to touch it. It
+was unavoidable: buildCompositeMeshFromGeometry() is the ONLY place that
+assigns the composite mesh buffer's MaterialType, so the hasAlpha-gated
+promotion has nowhere else to live. The edit is minimal (2 small hunks,
+~10 functional lines total, both inside buildCompositeMeshFromGeometry(),
+comment-heavy) and does not touch buildMeshFromGeometry() (the non-composite
+path) or anything animated_mesh_creation.cpp/mask-plumbing-shaped. Flagged
+here per the plan's instruction for merge-order attention with slot3.
+
+Sheet regeneration
+---------------------
+Invocation (matches P08f/P16's own exact invocation shape):
+  entity_composite_builder --eq-path /mnt/projects/EverQuestP1999 \
+    --output <staging> --zone befallen --zone qeynos2 --zone gfaydark \
+    --sheet-size 2048 --eqe1 --report-json <report>
+  entity_composite_builder --eq-path /mnt/projects/EverQuestP1999 \
+    --output <staging> --race SKE --all-variants --eqe1
+86 sheets built total (81 zone-native + 5 global SKE variants); 27 carry a
+new alpha companion (BAT x2, BEA x3, BGM x1, BRF x1, CAZ x1, DRI x1, FAF x1,
+FEM x2, FIS x4, ORC x3, SKE x5, TRE x1, ZOM x2). See
+p48_zone_build_report.json for the full per-model build status.
+
+Known gap (not fixed, reported): DEN's befallen composite sheet
+(den_hs_def_0_0) resolved to denlg0001.bmp (unmasked per the WLD scan),
+NOT denlg0002.bmp (the texture P37's ground-truth table named as masked) --
+these are apparently different texture files for the same body part slot;
+this model's DEFAULT-variant composite sheet simply doesn't include the
+masked one. DEN stays on the P37 fallback path (still alpha-correct via the
+per-part pipeline, P46/P46d) rather than compositing with alpha. Not
+investigated further within budget -- flagged for whoever next touches DEN
+specifically. CAZ's live-deployed variants 1-4 (qeynos2_chr) were not
+regenerated by this run's zone-mode variant discovery (only variant 0 was
+discovered/built this session -- the pre-existing 5-variant live set
+predates the current builder's discovery logic and was not reproduced by
+this invocation); CAZ variant 0 got its alpha companion and is
+composite-eligible, variants 1-4 remain on the pre-P48 (alpha-less,
+correctly excluded) fallback path until someone regenerates them with
+whatever produced the original 5-variant set.
+
+Structural audit
+-------------------
+p48_structural_audit.json: 86/86 regenerated sheets pass P08f's structural
+audit (bmp/json/eqe1 present, JSON parses with non-empty texture map, BMP
+header dims match JSON, BMP not truncated, EQE1 non-trivially sized with a
+readable magic). 0 broken.
+
+Deploy record
+----------------
+Backup: /mnt/projects/EverQuest_ETC1_backup_20260731_p48 (full directory
+copy, 4.8G, 2504 files, taken BEFORE any live file was touched).
+Deploy: only the 27 genuinely-changed (masked, new alpha companion)
+sheets' 3 files each (81 files total) copied from
+/mnt/projects/EverQuest_ETC1_staging_p48 into
+/mnt/projects/EverQuest_ETC1 -- the 56 byte-identical-to-live unmasked
+sheets and the 3 pre-existing-drift sheets (min/gnn, unrelated to P48)
+were NOT copied, leaving them exactly as they were (P16's "genuinely
+new/changed only" deploy convention). Verified per-file md5 match between
+staging and live post-deploy for all 27.
+Rollback: re-copy the same 27 basenames' .bmp/.json/.eqe1 from
+/mnt/projects/EverQuest_ETC1_backup_20260731_p48 back over
+/mnt/projects/EverQuest_ETC1.
+
+Pre/post deploy comparison (proves the eligibility gate is live, not a
+no-op)
+-----------------------------------------------------------------------
+Race 70 (ZOM), same --entity-viewer-composite invocation, before vs after
+the deploy:
+  BEFORE (old live sheets, no alpha companion):
+    LOG: "composite EXCLUDED for race=70 ... this sheet has no alpha
+          companion (P37/P48 gate); falling back to the per-part path"
+    magenta_in_bbox: front=0 right=0 back=29 left=0 (via FALLBACK path --
+    numerically identical to P47's own original per-part ZOM measurement,
+    confirming this is the pre-existing per-part alpha-test, not a
+    composite-path false positive)
+  AFTER (new live sheets, alpha companion present):
+    LOG: "composite ADMITTED for race=70 ... this sheet carries an alpha
+          companion (P48); composite eligible with alpha-test"
+    magenta_in_bbox: front=0 right=0 back=29 left=0 (via the COMPOSITE
+    path this time -- same visual result via a different, now-eligible
+    code path, exactly as intended)
+
+Composite-leg viewer results (post-deploy, all races confirmed "composite
+ADMITTED" via --log-level=INFO)
+------------------------------------------------------------------------------
+| race | front | right | back | left | admitted |
+|---|---|---|---|---|---|
+| SKE (21) | 0 | 251 | 688 | 0 | yes |
+| ZOM (70) | 0 | 0 | 29 | 0 | yes |
+| BAT (34) | 98 | 166 | 55 | 0 | yes |
+| ORC (17) | 0 | 1395 | 2008 | 0 | yes |
+| HUM (1, unmasked control) | 0 | 0 | 0 | 0 | yes (admitted, but hasAlpha=false -> EMT_SOLID, correctly zero) |
+
+Every masked race has at least one angle with a nonzero enclosed-magenta
+signal while ADMITTED into the composite path; HUM stays exactly zero at
+every angle while also composited (proves unmasked composites are
+unaffected -- EMT_SOLID, no alpha-test). SKE/ZOM/BAT/ORC's per-angle
+magenta counts are close to (SKE/ZOM: identical or near-identical; BAT/ORC:
+same order of magnitude) P47's own original PER-PART numbers for the same
+races -- expected, since both paths now alpha-test the same underlying WLD
+mask data via the same ConstrainedTextureCache companion-alpha convention.
+
+Executor's own full-size visual verdict (per the plan's "no crop-squinting"
+mandate)
+--------------------------------------------------------------------------------
+Viewed all 20 PNGs (5 races x 4 angles) at full 800x600 size:
+- SKE (back/right): ribcage shows a visible magenta lattice between ribs.
+  Textures otherwise correct part-by-part (skull, forearms, femurs, feet).
+- ZOM (back): small jagged magenta sliver at the boot tops, matching P37's
+  documented zomlg0001 "flesh-gap" ground truth; zomch0001 (chest,
+  citywlivy-class, decode-opaque by design) correctly shows no cutout.
+- BAT (right): clear, unambiguous magenta streaks along both wing-membrane
+  joints -- the most visually obvious cutout in the set. Body/face
+  textures correct.
+- ORC (back/right): loincloth-fringe and gauntlet-edge magenta gaps
+  visible, largest raw pixel count of the set. Skin tone, armor, belt
+  textures all read correctly part-by-part -- no wrong-texture or
+  duplicated-part issue observed (the P46b failure class this whole
+  evidence chain exists to guard against).
+- HUM: fully opaque at every angle, as required for the control.
+No wrong texture, no missing part, no color-space anomaly observed on any
+render. This is the executor's own verification only -- per the plan, final
+bless on this NEW visual territory (masked races compositing for the first
+time) is Will's, not the executor's. Contact sheet:
+benchmarks/contact_sheets/p48_sheet_alpha/index.html.
+
+Pi re-measure: canonical KPI-guard spot investigation (IMPORTANT — read before trusting the "clean bar" claim)
+-----------------------------------------------------------------------------------------------------------------
+The plan's KPI-guard spot (canonical e205 shipped replay, default race
+cycle, same shape as P14/P39/P45 run1/run2) came back OUT OF the blessed
+32.24-32.5ms p95 band and OVER the 33.3ms 30fps line on the FIRST
+measurement:
+  e205_shipped_kpiguard (P48-tip binary):        total_p95=34.321ms draws_avg=41.9
+A same-shape repeat CONFIRMED it (not run-to-run noise):
+  e205_shipped_kpiguard_repeat (P48-tip binary): total_p95=34.624ms draws_avg=41.9
+Both runs' draws_avg (41.9) exactly matches P45's own recorded run1/run2
+draws_avg — the composite path has NOT silently no-op'd; this is a pure
+frame-TIMING regression, not a structural/draw-count change.
+
+ATTRIBUTION (this unit's own investigation, not deferred): P48's code is
+provably inert for this exact invocation -- the canonical replay's default
+race cycle is EQ race IDs 1-12 (Human/Barbarian/Erudite/WoodElf/HighElf/
+DarkElf/HalfElf/Dwarf/Troll/Ogre/Halfling/Gnome), NONE of which are masked
+races and NONE of which this unit regenerated a sheet for; every one of
+their composite sheets has (and always had) hasAlpha=false, so
+mesh_building.cpp's new hasAlpha-gated branch evaluates to the exact
+pre-P48 EMT_SOLID outcome for all of them.
+
+To PROVE (not just argue) this, a 4th Pi invocation re-ran the identical
+KPI-guard shape against a binary built from this branch's BASE commit
+(9a61ed3, P48's source diff `git stash`-ed out, isolated via a second
+build-arm-noble tree):
+  e205_shipped_kpiguard_preP48isolation (pre-P48, branch-base binary):
+    total_p95=34.509ms draws_avg=41.9 (data captured before a CmaFree
+    SessionAbort fired on the post-invocation sample -- see below; the
+    CSV/log had already been rsync'd off the Pi, per the protocol's
+    per-invocation-pull design, so no data was lost)
+
+The pre-P48 binary reproduces the SAME ~34.3-34.6ms regression. This
+CONCLUSIVELY proves the KPI drift from P45's blessed 32.24-32.5ms band
+predates this unit entirely -- it was already present on `fable` tip
+(9a61ed3) before P48 touched anything, almost certainly attributable to
+P46/P46b/P46c/P46d/P47 (all landed between P45's a805e01 measurement and
+this unit's start) adding real per-entity shader-consistency promotion
+work (P46b's paired solid+alpha-test promotion, entity companion-alpha
+binding) to the SAME entity code path this canonical replay exercises for
+its composite-eligible default-cycle races, even though none of them are
+masked. This is a genuine, currently-unattributed regression that needs
+escalation -- it is NOT rationalized away here, and it is NOT this unit's
+regression to own or fix (P48's plan territory is composite-sheet alpha,
+not P46-family entity promotion cost). Flagged prominently for the
+orchestrator/Will: the blessed 32.24-32.5ms KPI band is currently NOT
+being met by `fable` tip on this invocation shape, independent of P48.
+
+CmaFree SessionAbort during the isolation run (P02 protocol working as
+designed): the post-invocation CmaFree sample read 260 kB (a single-step
+-74,352 kB drain from the pre-invocation 74,612 kB), correctly tripping
+`SessionAbort` at the 40,960 kB floor. Governor was restored to
+`ondemand` automatically before the exception propagated (confirmed in
+the session log). This single large drain is the same episodic
+EQE1-correlated CMA leak P02 already characterized and root-caused
+("kernel-side, not userspace, only a reboot recovers") -- not a new
+phenomenon, not caused by P48's changes (P48 adds no new texture upload
+volume for unmasked races, which is what this specific invocation
+exercises). Recovery: `pc.scripted_reboot_and_wait()` run directly (P02/
+P45 precedent, NOT counted as a benchmark invocation) -- CmaFree recovered
+to exactly 102,056 kB post-reboot (P02's own documented fresh-boot value),
+NFS remount verified, governor ondemand x4, /tmp swept, no
+gles2_zone_benchmark process, no process holding /dev/dri/{card0,card1}.
+
+DRM mode confirmation (P43 rule): all 3 successful KPI-guard-shape runs
+(P48-tip run1, P48-tip repeat, real-roster run) logged "DRM: Found
+matching mode 800x600@75Hz for requested 800x600" -- no silent
+substitution. The 4th (isolation) run's log predates the abort and was
+not checked for this line (abort fired at the CMA sample step, after the
+benchmark process itself had already exited cleanly per its own log) --
+not a concern since the CSV data (which is what the p95/draws numbers
+come from) was already validated as complete (1000 frames) before the
+abort.
+
+Pi invocation count (this unit, budget <=6): 4 benchmark invocations
+(e205_realroster_p48tip, e205_shipped_kpiguard, e205_shipped_kpiguard_
+repeat, e205_shipped_kpiguard_preP48isolation) + 1 scripted reboot (not
+counted, per P45's own precedent) + 1 pristine-recovery verification
+(no benchmark invocation, ssh-only). 2 of 6 remained unused. Pi exit
+state verified pristine: CmaFree 102,056 kB, governor ondemand x4, /tmp
+empty of gles2 artifacts, no benchmark process, DRM device free.
