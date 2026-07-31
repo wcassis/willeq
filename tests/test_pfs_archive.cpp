@@ -220,6 +220,15 @@ TEST_F(PfsArchiveRealFileTest, GetWldFilenames) {
     std::vector<std::string> wldFiles;
     EXPECT_TRUE(archive.getFilenames(".wld", wldFiles));
     EXPECT_GE(wldFiles.size(), 3u);  // At least zone.wld, objects.wld, lights.wld
+
+    // T22: every returned name must actually end in ".wld" — a suite that
+    // only checks the count can't tell a correct suffix match from an
+    // inverted one (which would return everything EXCEPT .wld files and
+    // still likely clear a ">= 3" bar).
+    for (const auto& name : wldFiles) {
+        EXPECT_TRUE(name.size() >= 4 && name.compare(name.size() - 4, 4, ".wld") == 0)
+            << "not a .wld file: " << name;
+    }
 }
 
 // Test getFilenames with BMP extension
@@ -235,6 +244,12 @@ TEST_F(PfsArchiveRealFileTest, GetBmpFilenames) {
     archive.getFilenames(".bmp", bmpFiles);
     // Zone should have texture files
     EXPECT_GT(bmpFiles.size(), 0u);
+
+    // T22: same suffix-match pin as GetWldFilenames above.
+    for (const auto& name : bmpFiles) {
+        EXPECT_TRUE(name.size() >= 4 && name.compare(name.size() - 4, 4, ".bmp") == 0)
+            << "not a .bmp file: " << name;
+    }
 }
 
 // Test extracting WLD file data

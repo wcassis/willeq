@@ -210,6 +210,51 @@ TEST_F(StringDatabaseTest, FormatTemplate_AtPlaceholder) {
     EXPECT_EQ(result, "Critical hit for 100 damage!");
 }
 
+// T22: %B (ability/buff) and %z (duration) placeholders had no coverage at
+// all — substitutePlaceholder() has dedicated branches for both, but every
+// existing test only drives %N/%T/# /@. These pin the branches' actual
+// (if crude — "For now, just return the arg directly") documented behavior
+// so a mutation to either is observable.
+TEST_F(StringDatabaseTest, FormatTemplate_BPlaceholder_NoParen) {
+    // No "(N)" suffix: %B2 behaves like a plain positional substitution.
+    std::string tmpl = "You resist %B2!";
+    std::vector<std::string> args = {"Fear", "the effect"};
+
+    std::string result = db.formatTemplate(tmpl, args);
+    EXPECT_EQ(result, "You resist the effect!");
+}
+
+TEST_F(StringDatabaseTest, FormatTemplate_BPlaceholder_WithParen) {
+    // "(N)" suffix (single-digit N only, per the hardcoded -3 offset):
+    // %B1(5) — the parenthesized part is consumed but not itself used for
+    // indexing; arg_num still comes from the digits before '('.
+    std::string tmpl = "You cast %B1(5)!";
+    std::vector<std::string> args = {"Fireball"};
+
+    std::string result = db.formatTemplate(tmpl, args);
+    EXPECT_EQ(result, "You cast Fireball!");
+}
+
+TEST_F(StringDatabaseTest, FormatTemplate_BPlaceholder_OutOfRangeIndex) {
+    // arg_num (2) is one past the last valid index for a 1-element args
+    // vector — must resolve to empty, not read past the end.
+    std::string tmpl = "You resist %B2!";
+    std::vector<std::string> args = {"Fear"};
+
+    std::string result = db.formatTemplate(tmpl, args);
+    EXPECT_EQ(result, "You resist !");
+}
+
+TEST_F(StringDatabaseTest, FormatTemplate_ZPlaceholder) {
+    // %z has no arg source (would come from spell data); it always emits
+    // the literal "[duration]" placeholder text.
+    std::string tmpl = "Effect lasts %z.";
+    std::vector<std::string> args = {};
+
+    std::string result = db.formatTemplate(tmpl, args);
+    EXPECT_EQ(result, "Effect lasts [duration].");
+}
+
 // Test spell worn off message
 TEST_F(StringDatabaseTest, FormatString_SpellWornOff) {
     if (!db.isEqStrLoaded()) {

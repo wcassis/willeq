@@ -24,6 +24,7 @@
 #include "client/spell/spell_data.h"
 #include "client/spell/spell_constants.h"
 #include "client/willeq_database.h"
+#include <algorithm>
 #include <fstream>
 #include <cstdlib>
 #include <string>
@@ -273,6 +274,121 @@ TEST_F(SpellDatabaseTest, DurationCalculation) {
     uint32_t duration_low = found->calculateDuration(10);
     uint32_t duration_high = found->calculateDuration(50);
     EXPECT_GE(duration_high, duration_low);
+}
+
+// ============================================================================
+// Field-mapping and cache-bookkeeping tests (T22)
+//
+// The above tests exercise getSpell()/getSpellByName() but mostly assert
+// loose range bounds (e.g. resist_type <= 10), which do not distinguish a
+// correctly-mapped field from a mutant that reads the wrong source field
+// (a same-range swap survives a bounds check). These compare against the
+// raw EQT::SpellInfo returned directly by WilleqDatabase for the same id,
+// which pins queryAndCache()'s field-by-field mapping exactly.
+// ============================================================================
+
+TEST_F(SpellDatabaseTest, FieldsMatchRawDatabaseQuery) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    auto ids = scanSpellIds(1, 9000, 25);
+    ASSERT_GT(ids.size(), 0u);
+
+    for (uint32_t id : ids) {
+        const SpellData* spell = db.getSpell(id);
+        ASSERT_NE(spell, nullptr);
+
+        EQT::SpellInfo raw = g_willeq_db.getSpell(id);
+        ASSERT_TRUE(raw.found);
+
+        EXPECT_EQ(spell->cast_time_ms, raw.castTimeMs) << "id=" << id;
+        EXPECT_EQ(spell->recovery_time_ms, raw.recoveryTimeMs) << "id=" << id;
+        EXPECT_EQ(spell->recast_time_ms, raw.recastTimeMs) << "id=" << id;
+        EXPECT_EQ(spell->duration_formula, raw.durationFormula) << "id=" << id;
+        EXPECT_EQ(spell->duration_cap, raw.durationCap) << "id=" << id;
+        EXPECT_EQ(static_cast<int32_t>(spell->target_type), raw.targetType) << "id=" << id;
+        EXPECT_EQ(static_cast<int32_t>(spell->resist_type), raw.resistType) << "id=" << id;
+    }
+}
+
+TEST_F(SpellDatabaseTest, CacheHitCounterIncrementsOnRepeatLookup) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    // NOTE: scanSpellIds() itself calls db.hasSpell() -> db.getSpell(),
+    // which populates the cache and counters as a side effect. So by the
+    // time ids[0] is known, it is already cached. Capture counters AFTER
+    // scanning (so the "first" explicit call below is knowingly a hit),
+    // and assert only the delta the repeat lookup produces.
+    auto ids = scanSpellIds(1, 9000, 1);
+    ASSERT_GT(ids.size(), 0u);
+
+    ASSERT_NE(db.getSpell(ids[0]), nullptr);  // ensure cached (may be hit or miss)
+    uint64_t hits_before = db.getCacheHits();
+    uint64_t misses_before = db.getCacheMisses();
+
+    // Repeat lookup of the same (now-cached) id: must hit, not miss.
+    ASSERT_NE(db.getSpell(ids[0]), nullptr);
+    EXPECT_EQ(db.getCacheHits(), hits_before + 1);
+    EXPECT_EQ(db.getCacheMisses(), misses_before);
+}
+
+TEST_F(SpellDatabaseTest, CacheNeverExceedsCapacity) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    size_t capacity = db.getCacheCapacity();
+    // Look up strictly more distinct ids than the cache capacity so the
+    // LRU evictIfNeeded() boundary check is actually exercised.
+    auto ids = scanSpellIds(1, 9000, capacity + 20);
+    ASSERT_GT(ids.size(), capacity)
+        << "not enough distinct spells in scanned range to exceed cache capacity";
+
+    for (uint32_t id : ids) {
+        ASSERT_NE(db.getSpell(id), nullptr);
+        ASSERT_LE(db.getCacheSize(), capacity)
+            << "cache grew past capacity after looking up id=" << id;
+    }
+}
+
+TEST_F(SpellDatabaseTest, MaxSpellIdTracksHighestLookedUpId) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    // NOTE: db is a fresh instance per TEST_F (SetUp() only calls
+    // initFromDatabase(), no lookups), so getMaxSpellId() starts at 0 here
+    // — but scanSpellIds() itself performs lookups via db.hasSpell(), so
+    // it must not be used to pick the ids under test here (it would
+    // pollute the baseline before we can observe it). Find candidate ids
+    // via the raw WilleqDatabase handle instead, which bypasses `db`
+    // entirely.
+    ASSERT_EQ(db.getMaxSpellId(), 0u);
+
+    std::vector<uint32_t> ids;
+    for (uint32_t id = 1; id <= 9000 && ids.size() < 5; ++id) {
+        if (g_willeq_db.getSpell(id).found) ids.push_back(id);
+    }
+    ASSERT_GT(ids.size(), 0u);
+
+    // Look up in a deliberately non-monotonic (descending) order via `db`;
+    // getMaxSpellId() must still reflect the highest id ever looked up,
+    // not the most recently looked-up one.
+    uint32_t highest = 0;
+    for (uint32_t id : ids) highest = std::max(highest, id);
+    std::vector<uint32_t> descending(ids.rbegin(), ids.rend());
+    for (uint32_t id : descending) {
+        ASSERT_NE(db.getSpell(id), nullptr);
+    }
+
+    EXPECT_EQ(db.getMaxSpellId(), highest);
+
+    // Looking up a smaller id afterward must not lower it.
+    ASSERT_NE(db.getSpell(descending.back()), nullptr);
+    EXPECT_EQ(db.getMaxSpellId(), highest);
 }
 
 // Deleted: IconicSpellsExist. It relied on findSpellsByName() doing
