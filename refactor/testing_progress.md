@@ -4,12 +4,14 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T22 merged — no open needs-Will items).
+Last updated: 2026-07-31 (T23 merged — one open needs-Will item: the
+auto-loot game-thread stall).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T23 | `CombatManager` coverage | DONE (merged `93315bd`) | Option A batch, unit 1 of 3. 37 tests over `combat.cpp` (1864 lines, previously no direct binary) — targeting, auto-attack/fire, cycling, consider, the 7-state machine, config. **Validates the Option A ruling: no seam was needed.** **BUG pinned, needs Will:** auto-loot blocks the game thread ≥1.1s per kill (section below). Plan correction: `GetReplaySuppressedSendCount()` does NOT observe CombatManager sends (verified `eq.cpp:3672`) — my plan was wrong, executor caught it. Binary 1.17s. |
 | T22 | Mutation kill-rate sweep | DONE (merged `1559271`) | Dispatched executor unit (t1). Closes the benchmark session's open intel item. 43 mutations over six parsers, **24 → 37 killed**: spell_database 2/7→7/7, string_database 6/8→8/8, eqe1_loader 5/7→6/7, pfs 5/7→6/7, xmi_decoder 3/7→5/7, s3d_loader 3/7→5/7. Found `ZoneLightLoadingTest`'s `EXPECT_GE(int, 0)` tautology (a total zone-light-loading break survived it) and that `S3DLoader`'s texture map was never inspected. Unobservable survivors documented, not papered over. Orchestrator ran an independent mutation to confirm the kill claim. |
 | T21 | Daybreak handshake fixes | DONE (merged `def17c2`) | Closes all three T17 findings, go-ahead from Will. `Random::UInt32()` added; both ctors use it; `OP_SessionResponse` unswaps connect_code/encode_key/max_packet_size. Landed as ONE commit — bug 1 masked bug 2. Discovery probe over the pcap established real values first: **`max_packet_size` was live-wrong** (network-order 512 read as 131072). Regression oracles clean: pcap decode 4/4, golden replay 2/2 with golden unchanged. |
 | T20 | Parser crash guards | DONE (merged `cb0f5e4`) | Closes the T18 + T19 findings, go-ahead from Will. ChannelMessage guard rejects exactly-150; HCMap V2 reads bounds-checked via `MapParseError`; zone_lines JSON accessors type-guarded with a `Json::Exception` backstop. All three `BUG_` pins re-pointed + new boundary cases (151-byte message still publishes; real `.map` fixtures load with identical pinned stats). Executed inline. |
@@ -757,6 +759,46 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T23 finding — auto-loot stalls the GAME THREAD (needs Will)
+
+Blocking `std::this_thread::sleep_for` calls sit on a game-thread path.
+Verified chain (orchestrator re-traced it against source, not taken on
+report):
+
+```
+ProcessCombatRound()            combat.cpp:1192   (auto-hunt kill flow)
+  -> ZoneProcessLootItem()      eq.cpp:~1022      (zone packet dispatch)
+  -> CheckAutoLoot()            eq_combat_actions.cpp:527
+  -> sleep_for(500ms)           combat.cpp:1861
+  -> LootAll()                  combat.cpp:806
+       -> sleep_for(100ms) per item  combat.cpp:818
+       -> sleep_for(500ms)           combat.cpp:825
+```
+
+Zone packet dispatch runs on the **game thread** (CLAUDE.md threading
+model: "Network events (TickNetwork)"). So an auto-hunting client with
+auto-loot enabled — **the default** — stalls its own network tick for
+**≥1.1 s per kill**, one item, and +100 ms for each additional item.
+Nothing else is processed during the stall: no packets, no game tick.
+
+Severity argument: this codebase's known failure mode is zone-load
+hangs caused by packet bursts overrunning the socket buffer (see
+CLAUDE.md on `SO_RCVBUFFORCE`). A multi-second game-thread stall is
+exactly the condition that turns a survivable burst into dropped
+packets. Worth weighing even though nobody has reported it as a
+symptom.
+
+**Not reachable from the modern UI path**: `LootAllFromCorpse`
+(`eq_bridge.cpp`) is non-blocking and never calls
+`CombatManager::LootAll()`. This is the headless/auto-hunt path only.
+
+Pinned as `CombatManagerLoot.BUG_CheckAutoLootBlocksCallingThreadForOverASecond`
+(that one test is ~1.13 s of the binary's 1.17 s runtime). Fix shape is
+a design question, not a one-liner — the delays appear to be deliberate
+"human-like" pacing, so removing them changes behavior. Options: drive
+the pacing off the existing tick/timer instead of sleeping, or move the
+loot sequence off the game thread. **Needs Will's call.**
 
 ## T19 findings — two parser crash bugs — FIXED in T20 (`cb0f5e4`)
 
