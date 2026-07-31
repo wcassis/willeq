@@ -29,6 +29,14 @@ struct CompositeTextureData {
     std::string race;
     int gender = 0;
     int variant = 0;
+    // P48: sheet-capability signal — true only if entity_composite_builder
+    // wrote a real ETC1 alpha companion page for this sheet (at least one
+    // source part was WLD-masked). Defaults false, so sheets built by a
+    // pre-P48 builder (no "hasAlpha" JSON key at all) parse as false — the
+    // safe "exclude masked races from composite eligibility" behavior for
+    // stale/global sheets not yet regenerated (race_model_loader.cpp's
+    // eligibility gate).
+    bool hasAlpha = false;
     std::map<std::string, CompositeTextureEntry> textures; // keyed by lowercase texture name
 
     bool loadFromJson(const std::string& jsonPath) {
@@ -50,6 +58,7 @@ struct CompositeTextureData {
         race = root.get("race", "").asString();
         gender = root.get("gender", 0).asInt();
         variant = root.get("variant", 0).asInt();
+        hasAlpha = root.get("hasAlpha", false).asBool();
 
         if (sheetWidth <= 0 || sheetHeight <= 0) {
             LOG_WARN(MOD_GRAPHICS, "CompositeTextureData: invalid sheet dimensions {}x{} in {}",
