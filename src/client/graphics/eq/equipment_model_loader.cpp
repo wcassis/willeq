@@ -581,7 +581,11 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
                 constrainedTextureCache_->getOrLoad(lowerTexName, texIt->second->data,
                                                      "uncategorized", "",
                                                      isMaskedMaterial);
-                irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerTexName);
+                // P46d: uploadTexture must be told the same applyPaletteMask
+                // getOrLoad() above was, or it looks up the wrong internal
+                // cache-key variant (see ConstrainedTextureCache::cacheKey()).
+                irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(
+                    lowerTexName, isMaskedMaterial);
                 if (tex) {
                     buffer->Material.setTexture(0, tex);
                     // Re-assign after setTexture (mirrors the pre-existing

@@ -38,6 +38,42 @@ extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTex
 namespace EQT {
 namespace Graphics {
 
+// P46d: fixes the cache-key collision root-caused in
+// refactor/P46c_neutral_pair_stop.md — getOrLoad()/uploadTexture() used to key
+// cache_/decodedEntries_/compressedEntries_ on texture name ALONE, so
+// whichever caller decoded a name FIRST (masked or not) won that name's slot
+// for the process lifetime; any later request for the other variant silently
+// got the wrong (already-cached) pixels. cacheKey() gives the masked variant
+// a distinct internal key so both can coexist. applyPaletteMask=false (every
+// call site except race_model_loader.cpp's T05 loop and
+// equipment_model_loader.cpp's per-triangle-group load, the only two that
+// compute a WLD-derived masked flag) maps to the identity function, so this
+// is a no-op for every other caller/texture class — in particular zone
+// geometry (zone_geometry.cpp's own getOrLoad call site never passes true)
+// stays byte-identical.
+std::string ConstrainedTextureCache::cacheKey(const std::string& name, bool applyPaletteMask) {
+    if (!applyPaletteMask) {
+        return name;
+    }
+    // \x01 cannot appear in an EQ texture filename or an EQE1 flat-pack entry
+    // name (both are plain ASCII filenames), so this can never collide with a
+    // real name, masked or not.
+    return name + "\x01masked";
+}
+
+void ConstrainedTextureCache::splitCacheKey(const std::string& key, std::string& realName,
+                                             bool& applyPaletteMask) {
+    static const std::string kSuffix = "\x01masked";
+    if (key.size() > kSuffix.size() &&
+        key.compare(key.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
+        realName = key.substr(0, key.size() - kSuffix.size());
+        applyPaletteMask = true;
+    } else {
+        realName = key;
+        applyPaletteMask = false;
+    }
+}
+
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
     : config_(config)
 {
@@ -115,22 +151,28 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                                                           bool applyPaletteMask) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    // P46d: masked and unmasked variants of the same name are distinct cache
+    // entries (see cacheKey()) — internalKey is identity when
+    // applyPaletteMask is false, so every non-masked call site (the vast
+    // majority) is completely unaffected.
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+
     // Check if already uploaded
-    auto cacheIt = cache_.find(name);
+    auto cacheIt = cache_.find(internalKey);
     if (cacheIt != cache_.end()) {
-        touchInternal(name);
+        touchInternal(internalKey);
         ++cacheHits_;
         return cacheIt->second.texture;
     }
 
     // Check if already in compressed entries (from EQE1 lookup)
-    if (compressedEntries_.find(name) != compressedEntries_.end()) {
+    if (compressedEntries_.find(internalKey) != compressedEntries_.end()) {
         ++cacheHits_;
         return nullptr;  // Already found in EQE1, call uploadTexture() to promote
     }
 
     // Check if already decoded (waiting for upload)
-    if (decodedEntries_.find(name) != decodedEntries_.end()) {
+    if (decodedEntries_.find(internalKey) != decodedEntries_.end()) {
         ++cacheHits_;
         return nullptr;  // Already decoded, call uploadTexture() to promote
     }
@@ -143,7 +185,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // sub-paths (RGBA decode, ETC1, v2) uniformly since it's set before any
     // of the branches below. No-op when the ledger is disabled.
     if (ledgerEnabled_) {
-        pendingLedgerTag_[name] = {category, callsite};
+        pendingLedgerTag_[internalKey] = {category, callsite};
     }
 
     // Debug: skip all texture uploads to isolate endScene regression
@@ -151,13 +193,25 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         return nullptr;
     }
 
-    // Check EQE1 flat packs for pre-compressed ETC1 data (no decode needed)
+    // Check EQE1 flat packs for pre-compressed ETC1 data (no decode needed).
+    // P46d: looked up by the REAL name (findCompressedEntry strips/lowercases
+    // it to match the flat pack's own entry names) — applyPaletteMask is
+    // irrelevant to the ETC1/EQE1 path (its alpha comes from a companion
+    // texture built offline by eqe1_builder, never from this class's
+    // decodeBMP palette-index-0 punch), but the result is still stored under
+    // internalKey so a masked-requested name doesn't collide with an
+    // unmasked-requested one in compressedEntries_/cache_ bookkeeping. Any
+    // resulting duplication (both variants independently finding + uploading
+    // the same EQE1 payload) is a bounded, expected cost — see this unit's
+    // Review (only WLD-masked textures, dozens not thousands, ever request
+    // the masked variant).
     auto* compressed = findCompressedEntry(name);
     if (compressed) {
-        compressedEntries_[name] = *compressed;
-        LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{})",
+        compressedEntries_[internalKey] = *compressed;
+        LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{}){}",
                   name, compressed->width, compressed->height, compressed->mipLevels,
-                  compressed->hasAlpha ? ", alpha" : "");
+                  compressed->hasAlpha ? ", alpha" : "",
+                  applyPaletteMask ? " [masked variant]" : "");
         return nullptr;  // Compressed, call uploadTexture() to promote
     }
 
@@ -188,36 +242,47 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     decoded.width = width;
     decoded.height = height;
     decoded.hasAlpha = hasAlpha;
-    decodedEntries_[name] = std::move(decoded);
+    decodedEntries_[internalKey] = std::move(decoded);
 
-    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={})",
-              name, width, height, hasAlpha);
+    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={}{})",
+              name, width, height, hasAlpha, applyPaletteMask ? ", masked variant" : "");
     return nullptr;  // Decoded but not uploaded — call uploadTexture() to promote
 }
 
-irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name) {
+irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    // P46d: internalKey is the same (name, applyPaletteMask) key getOrLoad()
+    // used to store this entry (see cacheKey()) — identity when
+    // applyPaletteMask is false. `name` itself is kept around, unmangled, for
+    // everything that must stay name-keyed by a THIRD party outside this
+    // class's own bookkeeping maps: the GPU texture's Irrlicht debug label,
+    // the P13 ledger row's texture-name column, and
+    // ZoneMeshBuilder::registerUploadedTexture() (its own textureCache_
+    // fast-path map, keyed by plain name exactly as before this fix — see
+    // this unit's Review for why that map does not also need mask-awareness).
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+
     // Already uploaded?
-    auto cacheIt = cache_.find(name);
+    auto cacheIt = cache_.find(internalKey);
     if (cacheIt != cache_.end()) {
-        touchInternal(name);
+        touchInternal(internalKey);
         return cacheIt->second.texture;
     }
 
     // Check for compressed/v2 entry (from EQE1 flat pack)
-    auto compressedIt = compressedEntries_.find(name);
+    auto compressedIt = compressedEntries_.find(internalKey);
     if (compressedIt != compressedEntries_.end()) {
         const auto& entry = compressedIt->second;
         irr::video::ITexture* result = (entry.payloadFormat == EQT::Graphics::EQE1_PAYLOAD_ETC1)
-            ? uploadCompressedETC1(name, entry)
-            : uploadCompressedV2(name, entry);
+            ? uploadCompressedETC1(name, internalKey, entry)
+            : uploadCompressedV2(name, internalKey, entry);
         compressedEntries_.erase(compressedIt);
         return result;
     }
 
     // Find decoded entry
-    auto decodedIt = decodedEntries_.find(name);
+    auto decodedIt = decodedEntries_.find(internalKey);
     if (decodedIt == decodedEntries_.end()) {
         return nullptr;  // Not decoded
     }
@@ -248,7 +313,16 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
 
     irr::video::ITexture* texture = nullptr;
     if (image) {
-        texture = driver_->addTexture(name.c_str(), image);
+        // P46d: MUST use internalKey (not the plain `name`), not just for
+        // this class's own bookkeeping: COpenGLES2Driver::addTexture()
+        // itself deduplicates by name (`findTexture(name)`; if a texture
+        // with that name already exists, it returns the EXISTING texture
+        // UNCHANGED, silently discarding the new image data). Passing the
+        // plain name for both the unmasked and masked variant made the
+        // masked upload a no-op that returned the SAME (unmasked) GPU
+        // texture — caught by this unit's own discard-fire re-verification,
+        // which found identical pointers for both uploads until this fix.
+        texture = driver_->addTexture(internalKey.c_str(), image);
         image->drop();
     }
 
@@ -256,7 +330,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     int width = entry.width;
     int height = entry.height;
 
-    // Remove decoded entry regardless of upload success
+    // Remove decoded entry regardless of upload success (P46d: keyed by internalKey)
     decodedEntries_.erase(decodedIt);
 
     if (!texture) {
@@ -287,8 +361,8 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     }
 #endif
 
-    // Register in LRU cache
-    lruOrder_.push_back(name);
+    // Register in LRU cache (P46d: under internalKey — see cacheKey())
+    lruOrder_.push_back(internalKey);
     CachedTexture cached;
     cached.texture = texture;
     cached.sizeBytes = textureSize;
@@ -300,7 +374,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     if (ledgerEnabled_) {
         std::string ledgerCategory = "uncategorized";
         std::string ledgerCallsite;
-        auto tagIt = pendingLedgerTag_.find(name);
+        auto tagIt = pendingLedgerTag_.find(internalKey);
         if (tagIt != pendingLedgerTag_.end()) {
             ledgerCategory = tagIt->second.first;
             ledgerCallsite = tagIt->second.second;
@@ -311,21 +385,48 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
                               ledgerCategory, ledgerCallsite);
     }
 
-    cache_[name] = cached;
+    cache_[internalKey] = cached;
     currentUsage_ += textureSize;
 
-    // Also register in mesh builder for entity texture lookups
+    // Also register in mesh builder for entity texture lookups. P46d:
+    // deliberately keyed by the REAL `name` (not internalKey) — this is
+    // ZoneMeshBuilder's OWN fast-path cache (textureCache_, zone_geometry.h),
+    // consulted by name only (mesh_building.cpp's getOrLoadTexture()) with no
+    // mask parameter of its own. Registering under a mangled key here would
+    // make that fast path always miss for masked entries, falling through to
+    // ZoneMeshBuilder::loadTextureFromBMP() — which calls getOrLoad() with NO
+    // applyPaletteMask argument (defaults false) — silently re-decoding the
+    // UNMASKED variant and defeating this whole fix for the exact path P46c
+    // demonstrated the bug on. Registering under the plain name instead
+    // relies on production's existing, verified-safe ordering invariant (see
+    // this unit's Review, part B): the masked T05 decode always runs before
+    // buildMeshFromGeometry's lookup for the SAME race, and EQ's texture
+    // naming (race-code-prefixed) means no static-only race's texture name
+    // ever collides with an animated masked race's — so last-write-wins here
+    // is safe in practice, exactly as it was (silently) before this fix.
     if (meshBuilder_) {
         meshBuilder_->registerUploadedTexture(name, texture, hasAlpha);
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' uploaded ({}x{}, {} bytes, alpha={})",
-              name, width, height, textureSize, hasAlpha);
+    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' uploaded ({}x{}, {} bytes, alpha={}{})",
+              name, width, height, textureSize, hasAlpha, applyPaletteMask ? ", masked variant" : "");
     return texture;
 }
 
 int ConstrainedTextureCache::uploadAllPending() {
-    // Collect names first (uploadTexture modifies decodedEntries_ and compressedEntries_)
+    // Collect internal keys first (uploadTexture modifies decodedEntries_ and
+    // compressedEntries_). P46d: these keys may already be mangled (see
+    // cacheKey()) — splitCacheKey() recovers the real display name and
+    // applyPaletteMask flag from each before calling uploadTexture(), so it
+    // both (a) recomputes the identical internal key internally (cacheKey()
+    // is the exact inverse) and (b) passes the REAL name through for
+    // uploadTexture()'s display-name uses (GL debug label, ledger row,
+    // ZoneMeshBuilder::registerUploadedTexture()). Passing the raw
+    // (possibly-mangled) key straight through as `name` — this loop's
+    // original approach — silently registered masked entries into
+    // ZoneMeshBuilder's own name-keyed fast-path cache under the MANGLED
+    // name, which mesh_building.cpp's plain-name lookup never finds; caught
+    // by this unit's own discard-fire re-verification (see Review).
     std::vector<std::string> names;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -339,8 +440,11 @@ int ConstrainedTextureCache::uploadAllPending() {
     }
 
     int uploaded = 0;
-    for (const auto& name : names) {
-        if (uploadTexture(name)) {
+    for (const auto& key : names) {
+        std::string realName;
+        bool applyPaletteMask = false;
+        splitCacheKey(key, realName, applyPaletteMask);
+        if (uploadTexture(realName, applyPaletteMask)) {
             ++uploaded;
         }
     }
@@ -1573,8 +1677,12 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
-    const std::string& name, const CompressedEntry& entry)
+    const std::string& name, const std::string& cacheEntryKey, const CompressedEntry& entry)
 {
+    // P46d: `name` is the real texture name (GL debug label, ledger row,
+    // ZoneMeshBuilder registration — see uploadTexture()'s comment on why
+    // that registration deliberately stays name-keyed); `cacheEntryKey` is
+    // this class's own internal (possibly mask-mangled) bookkeeping key.
     // mutex_ is already held by caller (uploadTexture)
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
     // Budget check — use ETC1 compressed size, not RGBA size
@@ -1677,9 +1785,13 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    // Wrap GL handle in ITexture* via driver (gles2WrapTexture declared at file scope above)
+    // Wrap GL handle in ITexture* via driver (gles2WrapTexture declared at file scope above).
+    // P46d: use cacheEntryKey, not the plain `name` -- COpenGLES2Driver::
+    // wrapExternalTexture() does the same name-based dedup as addTexture()
+    // (findTexture(name); if found, returns the EXISTING texture, silently
+    // discarding this upload). See uploadTexture()'s identical fix/comment.
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
-        gles2WrapTexture(driver_, name.c_str(), texId,
+        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
                          entry.width, entry.height,
                          static_cast<unsigned int>(gpuSize)));
 
@@ -1693,7 +1805,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // Wrap alpha companion texture if present
     irr::video::ITexture* alphaTexture = nullptr;
     if (alphaTexId) {
-        std::string alphaName = name + "_alpha";
+        std::string alphaName = cacheEntryKey + "_alpha";
         alphaTexture = static_cast<irr::video::ITexture*>(
             gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
                              entry.width, entry.height,
@@ -1705,8 +1817,8 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         }
     }
 
-    // Register in LRU cache
-    lruOrder_.push_back(name);
+    // Register in LRU cache (P46d: under cacheEntryKey — see cacheKey())
+    lruOrder_.push_back(cacheEntryKey);
     CachedTexture cached;
     cached.texture = texture;
     cached.alphaTexture = alphaTexture;
@@ -1718,7 +1830,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     if (ledgerEnabled_) {
         std::string ledgerCategory = "uncategorized";
         std::string ledgerCallsite;
-        auto tagIt = pendingLedgerTag_.find(name);
+        auto tagIt = pendingLedgerTag_.find(cacheEntryKey);
         if (tagIt != pendingLedgerTag_.end()) {
             ledgerCategory = tagIt->second.first;
             ledgerCallsite = tagIt->second.second;
@@ -1730,7 +1842,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
                               ledgerCategory, ledgerCallsite);
     }
 
-    cache_[name] = cached;
+    cache_[cacheEntryKey] = cached;
     currentUsage_ += gpuSize;
     ++compressedUploadCount_;
 
@@ -1746,6 +1858,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
 #else
     // Non-GLES2 builds: ETC1 not supported, fall through to BMP decode
     (void)name;
+    (void)cacheEntryKey;
     (void)entry;
     LOG_WARN(MOD_GRAPHICS, "Constrained cache: ETC1 upload not available (non-GLES2 build) for '{}'", name);
     return nullptr;
@@ -1753,8 +1866,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
-    const std::string& name, const CompressedEntry& entry)
+    const std::string& name, const std::string& cacheEntryKey, const CompressedEntry& entry)
 {
+    // P46d: see uploadCompressedETC1()'s comment — `name` stays the real
+    // texture name, `cacheEntryKey` is this class's own internal key.
     // mutex_ is already held by caller (uploadTexture)
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
     auto payloadFmt = static_cast<EQT::Graphics::EQE1PayloadFormat>(entry.payloadFormat);
@@ -1821,8 +1936,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    // P46d: cacheEntryKey, not `name` — see uploadCompressedETC1()'s identical fix.
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
-        gles2WrapTexture(driver_, name.c_str(), texId,
+        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
                          entry.width, entry.height,
                          static_cast<unsigned int>(gpuSize)));
 
@@ -1832,10 +1948,11 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
         return nullptr;
     }
 
-    // Register in LRU cache. No alpha companion (isETC1=false → H02d routes
-    // this texture's alpha-test material, if any, to the main-alpha RGBA
-    // shader variant which reads uTexture.a directly).
-    lruOrder_.push_back(name);
+    // Register in LRU cache (P46d: under cacheEntryKey). No alpha companion
+    // (isETC1=false → H02d routes this texture's alpha-test material, if
+    // any, to the main-alpha RGBA shader variant which reads uTexture.a
+    // directly).
+    lruOrder_.push_back(cacheEntryKey);
     CachedTexture cached;
     cached.texture = texture;
     cached.alphaTexture = nullptr;
@@ -1848,7 +1965,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     if (ledgerEnabled_) {
         std::string ledgerCategory = "uncategorized";
         std::string ledgerCallsite;
-        auto tagIt = pendingLedgerTag_.find(name);
+        auto tagIt = pendingLedgerTag_.find(cacheEntryKey);
         if (tagIt != pendingLedgerTag_.end()) {
             ledgerCategory = tagIt->second.first;
             ledgerCallsite = tagIt->second.second;
@@ -1860,7 +1977,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
                               ledgerCategory, ledgerCallsite);
     }
 
-    cache_[name] = cached;
+    cache_[cacheEntryKey] = cached;
     currentUsage_ += gpuSize;
     ++compressedUploadCount_;
 
@@ -1875,6 +1992,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     return texture;
 #else
     (void)name;
+    (void)cacheEntryKey;
     (void)entry;
     LOG_WARN(MOD_GRAPHICS, "Constrained cache: v2 payload upload not available (non-GLES2 build) for '{}'", name);
     return nullptr;

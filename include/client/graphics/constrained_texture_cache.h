@@ -104,7 +104,16 @@ public:
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
     // Must be called on a thread that owns the rendering context.
     // Returns the uploaded ITexture*, or nullptr if not found/failed.
-    irr::video::ITexture* uploadTexture(const std::string& name);
+    //
+    // P46d: applyPaletteMask must match whatever was passed to the getOrLoad()
+    // call that decoded this name — it selects which internal variant entry
+    // (see cacheKey()) to promote. Defaults to false, matching every call site
+    // that never requests the masked variant (the vast majority). Callers that
+    // pass applyPaletteMask=true to getOrLoad() and then explicitly call
+    // uploadTexture() themselves (rather than relying on uploadAllPending(),
+    // which re-derives the correct internal key on its own — see .cpp) MUST
+    // pass the same flag here or the lookup will miss.
+    irr::video::ITexture* uploadTexture(const std::string& name, bool applyPaletteMask = false);
 
     // Upload all pending decoded textures to the GPU.
     // Calls uploadTexture() for each DecodedEntry in the cache.
@@ -283,7 +292,11 @@ private:
     // Creates GL texture, wraps in ITexture*, registers in LRU cache.
     // Must be called on a thread with GL context. Caller holds mutex_.
     // ETC1/v1 path — byte-for-byte untouched by the v2 payload-format work.
+    // P46d: `name` is the real texture name (GL debug label, ledger row,
+    // ZoneMeshBuilder registration); `cacheEntryKey` is this class's own
+    // internal (possibly mask-mangled, see cacheKey()) bookkeeping key.
     irr::video::ITexture* uploadCompressedETC1(const std::string& name,
+                                                const std::string& cacheEntryKey,
                                                 const CompressedEntry& entry);
 
     // Upload an uncompressed v2 payload (RGB565/RGBA4444/RGBA8888) to GPU via
@@ -291,8 +304,45 @@ private:
     // alpha companion is ever built (v2 alpha lives in the main texture's own
     // alpha channel) — CachedTexture::isETC1 stays false, which routes these
     // textures to H02d's main-alpha shader variant. Caller holds mutex_.
+    // P46d: see uploadCompressedETC1()'s name/cacheEntryKey split above.
     irr::video::ITexture* uploadCompressedV2(const std::string& name,
+                                              const std::string& cacheEntryKey,
                                               const CompressedEntry& entry);
+
+    // P46d: internal cache/decodedEntries_/compressedEntries_ map key for
+    // (name, applyPaletteMask). Identity when applyPaletteMask is false (the
+    // overwhelming majority of calls) — cacheKey(x, false) == x always, which
+    // is why callers that only ever pass plain names (getTexture/hasTexture/
+    // touch/isPending/evictTexture, every eviction listener, P13b's
+    // deferredPerPartTextureNames_ skip-list, uploadAllPending()'s own
+    // re-derivation of the key it already collected) need NO changes: they
+    // never request the masked variant, so they always resolve to the
+    // unmasked entry, exactly as before this fix. Only getOrLoad() and
+    // uploadTexture() (the two call sites that take applyPaletteMask
+    // directly) ever produce or consume a masked key. A control character
+    // prefix (never legal in an EQ texture/EQE1 filename) makes collision
+    // with a real name impossible. See constrained_texture_cache.cpp's
+    // top-of-file comment for the full rationale (root cause:
+    // refactor/P46c_neutral_pair_stop.md; fix: refactor/P46d_cache_key_fix.md).
+    static std::string cacheKey(const std::string& name, bool applyPaletteMask);
+
+    // P46d: inverse of cacheKey() — recovers (realName, applyPaletteMask)
+    // from an internal key. Needed by uploadAllPending(), which only has the
+    // (possibly mangled) keys it harvested from decodedEntries_/
+    // compressedEntries_, not the original plain names — calling
+    // uploadTexture(key) directly (relying on cacheKey(key,false)==key) is
+    // correct for cache_/decodedEntries_/compressedEntries_ lookups, but
+    // would leak the mangled key into uploadTexture's `name` parameter,
+    // which (unlike internalKey) is supposed to be the real display name
+    // (GL debug label, ledger row, ZoneMeshBuilder::registerUploadedTexture
+    // — see uploadTexture()'s comment). Without this split, masked entries
+    // uploaded via uploadAllPending() register into ZoneMeshBuilder's
+    // textureCache_ under the MANGLED name, which
+    // mesh_building.cpp::getOrLoadTexture()'s plain-name lookup then never
+    // finds — silently falling back to the unmasked loadTextureFromBMP()
+    // path and defeating this whole fix. Caught by this unit's own
+    // discard-fire re-verification (see Review).
+    static void splitCacheKey(const std::string& key, std::string& realName, bool& applyPaletteMask);
 
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);
