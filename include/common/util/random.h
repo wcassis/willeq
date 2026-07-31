@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <limits>
 #include <random>
 #include <utility>
 #include <algorithm>
@@ -15,6 +17,15 @@ namespace EQ {
 			if (low > high)
 				std::swap(low, high);
 			return int_dist(m_gen, int_param_t(low, high)); // [low, high]
+		}
+
+		// Full 32-bit unsigned draw. Int() cannot express this range: its
+		// parameters are `int`, so callers passing uint32_t's max got -1 and
+		// a collapsed [-1, 0] range (T21 — this is how every Daybreak session
+		// ended up with a connect code of either 0 or 0xFFFFFFFF).
+		uint32_t UInt32()
+		{
+			return uint_dist(m_gen);
 		}
 
 		// AKA old MakeRandomFloat
@@ -74,6 +85,7 @@ namespace EQ {
 	private:
 		typedef std::uniform_int_distribution<int>::param_type int_param_t;
 		std::uniform_int_distribution<int> int_dist;
+		std::uniform_int_distribution<uint32_t> uint_dist{0u, std::numeric_limits<uint32_t>::max()};
 		typedef std::uniform_real_distribution<double>::param_type real_param_t;
 		std::uniform_real_distribution<double> real_dist;
 		std::mt19937 m_gen;

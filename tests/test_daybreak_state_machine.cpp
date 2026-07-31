@@ -189,18 +189,16 @@ TEST_F(DaybreakStateMachineTest, SendConnectEmitsWellFormedSessionRequest) {
 	EXPECT_EQ(NetworkToHost(req.connect_code), conn_->m_connect_code);
 }
 
-// PINNED FINDING #1 (RNG range bug): DaybreakConnection's client-role ctor
-// draws m_connect_code (and, in the server-role ctor, m_encode_key) via
-// `m_rand.Int(std::numeric_limits<uint32_t>::min(), std::numeric_limits<uint32_t>::max())`.
-// EQ::Random::Int takes `int` parameters; passing uint32_t's max (4294967295)
-// implicitly converts to -1 as an int (two's-complement wrap), so the call
-// is actually `Int(0, -1)` — Int() swaps out-of-order bounds, so it draws
-// uniformly from {-1, 0} only. As a uint32_t that's {0xFFFFFFFF, 0x00000000}
-// — i.e. the "random" session connect_code has exactly 2 possible values,
-// not 2^32. This is a real, reportable bug (predictable/low-entropy session
-// identifiers); NOT fixed here per T17 STOP conditions (src/ is out of
-// territory) — pinned so a future fix has a regression test to flip green.
-TEST_F(DaybreakStateMachineTest, ConnectCodeRngOnlyEverProducesZeroOrAllOnes) {
+// T17 FINDING #1, FIXED IN T21 (RNG range bug): the ctors drew
+// m_connect_code / m_encode_key via
+// `m_rand.Int(numeric_limits<uint32_t>::min(), numeric_limits<uint32_t>::max())`.
+// EQ::Random::Int takes `int`, so uint32_t's max converted to -1, Int()
+// swapped the inverted bounds, and every draw came from {-1, 0} — i.e.
+// {0xFFFFFFFF, 0x00000000}. Every session in the recorded capture uses
+// exactly those two values, confirming it on real traffic. T21 added
+// Random::UInt32() and switched both ctors to it, so connect codes now
+// span the full range.
+TEST_F(DaybreakStateMachineTest, ConnectCodeRngSpansFullRange) {
 	std::set<uint32_t> observed;
 	for (int i = 0; i < 200; i++) {
 		FakeChannel a, b;
@@ -214,39 +212,29 @@ TEST_F(DaybreakStateMachineTest, ConnectCodeRngOnlyEverProducesZeroOrAllOnes) {
 		observed.insert(c->m_connect_code);
 	}
 
-	for (auto v : observed) {
-		EXPECT_TRUE(v == 0u || v == 0xFFFFFFFFu)
-			<< "connect_code " << v << " is neither 0 nor 0xFFFFFFFF — "
-			   "if this fires, the RNG-range bug described above has been "
-			   "fixed; the tests below that force m_connect_code manually "
-			   "to sidestep it can likely be simplified.";
-	}
-	EXPECT_LE(observed.size(), 2u)
-		<< "PINNED: connect_code should only ever be 0 or 0xFFFFFFFF today "
-		   "(see comment above) — more distinct values means the RNG bug "
-		   "no longer reproduces as analyzed.";
+	// 200 draws from 2^32 essentially never collide; the old bug produced at
+	// most 2 distinct values, so any generous threshold separates the two
+	// regimes without being flaky.
+	EXPECT_GT(observed.size(), 190u)
+		<< "connect_code entropy collapsed — only " << observed.size()
+		<< " distinct values in 200 draws (the pre-T21 bug produced 2).";
 }
 
-// PINNED FINDING #2 (missing NetworkToHost on receive): the OP_SessionResponse
-// handler compares `m_connect_code == reply.connect_code` with NO
-// NetworkToHost() applied to reply.connect_code, even though the value on
-// the wire is HostToNetwork()-encoded (see SendConnectEmitsWellFormedSessionRequest
-// above, and the OP_SessionRequest server-role handler's own
-// `reply.connect_code = HostToNetwork(m_connect_code)`). In production this
-// is masked by PINNED FINDING #1: connect_code is always 0 or 0xFFFFFFFF,
-// and both values are byte-swap palindromes, so the missing swap never
-// actually causes a mismatch today. This test forces m_connect_code to a
-// realistic, non-palindromic value (bypassing the RNG bug entirely, via
-// direct private-field access) to demonstrate the comparison bug in
-// isolation, independent of finding #1.
-TEST_F(DaybreakStateMachineTest, SessionResponseConnectCodeCompareSkipsByteSwap) {
+// T17 FINDING #2, FIXED IN T21 (missing NetworkToHost on receive): the
+// OP_SessionResponse handler compared `m_connect_code == reply.connect_code`
+// with no NetworkToHost() on the wire value, even though SendConnect()
+// wire-encodes our connect_code with HostToNetwork() and the server-role
+// OP_SessionRequest handler unswaps correctly. Finding #1 masked it: the
+// only two possible connect codes were byte-swap palindromes. That coupling
+// is why the two fixes had to land together — repairing the RNG alone would
+// have made every handshake fail.
+TEST_F(DaybreakStateMachineTest, SessionResponseAcceptsWireOrderConnectCodeEcho) {
 	createManager();
 	conn_->SendConnect();
 	c2s_.PopFront();
 	conn_->m_connect_code = 0x01020304u; // non-palindromic under byte-swap
 
-	// The value a real peer (or this class's own server role) would put on
-	// the wire: HostToNetwork(m_connect_code), echoing what the client sent.
+	// What a real peer puts on the wire: HostToNetwork(m_connect_code).
 	DaybreakConnectReply wire_correct;
 	wire_correct.zero          = 0;
 	wire_correct.opcode         = OP_SessionResponse;
@@ -260,56 +248,68 @@ TEST_F(DaybreakStateMachineTest, SessionResponseConnectCodeCompareSkipsByteSwap)
 	p1.PutSerialize(0, wire_correct);
 	deliver(p1);
 
-	EXPECT_EQ(conn_->GetStatus(), StatusConnecting)
-		<< "PINNED: a wire-correct connect_code echo (what a real server "
-		   "would send) is REJECTED for non-palindromic connect codes — "
-		   "the comparison is missing NetworkToHost(). See comment above.";
-
-	// What the CURRENT code's check actually accepts instead: the raw
-	// unswapped host value, which no real peer would ever put on the wire.
-	DaybreakConnectReply raw_match = wire_correct;
-	raw_match.connect_code = conn_->m_connect_code;
-	DynamicPacket p2;
-	p2.PutSerialize(0, raw_match);
-	deliver(p2);
-
 	EXPECT_EQ(conn_->GetStatus(), StatusConnected)
-		<< "current (buggy) comparison accepts the unswapped value instead";
+		<< "a wire-correct connect_code echo must be accepted for any "
+		   "connect code, not just byte-swap palindromes";
 }
 
-// PINNED FINDING #3 (missing NetworkToHost on encode_key/max_packet_size):
-// unlike connect_code (which at least has a comparison, however broken),
-// `m_encode_key = reply.encode_key;` and `m_max_packet_size = reply.max_packet_size;`
-// in the OP_SessionResponse handler store the raw wire (network-order)
-// bytes directly, with no NetworkToHost() at all — while the sender side
-// (OP_SessionRequest handler) does apply HostToNetwork() when building
-// those same fields. Pinning current (mis-swapped) behavior.
-TEST_F(DaybreakStateMachineTest, SessionResponseStoresMaxPacketSizeWithoutByteSwap) {
+TEST_F(DaybreakStateMachineTest, SessionResponseRejectsUnswappedConnectCode) {
+	// The mirror of the test above: the raw host-order value, which no real
+	// peer sends, must NOT be accepted. Before T21 this was the only form
+	// that worked.
 	createManager();
 	conn_->SendConnect();
 	c2s_.PopFront();
-	conn_->m_connect_code = conn_->m_connect_code; // whatever the RNG drew; comparison bug #2 is orthogonal here — use the raw-accepted form
+	conn_->m_connect_code = 0x01020304u;
+
+	DaybreakConnectReply raw;
+	raw.zero          = 0;
+	raw.opcode         = OP_SessionResponse;
+	raw.connect_code   = conn_->m_connect_code; // unswapped
+	raw.encode_key     = 0;
+	raw.crc_bytes       = 2;
+	raw.encode_pass1    = EncodeNone;
+	raw.encode_pass2    = EncodeNone;
+	raw.max_packet_size = HostToNetwork(512u);
+	DynamicPacket p;
+	p.PutSerialize(0, raw);
+	deliver(p);
+
+	EXPECT_EQ(conn_->GetStatus(), StatusConnecting);
+}
+
+// T17 FINDING #3, FIXED IN T21 (missing NetworkToHost on
+// encode_key/max_packet_size): both were stored as raw wire bytes while the
+// sender side applies HostToNetwork(). encode_key was masked (the recorded
+// server sends 0, and it feeds Crc32 where a swapped 0 is still 0), but
+// max_packet_size was genuinely wrong: the capture carries network-order
+// 512, which read raw as 131072 — the client believed it could send packets
+// 256x larger than the server permits, so it would not fragment when it
+// should.
+TEST_F(DaybreakStateMachineTest, SessionResponseStoresHostOrderMaxPacketSizeAndKey) {
+	createManager();
+	conn_->SendConnect();
+	c2s_.PopFront();
 
 	DaybreakConnectReply reply;
 	reply.zero          = 0;
 	reply.opcode         = OP_SessionResponse;
-	reply.connect_code   = conn_->m_connect_code; // use the form finding #2 shows is currently accepted
-	reply.encode_key     = 0;
+	reply.connect_code   = HostToNetwork(conn_->m_connect_code);
+	reply.encode_key     = HostToNetwork(0xAABBCCDDu);
 	reply.crc_bytes       = 2;
 	reply.encode_pass1    = EncodeNone;
 	reply.encode_pass2    = EncodeNone;
-	reply.max_packet_size = HostToNetwork(512u); // wire-correct value a real peer would send for "512"
+	reply.max_packet_size = HostToNetwork(512u); // what the real server sends
 	DynamicPacket p;
 	p.PutSerialize(0, reply);
 	deliver(p);
 
 	ASSERT_EQ(conn_->GetStatus(), StatusConnected);
-	EXPECT_EQ(conn_->m_max_packet_size, HostToNetwork(512u))
-		<< "PINNED: max_packet_size is stored as the raw wire bytes "
-		   "(byte-swapped relative to the intended value 512), not "
-		   "NetworkToHost()-converted. See comment above.";
-	EXPECT_NE(conn_->m_max_packet_size, 512u)
-		<< "if this now equals 512, the missing-NetworkToHost bug has been fixed";
+	EXPECT_EQ(conn_->m_max_packet_size, 512u)
+		<< "max_packet_size must be the host-order value the server meant "
+		   "(512), not the raw wire bytes read as 131072";
+	EXPECT_EQ(conn_->m_encode_key, 0xAABBCCDDu)
+		<< "encode_key feeds Crc32; it must match the server's host-order key";
 }
 
 TEST_F(DaybreakStateMachineTest, WrongConnectCodeSessionResponseIgnored) {
