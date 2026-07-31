@@ -4,13 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T21 merged — fix batch complete, no open
-needs-Will items).
+Last updated: 2026-07-31 (T22 merged — no open needs-Will items).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T22 | Mutation kill-rate sweep | DONE (merged `1559271`) | Dispatched executor unit (t1). Closes the benchmark session's open intel item. 43 mutations over six parsers, **24 → 37 killed**: spell_database 2/7→7/7, string_database 6/8→8/8, eqe1_loader 5/7→6/7, pfs 5/7→6/7, xmi_decoder 3/7→5/7, s3d_loader 3/7→5/7. Found `ZoneLightLoadingTest`'s `EXPECT_GE(int, 0)` tautology (a total zone-light-loading break survived it) and that `S3DLoader`'s texture map was never inspected. Unobservable survivors documented, not papered over. Orchestrator ran an independent mutation to confirm the kill claim. |
 | T21 | Daybreak handshake fixes | DONE (merged `def17c2`) | Closes all three T17 findings, go-ahead from Will. `Random::UInt32()` added; both ctors use it; `OP_SessionResponse` unswaps connect_code/encode_key/max_packet_size. Landed as ONE commit — bug 1 masked bug 2. Discovery probe over the pcap established real values first: **`max_packet_size` was live-wrong** (network-order 512 read as 131072). Regression oracles clean: pcap decode 4/4, golden replay 2/2 with golden unchanged. |
 | T20 | Parser crash guards | DONE (merged `cb0f5e4`) | Closes the T18 + T19 findings, go-ahead from Will. ChannelMessage guard rejects exactly-150; HCMap V2 reads bounds-checked via `MapParseError`; zone_lines JSON accessors type-guarded with a `Json::Exception` backstop. All three `BUG_` pins re-pointed + new boundary cases (151-byte message still publishes; real `.map` fixtures load with identical pinned stats). Executed inline. |
 | T19 | hc_map + zone_lines parsing | DONE (merged `99d3886`) | Dispatched executor unit (t1). 41 tests: real fixtures (befallen/qeynos2 are **V2**; sky.map covers the real V1 branch), pinned load stats + FindBestZ/LOS values, synthetic malformed files. **Two crash bugs found — FIXED in T20** (`cb0f5e4`): V2 `vert_count` heap over-read SIGSEGV; zone_lines `asFloat()` uncaught `Json::LogicError`. Mutation spot-check 2/2. Orchestrator verified both bugs against source and re-ran the binaries. |

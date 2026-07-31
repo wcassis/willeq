@@ -112,7 +112,7 @@ tracks its work in `refactor/testing_progress.md` (charter:
 `refactor/TESTING_CHARTER.md`). Perf session: read its "Handoffs"
 section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 
-## → FOR THE TESTING SESSION: mutation-testing intel (benchmark session, 2026-07-29) — ACTIONED
+## → FOR THE TESTING SESSION: mutation-testing intel (benchmark session, 2026-07-29) — CLOSED
 
 - The model-eval benchmark session (separate clone) ran mutation
   testing against b68c32a and found: **`wld_loader.cpp` has the most
@@ -127,11 +127,18 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   1/8) and strengthened it to **4/8**. Confirms the signal. Two dead-code
   findings fell out: `resolveTextureName` is unreachable and the
   per-mesh header bbox fields are read by nothing.
-- **OPEN — the other half:** kill-rate spot checks across the remaining
-  "well-covered but unproven" files. Now scoped as **T22**
-  (`refactor/T22_kill_rate_sweep.md`); the technique is cheap (mutate,
-  build one target, run, revert) and has since paid off twice, so this
-  is prioritization, not exploration.
+- **DONE — the other half (T22, merged `1559271`, 2026-07-31).** 43
+  mutations across six parsers with test binaries: **24 → 37 killed**
+  after assertion-strengthening (`spell_database` 2/7→7/7,
+  `string_database` 6/8→8/8, `eqe1_loader` 5/7→6/7, `pfs` 5/7→6/7,
+  `xmi_decoder` 3/7→5/7, `s3d_loader` 3/7→5/7). Confirms the intel's
+  thesis a third time: `ZoneLightLoadingTest` asserted
+  `EXPECT_GE(int, 0)` — a tautology that let a total zone-light-loading
+  break survive — and `S3DLoader`'s own texture map was inspected by no
+  test at all. Survivors representing unobservable behavior (a debug
+  counter, a discarded return value, metadata nothing reads) were
+  documented rather than papered over. **This item is closed; thanks for
+  the pointer, it was worth three units.**
 - Their coverage numbers also confirm the T01 gap map: renderer/
   simulation splits (irrlicht_renderer, simulation_worker,
   entity_renderer) at 0% — their benchmark would use coverage there
