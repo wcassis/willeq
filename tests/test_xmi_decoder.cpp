@@ -45,6 +45,90 @@ TEST_F(XmiDecoderTest, InvalidMagicReturnsEmpty) {
 }
 
 // =============================================================================
+// Synthetic byte-exact decode test (T22)
+//
+// The real-file tests above only check the MIDI header and that *some*
+// non-empty, valid-looking output was produced — they never pin the actual
+// decoded event bytes, so a mutation that corrupts the XMI variable-length
+// quantity decode (readXmiVarLen, used for both meta-event lengths and
+// note-off durations) can silently produce a differently-timed but still
+// "successfully decoded" MIDI stream. This builds a minimal, fully-known
+// synthetic XMI (one EVNT chunk: a note-on with a 2-byte-VLQ-encoded
+// duration of 200 ticks — producing a note-off at t=200 — followed by a
+// second note-on 50 ticks later, at t=50) and checks the exact track bytes.
+// Sorting by absoluteTime reorders these to t=0, 50, 200, so the note-off's
+// delta-time (200-50=150) depends on both readXmiVarLen (the duration) and
+// on writeMidiOutput's delta computation (evt.absoluteTime - lastTime) —
+// both are wrong under their respective mutants even though decode
+// "succeeds" and produces plausible-looking, non-empty output.
+// =============================================================================
+TEST_F(XmiDecoderTest, SyntheticNoteDurationVlqIsExact) {
+    std::vector<uint8_t> xmi;
+    // FORM header (contents scanned for EVNT chunks regardless of container
+    // structure past the initial FORM/XDIR|CAT check in parseHeader()).
+    xmi.insert(xmi.end(), {'F', 'O', 'R', 'M'});
+    xmi.insert(xmi.end(), {0, 0, 0, 0});  // FORM size (unused by parser)
+    xmi.insert(xmi.end(), {'X', 'D', 'I', 'R'});
+
+    // EVNT chunk: "EVNT" + big-endian size + payload.
+    std::vector<uint8_t> payload;
+    payload.push_back(0x00);        // delay 0 before note-on
+    payload.push_back(0x90);        // note-on, channel 0
+    payload.push_back(60);          // note
+    payload.push_back(100);         // velocity
+    // Duration = 200 ticks, XMI VLQ (7-bit groups, MSB-first): 0x81 0x48
+    payload.push_back(0x81);
+    payload.push_back(0x48);
+    payload.push_back(50);          // delay 50 before the second note-on
+    payload.push_back(0x90);        // note-on, channel 0
+    payload.push_back(62);          // note
+    payload.push_back(90);          // velocity
+    payload.push_back(0x00);        // duration = 0 -> no note-off emitted
+    // End of track meta event (consumed, not emitted as a real event —
+    // the decoder synthesizes its own EOT).
+    payload.push_back(0xFF);
+    payload.push_back(0x2F);
+    payload.push_back(0x00);        // metaLen = 0
+
+    xmi.insert(xmi.end(), {'E', 'V', 'N', 'T'});
+    uint32_t sizeBE =
+        ((static_cast<uint32_t>(payload.size()) & 0xFF) << 24) |
+        ((static_cast<uint32_t>(payload.size()) & 0xFF00) << 8) |
+        ((static_cast<uint32_t>(payload.size()) & 0xFF0000) >> 8) |
+        ((static_cast<uint32_t>(payload.size()) & 0xFF000000) >> 24);
+    xmi.push_back(static_cast<uint8_t>(sizeBE & 0xFF));
+    xmi.push_back(static_cast<uint8_t>((sizeBE >> 8) & 0xFF));
+    xmi.push_back(static_cast<uint8_t>((sizeBE >> 16) & 0xFF));
+    xmi.push_back(static_cast<uint8_t>((sizeBE >> 24) & 0xFF));
+    xmi.insert(xmi.end(), payload.begin(), payload.end());
+
+    auto midi = decoder_.decode(xmi);
+    ASSERT_FALSE(midi.empty()) << decoder_.getError();
+
+    // MThd (14 bytes) + "MTrk" + 4-byte length = 22-byte header before
+    // track data starts.
+    ASSERT_GE(midi.size(), 22u);
+    std::vector<uint8_t> track(midi.begin() + 22, midi.end());
+
+    // Events, sorted by absoluteTime: note-on@0, note-on2@50, note-off@200
+    // (note-off's absoluteTime = currentTime-at-note-on(0) + duration(200),
+    // NOT relative to the second note-on's delay).
+    //
+    // Expected track bytes:
+    //   00 90 3C 64          -- delta=0,   note-on  ch0, note=60, vel=100
+    //   32 90 3E 5A          -- delta=50,  note-on  ch0, note=62, vel=90
+    //   81 16 80 3C 00       -- delta=150 (200-50, VLQ 0x81 0x16), note-off note=60, vel=0
+    //   00 FF 2F 00          -- delta=0, synthesized End-Of-Track
+    std::vector<uint8_t> expected = {
+        0x00, 0x90, 0x3C, 0x64,
+        0x32, 0x90, 0x3E, 0x5A,
+        0x81, 0x16, 0x80, 0x3C, 0x00,
+        0x00, 0xFF, 0x2F, 0x00
+    };
+    EXPECT_EQ(track, expected);
+}
+
+// =============================================================================
 // XMI File Loading Tests (require EQ files)
 // =============================================================================
 

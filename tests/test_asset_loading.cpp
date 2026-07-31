@@ -424,8 +424,13 @@ TEST_F(ZoneLightLoadingTest, LoadZoneLights) {
     std::cout << "Total: " << totalLights << " lights across "
               << zonesWithLights << " zones" << std::endl;
 
-    // Not all zones have lights, so just verify we can load them
-    EXPECT_GE(zonesWithLights, 0);
+    // T22: EXPECT_GE(zonesWithLights, 0) is a tautology on an int -- it can
+    // never fail and was silently not testing anything (a mutation that
+    // breaks S3DLoader::loadLightsFromArchive() entirely survived it). At
+    // least one of these well-known EQ zones is known to have lights (e.g.
+    // freportw/qeynos2/commons/nektulos all ship lights.wld), so assert the
+    // loading path actually produced some.
+    EXPECT_GT(zonesWithLights, 0) << "no zone reported any lights loaded";
 }
 
 // Test light properties are valid
@@ -505,6 +510,13 @@ TEST_F(ZoneGeometryLoadingTest, LoadZoneGeometry) {
 
     EXPECT_GT(totalVertices, 0) << "No vertices in zone geometry";
     EXPECT_GT(totalTriangles, 0) << "No triangles in zone geometry";
+
+    // T22: zone->textures (populated by S3DLoader::loadTextures()) was
+    // never inspected by any test in this file -- the texture-loading
+    // tests above go straight through PfsArchive, bypassing S3DLoader's
+    // own texture map entirely. A mutation that breaks loadTextures()
+    // survived undetected as a result.
+    EXPECT_FALSE(zone->textures.empty()) << "S3DLoader loaded no zone textures";
 }
 
 // Test loading zone objects (placeables)

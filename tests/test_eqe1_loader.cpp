@@ -115,6 +115,47 @@ void testRawDataEntry() {
     PASS();
 }
 
+// T22: raw data entries only got a "non-null, non-zero-size" check
+// (testRawDataEntry above), which does not distinguish a correctly
+// mapped pointer from an off-by-N one into the same mmap'd file. Compare
+// the mapped raw-data bytes against an independent read of the file at
+// the entry's own index-recorded offset.
+void testRawDataBytesMatchFile() {
+    TEST(RawDataBytesMatchFile);
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(TEST_CHR_FILE), "open() failed");
+
+    auto rawNames = loader.getRawDataNames();
+    ASSERT_TRUE(!rawNames.empty(), "no raw data entries");
+
+    const uint8_t* data = nullptr;
+    uint32_t size = 0;
+    ASSERT_TRUE(loader.getRawData(rawNames[0], data, size), "getRawData failed");
+
+    std::ifstream in(TEST_CHR_FILE, std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(in.is_open(), "cannot re-open test file");
+    size_t fileSize = static_cast<size_t>(in.tellg());
+    in.seekg(0);
+    std::vector<char> fileData(fileSize);
+    in.read(fileData.data(), fileSize);
+
+    const auto* header = reinterpret_cast<const EQE1Header*>(fileData.data());
+    const auto* entries = reinterpret_cast<const EQE1IndexEntry*>(
+        fileData.data() + sizeof(EQE1Header));
+    const EQE1IndexEntry* found = nullptr;
+    for (uint16_t i = 0; i < header->numEntries; ++i) {
+        if (strncmp(entries[i].name, rawNames[0].c_str(), EQE1_NAME_SIZE) == 0) {
+            found = &entries[i];
+            break;
+        }
+    }
+    ASSERT_TRUE(found != nullptr, "raw entry not found in raw index");
+    ASSERT_TRUE(found->dataSize == size, "getRawData size != index dataSize");
+    ASSERT_TRUE(memcmp(data, fileData.data() + found->dataOffset, size) == 0,
+                "raw data bytes differ from file bytes at indexed offset");
+    PASS();
+}
+
 void testInvalidFile() {
     TEST(InvalidFile);
     EQE1Loader loader;
@@ -363,6 +404,7 @@ int main() {
     testLookupNonexistent();
     testAlphaCompanion();
     testRawDataEntry();
+    testRawDataBytesMatchFile();
     testInvalidFile();
     testMoveSemantics();
     testGetTextureNames();
