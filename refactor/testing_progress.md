@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T17 merged; T19 dispatched to t1).
+Last updated: 2026-07-31 (T19 merged — batch 2 complete).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T19 | hc_map + zone_lines parsing | DONE (merged `99d3886`) | Dispatched executor unit (t1). 41 tests: real fixtures (befallen/qeynos2 are **V2**; sky.map covers the real V1 branch), pinned load stats + FindBestZ/LOS values, synthetic malformed files. **Two crash bugs pinned, needs Will:** V2 `vert_count` heap over-read SIGSEGV; zone_lines `asFloat()` uncaught `Json::LogicError` (section below). Mutation spot-check 2/2. Orchestrator verified both bugs against source and re-ran the binaries. |
 | T17 | Daybreak state-machine tests | DONE (merged `f90873b`) | Dispatched executor unit (t1). 23 tests over the reliable-UDP core via injected `FakeUdpTransport`: lifecycle, reorder/dup delivery, fragmentation both ways, ack/retransmit (deterministic via timestamp backdating — no clock seam exists, none needed), CRC/compression/combined. **Three real handshake bugs pinned, needs Will** (section below) — headline: session connect codes and encode keys can only ever be 0 or 0xFFFFFFFF. Orchestrator re-verified all three claims against source. Mutation spot-check 2/2 caught. |
 | T18 | Zone entities + chat tests | DONE (merged `0439de6`) | First direct coverage of `eq_entities.cpp` (2445 lines) + `eq_chat.cpp`. Real capture: 2788 zone records replay to a 184-entity table, pinned exactly (incl. player spawn 261). Synthetic: Spawn_Struct bitfield decode (INVERSEXY, sign extension, 11-bit heading), batch semantics, delete/health handlers, bridge events, all 8 chat channel mappings, /reply tracking. **BUG pinned, needs Will:** exactly-150-byte ChannelMessage → uncaught `std::out_of_range` on the receive path (section below). Suite failures: ALSA quirk + pre-existing deferred RDP race (1-in-5 isolated repro, perf territory). Executed inline in t2. |
 | T16 | Spell-cast off-by-one fix | DONE (merged `3253126`) | Closes the T15 finding, go-ahead from Will. `processSpellCasts()` now converts the 0-based request to the dispatcher's 1-based contract (`+1`, matching the hotbar path). Gem 1 castable again; `/cast N` casts gem N. Both `BUG_` pins re-pointed (gem 0→`castSpell(1)`, gems 4/7→5/8). Executed inline. |
@@ -755,6 +756,27 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T19 findings — two parser crash bugs (needs Will)
+
+Both pinned by tests in `tests/test_hc_map.cpp` /
+`tests/test_zone_lines.cpp`; detail in `refactor/T19_map_zone_lines.md`
+Review.
+
+1. **HCMap V2 unchecked decompressed reads**
+   (`hc_map.cpp` V2 branch): every field of the decompressed payload is
+   read via `read_val<T>(char*&)` — memcpy + pointer advance with no
+   bounds check against the buffer end. An oversized `vert_count` (or
+   any count) in a corrupt/malicious `.map` file walks off the heap →
+   SIGSEGV (pinned with `ASSERT_DEATH`). Local-file input, so lower
+   severity than a network path, but map files travel with zone packs.
+   Fix shape: bounds-check `read_val` against `buffer.end()` (or
+   validate counts against `buffer_size` upfront).
+2. **zone_lines JSON type confusion** (`zone_lines.cpp`): `asFloat()`
+   called on untyped `Json::Value` fields with no `isNumeric()` guard;
+   a non-numeric field (e.g. a string where a coordinate belongs)
+   throws `Json::LogicError`, uncaught → process abort during zone-line
+   load. Fix shape: guard or try/catch per entry, skip-and-warn.
 
 ## T17 findings — three Daybreak handshake bugs (needs Will)
 
