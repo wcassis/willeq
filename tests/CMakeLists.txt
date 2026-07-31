@@ -149,6 +149,19 @@ ADD_EXECUTABLE(test_daybreak_connection_pcap
 TARGET_LINK_LIBRARIES(test_daybreak_connection_pcap GTest::gtest ${ZLIB_LIBRARIES} ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
 
+# T17: DaybreakConnection/DaybreakConnectionManager state-machine tests
+# driven through a FakeUdpTransport (tests/fake_udp_transport.h) — session
+# lifecycle, sequencing, fragmentation (both directions), ack/retransmit,
+# CRC, compression, combined packets. No real sockets, no wall-clock sleeps.
+ADD_EXECUTABLE(test_daybreak_state_machine
+    test_daybreak_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
+)
+TARGET_LINK_LIBRARIES(test_daybreak_state_machine GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_daybreak_state_machine)
+
 # Test Titanium opcodes are correctly hard-coded
 ADD_EXECUTABLE(test_titanium_opcodes
     test_titanium_opcodes.cpp
