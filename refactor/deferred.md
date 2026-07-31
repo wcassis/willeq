@@ -1255,13 +1255,26 @@ proper fix:
   (ETC1 leg, isolates P37 alone, Pi-representative); secondary RGBA
   leg = P37+P46 jointly (x86-representative); diffs entity-confined
   (tight silhouette bounding boxes); zomch0001 null by design.
-  ORCHESTRATOR OBSERVATION for the bless review: besides the rib-gap
-  cutout, AFTER limbs render visibly warmer/more saturated
-  (skelg0001 legs are masked → material switched EMT_SOLID →
-  alpha-test → different shader path; hue delta not explained in the
-  manifest). If Will flags it: root-cause the AlphaTest3D-vs-Solid3D
-  shading difference as a follow-up before treating the pair as
-  settled.
+  ~~ORCHESTRATOR OBSERVATION: AFTER limbs warmer~~ — that observation
+  WAS the bug. **P46 pairs REJECTED by Will (round 3, wrong textures
+  on body parts); ROOT-CAUSED + FIXED by P46b (2026-07-31, merged
+  `c40475d`)**: benchmark-only — P46 Part B ported only the
+  alpha-test half of entity_renderer's PAIRED shader promotion, so
+  masked buffers were shader-lit while unmasked siblings stayed
+  fixed-function (per-entity lighting mismatch that read as wrong
+  textures). Bisect matrix exonerated P37/P42 and Part A entirely
+  (Part-A revert = byte-identical; pre-P46 clean — caveat: the
+  instrument couldn't reach the path pre-P46, so production
+  exoneration rests on entity_renderer's own always-paired code, not
+  the matrix). Fix = applyEntityShaderMaterialPromotion pairing both
+  halves. **ROUND-4 EVIDENCE READY, AWAITING WILL**: lead pair
+  videos/p46b_bless/primary_etc1/crops/ske_{BEFORE,AFTER}_f26_torso_zoom.png
+  (+ zom). KNOWN DISCLOSED DELTA: BEFORE leg renders fixed-function
+  (pre-promotion instrument history) → pairs show the cutout PLUS a
+  uniform warm/bright shift; production always ran both sides
+  shader-lit, so players saw only the cutout. Judge the AFTER
+  standalone for correctness; the tone delta is the instrument, not
+  the game.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
