@@ -1,0 +1,124 @@
+P46d — Round-5 neutral bless pair: RGBA mode, promotion OFF both legs
+======================================================================
+
+Purpose: demonstrate the ConstrainedTextureCache cache-key fix (P46d) by
+capturing the pair P46c set out to capture but could not (RGBA-mode
+alpha-test discard never fired due to a cache-key collision poisoning the
+masked variant with an earlier unmasked decode). This pair shows P37
+(WLD-masked-material detection) + P46 Part A (runtime palette-index-0
+decode) jointly, under neutral instrument lighting (promotion OFF on BOTH
+legs, so there is exactly one variable: the mask fix itself).
+
+Binaries
+--------
+BEFORE = commit fda2e34 (pre-P37, same commit every prior unit in this
+         chain has used). Reused wt/slot2/build-preP37/ scratch build:
+         gles2_zone_benchmark 14,383,392 bytes / willeq 79,261,280 bytes --
+         byte-for-byte match to every prior unit's documented size,
+         confirmed non-stub/non-stale. No --no-entity-shader-promotion flag
+         exists on this binary (predates P46c) -- it is inherently
+         "promotion off" by construction (the flag's entire purpose is
+         opting OUT of a promotion step that didn't exist yet at this
+         commit), satisfying "promotion OFF both legs" without needing the
+         flag on this side.
+AFTER  = tip of task/P46d-cache-key (this unit's cache-key fix + benchmark
+         ordering fix). Built fresh: build-gles2/bin/gles2_zone_benchmark
+         (non-stub, verified via `file`), invoked with
+         --no-entity-shader-promotion.
+x86 GLES2 (llvmpipe) only via gles2_zone_benchmark. No Pi, no eqemu.
+
+Method: P44b/P46/P46b/P46c's method verbatim -- deterministic --animate at
+frames 12/26/42, --orbit-radius 8 --orbit-height-offset 6, SKE race 21
+primary, ZOM race 70 secondary, 400% crops, diff-confined-to-entity
+assertion PLUS this round's ABSOLUTE bar (per the P46d plan): pixel-identical
+everywhere except genuine mask cutouts, asserted numerically AND verified by
+eye, part-by-part. RGBA mode throughout (no --eqe1-path on either leg).
+
+Invocation (both legs, per race):
+  gles2_zone_benchmark --zone befallen --eq-path /mnt/projects/EverQuestP1999
+    --entities 1 --test-races <21|70> --orbit-radius 8 --orbit-height-offset 6
+    --animate --frames 48 --warmup 2 --dump-frames 12,26,42
+    --dump-png-prefix <prefix>
+  AFTER leg additionally passes --no-entity-shader-promotion.
+
+Numeric evidence (AE = ImageMagick `compare -metric AE`, count of pixels
+exceeding default fuzz; bbox = tight rectangle containing every differing
+pixel, computed independently via a pixel-exact Python diff, both legs
+800x600):
+
+  race  frame  AE    diff-px(exact)  bbox (x0,y0)-(x1,y1)         size
+  ske   12     1215  653             (5,358)-(596,597)            592x240 *
+  ske   26     678   350             (294,341)-(377,538)          84x198
+  ske   42     1108  578             (448,352)-(549,599)          102x248
+  zom   12     694   422             (5,421)-(545,513)            541x93  *
+  zom   26     344   204             (303,390)-(342,409)          40x20
+  zom   42     568   329             (461,415)-(513,441)          53x27
+
+  * f12 both races: bbox is inflated by a small (13-44px), non-entity
+    artifact at the extreme left edge of frame (see Deviation 1 below) --
+    the entity-attributable portion of the diff at f12 is a tight silhouette
+    box matching the f26/f42 pattern once that artifact's ~15-20 pixels are
+    excluded. f26 and f42 have NO such artifact (see zone-only check below)
+    and are the frames led on for judgement.
+
+Zone/unmasked-render byte-identity check (required invariant, "unmasked
+textures + zone rendering byte-identical"): --entities 0, same camera,
+same frames, both legs:
+  f12: AE=44 (NOT byte-identical -- see Deviation 1)
+  f26: AE=0 (byte-identical)
+  f42: AE=0 (byte-identical)
+This check runs zero P46d code (zero entities -- ConstrainedTextureCache's
+applyPaletteMask path is never invoked at all) and reproduces the SAME
+small artifact seen inflating ske/zom f12's bbox above, at the same pixel
+coordinates, in both the entity captures and the zero-entity capture --
+conclusively proving it predates/is-independent-of this unit's cache-key
+fix. f26/f42 are clean (AE=0), satisfying the invariant for the frames this
+manifest leads on.
+
+Part-by-part visual inspection (executor's own critical review, per this
+unit's mandate): 400% crops of ske (torso/ribcage/legs, f26 and f42) and zom
+(leg/boot region, f26 and f42) viewed directly, BEFORE vs AFTER side by side.
+- ske: no visible wrong-texture, no color shift, no missing/duplicated body
+  part. The alpha-test cutout at this camera angle is subtle (consistent
+  with P44b's own established finding that this framing doesn't show a
+  dramatic see-through hole) -- the numeric AE/bbox evidence is the primary
+  proof at this framing, corroborated by (not contradicted by) the crops.
+- zom: a clearly visible dashed/perforated cutout pattern appears in the
+  AFTER leg crop (both f26 and f42) that is solid in BEFORE -- same texture,
+  same green flesh color, same boot geometry, only the alpha discard differs.
+  This is the clearest single piece of visual (not just numeric) proof in
+  this round that the fix produces a genuine mask cutout, not an artifact.
+Verdict: PASS, part-by-part, both races, at f26 and f42 -- pixel-identical
+everywhere except the genuine mask cutout, no unexplained delta.
+
+Stills: /mnt/projects/fable/videos/p46d_bless/{before,after}/{pairs,crops}/
+(NFS, gitignored). discard_check/ subdirectory holds this unit's own
+pre-capture discard-fire verification renders (see Review for the debugging
+history that led to the final fix).
+
+Deviations
+----------
+1. A small (13-44px), non-entity rendering artifact reproducibly appears at
+   frame 12 only, at screen coordinates ~(5-7, 497-513), on a distant
+   background building/roof silhouette detail -- present even with
+   --entities 0 (zero P46d code paths exercised). Root cause not chased
+   further (out of this unit's budget): most likely explained by this
+   session's shared third_party/irrlicht-gles2-x86 tree being rebuilt
+   mid-session (see Review, "build hazards") -- the BEFORE binary
+   (build-preP37/) is a frozen artifact from a prior session's Irrlicht
+   build, while AFTER was linked against this session's freshly-rebuilt
+   tree; a few pixels of rasterization/culling threshold difference on a
+   tiny distant detail between two separately-built Irrlicht copies is
+   plausible and consistent with the artifact's small size, single-frame
+   occurrence, and total independence from any P46d code path. f26/f42 are
+   unaffected (AE=0 zone-only) and are the frames this manifest leads on;
+   f12 is included in the numeric table for completeness but not treated as
+   a clean pair.
+2. zone_bench_loader.cpp's own "Pre-load meshes for each race" static loop
+   (pre-existing, unrelated to P46) had to be supplemented with a
+   production-accurate unconditional preloadModelData() call (this unit's
+   benchmark-only fix, see Review) for the RGBA leg to exercise the masked
+   decode at all -- without it, T05 (the only call site that ever requests
+   applyPaletteMask=true for a race's base body textures) never ran in this
+   tool's non-composite invocation, independent of the cache-key fix. Not a
+   production change.

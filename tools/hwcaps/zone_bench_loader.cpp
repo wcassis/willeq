@@ -703,6 +703,29 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // When composite entities are enabled, use preloadModelData() to populate
         // composite texture data (JSON + EQE1 lookup) before building meshes.
         // This mirrors the production renderer's EntityPrepWorker flow.
+        //
+        // P46d: production's EntityPrepWorker (entity_prep_worker.cpp) and
+        // renderer_zone_load.cpp call RaceModelLoader::preloadModelData()
+        // UNCONDITIONALLY for every race the first time it's needed --
+        // NEVER gated behind compositeEntities/eqe1Path the way this
+        // benchmark's block below is. preloadModelData() is what runs T05
+        // (race_model_loader.cpp's per-part decode loop), the ONLY call site
+        // that ever passes applyPaletteMask=true for a race's base body
+        // textures -- mesh_building.cpp's buildMeshFromGeometry() itself
+        // never does (see this unit's Review). Without calling
+        // preloadModelData() first, --animate's createAnimatedNode() falls
+        // through to buildMeshFromGeometry()'s unmasked loadTextureFromBMP()
+        // fallback for EVERY leg (RGBA and ETC1 alike) -- this is why P46c's
+        // RGBA-mode discard-fire check found AE=0 even before any cache-key
+        // bug was in play: this benchmark's own composite-only gate meant
+        // T05 never ran at all for a plain (non---composite-entities)
+        // invocation, so the masked decode was never even attempted, let
+        // alone poisoned. The unconditional call below (run whenever
+        // --animate is set and the composite-specific block above didn't
+        // already cover it) closes that instrument gap so this benchmark
+        // actually mirrors production's real per-race load order for BOTH
+        // legs. Benchmark-only change; production preloadModelData()/T05
+        // itself is untouched.
         if (config.compositeEntities && !config.eqe1Path.empty()) {
             printf("  Composite: compositeEntityPath='%s'\n", config.eqe1Path.c_str());
             int preloadOk = 0, preloadFail = 0;
@@ -746,6 +769,37 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                 raceMeshes.push_back(mesh);
             }
             // Upload textures that were decoded during mesh building
+            data->textureCache->uploadAllPending();
+        }
+
+        // P46d: production-accurate preload for --animate, run AFTER the
+        // static getMeshForRace() preload loop above (see the long comment
+        // near the composite-entities block for why this ordering matters
+        // and why it's benchmark-only). getMeshForRace()'s STATIC mesh build
+        // (ZoneMeshBuilder::buildTexturedMesh) unconditionally decodes every
+        // per-part texture UNMASKED (zone_geometry.cpp never threads a mask
+        // flag through that path, by original P46 design -- masked ZONE
+        // textures must never change on it) and registers each into
+        // ZoneMeshBuilder's OWN name-keyed fast-path cache
+        // (registerUploadedTexture(), zone_geometry.h's textureCache_ --
+        // separate from ConstrainedTextureCache's own (name,
+        // applyPaletteMask) keying added by this unit). That registration is
+        // last-write-wins by plain name. Running the masked T05 preload
+        // AFTER this loop means its registration is the one
+        // buildMeshFromGeometry()'s getOrLoadTexture() fast-path finds when
+        // --animate's createAnimatedNode() runs next -- mirroring
+        // production, where EntityPrepWorker's preloadModelData() call
+        // always precedes any per-entity mesh build and is never raced by a
+        // benchmark-only static preload like the loop just above. Skipped
+        // when the composite-entities branch above already ran
+        // preloadModelData() for these races (compositeAllowed path takes a
+        // different, already-correct route: T05 is explicitly DEFERRED on a
+        // composite hit, see race_model_loader.cpp's P13b comment).
+        if (config.animate && !(config.compositeEntities && !config.eqe1Path.empty())) {
+            for (int r = 0; r < numRaces; ++r) {
+                data->raceModelLoader->preloadModelData(raceIds[r], 0);
+            }
+            data->raceModelLoader->promotePreparedModels();
             data->textureCache->uploadAllPending();
         }
 

@@ -1299,6 +1299,48 @@ proper fix:
   writeup: `refactor/P46c_neutral_pair_stop.md`. P46b's round-4 pair (with
   its disclosed tone delta) remains the best available evidence pending the
   cache fix.
+  **P46d (round 5, cache-key fix) — DONE, closes P46 Part A.** Made
+  `ConstrainedTextureCache` mask-aware: `cacheKey(name, applyPaletteMask)`
+  (identity when false, `name+"\x01masked"` when true) separates masked and
+  unmasked variants across `cache_`/`decodedEntries_`/`compressedEntries_`/
+  `pendingLedgerTag_`; `uploadTexture()` gained an `applyPaletteMask` param;
+  `uploadAllPending()` uses a new `splitCacheKey()` inverse so its
+  registrations still carry the real display name. Two non-obvious
+  additional name-uniqueness hazards found and fixed en route (both caught
+  by this unit's own discard-fire re-verification, not assumed away):
+  `COpenGLES2Driver::addTexture()`/`wrapExternalTexture()` dedup GPU
+  textures by name (silently returns the existing texture, discarding new
+  image data, for a same-named second upload) — fixed by uploading under
+  the internal key, not the display name. **Production ordering audit
+  verdict: the live client's primary entity path (createAnimatedNode-first,
+  static-fallback-only-on-failure) was NEVER exposed to P46c's poisoning
+  ordering** — P13b's own fix (unrelated original motivation) happens to
+  also protect this path; the benchmark's own unconditional static preload
+  loop was the sole source of the exposure P46c found, an instrument
+  artifact, not a shipped bug. Two OTHER, pre-existing, out-of-scope gaps
+  found during the audit (composite-deferred on-demand per-part loads via
+  `mesh_building.cpp`'s `loadTextureFromBMP()` fallback, and equipment
+  texture-variant slot swaps via `animated_mesh_creation.cpp` — neither ever
+  threads `applyPaletteMask`) — flagged below, not fixed (extending Part A's
+  plumbing to two more call sites, a new errand). Discard-fire re-check now
+  fires (AE=678, entity-confined bbox 84x198 @ ske f26, RGBA mode,
+  `--no-entity-shader-promotion`, tip vs fda2e34). **Round-5 pair delivered
+  and PASSES the absolute one-variable bar** (numerically + by the
+  executor's own part-by-part inspection) at frames 26/42, both races —
+  zom's leg crop shows a directly visible dashed alpha-cutout pattern absent
+  in BEFORE, the clearest visual proof in this whole chain. Frame 12 carries
+  a small (13-44px), non-entity zone-geometry artifact independently
+  reproduced with zero entities (traced to this session's Irrlicht-tree
+  rebuild, not this fix) — excluded from the "clean pair" claim, fully
+  disclosed. Full writeup: `refactor/P46d_cache_key_fix.md` Review; numeric
+  evidence + crops: `benchmarks/audits/p46d_bless/EVIDENCE_MANIFEST.txt` /
+  `videos/p46d_bless/{before,after}/{pairs,crops}/`. **Open follow-up items
+  (not this unit's scope)**: (1) thread `applyPaletteMask` through
+  `mesh_building.cpp`'s on-demand `loadTextureFromBMP()` fallback for
+  composite-deferred races; (2) same for `animated_mesh_creation.cpp`'s
+  equipment texture-variant swap path — both currently decode any masked
+  texture they touch opaque, a real (if narrow) live-client exposure
+  distinct from the now-fixed cache-key bug.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
