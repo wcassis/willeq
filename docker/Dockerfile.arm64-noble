@@ -174,6 +174,7 @@ COPY docker/irrlicht-drm/COGLES2Shaders.h /tmp/irrlicht-drm/COGLES2Shaders.h
 COPY docker/irrlicht-drm/COGLES2Shaders.cpp /tmp/irrlicht-drm/COGLES2Shaders.cpp
 COPY docker/irrlicht-drm/COGLES2MaterialRenderer.h /tmp/irrlicht-drm/COGLES2MaterialRenderer.h
 COPY docker/irrlicht-drm/COGLES2MaterialRenderer.cpp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp
+COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
 COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
 RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         wget -q https://downloads.sourceforge.net/irrlicht/irrlicht-1.8.5.zip && \
@@ -191,6 +192,7 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cp /tmp/irrlicht-drm/COGLES2Shaders.cpp irrlicht-1.8.5/source/Irrlicht/COGLES2Shaders.cpp && \
         cp /tmp/irrlicht-drm/COGLES2MaterialRenderer.h irrlicht-1.8.5/source/Irrlicht/COGLES2MaterialRenderer.h && \
         cp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp irrlicht-1.8.5/source/Irrlicht/COGLES2MaterialRenderer.cpp && \
+        cp /tmp/irrlicht-drm/drm_mode_select.h irrlicht-1.8.5/source/Irrlicht/drm_mode_select.h && \
         python3 /tmp/irrlicht-drm-patch.py irrlicht-1.8.5 && \
         if [ "$ENABLE_GLES2" = "ON" ]; then \
             sed -i 's|^#define _IRR_COMPILE_WITH_OPENGL_|//#define _IRR_COMPILE_WITH_OPENGL_|' irrlicht-1.8.5/include/IrrCompileConfig.h; \

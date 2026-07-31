@@ -31,15 +31,24 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
     // driver-side glBindTexture/glTexParameteri call counts for the frame,
     // 0/0 unless --gl-counters was passed (see gl_call_counters.h). Same
     // append-only convention as every prior trailing-column addition.
+    // P49 (refactor/P49_drm_fail_loud.md, P43 follow-up): actual_width/
+    // actual_height are the newest trailing columns -- the ACHIEVED render
+    // resolution (post device-creation getScreenSize()), constant across
+    // every row of a given run. Always present (0/0 if the caller never
+    // called setActualResolution(), same backward-compat convention).
+    // Exists so a CSV can never again be silently mislabeled with a
+    // requested-but-not-actually-achieved resolution (P43 root cause: DRM
+    // mode fallback overwrote Width/Height with the connector's preferred
+    // mode without any of P38/P40/P41's benchmark runs recording it).
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
                "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
                "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,"
                "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible,"
-               "tex_binds,tex_param_calls\n");
+               "tex_binds,tex_param_calls,actual_width,actual_height\n");
 
     for (const auto& m : frames_) {
         fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d,"
-                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u\n",
+                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u,%d,%d\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
@@ -50,7 +59,8 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
                 m.lightRadius, m.regionsDemotedRadius,
                 m.collectCullMs, m.sortMs, m.submissionMs, m.otherMs, m.swapMs,
                 m.entitiesVisible,
-                m.texBinds, m.texParamCalls);
+                m.texBinds, m.texParamCalls,
+                actualWidth_, actualHeight_);
     }
 
     fclose(f);

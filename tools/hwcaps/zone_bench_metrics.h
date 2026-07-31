@@ -78,6 +78,21 @@ class MetricsCollector {
 public:
     void reserve(int frameCount) { frames_.reserve(frameCount); }
 
+    // P49 (refactor/P49_drm_fail_loud.md, P43 follow-up): the ACHIEVED
+    // render resolution (irr::video::IVideoDriver::getScreenSize() *after*
+    // device creation), as opposed to whatever --res requested -- on DRM/
+    // ARM, a requested resolution with no exact matching connector mode
+    // silently falls back to the connector's preferred mode (P43 root
+    // cause). Call once, right after device creation, before any frame is
+    // recorded. Written into every CSV row as trailing columns so no
+    // dataset can ever be silently mislabeled with the requested-but-not-
+    // achieved resolution again, regardless of whether the caller also
+    // inspected the refusal/--allow-mode-fallback logic in main().
+    void setActualResolution(int width, int height) {
+        actualWidth_ = width;
+        actualHeight_ = height;
+    }
+
     void beginFrame(int frameNum, float posX, float posY, float posZ,
                     float heading, float pitch) {
         current_ = {};
@@ -198,6 +213,12 @@ private:
     TimePoint frameStart_, drawStart_, drawEnd_, gpuEnd_, animStart_, animEnd_;
     std::vector<FrameMetrics> frames_;
     bool dumpPerFrame_ = false;
+    // P49: actual achieved resolution, 0/0 if setActualResolution() was
+    // never called (existing callers/tests unaffected -- csv columns are
+    // simply 0/0, same append-only backward-compat convention as every
+    // other trailing-column addition in this file).
+    int actualWidth_ = 0;
+    int actualHeight_ = 0;
 };
 
 } // namespace ZoneBench

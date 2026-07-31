@@ -112,6 +112,8 @@ enum LinuxKey {
 #include "IEventReceiver.h"
 #include "os.h"
 #include "CTimer.h"
+#include "drm_mode_select.h"
+#include <vector>
 
 // Signal handler to restore VT keyboard mode on abnormal exit.
 // Without this, SIGINT/SIGTERM/SIGSEGV leaves the keyboard stuck in K_OFF mode
@@ -331,45 +333,54 @@ bool CIrrDeviceFB::initDRM()
         os::Printer::log(modeInfo, ELL_INFORMATION);
     }
 
-    // Try to find a mode matching the requested resolution
-    drmModeModeInfo* selectedMode = nullptr;
+    // Try to find a mode matching the requested resolution. Decision logic
+    // lives in the dependency-free eqt_drm::selectDRMMode() (P49, see
+    // drm_mode_select.h) so it can be unit tested off-device; this is just
+    // the drmModeModeInfo <-> DRMModeCandidate adaptation.
     u32 requestedW = CreationParams.WindowSize.Width;
     u32 requestedH = CreationParams.WindowSize.Height;
 
+    std::vector<eqt_drm::DRMModeCandidate> candidates;
+    candidates.reserve(connector->count_modes);
+    for (int i = 0; i < connector->count_modes; i++) {
+        eqt_drm::DRMModeCandidate c;
+        c.width = connector->modes[i].hdisplay;
+        c.height = connector->modes[i].vdisplay;
+        c.refresh = connector->modes[i].vrefresh;
+        c.preferred = (connector->modes[i].type & DRM_MODE_TYPE_PREFERRED) != 0;
+        candidates.push_back(c);
+    }
+
+    eqt_drm::DRMModeSelection selection = eqt_drm::selectDRMMode(candidates, requestedW, requestedH);
+    // count_modes > 0 was already verified when picking `connector` above,
+    // so selection.index is always valid here.
+    drmModeModeInfo* selectedMode = &connector->modes[selection.index];
+
     if (requestedW > 0 && requestedH > 0) {
-        // Exact match with highest refresh rate
-        for (int i = 0; i < connector->count_modes; i++) {
-            if (connector->modes[i].hdisplay == requestedW &&
-                connector->modes[i].vdisplay == requestedH) {
-                if (!selectedMode || connector->modes[i].vrefresh > selectedMode->vrefresh)
-                    selectedMode = &connector->modes[i];
-            }
-        }
-        if (selectedMode) {
+        if (selection.exactMatch) {
             char msg[128];
             snprintf(msg, sizeof(msg), "DRM: Found matching mode %ux%u@%uHz for requested %ux%u",
                      selectedMode->hdisplay, selectedMode->vdisplay, selectedMode->vrefresh,
                      requestedW, requestedH);
             os::Printer::log(msg, ELL_INFORMATION);
         } else {
-            char msg[128];
-            snprintf(msg, sizeof(msg), "DRM: No mode matching requested %ux%u, using preferred",
-                     requestedW, requestedH);
-            os::Printer::log(msg, ELL_WARNING);
+            // P49 (was ELL_WARNING pre-P49 -- the P43 root cause was every
+            // historical Pi run at a non-native resolution silently
+            // rendering at the connector's preferred mode instead, with
+            // nobody reading the buried warning). Loud on purpose: this is
+            // the one and only place the substitution is decided.
+            char msg[192];
+            snprintf(msg, sizeof(msg),
+                     "DRM: MODE FALLBACK -- no mode matching requested %ux%u; "
+                     "using %ux%u@%uHz instead (requested resolution NOT honored)",
+                     requestedW, requestedH,
+                     selectedMode->hdisplay, selectedMode->vdisplay, selectedMode->vrefresh);
+            os::Printer::log(msg, ELL_ERROR);
+            modeFallbackOccurred_ = true;
+            fallbackRequestedWidth_ = requestedW;
+            fallbackRequestedHeight_ = requestedH;
         }
     }
-
-    // Fall back to preferred mode, then first mode
-    if (!selectedMode) {
-        for (int i = 0; i < connector->count_modes; i++) {
-            if (connector->modes[i].type & DRM_MODE_TYPE_PREFERRED) {
-                selectedMode = &connector->modes[i];
-                break;
-            }
-        }
-    }
-    if (!selectedMode)
-        selectedMode = &connector->modes[0];
 
     mode_ = *selectedMode;
     Width = mode_.hdisplay;
@@ -1138,6 +1149,20 @@ EKEY_CODE CIrrDeviceFB::linuxKeyToIrrlicht(int linuxKey) const
 bool CIrrDeviceFB::run()
 {
     os::Timer::tick();
+
+    // P49: repeat the mode-fallback ELL_ERROR exactly once, on the first
+    // post-init run() call, so it isn't only visible in device-creation-time
+    // log spew (initDRM() already logged it once, at fallback time).
+    if (modeFallbackOccurred_ && !modeFallbackPostInitLogged_) {
+        modeFallbackPostInitLogged_ = true;
+        char msg[192];
+        snprintf(msg, sizeof(msg),
+                 "DRM: MODE FALLBACK (post-init) -- requested %ux%u, actually running at "
+                 "%ux%u@%uHz -- requested resolution was NOT honored",
+                 fallbackRequestedWidth_, fallbackRequestedHeight_,
+                 mode_.hdisplay, mode_.vdisplay, mode_.vrefresh);
+        os::Printer::log(msg, ELL_ERROR);
+    }
 
     pollEvdev();
 

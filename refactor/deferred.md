@@ -1423,12 +1423,35 @@ proper fix:
   (800x600@75 confirmed; check the mode list before any res sweep).**
   Shipped 800x600 unaffected (exact mode match) → P43 correctly
   STOPPED, no code change.
-- **NEW follow-up (small unit, needs Will's go — it's a real behavior
-  change)**: make the DRM mode fallback FAIL LOUD (error out, or at
-  minimum a WARNING-level log + benchmark CSV column with the ACTUAL
-  mode) instead of silently substituting. Until then the benchmark
-  methodology trap remains armed for anyone requesting a non-native
-  resolution.
+- **Follow-up landed (P49, task/P49-drm-fail-loud, x86-only, awaiting
+  merge)**: `docker/irrlicht-drm/CIrrDeviceFB.cpp`'s mode-fallback log is
+  now ELL_ERROR (was ELL_WARNING) stating requested-vs-actual mode,
+  repeated once more on the first post-init `run()` call so it isn't only
+  visible in device-creation spew. `gles2_zone_benchmark` now REFUSES to
+  run when the achieved resolution != `--res` unless `--allow-mode-
+  fallback` is passed, and always writes the ACTUAL width/height into two
+  new trailing CSV columns (`actual_width`,`actual_height`) regardless of
+  the flag, so a dataset can never again be silently mislabeled. Decision
+  logic extracted to a pure, dependency-free helper
+  (`docker/irrlicht-drm/drm_mode_select.h`, `eqt_drm::selectDRMMode()`)
+  and unit-tested on x86 (`tests/test_drm_mode_select.cpp`, 7 cases
+  including the exact P43 400x300-on-Pi scenario) — x86 has no DRM path
+  at all, so this is the only way this logic could be verified without a
+  Pi; the real `CIrrDeviceFB.cpp` was build-verified only (ARM cross-
+  build clean).
+  - **RIDE-ALONG ITEM for the next Pi-owning unit (1 invocation, ~30s,
+    budget-cheap)**: on real Pi/DRM hardware, run
+    `gles2_zone_benchmark --drm --res 400 300 <otherwise-normal-flags>`
+    (no `--allow-mode-fallback`) and confirm (a) the process exits
+    non-zero / refuses to run, (b) stderr shows the requested-vs-actual
+    ERROR line naming `2560x1440` as the substituted mode, (c) the DRM
+    device's own ELL_ERROR mode-fallback line appears (both the
+    initDRM()-time one and the post-init run()-time repeat). Then confirm
+    the shipped `--res 800 600` invocation runs normally with NO fallback
+    line at all (exact mode match, per P43's confirmed mode list). This
+    is the only behavioral check P49 could not perform itself (x86 has no
+    DRM/KMS path) — do NOT run this yourself if you are not the
+    Pi-owning unit for that cycle.
 
 ## P41 landed (2026-07-30, merged `edcd72a`): lighting lever characterized, report-only
 
