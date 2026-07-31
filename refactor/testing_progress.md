@@ -4,12 +4,13 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-30 (T16).
+Last updated: 2026-07-31 (T18; T17 in flight in t1, T19 planned).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T18 | Zone entities + chat tests | DONE (merged `0439de6`) | First direct coverage of `eq_entities.cpp` (2445 lines) + `eq_chat.cpp`. Real capture: 2788 zone records replay to a 184-entity table, pinned exactly (incl. player spawn 261). Synthetic: Spawn_Struct bitfield decode (INVERSEXY, sign extension, 11-bit heading), batch semantics, delete/health handlers, bridge events, all 8 chat channel mappings, /reply tracking. **BUG pinned, needs Will:** exactly-150-byte ChannelMessage → uncaught `std::out_of_range` on the receive path (section below). Suite failures: ALSA quirk + pre-existing deferred RDP race (1-in-5 isolated repro, perf territory). Executed inline in t2. |
 | T16 | Spell-cast off-by-one fix | DONE (merged `3253126`) | Closes the T15 finding, go-ahead from Will. `processSpellCasts()` now converts the 0-based request to the dispatcher's 1-based contract (`+1`, matching the hotbar path). Gem 1 castable again; `/cast N` casts gem N. Both `BUG_` pins re-pointed (gem 0→`castSpell(1)`, gems 4/7→5/8). Executed inline. |
 | T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG pinned, not fixed (needs Will):** spell-cast gem off-by-one — see section below. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
 | T14 | Character-select list storage | DONE (merged `4414a92`) | Closes the T06/T09 open question, go-ahead from Will. Occupied slots stored (`CharacterSelectEntry`: slot/name/level/class/race/zone) behind `GetCharacterSelectList()`, rebuilt per delivery; first-match index semantics preserved but the loop now parses all ten slots instead of returning at the match. **Finding:** eqemu fills empty Titanium slots with literal name `<none>` (other fields zero) — hidden until now by the early return; filtered ('<' is not legal in names). Real-capture list pinned exactly (3 entries); synthetic decode, sentinel/empty skip, parse-past-match, redelivery-rebuild tests. Executed inline. |
@@ -753,6 +754,25 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T18 finding — ChannelMessage exact-size crash (needs Will)
+
+`ZoneProcessChannelMessage` (`eq_chat.cpp:90`) guards `p.Length() < 150`
+then reads the message with `GetCString(150)`. A packet of **exactly
+150 bytes** passes the guard, and the post-T08 bounds-checked
+`GetCString` throws `std::out_of_range` — on the zone network receive
+path, where nothing catches, so the client terminates.
+
+Reachability: real servers always append a message (min real payload is
+151 bytes), so this is malformed/hostile input only — but it is the
+same crash class T05/T07 closed on the login path, and the zone stream
+is the least-trusted input surface. Fix is a one-character guard change
+(`< 151`), or a bounds-checked message read.
+
+Pinned as `BUG_ChannelMessage_ExactMinimumSizeThrowsOutOfRange`
+(`tests/test_zone_chat.cpp`); re-point at no-throw + empty-message when
+the fix lands. Found by the T08 exact-size-allocation discipline — the
+same probe with heap slack would have passed silently.
 
 ## T15 finding — spell-cast gem off-by-one — FIXED in T16 (merged `3253126`)
 
