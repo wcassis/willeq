@@ -646,6 +646,30 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_login_world_seam)
 
+# T18: entity-domain zone-stream tests (eq_entities.cpp) -- real-capture
+# full-stream replay + synthetic Spawn_Struct decode and malformed-packet
+# guards. Same replay-seam idiom as test_zone_connection_flow.
+ADD_EXECUTABLE(test_zone_entities
+    test_zone_entities.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_entities GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_entities PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_entities)
+
+# T18: chat-domain zone-stream tests (eq_chat.cpp) -- ChannelMessage channel
+# mapping, /reply tracking, size guards, and real-capture chat replay,
+# observed through GameStateBridge events.
+ADD_EXECUTABLE(test_zone_chat
+    test_zone_chat.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_chat GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_chat PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_chat)
+
 # T06: login/world flow coverage (real-capture replay, synthetic sequencing,
 # and robustness cases) -- the thing the T05 seam above was built for. Same
 # replay-seam idiom -- no network, no graphics, no live connection -- so safe
