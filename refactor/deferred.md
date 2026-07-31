@@ -1542,3 +1542,28 @@ each of these four query methods (mirroring `getOrLoad()`/
 needing the masked variant must pass the pre-mangled key themselves.
 Not fixed by P50 (outside its two-gap scope; found only while writing
 evidence, not requested).
+
+## P48 landed (2026-07-31, merged `bd0758e`): sheet-alpha recovery + a KPI-regression escalation
+
+- **P37 regress-response option 1 EXECUTED**: masked races composite
+  again via sheet alpha companions (27/86 sheets regenerated +
+  deployed, backup EverQuest_ETC1_backup_20260731_p48). Pi
+  real-roster p95 57.650 → 39.781ms, draws 348.3 → 111.8 — 97.4%
+  recovery to the pre-P37 level. **AWAITING WILL: masked-composite
+  bless** (new visual territory) —
+  benchmarks/contact_sheets/p48_sheet_alpha/index.html. Known safe
+  residuals: DEN default sheet resolves an unmasked variant; CAZ
+  variants 1-4 not regenerated (both stay on the P37 exclusion
+  fallback).
+- **ESCALATION — canonical-replay KPI REGRESSED on fable tip,
+  PREDATES P48**: KPI-guard spot 34.3-34.6ms p95 (blessed band
+  32.24-32.5, line 33.3), confirmed on repeat AND reproduced with a
+  pre-P48 binary (P48's isolation invocation). Regression window:
+  a805e01 (P45's measurement) → 9a61ed3 (P48 branch base) — contains
+  P46 (decode), P46b/c (benchmark-only), P46d (cache keying +
+  driver addTexture distinct-GPU-texture change — prime suspect:
+  more texture objects/binds on the Pi), P47 (viewer, unlikely),
+  testing-session merges. NEEDS a Pi bisect root-cause unit (P51
+  candidate) — the 30fps KPI stack is over the line at tip until
+  attributed. Methodology in
+  benchmarks/audits/p48_sheet_alpha/EVIDENCE_MANIFEST.txt.
