@@ -80,4 +80,135 @@ D. Annotate P46's Review + manifest: evidence superseded (rejected
 
 ## Review
 
-(executor fills in)
+**Root cause: benchmark-only shader-promotion asymmetry in P46 Part B, not a
+texture-identity bug. Fixed; bless pairs regenerated and pass the
+executor's own part-by-part visual inspection.**
+
+### Bisect matrix (before any code reading)
+
+Rendered ske+zom, both legs (ETC1/RGBA), frames 12/26/42, at fda2e34,
+5420886 (P37+P42, pre-P46), tip-minus-Part-A, tip-minus-Part-B, tip. AE
+against the fda2e34 control:
+
+| leg | 5420886 | tip-minus-PartA | tip-minus-PartB | tip (rejected) |
+|---|---|---|---|---|
+| ske etc1/rgba f26 | 0 | 3875 | 0 | 3875 |
+| zom etc1/rgba f26 | 0 | 1937 | 0 | 1937 |
+
+**5420886 is clean — no HARD STOP.** P37/P42-era code is exonerated (with
+one caveat, see manifest: the benchmark couldn't reach the relevant code
+path at all before P46 Part B, so this is not dispositive for production,
+just for this instrument — flagged, doesn't change the verdict).
+
+**Reverting Part B clears the regression entirely; reverting Part A changes
+NOTHING** — tip-minus-PartA is byte-identical (md5-matching) to full tip in
+BOTH ETC1 and RGBA modes. This rules out hypotheses 1-3 (race_model_loader.cpp's
+loop conversion, ConstrainedTextureCache key collision, palette-0 misfire)
+outright — none of those are Part B code, and the symptom doesn't depend on
+which texture/alpha value is used. Root cause is entirely in
+`tools/hwcaps/zone_bench_loader.cpp` (Part B, benchmark-only).
+
+### Root cause at file:line
+
+`tools/hwcaps/zone_bench_loader.cpp`, `applyEntityAlphaCompanionBinding()`
+(P46 commit d19e325, original lines 56-92). Production's
+`EntityRenderer::createEntity()` (`src/client/graphics/entity_renderer.cpp`
+lines 629-648, and 2 other call sites) promotes ALL of an entity's material
+buffers in one paired step: `EMT_SOLID` buffers get the custom per-pixel-lit
+shader (`shaderMaterialSolid_`), `EMT_TRANSPARENT_ALPHA_CHANNEL_REF` buffers
+get the alpha-test shader variant — both halves always fire together, so
+every buffer on an entity ends up on the SAME lighting model.
+
+P46 Part B ported only the alpha-test half. Masked buffers (skeleton
+forearms/shins, zombie chest/legs — P37's exact ground-truth masked list)
+got promoted to the custom per-pixel-lit shader (real player light/sun/fog);
+sibling unmasked buffers on the SAME entity stayed on Irrlicht's built-in
+fixed-function `EMT_SOLID` renderer. Every masked body part rendered through
+a visibly different lighting model than its neighbors — independent of
+alpha value, which is exactly what "Part A revert changes nothing" proves.
+This is the causal mechanism behind "orange/saturated forearms/shins" and
+"glowing amber chest": not wrong textures, a shader-consistency gap from an
+incomplete production mirror, confined to this benchmark tool.
+
+### Fix
+
+Restructured `applyEntityAlphaCompanionBinding()` →
+`applyEntityShaderMaterialPromotion()` to iterate all buffers and apply the
+same paired promotion entity_renderer.cpp does (new `shaderMaterialSolid`
+parameter = `ZoneShaderManager::getActiveSolid()`, already used for zone
+geometry elsewhere in this file, now also wired to entities; `mat.Lighting =
+false` set on every promoted buffer, mirroring production). Benchmark-only;
+zero production source touched.
+
+### Proof
+
+1. Texture-identity mechanisms (Part A, race_model_loader.cpp,
+   ConstrainedTextureCache) untouched by this fix — bisect matrix already
+   exonerated them.
+2. Visual, part-by-part (executor's own critical inspection, per this unit's
+   mandate that diff-confinement alone is insufficient): 400% crops of both
+   races, both legs, viewed directly — skull/ribcage/forearms/shins
+   (skeleton) and head/chest/legs/boots (zombie) all render with
+   internally-consistent lighting after the fix; no part looks out of place
+   relative to its neighbors. Confirmed against a no-entity zone-geometry
+   crop showing the same warm/golden color grading is befallen's own
+   established ambient lighting (unaffected by this fix), not an artifact.
+3. Rib-gap cutout: same visible inter-rib detail as BEFORE at this camera
+   framing (P44b's own finding that this angle doesn't show clean
+   see-through holes still applies; alpha-test engagement is demonstrated by
+   the numeric AE evidence per P46's established standard, not this angle).
+4. Unmasked races (Human) — **necessarily** no longer byte-identical to
+   pre-P46 (AE=9184 @ f26): the fix's entire point is uniform promotion
+   across every buffer, masked or not, matching production. A 400% crop
+   confirms perfectly uniform lighting across Human's whole body in both
+   states — this is a widened, correct gating claim, not a regression.
+   Documented as a required deviation from the plan's original invariant.
+
+### Retake (Part C)
+
+Same P44b method/frames/races/legs. Stills:
+`/mnt/projects/fable/videos/p46b_bless/{primary_etc1,secondary_rgba}/{pairs,crops,diffs}/`
+(NFS, gitignored). Manifest: `benchmarks/audits/p46b_bless/EVIDENCE_MANIFEST.txt`
+(committed). AE is larger than P46's original rejected numbers (expected —
+the render now correctly changes the whole entity's lighting relative to
+fda2e34's never-shader-lit baseline, not just masked parts); diff bounding
+box stays a tight rectangle over the entity silhouette (107x242 ske,
+84x257 zom @ f26) — entity-confined, no STOP.
+
+**Executor's own visual verdict: PASS, part-by-part, both races, both
+legs.** No orange/saturated forearm-vs-torso mismatch, no anomalous chest
+glow, no unexplained cutaway. Every body part looks like it belongs to the
+same lit entity.
+
+### Verification bar
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` | PASS, clean |
+| `ctest --test-dir build --output-on-failure` | 1529/1530 (AudioManagerTest.PreloadCommonSounds, documented ALSA quirk) |
+| `cmake --build build-gles2` (H01 x86 GLES2 tree) | PASS, clean (see deviation 3 — patched Irrlicht was transiently damaged mid-session by an unrelated tooling mishap and restored before this run) |
+| `bash scripts/ci/visual_gate.sh` | PASS (qeynos2/gfaydark/befallen), goldens untouched |
+| `bash scripts/build-arm-noble.sh` | PASS, clean, non-stub |
+| `bash scripts/refactor/check_file_sizes.sh 5420886` | `constrained_texture_cache.cpp` WARN (pre-existing, unchanged — this unit touched zero production source); `tools/hwcaps/zone_bench_loader.cpp` FAIL (3135 lines, pre-existing FAIL since before this unit, +37 net lines from the fix) — flagged, not silently absorbed |
+
+### Deviations
+
+1. Unmasked-race byte-identity no longer holds — necessary consequence of
+   the fix (partial promotion was the bug), not scope creep. See Proof #4.
+2. Bisect matrix's 5420886 HARD-STOP check has a documented instrument
+   limitation (couldn't reach the code path pre-Part-B at all) — doesn't
+   change the verdict, flagged rather than treated as a clean bill for
+   pre-P37 production code.
+3. Mid-session, an interrupted `scripts/build-gles2-x86.sh` invocation
+   (killed while unblocking an unrelated stuck background build) left the
+   shared, gitignored `third_party/irrlicht-gles2-x86/` tree transiently
+   non-functional. Caught immediately by the next compile's errors,
+   restored via `--irrlicht-only` before any further verification;
+   already-linked binaries (build-preP37/, the 3 bisect scratch worktrees,
+   build/'s binaries at the time of the fix) were unaffected. All
+   verification steps re-run clean against the restored tree. No
+   repo-tracked files touched.
+
+Commits: fix (`tools/hwcaps/zone_bench_loader.cpp`), evidence (this Review +
+`benchmarks/audits/p46b_bless/EVIDENCE_MANIFEST.txt`), annotations (P46's
+Review + manifest pointer) — see git log on `task/P46b-wrong-texture`.
