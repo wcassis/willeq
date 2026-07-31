@@ -94,4 +94,65 @@ public:
     void applyEvent(const eqt::state::GameEvent&) override {}
 };
 
+// T23: spawn-injection helpers promoted from test_zone_entities.cpp (T18)
+// for reuse by test_combat_manager.cpp. Deliberately NOT deduplicated
+// against test_zone_entities.cpp's own (anonymous-namespace, internal-
+// linkage) copies -- those are untouched per this unit's territory rules.
+// Same Spawn_Struct offsets/semantics as T18: base=2 for a single NewSpawn
+// packet, INVERSEXY means entity.x <- server_y, entity.y <- server_x.
+
+inline EverQuest MakeEq() {
+    return EverQuest("127.0.0.1", 0, "test", "test", "test", "Testchar");
+}
+
+struct PosFields {
+    uint32_t field1;  // deltaHeading | x<<10
+    uint32_t field2;  // y | animation<<19
+    uint32_t field3;  // z | deltaY<<19
+    uint32_t field4;  // deltaX | heading<<13
+};
+
+inline PosFields EncodePos(int32_t server_x, int32_t server_y, int32_t z, uint32_t raw_heading,
+                            uint32_t animation = 0) {
+    PosFields f{};
+    f.field1 = (static_cast<uint32_t>(server_x) & 0x7FFFF) << 10;
+    f.field2 = (static_cast<uint32_t>(server_y) & 0x7FFFF) |
+               ((animation & 0x3FF) << 19);
+    f.field3 = static_cast<uint32_t>(z) & 0x7FFFF;
+    f.field4 = (raw_heading & 0x7FF) << 13;
+    return f;
+}
+
+// Writes one 385-byte Titanium Spawn_Struct at packet offset `base`
+// (base = 2 for a single NewSpawn packet).
+inline void WriteSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawn_id,
+                              const std::string& name, uint8_t level, uint32_t race,
+                              uint8_t char_class, uint8_t gender, uint8_t npc_type,
+                              uint8_t hp_percent, const PosFields& pos) {
+    p.PutCString(base + 7, name.c_str());
+    p.PutUInt8(base + 83, npc_type);
+    p.PutUInt8(base + 86, hp_percent);
+    p.PutUInt32(base + 94, pos.field1);
+    p.PutUInt32(base + 98, pos.field2);
+    p.PutUInt32(base + 102, pos.field3);
+    p.PutUInt32(base + 106, pos.field4);
+    p.PutUInt8(base + 151, level);
+    p.PutUInt32(base + 284, race);
+    p.PutUInt8(base + 331, char_class);
+    p.PutUInt8(base + 334, gender);
+    p.PutUInt32(base + 340, spawn_id);
+}
+
+// Convenience: a single NewSpawn payload with an explicit world position.
+// entity.x <- server_y, entity.y <- server_x, entity.z <- z (INVERSEXY).
+inline std::vector<uint8_t> NewSpawnPayloadAt(uint32_t spawn_id, const std::string& name,
+                                               int32_t server_x, int32_t server_y, int32_t z,
+                                               uint8_t level = 5, uint8_t npc_type = 1,
+                                               uint8_t char_class = 1, uint8_t hp_percent = 100) {
+    return BuildPayload(387, [&](EQ::Net::DynamicPacket& p) {
+        WriteSpawnStruct(p, 2, spawn_id, name, level, 54, char_class, 0, npc_type, hp_percent,
+                          EncodePos(server_x, server_y, z, 0));
+    });
+}
+
 }  // namespace zonetest

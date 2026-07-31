@@ -280,6 +280,22 @@ ADD_EXECUTABLE(test_combat
 TARGET_LINK_LIBRARIES(test_combat GTest::gtest_main ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_combat)
 
+# T23: CombatManager behavior coverage (targeting, auto-attack/fire,
+# cycling, consider, state machine, config round-trips, the loot-path
+# blocking-sleep BUG_ pin). Reaches the live CombatManager through a bare
+# EverQuest via GetCombatManager() -- Option A, no seam/interface
+# extraction (refactor/T23_spell_combat_seam_scoping.md). Same replay-seam
+# idiom as test_zone_entities.cpp (T18); uses willeq_core for the same
+# reason.
+ADD_EXECUTABLE(test_combat_manager
+    test_combat_manager.cpp
+)
+TARGET_LINK_LIBRARIES(test_combat_manager GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_combat_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_combat_manager)
+
 # Test raycast mesh and map loading
 ADD_EXECUTABLE(test_raycast
     test_raycast.cpp
