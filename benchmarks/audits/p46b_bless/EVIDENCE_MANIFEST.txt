@@ -1,0 +1,257 @@
+P46b — Wrong-texture regression in P46's bless pairs: root cause, fix, retake
+====================================================================
+
+Purpose: Will REJECTED P46's bless pair (round 3): "BEFORE looks correct,
+AFTER has the wrong texture for some skeleton body parts and some zombie
+body parts" (orange/saturated skeleton forearms+shins, glowing-amber zombie
+chest, partly-cut-away zombie skirt). This unit bisects the regression to a
+specific commit/file/line, root-causes the mechanism, fixes it, and retakes
+the bless pairs from the fixed tip. P46's own evidence is superseded by this
+manifest (see refactor/P46_masked_alpha_decode.md Review annotation).
+
+Binaries
+--------
+BEFORE = commit fda2e34 (pre-P37, same commit every prior bless unit in this
+         chain has used). Reused wt/slot2/build-preP37/ scratch build
+         (gles2_zone_benchmark 14,383,392 bytes, willeq 79,261,280 bytes —
+         byte-for-byte match to P44b/P46's own documented sizes, confirmed
+         non-stub/non-stale).
+AFTER  = tip of branch task/P46b-wrong-texture (this unit's fix, on top of
+         P46's e55ba17/d19e325). Built fresh in this slot:
+         build/bin/gles2_zone_benchmark (14,392,704 bytes), build/bin/willeq
+         (79,278,688 bytes). Non-stub.
+x86 GLES2 (llvmpipe) only via gles2_zone_benchmark. No Pi, no eqemu.
+
+Method: P44b/P46's method verbatim -- `gles2_zone_benchmark --zone befallen
+--eq-path /mnt/projects/EverQuestP1999 [--eqe1-path /mnt/projects/EverQuest_ETC1]
+--entities 1 --test-races <id> --orbit-radius 8 --orbit-height-offset 6
+--animate --frames 48 --warmup 2 --dump-frames 12,26,42 --dump-png-prefix <p>`.
+SKE = race 21, ZOM = race 70. Pose-identical by construction (frame-indexed
+animation clock).
+
+Part A: Bisect matrix (before any code reading)
+-------------------------------------------------
+Rendered the same ske+zom framings, both legs (ETC1 with --eqe1-path, RGBA
+without), at 5 points: fda2e34 (pre-P37 control), 5420886 (P37+P42, the
+commit immediately before P46 -- HARD STOP checkpoint), tip with P46 Part A
+(e55ba17) reverted, tip with P46 Part B (d19e325) reverted, tip (both parts
+active, the rejected state). AE measured against the fda2e34 control at
+frames 12/26/42:
+
+| leg | 5420886 | tip-minus-PartA | tip-minus-PartB | tip (rejected) |
+|---|---|---|---|---|
+| ske etc1 f26 | 0 | 3875 | 0 | 3875 |
+| ske rgba f26 | 0 | 3875 | 0 | 3875 |
+| zom etc1 f26 | 0 | 1937 | 0 | 1937 |
+| zom rgba f26 | 0 | 1937 | 0 | 1937 |
+(f12/f42 show the same pattern; full 60-image capture retained in this
+session's scratchpad, not committed -- only the deliverable stills below are.)
+
+Findings:
+1. **5420886 (pre-P46) is clean** (AE=0, matching the pre-existing f12=44px
+   off-entity zone-edge noise floor P44b already documented) -- the HARD
+   STOP condition ("wrongness already exists at 5420886") does NOT trigger.
+   P37/P42-era code is exonerated by this instrument. Caveat: at 5420886
+   gles2_zone_benchmark does not yet link entity_renderer.cpp-equivalent
+   logic at all (P44b's own finding), so this benchmark could not have
+   exercised the relevant code path pre-P46 regardless of whether a latent
+   issue existed -- this is a limitation of the instrument, not a
+   dispositive clean bill for the underlying production code path. Flagged,
+   not silently smoothed over; does not change the STOP verdict since the
+   plan's literal condition is keyed to this benchmark's own output.
+2. **Reverting Part B (d19e325) fully clears the regression** (AE returns to
+   the 5420886/fda2e34 baseline). **Reverting Part A (e55ba17) changes
+   NOTHING** -- tip-minus-PartA is BYTE-IDENTICAL (AE=0, matching md5) to
+   full tip, in BOTH ETC1 and RGBA modes. This pins the root cause
+   entirely to Part B (`tools/hwcaps/zone_bench_loader.cpp`, benchmark-only)
+   and rules out hypotheses 1-3 (race_model_loader.cpp's loop conversion,
+   ConstrainedTextureCache key collision, palette-0 misfire) outright: none
+   of those are Part B code, and the symptom is unchanged whether Part A's
+   decode fix is present or not -- meaning the visual delta was NEVER about
+   which texture or which alpha value was used. Part B's benchmark-only
+   scope also means this is very unlikely to be a production bug (production's
+   entity_renderer.cpp already existed, unchanged, pre-P46).
+
+Part B: Root cause
+-------------------
+File: `tools/hwcaps/zone_bench_loader.cpp`, `applyEntityAlphaCompanionBinding()`
+(P46 commit d19e325, originally lines 56-92).
+
+Production's `EntityRenderer` (`src/client/graphics/entity_renderer.cpp`,
+e.g. the loop at lines 629-648) promotes an entity's material buffers in a
+single PAIRED step at each of its 3 material-assignment call sites:
+```
+if (mat.MaterialType == EMT_SOLID) {
+    mat.MaterialType = shaderMaterialSolid_;       // custom per-pixel-lit shader
+} else if (mat.MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
+    applyAlphaTestMaterialType(mat);               // custom alpha-test shader
+}
+mat.Lighting = false;  // shader handles lighting
+```
+Both halves fire together, so EVERY buffer on an entity -- masked or not --
+ends up on the SAME custom GLSL lighting shader family (real per-pixel
+player light, sun, fog, tint -- see `zone_shader.cpp`'s
+`FRAGMENT_SHADER_SOLID_SRC`/`FRAGMENT_SHADER_ALPHA_SRC_BASE`/
+`FRAGMENT_SHADER_ALPHA_RGBA_SRC`, which compute IDENTICAL lighting math,
+differing only in the alpha-discard test).
+
+P46 Part B ported ONLY the alpha-test half of this pair (mirroring
+`applyAlphaTestMaterialType()`) into the benchmark's `--animate` entity path.
+It never implemented the sibling `EMT_SOLID -> shaderMaterialSolid_`
+promotion. `mesh_building.cpp` assigns every entity buffer either
+`EMT_SOLID` (unmasked) or `EMT_TRANSPARENT_ALPHA_CHANNEL_REF` (masked, P37).
+With only the alpha half ported: masked buffers (skeleton forearms/shins =
+skeft0001/skeft0002/skelg0001; zombie chest/legs = zomch0001/zomlg0001 --
+exactly P37's ground-truth masked list) got promoted to the custom
+per-pixel-lit shader, while sibling unmasked buffers on the SAME entity mesh
+stayed on Irrlicht's built-in fixed-function `EMT_SOLID` renderer (flat
+vertex-color modulate, no player light/sun/fog contribution). Every masked
+body part rendered through a visibly different lighting model than its
+unmasked neighbors -- independent of any real per-pixel alpha value, which
+is exactly what the bisect matrix's "Part A revert changes nothing" finding
+proves. This produced precisely the reported symptom: masked parts render
+warm/saturated/"glowing" against their unmasked siblings' flatter, cooler
+fixed-function look. Not a texture-identity bug (wrong bitmap, wrong part
+mapping) at all -- a shader-consistency bug from an incomplete production
+mirror, confined to this benchmark tool (production's entity_renderer.cpp
+has paired these two promotions since before P37 existed).
+
+Fix (this unit, commit -- see git log)
+-----------------------------------------
+`tools/hwcaps/zone_bench_loader.cpp`: renamed/restructured
+`applyEntityAlphaCompanionBinding()` to `applyEntityShaderMaterialPromotion()`,
+now iterating ALL of an entity's mesh buffers and applying the SAME paired
+promotion entity_renderer.cpp does: `EMT_SOLID` buffers get
+`shaderMaterialSolid` (a new parameter, `ZoneShaderManager::getActiveSolid()`
+-- already used for zone geometry at this file's line 323, just never wired
+to entities), masked buffers get the existing alpha-test promotion
+(unchanged logic), and `mat.Lighting = false` is set on every promoted
+buffer, mirroring entity_renderer.cpp exactly. Call site (~line 787) updated
+to pass `getActiveSolid()` alongside the existing alpha-test material types.
+Benchmark-only change; no production source touched (production's
+entity_renderer.cpp already did this correctly).
+
+Proof
+-----
+1. **Per-part texture-name assignment unaffected**: this bug was never about
+   texture identity/mapping (hypotheses 1/2/3 all exonerated by the bisect
+   matrix's "Part A revert changes nothing" result -- Part A/race_model_loader.cpp/
+   ConstrainedTextureCache are untouched by this fix). No texture-name log
+   needed; the mechanism is a material/shader promotion gap, proven by the
+   paired-vs-unpaired code diff itself plus the visual before/after below.
+2. **Visual, part-by-part** (see stills below): BEFORE the fix (rejected P46
+   state), skeleton forearms/shins and zombie chest render distinctly
+   brighter/warmer than the torso/skull/thighs on the SAME entity --
+   confirmed by side-by-side crop inspection. AFTER the fix, every body part
+   on a given entity renders through the SAME lighting model -- uniformly
+   warm/golden-toned (befallen's own established color grading; a
+   zone-geometry-only crop with no entities, unaffected by this fix, shows
+   the identical warm stone/pillar tones -- this is befallen's real ambient
+   lighting, not an artifact). No patchwork, no part-specific saturation
+   spike, no "wrong texture" appearance on either race in either leg.
+3. **Rib-gap cutout**: skeleton ribcage renders with the same visible
+   inter-rib gap detail as BEFORE at this camera framing (P44b's own finding
+   that this specific angle doesn't show clean see-through-to-background
+   holes still applies -- the numeric AE evidence, not this angle's pixels,
+   is what demonstrates the alpha-test discard is real and engaged, per
+   P46's own established evidence standard).
+4. **Unmasked races (Human) -- REQUIRED DEVIATION, explained**: P46's plan
+   required unmasked races to stay byte-identical to pre-P46. Under this
+   fix, Human (race 1, no masked textures) now ALSO differs from fda2e34
+   (AE=9184 @ f26) -- because the fix's whole point is applying shader
+   promotion UNIFORMLY across every entity buffer, masked or not, matching
+   what production has always done for solid buffers. This is not a
+   texture-identity regression: a 400% crop of Human before/after (this
+   session's scratchpad, not committed -- reproducible via the command
+   above with --test-races 1) shows perfectly uniform, consistent lighting
+   across face/arms/torso/legs in both states -- just a different (correct,
+   shader-lit, production-matching) lighting model in AFTER, applied evenly.
+   This widens P46's original narrow "masked-only" gating claim into the
+   necessarily-correct "every entity, uniformly" gating claim; flagged
+   explicitly rather than silently narrowed back to pass the original
+   (now-inapplicable) invariant.
+
+Retake (Part C) -- bless pairs from the fixed tip
+----------------------------------------------------
+Same P44b method, same frames (12/26/42), same races/legs as P46's original
+delivery. Stills: `/mnt/projects/fable/videos/p46b_bless/` (NFS, gitignored):
+  `primary_etc1/{pairs,crops,diffs}/` -- ETC1 leg (isolates P37 + this fix)
+  `secondary_rgba/{pairs,crops,diffs}/` -- RGBA leg (P37 + P46 Part A + this fix)
+
+AE vs fda2e34 (both legs numerically identical per-race, as in P46's
+original evidence -- both delivery mechanisms alpha-test the same mask
+shape at the same pose):
+
+| pair | frame | AE (px/480000) | diff bbox (fuzz 10% trim, f26) | verdict |
+|---|---|---|---|---|
+| ske | f12 | 13048 (2.72%) | -- | real effect, entity-confined |
+| ske | f26 | 6900 (1.44%) | 107x242 | real effect, entity-confined |
+| ske | f42 | 11662 (2.43%) | -- | real effect, entity-confined |
+| zom | f12 | 16225/16233 (3.4%) | -- | real effect, entity-confined |
+| zom | f26 | 9011/9013 (1.88%) | 84x257 | real effect, entity-confined |
+| zom | f42 | 14572/14579 (3.0%) | -- | real effect, entity-confined |
+
+AE is larger than P46's original (rejected) numbers -- expected: the fixed
+render now correctly changes the WHOLE entity's lighting model relative to
+fda2e34's never-shader-lit baseline (see Human note above), not just the
+masked parts. The diff bounding box remains a tight rectangle over the
+entity silhouette (confirmed at f26 for both races), not scattered zone-wide
+-- no STOP triggered.
+
+md5(primary_etc1/pairs/ske_AFTER__f26.png)   = cc6ff6a31ce60526509e1c20be44f0a4
+md5(secondary_rgba/pairs/ske_AFTER__f26.png) = 1ed287b0ec6d6ac82e06c1a95092c426
+md5(primary_etc1/pairs/ske_BEFORE__f26.png)  = aa83b1718571f2a8edf3d8e19560dfd6
+  (matches P46's own documented BEFORE md5 exactly -- same fda2e34 build/invocation)
+md5(secondary_rgba/pairs/ske_BEFORE__f26.png)= 731cd28d5191cebb2973e532c5687723
+  (matches P46's and P44c's own documented BEFORE md5 exactly)
+
+**Which pairs are genuinely human-judgeable**: `primary_etc1/crops/{ske,zom}_{BEFORE,AFTER}_f26_torso_zoom.png`
+(production-representative for the Orange Pi tier) is the lead pair --
+verified by eye, part-by-part: skull, ribcage, forearms, shins (skeleton);
+head, chest, legs, boots (zombie) all render with internally-consistent
+lighting in AFTER, no part looks out of place relative to its neighbors.
+`secondary_rgba/crops/...` (x86-live-client-representative) corroborates
+with the same visual coherence. Executor's own critical inspection (per this
+unit's mandate that diff-confinement alone is insufficient, since P46's
+rejected pairs passed that check while being visually wrong): CONFIRMED
+correct part-by-part on both races, both legs -- no orange/saturated
+forearm-vs-torso mismatch, no anomalous chest glow relative to the rest of
+the body, no unexplained cutaway.
+
+Verification bar (full, this unit)
+-----------------------------------
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` | PASS, clean |
+| `ctest --test-dir build --output-on-failure` | 1529/1530 (sole exception: `AudioManagerTest.PreloadCommonSounds`, documented ALSA host quirk) |
+| `cmake --build build-gles2` (H01 x86 GLES2 tree; patched Irrlicht rebuilt via `--irrlicht-only` after an unrelated tooling mishap mid-session damaged the shared `third_party/irrlicht-gles2-x86/` tree -- restored deterministically from the same patch script, no functional change) | PASS, clean |
+| `bash scripts/ci/visual_gate.sh` | PASS (qeynos2/gfaydark/befallen), goldens untouched, no re-bless |
+| `bash scripts/build-arm-noble.sh` | PASS, clean, all binaries non-stub (willeq 353,958,472 bytes, gles2_zone_benchmark 53,450,756 bytes) |
+| `bash scripts/refactor/check_file_sizes.sh 5420886` | `constrained_texture_cache.cpp` WARN (1885 lines) -- pre-existing, unchanged by this unit (this unit touched zero production source); `tools/hwcaps/zone_bench_loader.cpp` FAIL (3135 lines) -- **pre-existing FAIL**, already 3098 at this unit's start (P46's own already-flagged pre-existing FAIL), this unit's fix (more thorough doc comments + the restructured function) added +37 net lines. Not a regression this unit introduced the FAIL state; flagged, not silently absorbed, same as P46's own precedent. |
+
+Deviations
+----------
+1. Unmasked-race byte-identity (P46's original gating requirement) legitimately
+   no longer holds -- see "Proof" item 4 above. Necessary consequence of the
+   fix, not scope creep: a partial (masked-only) promotion was THE BUG.
+2. The bisect matrix's HARD STOP check has a documented instrument
+   limitation (5420886 predates the benchmark's entity_renderer-equivalent
+   linkage entirely) -- see "Part A" finding 1. Did not change the verdict
+   (the plan's literal condition did not trigger) but is flagged rather than
+   silently treated as a clean bill for pre-P37 production code.
+3. Mid-session, an interrupted `scripts/build-gles2-x86.sh` invocation (killed
+   partway through its `rm -rf`/re-copy of the pristine Irrlicht source, used
+   to unblock a stuck background build) left the shared
+   `third_party/irrlicht-gles2-x86/` tree in a half-wiped, non-functional
+   state (missing `EDT_OGLES2` and the GLES2 driver sources). Caught
+   immediately by the next build's compile errors; restored via
+   `scripts/build-gles2-x86.sh --irrlicht-only` (deterministic, same patch
+   script every prior unit in this codebase has relied on) before any
+   further verification. `build-preP37/`, the main `build/` tree's already-
+   linked binaries, and the 3 bisect-matrix scratch worktrees were built
+   BEFORE the incident and are unaffected (static linking; only the shared
+   header/source tree was transiently damaged, not already-produced
+   binaries). All post-incident verification steps (ctest, visual gate, ARM
+   build, file-size check) were re-run against the restored tree and pass.
+   No repo-tracked files were touched (`third_party/irrlicht-gles2-x86/` is
+   gitignored, generated).

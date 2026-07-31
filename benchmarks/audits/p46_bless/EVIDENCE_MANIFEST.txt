@@ -1,6 +1,19 @@
 P46 — Masked-entity alpha: bless evidence manifest
 ====================================================================
 
+SUPERSEDED (P46b): Will rejected this manifest's bless pairs round 3
+("BEFORE looks correct, AFTER has the wrong texture for some skeleton body
+parts and some zombie body parts"). Root cause: zone_bench_loader.cpp's
+Part B (applyEntityAlphaCompanionBinding(), d19e325 below) ported only the
+alpha-test half of production's paired solid/alpha-test shader promotion,
+so masked and unmasked buffers on the same entity rendered via different
+lighting models -- a benchmark-only bug, NOT a texture-identity bug; Part A
+(decodeBMP, e55ba17) is unaffected and remains correct in production. See
+`refactor/P46b_wrong_texture_root_cause.md` (Review) and
+`benchmarks/audits/p46b_bless/EVIDENCE_MANIFEST.txt` for the fix and the
+regenerated, Will-facing bless pairs. Everything below is this unit's
+original (now-superseded) delivery, kept for history.
+
 Purpose: P44b/P44c root-caused the "double null" from the P37 bless-evidence
 retake to TWO real gaps, not a P37 correctness problem:
   (A) ConstrainedTextureCache::decodeBMP() hardcoded alpha=255 for every
