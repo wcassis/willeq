@@ -1275,6 +1275,30 @@ proper fix:
   shader-lit, so players saw only the cutout. Judge the AFTER
   standalone for correctness; the tone delta is the instrument, not
   the game.
+  **P46c (round 5, lighting-neutral retake) — STOPPED, root cause found,
+  no new pair delivered.** Added benchmark-only
+  `--no-entity-shader-promotion` (verified working: promotion-off AE=0 vs
+  promotion-on AE=6900, matching P46b's own promoted-leg number exactly).
+  Pre-capture discard check (mandated by the plan) found the RGBA leg's
+  alpha-test discard **never fires** at all with promotion off — AE=0 at
+  every frame/radius tried. Root-caused (temp diagnostic, reverted): a
+  cache-key collision in `ConstrainedTextureCache` (name-keyed only;
+  `applyPaletteMask` is only consulted on first decode of a name) combined
+  with `zone_bench_loader.cpp`'s static `getMeshForRace()` preload loop
+  running (and decoding entity textures unmasked via
+  `ZoneMeshBuilder::loadTextureFromBMP`, `zone_geometry.cpp:249`, no
+  `applyPaletteMask` arg) *before* the masked-aware T05/animated decode for
+  the same race — the unmasked decode wins the cache slot permanently.
+  Retroactively explains P46b's own bisect-matrix finding ("reverting Part
+  A changes nothing"): the RGBA leg's committed AE numbers (both P46's and
+  P46b's) were never showing an alpha cutout, only the lighting-model
+  delta — the ETC1 leg's numbers are unaffected (separate companion-texture
+  alpha path) and remain real. Production source untouched (fix is a
+  separate errand, cache-key collision + an open question re: whether
+  production's own entity load path has the same ordering hazard). Full
+  writeup: `refactor/P46c_neutral_pair_stop.md`. P46b's round-4 pair (with
+  its disclosed tone delta) remains the best available evidence pending the
+  cache fix.
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
