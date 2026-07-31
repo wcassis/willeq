@@ -142,6 +142,17 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
 
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
+        // P50: compute isMaskedMaterial BEFORE the texture-load block (was
+        // previously computed only after, at MaterialType-assignment time —
+        // see below) so it can be threaded into the getOrLoadTexture()/
+        // loadTextureFromBMP() fallback calls this function uses to resolve
+        // textures on-demand. Closes P46d Part B gap #1: composite-deferred
+        // per-part textures (P13b's deferredPerPartTextureNames_) resolved
+        // here via this fallback previously always decoded opaque, since
+        // this same flag was computed too late to reach the load call.
+        bool isMaskedMaterial = (texIdx < geometry->textureMasked().size()) &&
+                                 geometry->textureMasked()[texIdx];
+
         // Load texture for this buffer
         irr::video::ITexture* texture = nullptr;
         if (texIdx < geometry->textureNames().size() && meshBuilder_) {
@@ -235,17 +246,17 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     return getArmorTexture(name);
                 };
 
-                texture = meshBuilder_->getOrLoadTexture(finalTexName);
+                texture = meshBuilder_->getOrLoadTexture(finalTexName, isMaskedMaterial);
                 if (!texture) {
                     auto texInfo = findTextureData(finalTexName);
                     if (texInfo && !texInfo->data.empty()) {
-                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data);
+                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial);
                     } else if (overrideApplied) {
-                        texture = meshBuilder_->getOrLoadTexture(lowerTexName);
+                        texture = meshBuilder_->getOrLoadTexture(lowerTexName, isMaskedMaterial);
                         if (!texture) {
                             texInfo = findTextureData(lowerTexName);
                             if (texInfo && !texInfo->data.empty()) {
-                                texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data);
+                                texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data, isMaskedMaterial);
                             }
                         }
                     }
@@ -266,8 +277,8 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
             // variant at material-assignment time. Masked-but-decode-opaque
             // textures (citywlivy class) still render solid: the shader's
             // alpha-test simply never discards when the source alpha is 255.
-            bool isMaskedMaterial = (texIdx < geometry->textureMasked().size()) &&
-                                     geometry->textureMasked()[texIdx];
+            // P50: isMaskedMaterial now computed once, above, before the
+            // texture-load block — reused here rather than recomputed.
             buffer->Material.MaterialType = isMaskedMaterial
                 ? irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF
                 : irr::video::EMT_SOLID;
