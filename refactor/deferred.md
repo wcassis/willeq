@@ -1549,8 +1549,12 @@ evidence, not requested).
   again via sheet alpha companions (27/86 sheets regenerated +
   deployed, backup EverQuest_ETC1_backup_20260731_p48). Pi
   real-roster p95 57.650 → 39.781ms, draws 348.3 → 111.8 — 97.4%
-  recovery to the pre-P37 level. **AWAITING WILL: masked-composite
-  bless** (new visual territory) —
+  recovery to the pre-P37 level. ~~AWAITING WILL: masked-composite
+  bless~~ — **BLESSED by Will 2026-07-31 ("p48 contact sheet looks
+  good"). The P37→P48 masked-entity arc is fully CLOSED**: correct
+  masked rendering (P37+P46+P46d+P50), verified by instrument (P47),
+  perf recovered (P48), blessed twice (P47 sheet, P48 composite
+  sheet) —
   benchmarks/contact_sheets/p48_sheet_alpha/index.html. Known safe
   residuals: DEN default sheet resolves an unmasked variant; CAZ
   variants 1-4 not regenerated (both stay on the P37 exclusion
