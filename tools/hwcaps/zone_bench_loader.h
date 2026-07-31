@@ -60,6 +60,15 @@ struct BenchConfig {
     // hardcoded 16 (production's default too); a large value approximates
     // "uncapped" for the raised-budget variants.
     int occluderBudget = -1;
+    // P46c: benchmark-only opt-out from applyEntityShaderMaterialPromotion()
+    // (P46b). When true, entity mesh buffers are left on whichever material
+    // mesh_building.cpp/Irrlicht assigned by default (EMT_SOLID /
+    // EMT_TRANSPARENT_ALPHA_CHANNEL_REF) instead of being promoted to the
+    // custom per-pixel-lit shader family. Default false (promotion on,
+    // unchanged behavior) -- exists solely to produce a lighting-neutral
+    // bless pair isolating the P37/P46A alpha cutout. See
+    // zone_bench_loader.cpp's applyEntityShaderMaterialPromotion() call site.
+    bool noEntityShaderPromotion = false;
 };
 
 // Per-region data stored for rendering
