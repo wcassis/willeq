@@ -4,17 +4,20 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T19 merged — batch 2 complete).
+Last updated: 2026-07-31 (T21 merged — fix batch complete, no open
+needs-Will items).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
-| T19 | hc_map + zone_lines parsing | DONE (merged `99d3886`) | Dispatched executor unit (t1). 41 tests: real fixtures (befallen/qeynos2 are **V2**; sky.map covers the real V1 branch), pinned load stats + FindBestZ/LOS values, synthetic malformed files. **Two crash bugs pinned, needs Will:** V2 `vert_count` heap over-read SIGSEGV; zone_lines `asFloat()` uncaught `Json::LogicError` (section below). Mutation spot-check 2/2. Orchestrator verified both bugs against source and re-ran the binaries. |
-| T17 | Daybreak state-machine tests | DONE (merged `f90873b`) | Dispatched executor unit (t1). 23 tests over the reliable-UDP core via injected `FakeUdpTransport`: lifecycle, reorder/dup delivery, fragmentation both ways, ack/retransmit (deterministic via timestamp backdating — no clock seam exists, none needed), CRC/compression/combined. **Three real handshake bugs pinned, needs Will** (section below) — headline: session connect codes and encode keys can only ever be 0 or 0xFFFFFFFF. Orchestrator re-verified all three claims against source. Mutation spot-check 2/2 caught. |
-| T18 | Zone entities + chat tests | DONE (merged `0439de6`) | First direct coverage of `eq_entities.cpp` (2445 lines) + `eq_chat.cpp`. Real capture: 2788 zone records replay to a 184-entity table, pinned exactly (incl. player spawn 261). Synthetic: Spawn_Struct bitfield decode (INVERSEXY, sign extension, 11-bit heading), batch semantics, delete/health handlers, bridge events, all 8 chat channel mappings, /reply tracking. **BUG pinned, needs Will:** exactly-150-byte ChannelMessage → uncaught `std::out_of_range` on the receive path (section below). Suite failures: ALSA quirk + pre-existing deferred RDP race (1-in-5 isolated repro, perf territory). Executed inline in t2. |
+| T21 | Daybreak handshake fixes | DONE (merged `def17c2`) | Closes all three T17 findings, go-ahead from Will. `Random::UInt32()` added; both ctors use it; `OP_SessionResponse` unswaps connect_code/encode_key/max_packet_size. Landed as ONE commit — bug 1 masked bug 2. Discovery probe over the pcap established real values first: **`max_packet_size` was live-wrong** (network-order 512 read as 131072). Regression oracles clean: pcap decode 4/4, golden replay 2/2 with golden unchanged. |
+| T20 | Parser crash guards | DONE (merged `cb0f5e4`) | Closes the T18 + T19 findings, go-ahead from Will. ChannelMessage guard rejects exactly-150; HCMap V2 reads bounds-checked via `MapParseError`; zone_lines JSON accessors type-guarded with a `Json::Exception` backstop. All three `BUG_` pins re-pointed + new boundary cases (151-byte message still publishes; real `.map` fixtures load with identical pinned stats). Executed inline. |
+| T19 | hc_map + zone_lines parsing | DONE (merged `99d3886`) | Dispatched executor unit (t1). 41 tests: real fixtures (befallen/qeynos2 are **V2**; sky.map covers the real V1 branch), pinned load stats + FindBestZ/LOS values, synthetic malformed files. **Two crash bugs found — FIXED in T20** (`cb0f5e4`): V2 `vert_count` heap over-read SIGSEGV; zone_lines `asFloat()` uncaught `Json::LogicError`. Mutation spot-check 2/2. Orchestrator verified both bugs against source and re-ran the binaries. |
+| T17 | Daybreak state-machine tests | DONE (merged `f90873b`) | Dispatched executor unit (t1). 23 tests over the reliable-UDP core via injected `FakeUdpTransport`: lifecycle, reorder/dup delivery, fragmentation both ways, ack/retransmit (deterministic via timestamp backdating — no clock seam exists, none needed), CRC/compression/combined. **Three real handshake bugs found — FIXED in T21** (`def17c2`) — headline: session connect codes and encode keys could only ever be 0 or 0xFFFFFFFF. Orchestrator re-verified all three claims against source. Mutation spot-check 2/2 caught. |
+| T18 | Zone entities + chat tests | DONE (merged `0439de6`) | First direct coverage of `eq_entities.cpp` (2445 lines) + `eq_chat.cpp`. Real capture: 2788 zone records replay to a 184-entity table, pinned exactly (incl. player spawn 261). Synthetic: Spawn_Struct bitfield decode (INVERSEXY, sign extension, 11-bit heading), batch semantics, delete/health handlers, bridge events, all 8 chat channel mappings, /reply tracking. **BUG found — FIXED in T20** (`cb0f5e4`): exactly-150-byte ChannelMessage → uncaught `std::out_of_range` on the receive path. Suite failures: ALSA quirk + pre-existing deferred RDP race (1-in-5 isolated repro, perf territory). Executed inline in t2. |
 | T16 | Spell-cast off-by-one fix | DONE (merged `3253126`) | Closes the T15 finding, go-ahead from Will. `processSpellCasts()` now converts the 0-based request to the dispatcher's 1-based contract (`+1`, matching the hotbar path). Gem 1 castable again; `/cast N` casts gem N. Both `BUG_` pins re-pointed (gem 0→`castSpell(1)`, gems 4/7→5/8). Executed inline. |
-| T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG pinned, not fixed (needs Will):** spell-cast gem off-by-one — see section below. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
+| T15 | `InputActionBridge` tests | DONE (merged `61e5d17`) | The T12 follow-on; the 391-line bridge now has 33 tests (routing, gating, draining, mouse-look, chat mapping) via a new `FakeInputHandler` in the shared fakes. **BUG found — FIXED in T16** (`3253126`): spell-cast gem off-by-one. Also pinned: `"raid"` unmapped (falls to Say), empty-target tells vanish, `setInvertMouseY()` inert, `processContinuousInput()` dead (makes `setTurnSpeed()` a no-op knob). Executed inline. |
 | T14 | Character-select list storage | DONE (merged `4414a92`) | Closes the T06/T09 open question, go-ahead from Will. Occupied slots stored (`CharacterSelectEntry`: slot/name/level/class/race/zone) behind `GetCharacterSelectList()`, rebuilt per delivery; first-match index semantics preserved but the loop now parses all ten slots instead of returning at the match. **Finding:** eqemu fills empty Titanium slots with literal name `<none>` (other fields zero) — hidden until now by the early return; filtered ('<' is not legal in names). Real-capture list pinned exactly (3 entries); synthetic decode, sentinel/empty skip, parse-past-match, redelivery-rebuild tests. Executed inline. |
 | T13 | `OP_SetChatServer` 4-field parse | DONE (merged `9d456c1`) | Closes the T09 finding, go-ahead from Will. Parser rewritten to the real eqemu format (`host,port,shortname.charname,<type><mail_key:08X>`); connection-type char stored (new accessor) for the future UCS implementation; receive path guarded (field count, empty field 4, non-numeric AND out-of-uint16-range port — `stoi` alone doesn't catch 70000). BUG_ pin re-pointed at fixed behavior + `OP_SetChatServer2` 'b' case. Executed inline; interrupted by the 07-30 VM crash and recovered from the t1 working tree. |
 | T01 | Coverage survey | DONE (report-only) | Numbers + backlog below; awaiting Will's green-light on batch 1 |
@@ -342,10 +345,11 @@ Not hypothetical: `CLAUDE.md` documents packet loss during zone-load
 bursts as a known failure mode, and truncation is what that produces.
 
 Pinned as `DispatcherRobustness.BUG_TimeOfDay_ZeroLengthPayload_*` and
-`BUG_PlayerProfile_TruncatedPayload_*`. **Fix is base-layer source —
-needs Will's go-ahead** (a `return` after the PlayerProfile warning and
-a length guard on TimeOfDay would be a ~4-line change, but it is not
-`tests/` territory).
+`BUG_PlayerProfile_TruncatedPayload_*`. **RESOLVED in T05** — verified
+2026-07-31: `ZoneProcessTimeOfDay` now guards `Length() < 8` and
+`ZoneProcessPlayerProfile` returns after its too-small warning
+(`eq_entities.cpp:486`, `eq.cpp:1999`). This paragraph previously still
+read "needs Will's go-ahead" long after the guards landed.
 
 ### 2. `CheckZoneRequestPhaseComplete` is evaluated on 3 of its 4 inputs (latent)
 
@@ -486,9 +490,8 @@ Re-checked with the right predicate — 16 dereference sites in
 | `:312-313` `LoginDisableReconnect` | **no** | **yes** |
 
 So T05's guards are correct as far as they go and the live path is
-unaffected — but one seam-reachable hole remained. Fixing it is a
-2-line guard in the same shape; **needs Will's authorization**, as
-T05's was single-use.
+unaffected — but one seam-reachable hole remained. **Closed in T07**
+(`b6b3502`); the "needs Will's authorization" note below was stale.
 
 ### 2. `LoginProcessLoginResponse` underflow — confirmed, not worse than predicted
 
@@ -551,10 +554,8 @@ claim and cannot be rewritten now that it is merged.
 - ~~Login/world replay seam~~ — **BUILT in T05**.
 - ~~`LoginDisableReconnect` null guard, `LoginProcessLoginResponse`
   length guard~~ — **DONE in T07** (`b6b3502`).
-- **Open, needs Will:** read-only accessors for login/world state, if
-  deep state assertions are wanted (T06 finding 4 lists exactly which).
-  Deliberately not requested yet — the sequencing coverage may prove
-  sufficient.
+- ~~Read-only accessors for login/world state~~ — **DONE in T09**
+  (`b531b97`), 11 accessors; extended in T13/T14.
 
 ## T12 observations (action layer)
 
@@ -676,7 +677,7 @@ test target, run, revert — costs a few minutes per mutation, and the
 plan-level guardrail that made it safe was requiring `git status` to
 show no `src/` modification at commit time.
 
-## T09 finding — chat-server info is silently discarded (needs Will)
+## T09 finding — chat-server info silently discarded — FIXED in T13 (`9d456c1`)
 
 `WorldProcessSetChatServer` (`eq_login_world.cpp:743`) requires **≥5**
 comma-separated fields, documented as
@@ -757,7 +758,7 @@ BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
 
-## T19 findings — two parser crash bugs (needs Will)
+## T19 findings — two parser crash bugs — FIXED in T20 (`cb0f5e4`)
 
 Both pinned by tests in `tests/test_hc_map.cpp` /
 `tests/test_zone_lines.cpp`; detail in `refactor/T19_map_zone_lines.md`
@@ -778,7 +779,25 @@ Review.
    throws `Json::LogicError`, uncaught → process abort during zone-line
    load. Fix shape: guard or try/catch per entry, skip-and-warn.
 
-## T17 findings — three Daybreak handshake bugs (needs Will)
+## T17 findings — three Daybreak handshake bugs — FIXED in T21 (`def17c2`)
+
+**Resolution (2026-07-31).** All three fixed in one commit. A discovery
+probe over `session.pcap` decoded every handshake before any code
+changed, which settled the risk question (`m_encode_key` feeds `Crc32`,
+so a wrong swap would break every connection): the capture's connect
+codes are exactly `0x0`/`0xFFFFFFFF`, the server sends `encode_key = 0`
+(swap is a no-op), `crc_bytes = 2`, and `max_packet_size` is
+network-order **512**.
+
+That last one upgraded bug 3 from latent to live: read raw it was
+**131072**, so the client believed it could send packets 256x larger
+than the server permits and would not fragment when it should.
+
+`Random::UInt32()` was added because `Int(int, int)` cannot express the
+range at all. Regression oracles both clean (pcap decode 4/4, golden
+replay 2/2, golden file unchanged).
+
+Original analysis follows.
 
 All in `src/common/net/daybreak_connection.cpp`; pinned by passing tests
 in `tests/test_daybreak_state_machine.cpp`; verified independently by
@@ -804,7 +823,7 @@ section (`refactor/T17_daybreak_state_machine.md`).
    palindromic (512 → 131072 if read swapped) — worth checking what the
    capture's server actually sent.
 
-## T18 finding — ChannelMessage exact-size crash (needs Will)
+## T18 finding — ChannelMessage exact-size crash — FIXED in T20 (`cb0f5e4`)
 
 `ZoneProcessChannelMessage` (`eq_chat.cpp:90`) guards `p.Length() < 150`
 then reads the message with `GetCString(150)`. A packet of **exactly
