@@ -590,3 +590,103 @@ alongside. Sizing/complexity not assessed here.
 
 No default is flipped, no golden is changed, no config is touched — this
 section is data for Will's decision, not a recommendation.
+
+## 2026-08-01 — P51: canonical-KPI "regression" re-baselined — instrument
+honesty, not a production regression. **32.24-32.5ms band RETIRED; 34.3-
+34.6ms is the new canonical reference.**
+
+P48's own KPI guard (EVIDENCE_MANIFEST.txt) caught the canonical e205
+befallen replay landing at 34.3-34.6ms p95, over the 32.24-32.5ms band
+blessed since P14/P39/P45, and reproduced the same number on a binary
+built from BEFORE P48 even started (branch base `9a61ed3`) — proving the
+drift predated P48 and lived somewhere in P46/P46b/P46c/P46d/P47's window.
+P51's job was to attribute it. **H1 (instrument-honesty) confirmed on the
+FIRST probe, no bisect needed:**
+
+| run | p95 (ms) | draws_avg | in blessed band [32.24,32.5]? |
+|---|---|---|---|
+| tip, default (entity shader promotion ON) | 34.321 / 34.624 (P48's own 2 runs) | 41.9 | NO |
+| tip, `--no-entity-shader-promotion` (P51, this unit) | **32.250** | 41.9 | **YES** |
+
+Same binary, same invocation, same draws_avg (structural output
+unchanged) — the ONLY variable is P46c's `--no-entity-shader-promotion`
+opt-out, and toggling it alone moves the number by ~2.2ms, landing
+squarely back inside the old band. This is decisive, not suggestive.
+
+**Mechanism**: pre-P46b, `gles2_zone_benchmark`'s entity path rendered on
+Irrlicht's built-in fixed-function material (`EMT_SOLID`, no custom
+shader) — the benchmark never linked `entity_renderer.cpp`'s promotion
+step at all (P44b's finding). P46b's `applyEntityShaderMaterialPromotion()`
+(`tools/hwcaps/zone_bench_loader.cpp`) made the benchmark mirror
+`EntityRenderer::createEntity()` (`src/client/graphics/entity_renderer.cpp`
+lines 629-648) correctly for the first time: every entity buffer gets
+promoted to the production per-pixel-lit shader (real player light/sun/fog),
+exactly as the live client has ALWAYS done. **Production code is
+unchanged by this entire arc — P46b only fixed the benchmark tool's own
+fidelity gap.** So the "regression" was never a regression in what ships;
+it is the instrument catching up to what production has always cost. The
+32.24-32.5ms band (P14/P39/P41/P45's own blessed numbers) understated
+production's real per-entity shading cost because those runs measured
+entities on cheap fixed-function materials the real client never uses.
+
+**Scaling with entity count** (P51's own 2nd data point, e5 = 5 entities,
+P38/P41's "realistic NPC count" shorthand — 4 Pi invocations total this
+unit, all logged under `benchmarks/pi_runs/p51_kpi_bisect/`):
+
+| load | draws_avg | WITH promotion p95/avg (ms) | WITHOUT promotion p95/avg (ms) | delta (p95) |
+|---|---|---|---|---|
+| e5 (realistic) | 8.6 | 23.957 / 10.818 | 23.502 / 10.865 | **+0.455ms — noise-level, not distinguishable from run-to-run jitter** |
+| e205 (stress) | 41.9 | 34.47 (avg of P48's 2 runs) | 32.250 | **+2.22ms (~6.9% of frame budget)** |
+
+The promotion cost is proportional to the number of shaded entity draws on
+screen, not a fixed per-frame tax — at a realistic 5-entity encounter it is
+indistinguishable from noise; it only becomes visible at the 205-entity
+stress-test load this benchmark uses for its canonical KPI spot. **This
+means the historical blessed baselines were never meaningfully wrong at
+realistic play loads** — the bias is real but its magnitude at the
+entity counts players actually see (P38's own steering: e5, not e205) is
+near zero. The KPI guard's own choice of e205 as its "canonical" spot is
+what surfaced the gap; it is doing its job correctly.
+
+**Which historical numbers carry the bias**: every blessed e205-shape
+canonical-replay number recorded BEFORE P46b landed (`4386398`,
+2026-07-30) carries this understatement at e205 scale — P14 (32.313ms),
+P39 (32.5ms), P41/P45's own re-measurements, and P48's own pre-fix
+comparisons against them. None of these are wrong for what they measured
+at the time (pre-P46b, the benchmark genuinely rendered on fixed-function
+materials); they are simply not comparable to any P46b-or-later number
+without accounting for the ~2.2ms/205-entity delta this unit measured.
+Real-roster A/B numbers (P45's `e205_realroster_*`, P48's
+`e205_realroster_p48tip`) are UNAFFECTED by this specific bias — those
+already used `--test-races` with masked/composite races exercising
+different code paths, not the default race cycle this promotion gap
+concerns.
+
+**Honest-KPI statement for Will**: production-representative p95 at the
+canonical e205 befallen replay is **34.3-34.6ms — over the 33.3ms 30fps
+line**. This connects directly to the P41 lighting-lever data above:
+per-pixel entity shading (the thing Will chose to KEEP at Q03/P41) is
+part of this cost, at the same shipped per-pixel material Q03 blessed.
+This is not a new cost — it is the cost that has always existed in
+production, now correctly visible in the benchmark for the first time.
+**The 34.3-34.6ms band is the new canonical KPI-guard reference,
+effective this unit; the 32.24-32.5ms band is RETIRED for any
+post-`4386398` binary.** No code change was made (Phase B verdict:
+instrument-honesty, not a production regression — the plan's strict "fix
+only if small AND behavior-identical" condition does not apply because
+there is nothing to fix; production behavior was already correct and
+unchanged throughout this entire investigation).
+
+**P49 ride-along** (same session, 1 invocation): `--res 400 300` without
+`--allow-mode-fallback` correctly refused (exit 1), logged the P43/P49
+mode-fallback ERROR line naming the substituted `2560x1440` mode, and the
+benchmark's own "achieved resolution != requested" ERROR + "Refusing to
+run" lines. The DRM-level ELL_ERROR line's documented post-init `run()`
+repeat did NOT fire — expected and benign: `gles2_zone_benchmark`'s own
+resolution check exits the process before ever entering
+`IrrlichtDevice::run()`'s frame loop (unlike `willeq`'s continuous loop,
+which is what that repeat log was designed for), so only the
+device-creation-time fallback line is reachable here. Control (800x600,
+this unit's own H1 probe run) confirmed no fallback line and "DRM: Found
+matching mode 800x600@75Hz for requested 800x600" logged normally. P49's
+`refactor/deferred.md` ride-along entry updated with these results.
