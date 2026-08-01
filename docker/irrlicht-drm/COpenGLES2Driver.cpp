@@ -10,6 +10,7 @@
 #include "os.h"
 #include "CImage.h"
 #include "gl_call_counters.h"
+#include "gpu_sync_probe.h"
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -25,6 +26,142 @@ namespace video
 // P38 audit: process-wide counter instance, disabled by default. See
 // gl_call_counters.h for the zero-cost-when-off justification.
 GLCallCounters g_glCounters;
+
+// P52 audit: process-wide GPU-sync probe instance, disabled by default.
+// See gpu_sync_probe.h for the design and zero-cost-when-off justification.
+GPUSyncProbe g_gpuSyncProbe;
+
+} // namespace video
+} // namespace irr
+
+// ============================================================================
+// P52 GPU-sync probe implementation. Kept file-scope (not in the header) so
+// the query function pointers -- resolved once via eglGetProcAddress, valid
+// only after a GLES2 context is current -- never need to be visible outside
+// this translation unit. gpu_sync_probe.h's free-function API is the only
+// public surface (plain types only; see that header's comment).
+// ============================================================================
+namespace {
+
+constexpr int kGPUPhaseCount = static_cast<int>(irr::video::GPUSyncPhase::Count);
+constexpr int kGPUQueryBuffers = 2;  // double-buffered: readback always lags issue by one frame, never stalls
+
+PFNGLGENQUERIESEXTPROC glGenQueriesEXT_ = nullptr;
+PFNGLDELETEQUERIESEXTPROC glDeleteQueriesEXT_ = nullptr;
+PFNGLBEGINQUERYEXTPROC glBeginQueryEXT_ = nullptr;
+PFNGLENDQUERYEXTPROC glEndQueryEXT_ = nullptr;
+PFNGLGETQUERYOBJECTUIVEXTPROC glGetQueryObjectuivEXT_ = nullptr;
+
+GLuint g_gpuQueryIds[kGPUQueryBuffers][kGPUPhaseCount] = {};
+bool g_gpuQueryIssued[kGPUQueryBuffers][kGPUPhaseCount] = {};
+bool g_gpuQueriesGenerated = false;
+int g_gpuWriteBuf = 0;
+
+} // anonymous namespace
+
+void eqtEnableGPUSyncProbe(bool enable) { irr::video::g_gpuSyncProbe.enabled = enable; }
+bool eqtGPUSyncProbeEnabled() { return irr::video::g_gpuSyncProbe.enabled; }
+
+void eqtProbeGPUTimerQuerySupport()
+{
+    auto& probe = irr::video::g_gpuSyncProbe;
+    if (!probe.enabled) return;  // zero overhead when off -- never resolve/generate anything
+    if (probe.capabilityChecked) return;
+    probe.capabilityChecked = true;
+
+    glGenQueriesEXT_ = (PFNGLGENQUERIESEXTPROC)eglGetProcAddress("glGenQueriesEXT");
+    glDeleteQueriesEXT_ = (PFNGLDELETEQUERIESEXTPROC)eglGetProcAddress("glDeleteQueriesEXT");
+    glBeginQueryEXT_ = (PFNGLBEGINQUERYEXTPROC)eglGetProcAddress("glBeginQueryEXT");
+    glEndQueryEXT_ = (PFNGLENDQUERYEXTPROC)eglGetProcAddress("glEndQueryEXT");
+    glGetQueryObjectuivEXT_ = (PFNGLGETQUERYOBJECTUIVEXTPROC)eglGetProcAddress("glGetQueryObjectuivEXT");
+
+    const bool haveFns = glGenQueriesEXT_ && glDeleteQueriesEXT_ && glBeginQueryEXT_ &&
+                          glEndQueryEXT_ && glGetQueryObjectuivEXT_;
+
+    // Non-null function pointers alone are not sufficient -- some EGL
+    // implementations return non-null garbage for unsupported extensions.
+    // Require the extension string too (never assume, per llvmpipe-vs-Lima
+    // divergence risk named in the plan).
+    bool haveExtString = false;
+    const char* exts = (const char*)glGetString(GL_EXTENSIONS);
+    if (exts && strstr(exts, "GL_EXT_disjoint_timer_query")) haveExtString = true;
+
+    probe.hasDisjointTimerQuery = haveFns && haveExtString;
+
+    char msg[160];
+    snprintf(msg, sizeof(msg), "GPUSyncProbe: GL_EXT_disjoint_timer_query %s (fns=%d, ext_string=%d)",
+             probe.hasDisjointTimerQuery ? "AVAILABLE" : "NOT available", haveFns ? 1 : 0, haveExtString ? 1 : 0);
+    irr::os::Printer::log(msg, irr::ELL_INFORMATION);
+
+    if (probe.hasDisjointTimerQuery) {
+        for (int b = 0; b < kGPUQueryBuffers; ++b)
+            glGenQueriesEXT_(kGPUPhaseCount, g_gpuQueryIds[b]);
+        g_gpuQueriesGenerated = true;
+    }
+}
+
+bool eqtGPUTimerQuerySupported() { return irr::video::g_gpuSyncProbe.hasDisjointTimerQuery; }
+
+void eqtGPUPhaseBegin(int phase)
+{
+    auto& probe = irr::video::g_gpuSyncProbe;
+    if (!probe.enabled || !probe.hasDisjointTimerQuery || !g_gpuQueriesGenerated) return;
+    if (phase < 0 || phase >= kGPUPhaseCount) return;
+    glBeginQueryEXT_(GL_TIME_ELAPSED_EXT, g_gpuQueryIds[g_gpuWriteBuf][phase]);
+}
+
+void eqtGPUPhaseEnd(int phase)
+{
+    auto& probe = irr::video::g_gpuSyncProbe;
+    if (!probe.enabled || !probe.hasDisjointTimerQuery || !g_gpuQueriesGenerated) return;
+    if (phase < 0 || phase >= kGPUPhaseCount) return;
+    glEndQueryEXT_(GL_TIME_ELAPSED_EXT);
+    g_gpuQueryIssued[g_gpuWriteBuf][phase] = true;
+}
+
+void eqtGPUPhaseCollectResults()
+{
+    auto& probe = irr::video::g_gpuSyncProbe;
+    if (!probe.enabled || !probe.hasDisjointTimerQuery || !g_gpuQueriesGenerated) return;
+
+    // Read back the OTHER buffer's queries (issued last frame -- by now the
+    // GPU has almost certainly finished them, but availability is still
+    // checked rather than assumed, and a not-ready result is dropped for
+    // this frame rather than blocked on).
+    const int readBuf = 1 - g_gpuWriteBuf;
+    for (int p = 0; p < kGPUPhaseCount; ++p) {
+        if (!g_gpuQueryIssued[readBuf][p]) { probe.lastGPUValid[p] = false; continue; }
+        GLuint available = 0;
+        glGetQueryObjectuivEXT_(g_gpuQueryIds[readBuf][p], GL_QUERY_RESULT_AVAILABLE_EXT, &available);
+        if (!available) { probe.lastGPUValid[p] = false; continue; }
+        GLuint ns = 0;
+        glGetQueryObjectuivEXT_(g_gpuQueryIds[readBuf][p], GL_QUERY_RESULT_EXT, &ns);
+        probe.lastGPUNanos[p] = ns;
+        probe.lastGPUValid[p] = true;
+        g_gpuQueryIssued[readBuf][p] = false;
+    }
+    g_gpuWriteBuf = readBuf;  // next frame writes the buffer just drained
+}
+
+bool eqtGetGPUPhaseNanos(int phase, uint64_t* outNanos)
+{
+    auto& probe = irr::video::g_gpuSyncProbe;
+    if (phase < 0 || phase >= kGPUPhaseCount) return false;
+    if (!probe.lastGPUValid[phase]) return false;
+    if (outNanos) *outNanos = probe.lastGPUNanos[phase];
+    return true;
+}
+
+void eqtRecordSwapBuffersMs(double ms) { if (irr::video::g_gpuSyncProbe.enabled) irr::video::g_gpuSyncProbe.lastSwapBuffersMs = ms; }
+void eqtRecordFlipWaitMs(double ms) { if (irr::video::g_gpuSyncProbe.enabled) irr::video::g_gpuSyncProbe.lastFlipWaitMs = ms; }
+void eqtRecordFinishReadPixelsMs(double ms) { if (irr::video::g_gpuSyncProbe.enabled) irr::video::g_gpuSyncProbe.lastFinishReadPixelsMs = ms; }
+
+double eqtGetLastSwapBuffersMs() { return irr::video::g_gpuSyncProbe.lastSwapBuffersMs; }
+double eqtGetLastFlipWaitMs() { return irr::video::g_gpuSyncProbe.lastFlipWaitMs; }
+double eqtGetLastFinishReadPixelsMs() { return irr::video::g_gpuSyncProbe.lastFinishReadPixelsMs; }
+
+namespace irr {
+namespace video {
 
 // ============================================================================
 // Constructor / Destructor
@@ -155,6 +292,14 @@ bool COpenGLES2Driver::initDriver()
             }
         }
     }
+
+    // P52: GPU-sync timer-query capability probe (GL_EXT_disjoint_timer_query).
+    // No-ops entirely unless the benchmark tool has already called
+    // eqtEnableGPUSyncProbe(true) before this driver was created -- never
+    // touches GL state or resolves function pointers in production. Runtime
+    // probe, never assumed: llvmpipe (x86) and Lima (Mali 400 ARM) may
+    // differ on whether this extension is exposed at all.
+    ::eqtProbeGPUTimerQuerySupport();
 
     // Get default FBO
     GLint fbo = 0;

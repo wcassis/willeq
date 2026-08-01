@@ -112,6 +112,8 @@ enum LinuxKey {
 #include "IEventReceiver.h"
 #include "os.h"
 #include "CTimer.h"
+#include "gpu_sync_probe.h"
+#include <chrono>
 
 // P25: X11 headers for the opt-in windowed EGL backend. Included after all
 // Irrlicht headers (same ordering discipline as linux/input.h above) since
@@ -1343,9 +1345,25 @@ void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
 
 bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s32>* srcClip)
 {
+    // P52: CPU-side sync-point attribution (flag-gated, see
+    // gpu_sync_probe.h). No DRM page-flip path exists on x86 (no DRM/KMS
+    // scanout — see docker/CLAUDE.md), so lastFlipWaitMs stays 0 here by
+    // construction; only eglSwapBuffers() wall time is meaningful on this
+    // fork. That asymmetry with the ARM fork's drmPageFlip() is itself part
+    // of the characterization (x86 sanity checks can never reproduce the
+    // Pi's flip-wait cost, only exercise the GPU-query/CPU-fallback plumbing).
+    const bool probeOn = eqtGPUSyncProbeEnabled();
+
     // P25: X11-windowed backend - swap the real window surface.
     if (x11Active_) {
-        eglSwapBuffers(eglDisplay_, eglSurface_);
+        if (probeOn) {
+            const auto t0 = std::chrono::steady_clock::now();
+            eglSwapBuffers(eglDisplay_, eglSurface_);
+            const auto t1 = std::chrono::steady_clock::now();
+            eqtRecordSwapBuffersMs(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        } else {
+            eglSwapBuffers(eglDisplay_, eglSurface_);
+        }
         return true;
     }
 
@@ -1353,7 +1371,14 @@ bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s3
     // the pbuffer surface is a harmless no-op on Mesa but keeps EGL state
     // consistent; callers that need the pixels use glReadPixels directly.
     if (surfaceless_) {
-        eglSwapBuffers(eglDisplay_, eglSurface_);
+        if (probeOn) {
+            const auto t0 = std::chrono::steady_clock::now();
+            eglSwapBuffers(eglDisplay_, eglSurface_);
+            const auto t1 = std::chrono::steady_clock::now();
+            eqtRecordSwapBuffersMs(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        } else {
+            eglSwapBuffers(eglDisplay_, eglSurface_);
+        }
         return true;
     }
 

@@ -1594,3 +1594,68 @@ evidence, not requested).
   `benchmarks/pi_runs/p51_kpi_bisect/`. Pi budget: 4 timed invocations
   of ≤10, pristine exit (drop_caches recovery from a near-floor CmaFree
   sample, no reboot needed).
+
+## P52 (2026-08-01): GPU-sync characterization — instrumentation landed,
+## Phase 2 matrix incomplete, budget exhausted, follow-up needed
+
+Phase 1 (x86 prep) clean: flag-gated per-phase GPU timer-query + CPU-side
+sync-point instrumentation (`docker/irrlicht-drm/gpu_sync_probe.h`),
+zero-cost-when-off (P38 precedent), wired into both the production
+renderer and `gles2_zone_benchmark --gpu-sync-probe`. Full Review in
+`refactor/P52_gpu_sync_characterization.md`.
+
+Phase 2 (Pi, after P51 released it) found and reported (full detail:
+`refactor/perf_truth_audit.md`'s 2026-08-01 P52 section):
+
+- **Definitive**: Lima has NO `GL_EXT_disjoint_timer_query` support
+  (`fns=1, ext_string=0` — the capability probe's dual-signal check
+  correctly caught the `eglGetProcAddress` false-positive). Any future
+  GPU-side per-phase breakdown on this hardware needs a different
+  technique (selective-disable A/B, P41's own method) — GPU timer
+  queries are not an option here, full stop.
+- **High confidence**: the CPU blocks on `glFinish()` (GPU completion
+  wait), not `waitForFlipComplete()`/`eglSwapBuffers()` — swap+flip
+  together total ~0.10-0.15ms vs. `glFinish()`'s ~11-90ms. This is a
+  **null result for P41's swap-floor hypothesis** (perf_truth_audit
+  finding (c)/(e) — `waitForFlipComplete()` named as the next suspect
+  for the ~14.4-15.0ms wall-clock floor): on this measurement it's
+  negligible, not the bottleneck.
+- **Two real methodology bugs found mid-unit**, reported honestly rather
+  than silently absorbed: (1) the original 6-invocation matrix used
+  `--camera-pose` flags, which route into a structurally separate
+  static-pose loop in `gles2_zone_benchmark.cpp` that skips ALL
+  per-frame instrumentation (this unit's new code AND the pre-existing
+  P08/P38 phase-timing/GL-counter columns) — found, fixed within budget
+  by switching to `--path-file` (P51's own convention). (2) the 2-invocation
+  fix run omitted the shipped-preset flags (`--merge-zone-draws
+  --composite-scenegraph --eqe1-path`) that P38/P41/P51's own canonical
+  replays all use — found, **NOT fixed**, budget (≤8, 2 reserve) fully
+  exhausted (6 on the invalid matrix + 2 on the Bug-1 fix) before a
+  correctly-flagged re-run was possible. The recovery run's own numbers
+  (232.7ms avg total at e205, ~7x P51's honest 34.3-34.6ms band) must
+  NOT be read as a KPI figure.
+- Entity-count sweep (0/5/40/205) and fill-rate isolation (640x480/
+  1024x768) — the plan's other two named attributions, and the
+  orchestrator's specific ask to reproduce/refine P51's
+  +0.455ms(e5)/+2.22ms(e205) entity-promotion curve — were **not
+  meaningfully measured** (Bug 1 nulled the original 6-run matrix; Bug 2
+  makes the 2-run recovery's entity delta uninterpretable; C/D/E/F were
+  never re-run at all).
+
+**Follow-up needed**: a small unit (2-4 Pi invocations) re-running
+`A_canonical_e5`/`B_stress_e205` (budget permitting, `C_mid_e40`/
+`D_zero_e0`/`E_fill_lo`/`F_fill_hi`) via
+`refactor/scratch/p52_pi_gpu_sync_pathfile_fix.py` with the 3 missing
+shipped-preset flags added — the only path to a real percentage-of-frame
+GPU-sync attribution and a valid entity/fill-rate isolation. Ranked
+options + full reasoning in `perf_truth_audit.md`'s P52 section.
+
+CSVs (both the invalidated 6-run matrix, kept for the record with the
+`--camera-pose` limitation documented, and the 2-run recovery):
+`benchmarks/pi_runs/p52_gpu_sync/`. Pi budget: 8/8 invocations used (all
+of the ≤8 ceiling); two SessionAbort-triggering CmaFree episodes (the
+documented episodic drain pattern, P02-characterized), both recovered via
+`sync && drop_caches`, no reboot, per protocol. Final pristine exit
+verified: governor `ondemand` all 4 cores, `/tmp` swept, no
+`gles2_zone_benchmark`/`willeq` process, both DRM devices free, final
+CmaFree 85,880 kB.

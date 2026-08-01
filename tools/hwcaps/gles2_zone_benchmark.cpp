@@ -48,6 +48,8 @@
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include "gl_call_counters.h"  // P38: driver-side glBindTexture/glTexParameteri counters
+#include "gpu_sync_probe.h"    // P52: per-phase GPU-sync characterization instrumentation
+#include "gpu_sync_bench_hooks.h"  // P52: call-site wrappers (kept out of this file to limit its growth)
 
 #endif
 
@@ -101,6 +103,7 @@ struct Options {
     bool frontToBack = true;
     bool depthTest = true;
     bool glCounters = false;  // P38: enable driver glBindTexture/glTexParameteri call counters (off by default)
+    bool gpuSyncProbe = false;  // P52: enable per-phase GPU-sync characterization instrumentation (off by default)
     int maxDraws = 0;         // 0 = unlimited
     int maxPolys = 0;         // 0 = unlimited
     int lightCount = -1;      // -1 = use zone defaults
@@ -376,6 +379,7 @@ static void printUsage(const char* prog) {
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
     printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: resolved from the loader's ConstrainedRendererConfig, orangepi preset -> 256, P14/P39-blessed; P42)\n");
     printf("  --gl-counters        P38: record driver glBindTexture/glTexParameteri calls per frame (tex_binds/tex_param_calls CSV columns; off by default, zero overhead when absent)\n");
+    printf("  --gpu-sync-probe     P52: per-phase GPU-sync timer queries + CPU sync-point attribution (gpu_*_ns/swap_buffers_ms/flip_wait_ms/finish_readpixels_ms CSV columns; off by default, zero overhead when absent)\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
@@ -634,6 +638,7 @@ static Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--merge-zone-draws") == 0) opts.mergeZoneDraws = true;
         else if (strcmp(argv[i], "--baked-unmerged-zone-draws") == 0) opts.bakedUnmergedZoneDraws = true;
         else if (strcmp(argv[i], "--gl-counters") == 0) opts.glCounters = true;
+        else if (strcmp(argv[i], "--gpu-sync-probe") == 0) opts.gpuSyncProbe = true;
         else if (strcmp(argv[i], "--occluder-budget") == 0 && i + 1 < argc) {
             // P11: accept an integer, or "uncapped" (approximated as a very
             // large region count -- the loader has fewer regions than this
@@ -1437,6 +1442,12 @@ int main(int argc, char** argv) {
     benchConfig.loadMemAudit = opts.loadMemAudit;
     benchConfig.occluderBudget = opts.occluderBudget;
     benchConfig.noEntityShaderPromotion = opts.noEntityShaderPromotion;
+
+#ifdef EQT_HAS_GLES2
+    // P52: must enable before loadZone() creates the driver (capability
+    // probe runs once at driver init -- see gpu_sync_probe.h).
+    if (opts.gpuSyncProbe) eqtEnableGPUSyncProbe(true);
+#endif
 
     auto loadT0 = std::chrono::steady_clock::now();
     auto data = ZoneBench::loadZone(benchConfig);
@@ -2741,6 +2752,13 @@ int main(int argc, char** argv) {
                 std::chrono::steady_clock::now() - objCollectStart).count();
         }
 
+        // P52: proxy-scope GPU query around the combined zone+entity draw
+        // submission below -- see gpu_sync_bench_hooks.h for why this tool
+        // can't reproduce the production zone-pass/entity-pass split.
+#ifdef EQT_HAS_GLES2
+        ZoneBench::gpuSyncBeginSubmissionPhase();
+#endif
+
         // Collect and render entities
         int entityDrawCalls = 0, entityPolys = 0;
         if (!data->entities.empty()) {
@@ -2904,6 +2922,10 @@ int main(int argc, char** argv) {
             }
         }
 
+#ifdef EQT_HAS_GLES2
+        ZoneBench::gpuSyncEndSubmissionPhase();
+#endif
+
         // P38: snapshot driver GL call counters before glFinish() -- they
         // count submission-phase glBindTexture/glTexParameteri calls, not
         // GPU-side work, so must be read before the sync point below.
@@ -2913,9 +2935,10 @@ int main(int argc, char** argv) {
         }
 #endif
 
-        // GPU sync
+        // GPU sync. P52: glFinish() is exactly the "CPU blocks on GPU sync"
+        // point the plan names; timed only when measuring and the probe is on.
 #ifdef EQT_HAS_GLES2
-        glFinish();
+        ZoneBench::gpuSyncTimedFinish(measuring && opts.gpuSyncProbe, glFinish);
 #endif
 
         if (measuring) {
@@ -2960,7 +2983,13 @@ int main(int argc, char** argv) {
         // is genuinely new information, not a subset of any existing column.
         // Patches the frame record already pushed by endFrame() above.
         const auto swapStart = std::chrono::steady_clock::now();
+#ifdef EQT_HAS_GLES2
+        // P52: GPUSyncPhase::Swap query + CPU-side stats, see gpu_sync_bench_hooks.h.
+        ZoneBench::gpuSyncWrapSwap([&]() { data->driver->endScene(); },
+                                    metrics, measuring, opts.gpuSyncProbe);
+#else
         data->driver->endScene();
+#endif
         if (measuring) {
             float swapMs = std::chrono::duration<float, std::milli>(
                 std::chrono::steady_clock::now() - swapStart).count();

@@ -72,6 +72,23 @@ struct FrameMetrics {
     // 0/0 otherwise (counters disabled, no overhead).
     unsigned texBinds = 0;
     unsigned texParamCalls = 0;
+    // P52 (refactor/P52_gpu_sync_characterization.md): per-phase GPU-sync
+    // instrumentation, populated only when --gpu-sync-probe is passed; all
+    // fields 0 otherwise (probe disabled, no overhead -- see
+    // docker/irrlicht-drm/gpu_sync_probe.h). GPU-timed phases (nanoseconds,
+    // via GL_EXT_disjoint_timer_query) are -1 when the driver has no
+    // GL_EXT_disjoint_timer_query support or the query result wasn't ready
+    // by readback time -- distinct from 0 (a real, measured zero).
+    int64_t gpuZoneNs = -1;
+    int64_t gpuEntityNs = -1;
+    int64_t gpuParticlesUiNs = -1;
+    int64_t gpuSwapNs = -1;
+    // CPU-side sync-point attribution, ms (always populated when the probe
+    // is on, independent of GPU query support -- see present()/drmPageFlip()
+    // in docker/irrlicht-drm/CIrrDeviceFB.cpp and its x86 fork).
+    float swapBuffersMs = 0.0f;
+    float flipWaitMs = 0.0f;        // always 0 on x86 (no DRM page-flip path there)
+    float finishReadPixelsMs = 0.0f;
 };
 
 class MetricsCollector {
@@ -178,6 +195,29 @@ public:
     void setGLCounters(unsigned texBinds, unsigned texParamCalls) {
         current_.texBinds = texBinds;
         current_.texParamCalls = texParamCalls;
+    }
+
+    // P52: record this frame's GPU-sync probe results. Pass -1 for any
+    // GPU-timed phase that wasn't available (no GL_EXT_disjoint_timer_query
+    // support, or the query result wasn't ready by readback time). Like
+    // setSwapMsForLastFrame() above, this patches the ALREADY-PUSHED last
+    // frame record rather than the (already-reset) current_ -- the
+    // Swap-phase GPU query and the CPU-side swap/flip-wait timings are only
+    // available after endScene() runs, which happens after endFrame() has
+    // already pushed the frame (see gles2_zone_benchmark.cpp's P08 comment
+    // on why totalMs is stamped before endScene()).
+    void setGPUSyncStatsForLastFrame(int64_t gpuZoneNs, int64_t gpuEntityNs, int64_t gpuParticlesUiNs,
+                                      int64_t gpuSwapNs, float swapBuffersMs, float flipWaitMs,
+                                      float finishReadPixelsMs) {
+        if (frames_.empty()) return;
+        FrameMetrics& m = frames_.back();
+        m.gpuZoneNs = gpuZoneNs;
+        m.gpuEntityNs = gpuEntityNs;
+        m.gpuParticlesUiNs = gpuParticlesUiNs;
+        m.gpuSwapNs = gpuSwapNs;
+        m.swapBuffersMs = swapBuffersMs;
+        m.flipWaitMs = flipWaitMs;
+        m.finishReadPixelsMs = finishReadPixelsMs;
     }
 
     void endGpuSync() {

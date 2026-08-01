@@ -246,13 +246,29 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
     // Hook: draw zone geometry manually before Irrlicht's SOLID pass
     if (renderPass == irr::scene::ESNRP_SOLID && renderer_ && renderer_->manualZoneDrawEnabled_) {
         auto drawStart = std::chrono::steady_clock::now();
+        // P52: GPU-sync characterization. Zone geometry (manual draw, sorted
+        // front-to-back) and entity/door geometry (Irrlicht's own SOLID pass,
+        // which follows immediately below — zone nodes are invisible so it
+        // only draws entities/doors) are cleanly separable exactly here,
+        // which is why this is the injection point rather than wrapping the
+        // whole drawAll() call. No-op when the probe is disabled or the
+        // driver has no GL_EXT_disjoint_timer_query support (see
+        // docker/irrlicht-drm/gpu_sync_probe.h).
+        eqtGPUPhaseBegin(0 /* GPUSyncPhase::ZonePass */);
         if (renderer_->portalOcclusionEnabled_ && renderer_->portalOcclusionEligible_) {
             renderer_->drawZoneGeometryWithPortals();
         } else {
             renderer_->drawZoneGeometrySorted();
         }
+        eqtGPUPhaseEnd(0 /* GPUSyncPhase::ZonePass */);
         renderer_->frameTimings_.manualZoneDraw = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - drawStart).count();
+
+        // Open the entity-pass query now; Irrlicht's own SOLID pass (entities,
+        // doors) runs right after this function returns and is closed in
+        // OnRenderPassPostRender(ESNRP_SOLID) below.
+        eqtGPUPhaseBegin(1 /* GPUSyncPhase::EntityPass */);
+        entityGPUQueryActive_ = true;
     }
 }
 

@@ -690,3 +690,193 @@ device-creation-time fallback line is reachable here. Control (800x600,
 this unit's own H1 probe run) confirmed no fallback line and "DRM: Found
 matching mode 800x600@75Hz for requested 800x600" logged normally. P49's
 `refactor/deferred.md` ride-along entry updated with these results.
+
+## 2026-08-01 — P52: GPU-sync characterization (Phase 2, Pi) — partial,
+## budget exhausted before full matrix
+
+Executed on `wt/slot3`, branch `task/P52-gpu-sync`. Phase 1 (x86 prep,
+instrumentation) landed clean per its own Review section in
+`refactor/P52_gpu_sync_characterization.md`. Phase 2 (this section) ran on
+the Pi after P51 released it. **The planned 6-invocation matrix did not
+produce usable data on its first attempt — two real methodology bugs were
+found mid-unit, one fixed within budget, one identified but not fixed
+because the ≤8-invocation ceiling (2 reserve, both now spent on recovery)
+was exhausted before a corrected re-run was possible.** Reported honestly
+per this document's own established convention (P38/P41/P43 all did the
+same when their own methodology broke) rather than silently forcing a
+clean-looking number.
+
+### Bug 1 (found, fixed): static-pose CLI mode bypasses ALL per-frame
+### instrumentation
+
+The original matrix (`refactor/scratch/p52_pi_gpu_sync_matrix.py`) reused
+`scripts/pi/pi_common.py`'s `run_zone_bench_generic()`/
+`pose_flags_repeated()`, which builds `--camera-pose` flags from
+`tests/goldens/manifest.json`'s static-pose fixtures — the same idiom
+P38/P41/P43's own scripts used successfully. What those prior units never
+hit (their instrumentation lived in code paths shared by both loops, or
+they used `--path-file` themselves for their canonical numbers, as P51's
+own scaling probe did) is that `gles2_zone_benchmark.cpp` has **two
+structurally separate per-frame loops**: a static-pose capture loop
+(`if (!opts.cameraPoses.empty())`, ~line 2461) used only when
+`--camera-pose` flags are present, and a moving-path loop (driven by
+`--path-file` or the navmesh/orbit fallback, ~line 2595+) where this
+unit's new instrumentation (`gpuSyncBeginSubmissionPhase`/
+`gpuSyncWrapSwap`/`gpuSyncTimedFinish`) — and, it turns out, the
+**pre-existing** P08 phase-timing (`collect_cull_ms`/`sort_ms`/
+`submission_ms`) and P38 GL-counter (`tex_binds`/`tex_param_calls`)
+instrumentation — actually live. All 6 original CSVs
+(`benchmarks/pi_runs/p52_gpu_sync/p52_{A..F}_*.csv`) have `draws`/`polys`
+identical across every entity-count variant (entities never appear in any
+of the 3 fixed poses — they're placed "along camera path," a synthetic
+orbit unrelated to where the fixed poses look) AND every phase-timing/
+GL-counter/GPU-sync column reads exactly `0`/`-1` — confirmed by diffing
+against P51's own `--path-file` CSVs
+(`benchmarks/pi_runs/p51_kpi_bisect/befallen_e5_shipped_withPromotion.csv`),
+which have real non-zero values for the exact same columns on the exact
+same ARM binary shape. **Kept, not deleted** — the 6 CSVs are a real,
+informative record (they prove the static-pose loop's own limitation,
+useful for any future unit that reaches for `--camera-pose` expecting
+full instrumentation) but must never be read as GPU-sync data.
+
+Fixed by switching to `--path-file benchmarks/paths/befallen_fixedpose_300f.path`
+(P38's own committed replay fixture) — the moving-path loop, same
+convention P51's scaling probe used
+(`refactor/scratch/p52_pi_gpu_sync_pathfile_fix.py`).
+
+### Bug 2 (found, NOT fixed — budget exhausted): missing shipped-preset
+### flags inflate the recovery run's absolute numbers
+
+The 2-invocation recovery run (`A_canonical_e5_pathfile`,
+`B_stress_e205_pathfile`) fixed Bug 1 but did not carry over
+`--merge-zone-draws --composite-scenegraph --eqe1-path <path>` (the
+"shipped preset" flags P38/P41/P51's own canonical replays all use —
+`SHIPPED_PRESET_ARGS` in `refactor/scratch/p51_pi_scaling_probe.py`).
+Without them, zone draws are unmerged and entities render via the
+per-body-part RGBA path instead of the composite ETC1 path — the effect
+compounds badly at high entity count: `B_stress_e205_pathfile` measured
+**232.7ms avg / 236.0ms p95 total frame time**, ~7x P51's own honest
+e205 canonical number (34.3-34.6ms band). **This is a real config-fidelity
+gap, not a new production number — it must not be read as a KPI figure
+or compared against the 34.3-34.6ms band.** `submission_ms` alone averages
+133.5ms (57% of the frame) at e205 in this run, consistent with
+unmerged/uncomposited entity draws being the dominant confound, not a
+genuine GPU-sync finding. No further Pi invocation was available to
+correct this (8/8 of the ≤8 ceiling spent: 6 on the Bug-1 matrix, 2 on
+the Bug-1 fix). Flagged as the top item for a follow-up unit (see Options
+note below).
+
+### What IS trustworthy from the 2 recovered runs
+
+Despite Bug 2, three findings are structural (about *where* CPU-blocking
+time goes, not sensitive to the absolute-magnitude confound) and are
+reported with appropriate caution:
+
+1. **Lima has NO `GL_EXT_disjoint_timer_query` support** — confirmed on
+   real hardware, both recovery runs: `GPUSyncProbe: GL_EXT_disjoint_timer_query
+   NOT available (fns=1, ext_string=0)`. Function pointers resolved via
+   `eglGetProcAddress` (non-null) but the `GL_EXTENSIONS` string does NOT
+   advertise the extension — exactly the false-positive this unit's
+   capability probe was designed to catch by requiring both signals (see
+   Phase 1 Review). Every `gpu_zone_ns`/`gpu_entity_ns`/
+   `gpu_particles_ui_ns`/`gpu_swap_ns` column is `-1` across every Pi CSV
+   this unit produced, by design — GPU-side timer queries are **not
+   available on the target hardware**, full stop. All GPU-sync
+   characterization work on this platform, this unit's and any future
+   one's, must use the CPU-side sync-point attribution path.
+2. **CPU-side sync-point attribution works correctly on real Lima
+   hardware** and produces sane, non-degenerate numbers at both loads
+   (`A_canonical_e5_pathfile`: `swap_buffers_ms` avg 0.079ms, `flip_wait_ms`
+   avg 0.024ms, `finish_readpixels_ms` avg 10.912ms;
+   `B_stress_e205_pathfile`: 0.120ms / 0.030ms / 89.918ms respectively) —
+   the instrumentation itself is validated end-to-end on the actual target
+   platform, independent of the Bug 2 config-fidelity issue.
+3. **`waitForFlipComplete()`/`eglSwapBuffers()` are NOT where the CPU
+   blocks** — `swap_buffers_ms + flip_wait_ms` totals ~0.10ms at e5 and
+   ~0.15ms at e205, versus `finish_readpixels_ms` (the `glFinish()` sync
+   point — CPU waiting on the GPU to finish submitted work) at 10.9ms and
+   89.9ms respectively. `finish_readpixels_ms` and the pre-existing
+   `gpu_ms` column are numerically near-identical in both runs (10.912 vs
+   10.922; 89.918 vs 89.928) — expected, both time the same `glFinish()`
+   call, a useful cross-check that the new instrumentation is wired
+   correctly rather than an independent confirmation. **This is a null
+   result for P41's swap-floor hypothesis** (perf_truth_audit's own
+   finding (c)/(e): "the more likely candidate for the [~14.4-15.0ms wall-
+   clock] floor is [[waitForFlipComplete()]], not EGL's own swap-interval
+   gate") — on this measurement, the DRM page-flip wait is negligible
+   (tens of microseconds), and essentially all CPU-blocks-on-GPU time is
+   spent in `glFinish()` waiting for submitted GPU work to complete, not
+   waiting for the display's page-flip event. Load-invariance (flip_wait
+   barely changes 0.024ms→0.030ms across a 15x entity-count increase)
+   further supports it being a fixed, small, display-cadence-adjacent cost
+   rather than a GPU-load-dependent one — consistent with P41's framing
+   that *something* display-cadence-related exists, just not at the
+   magnitude P41 speculated, and not as the dominant GPU-sync contributor
+   P38's original ~50-54% figure was trying to explain. **This finding
+   should be treated as preliminary** (Bug 2's confound affects the same
+   runs) but is unlikely to be an artifact of Bug 2 specifically, since
+   Bug 2 inflates *submission*, not swap/flip timing, and the swap/flip
+   numbers are tiny in absolute terms regardless of what else the frame is
+   doing.
+
+### Ranked attribution of the "GPU-sync ~50-54% of frame" question (P38
+### audit item 6, this unit's original charter)
+
+Given Bug 2, this unit cannot deliver a confident percentage-of-frame
+number for the honest shipped-preset config — that requires the follow-up
+invocation named below. What it CAN deliver, ranked by confidence:
+
+1. **HIGH CONFIDENCE**: GPU-sync's CPU-blocking mechanism is `glFinish()`
+   waiting on GPU work completion, not the swap/present/flip-wait
+   mechanism. (Findings 2-3 above; structural, not magnitude-sensitive.)
+2. **HIGH CONFIDENCE**: no GPU-side timer-query instrumentation is
+   possible on this hardware — any future GPU-side breakdown attempt
+   (zone vs. entity vs. particle GPU cost) must use a different technique
+   (e.g., selective-disable A/B pairs, the same method P41 used for the
+   lighting lever) since `GL_EXT_disjoint_timer_query` is unavailable.
+3. **NOT MEASURED THIS UNIT** (needs the follow-up): the actual
+   zone-pass/entity-pass/particles-UI split of GPU-sync time, the
+   entity-count scaling curve under the CORRECT shipped-preset flags
+   (Will's own ask, per the orchestrator's Phase-2 go-ahead message: this
+   unit's entity sweep was supposed to reproduce and refine P51's
+   +0.455ms(e5)/+2.22ms(e205) entity-promotion curve — it did not,
+   because Bug 2's confound makes this run's entity-count deltas
+   uninterpretable), and the fill-rate isolation (E/F, never run at all).
+
+### Options note (report-only, no fix landed — matches this unit's own
+### scope: characterization, not remediation)
+
+**Option 1 (recommended): land a small follow-up unit (2-4 Pi
+invocations) that re-runs `A_canonical_e5`/`B_stress_e205` (and, budget
+permitting, `C_mid_e40`/`D_zero_e0`/`E_fill_lo`/`F_fill_hi`) with the
+corrected shipped-preset flags** (`--merge-zone-draws
+--composite-scenegraph --eqe1-path`, matching P38/P41/P51's own canonical
+invocations exactly). `refactor/scratch/p52_pi_gpu_sync_pathfile_fix.py`
+is a ready-to-adapt template — add the three missing flags to its `cmd`
+list and it reproduces this unit's exact recovery methodology, correctly
+configured. This is the only path to a real percentage-of-frame GPU-sync
+attribution and a valid entity-scaling/fill-rate isolation.
+
+**Option 2: accept the structural (mechanism-level) finding as sufficient
+for now.** `waitForFlipComplete()`/`eglSwapBuffers()` are ruled out as the
+GPU-sync bottleneck with high confidence (finding 3); `glFinish()`-driven
+GPU completion wait is confirmed as the mechanism. If Will's actual
+question is "should we chase the swap/flip-wait path for a fix," this
+unit's answer is already conclusive: no, don't — the whole
+`waitForFlipComplete()`-as-swap-floor-suspect line of investigation P41
+opened is now closed with a null result, on real hardware, not just
+diagnostically ruled out via `eglSwapInterval(0)` as P41 did. Do NOT act
+on the specific ms-level numbers from this unit's e5/e205 runs (Bug 2).
+
+**Option 3: re-scope the original charter.** Given GPU-side timer queries
+are confirmed unavailable on the only hardware this matters for, any
+future "P38 audit item 6" successor unit should be scoped around
+selective-disable CPU-side A/B pairs (P41's own lighting-lever method)
+from the start, not GPU timer queries — this unit's GPU-query code
+remains in the tree, flag-gated and harmless (P51 will presumably not
+re-litigate the swap-interval prototype P41 already reverted), but nobody
+should plan future work assuming it will produce zone/entity/particle
+GPU-ns splits on this hardware. It won't.
+
+No default flipped, no config changed, no golden touched — this unit
+(both phases) is purely diagnostic per its own plan.

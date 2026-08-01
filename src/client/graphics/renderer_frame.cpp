@@ -1283,6 +1283,16 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
               particleManager_ != nullptr,
               particleManager_ ? particleManager_->isEnabled() : false,
               zoneReady_);
+    // P52: GPU-sync characterization -- particles+UI phase begins here and
+    // ends after drawZoneLineOverlay() below (checkpoint 10), bracketing
+    // everything from particle rendering through 2D/UI draw calls. This is
+    // a coarser bucket than "particles" and "UI" individually (it also
+    // covers the target box/casting bar/debug overlays that run in
+    // between), which is an intentional simplification -- see
+    // refactor/P52_gpu_sync_characterization.md. No-op when the probe is
+    // disabled or unsupported.
+    eqtGPUPhaseBegin(2 /* GPUSyncPhase::ParticlesUI */);
+
     // Render environmental particles (render every frame, update at Tier 3)
     if (particleManager_ && particleManager_->isEnabled() && zoneReady_) particleManager_->render();
 
@@ -1601,6 +1611,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     drawZoneLineOverlay();
     drawZoneLineBoxLabels();
     frameTimings_.zoneLineOverlay = measureSection();
+    eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
 
 #ifdef WITH_RDP
     captureFrameForRDP();
@@ -1626,7 +1637,20 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     frameTimings_.postRender = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+    // P52: Swap phase. endScene() -> Device->present() -> eglSwapBuffers() /
+    // drmPageFlip() (docker/irrlicht-drm/COpenGLES2Driver.cpp,
+    // CIrrDeviceFB.cpp). The GPU timer query wrapped around this span is
+    // expected to read near-zero (a swap submits little/no new GPU command
+    // work) -- the meaningful measurement for this phase is the CPU-side
+    // sync-point attribution recorded inside present()/drmPageFlip() itself
+    // (eqtGetLastSwapBuffersMs()/eqtGetLastFlipWaitMs()), not the GPU query.
+    eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
     driver_->endScene();
+    eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+    // Collect any GPU query results that became available (double-buffered,
+    // non-blocking) and flip the write buffer for next frame. Must be
+    // called exactly once per frame, after the last eqtGPUPhaseEnd() above.
+    eqtGPUPhaseCollectResults();
     frameTimings_.endScene = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
