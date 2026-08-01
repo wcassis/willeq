@@ -1439,19 +1439,25 @@ proper fix:
   at all, so this is the only way this logic could be verified without a
   Pi; the real `CIrrDeviceFB.cpp` was build-verified only (ARM cross-
   build clean).
-  - **RIDE-ALONG ITEM for the next Pi-owning unit (1 invocation, ~30s,
-    budget-cheap)**: on real Pi/DRM hardware, run
-    `gles2_zone_benchmark --drm --res 400 300 <otherwise-normal-flags>`
-    (no `--allow-mode-fallback`) and confirm (a) the process exits
-    non-zero / refuses to run, (b) stderr shows the requested-vs-actual
-    ERROR line naming `2560x1440` as the substituted mode, (c) the DRM
-    device's own ELL_ERROR mode-fallback line appears (both the
-    initDRM()-time one and the post-init run()-time repeat). Then confirm
-    the shipped `--res 800 600` invocation runs normally with NO fallback
-    line at all (exact mode match, per P43's confirmed mode list). This
-    is the only behavioral check P49 could not perform itself (x86 has no
-    DRM/KMS path) — do NOT run this yourself if you are not the
-    Pi-owning unit for that cycle.
+  - ~~**RIDE-ALONG ITEM for the next Pi-owning unit**~~ — **DONE (P51,
+    2026-08-01)**: ran `gles2_zone_benchmark --drm --res 400 300
+    <shipped flags>` (no `--allow-mode-fallback`) on real Pi/DRM hardware.
+    (a) process refused, exit code 1 — confirmed. (b) stderr/log shows
+    the requested-vs-actual ERROR line naming `2560x1440` as the
+    substituted mode, plus the benchmark's own "Refusing to run" line —
+    confirmed. (c) the DRM device-creation-time `MODE FALLBACK` ELL_ERROR
+    line fires — confirmed; the documented post-init `run()`-time REPEAT
+    does NOT fire for this tool, and that's expected/benign:
+    `gles2_zone_benchmark`'s own resolution check exits the process
+    before it ever reaches `IrrlichtDevice::run()`'s frame loop (it isn't
+    a continuous-loop client like `willeq`, which is what the repeat log
+    was written for) — only the initDRM()-time line is reachable here.
+    Control: the shipped `--res 800 600` invocation (this unit's own H1
+    probe run, same session) logged "DRM: Found matching mode
+    800x600@75Hz for requested 800x600" with no fallback line, as
+    expected. Full logs: `benchmarks/pi_runs/p51_kpi_bisect/befallen_p49_
+    ridealong_400x300_refusal.log`. P49 is now fully closed end to end
+    (x86 unit-tests + this Pi ride-along).
 
 ## P41 landed (2026-07-30, merged `edcd72a`): lighting lever characterized, report-only
 
@@ -1559,15 +1565,32 @@ evidence, not requested).
   residuals: DEN default sheet resolves an unmasked variant; CAZ
   variants 1-4 not regenerated (both stay on the P37 exclusion
   fallback).
-- **ESCALATION — canonical-replay KPI REGRESSED on fable tip,
-  PREDATES P48**: KPI-guard spot 34.3-34.6ms p95 (blessed band
-  32.24-32.5, line 33.3), confirmed on repeat AND reproduced with a
-  pre-P48 binary (P48's isolation invocation). Regression window:
-  a805e01 (P45's measurement) → 9a61ed3 (P48 branch base) — contains
-  P46 (decode), P46b/c (benchmark-only), P46d (cache keying +
-  driver addTexture distinct-GPU-texture change — prime suspect:
-  more texture objects/binds on the Pi), P47 (viewer, unlikely),
-  testing-session merges. NEEDS a Pi bisect root-cause unit (P51
-  candidate) — the 30fps KPI stack is over the line at tip until
-  attributed. Methodology in
-  benchmarks/audits/p48_sheet_alpha/EVIDENCE_MANIFEST.txt.
+- ~~**ESCALATION — canonical-replay KPI REGRESSED on fable tip,
+  PREDATES P48**~~ — **ATTRIBUTED + RE-BASELINED by P51 (2026-08-01,
+  task/P51-kpi-bisect). NOT a production regression — instrument
+  honesty.** H1 (P51's prime hypothesis) confirmed on the FIRST probe,
+  no bisect needed: tip binary, canonical KPI spot, WITH P46c's
+  `--no-entity-shader-promotion` opt-out → 32.250ms p95, squarely back
+  in the old blessed band (same draws_avg as the regressed run — pure
+  timing, no structural change). Mechanism: pre-P46b the benchmark's
+  default-cycle entities rendered on Irrlicht's fixed-function material
+  (never linked `entity_renderer.cpp`'s promotion, P44b's finding);
+  P46b's `applyEntityShaderMaterialPromotion()` made the benchmark
+  correctly mirror what `entity_renderer.cpp`'s `createEntity()` has
+  ALWAYS done in production — every entity gets the real per-pixel-lit
+  shader. Production code was never touched by this arc; only the
+  benchmark's own fidelity gap closed. **Verdict: NO code change (there
+  is nothing to fix — production behavior was already correct and
+  unchanged throughout). The 32.24-32.5ms band is RETIRED for any
+  binary at/after `4386398` (P46b); 34.3-34.6ms is the new canonical
+  KPI-guard reference, effective now.** Scaling data point (e5 vs e205,
+  4 Pi invocations total): the promotion cost is proportional to
+  visible entity draws — negligible (~0.5ms, noise-level) at a
+  realistic e5 load, only material (~2.2ms, ~6.9%) at the e205
+  stress-test load the KPI guard itself uses. Full re-baselining memo,
+  scaling table, and honest-KPI statement for Will in
+  `refactor/perf_truth_audit.md`'s 2026-08-01 P51 section. Same-session
+  P49 ride-along also closed (see P49's own entry above). CSVs/logs:
+  `benchmarks/pi_runs/p51_kpi_bisect/`. Pi budget: 4 timed invocations
+  of ≤10, pristine exit (drop_caches recovery from a near-floor CmaFree
+  sample, no reboot needed).
