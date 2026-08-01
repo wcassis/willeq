@@ -1659,3 +1659,31 @@ documented episodic drain pattern, P02-characterized), both recovered via
 verified: governor `ondemand` all 4 cores, `/tmp` swept, no
 `gles2_zone_benchmark`/`willeq` process, both DRM devices free, final
 CmaFree 85,880 kB.
+
+**CLOSED by P52b (2026-08-01)**, `refactor/perf_truth_audit.md`'s
+2026-08-01 P52b section — full 0/5/40/205 entity-count sweep on the
+correct canonical replay path (`befallen_seed42_1000f.path`, P51's own
+fixture — P52b also caught and fixed a *third* methodology bug: its own
+starting point, P52's staged `p52_pi_gpu_sync_pathfile_fix.py`, used the
+wrong path file, `befallen_fixedpose_300f.path`, which clusters entities
+near a near-stationary camera and inflates draws/entities-visible ~3x)
+with the full shipped preset. Ranked %-of-frame attribution delivered at
+every load: `glFinish` (GPU-completion wait) is the #1 contributor
+throughout (45.8%-56.6% of frame), re-confirming P52's structural
+finding. The swap-floor question gets a refined answer, not a flat null:
+`flip_wait_ms` is 55.2% of frame at e0 (near-tied with `glFinish`) and
+falls to 0.7% by e205 — P41's display-cadence floor is real but only
+visible near zero load; P52's "null result" was an artifact of never
+testing e0. Entity-scaling curve (+34.377ms e0→e205, +33.289ms e5→e205)
+brackets P51's own +0.455ms(e5)/+2.22ms(e205) promotion-only deltas as
+expected. One open caveat carried forward: `B_e205`'s absolute magnitude
+(42.811ms avg/56.420ms p95) still reads ~21-24% over the honest
+34.3-34.6ms p95 band even on the corrected path/preset — plausibly a
+300-of-1000-frame path-subset effect, not re-diagnosed for lack of
+budget (0 reserve left of an orchestrator-extended 6-invocation
+ceiling). Flagged as "directionally trustworthy, not KPI-clean" rather
+than either suppressed or presented as fully validated. Not blocking:
+none of the ranking/swap-floor/scaling-shape conclusions depend on this
+specific magnitude. A follow-up unit re-running `B_e205` at the full
+1000-frame path (matching P51 exactly) would close this residual
+question if it ever becomes load-bearing for a real decision.
