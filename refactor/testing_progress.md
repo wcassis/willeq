@@ -804,29 +804,54 @@ ProcessCombatRound()            combat.cpp:1192   (auto-hunt kill flow)
        -> sleep_for(500ms)           combat.cpp:825
 ```
 
-Zone packet dispatch runs on the **game thread** (CLAUDE.md threading
-model: "Network events (TickNetwork)"). So an auto-hunting client with
-auto-loot enabled — **the default** — stalls its own network tick for
-**≥1.1 s per kill**, one item, and +100 ms for each additional item.
-Nothing else is processed during the stall: no packets, no game tick.
+Zone packet dispatch runs on the **game thread**
+(`Application::gameThreadLoop`, `application.cpp:659` →
+`processNetworkEvents` → `TickNetwork`). Nothing else advances during
+the stall: no packets drained, no game tick, no renderer intents.
+One item ≈ **1.1 s**; auto-hunt adds its own 500 ms corpse-spawn wait
+(`combat.cpp:1168`, a FOURTH sleep) for ≈ **1.6 s**.
 
-Severity argument: this codebase's known failure mode is zone-load
-hangs caused by packet bursts overrunning the socket buffer (see
-CLAUDE.md on `SO_RCVBUFFORCE`). A multi-second game-thread stall is
-exactly the condition that turns a survivable burst into dropped
-packets. Worth weighing even though nobody has reported it as a
-symptom.
+### Severity — CORRECTED 2026-08-01 (the first framing was imprecise)
 
-**Not reachable from the modern UI path**: `LootAllFromCorpse`
-(`eq_bridge.cpp`) is non-blocking and never calls
-`CombatManager::LootAll()`. This is the headless/auto-hunt path only.
+The original entry said "an auto-hunting client with auto-loot enabled
+(**the default**)". Re-checked against source:
+
+- `m_auto_loot_enabled` defaults **true** (`combat.cpp:78`).
+- `m_auto_hunting_enabled` defaults **false** (`combat.cpp:80`), so the
+  `ProcessCombatRound` flow needs explicit opt-in — narrower than
+  claimed.
+- **But `CheckAutoLoot` does not require auto-hunting at all**, which is
+  *wider* than claimed. `EqActionHandler::lootCorpse` →
+  `CombatManager::LootCorpse` sets `COMBAT_STATE_LOOTING` while leaving
+  `m_player_looting_corpse_id` at 0, so dispatch takes the sleeping
+  branch (`eq.cpp:1021`). That action is fed by
+  `InputActionBridge::processLootRequests` ← `consumeLootRequest()`,
+  documented in `input_handler.h` as **shift+click on a corpse**.
+
+So: the loot-*window* path (`EverQuest::RequestLootCorpse`,
+`eq_bridge.cpp:1494`) sets that id and is **unaffected**; the
+action-layer loot path (shift+click, console, auto-hunt) is affected.
+Not headless-only, as first written.
+
+Risk argument (mechanism, not an observed symptom): this codebase's
+known failure mode is zone-load hangs from packet bursts overrunning the
+socket buffer — hence `SO_RCVBUFFORCE` and `CAP_NET_ADMIN`. A
+second-plus window where the client stops reading the socket is exactly
+what turns a survivable burst into dropped packets.
 
 Pinned as `CombatManagerLoot.BUG_CheckAutoLootBlocksCallingThreadForOverASecond`
-(that one test is ~1.13 s of the binary's 1.17 s runtime). Fix shape is
-a design question, not a one-liner — the delays appear to be deliberate
-"human-like" pacing, so removing them changes behavior. Options: drive
-the pacing off the existing tick/timer instead of sleeping, or move the
-loot sequence off the game thread. **Needs Will's call.**
+(~1.13 s of that binary's 1.17 s runtime).
+
+### RESOLVED — Will's design ruling 2026-08-01
+
+Event-driven state machine with deadlines, not timers: the right wait is
+variable with server load, so a fixed sleep is both too long and too
+short. Auto-loot should loot a corpse if one appears, and a corpse that
+never appears must not hang the client. Scoped as **T26**
+(`refactor/T26_loot_state_machine.md`), which carries the threading
+traps found while planning (do NOT tick from `m_update_thread`;
+`GameTick()` is graphics-gated and would never run headless;
+`HC_OP_LootComplete` is unreliable).
 
 ## T19 findings — two parser crash bugs — FIXED in T20 (`cb0f5e4`)
 
