@@ -40,15 +40,23 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
     // requested-but-not-actually-achieved resolution (P43 root cause: DRM
     // mode fallback overwrote Width/Height with the connector's preferred
     // mode without any of P38/P40/P41's benchmark runs recording it).
+    // P52: gpu_zone_ns/gpu_entity_ns/gpu_particles_ui_ns/gpu_swap_ns/
+    // swap_buffers_ms/flip_wait_ms/finish_readpixels_ms are the newest
+    // trailing columns -- GPU-sync characterization, all -1/0 unless
+    // --gpu-sync-probe was passed (see gpu_sync_probe.h). Same append-only
+    // convention as every prior trailing-column addition.
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
                "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
                "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,"
                "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible,"
-               "tex_binds,tex_param_calls,actual_width,actual_height\n");
+               "tex_binds,tex_param_calls,actual_width,actual_height,"
+               "gpu_zone_ns,gpu_entity_ns,gpu_particles_ui_ns,gpu_swap_ns,"
+               "swap_buffers_ms,flip_wait_ms,finish_readpixels_ms\n");
 
     for (const auto& m : frames_) {
         fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d,"
-                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u,%d,%d\n",
+                   "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u,%d,%d,"
+                   "%lld,%lld,%lld,%lld,%.3f,%.3f,%.3f\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
@@ -60,7 +68,10 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
                 m.collectCullMs, m.sortMs, m.submissionMs, m.otherMs, m.swapMs,
                 m.entitiesVisible,
                 m.texBinds, m.texParamCalls,
-                actualWidth_, actualHeight_);
+                actualWidth_, actualHeight_,
+                static_cast<long long>(m.gpuZoneNs), static_cast<long long>(m.gpuEntityNs),
+                static_cast<long long>(m.gpuParticlesUiNs), static_cast<long long>(m.gpuSwapNs),
+                m.swapBuffersMs, m.flipWaitMs, m.finishReadPixelsMs);
     }
 
     fclose(f);

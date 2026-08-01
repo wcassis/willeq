@@ -113,7 +113,9 @@ enum LinuxKey {
 #include "os.h"
 #include "CTimer.h"
 #include "drm_mode_select.h"
+#include "gpu_sync_probe.h"
 #include <vector>
+#include <chrono>
 
 // Signal handler to restore VT keyboard mode on abnormal exit.
 // Without this, SIGINT/SIGTERM/SIGSEGV leaves the keyboard stuck in K_OFF mode
@@ -660,12 +662,34 @@ void CIrrDeviceFB::waitForFlipComplete()
 
 void CIrrDeviceFB::drmPageFlip()
 {
+    // P52: CPU-side sync-point attribution (flag-gated -- see
+    // gpu_sync_probe.h; single bool check when the probe is off, matching
+    // the P38 gl_call_counters.h precedent). waitForFlipComplete() is the
+    // named suspect for the swap-floor wall-clock cost (P41,
+    // refactor/perf_truth_audit.md); eglSwapBuffers() is measured
+    // separately so the two can't be confused with each other.
+    const bool probeOn = eqtGPUSyncProbeEnabled();
+
     // Wait for previous flip to complete before submitting a new one.
     // This prevents drmModePageFlip from returning -EBUSY and falling
     // back to the synchronous drmModeSetCrtc (which blocks ~35ms).
-    waitForFlipComplete();
+    if (probeOn) {
+        const auto t0 = std::chrono::steady_clock::now();
+        waitForFlipComplete();
+        const auto t1 = std::chrono::steady_clock::now();
+        eqtRecordFlipWaitMs(std::chrono::duration<double, std::milli>(t1 - t0).count());
+    } else {
+        waitForFlipComplete();
+    }
 
-    eglSwapBuffers(eglDisplay_, eglSurface_);
+    if (probeOn) {
+        const auto t0 = std::chrono::steady_clock::now();
+        eglSwapBuffers(eglDisplay_, eglSurface_);
+        const auto t1 = std::chrono::steady_clock::now();
+        eqtRecordSwapBuffersMs(std::chrono::duration<double, std::milli>(t1 - t0).count());
+    } else {
+        eglSwapBuffers(eglDisplay_, eglSurface_);
+    }
 
     struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmSurface_);
     if (!bo) {

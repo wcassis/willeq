@@ -54,6 +54,16 @@
 #include "client/graphics/gles2_egl_helper.h"
 #endif
 
+// P52: GPU-sync per-phase timer-query hooks (docker/irrlicht-drm/COpenGLES2Driver.cpp
+// / gpu_sync_probe.h). Plain-typed free functions, declared extern locally rather
+// than via that header (which lives outside this target's include path — only the
+// benchmark tool adds docker/irrlicht-drm to its include dirs), matching the existing
+// gles2CreateStaticHWBuffer() extern-declaration precedent. No-ops when the probe is
+// disabled (see gpu_sync_probe.h's zero-cost-when-off design).
+extern void eqtGPUPhaseBegin(int phase);
+extern void eqtGPUPhaseEnd(int phase);
+extern void eqtGPUPhaseCollectResults();
+
 // Collision map (included for HCMap::Triangle in member variable)
 #include "client/hc_map.h"
 
@@ -1986,7 +1996,15 @@ private:
                 std::chrono::steady_clock::now() - passStart_).count();
             switch (renderPass) {
                 case irr::scene::ESNRP_SOLID:
-                    solidTime += elapsed; break;
+                    solidTime += elapsed;
+                    // P52: close the entity-pass GPU query if OnRenderPassPreRender opened
+                    // one (only happens when manualZoneDrawEnabled_ split zone from entity
+                    // draw this frame — see OnRenderPassPreRender in renderer_zone_draw.cpp).
+                    if (entityGPUQueryActive_) {
+                        eqtGPUPhaseEnd(1 /* GPUSyncPhase::EntityPass */);
+                        entityGPUQueryActive_ = false;
+                    }
+                    break;
                 case irr::scene::ESNRP_TRANSPARENT:
                 case irr::scene::ESNRP_TRANSPARENT_EFFECT:
                     transparentTime += elapsed; break;
@@ -2016,6 +2034,10 @@ private:
         std::chrono::steady_clock::time_point preRenderTime_;
         bool firstPassSeen_ = false;
         irr::scene::E_SCENE_NODE_RENDER_PASS currentPass_ = irr::scene::ESNRP_NONE;
+        // P52: tracks whether a GPU timer query for the entity pass (GPUSyncPhase::EntityPass)
+        // was opened this SOLID pass, so OnRenderPassPostRender only closes it when it was
+        // actually opened (manualZoneDrawEnabled_ gates whether zone/entity are split at all).
+        bool entityGPUQueryActive_ = false;
     };
     RenderPassTimer* renderPassTimer_ = nullptr;  // Owned by Irrlicht (ref counted)
 
