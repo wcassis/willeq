@@ -267,3 +267,112 @@ gles2_zone_benchmark.cpp`, `tools/hwcaps/zone_bench_metrics.{h,cpp}`,
 
 **READY-FOR-PI.** Waiting for the orchestrator's explicit Phase-2 go-ahead
 after P51 releases the Pi. Not polling.
+
+### Phase 2 (Pi) — 2026-08-01, same branch, go-ahead from the orchestrator
+### after P51 released the Pi (pristine exit, CmaFree 88,248 kB)
+
+**Partial — budget exhausted before the full matrix produced usable data.
+Two real methodology bugs found; one fixed within budget, one identified
+but unfixed. Full ranked attribution, options note, and both bugs'
+details: `refactor/perf_truth_audit.md`'s 2026-08-01 P52 section (this
+is the plan's required deliverable location, so the full writeup lives
+there, not duplicated here). Summary below.**
+
+Setup: merged `fable` (P51's re-baseline, no code changes) into this
+branch — clean merge, no conflicts. Rebuilt the ARM binary in this
+worktree (`ARM_BUILD_BIN_DIR` override — `scripts/pi/env.sh` defaults to
+the main worktree's `build-arm-noble/`, which does not have this unit's
+instrumentation) — clean, non-stub. Own pre-flight gate run before any
+timed work (ssh reachable, CmaFree 89,424 kB healthy, `preflight()`
+asset/binary-freshness checks passed).
+
+**First job per the plan** — checked the `GL_EXT_disjoint_timer_query`
+capability line on Lima before trusting any GPU-side number:
+**NOT available** (`fns=1, ext_string=0` — non-null `eglGetProcAddress`
+results but no extension-string advertisement; the dual-signal capability
+check this unit's Phase 1 built specifically to catch this class of false
+positive worked as designed). Confirmed on both real (post-fix) Pi
+invocations. All `gpu_*_ns` CSV columns are `-1` on every Pi run this
+unit produced, correctly — GPU-side timer queries are not usable on this
+hardware; fell back entirely to the CPU-side sync-point attribution path,
+per the plan's own contingency.
+
+**Bug 1** (found, fixed within budget): the original 6-invocation matrix
+(`refactor/scratch/p52_pi_gpu_sync_matrix.py`) used `pi_common.py`'s
+`--camera-pose`-flag-building helpers — routes into
+`gles2_zone_benchmark.cpp`'s structurally separate static-pose capture
+loop, which runs NONE of this unit's per-frame instrumentation (nor,
+found the same way, the pre-existing P08/P38 phase-timing/GL-counter
+columns). All 6 CSVs read `0`/`-1` across every relevant column,
+confirmed by diffing against P51's own `--path-file`-based CSVs (real,
+non-zero values, same binary shape). Fixed by switching to `--path-file`
+(P38's committed `befallen_fixedpose_300f.path` fixture, the same
+moving-path loop P51's own scaling probe used) —
+`refactor/scratch/p52_pi_gpu_sync_pathfile_fix.py`.
+
+**Bug 2** (found, NOT fixed — no budget left): the 2-invocation Bug-1 fix
+run omitted the shipped-preset flags (`--merge-zone-draws
+--composite-scenegraph --eqe1-path`) P38/P41/P51's own canonical replays
+all carry. `B_stress_e205_pathfile` measured 232.7ms avg total frame time
+— ~7x P51's honest 34.3-34.6ms e205 band — a config-fidelity confound
+(unmerged zone draws + non-composite entity submission dominates at high
+entity count), not a real number. Must not be compared against the KPI
+band. No further Pi invocation was available to correct it: this unit's
+≤8-invocation ceiling (2 reserve) was spent 6-on-Bug-1 + 2-on-the-fix.
+
+**What the 2 recovered runs DO establish** (structural findings, not
+magnitude-sensitive to Bug 2 — full reasoning in `perf_truth_audit.md`):
+CPU-side sync-point attribution (`swap_buffers_ms`/`flip_wait_ms`/
+`finish_readpixels_ms`) works correctly on real Lima hardware and
+produces sane numbers at both loads; `waitForFlipComplete()`/
+`eglSwapBuffers()` are NOT where the CPU blocks (~0.10-0.15ms total,
+both loads) — the block is almost entirely `glFinish()` GPU-completion
+wait (~11-90ms) — **a null result for P41's own swap-floor hypothesis**
+(perf_truth_audit finding (c)/(e), which named `waitForFlipComplete()`
+as the next suspect for the ~14.4-15.0ms wall-clock floor). The entity
+sweep the orchestrator specifically asked this unit to reproduce/refine
+(P51's +0.455ms(e5)/+2.22ms(e205) entity-promotion curve) was **not**
+meaningfully measured — Bug 1 nulled the original matrix, Bug 2 makes the
+recovery run's entity-count delta uninterpretable — and the fill-rate
+isolation (E/F) never ran at all.
+
+**Bar**: no new source-code changes this phase (Phase 2 is pure
+measurement/analysis on top of Phase 1's already-committed
+instrumentation) — build/ctest/gate/ARM-cross bar unchanged from Phase 1's
+own results (see above), re-verified unaffected since nothing here
+touches C++.
+
+**Pi discipline**: 8/8 invocations of the ≤8 ceiling used (6 invalid +
+2 valid-instrumentation-but-Bug-2-confounded). Two SessionAbort-triggering
+CmaFree episodes (73,540→812 kB after the first matrix; 69,208→404 kB
+after the e205 recovery leg) — both the documented episodic CMA-drain
+pattern already characterized by P02/P51, both recovered via
+`sync && drop_caches` (no reboot), confirmed back to 88,944 kB and 85,856
+kB respectively. Final pristine exit independently re-verified after
+cleanup (not just trusted from the script's own governor-restore):
+governor `ondemand` on all 4 cores, `/tmp` swept of every `p52_*`
+artifact (the matrix script's `rsync_from()` pulls but does not delete
+remote files — a real gap, fixed by explicit `rm` in the cleanup step,
+not by script changes given budget exhaustion; flagging for the
+follow-up unit to build a proper remote-cleanup step into
+`pi_common.py`'s `run_zone_bench_generic` family), no
+`gles2_zone_benchmark`/`willeq` process, both `/dev/dri/card{0,1}` free,
+CmaFree 85,880 kB (in line with P51's own 88,248 kB pristine-exit value).
+
+**Deliverables**: `refactor/perf_truth_audit.md` 2026-08-01 P52 section
+(ranked attribution + options note, the plan's required deliverable),
+`refactor/deferred.md` P52 entry, both matrix scripts (original +
+path-file fix, both committed as the record of what was tried and why),
+CSVs under `benchmarks/pi_runs/p52_gpu_sync/` (6 invalid + 2 recovered,
+all kept, all labeled).
+
+**Deviation from the plan**: the plan's Phase 2 charter ("attribute the
+GPU-sync share to named causes with numbers, deliver a ranked options
+note") is only partially met — a real percentage-of-frame number was not
+produced (Bug 2), though the mechanism-level question (swap/flip vs.
+GPU-completion) was answered with high confidence, and Lima's lack of
+GPU-timer-query support is now a definitive, load-bearing fact for any
+future characterization work on this hardware. Recommend the follow-up
+unit named in the options note; not requesting additional budget
+unilaterally mid-unit per the ≤8 ceiling's own discipline — reporting for
+the orchestrator's call instead.
