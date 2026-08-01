@@ -4,13 +4,14 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-07-31 (T23 merged — one open needs-Will item: the
-auto-loot game-thread stall).
+Last updated: 2026-08-01 (T24 merged — two open needs-Will items: the
+auto-loot game-thread stall and the dead class/level spell gate).
 
 ## Unit log
 
 | Unit | Name | Status | Notes |
 |------|------|--------|-------|
+| T24 | `SpellManager` + `BuffManager` | DONE (merged `2400d96`) | Option A batch, unit 2 of 3. 117 tests over 1912 previously-untested lines, split across 3 binaries; runtimes 0.13/0.07/0.26s (no sleeps — all timing via T17 backdating). **NEW BUG pinned, needs Will:** `class_levels` never populated → `canClassUse()` always true → `memorizeSpell()`'s class/level gate is a silent no-op (section below). Confirmed the scoped dead-`delta_time` trap; found that `BuffManager::update()` DOES honor delta_time while `SpellManager::update()` ignores it — opposite time semantics in one subsystem. `spell_effects.cpp`/`spell_type_processor.cpp` deferred to T24b. |
 | T23 | `CombatManager` coverage | DONE (merged `93315bd`) | Option A batch, unit 1 of 3. 37 tests over `combat.cpp` (1864 lines, previously no direct binary) — targeting, auto-attack/fire, cycling, consider, the 7-state machine, config. **Validates the Option A ruling: no seam was needed.** **BUG pinned, needs Will:** auto-loot blocks the game thread ≥1.1s per kill (section below). Plan correction: `GetReplaySuppressedSendCount()` does NOT observe CombatManager sends (verified `eq.cpp:3672`) — my plan was wrong, executor caught it. Binary 1.17s. |
 | T22 | Mutation kill-rate sweep | DONE (merged `1559271`) | Dispatched executor unit (t1). Closes the benchmark session's open intel item. 43 mutations over six parsers, **24 → 37 killed**: spell_database 2/7→7/7, string_database 6/8→8/8, eqe1_loader 5/7→6/7, pfs 5/7→6/7, xmi_decoder 3/7→5/7, s3d_loader 3/7→5/7. Found `ZoneLightLoadingTest`'s `EXPECT_GE(int, 0)` tautology (a total zone-light-loading break survived it) and that `S3DLoader`'s texture map was never inspected. Unobservable survivors documented, not papered over. Orchestrator ran an independent mutation to confirm the kill claim. |
 | T21 | Daybreak handshake fixes | DONE (merged `def17c2`) | Closes all three T17 findings, go-ahead from Will. `Random::UInt32()` added; both ctors use it; `OP_SessionResponse` unswaps connect_code/encode_key/max_packet_size. Landed as ONE commit — bug 1 masked bug 2. Discovery probe over the pcap established real values first: **`max_packet_size` was live-wrong** (network-order 512 read as 131072). Regression oracles clean: pcap decode 4/4, golden replay 2/2 with golden unchanged. |
@@ -759,6 +760,33 @@ an explicit range check it silently truncated through the cast). The
 BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
+
+## T24 finding — the spell class/level gate is dead (needs Will)
+
+`SpellData::class_levels` (`spell_data.h:122`) is declared
+`std::array<uint8_t, NUM_CLASSES> class_levels = {}` and
+**`SpellDatabase::queryAndCache()` never assigns it** — verified by
+reading the full field-mapping block (`spell_database.cpp:61-84`), it is
+simply absent. So every cached spell carries all-zero class levels.
+
+`canClassUse()` (`spell_data.h:200`) computes
+`required = class_levels[idx]` → `0`, then returns
+`required != 255 && level >= required` → **always true**.
+
+Live effect: `SpellManager::memorizeSpell()` gates on exactly that call
+(`spell_manager.cpp:630`, logging "level too low" on failure), so the
+check never rejects anything. **Any class can memorize any spell at any
+level** as far as the client is concerned. The server would presumably
+refuse, so this is a client-side validation gap rather than an exploit —
+but the UI would show a memorization that cannot succeed.
+
+Root cause is upstream of the client code: `EQT::SpellInfo` has no
+per-class level column to map from, so populating this needs a schema
+question answered first (does `willeq.db` carry the classes columns from
+the source spell data, and were they simply not extracted?). **That
+makes it a data-pipeline decision, not a code fix — needs Will.**
+
+Pinned by two tests in `tests/test_spell_manager.cpp`.
 
 ## T23 finding — auto-loot stalls the GAME THREAD (needs Will)
 
