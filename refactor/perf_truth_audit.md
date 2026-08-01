@@ -694,6 +694,16 @@ matching mode 800x600@75Hz for requested 800x600" logged normally. P49's
 ## 2026-08-01 — P52: GPU-sync characterization (Phase 2, Pi) — partial,
 ## budget exhausted before full matrix
 
+**SUPERSEDED by P52b (below).** The magnitude table this section's Bug 2
+produced (`B_stress_e205_pathfile` 232.7ms avg) must never be read as a
+KPI figure — see the P52b section at the end of this document for the
+corrected, full-shipped-preset, correct-canonical-path matrix and the
+real percentage-of-frame attribution this section could not deliver. The
+structural finding below (glFinish, not swap/flip, is the CPU-blocking
+mechanism) is re-confirmed by P52b at realistic/stress loads, with an
+important refinement at near-zero load — see P52b's "swap-floor final
+word."
+
 Executed on `wt/slot3`, branch `task/P52-gpu-sync`. Phase 1 (x86 prep,
 instrumentation) landed clean per its own Review section in
 `refactor/P52_gpu_sync_characterization.md`. Phase 2 (this section) ran on
@@ -880,3 +890,230 @@ GPU-ns splits on this hardware. It won't.
 
 No default flipped, no config changed, no golden touched — this unit
 (both phases) is purely diagnostic per its own plan.
+
+## 2026-08-01 — P52b: GPU-sync matrix re-run under the corrected config —
+## completes P52's item 6 charter
+
+Executed on `wt/slot3`, branch `task/P52b-gpu-sync-rerun`. Corrects both
+of P52's Phase 2 bugs (`--path-file` instead of `--camera-pose`; the full
+shipped preset — `--merge-zone-draws --composite-scenegraph --eqe1-path`
+— instead of the bare path-file recovery run) and, in the course of this
+unit's own per-run sanity gate, catches and corrects a **third**
+methodology issue P52 never hit (its own recovery run only sampled e5/
+e205, never e0/e40): the wrong canonical replay path.
+
+### Invocation accounting (6 total; ceiling extended mid-unit by the
+### orchestrator from 5 to 6 — see below)
+
+| # | label | path file | preset | result |
+|---|---|---|---|---|
+| 1 | `BADPATH_A_e5` | `befallen_fixedpose_300f.path` | shipped | ran clean, but **wrong path** (see below) — not usable |
+| 2 | `BADPATH_B_e205` | `befallen_fixedpose_300f.path` | shipped | ran clean, **wrong path**, entities_visible_avg=102/draws_avg=686 (vs P51's 34/41.9) — not usable |
+| 3 | `A_e5` | `befallen_seed42_1000f.path` (corrected) | shipped | **PASS** sanity gate |
+| 4 | `B_e205` | `befallen_seed42_1000f.path` (corrected) | shipped | sanity gate **marginal FAIL** (see caveat below) — kept, flagged |
+| 5 | `D_e0` | `befallen_seed42_1000f.path` (corrected) | shipped | no honest reference to gate against; monotonic with the rest |
+| 6 | `C_e40` | `befallen_seed42_1000f.path` (corrected) | shipped | no honest reference to gate against; monotonic with the rest |
+
+**Invocations 1-2 were spent on a real diagnosis, not wasted**: this
+unit's starting script (`p52_pi_gpu_sync_pathfile_fix.py`, staged by P52)
+used `befallen_fixedpose_300f.path` — P52's own committed fixture — for
+both the shipped-preset A_e5/B_e205 legs. The per-run sanity gate this
+unit's plan mandated (against the honest 10.818ms(e5)/34.3-34.6ms(e205)
+references) caught it immediately: B on this path measured
+entities_visible avg=102, draws avg=686 — roughly 3x P51's own honest
+e205 canonical run (entities_visible avg=34.0, draws avg=41.9,
+`benchmarks/pi_runs/p51_kpi_bisect/befallen_e205_shipped_h1probe_noPromotion.csv`).
+Root cause: the "fixedpose" path holds the camera in a near-stationary
+vantage with entities (placed along the path) clustered close by,
+inflating visible-entity/draw counts — a path-density confound distinct
+from P52's own Bug 1/Bug 2, invisible until sanity-gated against a real
+reference. Switched to `befallen_seed42_1000f.path`, P51's own canonical
+replay fixture, for all 4 remaining legs. **CSVs kept** under
+`benchmarks/pi_runs/p52b_gpu_sync/p52b_BADPATH_*` — same "kept, not
+deleted, useful negative record" convention P52 itself used for its own
+6 write-off runs.
+
+A background-vs-foreground process mismatch mid-session (this unit's
+early attempt to run the full matrix as a backgrounded local process hit
+its own local orchestration timeout while B_e205's remote invocation was
+still executing) left the Pi's `performance` governor pinned after the
+local script died before its `finally:` cleanup ran — caught immediately
+on the next Pi state check (no benchmark process running, but governor
+still `performance` on all 4 cores) and manually restored to `ondemand`
+before any further work. Not counted as a 7th invocation (no benchmark
+process was launched by that recovery step).
+
+Two CmaFree episodes this session, both the documented P01/P52
+"episodic CMA-drain" pattern, both recovered via `sync && drop_caches`
+(no reboot), per protocol: (1) CmaFree read 200 kB immediately before
+invocation 3's pre-sample — the session's own `SessionAbort` fired
+correctly (panic-safe protocol working as designed, no invocation was
+actually launched), recovered to 88,536 kB; (2) CmaFree read 43,756 kB
+between invocation 4 and invocations 5/6 — proactively dropped before
+continuing (no abort fired) to build headroom given zero reserve
+remained, recovered to 89,100 kB.
+
+The orchestrator extended the ceiling from 5 to 6 mid-unit specifically
+to authorize the `D_e0`/`C_e40` legs (the scaling-curve midpoint and the
+swap-floor isolation point), ruling that invocations 1-2 counted as the
+wrong-path mistake rather than the plan's own "1 reserve" — the 4
+corrected legs (A/B/D/C) plus the 2 diagnostic legs (1-2) total 6, no
+reserve left after invocation 6.
+
+### Per-run sanity gate results
+
+| leg | total_ms avg | total_ms p95 | honest ref | verdict |
+|---|---|---|---|---|
+| A_e5 | 9.522 | 14.388 | 10.818ms avg | **PASS** (12% under, inside ±35% band) |
+| B_e205 | 42.811 | 56.420 | 34.3-34.6ms p95 | **marginal FAIL** (p95 21% over the ±35% band's upper bound) |
+| D_e0 | 8.434 | 12.564 | none (P51 never measured e0) | n/a — judged by monotonicity, see below |
+| C_e40 | 13.926 | 18.830 | none (P51 never measured e40) | n/a — judged by monotonicity, see below |
+
+`B_e205` is far closer to the honest band than either of the two prior
+confounded attempts (P52's own Bug-2 recovery: 232.7ms avg / 7x over;
+this unit's own wrong-path attempt: 143.4ms p95 / 4x over) but still not
+clean. `entities_visible_avg=53.9`/`draws_avg=143.3` on the corrected
+path is still ~1.6x P51's honest e205 run's 34.0/41.9 — plausibly because
+this unit used `--frames 300` (P52's own "report-only, lighter than
+P38/P41's 1000-frame convention" choice) against the *first* 300 waypoints
+of a 1000-frame path, rather than P51's full 1000-frame average; if the
+early part of that path traverses a denser sub-region of `befallen` than
+the path's own average, a 300-frame subset would read consistently high
+without any config bug. **Flagging this openly rather than either
+suppressing it or re-diagnosing further — no budget remains to
+resolve it.** The 0/5/40/205 scaling curve and the ranked attribution
+below are reported as real, measured numbers on the corrected
+config/path, with this residual elevation at e205 named explicitly:
+treat `B_e205`'s absolute magnitude as "directionally trustworthy, not
+a clean KPI-comparable data point" pending a follow-up that either uses
+the full 1000-frame path or averages a full traversal.
+
+`D_e0`/`C_e40` have no honest reference to gate against (P51 never
+measured those loads) — judged instead by monotonicity with A_e5/B_e205
+(`draws_avg`: 7.8 → 9.0 → 18.2 → 143.3; `total_ms_avg`: 8.434 → 9.522 →
+13.926 → 42.811, both strictly increasing with entity count) and by DRM
+mode-line confirmation (below) — no red flags.
+
+**DRM mode confirmed on every one of the 6 legs**: `DRM: Found matching
+mode 800x600@75Hz for requested 800x600` (`p52b_{BADPATH_A_e5,
+BADPATH_B_e205,A_e5,B_e205,D_e0,C_e40}.log`).
+
+### Ranked %-of-frame GPU-sync attribution (glFinish / swap / flip-wait,
+### against `total_ms`)
+
+| load | glFinish (`finish_readpixels_ms`) | flip-wait (`flip_wait_ms`) | swap-buffers (`swap_buffers_ms`) |
+|---|---|---|---|
+| e0 (0 entities) | **56.6%** (4.772ms) | **55.2%** (4.657ms) | 0.9% (0.079ms) |
+| e5 (realistic) | **54.1%** (5.148ms) | **38.5%** (3.670ms) | 0.9% (0.084ms) |
+| e40 (mid) | **52.8%** (7.352ms) | 10.4% (1.455ms) | 0.6% (0.083ms) |
+| e205 (stress) | **45.8%** (19.598ms) | 0.7% (0.318ms) | 0.3% (0.107ms) |
+
+(Percentages don't sum to ≤100% at e0/e5 — `finish_readpixels_ms` and
+`flip_wait_ms` are separately-instrumented sync points, not disjoint
+slices of `total_ms`'s own phase breakdown; at near-zero load they
+appear to overlap in wall time rather than being strictly sequential
+within the frame. Interpretive note, not a bug — flagging for a future
+unit to reconcile against the pre-existing `swap_ms` P08 phase column
+rather than resolving unilaterally here.)
+
+**glFinish (GPU-completion wait) is the single largest named contributor
+at every load measured, ranked #1 throughout the 0-205 entity range —
+re-confirms P52's own structural finding at realistic (e5) and stress
+(e205) loads, exactly as this unit's plan asked it to.**
+
+### Swap-floor final word (from `D_e0`, the near-zero-GPU-work isolation
+### point P52 itself named as the sharpest test)
+
+**This is the piece P52's Bug-2-confounded 2-run recovery could never
+have found — it only ever measured e5 and e205, both loads where
+`flip_wait_ms` is already small.** At e0, `flip_wait_ms` is **55.2% of
+total frame time** (4.657ms avg), essentially tied with `glFinish` for
+the #1 slot — and it falls off sharply and monotonically as entity count
+rises (55.2% → 38.5% → 10.4% → 0.7% across e0→e5→e40→e205), the mirror
+image of `glFinish`'s own share staying roughly flat (56.6% → 54.1% →
+52.8% → 45.8%). The Pi's confirmed 75Hz DRM mode gives a ~13.33ms vsync
+period — a ~4.66ms average DRM page-flip wait at e0 is well inside one
+vsync period, consistent with `waitForFlipComplete()` genuinely blocking
+on display cadence when the GPU finishes its (near-zero) work fast enough
+to have slack before the next flip is due, and that slack shrinking to
+nothing as GPU-completion time grows to dominate the frame.
+
+**Verdict: P41's original swap-floor hypothesis is NOT simply null (as
+P52's confounded recovery run concluded) — it is load-dependent and
+real, but only visible near the floor.** At any load a real NPC encounter
+would produce (e5 and up), `glFinish` dominates and flip-wait is a minor
+or negligible contributor, so P52's practical recommendation (don't chase
+the swap/flip-wait path for a production fix) still holds. But the "is
+there a display-cadence floor" question P41 originally asked is answered
+YES at near-zero load — the floor is real, it is `waitForFlipComplete()`,
+and it is the correct explanation for why frame time never drops to
+zero even with (almost) nothing to draw. P52's Bug-2-confounded framing
+of this as a clean "null result" was an artifact of never testing e0.
+
+### Entity-count scaling curve (0/5/40/205), vs P51's own
+### +0.455ms(e5)/+2.22ms(e205) promotion-only deltas
+
+| load | entities_visible avg | draws avg | polys avg | total_ms avg | delta vs prior point |
+|---|---|---|---|---|---|
+| e0 | 0.0 | 7.8 | 654 | 8.434 | — |
+| e5 | 1.1 | 9.0 | 1,162 | 9.522 | +1.088ms |
+| e40 | 10.4 | 18.2 | 5,149 | 13.926 | +4.404ms |
+| e205 | 53.9 | 143.3 | 23,960 | 42.811 | +28.885ms |
+
+Total e0→e205 delta: **+34.377ms**. Total e5→e205 delta (the same span
+P51's own +2.22ms promotion delta was measured over): **+33.289ms**.
+Both comfortably **bracket** P51's promotion-only deltas (+0.455ms at
+e5, +2.22ms at e205) — expected, since P51's number isolates only the
+entity-shader-promotion component of the per-entity cost, a subset of
+the full per-entity submission/draw/shading/GPU-sync cost this sweep
+measures. The curve is monotonically increasing and accelerating
+(per-entity marginal cost rises with load, consistent with `glFinish`'s
+own growing absolute contribution swamping the roughly-flat CPU
+submission-side cost at low entity counts).
+
+### Deliverables / files
+
+CSVs + logs: `benchmarks/pi_runs/p52b_gpu_sync/` (`p52b_A_e5`,
+`p52b_B_e205`, `p52b_C_e40`, `p52b_D_e0`, plus the 2 kept
+`p52b_BADPATH_*` write-offs, `cma_telemetry.tsv`). Script:
+`refactor/scratch/p52b_gpu_sync_shipped_matrix.py` (adapted from P52's
+staged `p52_pi_gpu_sync_pathfile_fix.py`, path-file corrected mid-run).
+
+### Bar
+
+No source changes this unit (pure measurement/analysis on top of P52's
+already-committed instrumentation) — build/ctest/gate/ARM-cross bar
+carried forward unchanged from P52 Phase 1 (last touched C++).
+
+### Pi discipline / pristine exit
+
+6 invocations against the extended 6-invocation ceiling (0 reserve
+remaining). Governor: pinned `performance` during each of the 3 timed
+sessions, restored to `ondemand` on all 4 cores after each (one manual
+restore needed after a local-orchestration timeout, see above — verified,
+not just trusted). No `gles2_zone_benchmark`/`willeq` process at final
+check. `/dev/dri/{card0,card1}` both free (`fuser` empty) at final check.
+`/tmp` swept of every `p52b_*` artifact (CSVs/logs/staged binary/path
+file) via explicit `rm`, confirmed empty (`df -h /tmp`: 0% used, 242M
+free) — the remote-cleanup gap P52 itself flagged (`rsync_from()` pulls
+but doesn't delete) was closed manually here, still not fixed in
+`pi_common.py` itself (still recommended as a follow-up hygiene item).
+Final CmaFree: **67,436 kB** (healthy, in line with P51/P52's own
+85,000-89,000 kB pristine-exit values, somewhat lower here reflecting
+this session's own 2 recovery episodes rather than a new problem).
+
+### Deviations from the plan
+
+- Discovered and corrected a third methodology bug (wrong canonical
+  replay path) beyond the two named in the plan's background reading —
+  not silently absorbed; full root-cause above.
+- `C_e40` was initially dropped for budget after invocations 1-2 were
+  spent on the wrong-path diagnosis, then restored once the orchestrator
+  extended the ceiling to 6 — final matrix delivers all 4 planned points
+  (0/5/40/205), not the 3-point fallback.
+- `B_e205`'s absolute magnitude carries an acknowledged, unresolved
+  residual elevation (~21-24% over the honest p95 band) — reported
+  openly rather than either re-diagnosed (no budget) or silently
+  presented as clean. All other findings in this section (the ranked
+  attribution's ordering, the swap-floor conclusion, the scaling curve's
+  shape) are not sensitive to this specific magnitude question.

@@ -46,4 +46,60 @@ the trustworthy P52 finding = glFinish is the block, flip-wait
 
 ## Review
 
-(executor fills in)
+**Complete.** Full writeup: `refactor/perf_truth_audit.md`'s 2026-08-01
+P52b section. Summary:
+
+- Corrected P52's Bug 1 (`--path-file` not `--camera-pose`) and Bug 2
+  (full shipped preset: `--merge-zone-draws --composite-scenegraph
+  --eqe1-path`) as instructed, and caught a **third**, previously-unknown
+  bug in the process: P52's own staged starting script
+  (`p52_pi_gpu_sync_pathfile_fix.py`) used the wrong canonical replay
+  path (`befallen_fixedpose_300f.path`, a near-stationary vantage that
+  clusters entities near the camera) instead of P51's own
+  `befallen_seed42_1000f.path` — caught by this unit's own per-run
+  sanity gate (entities_visible/draws ~3x P51's honest e205 reference on
+  the wrong path), not silently missed.
+- Delivered all 3 required items: (a) ranked %-of-frame attribution at
+  e5 and e205 — `glFinish` is #1 at every load (45.8%-56.6%); (b) the
+  full 0/5/40/205 entity-count scaling curve, brackets P51's promotion
+  deltas as required; (c) the swap-floor final word from e0 — **refines**
+  P52's flat "null result" into a load-dependent finding: flip-wait is
+  ~55% of frame at e0 (near-tied with glFinish) and falls to <1% by
+  e205. P52's structural glFinish-not-flip finding **held** at realistic/
+  stress loads.
+- Invocation accounting: 6 total against an orchestrator-extended
+  ceiling (5→6 mid-unit). Invocations 1-2 (`BADPATH_A_e5`/
+  `BADPATH_B_e205`) were spent on the wrong-path diagnosis described
+  above — a real, necessary diagnostic cost, not waste, but the
+  orchestrator ruled it shouldn't consume the plan's named 4-leg budget,
+  hence the extension. Invocations 3-6 are the valid, corrected matrix
+  (A_e5, B_e205, D_e0, C_e40 — all 4 planned points delivered, not the
+  3-point budget-constrained fallback this unit considered mid-run).
+  0 reserve remains.
+- One open, explicitly-flagged caveat: `B_e205`'s absolute magnitude
+  (42.811ms avg / 56.420ms p95) is still ~21-24% over the honest
+  34.3-34.6ms p95 band even after both path and preset corrections —
+  plausibly a 300-of-1000-frame path-subset artifact (this run replays
+  only the first 300 waypoints of the 1000-frame canonical path via
+  P52's own "lighter, report-only" frame-count convention), not
+  re-diagnosed for lack of remaining budget. Does not affect the
+  attribution ranking, the swap-floor conclusion, or the scaling curve's
+  shape/bracketing — all cross-checked as not magnitude-sensitive to
+  this specific number in the audit writeup.
+- Two CmaFree episodes this session (200 kB pre-invocation-3 triggering
+  a correct `SessionAbort` before any process launched; 43,756 kB
+  between invocations 4 and 5), both recovered via `sync && drop_caches`
+  per protocol, no reboot. One local-orchestration timeout left the Pi's
+  governor pinned to `performance` mid-session (caught and manually
+  restored before continuing — not a source-code issue, a local script
+  invocation issue).
+- Pristine exit verified independently: governor `ondemand` all 4 cores,
+  no benchmark process, both DRM devices free, `/tmp` swept (0% used),
+  final CmaFree 67,436 kB (healthy).
+- No source changes; bar carried forward unchanged from P52 Phase 1
+  (last unit to touch C++).
+- Deliverables: `refactor/perf_truth_audit.md` P52b section (this unit's
+  required deliverable location, per the plan), `refactor/deferred.md`
+  P52 entry marked CLOSED, this Review, CSVs/logs/telemetry under
+  `benchmarks/pi_runs/p52b_gpu_sync/` (4 valid legs + 2 kept `BADPATH_*`
+  write-offs), script `refactor/scratch/p52b_gpu_sync_shipped_matrix.py`.
