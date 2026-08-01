@@ -308,6 +308,54 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_combat_manager)
 
+# T24: SpellManager coverage (gem state machine, cast validation matrix via
+# direct validateCast()/checkMana()/checkRange()/adjustTargetForSpellType()
+# calls with hand-built SpellData, cooldown/memorization timing via T17-style
+# private-member backdating, interrupt + server packet handlers, callbacks).
+# Reaches the live SpellManager through a bare EverQuest via
+# GetSpellManager() -- Option A, no seam/interface extraction
+# (refactor/T23_spell_combat_seam_scoping.md, refactor/T24_spell_manager.md).
+# Needs the real SQLite spell DB (data/willeq.db) for a subset of tests;
+# degrades cleanly via hasDb()/GTEST_SKIP when absent, same as
+# test_spell_database.cpp. Split into two TUs (gem state machine + cast
+# validation matrix here; timing/handlers/callbacks in
+# test_spell_manager_timing.cpp) to keep each file under the plan's
+# ~800-line-per-file guidance -- both link the same live SpellManager
+# through the same seam, there is no behavioral split.
+ADD_EXECUTABLE(test_spell_manager
+    test_spell_manager.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_manager GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_manager)
+
+ADD_EXECUTABLE(test_spell_manager_timing
+    test_spell_manager_timing.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_manager_timing GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_manager_timing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_manager_timing)
+
+# T24: BuffManager coverage. BuffManager is constructible standalone from a
+# SpellDatabase* (buff_manager.h:99) with no EverQuest at all -- the
+# cleanest isolation in this batch, so this target links only the spell
+# layer + willeq_database (sqlite3), not the full willeq_core.
+ADD_EXECUTABLE(test_buff_manager
+    test_buff_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/buff_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+)
+TARGET_COMPILE_DEFINITIONS(test_buff_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_buff_manager GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_buff_manager)
+
 # Test raycast mesh and map loading
 ADD_EXECUTABLE(test_raycast
     test_raycast.cpp
