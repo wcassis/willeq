@@ -1224,6 +1224,77 @@ proper fix:
   intermittent flake" waiver for weeks. A segfault is never a flake; it
   is a crash with a timing precondition.
 
+## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02)
+
+Found while scoping a fix for T02's three pinned state-layer findings.
+The T02 pins are accurate about what they assert, but the framing
+("these events don't publish") understates and partly misdirects: for
+two of the three, the *event* is not the problem — the state those
+events would describe is never populated in the first place, and the
+same dead state has live readers. All verified by grep against fable
+tip `557a488`; commands in this entry, re-runnable.
+
+**1. `state::CombatState`'s target half is never populated — and four
+slash commands read it.**
+- `combat().setTarget()` / `clearTarget()` / `setAutoAttacking()` /
+  `updateTargetHP()` have **zero production call sites** (only tests
+  call them). So `fireTargetChangedEvent()` being an empty stub is
+  moot — the function it stubs is unreachable in production anyway.
+- The authoritative target is `CombatManager::m_target_id`
+  (`GetTargetId()`/`SetTarget()`), which is what `eq_bridge.cpp` uses
+  throughout (~lines 763, 832, 906, 958, 1252, 1292, 1373).
+- **But five production sites read the dead `CombatState` copy**:
+  `eq_commands.cpp:887, 945, 974, 1020` (`combat().targetId()`) and
+  `action/command_processor.cpp:771` (`combat().hasTarget()`).
+  `eq_commands.cpp:887` is `/assist` with no args: it reads
+  `targetId()`, gets 0 because nothing ever sets it, and prints
+  **"You don't have a target."** even when the player does. The other
+  three read sites are the same class.
+- `TargetChanged` is meanwhile **already published** from three real
+  sites (`eq_bridge.cpp:589` clear, `eq_bridge.cpp:771` set,
+  `eq_entities.cpp:1728` HP update), and `eq_action_handler.cpp:21`
+  documents a deliberate no-duplicate decision ("D20e1: TargetChanged
+  event is already published by ProcessBridgeIntents"). So naively
+  making the stub fire — after wiring the setters — would DOUBLE-publish
+  it. The stale source comment in `combat_state.cpp:68` claiming "we
+  don't have a corresponding data struct" is simply wrong:
+  `TargetChangedData` exists at `event_bus.h:384`.
+
+**2. `state::InventoryState`'s occupancy half: same pattern.**
+`setEquipmentOccupied()` / `setGeneralOccupied()` / `setBankOccupied()`
+have zero production call sites, so the hardcoded
+`event.hasItem = true; event.itemId = 0` at
+`inventory_state.cpp:204-205` is real but unreachable. (The
+*live* `InventorySlotChanged` events, enriched with display fields by
+S2, come from the `eq_bridge` path, not from here.) No live readers
+found for the occupancy arrays — the milder case.
+
+**3. `state::WorldState::fireZoneChangedEvent()` IS live, and its
+position is wrong.** Unlike 1 and 2, `world().setZone()` is genuinely
+called in production (`eq.cpp:1909`). It publishes `ZoneChanged` on the
+**EventBus** with `x/y/z/heading` read from the *pending-zone* fields
+(`world_state.cpp:110-113`) rather than the actual arrival position.
+Immediately afterward, `eq.cpp:1912-1922` pushes its OWN `ZoneChanged`
+onto the **bridge** with the correct `m_safe_x/y/z`. Two channels, two
+different payloads: `irrlicht_bridge`/`console_bridge` get the correct
+one; the EventBus subscriber (`console_renderer.cpp:102,199`) gets
+position `(0,0,0)` whenever `setZone()` runs without matching pending
+fields. This one is a genuine live bug and matches its T02 pin exactly.
+
+**Why this matters beyond the three pins**: the "Phase 7.x sync to
+XState" comments show the intent was to migrate game state INTO the
+state layer, and that migration was left half-done — setters written,
+never wired, while readers were repointed at the new home anyway. The
+`/assist` breakage is the visible cost. Whoever fixes this should decide
+the direction deliberately (populate the state layer vs. repoint the
+readers at the authoritative owner) rather than making stubs fire, which
+would change nothing for 1 and 2 and would double-publish for 1.
+
+Repro commands for a future session:
+`grep -rn "combat()\.setTarget\|combat()\.clearTarget" src/ include/`
+(empty) vs `grep -rn "combat()\.targetId()\|combat()\.hasTarget()" src/`
+(five hits).
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
