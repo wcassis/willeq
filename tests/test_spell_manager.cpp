@@ -368,77 +368,97 @@ TEST(SpellManagerGems, MemorizeSpellNotScribedFails) {
     EXPECT_FALSE(mgr->isMemorizing());
 }
 
-// Real, previously-undocumented bug found while writing this unit (NOT
-// listed in T23_spell_combat_seam_scoping.md or T24_spell_manager.md --
-// this is new, verified by reading spell_database.cpp, not guessed).
-//
-// SpellDatabase::queryAndCache() (spell_database.cpp:54-92) maps every
-// EQT::SpellInfo field into SpellData EXCEPT class_levels -- because
-// EQT::SpellInfo (willeq_database.h:72-98) has no class-level-requirement
-// field at all to map from (same missing-source-data root cause as T22's
-// already-documented `effects`-never-populated gap in
-// test_spell_database.cpp). SpellData::class_levels therefore keeps its
-// default-constructed value for every DB-backed spell: `std::array<uint8_t,
-// NUM_CLASSES> class_levels = {};` -- all zeros, NOT the "unusable" sentinel
-// 255.
-//
-// SpellData::canClassUse() (spell_data.h:200-207) reads
-// `class_levels[class_idx - 1]` and returns `required != 255 && level >=
-// required`. With every entry defaulted to 0, this is `0 != 255 && level >=
-// 0`, which is true for every level >= 0 and every valid PlayerClass
-// (1..16) -- i.e. canClassUse() ALWAYS returns true for any DB-backed
-// spell and any class, regardless of the spell's real level/class
-// restriction. That directly breaks the level check inside
-// SpellManager::memorizeSpell() (spell_manager.cpp:628-633): a level-1
-// Warrior can memorize a spell the live game reserves for level-60
-// Wizards, provided only that it's scribed. This is a real, currently-live
-// gap in cast validation, not a hypothetical -- pinned below, NOT fixed,
-// per this unit's STOP-condition instructions (src/ change required to fix
-// it -- either populate class_levels from a real DB column if one exists,
-// or treat 0 as "no requirement recorded" differently from an explicit
-// level-1 requirement).
-TEST(SpellManagerGems, BUG_CanClassUseAlwaysTrueBecauseClassLevelsNeverPopulatedFromDb) {
+// T27 (refactor/T27_spell_class_levels.md): the T24 findings below this
+// comment used to pin a LIVE BUG -- SpellDatabase::queryAndCache() never
+// assigned SpellData::class_levels, so it stayed all-zero and
+// canClassUse() was always true (see git history / testing_progress.md's
+// "T24 finding" section for the original writeup). Will's ruling was to
+// populate class_levels from spells_us.txt fields 104-119 (via the new
+// willeq.db `spells.class_levels` BLOB column) rather than delete or leave
+// the dead gate. These tests are re-pointed to pin the now-real pipeline
+// against known spell data, so a future regression that breaks the
+// builder/runtime mapping (wrong column, off-by-one class index, sentinel
+// corruption) fails loudly instead of silently. Spell IDs and their real
+// class-level requirements were confirmed directly against
+// /mnt/projects/EverQuestP1999/spells_us.txt (fields 104-119, one byte per
+// class in PlayerClass enum order Warrior..Berserker) and cross-checked
+// against known EQ lore:
+//   - id 3   "Summon Corpse" -- Necromancer-only, min level 39; every other
+//     class (including Warrior) carries the 255 "cannot use" sentinel.
+//   - id 200 "Minor Healing" -- Cleric/Druid/Shaman min level 1 (classic
+//     starter heal), Paladin/Ranger min level 9, all others 255.
+//   - id 4588 "Infuriate" -- Warrior-only, min level 40 (a real threshold:
+//     rejected at 39, accepted at 40).
+TEST(SpellManagerGems, ClassLevelsPopulatedFromDbPinsRealSpellData) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     EverQuest eq = MakeEq();
     ASSERT_TRUE(eq.InitializeSpellSystem(""));
     auto* mgr = eq.GetSpellManager();
 
-    uint32_t id = FindSpellId(mgr->getDatabase(), 1, 4000, [](const SpellData&) { return true; });
-    if (id == 0) GTEST_SKIP() << "no spell found in scanned range";
+    const SpellData* summonCorpse = mgr->getDatabase().getSpell(3);
+    ASSERT_NE(summonCorpse, nullptr);
+    EXPECT_EQ(summonCorpse->name, "Summon Corpse");
+    // Warrior (class idx 1 -> class_levels[0]) carries the 255 sentinel --
+    // must round-trip exactly, never decay to 0 or -1.
+    EXPECT_EQ(summonCorpse->class_levels[0], 255u);
+    EXPECT_FALSE(summonCorpse->canClassUse(PlayerClass::Warrior, 1));
+    EXPECT_FALSE(summonCorpse->canClassUse(PlayerClass::Warrior, 60));
+    // Necromancer (class idx 11 -> class_levels[10]) is 39.
+    EXPECT_EQ(summonCorpse->class_levels[10], 39u);
+    EXPECT_FALSE(summonCorpse->canClassUse(PlayerClass::Necromancer, 38));
+    EXPECT_TRUE(summonCorpse->canClassUse(PlayerClass::Necromancer, 39));
 
-    const SpellData* spell = mgr->getDatabase().getSpell(id);
-    ASSERT_NE(spell, nullptr);
-    // Every class_levels entry is the default-constructed 0, never the
-    // "unusable" sentinel 255 -- confirming the root cause directly.
-    for (uint8_t v : spell->class_levels) {
-        EXPECT_EQ(v, 0u);
-    }
-    // Consequence: canClassUse is true for every class at level 1, i.e. no
-    // real level gate exists for any DB-backed spell.
-    EXPECT_TRUE(spell->canClassUse(PlayerClass::Warrior, 1));
-    EXPECT_TRUE(spell->canClassUse(PlayerClass::Wizard, 1));
+    const SpellData* minorHealing = mgr->getDatabase().getSpell(200);
+    ASSERT_NE(minorHealing, nullptr);
+    EXPECT_EQ(minorHealing->name, "Minor Healing");
+    // Cleric (class idx 2 -> class_levels[1]) usable from level 1.
+    EXPECT_TRUE(minorHealing->canClassUse(PlayerClass::Cleric, 1));
+
+    const SpellData* infuriate = mgr->getDatabase().getSpell(4588);
+    ASSERT_NE(infuriate, nullptr);
+    EXPECT_EQ(infuriate->name, "Infuriate");
+    // Warrior threshold: rejected below 40, accepted at/above 40.
+    EXPECT_FALSE(infuriate->canClassUse(PlayerClass::Warrior, 39));
+    EXPECT_TRUE(infuriate->canClassUse(PlayerClass::Warrior, 40));
 }
 
-TEST(SpellManagerGems, BUG_MemorizeSpellSucceedsAtLevel1RegardlessOfSpellsRealClassRestriction) {
+TEST(SpellManagerGems, MemorizeSpellRejectsClassThatCannotUseSpellAtAll) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     EverQuest eq = MakeEq();
     ASSERT_TRUE(eq.InitializeSpellSystem(""));
     auto* mgr = eq.GetSpellManager();
 
-    uint32_t id = FindSpellId(mgr->getDatabase(), 1, 4000, [](const SpellData&) { return true; });
-    if (id == 0) GTEST_SKIP() << "no spell found in scanned range";
-
-    ASSERT_TRUE(mgr->scribeSpell(id, 0));
-    // A level-1 Warrior -- the most restrictive plausible caster -- must be
-    // BLOCKED by a real level/class gate for an arbitrary spell. It isn't.
+    // "Summon Corpse" (id 3) is Necromancer-only; a Warrior must never be
+    // able to memorize it, at any level, once scribed.
+    ASSERT_TRUE(mgr->scribeSpell(3, 0));
     eq.GetGameState().player().setClass(static_cast<uint32_t>(PlayerClass::Warrior));
-    eq.GetGameState().player().setLevel(1);
+    eq.GetGameState().player().setLevel(60);
 
-    EXPECT_TRUE(mgr->memorizeSpell(id, 0))
-        << "documents the live gap: memorizeSpell's level/class gate "
-           "(spell_manager.cpp:630) never actually rejects anything against "
-           "the DB-backed spell database -- see the BUG_ test above for the "
-           "root cause (class_levels is never populated from SQLite).";
+    EXPECT_FALSE(mgr->memorizeSpell(3, 0))
+        << "the real class/level gate (spell_manager.cpp:630) must reject a "
+           "class that carries the 255 'cannot use' sentinel for this spell.";
+    EXPECT_FALSE(mgr->isMemorizing());
+}
+
+TEST(SpellManagerGems, MemorizeSpellEnforcesRealLevelThreshold) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    EverQuest eq = MakeEq();
+    ASSERT_TRUE(eq.InitializeSpellSystem(""));
+    auto* mgr = eq.GetSpellManager();
+
+    // "Infuriate" (id 4588) is Warrior-only, min level 40.
+    ASSERT_TRUE(mgr->scribeSpell(4588, 0));
+    eq.GetGameState().player().setClass(static_cast<uint32_t>(PlayerClass::Warrior));
+
+    eq.GetGameState().player().setLevel(39);
+    EXPECT_FALSE(mgr->memorizeSpell(4588, 0))
+        << "level 39 Warrior must be rejected -- Infuriate requires level 40.";
+    EXPECT_FALSE(mgr->isMemorizing());
+
+    eq.GetGameState().player().setLevel(40);
+    EXPECT_TRUE(mgr->memorizeSpell(4588, 0))
+        << "level 40 Warrior must be accepted -- meets Infuriate's threshold.";
+    EXPECT_TRUE(mgr->isMemorizing());
 }
 
 TEST(SpellManagerGems, MemorizeSpellUnknownSpellFails) {

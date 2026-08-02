@@ -1,6 +1,7 @@
 #ifndef EQT_WILLEQ_DATABASE_H
 #define EQT_WILLEQ_DATABASE_H
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -94,6 +95,9 @@ struct SpellInfo {
     uint16_t gemIcon = 0;
     uint16_t castAnim = 0;
     uint8_t zoneType = 0;
+    // Minimum level per class (16 classes, PlayerClass enum order:
+    // Warrior..Berserker). 255 = class cannot use the spell.
+    std::array<uint8_t, 16> classLevels{};
     bool found = false;
 };
 

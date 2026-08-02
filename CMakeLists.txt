@@ -1121,6 +1121,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_INCLUDE_DIRECTORIES(willeq_db_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/third_party
+        ${CMAKE_SOURCE_DIR}/include
     )
     TARGET_LINK_LIBRARIES(willeq_db_builder dl pthread)
     TARGET_COMPILE_DEFINITIONS(willeq_db_builder PRIVATE

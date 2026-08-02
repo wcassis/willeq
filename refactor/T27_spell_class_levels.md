@@ -144,6 +144,99 @@ benchmark clone separately.
 
 ## Review
 
-(Executor fills: storage shape chosen and why, the class-ordering
-confirmation and how it was verified, the db-content diff evidence, the
-tests re-pointed and what real spell data they pin, deviations.)
+**Storage shape**: a single 16-byte `BLOB` column `class_levels` appended
+last to the `spells` table (as the plan's recommendation suggested), one
+byte per class in `PlayerClass` enum order (`Warrior..Berserker`), holding
+`spells_us.txt` fields 104-119 unmodified (255 sentinel preserved exactly,
+no clamping/sign conversion beyond an explicit `[0,255]` guard in the
+builder). Rejected 16 separate INTEGER columns — would have made the
+20-way `?` bind list in `loadSpells()` and both `willeq_database.cpp`
+SELECTs much longer for no benefit; `sqlite3_column_blob` +
+`memcpy`-into-`std::array<uint8_t,16>` is a two-line, allocation-free
+round trip on the read side.
+
+**Class-ordering confirmation**: verified directly against
+`spells_us.txt`, not assumed. `canClassUse()` indexes
+`class_levels[static_cast<uint8_t>(pc) - 1]`, i.e. `PlayerClass` enum
+value 1..16 (`Warrior..Berserker`) maps to array index 0..15 in that same
+order. Checked two known spells:
+- id 3 "Summon Corpse": only byte at 0-based offset 10 (would be class 11
+  = `Necromancer`) is non-255 (value 39) — Summon Corpse is in fact a
+  Necromancer-only spell in EQ.
+- id 200 "Minor Healing": bytes at offsets 1 (Cleric=1), 2 (Paladin=9), 3
+  (Ranger=9), 5 (Druid=1), 9 (Shaman=1) are non-255, all others 255 —
+  exactly the classic Minor Healing availability (Cleric/Druid/Shaman at
+  level 1, Paladin/Ranger unlocked later), everyone else can't use it.
+Both match well-known live-EQ class/spell assignments, confirming fields
+104-119 are in `PlayerClass`-enum order with no off-by-one. No STOP
+triggered.
+
+**DB-content diff evidence** (old db backed up before rebuild, both
+dumped and compared, not byte-diffed):
+- All 12 non-spells/non-metadata tables (`animation_sounds`, `dbstrings`,
+  `eqstrings`, `equipment_models`, `equipment_textures`, `item_models`,
+  `login_strings`, `music_files`, `race_data`, `race_models`,
+  `sound_assets`, `zone_characters`): identical row counts AND identical
+  `sqlite3 .dump <table>` SHA-256 between old and new db. Zero drift.
+- `spells` table: identical row count (8066) both before and after; the
+  24 pre-existing columns (`SELECT id,name,...,zone_type FROM spells
+  ORDER BY id`) diff to zero lines of difference across all 8066 rows.
+  Only the new trailing `class_levels` column differs (previously
+  nonexistent).
+- `metadata`: `version` 1→2 (expected bump) and `build_date` changed
+  (expected, timestamp), `total_entries` unchanged at 35097 (expected,
+  no new logical entries — the new column isn't a new row).
+- Spot-checked `class_levels` blob content for spells 3/200/4588 against
+  hand-parsed `spells_us.txt` fields 104-119 (see class-ordering section
+  above and the `Infuriate` threshold spell below) — exact byte-for-byte
+  match, sentinel 255 round-trips as `0xFF`/255 with no sign/zero decay.
+No other deltas anywhere → the builder's other loaders are reproducible
+from current source data; no STOP triggered.
+
+**Tests re-pointed** (`tests/test_spell_manager.cpp`): the two T24
+`BUG_*` tests that pinned the dead gate were replaced with three tests
+pinning the now-real pipeline against known spell IDs from the shipped
+db (chosen and cross-checked against live-EQ class/level lore, not
+picked blind):
+- `ClassLevelsPopulatedFromDbPinsRealSpellData` — asserts the raw
+  `class_levels` bytes and `canClassUse()` results for spell 3 (Summon
+  Corpse, Necromancer-only, level 39; Warrior gets the 255 sentinel),
+  spell 200 (Minor Healing, Cleric usable from level 1), and spell 4588
+  (Infuriate, Warrior-only, level-40 threshold).
+- `MemorizeSpellRejectsClassThatCannotUseSpellAtAll` — a level-60 Warrior
+  scribes Summon Corpse and `memorizeSpell()` must reject it (255
+  sentinel case).
+- `MemorizeSpellEnforcesRealLevelThreshold` — a Warrior scribes Infuriate
+  once; `memorizeSpell()` rejects at level 39, accepts at level 40 (the
+  rejected-below/accepted-at-threshold case), confirming a failed
+  memorize attempt doesn't leave `m_is_memorizing` stuck (it doesn't --
+  the class/level check in `spell_manager.cpp` runs before any state
+  mutation).
+
+**Deviations / incidental findings**:
+- `willeq_db_builder` had no access to `include/` (only `third_party/`)
+  before this unit, so it could not have included `spell_constants.h`
+  even though it already hand-duplicated the field-position comment.
+  Added `${CMAKE_SOURCE_DIR}/include` to
+  `TARGET_INCLUDE_DIRECTORIES(willeq_db_builder ...)` in `CMakeLists.txt`
+  so the builder can `#include "client/spell/spell_constants.h"` and use
+  `EQ::SpellField::ClassLevel1` / `EQ::NUM_CLASSES` as the single source
+  of truth instead of a third hard-coded `104`/`16`. This is the only
+  change outside the plan's named territory files; it is additive
+  (widens an include path) and touches no other target.
+- Unrelated environmental trap hit and resolved, NOT part of this unit's
+  defect: this worktree slot's prebuilt `third_party/irrlicht-gles2-x86/lib/libIrrlicht.a`
+  predated commit `3328570` (P52, 2026-08-01, "flag-gated GPU-sync
+  characterization instrumentation") by several hours, so it was missing
+  `eqtGPUPhaseBegin`/`eqtGPUPhaseEnd`/etc., which broke the link step for
+  `willeq` and every test binary that pulls in `willeq_core` (including
+  `test_spell_manager` and `test_session_replay`) with "undefined
+  reference" errors -- nothing to do with spell code. Fixed by rebuilding
+  the bootstrap per `EXECUTOR_PROTOCOL.md`:
+  `bash scripts/build-gles2-x86.sh --irrlicht-only`. Reported here so the
+  orchestrator can flag it to other slots that may carry the same stale
+  prebuilt artifact.
+- No changes to `include/client/spell/spell_data.h` were needed --
+  `SpellData::class_levels` and `canClassUse()`/`getClassLevel()` already
+  had the correct shape and indexing; only the data feeding them was
+  missing.

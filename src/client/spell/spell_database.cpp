@@ -82,6 +82,9 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
     spell.gem_icon = info.gemIcon;
     spell.cast_anim = info.castAnim;
     spell.zone_type = info.zoneType;
+    for (size_t ci = 0; ci < spell.class_levels.size() && ci < info.classLevels.size(); ++ci) {
+        spell.class_levels[ci] = info.classLevels[ci];
+    }
 
     auto [it, _] = m_cache.emplace(spell_id, std::move(spell));
 
