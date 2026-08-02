@@ -543,7 +543,9 @@ TEST(CombatManagerConfig, AutoMovementRoundTrips) {
 }
 
 // ===================================================================
-// Known hazard: blocking sleeps in the loot path (combat.cpp:818/825/1843)
+// T26: event-driven loot state machine (was: blocking sleeps in the loot
+// path, combat.cpp:818/825/1168/1843/1861). See
+// refactor/T26_loot_state_machine.md.
 // ===================================================================
 //
 // Thread trace (read, not guessed): the modern UI-driven "loot all" click
@@ -552,14 +554,15 @@ TEST(CombatManagerConfig, AutoMovementRoundTrips) {
 // at a time and re-requests per server round trip. It does NOT call
 // CombatManager::LootAll() at all.
 //
-// CombatManager::LootAll()/ProcessLootWindow()/CheckAutoLoot() (the sleeping
-// versions) are reached through a different, still-live path:
-// ProcessCombatRound() (combat.cpp:1192) calls CombatManager::LootCorpse()
-// directly when an auto-hunted target dies with auto-loot enabled. That
-// path does NOT set EverQuest::m_player_looting_corpse_id (that variable
-// belongs to the separate UI loot-window flow), so when the server's loot
-// item response (OP_ItemPacket) arrives, EverQuest::eq.cpp's dispatch
-// switch (~eq.cpp:1020-1023) takes the "Headless mode looting" branch:
+// CombatManager::LootAll()/ProcessLootWindow()/CheckAutoLoot() used to
+// block via sleep_for; they are reached through a different, still-live
+// path: ProcessCombatRound() (combat.cpp:1192) calls
+// CombatManager::LootCorpse()/BeginLootRequest() when an auto-hunted target
+// dies with auto-loot enabled. That path does NOT set
+// EverQuest::m_player_looting_corpse_id (that variable belongs to the
+// separate UI loot-window flow), so when the server's loot item response
+// (OP_ItemPacket) arrives, EverQuest::eq.cpp's dispatch switch
+// (~eq.cpp:1020-1023) takes the "Headless mode looting" branch:
 //     } else if (m_combat_manager && m_combat_manager->IsLooting()) {
 //         ZoneProcessLootItem(p);
 //     }
@@ -567,45 +570,161 @@ TEST(CombatManagerConfig, AutoMovementRoundTrips) {
 // m_combat_manager->CheckAutoLoot() directly and synchronously -- no
 // dispatch to another thread. Per CLAUDE.md's threading model, all network
 // packet handling ("Network events (TickNetwork)") runs on the GAME
-// THREAD. CheckAutoLoot() sleeps 500ms then calls LootAll(), which sleeps
-// another 100ms per item plus 500ms at the end.
+// THREAD, so CheckAutoLoot() (and everything it calls) must never block.
 //
-// Net effect: an auto-hunting client with auto-loot enabled (the default)
-// stalls its own network tick -- including further zone packet processing
-// -- for >=1.1 seconds per kill with even a single loot item. This is a
-// real, live, reachable defect on the game thread, not a hypothetical.
-// Pinned below, NOT fixed, per the plan's explicit instruction.
+// T26 replaced the sleeps with LootSubState + CombatManager::UpdateLootState(),
+// ticked every game frame from Application::updateGameState (unconditional,
+// alongside UpdateMovement()) -- never from Update()/m_update_thread. These
+// tests use the file's established T17 #define-private-public access to
+// drive and observe the sub-state machine deterministically (backdating
+// timers, matching the ProcessConsiderResponse fixture's technique) instead
+// of sleeping past real deadlines.
 
-TEST(CombatManagerLoot, BUG_CheckAutoLootBlocksCallingThreadForOverASecond) {
+TEST(CombatManagerLoot, CheckAutoLootReturnsPromptlyAndAdvancesAcrossTicks) {
     EverQuest eq = MakeEq();
+    // TickAwaitingItems/TickLootingItems both check CorpseStillPresent() (the
+    // T26 "corpse disappeared" exit) every tick, so the corpse id must exist
+    // as a staged entity or the machine correctly aborts to Idle instead of
+    // advancing -- stage it first.
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(777, "a_test_rat's_corpse1", 0, 10, 0)));
     auto* cm = eq.GetCombatManager();
 
-    // Minimal 1-item fixture (plan: keep loot fixtures to 1-2 items so the
-    // binary stays well under the 5s bar). LootCorpse() sets the corpse id
-    // and combat state; AddLootItem() stages the single item CheckAutoLoot
-    // will loot. Auto-loot is enabled by default.
+    // Minimal 1-item fixture. LootCorpse() (-> BeginLootRequest()) sets the
+    // corpse id, sends the request, and enters AwaitingItems; AddLootItem()
+    // stages the single item and refreshes the quiescence clock. Auto-loot
+    // is enabled by default.
     ASSERT_TRUE(cm->IsAutoLootEnabled());
     cm->LootCorpse(777);
     cm->AddLootItem(50);
     ASSERT_EQ(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+    ASSERT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
 
     auto start = std::chrono::steady_clock::now();
     cm->CheckAutoLoot();
     auto elapsed = std::chrono::steady_clock::now() - start;
 
-    // 500ms (CheckAutoLoot) + 100ms (one item, LootAll's per-item delay) +
-    // 500ms (LootAll's end-of-loop delay) = 1100ms minimum. Use a
-    // conservative 1000ms floor to absorb scheduler jitter without
-    // weakening the point: this call blocks its caller for over a second.
-    EXPECT_GE(elapsed, std::chrono::milliseconds(1000))
-        << "CheckAutoLoot()/LootAll() must synchronously block the calling "
-           "thread for >=1.1s with a single loot item -- if this shrinks, "
-           "the sleep_for calls at combat.cpp:818/825/1843 were changed; "
-           "if it grows unboundedly, something regressed further.";
+    // The whole point of T26: this must return essentially instantly. Old
+    // BUG_ test asserted >=1000ms here; assert the opposite bound now.
+    EXPECT_LT(elapsed, std::chrono::milliseconds(50))
+        << "CheckAutoLoot() must return promptly -- it runs on the game "
+           "thread once per item packet and must never block network reads, "
+           "the game tick, or renderer intents (see T26 plan).";
+    // Still in AwaitingItems: quiescence window hasn't elapsed yet.
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
 
-    // Document the other end too: it must not be instant (would mean the
-    // sleeps were silently compiled out / bypassed).
-    EXPECT_LT(elapsed, std::chrono::milliseconds(3000));
+    // Backdate the quiescence clock past kItemQuiescenceMs (matches the
+    // ProcessConsiderResponse fixture's backdating technique) instead of
+    // sleeping past the real deadline.
+    cm->m_last_loot_item_time = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kItemQuiescenceMs + 10);
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::LootingItems)
+        << "quiescence should advance AwaitingItems -> LootingItems";
+    ASSERT_EQ(cm->m_loot_items.size(), 1u) << "item not yet sent this tick";
+
+    // Pacing clock was primed so the first item pops on the very next tick
+    // (EnterLootSubState sets m_last_item_send_time in the past).
+    cm->UpdateLootState();
+    EXPECT_TRUE(cm->m_loot_items.empty()) << "the single item should have been sent";
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::LootingItems)
+        << "drains to empty, then the NEXT tick notices empty and closes";
+
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Closing);
+
+    // Backdate past kClosingDelayMs to close without a real wait.
+    cm->m_loot_state_entered = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kClosingDelayMs + 10);
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle);
+    EXPECT_NE(cm->GetCombatState(), COMBAT_STATE_LOOTING)
+        << "CloseLootWindow() should have returned us to IDLE/HUNTING";
+}
+
+TEST(CombatManagerLoot, AwaitingCorpseDeadlineExpiresWithoutHanging) {
+    EverQuest eq = MakeEq();
+    auto* cm = eq.GetCombatManager();
+
+    // No corpse entity is ever staged -- simulates a kill whose corpse
+    // never spawns (or never matches the expected name). Drive the machine
+    // directly into AwaitingCorpse the way ProcessCombatRound() does.
+    cm->m_pending_corpse_name = "a_test_rat's_corpse1";
+    cm->SetCombatState(COMBAT_STATE_LOOTING);
+    cm->EnterLootSubState(LootSubState::AwaitingCorpse);
+
+    // Before the deadline: still waiting, no hang, no state change.
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingCorpse);
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+
+    // Backdate past kCorpseSearchDeadlineMs.
+    cm->m_loot_state_entered = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kCorpseSearchDeadlineMs + 10);
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle)
+        << "a corpse that never appears must not hang the machine";
+    EXPECT_NE(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+}
+
+TEST(CombatManagerLoot, AwaitingCorpseFindsCorpseAndBeginsLootRequest) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(900, "a_test_rat's_corpse1", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    cm->m_pending_corpse_name = "a_test_rat's_corpse1";
+    cm->SetCombatState(COMBAT_STATE_LOOTING);
+    cm->EnterLootSubState(LootSubState::AwaitingCorpse);
+
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems)
+        << "matching corpse entity should trigger BeginLootRequest()";
+    EXPECT_EQ(cm->m_current_corpse_id, 900);
+}
+
+TEST(CombatManagerLoot, CorpseDisappearingMidLootAbortsWithoutHanging) {
+    EverQuest eq = MakeEq();
+    auto* cm = eq.GetCombatManager();
+
+    // Corpse id 777 is never staged as an entity -- stands in for "the
+    // corpse despawned" (CorpseStillPresent() only checks GetEntities()
+    // membership, so a never-added id and a since-removed id are
+    // indistinguishable from the machine's point of view).
+    cm->LootCorpse(777);
+    cm->AddLootItem(50);
+    ASSERT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
+
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle)
+        << "corpse-gone must abort the loot instead of hanging in AwaitingItems";
+    EXPECT_NE(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+    EXPECT_EQ(cm->m_current_corpse_id, 0);
+}
+
+TEST(CombatManagerLoot, AwaitingItemsHardDeadlineClosesWhenAutoLootDisabled) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(901, "a_test_rat's_corpse1", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    cm->SetAutoLootEnabled(false);
+    cm->LootCorpse(901);
+    cm->AddLootItem(50);
+    ASSERT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
+
+    // Corpse present, auto-loot disabled: quiescence never fires (gated on
+    // m_auto_loot_enabled), so this would hang forever under the pre-T26
+    // design. The hard deadline is the new safety net for exactly this.
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems)
+        << "not yet at the hard deadline";
+
+    cm->m_loot_state_entered = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kAwaitingItemsHardDeadlineMs + 10);
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle)
+        << "hard deadline must close the session even with auto-loot off";
 }
 
 }  // namespace

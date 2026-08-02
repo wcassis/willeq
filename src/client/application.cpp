@@ -941,6 +941,17 @@ void Application::updateGameState(float deltaTime) {
     // Update movement in EverQuest
     if (m_eqClient) {
         m_eqClient->UpdateMovement();
+
+        // T26: advance the loot state machine every game tick, unconditionally
+        // (graphics or headless) -- same rationale as UpdateMovement() above.
+        // GameTick() (guarded by m_graphicsInitialized, just above) is NOT a
+        // valid home: the loot path fires in headless mode too, and driving
+        // it from CombatManager::Update() (m_update_thread, 2Hz) would
+        // re-create the P36 self-join deadlock class -- see the CombatManager
+        // friend-class comment and refactor/T26_loot_state_machine.md.
+        if (CombatManager* cm = m_eqClient->GetCombatManager()) {
+            cm->UpdateLootState();
+        }
     }
 
     // Sync game state from client

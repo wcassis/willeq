@@ -7,7 +7,6 @@
 #endif
 #include <algorithm>
 #include <cmath>
-#include <thread>
 #include <cctype>
 #include <fmt/format.h>
 #include <limits>
@@ -774,16 +773,26 @@ void CombatManager::InitiateFlee() {
 }
 
 void CombatManager::LootCorpse(uint16_t corpse_id) {
+	// The caller (shift+click via EqActionHandler::lootCorpse, or the T23
+	// test fixtures) already has a corpse id in hand -- skip AwaitingCorpse
+	// and go straight to requesting loot.
+	BeginLootRequest(corpse_id);
+}
+
+void CombatManager::BeginLootRequest(uint16_t corpse_id) {
 	m_current_corpse_id = corpse_id;
+	m_loot_items.clear();
 	SetCombatState(COMBAT_STATE_LOOTING);
 
-	LOG_DEBUG(MOD_COMBAT, "LootCorpse: Sending loot request for corpse ID {}", corpse_id);
+	LOG_DEBUG(MOD_COMBAT, "BeginLootRequest: Sending loot request for corpse ID {}", corpse_id);
 
 	// Send loot request packet - server expects only the corpse ID (4 bytes)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
 	packet.PutUInt32(0, corpse_id); // Only the corpse entity ID
 	m_eq->QueuePacket(HC_OP_LootRequest, &packet);
+
+	EnterLootSubState(LootSubState::AwaitingItems);
 }
 
 void CombatManager::LootItem(uint32_t item_slot) {
@@ -808,22 +817,16 @@ void CombatManager::LootAll() {
 		return;
 	}
 
-	LOG_DEBUG(MOD_COMBAT, "Looting all {} items from corpse {}",
+	LOG_DEBUG(MOD_COMBAT, "Looting all {} items from corpse {} (event-driven, T26)",
 		m_loot_items.size(), m_current_corpse_id);
 
-	// Loot each item
-	for (uint32_t slot : m_loot_items) {
-		LootItem(slot);
-		// Small delay between looting items
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
-	}
-
-	// Clear the loot list
-	m_loot_items.clear();
-
-	// Close loot window after a short delay
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
-	CloseLootWindow();
+	// T26: no longer blocks. Prime LootingItems and return immediately --
+	// UpdateLootState(), ticked every game frame, drains m_loot_items one
+	// slot per kInterItemDelayMs and closes the window kClosingDelayMs
+	// after the last one (see TickLootingItems/TickClosing). Safe to call
+	// whether or not AwaitingItems already ran (CheckAutoLoot's path does;
+	// ProcessLootWindow's direct call does not).
+	EnterLootSubState(LootSubState::LootingItems);
 }
 
 void CombatManager::CloseLootWindow() {
@@ -1163,51 +1166,21 @@ void CombatManager::ProcessCombatRound() {
 					// Mark when combat ended for auto-hunting cooldown
 					m_combat_end_time = std::chrono::steady_clock::now();
 
-					// Give the server a moment to spawn the corpse
-					LOG_DEBUG(MOD_COMBAT, "Waiting 500ms for corpse to spawn...");
-					std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-					// The entity name is already the corpse name after OP_MobRename
-					// It already contains "'s_corpse" with the entity ID appended
-					std::string corpse_name = dead_target_name;  // Already in corpse format
-					const auto& entities_check = m_eq->GetEntities();
-
-					LOG_DEBUG(MOD_COMBAT, "Looking for corpse named '{}' among {} entities",
-						corpse_name, entities_check.size());
-
-					bool corpse_found = false;
-					for (const auto& [corpse_id, corpse_entity] : entities_check) {
-						LOG_TRACE(MOD_COMBAT, "  Checking entity: {} (ID: {}, is_corpse={})",
-							corpse_entity.name, corpse_id, corpse_entity.is_corpse);
-
-						// The corpse should have the exact same name as the dead entity
-						// or be marked with is_corpse flag
-						if (corpse_entity.is_corpse || corpse_entity.name == corpse_name) {
-							// Found the corpse, initiate looting
-							LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
-								corpse_entity.name, corpse_id);
-							// Move to corpse for looting
-							m_eq->MoveToEntityWithinRange(corpse_entity.name, 10.0f);
-							corpse_found = true;
-							LootCorpse(corpse_id);
-							return;
-						}
-					}
-
-					if (!corpse_found) {
-						LOG_DEBUG(MOD_COMBAT, "Corpse not found! Expected name: '{}'", corpse_name);
-						// List nearby entities for debugging
-						LOG_DEBUG(MOD_COMBAT, "Nearby entities:");
-						for (const auto& [eid, ent] : entities_check) {
-							glm::vec3 my_pos_check = m_eq->GetPosition();
-							glm::vec3 ent_pos(ent.x, ent.y, ent.z);
-							float dist = glm::distance(my_pos_check, ent_pos);
-							if (dist <= 50.0f) {
-								LOG_DEBUG(MOD_COMBAT, "  {} (ID: {}, dist: {:.1f}, is_corpse: {})",
-									ent.name, eid, dist, ent.is_corpse);
-							}
-						}
-					}
+					// T26: no longer a blind 500ms sleep + one-shot search.
+					// The entity name is already the corpse name after
+					// OP_MobRename (it already contains "'s_corpse" with the
+					// entity ID appended). Enter AwaitingCorpse and let
+					// UpdateLootState() poll for it every game tick, with a
+					// deadline (kCorpseSearchDeadlineMs) instead of a single
+					// attempt after a fixed wait -- this also covers the case
+					// the corpse spawns late (past 500ms), which the old code
+					// silently dropped.
+					m_pending_corpse_name = dead_target_name;
+					SetCombatState(COMBAT_STATE_LOOTING);
+					EnterLootSubState(LootSubState::AwaitingCorpse);
+					LOG_DEBUG(MOD_COMBAT, "Awaiting corpse '{}' (deadline {}ms)",
+						m_pending_corpse_name, kCorpseSearchDeadlineMs);
+					return;
 				} else {
 					LOG_DEBUG(MOD_COMBAT, "Not looking for corpse: auto_loot={}, auto_hunt={}",
 						m_auto_loot_enabled, m_auto_hunting_enabled);
@@ -1837,11 +1810,13 @@ void CombatManager::ProcessLootWindow(const std::vector<uint32_t>& item_ids) {
 
 	LOG_DEBUG(MOD_COMBAT, "Loot window opened with {} items", item_ids.size());
 
-	// If auto-loot is enabled, loot everything
+	// T26: no longer blocks (was: sleep_for(300ms) then LootAll()). Route
+	// through AwaitingItems so the quiescence/deadline/corpse-gone checks
+	// apply uniformly; UpdateLootState() advances it from here. This method
+	// has no production caller as of T26 (see Review) -- kept consistent
+	// with the live paths rather than left with a stray blocking call.
 	if (m_auto_loot_enabled && !m_loot_items.empty()) {
-		// Give a small delay before looting to simulate human behavior
-		std::this_thread::sleep_for(std::chrono::milliseconds(300));
-		LootAll();
+		EnterLootSubState(LootSubState::AwaitingItems);
 	}
 }
 
@@ -1852,13 +1827,169 @@ void CombatManager::AddLootItem(uint32_t slot_id) {
 		LOG_DEBUG(MOD_COMBAT, "Added loot item in slot {}, total items: {}",
 			slot_id, m_loot_items.size());
 	}
+	// Refresh the AwaitingItems quiescence clock -- each arriving item
+	// pushes the "loot everything now" decision out until items stop
+	// arriving (or the hard deadline fires). See TickAwaitingItems.
+	m_last_loot_item_time = std::chrono::steady_clock::now();
 }
 
 void CombatManager::CheckAutoLoot() {
-	// If auto-loot is enabled and we have items, start looting after a delay
-	if (m_auto_loot_enabled && m_combat_state == COMBAT_STATE_LOOTING && !m_loot_items.empty()) {
-		// Give a moment for all items to arrive
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
-		LootAll();
+	// T26: no longer blocks the calling thread (was: sleep_for(500ms) then
+	// the also-blocking LootAll()). ZoneProcessLootItem() calls this once
+	// per item packet on the game thread; it must return promptly since
+	// nothing else advances (network reads, game tick, renderer intents)
+	// while it runs. AddLootItem() already refreshed the quiescence timer;
+	// UpdateLootState(), ticked every game frame, does the actual
+	// AwaitingItems -> LootingItems advance once quiescence or the hard
+	// deadline is reached. This is now just a defensive nudge in case items
+	// arrived without AwaitingItems having been entered yet (e.g. direct
+	// AddLootItem() calls in tests).
+	if (!m_auto_loot_enabled || m_combat_state != COMBAT_STATE_LOOTING || m_loot_items.empty()) {
+		return;
+	}
+
+	if (m_loot_sub_state == LootSubState::Idle) {
+		EnterLootSubState(LootSubState::AwaitingItems);
+	}
+}
+
+void CombatManager::EnterLootSubState(LootSubState state) {
+	m_loot_sub_state = state;
+	m_loot_state_entered = std::chrono::steady_clock::now();
+
+	if (state == LootSubState::AwaitingItems) {
+		m_last_loot_item_time = m_loot_state_entered;
+	} else if (state == LootSubState::LootingItems) {
+		// Pace the first item immediately on the next tick, matching the
+		// legacy LootAll(): it sent slot 1 as soon as it started, then
+		// waited kInterItemDelayMs before the next.
+		m_last_item_send_time = m_loot_state_entered - std::chrono::milliseconds(kInterItemDelayMs);
+	}
+}
+
+bool CombatManager::CorpseStillPresent(uint16_t corpse_id) const {
+	if (corpse_id == 0) {
+		return false;
+	}
+	const auto& entities = m_eq->GetEntities();
+	return entities.find(corpse_id) != entities.end();
+}
+
+void CombatManager::AbortLoot() {
+	// Reuses CloseLootWindow()'s cleanup (clears corpse id/items, sends
+	// HC_OP_EndLootRequest, transitions CombatState back to HUNTING/IDLE).
+	// Sending EndLootRequest for an already-vanished corpse is harmless --
+	// it just tells the server we're done with a session it likely already
+	// cleaned up on its own.
+	CloseLootWindow();
+	EnterLootSubState(LootSubState::Idle);
+}
+
+void CombatManager::UpdateLootState() {
+	if (!m_eq || m_loot_sub_state == LootSubState::Idle) {
+		return;
+	}
+
+	auto now = std::chrono::steady_clock::now();
+	switch (m_loot_sub_state) {
+		case LootSubState::AwaitingCorpse:
+			TickAwaitingCorpse(now);
+			break;
+		case LootSubState::AwaitingItems:
+			TickAwaitingItems(now);
+			break;
+		case LootSubState::LootingItems:
+			TickLootingItems(now);
+			break;
+		case LootSubState::Closing:
+			TickClosing(now);
+			break;
+		case LootSubState::Idle:
+			break;
+	}
+}
+
+void CombatManager::TickAwaitingCorpse(std::chrono::steady_clock::time_point now) {
+	const auto& entities = m_eq->GetEntities();
+	for (const auto& [corpse_id, corpse_entity] : entities) {
+		// Same matching rule as the code this replaces: the corpse should
+		// have the exact same name as the dead entity (already rewritten to
+		// "...'s_corpse" by OP_MobRename) or be flagged is_corpse.
+		if (corpse_entity.is_corpse || corpse_entity.name == m_pending_corpse_name) {
+			LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
+				corpse_entity.name, corpse_id);
+			m_eq->MoveToEntityWithinRange(corpse_entity.name, 10.0f);
+			BeginLootRequest(corpse_id);
+			return;
+		}
+	}
+
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_loot_state_entered).count();
+	if (elapsed >= kCorpseSearchDeadlineMs) {
+		LOG_DEBUG(MOD_COMBAT, "Corpse '{}' never appeared within {}ms, abandoning loot",
+			m_pending_corpse_name, kCorpseSearchDeadlineMs);
+		m_pending_corpse_name.clear();
+		EnterLootSubState(LootSubState::Idle);
+		if (m_combat_state == COMBAT_STATE_LOOTING) {
+			SetCombatState(m_auto_hunting_enabled ? COMBAT_STATE_HUNTING : COMBAT_STATE_IDLE);
+		}
+	}
+}
+
+void CombatManager::TickAwaitingItems(std::chrono::steady_clock::time_point now) {
+	if (!CorpseStillPresent(m_current_corpse_id)) {
+		LOG_DEBUG(MOD_COMBAT, "Corpse {} disappeared while awaiting items", m_current_corpse_id);
+		AbortLoot();
+		return;
+	}
+
+	auto since_last_item = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_loot_item_time).count();
+	if (m_auto_loot_enabled && !m_loot_items.empty() && since_last_item >= kItemQuiescenceMs) {
+		LOG_DEBUG(MOD_COMBAT, "Item quiescence reached ({} items), starting to loot", m_loot_items.size());
+		EnterLootSubState(LootSubState::LootingItems);
+		return;
+	}
+
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_loot_state_entered).count();
+	if (elapsed >= kAwaitingItemsHardDeadlineMs) {
+		if (m_auto_loot_enabled && !m_loot_items.empty()) {
+			LOG_DEBUG(MOD_COMBAT, "Hard deadline reached with {} items pending, looting anyway",
+				m_loot_items.size());
+			EnterLootSubState(LootSubState::LootingItems);
+		} else {
+			LOG_DEBUG(MOD_COMBAT, "Hard deadline reached with no items (or auto-loot disabled), closing");
+			AbortLoot();
+		}
+	}
+}
+
+void CombatManager::TickLootingItems(std::chrono::steady_clock::time_point now) {
+	if (!CorpseStillPresent(m_current_corpse_id)) {
+		LOG_DEBUG(MOD_COMBAT, "Corpse {} disappeared while looting ({} items remaining)",
+			m_current_corpse_id, m_loot_items.size());
+		AbortLoot();
+		return;
+	}
+
+	if (m_loot_items.empty()) {
+		EnterLootSubState(LootSubState::Closing);
+		return;
+	}
+
+	auto since_last_send = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_item_send_time).count();
+	if (since_last_send >= kInterItemDelayMs) {
+		uint32_t slot = m_loot_items.front();
+		m_loot_items.erase(m_loot_items.begin());
+		LootItem(slot);
+		m_last_item_send_time = now;
+	}
+}
+
+void CombatManager::TickClosing(std::chrono::steady_clock::time_point now) {
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_loot_state_entered).count();
+	bool corpse_gone = !CorpseStillPresent(m_current_corpse_id);
+	if (elapsed >= kClosingDelayMs || corpse_gone) {
+		CloseLootWindow();
+		EnterLootSubState(LootSubState::Idle);
 	}
 }
