@@ -1368,6 +1368,92 @@ pre-connection or emit a held/waiting line so scripts can tell the
 difference between "working" and "hung", and add a headless
 piped-stdin-no-server case to the exit matrix so it stays fixed.
 
+## Non-FATAL log output never reaches stdout during normal operation (T29 finding, 2026-08-02) — NOT FIXED, likely the biggest remaining automation blocker
+
+`common/logging.h`'s per-thread double buffer (`ThreadLogBuffer`) only
+flips its active/drain sides on `LOG_FATAL` or thread exit —
+`FlushThreadLog()` is called by the `LOG_FATAL` macro and **nowhere
+else**. The periodic drain thread (`LogManager::drainLoop()`, 50 ms)
+only ever reads the *inactive* side, which nothing writes to for
+non-FATAL levels absent an explicit flip.
+
+**Net effect: `LOG_INFO`/`LOG_WARN`/`LOG_DEBUG`/non-fatal `LOG_ERROR`
+never reach stdout during normal operation, regardless of
+`--log-level`/`-d`.** That is how `AddChatSystemMessage`,
+`ConsoleBridge::applyEvent`, and essentially all chat/system/combat
+narration are implemented — so the client's own account of what is
+happening is invisible.
+
+Why this matters most, given the 2026-08-02 automation ruling: T29 gave
+automation a way to *send* commands and a `CMD outcome=` line saying a
+command was dispatched. But a script still cannot **observe the game's
+response** — no chat, no system messages, no combat narration. Half the
+loop is missing. This is very likely why T29's own loot-cycle
+verification was so hard to drive, and it will block the next attempt
+too.
+
+Diagnosis confirmed, not guessed: a temporary local patch (self-flip in
+`drainAllBuffers()` when the drain side is empty) made output appear,
+and was **reverted before T29's commit** — `include/common/logging.h`
+was outside that unit's territory. Also confirmed reproducible
+independent of T29's changes; note the wrinkle that an isolated
+standalone repro of `logging.h` alone works correctly, so something in
+the full app's steady state (with no FATALs firing) is what exposes it.
+
+Real fix needs its own unit: the naive always-flip has a wider blast
+radius (drain-thread lock contention, `std::cout` write frequency on a
+50 ms timer) than a drive-by change should carry. **Recommended as the
+next automation unit after the shutdown fix.**
+
+## Environment/asset blockers that stopped T29's live acceptance demo (2026-08-02)
+
+Both hit while trying to complete the kill→loot cycle; neither is
+T29's doing, and neither was fixed:
+
+- **`race=415` model data missing → asset crash in graphics mode**,
+  which blocked running the acceptance demo in graphical mode entirely
+  (T29's transcript is `--no-graphics`). Same family as the recorded
+  gfaydark `race=330` FATAL. Will's ruling wants "the same commands in a
+  real session", and *real* means graphical — so this blocks the honest
+  version of that demo.
+- **A missing zone map file degraded pathfinding**, which is why
+  `/moveto`-driven approach to a target could not reliably close range.
+  Related to the recorded "Player BSP region is SIZE_MAX / missing
+  maps/qeynos.map" family.
+
+**T26's behavioural verification is still owed** because of these: the
+*tooling* gap is closed (piped stdin reaches `/combat on` through the
+real registry, confirmed against a live server), but no kill→loot cycle
+has ever completed. ~10 minutes of live piped interaction across
+multiple target/combat/attack/moveto/who/camp cycles showed no freeze,
+hang, or crash — meaningful negative evidence for the stall class T26
+removed, but not a completed happy path.
+
+## Command-registry overlap and the bare `/target` precedence gap (T29, 2026-08-02)
+
+T29 unified command *dispatch* (registry 1 → 2 → renderer bridge)
+without merging registry *ownership*. It found **~37 command names
+defined in both** `EverQuest::m_command_registry` and
+`action::CommandProcessor`. Spot-checks (say/shout/ooc/auction,
+attack/target) showed they converge on the same underlying
+`EverQuest`/`CombatManager` calls — same effect by two independently
+written paths, not the "different behaviour" STOP case.
+
+One visible difference: registry 1's `/target` requires an explicit
+name and prints usage on empty args, while registry 2's falls back to
+`targetNearest()`. Registry 1 now wins, so **bare `/target` no longer
+targets nearest** on the `--script`/stdin path (it did before, when
+`--script` reached only registry 2). Orchestrator checked: no committed
+script uses bare `/target`, so blast radius is nil today. Still
+reachable via `/listtargets` + an explicit name. Flagged rather than
+silently absorbed; collapsing the duplicate vocabularies is a natural
+part of a future command-layer cleanup.
+
+Smaller follow-up from the same unit: `ConsoleInputHandler`'s bespoke
+non-slash `say`/`tell`/`quit` words are now redundant with `/say`,
+`/tell`, `/quit` through the unified channel. Left in place (something
+may depend on them); retire once nothing does.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
