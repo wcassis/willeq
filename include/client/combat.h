@@ -23,6 +23,29 @@ enum CombatState {
 	COMBAT_STATE_SEEKING_GUARD
 };
 
+// T26: loot sub-state, nested under CombatState::COMBAT_STATE_LOOTING.
+// Replaces four blocking std::this_thread::sleep_for calls that used to sit
+// on the game-thread packet-dispatch path (see
+// refactor/T26_loot_state_machine.md). Every state advances only from
+// CombatManager::UpdateLootState(), ticked unconditionally (graphics or
+// headless) from the game thread -- never from CombatManager::Update(),
+// which runs on m_update_thread (see the P36 comment at eq.cpp's
+// StartUpdateLoop). Every non-Idle state has both a deadline and a
+// corpse-disappeared exit; see CombatManager::CorpseStillPresent().
+enum class LootSubState {
+	Idle,             // not looting
+	AwaitingCorpse,   // auto-hunt only: entered on kill, polling for the
+	                  // corpse to spawn; exits on corpse seen or deadline
+	AwaitingItems,    // loot request sent; items arrive one per packet;
+	                  // exits on item quiescence, hard deadline, or corpse gone
+	LootingItems,     // sending LootItem for each staged slot, paced one
+	                  // per kInterItemDelayMs tick; exits when drained or
+	                  // corpse gone
+	Closing           // brief pause before EndLootRequest, mirrors legacy
+	                  // "before closing the window" delay; exits on deadline
+	                  // or corpse gone
+};
+
 enum TargetPriority {
 	TARGET_PRIORITY_LOWEST = 0,
 	TARGET_PRIORITY_LOW,
@@ -179,6 +202,13 @@ public:
 	void CloseLootWindow();
 	bool IsLooting() const { return m_combat_state == COMBAT_STATE_LOOTING; }
 
+	// T26: event-driven loot state machine. Call once per game tick from
+	// the unconditional game-thread path (Application::updateGameState,
+	// alongside UpdateMovement() -- NOT from Update()/m_update_thread).
+	// No-op when not looting.
+	void UpdateLootState();
+	LootSubState GetLootSubState() const { return m_loot_sub_state; }
+
 	// Configuration
 	void SetAssistRange(float range) { m_assist_range = range; }
 	void SetAggroRadius(float radius) { m_aggro_radius = radius; }
@@ -250,6 +280,26 @@ private:
 	std::vector<uint32_t> m_loot_items;
 	bool m_auto_loot_enabled;
 
+	// T26: loot state machine (see LootSubState). m_loot_state_entered is
+	// reset on every transition and used for both deadlines (elapsed since
+	// entry) and, in LootingItems, repurposed as the last-item-send clock
+	// via m_last_item_send_time (kept separate for clarity).
+	LootSubState m_loot_sub_state = LootSubState::Idle;
+	std::chrono::steady_clock::time_point m_loot_state_entered;
+	std::chrono::steady_clock::time_point m_last_loot_item_time;   // AwaitingItems quiescence
+	std::chrono::steady_clock::time_point m_last_item_send_time;   // LootingItems pacing
+	std::string m_pending_corpse_name;                              // AwaitingCorpse search key
+
+	// Pacing constants -- named so "still polite enough?" is answerable
+	// later without hunting for magic numbers. Values preserve the
+	// observable wire pacing of the sleeps they replace (see
+	// refactor/T26_loot_state_machine.md Review for the mapping).
+	static constexpr int kCorpseSearchDeadlineMs = 2000;      // was: blind 500ms single-shot wait
+	static constexpr int kItemQuiescenceMs = 500;             // was: CheckAutoLoot's 500ms "give a moment"
+	static constexpr int kAwaitingItemsHardDeadlineMs = 5000; // new: safety net, no legacy equivalent
+	static constexpr int kInterItemDelayMs = 100;             // was: LootAll's per-item 100ms
+	static constexpr int kClosingDelayMs = 500;                // was: LootAll's pre-close 500ms
+
 	// Auto movement during combat
 	bool m_auto_movement_enabled;
 
@@ -298,4 +348,14 @@ private:
 	bool IsCorpse(const Entity& entity) const;
 	Entity* FindNearbyCorpse() const;
 	bool IsHumanoid(uint16_t race_id) const;
+
+	// T26: loot state machine helpers.
+	void EnterLootSubState(LootSubState state);
+	void TickAwaitingCorpse(std::chrono::steady_clock::time_point now);
+	void TickAwaitingItems(std::chrono::steady_clock::time_point now);
+	void TickLootingItems(std::chrono::steady_clock::time_point now);
+	void TickClosing(std::chrono::steady_clock::time_point now);
+	bool CorpseStillPresent(uint16_t corpse_id) const;
+	void BeginLootRequest(uint16_t corpse_id);  // shared by LootCorpse() and AwaitingCorpse's find
+	void AbortLoot();                            // deadline / corpse-gone exit
 };
