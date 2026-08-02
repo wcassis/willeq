@@ -15,10 +15,17 @@ void WorldState::setZoneName(const std::string& name) {
     }
 }
 
-void WorldState::setZone(const std::string& name, uint16_t id) {
+void WorldState::setZone(const std::string& name, uint16_t id, float x, float y, float z, float heading) {
     bool changed = (m_zoneName != name || m_zoneId != id);
     m_zoneName = name;
     m_zoneId = id;
+    // T28: always record the arrival position passed in, even if the
+    // name/id didn't change -- fireZoneChangedEvent() (called only below,
+    // when changed) reads these, not the pending-zone fields.
+    m_zoneArrivalX = x;
+    m_zoneArrivalY = y;
+    m_zoneArrivalZ = z;
+    m_zoneArrivalHeading = heading;
     if (changed) {
         fireZoneChangedEvent();
     }
@@ -107,10 +114,10 @@ void WorldState::fireZoneChangedEvent() {
         ZoneChangedData data;
         data.zoneName = m_zoneName;
         data.zoneId = m_zoneId;
-        data.x = m_pendingZoneX;
-        data.y = m_pendingZoneY;
-        data.z = m_pendingZoneZ;
-        data.heading = m_pendingZoneHeading;
+        data.x = m_zoneArrivalX;
+        data.y = m_zoneArrivalY;
+        data.z = m_zoneArrivalZ;
+        data.heading = m_zoneArrivalHeading;
         m_eventBus->publish(GameEventType::ZoneChanged, data);
     }
 }

@@ -1906,7 +1906,14 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		}
 
 		// Phase 7.3: Also update WorldState
-		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id);
+		// T28: pass the confirmed arrival position (same m_safe_x/y/z the bridge
+		// publish below uses) so the EventBus ZoneChanged payload matches the
+		// bridge's, instead of reading the unrelated pending-zone fields (which
+		// are usually still zero here -- see refactor/deferred.md "Dead parallel
+		// state copies..." entry). Heading is 0.0f to match the bridge publish
+		// immediately below; this client does not yet track arrival heading.
+		m_game_state.world().setZone(m_current_zone_name, m_current_zone_id,
+			m_safe_x, m_safe_y, m_safe_z, 0.0f);
 
 		// Publish ZoneChanged event to bridge
 		if (m_bridge) {

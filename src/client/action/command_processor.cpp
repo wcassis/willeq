@@ -768,6 +768,15 @@ ActionResult CommandProcessor::cmdConsider(const std::string& args) {
 }
 
 ActionResult CommandProcessor::cmdHail(const std::string& args) {
+    // T28 (deliberately NOT fixed here): m_state.combat().hasTarget() reads
+    // the state-layer CombatState target, which nothing in production ever
+    // populates (see refactor/deferred.md "Dead parallel state copies in the
+    // state layer, WITH LIVE READERS" -- this is the fifth reader, called out
+    // there as out of scope). This always takes the non-target hail() branch
+    // today. CommandProcessor deliberately holds only state::GameState& and
+    // ActionDispatcher& (T12 decoupled the action layer from CombatManager);
+    // fixing this properly is the state-layer migration's job, not a local
+    // patch that would re-couple the action layer.
     if (m_state.combat().hasTarget()) {
         return m_dispatcher.hailTarget();
     }

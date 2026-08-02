@@ -267,11 +267,11 @@ TEST(WorldStateTest, SetZoneFiresOnlyOnChange) {
     int zoneChanged = 0;
     bus.subscribe(GameEventType::ZoneChanged, [&](const GameEvent&) { ++zoneChanged; });
 
-    ws.setZone("qeynos", 1);
+    ws.setZone("qeynos", 1, 0.0f, 0.0f, 0.0f, 0.0f);
     EXPECT_EQ(zoneChanged, 1);
-    ws.setZone("qeynos", 1); // unchanged
+    ws.setZone("qeynos", 1, 0.0f, 0.0f, 0.0f, 0.0f); // unchanged
     EXPECT_EQ(zoneChanged, 1);
-    ws.setZone("freeport", 2);
+    ws.setZone("freeport", 2, 0.0f, 0.0f, 0.0f, 0.0f);
     EXPECT_EQ(zoneChanged, 2);
 }
 
@@ -336,16 +336,22 @@ TEST(WorldStateTest, ResetZoneStateClearsTransitionAndConnectionState) {
     EXPECT_FALSE(ws.isZoning());
 }
 
-// Documented behavior (not fixed here): fireZoneChangedEvent() populates the
-// event's x/y/z/heading from the *pending zone* fields, not from any
-// position passed to setZone()/setZoneName(). Calling setZone() without a
-// prior setPendingZone() publishes a ZoneChanged event with position
-// (0,0,0) / heading 0, even if the zone actually has a different entry
-// point. Pinning current behavior per the plan's STOP condition (real
-// production code is presumably not exercising this path in a way that
-// matters, since eq.cpp likely calls setPendingZone first -- but the two
-// setters are not coupled at this layer).
-TEST(WorldStateTest, ZoneChangedEventPositionComesFromPendingZoneNotSetZoneArgs) {
+// T28 (fixed a live bug, was pinned wrong behavior under the name
+// ZoneChangedEventPositionComesFromPendingZoneNotSetZoneArgs): before this
+// fix, fireZoneChangedEvent() populated the event's x/y/z/heading from the
+// *pending zone* fields, not from the position passed to setZone(). This was
+// a genuine production bug -- eq.cpp:1909 calls setZone() with no position
+// info, while eq.cpp:1912-1922 separately pushes the correct arrival
+// position (m_safe_x/y/z) onto the bridge. Two channels disagreed: the
+// bridge (irrlicht_bridge/console_bridge) got the right position, the
+// EventBus subscriber (console_renderer.cpp) got (0,0,0) or whatever stale
+// pending-zone fields happened to hold. setZone() now takes the arrival
+// position/heading directly (same values the caller already has on hand
+// for the bridge publish) and fireZoneChangedEvent() reads THOSE, not the
+// unrelated pending-zone fields -- which remain a separate, still-valid
+// concept (an in-flight zone request, tracked independently via
+// setPendingZone()/pendingZoneX() etc; see refactor/deferred.md).
+TEST(WorldStateTest, ZoneChangedEventPositionComesFromSetZoneArgsNotPendingZone) {
     WorldState ws;
     EventBus bus;
     ws.setEventBus(&bus);
@@ -355,23 +361,23 @@ TEST(WorldStateTest, ZoneChangedEventPositionComesFromPendingZoneNotSetZoneArgs)
         lastData = std::get<ZoneChangedData>(e.data);
     });
 
-    // setZone() takes no position args at all -- the event's position comes
-    // from whatever the pending-zone fields currently hold (0 here, since
-    // none was set).
-    ws.setZone("qeynos", 1);
+    // The position passed directly to setZone() is what gets published,
+    // even with no pending-zone fields set at all.
+    ws.setZone("qeynos", 1, 10.0f, 20.0f, 30.0f, 15.0f);
     EXPECT_EQ(lastData.zoneName, "qeynos");
-    EXPECT_FLOAT_EQ(lastData.x, 0.0f);
-    EXPECT_FLOAT_EQ(lastData.y, 0.0f);
-    EXPECT_FLOAT_EQ(lastData.z, 0.0f);
+    EXPECT_FLOAT_EQ(lastData.x, 10.0f);
+    EXPECT_FLOAT_EQ(lastData.y, 20.0f);
+    EXPECT_FLOAT_EQ(lastData.z, 30.0f);
+    EXPECT_FLOAT_EQ(lastData.heading, 15.0f);
 
-    // Now set a pending zone position and change zone again: the event
-    // picks up the pending-zone coordinates, not anything passed to setZone.
+    // Setting a pending zone with DIFFERENT coordinates must NOT leak into
+    // the published event -- this is the regression the bug used to cause.
     ws.setPendingZone(2, 111.0f, 222.0f, 333.0f, 45.0f);
-    ws.setZone("freeport", 2);
-    EXPECT_FLOAT_EQ(lastData.x, 111.0f);
-    EXPECT_FLOAT_EQ(lastData.y, 222.0f);
-    EXPECT_FLOAT_EQ(lastData.z, 333.0f);
-    EXPECT_FLOAT_EQ(lastData.heading, 45.0f);
+    ws.setZone("freeport", 2, 40.0f, 50.0f, 60.0f, 70.0f);
+    EXPECT_FLOAT_EQ(lastData.x, 40.0f);
+    EXPECT_FLOAT_EQ(lastData.y, 50.0f);
+    EXPECT_FLOAT_EQ(lastData.z, 60.0f);
+    EXPECT_FLOAT_EQ(lastData.heading, 70.0f);
 }
 
 // =============================================================================
@@ -457,19 +463,23 @@ TEST(CombatStateTest, ResetClearsAllState) {
     EXPECT_EQ(cs.lastSlainEntityName(), "");
 }
 
-// Real finding, NOT fixed here per the plan's STOP condition (base-layer
-// bug -- documenting current behavior, not repairing it):
-// CombatState::fireTargetChangedEvent() and fireCombatEvent() are stubs --
-// both check m_eventBus is non-null but the bodies are empty (just
-// comments: "Target changed event would go here"). So setTarget(),
-// clearTarget(), and setAutoAttacking() NEVER actually publish anything on
-// the EventBus, despite GameEventType::TargetChanged and
-// GameEventType::CombatEvent existing in the enum and being documented
-// (event_bus.h) as the mechanism for this. Any renderer/UI code that
-// expects to hear about target or auto-attack changes via the EventBus
-// gets nothing from CombatState today. This is the single clearest gap
-// found in this unit; reported prominently per the plan's instructions.
-TEST(CombatStateTest, KNOWN_GAP_SetTargetDoesNotActuallyPublishAnyEvent) {
+// T28: re-commented, NOT fixed (kept intentionally, per plan) -- this is a
+// DOCUMENTED, DELIBERATE gap owned by the state-layer migration, not an
+// unexamined one. CombatState::fireTargetChangedEvent()/fireCombatEvent()
+// are stubs, so setTarget()/clearTarget()/setAutoAttacking() never publish
+// on the EventBus. That is correct today: TargetChanged is already
+// published from three live sites (eq_bridge.cpp:589/771, eq_entities.cpp:
+// 1728), with eq_action_handler.cpp:21 recording a deliberate no-duplicate
+// decision -- making these stubs fire would DOUBLE-publish, not fix
+// anything. Also, setTarget()/clearTarget()/setAutoAttacking() have zero
+// production call sites in the first place (only tests call them), so
+// their being no-ops is currently moot regardless. This test pins the
+// stub's current non-publishing behavior so the state-layer migration
+// (which will need to both wire real callers to these setters AND
+// repoint/remove the three existing eq_bridge/eq_entities publishers) does
+// not silently start double-firing TargetChanged. See refactor/deferred.md
+// "Dead parallel state copies in the state layer, WITH LIVE READERS".
+TEST(CombatStateTest, DELIBERATE_GAP_SetTargetDoesNotPublishPendingMigration) {
     CombatState cs;
     EventBus bus;
     cs.setEventBus(&bus);
@@ -484,9 +494,10 @@ TEST(CombatStateTest, KNOWN_GAP_SetTargetDoesNotActuallyPublishAnyEvent) {
 
     EXPECT_EQ(anyEventCount, 0)
         << "CombatState's fireTargetChangedEvent()/fireCombatEvent() are "
-           "empty stubs -- if this ever fires, someone wired up the "
-           "missing publish() calls and this test (and its comment) "
-           "should be updated to assert the real event instead.";
+           "deliberately non-publishing stubs (see comment above) -- if "
+           "this ever fires, the state-layer migration wired them up, and "
+           "this test (and the eq_bridge/eq_entities TargetChanged "
+           "publishers) need to be updated together, not just this test.";
 }
 
 // =============================================================================
@@ -645,6 +656,6 @@ TEST(GameStateTest, PlayerPositionAndCurrentZoneNameConvenienceAccessors) {
     EXPECT_FLOAT_EQ(gs.playerPosition().y, 6.0f);
     EXPECT_FLOAT_EQ(gs.playerPosition().z, 7.0f);
 
-    gs.world().setZone("qeynos", 1);
+    gs.world().setZone("qeynos", 1, 0.0f, 0.0f, 0.0f, 0.0f);
     EXPECT_EQ(gs.currentZoneName(), "qeynos");
 }

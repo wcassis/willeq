@@ -881,14 +881,18 @@ TEST(InventoryStateTest, ClearBankOnlyAffectsBankSlots) {
     EXPECT_FALSE(inv.hasBankItem(0));
 }
 
-// Documented behavior (not a bug fixed here -- see plan's STOP condition):
-// fireInventoryChangedEvent() always publishes hasItem=true and itemId=0
-// regardless of the actual occupied state passed to the setter. The source
-// comment acknowledges this: "Caller should update this based on context."
-// This test pins that current, documented-as-incomplete behavior so a
-// future refactor doesn't silently "fix" it without noticing the contract
-// changed for any consumer relying on it.
-TEST(InventoryStateTest, InventorySlotChangedEventAlwaysReportsHasItemTrue) {
+// T28 (fixed the hardcoded lie; was pinned wrong behavior under the name
+// InventorySlotChangedEventAlwaysReportsHasItemTrue): fireInventoryChangedEvent()
+// used to always publish hasItem=true regardless of the actual occupied
+// state passed to the setter. It now reports the real value. Note this
+// remains presently UNREACHABLE in production: setEquipmentOccupied()/
+// setGeneralOccupied()/setBankOccupied() have zero production call sites
+// (the live InventorySlotChanged events, enriched by S2, come from the
+// eq_bridge path instead) -- see refactor/deferred.md "Dead parallel state
+// copies in the state layer, WITH LIVE READERS". This test guards the
+// payload contract for whenever the state-layer migration wires these
+// setters up to a real caller.
+TEST(InventoryStateTest, InventorySlotChangedEventReportsActualOccupiedState) {
     InventoryState inv;
     EventBus bus;
     inv.setEventBus(&bus);
@@ -898,11 +902,10 @@ TEST(InventoryStateTest, InventorySlotChangedEventAlwaysReportsHasItemTrue) {
         lastHasItem = std::get<InventorySlotChangedData>(e.data).hasItem;
     });
 
-    // Even when clearing a slot (occupied -> false), the event reports true.
     inv.setEquipmentOccupied(0, true);
     EXPECT_TRUE(lastHasItem);
     inv.setEquipmentOccupied(0, false);
-    EXPECT_TRUE(lastHasItem) << "current EventBus payload does not reflect "
-                                 "the false occupied state -- documented gap";
+    EXPECT_FALSE(lastHasItem) << "T28: payload must reflect the actual "
+                                  "occupied state passed to the setter.";
 }
 

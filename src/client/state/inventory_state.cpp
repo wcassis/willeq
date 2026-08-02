@@ -40,7 +40,7 @@ void InventoryState::setEquipmentOccupied(int16_t slot, bool occupied) {
     }
     if (m_equipmentOccupied[slot] != occupied) {
         m_equipmentOccupied[slot] = occupied;
-        fireInventoryChangedEvent(slot);
+        fireInventoryChangedEvent(slot, occupied);
     }
 }
 
@@ -51,7 +51,7 @@ void InventoryState::setGeneralOccupied(int16_t slot, bool occupied) {
     if (m_generalOccupied[slot] != occupied) {
         m_generalOccupied[slot] = occupied;
         // General slots are offset by 22 in actual slot IDs
-        fireInventoryChangedEvent(22 + slot);
+        fireInventoryChangedEvent(22 + slot, occupied);
     }
 }
 
@@ -62,7 +62,7 @@ void InventoryState::setBankOccupied(int16_t slot, bool occupied) {
     if (m_bankOccupied[slot] != occupied) {
         m_bankOccupied[slot] = occupied;
         // Bank slots start at 2000
-        fireInventoryChangedEvent(2000 + slot);
+        fireInventoryChangedEvent(2000 + slot, occupied);
     }
 }
 
@@ -194,14 +194,24 @@ void InventoryState::clearBank() {
 
 // ========== Event Firing ==========
 
-void InventoryState::fireInventoryChangedEvent(int16_t slot) {
+void InventoryState::fireInventoryChangedEvent(int16_t slot, bool hasItem) {
     if (!m_eventBus) {
         return;
     }
 
+    // T28: report the actual occupancy this call was given, instead of the
+    // previous hardcoded `hasItem = true`. This class's occupancy arrays
+    // and setters (setEquipmentOccupied/setGeneralOccupied/setBankOccupied)
+    // currently have zero production call sites -- the live
+    // InventorySlotChanged events (enriched by S2) come from the eq_bridge
+    // path instead -- so this is presently unreachable, not a live bug. See
+    // refactor/deferred.md "Dead parallel state copies in the state layer,
+    // WITH LIVE READERS". itemId is deliberately left at 0: this state
+    // layer only tracks occupancy (bool), not which item occupies a slot,
+    // so 0 is "unknown", not a claim that itemId is genuinely zero.
     InventorySlotChangedData event;
     event.slotId = slot;
-    event.hasItem = true;  // Caller should update this based on context
+    event.hasItem = hasItem;
     event.itemId = 0;
     m_eventBus->publish(GameEventType::InventorySlotChanged, event);
 }
