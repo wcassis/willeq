@@ -1295,6 +1295,29 @@ Repro commands for a future session:
 (empty) vs `grep -rn "combat()\.targetId()\|combat()\.hasTarget()" src/`
 (five hits).
 
+## willeq.db schema version is bumped but never validated (T27 follow-up, 2026-08-02)
+
+T27 bumped `metadata.version` 1→2 when it added the `class_levels` BLOB
+column, but **nothing reads that version** (the executor checked; it is
+only logged). Meanwhile `willeq_database.cpp`'s spell queries now name
+`class_levels` explicitly in their SELECT lists, so against a stale v1
+database `sqlite3_prepare_v2()` fails with "no such column" and **every
+spell lookup silently returns nothing** — a confusing "spell not found"
+rather than "your database is out of date".
+
+Low practical risk today because `data/willeq.db` is a TRACKED binary, so
+any `git checkout`/`pull` of `fable` brings the matching v2 file. It
+bites only someone with a locally-modified or separately-generated db —
+e.g. a clone that regenerates with an older builder, or a worktree where
+the file was manually replaced.
+
+Small fix, worth doing under the 2026-08-02 automation-is-first-class
+policy: validate `metadata.version` at open and fail loudly with an
+actionable message naming the rebuild command, instead of degrading into
+empty spell results. (Also note: the `willeq-benchmark` clone at
+`b68c32a` predates all of this and its `build_errors_response.md`
+channel file no longer exists — nothing was written to that clone.)
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
