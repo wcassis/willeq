@@ -883,8 +883,13 @@ void EverQuest::RegisterSocialCommands()
 	assist_cmd.handler = [this](const std::string& args) {
 		uint32_t target_id = 0;
 		if (args.empty()) {
-			// Use current target
-			target_id = m_game_state.combat().targetId();
+			// Use current target. T28: repointed from m_game_state.combat()
+			// (state-layer CombatState target fields, never populated in
+			// production -- see refactor/deferred.md "Dead parallel state
+			// copies...") to the authoritative CombatManager, matching
+			// eq_bridge.cpp's usage.
+			target_id = (m_combat_manager && m_combat_manager->HasTarget())
+				? m_combat_manager->GetTargetId() : 0;
 			if (target_id == 0) {
 				AddChatSystemMessage("You don't have a target.");
 				return;
@@ -942,7 +947,10 @@ void EverQuest::RegisterSocialCommands()
 	shield_cmd.description = "Shield your current target (Warrior/Paladin)";
 	shield_cmd.category = "Combat";
 	shield_cmd.handler = [this](const std::string& args) {
-		uint32_t target_id = m_game_state.combat().targetId();
+		// T28: repointed from the never-populated state-layer CombatState
+		// target to the authoritative CombatManager (see /assist above).
+		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
+			? m_combat_manager->GetTargetId() : 0;
 		if (target_id == 0) {
 			AddChatSystemMessage("You don't have a target to shield.");
 			return;
@@ -971,7 +979,10 @@ void EverQuest::RegisterSocialCommands()
 	duel_cmd.description = "Challenge your target to a duel";
 	duel_cmd.category = "Combat";
 	duel_cmd.handler = [this](const std::string& args) {
-		uint32_t target_id = m_game_state.combat().targetId();
+		// T28: repointed from the never-populated state-layer CombatState
+		// target to the authoritative CombatManager (see /assist above).
+		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
+			? m_combat_manager->GetTargetId() : 0;
 		if (target_id == 0) {
 			AddChatSystemMessage("You don't have a target.");
 			return;
@@ -1017,7 +1028,10 @@ void EverQuest::RegisterSocialCommands()
 	bindwound_cmd.description = "Use bind wound skill on target";
 	bindwound_cmd.category = "Skills";
 	bindwound_cmd.handler = [this](const std::string& args) {
-		uint32_t target_id = m_game_state.combat().targetId();
+		// T28: repointed from the never-populated state-layer CombatState
+		// target to the authoritative CombatManager (see /assist above).
+		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
+			? m_combat_manager->GetTargetId() : 0;
 		if (target_id == 0) {
 			target_id = m_my_spawn_id;  // Self-target
 		}

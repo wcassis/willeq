@@ -64,15 +64,27 @@ void CombatState::reset() {
 
 void CombatState::fireTargetChangedEvent() {
     if (m_eventBus) {
-        // Target changed event would go here
-        // For now, the TargetChanged event type is defined but we don't have
-        // a corresponding data struct. This can be expanded as needed.
+        // T28: deliberately non-publishing -- this is NOT a missing data
+        // struct (TargetChangedData exists at event_bus.h:384; the old
+        // comment claiming otherwise was wrong). TargetChanged is already
+        // published from three live sites (eq_bridge.cpp:589 clear,
+        // eq_bridge.cpp:771 set, eq_entities.cpp:1728 HP update), and
+        // eq_action_handler.cpp:21 records a deliberate no-duplicate
+        // decision ("D20e1: TargetChanged event is already published by
+        // ProcessBridgeIntents"). Making this stub publish would
+        // double-fire the event. It stays a stub until the state-layer
+        // migration consolidates ownership of target state onto CombatState
+        // and repoints those three sites here instead -- see
+        // refactor/deferred.md "Dead parallel state copies in the state
+        // layer, WITH LIVE READERS".
     }
 }
 
 void CombatState::fireCombatEvent() {
     if (m_eventBus) {
-        // Combat state change event would go here
+        // T28: same reasoning as fireTargetChangedEvent() above -- left
+        // non-publishing pending the state-layer migration, not because no
+        // data struct exists.
     }
 }
 

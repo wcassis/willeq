@@ -308,6 +308,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_combat_manager)
 
+# T28: coverage for the four eq_commands.cpp readers repointed from the
+# never-populated state-layer CombatState target to the authoritative
+# CombatManager (refactor/T28_state_layer_readers.md Part 2). Same seam as
+# test_combat_manager.cpp (bare EverQuest via MakeEq(), live CombatManager
+# via GetCombatManager()) plus ProcessChatInput() -- the same public entry
+# point production chat input uses -- to reach the command-registry lambda
+# handlers in eq_commands.cpp, and the bridge's SystemMessage event (same
+# idiom as test_zone_chat.cpp) to observe AddChatSystemMessage() output.
+ADD_EXECUTABLE(test_eq_commands_assist
+    test_eq_commands_assist.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_commands_assist GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_assist PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_commands_assist)
+
 # T24: SpellManager coverage (gem state machine, cast validation matrix via
 # direct validateCast()/checkMana()/checkRange()/adjustTargetForSpellType()
 # calls with hand-built SpellData, cooldown/memorization timing via T17-style

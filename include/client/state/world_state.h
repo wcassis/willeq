@@ -32,7 +32,12 @@ public:
     uint16_t zoneId() const { return m_zoneId; }
     void setZoneId(uint16_t id) { m_zoneId = id; }
 
-    void setZone(const std::string& name, uint16_t id);
+    // T28: position/heading are the actual arrival position (e.g. the
+    // server's safe-coords), NOT the pending-zone fields -- fireZoneChangedEvent()
+    // publishes exactly what is passed here. See setPendingZone()/pendingZoneX()
+    // etc. for the separate pre-zone-line-trigger tracking, which this no longer
+    // reads from for the published event.
+    void setZone(const std::string& name, uint16_t id, float x, float y, float z, float heading);
 
     // Zone loading state
     bool isZoneLoading() const { return m_isZoneLoading; }
@@ -140,6 +145,15 @@ private:
     // Zone information
     std::string m_zoneName;
     uint16_t m_zoneId = 0;
+
+    // T28: arrival position/heading passed to the most recent setZone() call --
+    // what fireZoneChangedEvent() publishes. Deliberately separate from the
+    // m_pendingZone* fields below (those track a still-in-flight zone request,
+    // not the confirmed arrival position).
+    float m_zoneArrivalX = 0.0f;
+    float m_zoneArrivalY = 0.0f;
+    float m_zoneArrivalZ = 0.0f;
+    float m_zoneArrivalHeading = 0.0f;
     bool m_isZoneLoading = false;
     float m_zoneLoadProgress = 0.0f;
     std::string m_zoneLoadStatus;

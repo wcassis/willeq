@@ -192,7 +192,7 @@ public:
     void clearBank();
 
 private:
-    void fireInventoryChangedEvent(int16_t slot);
+    void fireInventoryChangedEvent(int16_t slot, bool hasItem);
     void fireCursorItemChangedEvent();
     void fireEquipmentStatsChangedEvent();
 
