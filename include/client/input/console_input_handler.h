@@ -68,8 +68,18 @@ public:
      */
     bool isKeyboardMode() const { return m_keyboardMode; }
 
+    /**
+     * T29: true if stdin is a real terminal (isatty(STDIN_FILENO)).
+     * false means stdin is a pipe/file -- no raw mode, no keyboard-mode
+     * toggle (there's no human at a keyboard to toggle for), just a plain
+     * line-oriented read/dispatch/repeat loop that exits cleanly on EOF.
+     * See docs/decisions.md 2026-08-02, refactor/T29_unified_command_channel.md.
+     */
+    bool isStdinTty() const { return m_isTty; }
+
 private:
     void inputThreadFunc();
+    void pipedInputThreadFunc();  // T29: non-tty stdin path (no raw mode)
     void processCommand(const std::string& cmd);
     void processKeyboardInput(char key);
 
@@ -81,6 +91,7 @@ private:
 
     std::atomic<bool> m_active{true};
     std::atomic<bool> m_keyboardMode{true};  // Start in keyboard mode
+    bool m_isTty = true;  // T29: detected once at construction, see isStdinTty()
 
     // Input thread
     std::thread m_inputThread;

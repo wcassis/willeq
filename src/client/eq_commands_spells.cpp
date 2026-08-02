@@ -29,6 +29,13 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
+// T29: plain data-model headers, no renderer dependency (P28 declassified
+// them; see eq_chat.cpp's identical note) -- needed unconditionally now
+// that RegisterSpellCommands() is no longer graphics-only (below).
+#include "client/chat/chat_message_buffer.h"
+#include "client/graphics/ui/command_registry.h"
+#include "client/hotbar/hotbar_model.h"
+
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
@@ -40,9 +47,6 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
-#include "client/chat/chat_message_buffer.h"
-#include "client/graphics/ui/command_registry.h"
-#include "client/hotbar/hotbar_model.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #include "client/graphics/detail/detail_manager.h"
@@ -86,8 +90,12 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#ifdef EQT_HAS_GRAPHICS
 
+// T29: un-guarded from EQT_HAS_GRAPHICS -- see the identical note in
+// eq_commands_movement.cpp. The two commands here that called
+// graphics-only singletons directly (/hotkeys, plus /bank and /train
+// which were already individually guarded) are now guarded at their own
+// handler bodies instead of at the whole-function level.
 void EverQuest::RegisterSpellCommands()
 {
 	using namespace eqt::ui;
@@ -96,8 +104,11 @@ void EverQuest::RegisterSpellCommands()
 	// (G02: duplicated verbatim from RegisterMovementCommands, where it's
 	// also used — this domain's Detail System Commands and /pmem also route
 	// through it. Stateless, no behavior change from having two copies.)
+	// T29: headless honesty -- see the identical note in
+	// eq_commands_movement.cpp's rendererCmd.
 	auto rendererCmd = [this](const std::string& cmdName) {
 		return [this, cmdName](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
 			if (m_bridge) {
 				std::string fullCmd = "/" + cmdName;
 				if (!args.empty()) fullCmd += " " + args;
@@ -105,6 +116,9 @@ void EverQuest::RegisterSpellCommands()
 					eqt::state::GameEventType::RendererCommand,
 					eqt::state::RendererCommandData{fullCmd}));
 			}
+#else
+			AddChatSystemMessage(fmt::format("/{} requires graphics mode (not available in this headless build).", cmdName));
+#endif
 		};
 	};
 
@@ -519,6 +533,7 @@ void EverQuest::RegisterSpellCommands()
 	hotkeys.description = "Manage hotkey configuration";
 	hotkeys.category = "Utility";
 	hotkeys.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
 		auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
 		if (args == "reload") {
 			if (hotkeyMgr.reload()) {
@@ -552,6 +567,10 @@ void EverQuest::RegisterSpellCommands()
 		} else {
 			AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
 		}
+#else
+		(void)args;
+		AddChatSystemMessage("/hotkeys requires graphics mode (not available in this headless build).");
+#endif
 	};
 	m_command_registry->registerCommand(hotkeys);
 
@@ -780,4 +799,3 @@ void EverQuest::RegisterSpellCommands()
 	m_command_registry->registerCommand(effectsvolume_cmd);
 #endif
 }
-#endif

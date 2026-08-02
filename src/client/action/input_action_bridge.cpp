@@ -264,13 +264,27 @@ void InputActionBridge::processMouseInput(float deltaTime) {
 }
 
 void InputActionBridge::processConsoleInput() {
-    if (!m_input || !m_commandProcessor) {
+    // T29: prefer the dedicated console command source (kept alive and
+    // drained regardless of which handler setInputHandler() currently
+    // points at -- see setConsoleCommandSource()); fall back to m_input so
+    // headless mode, where they're the same ConsoleInputHandler instance
+    // anyway, behaves exactly as before if the caller never wires the
+    // separate source.
+    input::IInputHandler* source = m_consoleCommandSource ? m_consoleCommandSource : m_input;
+    if (!source || (!m_unifiedDispatcher && !m_commandProcessor)) {
+        // No dispatcher of any kind wired up -- leave the queue alone
+        // rather than silently draining and discarding commands.
         return;
     }
 
     // Process raw commands from console input
-    while (auto rawCmd = m_input->consumeRawCommand()) {
-        m_commandProcessor->processCommand(*rawCmd);
+    while (auto rawCmd = source->consumeRawCommand()) {
+        if (m_unifiedDispatcher) {
+            m_unifiedDispatcher(*rawCmd);
+        } else if (m_commandProcessor) {
+            // Legacy fallback (pre-T29 behavior): CommandProcessor only.
+            m_commandProcessor->processCommand(*rawCmd);
+        }
     }
 }
 

@@ -5,6 +5,7 @@
 
 #ifdef _WIN32
 #include <conio.h>
+#include <io.h>
 #else
 #include <unistd.h>
 #include <termios.h>
@@ -18,10 +19,28 @@ namespace input {
 ConsoleInputHandler::ConsoleInputHandler() {
 #ifndef _WIN32
     m_origTermios = new ::termios;
+    // T29: piped stdin (a script's `stdin_script | willeq ...`) is not a
+    // tty. isatty() is the standard, cheap way to tell -- checked once at
+    // construction since stdin's tty-ness doesn't change mid-run. See
+    // docs/decisions.md 2026-08-02 "landing constraints": the raw-mode/
+    // keyboard-mode toggle below is built for a human at a real terminal;
+    // on a pipe there's no raw mode to enter and the toggle would eat the
+    // first piped line as a mode switch instead of a command.
+    m_isTty = (isatty(STDIN_FILENO) != 0);
+#else
+    m_isTty = (_isatty(_fileno(stdin)) != 0);
 #endif
-    // Start in keyboard mode
-    enableRawMode();
-    m_inputThread = std::thread(&ConsoleInputHandler::inputThreadFunc, this);
+
+    if (m_isTty) {
+        // Start in keyboard mode (legacy interactive behavior, unchanged).
+        enableRawMode();
+        m_inputThread = std::thread(&ConsoleInputHandler::inputThreadFunc, this);
+    } else {
+        // T29: plain line-oriented path -- read a line, dispatch it,
+        // repeat, exit cleanly on EOF. No raw mode, no mode toggle.
+        m_keyboardMode.store(false);
+        m_inputThread = std::thread(&ConsoleInputHandler::pipedInputThreadFunc, this);
+    }
 }
 
 ConsoleInputHandler::~ConsoleInputHandler() {
@@ -199,6 +218,48 @@ void ConsoleInputHandler::inputThreadFunc() {
             }
         }
     }
+}
+
+void ConsoleInputHandler::pipedInputThreadFunc() {
+    // T29: piped/non-tty stdin path. No raw mode, no keyboard/command mode
+    // toggle (that toggle is what would eat a piped script's first line --
+    // see the constructor note). Just read a line, hand it to the exact
+    // same processCommand() the interactive command-mode prompt uses (so
+    // the bespoke say/tell/move/... words and the default raw-command
+    // passthrough both behave identically whether typed at a tty prompt or
+    // piped), repeat, and exit cleanly on EOF so `willeq ... < script.txt`
+    // terminates instead of hanging once the script is exhausted.
+    std::string commandBuffer;
+#ifndef _WIN32
+    // Poll with a timeout rather than blocking indefinitely in getline(),
+    // so shutdown() (m_active -> false, e.g. from a /camp elsewhere in the
+    // app) can join this thread promptly even if the pipe's producer never
+    // closes it. Mirrors the tty path's select()-based keyPressed().
+    while (m_active.load()) {
+        struct timeval tv = {0, 200000};  // 200ms
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds);
+        int ready = select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv);
+        if (ready <= 0) {
+            continue;  // timeout (or interrupted) -- re-check m_active
+        }
+        if (!std::getline(std::cin, commandBuffer)) {
+            break;  // EOF or stream error
+        }
+        if (!commandBuffer.empty()) {
+            processCommand(commandBuffer);
+        }
+    }
+#else
+    while (m_active.load() && std::getline(std::cin, commandBuffer)) {
+        if (!commandBuffer.empty()) {
+            processCommand(commandBuffer);
+        }
+    }
+#endif
+    // EOF (or explicit shutdown) reached -- nothing left to read.
+    m_active.store(false);
 }
 
 void ConsoleInputHandler::processKeyboardInput(char key) {

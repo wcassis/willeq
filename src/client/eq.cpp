@@ -159,12 +159,19 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
 	SetupInventoryCallbacks();
 	LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized");
+#endif
 
-	// S04: Create command registry at startup (was lazy-init in ProcessChatInput)
+	// T29: command registry creation was folded under EQT_HAS_GRAPHICS
+	// alongside the inventory manager above, which meant a headless build
+	// never registered a single slash command -- not even non-graphics ones
+	// like /combat, /assist, /target. RegisterCommands() and its per-domain
+	// helpers (eq_commands*.cpp) are themselves un-guarded now (see their
+	// T29 notes); only the individual commands that genuinely need graphics
+	// stay guarded at their own handler bodies. Create the registry
+	// unconditionally so headless builds get the same vocabulary.
 	m_command_registry = std::make_unique<eqt::ui::CommandRegistry>();
 	RegisterCommands();
 	LOG_DEBUG(MOD_MAIN, "Command registry initialized");
-#endif
 
 	// Connection is deferred to ConnectToLogin() so that graphics initialization
 	// (which can take several seconds on slow devices like Orange Pi) completes first.

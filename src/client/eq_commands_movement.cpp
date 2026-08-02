@@ -29,6 +29,14 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
+// T29: chat_message_buffer.h/command_registry.h/hotbar_model.h are plain
+// data-model headers with no renderer dependency (P28 declassified them;
+// see eq_chat.cpp's identical note) -- needed unconditionally because
+// RegisterMovementCommands() itself is no longer graphics-only (below).
+#include "client/chat/chat_message_buffer.h"
+#include "client/graphics/ui/command_registry.h"
+#include "client/hotbar/hotbar_model.h"
+
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
@@ -40,9 +48,6 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
-#include "client/chat/chat_message_buffer.h"
-#include "client/graphics/ui/command_registry.h"
-#include "client/hotbar/hotbar_model.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #include "client/graphics/detail/detail_manager.h"
@@ -86,8 +91,20 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#ifdef EQT_HAS_GRAPHICS
 
+// T29: this whole registration function used to be wrapped in
+// #ifdef EQT_HAS_GRAPHICS, which meant a headless-compiled build had NO
+// movement/combat/utility/sky slash commands at all -- including /combat,
+// the exact command T26 needed to verify its live kill-to-loot cycle and
+// could not reach. Per P28's established direction (declassify what
+// doesn't actually touch the renderer rather than adding more guards):
+// almost none of this function touches graphics APIs directly -- it was
+// already routed through the RendererCommand bridge queue (rendererCmd()
+// below) for the handful of commands that are genuinely renderer-only.
+// The two exceptions that called graphics-only singletons directly
+// (spellreload, weatherquality) are now individually guarded at their
+// call sites, matching the existing /bank, /train pattern in
+// eq_commands_spells.cpp.
 void EverQuest::RegisterMovementCommands()
 {
 	using namespace eqt::ui;
@@ -534,8 +551,16 @@ void EverQuest::RegisterMovementCommands()
 	m_command_registry->registerCommand(debug);
 
 	// D20d: Helper — renderer commands push RendererCommand event via bridge
+	// (drained on the render thread, never called directly -- see the P10
+	// note on eq_commands_movement.cpp's rendererCmd/RendererCommand usage
+	// in docs/decisions.md 2026-08-02).
+	// T29: in a headless-compiled build there is no render thread to drain
+	// this queue, so silently queuing would look accepted but never take
+	// effect. Say so honestly instead (plan item 4: an unrecognised-
+	// because-headless command must say so, not fail silently).
 	auto rendererCmd = [this](const std::string& cmdName) {
 		return [this, cmdName](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
 			if (m_bridge) {
 				std::string fullCmd = "/" + cmdName;
 				if (!args.empty()) fullCmd += " " + args;
@@ -543,6 +568,9 @@ void EverQuest::RegisterMovementCommands()
 					eqt::state::GameEventType::RendererCommand,
 					eqt::state::RendererCommandData{fullCmd}));
 			}
+#else
+			AddChatSystemMessage(fmt::format("/{} requires graphics mode (not available in this headless build).", cmdName));
+#endif
 		};
 	};
 
@@ -597,8 +625,12 @@ void EverQuest::RegisterMovementCommands()
 	reloadspells.description = "Reload spell effect settings from config/spell_effects.json";
 	reloadspells.category = "Utility";
 	reloadspells.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
 		EQT::Graphics::Environment::SpellEffectsConfig::instance().reload();
 		AddChatSystemMessage("Spell effect settings reloaded");
+#else
+		AddChatSystemMessage("/spellreload requires graphics mode (not available in this headless build).");
+#endif
 	};
 	m_command_registry->registerCommand(reloadspells);
 
@@ -618,6 +650,7 @@ void EverQuest::RegisterMovementCommands()
 	weatherquality.description = "Get or set weather effects quality preset";
 	weatherquality.category = "Utility";
 	weatherquality.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
 		auto& loader = EQT::Graphics::WeatherConfigLoader::instance();
 
 		if (args.empty()) {
@@ -637,6 +670,9 @@ void EverQuest::RegisterMovementCommands()
 				AddChatSystemMessage("Invalid preset. Use: low, medium, high, ultra, custom");
 			}
 		}
+#else
+		AddChatSystemMessage("/weatherquality requires graphics mode (not available in this headless build).");
+#endif
 	};
 	m_command_registry->registerCommand(weatherquality);
 
@@ -915,4 +951,3 @@ void EverQuest::RegisterMovementCommands()
 	m_command_registry->registerCommand(who);
 
 }
-#endif

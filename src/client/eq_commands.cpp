@@ -35,6 +35,14 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
+// T29: plain data-model headers, no renderer dependency (P28 declassified
+// them; see eq_chat.cpp's identical note) -- needed unconditionally now
+// that RegisterCommands()/RegisterSocialCommands() are no longer
+// graphics-only (below).
+#include "client/chat/chat_message_buffer.h"
+#include "client/graphics/ui/command_registry.h"
+#include "client/hotbar/hotbar_model.h"
+
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
@@ -46,9 +54,6 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
-#include "client/chat/chat_message_buffer.h"
-#include "client/graphics/ui/command_registry.h"
-#include "client/hotbar/hotbar_model.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
 #include "client/graphics/detail/detail_manager.h"
@@ -92,7 +97,13 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#ifdef EQT_HAS_GRAPHICS
+
+// T29: un-guarded from EQT_HAS_GRAPHICS -- see the identical note in
+// eq_commands_movement.cpp. This file has no direct graphics-API usage at
+// all (verified by grep for IrrlichtRenderer/LoadingThread/Weather*/
+// Detail*/Season*/Wld*/HotkeyManager); every renderer-only command already
+// routed through the RendererCommand bridge queue via the RegisterMovement/
+// RegisterSpells rendererCmd() helpers in their own files.
 
 // ── Manual zone load diagnostics helpers ────────────────────────────────────
 
@@ -1121,4 +1132,3 @@ void EverQuest::RegisterSocialCommands()
 	};
 	m_command_registry->registerCommand(petition_cmd);
 }
-#endif

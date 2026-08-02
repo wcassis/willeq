@@ -135,6 +135,29 @@ struct ScriptStep {
 };
 
 /**
+ * T29 — result of one Application::DispatchSlashCommand() call.
+ *
+ * This is the automation-facing contract: "recognized"/"registry"/
+ * "success" answer whether a command was APPLIED (a registry found it and
+ * ran its local handler), not merely accepted as text. See
+ * refactor/T29_unified_command_channel.md for what a script can and
+ * cannot legitimately synchronise on -- in short: "applied" means the
+ * local handler ran (and, for registries 1/2, returned success), NOT that
+ * the server has confirmed the effect; most handlers just send a packet
+ * and the server answers asynchronously later. Registry 3 (the renderer
+ * command bridge) is honestly reported as "queued", never "applied" --
+ * it's a fire-and-forget push onto a queue drained on the render thread,
+ * with no ack path back at all.
+ */
+struct CommandDispatchResult {
+    std::string command;      // The raw input line, as given.
+    bool recognized = false;  // Did ANY registry (or the chat fallback) accept it?
+    std::string registry;     // "chat" | "game" | "action" | "renderer" | "none"
+    bool success = false;     // Registries 1/2 only: the handler's own reported outcome.
+    std::string message;      // Optional detail (failure reason, echoed usage, ...).
+};
+
+/**
  * Application - Main application class that orchestrates all components.
  *
  * This class brings together:
@@ -230,6 +253,33 @@ public:
     EverQuest* getEverQuestClient() { return m_eqClient.get(); }
     const EverQuest* getEverQuestClient() const { return m_eqClient.get(); }
 
+    /**
+     * T29 — the single unified slash-command dispatch entry point.
+     *
+     * Both automation front doors (piped/scripted stdin via
+     * ConsoleInputHandler's raw-command queue, and --script) call this.
+     * The live chat window reaches an equivalent cascade through
+     * EverQuest::ProcessChatInput() + the fallback registered in
+     * initialize() (see wireUnifiedCommandDispatch()) -- see
+     * refactor/T29_unified_command_channel.md for the full rationale and
+     * dispatch order (registry 1: EverQuest::m_command_registry: registry
+     * 2: action::CommandProcessor; registry 3: renderer command bridge).
+     *
+     * Accepts a line with or without a leading '/' (tolerant, matching
+     * CommandProcessor::processCommand()'s existing looseness). A line
+     * with no leading '/' that no stage recognizes as a command is NOT
+     * auto-sent as chat here -- unlike EverQuest::ProcessChatInput()'s
+     * live chat-window convention, this entry point is for the slash
+     * command vocabulary specifically, per Will's ruling (see
+     * docs/decisions.md 2026-08-02). Plain chat still works via /say or
+     * ConsoleInputHandler's separate bespoke "say"/"tell"/... words.
+     *
+     * Prints one stable, greppable result line to stdout (see
+     * printCommandResult()) so a script can tell a command was applied,
+     * not merely accepted.
+     */
+    CommandDispatchResult DispatchSlashCommand(const std::string& rawLine);
+
     // ========== Static Helpers ==========
 
     /**
@@ -324,6 +374,29 @@ private:
     // as a live slash command would be. No-op if no script was loaded. Called
     // from processInput() on the game thread.
     void updateScript(float deltaTime);
+
+    // T29: registries 2+3 of the unified dispatch (action::CommandProcessor,
+    // then the renderer command bridge), factored out so both
+    // DispatchSlashCommand() (stdin/--script) and the fallback wired into
+    // EverQuest for the live chat window (wireUnifiedCommandDispatch())
+    // share one implementation rather than two copies of the same order.
+    // Only fills in `result`; does not print anything (DispatchSlashCommand
+    // owns printing). Returns result.recognized.
+    bool dispatchToActionOrRenderer(const std::string& cmdBody, CommandDispatchResult& result);
+
+    // Prints one stable, greppable "CMD ..." line to stdout for a
+    // DispatchSlashCommand() result. See CommandDispatchResult's doc
+    // comment for exactly what "applied" does and doesn't promise.
+    void printCommandResult(const CommandDispatchResult& result) const;
+
+    // Wires EverQuest::SetUnrecognizedCommandFallback() to
+    // dispatchToActionOrRenderer(), so the live chat window (which calls
+    // EverQuest::ProcessChatInput() directly, not DispatchSlashCommand())
+    // still reaches registries 2 and 3 when registry 1 doesn't recognize a
+    // command -- same order, same shared implementation, just without the
+    // stdout ack (the chat window has its own UI feedback). Called once
+    // from initialize().
+    void wireUnifiedCommandDispatch();
 
     // ========== Components ==========
 

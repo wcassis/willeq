@@ -273,22 +273,47 @@ size_t EverQuest::GetPendingHotbarButtonCount() const
 	return m_pending_hotbar_buttons.size();
 }
 
+bool EverQuest::DispatchSlashCommand(const std::string &cmd_line)
+{
+	// S04: command_registry is pre-allocated in EverQuest constructor,
+	// unconditionally as of T29 (see eq.cpp) -- no EQT_HAS_GRAPHICS guard
+	// needed here any more. Individual commands that still genuinely need
+	// graphics report so themselves (see eq_commands_movement.cpp /
+	// eq_commands_spells.cpp T29 notes) rather than being unreachable.
+	if (!m_command_registry) {
+		return false;
+	}
+	return m_command_registry->executeCommand(cmd_line);
+}
+
 void EverQuest::ProcessChatInput(const std::string &input)
 {
+	// T29: this used to be wrapped entirely in #ifdef EQT_HAS_GRAPHICS, so a
+	// headless-compiled build had NO slash commands at all -- slash input
+	// was silently dropped and non-slash input still went to /say. That was
+	// the "headless hole" named in docs/decisions.md 2026-08-02: the
+	// registry itself (and RegisterCommands()) no longer requires graphics,
+	// so this is the live chat window's half of the single unified dispatch
+	// entry point -- the other half is Application::DispatchSlashCommand,
+	// reached from stdin/--script. Both ultimately go through
+	// DispatchSlashCommand() above (registry 1) first, so a command typed
+	// here and the same command piped to stdin take the same first step.
 	if (input.empty()) {
 		return;
 	}
-
-#ifdef EQT_HAS_GRAPHICS
-	// S04: command_registry is pre-allocated in EverQuest constructor
 
 	// Check if it's a command (starts with /)
 	if (input[0] == '/') {
 		std::string cmd_line = input.substr(1);  // Remove leading /
 
-		// Try to execute via command registry
-		if (!m_command_registry->executeCommand(cmd_line)) {
-			// Command not found - extract command name for error message
+		// Try to execute via command registry (registry 1). T29: if that
+		// doesn't recognize it, give Application's registries 2/3 (action::
+		// CommandProcessor, then the renderer command bridge) the same shot
+		// stdin/--script get, via the fallback Application wires in at
+		// startup -- see SetUnrecognizedCommandFallback()'s doc comment.
+		if (!DispatchSlashCommand(cmd_line) &&
+		    !(m_unrecognized_command_fallback && m_unrecognized_command_fallback(cmd_line))) {
+			// Command not found anywhere - extract command name for error message
 			size_t space_pos = cmd_line.find(' ');
 			std::string command = (space_pos != std::string::npos) ?
 				cmd_line.substr(0, space_pos) : cmd_line;
@@ -298,12 +323,6 @@ void EverQuest::ProcessChatInput(const std::string &input)
 		// No slash - treat as /say
 		SendChatMessage(input, "say");
 	}
-#else
-	// Without graphics, just send as say
-	if (input[0] != '/') {
-		SendChatMessage(input, "say");
-	}
-#endif
 }
 
 void EverQuest::ZoneProcessColoredText(const EQ::Net::Packet &p)
