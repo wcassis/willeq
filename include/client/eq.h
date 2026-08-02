@@ -22,6 +22,7 @@
 #include <deque>
 #include <array>
 #include <optional>
+#include <functional>
 
 // Forward declarations
 class IPathfinder;
@@ -725,6 +726,27 @@ public:
 	// Public chat interface
 	void SendChatMessage(const std::string &message, const std::string &channel_name, const std::string &target = "");
 	void ProcessChatInput(const std::string &input);  // Process chat window input (commands or messages)
+	// T29: the first stage of the unified slash-command dispatch order
+	// (registry 1: EverQuest::m_command_registry -- see docs/decisions.md
+	// 2026-08-02 and refactor/T29_unified_command_channel.md). Tries only
+	// this registry; does not touch chat/say fallback or emit an "unknown
+	// command" message -- that's ProcessChatInput's job for the live chat
+	// window, and Application::DispatchSlashCommand's job for stdin/script.
+	// Returns true iff m_command_registry recognised and executed cmdLine
+	// (cmdLine has NO leading '/'). Safe to call unconditionally (headless
+	// or graphics) -- the registry itself is no longer graphics-gated.
+	bool DispatchSlashCommand(const std::string &cmdLine);
+	// T29: invoked by ProcessChatInput() when DispatchSlashCommand() (registry
+	// 1) doesn't recognise a command typed in the live chat window -- lets
+	// the SAME registries 2/3 that stdin/--script use (see
+	// Application::dispatchToActionOrRenderer(), wired in by
+	// Application::wireUnifiedCommandDispatch()) also be reached from the
+	// chat window, without EverQuest needing to know about Application,
+	// CommandProcessor, or the renderer bridge's ownership. cmdLine has no
+	// leading '/'. Returns true if handled.
+	void SetUnrecognizedCommandFallback(std::function<bool(const std::string&)> fallback) {
+		m_unrecognized_command_fallback = std::move(fallback);
+	}
 	void AddChatSystemMessage(const std::string &text);  // Add system message to chat window
 	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
 	void AddChatMissMessage(const std::string &text);  // Add miss message (filterable separately)
@@ -1781,6 +1803,8 @@ private:
 
 	// Command registry for chat commands
 	std::unique_ptr<eqt::ui::CommandRegistry> m_command_registry;
+	// T29: see SetUnrecognizedCommandFallback() above.
+	std::function<bool(const std::string&)> m_unrecognized_command_fallback;
 	void RegisterCommands();  // Driver: calls per-domain registration methods below, in order (G02)
 	// G02: per-domain command registration, split out of the former monolithic
 	// RegisterCommands() body. Order between methods (and within each) matches

@@ -316,7 +316,26 @@ bool Application::initialize(const ApplicationConfig& config) {
     if (inputHandler) {
         m_inputBridge->setInputHandler(inputHandler);
         LOG_DEBUG(MOD_MAIN, "Input handler connected to bridge");
+
+        // T29: this is the ONE stdin reader for the process's whole
+        // lifetime (see console_input_handler.cpp) -- setInputHandler()
+        // above may later be swapped to GraphicsInputHandler once graphics
+        // initializes (see the "Create GraphicsInputHandler" block below),
+        // but that only redirects movement/mouse input. Wiring the SAME
+        // instance here too keeps its raw commands (piped slash commands)
+        // reaching the app afterward, without a second stdin reader.
+        m_inputBridge->setConsoleCommandSource(inputHandler);
     }
+
+    // T29: unified slash-command dispatch -- see DispatchSlashCommand()'s
+    // doc comment in application.h. Wires both automation front doors
+    // (console raw commands -> here) and the live chat window's fallback
+    // (EverQuest::SetUnrecognizedCommandFallback -> here) to the same
+    // registries-2/3 implementation.
+    m_inputBridge->setUnifiedCommandDispatcher([this](const std::string& rawLine) {
+        printCommandResult(DispatchSlashCommand(rawLine));
+    });
+    wireUnifiedCommandDispatch();
 
     // Connect command processor output to renderer
     auto* renderer = m_gameMode->getRenderer();
@@ -895,41 +914,183 @@ void Application::updateScript(float deltaTime) {
         return;
     }
 
-    if (m_commandProcessor) {
-        LOG_INFO(MOD_MAIN, "Script: executing '{}' (step {}/{})",
-            step.commandText, m_scriptIndex + 1, m_scriptSteps.size());
-        eqt::action::ActionResult result = m_commandProcessor->processCommand(step.commandText);
-        // P10: action::CommandProcessor only covers game-logic commands
-        // (chat/movement/combat/group/...) — renderer-only debug toggles
-        // (/sort, /mergedraws, /screenshot, /portal, ...) live in a
-        // completely separate registry (EverQuest::m_command_registry,
-        // reachable only from live chat-window input, not --script). Rather
-        // than build a second parallel scripting path, forward whatever
-        // action::CommandProcessor didn't recognize to the SAME
-        // GameEventType::RendererCommand queue EverQuest's own chat-command
-        // handling already uses (eq_commands_movement.cpp's rendererCmd
-        // lambda) — critically, this is drained on the RENDER thread
-        // (IrrlichtBridge's event switch, see irrlicht_bridge.cpp), whereas
-        // updateScript() itself runs on the GAME thread (processInput() is
-        // called from gameThreadLoop()). Calling m_renderer->processSlashCommand()
-        // directly from here would run renderer/GL code (e.g. saveScreenshot's
-        // glReadPixels) on the wrong thread without the EGL context current —
-        // discovered during P10's in-app A/B verification (produced
-        // deterministic-but-garbage screenshot pixels, not a crash, since
-        // Mesa doesn't fail loudly on this misuse). Going through m_bridge
-        // instead reuses the existing, already-thread-safe, already-proven
-        // command path unchanged.
-        if (!result.success && m_bridge) {
-            m_bridge->pushEvent(eqt::state::GameEvent(
-                eqt::state::GameEventType::RendererCommand,
-                eqt::state::RendererCommandData{step.commandText}));
-        }
-    }
+    LOG_INFO(MOD_MAIN, "Script: executing '{}' (step {}/{})",
+        step.commandText, m_scriptIndex + 1, m_scriptSteps.size());
+    // T29: --script now goes through the same unified dispatch order as
+    // piped stdin (registry 1: EverQuest::m_command_registry, THEN registry
+    // 2: action::CommandProcessor, THEN registry 3: the renderer command
+    // bridge -- see DispatchSlashCommand()'s doc comment). Previously this
+    // only tried action::CommandProcessor and fell back straight to the
+    // renderer bridge, never consulting EverQuest::m_command_registry at
+    // all -- exactly the hole that left /combat (and the rest of registry
+    // 1) unreachable from --script.
+    printCommandResult(DispatchSlashCommand(step.commandText));
     ++m_scriptIndex;
 
     if (m_scriptIndex >= m_scriptSteps.size()) {
         LOG_INFO(MOD_MAIN, "Script: complete ({} steps)", m_scriptSteps.size());
     }
+}
+
+// T29: registries 2+3 of the unified dispatch order. Shared by
+// DispatchSlashCommand() (stage 1 already tried and failed) and the
+// fallback wired into EverQuest for the live chat window (registry 1
+// already tried and failed there too, via ProcessChatInput's own call to
+// EverQuest::DispatchSlashCommand). See refactor/T29_unified_command_channel.md.
+bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, CommandDispatchResult& result) {
+    // Registry 2: action::CommandProcessor. Only attempt it if it actually
+    // recognizes the command name -- calling processCommand() unconditionally
+    // would also swallow "Unknown command" as a (failed) CommandProcessor
+    // result for names that were really meant for registry 3, which would
+    // stop them from ever reaching the renderer bridge.
+    std::string name = cmdBody;
+    size_t spacePos = name.find(' ');
+    if (spacePos != std::string::npos) {
+        name = name.substr(0, spacePos);
+    }
+    if (m_commandProcessor && m_commandProcessor->getCommandInfo(name).has_value()) {
+        eqt::action::ActionResult ar = m_commandProcessor->processCommand(cmdBody);
+        result.recognized = true;
+        result.registry = "action";
+        result.success = ar.success;
+        result.message = ar.message;
+        return true;
+    }
+
+    // Registry 3: renderer debug commands, via the RendererCommand bridge
+    // queue -- drained on the RENDER thread (IrrlichtBridge's event switch).
+    // P10: never call m_renderer->processSlashCommand() (or any renderer
+    // method) directly from here -- this runs on the GAME thread
+    // (processInput() <- gameThreadLoop()), and calling renderer/GL code
+    // off the render thread runs without the EGL context current. P10 hit
+    // this and got deterministic-but-garbage screenshot pixels instead of a
+    // crash, because Mesa doesn't fail loudly on the misuse. Going through
+    // m_bridge instead reuses the existing, already-thread-safe path.
+    // This stage is a fire-and-forget push, not a call -- there is no ack
+    // path back from the render thread, so it is honestly reported as
+    // "queued", never "applied": we cannot know here whether the renderer
+    // recognized it either (the renderer-side registry has no query
+    // interface reachable from the game thread).
+    if (m_bridge) {
+        std::string fullCmd = "/" + cmdBody;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::RendererCommand,
+            eqt::state::RendererCommandData{fullCmd}));
+        result.recognized = true;
+        result.registry = "renderer";
+        result.success = false;  // "queued", not "applied" -- see comment above
+        result.message = "queued to renderer command bridge (async, no ack)";
+        return true;
+    }
+
+    result.registry = "none";
+    return false;
+}
+
+void Application::printCommandResult(const CommandDispatchResult& result) const {
+    // T29: stable, greppable, single-line stdout ack -- this is the piece
+    // that actually delivers automation (see refactor/T29_unified_command_
+    // channel.md scope item 3). A script can synchronise on:
+    //   - "recognized=true/false": did ANY registry accept it at all.
+    //   - "registry=...": which of the 4 vocabularies handled it (chat/
+    //     game/action/renderer/none).
+    //   - "outcome=...": applied (registries 1/2, handler ran and reported
+    //     success), failed (registries 1/2, handler ran and reported
+    //     failure -- see message=), queued (registry 3 -- fire-and-forget
+    //     onto the render-thread bridge, no ack path, NOT a claim the
+    //     effect landed), or unrecognized (registry=none).
+    // A script canNOT synchronise on "the game state has updated" from this
+    // line alone -- most handlers just send a packet and the server answers
+    // asynchronously later (e.g. "/combat on" acks locally as applied
+    // immediately, but the auto-attack/loot cycle it enables plays out over
+    // subsequent server packets the script must watch for separately).
+    std::string outcome;
+    if (!result.recognized) {
+        outcome = "unrecognized";
+    } else if (result.registry == "renderer") {
+        outcome = "queued";
+    } else {
+        outcome = result.success ? "applied" : "failed";
+    }
+
+    std::string escaped;
+    escaped.reserve(result.command.size());
+    for (char c : result.command) {
+        if (c == '"' || c == '\\') escaped += '\\';
+        escaped += c;
+    }
+
+    std::cout << "CMD outcome=" << outcome
+               << " registry=" << result.registry
+               << " recognized=" << (result.recognized ? "true" : "false");
+    if (!result.message.empty()) {
+        std::string escapedMsg;
+        escapedMsg.reserve(result.message.size());
+        for (char c : result.message) {
+            if (c == '"' || c == '\\') escapedMsg += '\\';
+            escapedMsg += c;
+        }
+        std::cout << " message=\"" << escapedMsg << "\"";
+    }
+    std::cout << " cmd=\"" << escaped << "\"" << std::endl;
+}
+
+void Application::wireUnifiedCommandDispatch() {
+    if (!m_eqClient) {
+        return;
+    }
+    // T29: registry 1 (EverQuest::m_command_registry, tried by
+    // ProcessChatInput() itself via EverQuest::DispatchSlashCommand())
+    // already failed by the time this fallback runs. cmdLine has no
+    // leading '/' (EverQuest strips it before calling the fallback).
+    m_eqClient->SetUnrecognizedCommandFallback([this](const std::string& cmdLine) {
+        CommandDispatchResult result;
+        result.command = "/" + cmdLine;
+        return dispatchToActionOrRenderer(cmdLine, result);
+    });
+}
+
+CommandDispatchResult Application::DispatchSlashCommand(const std::string& rawLine) {
+    CommandDispatchResult result;
+    result.command = rawLine;
+
+    // Trim surrounding whitespace (piped lines commonly carry trailing \r
+    // from CRLF-authored script files).
+    size_t start = rawLine.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        result.registry = "none";
+        return result;
+    }
+    size_t end = rawLine.find_last_not_of(" \t\r\n");
+    std::string trimmed = rawLine.substr(start, end - start + 1);
+
+    // Accept an optional leading '/' (matches CommandProcessor::
+    // processCommand()'s existing looseness) -- but unlike EverQuest::
+    // ProcessChatInput()'s live chat-window convention, a line with NO
+    // leading '/' is NOT auto-sent as chat here. This entry point is the
+    // slash command vocabulary specifically (Will's ruling, docs/
+    // decisions.md 2026-08-02); plain chat still works via an explicit
+    // /say, or ConsoleInputHandler's separate bespoke "say"/"tell" words.
+    std::string cmdBody = (trimmed[0] == '/') ? trimmed.substr(1) : trimmed;
+    if (cmdBody.empty()) {
+        result.registry = "none";
+        return result;
+    }
+
+    // Stage 1: EverQuest::m_command_registry -- the SAME registry the live
+    // chat window uses (EverQuest::ProcessChatInput -> DispatchSlashCommand).
+    // This is what --script never consulted before T29, which is why
+    // /combat (T26's blocker) couldn't be reached from automation.
+    if (m_eqClient && m_eqClient->DispatchSlashCommand(cmdBody)) {
+        result.recognized = true;
+        result.registry = "game";
+        result.success = true;
+        return result;
+    }
+
+    // Stages 2/3: shared with the live chat window's fallback.
+    dispatchToActionOrRenderer(cmdBody, result);
+    return result;
 }
 
 void Application::updateGameState(float deltaTime) {

@@ -53,6 +53,38 @@ public:
     void setCommandProcessor(CommandProcessor* processor);
 
     /**
+     * T29: an independent source of raw console commands, drained every
+     * update() regardless of which handler setInputHandler() currently
+     * points at.
+     *
+     * Why this exists: setInputHandler() is swapped when graphics comes up
+     * (ConsoleInputHandler -> GraphicsInputHandler, see application.cpp),
+     * so movement/mouse start coming from evdev/X11 instead of stdin. But
+     * ConsoleInputHandler's stdin-reading thread never stops -- it's still
+     * the ONE stdin reader for the process's whole lifetime (see
+     * console_input_handler.cpp) -- it just stops being drained once it's
+     * no longer "the" active input handler. Wiring the same
+     * ConsoleInputHandler instance here too means its raw commands (piped
+     * slash commands, in particular) keep reaching the app after graphics
+     * initializes, without adding a second stdin reader.
+     * @param source Console command source (may be nullptr to disable)
+     */
+    void setConsoleCommandSource(input::IInputHandler* source) { m_consoleCommandSource = source; }
+
+    /**
+     * T29: unified slash-command dispatcher, used for raw commands from
+     * setConsoleCommandSource() instead of going straight to
+     * setCommandProcessor()'s CommandProcessor. When set, this is expected
+     * to try the full dispatch order documented in
+     * refactor/T29_unified_command_channel.md (EverQuest's own registry,
+     * then CommandProcessor, then the renderer command bridge) and print
+     * a result a script can synchronise on. Falls back to calling
+     * m_commandProcessor directly (legacy behavior) if unset.
+     */
+    using UnifiedCommandDispatcher = std::function<void(const std::string& rawLine)>;
+    void setUnifiedCommandDispatcher(UnifiedCommandDispatcher dispatcher) { m_unifiedDispatcher = std::move(dispatcher); }
+
+    /**
      * Update the bridge, processing all pending input.
      * Should be called once per frame.
      * @param deltaTime Time since last update in seconds
@@ -100,6 +132,8 @@ private:
     ActionDispatcher& m_dispatcher;
     input::IInputHandler* m_input = nullptr;
     CommandProcessor* m_commandProcessor = nullptr;
+    input::IInputHandler* m_consoleCommandSource = nullptr;  // T29
+    UnifiedCommandDispatcher m_unifiedDispatcher;             // T29
 
     bool m_enabled = true;
 
