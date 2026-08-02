@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "sqlite3.h"
+#include "client/spell/spell_constants.h"
 
 // ============================================================================
 // Helpers
@@ -97,7 +98,8 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             spell_icon INTEGER,
             gem_icon INTEGER,
             cast_anim INTEGER,
-            zone_type INTEGER
+            zone_type INTEGER,
+            class_levels BLOB
         )
     )");
 
@@ -109,8 +111,8 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "cast_on_you, cast_on_other, spell_fades, cast_time_ms, recovery_time_ms, "
         "recast_time_ms, duration_formula, duration_cap, mana_cost, target_type, "
         "range_val, aoe_range, resist_type, resist_diff, casting_skill, "
-        "is_beneficial, spell_icon, gem_icon, cast_anim, zone_type) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "is_beneficial, spell_icon, gem_icon, cast_anim, zone_type, class_levels) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -161,6 +163,16 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         sqlite3_bind_int(stmt, 22, safeInt(144));                           // NewIcon (gem_icon)
         sqlite3_bind_int(stmt, 23, safeInt(120));                           // CastAnim
         sqlite3_bind_int(stmt, 24, safeInt(101));                           // ZoneType
+
+        // Class minimum levels (16 classes, fields 104-119, one per class in
+        // PlayerClass enum order: Warrior..Berserker). 255 = class cannot use
+        // the spell; must round-trip exactly (no clamping/sign conversion).
+        uint8_t classLevels[EQ::NUM_CLASSES];
+        for (int c = 0; c < EQ::NUM_CLASSES; ++c) {
+            int v = safeInt(EQ::SpellField::ClassLevel1 + c);
+            classLevels[c] = static_cast<uint8_t>(v < 0 ? 255 : (v > 255 ? 255 : v));
+        }
+        sqlite3_bind_blob(stmt, 25, classLevels, sizeof(classLevels), SQLITE_TRANSIENT);
 
         sqlite3_step(stmt);
         count++;
@@ -1189,7 +1201,7 @@ static void writeMetadata(sqlite3* db, int totalEntries) {
         sqlite3_finalize(stmt);
     };
 
-    setMeta("version", "1");
+    setMeta("version", "2");  // T27: spells.class_levels column added
     setMeta("build_date", __DATE__ " " __TIME__);
     setMeta("total_entries", std::to_string(totalEntries));
 }

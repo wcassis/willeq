@@ -2,6 +2,7 @@
 #include "common/logging.h"
 
 #include <chrono>
+#include <cstring>
 #include <sqlite3.h>
 
 namespace EQT {
@@ -126,7 +127,7 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         "spell_fades, cast_time_ms, recovery_time_ms, recast_time_ms, "
         "duration_formula, duration_cap, mana_cost, target_type, range_val, "
         "aoe_range, resist_type, resist_diff, casting_skill, is_beneficial, "
-        "spell_icon, gem_icon, cast_anim, zone_type FROM spells WHERE id=?",
+        "spell_icon, gem_icon, cast_anim, zone_type, class_levels FROM spells WHERE id=?",
         stmtGetSpell_);
     if (!stmt) return info;
 
@@ -159,6 +160,15 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         info.gemIcon = sqlite3_column_int(stmt, 21);
         info.castAnim = sqlite3_column_int(stmt, 22);
         info.zoneType = sqlite3_column_int(stmt, 23);
+        const void* blob = sqlite3_column_blob(stmt, 24);
+        int blobLen = sqlite3_column_bytes(stmt, 24);
+        info.classLevels.fill(255);
+        if (blob && blobLen > 0) {
+            size_t n = static_cast<size_t>(blobLen) < info.classLevels.size()
+                           ? static_cast<size_t>(blobLen)
+                           : info.classLevels.size();
+            std::memcpy(info.classLevels.data(), blob, n);
+        }
     }
 
     return info;
@@ -174,7 +184,7 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         "spell_fades, cast_time_ms, recovery_time_ms, recast_time_ms, "
         "duration_formula, duration_cap, mana_cost, target_type, range_val, "
         "aoe_range, resist_type, resist_diff, casting_skill, is_beneficial, "
-        "spell_icon, gem_icon, cast_anim, zone_type FROM spells WHERE name=?",
+        "spell_icon, gem_icon, cast_anim, zone_type, class_levels FROM spells WHERE name=?",
         stmtGetSpellByName_);
     if (!stmt) return info;
 
@@ -207,6 +217,15 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         info.gemIcon = sqlite3_column_int(stmt, 21);
         info.castAnim = sqlite3_column_int(stmt, 22);
         info.zoneType = sqlite3_column_int(stmt, 23);
+        const void* blob = sqlite3_column_blob(stmt, 24);
+        int blobLen = sqlite3_column_bytes(stmt, 24);
+        info.classLevels.fill(255);
+        if (blob && blobLen > 0) {
+            size_t n = static_cast<size_t>(blobLen) < info.classLevels.size()
+                           ? static_cast<size_t>(blobLen)
+                           : info.classLevels.size();
+            std::memcpy(info.classLevels.data(), blob, n);
+        }
     }
 
     return info;
