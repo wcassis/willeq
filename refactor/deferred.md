@@ -681,7 +681,7 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   reboots between matrices (fstab now persists NFS), kmsg follower running
   on the VM for lead-up capture; serial console for the trace itself.
 
-## Outskirts anomaly (P05→P07, 2026-07-24) — hybrid floor LANDED, Pi A/B + default flip pending
+## Outskirts anomaly (P05→P07, 2026-07-24) — CLOSED (P07d thread close + Q01 harness alignment); one optional lever left
 
 - **P07 (merged 3c2b801)** adds the hybrid floor Will approved: in area
   mode the nearest `adaptiveLightingAreaPPFloor` regions (default 1)
@@ -697,13 +697,20 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   the zone). Count/area/floor/radius all remain flag-gated; production
   unchanged. task/P07c-default-flip parked unmerged (rejection evidence
   in its contact sheets).
-- **Harness alignment (salvaged from P07c, still worth doing):** visual
+- ~~**Harness alignment (salvaged from P07c, still worth doing):** visual
   gate + Pi tier-2 baseline currently measure FULL per-pixel, not the
   production count-mode adaptive config — add the production flags to
   both, regenerate goldens (count-mode look), re-bless with Will,
   re-capture tier-2. Small unit; fold into the next harness-touching
   batch (path drift is 6 occurrences counting P07d — do record/replay
-  first or together).
+  first or together).~~ — **DONE by Q01 (2026-07-25, merged in the Q
+  batch at `f502298`)**: harness aligned to the production count-mode
+  config, goldens regenerated and **blessed by Will** after 3 review
+  rounds (final fixture = count mode + Greater Lightstone level 9),
+  Pi tier-2 baseline re-captured under the count config (all 6 combos
+  faster). The record/replay half landed in the same unit — canonical
+  1000-frame paths at `benchmarks/paths/`. Struck 2026-08-02 (stale
+  since 2026-07-25).
 - Optional future lever (only if lighting cost resurfaces post-P08):
   radius-mode margin<1 perceptual-knee study (mechanism landed in P07d,
   config `adaptiveLightingRadiusMargin`).
@@ -714,8 +721,15 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   panic (which followed 41 dense DRM cycles); this one was idle. If it
   recurs, consider a hardware watchdog (`/dev/watchdog`, sunxi-wdt exists
   on H3) so the Pi self-recovers instead of needing physical power cycles.
-- After the Pi numbers: default-flip decision (orangepi preset →
-  area+floor), golden re-bless with Will, Pi tier-2 baseline rerun.
+- ~~After the Pi numbers: default-flip decision (orangepi preset →
+  area+floor), golden re-bless with Will, Pi tier-2 baseline rerun.~~ —
+  **MOOT: the area+floor flip was REJECTED at golden review and the
+  whole thread closed by P07d** (see the THREAD CLOSED bullet above and
+  `docs/decisions.md` "Zone lighting budget: COUNT mode stays production
+  default"). Count remains the shipped default; area/floor/radius stay
+  flag-gated. The separate radius-mode flip question was also settled
+  independently — NOT a candidate (P19, its own section below). Struck
+  2026-08-02.
 
 ## Outskirts anomaly history (P05→P06, 2026-07-24) — mechanism landed, superseded by P07 above
 
@@ -807,10 +821,15 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   has never been measured and is gated on fixing the animated-path
   crumple (P12b)**. Production's flipped flag is directionally real
   (1 draw per animated entity) with unmeasured magnitude.
-- **Occluder budget: DEAD lever on befallen** (P11: +0.9-2.7% at 2x and
+- ~~**Occluder budget: DEAD lever on befallen** (P11: +0.9-2.7% at 2x and
   uncapped). Production knob exists
   (occlusionMaxOccluderRegions, default 16) — one-line flip if another
-  zone ever shows headroom; do not spend more on this.
+  zone ever shows headroom; do not spend more on this.~~ — **REVERSED by
+  P14 (2026-07-27)**: P11's verdict was measured PRE-stack. Under the
+  merge+composite stack, 16→256 takes befallen whole-run p95 from
+  35.320 to 32.313ms — it is the lever that closed the KPI gap. Blessed
+  by Will and **shipped** (`9c5617b`, C++ orangepi preset; mirrored into
+  `config/constrained_presets.json` by P39). Struck 2026-08-02.
 - **Residual to 30fps** (at merge + static-entity dispatch): ~57-60%
   submission (entity draws dominate), ~37-39% GPU sync. The entity
   lever through the REAL animated path is the critical path.
@@ -820,12 +839,18 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
 - Gate arbitration: P11's slot1 visual gate PASSED → P12's slot2
   zero-source-diff foliage mismatch is environment-specific
   (Xvfb-session suspected), not a gate regression.
-- **NEXT: P12b** — fix the animated-path crumple (bind-pose lead in the
+- ~~**NEXT: P12b** — fix the animated-path crumple (bind-pose lead in the
   P12 review), un-skip ModelAnimatesProperly, THEN re-measure the
   stacked number through animated composite entities = the real KPI
   verdict. Will's live-animation answer is load-bearing twice over
   (crumple liveness + whether flipped composites render correctly in
-  play).
+  play).~~ — **DONE. Will's gates-video verdict (2026-07-27) settled the
+  liveness question: models animate CORRECTLY in the real client, both
+  multibuffer and composite → the crumple is benchmark-context-only and
+  production animation is exonerated.** P11b then delivered the real
+  measurement (p95 −36.9% / avg −54.6% from composites; see the P11b
+  KPI section below). The remaining benchmark-side `--animate` garbling
+  is tracked as its own root-cause unit, still open. Struck 2026-08-02.
 
 ## Live x86 client bugs (anim-video-capture session, 2026-07-26)
 
@@ -1029,8 +1054,16 @@ proper fix:
   path (P08b's 4.5-5x inflation bug is gone post-P12b); watch the
   --frames-vs-path-length placement-density artifact documented in
   P11b's review.
-- NOTE: achieving these numbers in live play requires the
-  mergeZoneDraws preset flip (composites already live).
+- ~~NOTE: achieving these numbers in live play requires the
+  mergeZoneDraws preset flip (composites already live).~~ — **FLIP
+  LANDED 2026-07-27 (`a8a9b03`)**: `mergeZoneDraws: true` is in the
+  shipped `orangepi` block of `config/constrained_presets.json`
+  (verified in tree 2026-08-02), so live play gets the full measured
+  stack — merge + composites + occluder-256. Struck 2026-08-02.
+- CAUTION (P51, 2026-08-01): the p95 numbers in this section come from
+  pre-`4386398` binaries and carry the fixed-function-entity benchmark
+  bias. **34.3-34.6ms is the canonical KPI-guard band now**, not the
+  32.24-32.5 figures above. Kept as the historical record of the arc.
 
 ## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
 
@@ -1090,7 +1123,23 @@ proper fix:
   Review for the complete writeup, including two NEW, separate, NOT-fixed
   bugs uncovered while verifying (both out of P15's scope, flagged below).
 
-## Entity mesh materials hold dangling ITexture* after eviction (found by P15, NOT fixed)
+## Entity mesh materials hold dangling ITexture* after eviction — FIXED by P17 (2026-07-27)
+
+- **CLOSED.** P17 landed BOTH halves: (a) `EntityMeshTextureGuard`
+  (`renderer_zone_merge.h/.cpp`, the entity sibling of P10b's
+  `RegionMeshTextureGuard`, owned by `IrrlichtRenderer` as
+  `entityMeshTextureGuard_`) covering `EQAnimatedMeshSceneNode`'s
+  per-instance `materials_`/`instanceMesh_`; and (b) a defensive
+  `isLiveTexture(currentTex)` check at the exact call site named below
+  (`animated_mesh_creation.cpp`, now ~line 456) — verified present in
+  tree 2026-08-02. The guard alone was NOT sufficient and P17 says so:
+  `buffer` there is the race's SHARED RaceModelLoader-cached base mesh,
+  a different object set than the guard covers, and it can go dangling
+  via the zone-unload full `clear()` even with zero LRU evictions —
+  which is exactly why the original report saw crashes at a 256MB
+  no-eviction budget. Live repro (befallen → qeynos2 → befallen 2nd
+  visit) confirmed the mechanism before the fix. Struck 2026-08-02.
+  Original report follows for the record:
 
 - `RaceModelLoader::createAnimatedNodeWithEquipment` (`src/client/graphics/eq/animated_mesh_creation.cpp:433`)
   reads `currentTex->getName()` off an `ITexture*` cached on a mesh buffer's
