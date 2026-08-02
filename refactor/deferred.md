@@ -1318,6 +1318,56 @@ empty spell results. (Also note: the `willeq-benchmark` clone at
 `b68c32a` predates all of this and its `build_errors_response.md`
 channel file no longer exists — nothing was written to that clone.)
 
+## Headless client aborts on shutdown and never exits when driven headlessly without a server (orchestrator, 2026-08-02) — PRE-EXISTING, blocks automation
+
+Found while independently verifying T29 by actually piping commands into
+the binary (rather than reading its diff). **Not caused by T29** —
+attribution tested explicitly, see below.
+
+Repro (no eqemu server running):
+```
+printf '/help\n/quit\n' | timeout 100 <build>/bin/willeq \
+    -c /home/user/projects/claude/casterella.json --no-graphics
+```
+Two distinct problems, both reproduced **2/2**:
+
+1. **`terminate called without an active exception` on stderr** — the
+   classic signature of a `std::thread` destructor running while the
+   thread is still joinable (neither joined nor detached). Same failure
+   class as P36's self-join abort and T03b's RDP `stop()` use-after-free,
+   both of which were real bugs.
+2. **The process never exits** — `timeout` has to kill it (exit 124).
+   `/quit` piped to stdin does not terminate the client here, because
+   the input bridge that drains piped commands is gated on
+   `m_fullyConnected` (`application.cpp:840`), so with no server the
+   command is never dispatched at all.
+
+**Attribution (this is the part that matters):** identical behaviour,
+2/2 each, on BOTH the `task/T29-command-channel` binary AND the
+already-merged `fable` tip (`51759f9`, i.e. with T26/T27/T28 in and T29
+out). So T29 did not introduce it. Not tested against a pre-P36 binary,
+so whether this is a regression since P36's "exit matrix all clean
+(5×/camp exit-0 + SIGTERM + script-end + headless)" claim, or a case
+that matrix never covered (headless + piped stdin + no server), is
+open — worth knowing, because P36 explicitly asserted this was clean.
+
+**Why it matters under the 2026-08-02 automation-is-first-class policy:**
+every automated headless run that ends this way exits non-zero via
+timeout and prints an abort, so **process exit codes are useless as a CI
+signal** and every run leaves a core. That is squarely "in the way of
+fully automated development and testing." Related limitation worth
+fixing in the same unit: because piped commands are held until
+`m_fullyConnected`, a script piping into a client that never connects
+gets **no stdout at all** — no held/waiting line, no diagnostic, just
+silence until something kills it. T29's stdout contract has no outcome
+for "held, not yet connected".
+
+Suggested shape: find the unjoined thread (the P36/T03b playbook —
+`running_.store(false)` → `join()` → destroy), make `/quit` reachable
+pre-connection or emit a held/waiting line so scripts can tell the
+difference between "working" and "hung", and add a headless
+piped-stdin-no-server case to the exit matrix so it stays fixed.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
