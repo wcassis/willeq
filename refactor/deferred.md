@@ -1553,14 +1553,19 @@ proper fix:
   (glTexParameteri state-dedup productionized: per-texture-object param
   cache, 100→1 calls/frame, frames md5-identical) plus both P39
   residuals above.
-- **Residual — gate config drift, Will's call someday**: the benchmark
+- ~~**Residual — gate config drift, Will's call someday**: the benchmark
   now correctly defaults occluder budget from ConstrainedRendererConfig
   (256 on orangepi), but scripts/ci/visual_gate.py pins its own
   invocation to --occluder-budget 16 because the blessed goldens were
   captured under 16 and budget-256 occlusion changes visible pixels.
   Options: leave pinned (gate = pixel-regression detector, fine), or
-  re-bless goldens under the shipped 256 (needs Will). Noted so the pin
-  isn't mistaken for drift later.
+  re-bless goldens under the shipped 256 (needs Will).~~ — **DECIDED by
+  Will 2026-08-02: LEAVE PINNED.** The gate's job is pixel-regression
+  detection, which it does correctly at 16; matching the shipped preset
+  is not worth a golden re-bless round. **The pin is intentional — do
+  not "fix" it as drift, and do not re-bless goldens under 256 without
+  a new ruling.** Revisit only if a future unit needs the gate to catch
+  occlusion-dependent regressions specifically.
 - P38's remaining open ranks: 3 (resolution-visibility — REOPENED
   Pi-specific, see P40/P41 entry above), 5 (swap floor — narrowed to
   DRM waitForFlipComplete), 6 (residual GPU-sync — queued behind the

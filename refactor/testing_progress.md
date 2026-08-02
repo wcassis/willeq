@@ -783,10 +783,33 @@ but the UI would show a memorization that cannot succeed.
 Root cause is upstream of the client code: `EQT::SpellInfo` has no
 per-class level column to map from, so populating this needs a schema
 question answered first (does `willeq.db` carry the classes columns from
-the source spell data, and were they simply not extracted?). **That
-makes it a data-pipeline decision, not a code fix — needs Will.**
+the source spell data, and were they simply not extracted?). ~~**That
+makes it a data-pipeline decision, not a code fix — needs Will.**~~
 
 Pinned by two tests in `tests/test_spell_manager.cpp`.
+
+### RESOLVED — the schema question answered, then Will's ruling 2026-08-02
+
+Orchestrator answered the open question before putting it to Will:
+
+- **Not in the db.** `data/willeq.db`'s `spells` table has 24 columns,
+  none of them class levels — never extracted, not extracted-then-lost.
+- **Source data present**: `/mnt/projects/EverQuestP1999/spells_us.txt`.
+- **Field positions already declared in-tree**: `spell_constants.h:536`,
+  `SpellField::ClassLevel1 = 104`, fields 104-119, `NUM_CLASSES = 16`.
+- **Builder already parses the file** (`willeq_db_builder.cpp:1258`).
+
+So populating it is bounded: builder + schema + `queryAndCache()` mapping
++ re-point the two pinned tests. **Will's ruling: POPULATE IT** (over
+"delete the dead gate" and "leave it pinned") — the client should own
+this validation for UI purposes rather than offering memorizations the
+server will refuse. Scoped as **T27**
+(`refactor/T27_spell_class_levels.md`), which carries the traps found
+while planning: `data/willeq.db` is a TRACKED binary that must be
+regenerated and committed with a proven-otherwise-no-op content diff, the
+`255` sentinel must round-trip exactly, and the class ordering in fields
+104-119 must be confirmed against `canClassUse()`'s index derivation
+(a silent off-by-one would be worse than today's no-op).
 
 ## T23 finding — auto-loot stalls the GAME THREAD (needs Will)
 
