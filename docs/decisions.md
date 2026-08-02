@@ -294,3 +294,70 @@ for future re-evaluation if the Pi tier ever needs the headroom;
 evidence preserved in refactor/perf_truth_audit.md ("2026-07-30 — P41")
 and benchmarks/audits/p41_lighting/. Q03's blessed visual state is
 unchanged and remains the quality bar.
+
+### 2026-08-02 — Automation is a first-class requirement; slash commands are THE command channel (Will's ruling)
+
+**Standing policy: anything that stands in the way of fully automated
+development and testing is a defect and gets fixed.** Not worked around,
+not documented as a known limitation — fixed. This is now a standing
+consideration when scoping any unit, and grounds for reopening past
+"acceptable limitation" calls.
+
+**The direction (Will, 2026-08-02):** "The slash command syntax (e.g.
+/moveto, /attack, etc) works well for commands and that kind of flow
+should be something that can be piped to stdin/stdout. Then, scripted
+automation can use commands to trigger actions and I can also execute
+the same commands in a real session."
+
+So: **one slash-command vocabulary, reachable over stdin/stdout, and it
+is the same path a live session uses.** Automation must not have a
+parallel, weaker dialect — if a command works when typed in the chat
+window, it must work piped to stdin, and vice versa. The value is that a
+script and a human exercise identical code, so automated verification is
+evidence about the real thing.
+
+**What triggered it (T26, 2026-08-02):** T26 replaced the blocking
+auto-loot sleeps but could NOT complete its live kill→loot verification,
+because `CombatManager::Enable()` (`/combat on`) lives in a registry that
+only live chat-window keyboard input can reach. The unit's most
+important evidence leg was blocked by a tooling gap, not by the code
+under test. Under this ruling that gap is the bug.
+
+**Ground truth at the time of the ruling — FOUR disjoint command
+vocabularies** (verified by orchestrator, fable `a22d634`):
+1. `EverQuest::m_command_registry` — the real slash vocabulary
+   (`/combat`, `/assist`, `/duel`, …, registered across
+   `eq_commands*.cpp`). Reached ONLY via `EverQuest::ProcessChatInput()`
+   (`eq_chat.cpp:276`), fed from the chat-window intent
+   (`eq_bridge.cpp:947`). **Also wrapped entirely in
+   `#ifdef EQT_HAS_GRAPHICS`** — so in a headless-compiled build, slash
+   commands do not exist at all.
+2. `action::CommandProcessor` — a second slash vocabulary, the only one
+   `--script` dispatches to (`application.cpp:901`).
+3. Renderer debug registry (`/sort`, `/mergedraws`, `/screenshot`, …) —
+   reached via the `GameEventType::RendererCommand` bridge queue.
+   `--script` forwards its unrecognized commands here as a fallback.
+4. `ConsoleInputHandler` (`console_input_handler.cpp:276`) — a bespoke
+   NON-slash word vocabulary (`say`, `tell`, `quit`) on stdin, behind an
+   interactive raw-mode/keyboard-mode toggle built for a human at a tty,
+   not for a pipe.
+
+`--script` therefore reaches 2 and 3 but not 1 — the exact hole T26 fell
+in — and the one existing stdin path (4) speaks a different language
+than every other path.
+
+**Landing constraints carried forward** (each already cost someone a
+debugging session, do not rediscover them):
+- Renderer commands MUST stay on the `RendererCommand` bridge queue,
+  drained on the render thread. Calling `processSlashCommand()` directly
+  off the game thread runs GL without the EGL context current — P10 hit
+  this and got deterministic-but-garbage screenshots rather than a
+  crash, because Mesa does not fail loudly.
+- The stdin reader must not assume a tty. Piped stdin has no raw mode,
+  and `ConsoleInputHandler`'s mode toggle would consume the first line as
+  a mode switch.
+- Only one component may read stdin (`application.cpp:808,818` already
+  documents a DRM-mode duplicate-read hazard).
+- Automation needs to know when a command has been *applied*, not just
+  accepted — stdout has to carry a result, or scripts go back to sleeping
+  and guessing, which is the class of bug T26 just removed.
