@@ -362,6 +362,15 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
+        // Attempt a self-flip so the drain thread (which only ever reads
+        // the *inactive* side) picks this line up within one drain cycle
+        // instead of only on LOG_FATAL or thread exit. See flush() for
+        // why this is safe and cheap: only this (owning) thread ever
+        // calls it, so there is no cross-thread race, and it is a no-op
+        // — no I/O, no lock — whenever the drain side still has content
+        // or the active side is empty (the common "nothing logged since
+        // last flip" case).
+        flush();
     }
 
     // ERROR/FATAL: appends to stderr buffer (drained to stderr by drain thread)
@@ -378,6 +387,7 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
+        flush();
     }
 
     void appendEntity(const char* ts, uint16_t spawn_id,
@@ -391,8 +401,26 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
+        flush();
     }
 
+    // Self-flip the active/inactive sides. Called by THIS buffer's owning
+    // thread only (from append()/appendError()/appendEntity() after every
+    // write, and from FlushThreadLog() for LOG_FATAL) — never from the
+    // drain thread, which only ever reads the inactive side. Because a
+    // given ThreadLogBuffer is thread_local, "owning thread" and "the
+    // thread calling flush()" are always the same thread, so there is no
+    // concurrent append() in flight when this runs: no lock is needed.
+    //
+    // Cost: two atomic loads/stores (relaxed/acquire/release, no mutex)
+    // plus up to four std::string::empty() checks (O(1) — a size
+    // comparison, not a scan). No I/O happens here; the drain thread
+    // still owns all std::cout/std::cerr writes on its own 50ms cadence.
+    // At the default log level (NONE), ShouldLog() already gates
+    // LOG_WARN/INFO/DEBUG/TRACE before append() is ever reached, so this
+    // function isn't even called for those levels in production — the
+    // hot path is unchanged from before this fix. See T31 Review for the
+    // measured cost at a raised level.
     void flush() {
         int old = activeIdx.load(std::memory_order_relaxed);
         if (active().empty() && activeErr().empty()) return;

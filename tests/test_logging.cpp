@@ -2,6 +2,12 @@
 #include "common/logging.h"
 #include <sstream>
 #include <regex>
+#include <atomic>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <fcntl.h>
+#include <unistd.h>
 
 class LoggingTest : public ::testing::Test {
 protected:
@@ -326,4 +332,85 @@ TEST_F(LoggingTest, FormatTimestamp_ProducesValidFormat) {
 TEST_F(LoggingTest, ModuleCount_MatchesExpected) {
     // MOD_COUNT should be 21 (the number of defined modules)
     EXPECT_EQ(MOD_COUNT, 21);
+}
+
+// =============================================================================
+// Steady-State Delivery Test (T31)
+// =============================================================================
+// Pins the defect: ThreadLogBuffer only flipped active/drain sides on
+// LOG_FATAL or thread exit, so LOG_INFO/WARN/DEBUG/non-fatal LOG_ERROR
+// never reached stdout during normal operation (a long-lived thread that
+// never hits a FATAL). A unit test over logging.h's level/gating logic
+// alone (all the tests above) does NOT catch this, because those never
+// exercise the append -> drain -> stdout path at all. And a standalone
+// program that logs a couple of lines and immediately exits doesn't
+// catch it either: ThreadLogBuffer's destructor (~ThreadLogBuffer ->
+// LogManager::unregisterBuffer) does an unconditional drain regardless
+// of the active/inactive flip, so a short-lived repro "passes" by
+// catching that exit-time safety net, not steady-state delivery. See
+// T31 Review (refactor/T31_logging_flush.md) for the timestamped
+// transcript proving this on both the standalone repro and this test
+// itself (run against unfixed code, exit code 1; against fixed, exit
+// code 0).
+//
+// This test avoids both traps: it keeps the logging thread ALIVE (no
+// exit, no join) for several drain cycles after logging, with no FATAL
+// anywhere, and checks that the line reached stdout *during* that
+// window -- not after the thread eventually exits.
+TEST_F(LoggingTest, SteadyState_NonFatalLogReachesStdoutWithoutFatalOrThreadExit) {
+    SetLogLevel(LOG_DEBUG);
+
+    char tmpl[] = "/tmp/willeq_test_logging_steady_state_XXXXXX";
+    int fd = mkstemp(tmpl);
+    ASSERT_GE(fd, 0);
+    close(fd);
+
+    // Redirect fd 1 (stdout) to a temp file so we can inspect what the
+    // drain thread actually wrote while the logging thread is still
+    // alive. Redirecting the raw fd (not just the FILE*/ostream) covers
+    // both std::cout (drain thread) and any C stdio use.
+    fflush(stdout);
+    std::cout.flush();
+    int file_fd = open(tmpl, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_GE(file_fd, 0);
+    int saved_stdout = dup(1);
+    ASSERT_GE(saved_stdout, 0);
+    ASSERT_GE(dup2(file_fd, 1), 0);
+    close(file_fd);
+
+    std::atomic<bool> keep_alive{true};
+    std::thread worker([&keep_alive]() {
+        LOG_INFO(MOD_MAIN, "T31_PIN_MARKER steady state line");
+        // Stay alive well past several drain cycles WITHOUT exiting or
+        // hitting a FATAL -- this is the "app steady state" the wrinkle
+        // describes, as opposed to a standalone repro that exits
+        // immediately after logging.
+        while (keep_alive.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
+
+    // Wait 8 drain cycles (50ms cadence -> 400ms) while the thread is
+    // STILL ALIVE, then inspect the file -- before joining/exiting it.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    fflush(stdout);
+    std::cout.flush();
+    ASSERT_GE(dup2(saved_stdout, 1), 0);
+    close(saved_stdout);
+
+    keep_alive.store(false, std::memory_order_relaxed);
+    worker.join();
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("T31_PIN_MARKER steady state line"), std::string::npos)
+        << "non-FATAL LOG_INFO did not reach stdout within 400ms (8 drain "
+           "cycles) while the logging thread was still alive (no FATAL, "
+           "no thread exit). Captured stdout during the window: ["
+        << content << "]";
 }
