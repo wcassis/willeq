@@ -7,6 +7,22 @@ namespace eqt {
 static constexpr size_t LINK_METADATA_SIZE_SHORT = 45;
 static constexpr size_t LINK_METADATA_SIZE_LONG = 56;
 
+// T34: are the `count` bytes starting at `start` all hex digits?
+// Used to tell 45-char metadata followed by an item name apart from
+// genuine 56-char metadata -- see chooseMetadataSize() below.
+static bool isAllHex(const uint8_t* data, size_t start, size_t count) {
+    for (size_t j = start; j < start + count; ++j) {
+        const char c = static_cast<char>(data[j]);
+        const bool hex = (c >= '0' && c <= '9') ||
+                         (c >= 'A' && c <= 'F') ||
+                         (c >= 'a' && c <= 'f');
+        if (!hex) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Helper to convert hex character to value (0-15, or -1 if invalid)
 static int hexCharToValue(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -97,7 +113,26 @@ ParsedFormattedMessage parseFormattedMessage(const uint8_t* data, size_t msg_len
                 size_t name_start_offset = 0;
                 size_t metadata_size = 0;
 
-                if (link_len > LINK_METADATA_SIZE_LONG) {
+                // T34 (Will spotted the symptom: "You have looted a kin."
+                // for the item "Scaled Curskin"): the old rule was purely
+                // length-based -- link_len > 56 meant 56-char metadata.
+                // But SHORT (45) metadata plus a 12+ character item name
+                // also exceeds 56, so every such link had its name started
+                // 11 chars too late: "Scaled Curskin"[11:] == "kin". Most
+                // real EQ item names are 12+ chars, so this corrupted the
+                // name in every loot message and every player-linked item.
+                //
+                // Disambiguate structurally instead: metadata is hex, item
+                // names are not. If bytes [45,56) are ALSO hex then this is
+                // genuine LONG metadata; otherwise they are the first 11
+                // characters of the name and the metadata is SHORT.
+                // (Residual, documented rather than papered over: an item
+                // whose name begins with 11 straight hex characters would
+                // still fool this -- names contain spaces and letters
+                // outside A-F, so that is not a real case.)
+                if (link_len > LINK_METADATA_SIZE_LONG &&
+                    isAllHex(data, link_content_start + LINK_METADATA_SIZE_SHORT,
+                             LINK_METADATA_SIZE_LONG - LINK_METADATA_SIZE_SHORT)) {
                     metadata_size = LINK_METADATA_SIZE_LONG;
                     name_start_offset = LINK_METADATA_SIZE_LONG;
                 } else if (link_len > LINK_METADATA_SIZE_SHORT) {
@@ -222,7 +257,26 @@ ParsedFormattedMessageWithArgs parseFormattedMessageArgs(const uint8_t* data, si
                 size_t name_start_offset = 0;
                 size_t metadata_size = 0;
 
-                if (link_len > LINK_METADATA_SIZE_LONG) {
+                // T34 (Will spotted the symptom: "You have looted a kin."
+                // for the item "Scaled Curskin"): the old rule was purely
+                // length-based -- link_len > 56 meant 56-char metadata.
+                // But SHORT (45) metadata plus a 12+ character item name
+                // also exceeds 56, so every such link had its name started
+                // 11 chars too late: "Scaled Curskin"[11:] == "kin". Most
+                // real EQ item names are 12+ chars, so this corrupted the
+                // name in every loot message and every player-linked item.
+                //
+                // Disambiguate structurally instead: metadata is hex, item
+                // names are not. If bytes [45,56) are ALSO hex then this is
+                // genuine LONG metadata; otherwise they are the first 11
+                // characters of the name and the metadata is SHORT.
+                // (Residual, documented rather than papered over: an item
+                // whose name begins with 11 straight hex characters would
+                // still fool this -- names contain spaces and letters
+                // outside A-F, so that is not a real case.)
+                if (link_len > LINK_METADATA_SIZE_LONG &&
+                    isAllHex(data, link_content_start + LINK_METADATA_SIZE_SHORT,
+                             LINK_METADATA_SIZE_LONG - LINK_METADATA_SIZE_SHORT)) {
                     metadata_size = LINK_METADATA_SIZE_LONG;
                     name_start_offset = LINK_METADATA_SIZE_LONG;
                 } else if (link_len > LINK_METADATA_SIZE_SHORT) {

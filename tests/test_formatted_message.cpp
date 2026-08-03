@@ -550,3 +550,57 @@ TEST_F(FormattedMessageTest, Args_WithLinks) {
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].displayText, "Guard");
 }
+
+// ---------------------------------------------------------------------------
+// T34 regression: long item names with SHORT (45-char) metadata
+//
+// Will spotted the symptom in T34's live loot evidence: the client rendered
+// "You have looted a kin." for the item "Scaled Curskin". Root cause was a
+// purely length-based metadata-size guess -- link_len > 56 was taken to mean
+// 56-char metadata, but 45-char metadata plus a 12+ character name also
+// exceeds 56, so the name started 11 characters too late.
+//
+// Every pre-existing test here used a short name ("Renux", "Guard",
+// "Epsilon" -- 7 chars at most), which stays under the 56 threshold and so
+// never exercised the broken branch. These cases sit either side of it.
+// ---------------------------------------------------------------------------
+
+TEST_F(FormattedMessageTest, ShortMetadata_LongItemName_NameNotTruncated) {
+    // 45-char metadata + a 14-char name => link_len 59, the exact shape that
+    // used to yield "kin".
+    std::vector<uint8_t> data;
+    for (char c : std::string("You have looted a ")) data.push_back(c);
+    appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Scaled Curskin");
+
+    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    EXPECT_EQ(result, "You have looted a [Scaled Curskin]");
+}
+
+TEST_F(FormattedMessageTest, ShortMetadata_TwelveCharName_IsTheBoundaryCase) {
+    // 45 + 12 = 57, the first length that tripped the old rule.
+    std::vector<uint8_t> data;
+    appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Rusty Dagger");
+
+    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    EXPECT_EQ(result, "[Rusty Dagger]");
+}
+
+TEST_F(FormattedMessageTest, LongMetadata_WithLongName_StillParsesAsLongMetadata) {
+    // The other side of the fix: genuine 56-char metadata must still be
+    // recognised, and its name must not lose its first 11 characters.
+    std::vector<uint8_t> data;
+    appendLink(data, "0FFFFF0000D000000000000000000000000000000000000000000000", "Scaled Curskin");
+
+    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    EXPECT_EQ(result, "[Scaled Curskin]");
+}
+
+TEST_F(FormattedMessageTest, ShortMetadata_LongName_LinkDisplayTextIsWholeName) {
+    // Same fix seen through the structured parser, not just the flattened text.
+    std::vector<uint8_t> data;
+    appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Scaled Curskin");
+
+    auto result = eqt::parseFormattedMessage(data.data(), data.size());
+    ASSERT_EQ(result.links.size(), 1u);
+    EXPECT_EQ(result.links[0].displayText, "Scaled Curskin");
+}

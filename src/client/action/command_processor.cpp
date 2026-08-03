@@ -530,7 +530,7 @@ void CommandProcessor::registerBuiltinCommands() {
     }, [this](const std::string& args) { return cmdListTargets(args); });
 
     registerCommand({
-        "loot", {}, "/loot", "Loot nearest corpse", "Combat", false
+        "loot", {}, "/loot <corpseId>", "Loot a corpse by id (see /list)", "Combat", true
     }, [this](const std::string& args) { return cmdLoot(args); });
 
     // Pathfinding and roleplay
@@ -1075,8 +1075,27 @@ ActionResult CommandProcessor::cmdListTargets(const std::string& args) {
 }
 
 ActionResult CommandProcessor::cmdLoot(const std::string& args) {
-    displayMessage("Loot functionality requires corpse detection - use '/list' to find corpse IDs");
-    return ActionResult::Success();
+    // T34: dispatches to m_dispatcher.lootCorpse(corpseId) -- the exact
+    // same entry point the renderer's shift+click overlay callback uses
+    // (InputActionBridge::processLootRequests -> ActionDispatcher::lootCorpse),
+    // so a scripted /loot <id> and a live shift+click enter CombatManager::
+    // LootCorpse() through identical last hops. An explicit corpse id is
+    // the required form deliberately -- see refactor/T34_shiftclick_loot_verification.md;
+    // "nearest corpse" detection is out of scope for this unit.
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /loot <corpseId> - use '/list' to find corpse IDs");
+    }
+
+    try {
+        size_t consumed = 0;
+        long corpseId = std::stol(args, &consumed);
+        if (corpseId < 0 || corpseId > 0xFFFF || consumed != args.size()) {
+            return ActionResult::Failure("Invalid corpse id - use '/list' to find corpse IDs");
+        }
+        return m_dispatcher.lootCorpse(static_cast<uint16_t>(corpseId));
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Invalid corpse id - use '/list' to find corpse IDs");
+    }
 }
 
 ActionResult CommandProcessor::cmdPathfinding(const std::string& args) {

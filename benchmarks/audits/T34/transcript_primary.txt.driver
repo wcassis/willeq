@@ -1,0 +1,23 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=980147
+[driver] matched 'Zone connection complete! Player position confirmed' after 6s
+[driver] sent: /who (1785774652.103732158)
+[driver] sent: /say #npctypespawn 79037 (1785774654.112940594)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 1s
+[driver] sent: /list (1785774655.137282235)
+[driver] fresh spawn name resolved to 'a_scaled_wolf_pup000'
+[driver] sent: /combat on (1785774657.157982443)
+[driver] sent: /target a_scaled_wolf_pup000 (1785774658.168135692)
+[driver] sent: /attack (1785774658.173287771)
+[driver] matched 'died, disabling auto-attack' after 22s
+[driver] corpse rename line: [2026-08-03 16:31:19.372] [INFO ] [ENTITY] Entity 169 became corpse: 'a_scaled_wolf_pup000' -> 'a_scaled_wolf_pup's_corpse169'
+[driver] resolved corpse id: 169
+[driver] sent: /loot 169 (1785774682.442809561)
+[driver] sent: /who (1785774682.448017606)
+[driver] sent: /say liveness-probe-during-loot (1785774682.453072520)
+[driver] liveness probe sent (1785774682.458392912)
+[driver] matched 'CloseLootWindow: Sent HC_OP_EndLootRequest' after 2s
+[driver] sent: /who (1785774685.497294006)
+[driver] sent: /camp (1785774687.505474463)
+[driver] TIMEOUT waiting for 'shutdown complete|Application shutdown' after 15s
+[driver] willeq exit code: 0
