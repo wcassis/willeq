@@ -1500,6 +1500,75 @@ ever failing loudly** — asset paths resolving should be checked at the
 start of any live leg, not inferred from the absence of complaints.
 Consider a startup validation that names missing configured paths.
 
+## Auto-loot on kill has NEVER worked against a real server — pre-existing dead path, found by T32 (2026-08-03)
+
+**T32 completed the first real end-to-end kill→loot check** (live eqemu,
+GM-spawned lootable `a_scaled_wolf_pup`, driven entirely by piped
+stdin) and the loot state machine's `AwaitingCorpse` entry was **never
+reached** — zero loot-state markers across the kill and 60+ s of
+observation.
+
+**Mechanism (orchestrator-verified against source, not taken on
+report):** two disjoint death-detection paths race, and the wrong one
+wins.
+- `CombatManager::ProcessCombatRound()` polls `entity.hp_percent <= 0`
+  (`combat.cpp:1150`) and that block is the **only** site that enters
+  `LootSubState::AwaitingCorpse`.
+- But `ProcessCombatRound()` returns early at `combat.cpp:1100` when
+  `!m_auto_attack_enabled`.
+- The authoritative death signal arrives first as
+  `EverQuest::ZoneProcessDeath()` (`eq.cpp:3233-3237`), which calls
+  `m_combat_manager->DisableAutoAttack()` when the victim is our target
+  — setting `m_auto_attack_enabled = false`.
+
+So by the time `ProcessCombatRound()` next runs, it early-returns, and
+the `hp_percent <= 0` block is unreachable after any server-signalled
+death.
+
+**ATTRIBUTION — NOT a T26 regression.** Verified against `677807c`
+(fable immediately before T26 merged): the early-return guard, the
+`hp_percent <= 0` block, and `ZoneProcessDeath`'s `DisableAutoAttack()`
+call are **byte-for-byte the same structure pre-T26**. T26 replaced four
+blocking sleeps *inside a block that a real kill already never reached*.
+The dead path predates it, and on this evidence auto-loot-on-kill has
+never worked against a live server.
+
+**What T26 DID fix is a different, reachable entry.** `CheckAutoLoot()`
+enters the machine at `AwaitingItems` (`combat.cpp:1851`) gated on
+`m_combat_state == COMBAT_STATE_LOOTING`, which `LootCorpse()` sets —
+the shift+click / action-layer path T23 identified as the one that
+actually stalled the game thread. **T32 did not exercise that path**, so
+T26's sleep-removal remains behaviourally unverified there even though
+its liveness property held (see below).
+
+**What T32 DID prove**: liveness is solid. `/who` and chat were answered
+instantly during and after the kill, movement-sync packets never
+stopped, clean `/camp` shutdown — i.e. nothing blocks the game thread on
+this route any more.
+
+**Two follow-ups, both real:**
+1. **Wire the loot machine to the authoritative death event.** The fix
+   shape is to enter `AwaitingCorpse` from `ZoneProcessDeath()` (or have
+   `DisableAutoAttack()` hand off) rather than from a poll that the same
+   event disables. Note this makes a dormant feature live for the first
+   time — expect it to need its own verification, and decide whether
+   auto-loot-on-kill is even wanted before wiring it.
+2. **Verify the shift+click loot path**, which is the one T26 actually
+   changed and the one that used to stall ~1.1 s per corpse.
+
+Evidence: `benchmarks/audits/T32/` (run scripts + full transcripts) on
+`task/T32-loot-verification`.
+
+## `race=415` missing model data still crashes graphics mode (T32 re-test, 2026-08-03)
+
+Re-tested after the stale-`eq_client_path` fix, since that was the
+leading hypothesis. **Still reproduces** — genuinely separate: the model
+data is missing from every S3D archive searched, not a path problem. It
+fails clean (FATAL → requested quit → exit 0) rather than hanging, and
+it blocks graphical live sessions, which is what Will's "the same
+commands in a real session" ruling ultimately wants. Same family as the
+recorded gfaydark `race=330` FATAL.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
