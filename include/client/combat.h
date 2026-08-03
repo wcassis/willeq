@@ -202,6 +202,16 @@ public:
 	void CloseLootWindow();
 	bool IsLooting() const { return m_combat_state == COMBAT_STATE_LOOTING; }
 
+	// T33: called by EverQuest::ZoneProcessDeath() -- the authoritative,
+	// server-signalled death event -- right after DisableAutoAttack() for
+	// a victim that was our current combat target. This is now the
+	// primary door into AwaitingCorpse (see T33_loot_death_event_wiring.md);
+	// ProcessCombatRound()'s synthetic hp_percent<=0 poll is a secondary,
+	// near-unreachable path kept only because it cannot be proven
+	// impossible (see combat.cpp). Gated on auto_loot && auto_hunting,
+	// same as the poll always was. No-op if the gate isn't satisfied.
+	void NotifyTargetDied(uint16_t victim_id);
+
 	// T26: event-driven loot state machine. Call once per game tick from
 	// the unconditional game-thread path (Application::updateGameState,
 	// alongside UpdateMovement() -- NOT from Update()/m_update_thread).
@@ -288,7 +298,18 @@ private:
 	std::chrono::steady_clock::time_point m_loot_state_entered;
 	std::chrono::steady_clock::time_point m_last_loot_item_time;   // AwaitingItems quiescence
 	std::chrono::steady_clock::time_point m_last_item_send_time;   // LootingItems pacing
-	std::string m_pending_corpse_name;                              // AwaitingCorpse search key
+	// T33: AwaitingCorpse search key. Was a name (matched against ANY
+	// is_corpse entity -- the T33 wrong-corpse bug). Now the exact
+	// spawn_id captured from ZoneProcessDeath's victim_id / the dead
+	// ProcessCombatRound target: eqemu renames the SAME entity in place
+	// on death (OP_MobRename finds it by parsing the id back out of the
+	// "...'s_corpseNNN" name and looks it up by that id -- see
+	// eq.cpp:ZoneProcessOPCode's HC_OP_MobRename case) rather than
+	// spawning a second entity, confirmed live against T32's transcript
+	// (benchmarks/audits/T32/transcript_primary.txt: "Entity 171 became
+	// corpse: 'a_scaled_wolf_pup000' -> 'a_scaled_wolf_pup's_corpse171'"
+	// -- same id 171 throughout, no new spawn_id for the corpse).
+	uint16_t m_pending_corpse_id = 0;
 
 	// Pacing constants -- named so "still polite enough?" is answerable
 	// later without hunting for magic numbers. Values preserve the

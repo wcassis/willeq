@@ -459,6 +459,43 @@ void CombatManager::DisableAutoAttack() {
 #endif
 }
 
+void CombatManager::NotifyTargetDied(uint16_t victim_id) {
+	// T33: the real entry point. Called from
+	// EverQuest::ZoneProcessDeath() -- the server's authoritative death
+	// packet -- for a victim that was our current combat target, right
+	// after DisableAutoAttack(). Carries over exactly what the old
+	// ProcessCombatRound() hp_percent<=0 block did once a kill was
+	// confirmed, minus the ClearTarget()/DisableAutoAttack() calls the
+	// caller is responsible for (ZoneProcessDeath does not call
+	// ClearTarget() today -- see plan STOP condition on not widening
+	// combat-shutdown ordering beyond loot).
+	if (!m_auto_loot_enabled || !m_auto_hunting_enabled) {
+		LOG_DEBUG(MOD_COMBAT, "Not looking for corpse: auto_loot={}, auto_hunt={}",
+			m_auto_loot_enabled, m_auto_hunting_enabled);
+		return;
+	}
+
+	LOG_DEBUG(MOD_COMBAT, "Auto-loot enabled, looking for corpse (auto_loot={}, auto_hunt={})",
+		m_auto_loot_enabled, m_auto_hunting_enabled);
+
+	// Mark when combat ended for auto-hunting cooldown.
+	m_combat_end_time = std::chrono::steady_clock::now();
+
+	// T33: match the specific victim by spawn_id, not "any is_corpse
+	// entity in the zone" (the wrong-corpse bug the pre-wiring code never
+	// hit only because the AwaitingCorpse door was dead). ZoneProcessDeath
+	// already set is_corpse=true on this same entity synchronously before
+	// calling here, and eqemu renames corpses in place rather than
+	// spawning a new entity (confirmed against
+	// benchmarks/audits/T32/transcript_primary.txt), so the id captured
+	// at death is stable for the corpse's whole lifetime.
+	m_pending_corpse_id = victim_id;
+	SetCombatState(COMBAT_STATE_LOOTING);
+	EnterLootSubState(LootSubState::AwaitingCorpse);
+	LOG_DEBUG(MOD_COMBAT, "Awaiting corpse (id {}) (deadline {}ms)",
+		m_pending_corpse_id, kCorpseSearchDeadlineMs);
+}
+
 void CombatManager::EnableAutoFire() {
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoFire called (has_target={}, target_id={})",
 		HasTarget(), m_current_target_id);
@@ -1151,42 +1188,36 @@ void CombatManager::ProcessCombatRound() {
 				LOG_DEBUG(MOD_COMBAT, "Target {} (ID: {}) died! hp_percent={}",
 					entity.name, m_current_target_id, entity.hp_percent);
 
-				// Target died
+				// Target died. T33: this branch is no longer the primary
+				// door into looting -- EverQuest::ZoneProcessDeath()
+				// (the real server's authoritative death packet) now
+				// calls CombatManager::NotifyTargetDied() directly, and
+				// that call happens synchronously on the game/network
+				// thread before this poll (which runs on a separate
+				// 500ms-cadence m_update_thread, see StartUpdateLoop())
+				// can next observe hp_percent<=0 -- DisableAutoAttack()
+				// there flips m_combat_state out of ENGAGED, and Update()
+				// only calls ProcessCombatRound() while ENGAGED, so this
+				// branch cannot fire for the same kill afterward. It is
+				// kept, not removed, because it is not *provably*
+				// unreachable: a server that sent an explicit 0%
+				// OP_MobHealth packet ahead of OP_Death (T32's transcript
+				// shows this particular fight never did) could open a
+				// narrow cross-thread window where this poll observes the
+				// death first. NotifyTargetDied() is idempotent against a
+				// stale re-entry (same corpse id, same target state), so
+				// this is a harmless safety net now, not a second
+				// diverging entry point.
 				uint16_t dead_target_id = m_current_target_id;
-				std::string dead_target_name = entity.name;
 
 				ClearTarget();
 				DisableAutoAttack();
+				NotifyTargetDied(dead_target_id);
 
-				// If auto-loot is enabled and we're hunting, look for the corpse
-				if (m_auto_loot_enabled && m_auto_hunting_enabled) {
-					LOG_DEBUG(MOD_COMBAT, "Auto-loot enabled, looking for corpse (auto_loot={}, auto_hunt={})",
-						m_auto_loot_enabled, m_auto_hunting_enabled);
-
-					// Mark when combat ended for auto-hunting cooldown
-					m_combat_end_time = std::chrono::steady_clock::now();
-
-					// T26: no longer a blind 500ms sleep + one-shot search.
-					// The entity name is already the corpse name after
-					// OP_MobRename (it already contains "'s_corpse" with the
-					// entity ID appended). Enter AwaitingCorpse and let
-					// UpdateLootState() poll for it every game tick, with a
-					// deadline (kCorpseSearchDeadlineMs) instead of a single
-					// attempt after a fixed wait -- this also covers the case
-					// the corpse spawns late (past 500ms), which the old code
-					// silently dropped.
-					m_pending_corpse_name = dead_target_name;
-					SetCombatState(COMBAT_STATE_LOOTING);
-					EnterLootSubState(LootSubState::AwaitingCorpse);
-					LOG_DEBUG(MOD_COMBAT, "Awaiting corpse '{}' (deadline {}ms)",
-						m_pending_corpse_name, kCorpseSearchDeadlineMs);
-					return;
-				} else {
-					LOG_DEBUG(MOD_COMBAT, "Not looking for corpse: auto_loot={}, auto_hunt={}",
-						m_auto_loot_enabled, m_auto_hunting_enabled);
+				if (m_combat_state != COMBAT_STATE_LOOTING) {
+					SetCombatState(COMBAT_STATE_IDLE);
 				}
-
-				SetCombatState(COMBAT_STATE_IDLE);
+				return;
 			}
 
 			break;
@@ -1910,25 +1941,27 @@ void CombatManager::UpdateLootState() {
 }
 
 void CombatManager::TickAwaitingCorpse(std::chrono::steady_clock::time_point now) {
+	// T33: match the SPECIFIC victim by spawn_id, not "the first
+	// is_corpse entity in the zone" -- EQ corpses persist for minutes, so
+	// with more than one corpse present the old any-is_corpse rule would
+	// grab whichever one the map happened to iterate to first. m_eq's
+	// entity map is keyed by spawn_id, so this is an O(1) exact lookup,
+	// not a scan.
 	const auto& entities = m_eq->GetEntities();
-	for (const auto& [corpse_id, corpse_entity] : entities) {
-		// Same matching rule as the code this replaces: the corpse should
-		// have the exact same name as the dead entity (already rewritten to
-		// "...'s_corpse" by OP_MobRename) or be flagged is_corpse.
-		if (corpse_entity.is_corpse || corpse_entity.name == m_pending_corpse_name) {
-			LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
-				corpse_entity.name, corpse_id);
-			m_eq->MoveToEntityWithinRange(corpse_entity.name, 10.0f);
-			BeginLootRequest(corpse_id);
-			return;
-		}
+	auto it = entities.find(m_pending_corpse_id);
+	if (it != entities.end() && it->second.is_corpse) {
+		LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
+			it->second.name, m_pending_corpse_id);
+		m_eq->MoveToEntityWithinRange(it->second.name, 10.0f);
+		BeginLootRequest(m_pending_corpse_id);
+		return;
 	}
 
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_loot_state_entered).count();
 	if (elapsed >= kCorpseSearchDeadlineMs) {
-		LOG_DEBUG(MOD_COMBAT, "Corpse '{}' never appeared within {}ms, abandoning loot",
-			m_pending_corpse_name, kCorpseSearchDeadlineMs);
-		m_pending_corpse_name.clear();
+		LOG_DEBUG(MOD_COMBAT, "Corpse (id {}) never appeared within {}ms, abandoning loot",
+			m_pending_corpse_id, kCorpseSearchDeadlineMs);
+		m_pending_corpse_id = 0;
 		EnterLootSubState(LootSubState::Idle);
 		if (m_combat_state == COMBAT_STATE_LOOTING) {
 			SetCombatState(m_auto_hunting_enabled ? COMBAT_STATE_HUNTING : COMBAT_STATE_IDLE);

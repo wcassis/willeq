@@ -1,0 +1,22 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=956821
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] sent: /combat on
+[driver] sent: /pathfinding on
+[driver] sent: /hunt on
+[driver] sent: /say #npctypespawn 79037
+[driver] kill #1 target: 'a_scaled_wolf_pup001' id=181
+[driver] sent: /target a_scaled_wolf_pup001
+[driver] sent: /attack
+[driver] matched 'Our combat target 181 died, disabling auto-attack' after 11s
+[driver] matched 'CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId=181' after 1s
+[driver] sent: /say #npctypespawn 79037
+[driver] kill #2 target: 'a_scaled_wolf_pup001' id=182
+[driver] sent: /target a_scaled_wolf_pup001
+[driver] sent: /attack
+[driver] matched 'Our combat target 182 died, disabling auto-attack' after 25s
+[driver] matched 'CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId=182' after 1s
+[driver] sent: /camp
+[driver] TIMEOUT waiting for 'shutdown complete|Application shutdown' after 15s
+[driver] willeq exit code: 0
+[driver] kill1 id=181 kill2 id=182

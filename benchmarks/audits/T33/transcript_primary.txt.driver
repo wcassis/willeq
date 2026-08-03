@@ -1,0 +1,22 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=953395
+[driver] matched 'Zone connection complete! Player position confirmed' after 4s
+[driver] sent: /who
+[driver] sent: /say #npctypespawn 79037
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 1s
+[driver] sent: /list
+[driver] fresh spawn name resolved to 'a_scaled_wolf_pup000'
+[driver] sent: /combat on
+[driver] sent: /pathfinding on
+[driver] sent: /hunt on
+[driver] sent: /target a_scaled_wolf_pup000
+[driver] sent: /attack
+[driver] matched 'Target .*died, disabling auto-attack|Awaiting corpse' after 35s
+[driver] sent: /who
+[driver] sent: /say liveness-probe-during-loot
+[driver] liveness probe sent
+[driver] matched 'CloseLootWindow: Sent HC_OP_EndLootRequest' after 1s
+[driver] sent: /who
+[driver] sent: /camp
+[driver] TIMEOUT waiting for 'shutdown complete|Application shutdown' after 15s
+[driver] willeq exit code: 0

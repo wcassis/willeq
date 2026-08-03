@@ -647,9 +647,9 @@ TEST(CombatManagerLoot, AwaitingCorpseDeadlineExpiresWithoutHanging) {
     auto* cm = eq.GetCombatManager();
 
     // No corpse entity is ever staged -- simulates a kill whose corpse
-    // never spawns (or never matches the expected name). Drive the machine
-    // directly into AwaitingCorpse the way ProcessCombatRound() does.
-    cm->m_pending_corpse_name = "a_test_rat's_corpse1";
+    // never spawns (or never matches the expected id). Drive the machine
+    // directly into AwaitingCorpse the way NotifyTargetDied() does.
+    cm->m_pending_corpse_id = 1;
     cm->SetCombatState(COMBAT_STATE_LOOTING);
     cm->EnterLootSubState(LootSubState::AwaitingCorpse);
 
@@ -670,10 +670,25 @@ TEST(CombatManagerLoot, AwaitingCorpseDeadlineExpiresWithoutHanging) {
 TEST(CombatManagerLoot, AwaitingCorpseFindsCorpseAndBeginsLootRequest) {
     EverQuest eq = MakeEq();
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadAt(900, "a_test_rat's_corpse1", 0, 10, 0)));
-    auto* cm = eq.GetCombatManager();
+        NewSpawnPayloadAt(900, "a_test_rat", 0, 10, 0)));
 
-    cm->m_pending_corpse_name = "a_test_rat's_corpse1";
+    // Death_Struct: victim_id(4) killer_id(4) ... (offsets include the
+    // 2-byte opcode prefix, see CombatManagerCycling.CorpsesAreExcluded).
+    // This is what actually flips is_corpse=true on entity 900 -- T33's
+    // TickAwaitingCorpse now requires that flag, not just a name match.
+    auto deathPayload = BuildPayload(30, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, 900);  // victim_id
+        p.PutUInt32(6, 0);    // killer_id (0 = the player)
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Death, deathPayload));
+    ASSERT_TRUE(eq.GetEntities().at(900).is_corpse);
+
+    auto* cm = eq.GetCombatManager();
+    // No target was set, so ZoneProcessDeath's own NotifyTargetDied() call
+    // above was skipped (victim_id != GetTargetId()) -- drive
+    // AwaitingCorpse directly here to isolate TickAwaitingCorpse's id
+    // match from the ZoneProcessDeath wiring, which has its own test below.
+    cm->m_pending_corpse_id = 900;
     cm->SetCombatState(COMBAT_STATE_LOOTING);
     cm->EnterLootSubState(LootSubState::AwaitingCorpse);
 
@@ -681,6 +696,112 @@ TEST(CombatManagerLoot, AwaitingCorpseFindsCorpseAndBeginsLootRequest) {
     EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems)
         << "matching corpse entity should trigger BeginLootRequest()";
     EXPECT_EQ(cm->m_current_corpse_id, 900);
+}
+
+TEST(CombatManagerLoot, AwaitingCorpseIgnoresOtherCorpseAndMatchesRightId) {
+    // T33's headline hazard: TickAwaitingCorpse used to accept the FIRST
+    // is_corpse entity in the zone. Stage TWO corpses and confirm it picks
+    // the one m_pending_corpse_id actually names, not whichever the map
+    // iterates to first.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(500, "a_stale_rat", 0, 10, 0)));
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(900, "a_test_rat", 0, 20, 0)));
+
+    for (uint32_t id : {500u, 900u}) {
+        auto deathPayload = BuildPayload(30, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt32(2, id);  // victim_id
+            p.PutUInt32(6, 0);   // killer_id (0 = the player)
+        });
+        ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Death, deathPayload));
+    }
+    ASSERT_TRUE(eq.GetEntities().at(500).is_corpse);
+    ASSERT_TRUE(eq.GetEntities().at(900).is_corpse);
+
+    auto* cm = eq.GetCombatManager();
+    // We're awaiting the SECOND kill's corpse (900), not the pre-existing
+    // one (500) that just happens to also satisfy is_corpse.
+    cm->m_pending_corpse_id = 900;
+    cm->SetCombatState(COMBAT_STATE_LOOTING);
+    cm->EnterLootSubState(LootSubState::AwaitingCorpse);
+
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
+    EXPECT_EQ(cm->m_current_corpse_id, 900)
+        << "must loot the specific victim's corpse, not the first is_corpse "
+           "entity the map happens to iterate to (the pre-T33 bug)";
+}
+
+TEST(CombatManagerLoot, ZoneProcessDeathEntersAwaitingCorpseWhenAutoHunting) {
+    // T33's actual defect: the real server death path (ZoneProcessDeath)
+    // used to only call DisableAutoAttack(), which flips m_combat_state
+    // out of ENGAGED and permanently forecloses ProcessCombatRound()'s
+    // hp_percent<=0 poll -- the only door into AwaitingCorpse before this
+    // unit. This test drives death the way a real server does (an
+    // HC_OP_Death packet, not a synthetic hp_percent write) and would FAIL
+    // against the pre-T33 code: GetLootSubState() would stay Idle and
+    // GetCombatState() would land on IDLE, never LOOTING.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(200, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    ASSERT_TRUE(cm->SetTarget(200u));
+    cm->EnableAutoAttack();
+    ASSERT_EQ(cm->GetCombatState(), COMBAT_STATE_ENGAGED);
+    // Bypass SetAutoHunting()'s pathfinding-enabled precondition (T32
+    // finding, combat.cpp) -- this test is about the death-event wiring,
+    // not the auto-hunt toggle's own gating.
+    cm->m_auto_hunting_enabled = true;
+    ASSERT_TRUE(cm->IsAutoLootEnabled()) << "auto_loot defaults true";
+
+    auto deathPayload = BuildPayload(30, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, 200);  // victim_id
+        p.PutUInt32(6, 0);    // killer_id (0 = the player)
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Death, deathPayload));
+
+    EXPECT_FALSE(cm->IsAutoAttackEnabled());
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_LOOTING)
+        << "the real death event must enter the loot machine, not leave it "
+           "stuck at IDLE";
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingCorpse);
+    EXPECT_EQ(cm->m_pending_corpse_id, 200);
+
+    // And it actually advances: the corpse (same entity, same id, T32's
+    // "Entity N became corpse" evidence) is already is_corpse=true from
+    // ZoneProcessDeath itself, so the very next tick should find it.
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
+    EXPECT_EQ(cm->m_current_corpse_id, 200);
+}
+
+TEST(CombatManagerLoot, ZoneProcessDeathDoesNotLootWithoutAutoHunting) {
+    // Landmine 1: auto_loot defaults true but auto_hunting defaults false,
+    // so a plain kill (auto-attack, no /hunt on) must NOT enter the loot
+    // machine. This is what keeps T33 from turning into "every player
+    // auto-loots every corpse".
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(201, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    ASSERT_TRUE(cm->SetTarget(201u));
+    cm->EnableAutoAttack();
+    ASSERT_FALSE(cm->IsAutoHunting()) << "auto_hunting defaults false";
+    ASSERT_TRUE(cm->IsAutoLootEnabled()) << "auto_loot defaults true";
+
+    auto deathPayload = BuildPayload(30, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, 201);
+        p.PutUInt32(6, 0);
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Death, deathPayload));
+
+    EXPECT_FALSE(cm->IsAutoAttackEnabled());
+    EXPECT_NE(cm->GetCombatState(), COMBAT_STATE_LOOTING)
+        << "auto_hunting=false must gate off auto-loot-on-kill";
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle);
 }
 
 TEST(CombatManagerLoot, CorpseDisappearingMidLootAbortsWithoutHanging) {

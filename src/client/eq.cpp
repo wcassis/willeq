@@ -3235,6 +3235,15 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// Target died - disable auto-attack
 		LOG_DEBUG(MOD_COMBAT, "Our combat target {} died, disabling auto-attack", victim_id);
 		m_combat_manager->DisableAutoAttack();
+
+		// T33: this is the real, authoritative death signal -- wire the
+		// loot state machine here instead of the ProcessCombatRound()
+		// hp_percent<=0 poll DisableAutoAttack() above just foreclosed
+		// (see refactor/T33_loot_death_event_wiring.md and the deferred.md
+		// "Auto-loot on kill has NEVER worked against a real server"
+		// finding). Gated internally on auto_loot && auto_hunting, same
+		// gate the dead poll always used.
+		m_combat_manager->NotifyTargetDied(victim_id);
 	}
 	
 	// If we died, log it prominently
