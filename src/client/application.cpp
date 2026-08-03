@@ -911,11 +911,17 @@ void Application::processPreConnectionLifecycleCommands() {
     // does NOT include movement/combat/chat/etc -- opening this gate wider
     // would defeat the loading-drift protection it exists alongside (see
     // the comment on the m_fullyConnected gate above). /quit and its
-    // registered alias /exit (see eq_commands_movement.cpp's "quit"
-    // Command) terminate the process; /help and its alias /? are
+    // registered aliases /exit and /q (see eq_commands_movement.cpp's
+    // "quit" Command) terminate the process; /help and its alias /? are
     // read-only and safe to answer at any time.
+    //
+    // "q" is here per Will's ruling 2026-08-03 ("/q is a shortcut for
+    // /quit and should have the same functionality: quit the application
+    // immediately without camping"). Keep this set in sync with that
+    // Command's alias list -- if they diverge, /q gets held here while
+    // /quit exits, which is exactly the asymmetry the ruling removed.
     static const std::set<std::string> kPreConnectionLifecycleCommands = {
-        "quit", "exit", "help", "?"
+        "quit", "exit", "q", "help", "?"
     };
 
     if (kPreConnectionLifecycleCommands.count(lowerToken) == 0) {
