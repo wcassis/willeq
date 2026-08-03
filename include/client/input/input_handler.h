@@ -284,6 +284,17 @@ public:
      */
     virtual std::optional<std::string> consumeRawCommand() = 0;
 
+    /**
+     * T30: non-destructive look at the next pending raw command, without
+     * removing it from the queue. Used by Application's pre-connection
+     * lifecycle intercept (see processPreConnectionLifecycleCommands())
+     * to decide whether the front of the queue is a command it's allowed
+     * to handle early (/quit, /help, ...) without disturbing the order or
+     * presence of everything else queued behind/including it.
+     * @return Command string if one is pending, empty otherwise.
+     */
+    virtual std::optional<std::string> peekRawCommand() const = 0;
+
 };
 
 } // namespace input

@@ -57,6 +57,7 @@ public:
     std::optional<ChatMessage> consumeChatMessage() override;
     std::optional<MoveCommand> consumeMoveCommand() override;
     std::optional<std::string> consumeRawCommand() override;
+    std::optional<std::string> peekRawCommand() const override;
 
     /**
      * Shutdown the input handler (stops input thread).

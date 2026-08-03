@@ -51,12 +51,27 @@ ConsoleInputHandler::~ConsoleInputHandler() {
 }
 
 void ConsoleInputHandler::shutdown() {
-    if (m_active.load()) {
-        m_active.store(false);
-        disableRawMode();
-        if (m_inputThread.joinable()) {
-            m_inputThread.join();
-        }
+    // T30: the old `if (m_active.load())` guard here assumed shutdown()
+    // was the ONLY writer of m_active, but pipedInputThreadFunc() also
+    // sets m_active=false itself on EOF (see below) -- the normal way a
+    // piped script ends (`willeq ... < script.txt`, or a pipe whose
+    // producer closes stdin). When that happened first, this guard's
+    // body -- the only place that ever called m_inputThread.join() --
+    // never ran, leaving m_inputThread joinable forever. The destructor
+    // then ran std::thread::~thread() on a still-joinable thread, which
+    // is exactly the "terminate called without an active exception"
+    // abort (see refactor/T30_headless_shutdown_fix.md, gdb backtrace
+    // in its Review: ConsoleInputHandler::~ConsoleInputHandler() ->
+    // std::thread::~thread() -> std::terminate() -> abort()).
+    //
+    // Fix: always store(false) + join() (if joinable), independent of
+    // who flipped m_active first -- the P36/T03b playbook
+    // (running_.store(false) -> join() -> destroy) applied unconditionally
+    // rather than gated on a flag the thread itself can also clear.
+    m_active.store(false);
+    disableRawMode();
+    if (m_inputThread.joinable()) {
+        m_inputThread.join();
     }
 }
 
@@ -162,6 +177,14 @@ std::optional<std::string> ConsoleInputHandler::consumeRawCommand() {
     auto command = m_rawCommands.front();
     m_rawCommands.pop();
     return command;
+}
+
+std::optional<std::string> ConsoleInputHandler::peekRawCommand() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_rawCommands.empty()) {
+        return std::nullopt;
+    }
+    return m_rawCommands.front();
 }
 
 void ConsoleInputHandler::inputThreadFunc() {

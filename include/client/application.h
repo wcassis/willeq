@@ -152,9 +152,20 @@ struct ScriptStep {
 struct CommandDispatchResult {
     std::string command;      // The raw input line, as given.
     bool recognized = false;  // Did ANY registry (or the chat fallback) accept it?
-    std::string registry;     // "chat" | "game" | "action" | "renderer" | "none"
+    std::string registry;     // "chat" | "game" | "action" | "renderer" | "none" | "pending"
     bool success = false;     // Registries 1/2 only: the handler's own reported outcome.
     std::string message;      // Optional detail (failure reason, echoed usage, ...).
+
+    // T30: true if this command was NOT dispatched because the client
+    // isn't fully connected yet (see Application::processInput()'s
+    // pre-connection lifecycle intercept). Distinct from "unrecognized"
+    // (no registry claimed it) -- "held" means dispatch was deliberately
+    // deferred, and the command is still queued to run once connected.
+    // printCommandResult() reports this as outcome=held so a script
+    // piping commands into a client that never connects gets an
+    // observable "waiting" signal on stdout instead of total silence
+    // (refactor/T30_headless_shutdown_fix.md).
+    bool held = false;
 };
 
 /**
@@ -398,6 +409,22 @@ private:
     // from initialize().
     void wireUnifiedCommandDispatch();
 
+    // T30: pre-connection lifecycle intercept. m_inputBridge->update() in
+    // processInput() is gated on m_fullyConnected (loading-drift
+    // protection -- see the comment at that call site), which means the
+    // WHOLE console command queue -- including /quit -- sits undrained
+    // until a zone connection completes. With no server available at
+    // all, that connection never completes and a piped script hangs
+    // forever (refactor/T30_headless_shutdown_fix.md). This drains only
+    // the narrow class of client-local lifecycle commands (/quit, /exit,
+    // /help, /?) directly off the console raw-command queue, leaving
+    // every other command (movement, chat, combat, ...) untouched in the
+    // queue for the normal gated path once connected -- this must NOT
+    // become a second, wider command channel (that would defeat the
+    // gate's purpose; see the STOP condition in the plan). Called from
+    // processInput() only while !m_fullyConnected.
+    void processPreConnectionLifecycleCommands();
+
     // ========== Components ==========
 
     std::unique_ptr<state::GameState> m_gameState;
@@ -405,6 +432,23 @@ private:
     std::unique_ptr<action::ActionDispatcher> m_dispatcher;
     std::unique_ptr<action::InputActionBridge> m_inputBridge;
     std::unique_ptr<action::CommandProcessor> m_commandProcessor;
+
+    // T30: non-owning pointer to the same console input handler wired
+    // into m_inputBridge (setInputHandler()/setConsoleCommandSource()) --
+    // stashed here too so processPreConnectionLifecycleCommands() can
+    // peek its raw-command queue directly, without routing through the
+    // fully-gated bridge. Null in graphics-only configurations that
+    // never construct a console handler (GraphicsInputHandler has no raw
+    // commands, see its consumeRawCommand()/peekRawCommand() no-ops).
+    input::IInputHandler* m_consoleInputHandler = nullptr;
+
+    // T30: true once "CMD outcome=held ..." has been printed for the
+    // command currently at the front of the console queue -- avoids
+    // reprinting it every ~60Hz game tick while waiting to connect.
+    // Reset whenever the front of the queue changes or the client
+    // becomes fully connected.
+    bool m_preConnectionHeldAnnounced = false;
+    std::string m_preConnectionHeldLastCmd;
 
     // EverQuest client and adapter
     std::unique_ptr<EverQuest> m_eqClient;

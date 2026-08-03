@@ -499,10 +499,22 @@ void EverQuest::RegisterMovementCommands()
 	quit.name = "quit";
 	quit.aliases = {"exit"};
 	quit.usage = "/quit";
-	quit.description = "Exit the game";
+	quit.description = "Exit the game immediately";
 	quit.category = "Utility";
 	quit.handler = [this](const std::string& args) {
-		AddChatSystemMessage("Use /camp to logout safely, or /q to exit immediately.");
+		// T30: previously advisory-only ("use /camp or /q instead") --
+		// never actually quit, connected or not. That made "/quit" (the
+		// name automation and the exit matrix's own repro reach for) a
+		// no-op while CONNECTED, on top of the separate pre-connection
+		// gating bug (see Application::processPreConnectionLifecycleCommands()
+		// in application.cpp for that half). /camp remains the distinct,
+		// correct choice for a graceful in-game logout (sits down, notifies
+		// the server, waits for confirmation before disconnecting); /quit
+		// is now simply a synonym for /q -- an immediate local exit with no
+		// server-side logout courtesy -- matching what refactor/
+		// T30_headless_shutdown_fix.md's exit-matrix verification expects
+		// of a command literally named "quit".
+		RequestQuit();  // D20c4: Application checks quit flag
 	};
 	m_command_registry->registerCommand(quit);
 

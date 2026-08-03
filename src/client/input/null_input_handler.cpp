@@ -92,6 +92,13 @@ std::optional<std::string> NullInputHandler::consumeRawCommand() {
     return command;
 }
 
+std::optional<std::string> NullInputHandler::peekRawCommand() const {
+    if (m_rawCommands.empty()) {
+        return std::nullopt;
+    }
+    return m_rawCommands.front();
+}
+
 // ========== Programmatic Action Injection ==========
 
 void NullInputHandler::injectAction(InputAction action) {

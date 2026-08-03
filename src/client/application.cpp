@@ -19,6 +19,8 @@
 #include <iostream>
 #include <thread>
 #include <algorithm>
+#include <set>
+#include <cctype>
 #include <sys/stat.h>
 
 #ifndef _WIN32
@@ -325,6 +327,12 @@ bool Application::initialize(const ApplicationConfig& config) {
         // instance here too keeps its raw commands (piped slash commands)
         // reaching the app afterward, without a second stdin reader.
         m_inputBridge->setConsoleCommandSource(inputHandler);
+
+        // T30: stash the same handler for processPreConnectionLifecycleCommands()
+        // -- it needs to peek the raw-command queue directly, bypassing
+        // m_inputBridge's m_fullyConnected gate (see that method's doc
+        // comment in application.h).
+        m_consoleInputHandler = inputHandler;
     }
 
     // T29: unified slash-command dispatch -- see DispatchSlashCommand()'s
@@ -706,6 +714,11 @@ void Application::gameThreadLoop() {
             if (!isConnected && m_fullyConnected) {
                 m_fullyConnected = false;
                 if (m_gameState) m_gameState->world().setZoneConnected(false);
+                // T30: fresh disconnect -- allow the next held command (even
+                // if it's textually the same one as before, e.g. after a
+                // reconnect cycle) to be announced again.
+                m_preConnectionHeldAnnounced = false;
+                m_preConnectionHeldLastCmd.clear();
             }
 
             // Fixed-rate game tick (~60 Hz)
@@ -839,10 +852,117 @@ void Application::processInput(float deltaTime) {
     // off the map, and the server would interpolate the unbounded position.
     if (m_inputBridge && m_fullyConnected) {
         m_inputBridge->update(deltaTime);
+    } else if (!m_fullyConnected) {
+        // T30: the gate above holds the ENTIRE console command queue
+        // (including /quit) until the client is fully connected -- with
+        // no server available, that never happens, and a piped script
+        // hangs forever with nothing to show for it (see
+        // refactor/T30_headless_shutdown_fix.md). This narrow intercept
+        // handles only client-local lifecycle commands (/quit, /help,
+        // ...) directly, and makes anything else held observable on
+        // stdout -- it must NOT become a second, wider command channel.
+        processPreConnectionLifecycleCommands();
     }
 
     // H03: Advance the scripted command tour, if one was loaded via --script.
     updateScript(deltaTime);
+}
+
+void Application::processPreConnectionLifecycleCommands() {
+    if (!m_consoleInputHandler) {
+        return;
+    }
+
+    // Only ever look at (and, if matched, pop) the FRONT of the queue.
+    // If it's not a lifecycle command, stop -- leave it and everything
+    // behind it exactly where it was, for the normal gated path once
+    // m_fullyConnected flips true. This is what keeps this an intercept
+    // for a narrow, fixed vocabulary rather than a parallel dispatch
+    // path for everything (the plan's STOP condition).
+    auto peeked = m_consoleInputHandler->peekRawCommand();
+    if (!peeked) {
+        return;
+    }
+
+    std::string raw = *peeked;
+    size_t start = raw.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        // Blank line -- consume and drop it silently, same as the
+        // fully-connected path would (DispatchSlashCommand() also
+        // treats an all-whitespace line as a no-op).
+        m_consoleInputHandler->consumeRawCommand();
+        return;
+    }
+    size_t end = raw.find_last_not_of(" \t\r\n");
+    std::string trimmed = raw.substr(start, end - start + 1);
+    std::string bare = (trimmed[0] == '/') ? trimmed.substr(1) : trimmed;
+
+    std::string token = bare;
+    size_t spacePos = token.find(' ');
+    if (spacePos != std::string::npos) {
+        token = token.substr(0, spacePos);
+    }
+    std::string lowerToken = token;
+    std::transform(lowerToken.begin(), lowerToken.end(), lowerToken.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // The narrow class: client-local lifecycle commands that have no
+    // gameplay effect and no dependency on a live connection. Deliberately
+    // does NOT include movement/combat/chat/etc -- opening this gate wider
+    // would defeat the loading-drift protection it exists alongside (see
+    // the comment on the m_fullyConnected gate above). /quit and its
+    // registered alias /exit (see eq_commands_movement.cpp's "quit"
+    // Command) terminate the process; /help and its alias /? are
+    // read-only and safe to answer at any time.
+    static const std::set<std::string> kPreConnectionLifecycleCommands = {
+        "quit", "exit", "help", "?"
+    };
+
+    if (kPreConnectionLifecycleCommands.count(lowerToken) == 0) {
+        // Not a lifecycle command -- hold it (do not consume), but make
+        // the wait observable: previously a script piping into a client
+        // that never connects got no stdout at all for this, just
+        // silence until something killed the process.
+        if (!m_preConnectionHeldAnnounced || m_preConnectionHeldLastCmd != trimmed) {
+            CommandDispatchResult held;
+            held.command = trimmed;
+            held.registry = "pending";
+            held.recognized = false;
+            held.held = true;
+            held.message = "waiting for connection";
+            printCommandResult(held);
+            m_preConnectionHeldAnnounced = true;
+            m_preConnectionHeldLastCmd = trimmed;
+        }
+        return;
+    }
+
+    // Recognized lifecycle command -- now actually consume it.
+    m_consoleInputHandler->consumeRawCommand();
+    m_preConnectionHeldAnnounced = false;
+    m_preConnectionHeldLastCmd.clear();
+
+    if (lowerToken == "quit" || lowerToken == "exit") {
+        // No live session to protect pre-connection (that's what
+        // EverQuest's own "/quit" handler's advisory "use /camp or /q"
+        // message is for -- it stays untouched, still reachable once
+        // connected). Here there's nothing to safely log out of, so
+        // /quit is a direct, immediate shutdown request -- the same
+        // controlled path SIGTERM and window-close already use (P36).
+        CommandDispatchResult result;
+        result.command = trimmed;
+        result.registry = "lifecycle";
+        result.recognized = true;
+        result.success = true;
+        result.message = "pre-connection quit";
+        printCommandResult(result);
+        requestQuit();
+    } else {
+        // /help, /?: read-only and safe regardless of connection state --
+        // route through the normal unified dispatcher so it gets the same
+        // registry-1 handler (and stdout ack) it would once connected.
+        printCommandResult(DispatchSlashCommand(trimmed));
+    }
 }
 
 bool Application::loadScriptFile(const std::string& path) {
@@ -998,14 +1118,20 @@ void Application::printCommandResult(const CommandDispatchResult& result) const 
     //     success), failed (registries 1/2, handler ran and reported
     //     failure -- see message=), queued (registry 3 -- fire-and-forget
     //     onto the render-thread bridge, no ack path, NOT a claim the
-    //     effect landed), or unrecognized (registry=none).
+    //     effect landed), held (T30 -- the client isn't fully connected
+    //     yet, so this command was deliberately NOT dispatched; it is
+    //     still queued and will run once connected -- distinct from
+    //     unrecognized, which means no registry claimed it at all), or
+    //     unrecognized (registry=none).
     // A script canNOT synchronise on "the game state has updated" from this
     // line alone -- most handlers just send a packet and the server answers
     // asynchronously later (e.g. "/combat on" acks locally as applied
     // immediately, but the auto-attack/loot cycle it enables plays out over
     // subsequent server packets the script must watch for separately).
     std::string outcome;
-    if (!result.recognized) {
+    if (result.held) {
+        outcome = "held";
+    } else if (!result.recognized) {
         outcome = "unrecognized";
     } else if (result.registry == "renderer") {
         outcome = "queued";

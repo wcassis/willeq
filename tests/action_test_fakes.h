@@ -358,6 +358,12 @@ public:
     std::optional<std::string> consumeRawCommand() override {
         return pop(rawCommands);
     }
+    std::optional<std::string> peekRawCommand() const override {
+        if (rawCommands.empty()) {
+            return std::nullopt;
+        }
+        return rawCommands.front();
+    }
 
 private:
     template <typename T>
