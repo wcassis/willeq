@@ -1454,6 +1454,21 @@ non-slash `say`/`tell`/`quit` words are now redundant with `/say`,
 `/tell`, `/quit` through the unified channel. Left in place (something
 may depend on them); retire once nothing does.
 
+## `--log-level=` is clobbered by `SetDebugLevel(0)` in main.cpp (T31 finding, 2026-08-02) — NOT FIXED
+
+Found by T31 while building its acceptance transcript, worked around
+rather than fixed (outside that unit's `logging.h` territory).
+`main.cpp` calls `SetDebugLevel(0)` *after* parsing `--log-level=`,
+clobbering whatever the user asked for. `-d <n>` works; the documented
+`--log-level=LEVEL` flag does not — and the client's own startup banner
+tells you to use it ("Log level: DEBUG (use --log-level=LEVEL to
+change)").
+
+Relevant under the 2026-08-02 automation policy for the obvious reason:
+a script that sets verbosity the documented way silently gets none.
+Small fix; likely a one-line ordering change, but confirm which call
+should win rather than just moving it.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
