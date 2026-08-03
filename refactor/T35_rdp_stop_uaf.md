@@ -134,7 +134,163 @@ Steps 1-5 above, plus:
 
 ## Review
 
-(Executor fills: the repro recipe and observed pre-fix failure rate, the
-loop-exit analysis confirming no deadlock, the double-stop/destructor
-check, the post-fix run count, any sanitizer evidence, and the waiver
-removal.)
+**Setup note:** this worktree's `build/` cache had `EQT_GLES2_IRRLICHT_DIR`
+resolved to `/mnt/projects/fable/main/third_party/...` instead of its own
+tree — the exact "invocation-cwd absolutize" trap the CMakeLists comment
+(~line 98) warns about (relative `-D` value absolutized against the shell's
+cwd at the time `cmake -S` was invoked, not the source tree). Reconfigured
+with an absolute `-DEQT_GLES2_IRRLICHT_DIR=/mnt/projects/fable/wt/t1/third_party/irrlicht-gles2-x86`
+to fix it; worktree's own patched Irrlicht already had `eqtGPUPhaseBegin`,
+no rebuild needed.
+
+### Loop-exit analysis (confirmed by reading the source, not assumed)
+
+`listenerThread()` (`rdp_server.cpp:448-481`): `while (running_.load())`,
+`WaitForMultipleObjects(count, handles, FALSE, 100)` (100ms timeout),
+`running_.load()` rechecked immediately after the wait (line 461, before
+touching `status`). The only other calls in the loop —
+`listener_->GetEventHandles` and `listener_->CheckFileDescriptor` — are
+non-blocking listener queries, not waits. So the thread exits within
+~100ms of `running_` going false with no help from `Close()`; no deadlock
+from joining first. Peer loop (`peerThreadImpl`, line 567 on) is separately
+confirmed fine as-is: it waits on `client`-specific handles (never
+`listener_`), 16ms timeout, same running_ recheck pattern, and `stop()`
+does not touch peer clients before joining them (peer join happens after
+listener close in `stop()`, unchanged by this fix).
+
+### Pre-fix repro (unmodified `rdp_server.cpp`, fable tip)
+
+Recipe: `ctest --test-dir build -R RDP -j8` (58 RDP tests), repeated in a
+foreground bounded loop. Reproduced on the *first* invocation:
+`RDPServerFrameTest.UpdateFrameMultipleTimes` — `***Exception: SegFault`.
+
+Ran **66 total pre-fix iterations** (1 initial + 65 looped). Kernel GP
+faults (`journalctl -k`) confirm **6 real UAF crashes**, all at the
+identical offset `ip - segment_base = 0xB3EB` — exactly T03b's
+`WaitForMultipleObjectsEx+0x16b` signature (computed precisely for each of
+the 6, not eyeballed). Observed rate: 6/66 ≈ 9%. Lower than T03b's ~1-in-5
+because that figure was under full-suite `-j8` (more scheduling pressure);
+this loop was RDP-suite-only `-j8`.
+
+**Distinct finding, not the UAF:** ~13 more pre-fix runs failed
+non-crash — `RDPServerFrameTest`/`RDPServerLifecycleTest` tests reporting
+`Failed to open listener on port 23392/23389`. Root cause: `GTEST_DISCOVER_TESTS`
+registers each `TEST_F` as its own ctest test → its own OS process
+(`--gtest_filter=...`), and several fixtures shared one hardcoded port
+across multiple `TEST_F`s in the same fixture (e.g. `RDPServerFrameTest`'s
+`UpdateFrameAfterStart`/`UpdateFrameMultipleTimes` both bound 23392,
+`RDPServerLifecycleTest`'s `StartAndStop`/`MultipleStartStop`/
+`ClientCountInitiallyZero` all bound 23389) — under `ctest -j`, two of
+those processes can race for the same port. Pre-existing, unrelated to the
+UAF (confirmed present in the unmodified tree), not a crash (clean
+assertion failure with a clear error message, not a segfault) — but it
+shares the same test names as the segfault waiver, so it had to be
+resolved before that waiver could be honestly retired. Fixed in scope
+(`tests/` is named territory): moved `initialize(port)` out of each
+fixture's shared `SetUp()` into each individual `TEST_F` body with a
+unique literal port (`tests/test_rdp_server.cpp`).
+
+### The fix
+
+`src/client/graphics/rdp/rdp_server.cpp`, `RDPServer::stop()`: reordered to
+join the listener thread *before* calling `listener_->Close()` (was the
+reverse). Comment added explaining why this can't deadlock. Nothing else
+in `stop()`'s ordering changed (peer-thread join, `activePeers_.clear()`,
+`freerdp_listener_free()` all still happen after, same as before).
+
+### Double-stop / destructor check
+
+`running_.store(false)` is still the first statement inside `stop()`,
+unchanged in position — so the early-return guard
+(`if (!running_.load()) return;`) behaves identically to before the
+reorder for a second `stop()` call, whether that's an explicit call after
+one that already completed, or `~RDPServer()` (which just calls `stop()`)
+running after an explicit `stop()`. Only the ordering *within* one live
+`stop()` call changed. `RDPServerLifecycleTest.MultipleStartStop`
+(sequential start/stop/re-initialize/start/stop in one thread) passed in
+every run of every batch below, and was additionally run 10x isolated with
+no failures. Concurrent (cross-thread) `stop()`/destructor races are not
+exercised by any test and are a pre-existing, unchanged property of the
+class (not introduced or worsened by this fix) — noted, not in scope.
+
+### Post-fix verification
+
+- `ctest -R RDP -j8`: **30 consecutive clean runs** (0 failures), then a
+  further **20 consecutive clean runs at `-j24`** (heavier scheduling
+  pressure) — 50 total, 0 crashes, 0 non-crash failures.
+- Kernel GP-fault count (`journalctl -k`) stayed at exactly **6** across
+  every post-fix run — the same 6 from the pre-fix loop, confirming zero
+  new faults, not just zero ctest-visible ones.
+- Full `ctest --test-dir build --output-on-failure` (whole suite, serial):
+  **1818/1819**, sole failure `AudioManagerTest.PreloadCommonSounds`
+  (documented ALSA host exception). RDP suite: all green.
+- Full suite again under **`-j8`** (matches the conditions that favour the
+  crash): **1818/1819**, same sole failure, all 58 RDP tests green.
+- `bash scripts/build-gles2-x86.sh`: clean build.
+- Visual gate (`scripts/ci/visual_gate.sh`): **PASS**, goldens untouched.
+- `bash scripts/build-arm-noble.sh`: clean cross-compile, `willeq` produced.
+- `scripts/refactor/check_file_sizes.sh --files <both changed files>`: both
+  `ok` (1013 and 392 lines).
+- TSAN: built a separate `-fsanitize=thread` tree per the P23 precedent
+  (`-DCMAKE_CXX_FLAGS="-fsanitize=thread -g -O1"
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"`, run under
+  `setarch $(uname -m) -R`). Ran `--gtest_repeat=20` in-process, both
+  pre-fix and post-fix: **no TSAN warnings either way**, and pre-fix did
+  not crash under TSAN either. Read as inconclusive rather than
+  exculpatory: `--gtest_repeat` reruns tests sequentially inside one
+  process, which doesn't reproduce the cross-process/thread scheduling
+  pressure that the `ctest -j8` loop needed to expose the race, and TSAN's
+  instrumentation overhead perturbs timing further. The process-level
+  `ctest -j` evidence (6 crashes pre-fix at a kernel-verified consistent
+  offset, 0 crashes in 50 consecutive post-fix runs plus 2 full-suite
+  passes) is the operative evidence for this fix, not the TSAN attempt.
+
+### Golden replay — confirmed it ran, not silently skipped
+
+Initial full-suite run showed `SessionReplayGolden.
+MatchesRecordedSessionOrCreatesBaseline` as `Skipped` *despite* the
+worktree-root `data/captures` symlink already existing
+(`/mnt/projects/fable/wt/t1/data/captures` -> `/mnt/projects/fable/captures`,
+present before this unit started). Root cause: `GTEST_DISCOVER_TESTS` sets
+this test's ctest `WORKING_DIRECTORY` to `<build>/tests` (the target's
+binary dir), and the test's default session-log path
+(`DefaultSessionLogPath()` in `test_session_replay.cpp`) is the relative
+string `"data/captures/session.sleq"` — so it resolves against
+`build/tests/`, not the repo root. The repo-root symlink is necessary but
+not sufficient; `build/tests/data/captures` also needs to exist. Created
+`ln -s /mnt/projects/fable/captures /mnt/projects/fable/wt/t1/build/tests/data/captures`
+(inside `build/`, gitignored, not part of this commit) and reran the full
+suite: golden test now runs and PASSES (confirmed, not just "not skipped").
+Flagged here rather than fixed at the CMake/test level since it's outside
+this unit's territory; worth a `refactor/deferred.md` note for whichever
+unit next rebuilds a worktree's `build/` from scratch.
+
+### Waiver retirement
+
+Both the UAF crash and the (distinct) port-contention flake it was
+commingled with are fixed and verified deterministic. Retired the waiver:
+- `refactor/EXECUTOR_PROTOCOL.md` (~line 68-79): removed
+  `RDPServerFrameTest.UpdateFrameMultipleTimes (intermittent)` from the
+  known-host-exceptions list; added a dated note pointing at this plan and
+  `refactor/deferred.md` for the history, and an explicit caution against
+  re-waiving a future RDP segfault without root-causing it.
+- `refactor/TESTING_CHARTER.md` (~line 65-69): removed
+  `RDPServerFrameTest.* [parallel-run flake family]` from the documented
+  flaky-test exceptions, same dated note.
+
+### Deviations from the plan
+
+- Widened scope slightly beyond the pure lifecycle-ordering fix: fixed the
+  port-contention test bug in `tests/test_rdp_server.cpp` (explicitly
+  named territory) because it shared test names with the crash waiver and
+  would have made a "clean" waiver retirement dishonest (the family would
+  still show intermittent, if non-crash, failures under `-j8`). Flagged
+  here per the "deviations flagged, never silently absorbed" rule rather
+  than silently including it in "the fix."
+- Found and worked around (did not fix in-tree) a golden-replay-test
+  `WORKING_DIRECTORY` trap that silently skips the test for any freshly
+  built `build/` dir even with the documented repo-root `data/captures`
+  symlink in place; see above. Recommend a `refactor/deferred.md` entry
+  and/or a CMake-level fix (e.g. set the test's `WORKING_DIRECTORY` to the
+  source tree, or create the symlink as part of the build) so this stops
+  costing each new worktree/build the same rediscovery.

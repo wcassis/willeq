@@ -64,9 +64,13 @@ real behavior are the deliverable, not coverage theater.
   (precedent: `tools/particle_race_stress.cpp`), not ctest.
 - No new flaky tests: 3 consecutive full-suite green runs before a
   unit merges (known documented exceptions excepted:
-  AudioManagerTest.PreloadCommonSounds [host ALSA],
-  RDPServerFrameTest.* [parallel-run flake family]). A test you can't
+  AudioManagerTest.PreloadCommonSounds [host ALSA]). A test you can't
   make deterministic gets redesigned or dropped, not retried in CI.
+  (T35, 2026-08-03: `RDPServerFrameTest.* [parallel-run flake family]`
+  waiver RETIRED — it was covering a real use-after-free in
+  `RDPServer::stop()`, not test flakiness; see `refactor/deferred.md`
+  and `refactor/T35_rdp_stop_uaf.md`. Fixed and verified with 100+
+  parallel-load runs at zero recurrence.)
 - Tests assert behavior, not implementation details, so base-layer
   refactors don't shed tests. Binary protocol layouts (packet structs)
   are the exception — layout IS the behavior there.

@@ -61,9 +61,15 @@ protected:
     RDPServer server_;
 
     void SetUp() override {
-        // Use a high port number to avoid privilege issues
-        server_.initialize(23389);
         server_.setResolution(800, 600);
+        // NOTE: initialize() (with its listener port) is called per-TEST_F
+        // below, not here. GTEST_DISCOVER_TESTS runs each TEST_F as its own
+        // ctest test, i.e. its own OS process invocation of this binary
+        // (`--gtest_filter=...`) -- so tests in this fixture that call
+        // start() can run concurrently under `ctest -j`. A port shared
+        // across those tests via a fixture-wide SetUp() collides
+        // (`listener_->Open` EADDRINUSE) under parallel load; giving each
+        // start()-calling test its own port avoids that.
     }
 
     void TearDown() override {
@@ -74,6 +80,7 @@ protected:
 };
 
 TEST_F(RDPServerLifecycleTest, StartAndStop) {
+    server_.initialize(23389);
     EXPECT_FALSE(server_.isRunning());
 
     EXPECT_TRUE(server_.start());
@@ -84,6 +91,7 @@ TEST_F(RDPServerLifecycleTest, StartAndStop) {
 }
 
 TEST_F(RDPServerLifecycleTest, StopWithoutStart) {
+    server_.initialize(23415);
     // Should not crash or throw
     EXPECT_FALSE(server_.isRunning());
     server_.stop();
@@ -92,13 +100,14 @@ TEST_F(RDPServerLifecycleTest, StopWithoutStart) {
 
 TEST_F(RDPServerLifecycleTest, MultipleStartStop) {
     // Start and stop - note that after stop, the server needs to be re-initialized
+    EXPECT_TRUE(server_.initialize(23416));
     EXPECT_TRUE(server_.start());
     EXPECT_TRUE(server_.isRunning());
     server_.stop();
     EXPECT_FALSE(server_.isRunning());
 
-    // Re-initialize and start again
-    EXPECT_TRUE(server_.initialize(23389));
+    // Re-initialize (same port -- stop() already reset initialized_) and start again
+    EXPECT_TRUE(server_.initialize(23416));
     EXPECT_TRUE(server_.start());
     EXPECT_TRUE(server_.isRunning());
     server_.stop();
@@ -106,6 +115,7 @@ TEST_F(RDPServerLifecycleTest, MultipleStartStop) {
 }
 
 TEST_F(RDPServerLifecycleTest, ClientCountInitiallyZero) {
+    server_.initialize(23417);
     EXPECT_EQ(server_.getClientCount(), 0u);
 
     EXPECT_TRUE(server_.start());
@@ -191,11 +201,15 @@ protected:
     std::vector<uint8_t> testFrame_;
 
     void SetUp() override {
-        server_.initialize(23392);
         server_.setResolution(100, 100);
 
         // Create a test frame (100x100 BGRA)
         testFrame_.resize(100 * 100 * 4, 0xFF);
+
+        // NOTE: initialize() is called per-TEST_F below, not here -- see
+        // the comment in RDPServerLifecycleTest::SetUp for why a port
+        // shared across this fixture's TEST_Fs collides under `ctest -j`
+        // (each TEST_F is its own process via GTEST_DISCOVER_TESTS).
     }
 
     void TearDown() override {
@@ -206,11 +220,13 @@ protected:
 };
 
 TEST_F(RDPServerFrameTest, UpdateFrameBeforeStart) {
+    server_.initialize(23392);
     // Should not crash even if server not started
     server_.updateFrame(testFrame_.data(), 100, 100, 100 * 4);
 }
 
 TEST_F(RDPServerFrameTest, UpdateFrameAfterStart) {
+    server_.initialize(23418);
     EXPECT_TRUE(server_.start());
 
     // Should not crash
@@ -220,6 +236,7 @@ TEST_F(RDPServerFrameTest, UpdateFrameAfterStart) {
 }
 
 TEST_F(RDPServerFrameTest, UpdateFrameMultipleTimes) {
+    server_.initialize(23419);
     EXPECT_TRUE(server_.start());
 
     // Simulate multiple frame updates
@@ -231,6 +248,7 @@ TEST_F(RDPServerFrameTest, UpdateFrameMultipleTimes) {
 }
 
 TEST_F(RDPServerFrameTest, UpdateFrameWithNullData) {
+    server_.initialize(23420);
     // Note: This test checks that null data doesn't crash when server is NOT started
     // (no clients connected means no actual frame processing)
     // The updateFrame function should handle null gracefully
@@ -239,6 +257,7 @@ TEST_F(RDPServerFrameTest, UpdateFrameWithNullData) {
 }
 
 TEST_F(RDPServerFrameTest, UpdateFrameWithZeroDimensions) {
+    server_.initialize(23421);
     // Note: Zero dimensions should be handled gracefully
     server_.updateFrame(testFrame_.data(), 0, 0, 0);
     // If we got here without crashing, the test passes

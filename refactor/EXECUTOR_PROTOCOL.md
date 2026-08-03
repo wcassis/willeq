@@ -67,9 +67,17 @@ references this file; plans carry only unit-specific content.
    there is no fallback.
 2. `ctest --test-dir <slot>/build --output-on-failure` (same GLES2-config
    tree as step 1) — known host exceptions:
-   AudioManagerTest.PreloadCommonSounds,
-   RDPServerFrameTest.UpdateFrameMultipleTimes (intermittent). Baseline:
-   1234/1235 (P27 certification).
+   AudioManagerTest.PreloadCommonSounds. (T35, 2026-08-03: the
+   `RDPServerFrameTest.UpdateFrameMultipleTimes` "intermittent" waiver is
+   RETIRED — it was masking a real use-after-free in `RDPServer::stop()`
+   [`Close()` before `join()`; T03b root-caused it, 12 kernel GP faults at
+   an identical libwinpr3 offset]. Fixed by reordering to join-then-close;
+   see `refactor/T35_rdp_stop_uaf.md` Review for the repro/verification
+   evidence. A second, unrelated, non-crash flake in the same test family
+   [parallel `ctest -j` processes racing on a fixed RDP listener port] was
+   found and fixed in the same unit. A future RDP segfault is a real bug,
+   not a flake — do not re-waive without root-causing it.) Baseline:
+   1234/1235 (P27 certification; pre-T35 count, RDP suite grew since).
 3. `bash <slot>/scripts/build-gles2-x86.sh`
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)

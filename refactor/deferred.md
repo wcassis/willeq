@@ -1598,6 +1598,31 @@ worse than no check, because it produces false confidence.
 (Related, same class, already known: the golden replay test silently
 SKIPS when a worktree lacks its `data/captures` symlink.)
 
+## Golden replay silently SKIPS even with the repo-root `data/captures` symlink present (T35, 2026-08-03) — NOT FIXED
+
+Sharper root cause than the existing note above: the repo-root symlink
+(`<slot>/data/captures` -> `/mnt/projects/fable/captures`) is necessary but
+**not sufficient**. `GTEST_DISCOVER_TESTS(test_session_replay)` sets
+`SessionReplayGolden.MatchesRecordedSessionOrCreatesBaseline`'s ctest
+`WORKING_DIRECTORY` to `<build>/tests` (the executable's own binary dir,
+gtest_discover_tests' default), and `DefaultSessionLogPath()` in
+`tests/test_session_replay.cpp` uses the relative string
+`"data/captures/session.sleq"` — which resolves against `<build>/tests/`,
+not the repo root. Every freshly created `build/` directory (routine —
+`build/` is gitignored) silently re-skips this test until someone also
+creates `<build>/tests/data/captures` -> the same real captures dir.
+Verified: T35 hit this despite the worktree-root symlink already existing,
+worked around it with
+`ln -s /mnt/projects/fable/captures <slot>/build/tests/data/captures`,
+reran, confirmed the test then runs and passes (not just "not skipped").
+
+Not fixed in-tree — outside T35's territory. Two real fixes, either would
+do: (1) set `WORKING_DIRECTORY` for this test to `${CMAKE_SOURCE_DIR}`
+instead of the gtest_discover_tests default, or (2) have the test resolve
+its session-log path relative to a compile-time source-dir macro instead
+of CWD. Whoever owns `tests/CMakeLists.txt` / `test_session_replay.cpp`
+next should pick one — this has now cost two units the same rediscovery.
+
 ## Item links in chat lose 11 characters of the item name (Will spotted it, root-caused 2026-08-03) — NOT FIXED
 
 Will flagged that T34's loot evidence read *"You have looted a kin."* —
