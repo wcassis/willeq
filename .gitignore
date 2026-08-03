@@ -110,3 +110,7 @@ build-gles2/
 # (salvaged 3fb85fc, see refactor/deferred.md "Repo hygiene"). Unignored so
 # unit deliverable CSVs can never silently vanish again -- commit each unit's
 # artifacts explicitly; do not mass-add pre-existing untracked run dirs.
+
+# SQLite transient sidecar files -- never commit these (see below)
+data/*.db-wal
+data/*.db-shm
