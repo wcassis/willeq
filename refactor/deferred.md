@@ -1569,6 +1569,35 @@ it blocks graphical live sessions, which is what Will's "the same
 commands in a real session" ruling ultimately wants. Same family as the
 recorded gfaydark `race=330` FATAL.
 
+## `check_file_sizes.sh` reports a vacuous pass indistinguishably from a real one (T33 finding, 2026-08-03)
+
+`scripts/refactor/check_file_sizes.sh [BASE_REV]` builds its file list
+from `git diff --name-only <base>` (default `fable`). When that diff is
+empty — run from `main` (which *is* `fable`), or from a slot detached at
+`fable`, or after a merge — the loop body never executes and the script
+**prints nothing and exits 0**.
+
+That is correct behaviour in the narrow sense (no changed files, nothing
+to check), and it does work properly for an executor sitting on a task
+branch in its own worktree. The problem is that **a vacuous pass and a
+real pass are byte-identical from the caller's side**: no output, exit 0.
+Every unit's verification bar ends with this step, so "no new FAILs" can
+mean "checked and clean" or "checked nothing", and the report reads the
+same either way.
+
+T33's executor hit this and worked around it with `--files` plus absolute
+paths, which is the right instinct but not something the next unit will
+know to do.
+
+Fix is small: emit a line when zero files are selected (e.g. `no files
+changed vs <base> — nothing to check`), so a no-op run is visible. Worth
+doing under the 2026-08-02 automation policy for the same reason the
+golden-replay silent SKIP matters — a check that can quietly not run is
+worse than no check, because it produces false confidence.
+
+(Related, same class, already known: the golden replay test silently
+SKIPS when a worktree lacks its `data/captures` symlink.)
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
