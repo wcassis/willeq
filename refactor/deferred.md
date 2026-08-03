@@ -1469,6 +1469,37 @@ a script that sets verbosity the documented way silently gets none.
 Small fix; likely a one-line ordering change, but confirm which call
 should win rather than just moving it.
 
+## The live-session test config had THREE stale paths (orchestrator, 2026-08-03) — FIXED, and it probably explains both of T26's "blockers"
+
+`/home/user/projects/claude/casterella.json` — the config CLAUDE.md
+names for graphics integration tests, and the one every recent live
+session used — still pointed at the pre-`/mnt/projects` layout. **All
+three asset paths were dead:**
+
+| key | was (missing) | now |
+|---|---|---|
+| `eq_client_path` | `/home/user/projects/claude/EverQuestP1999` | `/mnt/projects/EverQuestP1999` |
+| `maps_path` | `/home/user/projects/claude/akk-stack/server/maps/base` | `/mnt/projects/akk-stack/server/maps/base` |
+| `navmesh_path` | `…/maps/nav` | `/mnt/projects/akk-stack/server/maps/nav` |
+
+The maps were never missing — 513 files sit at the real location,
+byte-identical to the mirror at `/mnt/projects/maps/base`. Only the
+prefix was stale, left behind by the workspace move.
+
+**This very likely explains both blockers that stopped T29 finishing
+T26's loot verification:** the "missing zone map file degrading
+pathfinding" was this, and the `race=415` missing-model asset crash is a
+strong candidate too — with `eq_client_path` pointing nowhere, model data
+cannot load at all. That should be re-tested rather than assumed.
+
+Fixed in place (backup at `casterella.json.bak-20260803`); the client now
+starts with zero ERROR/FATAL lines where it previously reported an empty
+EQ client path. **Lesson worth generalising: a config outside the repo
+degraded live-session evidence for an unknown number of units without
+ever failing loudly** — asset paths resolving should be checked at the
+start of any live leg, not inferred from the absence of complaints.
+Consider a startup validation that names missing configured paths.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
