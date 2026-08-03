@@ -1,0 +1,8 @@
+== starting willeq (GRAPHICS mode, surfaceless EGL, piped stdin) ==
+willeq pid=932621
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] sent: /say #npctypespawn 351043
+[driver] matched 'Spawned a_rat|Spawned .*351043|FATAL.*race=415|Failed to load race model' after 1s
+[driver] sent: /camp
+[driver] matched 'shutdown complete|Application shutdown' after 1s
+[driver] willeq exit code: 0
