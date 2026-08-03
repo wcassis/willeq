@@ -1598,7 +1598,33 @@ worse than no check, because it produces false confidence.
 (Related, same class, already known: the golden replay test silently
 SKIPS when a worktree lacks its `data/captures` symlink.)
 
-## Golden replay silently SKIPS even with the repo-root `data/captures` symlink present (T35, 2026-08-03) — NOT FIXED
+## Golden replay silently SKIPS even with the repo-root `data/captures` symlink present (T35, 2026-08-03) — **FIXED by T36 (2026-08-03)**
+
+**CLOSED.** `tests/CMakeLists.txt` now defines `WILLEQ_REPO_ROOT` for every
+test target in that directory and below (one `ADD_COMPILE_DEFINITIONS`
+line), and the four capture-path helpers resolve their defaults against it
+instead of the process CWD: `test_session_replay.cpp`,
+`pcap_test_utils.h`, `zone_stream_test_utils.h`,
+`test_login_world_flow.cpp`. Env overrides (`WILLEQ_SESSION_LOG`,
+`WILLEQ_PCAP`) still take precedence.
+
+The pattern was not invented here — `test_zone_lines.cpp` already used
+exactly this (`RepoPath()` + a per-target `WILLEQ_REPO_ROOT`, with the
+comment "to stay independent of ctest's working directory"). It had simply
+never been generalised beyond that one target.
+
+**Measured, in a genuinely fresh build dir with only the documented
+repo-root symlink**: 57 capture-dependent tests (golden replay + every
+pcap/daybreak/login-world-capture suite) run and pass, where before every
+one of them silently skipped. Isolated properly — with the symlink
+correct, reverting *only* the source change still skipped all of them, so
+the CWD resolution is what was at fault, not a missing capture. Full suite
+on that fresh tree: 1818/1819, ALSA only.
+
+**Remaining skips are legitimate** (graphics integration needing a
+display, one sound buffer, one PFS archive fixture) — not path failures.
+
+Original report follows for the record:
 
 Sharper root cause than the existing note above: the repo-root symlink
 (`<slot>/data/captures` -> `/mnt/projects/fable/captures`) is necessary but

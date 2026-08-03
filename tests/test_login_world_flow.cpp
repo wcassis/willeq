@@ -104,11 +104,17 @@ std::vector<uint8_t> BuildServerListResponsePayload(const std::string& address,
 
 namespace {
 
+#ifndef WILLEQ_REPO_ROOT
+#define WILLEQ_REPO_ROOT "."
+#endif
+
 std::string DefaultSessionLogPath() {
     if (const char* env = std::getenv("WILLEQ_SESSION_LOG")) {
         return env;
     }
-    return "data/captures/session.sleq";
+    // T36: repo-root-relative -- see tests/CMakeLists.txt's WILLEQ_REPO_ROOT
+    // note for why a CWD-relative default silently skipped under ctest.
+    return std::string(WILLEQ_REPO_ROOT) + "/data/captures/session.sleq";
 }
 
 } // namespace

@@ -30,12 +30,19 @@ namespace Test {
  * conventions). No capture ships in the repo, so tests that need one must
  * check for its existence and GTEST_SKIP() from the TEST body directly.
  */
+#ifndef WILLEQ_REPO_ROOT
+#define WILLEQ_REPO_ROOT "."
+#endif
+
 inline std::string getTestPcapPath() {
     const char* env = std::getenv("WILLEQ_PCAP");
     if (env && *env) {
         return env;
     }
-    return "data/captures/session.pcap";
+    // T36: repo-root-relative, not CWD-relative -- ctest runs these from
+    // <build>/tests, so a CWD-relative default made every pcap test skip
+    // in a fresh build dir even with the capture present.
+    return std::string(WILLEQ_REPO_ROOT) + "/data/captures/session.pcap";
 }
 
 // PCAP file format structures
