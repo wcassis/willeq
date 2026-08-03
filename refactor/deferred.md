@@ -1598,6 +1598,53 @@ worse than no check, because it produces false confidence.
 (Related, same class, already known: the golden replay test silently
 SKIPS when a worktree lacks its `data/captures` symlink.)
 
+## Item links in chat lose 11 characters of the item name (Will spotted it, root-caused 2026-08-03) — NOT FIXED
+
+Will flagged that T34's loot evidence read *"You have looted a kin."* —
+`"a kin"` is not a plausible item name. It is not: the real item is
+**"Scaled Curskin"** (id 12654, confirmed against the live DB and the
+client's own `TitaniumItemParser` output in the same transcript).
+
+**Root cause — `src/client/formatted_message.cpp`, the link-metadata
+size heuristic.** Item links arrive as `0x12 <hex metadata> <item name>
+0x12`. The parser guesses the metadata length from the *total* link
+length:
+
+```cpp
+if      (link_len > LINK_METADATA_SIZE_LONG /*56*/) { name_start_offset = 56; }
+else if (link_len > LINK_METADATA_SIZE_SHORT/*45*/) { name_start_offset = 45; }
+```
+
+Titanium sends **45**-char metadata. So for a 14-character name,
+`link_len = 45 + 14 = 59`, which is `> 56` — the parser takes the 56
+branch and starts the name 11 characters too late:
+`"Scaled Curskin"[11:]` = `"kin"`. Exactly the observed output.
+
+**Trigger condition: any item name of 12+ characters** (45 + 12 = 57 >
+56). Shorter names land under the threshold and render correctly, which
+is why nobody noticed — and why the tests miss it: the longest item name
+in `tests/test_formatted_message.cpp` is `"Epsilon"` (7 chars), so every
+existing case stays in the safe branch.
+
+**This is user-visible in normal play**, not just in audit transcripts:
+every loot message, and every item another player links in chat, mangles
+any name of 12+ characters. Most EQ item names are longer than that.
+
+**Likely correct fix**: this client is Titanium-only ("All opcodes are
+hard-coded for Titanium specifically" — CLAUDE.md), so the 56-char
+variant belongs to later clients (SoF+) and arguably should not be in
+the decision at all — use 45 unconditionally, or determine the boundary
+structurally (metadata is uppercase hex) rather than by guessing from
+total length. Add a regression case with a long item name; that alone
+would have caught this.
+
+**Correction to the record**: T33's and T34's Reviews both call this
+"cosmetic" and "pre-existing". Pre-existing is right; cosmetic
+undersells it — it corrupts displayed item names for the majority of
+real items. Neither unit's loot verdict depends on it: both proved the
+loot itself via `LootItem ACK` and the item landing in an inventory
+slot, not via the chat string.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
