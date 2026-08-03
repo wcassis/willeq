@@ -426,6 +426,61 @@ TEST_F(CommandProcessorTest, ArgumentCase_PreservedThroughDispatch) {
 }
 
 // ===================================================================
+// /loot (T34) -- must reach ActionDispatcher::lootCorpse() with the
+// exact corpse id, the same entry point the renderer's shift+click
+// overlay callback drives via InputActionBridge::processLootRequests.
+// See refactor/T34_shiftclick_loot_verification.md.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, Loot_ValidId_DispatchesLootCorpseWithExactId) {
+    auto result = processor->processCommand("/loot 176");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("lootCorpse(176)"));
+}
+
+TEST_F(CommandProcessorTest, Loot_MissingId_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/loot");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_MalformedId_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/loot notanumber");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_TrailingGarbageAfterNumber_FailsCleanly) {
+    // "176abc" must not silently truncate-parse to 176 -- either the whole
+    // token is a valid id or the command fails, matching the id-only
+    // contract in the plan (no partial/fuzzy corpse matching).
+    auto result = processor->processCommand("/loot 176abc");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_NegativeId_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/loot -1");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_OutOfRangeId_FailsCleanlyWithoutDispatching) {
+    // corpseId is uint16_t; 70000 overflows it.
+    auto result = processor->processCommand("/loot 70000");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_ZeroIsAValidCorpseId) {
+    // 0 is a legitimate spawn id in this codebase (see T33's corpse-id
+    // matching); the parser must not treat it as "missing".
+    auto result = processor->processCommand("/loot 0");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("lootCorpse(0)"));
+}
+
+// ===================================================================
 // Output renderer integration (echo + timestamp toggle)
 // ===================================================================
 
