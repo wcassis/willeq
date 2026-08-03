@@ -58,6 +58,7 @@ public:
     std::optional<ChatMessage> consumeChatMessage() override { return std::nullopt; }
     std::optional<MoveCommand> consumeMoveCommand() override { return std::nullopt; }
     std::optional<std::string> consumeRawCommand() override { return std::nullopt; }
+    std::optional<std::string> peekRawCommand() const override { return std::nullopt; }
 
     /**
      * Inject a target request (called by IrrlichtRenderer when entity is clicked).

@@ -710,6 +710,23 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_entity_viewer_regression)
 ENDIF()
 
+# T30: exit-matrix pin for "headless + piped stdin + no server" -- the case
+# P36's "all clean" exit matrix never covered (see
+# refactor/T30_headless_shutdown_fix.md). Deliberately lightweight, same
+# shellout-via-popen() pattern as test_entity_viewer_regression above:
+# spawns the actual willeq binary (unconditionally built regardless of
+# EQT_GRAPHICS -- unlike the entity viewer, this needs no graphics assets)
+# and asserts on its stdout/exit code instead of re-linking Application
+# into another test binary.
+ADD_EXECUTABLE(test_headless_shutdown
+    test_headless_shutdown.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_headless_shutdown PRIVATE
+    WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+TARGET_LINK_LIBRARIES(test_headless_shutdown GTest::gtest_main)
+ADD_DEPENDENCIES(test_headless_shutdown willeq)
+GTEST_DISCOVER_TESTS(test_headless_shutdown)
+
 # Test door loading (unit tests + graphics tests)
 # Unit tests run without display, graphics tests need DISPLAY=:99
 IF(EQT_GRAPHICS)

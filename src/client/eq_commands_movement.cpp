@@ -497,24 +497,31 @@ void EverQuest::RegisterMovementCommands()
 
 	Command quit;
 	quit.name = "quit";
-	quit.aliases = {"exit"};
+	// Will's ruling 2026-08-03: "/q is a shortcut for /quit and should have
+	// the same functionality: quit the application immediately without
+	// camping." Registered as ALIASES of one command rather than as separate
+	// Command objects with duplicate handlers, so the two can never drift
+	// apart (the registry maps every alias to this primary name).
+	quit.aliases = {"exit", "q"};
 	quit.usage = "/quit";
-	quit.description = "Exit the game";
+	quit.description = "Exit the game immediately (aliases: /exit, /q)";
 	quit.category = "Utility";
 	quit.handler = [this](const std::string& args) {
-		AddChatSystemMessage("Use /camp to logout safely, or /q to exit immediately.");
-	};
-	m_command_registry->registerCommand(quit);
-
-	Command q;
-	q.name = "q";
-	q.usage = "/q";
-	q.description = "Exit the game immediately";
-	q.category = "Utility";
-	q.handler = [this](const std::string& args) {
+		// T30: previously advisory-only ("use /camp or /q instead") --
+		// never actually quit, connected or not. That made "/quit" (the
+		// name automation and the exit matrix's own repro reach for) a
+		// no-op while CONNECTED, on top of the separate pre-connection
+		// gating bug (see Application::processPreConnectionLifecycleCommands()
+		// in application.cpp for that half). /camp remains the distinct,
+		// correct choice for a graceful in-game logout (sits down, notifies
+		// the server, waits for confirmation before disconnecting); /quit,
+		// /exit and /q are an immediate local exit with no server-side
+		// logout courtesy -- which is also what the real Titanium client
+		// does, and what refactor/T30_headless_shutdown_fix.md's exit-matrix
+		// verification expects of a command literally named "quit".
 		RequestQuit();  // D20c4: Application checks quit flag
 	};
-	m_command_registry->registerCommand(q);
+	m_command_registry->registerCommand(quit);
 
 	Command camp;
 	camp.name = "camp";
