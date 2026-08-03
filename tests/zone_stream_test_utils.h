@@ -21,11 +21,17 @@
 
 namespace zonetest {
 
+#ifndef WILLEQ_REPO_ROOT
+#define WILLEQ_REPO_ROOT "."
+#endif
+
 inline std::string DefaultSessionLogPath() {
     if (const char* env = std::getenv("WILLEQ_SESSION_LOG")) {
         return env;
     }
-    return "data/captures/session.sleq";
+    // T36: repo-root-relative -- see tests/CMakeLists.txt's WILLEQ_REPO_ROOT
+    // note for why a CWD-relative default silently skipped under ctest.
+    return std::string(WILLEQ_REPO_ROOT) + "/data/captures/session.sleq";
 }
 
 // Builds the payload bytes (packet minus the 2-byte opcode prefix) for a

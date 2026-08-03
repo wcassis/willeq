@@ -3,6 +3,25 @@
 # Include Google Test
 INCLUDE(GoogleTest)
 
+# T36: repo root as a compile-time define, for EVERY test target in this
+# directory and below.
+#
+# gtest_discover_tests() sets each test's ctest WORKING_DIRECTORY to the
+# executable's own binary dir (<build>/tests), NOT the repo root. Any test
+# that resolved a data path relatively therefore looked for it under
+# <build>/tests/ and silently GTEST_SKIP()'d when it wasn't there -- which
+# is every freshly created build/ dir, since build/ is gitignored. That hid
+# the golden session replay, the primary regression oracle for every
+# source-touching unit, behind a "Skipped" line that reads exactly like the
+# legitimate "no capture recorded" skip.
+#
+# The pattern itself already existed (test_zone_lines.cpp's RepoPath(),
+# added with its own per-target define and the comment "to stay independent
+# of ctest's working directory") -- it just was never generalised. This
+# makes it available everywhere so the next test that needs a repo file
+# inherits it instead of rediscovering the trap.
+ADD_COMPILE_DEFINITIONS(WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+
 # Common include directories for tests
 INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/include

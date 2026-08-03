@@ -233,11 +233,20 @@ TEST(SessionReplaySynthetic, DrivesGameStateThroughPublicAccessors) {
 
 namespace {
 
+#ifndef WILLEQ_REPO_ROOT
+#define WILLEQ_REPO_ROOT "."
+#endif
+
 std::string DefaultSessionLogPath() {
     if (const char* env = std::getenv("WILLEQ_SESSION_LOG")) {
         return env;
     }
-    return "data/captures/session.sleq";
+    // T36: resolve against the repo root, not the process CWD. ctest runs
+    // this from <build>/tests (gtest_discover_tests' default WORKING_
+    // DIRECTORY), where "data/captures/..." does not exist -- so the golden
+    // replay silently skipped in every fresh build dir, indistinguishable
+    // from the legitimate "no capture recorded" skip.
+    return std::string(WILLEQ_REPO_ROOT) + "/data/captures/session.sleq";
 }
 
 std::string GoldenPathFor(const std::string& sessionLogPath) {
