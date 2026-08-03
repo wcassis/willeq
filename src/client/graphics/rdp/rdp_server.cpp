@@ -329,14 +329,23 @@ void RDPServer::stop() {
 
     running_.store(false);
 
-    // Close the listener
-    if (listener_) {
-        listener_->Close(listener_);
-    }
-
-    // Wait for listener thread
+    // Wait for listener thread FIRST, before touching the listener.
+    // listenerThread() is potentially sitting in WaitForMultipleObjects on
+    // handles it already fetched via listener_->GetEventHandles(); calling
+    // Close() first can invalidate those handles out from under it (T03b:
+    // use-after-free, 12 kernel GP faults at an identical libwinpr3 offset).
+    // The wait has a 100ms timeout and the loop rechecks running_ both
+    // before the wait and immediately after, so it exits on its own within
+    // ~100ms of running_ going false -- no Close()-driven wakeup needed, no
+    // deadlock risk.
     if (listenerThread_.joinable()) {
         listenerThread_.join();
+    }
+
+    // Now safe to close the listener -- the listener thread is no longer
+    // touching it.
+    if (listener_) {
+        listener_->Close(listener_);
     }
 
     // Wait for all peer threads
