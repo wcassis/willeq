@@ -1886,6 +1886,44 @@ Worth a small unit to expose vendor buy/sell through the command channel
 the way T34 did for `/loot`, and worth asking what else in the intent
 list has no producer.
 
+## `GameTick()` never runs headless — spell cooldowns don't tick, buffs never expire (T44 finding, 2026-08-04) — NOT FIXED
+
+The **runtime** analogue of the compile-time guard family T43 swept, and
+it was missed precisely because T43 audited `#ifdef`s.
+
+`EverQuest::GameTick()` is gated on graphics **twice**:
+
+1. `Application::updateGameState()` — `if (m_eqClient && m_graphicsInitialized) GameTick(...)`;
+2. inside `GameTick()` itself — `#ifdef EQT_HAS_GRAPHICS { if (!m_graphics_initialized) return; }`.
+
+`GameTick()` is the only caller of `SpellManager::update()` and
+`BuffManager::update()` (orchestrator confirmed: the sole call site is
+`eq_bridge.cpp:234`, inside `GameTick`). Its own comment describes that
+work as "cooldowns, memorization progress, cast timeouts" and "buff
+durations, expirations".
+
+**So in headless: spell cooldowns never tick, memorization never
+progresses, cast timeouts never fire, and buffs never expire.** These are
+game-logic timers with no renderer dependency whatsoever.
+
+Not a regression — it predates the sweep and affected the old
+`syncSpellState()` poll equally. And T26's plan already noted in passing
+that "`GameTick()` is graphics-gated and would never run headless" (which
+is why T26 wired the loot machine elsewhere), but nobody established the
+*consequence* until T44 tried to observe a gem leaving cooldown in a
+headless session and couldn't.
+
+**Why it matters:** headless is the automation and testing mode. Anything
+time-dependent in spell or buff behaviour is currently untestable there,
+and any future unit that assumes otherwise will get a silent wrong
+answer, exactly as T44 nearly did.
+
+Fix is presumably small (the two gates), but it is **behaviour-changing
+for headless** — timers that have never run would start running — so it
+wants its own unit with a real before/after rather than being folded into
+something else. Worth checking whether anything else `GameTick()` calls
+has a genuine graphics dependency before un-gating wholesale.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
