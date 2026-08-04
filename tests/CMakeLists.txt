@@ -304,6 +304,18 @@ ADD_EXECUTABLE(test_input_action_bridge
 TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_input_action_bridge)
 
+# T40: GameStateSyncBridge tests -- the decorator that feeds
+# Application::m_gameState's PetState from bridge events instead of the
+# deleted syncPetState() poll. Driven through a local RecordingBridge fake
+# standing in for IrrlichtBridge/ConsoleBridge, so no graphics deps needed.
+ADD_EXECUTABLE(test_game_state_sync_bridge
+    test_game_state_sync_bridge.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/bridge/game_state_sync_bridge.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_game_state_sync_bridge)
+
 # Test combat enums and structures
 ADD_EXECUTABLE(test_combat
     test_combat.cpp

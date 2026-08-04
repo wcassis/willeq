@@ -21,7 +21,7 @@
 // Forward declarations
 class EverQuest;
 namespace EQT { namespace Graphics { class IrrlichtRenderer; class ConstrainedTextureCache; struct BspTree; } }
-namespace eqt { namespace bridge { class IrrlichtBridge; class ConsoleBridge; class GameStateBridge; } }
+namespace eqt { namespace bridge { class IrrlichtBridge; class ConsoleBridge; class GameStateBridge; class GameStateSyncBridge; } }
 
 namespace eqt {
 
@@ -332,11 +332,6 @@ private:
     void syncGameStateFromClient();
 
     /**
-     * Sync pet state from EverQuest client.
-     */
-    void syncPetState();
-
-    /**
      * Sync player NPC interaction state (vendor, banker, trainer, looting).
      */
     void syncNPCInteractionState();
@@ -485,6 +480,12 @@ private:
     std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;
 #endif
     std::unique_ptr<eqt::bridge::ConsoleBridge> m_consoleBridge;  // D25: headless mode
+    // T40: decorator wrapping whichever mode bridge above is active. Feeds
+    // pet state into m_gameState from bridge events, then delegates to the
+    // wrapped bridge unchanged. This -- not m_irrlichtBridge/m_consoleBridge
+    // directly -- is what m_bridge points at, and what both EverQuest and
+    // the renderer are wired to, so events/intents flow through one queue.
+    std::unique_ptr<eqt::bridge::GameStateSyncBridge> m_stateSyncBridge;
     eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
 #ifdef EQT_HAS_GRAPHICS
@@ -524,10 +525,8 @@ private:
     // ========== Sync State Tracking ==========
     // Used to detect changes and fire events only when state actually changes
 
-    // Pet state tracking
-    uint16_t m_lastPetSpawnId = 0;
-    uint8_t m_lastPetHpPercent = 100;
-    uint8_t m_lastPetManaPercent = 100;
+    // Pet state tracking removed (T40): pet state is now fed by
+    // GameStateSyncBridge from bridge events, not polled here.
 
     // NPC interaction tracking
     uint16_t m_lastVendorNpcId = 0;

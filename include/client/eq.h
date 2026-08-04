@@ -887,13 +887,18 @@ public:
 	void SendRaidInvite(const std::string& target_name);
 
 	// Pet queries
+	// T40: GetPetHpPercent()/GetPetButtonState() removed -- their only
+	// caller was Application::syncPetState(), which is now replaced by
+	// event-fed pet state via GameStateSyncBridge (PetStatsChanged /
+	// PetButtonStateChanged, both published in eq_bridge.cpp /
+	// eq_entities.cpp). GetPetSpawnId()/GetPetName()/GetPetLevel()/
+	// GetPetEntity() stay -- they still have live callers outside the
+	// deleted poll (eq_action_handler.cpp, spell_manager.cpp, eq.cpp).
 	bool HasPet() const { return m_pet_spawn_id != 0; }
 	uint16_t GetPetSpawnId() const { return m_pet_spawn_id; }
 	const Entity* GetPetEntity() const;
-	uint8_t GetPetHpPercent() const;
 	std::string GetPetName() const;
 	uint8_t GetPetLevel() const;
-	bool GetPetButtonState(EQT::PetButton button) const;
 
 	// Pet commands
 	void SendPetCommand(EQT::PetCommand command, uint16_t target_id = 0);
