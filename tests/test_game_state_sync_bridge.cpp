@@ -146,26 +146,68 @@ TEST_F(GameStateSyncBridgeTest, UnhandledEventDelegatesUntouchedAndLeavesPetStat
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::PlayerMoved);
 }
 
-// T41: InventorySlotChanged is deliberately NOT handled here. Scoping found
-// real production mutation paths -- vendor buy (ZoneProcessShopPlayerBuy,
-// eq_merchant.cpp: item placement happens via the generic OP_ItemPacket
-// path, not a slot-scoped publish), vendor sell (ZoneProcessShopPlayerSell,
-// eq_merchant.cpp: removes/decrements m_inventory_manager directly with NO
-// InventorySlotChanged published at all), and bank-window population (the
-// same generic OP_ItemPacket path, additionally #ifdef EQT_HAS_GRAPHICS-gated
-// in eq.cpp's HC_OP_ItemPacket case) -- that mutate inventory slots without
-// ever publishing InventorySlotChanged. syncInventoryState()'s poll is blind
-// to *when* those mutations happened but still correct because it re-reads
-// m_inventory_manager directly every tick; event-driven state fed only by
-// InventorySlotChanged + the snapshot would silently miss all three. This is
-// the STOP condition the plan named verbatim ("bank slots... merchant
-// transactions that mutate slots without publishing"). syncInventoryState()
-// was therefore NOT deleted -- see refactor/T41_inventory_state_via_bridge.md
-// Review. This test pins the current (safe) default: unhandled, delegates
-// through untouched, same as any other event this decorator doesn't
-// recognize -- so a future attempt to add the case without first closing
-// those three gaps fails a test instead of silently shipping wrong state.
-TEST_F(GameStateSyncBridgeTest, InventorySlotChangedNotYetHandledDelegatesUntouched) {
+// T41 found real production mutation paths -- vendor buy, vendor sell, and
+// bank-window population -- that mutated inventory slots without ever
+// publishing InventorySlotChanged, and STOPped rather than convert on top of
+// that gap (see refactor/T41_inventory_state_via_bridge.md Review). T42
+// closed all three (eq.cpp's generic ItemPacket fallback and
+// eq_merchant.cpp's vendor-sell mutation now publish; see
+// refactor/T42_inventory_publishes_and_convert.md Review), so this decorator
+// now handles InventorySlotChanged for real, replacing
+// Application::syncInventoryState()'s poll of InventoryManager occupancy
+// into GameState::inventory().
+TEST_F(GameStateSyncBridgeTest, InventorySlotChangedEquipmentSlotSetsOccupancy) {
+    InventorySlotChangedData data;
+    data.slotId = 2;  // equipment slot (0-21)
+    data.hasItem = true;
+    data.itemId = 1001;
+    data.itemName = "Test Item";
+    data.iconId = 500;
+    data.quantity = 1;
+
+    bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
+
+    EXPECT_TRUE(state->inventory().hasEquipment(2));
+
+    data.hasItem = false;
+    data.itemId = 0;
+    bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
+    EXPECT_FALSE(state->inventory().hasEquipment(2));
+}
+
+TEST_F(GameStateSyncBridgeTest, InventorySlotChangedGeneralSlotSetsOccupancy) {
+    InventorySlotChangedData data;
+    data.slotId = 23;  // general slot 1 (absolute 22-29)
+    data.hasItem = true;
+    data.itemId = 2002;
+    data.itemName = "Bag Item";
+    data.iconId = 501;
+    data.quantity = 5;
+
+    bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
+
+    // General slot occupancy is indexed relative to GENERAL_BEGIN (22).
+    EXPECT_TRUE(state->inventory().hasGeneralItem(1));
+    EXPECT_FALSE(state->inventory().hasGeneralItem(0));
+}
+
+TEST_F(GameStateSyncBridgeTest, InventorySlotChangedBankSlotSetsOccupancy) {
+    InventorySlotChangedData data;
+    data.slotId = 2001;  // bank slot 1 (absolute 2000-2015)
+    data.hasItem = true;
+    data.itemId = 3003;
+    data.itemName = "Banked Item";
+    data.iconId = 502;
+    data.quantity = 1;
+
+    bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
+
+    // Bank slot occupancy is indexed relative to BANK_BEGIN (2000).
+    EXPECT_TRUE(state->inventory().hasBankItem(1));
+    EXPECT_FALSE(state->inventory().hasBankItem(0));
+}
+
+TEST_F(GameStateSyncBridgeTest, InventorySlotChangedStillDelegatesToWrappedBridge) {
     InventorySlotChangedData data;
     data.slotId = 22;
     data.hasItem = true;
@@ -176,8 +218,9 @@ TEST_F(GameStateSyncBridgeTest, InventorySlotChangedNotYetHandledDelegatesUntouc
 
     bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
 
+    // Same as pet events: the wrapped bridge (IrrlichtBridge/ConsoleBridge)
+    // still gets the raw event -- this decorator only intercepts, it never
+    // swallows.
     ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
-    // Confirms the decorator did not attempt to touch inventory state at
-    // all -- there is no GameState::inventory() call in this path today.
 }

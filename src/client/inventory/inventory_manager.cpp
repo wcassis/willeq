@@ -1817,13 +1817,13 @@ void InventoryManager::processCharInventory(const EQ::Net::Packet& packet) {
     // Note: Items at CURSOR_SLOT are automatically handled by setItem() which adds to cursorQueue_
 }
 
-void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
+int16_t InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
     // OP_ItemPacket has a 4-byte header (ItemPacketType) followed by serialized item
     LOG_DEBUG(MOD_UI, "InventoryManager Received ItemPacket, size: {}", packet.Length());
 
     if (packet.Length() < 5) {
         LOG_DEBUG(MOD_UI, "ItemPacket too short");
-        return;
+        return SLOT_INVALID;
     }
 
     // First 4 bytes are the packet type
@@ -1840,7 +1840,7 @@ void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
 
     if (itemLen == 0) {
         LOG_DEBUG(MOD_UI, "ItemPacket has no item data");
-        return;
+        return SLOT_INVALID;
     }
 
     int16_t slotId = SLOT_INVALID;
@@ -1849,8 +1849,10 @@ void InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
     if (item && slotId != SLOT_INVALID) {
         LOG_DEBUG(MOD_UI, "InventoryManager Parsed item from ItemPacket: {} in slot {} (type: {})", item->name, slotId, packetType);
         setItem(slotId, std::move(item));
+        return slotId;
     } else {
         LOG_DEBUG(MOD_UI, "Failed to parse item from ItemPacket");
+        return SLOT_INVALID;
     }
 }
 

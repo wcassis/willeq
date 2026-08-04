@@ -772,11 +772,34 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	// This is called when an item is being looted from a corpse to inventory
 	// The item packet format is the same as ZoneProcessLootItemToUI
 
+	// T42: processItemPacket() is the same choke point the generic eq.cpp
+	// ItemPacket fallback uses for vendor-buy/bank-window placement; publish
+	// InventorySlotChanged here too (not one of T41's three named paths, but
+	// the same gap -- a looted item landing in inventory never told the UI
+	// either) using its returned slot rather than duplicating parse logic.
+	auto publishLootedSlot = [this](int16_t slot) {
+		if (!m_bridge || slot == eqt::inventory::SLOT_INVALID) {
+			return;
+		}
+		eqt::state::InventorySlotChangedData data;
+		data.slotId = slot;
+		const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
+		data.hasItem = (item != nullptr && item->itemId != 0);
+		data.itemId = data.hasItem ? item->itemId : 0;
+		data.itemName = data.hasItem ? item->name : "";
+		data.iconId = data.hasItem ? item->icon : 0;
+		data.quantity = data.hasItem ? item->quantity : 0;
+		LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (loot-to-inventory): slot={} hasItem={} itemId={} name='{}' qty={}",
+			data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+	};
+
 	if (m_pending_loot_slots.empty()) {
 		// No pending loot - shouldn't happen, but handle gracefully
 		LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: No pending loot slots! Treating as inventory item.");
 		if (m_inventory_manager) {
-			m_inventory_manager->processItemPacket(p);
+			publishLootedSlot(m_inventory_manager->processItemPacket(p));
 		}
 		return;
 	}
@@ -791,7 +814,7 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	// Add item to player's inventory
 	if (m_inventory_manager) {
 		LOG_TRACE(MOD_INVENTORY, "Adding item to inventory via processItemPacket");
-		m_inventory_manager->processItemPacket(p);
+		publishLootedSlot(m_inventory_manager->processItemPacket(p));
 	}
 
 	// Remove from game-side loot tracking and publish event
@@ -994,6 +1017,27 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 				} else {
 					m_inventory_manager->removeItem(invSlot);
 					LOG_DEBUG(MOD_INVENTORY, "Removed item from slot {}", invSlot);
+				}
+
+				// Publish InventorySlotChanged (T42: vendor sell was a direct
+				// mutation -- removeItem()/quantity decrement above -- with no
+				// publish anywhere after it; the UI never learned the slot
+				// changed). Re-read the slot post-mutation so a partial-stack
+				// sell reports the remaining quantity and a full sell reports
+				// empty, in one place regardless of which branch ran above.
+				if (m_bridge) {
+					eqt::state::InventorySlotChangedData data;
+					data.slotId = invSlot;
+					const auto* postItem = m_inventory_manager->getItem(invSlot);
+					data.hasItem = (postItem != nullptr && postItem->itemId != 0);
+					data.itemId = data.hasItem ? postItem->itemId : 0;
+					data.itemName = data.hasItem ? postItem->name : "";
+					data.iconId = data.hasItem ? postItem->icon : 0;
+					data.quantity = data.hasItem ? postItem->quantity : 0;
+					LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (vendor sell): slot={} hasItem={} itemId={} name='{}' qty={}",
+						data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
+					m_bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 				}
 			}
 		}

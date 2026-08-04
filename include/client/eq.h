@@ -1918,9 +1918,6 @@ public:
 	// Save entity data to JSON file for debugging
 	void SaveEntityDataToFile(const std::string& filename);
 
-	// Inventory access
-	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
-
 	// Loot window methods (Player mode with graphics)
 	void RequestLootCorpse(uint16_t corpseId);
 	void LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot = false);

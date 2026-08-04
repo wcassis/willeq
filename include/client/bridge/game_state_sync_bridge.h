@@ -30,8 +30,11 @@ namespace bridge {
  * Keep the switch in the .cpp NARROW: only events a sync*State() replacement
  * has verified as fully reconstructible should be handled here. Every event
  * this class doesn't recognize passes through to the wrapped bridge
- * untouched. This unit (T40) handles pet events only:
- * PetCreated, PetRemoved, PetStatsChanged, PetButtonStateChanged.
+ * untouched. T40 handles pet events: PetCreated, PetRemoved,
+ * PetStatsChanged, PetButtonStateChanged. T42 added InventorySlotChanged,
+ * replacing Application::syncInventoryState() -- reconstructible only once
+ * vendor buy/sell and bank-window population were made to publish it (see
+ * refactor/T42_inventory_publishes_and_convert.md).
  */
 class GameStateSyncBridge : public GameStateBridge {
 public:
