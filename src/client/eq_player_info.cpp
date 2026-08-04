@@ -520,10 +520,9 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 		m_combat_manager->UpdateCombatStats(stats);
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Update inventory window stats when player mana/endurance changes
+	// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note in
+	// eq_entities.cpp's HP-change UpdateInventoryStats() call site.
 	UpdateInventoryStats();
-#endif
 
 	// Publish PlayerStatsChanged when mana/endurance changes
 	if (m_bridge) {

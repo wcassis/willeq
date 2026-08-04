@@ -726,15 +726,21 @@ void Application::gameThreadLoop() {
                 m_fullyConnected = true;
                 if (m_gameState) m_gameState->world().setZoneConnected(true);
 
-#ifdef EQT_HAS_GRAPHICS
-                if (m_config.graphicsEnabled && m_graphicsInitialized && m_eqClient) {
+                // T43: was #ifdef EQT_HAS_GRAPHICS && m_graphicsInitialized.
+                // LoadHotbarConfig()/GetHotbarModel() are both plain game-state
+                // (P28 declassified them in eq.h -- HotbarModel has no renderer
+                // dependency, publishAllSlots() just pushes bridge events), so a
+                // headless build never loaded saved hotbar bindings or published
+                // them on zone connect. Same declassification family as the
+                // other T43 fixes -- gate removed, matches the unconditional
+                // eq.h declaration.
+                if (m_eqClient) {
                     m_eqClient->LoadHotbarConfig();
                     // U07b: HotbarModel publishes its own events
                     if (m_eqClient->GetHotbarModel()) {
                         m_eqClient->GetHotbarModel()->publishAllSlots();
                     }
                 }
-#endif
             }
 
             if (!isConnected && m_fullyConnected) {

@@ -300,15 +300,15 @@ void EverQuest::RegisterSpellCommands()
 	bank.description = "Toggle bank window";
 	bank.category = "Utility";
 	bank.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
+		// T43: was #ifdef EQT_HAS_GRAPHICS. IsBankWindowOpen/OpenBankWindow/
+		// CloseBankWindow (eq.h/eq_merchant.cpp) are plain game state + bridge
+		// events, already unguarded at their own definitions since P28 -- only
+		// this command handler still refused to call them headless.
 		if (IsBankWindowOpen()) {
 			CloseBankWindow();
 		} else {
 			OpenBankWindow();
 		}
-#else
-		AddChatSystemMessage("Bank window requires graphics mode");
-#endif
 	};
 	m_command_registry->registerCommand(bank);
 
@@ -318,7 +318,10 @@ void EverQuest::RegisterSpellCommands()
 	train.description = "Open trainer window with current target";
 	train.category = "Skills";
 	train.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
+		// T43: was #ifdef EQT_HAS_GRAPHICS. RequestTrainerWindow()
+		// (eq_merchant.cpp) just queues HC_OP_GMTraining -- plain network
+		// logic, no renderer dependency -- only this command handler's own
+		// wrapping refused to call it headless.
 		// Check if we have a target
 		uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
 		if (target_id == 0) {
@@ -352,9 +355,6 @@ void EverQuest::RegisterSpellCommands()
 
 		// Request trainer window from server
 		RequestTrainerWindow(target_id);
-#else
-		AddChatSystemMessage("Training requires graphics mode.");
-#endif
 	};
 	m_command_registry->registerCommand(train);
 
