@@ -1,0 +1,12 @@
+== starting willeq (GRAPHICS mode, surfaceless EGL, piped stdin) ==
+willeq pid=1104776
+[driver] matched 'Zone connection complete! Player position confirmed' after 6s
+[driver] sent: /say #npctypespawn 351043
+[driver] matched 'Spawned a_rat|Spawned .*351043' after 1s
+[driver] matched 'SEQ: Step 8 complete|Sequential: SKIPPED|hideLoadingScreen|Graphics.*complete|loadZoneGraphicsOnThread: complete' after 1s
+[driver] sent: /who
+[driver] sent: /say hello after race415 skip
+[driver] sent: /camp
+[driver] TIMEOUT waiting for 'shutdown complete|Application shutdown' after 15s
+[driver] sent: /quit
+[driver] willeq exit code: 0

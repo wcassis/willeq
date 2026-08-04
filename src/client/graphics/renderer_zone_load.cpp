@@ -83,8 +83,16 @@ struct IrrlichtRenderer::ZoneLoadContext {
 
     uint16_t spawnId = 0;
     const EntityVisual* vis = nullptr;
-    bool entitySuccess = false;       // set by 8a, consumed by 8b
+    bool entitySuccess = false;       // set by 8a, consumed by 8b-8e guards
     size_t variantTextureCount = 0;   // set by 8c, consumed by 8e (warn log)
+
+    // T38: entities skipped because their base model could not be loaded
+    // (e.g. race=415 absent from race_models). Accumulated across the whole
+    // entity loop, not reset per-iteration; consumed by loadZoneStep8_Entities'
+    // end-of-zone summary line. A missing model is now a per-entity WARN +
+    // skip, not a zone-fatal LOG_FATAL — see loadZoneStep8a_BaseModelPrep.
+    size_t entitiesSkipped = 0;
+    std::set<std::pair<uint16_t, uint8_t>> skippedRaceGenderPairs;  // {raceId, gender}
 
     struct EquipPrepData {
         int modelId = 0;
@@ -1337,13 +1345,24 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
                 if (!loadZoneStep8a_BaseModelPrep(ctx)) return false;
 
-                loadZoneStep8b_VariantModelPrep(ctx);
+                // T38: a missing base model (ctx.entitySuccess == false) means
+                // there is no model data for 8b (variant model)/8c (variant
+                // textures)/8d (equipment — keyed off the base model's staging
+                // data)/8e (distributes 8b-8d's prep results) to act on. Only
+                // 8a itself and 8f (mesh build, which independently falls back
+                // to a placeholder cube via EntityRenderer::getMeshForRace when
+                // no model is cached) run for a skipped entity — see
+                // loadZoneStep8a_BaseModelPrep for where the skip is decided
+                // and counted.
+                if (ctx.entitySuccess) {
+                    loadZoneStep8b_VariantModelPrep(ctx);
 
-                loadZoneStep8c_VariantTextures(ctx);
+                    loadZoneStep8c_VariantTextures(ctx);
 
-                if (!loadZoneStep8d_EquipmentPrep(ctx)) return false;
+                    if (!loadZoneStep8d_EquipmentPrep(ctx)) return false;
 
-                loadZoneStep8e_DistributePrepResults(ctx);
+                    loadZoneStep8e_DistributePrepResults(ctx);
+                }
 
                 // T04: processUploadQueue removed. Textures uploaded via uploadTexture() in T09.
 
@@ -1368,6 +1387,27 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: zone has boats — boat collision checks enabled");
             } else {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: no boats in zone — boat collision checks disabled (zero per-frame cost)");
+            }
+
+            // T38: make missing-model skips visible, not a silent omission — a zone
+            // that rendered with placeholder-cube NPCs must say so plainly, loudly,
+            // and every time (not just on first occurrence), so this is unconditional
+            // (always logged, even when entitiesSkipped == 0, so its absence in a log
+            // is itself confirmation nothing was skipped rather than evidence the
+            // check didn't run).
+            if (ctx.entitiesSkipped > 0) {
+                std::string pairsStr;
+                for (const auto& [raceId, gender] : ctx.skippedRaceGenderPairs) {
+                    if (!pairsStr.empty()) pairsStr += ", ";
+                    pairsStr += "race=" + std::to_string(raceId) + " gender=" + std::to_string(static_cast<int>(gender));
+                }
+                LOG_WARN(MOD_GRAPHICS, "Sequential: SKIPPED {} entities with no loadable base model "
+                         "({} distinct race/gender pair(s): {}) — rendered as placeholder cubes, "
+                         "zone load continued",
+                         ctx.entitiesSkipped, ctx.skippedRaceGenderPairs.size(), pairsStr);
+            } else {
+                LOG_INFO(MOD_GRAPHICS, "Sequential: 0 entities skipped for missing base models — all {} entities had loadable models",
+                         ctx.prepCount);
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entity prep skipped (entityRenderer_={}, raceModelLoader={}, skipEntityBuild={})",
@@ -1413,10 +1453,25 @@ bool IrrlichtRenderer::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
         if (success) {
             ++ctx.modelDiskLoads;
         } else {
-            LOG_FATAL(MOD_GRAPHICS, "Failed to load race model: race={} gender={} (not found in any S3D archive)", ctx.vis->raceId, ctx.vis->gender);
-            pendingZoneComputations_.reset();
-            loadFailed_ = true;
-            return false;
+            // T38: a single entity's missing base model is NOT a zone-fatal
+            // condition (was: LOG_FATAL + loadFailed_=true + abort the whole
+            // zone load — see deferred.md "race=415 missing model data still
+            // crashes graphics mode"). Downgraded to WARN + skip just this
+            // entity: the caller loop (loadZoneStep8_Entities) checks
+            // ctx.entitySuccess and skips 8b-8e (which all depend on base
+            // model data existing), but still runs 8f, whose
+            // EntityRenderer::getMeshForRace() already has a designed
+            // fallback to a colored placeholder cube (src/client/graphics/
+            // CLAUDE.md, "Model Loading Order" step 5) — this is what lets
+            // that fallback actually be reached instead of the zone dying
+            // first. Counted here (not just logged) so the zone-load summary
+            // can name exactly how many entities and which race/gender pairs
+            // were affected — see the end of loadZoneStep8_Entities.
+            LOG_WARN(MOD_GRAPHICS, "Skipping entity {} ({}): base race model not found: race={} gender={} "
+                     "(not found in any S3D archive) — will render as a placeholder cube, zone load continues",
+                     ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender);
+            ++ctx.entitiesSkipped;
+            ctx.skippedRaceGenderPairs.insert({ctx.vis->raceId, ctx.vis->gender});
         }
         LOG_INFO(MOD_GRAPHICS, "Sequential: preload race={} gender={} took {}ms success={}",
                  ctx.vis->raceId, ctx.vis->gender, prepMs, success);
