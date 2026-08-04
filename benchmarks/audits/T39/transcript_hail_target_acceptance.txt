@@ -1,0 +1,19 @@
+
+=== WillEQ Console Mode ===
+Type 'help' for available commands.
+
+[2026-08-04 04:36:26.708] [ERROR] [MAP] Unable to open map file: ./maps/befallen.map
+Sending say message: 'Hail'
+CMD outcome=applied registry=action recognized=true cmd="/hail"
+[CHAT] Testchar (say): Hail
+Sending say message: '#npctypespawn 351043'
+CMD outcome=applied registry=game recognized=true cmd="/say #npctypespawn 351043"
+CMD outcome=applied registry=game recognized=true cmd="/target a_rat"
+[90m[04:37:52] [0m[94mTarget: a_rat000 (Level 1) - HP: 100%[0m
+Sending say message: 'Hail, a rat'
+CMD outcome=applied registry=action recognized=true cmd="/hail"
+[CHAT] Testchar (say): Hail, a rat
+CMD outcome=applied registry=game recognized=true cmd="/camp"
+[2026-08-04 04:36:26.708] [ERROR] [MAP] errno: 2 - No such file or directory
+
+=== Console renderer shutdown ===

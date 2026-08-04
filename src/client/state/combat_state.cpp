@@ -64,27 +64,43 @@ void CombatState::reset() {
 
 void CombatState::fireTargetChangedEvent() {
     if (m_eventBus) {
-        // T28: deliberately non-publishing -- this is NOT a missing data
-        // struct (TargetChangedData exists at event_bus.h:384; the old
-        // comment claiming otherwise was wrong). TargetChanged is already
-        // published from three live sites (eq_bridge.cpp:589 clear,
-        // eq_bridge.cpp:771 set, eq_entities.cpp:1728 HP update), and
-        // eq_action_handler.cpp:21 records a deliberate no-duplicate
-        // decision ("D20e1: TargetChanged event is already published by
-        // ProcessBridgeIntents"). Making this stub publish would
-        // double-fire the event. It stays a stub until the state-layer
-        // migration consolidates ownership of target state onto CombatState
-        // and repoints those three sites here instead -- see
+        // T39: this CombatState instance is fed by Application::syncCombatState()
+        // (application.cpp), which mirrors the authoritative CombatManager's
+        // target id/HP/name/level -- CombatManager remains the source of
+        // truth, this only publishes what it was just told. This does NOT
+        // double-publish the T28-era concern: eq_bridge.cpp's three
+        // TargetChanged pushes go onto the GameStateBridge (consumed by
+        // IrrlichtBridge/ConsoleBridge), a channel entirely disjoint from
+        // this EventBus (consumed by ConsoleRenderer, subscribed in
+        // HeadlessMode via Application::m_gameState -- see
         // refactor/deferred.md "Dead parallel state copies in the state
-        // layer, WITH LIVE READERS".
+        // layer, WITH LIVE READERS", 2026-08-04 correction). Nothing
+        // forwards between the two channels.
+        TargetChangedData data;
+        data.spawnId = m_targetId;
+        data.name = m_targetName;
+        data.level = m_targetLevel;
+        data.hpPercent = m_targetHPPercent;
+        m_eventBus->publish(GameEventType::TargetChanged, data);
     }
 }
 
 void CombatState::fireCombatEvent() {
     if (m_eventBus) {
-        // T28: same reasoning as fireTargetChangedEvent() above -- left
-        // non-publishing pending the state-layer migration, not because no
-        // data struct exists.
+        // T39: setAutoAttacking() is now wired (Application::syncCombatState()
+        // mirrors CombatManager::IsAutoAttackEnabled()), but this stays a
+        // non-publishing stub: CombatEventData (event_bus.h:365) models a
+        // single combat *round outcome* (Hit/Miss/Dodge/Parry/Block/
+        // Riposte/CriticalHit/Death against a source/target pair with a
+        // damage amount) -- there is no field of that struct, and no other
+        // GameEventType in this header, that means "auto-attack toggled".
+        // Reusing CombatEventData with a fabricated Type or invented damage
+        // value to represent a toggle would be inventing data the caller
+        // never provided, which is the trap this migration is explicitly
+        // supposed to avoid (see refactor/deferred.md and
+        // T39_state_layer_migration.md's inventory guidance, same
+        // principle). isAutoAttacking() now reflects real state and can be
+        // read directly; it has zero production readers today.
     }
 }
 

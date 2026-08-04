@@ -200,15 +200,18 @@ void InventoryState::fireInventoryChangedEvent(int16_t slot, bool hasItem) {
     }
 
     // T28: report the actual occupancy this call was given, instead of the
-    // previous hardcoded `hasItem = true`. This class's occupancy arrays
-    // and setters (setEquipmentOccupied/setGeneralOccupied/setBankOccupied)
-    // currently have zero production call sites -- the live
-    // InventorySlotChanged events (enriched by S2) come from the eq_bridge
-    // path instead -- so this is presently unreachable, not a live bug. See
-    // refactor/deferred.md "Dead parallel state copies in the state layer,
-    // WITH LIVE READERS". itemId is deliberately left at 0: this state
-    // layer only tracks occupancy (bool), not which item occupies a slot,
-    // so 0 is "unknown", not a claim that itemId is genuinely zero.
+    // previous hardcoded `hasItem = true`.
+    // T39: setEquipmentOccupied/setGeneralOccupied/setBankOccupied are now
+    // wired -- Application::syncInventoryState() (application.cpp) polls
+    // InventoryManager (authoritative) every frame and mirrors slot
+    // occupancy here, so this fires for real now. Still no production
+    // reader of the occupancy arrays (confirmed unchanged from T28) -- the
+    // live InventorySlotChanged events consumers care about (enriched by
+    // S2) come from the eq_bridge path instead. See refactor/deferred.md
+    // "Dead parallel state copies in the state layer, WITH LIVE READERS".
+    // itemId is deliberately left at 0: this state layer only tracks
+    // occupancy (bool), not which item occupies a slot, so 0 is "unknown",
+    // not a claim that itemId is genuinely zero.
     InventorySlotChangedData event;
     event.slotId = slot;
     event.hasItem = hasItem;

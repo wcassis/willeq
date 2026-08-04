@@ -3,6 +3,7 @@
 #include "client/eq.h"
 #include "client/eq_action_handler.h"
 #include "client/combat.h"
+#include "client/inventory/inventory_manager.h"
 #include "client/mode/automated_mode.h"
 #include "client/mode/headless_mode.h"
 #include "client/mode/graphical_mode.h"
@@ -1708,6 +1709,107 @@ void Application::syncGameStateFromClient() {
     syncPetState();
     syncNPCInteractionState();
     syncSpellState();
+    syncCombatState();
+    syncInventoryState();
+}
+
+void Application::syncCombatState() {
+    if (!m_eqClient || !m_gameState) {
+        return;
+    }
+
+    // T39: CombatManager is authoritative; mirror it into GameState::combat()
+    // so CommandProcessor (cmdHail, via state::GameState&) and ConsoleRenderer
+    // (subscribed to GameState's EventBus) see real target/auto-attack data.
+    // NOTE: this is a *different* state::GameState instance than
+    // EverQuest::m_game_state (EverQuest owns its own, used internally by a
+    // few Phase 7.x getters) -- CommandProcessor and the game-mode renderers
+    // are constructed with Application::m_gameState (application.cpp:266,302),
+    // so that is the instance that matters for this migration's payoff.
+    CombatManager* combatManager = m_eqClient->GetCombatManager();
+    if (!combatManager) {
+        return;
+    }
+
+    bool hasTarget = combatManager->HasTarget();
+    uint16_t targetId = hasTarget ? combatManager->GetTargetId() : 0;
+
+    if (targetId != m_lastCombatTargetId) {
+        if (targetId != 0) {
+            const auto& entities = m_eqClient->GetEntities();
+            auto it = entities.find(targetId);
+            if (it != entities.end()) {
+                const Entity& e = it->second;
+                m_gameState->combat().setTarget(targetId, e.name, e.hp_percent, e.level);
+                m_lastCombatTargetHp = e.hp_percent;
+            } else {
+                // Target id known to CombatManager but not yet in the entity
+                // map (e.g. race condition on spawn); mirror the id anyway
+                // with placeholder display fields rather than skipping the
+                // sync entirely.
+                m_gameState->combat().setTarget(targetId, "", 100, 0);
+                m_lastCombatTargetHp = 100;
+            }
+        } else {
+            m_gameState->combat().clearTarget();
+            m_lastCombatTargetHp = 100;
+        }
+        m_lastCombatTargetId = targetId;
+    } else if (targetId != 0) {
+        // Same target: mirror HP changes.
+        const auto& entities = m_eqClient->GetEntities();
+        auto it = entities.find(targetId);
+        if (it != entities.end() && it->second.hp_percent != m_lastCombatTargetHp) {
+            m_gameState->combat().updateTargetHP(it->second.hp_percent);
+            m_lastCombatTargetHp = it->second.hp_percent;
+        }
+    }
+
+    bool autoAttacking = combatManager->IsAutoAttackEnabled();
+    if (autoAttacking != m_lastAutoAttacking) {
+        m_gameState->combat().setAutoAttacking(autoAttacking);
+        m_lastAutoAttacking = autoAttacking;
+    }
+}
+
+void Application::syncInventoryState() {
+    if (!m_eqClient || !m_gameState) {
+        return;
+    }
+
+    // T39: InventoryManager is authoritative; mirror slot occupancy into
+    // GameState::inventory(). No production reader consumes these occupancy
+    // arrays today (T28 confirmed this, still true), but a clean call site
+    // exists (bounded slot ranges below), so this is the wiring half named
+    // in the plan rather than something invented to make the arrays look
+    // populated.
+    eqt::inventory::InventoryManager* inv = m_eqClient->GetInventoryManager();
+    if (!inv) {
+        return;
+    }
+
+    for (int16_t slot = eqt::inventory::EQUIPMENT_BEGIN; slot <= eqt::inventory::EQUIPMENT_END; ++slot) {
+        bool occupied = inv->getItem(slot) != nullptr;
+        if (occupied != m_gameState->inventory().hasEquipment(slot)) {
+            m_gameState->inventory().setEquipmentOccupied(slot, occupied);
+        }
+    }
+
+    for (int16_t slot = eqt::inventory::GENERAL_BEGIN; slot <= eqt::inventory::GENERAL_END; ++slot) {
+        int16_t stateSlot = slot - eqt::inventory::GENERAL_BEGIN;
+        bool occupied = inv->getItem(slot) != nullptr;
+        if (occupied != m_gameState->inventory().hasGeneralItem(stateSlot)) {
+            m_gameState->inventory().setGeneralOccupied(stateSlot, occupied);
+        }
+    }
+
+    for (int16_t slot = eqt::inventory::BANK_BEGIN; slot <= eqt::inventory::BANK_END; ++slot) {
+        int16_t stateSlot = slot - eqt::inventory::BANK_BEGIN;
+        bool occupied = inv->getItem(slot) != nullptr;
+        if (occupied != m_gameState->inventory().hasBankItem(stateSlot)) {
+            m_gameState->inventory().setBankOccupied(stateSlot, occupied);
+        }
+    }
 }
 
 void Application::syncPetState() {

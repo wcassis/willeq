@@ -463,41 +463,77 @@ TEST(CombatStateTest, ResetClearsAllState) {
     EXPECT_EQ(cs.lastSlainEntityName(), "");
 }
 
-// T28: re-commented, NOT fixed (kept intentionally, per plan) -- this is a
-// DOCUMENTED, DELIBERATE gap owned by the state-layer migration, not an
-// unexamined one. CombatState::fireTargetChangedEvent()/fireCombatEvent()
-// are stubs, so setTarget()/clearTarget()/setAutoAttacking() never publish
-// on the EventBus. That is correct today: TargetChanged is already
-// published from three live sites (eq_bridge.cpp:589/771, eq_entities.cpp:
-// 1728), with eq_action_handler.cpp:21 recording a deliberate no-duplicate
-// decision -- making these stubs fire would DOUBLE-publish, not fix
-// anything. Also, setTarget()/clearTarget()/setAutoAttacking() have zero
-// production call sites in the first place (only tests call them), so
-// their being no-ops is currently moot regardless. This test pins the
-// stub's current non-publishing behavior so the state-layer migration
-// (which will need to both wire real callers to these setters AND
-// repoint/remove the three existing eq_bridge/eq_entities publishers) does
-// not silently start double-firing TargetChanged. See refactor/deferred.md
-// "Dead parallel state copies in the state layer, WITH LIVE READERS".
-TEST(CombatStateTest, DELIBERATE_GAP_SetTargetDoesNotPublishPendingMigration) {
+// T39: this used to be DELIBERATE_GAP_SetTargetDoesNotPublishPendingMigration,
+// pinning a documented non-publishing stub pending the state-layer
+// migration. That migration is this unit: setTarget()/clearTarget() are now
+// wired to a real caller (Application::syncCombatState(), mirroring the
+// authoritative CombatManager -- see application.cpp) and
+// fireTargetChangedEvent() now publishes real data on the EventBus. This is
+// NOT a double-publish: eq_bridge.cpp's three TargetChanged pushes go onto
+// the GameStateBridge (IrrlichtBridge/ConsoleBridge), a channel disjoint
+// from this EventBus (ConsoleRenderer) -- see refactor/deferred.md "Dead
+// parallel state copies in the state layer, WITH LIVE READERS" (2026-08-04
+// correction). This test would have FAILED before this unit (0 events).
+TEST(CombatStateTest, SetTargetPublishesTargetChangedWithRealData) {
     CombatState cs;
     EventBus bus;
     cs.setEventBus(&bus);
 
-    int anyEventCount = 0;
-    bus.subscribe([&](const GameEvent&) { ++anyEventCount; });
+    std::vector<GameEvent> events;
+    bus.subscribe([&](const GameEvent& e) { events.push_back(e); });
 
-    cs.setTarget(1, "Orc", 100, 5);
+    cs.setTarget(7, "Orc Chieftain", 65, 12);
+
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, GameEventType::TargetChanged);
+    const auto& data = std::get<TargetChangedData>(events[0].data);
+    EXPECT_EQ(data.spawnId, 7u);
+    EXPECT_EQ(data.name, "Orc Chieftain");
+    EXPECT_EQ(data.hpPercent, 65);
+    EXPECT_EQ(data.level, 12);
+}
+
+// T39: clearTarget() also now publishes -- with spawnId=0, matching the
+// eq_bridge.cpp clear-site convention ("spawnId=0 = target cleared").
+TEST(CombatStateTest, ClearTargetPublishesTargetChangedWithZeroSpawnId) {
+    CombatState cs;
+    EventBus bus;
+    cs.setEventBus(&bus);
+    cs.setTarget(7, "Orc", 65, 12);
+
+    std::vector<GameEvent> events;
+    bus.subscribe([&](const GameEvent& e) { events.push_back(e); });
+
     cs.clearTarget();
+
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, GameEventType::TargetChanged);
+    const auto& data = std::get<TargetChangedData>(events[0].data);
+    EXPECT_EQ(data.spawnId, 0u);
+}
+
+// T39: unlike fireTargetChangedEvent(), fireCombatEvent() (behind
+// setAutoAttacking()) STAYS a deliberate non-publishing stub -- see the
+// comment in combat_state.cpp: CombatEventData models a combat round
+// outcome (Hit/Miss/.../Death against a source/target pair with a damage
+// amount), and no field or other GameEventType means "auto-attack
+// toggled". setAutoAttacking() is still wired now (Application::
+// syncCombatState() mirrors CombatManager::IsAutoAttackEnabled()) so
+// isAutoAttacking() reflects real state, but publishing was correctly left
+// undone rather than inventing data. Pinning that this remains an
+// intentional, examined gap, not a silent regression.
+TEST(CombatStateTest, SetAutoAttackingStillDoesNotPublish_NoMatchingEventType) {
+    CombatState cs;
+    EventBus bus;
+    cs.setEventBus(&bus);
+
+    int eventCount = 0;
+    bus.subscribe([&](const GameEvent&) { ++eventCount; });
+
     cs.setAutoAttacking(true);
     cs.setAutoAttacking(false);
 
-    EXPECT_EQ(anyEventCount, 0)
-        << "CombatState's fireTargetChangedEvent()/fireCombatEvent() are "
-           "deliberately non-publishing stubs (see comment above) -- if "
-           "this ever fires, the state-layer migration wired them up, and "
-           "this test (and the eq_bridge/eq_entities TargetChanged "
-           "publishers) need to be updated together, not just this test.";
+    EXPECT_EQ(eventCount, 0);
 }
 
 // =============================================================================
