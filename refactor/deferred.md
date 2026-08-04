@@ -1224,6 +1224,51 @@ proper fix:
   intermittent flake" waiver for weeks. A segfault is never a flake; it
   is a crash with a timing precondition.
 
+## TWO `state::GameState` instances exist, unconnected — the structural cause of the whole dead-state bug class (T39, 2026-08-04) — NOT FIXED, needs a ruling
+
+**This is the root the entry below was a symptom of.** T39 found it while
+looking for where to wire `CombatState`, and it invalidated the wiring
+site the plan had suggested.
+
+- `EverQuest::m_game_state` — a plain value member (`eq.h`).
+- `Application::m_gameState` — a **separately heap-allocated**
+  `std::unique_ptr<state::GameState>` (`application.cpp:179`).
+
+They are distinct objects, each auto-wiring its own submodules to **its
+own `EventBus`** (`game_state.cpp`). **Nothing connects them** —
+orchestrator-confirmed: `application.cpp` and the game modes never call
+`EverQuest::GetGameState()`.
+
+Who reads which:
+
+| instance | consumers |
+|---|---|
+| `Application::m_gameState` | `ActionDispatcher`, `CommandProcessor` (incl. `cmdHail`), the game mode → `ConsoleRenderer`, `InputActionBridge` |
+| `EverQuest::m_game_state` | the `eq_commands.cpp` readers, the Phase 7.x `sync*State()` calls inside `EverQuest` |
+
+So "populate the state layer" is ambiguous until you say *which* state
+layer — and populating the wrong one produces exactly the observed
+symptom: setters that run, state that looks populated, and readers that
+still see nothing. That is the `/assist` bug (T28) and the `cmdHail` gap
+(T39) in one sentence, and it is why those two readers behaved
+differently despite reading "the same" field.
+
+T39 worked with it rather than against it (wired via
+`Application::syncCombatState()`/`syncInventoryState()`, mirroring the
+existing `syncPetState()`/`syncNPCInteractionState()` polling pattern),
+which was the right call for a unit that was not scoped to re-architect
+this. But the duplication remains, and it will keep generating this bug
+class every time someone reasonably assumes there is one game state.
+
+**Needs a decision, not a drive-by fix.** Options, roughly ascending:
+(a) leave both, document loudly at both declarations so the next person
+does not assume; (b) make `Application` hold a reference to `EverQuest`'s
+instance (or vice versa) so there is one object; (c) collapse to one
+owner properly, which touches the action layer, the modes, the bridges
+and the Phase 7.x syncs. (b) sounds small and is not: the two are
+constructed at different times with different lifetimes, and the
+headless/graphical modes differ in what exists when.
+
 ## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02)
 
 Found while scoping a fix for T02's three pinned state-layer findings.
