@@ -1,6 +1,7 @@
 #include "client/state/spell_state.h"
 #include "client/state/event_bus.h"
 #include <algorithm>
+#include <chrono>
 
 namespace eqt {
 namespace state {
@@ -33,15 +34,32 @@ float SpellState::getGemCooldownProgress(uint8_t gemSlot) const {
     if (gem.cooldownTotalMs == 0) {
         return 1.0f;
     }
-    float elapsed = static_cast<float>(gem.cooldownTotalMs - gem.cooldownRemainingMs);
-    return elapsed / static_cast<float>(gem.cooldownTotalMs);
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - gem.cooldownStartTime).count();
+    if (elapsedMs < 0) {
+        elapsedMs = 0;
+    }
+    float progress = static_cast<float>(elapsedMs) / static_cast<float>(gem.cooldownTotalMs);
+    return std::clamp(progress, 0.0f, 1.0f);
 }
 
 uint32_t SpellState::getGemCooldownRemaining(uint8_t gemSlot) const {
     if (gemSlot >= SPELL_GEM_COUNT) {
         return 0;
     }
-    return m_gems[gemSlot].cooldownRemainingMs;
+    const auto& gem = m_gems[gemSlot];
+    if (gem.cooldownTotalMs == 0) {
+        return 0;
+    }
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - gem.cooldownStartTime).count();
+    if (elapsedMs < 0) {
+        elapsedMs = 0;
+    }
+    if (static_cast<uint32_t>(elapsedMs) >= gem.cooldownTotalMs) {
+        return 0;
+    }
+    return gem.cooldownTotalMs - static_cast<uint32_t>(elapsedMs);
 }
 
 bool SpellState::hasSpellMemorized(uint8_t gemSlot) const {
@@ -70,7 +88,6 @@ void SpellState::setGem(uint8_t gemSlot, uint32_t spellId, SpellGemState state) 
     gem.state = state;
 
     if (state == SpellGemState::Ready || state == SpellGemState::Empty) {
-        gem.cooldownRemainingMs = 0;
         gem.cooldownTotalMs = 0;
     }
 
@@ -85,8 +102,13 @@ void SpellState::setGemCooldown(uint8_t gemSlot, uint32_t remainingMs, uint32_t 
     }
 
     auto& gem = m_gems[gemSlot];
-    gem.cooldownRemainingMs = remainingMs;
     gem.cooldownTotalMs = totalMs;
+    // Backdate the start time by however much of the cooldown had already
+    // elapsed as of the moment this was called, so a single call is enough
+    // -- getGemCooldownRemaining()/getGemCooldownProgress() derive the
+    // current value from wall-clock time on every read from here on (T44).
+    uint32_t elapsedMs = (totalMs > remainingMs) ? (totalMs - remainingMs) : 0;
+    gem.cooldownStartTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(elapsedMs);
 
     if (remainingMs > 0) {
         gem.state = SpellGemState::Refresh;
@@ -105,8 +127,28 @@ float SpellState::castProgress() const {
     if (!m_isCasting || m_castTimeTotal == 0) {
         return 0.0f;
     }
-    float elapsed = static_cast<float>(m_castTimeTotal - m_castTimeRemaining);
-    return elapsed / static_cast<float>(m_castTimeTotal);
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - m_castStartTime).count();
+    if (elapsedMs < 0) {
+        elapsedMs = 0;
+    }
+    float progress = static_cast<float>(elapsedMs) / static_cast<float>(m_castTimeTotal);
+    return std::clamp(progress, 0.0f, 1.0f);
+}
+
+uint32_t SpellState::castTimeRemaining() const {
+    if (!m_isCasting) {
+        return 0;
+    }
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - m_castStartTime).count();
+    if (elapsedMs < 0) {
+        elapsedMs = 0;
+    }
+    if (static_cast<uint32_t>(elapsedMs) >= m_castTimeTotal) {
+        return 0;
+    }
+    return m_castTimeTotal - static_cast<uint32_t>(elapsedMs);
 }
 
 void SpellState::setCasting(bool casting, uint32_t spellId, uint16_t targetId, uint32_t castTimeMs) {
@@ -116,15 +158,11 @@ void SpellState::setCasting(bool casting, uint32_t spellId, uint16_t targetId, u
     m_castingSpellId = spellId;
     m_castingTargetId = targetId;
     m_castTimeTotal = castTimeMs;
-    m_castTimeRemaining = castTimeMs;
+    m_castStartTime = std::chrono::steady_clock::now();
 
     if (changed) {
         fireCastingStateChangedEvent();
     }
-}
-
-void SpellState::updateCastProgress(uint32_t remainingMs) {
-    m_castTimeRemaining = remainingMs;
 }
 
 void SpellState::clearCasting() {
@@ -209,7 +247,7 @@ void SpellState::reset() {
     for (auto& gem : m_gems) {
         gem.spellId = SPELL_ID_UNKNOWN;
         gem.state = SpellGemState::Empty;
-        gem.cooldownRemainingMs = 0;
+        gem.cooldownStartTime = std::chrono::steady_clock::time_point{};
         gem.cooldownTotalMs = 0;
     }
 
@@ -217,7 +255,7 @@ void SpellState::reset() {
     m_isCasting = false;
     m_castingSpellId = SPELL_ID_UNKNOWN;
     m_castingTargetId = 0;
-    m_castTimeRemaining = 0;
+    m_castStartTime = std::chrono::steady_clock::time_point{};
     m_castTimeTotal = 0;
 
     // Clear memorization state
@@ -242,7 +280,7 @@ void SpellState::fireSpellGemChangedEvent(uint8_t gemSlot) {
     event.gemSlot = gemSlot;
     event.spellId = m_gems[gemSlot].spellId;
     event.gemState = static_cast<uint8_t>(m_gems[gemSlot].state);
-    event.cooldownRemainingMs = m_gems[gemSlot].cooldownRemainingMs;
+    event.cooldownRemainingMs = getGemCooldownRemaining(gemSlot);
     m_eventBus->publish(GameEventType::SpellGemChanged, event);
 }
 
@@ -255,7 +293,7 @@ void SpellState::fireCastingStateChangedEvent() {
     event.isCasting = m_isCasting;
     event.spellId = m_castingSpellId;
     event.targetId = m_castingTargetId;
-    event.castTimeRemainingMs = m_castTimeRemaining;
+    event.castTimeRemainingMs = castTimeRemaining();
     event.castTimeTotalMs = m_castTimeTotal;
     m_eventBus->publish(GameEventType::CastingStateChanged, event);
 }

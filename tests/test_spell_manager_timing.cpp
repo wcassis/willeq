@@ -514,6 +514,139 @@ TEST(SpellManagerCastProgress, ElapsedPastDurationClampsProgressTo1AndRemainingT
     EXPECT_EQ(mgr->getCastTimeRemaining(), 0u);
 }
 
+// ===================================================================
+// 6. T44 -- SpellCastComplete publishes. SpellCastComplete was defined but
+// never published before this unit; completeCast()/interruptCast()/
+// handleInterrupt() are the three places m_is_casting flips back to false
+// for our own cast, and each now pushes it. (SpellCastStarted's publish
+// sites -- beginCastFromGem()/beginCastById() -- need a real DB-backed
+// spell to reach CastResult::Success, so they're covered in
+// test_spell_manager.cpp's beginCast end-to-end tests instead.)
+// ===================================================================
+
+TEST(SpellManagerCastComplete, CompleteCastSuccessPublishesSpellCastComplete) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
+    mgr->m_is_casting = true;
+    mgr->m_current_spell_id = 42;
+    mgr->m_current_gem_slot = 0xFF;  // no DB spell object, skip gem cooldown
+
+    mgr->completeCast(true);
+
+    auto events = bridge.drainEvents();
+    bool saw = false;
+    for (auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SpellCastComplete) {
+            const auto& d = std::get<eqt::state::SpellCastCompleteData>(e.data);
+            EXPECT_EQ(d.spellId, 42u);
+            EXPECT_EQ(d.result, static_cast<uint8_t>(CastResult::Success));
+            saw = true;
+        }
+    }
+    EXPECT_TRUE(saw);
+}
+
+TEST(SpellManagerCastComplete, InterruptCastPublishesSpellCastCompleteInterrupted) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
+    mgr->m_is_casting = true;
+    mgr->m_current_spell_id = 7;
+    mgr->m_current_gem_slot = 0xFF;
+
+    mgr->interruptCast();
+
+    auto events = bridge.drainEvents();
+    bool saw = false;
+    for (auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SpellCastComplete) {
+            const auto& d = std::get<eqt::state::SpellCastCompleteData>(e.data);
+            EXPECT_EQ(d.spellId, 7u);
+            EXPECT_EQ(d.result, static_cast<uint8_t>(CastResult::Interrupted));
+            saw = true;
+        }
+    }
+    EXPECT_TRUE(saw);
+}
+
+TEST(SpellManagerCastComplete, HandleInterruptFizzlePublishesSpellCastCompleteWithFizzleResult) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
+    mgr->m_is_casting = true;
+    mgr->m_current_spell_id = 33;
+    mgr->m_current_gem_slot = 0xFF;
+
+    mgr->handleInterrupt(eq.GetEntityID(), 33, /*message_type=*/2);
+
+    auto events = bridge.drainEvents();
+    bool saw = false;
+    for (auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SpellCastComplete) {
+            const auto& d = std::get<eqt::state::SpellCastCompleteData>(e.data);
+            EXPECT_EQ(d.spellId, 33u);
+            EXPECT_EQ(d.result, static_cast<uint8_t>(CastResult::Fizzle));
+            saw = true;
+        }
+    }
+    EXPECT_TRUE(saw);
+}
+
+// Found live (T44 Review): the server can silently drop a cast request
+// (e.g. an invalid target) rather than ever echoing BeginCast back, leaving
+// m_waiting_for_server_confirm permanently true. update()'s own 5-second
+// "waiting for server confirm" timeout is the only thing that ever clears
+// m_is_casting in that case -- and it originally didn't publish
+// SpellCastComplete, which would have left GameStateSyncBridge (and
+// SpellState) showing "casting" forever with no way to learn otherwise.
+TEST(SpellManagerCastComplete, ServerConfirmTimeoutPublishesSpellCastComplete) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
+    mgr->m_is_casting = true;
+    mgr->m_waiting_for_server_confirm = true;
+    mgr->m_current_spell_id = 21;
+    mgr->m_current_gem_slot = 0xFF;
+    mgr->m_cast_start_time = std::chrono::steady_clock::now() - std::chrono::milliseconds(6000);
+
+    mgr->update(0.0f);
+
+    EXPECT_FALSE(mgr->isCasting());
+    auto events = bridge.drainEvents();
+    bool saw = false;
+    for (auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SpellCastComplete) {
+            const auto& d = std::get<eqt::state::SpellCastCompleteData>(e.data);
+            EXPECT_EQ(d.spellId, 21u);
+            EXPECT_EQ(d.result, static_cast<uint8_t>(CastResult::Interrupted));
+            saw = true;
+        }
+    }
+    EXPECT_TRUE(saw);
+}
+
+TEST(SpellManagerCastComplete, HandleInterruptOtherCasterDoesNotPublish) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
+    mgr->m_target_caster_id = 200;
+    mgr->m_target_spell_id = 88;
+    // Not our own cast -- publishCastComplete() must not fire.
+
+    mgr->handleInterrupt(/*caster_id=*/200, /*spell_id=*/88, /*message_type=*/1);
+
+    auto events = bridge.drainEvents();
+    for (auto& e : events) {
+        EXPECT_NE(e.type, eqt::state::GameEventType::SpellCastComplete);
+    }
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

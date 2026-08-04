@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <array>
+#include <chrono>
 
 namespace eqt {
 namespace state {
@@ -62,12 +63,15 @@ public:
 
     /**
      * Get cooldown progress for a gem (0.0 = just cast, 1.0 = ready).
+     * T44: computed on read from a stored start-time + total, not from a
+     * per-tick poll -- see setGemCooldown().
      * @param gemSlot Gem slot (0-7)
      */
     float getGemCooldownProgress(uint8_t gemSlot) const;
 
     /**
-     * Get remaining cooldown in milliseconds.
+     * Get remaining cooldown in milliseconds. Computed on read (T44); see
+     * getGemCooldownProgress().
      * @param gemSlot Gem slot (0-7)
      */
     uint32_t getGemCooldownRemaining(uint8_t gemSlot) const;
@@ -94,9 +98,16 @@ public:
     void setGem(uint8_t gemSlot, uint32_t spellId, SpellGemState state);
 
     /**
-     * Set gem cooldown.
+     * Set gem cooldown -- called once, at the moment a gem enters cooldown
+     * (from the SpellGemChanged event that fires on that transition), not
+     * once per tick. Internally stores a start-time backdated by
+     * (totalMs - remainingMs) so getGemCooldownRemaining()/
+     * getGemCooldownProgress() can compute the current value on read with no
+     * further calls needed -- T44's countdown model (see
+     * refactor/T44_spell_state_via_bridge.md): publish once, consumer
+     * computes elapsed.
      * @param gemSlot Gem slot (0-7)
-     * @param remainingMs Remaining cooldown in milliseconds
+     * @param remainingMs Remaining cooldown in milliseconds as of now
      * @param totalMs Total cooldown duration in milliseconds
      */
     void setGemCooldown(uint8_t gemSlot, uint32_t remainingMs, uint32_t totalMs);
@@ -126,14 +137,17 @@ public:
     uint16_t castingTargetId() const { return m_castingTargetId; }
 
     /**
-     * Get cast progress (0.0 = just started, 1.0 = complete).
+     * Get cast progress (0.0 = just started, 1.0 = complete). Computed on
+     * read from a stored start-time + total (T44) -- there is no per-tick
+     * update call.
      */
     float castProgress() const;
 
     /**
-     * Get remaining cast time in milliseconds.
+     * Get remaining cast time in milliseconds. Computed on read (T44); see
+     * castProgress().
      */
-    uint32_t castTimeRemaining() const { return m_castTimeRemaining; }
+    uint32_t castTimeRemaining() const;
 
     /**
      * Get total cast time in milliseconds.
@@ -141,17 +155,15 @@ public:
     uint32_t castTimeTotal() const { return m_castTimeTotal; }
 
     /**
-     * Set casting state.
-     * Fires CastingStateChanged event if changed.
+     * Set casting state. Records the current time as the cast's start (when
+     * casting is true); castTimeRemaining()/castProgress() compute elapsed
+     * from it on every read, so nothing needs to call this again until the
+     * cast actually starts, restarts (e.g. server corrects the cast time),
+     * or ends. Fires CastingStateChanged event if isCasting or spellId
+     * changed.
      */
     void setCasting(bool casting, uint32_t spellId = SPELL_ID_UNKNOWN,
                     uint16_t targetId = 0, uint32_t castTimeMs = 0);
-
-    /**
-     * Update cast progress.
-     * @param remainingMs Remaining cast time in milliseconds
-     */
-    void updateCastProgress(uint32_t remainingMs);
 
     /**
      * Clear casting state.
@@ -234,20 +246,23 @@ private:
 
     EventBus* m_eventBus = nullptr;
 
-    // Spell gem data
+    // Spell gem data. T44: cooldown is modelled as a start-time + total,
+    // computed on read (getGemCooldownRemaining/Progress), rather than a
+    // remaining-ms value that something has to keep polling to update.
     struct GemData {
         uint32_t spellId = SPELL_ID_UNKNOWN;
         SpellGemState state = SpellGemState::Empty;
-        uint32_t cooldownRemainingMs = 0;
+        std::chrono::steady_clock::time_point cooldownStartTime{};
         uint32_t cooldownTotalMs = 0;
     };
     std::array<GemData, SPELL_GEM_COUNT> m_gems;
 
-    // Casting state
+    // Casting state. T44: same start-time + total model as gem cooldowns --
+    // castTimeRemaining()/castProgress() compute elapsed on read.
     bool m_isCasting = false;
     uint32_t m_castingSpellId = SPELL_ID_UNKNOWN;
     uint16_t m_castingTargetId = 0;
-    uint32_t m_castTimeRemaining = 0;
+    std::chrono::steady_clock::time_point m_castStartTime{};
     uint32_t m_castTimeTotal = 0;
 
     // Memorization state

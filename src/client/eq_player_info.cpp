@@ -449,12 +449,21 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 		m_spell_manager->handleBeginCast(spawn_id, spell_id, cast_time);
 	}
 
-	// Publish SpellCastStarted event to bridge
+	// Publish SpellCastStarted event to bridge. This is the server-echoed
+	// confirmation of BeginCast for *any* caster (self, NPC, other player);
+	// GameStateSyncBridge (T44) filters to our own casts by casterId. For
+	// our own cast, SpellManager already knows the target it chose at
+	// beginCastFromGem()/beginCastById() time -- carry it so the bridge
+	// doesn't need a second source of truth. targetId is meaningless for
+	// non-self casters and left at its default (0).
 	if (m_bridge) {
 		eqt::state::SpellCastStartedData data;
 		data.casterId = spawn_id;
 		data.spellId = spell_id;
 		data.castTimeMs = cast_time;
+		if (m_spell_manager && spawn_id == GetEntityID()) {
+			data.targetId = m_spell_manager->getCurrentTargetId();
+		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SpellCastStarted, std::move(data)));
 	}

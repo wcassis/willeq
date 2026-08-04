@@ -16,6 +16,8 @@
 #include "client/state/event_bus.h"
 
 #include <gtest/gtest.h>
+#include <chrono>
+#include <thread>
 
 using namespace eqt::state;
 
@@ -619,8 +621,12 @@ TEST(SpellStateTest, GemCooldownProgressComputesFraction) {
     SpellState ss;
     ss.setGem(0, 1, SpellGemState::Refresh);
     ss.setGemCooldown(0, /*remainingMs=*/2500, /*totalMs=*/5000);
-    EXPECT_FLOAT_EQ(ss.getGemCooldownProgress(0), 0.5f);
-    EXPECT_EQ(ss.getGemCooldownRemaining(0), 2500u);
+    // T44: remaining/progress are computed on read from a start-time
+    // backdated by (totalMs - remainingMs) at the setGemCooldown() call
+    // above, not stored as a raw value -- allow a small tolerance for the
+    // real wall-clock time that elapses between that call and this one.
+    EXPECT_NEAR(ss.getGemCooldownProgress(0), 0.5f, 0.02f);
+    EXPECT_NEAR(static_cast<double>(ss.getGemCooldownRemaining(0)), 2500.0, 100.0);
 }
 
 TEST(SpellStateTest, GemCooldownZeroTotalReturnsFullProgress) {
@@ -652,8 +658,14 @@ TEST(SpellStateTest, CastingStateLifecycleFiresOnChange) {
     EXPECT_EQ(ss.castingSpellId(), 100u);
     EXPECT_EQ(castingChanged, 1);
 
-    ss.updateCastProgress(1500);
-    EXPECT_FLOAT_EQ(ss.castProgress(), 0.5f);
+    // T44: castProgress()/castTimeRemaining() are computed on read from a
+    // single setCasting() call (start-time + total) -- there is no per-tick
+    // update method anymore. A real sleep proves the value advances from
+    // wall-clock time alone, with no further calls into SpellState.
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    EXPECT_GT(ss.castProgress(), 0.0f);
+    EXPECT_LT(ss.castProgress(), 1.0f);
+    EXPECT_LT(ss.castTimeRemaining(), 3000u);
 
     ss.clearCasting();
     EXPECT_FALSE(ss.isCasting());

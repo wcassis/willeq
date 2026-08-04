@@ -414,6 +414,8 @@ struct SpellCastStartedData {
     uint16_t casterId;
     uint32_t spellId;
     uint32_t castTimeMs;
+    uint16_t targetId = 0;  // T44: added so GameStateSyncBridge can reconstruct
+                             // casting state without polling SpellManager.
 };
 
 struct SpellCastCompleteData {

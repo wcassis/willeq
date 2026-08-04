@@ -29,6 +29,59 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             m_state.pet().setButtonState(d.button, d.state);
             break;
         }
+        case state::GameEventType::PlayerSpawnIdSet: {
+            // T44: needed so the spell cases below can tell "this is my own
+            // cast" from "someone else's cast" -- SpellCastStarted/
+            // SpellCastComplete carry a casterId that's any entity, not just
+            // us. Published reliably at zone-in (T41's full-state snapshot),
+            // before any cast could occur.
+            const auto& d = std::get<state::PlayerSpawnIdSetData>(event.data);
+            m_state.player().setSpawnId(d.spawnId);
+            break;
+        }
+        case state::GameEventType::SpellGemChanged: {
+            // T44: replaces the gem-loop half of Application::syncSpellState().
+            // Every gem-state transition (Casting/Refresh/Ready/Empty/
+            // MemorizeProgress) already publishes this event from a single
+            // choke point (SpellManager::publishGemChanged(), 9 call sites,
+            // one per transition -- never per tick), so gem occupancy/state is
+            // fully reconstructible. Cooldown is set once, on the transition
+            // into Refresh; SpellState computes remaining/progress on read
+            // from there (see spell_state.h's T44 comments), so this does not
+            // need to fire again while the cooldown ticks down.
+            const auto& d = std::get<state::SpellGemChangedData>(event.data);
+            auto gemState = static_cast<state::SpellGemState>(d.gemState);
+            m_state.spells().setGem(d.gemSlot, d.spellId, gemState);
+            if (gemState == state::SpellGemState::Refresh) {
+                m_state.spells().setGemCooldown(d.gemSlot, d.cooldownRemainingMs, d.cooldownTotalMs);
+            }
+            break;
+        }
+        case state::GameEventType::SpellCastStarted: {
+            // T44: replaces the casting-onset half of syncSpellState(). Fired
+            // both for our own cast (SpellManager::publishCastStarted(), the
+            // instant the cast begins locally -- no network round-trip lag)
+            // and, generically, for any caster via eq_player_info.cpp's
+            // ZoneProcessBeginCast -- filter to ours.
+            const auto& d = std::get<state::SpellCastStartedData>(event.data);
+            if (d.casterId == m_state.player().spawnId()) {
+                m_state.spells().setCasting(true, d.spellId, d.targetId, d.castTimeMs);
+            }
+            break;
+        }
+        case state::GameEventType::SpellCastComplete: {
+            // T44: SpellCastComplete was defined but never published before
+            // this unit -- the one coverage gap found in casting-state
+            // reconstruction (SpellManager::publishCastComplete(), 3 call
+            // sites: cast success, player-initiated interrupt, server-driven
+            // interrupt/fizzle -- every place m_is_casting flips back to
+            // false for our own cast).
+            const auto& d = std::get<state::SpellCastCompleteData>(event.data);
+            if (d.casterId == m_state.player().spawnId()) {
+                m_state.spells().clearCasting();
+            }
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

@@ -336,10 +336,10 @@ private:
      */
     void syncNPCInteractionState();
 
-    /**
-     * Sync spell state from SpellManager.
-     */
-    void syncSpellState();
+    // syncSpellState() was deleted (T44) -- spell state (casting, gem
+    // occupancy/state, gem cooldown) is now fed from GameStateSyncBridge via
+    // bridge events (SpellCastStarted, SpellCastComplete, SpellGemChanged),
+    // constructed in initialize() alongside the T40/T42 pet/inventory cases.
 
     /**
      * Sync combat target/auto-attack state from CombatManager (T39).
@@ -525,9 +525,8 @@ private:
     uint16_t m_lastBankerNpcId = 0;
     uint16_t m_lastTrainerNpcId = 0;
 
-    // Spell state tracking
-    bool m_lastIsCasting = false;
-    uint32_t m_lastCastingSpellId = 0;
+    // Spell state tracking members (m_lastIsCasting/m_lastCastingSpellId)
+    // were deleted (T44) along with syncSpellState() -- see above.
 
     // Combat state tracking (T39)
     uint16_t m_lastCombatTargetId = 0;

@@ -200,6 +200,14 @@ private:
     void completeCast(bool success);
     void startGemCooldown(uint8_t gem_slot, uint32_t duration_ms);
     void publishGemChanged(uint8_t gem_slot);  // U06b: push to bridge
+    // T44: push SpellCastStarted/SpellCastComplete to the bridge so
+    // GameStateSyncBridge can reconstruct casting state without polling this
+    // class. publishCastStarted() is called at the moment our own cast
+    // begins locally (both gem and item/scroll casts); publishCastComplete()
+    // at every place m_is_casting flips back to false for our own cast
+    // (success, interrupt, fizzle).
+    void publishCastStarted(uint32_t spell_id, uint16_t target_id, uint32_t cast_time_ms);
+    void publishCastComplete(uint32_t spell_id, CastResult result);
     void updateGemCooldowns(float delta_time);
     void updateMemorization(float delta_time);
     uint32_t calculateMemorizeTime(uint32_t spell_id) const;
