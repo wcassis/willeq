@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "client/eq.h"
+#include "client/bridge/game_state_bridge.h"
 #include "common/net/packet.h"
 
 namespace {
@@ -74,6 +75,37 @@ void SendAATable(EverQuest& eq) { Replay(eq, HC_OP_SendAATable, EmptyPayload());
 void SendRespondAA(EverQuest& eq) { Replay(eq, HC_OP_RespondAA, EmptyPayload()); }
 void SendTributeInfo(EverQuest& eq) { Replay(eq, HC_OP_TributeInfo, EmptyPayload()); }
 void SendGuildTributes(EverQuest& eq) { Replay(eq, HC_OP_SendGuildTributes, EmptyPayload()); }
+
+// T41: minimal GameStateBridge fake that just records every pushed event's
+// type, so tests can assert PublishFullStateSnapshot() fired (and fired only
+// once) without depending on IrrlichtBridge/ConsoleBridge or a real renderer.
+// applyEvent() is unused here -- this test only drains and inspects the
+// event queue EverQuest pushed into, it never calls applyEvent() itself.
+class RecordingBridge : public eqt::bridge::GameStateBridge {
+public:
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
+
+// T41 addendum: writes one 385-byte Titanium Spawn_Struct at packet offset
+// `base`, same field offsets test_zone_entities.cpp's WriteSpawnStruct uses
+// (this file doesn't share that header, so a small local copy -- extended
+// with is_pet/pet_owner_id, which that helper doesn't need for its own
+// tests), for building a synthetic "our pet, already in the zone" NPC spawn.
+// is_pet at struct offset 329 (uint8), pet_owner_id at 189 (uint32) --
+// confirmed via eq_entities.cpp:360-361/1202-1203, the same offsets
+// ZoneProcessSpawnAll/NewSpawn read.
+void WritePetSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawnId,
+                          const std::string& name, uint32_t petOwnerId) {
+    p.PutCString(base + 7, name.c_str());
+    p.PutUInt8(base + 83, 1);     // npc_type: NPC
+    p.PutUInt8(base + 86, 100);   // hp_percent
+    p.PutUInt8(base + 151, 1);    // level
+    p.PutUInt32(base + 189, petOwnerId);
+    p.PutUInt32(base + 284, 54);  // race
+    p.PutUInt8(base + 329, 1);    // is_pet
+    p.PutUInt8(base + 331, 1);    // char_class
+    p.PutUInt32(base + 340, spawnId);
+}
 
 } // namespace
 
@@ -432,4 +464,244 @@ TEST(ObservableZoneState, FullHandshake_ProducesCoherentState) {
     // zone S->C *packet handling* is correct, not end-to-end liveness of a
     // real socket.
     EXPECT_FALSE(eq.IsFullyZonedIn());
+}
+
+// ============================================================================
+// 4. T41: PublishFullStateSnapshot() fires exactly once per zone-in in
+// headless mode, from OnGameStateComplete()'s no-graphics branch. This test
+// binary never initializes graphics, so it exercises the same
+// !m_graphics_initialized path a real --no-graphics run (or an
+// EQT_GRAPHICS=OFF build) takes -- before T41 this path never called
+// PublishFullStateSnapshot() at all, so headless GameState started empty
+// and stayed that way.
+// ============================================================================
+
+TEST(FullStateSnapshot, HeadlessZoneInPublishesSnapshotExactlyOnce) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+    const uint16_t kMySpawnId = 5006;
+
+    // Same handshake shape as ObservableZoneState.FullHandshake above, just
+    // with a bridge attached so the events PublishFullStateSnapshot() pushes
+    // are observable.
+    {
+        auto payload = BuildPayload(2 + 700, [](EQ::Net::DynamicPacket& p) {
+            p.PutCString(66, "qeytoqrg");
+            p.PutUInt16(686, 100);
+        });
+        Replay(eq, HC_OP_NewZone, payload);
+    }
+
+    {
+        auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt32(2 + 8, 1);
+            p.PutUInt32(2 + 12, 1);
+            p.PutUInt8(2 + 20, 10);
+            p.PutUInt32(2 + 2232, 100);
+            p.PutCString(2 + 12940, "Testchar");
+            p.PutUInt32(2 + 14384, kMySpawnId);
+        });
+        Replay(eq, HC_OP_PlayerProfile, payload);
+    }
+    ASSERT_EQ(eq.GetEntities().count(kMySpawnId), 1u);
+
+    SendAATable(eq);
+    SendTributeInfo(eq);
+    SendGuildTributes(eq);
+    Replay(eq, HC_OP_GuildMOTD, EmptyPayload());
+
+    // Drain whatever the handshake pushed so far (NetworkReady etc. are not
+    // this test's concern) and confirm the snapshot has NOT fired yet --
+    // OnGameStateComplete() (and therefore PublishFullStateSnapshot()) only
+    // runs once ClientUpdate confirms our own spawn id, matching the
+    // existing ObservableZoneState.FullHandshake test's EXPECT_FALSE(
+    // eq.IsGameStateReady()) at the equivalent point.
+    auto preClientUpdate = bridge.drainEvents();
+    int preCount = 0;
+    for (const auto& e : preClientUpdate) {
+        if (e.type == eqt::state::GameEventType::SkillsSnapshot) preCount++;
+    }
+    EXPECT_EQ(preCount, 0);
+
+    {
+        auto payload = BuildPayload(2 + 22, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt16(2, kMySpawnId);
+            p.PutUInt32(4, 0);
+            p.PutUInt32(8, 0);
+            p.PutUInt32(12, 0);
+            p.PutUInt32(16, 0);
+            p.PutUInt32(20, 0);
+        });
+        Replay(eq, HC_OP_ClientUpdate, payload);
+    }
+
+    ASSERT_TRUE(eq.IsGameStateReady());
+    ASSERT_EQ(eq.GetLoadingPhase(), LoadingPhase::COMPLETE);
+
+    // SkillsSnapshot is only ever pushed from PublishFullStateSnapshot()
+    // (grep-confirmed: no per-field packet handler publishes it -- unlike
+    // CharacterInfoChanged, which ZoneProcessPlayerProfile also pushes, so
+    // it can't be used as a snapshot-only proxy), so counting it is a clean
+    // proxy for "the snapshot fired" and "how many times".
+    auto postClientUpdate = bridge.drainEvents();
+    int snapshotFires = 0;
+    for (const auto& e : postClientUpdate) {
+        if (e.type == eqt::state::GameEventType::SkillsSnapshot) snapshotFires++;
+    }
+    EXPECT_EQ(snapshotFires, 1)
+        << "PublishFullStateSnapshot() should fire exactly once from "
+           "OnGameStateComplete()'s headless branch on zone-in";
+
+    // Further packets in the same zone session must not refire it --
+    // OnGameStateComplete() is gated on !m_update_running (StartUpdateLoop()
+    // sets it), so a second, unrelated ClientUpdate for the same spawn must
+    // not push a second snapshot.
+    {
+        auto payload = BuildPayload(2 + 22, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt16(2, kMySpawnId);
+            p.PutUInt32(4, 0);
+            p.PutUInt32(8, 0);
+            p.PutUInt32(12, 0);
+            p.PutUInt32(16, 0);
+            p.PutUInt32(20, 0);
+        });
+        Replay(eq, HC_OP_ClientUpdate, payload);
+    }
+    auto afterSecondUpdate = bridge.drainEvents();
+    int refires = 0;
+    for (const auto& e : afterSecondUpdate) {
+        if (e.type == eqt::state::GameEventType::SkillsSnapshot) refires++;
+    }
+    EXPECT_EQ(refires, 0) << "A second ClientUpdate must not republish the snapshot";
+}
+
+// ============================================================================
+// 5. T41 addendum (orchestrator request, 2026-08-04): a pet that already
+// exists when the player zones in must still surface as PetCreated in
+// headless mode. T40 event-fed pet state via GameStateSyncBridge and
+// deleted syncPetState() -- PetCreated is one of the events
+// PublishFullStateSnapshot() republishes (eq.cpp, "--- Pet ---" block,
+// `if (m_pet_spawn_id != 0)`), so a pre-existing pet is a second thing this
+// unit's headless-snapshot fix needed to reach, not just inventory.
+//
+// eq_entities.cpp has two places that discover a pre-existing pet from the
+// zone's spawn list: the "second pass" in ZoneProcessSpawnAll (fires once,
+// right after the ZoneSpawns packet finishes parsing, for the case where our
+// own spawn already has a spawn_id by then) and the deferred check inside
+// ClientUpdate (for the case where spawn IDs arrive out of order). Either
+// way, `m_pet_spawn_id = ...` itself is NOT graphics-gated -- only the
+// immediate `OnPetCreated()` delta-publish alongside it is
+// (`#ifdef EQT_HAS_GRAPHICS`). So:
+//   - In an EQT_GRAPHICS=OFF build (this test runs in both configs), the
+//     delta never fires -- PublishFullStateSnapshot()'s pet block is the
+//     ONLY path a pre-existing pet's PetCreated event reaches the bridge.
+//     Before this unit's headless snapshot fix, that path never fired
+//     either, so a pre-existing pet was invisible outright in that build.
+//   - In an EQT_HAS_GRAPHICS build (regardless of runtime --no-graphics),
+//     the delta fires immediately during spawn processing AND the snapshot
+//     republishes it later -- pre-existing, harmless duplication (the same
+//     thing already happened in graphics mode before this unit, since
+//     OnGraphicsComplete always called the snapshot after any pre-existing
+//     pet had already been spawn-detected).
+// This test accepts either shape (asserts total coverage >= 1) but records
+// which one happened, and additionally asserts the strict single-source
+// count when the delta didn't fire -- which is what actually runs when this
+// test executes in the build-nogfx tree.
+// ============================================================================
+
+TEST(FullStateSnapshot, PreExistingPetSurvivesHeadlessZoneInViaSnapshot) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+    const uint16_t kMySpawnId = 5007;
+    const uint32_t kPetSpawnId = 9001;
+
+    {
+        auto payload = BuildPayload(2 + 700, [](EQ::Net::DynamicPacket& p) {
+            p.PutCString(66, "qeytoqrg");
+            p.PutUInt16(686, 100);
+        });
+        Replay(eq, HC_OP_NewZone, payload);
+    }
+
+    // PlayerProfile establishes our own spawn id -- the pet-detection passes
+    // below key off m_my_spawn_id being nonzero.
+    {
+        auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt32(2 + 8, 1);
+            p.PutUInt32(2 + 12, 1);
+            p.PutUInt8(2 + 20, 10);
+            p.PutUInt32(2 + 2232, 100);
+            p.PutCString(2 + 12940, "Testchar");
+            p.PutUInt32(2 + 14384, kMySpawnId);
+        });
+        Replay(eq, HC_OP_PlayerProfile, payload);
+    }
+    ASSERT_EQ(eq.GetEntities().count(kMySpawnId), 1u);
+
+    // The pet is ALREADY in the zone's spawn list -- this is what makes it
+    // "pre-existing" rather than a mid-session GM-summon delta (which is all
+    // T40's live leg exercised). ZoneProcessSpawnAll's "second pass" runs
+    // synchronously inside this call, since m_my_spawn_id is already nonzero.
+    {
+        auto payload = BuildPayload(2 + 385, [&](EQ::Net::DynamicPacket& p) {
+            WritePetSpawnStruct(p, 2, kPetSpawnId, "Testchars_pet", kMySpawnId);
+        });
+        Replay(eq, HC_OP_ZoneSpawns, payload);
+    }
+    ASSERT_EQ(eq.GetEntities().count(kPetSpawnId), 1u);
+
+    auto afterSpawns = bridge.drainEvents();
+    bool deltaFired = false;
+    for (const auto& e : afterSpawns) {
+        if (e.type == eqt::state::GameEventType::PetCreated) deltaFired = true;
+    }
+
+    SendAATable(eq);
+    SendTributeInfo(eq);
+    SendGuildTributes(eq);
+    Replay(eq, HC_OP_GuildMOTD, EmptyPayload());
+    bridge.drainEvents();  // discard NetworkReady etc., not this test's concern
+
+    {
+        auto payload = BuildPayload(2 + 22, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt16(2, kMySpawnId);
+            p.PutUInt32(4, 0);
+            p.PutUInt32(8, 0);
+            p.PutUInt32(12, 0);
+            p.PutUInt32(16, 0);
+            p.PutUInt32(20, 0);
+        });
+        Replay(eq, HC_OP_ClientUpdate, payload);
+    }
+    ASSERT_TRUE(eq.IsGameStateReady());
+
+    auto afterClientUpdate = bridge.drainEvents();
+    int postSnapshotPetCreated = 0;
+    for (const auto& e : afterClientUpdate) {
+        if (e.type == eqt::state::GameEventType::PetCreated) postSnapshotPetCreated++;
+    }
+
+    if (deltaFired) {
+        // EQT_HAS_GRAPHICS build: the pre-existing-spawn delta already
+        // published PetCreated during ZoneProcessSpawnAll; the snapshot
+        // republishes it once more (pre-existing behavior, not introduced by
+        // this unit -- see comment block above).
+        EXPECT_EQ(postSnapshotPetCreated, 1)
+            << "Snapshot should still republish PetCreated for the pet even "
+               "though a delta already fired for it";
+    } else {
+        // EQT_GRAPHICS=OFF build: no delta path exists at all (OnPetCreated
+        // is compile-gated out), so the snapshot is the ONLY way this event
+        // reaches the bridge -- exactly the addendum's concern, and exactly
+        // what this unit's headless-snapshot fix closes.
+        EXPECT_EQ(postSnapshotPetCreated, 1)
+            << "PublishFullStateSnapshot() should be the sole source of "
+               "PetCreated for a pre-existing pet in a headless "
+               "(EQT_GRAPHICS=OFF) build";
+    }
+    EXPECT_TRUE(deltaFired || postSnapshotPetCreated >= 1)
+        << "A pre-existing pet must reach the bridge as PetCreated one way "
+           "or the other -- it did neither";
 }

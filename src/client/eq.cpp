@@ -155,11 +155,20 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	});
 
 	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
-#ifdef EQT_HAS_GRAPHICS
+	// T41: this construction was still folded under EQT_HAS_GRAPHICS even
+	// though P28 already declassified the *declaration* in eq.h ("plain
+	// game state and network logic with no renderer dependency") and T29's
+	// own comment right below names InventoryManager alongside
+	// CommandRegistry as one of the members that guard misclassification
+	// affected. Left guarded here, EQT_GRAPHICS=OFF builds never
+	// constructed it at all -- not "polled the wrong way", genuinely null
+	// for the process lifetime -- which would have made PublishFullStateSnapshot's
+	// inventory block (un-guarded below) silently publish nothing. Same
+	// declassification as T29's fix just below, applied to the member T29's
+	// comment named but didn't itself touch.
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
 	SetupInventoryCallbacks();
 	LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized");
-#endif
 
 	// T29: command registry creation was folded under EQT_HAS_GRAPHICS
 	// alongside the inventory manager above, which meant a headless build
@@ -411,6 +420,10 @@ void EverQuest::OnGameStateComplete() {
 		// Signal Application to create snapshot and start zone loading.
 		// Application's game thread loop picks this up, creates the snapshot
 		// (with full zone data), then starts the loading thread.
+		// PublishFullStateSnapshot() is NOT called here -- graphics mode
+		// publishes it later from OnGraphicsComplete(), once, after zone
+		// graphics finish loading (T41: do not add a second call site here,
+		// that would double-publish for every graphics-mode zone-in).
 		m_zone_load_requested = true;
 		LOG_INFO(MOD_GRAPHICS, "OnGameStateComplete: zone load requested");
 	} else {
@@ -423,6 +436,16 @@ void EverQuest::OnGameStateComplete() {
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 		}
+		// T41: OnGameStateComplete() is the correct GAME-lifecycle
+		// zone-in/state-ready signal (eq_zone.cpp's re-zone comment calls it
+		// "the single signal point ... which only fires once the new zone's
+		// NewZone packet has actually been received"). Graphics mode reaches
+		// PublishFullStateSnapshot() via OnGraphicsComplete() instead (a
+		// GRAPHICS lifecycle hook that only exists because zone graphics
+		// take time to build); this is the equivalent trigger for the run
+		// that has no graphics phase to wait on, so the snapshot fires
+		// exactly once per zone-in here too instead of never firing at all.
+		PublishFullStateSnapshot();
 	}
 #else
 	// No graphics mode - we're done
@@ -434,6 +457,10 @@ void EverQuest::OnGameStateComplete() {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 	}
+	// T41: see the twin branch above (EQT_HAS_GRAPHICS defined, graphics not
+	// initialized) -- same reasoning, this is the EQT_GRAPHICS=OFF configure's
+	// copy of the same headless path.
+	PublishFullStateSnapshot();
 #endif
 }
 
@@ -584,7 +611,12 @@ void EverQuest::PublishFullStateSnapshot() {
 	}
 
 	// --- Inventory ---
-#ifdef EQT_HAS_GRAPHICS
+	// T41: was #ifdef EQT_HAS_GRAPHICS. m_inventory_manager (per P28's
+	// comment at the top of this file) is a renderer-free data model used
+	// unconditionally elsewhere in this TU; nothing in this block touches
+	// the renderer. Un-guarding it is what makes the headless configure's
+	// snapshot (see OnGameStateComplete() above) actually publish inventory
+	// data instead of silently compiling out.
 	if (m_inventory_manager) {
 		// Equipment slots (0-21) + general inventory (22-29)
 		for (int16_t slot = 0; slot < 30; ++slot) {
@@ -600,7 +632,6 @@ void EverQuest::PublishFullStateSnapshot() {
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		}
 	}
-#endif
 
 	// --- Group ---
 	if (m_in_group) {
