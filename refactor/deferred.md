@@ -1792,7 +1792,41 @@ real items. Neither unit's loot verdict depends on it: both proved the
 loot itself via `LootItem ACK` and the item landing in an inventory
 slot, not via the chat string.
 
-## PATTERN: `EQT_HAS_GRAPHICS` gates around non-graphics code — five instances and counting, needs a sweep not another one-off
+## PATTERN: `EQT_HAS_GRAPHICS` gates around non-graphics code — **SWEPT by T43 (2026-08-04)**
+
+**CLOSED as a pattern.** T43 applied P28's rule exhaustively to every
+guard outside `src/client/graphics/` and fixed **8 misclassified sites**:
+hotbar load/publish on zone-connect; `setPlayerInfo()` on the inventory
+manager; all three `OnPetCreated()` call sites (the residual below — pet
+deltas never published headless); two `UpdateInventoryStats()` call sites
+(headless equipment stats never refreshed on HP change); `/bank` and
+`/train`; and **a sixth instance the sweep itself found — audio's
+EQ-client-path read left audio silently disabled in headless even after
+T42's `SetEQClientPath` fix.**
+
+Notably **no site needed a new null-check**: every fixed function already
+null-checks its own `m_bridge`/`m_inventory_manager`, which is *why* the
+guards were redundant rather than protective. That is the general shape —
+these gates were belt-and-braces around code that already defended
+itself, and the belt silently disabled the feature.
+
+**Pinned** by `FullStateSnapshot.HeadlessZoneInPopulatesGameState`
+(`tests/test_zone_connection_flow.cpp`), a synthetic headless zone-in
+over the server-free `ReplayZonePacket` seam asserting player stats, an
+inventory slot, a spell gem and a pet all reach the bridge — state
+*populated*, not "did not crash". Runs in both trees.
+
+**Honest limit on that pin, worth keeping in mind**: it would have caught
+P28, T41 and T42's item-dispatch drop, but **not** T29 (command
+registration) or T42's `SetEQClientPath` — those need different oracles,
+which is why the live headless leg stays in the verification bar rather
+than being replaced by the test. Graphics-mode no-op-ness was established
+by `visual_gate` PASS in both trees with goldens untouched.
+
+The classification table — **with a one-line reason for every guard left
+in place** — is in `refactor/T43_graphics_gate_sweep.md`'s Review. Consult
+it before re-auditing; that artifact exists so nobody starts from
+scratch. Historical record of the pattern follows:
 
 Every unit that has gone looking in headless territory has found another
 one. This is no longer a series of coincidences; it is a systemic
