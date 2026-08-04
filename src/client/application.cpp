@@ -1259,7 +1259,28 @@ CommandDispatchResult Application::DispatchSlashCommand(const std::string& rawLi
 
 void Application::updateGameState(float deltaTime) {
     // D21a: Game-side tick (spell/buff updates + intent processing)
-    if (m_eqClient && m_graphicsInitialized) {
+    // T45: was `m_graphicsInitialized` alone -- that flag means "the renderer
+    // subsystem exists", not "the game is ready to tick", and is permanently
+    // false in a --no-graphics run, so GameTick() (spell cooldowns,
+    // memorization, cast timeouts, buff expiry, intent draining) never ran
+    // headless at all (refactor/deferred.md, T44 finding). Fixed by OR'ing in
+    // EverQuest::IsGraphicsReady() (loading phase reached COMPLETE), the same
+    // game-lifecycle "state ready" signal T41 used for the full-state
+    // snapshot -- true once EverQuest::OnGameStateComplete()'s headless arm
+    // runs (immediately at zone-in, no graphics phase to wait on).
+    //
+    // Graphics mode is provably unaffected: m_graphicsInitialized is a
+    // one-way latch, set once inside Init() before gameThreadLoop() (and
+    // therefore this function) is ever called, and reset only by
+    // ShutdownGraphics() at teardown -- see application.h's own comment on
+    // the member ("Set once at init, read by both (safe)") and InitGraphics's
+    // failure path returning false out of Init() entirely rather than
+    // proceeding with the flag false. So in every graphics-mode run,
+    // m_graphicsInitialized is already true for every single iteration of
+    // this loop, including during zone loading (re-zones do not reset it) --
+    // OR'ing in a second condition that can only ever help the *headless*
+    // side cannot change graphics-mode timing.
+    if (m_eqClient && (m_graphicsInitialized || m_eqClient->IsGraphicsReady())) {
         m_eqClient->GameTick(deltaTime);
     }
 

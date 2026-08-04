@@ -1,0 +1,12 @@
+wait 8
+/say #npctypespawn 351043
+wait 2
+/target
+wait 1
+/cast 1
+wait 3
+/cast 1
+wait 20
+/cast 1
+wait 3
+/camp
