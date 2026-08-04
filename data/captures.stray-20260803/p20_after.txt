@@ -1,0 +1,13 @@
+wait 14
+/move 10 20 0
+wait 6
+/move 10 60 0
+wait 6
+/move 0 100 0
+wait 6
+/screenshot benchmarks/audits/p20_live_visual/gfay_03_AFTER.png
+/move 40 120 0
+wait 6
+/screenshot benchmarks/audits/p20_live_visual/gfay_tree_normal_AFTER.png
+wait 1
+/camp

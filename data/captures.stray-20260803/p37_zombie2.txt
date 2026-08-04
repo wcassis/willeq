@@ -1,0 +1,6 @@
+wait 25
+/moveto a_zombie
+wait 8
+/screenshot /mnt/projects/fable/videos/p37_entity_masked/stills/p37_befallen_zombie_AFTER.png
+wait 1
+/camp

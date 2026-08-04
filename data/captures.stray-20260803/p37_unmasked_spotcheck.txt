@@ -1,0 +1,4 @@
+wait 25
+/screenshot /mnt/projects/fable/videos/p37_entity_masked/stills/p37_unmasked_spotcheck.png
+wait 1
+/camp

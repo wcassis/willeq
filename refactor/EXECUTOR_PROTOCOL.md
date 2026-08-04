@@ -83,7 +83,14 @@ references this file; plans carry only unit-specific content.
    is expected — then STOP for Will, never self-bless)
 5. `bash <slot>/scripts/build-arm-noble.sh`
 6. `bash <slot>/scripts/refactor/check_file_sizes.sh fable` (no new
-   FAILs; put substantial new code in new TUs)
+   FAILs; put substantial new code in new TUs). **Run it from YOUR slot
+   on your task branch** — it checks what changed vs the base rev, so
+   from `main` or a slot detached at `fable` there is nothing to check.
+   Since T37 that case says so out loud (`nothing was checked, this is
+   not a pass`) instead of printing nothing and exiting 0; if you see
+   that line, your run proved nothing — re-run it correctly or use
+   `--files` with absolute paths. A bad base rev is now an error, not a
+   silent pass.
 
 ## Finish
 - Fill the plan's Review section (evidence, tables, deviations —

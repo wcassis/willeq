@@ -1,0 +1,29 @@
+# P20 scouting tour: stand at qeynos2 gates (Guard_Hezlan spot), turn
+# through headings, screenshot each, to find trees in frame.
+wait 12
+/turn 0
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h000.png
+/turn 45
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h045.png
+/turn 90
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h090.png
+/turn 135
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h135.png
+/turn 180
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h180.png
+/turn 225
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h225.png
+/turn 270
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h270.png
+/turn 315
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/scout_h315.png
+wait 1
+/camp

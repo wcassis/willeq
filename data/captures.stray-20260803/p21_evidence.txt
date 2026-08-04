@@ -1,0 +1,10 @@
+wait 10
+/say #zone qeynos2
+wait 20
+/say #time 12
+wait 2
+/say #goto -352 184 3
+wait 8
+/screenshot /mnt/projects/fable/videos/p20_live_visual/stills/p21_qeynos2_pawhook_00_BEFORE.png
+wait 1
+/camp

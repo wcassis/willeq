@@ -1,0 +1,10 @@
+wait 30
+/say #zone qeynos2
+wait 20
+/say #zone befallen
+wait 20
+/say #zone qeynos2
+wait 20
+/say #zone befallen
+wait 20
+/camp

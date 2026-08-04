@@ -1,0 +1,4 @@
+wait 30
+/screenshot /mnt/projects/fable/videos/p33_tree_wind/stills/diag_default_zone.png
+wait 1
+/camp

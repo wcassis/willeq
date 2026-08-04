@@ -1,0 +1,6 @@
+wait 30
+/say #zone qeynos2
+wait 20
+/say #time 12
+wait 200
+/camp
