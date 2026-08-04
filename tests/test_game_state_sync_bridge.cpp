@@ -145,3 +145,39 @@ TEST_F(GameStateSyncBridgeTest, UnhandledEventDelegatesUntouchedAndLeavesPetStat
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::PetCreated);
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::PlayerMoved);
 }
+
+// T41: InventorySlotChanged is deliberately NOT handled here. Scoping found
+// real production mutation paths -- vendor buy (ZoneProcessShopPlayerBuy,
+// eq_merchant.cpp: item placement happens via the generic OP_ItemPacket
+// path, not a slot-scoped publish), vendor sell (ZoneProcessShopPlayerSell,
+// eq_merchant.cpp: removes/decrements m_inventory_manager directly with NO
+// InventorySlotChanged published at all), and bank-window population (the
+// same generic OP_ItemPacket path, additionally #ifdef EQT_HAS_GRAPHICS-gated
+// in eq.cpp's HC_OP_ItemPacket case) -- that mutate inventory slots without
+// ever publishing InventorySlotChanged. syncInventoryState()'s poll is blind
+// to *when* those mutations happened but still correct because it re-reads
+// m_inventory_manager directly every tick; event-driven state fed only by
+// InventorySlotChanged + the snapshot would silently miss all three. This is
+// the STOP condition the plan named verbatim ("bank slots... merchant
+// transactions that mutate slots without publishing"). syncInventoryState()
+// was therefore NOT deleted -- see refactor/T41_inventory_state_via_bridge.md
+// Review. This test pins the current (safe) default: unhandled, delegates
+// through untouched, same as any other event this decorator doesn't
+// recognize -- so a future attempt to add the case without first closing
+// those three gaps fails a test instead of silently shipping wrong state.
+TEST_F(GameStateSyncBridgeTest, InventorySlotChangedNotYetHandledDelegatesUntouched) {
+    InventorySlotChangedData data;
+    data.slotId = 22;
+    data.hasItem = true;
+    data.itemId = 1001;
+    data.itemName = "Test Item";
+    data.iconId = 500;
+    data.quantity = 1;
+
+    bridge->applyEvent(GameEvent(GameEventType::InventorySlotChanged, data));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
+    // Confirms the decorator did not attempt to touch inventory state at
+    // all -- there is no GameState::inventory() call in this path today.
+}
