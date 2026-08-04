@@ -186,12 +186,6 @@ const Entity* EverQuest::GetPetEntity() const
 	return nullptr;
 }
 
-uint8_t EverQuest::GetPetHpPercent() const
-{
-	const Entity* pet = GetPetEntity();
-	return pet ? pet->hp_percent : 0;
-}
-
 std::string EverQuest::GetPetName() const
 {
 	const Entity* pet = GetPetEntity();
@@ -202,14 +196,6 @@ uint8_t EverQuest::GetPetLevel() const
 {
 	const Entity* pet = GetPetEntity();
 	return pet ? pet->level : 0;
-}
-
-bool EverQuest::GetPetButtonState(EQT::PetButton button) const
-{
-	if (button >= EQT::PET_BUTTON_COUNT) {
-		return false;
-	}
-	return m_pet_button_states[button];
 }
 
 void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)

@@ -34,6 +34,7 @@
 // headers that actually require Irrlicht stay gated.
 #include "client/bridge/console_bridge.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/game_state_sync_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/state/event_bus.h"
 #include "client/hotbar/hotbar_model.h"
@@ -518,8 +519,16 @@ bool Application::initialize(const ApplicationConfig& config) {
         LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtBridge...");
         m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
         m_irrlichtBridge->setRenderer(m_renderer.get());
-        m_renderer->setBridge(m_irrlichtBridge.get());
-        m_bridge = m_irrlichtBridge.get();
+        // T40: wrap the mode bridge in the state-sync decorator. The
+        // decorator -- not m_irrlichtBridge directly -- is what the renderer
+        // and EverQuest are both wired to below, so events pushed by
+        // EverQuest and intents pushed by the renderer flow through the same
+        // single queue (the decorator's), which the decorator then applies
+        // to state and forwards to m_irrlichtBridge unchanged.
+        m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
+            *m_irrlichtBridge, *m_gameState);
+        m_renderer->setBridge(m_stateSyncBridge.get());
+        m_bridge = m_stateSyncBridge.get();
         LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
         LOG_TRACE(MOD_GRAPHICS, "Entering InitGraphics({}x{})...", config.displayWidth, config.displayHeight);
 
@@ -592,7 +601,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     // D25: Attach console bridge in headless mode for event logging
     if (!m_graphicsInitialized && !m_bridge) {
         m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
-        m_bridge = m_consoleBridge.get();
+        // T40: same decorator wrapping as the graphics path above.
+        m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
+            *m_consoleBridge, *m_gameState);
+        m_bridge = m_stateSyncBridge.get();
         m_eqClient->setBridge(m_bridge);
         LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
     }
@@ -646,8 +658,11 @@ void Application::shutdown() {
     if (m_eqClient) {
         m_eqClient->ShutdownGraphics();
     }
-    // Destroy bridge before renderer (bridge holds renderer pointer)
+    // Destroy bridge before renderer (bridge holds renderer pointer).
+    // T40: m_stateSyncBridge holds a reference to m_irrlichtBridge, so drop
+    // it first to avoid leaving a dangling reference around.
     m_bridge = nullptr;
+    m_stateSyncBridge.reset();
     m_irrlichtBridge.reset();
     if (m_renderer) {
         m_renderer->shutdown();
@@ -1702,11 +1717,12 @@ void Application::syncGameStateFromClient() {
     // Phase 7 Migration Note:
     // Player position, stats, and zone info are now synced directly from EQ class
     // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
-    // The sub-syncs below (pet, NPC interaction, spell) haven't been migrated yet
+    // Pet state (T40) is now event-fed via GameStateSyncBridge -- see
+    // Application::initialize()'s bridge construction -- instead of polled here.
+    // The sub-syncs below (NPC interaction, spell) haven't been migrated yet
     // and still use polling for now.
 
     // Sync subsystems (not yet migrated to direct sync)
-    syncPetState();
     syncNPCInteractionState();
     syncSpellState();
     syncCombatState();
@@ -1808,51 +1824,6 @@ void Application::syncInventoryState() {
         bool occupied = inv->getItem(slot) != nullptr;
         if (occupied != m_gameState->inventory().hasBankItem(stateSlot)) {
             m_gameState->inventory().setBankOccupied(stateSlot, occupied);
-        }
-    }
-}
-
-void Application::syncPetState() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
-
-    uint16_t petSpawnId = m_eqClient->GetPetSpawnId();
-
-    // Check for pet creation/removal
-    if (petSpawnId != m_lastPetSpawnId) {
-        if (petSpawnId != 0) {
-            // Pet created
-            std::string petName = m_eqClient->GetPetName();
-            uint8_t petLevel = m_eqClient->GetPetLevel();
-            m_gameState->pet().setPet(petSpawnId, petName, petLevel);
-            LOG_DEBUG(MOD_MAIN, "Pet state synced: {} (Level {})", petName, petLevel);
-        } else {
-            // Pet removed
-            m_gameState->pet().clearPet();
-            LOG_DEBUG(MOD_MAIN, "Pet cleared");
-        }
-        m_lastPetSpawnId = petSpawnId;
-        m_lastPetHpPercent = 100;
-        m_lastPetManaPercent = 100;
-    }
-
-    // Sync pet stats if we have a pet
-    if (petSpawnId != 0) {
-        uint8_t hpPercent = m_eqClient->GetPetHpPercent();
-        // Note: GetPetManaPercent doesn't exist, we'd need to track separately
-        // For now just sync HP
-        if (hpPercent != m_lastPetHpPercent) {
-            m_gameState->pet().updatePetStats(hpPercent, m_lastPetManaPercent);
-            m_lastPetHpPercent = hpPercent;
-        }
-
-        // Sync button states
-        for (uint8_t i = 0; i < 10; ++i) {
-            bool state = m_eqClient->GetPetButtonState(static_cast<EQT::PetButton>(i));
-            if (state != m_gameState->pet().getButtonState(i)) {
-                m_gameState->pet().setButtonState(i, state);
-            }
         }
     }
 }

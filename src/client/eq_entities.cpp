@@ -1747,6 +1747,22 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TargetChanged, std::move(tdata)));
 			}
+			// T40: if this entity is our pet, push PetStatsChanged with the
+			// updated HP. manaPercent is computed from the entity record for
+			// honesty rather than fabricated -- but Entity::cur_mana/max_mana
+			// are populated only for the player's own entity (ManaChange
+			// packet is player-only), never for pets, so this will read 0
+			// for every pet until/unless something starts populating it.
+			if (m_pet_spawn_id == spawn_id) {
+				eqt::state::PetStatsChangedData pdata;
+				pdata.spawnId = spawn_id;
+				pdata.hpPercent = hp_percent;
+				pdata.manaPercent = (it->second.max_mana > 0)
+					? static_cast<uint8_t>((it->second.cur_mana * 100) / it->second.max_mana)
+					: 0;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::PetStatsChanged, std::move(pdata)));
+			}
 		}
 	}
 }
