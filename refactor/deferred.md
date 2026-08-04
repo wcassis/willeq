@@ -1254,9 +1254,30 @@ slash commands read it.**
   sites (`eq_bridge.cpp:589` clear, `eq_bridge.cpp:771` set,
   `eq_entities.cpp:1728` HP update), and `eq_action_handler.cpp:21`
   documents a deliberate no-duplicate decision ("D20e1: TargetChanged
-  event is already published by ProcessBridgeIntents"). So naively
+  event is already published by ProcessBridgeIntents"). ~~So naively
   making the stub fire — after wiring the setters — would DOUBLE-publish
-  it. The stale source comment in `combat_state.cpp:68` claiming "we
+  it.~~ **CORRECTION (orchestrator, 2026-08-04): that double-publish
+  claim was WRONG, and I wrote it without checking. The two paths are
+  DIFFERENT CHANNELS with DISJOINT CONSUMERS**, verified:
+  - those three sites `m_bridge->pushEvent(...)` onto the
+    **GameStateBridge**, consumed by `IrrlichtBridge` (renderer) and
+    `ConsoleBridge`;
+  - `CombatState::fireTargetChangedEvent()` would `m_eventBus->publish()`
+    onto the **EventBus**, consumed by `ConsoleRenderer`
+    (`console_renderer.cpp:107`, live in headless mode);
+  - **nothing else publishes `TargetChanged` to the EventBus at all**,
+    the bridges do not `subscribe()` to the EventBus, and no code
+    forwards between the two. The EventBus is fed exclusively by
+    `src/client/state/*.cpp`.
+
+  So letting the stub publish is safe, and is in fact what every other
+  state module already does. `eq_action_handler.cpp:21`'s no-duplicate
+  note is about the bridge channel and does not apply. The migration is
+  correspondingly smaller than this entry originally implied — it is
+  "populate the state and let it publish", not "consolidate three
+  publishers onto one".
+
+  The stale source comment in `combat_state.cpp:68` claiming "we
   don't have a corresponding data struct" is simply wrong:
   `TargetChangedData` exists at `event_bus.h:384`.
 
