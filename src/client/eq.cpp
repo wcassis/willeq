@@ -1060,26 +1060,56 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 				// Headless mode looting
 				ZoneProcessLootItem(p);
 			} else {
-				// Check if this is a trade partner item
-#ifdef EQT_HAS_GRAPHICS
+				// Check if this is a trade partner item.
+				// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
+				// InventoryManager are both renderer-free (P28/this file's
+				// own header comment), so an EQT_GRAPHICS=OFF build was
+				// dropping regular inventory item packets (vendor buy, bank
+				// window population) entirely. Un-guarded; no genuine
+				// graphics dependency found.
 				bool handled_as_trade = false;
 				if (m_trade_manager && m_trade_manager->isTrading()) {
 					handled_as_trade = ZoneProcessTradePartnerItem(p);
 				}
 				if (!handled_as_trade) {
-					// Regular inventory item packet - pass to inventory manager
+					// Regular inventory item packet - pass to inventory manager.
+					// This is the single choke point for vendor-buy item
+					// placement and bank-window population (T41's Review
+					// traced both here) -- publish InventorySlotChanged here
+					// so both get the UI update, not just the game-side model.
 					if (m_inventory_manager) {
-						m_inventory_manager->processItemPacket(p);
+						int16_t changedSlot = m_inventory_manager->processItemPacket(p);
+						if (m_bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
+							eqt::state::InventorySlotChangedData data;
+							data.slotId = changedSlot;
+							const auto* item = m_inventory_manager->getItem(changedSlot);
+							data.hasItem = (item != nullptr && item->itemId != 0);
+							data.itemId = data.hasItem ? item->itemId : 0;
+							data.itemName = data.hasItem ? item->name : "";
+							data.iconId = data.hasItem ? item->icon : 0;
+							data.quantity = data.hasItem ? item->quantity : 0;
+							LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (generic ItemPacket fallback): slot={} hasItem={} itemId={} name='{}' qty={}",
+								data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
+							m_bridge->pushEvent(eqt::state::GameEvent(
+								eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+						}
 					}
 				}
-#endif
 				if (s_debug_level >= 2) {
 					LOG_DEBUG(MOD_MAIN, "Received ItemPacket type={} while not looting/trading", item_packet_type);
 				}
 			}
 		}
 		break;
-#ifdef EQT_HAS_GRAPHICS
+	// T42: this whole block was #ifdef EQT_HAS_GRAPHICS. eq_merchant.cpp's own
+	// header comment (P28) documents that ZoneProcessMoveItem/DeleteItem/
+	// ShopRequest/ShopPlayerBuy/ShopPlayerSell/ShopEndConfirm/MoneyUpdate/
+	// GMTraining are all "plain Player mode bridge-driven ... logic with no
+	// Irrlicht/renderer usage anywhere in it" -- confirmed by reading each;
+	// none touch a renderer. Left gated here, an EQT_GRAPHICS=OFF build never
+	// dispatched vendor buy/sell, bank-adjacent move/delete, or money-update
+	// packets at all, regardless of any publish fix inside them. Un-guarded;
+	// no genuine graphics dependency found.
 	case HC_OP_MoveItem:
 		ZoneProcessMoveItem(p);
 		break;
@@ -1104,7 +1134,6 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 	case HC_OP_GMTraining:
 		ZoneProcessGMTraining(p);
 		break;
-#endif
 	case 0x61f9: // OP_TargetCommand response
 		// Server may reject our target
 		if (p.Length() >= 4) {

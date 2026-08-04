@@ -214,7 +214,12 @@ public:
 
     // Packet processing
     void processCharInventory(const EQ::Net::Packet& packet);
-    void processItemPacket(const EQ::Net::Packet& packet);
+    // Returns the slot the parsed item landed in, or SLOT_INVALID if the
+    // packet couldn't be parsed. Callers (eq.cpp's generic ItemPacket
+    // fallback, eq_merchant.cpp's loot-to-inventory path) use this to publish
+    // InventorySlotChanged (T42) -- this is the single choke point for both
+    // vendor-buy and bank-window item placement.
+    int16_t processItemPacket(const EQ::Net::Packet& packet);
     void processMoveItemResponse(const EQ::Net::Packet& packet);
     void processDeleteItemResponse(const EQ::Net::Packet& packet);
 

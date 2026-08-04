@@ -352,14 +352,6 @@ private:
     void syncCombatState();
 
     /**
-     * Sync inventory slot occupancy from InventoryManager (T39).
-     *
-     * InventoryManager remains authoritative; this mirrors equipment/
-     * general/bank slot occupancy into GameState::inventory().
-     */
-    void syncInventoryState();
-
-    /**
      * Update loading progress for the renderer.
      */
     void updateLoadingProgress();

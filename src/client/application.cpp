@@ -210,7 +210,18 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->StartSessionRecording(config.recordSessionPath);
         }
 
-#ifdef EQT_HAS_GRAPHICS
+        // T42: was #ifdef EQT_HAS_GRAPHICS. SetEQClientPath/SetRegionMapsPath/
+        // SetConfigPath are all plain inline setters (eq.h, "un-guarded" per
+        // P28's own comment at SetEQClientPath's definition in eq.cpp) with no
+        // renderer dependency -- but this call site never caught up, so a true
+        // EQT_GRAPHICS=OFF build never set m_eq_client_path at all. Found live:
+        // LoadZoneSources() (eq_zone.cpp, itself unconditional -- it builds the
+        // BSP tree game state needs for water detection, independent of
+        // graphics) treats an empty eq_client_path as fatal and calls
+        // RequestQuit(), so every EQT_GRAPHICS=OFF zone-in against a real
+        // server self-terminated within ~2s of receiving OP_NewZone, before
+        // this unit's fix could even be exercised live. Same declassification
+        // family as P28/T29/T41's m_inventory_manager fix.
         if (!config.eqClientPath.empty()) {
             m_eqClient->SetEQClientPath(config.eqClientPath);
         }
@@ -218,7 +229,6 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->SetRegionMapsPath(config.regionMapsPath);
         }
         m_eqClient->SetConfigPath(config.configFile);
-#endif
 
 #ifdef WITH_AUDIO
         // Apply audio settings
@@ -1717,16 +1727,15 @@ void Application::syncGameStateFromClient() {
     // Phase 7 Migration Note:
     // Player position, stats, and zone info are now synced directly from EQ class
     // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
-    // Pet state (T40) is now event-fed via GameStateSyncBridge -- see
-    // Application::initialize()'s bridge construction -- instead of polled here.
-    // The sub-syncs below (NPC interaction, spell) haven't been migrated yet
-    // and still use polling for now.
+    // Pet state (T40) and inventory slot occupancy (T42) are now event-fed via
+    // GameStateSyncBridge -- see Application::initialize()'s bridge construction
+    // -- instead of polled here. The sub-syncs below (NPC interaction, spell)
+    // haven't been migrated yet and still use polling for now.
 
     // Sync subsystems (not yet migrated to direct sync)
     syncNPCInteractionState();
     syncSpellState();
     syncCombatState();
-    syncInventoryState();
 }
 
 void Application::syncCombatState() {
@@ -1785,46 +1794,6 @@ void Application::syncCombatState() {
     if (autoAttacking != m_lastAutoAttacking) {
         m_gameState->combat().setAutoAttacking(autoAttacking);
         m_lastAutoAttacking = autoAttacking;
-    }
-}
-
-void Application::syncInventoryState() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
-
-    // T39: InventoryManager is authoritative; mirror slot occupancy into
-    // GameState::inventory(). No production reader consumes these occupancy
-    // arrays today (T28 confirmed this, still true), but a clean call site
-    // exists (bounded slot ranges below), so this is the wiring half named
-    // in the plan rather than something invented to make the arrays look
-    // populated.
-    eqt::inventory::InventoryManager* inv = m_eqClient->GetInventoryManager();
-    if (!inv) {
-        return;
-    }
-
-    for (int16_t slot = eqt::inventory::EQUIPMENT_BEGIN; slot <= eqt::inventory::EQUIPMENT_END; ++slot) {
-        bool occupied = inv->getItem(slot) != nullptr;
-        if (occupied != m_gameState->inventory().hasEquipment(slot)) {
-            m_gameState->inventory().setEquipmentOccupied(slot, occupied);
-        }
-    }
-
-    for (int16_t slot = eqt::inventory::GENERAL_BEGIN; slot <= eqt::inventory::GENERAL_END; ++slot) {
-        int16_t stateSlot = slot - eqt::inventory::GENERAL_BEGIN;
-        bool occupied = inv->getItem(slot) != nullptr;
-        if (occupied != m_gameState->inventory().hasGeneralItem(stateSlot)) {
-            m_gameState->inventory().setGeneralOccupied(stateSlot, occupied);
-        }
-    }
-
-    for (int16_t slot = eqt::inventory::BANK_BEGIN; slot <= eqt::inventory::BANK_END; ++slot) {
-        int16_t stateSlot = slot - eqt::inventory::BANK_BEGIN;
-        bool occupied = inv->getItem(slot) != nullptr;
-        if (occupied != m_gameState->inventory().hasBankItem(stateSlot)) {
-            m_gameState->inventory().setBankOccupied(stateSlot, occupied);
-        }
     }
 }
 
