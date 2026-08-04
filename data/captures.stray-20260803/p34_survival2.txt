@@ -1,6 +1,0 @@
-wait 20
-/screenshot
-wait 200
-/screenshot
-wait 5
-/camp

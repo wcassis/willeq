@@ -1,5 +1,0 @@
-wait 30
-wait 60
-wait 60
-wait 60
-/camp

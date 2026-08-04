@@ -1,5 +1,0 @@
-wait 8
-/say #zone qeynos2
-wait 15
-/camp
-wait 35

@@ -1,3 +1,0 @@
-wait 8
-/camp
-wait 35

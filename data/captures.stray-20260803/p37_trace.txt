@@ -1,4 +1,0 @@
-wait 25
-/screenshot /mnt/projects/fable/videos/p37_entity_masked/stills/p37_befallen_general.png
-wait 2
-/camp

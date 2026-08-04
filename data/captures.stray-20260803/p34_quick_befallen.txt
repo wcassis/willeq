@@ -1,4 +1,0 @@
-wait 25
-/screenshot /mnt/projects/fable/wt/slot1/data/captures/p34_befallen_check.png
-wait 10
-/camp
