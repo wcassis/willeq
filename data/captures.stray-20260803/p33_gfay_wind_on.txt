@@ -1,0 +1,16 @@
+wait 60
+/say #zone gfaydark
+wait 60
+/say #time 12
+wait 3
+/turn 180
+wait 3
+/screenshot /mnt/projects/fable/videos/p33_tree_wind/stills/p33_gfay_wind_ON_t0.png
+wait 2
+/screenshot /mnt/projects/fable/videos/p33_tree_wind/stills/p33_gfay_wind_ON_t2.png
+wait 2
+/screenshot /mnt/projects/fable/videos/p33_tree_wind/stills/p33_gfay_wind_ON_t4.png
+wait 2
+/screenshot /mnt/projects/fable/videos/p33_tree_wind/stills/p33_gfay_wind_ON_t6.png
+wait 1
+/camp

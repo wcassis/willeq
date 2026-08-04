@@ -1,0 +1,20 @@
+wait 10
+/say #zone qeynos2
+wait 20
+/say #time 12
+wait 2
+/say #goto -365 181 3
+wait 3
+/move -358 181 3
+wait 4
+/screenshot /mnt/projects/fable/videos/p20_live_visual/stills/p21_scout4_00.png
+/move -354 181 3
+wait 4
+/screenshot /mnt/projects/fable/videos/p20_live_visual/stills/p21_scout4_01.png
+/say #goto -358 165 3
+wait 3
+/move -353 162 3
+wait 4
+/screenshot /mnt/projects/fable/videos/p20_live_visual/stills/p21_scout4_02.png
+wait 1
+/camp

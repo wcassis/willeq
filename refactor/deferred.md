@@ -1569,7 +1569,37 @@ it blocks graphical live sessions, which is what Will's "the same
 commands in a real session" ruling ultimately wants. Same family as the
 recorded gfaydark `race=330` FATAL.
 
-## `check_file_sizes.sh` reports a vacuous pass indistinguishably from a real one (T33 finding, 2026-08-03)
+## `check_file_sizes.sh` reports a vacuous pass indistinguishably from a real one (T33 finding, 2026-08-03) — **FIXED by T37 (2026-08-04)**
+
+**CLOSED.** Investigating turned up **three** routes to a silent pass, not
+the one originally reported:
+
+1. **empty diff** (run from `main`, a slot detached at the base rev, or
+   after a merge) — legitimate, but was invisible;
+2. **`--files` with no paths after it** — a caller mistake;
+3. **a `BASE_REV` that does not resolve** (typo, or not a git repo at all)
+   — git wrote to stderr, `mapfile` got nothing, and the script exited 0.
+   This was the worst of the three: a mistyped base *passed*.
+
+Fix: (1) still exits 0 but prints `no C++ files to check (<source>) —
+nothing was checked, this is not a pass`; (2) and (3) are now errors
+(exit 2) because the caller asked for a check that never happened. Every
+run that does check something now opens with `checking N file(s) (<source>)`
+and closes with `checked N file(s): X ok, Y warn, Z fail`, so a Review
+pasting the output shows what was examined rather than an absence of
+output. Exit-code contract preserved: 0 ok, 1 FAIL over the hard ceiling,
+2 error.
+
+All five modes verified by hand (empty diff, bad base, empty `--files`,
+explicit paths with a WARN and a FAIL, real diff with 10 changed files).
+
+**This closes the verification-integrity trio** — golden-replay CWD skip
+(T36), this, and the original golden-skip note (superseded by T36). All
+three shared one shape: *a check that can quietly not run is worse than no
+check, because it manufactures confidence.* Worth remembering the next
+time a verification step is added.
+
+Original report follows for the record:
 
 `scripts/refactor/check_file_sizes.sh [BASE_REV]` builds its file list
 from `git diff --name-only <base>` (default `fable`). When that diff is

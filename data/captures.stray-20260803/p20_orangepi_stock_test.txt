@@ -1,0 +1,14 @@
+# P20 follow-up (Task 2): verify stock orangepi preset (mergeZoneDraws:true)
+# survives first frames in qeynos2, per P10b's own validated crash-free
+# finding — checking whether the orangepi_p20 preset (mergeZoneDraws:false)
+# is still necessary.
+wait 12
+/screenshot benchmarks/audits/p20_live_visual/orangepi_stock_qeynos2_t0.png
+wait 1
+/screenshot benchmarks/audits/p20_live_visual/orangepi_stock_qeynos2_t1.png
+wait 2
+/screenshot benchmarks/audits/p20_live_visual/orangepi_stock_qeynos2_t3.png
+wait 3
+/screenshot benchmarks/audits/p20_live_visual/orangepi_stock_qeynos2_t6.png
+wait 1
+/camp

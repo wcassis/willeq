@@ -1,0 +1,35 @@
+wait 15
+/screenshot data/captures/p10_ab_befallen_pose1_off.png
+wait 1
+/mergedraws
+wait 3
+/screenshot data/captures/p10_ab_befallen_pose1_on.png
+wait 1
+/mergedraws
+wait 1
+/screenshot data/captures/p10_ab_befallen_pose1_off2.png
+wait 1
+/move 35 -60 3
+wait 3
+/screenshot data/captures/p10_ab_befallen_pose2_off.png
+wait 1
+/mergedraws
+wait 3
+/screenshot data/captures/p10_ab_befallen_pose2_on.png
+wait 1
+/mergedraws
+wait 1
+/screenshot data/captures/p10_ab_befallen_pose2_off2.png
+wait 1
+/move 20 -82 3
+wait 3
+/screenshot data/captures/p10_ab_befallen_pose3_off.png
+wait 1
+/mergedraws
+wait 3
+/screenshot data/captures/p10_ab_befallen_pose3_on.png
+wait 1
+/mergedraws
+wait 1
+/screenshot data/captures/p10_ab_befallen_pose3_off2.png
+wait 40

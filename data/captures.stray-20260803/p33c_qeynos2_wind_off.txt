@@ -1,0 +1,9 @@
+wait 30
+/say #zone qeynos2
+wait 25
+/say #time 12
+wait 3
+/turn 180
+wait 3
+wait 25
+/camp

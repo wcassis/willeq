@@ -1,0 +1,13 @@
+wait 12
+/screenshot benchmarks/audits/p20_live_visual/approach_00_start.png
+/move 40 340 4
+wait 6
+/screenshot benchmarks/audits/p20_live_visual/approach_01.png
+/move 10 360 4
+wait 6
+/screenshot benchmarks/audits/p20_live_visual/approach_02.png
+/move -20 380 4
+wait 6
+/screenshot benchmarks/audits/p20_live_visual/approach_03.png
+wait 1
+/camp

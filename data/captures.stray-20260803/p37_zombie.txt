@@ -1,0 +1,6 @@
+wait 25
+/say #goto -195 -988 -66
+wait 25
+/screenshot /mnt/projects/fable/videos/p37_entity_masked/stills/p37_befallen_zombie.png
+wait 1
+/camp
