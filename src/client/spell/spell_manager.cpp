@@ -77,6 +77,15 @@ void SpellManager::update(float delta_time)
                 m_gem_states[m_current_gem_slot] = GemState::Ready;
                 publishGemChanged(m_current_gem_slot);
             }
+            // T44 (found live, not by code reading): this is a fourth place
+            // m_is_casting flips back to false for our own cast -- server
+            // never even echoed BeginCast (e.g. an invalid target the server
+            // silently drops rather than rejecting with an Interrupt
+            // packet). Without this, GameStateSyncBridge would have no way
+            // to learn the cast ended and SpellState would show "casting"
+            // forever. Missing this is exactly the kind of gap the plan
+            // asked to be found before converting, not papered over.
+            publishCastComplete(m_current_spell_id, CastResult::Interrupted);
         }
     }
 
@@ -244,6 +253,15 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     m_gem_states[gem_slot] = GemState::Casting;
     publishGemChanged(gem_slot);
 
+    // T44: publish SpellCastStarted immediately, client-side, rather than
+    // waiting for the server to echo BeginCast back to us. GameStateSyncBridge
+    // needs this to reconstruct casting state without polling SpellManager,
+    // and the poll it replaces read this state on the very next tick after
+    // this local assignment -- deferring to the server echo (eq_player_info.cpp's
+    // ZoneProcessBeginCast) alone would add a network round-trip of latency
+    // the old poll never had.
+    publishCastStarted(spell_id, target_id, m_cast_duration_ms);
+
     // Send cast packet to server
     sendCastSpellPacket(spell_id, gem_slot, target_id);
 
@@ -299,6 +317,10 @@ CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
     m_cast_duration_ms = spell->cast_time_ms;
     m_waiting_for_server_confirm = true;
 
+    // T44: see beginCastFromGem() -- same reasoning, no gem event to piggyback
+    // on here since item/scroll casts don't touch a gem slot.
+    publishCastStarted(spell_id, target_id, m_cast_duration_ms);
+
     // Send cast packet (slot 0xFF or use inventory slot for item casts)
     sendCastSpellPacket(spell_id, 0xFF, target_id);
 
@@ -333,6 +355,8 @@ void SpellManager::interruptCast()
     if (m_on_cast_complete) {
         m_on_cast_complete(CastResult::Interrupted, m_current_spell_id);
     }
+
+    publishCastComplete(m_current_spell_id, CastResult::Interrupted);
 
     m_current_spell_id = SPELL_UNKNOWN;
     m_current_target_id = 0;
@@ -1095,6 +1119,8 @@ void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_
             m_on_cast_complete(result, spell_id);
         }
 
+        publishCastComplete(spell_id, result);
+
         const SpellData* spell = m_spell_db.getSpell(spell_id);
         LOG_INFO(MOD_SPELL, "Cast of '{}' {} ",
             spell ? spell->name : "Unknown",
@@ -1194,6 +1220,13 @@ void SpellManager::completeCast(bool success)
             spell ? spell->name : "Unknown");
     }
 
+    // T44: this is the choke point for our own cast's success path (called
+    // from handleAction() on the server's success packet, and from update()'s
+    // no-Action-packet timeout fallback for casts like pet summons). success
+    // is the only value passed by any current caller; the false branch is
+    // kept honest anyway rather than silently dropping the event.
+    publishCastComplete(m_current_spell_id, success ? CastResult::Success : CastResult::Interrupted);
+
     m_current_spell_id = SPELL_UNKNOWN;
     m_current_target_id = 0;
 }
@@ -1215,6 +1248,37 @@ void SpellManager::startGemCooldown(uint8_t gem_slot, uint32_t duration_ms)
     publishGemChanged(gem_slot);
 
     LOG_DEBUG(MOD_SPELL, "Gem {} on cooldown for {}ms", gem_slot + 1, duration_ms);
+}
+
+// T44: push SpellCastStarted for our own cast, at the moment it begins
+// locally -- see beginCastFromGem()/beginCastById() for why this can't wait
+// for the server-echoed BeginCast packet (eq_player_info.cpp also publishes
+// SpellCastStarted, for any caster including NPCs/other players; that one is
+// unrelated to this, driven by the packet, not local intent).
+void SpellManager::publishCastStarted(uint32_t spell_id, uint16_t target_id, uint32_t cast_time_ms) {
+    if (!m_bridge) return;
+    eqt::state::SpellCastStartedData data;
+    data.casterId = m_eq->GetEntityID();
+    data.spellId = spell_id;
+    data.castTimeMs = cast_time_ms;
+    data.targetId = target_id;
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellCastStarted, std::move(data)));
+}
+
+// T44: push SpellCastComplete for our own cast, at every place m_is_casting
+// flips back to false for it (success, interrupt, fizzle) -- this event was
+// defined but never published before this unit, the one gap in reconstructing
+// casting state from bridge events (SpellGemChanged/SpellCastStarted already
+// covered start and gem lifecycle).
+void SpellManager::publishCastComplete(uint32_t spell_id, CastResult result) {
+    if (!m_bridge) return;
+    eqt::state::SpellCastCompleteData data;
+    data.casterId = m_eq->GetEntityID();
+    data.spellId = spell_id;
+    data.result = static_cast<uint8_t>(result);
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellCastComplete, std::move(data)));
 }
 
 // U06b: Push SpellGemChanged to bridge for new UI

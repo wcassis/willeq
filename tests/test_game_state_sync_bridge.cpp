@@ -9,6 +9,9 @@
 #include "client/bridge/game_state_sync_bridge.h"
 #include "client/state/game_state.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace eqt;
 using namespace eqt::bridge;
 using namespace eqt::state;
@@ -223,4 +226,204 @@ TEST_F(GameStateSyncBridgeTest, InventorySlotChangedStillDelegatesToWrappedBridg
     // swallows.
     ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
+}
+
+// ============================================================================
+// T44: SpellGemChanged / SpellCastStarted / SpellCastComplete, replacing
+// Application::syncSpellState(). SpellCastStarted/SpellCastComplete carry a
+// casterId that can be any entity (self, NPC, other player), so these cases
+// filter to our own casts via GameState::player().spawnId() -- fed by a new
+// PlayerSpawnIdSet case, published reliably at zone-in (T41's full-state
+// snapshot) well before any cast could occur.
+// ============================================================================
+
+TEST_F(GameStateSyncBridgeTest, PlayerSpawnIdSetUpdatesPlayerState) {
+    PlayerSpawnIdSetData data;
+    data.spawnId = 4242;
+
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, data));
+
+    EXPECT_EQ(state->player().spawnId(), 4242);
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellGemChangedCastingSetsGemState) {
+    SpellGemChangedData data;
+    data.gemSlot = 2;
+    data.spellId = 501;
+    data.gemState = static_cast<uint8_t>(SpellGemState::Casting);
+    data.cooldownRemainingMs = 0;
+    data.cooldownTotalMs = 0;
+
+    bridge->applyEvent(GameEvent(GameEventType::SpellGemChanged, data));
+
+    EXPECT_EQ(state->spells().getGemState(2), SpellGemState::Casting);
+    EXPECT_EQ(state->spells().getGemSpellId(2), 501u);
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellGemChangedRefreshSetsCooldown) {
+    SpellGemChangedData data;
+    data.gemSlot = 3;
+    data.spellId = 77;
+    data.gemState = static_cast<uint8_t>(SpellGemState::Refresh);
+    data.cooldownRemainingMs = 4000;
+    data.cooldownTotalMs = 8000;
+
+    bridge->applyEvent(GameEvent(GameEventType::SpellGemChanged, data));
+
+    EXPECT_EQ(state->spells().getGemState(3), SpellGemState::Refresh);
+    // T44: computed on read from the single event above, not a per-tick
+    // poll -- allow a small tolerance for real time elapsed since the call.
+    EXPECT_NEAR(state->spells().getGemCooldownProgress(3), 0.5f, 0.02f);
+    EXPECT_NEAR(static_cast<double>(state->spells().getGemCooldownRemaining(3)), 4000.0, 100.0);
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellGemChangedReadySetsGemReadyAndClearsCooldown) {
+    SpellGemChangedData refresh;
+    refresh.gemSlot = 4;
+    refresh.spellId = 88;
+    refresh.gemState = static_cast<uint8_t>(SpellGemState::Refresh);
+    refresh.cooldownRemainingMs = 1000;
+    refresh.cooldownTotalMs = 1000;
+    bridge->applyEvent(GameEvent(GameEventType::SpellGemChanged, refresh));
+    ASSERT_EQ(state->spells().getGemState(4), SpellGemState::Refresh);
+
+    SpellGemChangedData ready = refresh;
+    ready.gemState = static_cast<uint8_t>(SpellGemState::Ready);
+    ready.cooldownRemainingMs = 0;
+    bridge->applyEvent(GameEvent(GameEventType::SpellGemChanged, ready));
+
+    EXPECT_EQ(state->spells().getGemState(4), SpellGemState::Ready);
+    EXPECT_EQ(state->spells().getGemCooldownRemaining(4), 0u);
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellCastStartedForSelfSetsCastingState) {
+    PlayerSpawnIdSetData spawn;
+    spawn.spawnId = 100;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, spawn));
+
+    SpellCastStartedData data;
+    data.casterId = 100;  // matches player().spawnId()
+    data.spellId = 909;
+    data.castTimeMs = 3000;
+    data.targetId = 55;
+
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, data));
+
+    EXPECT_TRUE(state->spells().isCasting());
+    EXPECT_EQ(state->spells().castingSpellId(), 909u);
+    EXPECT_EQ(state->spells().castingTargetId(), 55);
+    EXPECT_EQ(state->spells().castTimeTotal(), 3000u);
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellCastStartedForOtherCasterIsIgnored) {
+    PlayerSpawnIdSetData spawn;
+    spawn.spawnId = 100;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, spawn));
+
+    SpellCastStartedData data;
+    data.casterId = 200;  // an NPC or other player, not us
+    data.spellId = 909;
+    data.castTimeMs = 3000;
+    data.targetId = 55;
+
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, data));
+
+    EXPECT_FALSE(state->spells().isCasting());
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellCastCompleteForSelfClearsCastingState) {
+    PlayerSpawnIdSetData spawn;
+    spawn.spawnId = 100;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, spawn));
+
+    SpellCastStartedData started;
+    started.casterId = 100;
+    started.spellId = 909;
+    started.castTimeMs = 3000;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, started));
+    ASSERT_TRUE(state->spells().isCasting());
+
+    SpellCastCompleteData complete;
+    complete.casterId = 100;
+    complete.spellId = 909;
+    complete.result = 0;  // success
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastComplete, complete));
+
+    EXPECT_FALSE(state->spells().isCasting());
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellCastCompleteForOtherCasterDoesNotClearOurCastingState) {
+    PlayerSpawnIdSetData spawn;
+    spawn.spawnId = 100;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, spawn));
+
+    SpellCastStartedData started;
+    started.casterId = 100;
+    started.spellId = 909;
+    started.castTimeMs = 3000;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, started));
+    ASSERT_TRUE(state->spells().isCasting());
+
+    SpellCastCompleteData complete;
+    complete.casterId = 200;  // someone else's cast completing
+    complete.spellId = 111;
+    complete.result = 0;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastComplete, complete));
+
+    EXPECT_TRUE(state->spells().isCasting()) << "our own cast must be unaffected";
+}
+
+// The countdown-model test: a single SpellCastStarted event is enough for
+// castProgress()/castTimeRemaining() to advance purely from wall-clock time
+// -- no second event, no per-tick publish, needs to be applied for the value
+// to move. This is the behavior the plan explicitly rejected the
+// alternative of ("publishing a progress event per tick").
+TEST_F(GameStateSyncBridgeTest, CastProgressAdvancesFromSingleEventWithNoPerTickPublish) {
+    PlayerSpawnIdSetData spawn;
+    spawn.spawnId = 100;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerSpawnIdSet, spawn));
+
+    SpellCastStartedData data;
+    data.casterId = 100;
+    data.spellId = 909;
+    data.castTimeMs = 5000;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, data));
+
+    // Exactly two events applied so far (PlayerSpawnIdSet, SpellCastStarted).
+    ASSERT_EQ(wrapped->appliedTypes.size(), 2u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    // Progress moved even though nothing was applied to the bridge in
+    // between -- proving the countdown is computed on read, not ticked by
+    // repeated events.
+    EXPECT_GT(state->spells().castProgress(), 0.0f);
+    EXPECT_LT(state->spells().castTimeRemaining(), 5000u);
+    EXPECT_EQ(wrapped->appliedTypes.size(), 2u)
+        << "no additional event should have been needed or applied for progress to advance";
+}
+
+TEST_F(GameStateSyncBridgeTest, SpellEventsStillDelegateToWrappedBridge) {
+    SpellGemChangedData gemData;
+    gemData.gemSlot = 0;
+    gemData.spellId = 1;
+    gemData.gemState = static_cast<uint8_t>(SpellGemState::Ready);
+    bridge->applyEvent(GameEvent(GameEventType::SpellGemChanged, gemData));
+
+    SpellCastStartedData startData;
+    startData.casterId = 999;
+    startData.spellId = 2;
+    startData.castTimeMs = 1000;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastStarted, startData));
+
+    SpellCastCompleteData completeData;
+    completeData.casterId = 999;
+    completeData.spellId = 2;
+    completeData.result = 0;
+    bridge->applyEvent(GameEvent(GameEventType::SpellCastComplete, completeData));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 3u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::SpellGemChanged);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::SpellCastStarted);
+    EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::SpellCastComplete);
 }

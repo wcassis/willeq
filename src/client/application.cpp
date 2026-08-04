@@ -1733,14 +1733,14 @@ void Application::syncGameStateFromClient() {
     // Phase 7 Migration Note:
     // Player position, stats, and zone info are now synced directly from EQ class
     // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
-    // Pet state (T40) and inventory slot occupancy (T42) are now event-fed via
-    // GameStateSyncBridge -- see Application::initialize()'s bridge construction
-    // -- instead of polled here. The sub-syncs below (NPC interaction, spell)
-    // haven't been migrated yet and still use polling for now.
+    // Pet state (T40), inventory slot occupancy (T42), and spell state (T44)
+    // are now event-fed via GameStateSyncBridge -- see
+    // Application::initialize()'s bridge construction -- instead of polled
+    // here. The sub-syncs below (NPC interaction, combat) haven't been
+    // migrated yet and still use polling for now.
 
     // Sync subsystems (not yet migrated to direct sync)
     syncNPCInteractionState();
-    syncSpellState();
     syncCombatState();
 }
 
@@ -1859,77 +1859,6 @@ void Application::syncNPCInteractionState() {
             LOG_DEBUG(MOD_MAIN, "Trainer closed");
         }
         m_lastTrainerNpcId = trainerNpcId;
-    }
-}
-
-void Application::syncSpellState() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
-
-    auto* spellMgr = m_eqClient->GetSpellManager();
-    if (!spellMgr) {
-        return;
-    }
-
-    // Sync casting state
-    bool isCasting = spellMgr->isCasting();
-    uint32_t castingSpellId = spellMgr->getCurrentSpellId();
-
-    if (isCasting != m_lastIsCasting || castingSpellId != m_lastCastingSpellId) {
-        if (isCasting) {
-            uint16_t targetId = spellMgr->getCurrentTargetId();
-            uint32_t castTimeMs = static_cast<uint32_t>(
-                spellMgr->getCastProgress() > 0 ?
-                spellMgr->getCastTimeRemaining() / (1.0f - spellMgr->getCastProgress()) :
-                spellMgr->getCastTimeRemaining());
-            m_gameState->spells().setCasting(true, castingSpellId, targetId, castTimeMs);
-        } else {
-            m_gameState->spells().clearCasting();
-        }
-        m_lastIsCasting = isCasting;
-        m_lastCastingSpellId = castingSpellId;
-    }
-
-    // Update cast progress
-    if (isCasting) {
-        m_gameState->spells().updateCastProgress(spellMgr->getCastTimeRemaining());
-    }
-
-    // Sync spell gems
-    for (uint8_t slot = 0; slot < 8; ++slot) {
-        uint32_t spellId = spellMgr->getMemorizedSpell(slot);
-        EQ::GemState gemState = spellMgr->getGemState(slot);
-
-        // Convert EQ::GemState to state::SpellGemState
-        state::SpellGemState stateGemState = state::SpellGemState::Empty;
-        switch (gemState) {
-            case EQ::GemState::Empty:
-                stateGemState = state::SpellGemState::Empty;
-                break;
-            case EQ::GemState::Ready:
-                stateGemState = state::SpellGemState::Ready;
-                break;
-            case EQ::GemState::Casting:
-                stateGemState = state::SpellGemState::Casting;
-                break;
-            case EQ::GemState::Refresh:
-                stateGemState = state::SpellGemState::Refresh;
-                break;
-            case EQ::GemState::MemorizeProgress:
-                stateGemState = state::SpellGemState::MemorizeProgress;
-                break;
-        }
-
-        m_gameState->spells().setGem(slot, spellId, stateGemState);
-
-        // Update cooldown if refreshing
-        if (gemState == EQ::GemState::Refresh) {
-            uint32_t remaining = spellMgr->getGemCooldownRemaining(slot);
-            float progress = spellMgr->getGemCooldownProgress(slot);
-            uint32_t total = progress > 0 ? static_cast<uint32_t>(remaining / (1.0f - progress)) : remaining;
-            m_gameState->spells().setGemCooldown(slot, remaining, total);
-        }
     }
 }
 

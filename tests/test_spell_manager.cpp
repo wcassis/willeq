@@ -747,6 +747,8 @@ TEST(SpellManagerBeginCast, SuccessSetsStateAndGemCasting) {
     EverQuest eq = MakeEq();
     ASSERT_TRUE(eq.InitializeSpellSystem(""));
     auto* mgr = eq.GetSpellManager();
+    zonetest::TestBridge bridge;
+    mgr->setBridge(&bridge);
 
     uint32_t id = FindSpellId(mgr->getDatabase(), 1, 4000, [](const SpellData& s) {
         return s.target_type == SpellTargetType::Self && s.mana_cost <= 0;
@@ -760,6 +762,22 @@ TEST(SpellManagerBeginCast, SuccessSetsStateAndGemCasting) {
     EXPECT_TRUE(mgr->isCasting());
     EXPECT_EQ(mgr->getCurrentSpellId(), id);
     EXPECT_EQ(mgr->getGemState(0), GemState::Casting);
+
+    // T44: SpellCastStarted is published synchronously here, client-side,
+    // rather than waiting for the server to echo BeginCast back -- see
+    // beginCastFromGem()'s comment for why (matches the deleted poll's
+    // timing, which saw isCasting flip true on the very next tick).
+    auto events = bridge.drainEvents();
+    bool sawCastStarted = false;
+    for (auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SpellCastStarted) {
+            const auto& d = std::get<eqt::state::SpellCastStartedData>(e.data);
+            EXPECT_EQ(d.casterId, eq.GetEntityID());
+            EXPECT_EQ(d.spellId, id);
+            sawCastStarted = true;
+        }
+    }
+    EXPECT_TRUE(sawCastStarted);
 }
 
 TEST(SpellManagerBeginCast, ByIdFindsGemSlotAndDelegates) {

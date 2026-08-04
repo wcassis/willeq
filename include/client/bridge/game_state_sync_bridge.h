@@ -34,7 +34,17 @@ namespace bridge {
  * PetStatsChanged, PetButtonStateChanged. T42 added InventorySlotChanged,
  * replacing Application::syncInventoryState() -- reconstructible only once
  * vendor buy/sell and bank-window population were made to publish it (see
- * refactor/T42_inventory_publishes_and_convert.md).
+ * refactor/T42_inventory_publishes_and_convert.md). T44 added
+ * PlayerSpawnIdSet (so the spell cases below can recognize our own casts),
+ * SpellGemChanged, SpellCastStarted, and SpellCastComplete, replacing
+ * Application::syncSpellState() -- SpellCastComplete was defined but never
+ * published before this unit, the one coverage gap found (see
+ * refactor/T44_spell_state_via_bridge.md). Continuous values (cast
+ * progress, gem cooldown countdown) are NOT event-driven here: SpellState
+ * stores a start-time + total from a single event and computes elapsed on
+ * read (spell_state.h), so there is nothing for this decorator to do on a
+ * per-tick basis -- publishing one event per tick was explicitly rejected
+ * as strictly worse than the poll it replaces.
  */
 class GameStateSyncBridge : public GameStateBridge {
 public:
