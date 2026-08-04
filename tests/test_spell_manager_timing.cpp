@@ -142,6 +142,106 @@ TEST(SpellManagerTiming, BackdatedMemorizationCompletesOnUpdateRegardlessOfDelta
     EXPECT_TRUE(sawComplete);
 }
 
+// ===================================================================
+// 3b. T45: EverQuest::GameTick() now runs headless once the GAME (not the
+// renderer) is ready. Both of GameTick()'s gates (its own
+// `#ifdef EQT_HAS_GRAPHICS { if (!m_graphics_initialized) return; }`, and
+// Application::updateGameState()'s separate `if (m_graphicsInitialized)`
+// call-site gate, mirrored here since Application isn't unit-testable)
+// change from "the renderer subsystem exists" -- permanently false in this
+// no-graphics test binary, since InitGraphics() is never called here,
+// matching a real --no-graphics run -- to also accept
+// EverQuest::IsGraphicsReady() (loading phase == COMPLETE), the same
+// game-lifecycle "state ready" signal T41 used for the full-state snapshot,
+// set from EverQuest::OnGameStateComplete()'s no-graphics branch.
+//
+// Memorization is used as the "requires update() to have run" proxy, per
+// the plan's own instruction and the immediately-preceding test's proof
+// that updateMemorization()'s *completion* is a real state-machine
+// transition (GemState::Memorize -> Ready), not something T44's
+// countdown-on-read model could fake. The only difference from that test:
+// driving the resolution through EverQuest::GameTick() (the thing this unit
+// actually fixes) instead of calling SpellManager::updateMemorization()
+// directly.
+// ===================================================================
+
+// Before: GameTick() must still be a no-op before the game reaches
+// IsGraphicsReady() -- a fresh EverQuest (no zone-in at all) is
+// simultaneously "not ready" and "not graphics" here, matching the pre-fix
+// production state for the entire startup/connecting/authenticating window
+// in both graphics and headless runs. Pins that GameTick() didn't just start
+// running unconditionally.
+//
+// EQT_HAS_GRAPHICS only: this exercises EverQuest::GameTick()'s OWN
+// `#ifdef EQT_HAS_GRAPHICS { if (!m_graphics_initialized && !IsGraphicsReady())
+// return; }` gate directly. In an EQT_GRAPHICS=OFF configure that whole gate
+// is compiled out -- it always has been, T45 didn't add or remove the
+// `#ifdef` wrapper, only changed the condition inside it -- so GameTick()
+// called directly (bypassing Application) has never respected readiness in
+// that configure; the sole gate for EQT_GRAPHICS=OFF lives at
+// Application::updateGameState()'s call site, which this unit test (by
+// design, per the plan's territory) does not exercise. Confirmed by running
+// this exact test in the build-nogfx tree: it fails, precisely because
+// GameTick() ran unconditionally there -- see the T45 Review for why that's
+// pre-existing structure, not a gap this fix introduced.
+#ifdef EQT_HAS_GRAPHICS
+TEST(GameTickHeadless, BeforeGameStateReady_GameTickDoesNotResolveMemorization) {
+    EverQuest eq = MakeEq();
+    ASSERT_FALSE(eq.IsGraphicsReady());
+    auto* mgr = eq.GetSpellManager();
+
+    mgr->m_is_memorizing = true;
+    mgr->m_memorize_slot = 3;
+    mgr->m_memorize_spell_id = 22222;  // need not exist in any DB
+    mgr->m_memorize_duration_ms = 4000;
+    mgr->m_memorize_start_time = std::chrono::steady_clock::now() - std::chrono::milliseconds(5000);
+    mgr->m_gem_states[3] = GemState::MemorizeProgress;
+
+    eq.GameTick(0.0f);  // delta_time is irrelevant either way -- see trap 1 below
+
+    EXPECT_TRUE(mgr->isMemorizing())
+        << "GameTick() must not run before the game is ready -- true both "
+           "before and after T45's fix, only the gate's condition changed";
+    EXPECT_EQ(mgr->getGemState(3), GemState::MemorizeProgress)
+        << "gem state must not have advanced -- SpellManager::update() never ran";
+    EXPECT_EQ(mgr->getMemorizedSpell(3), SPELL_UNKNOWN);
+}
+#endif  // EQT_HAS_GRAPHICS
+
+// After: once EverQuest::OnGameStateComplete()'s no-graphics branch has run
+// (simulated directly via the same SetLoadingPhase(COMPLETE) call it makes --
+// test_zone_connection_flow.cpp's FullStateSnapshot tests drive this via a
+// full synthetic zone-in and independently confirm it lands on
+// LoadingPhase::COMPLETE / IsGraphicsReady()==true), GameTick() must now
+// actually run in this no-graphics test binary. Before T45 it never did, in
+// either build tree -- m_graphics_initialized (EverQuest's own gate) is
+// never set true here at all (InitGraphics() is never called), so it blocked
+// unconditionally regardless of game-state readiness.
+TEST(GameTickHeadless, AfterGameStateReady_GameTickResolvesMemorizationViaSpellManagerUpdate) {
+    EverQuest eq = MakeEq();
+    eq.SetLoadingPhase(LoadingPhase::COMPLETE);
+    ASSERT_TRUE(eq.IsGraphicsReady());
+    auto* mgr = eq.GetSpellManager();
+
+    mgr->m_is_memorizing = true;
+    mgr->m_memorize_slot = 3;
+    mgr->m_memorize_spell_id = 22222;
+    mgr->m_memorize_duration_ms = 4000;
+    mgr->m_memorize_start_time = std::chrono::steady_clock::now() - std::chrono::milliseconds(5000);
+    mgr->m_gem_states[3] = GemState::MemorizeProgress;
+
+    // Same call as the "Before" test above -- only IsGraphicsReady() differs.
+    eq.GameTick(0.0f);
+
+    EXPECT_FALSE(mgr->isMemorizing())
+        << "GameTick() should have run SpellManager::update() -> "
+           "updateMemorization(), completing a backdated memorization -- if "
+           "still memorizing, GameTick()'s gate is still blocking headless "
+           "post-fix";
+    EXPECT_EQ(mgr->getGemState(3), GemState::Ready);
+    EXPECT_EQ(mgr->getMemorizedSpell(3), 22222u);
+}
+
 // ---- The dead-delta_time finding, pinned explicitly (plan section "Two
 // traps I verified while scoping", trap 1). update(float delta_time) never
 // reads delta_time; all three sub-updates gate on steady_clock::now(). A

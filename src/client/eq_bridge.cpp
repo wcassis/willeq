@@ -226,7 +226,16 @@ void EverQuest::ShutdownGraphics() {
 // D21a: Game-side tick — runs on game thread (spell/buff updates + intent processing)
 void EverQuest::GameTick(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
-	if (!m_graphics_initialized) return;
+	// T45: was `if (!m_graphics_initialized) return;`. m_graphics_initialized
+	// gates on the renderer subsystem existing, not on the game being ready,
+	// and is permanently false in a --no-graphics run (InitGraphics() is
+	// never called), so this second gate independently blocked headless too.
+	// IsGraphicsReady() (loading phase reached COMPLETE) is the same
+	// game-lifecycle readiness signal Application::updateGameState() now
+	// OR's into its own call-site gate -- kept consistent with that
+	// condition here rather than removed, since Application's own comment
+	// notes GameTick() is deliberately gated twice.
+	if (!m_graphics_initialized && !IsGraphicsReady()) return;
 #endif
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)

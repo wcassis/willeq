@@ -1886,7 +1886,7 @@ Worth a small unit to expose vendor buy/sell through the command channel
 the way T34 did for `/loot`, and worth asking what else in the intent
 list has no producer.
 
-## `GameTick()` never runs headless — spell cooldowns don't tick, buffs never expire (T44 finding, 2026-08-04) — NOT FIXED
+## `GameTick()` never runs headless — spell cooldowns don't tick, buffs never expire (T44 finding, 2026-08-04) — FIXED by T45
 
 The **runtime** analogue of the compile-time guard family T43 swept, and
 it was missed precisely because T43 audited `#ifdef`s.
@@ -1923,6 +1923,81 @@ for headless** — timers that have never run would start running — so it
 wants its own unit with a real before/after rather than being folded into
 something else. Worth checking whether anything else `GameTick()` calls
 has a genuine graphics dependency before un-gating wholesale.
+
+**Fixed by T45** (`refactor/T45_gametick_headless.md`): both gates now OR
+in `EverQuest::IsGraphicsReady()` (loading phase reached `COMPLETE`, the
+same headless "state ready" signal T41 used for the full-state snapshot)
+alongside the existing `m_graphicsInitialized`/`m_graphics_initialized`
+check, rather than replacing it — graphics mode's flag is a one-way latch
+already `true` for the entire window `GameTick()` can run in that mode
+(set once in `Init()`, before `gameThreadLoop()` starts), so the OR is
+provably a no-op there. Verified via `visual_gate.sh` (pixel-exact,
+goldens untouched) plus a live before/after against eqemu (a
+`SpellManager::update()` cast-confirm timeout that never fires on `fable`
+headless, confirmed firing after the fix, in both build trees). See that
+plan's Review for full detail, including a bridge-wiring gap found along
+the way (next entry).
+
+## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` never get their own bridge wired headless (T45 finding, 2026-08-04) — NOT FIXED
+
+Found while verifying T45's "un-gating `ProcessBridgeIntents()` closes a
+latent unbounded-queue hazard" claim for the `inventory_manager.cpp`
+pickup-intent exception the T45 plan named.
+
+Each of these four classes holds its **own** `GameStateBridge*` member
+(`InventoryManager::bridge_`, `SpellManager::m_bridge`,
+`SkillManager::m_bridge`, `HotbarModel::bridge_` — all separate from
+`EverQuest::m_bridge`), and each is wired via a `setBridge()` call **only**
+inside `EverQuest::InitGraphics()` (`eq_bridge.cpp:121-133`) — a
+graphics-only call path: the function itself is `#ifdef EQT_HAS_GRAPHICS`,
+and `Application::Init()` only calls it inside the
+`config.graphicsEnabled && operatingMode == GraphicalInteractive` branch.
+`EverQuest::setBridge()` (`eq.h:1037`, the one call `Application::Init()`'s
+*headless* branch makes) sets only `EverQuest::m_bridge` — it does not
+propagate to any of the four managers.
+
+**Consequence: in every headless run (`EQT_GRAPHICS=OFF`, or
+`EQT_HAS_GRAPHICS` with `--no-graphics`), all four managers' bridge
+pointers are `nullptr` for the entire process lifetime.** Every
+`if (bridge_) bridge_->pushIntent(...)` / `if (m_bridge)
+m_bridge->pushEvent(...)` guarded on one of these four pointers is a
+silent no-op headless — confirmed by grep (`setBridge` on each has exactly
+one call site, inside `InitGraphics()`) and, for `SpellManager`
+specifically, by reasoning through T44's own live transcript: the gem/cast
+events T44 documented as "published" were inferred from adjacent
+`LOG_INFO`/`LOG_DEBUG` lines that fire unconditionally, not from confirmed
+bridge delivery — the actual publish calls (`publishGemChanged()`,
+`publishCastStarted()`, `publishCastComplete()`) all early-return on
+`SpellManager::m_bridge`, which was never wired in that session.
+
+**Practical impact, concretely:**
+- Item pickup in headless never pushes `MoveItemIntent`/
+  `EquipmentChangedIntent` (the T45 plan's named "exception" case) — not
+  because anything filters it, but because it never reaches `pushIntent()`
+  at all.
+- `SpellManager`'s own bridge-event publishes (gem state changes, cast
+  start/complete — the T44 "spell state via bridge" unit's entire
+  deliverable) are inert headless in production, even though
+  `GameTick()` now runs there (T45) and `SpellManager::update()`'s
+  *internal* state machine (the thing T44 and T45's tests actually
+  verified) works correctly — it is specifically the bridge-event
+  *publish* half that's silently dropped. `GameStateSyncBridge`/`SpellState`
+  reads would see nothing change in a live headless session despite the
+  underlying gem/cast state genuinely transitioning.
+- Same shape for `SkillManager` and `HotbarModel`.
+
+**Not a T45 regression** — this predates T45 and is orthogonal to the
+gating fix T45 made (T45's own live acceptance leg worked around it by
+observing `SpellManager`'s internal state via `beginCastFromGem()`'s debug
+log, not via bridge-delivered events). **Not fixed here** — deliberately
+out of T45's territory (`Application::updateGameState()`'s gate,
+`EverQuest::GameTick()`'s own gate, and tests). Worth a small unit: wire
+`EverQuest::setBridge()` (or a new headless-path call site alongside it,
+matching T41's `m_inventory_manager` construction precedent) to also call
+`setBridge()` on all four managers, with a live headless acceptance
+leg that confirms a `SpellGemChanged`/`InventorySlotChanged` event is
+actually observed on the console bridge (not just inferred from a log
+line) — the mistake this entry itself documents T44 nearly made.
 
 ## From Batch Z
 
