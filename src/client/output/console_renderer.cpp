@@ -135,7 +135,7 @@ void ConsoleRenderer::disconnectFromGameState() {
 }
 
 void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
 
     switch (event.type) {
         case state::GameEventType::ChatMessage: {
@@ -196,6 +196,22 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
             break;
         }
 
+        case state::GameEventType::TargetChanged: {
+            // T39: TargetChanged is now published for real (CombatState::
+            // fireTargetChangedEvent(), mirroring CombatManager via
+            // Application::syncCombatState()). This subscription existed
+            // since before this unit but had no case here, so target
+            // changes never reached output despite the subscribe() call --
+            // wiring it now is this unit's ConsoleRenderer-visible payoff.
+            const auto& data = std::get<state::TargetChangedData>(event.data);
+            if (data.spawnId != 0) {
+                setCurrentTarget(data.spawnId, data.name, data.hpPercent, data.level);
+            } else {
+                clearCurrentTarget();
+            }
+            break;
+        }
+
         case state::GameEventType::ZoneChanged: {
             const auto& data = std::get<state::ZoneChangedData>(event.data);
             std::cout << "\n" << getChannelColor("zone")
@@ -250,7 +266,7 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
 }
 
 void ConsoleRenderer::loadZone(const std::string& zoneName) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_zoneName = zoneName;
     m_zoneReady = false;
     std::cout << getTimestamp() << getChannelColor("zone")
@@ -259,13 +275,13 @@ void ConsoleRenderer::loadZone(const std::string& zoneName) {
 }
 
 void ConsoleRenderer::unloadZone() {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_zoneName.clear();
     m_zoneReady = false;
 }
 
 void ConsoleRenderer::setLoadingProgress(float progress, const std::wstring& statusText) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     int percent = static_cast<int>(progress * 100);
     std::cout << "\r" << getChannelColor("zone")
               << "[" << std::setw(3) << percent << "%] "
@@ -274,7 +290,7 @@ void ConsoleRenderer::setLoadingProgress(float progress, const std::wstring& sta
 }
 
 void ConsoleRenderer::setZoneReady(bool ready) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_zoneReady = ready;
     if (ready) {
         std::cout << "\n" << getChannelColor("zone")
@@ -310,7 +326,7 @@ void ConsoleRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
 
 void ConsoleRenderer::setCurrentTarget(uint16_t spawnId, const std::string& name,
                                         uint8_t hpPercent, uint8_t level) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_targetSpawnId = spawnId;
     m_targetName = name;
     m_targetHpPercent = hpPercent;
@@ -330,7 +346,7 @@ void ConsoleRenderer::updateCurrentTargetHP(uint8_t hpPercent) {
 }
 
 void ConsoleRenderer::clearCurrentTarget() {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     if (m_targetSpawnId != 0) {
         std::cout << getTimestamp() << getChannelColor("target")
                   << "Target cleared."
@@ -345,7 +361,7 @@ void ConsoleRenderer::clearCurrentTarget() {
 void ConsoleRenderer::displayChatMessage(const std::string& channel,
                                           const std::string& sender,
                                           const std::string& message) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
 
     std::cout << getTimestamp() << getChannelColor(channel)
               << "[" << channel << "] ";
@@ -358,14 +374,14 @@ void ConsoleRenderer::displayChatMessage(const std::string& channel,
 }
 
 void ConsoleRenderer::displaySystemMessage(const std::string& message) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     std::cout << getTimestamp() << getChannelColor("system")
               << "[System] " << message
               << colorReset() << std::endl;
 }
 
 void ConsoleRenderer::displayCombatMessage(const std::string& message) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     std::cout << getTimestamp() << getChannelColor("combat")
               << message << colorReset() << std::endl;
 }
@@ -394,7 +410,7 @@ void ConsoleRenderer::clearPetInfo() {
 
 void ConsoleRenderer::displayCastingProgress(uint32_t spellId, const std::string& spellName,
                                               float progress, const std::string& targetName) {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_isCasting = true;
     m_castingSpellName = spellName.empty() ? "Spell #" + std::to_string(spellId) : spellName;
     m_castingTargetName = targetName;
@@ -416,7 +432,7 @@ void ConsoleRenderer::clearCasting() {
 }
 
 void ConsoleRenderer::printStatusLine() {
-    std::lock_guard<std::mutex> lock(m_outputMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
 
     std::cout << getChannelColor("status");
 

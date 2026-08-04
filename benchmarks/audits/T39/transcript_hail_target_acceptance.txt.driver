@@ -1,0 +1,13 @@
+== starting willeq (HEADLESS mode, --no-graphics, -d 1, piped stdin) ==
+willeq pid=1143640
+[driver] TIMEOUT waiting for 'Zone connection complete! Player position confirmed' after 60s
+[driver] FAILED: zone connection never completed
+[driver] sent: /hail
+[driver] sent: /say #npctypespawn 351043
+[driver] TIMEOUT waiting for 'Spawned a_rat|Spawned .*351043' after 20s
+[driver] sent: /target a_rat
+[driver] sent: /hail
+[driver] sent: /camp
+[driver] TIMEOUT waiting for 'shutdown complete|Application shutdown' after 15s
+[driver] sent: /quit
+[driver] willeq exit code: 0

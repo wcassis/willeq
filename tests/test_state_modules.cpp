@@ -884,14 +884,16 @@ TEST(InventoryStateTest, ClearBankOnlyAffectsBankSlots) {
 // T28 (fixed the hardcoded lie; was pinned wrong behavior under the name
 // InventorySlotChangedEventAlwaysReportsHasItemTrue): fireInventoryChangedEvent()
 // used to always publish hasItem=true regardless of the actual occupied
-// state passed to the setter. It now reports the real value. Note this
-// remains presently UNREACHABLE in production: setEquipmentOccupied()/
-// setGeneralOccupied()/setBankOccupied() have zero production call sites
-// (the live InventorySlotChanged events, enriched by S2, come from the
-// eq_bridge path instead) -- see refactor/deferred.md "Dead parallel state
-// copies in the state layer, WITH LIVE READERS". This test guards the
-// payload contract for whenever the state-layer migration wires these
-// setters up to a real caller.
+// state passed to the setter. It now reports the real value.
+// T39: setEquipmentOccupied()/setGeneralOccupied()/setBankOccupied() are now
+// wired -- Application::syncInventoryState() (application.cpp) polls the
+// authoritative InventoryManager every frame and mirrors slot occupancy
+// through these setters. Still no production READER of the resulting
+// occupancy arrays (confirmed unchanged from T28's finding) -- the live
+// InventorySlotChanged events consumers care about (enriched by S2) come
+// from the eq_bridge path instead -- see refactor/deferred.md "Dead
+// parallel state copies in the state layer, WITH LIVE READERS". This test
+// guards the payload contract now that a real caller exists.
 TEST(InventoryStateTest, InventorySlotChangedEventReportsActualOccupiedState) {
     InventoryState inv;
     EventBus bus;

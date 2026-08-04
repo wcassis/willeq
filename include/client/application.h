@@ -347,6 +347,24 @@ private:
     void syncSpellState();
 
     /**
+     * Sync combat target/auto-attack state from CombatManager (T39).
+     *
+     * CombatManager remains authoritative; this mirrors its target id,
+     * auto-attack flag, and the target entity's HP/name/level into
+     * GameState::combat() so CommandProcessor (cmdHail) and
+     * ConsoleRenderer (EventBus TargetChanged subscriber) see real data.
+     */
+    void syncCombatState();
+
+    /**
+     * Sync inventory slot occupancy from InventoryManager (T39).
+     *
+     * InventoryManager remains authoritative; this mirrors equipment/
+     * general/bank slot occupancy into GameState::inventory().
+     */
+    void syncInventoryState();
+
+    /**
      * Update loading progress for the renderer.
      */
     void updateLoadingProgress();
@@ -519,6 +537,11 @@ private:
     // Spell state tracking
     bool m_lastIsCasting = false;
     uint32_t m_lastCastingSpellId = 0;
+
+    // Combat state tracking (T39)
+    uint16_t m_lastCombatTargetId = 0;
+    uint8_t m_lastCombatTargetHp = 100;
+    bool m_lastAutoAttacking = false;
 
     // H03: Scripted command tour state (game thread only)
     std::vector<ScriptStep> m_scriptSteps;

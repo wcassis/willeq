@@ -516,4 +516,51 @@ TEST_F(CommandProcessorTest, Timestamp_TogglesRendererSetting) {
     EXPECT_TRUE(renderer.showTimestamps);
 }
 
+// ===================================================================
+// cmdHail (T39) -- reads m_state.combat().hasTarget(). Until this unit,
+// CombatState's target half was never populated in production (T28 left
+// this reader deliberately untouched, see refactor/deferred.md "Dead
+// parallel state copies in the state layer, WITH LIVE READERS"), so
+// hasTarget() was permanently false and /hail always took the no-target
+// branch. Application::syncCombatState() (application.cpp) now mirrors
+// this same GameState instance's combat() from the authoritative
+// CombatManager every frame; these tests exercise CommandProcessor's
+// branch directly against `state` (bypassing Application) since
+// CommandProcessor only ever sees state::GameState&, per T12's
+// decoupling -- these would have FAILED before this unit (hailTarget()
+// would never have been reachable via /hail).
+// ===================================================================
+
+TEST_F(CommandProcessorTest, Hail_NoTarget_CallsHailNotHailTarget) {
+    ASSERT_FALSE(state.combat().hasTarget());
+
+    auto result = processor->processCommand("/hail");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("hail()"));
+}
+
+TEST_F(CommandProcessorTest, Hail_WithTarget_CallsHailTargetNotHail) {
+    state.combat().setTarget(1234, "a decrepit skeleton", 100, 10);
+    ASSERT_TRUE(state.combat().hasTarget());
+
+    auto result = processor->processCommand("/hail");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("hailTarget()"));
+}
+
+TEST_F(CommandProcessorTest, Hail_TargetClearedAfterward_RevertsToHail) {
+    state.combat().setTarget(1234, "a decrepit skeleton", 100, 10);
+    processor->processCommand("/hail");
+    ASSERT_TRUE(handler.calledOnceWith("hailTarget()"));
+    handler.clear();
+
+    state.combat().clearTarget();
+    ASSERT_FALSE(state.combat().hasTarget());
+
+    processor->processCommand("/hail");
+    ASSERT_TRUE(handler.calledOnceWith("hail()"));
+}
+
 } // namespace

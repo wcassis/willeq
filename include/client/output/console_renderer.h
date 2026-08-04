@@ -170,7 +170,19 @@ private:
     // Event subscription
     state::EventBus* m_eventBus = nullptr;
     std::vector<state::ListenerHandle> m_listenerHandles;
-    mutable std::mutex m_outputMutex;
+    // T39: recursive, not plain std::mutex -- handleEvent() takes this lock
+    // for the whole switch, then several cases (TargetChanged now among
+    // them) call public setters (setCurrentTarget/clearCurrentTarget/
+    // displayChatMessage/displayCombatMessage/displayPetInfo/
+    // updatePetStats/clearPetInfo, all in console_renderer.cpp) that lock
+    // it again. That double-lock was latent and harmless only because
+    // nothing published to this EventBus in production before this unit --
+    // TargetChanged is the first live publisher (CombatState, mirrored from
+    // CombatManager via Application::syncCombatState()), so the deadlock
+    // stopped being theoretical. Recursive mutex is same-thread-reentrant
+    // by design; every acquisition here is same-thread (EventBus::publish()
+    // invokes listeners synchronously, see event_bus.cpp), so this is safe.
+    mutable std::recursive_mutex m_outputMutex;
 };
 
 } // namespace output
