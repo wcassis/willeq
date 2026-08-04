@@ -1792,6 +1792,66 @@ real items. Neither unit's loot verdict depends on it: both proved the
 loot itself via `LootItem ACK` and the item landing in an inventory
 slot, not via the chat string.
 
+## PATTERN: `EQT_HAS_GRAPHICS` gates around non-graphics code — five instances and counting, needs a sweep not another one-off
+
+Every unit that has gone looking in headless territory has found another
+one. This is no longer a series of coincidences; it is a systemic
+misclassification, and the instances keep getting more severe:
+
+| unit | what was wrongly gated | effect on `EQT_GRAPHICS=OFF` |
+|---|---|---|
+| P28 | `eq.h` guard blocks enclosing non-graphics members | ~33k lines of base-layer source in no test binary |
+| T29 | ~2,500 lines of `eq_commands*.cpp` registration | **no slash commands at all** |
+| T41 | `m_inventory_manager`'s **construction** (P28 declassified the declaration, missed this) | manager never constructed; snapshot would publish nothing |
+| T42 | the generic `HC_OP_ItemPacket` dispatch branch, plus a larger gate over `HC_OP_MoveItem`..`HC_OP_GMTraining` | regular inventory packets **dropped entirely** |
+| T42 | `Application::initialize()` never calling `SetEQClientPath()` | **every headless zone-in force-quit within ~2 s** — headless could not stay connected to a real server |
+
+Plus one known residual, not yet fixed: **all three `OnPetCreated()` call
+sites in `eq_entities.cpp` are `#ifdef EQT_HAS_GRAPHICS`**, so pet
+*deltas* never publish in an `EQT_GRAPHICS=OFF` build. T41's snapshot fix
+covers a pet present at zone-in; a pet summoned mid-session is still
+invisible there.
+
+**Why this matters more than it looks:** headless is the mode the
+automation work (T29/T30/T31) and the testing campaign run in. Each of
+these made headless quietly *less functional than it appears* rather than
+failing loudly — the T42 one meant a headless client could not hold a
+server connection at all, and nobody noticed because nothing had tried.
+
+**Recommended: one sweep unit** that audits every `EQT_HAS_GRAPHICS` /
+`EQT_GRAPHICS` guard against P28's own rule (only renderer-facing API
+stays guarded), rather than continuing to find these one per unit. The
+rule is already settled; what is missing is that nobody has applied it
+exhaustively. A test that builds `EQT_GRAPHICS=OFF` and exercises a real
+headless zone-in end to end would have caught three of the five.
+
+## PATTERN: real features reachable only through a UI gesture, invisible to automation — four instances
+
+The 2026-08-02 ruling says anything blocking fully automated development
+and testing is a defect. This keeps showing up in the same shape:
+
+- **T26**: `/combat on` reachable only from the live chat window, which is
+  why T26 could not verify its own loot fix.
+- **T29**: the *entire* `EverQuest::m_command_registry` unreachable from
+  `--script`.
+- **T34**: `/loot` was a stub that printed a message and never dispatched;
+  `EqActionHandler::lootCorpse` was reachable only from the renderer's
+  shift+click callback.
+- **T42**: **no slash command or renderer intent exists anywhere to
+  trigger vendor buy/sell** — `VendorBuyIntent`/`VendorSellIntent` are
+  never constructed. T42 had to add temporary scratch hooks calling the
+  production functions directly to run its live acceptance, then revert
+  them.
+
+Each was found only because a unit happened to need it. **The vendor case
+is the open one**: a scripted session cannot buy or sell, so nothing in
+that area can be verified without hand-written hooks — and the next unit
+that needs it will write them again.
+
+Worth a small unit to expose vendor buy/sell through the command channel
+the way T34 did for `/loot`, and worth asking what else in the intent
+list has no producer.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
