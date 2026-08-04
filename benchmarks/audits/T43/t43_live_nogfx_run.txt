@@ -1,0 +1,139 @@
+[2026-08-04 17:49:03.616] [INFO ] [MAIN] Starting WillEQ with debug level 4, config file: /mnt/projects/fable/wt/t1/benchmarks/audits/T43/willeq_t43.json, pathfinding: enabled
+
+=== WillEQ Console Mode ===
+Type 'help' for available commands.
+
+[2026-08-04 17:49:03.616] [INFO ] [MAIN] Log level: INFO  (use --log-level=LEVEL to change)
+[2026-08-04 17:49:03.616] [INFO ] [MAIN] Loading config file: /mnt/projects/fable/wt/t1/benchmarks/audits/T43/willeq_t43.json
+[2026-08-04 17:49:03.617] [INFO ] [MAIN] Initializing application...
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] Game thread started
+[2026-08-04 17:49:03.679] [INFO ] [MAIN] Script: wait 15.0s (step 1/2)
+[2026-08-04 17:49:04.165] [INFO ] [WORLD] Login connected.
+[2026-08-04 17:49:04.218] [INFO ] [MAIN] [LOADING][Phase 2/15] (5%) Authenticating...
+[2026-08-04 17:49:04.381] [INFO ] [WORLD] Logged in successfully with dbid 1 and key 1DEWPQZYOK
+[2026-08-04 17:49:04.445] [INFO ] [WORLD] Found world server WillEQ, attempting to login.
+[2026-08-04 17:49:04.480] [INFO ] [WORLD] Connecting to world server WillEQ at 10.0.30.23:9000
+[2026-08-04 17:49:04.480] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-08-04 17:49:04.480] [INFO ] [NET] PosixUdpTransport: connected to 10.0.30.23:9000 fd=7
+[2026-08-04 17:49:04.985] [INFO ] [WORLD] Sending login info: dbid=1, key=1DEWPQZYOK, zoning=0
+[2026-08-04 17:49:05.051] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+[2026-08-04 17:49:05.108] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-08-04 17:49:05.108] [INFO ] [NET] PosixUdpTransport: connected to 10.0.30.23:7000 fd=8
+[2026-08-04 17:49:05.664] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-08-04 17:49:05.665] [INFO ] [ZONE] [ZONE-IN] PlayerProfile position: server=(-77.88,21.88,3.00) heading=190.00 -> client=(21.88,-77.88,3.00) heading=316.41
+[2026-08-04 17:49:05.665] [INFO ] [ZONE] [ZONE-IN] Publishing PlayerMoved from PlayerProfile: (21.88,-77.88,3.00) heading=316.41deg -> 450.00 (512 fmt)
+[2026-08-04 17:49:05.665] [INFO ] [MAIN] Loaded 100 skills from PlayerProfile (14 non-zero)
+[2026-08-04 17:49:05.670] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-08-04 17:49:05.672] [INFO ] [ZONE] Loaded 97 spawns in zone
+[2026-08-04 17:49:05.673] [INFO ] [ZONE] Weather packet: type=255, intensity=0
+[2026-08-04 17:49:05.674] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:05.674] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:05.697] [ERROR] [MAP] Unable to open map file: ./maps/befallen.map
+[2026-08-04 17:49:05.697] [WARN ] [MAP] Failed to load map for zone: befallen
+[2026-08-04 17:49:05.698] [INFO ] [MAP] Loaded 0 zone lines from zone-specific file
+[2026-08-04 17:49:05.714] [INFO ] [MAP] Loaded 1 pre-extracted zone lines for befallen from data/zone_lines.json
+[2026-08-04 17:49:06.498] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'befallen' in 784ms (4046 BSP regions, 9882 nodes)
+[2026-08-04 17:49:05.697] [ERROR] [MAP] errno: 2 - No such file or directory
+[2026-08-04 17:49:06.499] [INFO ] [ZONE] [ZONE] Entering befallen at (-82, 35, 3)
+[2026-08-04 17:49:06.527] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-08-04 17:49:06.527] [INFO ] [ZONE] Zone Request phase complete, sending ReqClientSpawn
+[2026-08-04 17:49:06.538] [INFO ] [ENTITY] Received 31 doors (2482 bytes)
+[2026-08-04 17:49:06.569] [INFO ] [ZONE] Server assigned new spawn ID: 174 (was 174)
+[2026-08-04 17:49:06.579] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-08-04 17:49:06.656] [INFO ] [ZONE] Weather packet: type=0, intensity=0
+[2026-08-04 17:49:06.656] [INFO ] [ZONE] *** RECEIVED OUR OWN ClientUpdate! spawn_id=174 ***
+[2026-08-04 17:49:06.656] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-08-04 17:49:06.656] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=174).
+[2026-08-04 17:49:06.657] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 174, Zone: befallen
+[2026-08-04 17:49:06.657] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-08-04 17:49:06.657] [INFO ] [MAIN] Publishing full state snapshot to bridge
+[2026-08-04 17:49:06.657] [INFO ] [MAIN] State snapshot published
+[2026-08-04 17:49:06.659] [INFO ] [MAIN] Fully connected to zone!
+[2026-08-04 17:49:06.670] [INFO ] [ZONE] [ZONE] befallen loaded
+[2026-08-04 17:49:06.670] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:06.670] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:06.670] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:07.646] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+CMD outcome=applied registry=game recognized=true cmd="/quit"
+[2026-08-04 17:49:18.681] [INFO ] [MAIN] Script: complete (2 steps)
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] Game thread stopped
+[2026-08-04 17:49:07.646] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-04 17:49:18.681] [INFO ] [MAIN] Script: executing '/quit' (step 2/2)
+
+=== Console renderer shutdown ===
+[2026-08-04 17:49:03.617] [INFO ] [MAIN] No constrained preset specified, defaulting to 'orangepi'
+[2026-08-04 17:49:03.617] [INFO ] [MAIN] Config: host=127.0.0.1, server=WillEQ, character=Testchar
+[2026-08-04 17:49:03.651] [INFO ] [MAIN] WilleqDatabase: opened data/willeq.db (version 2)
+[2026-08-04 17:49:03.651] [INFO ] [MAIN] WilleqDatabase opened: data/willeq.db (cache: 31112 bytes)
+[2026-08-04 17:49:03.651] [INFO ] [MAIN] StringDatabase: initialized from SQLite
+[2026-08-04 17:49:03.651] [INFO ] [MAIN] Loaded strings from SQLite (5901 eqstr, 8305 dbstr)
+[2026-08-04 17:49:03.656] [INFO ] [SPELL] SpellDatabase: initialized from SQLite (8066 spells, cache capacity 256)
+[2026-08-04 17:49:03.657] [INFO ] [SPELL] Spell database initialized from SQLite (8066 spells)
+[2026-08-04 17:49:03.660] [INFO ] [MAIN] Script loaded: /mnt/projects/fable/wt/t1/benchmarks/audits/T43/t43_script.txt (2 steps)
+[2026-08-04 17:49:03.660] [INFO ] [MAIN] Creating game mode with renderer type: Software
+[2026-08-04 17:49:03.660] [INFO ] [MAIN] Console bridge attached (headless mode)
+[2026-08-04 17:49:03.660] [INFO ] [MAIN] Connecting to login server (127.0.0.1:5998)...
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] [LOADING][Phase 1/15] (2%) Connecting to login server...
+[2026-08-04 17:49:03.661] [INFO ] [NET] PosixUdpTransport: connected to 127.0.0.1:5998 fd=6
+[2026-08-04 17:49:03.661] [INFO ] [WORLD] Connecting...
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] Application initialized successfully
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] Starting main loop...
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] Starting game thread
+[2026-08-04 17:49:03.661] [INFO ] [MAIN] Entering render loop (main thread)
+[2026-08-04 17:49:18.682] [INFO ] [MAIN] Render loop exited, joining game thread
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] Game thread joined
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] Main loop exited
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] Shutting down application...
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 0 ms
+  Client Creation                               33 ms
+  TOTAL                                         33 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    15066 ms (15.1 sec)
+  Startup time:          33 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-08-04 17:49:18.683] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 0 ms
+  Client Creation                               33 ms
+  TOTAL                                         33 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    15067 ms (15.1 sec)
+  Startup time:          33 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-08-04 17:49:19.169] [INFO ] [MAIN] Application shutdown complete

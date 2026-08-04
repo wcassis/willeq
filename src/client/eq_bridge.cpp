@@ -1722,11 +1722,14 @@ void EverQuest::InitializeAudio() {
 		return;
 	}
 
-	// Get EQ client path from config or graphics settings
-	std::string eqPath;
-#ifdef EQT_HAS_GRAPHICS
-	eqPath = m_eq_client_path;
-#endif
+	// Get EQ client path.
+	// T43: was #ifdef EQT_HAS_GRAPHICS. m_eq_client_path is plain game config
+	// (P28: "no renderer dependency", set unconditionally by
+	// SetEQClientPath() since T42) -- gating the read here meant a
+	// EQT_GRAPHICS=OFF + WITH_AUDIO=ON build could never find its sound
+	// assets and audio silently stayed disabled ("EQ client path not set")
+	// even though the path had actually been configured.
+	std::string eqPath = m_eq_client_path;
 
 	if (eqPath.empty()) {
 		LOG_WARN(MOD_AUDIO, "EQ client path not set, audio disabled");

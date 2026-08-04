@@ -472,9 +472,13 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
 				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
 					ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
-#ifdef EQT_HAS_GRAPHICS
+				// T43: was #ifdef EQT_HAS_GRAPHICS. OnPetCreated() is a pure
+				// bridge-event publish (eq_bridge.cpp; no renderer dependency)
+				// -- gating it meant pet deltas never published in a headless
+				// build (known residual named in refactor/deferred.md's
+				// EQT_HAS_GRAPHICS pattern entry; T41's snapshot fix only
+				// covered a pet present at zone-in, not this delta path).
 				OnPetCreated(ent);
-#endif
 				break;
 			}
 		}
@@ -1227,9 +1231,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			LOG_INFO(MOD_MAIN, "Pet detected: {} (ID: {}) Level {} owned by us (ID: {})",
 				entity.name, entity.spawn_id, entity.level, m_my_spawn_id);
 
-#ifdef EQT_HAS_GRAPHICS
+			// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note at
+			// the ZoneProcessSpawnAll second-pass call site above.
 			OnPetCreated(entity);
-#endif
 		}
 
 		if (s_debug_level >= 2) {
@@ -1453,9 +1457,9 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 						m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
 						LOG_INFO(MOD_MAIN, "Pet detected (deferred): {} (ID: {}) Level {} owned by us (ID: {})",
 							ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
-#ifdef EQT_HAS_GRAPHICS
+						// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical
+						// note at the ZoneProcessSpawnAll second-pass call site.
 						OnPetCreated(ent);
-#endif
 						break;
 					}
 				}
@@ -1821,12 +1825,14 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 		m_combat_manager->UpdateCombatStats(stats);
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Update inventory window stats when player HP changes
+	// T43: was #ifdef EQT_HAS_GRAPHICS. UpdateInventoryStats() (eq_bridge.cpp)
+	// is unguarded/declassified since P28 -- pure inventory-manager
+	// equipment-stat calculation + bridge event push, no renderer dependency.
+	// Left gated here, a headless build's equipment stats (weight, weapon
+	// skill types) never refreshed when player HP changed.
 	if (is_self) {
 		UpdateInventoryStats();
 	}
-#endif
 
 	// Publish PlayerStatsChanged when our own HP changes
 	if (is_self && m_bridge) {

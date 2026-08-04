@@ -2268,12 +2268,16 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		}
 	}
 
-#ifdef EQT_HAS_GRAPHICS
-	// Update inventory manager with player info for item restriction validation
+	// T43: was #ifdef EQT_HAS_GRAPHICS. m_inventory_manager is constructed
+	// unconditionally since T41 (per P28's declassification of the
+	// declaration); setPlayerInfo() is plain inventory-manager state (race/
+	// class/level for item restriction checks) with no renderer dependency.
+	// Left guarded, a headless build's inventory manager never learned the
+	// player's race/class/level, so item-restriction validation silently
+	// used stale defaults for the whole session.
 	if (m_inventory_manager) {
 		m_inventory_manager->setPlayerInfo(race, class_, level);
 	}
-#endif
 
 	// Store bind point (swap x/y like we do for position)
 	m_bind_zone_id = bind_zone_id;

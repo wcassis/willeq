@@ -23,10 +23,12 @@
 #include <cstring>
 #include <functional>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/inventory/inventory_constants.h"
 #include "common/net/packet.h"
 
 namespace {
@@ -105,6 +107,42 @@ void WritePetSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawnI
     p.PutUInt8(base + 329, 1);    // is_pet
     p.PutUInt8(base + 331, 1);    // char_class
     p.PutUInt32(base + 340, spawnId);
+}
+
+// T43: builds a minimal but well-formed Titanium serialized-item string, the
+// same wire format TitaniumItemParser::parseItem() (inventory_manager.cpp)
+// expects from a real HC_OP_CharInventory/HC_OP_ItemPacket -- instance
+// fields, then a quoted block of >=135 static fields, per
+// "titanium.cpp SerializeItem" (see parseInstanceData/parseStaticData's own
+// field-index comments). Only the fields this test actually asserts on
+// (slot, itemId, name, icon) are set to nonzero/nonempty; everything else is
+// left empty (TitaniumItemParser::toInt() defaults an empty field to 0).
+std::string BuildItemString(int16_t slot, uint32_t itemId, const std::string& name, uint32_t icon) {
+    // Instance fields (11): stackCount|unknown|slot|price|count|exp|serial|recast|charges|attuned|unknown
+    std::string instance = "0|0|" + std::to_string(slot) + "|0|1|0|0|0|0|0|0";
+
+    // Static fields (135 minimum -- parseStaticData rejects fewer).
+    std::vector<std::string> fields(135, "");
+    fields[0] = "0";                    // itemType (0 = Common)
+    fields[1] = name;                   // name
+    fields[2] = name;                   // lore
+    fields[3] = "IT63";                 // idfile (unused by the parser beyond presence)
+    fields[4] = std::to_string(itemId); // itemId
+    fields[5] = "10";                   // weight (tenths -> 1.0)
+    fields[6] = "1";                    // noRent field: nonzero -> noRent=false
+    fields[7] = "1";                    // noDrop field: nonzero -> noDrop=false
+    fields[8] = "0";                    // size
+    fields[9] = "0";                    // equip slots bitmask
+    fields[10] = "0";                   // vendor price
+    fields[11] = std::to_string(icon);  // icon
+
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+
+    return instance + "\"" + staticData + "\"";
 }
 
 } // namespace
@@ -704,4 +742,168 @@ TEST(FullStateSnapshot, PreExistingPetSurvivesHeadlessZoneInViaSnapshot) {
     EXPECT_TRUE(deltaFired || postSnapshotPetCreated >= 1)
         << "A pre-existing pet must reach the bridge as PetCreated one way "
            "or the other -- it did neither";
+}
+
+// ============================================================================
+// 6. T43: the regression test the deferred.md "EQT_HAS_GRAPHICS gates around
+// non-graphics code" pattern entry asked for -- a headless zone-in, driven
+// entirely through the server-free ReplayZonePacket seam (this file's own
+// idiom, extended rather than replaced), that asserts game state actually
+// POPULATED across every dimension the pattern's five historical instances
+// broke: inventory, pet, spell gems, and player stats. Runs in both the
+// EQT_GRAPHICS=ON and EQT_GRAPHICS=OFF trees (like every test in this file);
+// the point is that it must pass in EQT_GRAPHICS=OFF without ever touching a
+// renderer or a live server.
+//
+// Of the five historical instances (refactor/deferred.md's pattern entry),
+// this test would have caught THREE outright:
+//   - P28 (eq.h guards enclosing non-graphics members): the EQT_GRAPHICS=OFF
+//     tree wouldn't have compiled this test binary at all -- a build failure
+//     is "failed immediately" in the bluntest possible sense.
+//   - T41 (m_inventory_manager never constructed): the InventorySlotChanged
+//     assertion below would find no populated slot -- the manager would be
+//     null and PublishFullStateSnapshot()'s inventory loop would silently
+//     skip.
+//   - T42 (HC_OP_ItemPacket/CharInventory dispatch dropped): even with the
+//     manager constructed, the CharInventory replay below wouldn't reach it,
+//     so the slot this test targets would stay empty.
+// The other two would NOT have been caught here, and that's expected, not a
+// gap in this test -- they need different oracles:
+//   - T29 (no slash commands registered): a command-availability check, not
+//     a zone-in state-population check.
+//   - T42 (SetEQClientPath() never called): only bites over a REAL network
+//     connection (LoadZoneSources() calling RequestQuit() on empty client
+//     path) -- ReplayZonePacket bypasses networking entirely, so this test
+//     cannot exercise it. That is exactly why the plan's verification bar
+//     separately requires a live eqemu EQT_GRAPHICS=OFF acceptance leg.
+// ============================================================================
+
+TEST(FullStateSnapshot, HeadlessZoneInPopulatesGameState) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+    const uint16_t kMySpawnId = 6001;
+    const uint32_t kPetSpawnId = 9101;
+    const uint32_t kMemorizedSpellId = 42;   // arbitrary nonzero spell id -- gem storage
+                                              // doesn't require a loaded spell database
+    const uint32_t kItemId = 10001;
+    const uint32_t kItemIcon = 500;
+    const std::string kItemName = "T43 Test Sword";
+
+    {
+        auto payload = BuildPayload(2 + 700, [](EQ::Net::DynamicPacket& p) {
+            p.PutCString(66, "qeytoqrg");
+            p.PutUInt16(686, 100);
+        });
+        Replay(eq, HC_OP_NewZone, payload);
+    }
+
+    // PlayerProfile: identity, HP/mana (player stats), and one memorized
+    // spell gem (spellbook/mem_spells offsets per eq.cpp's
+    // ZoneProcessPlayerProfile comment: spell_book at 2312, mem_spells at
+    // 4360, 8 x uint32 each).
+    {
+        auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt32(2 + 8, 1);            // race
+            p.PutUInt32(2 + 12, 1);           // class
+            p.PutUInt8(2 + 20, 10);           // level
+            p.PutUInt32(2 + 2232, 100);       // cur_hp
+            p.PutUInt32(2 + 2228, 50);        // mana
+            p.PutCString(2 + 12940, "Testchar");
+            p.PutUInt32(2 + 14384, kMySpawnId);
+            p.PutUInt32(2 + 4360, kMemorizedSpellId);  // mem_spells[0] (gem slot 1)
+        });
+        Replay(eq, HC_OP_PlayerProfile, payload);
+    }
+    ASSERT_EQ(eq.GetEntities().count(kMySpawnId), 1u);
+
+    // Pre-existing pet, already in the zone's spawn list (T41/T43 residual
+    // fix: OnPetCreated() is un-guarded as of this unit, so the delta fires
+    // here too, not just via the snapshot).
+    {
+        auto payload = BuildPayload(2 + 385, [&](EQ::Net::DynamicPacket& p) {
+            WritePetSpawnStruct(p, 2, kPetSpawnId, "Testchars_pet", kMySpawnId);
+        });
+        Replay(eq, HC_OP_ZoneSpawns, payload);
+    }
+    ASSERT_EQ(eq.GetEntities().count(kPetSpawnId), 1u);
+
+    // Inventory: one item at the primary weapon slot, via HC_OP_CharInventory
+    // -- the same dispatch path T42 found dropped entirely under
+    // EQT_GRAPHICS=OFF before its fix.
+    {
+        std::string itemStr = BuildItemString(eqt::inventory::SLOT_PRIMARY, kItemId, kItemName, kItemIcon);
+        auto payload = BuildPayload(2 + itemStr.size(), [&](EQ::Net::DynamicPacket& p) {
+            p.PutData(2, const_cast<char*>(itemStr.data()), itemStr.size());
+        });
+        Replay(eq, HC_OP_CharInventory, payload);
+    }
+
+    SendAATable(eq);
+    SendTributeInfo(eq);
+    SendGuildTributes(eq);
+    Replay(eq, HC_OP_GuildMOTD, EmptyPayload());
+    bridge.drainEvents();  // discard NetworkReady etc., not this test's concern
+
+    // ClientUpdate completes the zone-in handshake -> OnGameStateComplete()
+    // -> PublishFullStateSnapshot() (headless path, T41).
+    {
+        auto payload = BuildPayload(2 + 22, [&](EQ::Net::DynamicPacket& p) {
+            p.PutUInt16(2, kMySpawnId);
+            p.PutUInt32(4, 0);
+            p.PutUInt32(8, 0);
+            p.PutUInt32(12, 0);
+            p.PutUInt32(16, 0);
+            p.PutUInt32(20, 0);
+        });
+        Replay(eq, HC_OP_ClientUpdate, payload);
+    }
+    ASSERT_TRUE(eq.IsGameStateReady());
+
+    auto events = bridge.drainEvents();
+
+    bool sawPlayerStats = false;
+    bool sawInventoryItem = false;
+    bool sawSpellGem = false;
+    bool sawPetCreated = false;
+
+    for (const auto& e : events) {
+        switch (e.type) {
+        case eqt::state::GameEventType::PlayerStatsChanged: {
+            const auto& d = std::get<eqt::state::PlayerStatsChangedData>(e.data);
+            if (d.curHP == 100 && d.maxHP == 100 && d.curMana == 50) {
+                sawPlayerStats = true;
+            }
+            break;
+        }
+        case eqt::state::GameEventType::InventorySlotChanged: {
+            const auto& d = std::get<eqt::state::InventorySlotChangedData>(e.data);
+            if (d.slotId == eqt::inventory::SLOT_PRIMARY && d.hasItem && d.itemId == kItemId) {
+                sawInventoryItem = true;
+            }
+            break;
+        }
+        case eqt::state::GameEventType::SpellGemChanged: {
+            const auto& d = std::get<eqt::state::SpellGemChangedData>(e.data);
+            if (d.spellId == kMemorizedSpellId) {
+                sawSpellGem = true;
+            }
+            break;
+        }
+        case eqt::state::GameEventType::PetCreated: {
+            const auto& d = std::get<eqt::state::PetCreatedData>(e.data);
+            if (d.spawnId == kPetSpawnId) {
+                sawPetCreated = true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawPlayerStats) << "PlayerStatsChanged with the PlayerProfile's HP/mana never reached the bridge";
+    EXPECT_TRUE(sawInventoryItem) << "InventorySlotChanged for the CharInventory item never reached the bridge";
+    EXPECT_TRUE(sawSpellGem) << "SpellGemChanged for the memorized spell never reached the bridge";
+    EXPECT_TRUE(sawPetCreated) << "PetCreated for the pre-existing pet never reached the bridge";
 }
