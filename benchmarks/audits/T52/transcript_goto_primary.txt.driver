@@ -1,0 +1,10 @@
+== starting willeq (headless, piped stdin, -d 6/TRACE) ==
+willeq pid=1749062
+[driver] matched 'Zone connection complete! Player position confirmed' after 4s
+[driver] sent: /loc (1785954150.635427635)
+[driver] sent: /say #goto 100 200 5 (1785954152.645790512)
+[driver] sent: /loc (1785954156.656974655)
+[driver] sent: /loc (1785954163.676904034)
+[driver] sent: /camp (1785954165.694247770)
+[driver] matched 'shutdown complete|Application shutdown' after 30s
+[driver] willeq exit code: 0

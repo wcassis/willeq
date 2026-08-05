@@ -1,0 +1,13 @@
+== starting willeq (headless, piped stdin, -d 6/TRACE) ==
+willeq pid=1784724
+[driver] matched (new) 'Zone connection complete! Player position confirmed' after 3s
+[driver] sent: /loc (1785957662.002254546)
+[driver] sent: /zoning on (1785957664.023615056)
+[driver] sent: /warp -1163.9183349609375 595.6248779296875 -34.984375 (1785957665.034188527)
+[driver] matched (new) 'Zone line triggered! Target zone' after 0s
+[driver] matched (new) 'Zone connection complete! Player position confirmed' after 1s
+[driver] sent: /loc (1785957668.245618672)
+[driver] sent: /who (1785957670.255187686)
+[driver] sent: /camp (1785957672.264672655)
+[driver] matched (new) 'shutdown complete|Application shutdown' after 30s
+[driver] willeq exit code: 0
