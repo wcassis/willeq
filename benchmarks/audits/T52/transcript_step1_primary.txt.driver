@@ -1,0 +1,16 @@
+== starting willeq (headless, piped stdin, -d 6/TRACE for DumpPacket hex) ==
+willeq pid=1745875
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] sent: /loc (1785953730.853481712)
+[driver] sent: /say #goto 555 -333 8 (1785953732.864021492)
+[driver] sent: /loc (1785953736.875756179)
+[driver] sent: /warp 35.22 -75.27 3.75 (1785953741.912593469)
+[driver] TIMEOUT waiting for (new) 'Zone line triggered' after 15s
+[driver] TIMEOUT waiting for (new) 'Zone connection complete! Player position confirmed' after 60s
+[driver] sent: /loc (1785953821.625633534)
+[driver] sent: /warp 597 -1146 -39 (1785953823.653087655)
+[driver] TIMEOUT waiting for (new) 'Zone line triggered' after 15s
+[driver] TIMEOUT waiting for (new) 'Zone connection complete! Player position confirmed' after 60s
+[driver] sent: /loc (1785953903.388637840)
+[driver] sent: /who (1785953905.401377875)
+[driver] sent: /camp (1785953907.413560195)

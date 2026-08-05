@@ -65,7 +65,13 @@ void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
 
 	// Respond with OP_ZoneChange to initiate the actual zone change
 	// The server will then respond with OP_ZoneChange with success=1
-	RequestZoneChange(zone_id, target_x, target_y, target_z, heading);
+	// T52 ride-along: this is a reply to a SERVER-initiated request
+	// (RequestClientZoneChange_Struct, "the server is requesting..." per
+	// the comment above), so it is solicited -- zone_reason should read
+	// ZoneSolicited (0), not the previous hardcoded ZoneUnsolicited (1).
+	// Cosmetic only: eqemu only logs zone_reason, never uses it for logic
+	// (verified against the real server source; see this unit's Review).
+	RequestZoneChange(zone_id, target_x, target_y, target_z, heading, /*solicited=*/true);
 }
 
 void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
@@ -138,7 +144,7 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	LOG_TRACE(MOD_ZONE, "Zone change approved, will process disconnect on next update");
 }
 
-void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading)
+void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited)
 {
 	if (!IsFullyZonedIn() || !m_zone_connection) {
 		LOG_WARN(MOD_ZONE, "Cannot request zone change - not fully zoned in");
@@ -172,17 +178,35 @@ void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, f
 	// instance_id at offset 68 (0 for non-instanced zones)
 	p.PutUInt16(68, 0);
 
-	// Server expects Y, X, Z order (opposite of our internal order)
-	// Our internal: m_x = server_y, m_y = server_x
-	// So to send to server: offset 70 = x (our y), offset 74 = y (our x)
-	p.PutFloat(70, y);  // Server's y_pos = our x
-	p.PutFloat(74, x);  // Server's x_pos = our y
+	// Server expects Y, X, Z order (opposite of our internal order).
+	// Established convention (T52, verified against live PlayerProfile wire
+	// evidence, which uses the identical relationship): our internal
+	// m_x = server_y, m_y = server_x. Inverting that to build an outgoing
+	// packet: the wire's y-field (offset 70) must carry OUR x, and the
+	// wire's x-field (offset 74) must carry OUR y.
+	//
+	// T52 fix: this used to be backwards (PutFloat(70, y) / PutFloat(74, x)
+	// -- our y into the server's y slot, our x into the server's x slot --
+	// which is a straight, unswapped copy and contradicts the parse-side
+	// convention used everywhere else in this codebase, e.g. eq.cpp's
+	// PlayerProfile handler and ZoneProcessZoneChange just above). No live
+	// symptom was traced to this: in every path this unit could exercise,
+	// the server decides the actual destination itself (ZonePC for a
+	// server-solicited teleport, the zone's own zone_points row for a
+	// zone-line crossing) without reading back the position fields on this
+	// outgoing request, so this was a real but currently-inert bug. Fixed
+	// as a correctness hardening, not because it explains any observed
+	// misbehavior -- see refactor/T52_zone_position_convention.md Review.
+	p.PutFloat(70, x);  // Server's y-field = our x
+	p.PutFloat(74, y);  // Server's x-field = our y
 	p.PutFloat(78, z);
 
-	// zone_reason at offset 82
+	// zone_reason at offset 82 (T52 ride-along, cosmetic only -- confirmed
+	// against the real eqemu source that zone_reason is a log-only "memo
+	// field", never used for server-side logic; see the Review)
 	// 0 = ZoneSolicited (server-requested)
 	// 1 = ZoneUnsolicited (client-initiated, like zone line)
-	p.PutUInt32(82, 1);  // ZoneUnsolicited - we're initiating this
+	p.PutUInt32(82, solicited ? 0 : 1);
 
 	// success at offset 86
 	// 0 = request (we're asking)
@@ -716,6 +740,19 @@ void EverQuest::CheckZoneLine()
 		}
 
 		// Trigger zone line!
+		//
+		// T52: Producer B's convention, stated explicitly (nobody had
+		// written it down before): result.targetX/Y/Z are stored straight
+		// through, in CLIENT format -- they come from this zone's own
+		// WLD-derived zone-line data (m_zone_lines, loaded from the S3D/WLD
+		// geometry via LoadZoneLines), which is compared directly against
+		// check_x/check_y (== m_x/m_y) a few lines above with no swap. This
+		// matches docs/CLAUDE.md's convention #3 (S3D/WLD files are Z-up,
+		// identity vs. client internal coords, no transform needed). So
+		// m_pending_zone_x/y here are in the SAME format producer A stores
+		// (client format) -- both producers agree; only the consumer's
+		// comment was wrong (fixed in eq_login_world.cpp, see this unit's
+		// Review).
 		m_zone_line_triggered = true;
 		m_zone_line_trigger_time = now;
 		m_pending_zone_id = result.targetZoneId;
@@ -732,8 +769,11 @@ void EverQuest::CheckZoneLine()
 		LOG_INFO(MOD_ZONE, "Zone line triggered! Target zone: {}, coords: ({:.1f}, {:.1f}, {:.1f}), heading: {:.1f}",
 		        m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
 
-		// Send zone change request to server
-		RequestZoneChange(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+		// Send zone change request to server. Client-initiated (we detected
+		// the zone line ourselves) -- solicited=false (ZoneUnsolicited),
+		// the existing/default behavior; stated explicitly per T52's
+		// ride-along fix at the other call site.
+		RequestZoneChange(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading, /*solicited=*/false);
 	} else {
 		// Not in a zone line - clear the triggered flag if we were previously in one
 		if (m_zone_line_triggered) {

@@ -720,6 +720,33 @@ public:
 	// reachable from S->C handlers (see ReplayZonePacket).
 	uint64_t GetReplaySuppressedSendCount() const { return m_replay_suppressed_sends; }
 
+	// T52 test seam: m_pending_zone_x/y/z/id have three producers
+	// (ZoneProcessZoneChange, CheckZoneLine, and the bind/death path in
+	// eq.cpp) and one consumer (WorldProcessZoneServerInfo), all private.
+	// Minimal, behavior-preserving read-only accessors so tests can pin
+	// each producer's coordinate convention without a live connection --
+	// combined with ReplayZonePacket (for producer A) or a direct
+	// UpdateMovement()/CheckZoneLine() drive (for producer B, via existing
+	// public entry points), and GetPosition() for the consumer's effect.
+	uint16_t GetPendingZoneId() const { return m_pending_zone_id; }
+	float GetPendingZoneX() const { return m_pending_zone_x; }
+	float GetPendingZoneY() const { return m_pending_zone_y; }
+	float GetPendingZoneZ() const { return m_pending_zone_z; }
+
+	// T52 test seam, continued: WorldProcessZoneServerInfo's consumer
+	// branch is gated on `m_zone_connected || m_zone_connection !=
+	// nullptr`, which in real operation is only ever set true by a live
+	// UDP connection-state callback (ZoneOnStatusChangeReconnectEnabled) --
+	// not reachable through ReplayZonePacket/ReplayWorldPacket at all, and
+	// (per this unit's live wire evidence) never true by the time
+	// WorldProcessZoneServerInfo actually runs in the traced production
+	// flows either (ProcessDeferredZoneChange always disconnects first).
+	// This setter exists ONLY so a fast unit test can force that branch to
+	// execute and pin its corrected (no second swap) behavior, rather than
+	// leaving a fixed-but-untested dead branch. Test-only; not called from
+	// any production path.
+	void Test_SetZoneConnectedForSeam(bool connected) { m_zone_connected = connected; }
+
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
@@ -1415,7 +1442,7 @@ private:
 	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
 	// Zone transition methods
-	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading);
+	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited = false);
 	void CleanupZone();  // Cleanup current zone state for zone transition
 	void DisconnectFromZone();  // Disconnect from current zone server
 	void ProcessDeferredZoneChange();  // Process zone change outside of callback context

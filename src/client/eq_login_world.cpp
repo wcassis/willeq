@@ -854,16 +854,39 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	if (is_zone_transition) {
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
 
-		// Set player position to pending zone coordinates if we have them
-		// IMPORTANT: pending coordinates are in SERVER format (x=server_x, y=server_y)
-		// but m_x/m_y are in CLIENT DISPLAY format (m_x=server_y, m_y=server_x)
-		// So we need to swap X and Y when assigning
+		// Set player position to pending zone coordinates if we have them.
+		//
+		// T52 correction: this comment used to claim m_pending_zone_x/y were
+		// in SERVER format (x=server_x, y=server_y) and applied a second
+		// x/y swap here. That was wrong. Every producer of m_pending_zone_x/y
+		// -- ZoneProcessZoneChange (eq_zone.cpp, the server-approved-teleport
+		// path), CheckZoneLine (eq_zone.cpp, the zone-line path, which stores
+		// its target straight from the zone's own WLD-derived zone-line data,
+		// already in client format), and the bind/death path (eq.cpp) --
+		// already stores CLIENT-format coordinates. Swapping again here
+		// would transpose x and y for every server-solicited teleport this
+		// branch applies to. See refactor/T52_zone_position_convention.md
+		// Review for the wire evidence (ZoneProcessZoneChange's own swap,
+		// cross-checked against live PlayerProfile packets, which use the
+		// identical client_x=server_y/client_y=server_x convention and are
+		// what actually determines landing position on every zone entry).
+		//
+		// Separately noted, not fixed here: `is_zone_transition` above is
+		// always false in the traced live flows (ProcessDeferredZoneChange
+		// always calls DisconnectFromZone(), clearing m_zone_connected and
+		// m_zone_connection, before WorldProcessZoneServerInfo ever runs),
+		// so this whole block is currently dead code in every path this
+		// unit could exercise (#goto and real zone-line crossings both
+		// confirmed via live packet capture to get their landing position
+		// from the subsequent PlayerProfile packet instead, never from
+		// here). Fixed as a correctness hardening for whenever that
+		// reachability changes, not because it explains any live symptom.
 		if (m_pending_zone_id != 0) {
-			LOG_DEBUG(MOD_ZONE, "Setting spawn position: server coords ({:.1f}, {:.1f}, {:.1f}) -> client (m_x={:.1f}, m_y={:.1f})",
+			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> m_x={:.1f}, m_y={:.1f}",
 				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
-				m_pending_zone_y, m_pending_zone_x);
-			m_x = m_pending_zone_y;  // client x (m_x) = server y
-			m_y = m_pending_zone_x;  // client y (m_y) = server x
+				m_pending_zone_x, m_pending_zone_y);
+			m_x = m_pending_zone_x;
+			m_y = m_pending_zone_y;
 			m_z = m_pending_zone_z;
 			if (m_pending_zone_heading > 0) {
 				m_heading = m_pending_zone_heading;
