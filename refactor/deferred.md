@@ -1999,7 +1999,39 @@ leg that confirms a `SpellGemChanged`/`InventorySlotChanged` event is
 actually observed on the console bridge (not just inferred from a log
 line) — the mistake this entry itself documents T44 nearly made.
 
-## Bridge pointers are never cleared at teardown — five dangling pointers (T46 finding, 2026-08-04) — NOT FIXED
+## Bridge pointers are never cleared at teardown — **FIXED by T47 (2026-08-05)**
+
+**CLOSED.** `Application::shutdown()` now calls `setBridge(nullptr)`
+unconditionally at the top, outside the `#ifdef`, so it runs in both
+graphics and true-headless builds and clears all five pointers via T46's
+`wireBridgeToSubsystems()`. `ShutdownGraphics()`'s redundant
+`m_bridge = nullptr` was **removed** rather than left alongside — one
+source of truth instead of two competing partial-clear paths.
+
+Verified nothing publishes during shutdown by reading every step the
+function runs (`stopRDPServer`, `joinLoadingThread`, `ShutdownGraphics`,
+`IrrlichtRenderer::shutdown`, all three `IGameMode::shutdown`
+implementations, `~EverQuest`), so clearing first drops nothing.
+
+**Scope of the claim, stated as the executor stated it** — this is the
+part worth preserving: the opt-in ASAN repro
+(`tests/test_bridge_teardown.cpp`, `WILLEQ_T47_UAF_REPRO=1`, skipped by
+default) produced a genuine ASAN-named heap-use-after-free in
+`GameStateBridge::pushEvent` when a manager's pointer is not cleared
+before the bridge dies, and a clean no-op when it is. **But that
+exercises the mechanism at manager+bridge granularity, not
+`Application::shutdown()` end to end — because the end-to-end hazard is
+not currently constructible.** `shutdown()` destroys `EverQuest` and every
+manager together in a single `m_eqClient.reset()`, so no window exists
+today where a manager outlives a freed bridge pointer.
+
+So T47 is **defensive hygiene that makes an invariant explicit**, not the
+repair of a reachable bug. It stops being hygiene the moment teardown
+ordering changes or anything publishes at shutdown — which is why the
+permanent `BridgeTeardownInvariant` test is the durable part, not the
+repro.
+
+Historical record of the finding follows:
 
 Characterized precisely by T46 while wiring the managers:
 
