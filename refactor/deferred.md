@@ -2658,7 +2658,20 @@ would have made it report empty forever — the `/assist` (T28) and `cmdHail`
 deliberately span two registries. Not a bug; worth knowing before anyone
 "tidies" it.
 
-### NEW: `/bank` opens and self-closes instantly — hardcoded dummy banker id
+### ~~NEW: `/bank` opens and self-closes instantly~~ — **FIXED by T50 (2026-08-05)**
+
+**Closed.** `/bank` now pushes `BankerInteractIntent{targetId}` for the
+current target, exactly as T48 did for vendor, so it enters the gesture's
+validated handler and opens with the REAL npc id. Deliberate behaviour
+change: `/bank` now requires a targeted banker to open. **The close half
+does NOT go through the intent** — that handler is open-only (no close
+branch, since the gesture always tries to open) — so `CloseBankWindow()`
+is still called directly and never requires a target, because you may
+have walked away or changed target since opening.
+**Live proof, which also retires T49's caveat: `/npcstate` reported
+`Banker: id=194` and held it unchanged across ~8s of movement ticks,
+then `none` after close.** Original diagnosis follows.
+
 
 `/bank` is reachable from the command channel, but useless live: it opens
 and closes the bank window within the same processing step, every time,
@@ -2707,7 +2720,8 @@ Not investigated (server-side, outside the eqemu ownership T49 was
 granted, which covers DB reads and position writes rather than server
 debugging). **This is the next live instance of the automation-reachability
 pattern**: reachable command, unreachable outcome. T49 reported it rather
-than inventing a hook, per its plan.
+than inventing a hook, per its plan. **RESOLVED by T50 (2026-08-05) — see
+the closing note at the end of this entry.**
 
 **ROOT-CAUSED 2026-08-05 against the actual server source** (Will's
 prompt: "there may be a server-defined max distance"). He was right that
@@ -2745,9 +2759,36 @@ class-range validation but has **no distance check and no
 player-class-vs-trainer-class check**, so the client cheerfully sends a
 request the server will silently drop. The banker *gesture* path
 (`BankerInteractIntent`, `eq_bridge.cpp:925`) does check distance and
-class and tells the user why. Making `/train` (and the vendor/banker
-command paths) pre-validate the same way would turn silent failure into a
-real message. Worth a small unit.
+class and tells the user why.
+
+**CLOSED by T50 (2026-08-05).** `/train` now pre-validates both, and the
+messages are actionable rather than bare refusals. Captured live against
+T49's exact repro NPC:
+
+```
+Miltiades_Tal`Azroth004 trains Paladins; you are a Warrior.
+You are too far away to train with Brin_Stolunger002.
+```
+
+**And the positive leg worked for the first time ever**: against
+`Brin_Stolunger` (npc 1063, class 20 WarriorGM, matching Testchar's
+Warrior), `/train` completed a real `HC_OP_GMTraining` round trip and
+`/npcstate` reported `Trainer: Brin Stolunger (id=195)`.
+
+**Two T50 decisions recorded here because they are live tradeoffs, not
+settled truths:**
+
+- **Distance is checked at `NPC_INTERACTION_DISTANCE` (15), not the
+  server's 200.** This is deliberately STRICTER than the server: a
+  trainer 15-200 units away that the server would happily train is
+  refused client-side. Chosen for consistency with every other
+  client-side interaction check rather than introducing a third constant.
+  Revisit if it ever annoys a real player.
+- **The class check is a HARD BLOCK.** `AllowCrossClassTrainers` defaults
+  false, so this matches the server today — but **a server that enables
+  that rule would find T50's client refusing training the server would
+  allow.** No client-side configuration was built for it. That is the one
+  known way this fix can be wrong.
 
 Both legs are covered by unit tests against synthetic events instead
 (`GameStateSyncBridgeTest.BankWindowOpened*`/`TrainerWindowOpened*`,
