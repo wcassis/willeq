@@ -896,6 +896,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_connection_flow)
 
+# T52: pins the x/y coordinate convention at the three m_pending_zone_x/y/z
+# sites (two producers in eq_zone.cpp, one consumer in eq_login_world.cpp).
+# Same replay-seam idiom as test_zone_connection_flow above -- no network,
+# no graphics, no live connection -- so safe to auto-discover.
+ADD_EXECUTABLE(test_zone_position_convention
+    test_zone_position_convention.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_position_convention GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_position_convention PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_position_convention)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

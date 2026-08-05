@@ -265,6 +265,44 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(warp);
 
+	// T52: zone-line-triggered zoning (CheckZoneLine's m_zoning_enabled gate)
+	// has always been reachable ONLY via a renderer Ctrl+Z keybind
+	// (ZoningEnabledIntent -> EverQuest::SetZoningEnabled(), eq_bridge.cpp)
+	// -- no slash command existed at all, so a purely piped/headless
+	// session (no renderer, no keyboard) could never trigger a real
+	// zone-line crossing, only GM-teleport-style transitions. This is
+	// another instance of the automation-reachability pattern (T26
+	// /combat, T29 registry, T34 /loot, T42->T48 vendor, T50 /bank+/train):
+	// exposing an EXISTING production API (SetZoningEnabled/IsZoningEnabled,
+	// eq.h:776-777, unchanged here) through the standard command registry,
+	// not a scratch hook. Needed to drive this unit's zone-line-crossing
+	// live-acceptance control leg via pure piped stdin.
+	Command zoning;
+	zoning.name = "zoning";
+	zoning.usage = "/zoning [on|off]";
+	zoning.description = "Show or set whether crossing a zone line triggers an actual zone change";
+	zoning.category = "Movement";
+	zoning.handler = [this](const std::string& args) {
+		std::string trimmed = args;
+		while (!trimmed.empty() && trimmed[0] == ' ') {
+			trimmed = trimmed.substr(1);
+		}
+		if (trimmed.empty()) {
+			AddChatSystemMessage(fmt::format("Zoning is {}", IsZoningEnabled() ? "on" : "off"));
+			return;
+		}
+		if (trimmed == "on") {
+			SetZoningEnabled(true);
+			AddChatSystemMessage("Zoning is now on");
+		} else if (trimmed == "off") {
+			SetZoningEnabled(false);
+			AddChatSystemMessage("Zoning is now off");
+		} else {
+			AddChatSystemMessage("Usage: /zoning [on|off]");
+		}
+	};
+	m_command_registry->registerCommand(zoning);
+
 	Command follow;
 	follow.name = "follow";
 	follow.usage = "/follow <entity_name>";
