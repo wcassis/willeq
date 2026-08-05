@@ -1859,7 +1859,37 @@ rule is already settled; what is missing is that nobody has applied it
 exhaustively. A test that builds `EQT_GRAPHICS=OFF` and exercises a real
 headless zone-in end to end would have caught three of the five.
 
-## PATTERN: real features reachable only through a UI gesture, invisible to automation — four instances
+## PATTERN: real features reachable only through a UI gesture, invisible to automation — **NARROWED by T48 (2026-08-05), not closed**
+
+**Vendor is closed.** T48 added `/vendor`, `/vendorlist`, `/buy <slot>
+[qty]` and `/sell <slot> [qty]` to `EverQuest::m_command_registry`, all
+pushing the **same intent structs the renderer gesture pushes**
+(`VendorToggleIntent`/`VendorBuyIntent`/`VendorSellIntent`) through the
+identical `ProcessBridgeIntents()` switch into unmodified
+`RequestOpenVendor`/`BuyFromVendor`/`SellToVendor`. The one differing hop
+is stated rather than glossed: commands push from the game thread, the
+gesture from the render thread — safe either way via the bridge's mutex.
+
+`/vendor` was added beyond the original scope because scoping the
+acceptance revealed `VendorToggleIntent` had the **same** no-producer
+problem — you could not have opened a vendor from a script to buy from
+it. Reachability without discoverability is only half the gap, which is
+why `/vendorlist` exists too.
+
+**Still open — the pattern is narrowed, not retired.** T48 scanned all 56
+`RendererIntent` types for producers. Most producer-less ones are
+superseded by direct-call commands and are not live gaps, but
+**`AttackIntent` and `ToggleAutoAttackIntent` have working handlers in
+`ProcessBridgeIntents()` (`eq_bridge.cpp:1410`, `:1419`) and no producer
+anywhere** — orchestrator confirmed. That is the same defect shape, one
+subsystem over, and worth a small unit on the T34/T48 model.
+
+The running instance list, for whoever picks that up: `/combat on`
+(T26), the whole `EverQuest` registry (T29), `/loot` as a stub (T34),
+vendor buy/sell (T42→T48), and now attack/auto-attack. Every one was
+found only because a unit happened to need it.
+
+Historical record follows:
 
 The 2026-08-02 ruling says anything blocking fully automated development
 and testing is a defect. This keeps showing up in the same shape:
