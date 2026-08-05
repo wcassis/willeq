@@ -257,11 +257,15 @@ TEST_F(CommandProcessorTest, GetCommandsByCategory_OnlyReturnsMatchingCategory) 
     }
 
     // Representative sample rather than enumerating all built-ins.
-    bool foundAttack = false;
+    // T51: "attack"/"stopattack"/"aa" were removed from this registry (they
+    // were shadowed dead code -- registry 1 always won the dispatch
+    // collision); "target" is still registered here and stands in as the
+    // representative sample.
+    bool foundTarget = false;
     for (const auto& cmd : combatCommands) {
-        if (cmd.name == "attack") foundAttack = true;
+        if (cmd.name == "target") foundTarget = true;
     }
-    EXPECT_TRUE(foundAttack);
+    EXPECT_TRUE(foundTarget);
 }
 
 TEST_F(CommandProcessorTest, GetCommandsByCategory_UnknownCategoryReturnsEmpty) {

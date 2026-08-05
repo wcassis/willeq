@@ -29,14 +29,6 @@ struct TargetIntent {
     uint16_t spawnId;  // 0 = clear target
 };
 
-// --- Combat ---
-
-struct ToggleAutoAttackIntent {};
-
-struct AttackIntent {
-    uint16_t targetId;
-};
-
 // --- Chat ---
 
 struct ChatSubmitIntent {
@@ -284,9 +276,6 @@ using RendererIntent = std::variant<
     PlayerPositionChanged,
     // Targeting
     TargetIntent,
-    // Combat
-    ToggleAutoAttackIntent,
-    AttackIntent,
     // Chat
     ChatSubmitIntent,
     // Interaction

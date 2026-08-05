@@ -371,17 +371,16 @@ void CommandProcessor::registerBuiltinCommands() {
         "target", {"tar"}, "/target <name>", "Target entity by name", "Combat", false
     }, [this](const std::string& args) { return cmdTarget(args); });
 
-    registerCommand({
-        "attack", {"a"}, "/attack", "Start attacking target", "Combat", false
-    }, [this](const std::string& args) { return cmdAttack(args); });
-
-    registerCommand({
-        "stopattack", {}, "/stopattack", "Stop attacking", "Combat", false
-    }, [this](const std::string& args) { return cmdStopAttack(args); });
-
-    registerCommand({
-        "aa", {}, "/aa", "Toggle auto-attack", "Combat", false
-    }, [this](const std::string& args) { return cmdAutoAttack(args); });
+    // T51: attack/stopattack/aa registrations removed from this registry.
+    // T29's dispatch order (registry 1 -- EverQuest::m_command_registry --
+    // tried first, see application.cpp's DispatchSlashCommand) meant these
+    // three were always shadowed dead code: registry 1's own /attack (alias
+    // "att"), /stopattack, /aa (alias "~") won every collision (T51 Piece
+    // 0 live probe, benchmarks/audits/T51/). ActionDispatcher::
+    // enableAutoAttack()/disableAutoAttack()/toggleAutoAttack() themselves
+    // are untouched and still live -- the keyboard gesture
+    // (InputActionBridge) reaches them directly. See
+    // refactor/T51_attack_path_consolidation.md.
 
     registerCommand({
         "cast", {}, "/cast <gem#>", "Cast spell from gem slot", "Combat", true
@@ -733,18 +732,6 @@ ActionResult CommandProcessor::cmdTarget(const std::string& args) {
         return m_dispatcher.targetNearest();
     }
     return m_dispatcher.targetEntityByName(args);
-}
-
-ActionResult CommandProcessor::cmdAttack(const std::string& args) {
-    return m_dispatcher.enableAutoAttack();
-}
-
-ActionResult CommandProcessor::cmdStopAttack(const std::string& args) {
-    return m_dispatcher.disableAutoAttack();
-}
-
-ActionResult CommandProcessor::cmdAutoAttack(const std::string& args) {
-    return m_dispatcher.toggleAutoAttack();
 }
 
 ActionResult CommandProcessor::cmdCast(const std::string& args) {
