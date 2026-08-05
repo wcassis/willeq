@@ -1915,7 +1915,13 @@ anything).
 still narrowed, not retired** — T48's scan is not repeated here. The
 running instance list of *confirmed real* reachability gaps: `/combat on`
 (T26), the whole `EverQuest` registry (T29), `/loot` as a stub (T34),
-vendor buy/sell (T42→T48). Attack/auto-attack (T51) turned out to be a
+vendor buy/sell (T42→T48), `/bank` bypassing the validated intent (T50),
+and **zone-line-triggered zoning (T52)** — `SetZoningEnabled()` was
+reachable only via a renderer Ctrl+Z keybind, so a purely piped/headless
+session could never cross a real zone line at all. T52 exposed the
+existing API as `/zoning [on|off]` because it needed the zone-line
+regression leg headlessly. **That is now six instances, every one found
+because a unit happened to need it — the pattern keeps producing.** Attack/auto-attack (T51) turned out to be a
 duplication defect wearing the same clothes, not a new instance — a
 caution for whoever scans the remaining intent list next: "has a handler,
 no producer" is necessary but not sufficient; check for a parallel
