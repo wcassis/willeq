@@ -1515,6 +1515,18 @@ reachable via `/listtargets` + an explicit name. Flagged rather than
 silently absorbed; collapsing the duplicate vocabularies is a natural
 part of a future command-layer cleanup.
 
+**T51 (2026-08-05) reduced the "~37" estimate to a concrete, greppable
+34-name list** — see `refactor/T51_attack_path_consolidation.md`'s Review.
+It also closed three of them for real (`attack`, `stopattack`, `aa`):
+registry 2's copies were deleted as always-shadowed dead code after a
+live probe proved registry 1 served every one. **That is the template for
+the rest of the list** — establish live which registry actually serves a
+name before touching it, because reading the registrations is not enough:
+T51's own plan asserted `/a` was a live attack alias, and the live probe
+showed it had always been `/assist`'s. **Any future consolidation here
+should be behaviour-neutral at the command line and should prove that,
+not assume it.**
+
 Smaller follow-up from the same unit: `ConsoleInputHandler`'s bespoke
 non-slash `say`/`tell`/`quit` words are now redundant with `/say`,
 `/tell`, `/quit` through the unified channel. Left in place (something
