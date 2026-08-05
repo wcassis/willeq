@@ -382,6 +382,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_vendor)
 
+# T50: /bank, /train coverage (eq_commands_spells.cpp RegisterSpellCommands())
+# -- same seam as test_eq_commands_vendor.cpp above. /bank asserts the pushed
+# BankerInteractIntent's fields (bridge.drainIntents()); /train's new
+# distance/class pre-validation is a direct check, not an intent, so those
+# cases assert the printed SystemMessage text itself, per the plan's bar.
+ADD_EXECUTABLE(test_eq_commands_bank_train
+    test_eq_commands_bank_train.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_commands_bank_train GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
+
 # T24: SpellManager coverage (gem state machine, cast validation matrix via
 # direct validateCast()/checkMana()/checkRange()/adjustTargetForSpellType()
 # calls with hand-built SpellData, cooldown/memorization timing via T17-style

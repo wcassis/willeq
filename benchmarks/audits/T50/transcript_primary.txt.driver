@@ -1,0 +1,38 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=1687382
+[driver] matched 'Zone connection complete! Player position confirmed' after 4s
+[driver] sent: /npcstate (1785943524.932455220)
+[driver] sent: /say #npctypespawn 772 (1785943526.942119586)
+[driver] matched 'Spawned SummonClockworkBanker|Spawned .*772' after 1s
+[driver] sent: /list (1785943528.971158625)
+[driver] fresh banker spawn name resolved to 'SummonClockworkBanker002'
+[driver] sent: /target SummonClockworkBanker002 (1785943530.993306237)
+[driver] sent: /bank (1785943532.002516711)
+[driver] matched 'Bank window opened' after 1s
+[driver] sent: /npcstate (1785943534.030152650)
+[driver] sent: /npcstate (1785943542.044897424)
+[driver] sent: /bank (1785943544.055469573)
+[driver] matched 'Bank window closed' after 2s
+[driver] sent: /npcstate (1785943547.094132947)
+[driver] sent: /say #npctypespawn 1063 (1785943549.104145344)
+[driver] matched 'Spawned Brin_Stolunger|Spawned .*1063' after 1s
+[driver] sent: /list (1785943551.131992309)
+[driver] fresh WarriorGM spawn name resolved to 'Brin_Stolunger002'
+[driver] sent: /target Brin_Stolunger002 (1785943553.153405860)
+[driver] sent: /train (1785943554.163254611)
+[driver] matched 'Trainer window opened for' after 1s
+[driver] sent: /npcstate (1785943556.191462794)
+[driver] sent: /say #npctypespawn 1007 (1785943558.201685069)
+[driver] matched 'Spawned Miltiades|Spawned .*1007' after 1s
+[driver] sent: /list (1785943560.230277909)
+[driver] fresh wrong-class trainer spawn name resolved to 'Miltiades_Tal`Azroth004'
+[driver] sent: /target Miltiades_Tal`Azroth004 (1785943562.250542527)
+[driver] sent: /train (1785943563.259816060)
+[driver] sent: /warp 2000 2000 3 (1785943565.270646518)
+[driver] sent: /target Brin_Stolunger002 (1785943567.280075288)
+[driver] sent: /train (1785943568.289607692)
+[driver] sent: /warp -77.9232 21.9086 3 (1785943570.299062138)
+[driver] sent: /who (1785943572.308498555)
+[driver] sent: /camp (1785943574.318230347)
+[driver] matched 'shutdown complete|Application shutdown' after 31s
+[driver] willeq exit code: 0
