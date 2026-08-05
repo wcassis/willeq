@@ -2826,3 +2826,64 @@ Both legs are covered by unit tests against synthetic events instead
 (`GameStateSyncBridgeTest.BankWindowOpened*`/`TrainerWindowOpened*`,
 `CommandProcessorTest.NpcState_BankerOpen_*`/`NpcState_TrainerOpen_*`), so
 the migration and reader are verified even where the live path is blocked.
+
+## `#goto` same-zone teleport lands at the DB position — **SERVER-SIDE, NOT OURS** (T52, 2026-08-05)
+
+T50 observed that GM `#goto x y z` does not land the player where asked
+and filed it as a suspected eqemu quirk, without wire evidence. **T52
+captured the wire and the verdict is confirmed: the client is faithful,
+the substitution is the server's.** Sequence, from
+`benchmarks/audits/T52/transcript_goto_primary_excerpt.txt`:
+
+```
+[ZONE] Server requests zone change: zone=36 pos=(200.0, 100.0, 5.0) type=1
+[ZONE] Requesting zone change to zone 36 at (200.0, 100.0, 5.0)      <- client asks for exactly that
+[ZONE] Zone change response: zone=36 pos=(21.9, -77.9, 3.0) success=1 <- server's own approval, DB position
+```
+
+`(21.9, -77.9, 3.0)` is Testchar's persisted `character_data` position.
+The client requested the correct destination and applied what it was
+given. **Nothing to fix client-side; do not add a compensating hack.**
+
+Orchestrator note on how this was scoped, because the reasoning matters
+more than the verdict: I first called it server-side from source reading,
+Will corrected me (**the server respects whatever position the client
+sends — position flows client→server in the overwhelming majority of
+updates**), and that reframing was the right prior. It just happens not to
+apply *here*, because the substitution occurs inside the server's
+zone-change approval, before any client position update. **The wire
+capture is what distinguished those two worlds; neither of us could have
+from source alone.**
+
+### What T52 fixed anyway (correctness hardening, zero live behaviour change)
+
+Two real but **inert** client-side inversions, both verified inert before
+and after in both trees:
+
+1. **The `m_pending_zone_*` consumer** (`eq_login_world.cpp`) claimed its
+   input was in server format and swapped x/y a second time. Every
+   producer stores **client** format, so the swap was wrong — but the
+   block is **dead code**: `is_zone_transition` is always false there,
+   since `ProcessDeferredZoneChange` disconnects first. Landing position
+   actually comes from the subsequent `PlayerProfile` packet on every
+   zone entry, which carries its own correct swap.
+2. **`RequestZoneChange`'s outbound packet build** had x/y backwards
+   relative to the parse-side convention. Inert because the server never
+   reads those fields to choose a destination (unsolicited requests use
+   `GetClosestZonePoint` against the server's own tracked position).
+
+**Producer B's convention, documented for the first time**: the zone-line
+producer stores targets straight from the WLD-derived zone-line data,
+which is already client format (`docs/CLAUDE.md` convention #3), so both
+producers always agreed. `tests/test_zone_position_convention.cpp` pins
+all three sites so a future edit fails a test rather than a play session.
+
+**Implicated by the same producer/consumer pair and NOT fixed**: succor,
+evacuate, and death/bind respawn (`ZoneProcessZonePlayerToBind` — a third,
+previously undocumented producer, same correct convention). GM summon is a
+separate opcode and untouched. None has a known live symptom.
+
+**Evidence hygiene note**: T52 captured at `-d 6` and produced 121MB of
+transcripts against ~350KB for comparable units. Repacked at merge into
+excerpts plus gzipped full logs (8.1MB). **Use `-d 5` unless you
+specifically need packet dumps, and capture a narrow window if you do.**
