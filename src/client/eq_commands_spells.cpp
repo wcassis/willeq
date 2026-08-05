@@ -297,17 +297,46 @@ void EverQuest::RegisterSpellCommands()
 	Command bank;
 	bank.name = "bank";
 	bank.usage = "/bank";
-	bank.description = "Toggle bank window";
+	bank.description = "Open (or close) a bank window with your current target";
 	bank.category = "Utility";
 	bank.handler = [this](const std::string& args) {
-		// T43: was #ifdef EQT_HAS_GRAPHICS. IsBankWindowOpen/OpenBankWindow/
-		// CloseBankWindow (eq.h/eq_merchant.cpp) are plain game state + bridge
-		// events, already unguarded at their own definitions since P28 -- only
-		// this command handler still refused to call them headless.
+		// T50: was a no-arg OpenBankWindow()/CloseBankWindow() toggle. The
+		// no-arg OpenBankWindow() falls back to a hardcoded dummy npc id of 1
+		// (bankerNpcId != 0 ? bankerNpcId : 1) -- in the "arena" test zone
+		// that id belongs to an unrelated entity (zone_controller000) tens of
+		// thousands of units away, so the very next movement tick's proximity
+		// check closes the window it just opened (T49's live finding). The
+		// renderer's ctrl+click-a-banker gesture doesn't have this bug: it
+		// pushes BankerInteractIntent{npcId} with the REAL target id, and
+		// that intent's handler (eq_bridge.cpp, untouched by this unit)
+		// validates npc_type/distance/class==CLASS_BANKER and opens with the
+		// real id. So /bank now pushes the same intent for the current
+		// target instead of bypassing it -- this is a deliberate behaviour
+		// change: /bank now REQUIRES a targeted banker to open, where before
+		// it "worked" only in the degenerate self-closing sense. See Review.
+		//
+		// Close does NOT go through the intent: BankerInteractIntent's
+		// handler is open-only (if already open, it just logs and returns --
+		// it has no toggle/close branch, since the renderer gesture always
+		// tries to open). So closing keeps calling CloseBankWindow()
+		// directly, same as before, and deliberately does not require a
+		// valid (or any) current target -- you may have walked away or
+		// changed target since opening, and closing must still work.
 		if (IsBankWindowOpen()) {
 			CloseBankWindow();
+			return;
+		}
+
+		uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+		if (target_id == 0) {
+			AddChatSystemMessage("You don't have a target - target a banker first.");
+			return;
+		}
+
+		if (m_bridge) {
+			m_bridge->pushIntent(eqt::events::BankerInteractIntent{target_id});
 		} else {
-			OpenBankWindow();
+			AddChatSystemMessage("Cannot open bank - no bridge attached.");
 		}
 	};
 	m_command_registry->registerCommand(bank);
@@ -350,6 +379,53 @@ void EverQuest::RegisterSpellCommands()
 		constexpr uint8_t CLASS_BERSERKER_GM = 35;
 		if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
 			AddChatSystemMessage("That is not a trainer.");
+			return;
+		}
+
+		// T50: /train previously had no distance or class checks of its own,
+		// so a refusal (too far, or the wrong trainer for your class) was
+		// pure silence -- the server's Client::OPGMTraining
+		// (zone/client_process.cpp) drops the packet with no reply in either
+		// case. Pre-validate both here so the player gets a message instead.
+		//
+		// Distance: verified against the real eqemu source
+		// (client_process.cpp) -- the server's own limit is
+		// USE_NPC_RANGE2=40000 (200 units squared, common/features.h),
+		// looser than the client's own NPC_INTERACTION_DISTANCE (15,
+		// eq.h) used everywhere else a client-side interaction range is
+		// checked (the banker gesture's BankerInteractIntent handler,
+		// eq_bridge.cpp, and the movement proximity gate, eq_movement.cpp).
+		// Checking at 15 is therefore STRICTER than the server would
+		// require -- a target between 15 and 200 units away that the server
+		// would happily train is refused here. Chose 15 anyway, for
+		// consistency with every other client-side NPC-interaction check
+		// rather than inventing a third distance constant (the plan
+		// explicitly forbids that); see Review for the tradeoff stated
+		// plainly.
+		float dist = CalculateDistance2D(m_x, m_y, target.x, target.y);
+		if (dist > NPC_INTERACTION_DISTANCE) {
+			AddChatSystemMessage(fmt::format("You are too far away to train with {}.", target.name));
+			return;
+		}
+
+		// Class match: mirrors the server's own check exactly --
+		// Client::OPGMTraining computes
+		// "trains_class = pTrainer->GetClass() - (Class::WarriorGM -
+		// Class::Warrior)" i.e. trainerClass - 19, and refuses silently if
+		// it doesn't equal the player's class, UNLESS
+		// RuleB(Character, AllowCrossClassTrainers) is true (default false,
+		// common/ruletypes.h). Since the default is false and the whole
+		// point of this unit is replacing silence with an actionable
+		// message, this is a hard client-side block naming both classes --
+		// not a hidden refusal. A server that flips the rule on would make
+		// this block stricter than necessary; noted as a caveat in the
+		// Review and deferred rather than built as client-side
+		// configuration now.
+		constexpr uint8_t TRAINER_CLASS_OFFSET = CLASS_WARRIOR_GM - 1; // WarriorGM(20) trains Warrior(1)
+		uint32_t trained_class = static_cast<uint32_t>(target.class_id) - TRAINER_CLASS_OFFSET;
+		if (trained_class != m_class) {
+			AddChatSystemMessage(fmt::format("{} trains {}s; you are a {}.",
+				target.name, GetClassName(trained_class), GetClassName(m_class)));
 			return;
 		}
 
