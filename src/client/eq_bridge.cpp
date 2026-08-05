@@ -114,22 +114,15 @@ bool EverQuest::InitGraphics(int width, int height,
 	}
 
 	// D20e3: Store bridge only — renderer is owned by Application.
-	m_bridge = bridge;
+	// T46: wireBridgeToSubsystems() sets m_bridge and also wires the four
+	// managers' own bridge pointers (previously done inline here only,
+	// which left the managers unwired headless -- setBridge() now calls
+	// the same helper so both paths agree).
+	wireBridgeToSubsystems(bridge);
 
-	// Wire bridge to subsystems for intent pushing
-	// WindowManager removed — bridge wiring handled by new UI path
-	if (m_inventory_manager) {
-		m_inventory_manager->setBridge(m_bridge);
-	}
-	if (m_spell_manager) {
-		m_spell_manager->setBridge(m_bridge);
-	}
-	if (m_skill_manager) {
-		m_skill_manager->setBridge(m_bridge);
-	}
-	// U07b: Wire hotbar model to bridge
+	// U07b: Wire hotbar model's save callback (bridge pointer itself is
+	// wired by wireBridgeToSubsystems() above).
 	if (m_hotbar_model) {
-		m_hotbar_model->setBridge(m_bridge);
 		m_hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
 	}
 
@@ -213,6 +206,44 @@ void EverQuest::ShutdownGraphics() {
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
 }
 #endif // EQT_HAS_GRAPHICS
+
+// T46: wireBridgeToSubsystems()/setBridge() are unconditional (not gated by
+// EQT_HAS_GRAPHICS) because the headless path (Application::init()'s
+// console-bridge branch, application.cpp) calls setBridge() directly and
+// never goes through InitGraphics() at all. Previously setBridge() (then an
+// inline one-liner in eq.h) set only m_bridge; the four managers
+// (InventoryManager/SpellManager/SkillManager/HotbarModel), each holding its
+// own separate bridge pointer, were wired only inside InitGraphics() below —
+// a graphics-only call path. That left every manager-originated bridge
+// publish (e.g. SpellManager's SpellGemChanged, the T44 spell-delta
+// conversion depends on) silently inert headless. Both call sites now route
+// through this single helper so the managers are wired whichever path sets
+// the bridge.
+void EverQuest::wireBridgeToSubsystems(eqt::bridge::GameStateBridge* bridge) {
+	m_bridge = bridge;
+
+	// Plain pointer assignment on each manager's own setBridge() -- safe to
+	// call repeatedly (idempotent) and safe to call with bridge == nullptr
+	// (propagates the clear rather than silently dropping it), though
+	// nothing calls this with nullptr today (see deferred.md/T46 Review for
+	// the teardown-lifecycle finding).
+	if (m_inventory_manager) {
+		m_inventory_manager->setBridge(bridge);
+	}
+	if (m_spell_manager) {
+		m_spell_manager->setBridge(bridge);
+	}
+	if (m_skill_manager) {
+		m_skill_manager->setBridge(bridge);
+	}
+	if (m_hotbar_model) {
+		m_hotbar_model->setBridge(bridge);
+	}
+}
+
+void EverQuest::setBridge(eqt::bridge::GameStateBridge* bridge) {
+	wireBridgeToSubsystems(bridge);
+}
 
 // P28: GameTick/PreRenderTick/PostRenderTick and everything below through the
 // end of this file (spawn/pet bridge callbacks, ProcessBridgeIntents/Events,
