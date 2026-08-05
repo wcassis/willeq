@@ -2670,6 +2670,11 @@ in both trees.
 [INFO ] [MAIN] Bank window closed
 ```
 
+**The proximity check itself is CORRECT and must stay** (Will,
+2026-08-05: bank/train/trade all legitimately require closeness — and the
+server enforces its own 200-unit `USE_NPC_RANGE2` on the same
+interactions). The bug is purely *which entity it measures against*.
+
 Root cause traced by T49 (not fixed — outside its territory):
 `OpenBankWindow()` gets no npc id from `/bank`'s call site and falls back
 to `bankerNpcId != 0 ? bankerNpcId : 1` — a **hardcoded dummy id of 1**.
@@ -2678,6 +2683,18 @@ Spawn id 1 is a real, unrelated entity (`zone_controller000` at
 measures 31689.8 units to *that* and closes the window it just opened.
 Pre-existing, unrelated to T49. Fixing it touches
 `eq_commands_spells.cpp`/`eq_movement.cpp`.
+
+**THE FIX IS ALREADY WRITTEN, ONE PATH OVER — this is the T34/T48 shape
+again.** `BankerInteractIntent` (`renderer_intents.h:108`) **has** a
+producer (`renderer_overlays.cpp:600`, the renderer gesture) and its
+handler (`eq_bridge.cpp:902-940`) does it properly: validates
+`npc_type`, checks `NPC_INTERACTION_DISTANCE`, checks
+`class_id == CLASS_BANKER (40)`, tells the user why on each failure, then
+calls `OpenBankWindow(i.npcId)` **with the real id**. `/bank`
+(`eq_commands_spells.cpp:310`) bypasses all of it and calls the
+no-arg overload. So the unit is: make `/bank` push
+`BankerInteractIntent{targetId}` exactly as T48 made the vendor commands
+push the gesture's intents. Same defect, same remedy, precedent set.
 
 ### NEW: `/train` sends `HC_OP_GMTraining` and the server never answers
 
@@ -2691,6 +2708,46 @@ granted, which covers DB reads and position writes rather than server
 debugging). **This is the next live instance of the automation-reachability
 pattern**: reachable command, unreachable outcome. T49 reported it rather
 than inventing a hook, per its plan.
+
+**ROOT-CAUSED 2026-08-05 against the actual server source** (Will's
+prompt: "there may be a server-defined max distance"). He was right that
+such a rule exists, and the investigation found the real cause is a
+*sibling* silent-return in the same handler.
+
+`Client::OPGMTraining()` (`akk-stack/code/zone/client_process.cpp:1612`)
+has **three silent `return`s, none of which send the client anything**:
+
+1. trainer missing / not an NPC / class outside `WarriorGM..BerserkerGM`;
+2. **cross-class**: `if (!RuleB(Character, AllowCrossClassTrainers))` then
+   `trains_class = pTrainer->GetClass() - (WarriorGM - Warrior)` must equal
+   `GetClass()`. The rule **defaults to `false`**
+   (`common/ruletypes.h:174`);
+3. **range**: `DistanceSquared(m_Position, pTrainer->GetPosition()) >
+   USE_NPC_RANGE2`, where `USE_NPC_RANGE2 = 40000`
+   (`common/features.h:215`) — i.e. **200 units**.
+
+**T49's run died on (2), not (3).** Testchar is **class 1 (Warrior)**;
+`Miltiades_Tal'Azroth` is **class 22 = PaladinGM**, which trains class 3
+(Paladin). The check at (2) precedes the range check, so distance never
+mattered — and `/list` in the same transcript shows every spawned NPC at
+`0.0 units away`, confirming proximity was fine. **A Warrior needs a
+`WarriorGM` (class 20) trainer.**
+
+**The range rule is real and systemic though**, exactly as Will guessed:
+`USE_NPC_RANGE2` gates ~10 interaction handlers in `client_packet.cpp` —
+vendor (:2288), banker (:3640), tribute master (:11005) and more. The
+banker money handler doesn't even trust the client's npc id; it calls
+`entity_list.GetClosestBanker(this, distance)` and range-checks that,
+logging a `POSSIBLE_HACK` player event on failure.
+
+**The actionable client-side gap**: `/train` performs target/npc_type/
+class-range validation but has **no distance check and no
+player-class-vs-trainer-class check**, so the client cheerfully sends a
+request the server will silently drop. The banker *gesture* path
+(`BankerInteractIntent`, `eq_bridge.cpp:925`) does check distance and
+class and tells the user why. Making `/train` (and the vendor/banker
+command paths) pre-validate the same way would turn silent failure into a
+real message. Worth a small unit.
 
 Both legs are covered by unit tests against synthetic events instead
 (`GameStateSyncBridgeTest.BankWindowOpened*`/`TrainerWindowOpened*`,
