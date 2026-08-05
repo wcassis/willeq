@@ -1,8 +1,178 @@
 # Deferred / Known-Open Items
 
 Live list of open work items extracted from "done" batches and audits
-(2026-07-22 doc reconciliation). When an item is fixed, delete it here and note
-the commit. Sources are historical docs — do not edit those.
+(2026-07-22 doc reconciliation). **This file is a research record, not a TODO
+list — when an item is fixed, mark it closed in place (re-title the heading,
+add the evidence: a commit hash, a file:line, or a named test) and leave the
+body intact. Never delete a section.** Its history has repeatedly been
+load-bearing for later units (T46 resolved a conflict between two units by
+consulting T43's classification table). Sources named inside entries (e.g.
+`arch_design_update.md`, `audit_results_post.md`) are historical docs — do not
+edit those.
+
+**T53 (2026-08-05) hygiene pass**: walked every section against the tree at
+`607a19c3`, re-titled entries with grep/git-log evidence, and added the index
+below. Full verdict table, before/after open-item counts, and everything that
+could not be settled cheaply are in `refactor/T53_deferred_board_hygiene.md`'s
+Review — read that before scoping the next unit off this file.
+
+## Index — genuinely open items (T53, 2026-08-05)
+
+**Each item below is anchored by its exact `## ` section heading text, not a
+line number** — `grep -n '<the quoted text>' refactor/deferred.md` finds it
+regardless of how much the file has grown since. This file only ever grows
+by append (never-delete rule), so any line number written down today is
+guaranteed to drift as later units insert content above it; heading text
+does not. Grouped by kind; ungrouped placement in the body is unchanged
+(additive only).
+
+**Architecture / needs a ruling**
+- TWO `state::GameState` instances exist, unconnected — needs a decision, not
+  a drive-by. Heading: `## TWO \`state::GameState\` instances exist,
+  unconnected`.
+- Command-registry overlap (~34 names span two registries; T51 closed 3, most
+  still open). Heading: `## Command-registry overlap and the bare
+  \`/target\` precedence gap`.
+- `InitGraphics` keeps its `IrrlichtRenderer*` parameter; asset-loader
+  namespace relocation (`WldLoader`/`PfsArchive`/`BspTree` out of
+  `EQT::Graphics`); `EverQuest::GetDebugLevel()` static call from
+  `door_manager.cpp` — all three confirmed still true, T53. Heading:
+  `## Decoupling residue — CLOSED by S2` (see its "Still open from that
+  audit" list).
+
+**Client correctness bugs**
+- `willeq.db` schema version bumped but never validated at open. Heading:
+  `## willeq.db schema version is bumped but never validated`.
+- `--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp` — confirmed
+  still reproducing, T53. Heading: `` ## `--log-level=` is clobbered by
+  `SetDebugLevel(0)` in main.cpp ``.
+- `ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
+  still true, T53. Heading: `## ConstrainedMeshCache is never constructed`.
+- `SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
+  field) — confirmed still true, T53. Heading: `## From F00 test repair`.
+- Auto-loot on kill never wired to the authoritative death event; shift+click
+  loot path unverified. Heading: `## Auto-loot on kill has NEVER worked
+  against a real server`.
+- `race=415` missing model data still crashes graphics mode — confirmed still
+  reproducing, T53. Heading: `` ## `race=415` missing model data still
+  crashes graphics mode ``.
+- blackburrow/crushbone render entirely blank in the benchmark — not
+  root-caused, needs a live render to settle. Heading: `## From Batch H`.
+- No unattended character creation on a fresh eqemu DB — confirmed still
+  true, T53. Heading: `## From Batch H` (same section as above).
+- "Player BSP region is SIZE_MAX" stale-zone-name race — not chased.
+  Heading: `## "Player BSP region is SIZE_MAX" with stale zone name`.
+- Pale fog-colored flat shapes in gfaydark/qeynos2 goldens — not chased.
+  Heading: `## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens`.
+- gfaydark zone-in FATAL, missing race=330 model data — open, possibly same
+  class as race=415. Heading: `## Eviction hygiene LANDED (P17` (see its
+  "NEW (unfixed, pre-existing, graceful)" bullet).
+- RaceModelLoader/equipment_model_loader ignore `textureMasked()` for
+  non-composite meshes — needs its own unit with live visual evidence.
+  Heading: `## P20 live-visual pair` (see its "NEW (P21 audit)" bullet).
+- Magenta/black checkerboard missing-texture placeholder on some qeynos2
+  rooftops/awnings — not chased. Heading: `## P20 live-visual pair` (same
+  section, "New unrelated bug spotted" bullet).
+- `ConstrainedTextureCache`'s public query API (`hasAlpha`/`getTexture`/etc.)
+  doesn't account for the masked-variant mangled cache key — found by P50,
+  not fixed. Heading: `## P50 (2026-07-31): ConstrainedTextureCache's
+  public query API doesn't` (heading text wraps onto a second `##` line
+  in the file — search for `P50` if the exact string doesn't match).
+- Two `applyPaletteMask` plumbing gaps: `mesh_building.cpp`'s on-demand
+  `loadTextureFromBMP()` fallback, and `animated_mesh_creation.cpp`'s
+  equipment texture-variant swap path. Heading: `## P37 follow-ups` (near
+  the end, in the P46d sub-entry's "Open follow-up items" bullet).
+- Succor/evacuate/death-bind-respawn zone-position convention — implicated by
+  the same producer/consumer pair T52 fixed, not fixed, no known live
+  symptom. Heading: `` ## `#goto` same-zone teleport lands at the DB
+  position ``.
+- The broader "UI-gesture-only reachability" pattern — narrowed to 6
+  confirmed instances by T48/T51/T52, not retired; more producer-less
+  intents likely remain. Heading: `## PATTERN: real features reachable
+  only through a UI gesture`.
+
+**FIXED but the board still said open — corrected by this pass**
+- `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` bridge
+  wiring headless — the entry (filed as a T45 finding, "NOT FIXED") was
+  stale: T46 (`b5f5c1d6`) fixed exactly this via
+  `EverQuest::wireBridgeToSubsystems()`. Re-titled in place. Heading:
+  `` ## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel`
+  never get their own bridge wired headless ``.
+- RDP `stop()` use-after-free — entry said "fix still open"; T35 (`a835969`)
+  landed the join-then-close reorder. Re-titled. Heading: `## RDP
+  frame-update race — ROOT-CAUSED (T03b)`.
+- Headless client aborts/never-exits on piped shutdown with no server —
+  T30 (`fa31ca97`) fixed it. Re-titled. Heading: `## Headless client aborts
+  on shutdown and never exits`.
+- Non-FATAL log output never reaching stdout — T31 (`c167acdc`) fixed it
+  (periodic `drainLoop()` no longer depends on `FlushThreadLog()`).
+  Re-titled. Heading: `## Non-FATAL log output never reaches stdout during
+  normal operation`.
+- Item links losing 11 characters — fixed within the same T34 unit
+  (`7a1e48b9`, after the board entry was written); pinned by
+  `tests/test_formatted_message.cpp` (Scaled Curskin case). Re-titled.
+  Heading: `## Item links in chat lose 11 characters of the item name`.
+- `OnPetCreated()` `#ifdef EQT_HAS_GRAPHICS` residual (noted "not yet fixed"
+  inside T43's own PATTERN entry) — fixed in the same T43 commit
+  (`fabf0246`); the entry's residual note was simply never updated.
+  Re-titled inline. Heading: `` ## PATTERN: `EQT_HAS_GRAPHICS` gates around
+  non-graphics code `` (see its "Plus one known residual" bullet, near the
+  end of that entry).
+
+**Test coverage gaps (NEW, found answering a status question, T53 2026-08-05)**
+- 8 `DoorManagerGraphicsTest.*` skips — gated on `DISPLAY`/Irrlicht-device
+  creation in `SetUp()` (`tests/test_door_loading.cpp`); environment-gated by
+  design, not re-examined for coverage loss.
+- 6 `InventoryModelViewTest.*` skips — **all six `TEST_F`s are
+  unconditionally `GTEST_SKIP()`'d** ("WindowManager has been deleted - test
+  disabled"), independent of environment (`tests/test_inventory_model_view.cpp`
+  lines 251-287). This is different from the other 13 skip families in this
+  index: it is not environment-gated at all, it is a fixture nobody re-enabled
+  after a dependency was deleted. Worth more scrutiny than the others.
+- `PfsArchiveContentTest.DdsFileValid` — gated on EQ client files / archive
+  DDS-content availability (`tests/test_pfs_archive.cpp`); asset-presence
+  gated, not re-examined.
+- `SoundBufferTest.LoadSwingWav` — gated on `Swing.WAV` presence
+  (`tests/test_sound_assets.cpp`); asset-presence gated, not re-examined.
+- **"2 SpellManagerGems skips" reconciled**: no note by that name exists in
+  *this* file (searched exhaustively) — but a live `ctest --test-dir build`
+  run confirms the number itself is accurate on the current tip: exactly 2
+  of 25 `SpellManagerGems.*` tests skip —
+  `MemorizeSpellSuccessStartsMemorizationAndPublishesEvent` and
+  `MemorizeSpellBlockedWhileAlreadyCastingOrMemorizing`
+  (`tests/test_spell_manager.cpp:326-356,473-...`). The other 23 have their
+  own `if (!hasDb())` guards too, but `willeq.db` is a tracked binary and is
+  present, so those pass; these 2 specifically skip on `if (id == 0)
+  GTEST_SKIP() << "no Warrior-usable spell found in scanned range"`
+  (lines 337, 482) — a scanned-spell-not-found condition, not a
+  missing-DB one. So "they still skip on the current tip" is confirmed
+  true, and the gating condition is now on record. If a fuller note lives
+  in `refactor/testing_progress.md`, that reconciliation is out of this
+  unit's territory (deferred.md only).
+
+**Perf / tooling residuals (lower priority, all narrowly scoped)**
+- Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO, Batch Z.
+  Heading: `## From Batch Z`.
+- Batch E table in `progress.md` has empty commit columns — cosmetic tracker
+  hygiene. Heading: `## Tracker hygiene`.
+- P52's `B_e205` absolute magnitude reads ~21-24% high even on the corrected
+  path — flagged as directionally-trustworthy-not-KPI-clean, not
+  re-diagnosed for budget. Heading: `## P52 (2026-08-01): GPU-sync
+  characterization` (heading wraps onto a second `##` line; search `P52` if
+  the exact string doesn't match — see the "CLOSED by P52b" paragraph near
+  the end of that entry for this specific caveat).
+- `docker/irrlicht-drm/CIrrDeviceFB.cpp`'s `waitForFlipComplete()` swap-floor
+  question — refined by P52b (real near-e0 effect, negligible at load), not
+  independently re-measured beyond that. Heading: `## P41 landed (2026-07-30,
+  merged \`edcd72a\`): lighting lever characterized, report-only`.
+
+**A note on staleness**: this Index is a snapshot as of commit `607a19c3`
+(T53). As of *this* commit, every heading text above was verified present
+verbatim via `grep -n` against the file (see the T53 Review in
+`refactor/T53_deferred_board_hygiene.md` for the sample-check log). If a
+future reader can't find one, the section was likely re-titled again by a
+later unit — search for distinctive words from the description instead
+(e.g. the unit ID in parentheses, or a quoted symbol name).
 
 ## FIXED: ParticleManager::renderUnified use-after-free (P34, 2026-07-29)
 
@@ -75,7 +245,12 @@ the commit. Sources are historical docs — do not edit those.
   repro) plus a 243s single-zone soak, both crash-free — see
   refactor/P35_hcmap_transition_uaf.md Review.
 
-## Tree wind update unreachable on live GLES2 (P32 finding, preserved not fixed)
+## Tree wind update unreachable on live GLES2 (P32 finding) — PARTIAL: wind animation FIXED by P33 (blessed); the eqemu port-collision item below is still open, needs Will's call
+
+T53 (2026-08-05) heading note: the body already documents its own
+resolution (P33 restored `TreeWindController::update()` and was blessed by
+Will 2026-07-29) — this is a re-title only, no new evidence needed, the
+original heading just never caught up with the body it introduces.
 
 - `TreeWindController::update()` — the only code advancing wind time
   and the weather-multiplier transition — was ALREADY unreachable on
@@ -166,7 +341,12 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
 - Root `.dockerignore` added (P31) — docker builds no longer copy
   ~12GB of local build trees.
 
-## Handback items owned by the perf session (Will, 2026-07-28)
+## Handback items owned by the perf session (Will, 2026-07-28) — ALL THREE ITEMS CLOSED (per their own inline markers)
+
+T53 (2026-08-05) heading note: all three bullets below already carry their
+own DONE/FIXED/RESOLVED markers (P28, P29+T03a, and the .eqemu-lock
+process fix) — heading-only re-title for scan-ability, no new evidence
+needed.
 
 - **eq.h EQT_HAS_GRAPHICS misclassification — FIXED by P28 (`1cae489`,
   merged `1c4...`/`06cfed7`-adjacent; 2026-07-28)**: all five guard
@@ -273,10 +453,20 @@ section each batch. Handbacks land in `refactor/TESTING_HANDBACK.md`.**
   wording. NEW SMALL ITEM: `docker/Dockerfile` (non-ARM image) still
   apt-installs desktop Irrlicht and configures plain — now fails at
   configure BY DESIGN; retire or update that image (fold into Phase
-  4/5). REMAINING: Phase 4 (delete dead source paths: BURNINGSVIDEO /
-  AnimatedTreeManager / RenderingBackend::Software+OpenGL / EDT_OPENGL
-  loading-screen branch) + Phase 5 (full doc sweep + decisions.md
-  completion marker) — await Will's go. The
+  4/5). — **FIXED by P31 (`4f2e9417`, "Phase 4+5 ... Dockerfile GLES2
+  recipe"), T53 (2026-08-05) verification**: current `docker/Dockerfile`
+  bootstraps the same patched GLES2 Irrlicht fork (comment at line 14)
+  instead of apt-installing desktop Irrlicht. REMAINING: Phase 4 (delete
+  dead source paths: BURNINGSVIDEO / AnimatedTreeManager /
+  RenderingBackend::Software+OpenGL / EDT_OPENGL loading-screen branch) +
+  Phase 5 (full doc sweep + decisions.md completion marker) — await Will's
+  go. — **STALE, T53 (2026-08-05): this "REMAINING" was superseded the same
+  day it was written.** The "Desktop-GL elimination — COMPLETE (P32,
+  2026-07-28)" section earlier in this file (which this entry's own
+  Phase-numbering predates) reports Phase 4 EXECUTED and the whole roadmap
+  COMPLETE — see that entry and `refactor/desktop_gl_elimination_plan.md`.
+  Treat this specific "await Will's go" as historical, not a live blocker.
+  The
   willeq-benchmark clone's
   build_errors_response.md guidance (desktop build as default) stays
   CORRECT until the migration phases land — update it in lockstep with
@@ -309,17 +499,33 @@ inventoryManager_ pointer was actually a live cross-thread read — audit
 claim corrected); bridge payloads typed (HCMap*/PathfinderNavmesh*);
 PlayerPositionUpdate struct deleted; eq.cpp graphics includes pruned 12→2.
 
-Still open from that audit:
+Still open from that audit (**T53, 2026-08-05: all four re-verified by
+grep against current tree, all still true**):
 - `InitGraphics` keeps its `IrrlichtRenderer*` parameter (drives
   initLoadingScreen + initDeferredGraphics); full removal needs
-  Application-side init restructuring.
+  Application-side init restructuring. Confirmed:
+  `include/client/eq.h:1166` — `bool InitGraphics(int width, int height,
+  EQT::Graphics::IrrlichtRenderer* renderer, ...)`.
 - Asset-loader namespace relocation (`WldLoader`, `PfsArchive`, `BspTree`,
   … out of `EQT::Graphics` into a shared asset layer) — own unit.
+  Confirmed: both classes still declared under `namespace EQT { namespace
+  Graphics { ... } }` (`include/client/graphics/eq/pfs.h`,
+  `include/client/graphics/eq/wld_loader.h`).
 - Renderer reads spell static data (spell_visual_fx.cpp) and item DB
   (equipment_model_loader.cpp) — acceptable (static data).
 - `EverQuest::GetDebugLevel()` static call from door_manager.cpp.
+  Confirmed: `src/client/graphics/door_manager.cpp:955`.
 - `output/graphical_renderer.h` legacy interface — dead-code deletion
-  candidate (IrrlichtRenderer does not inherit from it).
+  candidate (IrrlichtRenderer does not inherit from it). Confirmed the
+  narrow claim (`class IrrlichtRenderer` has no `: public
+  output::GraphicalRenderer` base) — but the header is NOT simply dead:
+  `src/client/application.cpp:1869` does
+  `dynamic_cast<output::GraphicalRenderer*>(renderer)` and 2 other files
+  include it (`src/client/output/graphical_renderer.cpp`,
+  `include/client/mode/graphical_mode.h`). The cast is always null for the
+  real (Irrlicht) renderer, so the interface is currently unreachable in
+  practice, but deleting the header would need checking those 3 sites
+  first — not a pure delete-and-done as "dead-code candidate" implies.
 
 ## From Batch U / ui_fixes.md
 
@@ -373,7 +579,7 @@ eq_movement.cpp (~1,975), eq_bridge.cpp (1,837), renderer_frame.cpp (1,583),
 renderer_player_physics.cpp (1,570), eq_merchant.cpp (1,558), plus the
 accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
 
-## From Batch H (2026-07-23)
+## From Batch H (2026-07-23) — PARTIAL: spire-launcher item RESOLVED (marked inline); blackburrow/crushbone and char-creation confirmed still open, T53 (2026-08-05)
 
 - **blackburrow and crushbone render entirely blank in the benchmark** at
   every camera position tried, even with all culling disabled (~2000-4000
@@ -399,7 +605,16 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   could be killed mid-test. Watch for this in CI; the allowlist lives in
   akk-stack assets (server-code-adjacent — flag before changing).
 
-## Performance gap on real hardware (H04 baseline, 2026-07-23)
+## Performance gap on real hardware (H04 baseline, 2026-07-23) — HISTORICAL: the headline 30fps gap this section opens with was later closed (see "KPI STATUS — befallen at the 30fps line (P11b...)" and P14 below); read as an arc, not a live blocker
+
+T53 (2026-08-05) heading note: most sub-items already carry their own
+FIXED/CLOSED/RESOLVED/DEAD markers inline (CMA leak overturned, v1 loader
+fixed, format shootout decided). Genuinely still-open residuals from this
+section are already carried forward into later sections (occlusion budget
+— closed by P14; per-vertex-vs-per-pixel lighting — decided by P41/P42;
+live-game-only full-population per-frame loops at sim_entity_sync.cpp:179
+etc. — not independently re-verified by T53, flagged as
+cannot-settle-cheaply without a live profiling session).
 
 - **All three golden zones render below the 30fps KPI on the Orange Pi**
   (p95, 800×600, performance governor): qeynos2 ~28.8, gfaydark ~24.3,
@@ -807,7 +1022,7 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   radius-limited pp lighting ("what's stopping efficient light calculation
   in a radius around the player") — the remaining question is purely perf.
 
-## KPI status + the composite measurement gap (P11 synthesis, 2026-07-26)
+## KPI status + the composite measurement gap (P11 synthesis, 2026-07-26) — SUPERSEDED: every bullet here is struck through and closed inline (P14, P11b); see "KPI STATUS — befallen at the 30fps line (P11b, 2026-07-27)" below for the actual resolution
 
 - **Stacked measurement (P11, befallen combined e205 canonical replay)**:
   merge+composite-scenegraph = avg 54.66 / p95 65.93ms (15.2 fps p95) —
@@ -852,7 +1067,13 @@ accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
   KPI section below). The remaining benchmark-side `--animate` garbling
   is tracked as its own root-cause unit, still open. Struck 2026-08-02.
 
-## Live x86 client bugs (anim-video-capture session, 2026-07-26)
+## Live x86 client bugs (anim-video-capture session, 2026-07-26) — PARTIAL: 3 of 5 items closed (marked inline), 2 still open
+
+T53 (2026-08-05) heading note: saveScreenshot guard, the particle race, and
+post-camp shutdown aborts are marked FIXED/CLOSED inline below with
+commits. Still open: the befallen first-frame SIGSEGV (worked around by
+zone substitution only, not root-caused) and the missing-equipment-entry
+FATAL-vs-WARN item.
 
 Found while recording the P12 animation-evidence videos (real client,
 llvmpipe, eqemu). Workarounds live on parked branch
@@ -913,7 +1134,15 @@ proper fix:
   render verified. NOTE: also cuts the composite share of texture
   memory ~3x — relevant to the cross-zone eviction fix sizing.
 
-## P20 live-visual pair: pop-in RESOLVED (by design), foliage alpha real site found (2026-07-27)
+## P20 live-visual pair: pop-in RESOLVED (by design), foliage alpha real site found (2026-07-27) — PARTIAL: 3 items closed inline, 3 still open
+
+T53 (2026-08-05) heading note: pop-in (non-bug), foliage alpha (FIXED
+P20b, blessed), and door/entity material gap (FIXED P21) are closed
+inline below. Still open: RaceModelLoader/equipment_model_loader ignoring
+`textureMasked()` (needs its own unit with live visual evidence), the
+magenta/black checkerboard placeholder on qeynos2 rooftops (not chased),
+and — closed as a non-issue, listed only for completeness — the stale
+mergeZoneDraws SIGSEGV retraction.
 
 - **Geometry pop-in: NOT a bug** — controlled same-pose experiment
   (`--zone-load manual` vs automatic) proves it's deferredAssetLoading's
@@ -1002,7 +1231,11 @@ proper fix:
   answered: no, qeynos2 is genuinely over budget on its own).
 - **NEW (unfixed, pre-existing, graceful)**: gfaydark zone-in FATAL —
   missing race model data, race=330; unrelated to eviction work, needs
-  its own look (likely race_codes.cpp mapping gap class).
+  its own look (likely race_codes.cpp mapping gap class). T53
+  (2026-08-05): possibly the same class as the still-open `race=415`
+  missing-model FATAL confirmed by T32's 2026-08-03 re-test elsewhere in
+  this file — not verified as the same root cause, flagging the
+  connection for whoever picks either up.
 
 ## Eviction mystery SOLVED + re-zone crash fixed (P15, 2026-07-27) — follow-ups CLOSED by P17 above
 
@@ -1199,7 +1432,19 @@ proper fix:
   confirmed no other pointer-derived draw/sort keys in src/ or include/.
   Unblocks the future full-app llvmpipe golden tier.
 
-## RDP frame-update race — ROOT-CAUSED (T03b), fix still open
+## RDP frame-update race — ROOT-CAUSED (T03b) — **FIXED by T35 (2026-08-04)**
+
+**CLOSED, T53 (2026-08-05) verification.** This entry's own title said "fix
+still open" but the fix landed and the entry was never updated.
+`RDPServer::stop()` (`src/client/graphics/rdp/rdp_server.cpp:325-342`) now
+does `running_.store(false)` → `listenerThread_.join()` → `Close()`/`free()`
+— join-before-close, exactly T03b's prescribed ordering. Commit `a835969`
+("Merge T35: fix the RDPServer::stop() use-after-free, retire its waiver").
+Per `refactor/EXECUTOR_PROTOCOL.md`'s verification-bar note, the
+`RDPServerFrameTest.UpdateFrameMultipleTimes` "intermittent" ctest waiver
+was formally retired in the same unit — a real crash, not a flake, as this
+board warned. See `refactor/T35_rdp_stop_uaf.md` Review for the full
+repro/verification evidence. Original report follows for the record:
 
 - **RDPServerFrameTest.\* segfaults intermittently** (~once per <=10
   stress repetitions, confirmed on unmodified fable during F18
@@ -1269,7 +1514,25 @@ and the Phase 7.x syncs. (b) sounds small and is not: the two are
 constructed at different times with different lifetimes, and the
 headless/graphical modes differ in what exists when.
 
-## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02)
+## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02) — **ALL THREE CLAIMS CLOSED (T28/T39/T42/T49); this is the board's own worked example of why re-verification matters**
+
+**CLOSED, T53 (2026-08-05) verification** (independently re-confirmed, not
+just taken from the T53 plan's own framing):
+1. `CombatState`'s target half — **populated**, confirmed via
+   `Application::syncCombatState()` at `include/client/application.h:354`
+   / `src/client/application.cpp:1785`; `world_state.cpp`'s sibling fields
+   confirm the general pattern.
+2. `InventoryState` occupancy — **wired**: `setEquipmentOccupied()`/
+   `setGeneralOccupied()`/`setBankOccupied()` now have real production call
+   sites at `src/client/bridge/game_state_sync_bridge.cpp:139-143`.
+3. `WorldState::fireZoneChangedEvent()`'s pending-zone fields — **fixed**:
+   `src/client/state/world_state.cpp:25-28,117-118` now uses
+   `m_zoneArrivalX/Y/Z/Heading`, matching the fix this entry describes.
+
+All three sub-claims hold up under direct grep, exactly as this entry
+originally reported. No correction needed to the entry itself — it was
+already accurate and evidenced. Kept as CLOSED, not deleted, per this
+board's own governing rule.
 
 Found while scoping a fix for T02's three pinned state-layer findings.
 The T02 pins are accurate about what they assert, but the framing
@@ -1384,7 +1647,18 @@ empty spell results. (Also note: the `willeq-benchmark` clone at
 `b68c32a` predates all of this and its `build_errors_response.md`
 channel file no longer exists — nothing was written to that clone.)
 
-## Headless client aborts on shutdown and never exits when driven headlessly without a server (orchestrator, 2026-08-02) — PRE-EXISTING, blocks automation
+## Headless client aborts on shutdown and never exits when driven headlessly without a server (orchestrator, 2026-08-02) — **FIXED by T30 (2026-08-03)**
+
+**CLOSED, T53 (2026-08-05) verification.** Commit `fa31ca97` ("T30: fix
+headless client abort + non-exit on piped shutdown with no server"). Root
+cause for the abort: `ConsoleInputHandler::shutdown()` only joined its stdin
+thread inside `if (m_active.load())`, but `pipedInputThreadFunc()` also
+clears `m_active` itself on EOF, skipping the join
+(`src/client/input/console_input_handler.cpp:54-71`). For the never-exits
+half: `Application::processPreConnectionLifecycleCommands()`
+(`src/client/application.cpp:903,919`) now intercepts `/quit`/`/exit`/`/q`/
+`/help`/`/?` *before* the `m_fullyConnected` gate at line 901, so `/quit`
+piped with no server now works. Original report follows for the record:
 
 Found while independently verifying T29 by actually piping commands into
 the binary (rather than reading its diff). **Not caused by T29** —
@@ -1434,7 +1708,16 @@ pre-connection or emit a held/waiting line so scripts can tell the
 difference between "working" and "hung", and add a headless
 piped-stdin-no-server case to the exit matrix so it stays fixed.
 
-## Non-FATAL log output never reaches stdout during normal operation (T29 finding, 2026-08-02) — NOT FIXED, likely the biggest remaining automation blocker
+## Non-FATAL log output never reaches stdout during normal operation (T29 finding, 2026-08-02) — **FIXED by T31 (2026-08-03)**
+
+**CLOSED, T53 (2026-08-05) verification.** Commit `c167acdc` ("T31: fix
+non-FATAL log output never reaching stdout during normal operation").
+`include/common/logging.h` now runs a dedicated `LogManager::drainLoop()`
+background thread (started ~line 258) that calls `drainAllBuffers()` every
+50ms unconditionally, instead of relying solely on `FlushThreadLog()`
+(still called by `LOG_FATAL`, but no longer the only trigger). Confirmed in
+current tree: `drainLoop`/`drainAllBuffers` both present and wired at
+`include/common/logging.h:258-282`. Original report follows for the record:
 
 `common/logging.h`'s per-thread double buffer (`ThreadLogBuffer`) only
 flips its active/drain sides on `LOG_FATAL` or thread exit —
@@ -1490,7 +1773,14 @@ T29's doing, and neither was fixed:
 **T26's behavioural verification is still owed** because of these: the
 *tooling* gap is closed (piped stdin reaches `/combat on` through the
 real registry, confirmed against a live server), but no kill→loot cycle
-has ever completed. ~10 minutes of live piped interaction across
+has ever completed. — **T53 (2026-08-05) note: this is now stale.** T32
+(2026-08-03, see the "Auto-loot on kill has NEVER worked" entry below)
+*did* complete a real end-to-end kill→loot check and found the loot
+machine's `AwaitingCorpse` entry is never reached — a genuine, verified
+answer (the feature is dead, not merely unverified), not the open
+question this paragraph describes. Treat T26's behavioural verification
+as DONE via T32, with the auto-loot dead-path bug tracked separately
+below. ~10 minutes of live piped interaction across
 multiple target/combat/attack/moveto/who/camp cycles showed no freeze,
 hang, or crash — meaningful negative evidence for the stall class T26
 removed, but not a completed happy path.
@@ -1757,7 +2047,19 @@ its session-log path relative to a compile-time source-dir macro instead
 of CWD. Whoever owns `tests/CMakeLists.txt` / `test_session_replay.cpp`
 next should pick one — this has now cost two units the same rediscovery.
 
-## Item links in chat lose 11 characters of the item name (Will spotted it, root-caused 2026-08-03) — NOT FIXED
+## Item links in chat lose 11 characters of the item name (Will spotted it, root-caused 2026-08-03) — **FIXED, same T34 unit, commit `7a1e48b9`**
+
+**CLOSED, T53 (2026-08-05) verification.** This entry was written "NOT
+FIXED" but the fix landed in the same `task/T34-*` branch shortly after,
+before merge (`7a1e48b9`, "T34: fix item links losing 11 chars of the item
+name"; merge commit `5ec8ccc9` explicitly lists "fix item-link name
+truncation"). Current `src/client/formatted_message.cpp` (both call sites,
+~line 133 and ~277) disambiguates structurally via `isAllHex(data,
+link_content_start + LINK_METADATA_SIZE_SHORT, ...)` on the byte range
+between the SHORT and LONG metadata sizes, rather than guessing from total
+link length alone. Pinned by `tests/test_formatted_message.cpp:558-605`
+with the exact "Scaled Curskin" regression case this entry describes.
+Original report follows for the record:
 
 Will flagged that T34's loot evidence read *"You have looted a kin."* —
 `"a kin"` is not a plausible item name. It is not: the real item is
@@ -1852,11 +2154,19 @@ misclassification, and the instances keep getting more severe:
 | T42 | the generic `HC_OP_ItemPacket` dispatch branch, plus a larger gate over `HC_OP_MoveItem`..`HC_OP_GMTraining` | regular inventory packets **dropped entirely** |
 | T42 | `Application::initialize()` never calling `SetEQClientPath()` | **every headless zone-in force-quit within ~2 s** — headless could not stay connected to a real server |
 
-Plus one known residual, not yet fixed: **all three `OnPetCreated()` call
-sites in `eq_entities.cpp` are `#ifdef EQT_HAS_GRAPHICS`**, so pet
-*deltas* never publish in an `EQT_GRAPHICS=OFF` build. T41's snapshot fix
-covers a pet present at zone-in; a pet summoned mid-session is still
-invisible there.
+Plus one known residual, noted here as "not yet fixed": **all three
+`OnPetCreated()` call sites in `eq_entities.cpp` are `#ifdef
+EQT_HAS_GRAPHICS`**, so pet *deltas* never publish in an `EQT_GRAPHICS=OFF`
+build. T41's snapshot fix covers a pet present at zone-in; a pet summoned
+mid-session is still invisible there.
+
+**FIXED — same unit, T53 (2026-08-05) verification.** This residual reads
+as open in the text above it, but T43's own commit already closed it:
+`fabf0246` ("T43: sweep EQT_HAS_GRAPHICS guards, fix pet-delta residual,
+pin headless with a test"). All three sites in current
+`src/client/eq_entities.cpp` (~481, ~1236, ~1462) are unconditional, each
+annotated "T43: was #ifdef EQT_HAS_GRAPHICS." The entry's prose was simply
+never updated after the fix landed in the same commit that wrote it.
 
 **Why this matters more than it looks:** headless is the mode the
 automation work (T29/T30/T31) and the testing campaign run in. Each of
@@ -2006,7 +2316,23 @@ headless, confirmed firing after the fix, in both build trees). See that
 plan's Review for full detail, including a bridge-wiring gap found along
 the way (next entry).
 
-## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` never get their own bridge wired headless (T45 finding, 2026-08-04) — NOT FIXED
+## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` never get their own bridge wired headless (T45 finding, 2026-08-04) — **FIXED by T46 (2026-08-05)**
+
+**CLOSED, T53 (2026-08-05) verification — this was the single most
+dangerous stale entry found in this pass** (marked open, needing "a small
+unit", when a unit already fixed it and the board never caught up).
+Commit `b5f5c1d6` ("T46: wire the four managers' bridge pointers headless,
+not just in InitGraphics()") extracted the wiring into
+`EverQuest::wireBridgeToSubsystems()`, called from both `setBridge()`
+(moved out of the header, now in `eq_bridge.cpp`) and `InitGraphics()`.
+Confirmed live in current tree: `src/client/eq_bridge.cpp:121`
+(`wireBridgeToSubsystems(bridge)` inside `setBridge()`) and callers at
+`src/client/application.cpp:654` reasoning explicitly about the
+unconditional propagation this entry asked for. The "Bridge pointers are
+never cleared at teardown" entry below (T47) also depends on and
+references this exact function, which is corroborating evidence the fix
+is real and not a documentation artifact. Original report follows for the
+record:
 
 Found while verifying T45's "un-gating `ProcessBridgeIntents()` closes a
 latent unbounded-queue hazard" claim for the `inventory_manager.cpp`
