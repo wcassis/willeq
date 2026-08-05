@@ -1407,19 +1407,6 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::RequestSceneDump>) {
 				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestSceneDump (D20d)");
 			}
-			else if constexpr (std::is_same_v<T, eqt::events::ToggleAutoAttackIntent>) {
-				if (m_combat_manager) {
-					if (m_combat_manager->IsAutoAttackEnabled()) {
-						m_combat_manager->DisableAutoAttack();
-					} else if (m_combat_manager->HasTarget()) {
-						m_combat_manager->EnableAutoAttack();
-					}
-				}
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::AttackIntent>) {
-				if (m_combat_manager) m_combat_manager->SetTarget(static_cast<uint16_t>(i.targetId));
-				if (m_combat_manager && m_combat_manager->HasTarget()) m_combat_manager->EnableAutoAttack();
-			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
 			}

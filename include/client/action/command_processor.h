@@ -198,9 +198,11 @@ private:
     ActionResult cmdFace(const std::string& args);
 
     ActionResult cmdTarget(const std::string& args);
-    ActionResult cmdAttack(const std::string& args);
-    ActionResult cmdStopAttack(const std::string& args);
-    ActionResult cmdAutoAttack(const std::string& args);
+    // T51: cmdAttack/cmdStopAttack/cmdAutoAttack removed -- their command
+    // registrations were shadowed dead code (registry 1 always won the
+    // dispatch collision). ActionDispatcher::enableAutoAttack()/
+    // disableAutoAttack()/toggleAutoAttack() are untouched and still used
+    // directly by InputActionBridge (the keyboard gesture).
     ActionResult cmdCast(const std::string& args);
     ActionResult cmdInterrupt(const std::string& args);
     ActionResult cmdConsider(const std::string& args);

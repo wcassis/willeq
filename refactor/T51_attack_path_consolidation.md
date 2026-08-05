@@ -183,3 +183,269 @@ either way.
 Two executors in a row have been interrupted mid-run by transient API
 529s. **Commit working code before starting long-running verification**,
 so an interruption costs a resume rather than the work.
+
+## Review
+
+### Piece 0 — the registry table, established live before any code changed
+
+`benchmarks/audits/T51/run_piece0_probe.sh`, run against the unmodified
+`build/bin/willeq` (`transcript_piece0_primary.txt` +
+`.driver`), spawning a fresh `a_scaled_wolf_pup` (npc 79037 — the same mob
+T32 used for its own real kill) per leg, targeting it, and sending each
+name in turn:
+
+| command typed | registry that served it (from the `CMD outcome=...` ack line) |
+|---|---|
+| `/attack` | `game` (registry 1) |
+| `/stopattack` | `game` (registry 1) |
+| `/aa` | `game` (registry 1) |
+| `/att` | `game` (registry 1) |
+| `/a` | `game` (registry 1) — **but not the attack alias**, see below |
+
+**Registry 2 (`action`) served none of these — the plan's STOP condition
+("if registry 2 turns out to serve any of them, my analysis is wrong")
+did not trigger.** The orchestrator's trace was confirmed live, not just
+by reading dispatch code: T29's dispatch order really does mean registry
+1 wins every one of these collisions, so registry 2's three combat
+registrations really were dead code before this unit touched anything.
+
+### Auto-attack genuinely engages headless — proven, not asserted from logs
+
+The probe transcript shows real, bidirectional melee damage against the
+live mob for `/attack`, `/aa`, and `/att` (three separate targets, three
+separate fights) — e.g. leg 2 (`/attack`):
+
+```
+[DEBUG] [COMBAT] Testchar -> a scaled wolf pup for 2 damage (type 4)
+[DEBUG] [COMBAT] You hit a scaled wolf pup for 2 points of damage.
+[DEBUG] [COMBAT] a scaled wolf pup -> Testchar for -5 damage (type 4)
+```
+
+repeated multiple rounds per leg, real server-driven `ZoneProcessDamage`
+packets each time, not merely a `CMD outcome=applied` ack. This is the
+"verify `/attack` live headless" item the board has carried for a long
+time, closed here with a real fight, not just a command acceptance. (One
+honest anomaly, not investigated further since three other legs already
+proved engagement conclusively: leg 1's very first target, `/attack`
+against `a_scaled_wolf_pup000`, sat enabled for the full 90s of that leg
+with zero `ZoneProcessDamage` packets — looked at the transcript closely
+and could not find a cause; not reproduced in any of the other four legs
+or in the post-change acceptance run below, so treated as an
+environment/timing fluke of the very first combat interaction after
+zone-in rather than a client defect, and flagged here rather than
+silently dropped.)
+
+### THE ALIAS TRAP — corrected, not just verified
+
+The plan's framing was: *"`/a` is carried ONLY by registry 2's attack
+registration... a naive deletion silently removes `/a`. Move it and prove
+it live."* **This is wrong, and the live probe is what caught it.**
+`/a`'s `CMD outcome` line reports `registry=game` — but reading the
+transcript around it shows registry 1 resolved `/a` to **`/assist`**, not
+attack:
+
+```
+CMD outcome=applied registry=game recognized=true cmd="/target a_scaled_wolf_pup003"
+CMD outcome=applied registry=game recognized=true cmd="/a"
+[DEBUG] [MAIN] Assist request for target ID: 194
+```
+
+Grepping registry 1 (`eq_commands.cpp`) for every alias confirmed why:
+`assist_cmd.aliases = {"a"}` (added by T28, `src/client/eq_commands.cpp`)
+registers `/a` for **assist** in registry 1 itself — a *third* collision
+the plan's ground truth missed, on top of the registry-1-vs-registry-2
+attack collision it did catch. Registry 1 wins T29's dispatch order for
+`/a` the same way it wins for `/attack`, so **registry 2's
+`/a`-for-attack alias was already fully unreachable before this unit
+touched anything** — it never actually toggled attack in production, at
+any point in this project's history since T28 landed.
+
+**Consequence for Piece 1's instructions, stated explicitly rather than
+followed blindly**: the plan's literal instruction — "move [`/a`] onto
+registry 1's attack command and prove `/a` still works live" — was not
+followed, because doing so would have **changed** `/a`'s live behaviour
+(from assist to attack), which the plan's own STOP condition forbids
+("Any change in what a user-typed combat command actually does, beyond
+the alias consolidation → STOP. This unit should be behaviour-neutral at
+the command line."). Since `/a` already means assist today, behaviour-
+neutrality means leaving it exactly as it is — which requires no code
+change at all. Registry 2's dead `/a`-for-attack alias is deleted along
+with the rest of its shadowed combat registrations, same as
+`/attack`/`/stopattack`/`/aa`.
+
+**Full alias audit** (grepped every `.aliases = {...}` in both registries
+for the five names in play): registry 1 has `attack`→`{att}`,
+`stopattack`→`{}`, `aa`→`{~}`, and — the one the plan missed — `assist`→
+`{a}`. Registry 2 had `attack`→`{a}` (now deleted), `stopattack`→`{}`,
+`aa`→`{}` (both now deleted). No other registry-2-only alias exists for
+any of these five names.
+
+### What was deleted, what was preserved
+
+**Deleted** (all confirmed dead/shadowed before deletion, via the live
+probe):
+- Registry 2's `attack`/`stopattack`/`aa` command registrations
+  (`src/client/action/command_processor.cpp`) and their
+  `cmdAttack`/`cmdStopAttack`/`cmdAutoAttack` wrapper methods (`.cpp` +
+  `.h`).
+- `AttackIntent`/`ToggleAutoAttackIntent` (`renderer_intents.h`), their
+  `RendererIntent` variant entries, and their `ProcessBridgeIntents()`
+  handlers (`eq_bridge.cpp`) — confirmed producer-less by grepping all of
+  `src/`/`include/` for a `pushIntent` call site; none exists anywhere,
+  matching T48's original finding.
+
+**Preserved, untouched**:
+- `ActionDispatcher::enableAutoAttack()/disableAutoAttack()/
+  toggleAutoAttack()` and `EqActionHandler` — the keyboard gesture
+  (`InputActionBridge`) still calls these directly; the plan's fence.
+  `checkZoneConnection()`'s gate (absent from registry 1's direct calls)
+  is untouched either way — see the note below.
+- Registry 1's `attack`/`stopattack`/`aa` (`eq_commands_movement.cpp`) —
+  now the sole surviving implementation, annotated with a comment
+  pointing at this unit for the next reader.
+- `/a` → `/assist` (unchanged; see above).
+- `AttackIntent`'s one distinguishing capability — "target this id AND
+  start attacking" in one step — is not reproduced anywhere post-
+  deletion, exactly as the plan flagged: `/target <id>` + `/attack`
+  composes to the same effect, and nothing constructed the intent to
+  begin with, so nothing reachable is lost.
+
+### `RendererIntent` variant ordering/index — not depended on anywhere
+
+Grepped `src/` and `include/` for `variant_size`, `.index()`, and any
+`RendererIntent` serialization: no hits beyond the `std::visit` dispatch
+in `eq_bridge.cpp`, which switches on type via `if constexpr
+(std::is_same_v<T, ...>)` — order- and index-independent. Nothing else in
+the codebase (tests included) asserts on `RendererIntent`'s variant
+layout. Safe to remove two entries from the middle of the list, which is
+what was done.
+
+### The `checkZoneConnection()` gate difference — argued, not built around
+
+Per the plan's invitation to argue for a different consolidation: **kept
+the deletion as specified** (registry 1 survives, registry 2's duplicate
+dies) rather than routing registry 1 through `ActionDispatcher` to pick
+up its `checkZoneConnection()` gate. The plan's own structural note holds
+up under inspection: registry 1's handlers live inside `EverQuest`, which
+has no access to `Application`'s `ActionDispatcher` — routing through it
+would mean threading a dependency across the game/action-layer boundary,
+not a small change, and well outside a unit whose STOP conditions
+explicitly forbid behaviour changes beyond alias consolidation. The gate
+difference itself is real and now stated for the record: registry 1's
+direct `CombatManager` calls do **not** check `checkZoneConnection()`
+before enabling auto-attack, while the keyboard-gesture path through
+`ActionDispatcher` does. This was true before this unit and remains true
+after — T51 did not introduce or remove this asymmetry, only deleted the
+duplicate that never exercised the gate either way.
+
+### Live acceptance — after the change, both trees, entirely piped
+
+`benchmarks/audits/T51/run_verification_primary.sh`, eqemu LOCK FIRST
+(confirmed `/mnt/projects/fable/.eqemu-lock` absent, created with
+`T51-attack-path-consolidation 2026-08-05`, removed after clean shutdown
+and confirmed absent again), `scripts/eqemu/up.sh arena`, same session
+used for both Piece 0's probe and this post-change run (no restart
+between them, matching T48/T50's practice).
+
+Every alias exercised live, post-change, in **both** trees
+(`transcript_postchange_primary.txt` against `build/bin/willeq`,
+`transcript_postchange_nogfx.txt` against `build-nogfx/bin/willeq`):
+`/attack`, `/att`, `/stopattack`, `/aa` (toggle on/off), `/~` (toggle
+on/off), `/a`. Every single one resolved via `registry=game`, identically
+to Piece 0's pre-change probe — the registry table is unchanged. Real
+melee damage (`"You hit a scaled wolf pup for N points of damage"`, real
+`ZoneProcessDamage` packets) reproduced in both trees: 9 hits in the
+graphics tree's run, 16 in the headless tree's run. `/a` still resolved
+to assist (`"Assist request for target ID: ..."`), not attack, in both
+trees — the behaviour-neutrality claim holds, live, not just in unit
+tests.
+
+**Before/after, the command set from the user's point of view**: leg 6 of
+the post-change run re-sent `/attack`/`/stopattack`/`/aa`/`/aa` with no
+new target and got the same acks and outcomes registry 1 always gave —
+nothing a user types changed shape, spelling, or effect; only the
+internal duplicate (never user-visible, since it was always shadowed) is
+gone.
+
+Testchar restored to `zone_id=36, x=-77.9232, y=21.9086, z=3, h=190`
+(confirmed via a `SELECT` after restoring — drifted a few thousandths
+during the runs, same coordinate-axis noise T33/T34/T48/T50 documented,
+corrected with a direct `UPDATE` and re-verified). Server brought down
+cleanly (`down.sh`), lock removed and confirmed absent.
+
+### Verification bar
+
+1. Both configures build clean: `build` (`EQT_GRAPHICS=ON`,
+   `EQT_GLES2=ON`) and `build-nogfx` (`EQT_GRAPHICS=OFF`) — clean
+   rebuilds after every source change, no new warnings from this unit's
+   files.
+2. `ctest --output-on-failure`: `build` 1909/1910 passed, `build-nogfx`
+   1477/1478 passed — the sole failure in each tree is the documented
+   `AudioManagerTest.PreloadCommonSounds` (ALSA) exception. `visual_gate`
+   passed as its own ctest entry in both trees. All new/changed tests
+   (`EqCommandsAttackTest`'s 8 cases, `CommandProcessorTest`'s 2 new T51
+   cases, the corrected `GetCommandsByCategory` case) pass in both trees,
+   confirmed both via the full suite and via a targeted
+   `-R "T51|CommandProcessor|Attack"` run (72/72 in each tree).
+3. Golden replay: `WILLEQ_SESSION_LOG=/mnt/projects/fable/captures/
+   session.sleq` run directly against both trees' `test_session_replay`
+   binaries — confirmed the real recorded-session branch ran (not the
+   baseline-creation fallback: real zone-map lookups from the capture,
+   `befallen.map`/`qeynos2.map` "Unable to open" errors expected/benign,
+   same as T48-T50), `PASSED` in both.
+4. `scripts/ci/visual_gate.sh`: `PASS` (qeynos2/gfaydark/befallen all
+   verified); `git status` on `data/` empty before and after — goldens
+   untouched.
+5. Unit tests: see above — `tests/test_eq_commands_attack.cpp` (new, 8
+   cases) and `tests/test_command_processor.cpp` (2 new T51 cases + 1
+   corrected pre-existing case that had asserted the now-deleted
+   registry-2 `/attack` registration).
+6. Live acceptance: see above — Piece 0's pre-change probe and the
+   post-change acceptance run, both trees, both under
+   `benchmarks/audits/T51/`.
+7. `bash scripts/refactor/check_file_sizes.sh --files <11 touched/added
+   paths>`: 9 `ok`, 2 pre-existing `WARN` (`refactor/deferred.md`,
+   already `WARN` at 2796 lines on `fable` before this unit's +20 lines;
+   `src/client/eq_bridge.cpp`, already `WARN` at 1917 lines on `fable`,
+   now 1904 after this unit's net deletion) — confirmed via `git show
+   0a453028:<path> | wc -l` that both were already over threshold before
+   this unit touched them; no new FAILs, no new WARNs.
+
+### Does this close the board's "attack/auto-attack reachability" item?
+
+**Yes — by disproving it, exactly as the plan predicted.** T48 flagged
+`AttackIntent`/`ToggleAutoAttackIntent` as looking like a reachability
+gap (working handler, no producer — the same shape as `/combat on`,
+`/loot`, and vendor before their own fixes). It wasn't one: auto-attack
+was reachable the entire time via registry 1's direct `CombatManager`
+calls, proven live here with real fights against a real mob. The actual
+defect was a three-way duplication — two fully redundant command
+registrations (one always shadowed) plus a wholly dead intent pair with
+no producer anywhere. `refactor/deferred.md`'s "PATTERN" entry has been
+updated to record this distinction explicitly, including a caution for
+whoever scans the remaining ~40 producer-less intent types next: "has a
+handler, no producer" is necessary but not sufficient for this pattern —
+check for a parallel direct-call command first.
+
+### The ~37-command registry overlap item — narrowed to a concrete list
+
+Enumerated cheaply (no unit needed to do this by hand): extracted every
+registered command name from both `EverQuest::m_command_registry`
+(`eq_commands*.cpp`, 123 names) and `action::CommandProcessor`
+(`command_processor.cpp`, 65 names post-deletion) and diffed them.
+**34 names remain registered in both registries** (down from the ~37 T29
+originally estimated — this unit's deletion of `attack`/`stopattack`/`aa`
+accounts for the difference):
+
+```
+auction camp cast debug decline disband emote filter follow forget gems
+gsay gu help interrupt invite loc mem move moveto ooc pet quit reply say
+shout sit skills stand stopfollow target tell timestamp who
+```
+
+Registry 1 always wins every one of these under T29's dispatch order, so
+every name on this list is registry 2's dead code by the same shape this
+unit just fixed for three of them — **not fixed here** (out of scope,
+per the plan's "do not fix them here"), but now a concrete, greppable
+34-name list instead of an estimate, which is worth more to whoever picks
+up that cleanup than re-deriving it from scratch.

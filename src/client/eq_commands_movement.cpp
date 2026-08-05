@@ -329,6 +329,17 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(target);
 
+	// T51: this is now the SOLE implementation of attack/stopattack/aa.
+	// Before T51 there were three: this one (registry 1, wins T29's
+	// dispatch order over everything else), a byte-for-byte duplicate in
+	// action::CommandProcessor (registry 2, always shadowed dead code,
+	// deleted), and two producer-less RendererIntent structs
+	// (AttackIntent/ToggleAutoAttackIntent, deleted). The keyboard gesture
+	// does NOT go through this registry -- it reaches
+	// ActionDispatcher::enableAutoAttack()/disableAutoAttack()/
+	// toggleAutoAttack() directly via InputActionBridge, which is why that
+	// path (and its checkZoneConnection() gate, absent here) is untouched.
+	// See refactor/T51_attack_path_consolidation.md.
 	Command attack;
 	attack.name = "attack";
 	attack.aliases = {"att"};

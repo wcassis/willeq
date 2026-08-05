@@ -1876,18 +1876,38 @@ problem — you could not have opened a vendor from a script to buy from
 it. Reachability without discoverability is only half the gap, which is
 why `/vendorlist` exists too.
 
-**Still open — the pattern is narrowed, not retired.** T48 scanned all 56
-`RendererIntent` types for producers. Most producer-less ones are
-superseded by direct-call commands and are not live gaps, but
-**`AttackIntent` and `ToggleAutoAttackIntent` have working handlers in
-`ProcessBridgeIntents()` (`eq_bridge.cpp:1410`, `:1419`) and no producer
-anywhere** — orchestrator confirmed. That is the same defect shape, one
-subsystem over, and worth a small unit on the T34/T48 model.
+**Attack/auto-attack is now closed too, but T51 (2026-08-05) found it was
+never actually an instance of this pattern** — the framing above (T48's
+"worth a small unit on the T34/T48 model") turned out to be wrong when
+checked directly. `AttackIntent`/`ToggleAutoAttackIntent` did have working
+`ProcessBridgeIntents()` handlers and no producer, but auto-attack was
+**always reachable** the whole time: `/attack`/`att`, `/stopattack`, and
+`/aa`/`~` in `EverQuest::m_command_registry` (registry 1) call
+`CombatManager` directly and always won T29's dispatch order over a
+**second, fully duplicate, always-shadowed** registration of the same
+three commands in `action::CommandProcessor` (registry 2, routed through
+`ActionDispatcher`/`EqActionHandler` to the same `CombatManager`). The
+intents were a **third**, wholly dead path with no producer at all. T51's
+live probe (`benchmarks/audits/T51/`) proved registry 1 served all of
+`/attack`, `/stopattack`, `/aa`, `/att` in every case, proved auto-attack
+genuinely engages (real melee rounds, real damage both directions, against
+a live mob, three separate times), and deleted both the shadowed
+registry-2 registrations and the producer-less intents. See
+`refactor/T51_attack_path_consolidation.md`'s Review for the full registry
+table, including a correction to the plan's own alias-trap framing (`/a`
+was never live for attack — it collided with `/assist`'s pre-existing `a`
+alias in registry 1 and was already dead before this unit touched
+anything).
 
-The running instance list, for whoever picks that up: `/combat on`
+**The broader pattern (dozens of other producer-less intent types) is
+still narrowed, not retired** — T48's scan is not repeated here. The
+running instance list of *confirmed real* reachability gaps: `/combat on`
 (T26), the whole `EverQuest` registry (T29), `/loot` as a stub (T34),
-vendor buy/sell (T42→T48), and now attack/auto-attack. Every one was
-found only because a unit happened to need it.
+vendor buy/sell (T42→T48). Attack/auto-attack (T51) turned out to be a
+duplication defect wearing the same clothes, not a new instance — a
+caution for whoever scans the remaining intent list next: "has a handler,
+no producer" is necessary but not sufficient; check for a parallel
+direct-call command before assuming a gap.
 
 Historical record follows:
 

@@ -1,0 +1,62 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=1704839
+[driver] matched 'Zone connection complete! Player position confirmed' after 6s
+[driver] === LEG 1: /attack (fight to a real kill) ===
+[driver] sent: /say #npctypespawn 79037 (1785945913.857634521)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 2s
+[driver] sent: /list (1785945916.895558869)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup000'
+[driver] sent: /target a_scaled_wolf_pup000 (1785945918.916806942)
+[driver] sent: /attack (1785945919.926034301)
+[driver] matched 'CMD outcome=.* cmd="/attack"' after 1s
+[driver] TIMEOUT waiting for 'ProcessCombatRound' after 15s
+[driver] sent: /npcstate (1785945937.113831702)
+[driver] TIMEOUT waiting for 'was killed by Testchar|You have slain' after 60s
+[driver] === LEG 2: /attack then /stopattack (mid-fight) ===
+[driver] sent: /say #npctypespawn 79037 (1785945997.780161973)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785945998.797623991)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup001'
+[driver] sent: /target a_scaled_wolf_pup001 (1785946000.817430032)
+[driver] sent: /attack (1785946001.826799752)
+[driver] matched 'CMD outcome=.* cmd="/attack"' after 0s
+[driver] TIMEOUT waiting for 'ProcessCombatRound.*in_range=true' after 15s
+[driver] sent: /stopattack (1785946020.007523581)
+[driver] matched 'CMD outcome=.* cmd="/stopattack"' after 0s
+[driver] === LEG 3: /aa toggle ===
+[driver] sent: /say #npctypespawn 79037 (1785946021.027707082)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785946022.047407968)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup002'
+[driver] sent: /target a_scaled_wolf_pup002 (1785946024.070475508)
+[driver] sent: /aa (1785946025.080333442)
+[driver] matched 'CMD outcome=.* cmd="/aa"' after 1s
+[driver] TIMEOUT waiting for 'ProcessCombatRound.*in_range=true' after 15s
+[driver] sent: /aa (1785946044.267169288)
+[driver] matched 'CMD outcome=.* cmd="/aa"' after 0s
+[driver] === LEG 4: /a (alias) ===
+[driver] sent: /say #npctypespawn 79037 (1785946045.285860234)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785946046.302390089)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup003'
+[driver] sent: /target a_scaled_wolf_pup003 (1785946048.323246539)
+[driver] sent: /a (1785946049.334120323)
+[driver] matched 'CMD outcome=.* cmd="/a"' after 0s
+[driver] TIMEOUT waiting for 'ProcessCombatRound.*in_range=true' after 15s
+[driver] sent: /stopattack (1785946067.511605967)
+[driver] matched 'CMD outcome=.* cmd="/stopattack"' after 0s
+[driver] === LEG 5: /att (alias) ===
+[driver] sent: /say #npctypespawn 79037 (1785946068.530736658)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785946069.548887397)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup004'
+[driver] sent: /target a_scaled_wolf_pup004 (1785946071.569641411)
+[driver] sent: /att (1785946072.579216986)
+[driver] matched 'CMD outcome=.* cmd="/att"' after 0s
+[driver] TIMEOUT waiting for 'ProcessCombatRound.*in_range=true' after 15s
+[driver] sent: /stopattack (1785946090.759880880)
+[driver] matched 'CMD outcome=.* cmd="/stopattack"' after 0s
+[driver] sent: /who (1785946091.777252192)
+[driver] sent: /camp (1785946093.787428853)
+[driver] matched 'shutdown complete|Application shutdown' after 31s
+[driver] willeq exit code: 0
