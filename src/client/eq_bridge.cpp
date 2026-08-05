@@ -200,7 +200,14 @@ void EverQuest::ShutdownGraphics() {
 	}
 
 	// U07c3: Detach bridge — Application owns renderer lifecycle
-	m_bridge = nullptr;
+	// T47: no longer clears m_bridge here. Application::shutdown() now calls
+	// setBridge(nullptr) unconditionally, in both graphics and true-headless
+	// builds, before this function runs (see application.cpp) -- that single
+	// call clears m_bridge here and all four managers' bridge pointers at
+	// once via wireBridgeToSubsystems(). Duplicating the assignment here
+	// would be harmless (idempotent, plain pointer assignment) but would
+	// leave two competing partial-clear paths -- one call site is the single
+	// source of truth for bridge-pointer clearing now.
 	m_loading_status_ptr = nullptr;
 	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");

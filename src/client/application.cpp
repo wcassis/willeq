@@ -647,6 +647,22 @@ void Application::shutdown() {
     LOG_INFO(MOD_MAIN, "Shutting down application...");
     m_running.store(false);
 
+    // T47: clear all five bridge pointers (EverQuest::m_bridge plus the four
+    // managers' -- InventoryManager/SpellManager/SkillManager/HotbarModel)
+    // before the bridge itself is destroyed, in BOTH graphics and
+    // true-headless (EQT_GRAPHICS=OFF) builds. setBridge() ->
+    // wireBridgeToSubsystems() (T46) is unconditional and propagates null to
+    // all five in one call. Placed here -- immediately after the running
+    // flag drops and before anything else in shutdown() -- because nothing
+    // downstream in this function publishes through the bridge (verified by
+    // reading stopRDPServer(), joinLoadingThread(), ShutdownGraphics(),
+    // IrrlichtRenderer::shutdown(), IGameMode::shutdown(), and ~EverQuest():
+    // none of them push events/intents through eqt::bridge::GameStateBridge,
+    // so clearing early drops nothing). See refactor/T47_bridge_teardown.md.
+    if (m_eqClient) {
+        m_eqClient->setBridge(nullptr);
+    }
+
 #ifdef EQT_HAS_GRAPHICS
     // Stop RDP server if running
 #ifdef WITH_RDP

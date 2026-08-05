@@ -316,6 +316,18 @@ ADD_EXECUTABLE(test_game_state_sync_bridge
 TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_game_state_sync_bridge)
 
+# T47: bridge-pointer teardown hygiene (EverQuest::m_bridge + the four
+# managers'). Needs a real EverQuest (for setBridge()/GetHotbarModel()), so
+# links willeq_core the same way test_spell_manager does.
+ADD_EXECUTABLE(test_bridge_teardown
+    test_bridge_teardown.cpp
+)
+TARGET_LINK_LIBRARIES(test_bridge_teardown GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_bridge_teardown PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_bridge_teardown)
+
 # Test combat enums and structures
 ADD_EXECUTABLE(test_combat
     test_combat.cpp
