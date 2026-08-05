@@ -2624,3 +2624,75 @@ none of the ranking/swap-floor/scaling-shape conclusions depend on this
 specific magnitude. A follow-up unit re-running `B_e205` at the full
 1000-frame path (matching P51 exactly) would close this residual
 question if it ever becomes load-bearing for a real decision.
+
+## STATE-LAYER SWEEP CLOSED (T39→T49, 2026-08-05) + two new findings from T49's live acceptance
+
+**The sweep is done for the migration.** All four items are now event-fed
+via `GameStateSyncBridge` instead of polled once per game tick from
+`Application`: pet (T40), inventory (T42), spell (T44), and NPC
+interaction — vendor/banker/trainer — (T49).
+`Application::syncNPCInteractionState()` and its three `m_last*NpcId`
+edge-detect members are deleted. `syncGameStateFromClient()`'s only
+remaining sub-sync is `syncCombatState()`, which was never a migration
+target: T39 built it as a direct mirror of `CombatManager`, the
+authoritative source, and there is no "poll → event" to perform.
+
+**T49 was a fidelity gain, not just plumbing**, and this is the measured
+evidence rather than an argument: the deleted poll hardcoded
+`setVendor(npcId, 1.0f, name)`, while `VendorWindowOpened` carries the
+real `m_vendor_sell_rate` from the merchant packet. Observed end to end
+live in both trees — server `ShopRequest response: sell_rate=1.0656` →
+`/npcstate` reporting `sellRate=1.0656`. Names now also come through
+`EQT::toDisplayName()` (`SummonResupplyAgent` where the poll would have
+shown the raw `SummonResupplyAgent003`).
+
+**The state had zero readers before this unit**, which is why T49 also
+landed `/npcstate`. Note where it lives and why: **`action::CommandProcessor`
+(registry 2), NOT `EverQuest::m_command_registry` (registry 1) where T48's
+`/vendor`/`/vendorlist`/`/buy`/`/sell` live.** The two registries read
+*different* `state::GameState` instances, and only `Application::m_gameState`
+is fed by `GameStateSyncBridge`. Putting the reader next to T48's commands
+would have made it report empty forever — the `/assist` (T28) and `cmdHail`
+(T39) failure mode exactly. **This is a fresh instance of the open
+"~37-command registry overlap" item**: vendor-related commands now
+deliberately span two registries. Not a bug; worth knowing before anyone
+"tidies" it.
+
+### NEW: `/bank` opens and self-closes instantly — hardcoded dummy banker id
+
+`/bank` is reachable from the command channel, but useless live: it opens
+and closes the bank window within the same processing step, every time,
+in both trees.
+
+```
+[DEBUG] [INVENTORY] Opening bank window (banker NPC: 1)
+[DEBUG] [INVENTORY] Player moved too far from banker (31689.8 > 15.0), closing bank
+[INFO ] [MAIN] Bank window closed
+```
+
+Root cause traced by T49 (not fixed — outside its territory):
+`OpenBankWindow()` gets no npc id from `/bank`'s call site and falls back
+to `bankerNpcId != 0 ? bankerNpcId : 1` — a **hardcoded dummy id of 1**.
+Spawn id 1 is a real, unrelated entity (`zone_controller000` at
+`(80000, 240000, -79999)`), so the next movement-tick proximity check
+measures 31689.8 units to *that* and closes the window it just opened.
+Pre-existing, unrelated to T49. Fixing it touches
+`eq_commands_spells.cpp`/`eq_movement.cpp`.
+
+### NEW: `/train` sends `HC_OP_GMTraining` and the server never answers
+
+`/train` validates the target (NPC, class 20-35) and calls
+`RequestTrainerWindow(target_id)`; the packet is confirmed sent in both
+trees against a real guildmaster (npc 1007, `Miltiades_Tal'Azroth`,
+class=22, checked against the DB before spawning). **No response ever
+arrived** — no `ZoneProcessGMTraining` handler log, no trainer window.
+Not investigated (server-side, outside the eqemu ownership T49 was
+granted, which covers DB reads and position writes rather than server
+debugging). **This is the next live instance of the automation-reachability
+pattern**: reachable command, unreachable outcome. T49 reported it rather
+than inventing a hook, per its plan.
+
+Both legs are covered by unit tests against synthetic events instead
+(`GameStateSyncBridgeTest.BankWindowOpened*`/`TrainerWindowOpened*`,
+`CommandProcessorTest.NpcState_BankerOpen_*`/`NpcState_TrainerOpen_*`), so
+the migration and reader are verified even where the live path is blocked.
