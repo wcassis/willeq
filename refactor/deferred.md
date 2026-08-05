@@ -18,80 +18,106 @@ Review — read that before scoping the next unit off this file.
 
 ## Index — genuinely open items (T53, 2026-08-05)
 
-Line numbers are to *this* file, this revision. Grouped by kind; ungrouped
-placement in the body is unchanged (additive only).
+**Each item below is anchored by its exact `## ` section heading text, not a
+line number** — `grep -n '<the quoted text>' refactor/deferred.md` finds it
+regardless of how much the file has grown since. This file only ever grows
+by append (never-delete rule), so any line number written down today is
+guaranteed to drift as later units insert content above it; heading text
+does not. Grouped by kind; ungrouped placement in the body is unchanged
+(additive only).
 
 **Architecture / needs a ruling**
 - TWO `state::GameState` instances exist, unconnected — needs a decision, not
-  a drive-by (line 1333).
+  a drive-by. Heading: `## TWO \`state::GameState\` instances exist,
+  unconnected`.
 - Command-registry overlap (~34 names span two registries; T51 closed 3, most
-  still open) (line 1604).
+  still open). Heading: `## Command-registry overlap and the bare
+  \`/target\` precedence gap`.
 - `InitGraphics` keeps its `IrrlichtRenderer*` parameter; asset-loader
   namespace relocation (`WldLoader`/`PfsArchive`/`BspTree` out of
   `EQT::Graphics`); `EverQuest::GetDebugLevel()` static call from
-  `door_manager.cpp` — all three confirmed still true, T53 (line 409).
+  `door_manager.cpp` — all three confirmed still true, T53. Heading:
+  `## Decoupling residue — CLOSED by S2` (see its "Still open from that
+  audit" list).
 
 **Client correctness bugs**
-- `willeq.db` schema version bumped but never validated at open (line 1470).
+- `willeq.db` schema version bumped but never validated at open. Heading:
+  `## willeq.db schema version is bumped but never validated`.
 - `--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp` — confirmed
-  still reproducing, T53 (line 1641).
+  still reproducing, T53. Heading: `` ## `--log-level=` is clobbered by
+  `SetDebugLevel(0)` in main.cpp ``.
 - `ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
-  still true, T53 (line 1174).
+  still true, T53. Heading: `## ConstrainedMeshCache is never constructed`.
 - `SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
-  field) — confirmed still true, T53 (line 457).
+  field) — confirmed still true, T53. Heading: `## From F00 test repair`.
 - Auto-loot on kill never wired to the authoritative death event; shift+click
-  loot path unverified (line 1687).
+  loot path unverified. Heading: `## Auto-loot on kill has NEVER worked
+  against a real server`.
 - `race=415` missing model data still crashes graphics mode — confirmed still
-  reproducing, T53 (line 1746).
+  reproducing, T53. Heading: `` ## `race=415` missing model data still
+  crashes graphics mode ``.
 - blackburrow/crushbone render entirely blank in the benchmark — not
-  root-caused, needs a live render to settle (line 482).
+  root-caused, needs a live render to settle. Heading: `## From Batch H`.
 - No unattended character creation on a fresh eqemu DB — confirmed still
-  true, T53 (line 482).
-- "Player BSP region is SIZE_MAX" stale-zone-name race — not chased
-  (line 1273).
-- Pale fog-colored flat shapes in gfaydark/qeynos2 goldens — not chased
-  (line 1291).
-- gfaydark zone-in FATAL, missing race=330 model data (Eviction hygiene
-  entry) — open, possibly same class as race=415 (line 1078).
+  true, T53. Heading: `## From Batch H` (same section as above).
+- "Player BSP region is SIZE_MAX" stale-zone-name race — not chased.
+  Heading: `## "Player BSP region is SIZE_MAX" with stale zone name`.
+- Pale fog-colored flat shapes in gfaydark/qeynos2 goldens — not chased.
+  Heading: `## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens`.
+- gfaydark zone-in FATAL, missing race=330 model data — open, possibly same
+  class as race=415. Heading: `## Eviction hygiene LANDED (P17` (see its
+  "NEW (unfixed, pre-existing, graceful)" bullet).
 - RaceModelLoader/equipment_model_loader ignore `textureMasked()` for
-  non-composite meshes — needs its own unit with live visual evidence
-  (line 1022).
+  non-composite meshes — needs its own unit with live visual evidence.
+  Heading: `## P20 live-visual pair` (see its "NEW (P21 audit)" bullet).
 - Magenta/black checkerboard missing-texture placeholder on some qeynos2
-  rooftops/awnings — not chased (line 1022).
+  rooftops/awnings — not chased. Heading: `## P20 live-visual pair` (same
+  section, "New unrelated bug spotted" bullet).
 - `ConstrainedTextureCache`'s public query API (`hasAlpha`/`getTexture`/etc.)
   doesn't account for the masked-variant mangled cache key — found by P50,
-  not fixed (line 2601).
+  not fixed. Heading: `## P50 (2026-07-31): ConstrainedTextureCache's
+  public query API doesn't` (heading text wraps onto a second `##` line
+  in the file — search for `P50` if the exact string doesn't match).
 - Two `applyPaletteMask` plumbing gaps: `mesh_building.cpp`'s on-demand
   `loadTextureFromBMP()` fallback, and `animated_mesh_creation.cpp`'s
-  equipment texture-variant swap path (inside the P37 follow-ups section,
-  line 2263).
+  equipment texture-variant swap path. Heading: `## P37 follow-ups` (near
+  the end, in the P46d sub-entry's "Open follow-up items" bullet).
 - Succor/evacuate/death-bind-respawn zone-position convention — implicated by
   the same producer/consumer pair T52 fixed, not fixed, no known live
-  symptom (line 2942).
+  symptom. Heading: `` ## `#goto` same-zone teleport lands at the DB
+  position ``.
 - The broader "UI-gesture-only reachability" pattern — narrowed to 6
   confirmed instances by T48/T51/T52, not retired; more producer-less
-  intents likely remain (line 1980).
+  intents likely remain. Heading: `## PATTERN: real features reachable
+  only through a UI gesture`.
 
 **FIXED but the board still said open — corrected by this pass**
 - `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` bridge
   wiring headless — the entry (filed as a T45 finding, "NOT FIXED") was
   stale: T46 (`b5f5c1d6`) fixed exactly this via
-  `EverQuest::wireBridgeToSubsystems()`. Re-titled in place (line 2115).
+  `EverQuest::wireBridgeToSubsystems()`. Re-titled in place. Heading:
+  `` ## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel`
+  never get their own bridge wired headless ``.
 - RDP `stop()` use-after-free — entry said "fix still open"; T35 (`a835969`)
-  landed the join-then-close reorder. Re-titled (line 1308).
+  landed the join-then-close reorder. Re-titled. Heading: `## RDP
+  frame-update race — ROOT-CAUSED (T03b)`.
 - Headless client aborts/never-exits on piped shutdown with no server —
-  T30 (`fa31ca97`) fixed it. Re-titled (line 1493).
+  T30 (`fa31ca97`) fixed it. Re-titled. Heading: `## Headless client aborts
+  on shutdown and never exits`.
 - Non-FATAL log output never reaching stdout — T31 (`c167acdc`) fixed it
   (periodic `drainLoop()` no longer depends on `FlushThreadLog()`).
-  Re-titled (line 1543).
+  Re-titled. Heading: `## Non-FATAL log output never reaches stdout during
+  normal operation`.
 - Item links losing 11 characters — fixed within the same T34 unit
   (`7a1e48b9`, after the board entry was written); pinned by
-  `tests/test_formatted_message.cpp` (Scaled Curskin case). Re-titled
-  (line 1866).
+  `tests/test_formatted_message.cpp` (Scaled Curskin case). Re-titled.
+  Heading: `## Item links in chat lose 11 characters of the item name`.
 - `OnPetCreated()` `#ifdef EQT_HAS_GRAPHICS` residual (noted "not yet fixed"
   inside T43's own PATTERN entry) — fixed in the same T43 commit
   (`fabf0246`); the entry's residual note was simply never updated.
-  Re-titled inline (line 1913).
+  Re-titled inline. Heading: `` ## PATTERN: `EQT_HAS_GRAPHICS` gates around
+  non-graphics code `` (see its "Plus one known residual" bullet, near the
+  end of that entry).
 
 **Test coverage gaps (NEW, found answering a status question, T53 2026-08-05)**
 - 8 `DoorManagerGraphicsTest.*` skips — gated on `DISPLAY`/Irrlicht-device
@@ -125,16 +151,28 @@ placement in the body is unchanged (additive only).
   unit's territory (deferred.md only).
 
 **Perf / tooling residuals (lower priority, all narrowly scoped)**
-- Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO, Batch Z
-  (~2150).
+- Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO, Batch Z.
+  Heading: `## From Batch Z`.
 - Batch E table in `progress.md` has empty commit columns — cosmetic tracker
-  hygiene (~2154).
+  hygiene. Heading: `## Tracker hygiene`.
 - P52's `B_e205` absolute magnitude reads ~21-24% high even on the corrected
   path — flagged as directionally-trustworthy-not-KPI-clean, not
-  re-diagnosed for budget (~2654).
+  re-diagnosed for budget. Heading: `## P52 (2026-08-01): GPU-sync
+  characterization` (heading wraps onto a second `##` line; search `P52` if
+  the exact string doesn't match — see the "CLOSED by P52b" paragraph near
+  the end of that entry for this specific caveat).
 - `docker/irrlicht-drm/CIrrDeviceFB.cpp`'s `waitForFlipComplete()` swap-floor
   question — refined by P52b (real near-e0 effect, negligible at load), not
-  independently re-measured beyond that (~2447).
+  independently re-measured beyond that. Heading: `## P41 landed (2026-07-30,
+  merged \`edcd72a\`): lighting lever characterized, report-only`.
+
+**A note on staleness**: this Index is a snapshot as of commit `607a19c3`
+(T53). As of *this* commit, every heading text above was verified present
+verbatim via `grep -n` against the file (see the T53 Review in
+`refactor/T53_deferred_board_hygiene.md` for the sample-check log). If a
+future reader can't find one, the section was likely re-titled again by a
+later unit — search for distinctive words from the description instead
+(e.g. the unit ID in parentheses, or a quoted symbol name).
 
 ## FIXED: ParticleManager::renderUnified use-after-free (P34, 2026-07-29)
 

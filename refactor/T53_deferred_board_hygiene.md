@@ -328,6 +328,64 @@ grep'd), added to the Index's "Test coverage gaps" group:
      that would be exactly the "bulk deletion" this unit was told is a STOP
      condition).
 
+### Addendum (2026-08-05, same unit): Index anchors fixed after orchestrator review
+
+The orchestrator independently re-verified the T46 wiring, T35's `a835969`,
+and the OnPetCreated residual, confirmed the diff touches no source, and
+confirmed the `check_file_sizes.sh` finding needs no action (the script's
+own line 42 scopes it to `*.cpp`/`*.h`/`*.hpp`; a `.md` is out of scope by
+design, so the forced `--files` FAIL was correctly diagnosed as a tool/
+artifact mismatch, not a real problem).
+
+**Real defect found and fixed**: every line number in the Index (all 26
+references) was computed partway through the edit pass, before later
+insertions in the same session shifted the file's remaining content down —
+drift of 90-150+ lines by the end of the file, confirmed by the
+orchestrator's spot-check (4 samples, all off).
+
+**Fix**: replaced every line-number reference in the Index with the
+anchored section's exact `## ` heading text (quoted, greppable), which
+survives future insertions — this file only ever grows by append, so any
+absolute line number written today is guaranteed to drift again as the
+next unit lands. Line numbers were dropped entirely rather than
+recomputed-and-kept, since a second round of "recompute now, trust it
+later" would reproduce the identical failure the moment anyone edits above
+the Index again (including a future T5x adding its own annotations, which
+is exactly what happened here). Added a one-line note at the end of the
+Index stating it's a snapshot as of this commit and to search on
+distinctive words if a heading has since been re-titled again.
+
+**Verified, not assumed**: sampled 10 of the ~24 distinct heading anchors
+(more than double the requested minimum of 6) with `grep -n '^## ...'
+refactor/deferred.md` against the file as committed and confirmed each
+resolves to exactly the intended section:
+
+| anchor (abbreviated) | resolves to line |
+|---|---|
+| `TWO \`state::GameState\` instances exist,` | 1472 |
+| `ConstrainedMeshCache is never constructed` | 1301 |
+| `` `--log-level=` is clobbered by `SetDebugLevel(0)` `` | 1825 |
+| `RDP frame-update race — ROOT-CAUSED (T03b)` | 1435 |
+| `` `InventoryManager`/`SpellManager`/... `` | 2319 |
+| `Headless client aborts on shutdown` | 1650 |
+| `Non-FATAL log output never reaches stdout` | 1711 |
+| `` `race=415` missing model data `` | 1930 |
+| `` PATTERN: `EQT_HAS_GRAPHICS` gates around `` | 2109 |
+| `willeq.db schema version is bumped` | 1627 |
+
+All 10 matched a unique, correct heading on the first try — no wrong
+pointers introduced by the fix. Also re-ran `grep -F -c` for all ~28
+anchor phrases used in the Index; every one appears (as expected) exactly
+twice per topic in most cases — once in the Index's own "Heading: `...`"
+description and once as the real section heading — confirming the quoted
+text is a verbatim substring of the actual heading, not a paraphrase that
+merely looks right.
+
+`git diff --stat` after this fix: still exactly one file changed
+(`refactor/deferred.md`), 77 insertions / 39 deletions — all within the
+Index section itself (line-number references replaced by heading-text
+anchors); no other section touched, no research content removed.
+
 ### Is the board usable as a work queue now?
 
 **Yes, materially more than before, with one honest caveat.** The Index at
