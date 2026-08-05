@@ -1,0 +1,60 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=1729232
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] === LEG 1: /attack ===
+[driver] sent: /say #npctypespawn 79037 (1785947906.167590336)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 1s
+[driver] sent: /list (1785947908.196155702)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup005'
+[driver] sent: /target a_scaled_wolf_pup005 (1785947910.217144558)
+[driver] sent: /attack (1785947911.227398444)
+[driver] matched 'CMD outcome=.* cmd="/attack"' after 0s
+[driver] sent: /stopattack (1785947915.244856315)
+[driver] matched 'CMD outcome=.* cmd="/stopattack"' after 0s
+[driver] === LEG 2: /att (alias) ===
+[driver] sent: /say #npctypespawn 79037 (1785947916.264516742)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785947917.283397126)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup006'
+[driver] sent: /target a_scaled_wolf_pup006 (1785947919.303993571)
+[driver] sent: /att (1785947920.313545261)
+[driver] matched 'CMD outcome=.* cmd="/att"' after 1s
+[driver] sent: /stopattack (1785947925.342886428)
+[driver] matched 'CMD outcome=.* cmd="/stopattack"' after 0s
+[driver] === LEG 3: /aa toggle ===
+[driver] sent: /say #npctypespawn 79037 (1785947926.361904061)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785947927.379946553)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup007'
+[driver] sent: /target a_scaled_wolf_pup007 (1785947929.399717438)
+[driver] sent: /aa (1785947930.409568698)
+[driver] matched 'CMD outcome=.* cmd="/aa"' after 1s
+[driver] sent: /aa (1785947935.438396172)
+[driver] matched 'CMD outcome=.* cmd="/aa"' after 0s
+[driver] === LEG 4: ~ (alias for aa) ===
+[driver] sent: /say #npctypespawn 79037 (1785947936.474091120)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785947937.491860238)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup008'
+[driver] sent: /target a_scaled_wolf_pup008 (1785947939.512318248)
+[driver] sent: /~ (1785947940.521490942)
+[driver] matched 'CMD outcome=.* cmd="/~"' after 0s
+[driver] sent: /~ (1785947944.539413612)
+[driver] matched 'CMD outcome=.* cmd="/~"' after 0s
+[driver] === LEG 5: /a (assist, unchanged) ===
+[driver] sent: /say #npctypespawn 79037 (1785947945.558895274)
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 0s
+[driver] sent: /list (1785947946.575638988)
+[driver] fresh wolf pup spawn name resolved to 'a_scaled_wolf_pup009'
+[driver] sent: /target a_scaled_wolf_pup009 (1785947948.597299857)
+[driver] sent: /a (1785947949.608464181)
+[driver] matched 'CMD outcome=.* cmd="/a"' after 0s
+[driver] === LEG 6: full command set unchanged from user PoV ===
+[driver] sent: /attack (1785947951.628082158)
+[driver] sent: /stopattack (1785947952.638638732)
+[driver] sent: /aa (1785947953.648779137)
+[driver] sent: /aa (1785947954.658686662)
+[driver] sent: /who (1785947955.669153747)
+[driver] sent: /camp (1785947957.679601062)
+[driver] matched 'shutdown complete|Application shutdown' after 31s
+[driver] willeq exit code: 0

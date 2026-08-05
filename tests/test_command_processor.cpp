@@ -273,6 +273,34 @@ TEST_F(CommandProcessorTest, GetCommandsByCategory_UnknownCategoryReturnsEmpty) 
     EXPECT_TRUE(result.empty());
 }
 
+// ===================================================================
+// T51: attack/stopattack/aa no longer register in this registry -- they
+// were always shadowed dead code (EverQuest::m_command_registry, registry
+// 1, wins T29's dispatch order for every one of these names; see
+// refactor/T51_attack_path_consolidation.md). ActionDispatcher's own
+// enableAutoAttack()/disableAutoAttack()/toggleAutoAttack() methods are
+// untouched -- only the now-dead command REGISTRATIONS and their
+// cmdAttack/cmdStopAttack/cmdAutoAttack wrapper methods were removed.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T51_AttackStopattackAa_NoLongerRegistered) {
+    EXPECT_FALSE(processor->getCommandInfo("attack").has_value());
+    EXPECT_FALSE(processor->getCommandInfo("stopattack").has_value());
+    EXPECT_FALSE(processor->getCommandInfo("aa").has_value());
+    EXPECT_FALSE(processor->hasCommand("attack"));
+    EXPECT_FALSE(processor->hasCommand("stopattack"));
+    EXPECT_FALSE(processor->hasCommand("aa"));
+}
+
+TEST_F(CommandProcessorTest, T51_AttackStopattackAa_ProcessCommandReportsUnknown) {
+    auto r1 = processor->processCommand("/attack");
+    EXPECT_FALSE(r1.success);
+    auto r2 = processor->processCommand("/stopattack");
+    EXPECT_FALSE(r2.success);
+    auto r3 = processor->processCommand("/aa");
+    EXPECT_FALSE(r3.success);
+}
+
 TEST_F(CommandProcessorTest, BuiltinCommands_RepresentativeSampleRegisteredWithExpectedCategory) {
     struct Expected { const char* name; const char* category; };
     static const Expected samples[] = {
