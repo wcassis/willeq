@@ -427,3 +427,132 @@ TEST_F(GameStateSyncBridgeTest, SpellEventsStillDelegateToWrappedBridge) {
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::SpellCastStarted);
     EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::SpellCastComplete);
 }
+
+// ---------------------------------------------------------------------------
+// T49: NPC interaction state (vendor, banker, trainer), replacing
+// Application::syncNPCInteractionState() -- the last poll in the
+// state-layer sweep (T39->T49). Mirrors the pet/spell test shape above:
+// open sets id/name(/rate), close clears.
+// ---------------------------------------------------------------------------
+
+TEST_F(GameStateSyncBridgeTest, VendorWindowOpenedSetsVendorState) {
+    WindowOpenedData data;
+    data.npcId = 500;
+    data.npcName = "A Merchant";
+    data.sellRate = 1.25f;
+
+    bridge->applyEvent(GameEvent(GameEventType::VendorWindowOpened, data));
+
+    EXPECT_TRUE(state->player().isWithVendor());
+    EXPECT_EQ(state->player().vendorNpcId(), 500);
+    EXPECT_EQ(state->player().vendorName(), "A Merchant");
+    EXPECT_FLOAT_EQ(state->player().vendorSellRate(), 1.25f);
+}
+
+TEST_F(GameStateSyncBridgeTest, VendorWindowClosedClearsVendorState) {
+    WindowOpenedData openData;
+    openData.npcId = 500;
+    openData.npcName = "A Merchant";
+    openData.sellRate = 1.25f;
+    bridge->applyEvent(GameEvent(GameEventType::VendorWindowOpened, openData));
+    ASSERT_TRUE(state->player().isWithVendor());
+
+    WindowClosedData closeData;
+    closeData.npcId = 500;
+    bridge->applyEvent(GameEvent(GameEventType::VendorWindowClosed, closeData));
+
+    EXPECT_FALSE(state->player().isWithVendor());
+    EXPECT_EQ(state->player().vendorNpcId(), 0);
+}
+
+TEST_F(GameStateSyncBridgeTest, BankWindowOpenedSetsBankerState) {
+    WindowOpenedData data;
+    data.npcId = 600;
+    data.npcName = "A Banker"; // unused by setBanker(), included for realism
+    data.sellRate = 0.0f;
+
+    bridge->applyEvent(GameEvent(GameEventType::BankWindowOpened, data));
+
+    EXPECT_TRUE(state->player().isAtBank());
+    EXPECT_EQ(state->player().bankerNpcId(), 600);
+}
+
+TEST_F(GameStateSyncBridgeTest, BankWindowClosedClearsBankerState) {
+    WindowOpenedData openData;
+    openData.npcId = 600;
+    bridge->applyEvent(GameEvent(GameEventType::BankWindowOpened, openData));
+    ASSERT_TRUE(state->player().isAtBank());
+
+    WindowClosedData closeData;
+    closeData.npcId = 600;
+    bridge->applyEvent(GameEvent(GameEventType::BankWindowClosed, closeData));
+
+    EXPECT_FALSE(state->player().isAtBank());
+    EXPECT_EQ(state->player().bankerNpcId(), 0);
+}
+
+TEST_F(GameStateSyncBridgeTest, TrainerWindowOpenedSetsTrainerState) {
+    TrainerWindowOpenedData data;
+    data.npcId = 700;
+    data.npcName = "A Trainer";
+    data.platinum = 0;
+    data.gold = 0;
+    data.silver = 0;
+    data.copper = 0;
+    data.practicePoints = 0;
+
+    bridge->applyEvent(GameEvent(GameEventType::TrainerWindowOpened, data));
+
+    EXPECT_TRUE(state->player().isWithTrainer());
+    EXPECT_EQ(state->player().trainerNpcId(), 700);
+    EXPECT_EQ(state->player().trainerName(), "A Trainer");
+}
+
+TEST_F(GameStateSyncBridgeTest, TrainerWindowClosedClearsTrainerState) {
+    TrainerWindowOpenedData openData;
+    openData.npcId = 700;
+    openData.npcName = "A Trainer";
+    bridge->applyEvent(GameEvent(GameEventType::TrainerWindowOpened, openData));
+    ASSERT_TRUE(state->player().isWithTrainer());
+
+    WindowClosedData closeData;
+    closeData.npcId = 700;
+    bridge->applyEvent(GameEvent(GameEventType::TrainerWindowClosed, closeData));
+
+    EXPECT_FALSE(state->player().isWithTrainer());
+    EXPECT_EQ(state->player().trainerNpcId(), 0);
+}
+
+TEST_F(GameStateSyncBridgeTest, NpcInteractionEventsStillDelegateToWrappedBridge) {
+    WindowOpenedData vendorData;
+    vendorData.npcId = 500;
+    bridge->applyEvent(GameEvent(GameEventType::VendorWindowOpened, vendorData));
+
+    WindowClosedData vendorClose;
+    vendorClose.npcId = 500;
+    bridge->applyEvent(GameEvent(GameEventType::VendorWindowClosed, vendorClose));
+
+    WindowOpenedData bankData;
+    bankData.npcId = 600;
+    bridge->applyEvent(GameEvent(GameEventType::BankWindowOpened, bankData));
+
+    WindowClosedData bankClose;
+    bankClose.npcId = 600;
+    bridge->applyEvent(GameEvent(GameEventType::BankWindowClosed, bankClose));
+
+    TrainerWindowOpenedData trainerData;
+    trainerData.npcId = 700;
+    bridge->applyEvent(GameEvent(GameEventType::TrainerWindowOpened, trainerData));
+
+    WindowClosedData trainerClose;
+    trainerClose.npcId = 700;
+    bridge->applyEvent(GameEvent(GameEventType::TrainerWindowClosed, trainerClose));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 6u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::VendorWindowOpened);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::VendorWindowClosed);
+    EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::BankWindowOpened);
+    EXPECT_EQ(wrapped->appliedTypes[3], GameEventType::BankWindowClosed);
+    EXPECT_EQ(wrapped->appliedTypes[4], GameEventType::TrainerWindowOpened);
+    EXPECT_EQ(wrapped->appliedTypes[5], GameEventType::TrainerWindowClosed);
+}

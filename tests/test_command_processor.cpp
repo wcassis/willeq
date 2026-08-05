@@ -563,4 +563,97 @@ TEST_F(CommandProcessorTest, Hail_TargetClearedAfterward_RevertsToHail) {
     ASSERT_TRUE(handler.calledOnceWith("hail()"));
 }
 
+// ===================================================================
+// cmdNpcState (T49) -- reads m_state.player()'s vendor/banker/trainer
+// fields, the state GameStateSyncBridge now feeds from bridge events
+// instead of the deleted Application::syncNPCInteractionState() poll.
+// No dispatcher call, no args -- pure state-layer read, same shape as
+// cmdLoc's tests above. Model: T34/T48's argument-handling style plus
+// the Hail tests' direct-state-mutation-then-read pattern.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, NpcState_NoInteraction_ReportsNoneForAll) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+
+    auto result = processor->processCommand("/npcstate");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_EQ(renderer.systemMessages.size(), 3u);
+    EXPECT_EQ(renderer.systemMessages[0], "Vendor: none");
+    EXPECT_EQ(renderer.systemMessages[1], "Banker: none");
+    EXPECT_EQ(renderer.systemMessages[2], "Trainer: none");
+}
+
+TEST_F(CommandProcessorTest, NpcState_VendorOpen_ReportsVendorWithRealSellRate) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    // The observable fidelity gain this unit delivers: the deleted poll
+    // hardcoded sellRate=1.0f; the migrated path carries whatever
+    // VendorWindowOpened actually published. Use a non-1.0 rate so a
+    // regression back to the hardcoded value would be caught here.
+    state.player().setVendor(500, 1.25f, "A Merchant");
+
+    auto result = processor->processCommand("/npcstate");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_FALSE(renderer.systemMessages.empty());
+    EXPECT_NE(renderer.systemMessages[0].find("A Merchant"), std::string::npos);
+    EXPECT_NE(renderer.systemMessages[0].find("500"), std::string::npos);
+    EXPECT_NE(renderer.systemMessages[0].find("1.2500"), std::string::npos);
+}
+
+TEST_F(CommandProcessorTest, NpcState_BankerOpen_ReportsBanker) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    state.player().setBanker(600);
+
+    auto result = processor->processCommand("/npcstate");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_EQ(renderer.systemMessages.size(), 3u);
+    EXPECT_EQ(renderer.systemMessages[0], "Vendor: none");
+    EXPECT_NE(renderer.systemMessages[1].find("600"), std::string::npos);
+    EXPECT_EQ(renderer.systemMessages[2], "Trainer: none");
+}
+
+TEST_F(CommandProcessorTest, NpcState_TrainerOpen_ReportsTrainer) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    state.player().setTrainer(700, "A Trainer");
+
+    auto result = processor->processCommand("/npcstate");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_EQ(renderer.systemMessages.size(), 3u);
+    EXPECT_NE(renderer.systemMessages[2].find("A Trainer"), std::string::npos);
+    EXPECT_NE(renderer.systemMessages[2].find("700"), std::string::npos);
+}
+
+TEST_F(CommandProcessorTest, NpcState_ClearedAfterward_RevertsToNone) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    state.player().setVendor(500, 1.25f, "A Merchant");
+    processor->processCommand("/npcstate");
+    ASSERT_NE(renderer.systemMessages[0].find("A Merchant"), std::string::npos);
+
+    state.player().clearVendor();
+    renderer.systemMessages.clear();
+
+    processor->processCommand("/npcstate");
+    EXPECT_EQ(renderer.systemMessages[0], "Vendor: none");
+}
+
+TEST_F(CommandProcessorTest, NpcState_IgnoresArguments) {
+    // /npcstate takes no arguments; extra text should not error or change
+    // behaviour (same convention as /loc, which also ignores args).
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+
+    auto result = processor->processCommand("/npcstate some garbage args");
+
+    EXPECT_TRUE(result.success);
+    ASSERT_EQ(renderer.systemMessages.size(), 3u);
+}
+
 } // namespace

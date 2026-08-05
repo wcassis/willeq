@@ -331,10 +331,12 @@ private:
      */
     void syncGameStateFromClient();
 
-    /**
-     * Sync player NPC interaction state (vendor, banker, trainer, looting).
-     */
-    void syncNPCInteractionState();
+    // syncNPCInteractionState() was deleted (T49) -- vendor/banker/trainer
+    // state is now fed from GameStateSyncBridge via bridge events
+    // (VendorWindowOpened/Closed, BankWindowOpened/Closed,
+    // TrainerWindowOpened/Closed), constructed in initialize() alongside the
+    // T40/T42/T44 pet/inventory/spell cases. This was the last poll in the
+    // state-layer sweep (T39->T49).
 
     // syncSpellState() was deleted (T44) -- spell state (casting, gem
     // occupancy/state, gem cooldown) is now fed from GameStateSyncBridge via
@@ -520,10 +522,9 @@ private:
     // Pet state tracking removed (T40): pet state is now fed by
     // GameStateSyncBridge from bridge events, not polled here.
 
-    // NPC interaction tracking
-    uint16_t m_lastVendorNpcId = 0;
-    uint16_t m_lastBankerNpcId = 0;
-    uint16_t m_lastTrainerNpcId = 0;
+    // NPC interaction tracking members (m_lastVendorNpcId/m_lastBankerNpcId/
+    // m_lastTrainerNpcId) were deleted (T49) along with
+    // syncNPCInteractionState() -- see above.
 
     // Spell state tracking members (m_lastIsCasting/m_lastCastingSpellId)
     // were deleted (T44) along with syncSpellState() -- see above.

@@ -399,6 +399,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "hail", {}, "/hail", "Hail target or say Hail", "Combat", false
     }, [this](const std::string& args) { return cmdHail(args); });
 
+    registerCommand({
+        "npcstate", {}, "/npcstate", "Show current vendor/banker/trainer interaction state", "Utility", false
+    }, [this](const std::string& args) { return cmdNpcState(args); });
+
     // Group commands
     registerCommand({
         "invite", {"inv"}, "/invite [name]", "Invite to group", "Group", false
@@ -781,6 +785,41 @@ ActionResult CommandProcessor::cmdHail(const std::string& args) {
         return m_dispatcher.hailTarget();
     }
     return m_dispatcher.hail();
+}
+
+ActionResult CommandProcessor::cmdNpcState(const std::string& args) {
+    // T49: pure state-layer read, no args, no dispatcher call -- same shape
+    // as cmdLoc(). Reports vendor/banker/trainer context fed by
+    // GameStateSyncBridge from the six window-open/close bridge events.
+    auto& player = m_state.player();
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(4);
+
+    if (player.isWithVendor()) {
+        oss << "Vendor: " << player.vendorName() << " (id=" << player.vendorNpcId()
+            << ", sellRate=" << player.vendorSellRate() << ")";
+    } else {
+        oss << "Vendor: none";
+    }
+    displayMessage(oss.str());
+
+    oss.str("");
+    if (player.isAtBank()) {
+        oss << "Banker: id=" << player.bankerNpcId();
+    } else {
+        oss << "Banker: none";
+    }
+    displayMessage(oss.str());
+
+    oss.str("");
+    if (player.isWithTrainer()) {
+        oss << "Trainer: " << player.trainerName() << " (id=" << player.trainerNpcId() << ")";
+    } else {
+        oss << "Trainer: none";
+    }
+    displayMessage(oss.str());
+
+    return ActionResult::Success();
 }
 
 ActionResult CommandProcessor::cmdInvite(const std::string& args) {

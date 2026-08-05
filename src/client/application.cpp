@@ -1770,14 +1770,15 @@ void Application::syncGameStateFromClient() {
     // Phase 7 Migration Note:
     // Player position, stats, and zone info are now synced directly from EQ class
     // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
-    // Pet state (T40), inventory slot occupancy (T42), and spell state (T44)
-    // are now event-fed via GameStateSyncBridge -- see
-    // Application::initialize()'s bridge construction -- instead of polled
-    // here. The sub-syncs below (NPC interaction, combat) haven't been
-    // migrated yet and still use polling for now.
+    // Pet state (T40), inventory slot occupancy (T42), spell state (T44), and
+    // NPC interaction state -- vendor/banker/trainer (T49) -- are now
+    // event-fed via GameStateSyncBridge -- see Application::initialize()'s
+    // bridge construction -- instead of polled here. This closes the
+    // state-layer sweep (T39->T49). Combat (below) is out of this sweep's
+    // territory and still polls CombatManager each tick -- see
+    // syncCombatState()'s own comment.
 
     // Sync subsystems (not yet migrated to direct sync)
-    syncNPCInteractionState();
     syncCombatState();
 }
 
@@ -1840,64 +1841,14 @@ void Application::syncCombatState() {
     }
 }
 
-void Application::syncNPCInteractionState() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
-
-    // Sync vendor state
-    uint16_t vendorNpcId = m_eqClient->GetVendorNpcId();
-    if (vendorNpcId != m_lastVendorNpcId) {
-        if (vendorNpcId != 0) {
-            // Vendor window opened - get name from entity if available
-            std::string vendorName = "Vendor";
-            const auto& entities = m_eqClient->GetEntities();
-            auto it = entities.find(vendorNpcId);
-            if (it != entities.end()) {
-                vendorName = it->second.name;
-            }
-            m_gameState->player().setVendor(vendorNpcId, 1.0f, vendorName);
-            LOG_DEBUG(MOD_MAIN, "Vendor opened: {}", vendorName);
-        } else {
-            m_gameState->player().clearVendor();
-            LOG_DEBUG(MOD_MAIN, "Vendor closed");
-        }
-        m_lastVendorNpcId = vendorNpcId;
-    }
-
-    // Sync banker state
-    uint16_t bankerNpcId = m_eqClient->GetBankerNpcId();
-    if (bankerNpcId != m_lastBankerNpcId) {
-        if (bankerNpcId != 0) {
-            m_gameState->player().setBanker(bankerNpcId);
-            LOG_DEBUG(MOD_MAIN, "Bank opened");
-        } else {
-            m_gameState->player().clearBanker();
-            LOG_DEBUG(MOD_MAIN, "Bank closed");
-        }
-        m_lastBankerNpcId = bankerNpcId;
-    }
-
-    // Sync trainer state
-    uint16_t trainerNpcId = m_eqClient->GetTrainerNpcId();
-    if (trainerNpcId != m_lastTrainerNpcId) {
-        if (trainerNpcId != 0) {
-            // Get trainer name from entity if available
-            std::string trainerName = "Trainer";
-            const auto& entities = m_eqClient->GetEntities();
-            auto it = entities.find(trainerNpcId);
-            if (it != entities.end()) {
-                trainerName = it->second.name;
-            }
-            m_gameState->player().setTrainer(trainerNpcId, trainerName);
-            LOG_DEBUG(MOD_MAIN, "Trainer opened: {}", trainerName);
-        } else {
-            m_gameState->player().clearTrainer();
-            LOG_DEBUG(MOD_MAIN, "Trainer closed");
-        }
-        m_lastTrainerNpcId = trainerNpcId;
-    }
-}
+// Application::syncNPCInteractionState() was deleted (T49) -- vendor,
+// banker, and trainer window state (m_vendor_npc_id/m_banker_npc_id/
+// m_trainer_npc_id and their names/sell rate) are now fed into
+// m_gameState->player() by GameStateSyncBridge::applyEvent() from the six
+// window-open/close bridge events (VendorWindowOpened/Closed,
+// BankWindowOpened/Closed, TrainerWindowOpened/Closed), all of which are
+// published from eq_merchant.cpp at exactly the same six mutation sites this
+// poll used to read from -- see game_state_sync_bridge.cpp for the mapping.
 
 void Application::updateLoadingProgress() {
     // Loading progress is updated by EverQuest client callbacks directly
