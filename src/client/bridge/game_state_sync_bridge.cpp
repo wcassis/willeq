@@ -82,6 +82,52 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             }
             break;
         }
+        case state::GameEventType::VendorWindowOpened: {
+            // T49: replaces the vendor half of
+            // Application::syncNPCInteractionState(). Published from
+            // eq_merchant.cpp's ZoneProcessShopRequest at the same site that
+            // sets m_vendor_npc_id/m_vendor_sell_rate/m_vendor_name -- the
+            // poll's only mutation source for vendor state. Carries the
+            // *real* sell rate (m_vendor_sell_rate, read from the merchant
+            // packet) where the poll hardcoded 1.0f, and npcName is already
+            // EQT::toDisplayName()'d with a "Merchant" fallback where the
+            // poll used the raw entity name with a "Vendor" fallback -- see
+            // refactor/T49_npc_interaction_state.md for the measured deltas.
+            const auto& d = std::get<state::WindowOpenedData>(event.data);
+            m_state.player().setVendor(d.npcId, d.sellRate, d.npcName);
+            break;
+        }
+        case state::GameEventType::VendorWindowClosed: {
+            m_state.player().clearVendor();
+            break;
+        }
+        case state::GameEventType::BankWindowOpened: {
+            // T49: replaces the banker half of syncNPCInteractionState().
+            // setBanker() takes only npcId (PlayerState has no bank name
+            // field), so WindowOpenedData's npcName/sellRate are unused here
+            // -- symmetric with the poll, which never read a bank name
+            // either.
+            const auto& d = std::get<state::WindowOpenedData>(event.data);
+            m_state.player().setBanker(d.npcId);
+            break;
+        }
+        case state::GameEventType::BankWindowClosed: {
+            m_state.player().clearBanker();
+            break;
+        }
+        case state::GameEventType::TrainerWindowOpened: {
+            // T49: replaces the trainer half of syncNPCInteractionState().
+            // TrainerWindowOpenedData carries the full trainable-skill list
+            // (T20b1's richer payload); PlayerState::setTrainer() only needs
+            // npcId/npcName, same fields the poll mirrored.
+            const auto& d = std::get<state::TrainerWindowOpenedData>(event.data);
+            m_state.player().setTrainer(d.npcId, d.npcName);
+            break;
+        }
+        case state::GameEventType::TrainerWindowClosed: {
+            m_state.player().clearTrainer();
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

@@ -44,7 +44,14 @@ namespace bridge {
  * stores a start-time + total from a single event and computes elapsed on
  * read (spell_state.h), so there is nothing for this decorator to do on a
  * per-tick basis -- publishing one event per tick was explicitly rejected
- * as strictly worse than the poll it replaces.
+ * as strictly worse than the poll it replaces. T49 added
+ * VendorWindowOpened/Closed, BankWindowOpened/Closed, and
+ * TrainerWindowOpened/Closed, replacing
+ * Application::syncNPCInteractionState() -- the last poll in the
+ * state-layer sweep (T39->T49). All six events were already published
+ * end-to-end before this unit; the gap this unit closed was that nothing
+ * read the resulting state (see the reader command in
+ * action::CommandProcessor).
  */
 class GameStateSyncBridge : public GameStateBridge {
 public:
