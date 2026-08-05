@@ -1,0 +1,8 @@
+wait 8
+/say #npctypespawn 351043
+wait 2
+/target rat
+wait 1
+/cast 1
+wait 5
+/camp

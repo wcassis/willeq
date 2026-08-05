@@ -1034,7 +1034,13 @@ public:
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }
 
 	// Bridge for cross-thread game state ↔ renderer communication
-	void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+	// T46: moved out of the header (was an inline one-liner setting only
+	// m_bridge) so it can also wire the four managers' own bridge pointers
+	// via wireBridgeToSubsystems() -- previously that wiring happened only
+	// in InitGraphics(), so headless runs (which call only setBridge()) left
+	// InventoryManager/SpellManager/SkillManager/HotbarModel's bridge
+	// pointers null for the whole process. See wireBridgeToSubsystems().
+	void setBridge(eqt::bridge::GameStateBridge* bridge);
 	void ProcessBridgeIntents();  // Drain and process intents from the renderer (D14+)
 	void ProcessBridgeEvents();   // Drain and apply events to the renderer (D14+)
 
@@ -1169,6 +1175,17 @@ private:
 
 	// Bridge for cross-thread game state → renderer communication (Phase 2+)
 	eqt::bridge::GameStateBridge* m_bridge = nullptr;
+
+	// T46: assigns m_bridge and propagates the same pointer (including
+	// null) to the four managers' own bridge pointers
+	// (InventoryManager/SpellManager/SkillManager/HotbarModel), each of
+	// which is a separate member from m_bridge. Called from both
+	// setBridge() (the headless path) and InitGraphics() (the graphics
+	// path), so the managers get wired whichever path sets the bridge.
+	// Plain pointer assignment underneath, so calling it twice with the
+	// same pointer (graphics mode: InitGraphics() after Application's own
+	// setBridge()-equivalent construction) is a harmless no-op.
+	void wireBridgeToSubsystems(eqt::bridge::GameStateBridge* bridge);
 
 	// D20f2: Typed BSP tree for water detection, zone lines, collision
 	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
