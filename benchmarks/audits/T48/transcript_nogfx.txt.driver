@@ -1,0 +1,30 @@
+== starting willeq (headless, piped stdin, -d 5/DEBUG) ==
+willeq pid=1574692
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] sent: /who (1785900798.843504944)
+[driver] sent: /say #givemoney 500 0 0 0 (1785900800.853989083)
+[driver] matched 'Money updated:' after 1s
+[driver] sent: /say #npctypespawn 771 (1785900802.882448319)
+[driver] matched 'Spawned SummonResupplyAgent|Spawned .*771' after 1s
+[driver] sent: /list (1785900804.910366981)
+[driver] fresh spawn name resolved to 'SummonResupplyAgent002'
+[driver] sent: /target SummonResupplyAgent002 (1785900806.931456447)
+[driver] sent: /vendor (1785900807.942766097)
+[driver] matched 'Opened vendor window for' after 2s
+[driver] sent: /vendorlist (1785900810.983764019)
+[driver] first vendorlist line: [slot 1] Tiny Jade Inlaid Coffin - 69p 7s 9c (qty: 1)
+[driver] resolved buy slot: 1
+[driver] sent: /buy 1 (1785900813.016457470)
+[driver] matched 'You purchased' after 1s
+[driver] buy inventory-slot-changed line: [2026-08-05 03:33:33.077] [DEBUG] [INVENTORY] Publishing InventorySlotChanged (generic ItemPacket fallback): slot=30 hasItem=true itemId=9962 name='Tiny Jade Inlaid Coffin' qty=1
+[driver] resolved purchased-item inventory slot: 30
+[driver] sent: /vendorlist (1785900815.060772451)
+[driver] sent: /sell 30 (1785900816.070347870)
+[driver] matched 'You sold' after 1s
+[driver] sent: /vendorlist (1785900818.098301091)
+[driver] sent: /who (1785900818.104006476)
+[driver] sent: /vendor (1785900820.113887369)
+[driver] matched 'Closing vendor window for NPC' after 1s
+[driver] sent: /camp (1785900822.141243739)
+[driver] matched 'shutdown complete|Application shutdown' after 30s
+[driver] willeq exit code: 0

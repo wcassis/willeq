@@ -368,6 +368,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_assist)
 
+# T48: /vendorlist, /buy, /sell coverage (eq_commands.cpp
+# RegisterVendorCommands()) -- same MakeEq()/TestBridge/ProcessChatInput seam
+# as test_eq_commands_assist.cpp above, plus ReplayZone()-driven vendor-open
+# setup (HC_OP_ShopRequest, HC_OP_ItemPacket) and bridge.drainIntents() to
+# assert the pushed VendorBuyIntent/VendorSellIntent fields directly.
+ADD_EXECUTABLE(test_eq_commands_vendor
+    test_eq_commands_vendor.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_commands_vendor GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_vendor PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_commands_vendor)
+
 # T24: SpellManager coverage (gem state machine, cast validation matrix via
 # direct validateCast()/checkMana()/checkRange()/adjustTargetForSpellType()
 # calls with hand-built SpellData, cooldown/memorization timing via T17-style
