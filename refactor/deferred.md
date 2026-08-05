@@ -1999,6 +1999,52 @@ leg that confirms a `SpellGemChanged`/`InventorySlotChanged` event is
 actually observed on the console bridge (not just inferred from a log
 line) — the mistake this entry itself documents T44 nearly made.
 
+## Bridge pointers are never cleared at teardown — five dangling pointers (T46 finding, 2026-08-04) — NOT FIXED
+
+Characterized precisely by T46 while wiring the managers:
+
+- **Graphics builds**: `ShutdownGraphics()` clears `EverQuest::m_bridge`
+  but **not** the four managers' (`InventoryManager`, `SpellManager`,
+  `SkillManager`, `HotbarModel`).
+- **True-headless (`EQT_GRAPHICS=OFF`) builds**: **none of the five** are
+  cleared, because that teardown block sits inside
+  `#ifdef EQT_HAS_GRAPHICS`.
+
+`Application::shutdown` does drop its own pointer and destroy the
+decorator, so after shutdown `EverQuest` and its managers hold pointers
+to a destroyed bridge. Survivable today only because nothing uses them
+post-shutdown — the kind of reasoning that stops being true the moment
+someone adds a shutdown-time flush or a late event.
+
+**T46 left the fix one line away on purpose**: `wireBridgeToSubsystems()`
+propagates whatever it is given including null, so a single
+`setBridge(nullptr)` in `Application::shutdown()` would clear all five at
+once. Wants its own small unit with a real before/after (ASAN or a
+deliberate post-shutdown publish), not a drive-by — the whole point is
+proving the teardown ordering, and this codebase has been bitten by
+lifecycle ordering three times already (P36 self-join, T03b/T35 RDP
+use-after-free, T30's unjoined stdin thread).
+
+## `PlayerSpawnIdSet` arrives later headless than in graphics mode (T46 observation, corrected 2026-08-05) — NOT a bug
+
+Recorded because it was reported as a defect and is not one, so nobody
+re-raises it.
+
+T46 flagged that `PlayerSpawnIdSet`'s publish at `eq_entities.cpp:396`
+(the `ZoneSpawns` path) is `#ifdef EQT_HAS_GRAPHICS`-gated, and read that
+as breaking `CastingStateChanged`-based casting reconstruction headless.
+
+**T43 had already investigated that exact site** and classified it
+legitimate, on the grounds that the `ClientUpdate` path publishes the
+same event unguarded. **Orchestrator verified T43 is right**: there is no
+guard around the `ClientUpdate` publish (`eq_entities.cpp` ~1517), so
+headless does receive `PlayerSpawnIdSet` — just later, at the first
+position update rather than at `ZoneSpawns`.
+
+So it is a *timing* difference across a window in which the player cannot
+have cast anything, not a missing event. Not a seventh instance of the
+graphics-gate family, and T43's classification stands.
+
 ## From Batch Z
 
 - Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO.
