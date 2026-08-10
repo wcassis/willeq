@@ -3312,6 +3312,33 @@ uncovered, since "first tests exist" easily gets misread as "now tested":
   `tests/test_static_ui_panels.cpp` for the exact geometry and reasoning.
   Fix would be either shrinking `UILayout::centerPopup`'s slot math or
   growing `popH` — production-code territory, out of scope here.
+  - **ORCHESTRATOR CORRECTION (2026-08-10, at T54 merge review) — this is
+    worse than the entry above states, on two axes. Verified directly, do
+    not re-derive:**
+    1. **It is NOT resolution-dependent.** `popW`/`popH` are hardcoded
+       `400`/`350` at `include/client/graphics/ui/ui_layout.h:131-132`,
+       independent of `width`/`height` — only the popup's *origin* is
+       centered. So the general row is unreachable at **every**
+       resolution, not just "the default 800x600 layout". The 800x600
+       framing above is an artifact of the geometry T54 happened to test
+       at; it reads as a small-screen edge case, and it is not one.
+    2. **It is a VISIBLE defect, not merely an input-dead one.**
+       `renderInventoryPopup` (`src/client/graphics/ui/static_panels.cpp:279-280`
+       and `:304`) computes `startY`/`genY` with **identical** arithmetic
+       to the hit test — so those slots are *drawn* at coordinates
+       outside `centerPopup`'s own background panel, i.e. the general row
+       and the overflowing equipment row render outside the popup frame
+       they belong to, over whatever is behind them. The render path and
+       the hit-test path agree with each other and both disagree with the
+       panel size; that shared constant is where a fix belongs, so the
+       two cannot drift apart while being corrected.
+    Consequence for scoping: this is a user-visible UI bug affecting all
+    8 general inventory slots plus equipment slots 20-21 in every
+    session, not a latent boundary-condition wart. It has presumably been
+    live since the static-panel UI replaced the deleted windows —
+    unnoticed because, until T54, nothing tested or exercised this
+    surface at all. **Worth a unit; needs Will's visual acceptance since
+    it changes on-screen layout.**
 - **`UIAtlas`-backed rendering** (the non-fallback path — real sprite atlas
   loaded, not the null-atlas immediate-draw fallback T54's smoke test
   exercises) is untested for every panel, static UI or otherwise.
