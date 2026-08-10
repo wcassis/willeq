@@ -885,11 +885,18 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> m_x={:.1f}, m_y={:.1f}",
 				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
 				m_pending_zone_x, m_pending_zone_y);
-			m_x = m_pending_zone_x;
-			m_y = m_pending_zone_y;
-			m_z = m_pending_zone_z;
+			// T55: route through SetPosition/SetHeading so the state layer's
+			// player position (m_game_state.player()) is written too, not
+			// just the raw m_x/m_y/m_z members -- the T39 pattern ("setters
+			// written but never wired") this unit closes. See
+			// refactor/T55_position_state_propagation.md. This branch is
+			// still the one T52 found to be structurally dead in every
+			// traced production flow (is_zone_transition is always false),
+			// but is fixed as hardening for whenever that reachability
+			// changes, same rationale T52 used for its own fix here.
+			SetPosition(m_pending_zone_x, m_pending_zone_y, m_pending_zone_z);
 			if (m_pending_zone_heading > 0) {
-				m_heading = m_pending_zone_heading;
+				SetHeading(m_pending_zone_heading);
 			}
 		}
 

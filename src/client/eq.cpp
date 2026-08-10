@@ -3074,6 +3074,13 @@ void EverQuest::UCSProcessBuddy(const EQ::Net::Packet &p)
 // Movement State Accessors (Phase 7.1 - use embedded m_game_state)
 // ============================================================================
 
+glm::vec3 EverQuest::Test_GetGameStatePlayerPosition() const
+{
+	// T55 test seam: read the state layer's own copy directly (see eq.h).
+	const auto& player = m_game_state.player();
+	return glm::vec3(player.x(), player.y(), player.z());
+}
+
 glm::vec3 EverQuest::GetPosition() const
 {
 	// Return actual position (m_x, m_y, m_z are kept up to date)
@@ -3438,8 +3445,29 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 	m_pending_zone_z = bind_z;
 	m_pending_zone_heading = bind_heading;
 
+	// T55: mirror producer B's WorldState publish (CheckZoneLine, eq_zone.cpp)
+	// so producer C's pending-zone state is visible from GameState too, not
+	// just via the raw EverQuest members -- see
+	// refactor/T55_position_state_propagation.md.
+	m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+
 	// Check if we're staying in the same zone or going to a different zone
 	bool is_same_zone = (target_zone_id == m_current_zone_id) || (target_zone_id == 0);
+
+	// T55: this handler used to store the pending zone coordinates (above)
+	// but perform NO local position write at all -- the T39 pattern
+	// ("setters written but never wired") surviving in the death/bind path.
+	// For the same-zone branch this meant the client kept showing the
+	// character's PRE-DEATH position until (if ever) a fresh PlayerProfile
+	// round-trip corrected it; see this unit's Review for the replay
+	// evidence that confirmed this live. Route through SetPosition/
+	// SetHeading (the T39 helpers: write both the raw m_x/m_y/m_z members
+	// and the state layer's PlayerState, firing PlayerMoved) so the
+	// client's own view of its position is correct immediately, for both
+	// branches -- the cross-zone branch benefits too, since the new zone's
+	// own PlayerProfile may arrive some time after this handler runs.
+	SetPosition(bind_x, bind_y, bind_z);
+	SetHeading(bind_heading);
 
 	if (is_same_zone) {
 		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})", bind_x, bind_y, bind_z);

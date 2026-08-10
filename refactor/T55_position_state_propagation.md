@@ -164,15 +164,208 @@ Full protocol bar. Additionally:
 
 ## Review
 
-(executor fills: convention-cleared confirmation with line evidence; the
-verified caller census for `SetPosition`; the same-zone-respawn verdict
-CONFIRMED or REFUTED with the replay evidence; the `PlayerProfile`
-decision and why; sites changed; pre/post test output; deviations)
+### Convention worry: CLEARED, confirmed with line evidence
 
-Board updates (`refactor/deferred.md`, append, never delete): re-title
-the succor/evac/death-bind "implicated" entry — the convention worry is
-cleared and the real defect is propagation. Add producer C to the
-documented producer list. **Record explicitly that the T39-T49 state-layer
-sweep was declared CLOSED while this hole was open**, and note what
-remains: the per-frame movement writes are still raw and unconverged, by
-decision, not by oversight.
+Verified in place, not re-derived: succor/evacuate remain client-side
+no-op stubs (`src/client/spell/spell_effects.cpp:274-278`, `:783-800`;
+`SpellEffect::Succor = 88` has no case), so all succor/evac position work
+runs through producer A (`ZoneProcessZoneChange`, `eq_zone.cpp`), fixed by
+T52. Death/bind (`ZoneProcessZonePlayerToBind`, `eq.cpp:3392`, opcode
+`HC_OP_ZonePlayerToBind = 0x385e`) swaps `bind_x = zone_y; bind_y =
+zone_x` at `eq.cpp:3426-3427` — the same correct convention producers A/B
+use. This is now covered by its own test,
+`ZonePositionConvention.ProducerC_SwapsWireOffsetsIntoClientFormat`
+(`tests/test_zone_position_convention.cpp`), closing T52's own documented
+coverage gap ("Producer C has no test at all today"). **Nothing to fix on
+the convention axis** — confirmed, not poked at further.
+
+### Verified caller census for `SetPosition`
+
+`grep -rn "SetPosition(" src/ include/` (re-run at this unit's start,
+before any edit): the only definition (`eq.cpp:3109`, unchanged by this
+unit) plus its declaration in `eq.h`; the only *callers* anywhere in
+`src/` were the two added by this unit's Step 2 (`eq.cpp`'s
+`ZoneProcessZonePlayerToBind`, `eq_login_world.cpp`'s
+`WorldProcessZoneServerInfo`) — zero production callers existed before
+this unit, confirming the plan's premise exactly.
+
+### Same-zone death-respawn verdict: **CONFIRMED**
+
+Pre-fix, `ZoneProcessZonePlayerToBind`'s same-zone branch
+(`target_zone_id == m_current_zone_id`, or `== 0`) logged "Same-zone
+respawn" but performed **no local position write of any kind** — not even
+the raw `m_x/m_y/m_z` write other forced-relocation sites at least had.
+Driven headlessly via `ReplayZonePacket` + a new `zone_id=0`
+`ZonePlayerToBind_Struct` payload
+(`ZonePositionConvention.ForcedRelocation_SameZoneDeathRespawnPropagatesLocally`),
+the state layer's player position (read via the new
+`Test_GetGameStatePlayerPosition()` accessor) and the legacy raw members
+(`GetPosition()`) both stayed at `(0,0,0)` — the constructor's default,
+completely unaffected by the replayed death packet. **Quoted pre-fix
+failure** (production code temporarily reverted to capture this, then
+reapplied — see "Pre/post test output" below) confirms the client would
+have kept showing the character's pre-death position with no local
+correction, relying entirely on whatever server `PlayerProfile` round-trip
+eventually arrives via the full zone-to-zone reconnect flow
+`ZoneProcessZoneChange` always triggers (T52's own finding: that flow
+runs unconditionally for every approved zone change, same-zone included).
+Fixed by routing both branches through `SetPosition`/`SetHeading`.
+
+### The `PlayerProfile` decision: **left out, deliberately**
+
+`PlayerProfile` (`eq.cpp:2154-2156` area) is a forced relocation by any
+honest reading — it decides the actual landing position on every zone
+entry per T52's Review — but it was **not** touched. Two reasons, both
+stated as the plan asked: (1) it falls outside this unit's explicit
+territory, which names only `SetPosition` and `ZoneProcessZonePlayerToBind`
+within `eq.cpp` — not every position-writing function in the file; (2) on
+inspection it turned out to have its own, separate T39-pattern gap worth
+flagging rather than silently expanding scope to fix: it writes only the
+raw `m_x/m_y/m_z` members and pushes `PlayerMoved` **directly onto the
+GameStateBridge** (`m_bridge->pushEvent`, consumed by
+`IrrlichtBridge`/`ConsoleBridge`) rather than through `SetPosition` or the
+state layer's `PlayerState`/EventBus at all — meaning the state layer's
+player position is *still* never updated on ordinary zone-in, even after
+this unit. Given the plan's own flagged risk ("it is also on the login
+path where an unexpected `PlayerMoved` could have ordering consequences"),
+this is exactly the kind of thing worth a dedicated unit rather than a
+drive-by. Recorded in `refactor/deferred.md`'s T55 addendum for the next
+person.
+
+### Sites changed
+
+- `src/client/eq.cpp` — `ZoneProcessZonePlayerToBind`: added the WorldState
+  pending-zone publish (mirrors producer B) and routed both the same-zone
+  and cross-zone branches through `SetPosition`/`SetHeading` (previously no
+  local write at all). Added `Test_GetGameStatePlayerPosition()` impl.
+- `src/client/eq_login_world.cpp` — `WorldProcessZoneServerInfo`'s apply
+  block: replaced the raw `m_x/m_y/m_z`/`m_heading` write with
+  `SetPosition`/`SetHeading`. Still structurally dead code per T52 (fixed
+  as hardening, same rationale T52 used for its own fix at this exact
+  site).
+- `src/client/eq_zone.cpp` — `ZoneProcessZoneChange` (producer A): added
+  the WorldState pending-zone publish only, matching producer B
+  (`eq_zone.cpp:765-767`). No other change to producer A.
+- `include/client/eq.h` — added `Test_GetGameStatePlayerPosition()`, a
+  narrow read-only accessor for `m_game_state.player().x()/y()/z()`
+  (previously no public reader existed); GetState's public surface was
+  not widened beyond this one read.
+- `tests/test_zone_position_convention.cpp` — 3 new tests (producer C
+  convention, cross-zone propagation, same-zone propagation) plus a
+  `BuildZonePlayerToBindPacket` helper.
+
+### Pre/post test output
+
+Pre-fix (production `ZoneProcessZonePlayerToBind` temporarily reverted to
+the tree's original raw-storage-only behavior, test file kept as written;
+re-applied immediately after capturing this):
+
+```
+[ RUN      ] ZonePositionConvention.ForcedRelocation_DeathBindPropagatesToGameStatePlayerPosition
+.../test_zone_position_convention.cpp:280: Failure
+Expected equality of these values:
+  statePos.x
+    Which is: 0
+  75.0f
+    Which is: 75
+... (y, z likewise: got 0, expected 50 / 3)
+[  FAILED  ] ZonePositionConvention.ForcedRelocation_DeathBindPropagatesToGameStatePlayerPosition (319 ms)
+[ RUN      ] ZonePositionConvention.ForcedRelocation_SameZoneDeathRespawnPropagatesLocally
+.../test_zone_position_convention.cpp:312: Failure
+Expected equality of these values:
+  statePos.x
+    Which is: 0
+  20.0f
+    Which is: 20
+... (y, z, and the raw-member checks likewise: all got 0)
+[  FAILED  ] ZonePositionConvention.ForcedRelocation_SameZoneDeathRespawnPropagatesLocally (1 ms)
+2 FAILED TESTS
+```
+
+Post-fix, full file:
+
+```
+[==========] Running 7 tests from 1 test suite.
+[ RUN      ] ZonePositionConvention.ProducerA_SwapsWireOffsetsIntoClientFormat
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerA_DeniedChangeClearsPendingZone
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerB_ZoneLinesPassesDestinationThroughUnswapped
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.Consumer_AppliesPendingZoneWithoutASecondSwap
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerC_SwapsWireOffsetsIntoClientFormat
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ForcedRelocation_DeathBindPropagatesToGameStatePlayerPosition
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ForcedRelocation_SameZoneDeathRespawnPropagatesLocally
+[       OK ] ...
+[  PASSED  ] 7 tests.
+```
+
+`ProducerB_ZoneLinesPassesDestinationThroughUnswapped` (the explicitly
+required regression guard for the common zone-line-travel path) and
+`Consumer_AppliesPendingZoneWithoutASecondSwap` (T52's own fixed-consumer
+pin) both stayed green throughout, untouched behaviorally by this unit.
+
+### Verification bar results
+
+1. `cmake --build build -j24` (GLES2-config tree): clean full rebuild,
+   only pre-existing unrelated `-Wpointer-arith` warnings in
+   `eq.cpp`'s trade-packet code (untouched by this unit). One-time
+   environment fix required and applied: `third_party/irrlicht-gles2-x86/`
+   was present but stale (built 2026-07-31, missing the `eqtGPUPhaseBegin`
+   family added 2026-08-10), causing an unrelated link failure; rebuilt via
+   `bash scripts/build-gles2-x86.sh --irrlicht-only`, unrelated to this
+   unit's source changes.
+2. `ctest --test-dir build --output-on-failure`: **1916/1917 passed**, sole
+   failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host
+   exception). New tests included and green.
+3. `bash scripts/build-gles2-x86.sh`: clean build, `willeq` +
+   `gles2_zone_benchmark` produced.
+4. `bash scripts/ci/visual_gate.sh`: `=== VISUAL GATE: PASS ===`
+   (qeynos2/gfaydark/befallen). `git status --porcelain data/` empty
+   before and after — goldens untouched.
+5. `bash scripts/build-arm-noble.sh`: `=== Success ===`, all ARM binaries
+   built including `build-arm-noble/bin/willeq`.
+6. `bash scripts/refactor/check_file_sizes.sh fable` (run from inside the
+   slot on the task branch): 5 files changed vs `fable` — `eq.h` 2063
+   lines (WARN, **pre-existing**: `git show fable:include/client/eq.h |
+   wc -l` = 2054, already over the 1500 threshold before this unit's
+   +9-line addition, same pre-existing condition T52 documented at this
+   same file); `eq.cpp` 3835 lines (FAIL, **pre-existing**: `git show
+   fable:src/client/eq.cpp | wc -l` = 3807, already over the 3000
+   threshold before this unit's +28-line addition); `eq_login_world.cpp`
+   923 (ok), `eq_zone.cpp` 884 (ok), `tests/test_zone_position_convention.cpp`
+   320 (ok). **No new FAILs or WARNs** — both flagged files were already
+   over their thresholds at the `fable` base revision.
+
+### Deviations from the plan, flagged rather than absorbed
+
+- **Irrlicht bootstrap re-run required.** `third_party/irrlicht-gles2-x86/`
+  existed in the slot but was stale relative to the checked-out source
+  (built before an unrelated 2026-08-10 renderer change), causing a link
+  failure unrelated to this unit's files. Re-ran
+  `scripts/build-gles2-x86.sh --irrlicht-only` per the protocol's own
+  documented fallback. Not a T55 code issue.
+- **No dedicated test for producers A/C's new WorldState pending-zone
+  publish.** The plan's Step 2 asked for this fix (mirroring producer B);
+  it is implemented (`eq_zone.cpp` producer A, `eq.cpp` producer C) and
+  verified by inspection to match producer B's existing, already-tested
+  call shape exactly, but adding a dedicated assertion would have required
+  a new `m_game_state.world()` test accessor beyond the one the plan asked
+  for ("do not widen GameState's public surface beyond what the assertion
+  needs") — the propagation tests already exercise the player-position
+  half of the same fix. Flagged rather than silently skipped.
+- **No live eqemu acceptance leg** — correctly out of scope per the unit's
+  own header ("NO EQEMU... fully headless"); all evidence above is
+  `ReplayZonePacket`-driven.
+
+Board updates: `refactor/deferred.md` — re-titled the succor/evac/death-bind
+"implicated" Index bullet and appended a "T55 addendum" subsection to the
+`## \`#goto\` same-zone teleport lands at the DB position` heading (the
+original body left intact per the never-delete rule), documenting the
+convention-cleared verdict, producer C added to the documented producer
+list, the T39-T49 sweep-closed-with-this-hole-open note, and what remains
+open by decision (per-frame movement writes; the `PlayerProfile` handler's
+own separate, unfixed propagation gap).

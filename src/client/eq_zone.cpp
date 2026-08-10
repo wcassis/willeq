@@ -123,6 +123,15 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	m_pending_zone_y = target_y;
 	m_pending_zone_z = target_z;
 
+	// T55: mirror producer B's WorldState publish (CheckZoneLine, further
+	// down in this file, "Phase 7.3: Also update WorldState") so the
+	// pending-zone state this producer stores is visible from GameState
+	// too, not just via the raw EverQuest members. This packet's reply
+	// (ZoneChange_Struct) carries no client heading field, so pass 0.0f --
+	// unlike producer B, this producer never populates m_pending_zone_heading
+	// at all. See refactor/T55_position_state_propagation.md.
+	m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, 0.0f);
+
 	// Zone-to-zone transition flow:
 	// 1. Disconnect from current zone server
 	// 2. Reconnect to world server (with zoning=1 flag)

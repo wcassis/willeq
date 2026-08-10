@@ -82,10 +82,13 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   `loadTextureFromBMP()` fallback, and `animated_mesh_creation.cpp`'s
   equipment texture-variant swap path. Heading: `## P37 follow-ups` (near
   the end, in the P46d sub-entry's "Open follow-up items" bullet).
-- Succor/evacuate/death-bind-respawn zone-position convention — implicated by
-  the same producer/consumer pair T52 fixed, not fixed, no known live
-  symptom. Heading: `` ## `#goto` same-zone teleport lands at the DB
-  position ``.
+- Succor/evacuate/death-bind-respawn zone-position convention — **CLEARED by
+  T55 (2026-08-10)**: all three are convention-clean (death/bind is producer
+  C, now documented and tested). The real, now-fixed defect was a different
+  one: forced-relocation position propagation to the state layer (T39
+  pattern surviving the sweep that declared it closed). Heading: `` ## `#goto`
+  same-zone teleport lands at the DB position `` (see its "T55 addendum" at
+  the end of that section).
 - The broader "UI-gesture-only reachability" pattern — narrowed to 6
   confirmed instances by T48/T51/T52, not retired; more producer-less
   intents likely remain. Heading: `## PATTERN: real features reachable
@@ -3219,3 +3222,58 @@ separate opcode and untouched. None has a known live symptom.
 transcripts against ~350KB for comparable units. Repacked at merge into
 excerpts plus gzipped full logs (8.1MB). **Use `-d 5` unless you
 specifically need packet dumps, and capture a narrow window if you do.**
+
+### T55 (2026-08-10) addendum — the "implicated" bullet above is RE-TITLED: convention worry CLEARED, real defect was propagation
+
+The Index bullet and the "Implicated ... and NOT fixed" paragraph above
+framed succor/evac/death-bind as sharing T52's *convention* bug (the
+double x/y swap). **T55 checked this directly and it does not hold**:
+succor and evacuate are client-side no-op stubs (`spell_effects.cpp:274-278`,
+`:783-800`; `SpellEffect::Succor = 88` has no case at all) — all succor/evac
+position work is server-driven through producer A
+(`ZoneProcessZoneChange`, `eq_zone.cpp`), which T52 already fixed. Death/bind
+(`ZoneProcessZonePlayerToBind`, `eq.cpp:3392`, opcode `HC_OP_ZonePlayerToBind
+= 0x385e`) swaps identically and correctly, confirmed here with its own new
+test (`ZonePositionConvention.ProducerC_SwapsWireOffsetsIntoClientFormat`,
+`tests/test_zone_position_convention.cpp`) — T52's fix silently corrected
+this producer's outbound packet too. **There was nothing left to fix on the
+convention axis.** `ZoneProcessZonePlayerToBind` is added here, explicitly,
+as producer C to the documented producer list (A = `ZoneProcessZoneChange`,
+B = `CheckZoneLine`, C = `ZoneProcessZonePlayerToBind`) alongside producers A
+and B above.
+
+**The real defect T55 found and fixed is a different one: propagation.**
+`EverQuest::SetPosition(x,y,z)` (`eq.cpp`) — the T39-era helper that writes
+both the raw `m_x/m_y/m_z` members and the state layer's
+`m_game_state.player()`, firing `PlayerMoved` — had **zero production
+callers** anywhere in `src/`; only tests called it. Every forced-relocation
+production site instead wrote the raw members directly (or, in death/bind's
+case, wrote *nothing at all* — see the same-zone finding below) and never
+touched the state layer. This is the exact T39 pattern ("setters were
+written but never wired, while readers were repointed at the new home
+anyway") surviving live, in the position path, after the T39-T49
+state-layer sweep was **declared CLOSED** (`project-state.md`, 2026-08-05)
+with this hole still open. T55 fixed it at the three forced-relocation
+sites in its territory: the zone-in consumer (`eq_login_world.cpp`,
+`WorldProcessZoneServerInfo`), death/bind (`eq.cpp`,
+`ZoneProcessZonePlayerToBind`, both branches), and the pending-zone
+WorldState publish for producers A and C (mirroring producer B's existing
+`setPendingZone()` call). See `refactor/T55_position_state_propagation.md`
+Review for the pre/post test evidence, including the CONFIRMED same-zone
+death-respawn finding (before the fix, the client kept showing the
+character's pre-death position with no local write at all, relying
+entirely on an eventual server `PlayerProfile` round-trip).
+
+**What remains, explicitly by decision, not oversight**: T55's scope was
+held to forced relocation only. The per-frame movement writes
+(`eq_movement.cpp`, `eq_entities.cpp`, `eq_bridge.cpp`,
+`eq_commands_movement.cpp`) are still raw and unconverged — routing hot
+movement through `SetPosition` would fire `PlayerMoved` per frame, an
+event-storm/perf question needing its own investigation with measurements.
+Also left alone: the `PlayerProfile` handler (`eq.cpp:2154-2156`), which
+still writes only the raw `m_x/m_y/m_z` members and pushes `PlayerMoved`
+directly onto the **GameStateBridge** (not through `SetPosition`, and not
+onto the state layer's `PlayerState`/EventBus at all) — outside T55's
+named territory (limited to `SetPosition` and
+`ZoneProcessZonePlayerToBind` within `eq.cpp`), and deliberately not
+touched given the login-path ordering risk the unit plan flagged.
