@@ -340,6 +340,71 @@ pin) both stayed green throughout, untouched behaviorally by this unit.
    320 (ok). **No new FAILs or WARNs** — both flagged files were already
    over their thresholds at the `fable` base revision.
 
+### Coordinator review correction (post-initial-landing): unconditional `SetPosition` on cross-zone was a defect, fixed
+
+The first version of this unit's `ZoneProcessZonePlayerToBind` fix called
+`SetPosition`/`SetHeading` unconditionally, above the `is_same_zone` branch.
+The coordinator caught this: at the moment this handler runs, the client is
+still fully zoned in to the OLD zone (`IsFullyZonedIn()` true,
+`m_zone_connection` still live) — `ProcessDeferredZoneChange` doesn't
+disconnect until *after* the `OP_ZoneChange` handshake this handler
+triggers completes. `SendPositionUpdate()` (`eq_movement.cpp:958-963`) is
+gated on exactly that same `IsFullyZonedIn()`+`m_zone_connection` check,
+throttled only by a 250ms timer. So the unconditional write let the client
+transmit the BIND ZONE's coordinates to the OLD zone's server on its very
+next position update, which would accept and persist them — T52's central
+lesson verbatim, reintroduced by this unit. Worse on the denied path
+(pinned by `ProducerA_DeniedChangeClearsPendingZone`): a denied cross-zone
+change would leave the character sitting in the old zone at coordinates
+belonging to a different zone.
+
+**Verified the coordinator's claim rather than taking it on faith**: traced
+`IsFullyZonedIn()`'s definition and confirmed nothing in
+`ZoneProcessZonePlayerToBind` (or anything it calls before the position
+write) touches `m_zone_connected`/`m_zone_connection` — the disconnect
+genuinely happens later, in `ProcessDeferredZoneChange`, gated on
+`m_zone_change_approved` which this handler's own `RequestZoneChange` call
+sets only after a further server round-trip. The claim held.
+
+**Fix**: moved `SetPosition`/`SetHeading` inside the `is_same_zone` branch
+only. The pending-zone store and the `setPendingZone()` WorldState publish
+stay unconditional (correct for both branches — see main Review above).
+Same-zone is safe because the coordinates are valid for the very server
+that will receive them; cross-zone withholds the write and leaves the
+far-side landing position to the zone-in consumer
+(`WorldProcessZoneServerInfo`/`PlayerProfile`), exactly as the coordinator
+specified.
+
+**New regression test**: replaced the second propagation test (which had
+asserted the now-known-wrong cross-zone write) with
+`ZonePositionConvention.ForcedRelocation_CrossZoneDeathRespawnDoesNotWriteLocalPosition`
+— replays `HC_OP_ZonePlayerToBind` with `zone_id=99` (≠ current zone) and
+asserts both `Test_GetGameStatePlayerPosition()` and `GetPosition()` stay
+at the constructor's `(0,0,0)` default, while `GetPendingZoneId/X/Y/Z()`
+ARE populated (75, 50, 3 per the established swap convention). Verified
+this test actually catches the regression: temporarily reintroduced the
+unconditional call, rebuilt, and confirmed the test fails with
+`statePos.x` = 75 (expected 0) etc. — 6 assertion failures, all showing the
+bind-zone coordinates leaking into local position. Restored the
+branch-gated fix immediately after. The same-zone test
+(`ForcedRelocation_SameZoneDeathRespawnPropagatesLocally`) is unchanged and
+still pins the original CONFIRMED finding.
+
+**Re-ran the full verification bar after this correction** (see updated
+results above, which supersede the first-pass numbers): `ctest`
+1916/1917 (same sole ALSA exception); `visual_gate.sh` PASS, goldens
+untouched; ARM cross-compile `=== Success ===`;
+`check_file_sizes.sh --files <5 touched paths>` — `eq.h` WARN (2063
+lines, still the same pre-existing condition) and `eq.cpp` FAIL (3853
+lines, +46 vs the 3807-line `fable` baseline — grew slightly from the
+expanded justification comment, still pre-existing, not newly triggered).
+Note: the bare `check_file_sizes.sh fable` form now also reports files
+from sibling units T54/T56 that merged into `fable` after this branch was
+cut (`main.cpp`, `willeq_database.cpp`, two test files) — an artifact of
+diffing against a `fable` tip that moved forward under this branch, not
+anything this unit touched; used `--files` with this unit's actual 5
+changed paths instead, per the protocol's own documented escape hatch.
+
 ### Deviations from the plan, flagged rather than absorbed
 
 - **Irrlicht bootstrap re-run required.** `third_party/irrlicht-gles2-x86/`

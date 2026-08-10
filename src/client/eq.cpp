@@ -3460,16 +3460,34 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 	// For the same-zone branch this meant the client kept showing the
 	// character's PRE-DEATH position until (if ever) a fresh PlayerProfile
 	// round-trip corrected it; see this unit's Review for the replay
-	// evidence that confirmed this live. Route through SetPosition/
-	// SetHeading (the T39 helpers: write both the raw m_x/m_y/m_z members
-	// and the state layer's PlayerState, firing PlayerMoved) so the
-	// client's own view of its position is correct immediately, for both
-	// branches -- the cross-zone branch benefits too, since the new zone's
-	// own PlayerProfile may arrive some time after this handler runs.
-	SetPosition(bind_x, bind_y, bind_z);
-	SetHeading(bind_heading);
-
+	// evidence that confirmed this live.
+	//
+	// The local write is applied ONLY on the same-zone branch, and this is
+	// deliberate, not a missed case. At the moment this handler runs, the
+	// client is still fully zoned in to the OLD zone -- IsFullyZonedIn() is
+	// true and m_zone_connection is still live; the disconnect doesn't
+	// happen until ProcessDeferredZoneChange runs, after the OP_ZoneChange
+	// handshake below completes. SendPositionUpdate() (eq_movement.cpp) is
+	// gated on exactly that same IsFullyZonedIn()+m_zone_connection check,
+	// throttled only by a 250ms timer -- so writing the BIND ZONE's
+	// coordinates into m_x/m_y/m_z here on a CROSS-zone death would let the
+	// client transmit them to the OLD zone's server on its very next
+	// position update, which will accept and persist them. This is T52's
+	// central lesson verbatim ("the server respects whatever position the
+	// client sends it... a client that mis-applies an approved teleport
+	// position will immediately correct the server back to the wrong place
+	// via its next SendPositionUpdate()") -- and it would bite even harder
+	// on the DENIED path (pinned by
+	// ZonePositionConvention.ProducerA_DeniedChangeClearsPendingZone):
+	// a denied cross-zone change would leave the character sitting in the
+	// OLD zone, at coordinates that belong to a different zone. Same-zone
+	// has no such risk -- the coordinates are valid for the very server
+	// that will receive them. On cross-zone, the far-side landing position
+	// is the zone-in consumer's job (WorldProcessZoneServerInfo /
+	// PlayerProfile), not this handler's.
 	if (is_same_zone) {
+		SetPosition(bind_x, bind_y, bind_z);
+		SetHeading(bind_heading);
 		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})", bind_x, bind_y, bind_z);
 	} else {
 		LOG_DEBUG(MOD_MAIN, "Cross-zone respawn: current zone {} -> bind zone {}",
