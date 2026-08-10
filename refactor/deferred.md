@@ -123,12 +123,28 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
 - 8 `DoorManagerGraphicsTest.*` skips — gated on `DISPLAY`/Irrlicht-device
   creation in `SetUp()` (`tests/test_door_loading.cpp`); environment-gated by
   design, not re-examined for coverage loss.
-- 6 `InventoryModelViewTest.*` skips — **all six `TEST_F`s are
-  unconditionally `GTEST_SKIP()`'d** ("WindowManager has been deleted - test
-  disabled"), independent of environment (`tests/test_inventory_model_view.cpp`
-  lines 251-287). This is different from the other 13 skip families in this
-  index: it is not environment-gated at all, it is a fixture nobody re-enabled
-  after a dependency was deleted. Worth more scrutiny than the others.
+- 6 `InventoryModelViewTest.*` skips — **RESOLVED by T54 (2026-08-10),
+  `tests/test_inventory_model_view.cpp`.** The fixture itself (its six
+  unconditionally-skipped `TEST_F`s plus ~150 lines of now-unreachable
+  live-EQEmu-server/DISPLAY helper machinery) was deleted — the subject,
+  the paperdoll UI (`WindowManager`/`InventoryWindow`/`CharacterModelView`,
+  deleted in `0f25cb57`), was gone, not merely environment-gated. Three of
+  the six assertions had live production code behind them at a lower layer
+  (`RaceModelLoader`/`EQAnimatedMeshSceneNode`, still alive and unchanged)
+  and were ported headless (`EDT_NULL` device, no server/DISPLAY) into
+  `RaceModelAnimationHeadlessTest`: `ModelHasTexturesApplied_Headless`,
+  `LoadsForRaceAndGender_Headless`, and
+  `CreateAnimatedNodeWithEquipment_Headless` (the last one found and
+  documented, not silently dropped, that
+  `createAnimatedNodeWithEquipment()` does NOT attach weapon geometry —
+  see that test's comment for the full trace). The other three
+  (render-to-texture, survives-zoning, and the original
+  `ModelAnimatesProperly` — already superseded pre-T54 by
+  `ModelAnimatesProperly_Headless`) were pure view predicates with no
+  production code left to assert on; deleted, not weakened. See the new
+  "inventory character preview" entry below for the feature-loss record,
+  and T54's own plan/Review (`refactor/T54_inventory_view_test_reckoning.md`)
+  for the full port-vs-delete accounting.
 - `PfsArchiveContentTest.DdsFileValid` — gated on EQ client files / archive
   DDS-content availability (`tests/test_pfs_archive.cpp`); asset-presence
   gated, not re-examined.
@@ -3219,3 +3235,83 @@ separate opcode and untouched. None has a known live symptom.
 transcripts against ~350KB for comparable units. Repacked at merge into
 excerpts plus gzipped full logs (8.1MB). **Use `-d 5` unless you
 specifically need packet dumps, and capture a narrow window if you do.**
+
+## NEW: the inventory character preview (3D paperdoll) is a deliberate, recorded gap — not a bug (T54, 2026-08-10)
+
+`CharacterModelView` — the 3D character-model preview panel inside the old
+inventory window, showing your equipped appearance while you managed
+items — was deleted along with the rest of the old `WindowManager`/
+`WindowBase` UI tree in `0f25cb57` ("U07c2: Delete WindowManager + all old
+UI window files (~35K lines)", 2026-03-15) and was **never reimplemented**
+in the static-panel UI that replaced it (`include/client/graphics/ui/`,
+`static_panels.h`'s `renderInventoryPopup()` — equipment/general slot
+icons only, no 3D preview surface at all).
+
+Until T54, the only trace this feature had ever existed was six
+unconditionally-`GTEST_SKIP()`'d `InventoryModelViewTest` cases in
+`tests/test_inventory_model_view.cpp`, added the same commit that deleted
+the feature. T54 deleted that fixture (see the re-titled entry above) as
+part of cleaning up dead-fixture test debt — which would have erased the
+last record of the gap entirely. **This entry exists so the intent is not
+lost**: Will asked explicitly that removing the skip-only tests not also
+erase the memory that a paperdoll preview once existed and was removed by
+design (a UI-rewrite scope cut), not lost by accident.
+
+What would be needed to rebuild it: a render-to-texture or dedicated
+viewport surface hosting an `EQAnimatedMeshSceneNode` (built via
+`RaceModelLoader::createAnimatedNodeWithEquipment()`, which — see T54's
+`CreateAnimatedNodeWithEquipment_Headless` test — already handles body/
+armor texture variants correctly but does NOT attach weapon geometry to
+the returned node; weapon attachment lives entirely inside
+`EntityRenderer` via a separate `EquipmentModelLoader` mesh lookup and
+would need its own path here), composited into `centerPopup`'s inventory
+region alongside the existing equipment-slot grid. Not scoped or started
+by this unit — this is a feature-loss record, not a design.
+
+## NEW: static-panel UI surface still untested after T54 (2026-08-10)
+
+T54 added the first-ever tests for the static-panel UI
+(`tests/test_static_ui_panels.cpp`: `StaticUIInput::processInput()` hit-
+testing for the hotbar, spell gems and inventory popup;
+`StaticUIInput::processKey()`'s ESC-closes-popup path; one `EDT_NULL`
+`renderInventoryPopup()` smoke test). Being honest about what's still
+uncovered, since "first tests exist" easily gets misread as "now tested":
+
+- **Spellbook and skills popup hit-testing** (`static_ui_input.cpp`'s
+  `spellbook.isOpen`/`skills.isOpen` branches — row hover, page
+  navigation, scroll) — zero coverage. Same file, same idiom as the
+  inventory tests T54 added; not done for scope/time, not because it's
+  harder.
+- **The spellbook memorize click is a known no-op**: clicking a spell row
+  in `static_ui_input.cpp`'s spellbook branch only `LOG_INFO`s the click
+  — "would need MemorizeSpellIntent" is a comment already in the
+  production code (not a T54 finding, but T54's test-writing surfaced it
+  again while reading the file end-to-end; recorded here since nothing in
+  this board named it before).
+- **Every other panel's render function is untested**: `renderPlayerStatus`,
+  `renderTargetInfo`, `renderChatPanel`, `renderHotbar`,
+  `renderSpellGemPanel`, `renderBuffBar`, `renderCastingBar`,
+  `renderGroupPanel`, `renderPetPanel`, `renderXPBar`,
+  `renderSpellbookPopup`, `renderSkillsPopup` — only `renderInventoryPopup`
+  got the optional `EDT_NULL` smoke-test treatment (plan Step 3's explicit
+  "optional tail", done because time remained after the input tests were
+  green).
+- **A real layout-sizing defect T54's boundary tests found and left
+  unfixed** (production code was read-only territory this unit):
+  `InventoryPanelState`'s general-inventory row (8 slots) is **entirely
+  unreachable** by mouse at the default 800x600 layout —
+  `centerPopup` is only 350px tall but the equipment grid (11 rows ×
+  34px + 22px header + 8px gap) needs 382px before the general row even
+  starts, so `genY` (529) lands 54px below `centerPopup`'s bottom edge
+  (475) and the outer popup-bounds check in `processInput()` rejects every
+  point in that row before the per-slot hit test ever runs. The bottom two
+  rows of the 22-slot equipment grid are partially/fully unreachable for
+  the same reason. See
+  `StaticUIInputTest.InventoryGeneralSlotsAreWhollyUnreachable` and
+  `.InventoryEquipGridRow10IsUnreachable` in
+  `tests/test_static_ui_panels.cpp` for the exact geometry and reasoning.
+  Fix would be either shrinking `UILayout::centerPopup`'s slot math or
+  growing `popH` — production-code territory, out of scope here.
+- **`UIAtlas`-backed rendering** (the non-fallback path — real sprite atlas
+  loaded, not the null-atlas immediate-draw fallback T54's smoke test
+  exercises) is untested for every panel, static UI or otherwise.
