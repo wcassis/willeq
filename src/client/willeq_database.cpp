@@ -30,17 +30,32 @@ bool WilleqDatabase::open(const std::string& dbPath) {
     sqlite3_exec(db_, "PRAGMA cache_size=-1024", nullptr, nullptr, nullptr);   // 1MB page cache
     sqlite3_exec(db_, "PRAGMA query_only=ON", nullptr, nullptr, nullptr);
 
-    // Verify database has expected tables
+    // Verify database has expected tables and matches the schema version
+    // this client was built against (T56 fix — previously only logged,
+    // never compared; a stale db silently returned empty spell lookups
+    // instead of a clear error, see refactor/deferred.md).
     sqlite3_stmt* check;
     if (sqlite3_prepare_v2(db_, "SELECT value FROM metadata WHERE key='version'",
                             -1, &check, nullptr) == SQLITE_OK) {
         if (sqlite3_step(check) == SQLITE_ROW) {
             int version = sqlite3_column_int(check, 0);
+            sqlite3_finalize(check);
+            if (version != kWilleqDbExpectedVersion) {
+                LOG_FATAL(MOD_MAIN,
+                    "WilleqDatabase: {} has schema version {} ({}) but this client expects "
+                    "version {} — rebuild it: run the willeq_db_builder tool "
+                    "(tools/willeq_db_builder.cpp) to regenerate data/willeq.db",
+                    dbPath, version, version < kWilleqDbExpectedVersion ? "too old" : "too new",
+                    kWilleqDbExpectedVersion);
+                sqlite3_close(db_);
+                db_ = nullptr;
+                return false;
+            }
             LOG_INFO(MOD_MAIN, "WilleqDatabase: opened {} (version {})", dbPath, version);
         } else {
+            sqlite3_finalize(check);
             LOG_WARN(MOD_MAIN, "WilleqDatabase: no version metadata in {}", dbPath);
         }
-        sqlite3_finalize(check);
     } else {
         LOG_ERROR(MOD_MAIN, "WilleqDatabase: {} missing metadata table", dbPath);
         sqlite3_close(db_);

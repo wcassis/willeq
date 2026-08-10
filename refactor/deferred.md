@@ -41,11 +41,12 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   audit" list).
 
 **Client correctness bugs**
-- `willeq.db` schema version bumped but never validated at open. Heading:
-  `## willeq.db schema version is bumped but never validated`.
-- `--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp` — confirmed
-  still reproducing, T53. Heading: `` ## `--log-level=` is clobbered by
-  `SetDebugLevel(0)` in main.cpp ``.
+- ~~`willeq.db` schema version bumped but never validated at open.~~ **FIXED
+  by T56 (2026-08-10).** Heading: `## willeq.db schema version is bumped but
+  never validated`.
+- ~~`--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp`.~~
+  **FIXED by T56 (2026-08-10).** Heading: `` ## `--log-level=` is clobbered
+  by `SetDebugLevel(0)` in main.cpp ``.
 - `ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
   still true, T53. Heading: `## ConstrainedMeshCache is never constructed`.
 - `SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
@@ -53,9 +54,17 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
 - Auto-loot on kill never wired to the authoritative death event; shift+click
   loot path unverified. Heading: `## Auto-loot on kill has NEVER worked
   against a real server`.
-- `race=415` missing model data still crashes graphics mode — confirmed still
-  reproducing, T53. Heading: `` ## `race=415` missing model data still
-  crashes graphics mode ``.
+- ~~`race=415` missing model data still crashes graphics mode — confirmed
+  still reproducing, T53.~~ **STALE: actually FIXED by T38 (2026-08-04), one
+  day before T53's pass ran; T53 missed it, corrected by T56 (2026-08-10).**
+  The crash itself is closed; a genuine data/content remainder (placeholder
+  cubes past `config/race_models.json`'s race_id 367 ceiling) is now tracked
+  as its own item, see the next bullet. Heading: `` ## `race=415` missing
+  model data still crashes graphics mode ``.
+- NEW (T56, 2026-08-10): `race=415`/`race=330` render as placeholder cubes,
+  a data/content gap (not a crash, not a code bug) — needs asset
+  verification and a visual acceptance only Will can give. Heading:
+  `` ## `race=415`/`race=330` render as placeholder cubes ``.
 - blackburrow/crushbone render entirely blank in the benchmark — not
   root-caused, needs a live render to settle. Heading: `## From Batch H`.
 - No unattended character creation on a fresh eqemu DB — confirmed still
@@ -91,7 +100,11 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   intents likely remain. Heading: `## PATTERN: real features reachable
   only through a UI gesture`.
 
-**FIXED but the board still said open — corrected by this pass**
+**FIXED but the board still said open — corrected by this pass** (plus one
+later correction: `race=415` missing model data — T38 fixed it 2026-08-04,
+T53 missed the re-title on 2026-08-05, T56 corrected it 2026-08-10; see
+that heading above, now itself in the "Client correctness bugs" list with
+a strikethrough, and the meta-finding inside the entry)
 - `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` bridge
   wiring headless — the entry (filed as a T45 finding, "NOT FIXED") was
   stale: T46 (`b5f5c1d6`) fixed exactly this via
@@ -1640,7 +1653,24 @@ Repro commands for a future session:
 (empty) vs `grep -rn "combat()\.targetId()\|combat()\.hasTarget()" src/`
 (five hits).
 
-## willeq.db schema version is bumped but never validated (T27 follow-up, 2026-08-02)
+## willeq.db schema version is bumped but never validated (T27 follow-up, 2026-08-02) — **FIXED by T56 (2026-08-10)**
+
+**CLOSED.** `WilleqDatabase::open()` (`src/client/willeq_database.cpp`) now
+compares `metadata.version` against a new shared constant,
+`EQT::kWilleqDbExpectedVersion` (`include/client/willeq_database.h`, = 2),
+after reading it. On mismatch it `LOG_FATAL`s naming the rebuild command
+(`tools/willeq_db_builder`) and returns false; both older-than-expected and
+newer-than-expected are fatal (a newer db against an older client would
+otherwise fail just as opaquely). `tools/willeq_db_builder.cpp`'s
+`setMeta("version", ...)` call now reads the same constant instead of a
+hardcoded literal, so builder and client cannot drift again. Missing
+`metadata` table and missing-version-row-but-table-present behaviour are
+unchanged (still ERROR+fail, and WARN+open respectively). Five new tests in
+`tests/test_willeq_database.cpp` (`WilleqDatabaseVersionTest`) cover
+matching/older/newer version and both missing-table/missing-row cases
+against throwaway temp sqlite files — the tracked `data/willeq.db` was never
+touched. See `refactor/T56_logging_db_board_fixes.md` Review for the full
+verification transcript. Original report follows for the record:
 
 T27 bumped `metadata.version` 1→2 when it added the `class_levels` BLOB
 column, but **nothing reads that version** (the executor checked; it is
@@ -1838,7 +1868,26 @@ non-slash `say`/`tell`/`quit` words are now redundant with `/say`,
 `/tell`, `/quit` through the unified channel. Left in place (something
 may depend on them); retire once nothing does.
 
-## `--log-level=` is clobbered by `SetDebugLevel(0)` in main.cpp (T31 finding, 2026-08-02) — NOT FIXED
+## `--log-level=` is clobbered by `SetDebugLevel(0)` in main.cpp (T31 finding, 2026-08-02) — **FIXED by T56 (2026-08-10)**
+
+**CLOSED.** `src/client/main.cpp` now detects whether `--log-level=` was
+given explicitly (scans `argv` after `InitLogging()` has already applied
+it) and, if so, restores that level after `EverQuest::SetDebugLevel()`
+would otherwise clobber it back down from `-d`'s default of 0. **Decision:
+explicit `--log-level=` beats numeric `-d`** when both are given (silent
+precedence is what produced this bug; a one-line `LOG_INFO` fires when the
+two disagree, naming which won). `-d` alone is unaffected — same behaviour
+as before. `--help` (`src/client/application.cpp:2090`) now documents the
+interaction. Verified end-to-end with three piped binary runs
+(`--log-level=DEBUG` alone, `-d 3` alone, both together with disagreeing
+levels) — see `refactor/T56_logging_db_board_fixes.md` Review for the full
+transcripts. No test seam exists for this specific fix (the logic lives
+inline in `main()`, which isn't compiled into a linkable target), so no
+unit test was added for it — documented rather than invented, per the T56
+plan's instruction. `eq.h`'s `SetDebugLevel()`/`logging.h`'s
+`SetDebugLevel()` were both left untouched (out of this unit's territory);
+the fix is entirely local to `main.cpp`. Original report follows for the
+record:
 
 Found by T31 while building its acceptance transcript, worked around
 rather than fixed (outside that unit's `logging.h` territory).
@@ -1943,7 +1992,64 @@ this route any more.
 Evidence: `benchmarks/audits/T32/` (run scripts + full transcripts) on
 `task/T32-loot-verification`.
 
-## `race=415` missing model data still crashes graphics mode (T32 re-test, 2026-08-03)
+## `race=415` missing model data still crashes graphics mode (T32 re-test, 2026-08-03) — **FIXED by T38 (2026-08-04)**
+
+**CLOSED, T56 (2026-08-10) correction.** This entry was stale: **T38 fixed
+it on 2026-08-04** (`3e4f6bcd`, "T38: a missing base model skips one
+entity, not the whole zone load"; `refactor/T38_missing_model_nonfatal.md`),
+the day before T53's board-hygiene pass ran (2026-08-05). T53 checked this
+exact entry, recorded "OPEN, confirmed still reproducing … no later fix
+commit found" (`refactor/T53_deferred_board_hygiene.md:189`), and missed
+it — one day wide.
+
+**Re-verified at tip (T56, commit `d126e6fd` base) before writing this
+correction, per that unit's hard precondition:**
+- `src/client/graphics/renderer_zone_load.cpp:1437-1481`
+  (`loadZoneStep8a_BaseModelPrep`) is now a per-entity `LOG_WARN` + skip:
+  on `preloadModelData()` failure it logs a WARN naming the race/gender and
+  increments `ctx.entitiesSkipped` / inserts into
+  `ctx.skippedRaceGenderPairs` (declared `renderer_zone_load.cpp:94-95`),
+  sets `ctx.entitySuccess = false`, and returns `true` (the zone load
+  continues) — no `LOG_FATAL`, no abort. An end-of-step summary at
+  `:1395-1407` reports the count and race/gender pairs whenever
+  `entitiesSkipped > 0`.
+- The entity falls through to `EntityRenderer::getMeshForRace()`'s
+  documented placeholder-cube fallback (`src/client/graphics/CLAUDE.md`,
+  "Model Loading Order" step 5).
+- The parallel runtime path, `src/client/graphics/entity_prep_worker.cpp:139-145`
+  (`EntityPrepWorker::processRequest`), was already non-fatal before T38 —
+  confirmed still true: `preloadModelData()` failure just leaves
+  `success = false` and is logged/handled downstream, no `LOG_FATAL`.
+- `grep -rn LOG_FATAL src/client/graphics/` turns up exactly four
+  survivors, none of them "missing race model" FATALs: two are
+  whole-config-file-missing FATALs unrelated to any single entity
+  (`entity_equipment.cpp:38` — `data/item_models.json` failed to load;
+  `irrlicht_renderer.cpp:538` — `config/race_models.json` itself failed to
+  load), and two are equipment-archive/WLD load FATALs
+  (`eq/equipment_model_loader.cpp:920,927`), a different failure class
+  from base race-model prep. **No `LOG_FATAL` on a missing race model
+  remains anywhere in `src/client/graphics`.**
+- T38's committed acceptance evidence is present:
+  `benchmarks/audits/T38/run_race415_acceptance.sh`.
+
+All of T56's Part 3 precondition held, so this re-title stands.
+
+**Meta-finding, worth recording on its own:** T53's hygiene pass found and
+fixed six stale-but-marked-open entries — and, per this correction, itself
+produced a seventh miss, one commit and one day wide. The board's drift is
+not a solved problem; T53's own closing caveat ("it is NOT self-maintaining")
+is now directly evidenced, not just asserted. Treat every "OPEN, confirmed
+still reproducing" note as time-stamped, not permanent — re-verify at the
+commit you're standing on, not at the commit the note was written at.
+
+**Genuine remainder, logged separately below** (out of T38's scope and out
+of this unit's): race 415 and gfaydark's race=330 still render as
+placeholder cubes, not their real models — `config/race_models.json` tops
+out at race_id 367 (`refactor/T38_missing_model_nonfatal.md:85`). See
+`` ## `race=415`/`race=330` render as placeholder cubes — data/content gap
+past `config/race_models.json`'s race_id 367 ceiling `` below.
+
+Original report follows for the record:
 
 Re-tested after the stale-`eq_client_path` fix, since that was the
 leading hypothesis. **Still reproduces** — genuinely separate: the model
@@ -1952,6 +2058,22 @@ fails clean (FATAL → requested quit → exit 0) rather than hanging, and
 it blocks graphical live sessions, which is what Will's "the same
 commands in a real session" ruling ultimately wants. Same family as the
 recorded gfaydark `race=330` FATAL.
+
+## `race=415`/`race=330` render as placeholder cubes — data/content gap past `config/race_models.json`'s race_id 367 ceiling (T56, 2026-08-10)
+
+**New entry, NOT the same claim as the one above** (that one — the crash —
+is fixed; this is the genuine remainder T38 left explicitly out of scope
+and this unit leaves out of scope too). Race 415 and gfaydark's race=330
+no longer crash graphics mode, but both still render as generic colored
+placeholder cubes rather than their intended models, because
+`config/race_models.json` only maps race IDs up to 367
+(`refactor/T38_missing_model_nonfatal.md:85`). This is a *data/content*
+gap — either the S3D archives genuinely lack these models, or
+`race_models.json` needs new entries pointing at models that do exist
+somewhere — not a code bug. Needs its own unit: asset verification (do
+these races have real model data anywhere in the client archives?) and a
+live visual acceptance only Will can give. Not attempted here per the T56
+plan's explicit scope boundary.
 
 ## `check_file_sizes.sh` reports a vacuous pass indistinguishably from a real one (T33 finding, 2026-08-03) — **FIXED by T37 (2026-08-04)**
 

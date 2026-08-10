@@ -154,6 +154,286 @@ separately — this unit's parts stand or fall independently.
 
 ## Review
 
-(executor fills: the `-d` vs `--log-level` precedence decision and its
-rationale; the log-level run transcripts; where the shared version
-constant landed and why; the Part 3 re-verification evidence; deviations)
+**Status: all three parts PASS. Full verification bar PASS.**
+
+### Part 1 — `--log-level=` clobber — FIXED
+
+**Precedence decision:** explicit `--log-level=` beats numeric `-d`, per
+the plan's recommendation — silent precedence is what produced this bug.
+Implemented entirely in `src/client/main.cpp` (no `logging.h`/`eq.h`
+changes — both out of territory): after `InitLogging(argc, argv)` runs
+(which already applies `--log-level=` if present), `main()` scans `argv`
+itself for `--log-level=` and captures the level `InitLogging()` just set.
+`EverQuest::SetDebugLevel(config.debugLevel)` is still called unconditionally
+(unchanged — no `eq.h` territory to touch), but if `--log-level=` was
+explicit, its captured level is immediately restored via `SetLogLevel()`,
+undoing the clobber. A one-line `LOG_INFO` fires naming the winner only
+when `-d`'s derived level and the explicit level actually disagree. `-d`
+alone is bit-for-bit unchanged behaviour. `--help`
+(`src/client/application.cpp:2090-2092`) now documents the interaction.
+
+**No test seam exists** for this fix: the logic lives inline in `main()`,
+which is compiled only into the `willeq` executable target, not a linkable
+library/test target — spawning the binary was the only way to exercise it
+(as the plan anticipated as a possibility). Said so rather than inventing
+one.
+
+**End-to-end verification (three piped binary runs, redirected to files,
+never piped through grep/tail — logs read via Read tool):**
+
+1. `--log-level=DEBUG` alone (no `-d`): DEBUG-level lines
+   (`[DEBUG] [MAIN] S01: Config validation passed`, etc.) reached stdout.
+   Confirms the fix — before this change, `config.debugLevel` defaulting
+   to 0 would have driven the global level back to NONE one line later.
+2. `-d 3` alone (no `--log-level=`): only WARN/ERROR/FATAL lines appeared,
+   zero DEBUG lines — correct for level 3 (WARN), unaffected by the new
+   code path (`logLevelExplicit` false, falls to the original
+   `if (config.debugLevel > 0) SetLogLevel(config.debugLevel)` branch).
+3. `-d 1` (FATAL) + `--log-level=DEBUG` together (disagreeing): output
+   opened with
+   `--log-level=DEBUG and -d 1 disagree; --log-level= wins (effective level: DEBUG)`
+   and DEBUG lines reached stdout — explicit flag won, notice fired.
+
+All three runs used a throwaway scratch config
+(`.../scratchpad/test_config.json`, `host`/`user`/`pass`/`server`/`character`
+dummy values) since no `willeq.json` exists in the worktree; runs correctly
+fail later at "WilleqDatabase not found at data/willeq.db" (relative-path
+lookup, cwd was the scratch dir, not the repo root) — irrelevant to the
+log-level claim, which only needed the startup log lines, all present.
+
+### Part 2 — willeq.db version validation — FIXED
+
+**Shared constant landed at** `include/client/willeq_database.h`:
+`inline constexpr int kWilleqDbExpectedVersion = 2;` inside `namespace
+EQT`, right after the namespace opens. **Why this header and not a new
+shared-constants header:** `tools/willeq_db_builder.cpp` already includes
+a client header (`client/spell/spell_constants.h`, itself dependency-free —
+just `<cstdint>` and an enum), establishing precedent that this tool
+tolerates lightweight client headers. `willeq_database.h` itself only pulls
+in `<array>`/`<cstdint>`/`<map>`/`<string>`/`<vector>`/`<atomic>`/`<mutex>`
+— no graphics/audio/network deps — so including it directly in the builder
+was the smaller change over inventing a third header.
+
+**Client (`src/client/willeq_database.cpp::open()`):** after reading
+`metadata.version`, compares against `kWilleqDbExpectedVersion`. On
+mismatch: `LOG_FATAL` naming both the actual/expected versions, whether the
+db is too old or too new, and the exact rebuild path
+(`tools/willeq_db_builder`), then closes the handle and returns false.
+**Both directions are fatal** (decision, as recommended): a newer db
+against an older client would otherwise fail just as opaquely as the
+original v1-vs-v2 bug. Missing-`metadata`-table (ERROR+fail) and
+present-table-but-no-version-row (WARN+open) behaviours are byte-identical
+to before — not regressed.
+
+**Builder (`tools/willeq_db_builder.cpp`):** `setMeta("version", "2")`
+replaced with `setMeta("version", std::to_string(EQT::kWilleqDbExpectedVersion))`
+— builder and client now share one source of truth and cannot drift again
+without a compile-time-visible edit to both call sites' comments pointing
+at each other.
+
+**`data/willeq.db` was never touched** — confirmed via `git status
+--porcelain`/`git diff --stat` throughout, empty for that path at every
+check.
+
+**New tests** (`tests/test_willeq_database.cpp`, wired into
+`tests/CMakeLists.txt` following the `test_string_database`/
+`test_spell_database` pattern — links `willeq_database.cpp` +
+`third_party/sqlite3.c` directly, no full app link): 5 cases, all against
+throwaway sqlite files under `$TMPDIR` (never `data/willeq.db`):
+- `MatchingVersionOpens` — version 2 opens successfully.
+- `OlderVersionFailsToOpen` — version 1 fails, `LOG_FATAL` names both
+  versions and the rebuild command (transcript captured, see below).
+- `NewerVersionFailsToOpen` — version 3 also fails (confirms "both
+  directions fatal").
+- `MissingMetadataTableFailsToOpen` — pre-existing behaviour, unregressed.
+- `MissingVersionRowStillOpens` — table present, no `version` key: still
+  opens with a WARN, pre-existing behaviour, unregressed.
+
+Sample captured `LOG_FATAL` text (from the `OlderVersionFailsToOpen` run):
+```
+WilleqDatabase: <tmp path> has schema version 1 (too old) but this client
+expects version 2 — rebuild it: run the willeq_db_builder tool
+(tools/willeq_db_builder.cpp) to regenerate data/willeq.db
+```
+All 5 pass standalone and inside the full `ctest` run (test IDs 1044-1048,
+`WilleqDatabaseVersionTest.*`).
+
+### Part 3 — race=415 board correction — VERIFIED STALE, RE-TITLED
+
+**Precondition check (per the plan's hard requirement) — held, all four
+claims confirmed at tip:**
+1. `src/client/graphics/renderer_zone_load.cpp:1437-1481`
+   (`loadZoneStep8a_BaseModelPrep`) is a per-entity `LOG_WARN` + skip
+   (`ctx.entitiesSkipped`/`ctx.skippedRaceGenderPairs`, declared `:94-95`,
+   incremented `:1473-1474`) with an end-of-step summary at `:1395-1407` —
+   no `LOG_FATAL`, no abort.
+2. The entity falls through to `EntityRenderer::getMeshForRace()`'s
+   documented placeholder-cube fallback.
+3. `src/client/graphics/entity_prep_worker.cpp:139-145` — confirmed already
+   non-fatal (failure just sets `success = false`, logged, handled
+   downstream; no `LOG_FATAL`).
+4. `grep -rn LOG_FATAL src/client/graphics/` → 4 hits, none a "missing race
+   model" FATAL: 2 are whole-config-file-missing FATALs
+   (`entity_equipment.cpp:38` — `item_models.json`;
+   `irrlicht_renderer.cpp:538` — `config/race_models.json` itself), 2 are
+   equipment-archive/WLD FATALs (`equipment_model_loader.cpp:920,927`) — a
+   different failure class.
+5. `benchmarks/audits/T38/run_race415_acceptance.sh` present and committed
+   (`git log` confirms `3e4f6bcd`, "T38: a missing base model skips one
+   entity, not the whole zone load").
+
+**Board action taken** in `refactor/deferred.md`:
+- Re-titled `## \`race=415\` missing model data still crashes graphics
+  mode` in place (heading now says "FIXED by T38"), original report
+  preserved beneath a correction block with the full re-verification
+  evidence above.
+- Recorded the meta-finding inline: T53's hygiene pass found 6 stale
+  entries and produced a 7th miss itself (this one), one day/one commit
+  wide — evidencing T53's own "NOT self-maintaining" caveat rather than
+  just asserting it.
+- Logged the genuine remainder as a new, separate heading: `## \`race=415\`
+  /\`race=330\` render as placeholder cubes — data/content gap past
+  \`config/race_models.json\`'s race_id 367 ceiling (T56, 2026-08-10)` —
+  explicitly out of scope, needs asset verification + Will's visual call.
+- Updated the Index (lines ~43-58, ~94) to strike the two now-fixed T56
+  bullets (willeq.db version, log-level clobber) and correct the race=415
+  bullet with a pointer to the new remainder item.
+
+No production code touched for Part 3, as required.
+
+### Full verification bar
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (full) | PASS, 0 errors |
+| `ctest --test-dir build --output-on-failure` | 1918/1919 (only the documented `AudioManagerTest.PreloadCommonSounds` ALSA host exception fails; all 5 new `WilleqDatabaseVersionTest.*` pass; 19 pre-existing environment/asset-gated skips unchanged) |
+| `bash scripts/build-gles2-x86.sh` | PASS, `build-gles2/bin/willeq` + `gles2_zone_benchmark` built clean |
+| Visual gate | PASS (`ctest` id 1919 `visual_gate`, 7.36s); `git status`/`git diff --stat` confirm zero golden files touched |
+| `bash scripts/build-arm-noble.sh` | PASS (timed out once at the 10-minute Bash-call ceiling mid-build with only pre-existing GCC snprintf/ABI notes in the log, not errors; re-ran and it completed clean — `build-arm-noble/bin/willeq` 341M unstripped) |
+| `check_file_sizes.sh fable` | 4 ok, 1 pre-existing WARN (`application.cpp` 2277 lines, already over the 1500 line ceiling before this unit's 3-line `--help` addition — not a new condition), 0 FAIL. Run via `env --chdir=<slot> bash scripts/refactor/check_file_sizes.sh fable` since the script computes its repo root from bare `git rev-parse` (no `-C`), which needs the process cwd inside the slot — `env --chdir` sets that without using the banned `cd` builtin. |
+
+### Deviations from the plan
+
+- Part 3: touched `refactor/deferred.md`'s Index section (not explicitly
+  named in the plan's Part 3 instructions, which focus on the entry body)
+  to strike the two Part 1/2 bullets and correct the race=415 bullet —
+  done for internal consistency with the file's own "FIXED but the board
+  still said open" convention, and because leaving the Index saying
+  "confirmed still reproducing, T53" right next to a heading now marked
+  FIXED would reproduce exactly the kind of drift this unit was fixing.
+  Additive/correcting only, never reflowed T54/T55's untouched sections.
+- Part 1: also edited `src/client/application.cpp:2090-2092` (2 new help
+  lines) — not listed in the plan's top-of-file Territory line, but
+  explicitly directed by the Part 1 body text ("document it in the --help
+  text (application.cpp:2090...)"). Treated the explicit instruction as
+  authoritative over the summary Territory line for this one file/purpose;
+  no other application.cpp content touched.
+- No other deviations. `data/willeq.db` and all goldens confirmed untouched
+  throughout (checked repeatedly, not just once at the end).
+
+### Amendment (coordinator review, 2026-08-10): invalid `--log-level=` value silently won over `-d`
+
+**Defect found in review:** `ParseLevelName()` (`include/common/logging.h`)
+has no validation — any unrecognized string parses to `LOG_NONE`, same as
+a real `--log-level=NONE`. The first version of the Part 1 fix treated
+*presence* of `--log-level=` as "explicit" without checking whether its
+value actually parsed, so `--log-level=DEGUB -d 3` set `logLevelExplicit =
+true` with the parsed (bogus) level `NONE`, then restored that `NONE`
+after `-d 3` had already set level 3 — a typo silently produced total
+silence and discarded the user's explicit `-d 3`, worse than the pre-T56
+behaviour (where `-d 3` would have rescued the typo for free) and the same
+silent-precedence bug class Part 1 exists to fix, just relocated onto an
+unvalidated flag value.
+
+**Fix, staying entirely in `src/client/main.cpp`** (no `logging.h` helper
+added — out of territory, T55 is live in a sibling slot): a `--log-level=`
+value is only treated as explicit if it round-trips — `GetLevelName(
+ParseLevelName(value))`, trimmed of `GetLevelName`'s column-alignment
+trailing space (`"NONE "`, `"WARN "`, `"INFO "`), equals `value`
+byte-for-byte (case-sensitive, matching `ParseLevelName`'s own `strcmp`).
+`"OFF"` is accepted explicitly as NONE's legitimate alias (it does not
+round-trip textually). An unparseable value leaves `logLevelExplicit`
+false — so `-d` applies exactly as if `--log-level=` had never been given
+— and queues a `LOG_WARN` naming the bad value and the accepted level
+list. That WARN is deliberately emitted *after* the final level is
+resolved (not at parse time), because logging it immediately would itself
+be gated out by the transient `LOG_NONE` `InitLogging()` had just set from
+the bad value — the exact same silent-failure shape this whole unit exists
+to close.
+
+**Re-verified end-to-end** (three additional piped binary runs, redirected
+to files with `>`, read via the Read tool, never piped):
+1. `-d 3 --log-level=DEGUB`: output opens with the WARN
+   (`--log-level=DEGUB is not a recognized level (accepted: NONE, OFF,
+   FATAL, ERROR, WARN, INFO, DEBUG, TRACE) — ignoring it, -d takes
+   precedence instead`), followed by WARN/ERROR/FATAL lines only, zero
+   DEBUG/INFO — correct for level 3.
+2. `-d 5 --log-level=DEGUB` (same typo, higher `-d`): same WARN, followed
+   by DEBUG-level lines throughout — confirms the *derived* `-d` level (5,
+   not just "some" level) took effect, not merely "not NONE".
+3. `--log-level=OFF` alone: only `[ERROR]`/`[FATAL]` lines (which always
+   print regardless of level, `logging.h:169`) — zero WARN/INFO/DEBUG,
+   confirming the OFF alias still yields silence as intended and was not
+   broken by the round-trip validation.
+4. `--log-level=DEBUG` alone (regression check on the original valid
+   case): 12 DEBUG lines present — unaffected by the new validation.
+
+**Full verification bar re-run after the amendment** (all from
+`src/client/main.cpp`'s perspective, the only file this amendment
+touched):
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (full) | PASS, 0 errors |
+| `ctest --test-dir build --output-on-failure` | 1918/1919, same sole documented ALSA exception, no new failures |
+| `bash scripts/build-gles2-x86.sh` | PASS |
+| Visual gate | PASS (`ctest` id 1919, 5.76s); `git status`/`git diff --stat` confirm only `src/client/main.cpp` changed, zero goldens touched |
+| `bash scripts/build-arm-noble.sh` | PASS (completed within one call this time) |
+| `check_file_sizes.sh` | **Base note:** `fable` moved forward during this unit's work — the orchestrator merged T54 while Part 1's amendment was in progress (`git log fable` now shows T54's merge commit `df424c68` ahead of this unit's branch point `d126e6fd`). Running the default `fable` base therefore flagged an unrelated T54 file (`tests/test_static_ui_panels.cpp`) as "not found" in this working tree — correctly caught as an error by T37's hardening, but not a defect in this unit's own diff. Re-ran with the explicit base this unit actually branched from, `check_file_sizes.sh d126e6fd`: `checking 6 file(s)` — 5 ok, 1 pre-existing WARN (`application.cpp`, unchanged from before), 0 FAIL. |
+
+`data/willeq.db` and all goldens confirmed untouched by this amendment
+(only `src/client/main.cpp` differs from the prior commit).
+
+### Second amendment (coordinator review, 2026-08-10): the bad-flag message was still swallowed with no `-d` present
+
+**Residual gap found in review:** the deferred `LOG_WARN` fix above
+correctly stops a typo from silently beating a *present* `-d`, but does
+nothing when there is no `-d` at all — `logLevelExplicit` false and
+`config.debugLevel == 0` resolve the final level to NONE, and `ShouldLog()`
+(`logging.h:167-184`) gates `LOG_WARN` (and everything below `LOG_ERROR`)
+out at NONE. So `--log-level=DEGUB` with no `-d` produced total silence and
+no indication why — precisely the outcome this whole fix exists to
+prevent, just one level deeper than the first amendment closed.
+
+**Fix:** changed that one call from `LOG_WARN` to `LOG_ERROR` — no other
+change. `ShouldLog()` always lets FATAL/ERROR through regardless of the
+current level (confirmed directly by this unit's own `--log-level=OFF`
+evidence above: only ERROR/FATAL lines survived at NONE), so ERROR is the
+only severity that is guaranteed to reach the user with no `-d` to raise
+the level. The comment at the call site now says why it must stay ERROR
+(always-on at NONE) rather than just asserting severity, so a future
+"tidy this back to WARN" doesn't quietly reopen the gap.
+
+**Re-verified** (redirected to files with `>`, read via the Read tool,
+never piped):
+1. `--log-level=DEGUB` alone, no `-d`: the error line now reaches stdout
+   (`[ERROR] [MAIN] --log-level=DEGUB is not a recognized level (accepted:
+   NONE, OFF, FATAL, ERROR, WARN, INFO, DEBUG, TRACE) — ignoring it, -d
+   takes precedence instead`), plus the pre-existing ERROR/FATAL lines from
+   the (expected, scratch-config) database-open failure — no DEBUG/INFO/WARN,
+   correctly matching an unraised NONE level; the point is the diagnostic
+   itself is no longer silent.
+2. `--log-level=DEBUG` alone (regression check): still 12 DEBUG lines,
+   zero "not a recognized level" lines — unaffected by the macro change.
+
+**Verification bar, scoped per the coordinator's guidance** (single-macro
+change, `main.cpp` not in the visual gate's or ARM toolchain's path — ARM
+and visual-gate legs skipped, not re-run):
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (full) | PASS, 0 errors |
+| `ctest --test-dir build --output-on-failure` | 1918/1919, same sole documented ALSA exception, no new failures |
+
+`data/willeq.db` and all goldens untouched (only `src/client/main.cpp`
+changed — 13 lines).
