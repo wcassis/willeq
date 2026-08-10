@@ -183,15 +183,24 @@ Graphics integration tests require a running EQEmu server and X display. They ar
 ```bash
 # Run from build directory
 DISPLAY=:99 ./bin/test_zoning_graphics_integration
-DISPLAY=:99 ./bin/test_inventory_model_view
-
-# Run specific test
-DISPLAY=:99 ./bin/test_inventory_model_view --gtest_filter="*ModelHasTextures*"
 ```
 
 **Available graphics integration tests:**
 - `test_zoning_graphics_integration.cpp` - Zone transitions with graphics enabled, LoadingPhase verification, camera collision safety
-- `test_inventory_model_view.cpp` - Inventory window paperdoll model loading, textures, animation, weapons, render-to-texture
+
+**Not an integration test despite the historical name** —
+`test_inventory_model_view.cpp` is a headless character-model
+loading/animation suite (`RaceModelLoader` + `EQAnimatedMeshSceneNode`
+under an `EDT_NULL` device): no EQEmu server, no `DISPLAY`, auto-discovered
+by ctest. T54 (2026-08-10) deleted the inventory-window-paperdoll fixture
+it used to also hold (`InventoryModelViewTest`, unconditionally skipped —
+its subject, the paperdoll UI, was deleted in 0f25cb57 and never rebuilt;
+see `refactor/deferred.md`). Run it like any other discovered test:
+`./bin/test_inventory_model_view` or `ctest -R RaceModelAnimationHeadlessTest`.
+Static-panel UI input/hit-testing coverage (also new, T54) lives in
+`tests/test_static_ui_panels.cpp`, same auto-discovered/no-device-needed
+category for the pure input tests (an `EDT_NULL`-device tail covers
+`renderInventoryPopup`).
 
 **Test config format** (`casterella.json`):
 ```json

@@ -972,16 +972,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
 ENDIF()
 
-# Integration test: Inventory Window Model View (connects to real EQEmu server with graphics enabled)
-# This test verifies the inventory window paperdoll character model loads, has textures, and animates.
-# Run manually with: DISPLAY=:99 ./bin/test_inventory_model_view
+# Headless character-model loading/animation suite (RaceModelLoader +
+# EQAnimatedMeshSceneNode). Originally an EQEmu-server + DISPLAY + paperdoll-
+# UI integration test (InventoryModelViewTest); T54 (2026-08-10) deleted that
+# fixture — its six TEST_F cases were unconditionally GTEST_SKIP()'d
+# ("WindowManager has been deleted"), not environment-gated, because the
+# paperdoll UI they exercised (WindowManager/InventoryWindow/
+# CharacterModelView) was itself deleted in 0f25cb57. The salvageable
+# assertions (textures applied, loads for race/gender, animation coherence)
+# now live in RaceModelAnimationHeadlessTest (added P12B, extended T54),
+# which needs neither a server nor a display — EDT_NULL device only. Safe
+# to auto-discover.
 #
-# P12B: most fixtures in this file (InventoryModelViewTest) still need a live
-# EQEmu server + DISPLAY + the (deleted) paperdoll WindowManager UI, and
-# self-skip via GTEST_SKIP() when those aren't available. But
-# RaceModelAnimationHeadlessTest (added P12B) needs neither — EDT_NULL device,
-# no window, no server — so it's safe to let ctest discover and actually run
-# this binary now; the still-unrunnable fixtures just report SKIPPED.
+# Filename kept as-is for this unit (renaming would churn CMake/git history
+# for no test value) — T54's Review recommends test_race_model_loading.cpp
+# as a truer name for a future rename.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_inventory_model_view
         test_inventory_model_view.cpp
@@ -989,6 +994,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_inventory_model_view PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_inventory_model_view)
+ENDIF()
+
+# T54: first tests for the static-panel UI (StaticUIInput hit-testing,
+# processKey popup dismissal, and an EDT_NULL renderInventoryPopup smoke
+# test). Pure hit-testing needs no device at all; the optional rendering
+# tail uses EDT_NULL like test_door_loading's DoorManagerGraphicsTest.
+# Same gate as test_inventory_model_view (needs Irrlicht + the graphics UI
+# sources in willeq_core) — safe to auto-discover, nothing here needs a
+# server or DISPLAY.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_static_ui_panels
+        test_static_ui_panels.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_static_ui_panels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_static_ui_panels GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)

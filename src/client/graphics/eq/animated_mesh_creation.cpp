@@ -249,7 +249,14 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
     }
 
     // Use parent's scene manager if provided, otherwise use our default smgr_
-    // This is critical for nodes created in isolated scene managers (e.g., CharacterModelView)
+    // This is critical for callers that create nodes in an isolated scene
+    // manager of their own (e.g. a standalone model-viewer tool) rather
+    // than the shared zone scene manager. (T54: this comment used to name
+    // CharacterModelView, the inventory paperdoll UI, as the example —
+    // that class was deleted in 0f25cb57 along with WindowManager; no
+    // replacement isolated-scene-manager caller exists today, but the
+    // parent-vs-default-smgr_ branch below still needs to hold for any
+    // future one.)
     irr::scene::ISceneNode* parentNode = parent ? parent : smgr_->getRootSceneNode();
     irr::scene::ISceneManager* targetSmgr = parent ? parent->getSceneManager() : smgr_;
 
@@ -397,7 +404,14 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
     }
 
     // Use parent's scene manager if provided, otherwise use our default smgr_
-    // This is critical for nodes created in isolated scene managers (e.g., CharacterModelView)
+    // This is critical for callers that create nodes in an isolated scene
+    // manager of their own (e.g. a standalone model-viewer tool) rather
+    // than the shared zone scene manager. (T54: this comment used to name
+    // CharacterModelView, the inventory paperdoll UI, as the example —
+    // that class was deleted in 0f25cb57 along with WindowManager; no
+    // replacement isolated-scene-manager caller exists today, but the
+    // parent-vs-default-smgr_ branch below still needs to hold for any
+    // future one.)
     irr::scene::ISceneNode* parentNode = parent ? parent : smgr_->getRootSceneNode();
     irr::scene::ISceneManager* targetSmgr = parent ? parent->getSceneManager() : smgr_;
 

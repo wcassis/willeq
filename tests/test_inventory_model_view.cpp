@@ -1,291 +1,39 @@
 /**
- * Integration tests for the Inventory Window Character Model Preview
+ * Headless coverage for the character-model loading/animation layer that
+ * the deleted inventory-window paperdoll (WindowManager/InventoryWindow/
+ * CharacterModelView, removed in 0f25cb57) used to render through.
  *
- * These tests verify that the paperdoll character model in the inventory window:
- * - Loads correctly for different races/genders
- * - Has textures applied
- * - Shows equipped weapons
- * - Animates properly
- * - Renders to texture correctly
+ * T54: this file used to also hold InventoryModelViewTest, a fixture whose
+ * six TEST_F cases were unconditionally GTEST_SKIP()'d ("WindowManager has
+ * been deleted") — not environment-gated, the subject itself was gone. Its
+ * ~150 lines of live-EQEmu-server/DISPLAY plumbing (config loader,
+ * createClientWithGraphics(), waitForZoneReady(), processFrames()) were
+ * unreachable dead weight and have been deleted along with it. The three
+ * salvageable assertions (textures applied, loads for race/gender, and the
+ * animation-coherence case that already existed below) were ported into
+ * RaceModelAnimationHeadlessTest, which needs neither a server nor a
+ * display. The view-only assertions (render-to-texture, survives zoning)
+ * had no production code behind them at all — that's not a test gap, it's
+ * a feature that was removed and never rebuilt; see refactor/deferred.md's
+ * "inventory character preview" entry.
  *
- * Requirements:
- * - Running EQEmu server (login + world + zone)
- * - Test account and character configured (uses /home/user/projects/claude/casterella.json)
- * - X display available (use DISPLAY=:99 with Xvfb for headless testing)
- * - EQ client files available at configured eq_client_path
- *
- * Usage:
- *   DISPLAY=:99 ./bin/test_inventory_model_view [--config /path/to/config.json]
+ * This file is now purely a headless model-loading/animation suite: EDT_NULL
+ * Irrlicht device, RaceModelLoader, EQAnimatedMeshSceneNode. No EQEmu
+ * server, no DISPLAY, no eq.h dependency.
  */
 
 #include <gtest/gtest.h>
 #include <fstream>
-#include <json/json.h>
 #include <chrono>
 #include <thread>
 
-#include "client/eq.h"
-#include "common/logging.h"
-
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#include "client/bridge/irrlicht_bridge.h"
-#include "client/bridge/game_state_bridge.h"
-// WindowManager has been deleted — these tests skip at runtime
-// #include "client/graphics/ui/window_manager.h"
-// #include "client/graphics/ui/inventory_window.h"
-// #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/entity_renderer.h"  // EntityAppearance
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/constrained_renderer_config.h"
 #endif
-
-using namespace std::chrono_literals;
-
-// Default config path
-static std::string g_configPath = "/home/user/projects/claude/casterella.json";
-
-class InventoryModelViewTest : public ::testing::Test {
-protected:
-    struct TestConfig {
-        std::string host = "127.0.0.1";
-        int port = 5998;
-        std::string user;
-        std::string pass;
-        std::string server;
-        std::string character;
-        std::string eqClientPath;
-        std::string mapsPath;
-        std::string navmeshPath;
-        int timeoutSeconds = 60;
-        bool loaded = false;
-    };
-
-    TestConfig config_;
-    std::unique_ptr<EverQuest> eq_;
-    std::unique_ptr<EQT::Graphics::IrrlichtRenderer> renderer_;
-    std::unique_ptr<eqt::bridge::IrrlichtBridge> bridge_;
-    std::chrono::steady_clock::time_point lastFrameTime_;
-
-    void SetUp() override {
-#ifndef EQT_HAS_GRAPHICS
-        GTEST_SKIP() << "Graphics support not compiled in (EQT_HAS_GRAPHICS not defined)";
-#endif
-
-        // Check for DISPLAY environment variable
-        const char* display = std::getenv("DISPLAY");
-        if (!display || strlen(display) == 0) {
-            GTEST_SKIP() << "DISPLAY environment variable not set. Use DISPLAY=:99 with Xvfb.";
-        }
-        std::cout << "Using DISPLAY=" << display << std::endl;
-
-        // Load test configuration
-        loadConfig();
-        if (!config_.loaded) {
-            GTEST_SKIP() << "Test config not found or invalid at: " << g_configPath;
-        }
-
-        // Check for EQ client path
-        if (config_.eqClientPath.empty()) {
-            GTEST_SKIP() << "eq_client_path not configured - required for graphics tests";
-        }
-
-        lastFrameTime_ = std::chrono::steady_clock::now();
-    }
-
-    void TearDown() override {
-        if (eq_) {
-            eq_.reset();
-        }
-    }
-
-    void loadConfig() {
-        std::ifstream file(g_configPath);
-        if (!file.is_open()) {
-            std::cerr << "Cannot open config file: " << g_configPath << std::endl;
-            return;
-        }
-
-        Json::Value root;
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &root, &errors)) {
-            std::cerr << "Failed to parse config: " << errors << std::endl;
-            return;
-        }
-
-        // Config has a "clients" array, use first client
-        if (!root.isMember("clients") || !root["clients"].isArray() || root["clients"].empty()) {
-            std::cerr << "Config missing 'clients' array" << std::endl;
-            return;
-        }
-
-        const auto& client = root["clients"][0];
-
-        config_.host = client.get("host", "127.0.0.1").asString();
-        config_.port = client.get("port", 5998).asInt();
-        config_.user = client.get("user", "").asString();
-        config_.pass = client.get("pass", "").asString();
-        config_.server = client.get("server", "").asString();
-        config_.character = client.get("character", "").asString();
-        config_.eqClientPath = client.get("eq_client_path", "").asString();
-        config_.mapsPath = client.get("maps_path", "").asString();
-        config_.navmeshPath = client.get("navmesh_path", "").asString();
-        config_.timeoutSeconds = client.get("timeout_seconds", 60).asInt();
-
-        if (config_.user.empty() || config_.pass.empty() ||
-            config_.server.empty() || config_.character.empty()) {
-            std::cerr << "Missing required fields in config" << std::endl;
-            return;
-        }
-
-        config_.loaded = true;
-        std::cout << "Loaded config for " << config_.character << "@" << config_.server << std::endl;
-    }
-
-    bool createClientWithGraphics() {
-        try {
-            eq_ = std::make_unique<EverQuest>(
-                config_.host, config_.port,
-                config_.user, config_.pass,
-                config_.server, config_.character
-            );
-
-            // Configure paths - EQ client path is required for graphics
-            if (!config_.mapsPath.empty()) {
-                eq_->SetMapsPath(config_.mapsPath);
-            }
-            if (!config_.navmeshPath.empty()) {
-                eq_->SetNavmeshPath(config_.navmeshPath);
-            }
-            eq_->SetEQClientPath(config_.eqClientPath);
-
-#ifdef EQT_HAS_GRAPHICS
-            // Initialize graphics with a small window size for testing
-            std::cout << "Initializing graphics (800x600)..." << std::endl;
-            renderer_ = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
-            bridge_ = std::make_unique<eqt::bridge::IrrlichtBridge>();
-            bridge_->setRenderer(renderer_.get());
-            renderer_->setBridge(bridge_.get());
-            if (!eq_->InitGraphics(800, 600, renderer_.get(), bridge_.get())) {
-                std::cerr << "Failed to initialize graphics" << std::endl;
-                return false;
-            }
-            std::cout << "Graphics initialized successfully" << std::endl;
-#endif
-
-            eq_->ConnectToLogin();
-
-            return true;
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to create client: " << e.what() << std::endl;
-            return false;
-        }
-    }
-
-    // Calculate delta time since last frame
-    float getDeltaTime() {
-        auto now = std::chrono::steady_clock::now();
-        float delta = std::chrono::duration<float>(now - lastFrameTime_).count();
-        lastFrameTime_ = now;
-        return delta;
-    }
-
-    // Run the event loop with graphics processing until a condition is met or timeout
-    template<typename Predicate>
-    bool waitForWithGraphics(Predicate condition, int timeoutMs = 30000) {
-        auto start = std::chrono::steady_clock::now();
-        while (!condition()) {
-            eq_->TickNetwork();
-            if (eq_) {
-                eq_->UpdateMovement();
-#ifdef EQT_HAS_GRAPHICS
-                // Process graphics frame
-                if (renderer_) {
-                    float deltaTime = getDeltaTime();
-                    if (!renderer_->processFrame(deltaTime)) {
-                        // Window was closed
-                        std::cerr << "Graphics window closed unexpectedly" << std::endl;
-                        return false;
-                    }
-                }
-#endif
-            }
-            std::this_thread::sleep_for(16ms);  // ~60 FPS
-
-            auto elapsed = std::chrono::steady_clock::now() - start;
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeoutMs) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Wait until fully zoned in (network)
-    bool waitForZoneIn(int timeoutMs = 30000) {
-        return waitForWithGraphics([this]() { return eq_->IsFullyZonedIn(); }, timeoutMs);
-    }
-
-#ifdef EQT_HAS_GRAPHICS
-    // Wait until graphics zone is ready (zone geometry loaded, player entity created)
-    bool waitForZoneReady(int timeoutMs = 30000) {
-        return waitForWithGraphics([this]() {
-            return renderer_ && renderer_->isZoneReady();
-        }, timeoutMs);
-    }
-
-    // Process a number of frames (for animation testing)
-    void processFrames(int count, float frameTimeMs = 16.67f) {
-        if (!renderer_) return;
-
-        for (int i = 0; i < count; i++) {
-            eq_->TickNetwork();
-            eq_->UpdateMovement();
-            renderer_->processFrame(frameTimeMs / 1000.0f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(frameTimeMs)));
-        }
-    }
-#endif
-};
-
-// Test: Verify inventory window model view initializes and loads character model
-TEST_F(InventoryModelViewTest, ModelViewInitializesAndLoadsCharacter) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
-}
-
-// Test: Verify character model has textures applied
-TEST_F(InventoryModelViewTest, ModelHasTexturesApplied) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
-}
-
-// Test: Verify character model animates properly
-// P12B: this full-stack variant needs a live EQEmu server + the (deleted)
-// WindowManager/CharacterModelView paperdoll UI, neither of which exists in
-// CI — documented conditional skip, not fixable without a UI rewrite (out of
-// scope here). See RaceModelAnimationHeadlessTest::ModelAnimatesProperly_Headless
-// below for the headlessly-runnable variant of the same assertion (does the
-// per-instance animated mesh actually move over time, at the RaceModelLoader/
-// EQAnimatedMeshSceneNode level the paperdoll view itself renders through) —
-// that variant DOES run in CI (EDT_NULL device, no DISPLAY/server needed).
-TEST_F(InventoryModelViewTest, ModelAnimatesProperly) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled; "
-                     "see RaceModelAnimationHeadlessTest::ModelAnimatesProperly_Headless "
-                     "for a headlessly-runnable coverage of the same assertion";
-}
-
-// Test: Verify equipped weapons show on model
-TEST_F(InventoryModelViewTest, EquippedWeaponsShowOnModel) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
-}
-
-// Test: Verify model view renders to texture
-TEST_F(InventoryModelViewTest, ModelRendersToTexture) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
-}
-
-// Test: Verify model view survives zone transition
-TEST_F(InventoryModelViewTest, ModelViewSurvivesZoneTransition) {
-    GTEST_SKIP() << "WindowManager has been deleted - test disabled";
-}
 
 // ============================================================================
 // P12B: Headless animation-coherence coverage
@@ -314,6 +62,7 @@ protected:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::io::IFileSystem* fs_ = nullptr;
+    std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache_;
     std::unique_ptr<EQT::Graphics::RaceModelLoader> loader_;
 
     void SetUp() override {
@@ -342,10 +91,33 @@ protected:
 
         loader_ = std::make_unique<EQT::Graphics::RaceModelLoader>(smgr_, driver_, fs_);
         loader_->setClientPath(eqClientPath_);
+
+        // T54: without a constrained texture cache, ZoneMeshBuilder::
+        // loadTextureFromBMP() has nowhere to decode/upload BMP bytes and
+        // every material ends up textureless (LOG_FATAL "no constrained
+        // cache for ..." — zone_geometry.cpp:273). This is a real
+        // production wiring requirement, not test-only plumbing — see
+        // tools/hwcaps/p50_mask_plumbing_probe.cpp for the same
+        // ConstrainedTextureCache+setDriver+setConstrainedTextureCache
+        // idiom used there.
+        auto config = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+            EQT::Graphics::ConstrainedRenderingPreset::TNT);
+        textureCache_ = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(config);
+        textureCache_->setDriver(driver_);
+        // Two separate wiring points, both required (found by this unit —
+        // RaceModelLoader::setConstrainedTextureCache() only feeds its own
+        // P17 isLiveTexture() defensive check; the ZoneMeshBuilder that
+        // actually decodes/uploads BMP bytes in buildMeshFromGeometry() /
+        // buildTexturedMesh() needs its OWN setConstrainedTextureCache()
+        // call. tools/hwcaps/p50_mask_plumbing_probe.cpp wires both too —
+        // this is the established idiom, not a workaround.
+        loader_->setConstrainedTextureCache(textureCache_.get());
+        loader_->getMeshBuilder()->setConstrainedTextureCache(textureCache_.get());
     }
 
     void TearDown() override {
         loader_.reset();
+        textureCache_.reset();
         if (device_) {
             device_->drop();
             device_ = nullptr;
@@ -449,26 +221,126 @@ TEST_F(RaceModelAnimationHeadlessTest, ModelAnimatesProperly_Headless) {
                "animated frames - model appears frozen mid-animation";
     }
 }
-#endif // EQT_HAS_GRAPHICS
 
-// Main function to support custom config path
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
+// T54: ported from the deleted InventoryModelViewTest.ModelHasTexturesApplied.
+// The original asserted the paperdoll VIEW had textures; there is no view
+// left to assert on, so this asserts the same thing at the layer that's
+// actually still alive — the animated node's own material/texture state,
+// which is exactly what a paperdoll would read from if one existed.
+TEST_F(RaceModelAnimationHeadlessTest, ModelHasTexturesApplied_Headless) {
+    struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
+    const RaceCase races[] = {
+        {1, 0, "HUM"},
+        {2, 0, "BAM"},
+    };
 
-    // Check for --config argument
-    for (int i = 1; i < argc; i++) {
-        if (std::string(argv[i]) == "--config" && i + 1 < argc) {
-            g_configPath = argv[i + 1];
-            std::cout << "Using config: " << g_configPath << std::endl;
+    for (const auto& rc : races) {
+        SCOPED_TRACE(rc.label);
+
+        auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
+                                                   smgr_->getRootSceneNode());
+        if (!node) {
+            std::cout << "  " << rc.label << ": createAnimatedNode() returned "
+                         "null (race data unavailable) - skipping\n";
+            continue;
         }
+
+        ASSERT_GT(node->getMaterialCount(), 0u)
+            << rc.label << ": animated node has no materials";
+
+        bool sawNonNullTexture = false;
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+            if (node->getMaterial(i).getTexture(0) != nullptr) {
+                sawNonNullTexture = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(sawNonNullTexture)
+            << rc.label << ": no material on the animated node has a texture bound "
+               "(model would render untextured)";
+    }
+}
+
+// T54: ported from the salvageable half of the deleted
+// InventoryModelViewTest.ModelViewInitializesAndLoadsCharacter. The original
+// also asserted hasModelView()/isReady() — pure view predicates with no
+// production code behind them anymore — which are dropped, not ported.
+TEST_F(RaceModelAnimationHeadlessTest, LoadsForRaceAndGender_Headless) {
+    struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
+    const RaceCase races[] = {
+        {1, 0, "HUM male"},
+        {1, 1, "HUM female"},
+        {2, 0, "BAM male"},
+        {8, 0, "DWM male"},
+        {330, 0, "unknown/invalid race (should fail gracefully)"},
+    };
+
+    for (const auto& rc : races) {
+        SCOPED_TRACE(rc.label);
+        auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
+                                                   smgr_->getRootSceneNode());
+        if (rc.raceId == 330) {
+            // race=330 has no model data on this asset set (deferred.md:
+            // "gfaydark zone-in FATAL, missing race=330 model data") —
+            // assert the loader degrades to nullptr rather than crashing,
+            // not that it succeeds.
+            EXPECT_EQ(node, nullptr)
+                << rc.label << ": expected graceful nullptr for a race with "
+                   "no model data, got a node instead";
+            continue;
+        }
+        if (!node) {
+            std::cout << "  " << rc.label << ": createAnimatedNode() returned "
+                         "null (race data unavailable) - skipping\n";
+            continue;
+        }
+        EXPECT_NE(node->getInstanceMesh(), nullptr)
+            << rc.label << ": animated node has no per-instance mesh";
+    }
+}
+
+// T54: ported from the deleted InventoryModelViewTest.EquippedWeaponsShowOnModel.
+//
+// FINDING (not a weakened test — see this unit's plan, Step 1): the original
+// test's premise ("equipped weapons show on model") cannot be ported as
+// literally stated. RaceModelLoader::createAnimatedNodeWithEquipment() —
+// the only equipment-aware entry point RaceModelLoader exposes — does NOT
+// attach weapon geometry to the returned node. Read end-to-end
+// (animated_mesh_creation.cpp:315-624): it only (a) selects a robe body
+// variant/texture and (b) overrides body-part (chest/legs/feet/arms/
+// wrist/hands/head) textures and tints from EntityAppearance::equipment[].
+// EquipSlot::Primary/Secondary (indices 7/8, the weapon slots) are read
+// only to detect robes (equipment[Chest]), never to attach a weapon mesh.
+// Actual weapon attachment (primaryEquipNode/secondaryEquipNode) is built
+// entirely inside EntityRenderer via a separate EquipmentModelLoader mesh
+// lookup — a much heavier production dependency (full entity visual
+// pipeline) out of this unit's territory and disproportionate to add here.
+//
+// So this test asserts what createAnimatedNodeWithEquipment() actually
+// does and had zero coverage of before this unit: it succeeds and returns
+// a fully-formed node when given a non-trivial EntityAppearance (a body
+// equipment texture override), matching createAnimatedNode()'s baseline
+// guarantees. The weapon-attachment gap is recorded on the board
+// (refactor/deferred.md) rather than silently dropped.
+TEST_F(RaceModelAnimationHeadlessTest, CreateAnimatedNodeWithEquipment_Headless) {
+    EQT::Graphics::EntityAppearance appearance;
+    appearance.equipment[static_cast<uint8_t>(EQT::Graphics::EquipSlot::Chest)] = 1;  // leather
+
+    auto* node = loader_->createAnimatedNodeWithEquipment(
+        /*raceId=*/1, /*gender=*/0, appearance, smgr_->getRootSceneNode());
+    if (!node) {
+        GTEST_SKIP() << "createAnimatedNodeWithEquipment returned null "
+                         "(race data unavailable)";
     }
 
-    std::cout << "=== Inventory Model View Integration Tests ===" << std::endl;
-    std::cout << "These tests require:" << std::endl;
-    std::cout << "  - Running EQEmu server" << std::endl;
-    std::cout << "  - X display (DISPLAY=:99 with Xvfb for headless)" << std::endl;
-    std::cout << "  - EQ client files at configured eq_client_path" << std::endl;
-    std::cout << std::endl;
+    EXPECT_NE(node->getInstanceMesh(), nullptr)
+        << "equipped node has no per-instance mesh";
+    EXPECT_GT(node->getMaterialCount(), 0u)
+        << "equipped node has no materials";
+}
+#endif // EQT_HAS_GRAPHICS
 
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
