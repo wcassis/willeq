@@ -31,6 +31,7 @@
 
 #include "sqlite3.h"
 #include "client/spell/spell_constants.h"
+#include "client/willeq_database.h"
 
 // ============================================================================
 // Helpers
@@ -1201,7 +1202,10 @@ static void writeMetadata(sqlite3* db, int totalEntries) {
         sqlite3_finalize(stmt);
     };
 
-    setMeta("version", "2");  // T27: spells.class_levels column added
+    // T56: version lives in include/client/willeq_database.h
+    // (kWilleqDbExpectedVersion) so builder and client cannot drift — bump
+    // both together in the same commit when the schema changes.
+    setMeta("version", std::to_string(EQT::kWilleqDbExpectedVersion));
     setMeta("build_date", __DATE__ " " __TIME__);
     setMeta("total_entries", std::to_string(totalEntries));
 }

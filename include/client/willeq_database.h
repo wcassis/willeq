@@ -14,6 +14,13 @@ struct sqlite3_stmt;
 
 namespace EQT {
 
+// Expected `metadata.version` value in data/willeq.db. The builder
+// (tools/willeq_db_builder.cpp) writes this via setMeta("version", ...) and
+// the client compares against it in WilleqDatabase::open() (T56). Bump this
+// AND the builder's setMeta() call together, in the same commit, whenever
+// the schema changes — they must never drift independently again.
+inline constexpr int kWilleqDbExpectedVersion = 2;  // T27: spells.class_levels column added
+
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
     std::atomic<uint64_t> queryCount{0};

@@ -616,6 +616,15 @@ TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE WILLEQ_DB_PATH="${CMAKE_S
 TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_database)
 
+# Test WilleqDatabase::open() schema-version validation (T56)
+ADD_EXECUTABLE(test_willeq_database
+    test_willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+)
+TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_willeq_database)
+
 # Test PFS/S3D archive parsing
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_pfs_archive

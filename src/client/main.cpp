@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <cstring>
+
 #include "client/application.h"
 #include "client/eq.h"
 #include "common/logging.h"
@@ -15,9 +18,36 @@ int main(int argc, char* argv[]) {
     // Initialize logging from CLI args (--log-level, --log-module)
     InitLogging(argc, argv);
 
+    // Was --log-level= given explicitly? EverQuest::SetDebugLevel() below
+    // unconditionally re-syncs the global log level from -d (default 0 when
+    // absent), which otherwise clobbers whatever --log-level= just set
+    // (deferred.md T31 finding, T56 fix). Precedence: an explicit
+    // --log-level= wins over a numeric -d, because silent precedence is what
+    // produced this bug in the first place. Capture the level InitLogging()
+    // just applied so it can be restored after SetDebugLevel() below.
+    bool logLevelExplicit = false;
+    for (int i = 1; i < argc; i++) {
+        if (strncmp(argv[i], "--log-level=", 12) == 0) {
+            logLevelExplicit = true;
+            break;
+        }
+    }
+    const int explicitLogLevel = GetLogLevel();
+
     // Set log level from -d flag
     EverQuest::SetDebugLevel(config.debugLevel);
-    if (config.debugLevel > 0) {
+    if (logLevelExplicit) {
+        // Restore the explicit --log-level=, overriding whatever
+        // SetDebugLevel() just derived from -d (0 if -d was not given).
+        SetLogLevel(explicitLogLevel);
+        const int debugDerivedLevel = std::min(config.debugLevel, static_cast<int>(LOG_TRACE));
+        if (config.debugLevel > 0 && debugDerivedLevel != explicitLogLevel) {
+            LOG_INFO(MOD_MAIN,
+                "--log-level={} and -d {} disagree; --log-level= wins (effective level: {})",
+                GetLevelName(static_cast<LogLevel>(explicitLogLevel)), config.debugLevel,
+                GetLevelName(static_cast<LogLevel>(explicitLogLevel)));
+        }
+    } else if (config.debugLevel > 0) {
         SetLogLevel(config.debugLevel);
     }
 
