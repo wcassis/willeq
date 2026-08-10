@@ -89,6 +89,24 @@ std::vector<uint8_t> BuildZoneChangeReply(uint16_t zone_id, float wire_y_field, 
     });
 }
 
+// Builds a synthetic OP_ZonePlayerToBind packet (ZonePlayerToBind_Struct,
+// 20 fixed bytes + 2-byte opcode = 22, no zone_name), with distinct,
+// unambiguous wire-offset values so an x/y transposition is unmistakable.
+std::vector<uint8_t> BuildZonePlayerToBindPacket(uint16_t zone_id, uint16_t instance_id,
+                                                  float wire_x, float wire_y, float wire_z,
+                                                  float heading) {
+    return BuildPayload(22, [&](EQ::Net::DynamicPacket& p) {
+        std::memset(p.Data(), 0, 22);
+        p.PutUInt16(0, 0x385e);   // HC_OP_ZonePlayerToBind
+        p.PutUInt16(2, zone_id);
+        p.PutUInt16(4, instance_id);
+        p.PutFloat(6, wire_x);    // "Server x"
+        p.PutFloat(10, wire_y);   // "Server y"
+        p.PutFloat(14, wire_z);
+        p.PutFloat(18, heading);
+    });
+}
+
 std::vector<uint8_t> BuildZoneServerInfoPacket() {
     return BuildPayload(132, [&](EQ::Net::DynamicPacket& p) {
         std::memset(p.Data(), 0, 132);
@@ -205,4 +223,119 @@ TEST(ZonePositionConvention, Consumer_AppliesPendingZoneWithoutASecondSwap) {
     EXPECT_FLOAT_EQ(pos.x, 111.0f);
     EXPECT_FLOAT_EQ(pos.y, 222.0f);
     EXPECT_FLOAT_EQ(pos.z, 3.0f);
+}
+
+// ---------------------------------------------------------------------------
+// T55: Producer C (ZoneProcessZonePlayerToBind, eq.cpp) -- death/bind respawn.
+//
+// T52 found this producer and confirmed it uses the same correct swap as
+// producer A, but it had NO test at all. This closes that coverage gap.
+// ---------------------------------------------------------------------------
+
+TEST(ZonePositionConvention, ProducerC_SwapsWireOffsetsIntoClientFormat) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // Distinct values so a transposition is unmistakable: wire's x-field
+    // (offset 6) = 333.0, wire's y-field (offset 10) = 444.0.
+    auto payload = BuildZonePlayerToBindPacket(/*zone_id=*/36, /*instance_id=*/0,
+                                                 /*wire_x=*/333.0f, /*wire_y=*/444.0f,
+                                                 /*wire_z=*/5.0f, /*heading=*/128.0f);
+    ReplayZone(eq, 0x385e, payload);
+
+    // Same convention as producers A/B: client_x = wire's y-field,
+    // client_y = wire's x-field.
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneX(), 444.0f);
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneY(), 333.0f);
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneZ(), 5.0f);
+    EXPECT_EQ(eq.GetPendingZoneId(), 36);
+}
+
+// ---------------------------------------------------------------------------
+// T55: the propagation gap -- SetPosition (eq.cpp) has zero production
+// callers, so forced relocations write the raw m_x/m_y/m_z members but never
+// the state layer's PlayerState. These pin the fix at the two forced-
+// relocation sites in this unit's territory that had no local position write
+// at all before the fix: the cross-zone and same-zone branches of
+// ZoneProcessZonePlayerToBind (producer C, death/bind respawn).
+// ---------------------------------------------------------------------------
+
+TEST(ZonePositionConvention, ForcedRelocation_CrossZoneDeathRespawnDoesNotWriteLocalPosition) {
+    // T55 (coordinator review, post-initial-landing): the FIRST version of
+    // this unit wrote the bind position unconditionally, including on the
+    // cross-zone branch. That was a defect: at the moment this handler
+    // runs, the client is still fully zoned in to the OLD zone --
+    // IsFullyZonedIn() is true and m_zone_connection is still live; the
+    // disconnect only happens later, when ProcessDeferredZoneChange runs
+    // after the OP_ZoneChange handshake completes. SendPositionUpdate()
+    // (eq_movement.cpp) is gated on that exact same
+    // IsFullyZonedIn()+m_zone_connection check, throttled only by a 250ms
+    // timer -- so writing the bind ZONE's coordinates into m_x/m_y/m_z here
+    // on a cross-zone death would let the client transmit them to the OLD
+    // zone's server on its very next position update, which will accept
+    // and persist them. T52's failure mode, reintroduced -- and worse on
+    // the denied path (see ProducerA_DeniedChangeClearsPendingZone above):
+    // a denied cross-zone change would leave the character sitting in the
+    // OLD zone at coordinates belonging to a different zone. This pins the
+    // fix: the cross-zone branch must NOT write local position. The
+    // far-side landing position is the zone-in consumer's job
+    // (WorldProcessZoneServerInfo / PlayerProfile), not this handler's.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // zone_id=99, distinct from the default m_current_zone_id (0) -- the
+    // cross-zone branch of ZoneProcessZonePlayerToBind.
+    auto payload = BuildZonePlayerToBindPacket(/*zone_id=*/99, /*instance_id=*/0,
+                                                 /*wire_x=*/50.0f, /*wire_y=*/75.0f,
+                                                 /*wire_z=*/3.0f, /*heading=*/100.0f);
+    ReplayZone(eq, 0x385e, payload);
+
+    // Local position (both homes) must stay untouched -- still the
+    // constructor's (0,0,0) default.
+    glm::vec3 statePos = eq.Test_GetGameStatePlayerPosition();
+    EXPECT_FLOAT_EQ(statePos.x, 0.0f);
+    EXPECT_FLOAT_EQ(statePos.y, 0.0f);
+    EXPECT_FLOAT_EQ(statePos.z, 0.0f);
+
+    glm::vec3 rawPos = eq.GetPosition();
+    EXPECT_FLOAT_EQ(rawPos.x, 0.0f);
+    EXPECT_FLOAT_EQ(rawPos.y, 0.0f);
+    EXPECT_FLOAT_EQ(rawPos.z, 0.0f);
+
+    // But the pending-zone state IS populated (established convention:
+    // client_x = wire's y-field (75), client_y = wire's x-field (50)) --
+    // that part is still correct and unaffected by this fix.
+    EXPECT_EQ(eq.GetPendingZoneId(), 99);
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneX(), 75.0f);
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneY(), 50.0f);
+    EXPECT_FLOAT_EQ(eq.GetPendingZoneZ(), 3.0f);
+}
+
+TEST(ZonePositionConvention, ForcedRelocation_SameZoneDeathRespawnPropagatesLocally) {
+    // T55 headline finding: ZoneProcessZonePlayerToBind's same-zone branch
+    // (target_zone_id == m_current_zone_id, or == 0) logs "Same-zone
+    // respawn" but, before this unit's fix, performed NO local position
+    // write at all -- relying entirely on a server PlayerProfile round-trip
+    // that may arrive some time later (and, per PlayerProfile's own code in
+    // this same file, doesn't even write the state layer's PlayerState when
+    // it does arrive -- see this unit's Review). SUSPECTED by the plan;
+    // CONFIRMED here.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // zone_id=0 unambiguously selects the same-zone branch regardless of
+    // m_current_zone_id's default value (ZoneProcessZonePlayerToBind treats
+    // target_zone_id==0 as same-zone too).
+    auto payload = BuildZonePlayerToBindPacket(/*zone_id=*/0, /*instance_id=*/0,
+                                                 /*wire_x=*/10.0f, /*wire_y=*/20.0f,
+                                                 /*wire_z=*/1.0f, /*heading=*/64.0f);
+    ReplayZone(eq, 0x385e, payload);
+
+    // client_x = wire's y-field (20), client_y = wire's x-field (10).
+    glm::vec3 statePos = eq.Test_GetGameStatePlayerPosition();
+    EXPECT_FLOAT_EQ(statePos.x, 20.0f);
+    EXPECT_FLOAT_EQ(statePos.y, 10.0f);
+    EXPECT_FLOAT_EQ(statePos.z, 1.0f);
+
+    glm::vec3 rawPos = eq.GetPosition();
+    EXPECT_FLOAT_EQ(rawPos.x, 20.0f);
+    EXPECT_FLOAT_EQ(rawPos.y, 10.0f);
+    EXPECT_FLOAT_EQ(rawPos.z, 1.0f);
 }

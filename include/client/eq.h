@@ -733,6 +733,15 @@ public:
 	float GetPendingZoneY() const { return m_pending_zone_y; }
 	float GetPendingZoneZ() const { return m_pending_zone_z; }
 
+	// T55 test seam: narrow, read-only reader for the state layer's player
+	// position (m_game_state.player().x()/y()/z()), which otherwise has no
+	// public accessor -- GetPosition() below reads the legacy raw
+	// m_x/m_y/m_z members only, which is exactly the propagation gap this
+	// unit closes (see refactor/T55_position_state_propagation.md). Deliberately
+	// does not widen GameState's public surface beyond this one read. Not
+	// called from any production path.
+	glm::vec3 Test_GetGameStatePlayerPosition() const;
+
 	// T52 test seam, continued: WorldProcessZoneServerInfo's consumer
 	// branch is gated on `m_zone_connected || m_zone_connection !=
 	// nullptr`, which in real operation is only ever set true by a live
