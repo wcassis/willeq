@@ -330,3 +330,66 @@ No production code touched for Part 3, as required.
   no other application.cpp content touched.
 - No other deviations. `data/willeq.db` and all goldens confirmed untouched
   throughout (checked repeatedly, not just once at the end).
+
+### Amendment (coordinator review, 2026-08-10): invalid `--log-level=` value silently won over `-d`
+
+**Defect found in review:** `ParseLevelName()` (`include/common/logging.h`)
+has no validation — any unrecognized string parses to `LOG_NONE`, same as
+a real `--log-level=NONE`. The first version of the Part 1 fix treated
+*presence* of `--log-level=` as "explicit" without checking whether its
+value actually parsed, so `--log-level=DEGUB -d 3` set `logLevelExplicit =
+true` with the parsed (bogus) level `NONE`, then restored that `NONE`
+after `-d 3` had already set level 3 — a typo silently produced total
+silence and discarded the user's explicit `-d 3`, worse than the pre-T56
+behaviour (where `-d 3` would have rescued the typo for free) and the same
+silent-precedence bug class Part 1 exists to fix, just relocated onto an
+unvalidated flag value.
+
+**Fix, staying entirely in `src/client/main.cpp`** (no `logging.h` helper
+added — out of territory, T55 is live in a sibling slot): a `--log-level=`
+value is only treated as explicit if it round-trips — `GetLevelName(
+ParseLevelName(value))`, trimmed of `GetLevelName`'s column-alignment
+trailing space (`"NONE "`, `"WARN "`, `"INFO "`), equals `value`
+byte-for-byte (case-sensitive, matching `ParseLevelName`'s own `strcmp`).
+`"OFF"` is accepted explicitly as NONE's legitimate alias (it does not
+round-trip textually). An unparseable value leaves `logLevelExplicit`
+false — so `-d` applies exactly as if `--log-level=` had never been given
+— and queues a `LOG_WARN` naming the bad value and the accepted level
+list. That WARN is deliberately emitted *after* the final level is
+resolved (not at parse time), because logging it immediately would itself
+be gated out by the transient `LOG_NONE` `InitLogging()` had just set from
+the bad value — the exact same silent-failure shape this whole unit exists
+to close.
+
+**Re-verified end-to-end** (three additional piped binary runs, redirected
+to files with `>`, read via the Read tool, never piped):
+1. `-d 3 --log-level=DEGUB`: output opens with the WARN
+   (`--log-level=DEGUB is not a recognized level (accepted: NONE, OFF,
+   FATAL, ERROR, WARN, INFO, DEBUG, TRACE) — ignoring it, -d takes
+   precedence instead`), followed by WARN/ERROR/FATAL lines only, zero
+   DEBUG/INFO — correct for level 3.
+2. `-d 5 --log-level=DEGUB` (same typo, higher `-d`): same WARN, followed
+   by DEBUG-level lines throughout — confirms the *derived* `-d` level (5,
+   not just "some" level) took effect, not merely "not NONE".
+3. `--log-level=OFF` alone: only `[ERROR]`/`[FATAL]` lines (which always
+   print regardless of level, `logging.h:169`) — zero WARN/INFO/DEBUG,
+   confirming the OFF alias still yields silence as intended and was not
+   broken by the round-trip validation.
+4. `--log-level=DEBUG` alone (regression check on the original valid
+   case): 12 DEBUG lines present — unaffected by the new validation.
+
+**Full verification bar re-run after the amendment** (all from
+`src/client/main.cpp`'s perspective, the only file this amendment
+touched):
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (full) | PASS, 0 errors |
+| `ctest --test-dir build --output-on-failure` | 1918/1919, same sole documented ALSA exception, no new failures |
+| `bash scripts/build-gles2-x86.sh` | PASS |
+| Visual gate | PASS (`ctest` id 1919, 5.76s); `git status`/`git diff --stat` confirm only `src/client/main.cpp` changed, zero goldens touched |
+| `bash scripts/build-arm-noble.sh` | PASS (completed within one call this time) |
+| `check_file_sizes.sh` | **Base note:** `fable` moved forward during this unit's work — the orchestrator merged T54 while Part 1's amendment was in progress (`git log fable` now shows T54's merge commit `df424c68` ahead of this unit's branch point `d126e6fd`). Running the default `fable` base therefore flagged an unrelated T54 file (`tests/test_static_ui_panels.cpp`) as "not found" in this working tree — correctly caught as an error by T37's hardening, but not a defect in this unit's own diff. Re-ran with the explicit base this unit actually branched from, `check_file_sizes.sh d126e6fd`: `checking 6 file(s)` — 5 ok, 1 pre-existing WARN (`application.cpp`, unchanged from before), 0 FAIL. |
+
+`data/willeq.db` and all goldens confirmed untouched by this amendment
+(only `src/client/main.cpp` differs from the prior commit).
