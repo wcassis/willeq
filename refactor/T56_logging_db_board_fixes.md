@@ -393,3 +393,47 @@ touched):
 
 `data/willeq.db` and all goldens confirmed untouched by this amendment
 (only `src/client/main.cpp` differs from the prior commit).
+
+### Second amendment (coordinator review, 2026-08-10): the bad-flag message was still swallowed with no `-d` present
+
+**Residual gap found in review:** the deferred `LOG_WARN` fix above
+correctly stops a typo from silently beating a *present* `-d`, but does
+nothing when there is no `-d` at all — `logLevelExplicit` false and
+`config.debugLevel == 0` resolve the final level to NONE, and `ShouldLog()`
+(`logging.h:167-184`) gates `LOG_WARN` (and everything below `LOG_ERROR`)
+out at NONE. So `--log-level=DEGUB` with no `-d` produced total silence and
+no indication why — precisely the outcome this whole fix exists to
+prevent, just one level deeper than the first amendment closed.
+
+**Fix:** changed that one call from `LOG_WARN` to `LOG_ERROR` — no other
+change. `ShouldLog()` always lets FATAL/ERROR through regardless of the
+current level (confirmed directly by this unit's own `--log-level=OFF`
+evidence above: only ERROR/FATAL lines survived at NONE), so ERROR is the
+only severity that is guaranteed to reach the user with no `-d` to raise
+the level. The comment at the call site now says why it must stay ERROR
+(always-on at NONE) rather than just asserting severity, so a future
+"tidy this back to WARN" doesn't quietly reopen the gap.
+
+**Re-verified** (redirected to files with `>`, read via the Read tool,
+never piped):
+1. `--log-level=DEGUB` alone, no `-d`: the error line now reaches stdout
+   (`[ERROR] [MAIN] --log-level=DEGUB is not a recognized level (accepted:
+   NONE, OFF, FATAL, ERROR, WARN, INFO, DEBUG, TRACE) — ignoring it, -d
+   takes precedence instead`), plus the pre-existing ERROR/FATAL lines from
+   the (expected, scratch-config) database-open failure — no DEBUG/INFO/WARN,
+   correctly matching an unraised NONE level; the point is the diagnostic
+   itself is no longer silent.
+2. `--log-level=DEBUG` alone (regression check): still 12 DEBUG lines,
+   zero "not a recognized level" lines — unaffected by the macro change.
+
+**Verification bar, scoped per the coordinator's guidance** (single-macro
+change, `main.cpp` not in the visual gate's or ARM toolchain's path — ARM
+and visual-gate legs skipped, not re-run):
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` (full) | PASS, 0 errors |
+| `ctest --test-dir build --output-on-failure` | 1918/1919, same sole documented ALSA exception, no new failures |
+
+`data/willeq.db` and all goldens untouched (only `src/client/main.cpp`
+changed — 13 lines).

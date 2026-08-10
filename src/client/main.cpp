@@ -92,8 +92,17 @@ int main(int argc, char* argv[]) {
         // Now that the final level is resolved (from -d, or NONE if -d was
         // also absent), this has the best chance of actually reaching
         // stdout instead of being gated out at NONE like an immediate log
-        // call right at parse time would have been.
-        LOG_WARN(MOD_MAIN,
+        // call right at parse time would have been. Deliberately LOG_ERROR,
+        // not LOG_WARN: ShouldLog() (logging.h) always lets FATAL/ERROR
+        // through regardless of the current level, but gates WARN and below
+        // on it. When --log-level= is invalid AND -d was never given, the
+        // resolved level is NONE — a WARN here would be silently swallowed,
+        // reproducing exactly the silence this fix exists to prevent (review
+        // finding, 2026-08-10). An unrecognized CLI flag being ignored is a
+        // user-facing error, not just an advisory, which independently
+        // justifies ERROR — but the always-on-at-NONE behavior is why it
+        // MUST be ERROR and not WARN. Do not "tidy" this back down to WARN.
+        LOG_ERROR(MOD_MAIN,
             "--log-level={} is not a recognized level (accepted: NONE, OFF, FATAL, ERROR, "
             "WARN, INFO, DEBUG, TRACE) — ignoring it, -d takes precedence instead",
             invalidLogLevelValue);
