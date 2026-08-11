@@ -6,6 +6,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_renderer.h"
+#include "client/graphics/ui/character_model_view.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
@@ -1586,6 +1587,15 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
             spellbookState_, skillsPopupState_);
         pendingUIClick_ = false;
     }
+
+    // T60: the paperdoll only exists/renders while the inventory popup is
+    // open — lazy construction on first open, RTT re-render gated by its
+    // own markDirty()/dirty_ flag (never a per-frame re-render). Nothing
+    // runs here when the popup is closed.
+    if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
+        updatePaperdollForFrame();
+    }
+    inventoryState_.paperdollTexture = characterModelView_ ? characterModelView_->getTexture() : nullptr;
 
     // U03c: Render new static UI when enabled
     if (newUIEnabled_ && uiRenderer_) {

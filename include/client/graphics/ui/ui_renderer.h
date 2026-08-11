@@ -62,6 +62,15 @@ public:
      */
     void drawPanel(const irr::core::rect<irr::s32>& rect);
 
+    /**
+     * Draw an arbitrary external texture (e.g. a render-to-texture target)
+     * stretched to fill rect. Unlike drawSprite(), this is not atlas-backed
+     * and draws immediately rather than batching — for the one-off,
+     * per-frame-optional case of blitting a separately-rendered texture
+     * (T60: the inventory paperdoll). No-op if texture is null.
+     */
+    void drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::ITexture* texture);
+
     /** Flush all accumulated quads to the driver. */
     void endFrame();
 

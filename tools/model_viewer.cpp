@@ -40,6 +40,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
+#include "client/graphics/eq/bone_attachment.h"
 #include "client/graphics/entity_renderer.h"  // For EntityAppearance
 #include "common/logging.h"
 #include "model_viewer_spell_bar.h"  // Spell bar UI for casting visualization
@@ -1950,69 +1951,24 @@ void reloadEntityWithTextures() {
     }
 }
 
-// Helper to find bone index by trying multiple name variants (case-insensitive)
-int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton, const std::string& raceCode,
-                  const std::vector<std::string>& suffixes, bool verbose = true) {
-    // Try each suffix with different case combinations
-    for (const auto& suffix : suffixes) {
-        // Try: RACECODESUFFIX, racecodesuffix, RaceCodeSuffix variations
-        std::vector<std::string> variants;
-
-        // Uppercase race + suffix
-        std::string upper = raceCode + suffix;
-        variants.push_back(upper);
-
-        // Lowercase race + suffix
-        std::string lower = raceCode + suffix;
-        std::transform(lower.begin(), lower.end(), lower.begin(),
-                      [](unsigned char c) { return std::tolower(c); });
-        variants.push_back(lower);
-
-        // Also try without _DAG suffix if present
-        if (suffix.length() > 4 && suffix.substr(suffix.length() - 4) == "_DAG") {
-            std::string noDAG = suffix.substr(0, suffix.length() - 4);
-            std::string upperNoDAG = raceCode + noDAG;
-            variants.push_back(upperNoDAG);
-            std::string lowerNoDAG = raceCode + noDAG;
-            std::transform(lowerNoDAG.begin(), lowerNoDAG.end(), lowerNoDAG.begin(),
-                          [](unsigned char c) { return std::tolower(c); });
-            variants.push_back(lowerNoDAG);
-        }
-
-        for (const auto& boneName : variants) {
-            int idx = skeleton->getBoneIndex(boneName);
-            if (idx >= 0) {
-                if (verbose) {
-                    std::cout << "  Found bone: " << boneName << " (index " << idx << ")" << std::endl;
-                }
-                return idx;
-            }
-        }
-    }
-    return -1;
-}
+// Bone lookup and rotation extraction converge (T60) on the shared
+// implementation in bone_attachment.h — see that header's comment.
+// entity_equipment.cpp's fallback chain (EQT::Graphics::findBoneIndex) is
+// used here rather than this tool's previous, narrower chain (no
+// underscore-joined "RACE_suffix" variant, no leading-underscore-stripped
+// variant beyond one case); this widens what the viewer can find, which is
+// fine here — the STOP condition on unchanged behaviour applies only to
+// the in-world/production path (entity_equipment.cpp), not this tool.
+using EQT::Graphics::findBoneIndex;
+using EQT::Graphics::extractBoneRotation;
+using EQT::Graphics::computeWeaponGripOffset;
+using EQT::Graphics::computeShieldGripOffset;
 
 // Stored bone indices for equipment attachment (cached after first lookup)
 int primaryBoneIndex = -1;
 int secondaryBoneIndex = -1;
 float primaryWeaponOffset = 0.0f;  // Offset to position handle at hand
 float secondaryWeaponOffset = 0.0f;  // Offset for shield/secondary weapon
-
-// Update equipment positions based on current bone states
-// Extract Euler angles from a bone transformation matrix
-// Returns angles in degrees for Irrlicht (converting from EQ coordinate system)
-core::vector3df extractBoneRotation(const BoneMat4& m) {
-    // Build an Irrlicht matrix from the bone transform, swapping Y/Z for coordinate conversion
-    // EQ matrix is column-major: m[0-3] = col0, m[4-7] = col1, etc.
-    // We need to swap Y and Z axes
-    core::matrix4 irrMat;
-    irrMat[0] = m.m[0];   irrMat[1] = m.m[2];   irrMat[2] = m.m[1];   irrMat[3] = 0;
-    irrMat[4] = m.m[8];   irrMat[5] = m.m[10];  irrMat[6] = m.m[9];   irrMat[7] = 0;
-    irrMat[8] = m.m[4];   irrMat[9] = m.m[6];   irrMat[10] = m.m[5];  irrMat[11] = 0;
-    irrMat[12] = 0;       irrMat[13] = 0;       irrMat[14] = 0;       irrMat[15] = 1;
-
-    return irrMat.getRotationDegrees();
-}
 
 void updateEquipmentPositions() {
     if (!animatedNode || !useAnimatedMesh) return;
@@ -2214,10 +2170,13 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
                     }
                 }
 
-                // Offset along blade (local X axis) so handle grip is at hand
+                // Offset along blade (local X axis) so handle grip is at hand.
+                // T60: converged onto the same grip-offset formula
+                // entity_equipment.cpp uses per-frame in production (was a
+                // flat weaponLength*0.35 here before convergence — a
+                // debug-tool-only change, not the in-world path).
                 core::aabbox3df bbox = equipMesh->getBoundingBox();
-                float weaponLength = bbox.MaxEdge.X - bbox.MinEdge.X;
-                primaryWeaponOffset = weaponLength * 0.35f;  // ~35% puts grip at hand
+                primaryWeaponOffset = computeWeaponGripOffset(bbox);
 
                 // Apply rotated offset to initial position
                 core::matrix4 rotMat;
@@ -2301,11 +2260,12 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
                     }
                 }
 
-                // Offset shield down (along local X axis after rotation)
+                // Offset shield down (along local X axis after rotation).
+                // T60: converged onto entity_equipment.cpp's production
+                // flat-constant shield offset (was shieldHeight*0.175 here
+                // before convergence — debug-tool-only change).
                 if (isShield) {
-                    core::aabbox3df bbox = equipMesh->getBoundingBox();
-                    float shieldHeight = bbox.MaxEdge.X - bbox.MinEdge.X;
-                    secondaryWeaponOffset = shieldHeight * 0.175f;
+                    secondaryWeaponOffset = computeShieldGripOffset();
 
                     core::matrix4 rotMat;
                     rotMat.setRotationDegrees(rot);

@@ -3365,7 +3365,65 @@ transcripts against ~350KB for comparable units. Repacked at merge into
 excerpts plus gzipped full logs (8.1MB). **Use `-d 5` unless you
 specifically need packet dumps, and capture a narrow window if you do.**
 
-## NEW: the inventory character preview (3D paperdoll) is a deliberate, recorded gap — not a bug (T54, 2026-08-10)
+## RESOLVED by T60 (2026-08-11): the inventory character preview (3D paperdoll) is restored — was a deliberate, recorded gap (T54, 2026-08-10)
+
+**Retitled, not deleted — history below is load-bearing.** T60 restored
+`CharacterModelView` (`include/client/graphics/ui/character_model_view.h`,
+`src/client/graphics/ui/character_model_view.cpp`) from `0f25cb57^`,
+adapted for ownership by `IrrlichtRenderer` (lazy construction on first
+inventory-popup open, never at renderer init) instead of the deleted
+`WindowManager`, and wired into `renderInventoryPopup()` via a new shared
+rect (`InventoryLayout::paperdollRect()`, T57's pattern) and a new
+`UIRenderer::drawTexture()` blit method. The doll is fed the SAME
+`EntityAppearance` the player's own in-world 3rd-person entity uses
+(`entity_renderer.cpp`'s `isPlayer` branch), including
+`compositeAllowed=false` to match the player's per-part (non-composite)
+render path — see `refactor/T60_paperdoll_restore.md`'s Review for the
+full appearance-source reasoning and render-trigger evidence (markDirty()
+on appearance change / popup open / drag-rotation; proven not to render
+per frame). See that plan's Review also for a real bug found and fixed in
+the process: RTT textures blitted via `draw2DImage()` render upside-down
+without a V-flip (GL FBO bottom-left origin vs. `draw2DImage`'s top-left
+convention for ordinary images) — fixed in the new `drawTexture()`, does
+not affect any pre-existing draw path.
+
+**What the restore did NOT do: reinstate a third copy of the bone-
+attachment logic.** The deleted `CharacterModelView` carried its own
+`findBoneIndex`/`extractBoneRotation`/weapon-offset copy (a third,
+alongside `entity_equipment.cpp` production and `tools/model_viewer.cpp`).
+T60 extracted ONE shared implementation
+(`include/client/graphics/eq/bone_attachment.h`), verbatim from
+`entity_equipment.cpp` (the in-world/production copy — behaviour-
+preservation was mandatory there), and pointed all three
+consumers at it. Diffing the two surviving pre-T60 copies found real,
+previously-undocumented divergence — most notably, production's shield
+grip offset is a flat `0.3` constant, NOT the bounding-box-derived
+`bbox_width * 0.175` the deleted paperdoll and the tool's initial
+placement both used; the shared header keeps production's actual (flat)
+formula, so the restored paperdoll's shield grip differs slightly from
+what the pre-0f25cb57 paperdoll would have shown, but matches what the
+player already sees in 3rd person today. See the plan's Review for the
+full diff and the new `tests/test_bone_attachment.cpp` (17 cases,
+including two that pin genuine quirks in the fallback chain: a case-
+sensitivity bug that makes the `_DAG`-suffix-stripped fallback
+unreachable for lowercase `"_dag"` suffixes, and a "lowercase" fallback
+variant that is actually mixed-case because the stripped substring is
+never re-cased). None of these quirks were changed — only pinned, per the
+plan's explicit behaviour-preservation requirement for the in-world path.
+
+**Still open, now with an instrument to diagnose it:** the held-item
+misalignment Will reported (equipped items not always appearing correctly
+in a character's hand) was explicitly OUT of scope for T60 — see the
+paperdoll capture screenshots in `refactor/artifacts/T60/` (both x86/
+llvmpipe and real Orange Pi/Mali400), which show it directly: an equipped
+primary weapon renders as an untextured white blob near the character's
+hand rather than a recognizable weapon model. Previously this could only
+be debugged by comparing production (in-world, hard to inspect closely)
+against the tool (which had ITS OWN divergent bone-lookup copy, so fixing
+something there didn't reliably predict production). Now both consume the
+identical shared implementation, and the paperdoll gives a third, always-
+visible vantage point directly in the UI. Fixing the misalignment itself
+is a future unit's work.
 
 `CharacterModelView` — the 3D character-model preview panel inside the old
 inventory window, showing your equipped appearance while you managed

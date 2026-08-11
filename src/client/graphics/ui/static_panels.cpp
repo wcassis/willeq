@@ -306,6 +306,19 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
         }
     }
 
+    // Character paperdoll (T60): fills the center T54/T57 left empty,
+    // between the equipment columns and above the weapon row. Rect comes
+    // from the same shared geometry source the slots use
+    // (InventoryLayout::paperdollRect()) — no independent arithmetic here.
+    // The texture is rendered elsewhere (IrrlichtRenderer's
+    // CharacterModelView::renderToTexture(), only when dirty); this
+    // function only blits whatever texture is current this frame, or
+    // draws nothing if the doll hasn't produced one yet (lazy
+    // construction, or RTT unavailable — see the plan's Step 5).
+    if (inv.paperdollTexture) {
+        ui.drawTexture(InventoryLayout::paperdollRect(layout), inv.paperdollTexture);
+    }
+
     // General inventory: row of 8 slots below the weapon row. The row is
     // horizontally centered in the popup (see InventoryLayout), leaving
     // margin on both sides — the label goes in that left margin, vertically

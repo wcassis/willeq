@@ -22,6 +22,8 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/character_model_view.h"
+#include "client/graphics/ui/inventory_layout.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
@@ -1192,6 +1194,13 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             inventoryState_.activePopup = PopupType::None;
         } else {
             inventoryState_.activePopup = PopupType::Inventory;
+            // T60: popup opened — mark the doll dirty so it re-renders even
+            // if the appearance hasn't changed since it was last open (e.g.
+            // the RTT texture is stale, or this is the first open of the
+            // session and ensurePaperdollInitialized() hasn't run yet).
+            if (characterModelView_) {
+                characterModelView_->markDirty();
+            }
         }
         chat(fmt::format("New UI inventory: {}",
             inventoryState_.activePopup == PopupType::Inventory ? "OPEN" : "CLOSED"));
@@ -2805,7 +2814,107 @@ float IrrlichtRenderer::getClipDistance() const {
     return config_.constrainedConfig.clipDistance;
 }
 
+// ============================================================================
+// T60: Inventory paperdoll (CharacterModelView)
+// ============================================================================
 
+void IrrlichtRenderer::markPaperdollDirty() {
+    if (characterModelView_) characterModelView_->markDirty();
+}
+
+void IrrlichtRenderer::ensurePaperdollInitialized() {
+    if (characterModelView_ || paperdollInitAttempted_) {
+        return;
+    }
+    paperdollInitAttempted_ = true;
+
+    if (!smgr_ || !driver_) {
+        LOG_WARN(MOD_UI, "IrrlichtRenderer: paperdoll init skipped, no scene manager/driver yet");
+        return;
+    }
+
+    // Fixed size matching InventoryLayout::paperdollRect()'s dimensions
+    // (304x256 — constant regardless of screen resolution, since
+    // centerPopup is a fixed-size box whose ORIGIN, not size, varies with
+    // resolution — see inventory_layout.h).
+    constexpr int kPaperdollWidth = 304;
+    constexpr int kPaperdollHeight = 256;
+
+    auto doll = std::make_unique<eqt::ui::CharacterModelView>();
+    doll->init(smgr_, driver_, kPaperdollWidth, kPaperdollHeight);
+    if (entityRenderer_) {
+        doll->setRaceModelLoader(entityRenderer_->getRaceModelLoader());
+        doll->setEquipmentModelLoader(entityRenderer_->getEquipmentModelLoader());
+    }
+    // No InventoryManager is wired here (S2 decoupled the renderer from it
+    // entirely — IrrlichtRenderer holds no InventoryManager pointer to
+    // pass on; inventory UI state arrives only via bridge events). This is
+    // fine: the doll's appearance comes from the player's live
+    // EntityAppearance (updatePaperdollForFrame(), below), matching Step
+    // 4 of the plan, not from inventory item materials.
+    characterModelView_ = std::move(doll);
+    LOG_INFO(MOD_UI, "IrrlichtRenderer: paperdoll (CharacterModelView) constructed lazily on first popup open");
+}
+
+namespace {
+bool appearanceEquals(const EQT::Graphics::EntityAppearance& a, const EQT::Graphics::EntityAppearance& b) {
+    if (a.face != b.face || a.haircolor != b.haircolor || a.hairstyle != b.hairstyle ||
+        a.beardcolor != b.beardcolor || a.beard != b.beard || a.texture != b.texture ||
+        a.helm != b.helm) {
+        return false;
+    }
+    for (int i = 0; i < 9; ++i) {
+        if (a.equipment[i] != b.equipment[i] || a.equipment_tint[i] != b.equipment_tint[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
+void IrrlichtRenderer::updatePaperdollForFrame() {
+    ensurePaperdollInitialized();
+    if (!characterModelView_ || !entityRenderer_) {
+        return;
+    }
+
+    // T60 (Step 4): find the player's own in-world entity and feed the
+    // doll the SAME EntityAppearance it renders with in 3rd person — not a
+    // separately-reconstructed one — so the doll can never visually
+    // disagree with what the player actually sees.
+    const EQT::Graphics::EntityVisual* playerVisual = nullptr;
+    for (const auto& [spawnId, visual] : entityRenderer_->getEntities()) {
+        if (visual.isPlayer) {
+            playerVisual = &visual;
+            break;
+        }
+    }
+    if (!playerVisual) {
+        return;  // Not zoned in / player entity not built yet — nothing to show.
+    }
+
+    const bool changed = !paperdollHasAppearance_ ||
+        playerVisual->raceId != paperdollLastRaceId_ ||
+        playerVisual->gender != paperdollLastGender_ ||
+        !appearanceEquals(playerVisual->appearance, paperdollLastAppearance_);
+
+    if (changed) {
+        paperdollLastRaceId_ = playerVisual->raceId;
+        paperdollLastGender_ = playerVisual->gender;
+        paperdollLastAppearance_ = playerVisual->appearance;
+        paperdollHasAppearance_ = true;
+        // setCharacter() rebuilds the model and marks the doll dirty
+        // internally — only call it when something actually changed.
+        characterModelView_->setCharacter(playerVisual->raceId, playerVisual->gender,
+                                           playerVisual->appearance);
+    }
+
+    // update()/renderToTexture() are cheap no-ops when not dirty — safe to
+    // call every frame the popup is open; the RTT itself only re-renders
+    // on markDirty() triggers (appearance change, popup open, drag-rotate).
+    characterModelView_->update(16.0f);  // Approximate frame delta for idle-anim throttling
+    characterModelView_->renderToTexture();
+}
 
 } // namespace Graphics
 } // namespace EQT

@@ -315,6 +315,34 @@ TEST_F(StaticUIInputTest, InventoryNoTwoSlotRectsOverlap) {
     }
 }
 
+// T60: the paperdoll rect must lie wholly inside centerPopup, like the 30
+// slot rects, and must not overlap any of them (it sits in the space T57
+// deliberately left empty for it — see InventoryLayout::paperdollRect()).
+
+TEST_F(StaticUIInputTest, PaperdollRectIsWhollyInsideCenterPopup) {
+    const auto& popup = layout.centerPopup;
+    irr::core::rect<irr::s32> doll = InventoryLayout::paperdollRect(layout);
+    EXPECT_GE(doll.UpperLeftCorner.X, popup.UpperLeftCorner.X);
+    EXPECT_GE(doll.UpperLeftCorner.Y, popup.UpperLeftCorner.Y);
+    EXPECT_LE(doll.LowerRightCorner.X, popup.LowerRightCorner.X);
+    EXPECT_LE(doll.LowerRightCorner.Y, popup.LowerRightCorner.Y);
+    // Non-degenerate — must actually have area to draw into.
+    EXPECT_GT(doll.getWidth(), 0);
+    EXPECT_GT(doll.getHeight(), 0);
+}
+
+TEST_F(StaticUIInputTest, PaperdollRectDoesNotOverlapAnySlotRect) {
+    irr::core::rect<irr::s32> doll = InventoryLayout::paperdollRect(layout);
+    for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+        irr::core::rect<irr::s32> slot = InventoryLayout::slotRect(layout, i);
+        bool overlap = doll.UpperLeftCorner.X < slot.LowerRightCorner.X &&
+                        doll.LowerRightCorner.X > slot.UpperLeftCorner.X &&
+                        doll.UpperLeftCorner.Y < slot.LowerRightCorner.Y &&
+                        doll.LowerRightCorner.Y > slot.UpperLeftCorner.Y;
+        EXPECT_FALSE(overlap) << "paperdoll rect overlaps slot " << i;
+    }
+}
+
 TEST_F(StaticUIInputTest, InventoryPopupInactiveNeverHoverHits) {
     // activePopup == None: even a point squarely inside centerPopup's
     // screen region must not hover or consume — the hit test is gated on

@@ -422,6 +422,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+                // T60: an equip-slot change usually means the player's
+                // EntityAppearance changed too (WearChange) — mark the
+                // paperdoll dirty so it picks it up next time it renders.
+                renderer_->markPaperdollDirty();
             } else if (d.slotId >= 22 && d.slotId < 30) {
                 int idx = d.slotId - 22;
                 auto& slot = renderer_->inventoryState_.generalSlots[idx];

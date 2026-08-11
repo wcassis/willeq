@@ -1021,6 +1021,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
+# T60: the shared bone-lookup fallback chain (bone_attachment.h) — pure
+# string logic over a synthetic skeleton, no device/Irrlicht driver needed
+# (just the irr::core math types, header-only via willeq_core's include
+# path). Nothing tested this before convergence.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bone_attachment
+        test_bone_attachment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_bone_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_bone_attachment GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_bone_attachment)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.
