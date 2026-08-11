@@ -113,6 +113,7 @@ enum LinuxKey {
 #include "os.h"
 #include "CTimer.h"
 #include "gpu_sync_probe.h"
+#include "COpenGLES2Driver.h"
 #include <chrono>
 
 // P25: X11 headers for the opt-in windowed EGL backend. Included after all
@@ -274,6 +275,17 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
 
 CIrrDeviceFB::~CIrrDeviceFB()
 {
+    // T61: flush any deferred present() before EGL/DRM teardown below --
+    // see the ARM CIrrDeviceFB.cpp's identical block (this file is a full
+    // fork, not shared) and COpenGLES2Driver::endScene()'s comment for why.
+    // A no-op on this fork's own present() (already a harmless swap), but
+    // keeps pendingPresent_ from being left permanently true, and matches
+    // the DRM/GBM path exactly in case this fork's DRM branch (non-X11,
+    // non-surfaceless) is ever exercised.
+    if (VideoDriver && CreationParams.DriverType == video::EDT_OGLES2) {
+        static_cast<video::COpenGLES2Driver*>(VideoDriver)->flushPendingPresent();
+    }
+
     // Destroy EGL
     if (eglDisplay_ != EGL_NO_DISPLAY) {
         eglMakeCurrent(eglDisplay_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

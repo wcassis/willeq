@@ -240,6 +240,102 @@ are exclusively the no-atlas degradation path.
 Full detail, tables, and the corrected before/after images:
 `review/T61/README.md`.
 
+### Round 3 — coordinator review: frame pacing, the last-frame case, and layer justification
+
+The coordinator accepted Round 2's diagnosis and fix but raised three
+concerns specific to deferring `present()` from `endScene()` to the next
+`beginScene()`, since that change touches every frame's presentation
+timing in the shipping client, not just capture tools, on the platform
+whose headline problem is frame pacing on Mali400.
+
+**1. Frame pacing, measured on real hardware, not asserted.** Built two
+ARM `gles2_zone_benchmark` binaries differing in exactly one thing — the
+presence/absence of the deferred-present change (the `activeProgram_` fix
+present in both) — by temporarily checking out commit `b56cbe13`'s driver
+files for the "before" build, then restoring the working tree for
+"after". Ran both, `--gpu-sync-probe`, on **befallen** (the coordinator's
+own reference zone — confirmed matching: frame 0 draws=368, matching "p95
+~368 draws, CPU draw-submission bound" exactly), same 21-static-pose
+sequence (7 reps of the manifest's 3 `--camera-pose` entries), same
+`--adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count
+--player-light-level 9` production config, performance governor pinned.
+First pass showed a large gap (before: mean 38.18ms/p50 30.02ms/p95
+135.07ms; after: mean 25.71ms/p50 22.25ms/p95 39.03ms) that looked like a
+real regression-in-reverse — but a **second pass in reversed order**
+(after, then before again) showed `after`, `after2`, **and `before2`** all
+converge to the identical steady-state number (mean ≈25.7ms, p50 ≈22.2-
+22.4ms, p95 ≈38.95-39.03ms, all three within noise of each other) — i.e.
+the first pass's gap was a cold-start/thermal warm-up artifact of running
+first in the session, not a code effect, and it hits either binary
+identically. **Once warm, before and after are statistically
+indistinguishable** (p50 within 0.2ms, p95 within 0.1ms across 3
+same-order-warm runs). No dropped/missed page-flips (`-EBUSY`/fallback
+`drmModeSetCrtc` warnings) in any of the four runs' logs.
+`swap_buffers_ms`/`flip_wait_ms` CSV columns read `0.000` in every row of
+every run (before and after identically) — a pre-existing gap in how
+`--gpu-sync-probe` wires those two columns for this tool's static-pose
+capture path, not something this unit's change caused or could hide a
+regression behind, since it is equally absent on both sides of the
+comparison; `total_ms` (actual measured wall-clock frame time, which does
+include swap/present) is what the p50/p95 figures above are built from,
+and that metric is fully populated and directly comparable. Full CSVs are
+not retained in the repo (Pi-local, per the I/O rule) but the analysis
+script and figures are reproducible from this description.
+
+**2. The last frame is never presented — fixed.** Traced the shutdown
+path (`IrrlichtRenderer::shutdown()`, `irrlicht_renderer.cpp`): it calls
+`device_->drop()` directly, with no final `beginScene()`/`endScene()` —
+confirming the coordinator's concern exactly: if the last real frame's
+`endScene()` left `pendingPresent_` true, nothing would ever consume it.
+Traced C++ destruction order to find a *safe* place to flush it:
+`CIrrDeviceFB::~CIrrDeviceFB()`'s body destroys EGL/DRM first (own
+destructor), and only the *base* class `CIrrDeviceStub::~CIrrDeviceStub()`
+(which runs strictly after, in standard C++ derived-then-base destructor
+order) calls `VideoDriver->drop()`. So at the very top of
+`~CIrrDeviceFB()`, `VideoDriver` is still fully valid AND EGL/DRM are
+still fully valid — the correct and only safe window. Added
+`COpenGLES2Driver::flushPendingPresent()` (public, no-op if nothing
+pending) and call it from the top of `~CIrrDeviceFB()`, before EGL
+teardown, in **both** the ARM DRM/GBM file
+(`docker/irrlicht-drm/CIrrDeviceFB.cpp`) and the x86 fork
+(`docker/irrlicht-drm-x86/CIrrDeviceFB.cpp` — confirmed via `diff` this is
+a genuine separate fork, not shared, so both needed the identical
+addition; x86's own swap is already a content no-op per its existing
+comment, so this is a correctness/no-permanently-true-flag consistency
+fix there rather than a behavior change, and covers x86's own DRM branch
+in case it's ever exercised, since `present()` there has a real
+non-surfaceless, non-X11 fallback path too). Verified: clean process exit
+observed on every Pi invocation this unit ran (all `EXIT=0`, no crash from
+the new destructor code path), and the full x86 `ctest` suite — which
+exercises normal shutdown paths — stayed green (1963/1964, same known
+exception) after this addition.
+
+**3. Layer justification, stated explicitly.** `beginScene → draw →
+endScene → createScreenShot()` is the standard Irrlicht idiom — stock
+example code, and literally every caller in this repo, including files
+this unit cannot edit. A caller using that idiom is entitled to assume
+`createScreenShot()` returns what it just drew; this driver was violating
+that contract specifically on real DRM/GBM hardware (never on x86, whose
+swap was already a content no-op). This is a contract fix, not a
+screenshot hack: it does not special-case capture call sites, changes
+nothing about what a physical display eventually shows (same content,
+same total swap count, only *when* within the endScene/beginScene window
+the swap physically executes), and Round 3.1's pacing measurement confirms
+it costs nothing in practice. This reasoning is now also stated directly
+in the code comment at `COpenGLES2Driver.cpp`'s `endScene()` (the "Why
+this belongs here and not in the capture tool" paragraph), not just this
+Review, per the coordinator's ask. The counter-argument — confine the
+change to the capture path, read pixels before the swap, leave the
+production presentation path untouched — was considered and rejected:
+`ui_inventory_capture.cpp` cannot be edited this round (T62's territory),
+and even if it could, `gles2_zone_benchmark`'s own `--dump-png` path
+already reads pre-swap correctly and was never the problem — the actual
+callers hitting this bug use the standard idiom precisely because it is
+standard, and fixing only one caller would leave the contract violated
+for every other immediate caller (debug overlays, portal wireframes, any
+future screenshot use), which is the same "fix at the right layer"
+principle Round 1 already established for `draw2DRectangle` itself.
+
 ### Step 1 — blast radius
 
 **Structural conclusion: this was a degradation-path bug, not a bug that
@@ -343,9 +439,10 @@ territory. **Flagged for the orchestrator/T62 to remove**, not done here.
 
 ### Verification bar
 
-Run **twice in full** — once for the `activeProgram_` fix, again for the
-deferred-present fix the coordinator's review prompted (Round 2 above).
-Both runs green; figures below are the final (Round 2) run.
+Run **three times in full** — once for the `activeProgram_` fix (Round
+1), again for the deferred-present fix (Round 2), a third time for the
+last-frame flush + comment addition (Round 3). All three green; figures
+below are the final (Round 3) run.
 
 1. `cmake --build build -j24` — clean, only pre-existing/unrelated
    warnings (e.g. `eq.cpp` void-pointer-arithmetic warnings predating this
@@ -353,46 +450,54 @@ Both runs green; figures below are the final (Round 2) run.
 2. `ctest --test-dir build --output-on-failure` — **1963/1964**, same lone
    known exception as the documented baseline
    (`AudioManagerTest.PreloadCommonSounds`, ALSA host quirk). No new
-   failures. `visual_gate` **PASSED** (6.49s) — **goldens untouched**, no
-   re-bless needed. (The deferred-present change touches every frame's
-   present timing, not just capture tools — this was the specific risk
-   the plan's "goldens risk" note warned about; confirmed clean.)
+   failures. `visual_gate` **PASSED** (6.19-6.49s across all three rounds)
+   — **goldens untouched**, no re-bless needed. (The deferred-present
+   change touches every frame's present timing, not just capture tools —
+   this was the specific risk the plan's "goldens risk" note warned
+   about; confirmed clean all three times.)
 3. `bash scripts/build-gles2-x86.sh` — clean, produces
    `build-gles2/bin/{willeq,gles2_zone_benchmark}`.
 4. Visual gate PASS (covered by step 2's ctest run, same tree).
 5. `bash scripts/build-arm-noble.sh` — clean full cross-compile,
    `build-arm-noble/bin/willeq` + all `gles2_*`/`ui_inventory_capture`
-   tools produced.
+   tools produced. Run 3 times total this unit: Round 2's final fix, a
+   temporary `b56cbe13`-checkout build (pacing baseline, Round 3, deleted
+   after extracting the binary — never committed), and Round 3's final
+   build with the last-frame flush + comment.
 6. `scripts/refactor/check_file_sizes.sh fable` (run with `GIT_DIR`/
    `GIT_WORK_TREE` pointed at this slot, since the tool's cwd-based
    `git rev-parse --show-toplevel` doesn't resolve without `cd`, which is
-   disallowed) — 7 files changed vs `fable` (T62's merge landed on `fable`
-   after this branch forked, widening the diff): `COGLES2Shaders.cpp` (657
-   lines, ok), `COpenGLES2Driver.cpp` (2162 lines, **WARN** — pre-existing
-   oversized legacy file per `docs/decisions.md`'s Batch F backlog, not
-   newly created by this ~20-line diff), `COpenGLES2Driver.h` (467, ok),
-   `character_model_view.h`/`test_bone_attachment.cpp`/
-   `ui_inventory_capture.cpp` (T62's files, untouched by this unit, ok),
-   `tools/model_viewer.cpp` (3217 lines, **FAIL** — pre-existing on the
-   `fable` tip itself via T62's merge; confirmed via `git show
-   fable:tools/model_viewer.cpp | wc -l` = 3232 lines, already over the
-   3000 ceiling before this unit touched anything; this unit's `git diff`
-   contains zero lines of `model_viewer.cpp`). No new FAILs caused by this
-   unit's actual changes.
+   disallowed) — 12 files changed vs `fable` (T63/T64 unit plans also
+   landed on `fable` since this branch forked, widening the diff further):
+   this unit's actual 4 changed files are all `ok` except
+   `COpenGLES2Driver.cpp` (2189 lines, **WARN** — pre-existing oversized
+   legacy file per `docs/decisions.md`'s Batch F backlog; this unit's
+   cumulative diff to it is ~35 lines, not what put it over 1500). The
+   remaining files in the 12-file list (`application.h`/`.cpp`,
+   `test_video_capture_flags.cpp` [reported as missing — added by T64,
+   which landed on `fable` after this branch forked, so this worktree
+   never had it], `character_model_view.h`/`test_bone_attachment.cpp`/
+   `ui_inventory_capture.cpp` [T62's files], `tools/model_viewer.cpp`
+   [**FAIL**, 3217 lines here / 3232 on `fable` tip — already over 3000
+   before this unit touched anything]) are all pre-existing drift from
+   `fable` moving ahead of this branch, confirmed via `git diff --stat
+   HEAD` showing only the 4 driver files this unit actually changed. No
+   new FAILs caused by this unit's actual changes.
 
 ### Hardware evidence (Orange Pi One, Mali400, real DRM/KMS — not
 ### llvmpipe)
 
 `review/T61/before/` (T60's original capture, carried over) vs
-`review/T61/after/` (this unit's **final** fix — both the
-`activeProgram_` sentinel and the deferred-present fix — cross-compiled +
-stripped locally before deploy since the unstripped ARM binary is 357MB
-and the Pi's `/tmp` tmpfs is only 242MB — deployed a locally-
-`arm-linux-gnueabihf-strip`'d copy instead, ~10MB). Both built from
-`tools/hwcaps/ui_inventory_capture.cpp` **unmodified** (re-checked against
-the current `fable` tip after T62's merge — no changes to the relevant
-code), run on the same hardware, same resolutions, same popup state, same
-framing.
+`review/T61/after/` (Round 2's fix — reconfirmed byte-identical after
+Round 3's last-frame-flush addition, since that addition only runs at
+shutdown and cannot affect a capture's own frame; see below). Both built
+from `tools/hwcaps/ui_inventory_capture.cpp` **unmodified** (re-checked
+against the current `fable` tip after T62's merge — no changes to the
+relevant code), run on the same hardware, same resolutions, same popup
+state, same framing. ARM binaries cross-compiled + stripped locally before
+every deploy since the unstripped `willeq` is 357MB and the Pi's `/tmp`
+tmpfs is only 242MB — deployed `arm-linux-gnueabihf-strip`'d copies
+instead (~10MB `willeq`, ~5.7MB `ui_inventory_capture`).
 
 - `inventory_800x600_full`: BEFORE has no panel background/border (only
   text floats on the clear color); AFTER has both, at the correct
@@ -400,18 +505,30 @@ framing.
 - `inventory_1280x800_full`: same story, independent repro (separate
   device/driver instance in the tool).
 - `inventory_800x600_sparse`: BEFORE and Round-1-AFTER were
-  byte-identical to `full` (the buffer-lag bug); **Round-2-AFTER is
+  byte-identical to `full` (the buffer-lag bug); **Round-2/3-AFTER is
   genuinely distinct** (`md5sum` differs from `full`), and visually shows
   its own correct state (`Rus`/`Clo`/`Bre x5`).
-- `inventory_800x600_hover`: Round-2-AFTER is byte-identical to `full` —
-  this is *correct* (see Round 2 above and README for why), not a repeat
-  of the bug.
+- `inventory_800x600_hover`: Round-2/3-AFTER is byte-identical to `full`
+  — this is *correct* (see Round 2 above and README for why), not a
+  repeat of the bug.
+- **Round 3 re-verification**: re-ran `ui_inventory_capture` with the
+  final binary (last-frame flush included) — all 4 PNGs' `md5sum`s are
+  **identical** to Round 2's, confirming the destructor addition changed
+  nothing about capture correctness (expected: it only executes once, at
+  device teardown, after any capture has already completed and been
+  written to disk).
 
-Pi session: **2 invocations** total this unit (`ui_inventory_capture` run
-once per driver-fix round, producing all 4 PNGs each time — well under
-the 12/session cap). Governor confirmed `ondemand` before and after both
-invocations (untouched). `/tmp` confirmed empty (0/242M) after final
-cleanup. No reboot.
+Pi session: **7 invocations** total this unit across all three rounds
+(`ui_inventory_capture` x3 [Round 1, Round 2, Round 3 re-verify],
+`gles2_zone_benchmark` pacing x4 [before/after/after2/before2, Round 3] —
+well under the 12/session cap; one mid-session `drop_caches` was needed
+when `CmaFree` read 33.7MB at session start, below the 40MB panic-safe
+floor — recovered to 90.4MB immediately after, no abort triggered).
+Governor: `ondemand` confirmed before Rounds 1/2; pinned to `performance`
+for the Round 3 pacing measurement (per `pi_common.py`'s `GovernorPin`
+idiom) and explicitly restored to `ondemand` afterward, confirmed on all
+4 cores. `/tmp` confirmed empty (0/242M) after every round's cleanup. No
+reboot.
 
 ### Deviations
 
@@ -430,6 +547,18 @@ cleanup. No reboot.
   call sites touched, full verification bar re-run. Flagged here as a
   deviation from the plan's original single-fix scope, not silently
   absorbed.
+- A third addition (`flushPendingPresent()` + both `CIrrDeviceFB.cpp`
+  destructors) was made in direct response to the coordinator's Round 3
+  review, closing the last-frame-never-presented gap the deferred-present
+  fix opened. Also within territory; also re-verified in full.
+- Frame-pacing evidence required a temporary local revert of
+  `docker/irrlicht-drm/COpenGLES2Driver.{h,cpp}`/`CIrrDeviceFB.cpp` to
+  commit `b56cbe13`'s content (activeProgram_ fix only, no deferred
+  present) to build an isolated pacing-baseline ARM binary — reverted back
+  to the working tree's actual state immediately after extracting that one
+  binary, confirmed via `git diff --stat b56cbe13` showing zero remaining
+  difference before proceeding. Nothing from this temporary state was
+  committed.
 - Did not exercise the real client with a live connection on hardware
   (NO EQEMU) — Step 1's blast-radius answer rests on render-loop-ordering
   code inspection plus the isolated-capture-tool hardware evidence above,

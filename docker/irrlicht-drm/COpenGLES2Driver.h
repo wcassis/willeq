@@ -187,6 +187,15 @@ public:
                             core::rect<s32>* sourceRect=0);
     virtual bool endScene();
 
+    // T61: present() is deferred from endScene() to the next beginScene()
+    // (see endScene()'s comment). If the device is being torn down, no
+    // further beginScene() will ever run to consume a pending present, so
+    // the last rendered frame would otherwise never reach the display.
+    // CIrrDeviceFB's destructor calls this, before it tears down EGL/DRM,
+    // to flush any outstanding present first. Safe to call when nothing is
+    // pending (no-op) or repeatedly.
+    void flushPendingPresent();
+
     // Transforms
     virtual void setTransform(E_TRANSFORMATION_STATE state, const core::matrix4& mat);
     virtual const core::matrix4& getTransform(E_TRANSFORMATION_STATE state) const;

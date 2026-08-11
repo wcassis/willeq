@@ -114,6 +114,7 @@ enum LinuxKey {
 #include "CTimer.h"
 #include "drm_mode_select.h"
 #include "gpu_sync_probe.h"
+#include "COpenGLES2Driver.h"
 #include <vector>
 #include <chrono>
 
@@ -230,6 +231,19 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
 
 CIrrDeviceFB::~CIrrDeviceFB()
 {
+    // T61: flush any deferred present() BEFORE tearing down EGL/DRM below,
+    // and before CIrrDeviceStub::~CIrrDeviceStub() (which runs after this
+    // destructor's body, per C++ destruction order) drops VideoDriver out
+    // from under us. Without this, a frame rendered right before shutdown
+    // (endScene() called, but no further beginScene() ever runs to consume
+    // the deferred present) would never reach the display -- see
+    // COpenGLES2Driver::endScene()'s comment for why present() is deferred
+    // in the first place. VideoDriver is still fully valid here: it is only
+    // ever an EDT_OGLES2 COpenGLES2Driver on this device.
+    if (VideoDriver && CreationParams.DriverType == video::EDT_OGLES2) {
+        static_cast<video::COpenGLES2Driver*>(VideoDriver)->flushPendingPresent();
+    }
+
     // Destroy EGL
     if (eglDisplay_ != EGL_NO_DISPLAY) {
         eglMakeCurrent(eglDisplay_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

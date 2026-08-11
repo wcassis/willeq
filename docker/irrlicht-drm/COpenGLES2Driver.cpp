@@ -451,9 +451,36 @@ bool COpenGLES2Driver::endScene()
     // Zero external call-site changes needed; x86 (llvmpipe/surfaceless
     // pbuffer, where swap was already a content no-op) is unaffected in
     // substance, only in exactly when the no-op runs.
+    //
+    // Why this belongs here and not in the capture tool: beginScene ->
+    // draw -> endScene -> createScreenShot() is the standard Irrlicht
+    // idiom (stock example code, and every caller in this repo, including
+    // tools/hwcaps/ui_inventory_capture.cpp and gles2_zone_benchmark's own
+    // --dump-png path). A caller using that idiom is entitled to assume
+    // createScreenShot() returns what was just drawn; this driver was
+    // violating that contract on real DRM/GBM hardware. This is a contract
+    // fix, not a screenshot hack -- it does not special-case capture
+    // callers, and it changes nothing pixel-visible about the frame a
+    // physical display shows (same content, same total swap count; see
+    // flushPendingPresent()/CIrrDeviceFB's destructor for the one seam
+    // that needed separate handling: the very last frame before shutdown,
+    // when no further beginScene() will ever run to flush this). Verified
+    // it does not regress frame pacing on Mali -- see Review's pacing
+    // section: before/after total_ms p50/p95 on befallen (the zone with
+    // the documented CPU-draw-submission-bound p95) are statistically
+    // indistinguishable once past cold-start warmup, and no dropped/missed
+    // page-flips were observed in either configuration.
     pendingPresent_ = true;
 
     return true;
+}
+
+void COpenGLES2Driver::flushPendingPresent()
+{
+    if (pendingPresent_) {
+        Device->present(0, 0, 0);
+        pendingPresent_ = false;
+    }
 }
 
 // ============================================================================
