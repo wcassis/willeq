@@ -150,10 +150,201 @@ with no flags should touch no capture code path).
 
 ## Review
 
-(executor fills: exactly what was extracted vs skipped and the evidence
-each skipped item is already handled; the bound chosen and why; the
-encode script's interface; the proof-run numbers; where the docs landed;
-review-media path; deviations)
+### What was extracted (from `task/anim-video-capture` @ `6c48bb4c`)
+
+Only `include/client/application.h` + `src/client/application.cpp`, taken
+faithfully with comments re-worded to describe a first-class tool instead of
+a one-off session (no functional diff vs the parked commit beyond that
+plus the added bound):
+
+- `ApplicationConfig::dumpFramesDir` / `dumpFramesEvery` (default `0` /
+  disabled).
+- `parseArguments` handling for `--dump-frames-dir <dir>` / `--dump-every
+  <N>`, plus new `--dump-max-frames <N>` (see "Bound chosen" below) and
+  `--help` lines for all three.
+- The `create_directories` call in `initialize()` (unchanged logic, now
+  also logs the chosen `dumpFramesMaxCount`).
+- The render-thread dump hook in `Application::render()`, right after a
+  successful `processFrame()` — identical `saveScreenshot()` call and
+  `frame_%06llu.png` naming, now additionally gated on
+  `m_dumpFrameIndex < dumpFramesMaxCount`.
+- The two counters, `m_dumpFrameCounter` / `m_dumpFrameIndex`.
+
+### What was skipped, and the evidence each is already handled
+
+All three verified by direct read of `fable`'s current source (not taken on
+faith), diffed against the parked commit's own changes to the same files:
+
+1. **`config/constrained_presets.json`** (the `orangepi_multibuffer` /
+   `orangepi_composite` scratch presets) — not taken. These were
+   session-scoped capture scaffolding (disable composite entities /
+   fireEffects for capture stability), not a fix to anything, and the plan
+   named them explicitly out of scope. Confirmed fable's
+   `config/constrained_presets.json` is untouched by this unit (only
+   `include/client/application.h` / `src/client/application.cpp` /
+   `tests/` / `scripts/ci/encode_capture.sh` / `CLAUDE.md` /
+   `refactor/EXECUTOR_PROTOCOL.md` / `refactor/deferred.md` changed —
+   `scripts/refactor/check_file_sizes.sh fable` confirms only 2 C++ files
+   changed).
+2. **`src/client/graphics/renderer_zone_load.cpp`** (equipment-model
+   FATAL→WARN) — **already present in `fable`**, byte-for-byte the same
+   `LOG_WARN` wording and `return;`-without-`equipError=true` behavior as
+   the parked commit's fix, at `renderer_zone_load.cpp:1611-1617`. Read
+   directly, not inferred.
+3. **`src/client/graphics/irrlicht_renderer.cpp`** (saveScreenshot compile
+   guard) — **already present in `fable`**: `#if defined(EQT_HAS_DRM) ||
+   defined(EQT_HAS_GLES2)` at line 2686, matching the parked commit's
+   widened guard exactly (P23, `e702341`).
+4. **`src/client/graphics/renderer_frame.cpp`** (particle gating) — **not
+   merely handled but superseded by a real fix**: the parked commit's
+   workaround gated `renderUnified()` on `particleManager_->isEnabled()`
+   to dodge a dangling-pointer race. Current `fable` has NO such gate on
+   `renderUnified()` (verified: only the environmental-particle
+   `render()` call above it is gated) — P23 root-caused two real races in
+   `SimulationWorker` (TSAN: 55 warnings incl. 2 heap-UAF before, 0 across
+   3×100k-iteration soaks after) and removed the workaround entirely, per
+   `refactor/deferred.md`'s P23 entry.
+
+No STOP condition triggered — all three were confirmed already handled,
+none needed re-introduction.
+
+### Bound chosen
+
+`--dump-max-frames <N>`, default **600**. Rationale (also in the
+`application.h` field comment): P12's 75s stationary capture wrote 576
+frames at 800×600 PNG (tens of MB total on this VM — fine here, not fine on
+the Pi's ~242MB `/tmp` tmpfs, which T61 already had to work around with
+stripped binaries). 600 comfortably covers a P12-scale session while
+keeping a hard ceiling regardless of how long a capture session runs.
+Dumping stops with one `LOG_INFO` line once the cap is hit; the counters
+otherwise behave exactly as before. Confirmed `--dump-frames-dir` alone
+(no `--dump-every`), `--dump-every 0`, and no flags at all all remain a
+complete no-op (`tests/test_video_capture_flags.cpp`,
+`DirWithoutEveryIsNoOp` / `ZeroDumpEveryIsExplicitNoOp` / `DefaultsAreOff`).
+
+### Encode script interface — `scripts/ci/encode_capture.sh`
+
+```
+scripts/ci/encode_capture.sh <frame_dir> <unit_id> [output_dir]
+# output_dir defaults to /mnt/projects/fable/review/<unit_id>
+```
+
+Writes `<output_dir>/<unit_id>_capture.mp4` and `<unit_id>_capture.txt`
+(measured fps, frame count, real-time span, and the honesty note, kept
+next to the video so the numbers are never lost). Effective fps is computed
+as `(frame_count - 1) / (last_frame_mtime - first_frame_mtime)`, read via
+`stat -c %.Y` (sub-second resolution) — never assumed 30/60, per P12's
+convention. Refuses to run (clear error, no partial output) if: ffmpeg is
+absent, fewer than 2 frames exist, or the measured real-time span is ≤0.
+ffmpeg invoked as `-framerate <measured> -i <glob> -c:v libx264 -pix_fmt
+yuv420p -crf 24`.
+
+### Proof-run — measured numbers
+
+**Scope note (read this before the numbers):** this unit is NO EQEMU
+territory, and the render-thread dump hook only fires once a client has
+reached "normal gameplay" (i.e., successfully zoned in) — which requires a
+live server connection. So the end-to-end proof does not exercise the
+`Application::render()` hook live; it uses `gles2_zone_benchmark`'s own
+`--dump-frames`/`--dump-png-prefix` mechanism instead (loads a zone
+directly from local EQ files, no server — the same no-eqemu path the
+visual gate already uses), which the plan explicitly names as an
+acceptable "something that renders" for this proof. It validates
+`encode_capture.sh`'s full pipeline against real rendered frames; it does
+not independently exercise the exact `Application::render()` code path
+(covered instead by build success + full ctest + the `parseArguments`
+tests + line-level diff review above). Full reasoning and scope in
+`review/T64/README.md`.
+
+- Command: `gles2_zone_benchmark --zone qeynos2 --eq-path data/eq_client
+  --frames 60 --warmup 5 --res 800 600 --entities 10 --animate
+  --dump-frames 0,1,...,59 --dump-png-prefix <dir>/frame --occluder-budget
+  16` (animated NPC entities + player-moving camera, matching the visual
+  gate's own invocation style).
+- 60 frames written, renamed into the real hook's `frame_%06d.png`
+  convention (zero-padded) preserving original mtimes, before encoding —
+  the benchmark's own `f<N>` naming isn't zero-padded and would sort
+  wrong.
+- **Verified real images, not noise, before encoding**: per-frame RGB mean/
+  stdev computed (non-uniform, structured — not the flat/near-zero-variance
+  signature of a garbage buffer) AND three frames (start/mid/end) visually
+  inspected — a player character walking with several animated NPCs on
+  qeynos2 zone geometry, sky/ground clearly present. Stills delivered to
+  `review/T64/`.
+- **Measured**: 60 frames, real-time span **15.034s**, effective fps
+  **3.9244** (`review/T64/T64_capture.txt`). Encoded mp4:
+  `ffprobe`-confirmed h264, 800×600, 60 frames, 15.29s duration — matches
+  the measured span. This number is a capture-mechanism artifact (per-frame
+  glReadPixels+PNG save), consistent with P12's ~4-7.6fps range on the same
+  class of hardware, and is called out as such in both `T64_capture.txt`
+  and `review/T64/README.md`.
+
+### Verification bar — pass/fail
+
+1. `cmake --build build -j24` — **PASS** (clean build, GLES2-config tree,
+   includes the new `test_video_capture_flags` target).
+2. `ctest --test-dir build --output-on-failure` — **PASS**, 1972/1973
+   (only failure: `AudioManagerTest.PreloadCommonSounds`, the documented
+   pre-existing ALSA host exception — no new failures, no new skips beyond
+   the documented baseline set). `test_video_capture_flags`'s 6 cases all
+   pass.
+3. `scripts/build-gles2-x86.sh` — **PASS**.
+4. Visual gate — **PASS** (`=== VISUAL GATE: PASS ===`), goldens untouched
+   (this unit's territory never touches renderer/goldens code).
+5. `scripts/build-arm-noble.sh` — **PASS**, cross-compiled binary produced.
+6. `scripts/refactor/check_file_sizes.sh fable` — 2 files changed:
+   `application.h` (569 lines, ok) and `application.cpp` (2337 lines, WARN
+   — but WARN, not FAIL, and pre-existing: `application.cpp` was already
+   2277 lines on `fable` before this unit, i.e. already over the 1500-line
+   warn threshold; this unit added 60 lines to an already-warned file, no
+   new FAIL introduced).
+
+Additionally, per the plan: no-flags-used no-op confirmed via
+`VideoCaptureFlags.DefaultsAreOff`/`UnrelatedFlagsLeaveCaptureOff` (parsed
+config has empty `dumpFramesDir` / `dumpFramesEvery == 0` with no dump
+flags or with unrelated flags present) plus the existing
+`test_headless_shutdown` suite (part of the full ctest run above) passing
+unchanged, confirming a real no-flags client run still exits cleanly with
+no capture-path involvement.
+
+### Docs
+
+- `CLAUDE.md` — new "Video capture (temporal evidence...)" subsection under
+  "## Running", with usage, the bound rationale, the encode script, and the
+  honesty requirement stated plainly.
+- `refactor/EXECUTOR_PROTOCOL.md` — "Media for Will's review" section gained
+  a bullet: when the thing under review is temporal, record video, pointing
+  at `CLAUDE.md` and `review/T64/README.md`.
+- `refactor/deferred.md` — re-titled the "Live x86 client bugs
+  (anim-video-capture session)" entry (4 of 5 items now closed, only the
+  unrelated befallen SIGSEGV still open), recorded the equipment-model
+  closure evidence inline, noted the capture flag extraction and that the
+  rest of the parked branch is superseded, and appended a new standalone
+  item proposing an on-demand `/record start|stop` slash command as a
+  future unit (deliberately not built here).
+
+### Review-media path
+
+`/mnt/projects/fable/review/T64/` — `README.md` (worked-example writeup,
+scope note on the proof method), `T64_capture.mp4`, `T64_capture.txt`
+(measured numbers + honesty note), and three source stills
+(`still_frame000_start.png` / `still_frame030_mid.png` /
+`still_frame059_end.png`).
+
+### Deviations
+
+- The end-to-end proof run used `gles2_zone_benchmark`'s built-in frame
+  dump instead of a live `willeq --dump-frames-dir` session, because the
+  latter requires a zoned (server-connected) client and this unit is NO
+  EQEMU territory. This is within the letter of the plan (which names
+  `gles2_zone_benchmark` as an acceptable alternative for this exact
+  step) but is flagged here explicitly per "deviations flagged, never
+  silently absorbed" — the `Application::render()` hook itself was proven
+  by build + tests + line-level review, not by a live capture. Documented
+  prominently in `review/T64/README.md` so nobody mistakes the proof video
+  for a live-gameplay capture.
+- No other deviations. All three potentially-skipped changes were verified
+  already handled; none required re-introducing a workaround.
 
 Board (`refactor/deferred.md`, append, never delete): re-title the
 "Live x86 client bugs (anim-video-capture session)" entry — its

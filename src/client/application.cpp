@@ -136,6 +136,22 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
     LOG_DEBUG(MOD_MAIN, "S01: Config validation passed");
 
+    // T64: video-capture evidence tool (--dump-frames-dir) — ensure the
+    // output directory exists up front so render()'s per-frame
+    // saveScreenshot() calls don't silently fail. Additive, no-op when the
+    // flag isn't passed.
+    if (!m_config.dumpFramesDir.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(m_config.dumpFramesDir, ec);
+        if (ec) {
+            LOG_ERROR(MOD_MAIN, "--dump-frames-dir: failed to create '{}': {}",
+                m_config.dumpFramesDir, ec.message());
+        } else {
+            LOG_INFO(MOD_MAIN, "--dump-frames-dir: writing frames to '{}' every {} frame(s), capped at {}",
+                m_config.dumpFramesDir, m_config.dumpFramesEvery, m_config.dumpFramesMaxCount);
+        }
+    }
+
     // S03: Global file validation — verify all required files exist before proceeding
 #ifdef EQT_HAS_GRAPHICS
     if (config.graphicsEnabled) {
@@ -1376,6 +1392,35 @@ void Application::render(float deltaTime) {
             if (!result) {
                 LOG_DEBUG(MOD_GRAPHICS, "Graphics window closed");
                 m_running.store(false);
+            } else if (!m_config.dumpFramesDir.empty() && m_config.dumpFramesEvery > 0
+                       && m_dumpFrameIndex < static_cast<uint64_t>(m_config.dumpFramesMaxCount)) {
+                // T64: video-capture evidence tool (--dump-frames-dir/--dump-every),
+                // extracted from the P12 anim video-check session and made a
+                // first-class tool. Use this when the thing under review is
+                // temporal -- a weapon appearing mid-swing, a cast, a zone
+                // transition, particle behavior -- that a still can't show.
+                // Runs on the render thread (same thread that owns the
+                // EGL/GL context), same constraint /screenshot's
+                // saveScreenshot() already requires. No-op (zero cost beyond
+                // one string-empty + two int checks) when the flags aren't
+                // passed, so production behavior is untouched by default.
+                // dumpFramesMaxCount bounds total frames written regardless
+                // of session length -- see the field comment in
+                // application.h for why (Pi /tmp tmpfs is small).
+                ++m_dumpFrameCounter;
+                if (m_dumpFrameCounter % static_cast<uint64_t>(m_config.dumpFramesEvery) == 0) {
+                    char filename[64];
+                    std::snprintf(filename, sizeof(filename), "/frame_%06llu.png",
+                        static_cast<unsigned long long>(m_dumpFrameIndex));
+                    std::string path = m_config.dumpFramesDir + filename;
+                    m_renderer->saveScreenshot(path);
+                    LOG_INFO(MOD_GRAPHICS, "Frame dump: {} (frame counter {})", path, m_dumpFrameCounter);
+                    ++m_dumpFrameIndex;
+                    if (m_dumpFrameIndex >= static_cast<uint64_t>(m_config.dumpFramesMaxCount)) {
+                        LOG_INFO(MOD_GRAPHICS, "Frame dump: reached --dump-max-frames cap ({}), stopping capture",
+                            m_config.dumpFramesMaxCount);
+                    }
+                }
             }
             m_lastGraphicsUpdate = now;
         }
@@ -2051,6 +2096,18 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
             }
+        } else if (arg == "--dump-frames-dir") {
+            if (i + 1 < argc) {
+                config.dumpFramesDir = argv[++i];
+            }
+        } else if (arg == "--dump-every") {
+            if (i + 1 < argc) {
+                config.dumpFramesEvery = std::atoi(argv[++i]);
+            }
+        } else if (arg == "--dump-max-frames") {
+            if (i + 1 < argc) {
+                config.dumpFramesMaxCount = std::atoi(argv[++i]);
+            }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -2060,6 +2117,9 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
+            std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
+            std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
+            std::cout << "  --dump-max-frames <N>    Video-capture: stop after N frames written (default 600)\n";
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";

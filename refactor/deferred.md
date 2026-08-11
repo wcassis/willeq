@@ -1103,13 +1103,32 @@ cannot-settle-cheaply without a live profiling session).
   KPI section below). The remaining benchmark-side `--animate` garbling
   is tracked as its own root-cause unit, still open. Struck 2026-08-02.
 
-## Live x86 client bugs (anim-video-capture session, 2026-07-26) — PARTIAL: 3 of 5 items closed (marked inline), 2 still open
+## Live x86 client bugs (anim-video-capture session, 2026-07-26) — PARTIAL: 4 of 5 items closed (marked inline), 1 still open
+
+T64 (2026-08-11) heading note: the missing-equipment-entry item, listed as
+still-open below, was ALREADY WARN+skip in `fable` by the time T64 checked
+(same wording as the parked branch's fix) — closed, evidence in
+`refactor/T64_video_capture_extraction.md`'s Review. That was the last of
+the three "capture-blocking workaround" items keeping the branch parked;
+all three are now independently resolved in `fable` (saveScreenshot guard
+and the particle race were already closed inline below by P23/T53). T64
+extracted the `--dump-frames-dir`/`--dump-every` capture flag itself
+(`include/client/application.h`/`src/client/application.cpp` only) onto
+`fable`, added a `--dump-max-frames` bound and a first-class
+`scripts/ci/encode_capture.sh` encode step, and it is now documented in
+`CLAUDE.md`. **The rest of `task/anim-video-capture` (6c48bb4, slot2) is
+superseded** — the `constrained_presets.json` scratch presets were
+session-scoped scaffolding (not needed now that the flag is a supported
+tool), and the renderer_frame.cpp/renderer_zone_load.cpp/
+irrlicht_renderer.cpp changes are all already in `fable` via better fixes
+(P23's real race fix, not the isEnabled() gate workaround). The branch can
+be deleted once someone confirms nothing else on it is wanted — not done
+here (T64 only extracts, does not clean up branches per protocol).
 
 T53 (2026-08-05) heading note: saveScreenshot guard, the particle race, and
 post-camp shutdown aborts are marked FIXED/CLOSED inline below with
 commits. Still open: the befallen first-frame SIGSEGV (worked around by
-zone substitution only, not root-caused) and the missing-equipment-entry
-FATAL-vs-WARN item.
+zone substitution only, not root-caused).
 
 Found while recording the P12 animation-evidence videos (real client,
 llvmpipe, eqemu). Workarounds live on parked branch
@@ -1121,7 +1140,9 @@ proper fix:
   blank-render item?). Zone had to be substituted (qeynos2) for capture.
 - renderer_zone_load.cpp: one NPC with a missing item_models.json
   equipment entry ABORTS the whole zone load (FATAL) — should be
-  WARN+skip.
+  WARN+skip. **CLOSED — already WARN+skip in `fable` (T64, 2026-08-11
+  confirmed by direct read of `renderer_zone_load.cpp:1614`,
+  identical wording/behavior to the parked branch's fix).**
 - saveScreenshot() guard — FIXED by P23 (`e702341`, 2026-07-28):
   widened to EQT_HAS_DRM || EQT_HAS_GLES2; x86 GLES2 build now compiles
   the safe glReadPixels path (nm-verified), ARM path byte-identical.
@@ -3684,3 +3705,20 @@ limitation note, unchanged — out of scope here since `entity_equipment.cpp`
 was not touched). If a genuine in-world held-item misalignment is
 reported again in the future, it is not this defect — re-investigate from
 scratch rather than assuming this finding covers it.
+
+## Candidate follow-up: on-demand `/record start|stop` capture (T64, 2026-08-11, not chased)
+
+T64 extracted the whole-session `--dump-frames-dir`/`--dump-every` video
+capture flag (see the "Live x86 client bugs (anim-video-capture session)"
+entry above). That mechanism is a session-lifetime flag set at launch — fine
+for a planned capture, wasteful/impossible for a live session where only a
+few seconds around an unplanned moment (a bug reproducing mid-session, an
+interesting emergent behavior) need recording. A slash command
+(`/record start`, `/record stop`) that toggles `Application`'s existing
+dump-frame state at runtime (same render-thread hook, same bound) would let
+whoever's driving a live session decide in the moment, without restarting
+the client or guessing capture windows in advance. Deliberately out of
+scope for T64 (extraction only, per its contract) — worth its own unit if
+someone wants it. Would need: a command-processor entry, some way to name/
+version successive recordings without overwriting, and a decision on
+whether `--dump-max-frames`'s bound applies per-recording or session-wide.

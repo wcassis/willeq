@@ -396,6 +396,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
 
+# T64: parseArguments()-only coverage for the video-capture evidence tool's
+# CLI flags (--dump-frames-dir/--dump-every/--dump-max-frames). Static
+# method, no renderer/GL context needed -- see the file header comment for
+# what is and isn't covered here.
+ADD_EXECUTABLE(test_video_capture_flags
+    test_video_capture_flags.cpp
+)
+TARGET_LINK_LIBRARIES(test_video_capture_flags GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_video_capture_flags PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_video_capture_flags)
+
 # T51: coverage for the consolidated attack path (eq_commands_movement.cpp's
 # registry-1 attack/stopattack/aa, the sole survivor after registry 2's
 # always-shadowed duplicate registrations and the producer-less
