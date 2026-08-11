@@ -176,6 +176,7 @@ COpenGLES2Driver::COpenGLES2Driver(const SIrrlichtCreationParameters& params,
       ResetRenderStates(true),
       CurrentRenderTarget(nullptr), DefaultFBO(0),
       Is2DMode(false),
+      pendingPresent_(false),
       currentCustomProgram_(0)
 {
     ScreenSize = params.WindowSize;
@@ -374,6 +375,14 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
                                    const SExposedVideoData& videoData,
                                    core::rect<s32>* sourceRect)
 {
+    // T61: present the PREVIOUS frame now, before this frame's draws begin.
+    // See endScene() for why the swap/page-flip moved here instead of
+    // running immediately at the end of the frame that produced it.
+    if (pendingPresent_) {
+        Device->present(0, 0, 0);
+        pendingPresent_ = false;
+    }
+
     CNullDriver::beginScene(backBuffer, zBuffer, color, videoData, sourceRect);
 
     // Unconditional scissor reset — particle renderer may desync state_.scissorEnabled
@@ -421,10 +430,57 @@ bool COpenGLES2Driver::endScene()
         extensions_.glDiscardFramebufferEXT(GL_FRAMEBUFFER, 2, attachments);
     }
 
-    // Present via device (eglSwapBuffers + DRM page flip)
-    Device->present(0, 0, 0);
+    // T61: present() (eglSwapBuffers + DRM page flip) is deferred to the
+    // START of the next beginScene() rather than run here. On real DRM/GBM
+    // hardware (ARM/Mali) present() rotates the default framebuffer's
+    // backing buffer to a *different* GBM buffer object -- so a
+    // createScreenShot()/glReadPixels() call made after endScene() returns
+    // (the natural, universal calling convention: beginScene -> draw ->
+    // endScene -> createScreenShot(), used by every caller in this repo,
+    // including tools this unit cannot edit) was reading the buffer that
+    // is now current for the *next* frame, not the one just rendered --
+    // i.e. it silently returned the PREVIOUS captured frame's content, one
+    // step behind. Confirmed on real Orange Pi One (Mali400) hardware: a
+    // sequence of captures with deliberately distinct per-frame state each
+    // returned the *prior* capture's state instead of its own (see
+    // refactor/T61_mali_2d_immediate_mode.md Review). Deferring the actual
+    // swap/flip to the next beginScene() means createScreenShot() called
+    // any time between this endScene() and that next beginScene() -- which
+    // is exactly when every caller already calls it -- reads the buffer
+    // this frame just rendered into, before it has been rotated away.
+    // Zero external call-site changes needed; x86 (llvmpipe/surfaceless
+    // pbuffer, where swap was already a content no-op) is unaffected in
+    // substance, only in exactly when the no-op runs.
+    //
+    // Why this belongs here and not in the capture tool: beginScene ->
+    // draw -> endScene -> createScreenShot() is the standard Irrlicht
+    // idiom (stock example code, and every caller in this repo, including
+    // tools/hwcaps/ui_inventory_capture.cpp and gles2_zone_benchmark's own
+    // --dump-png path). A caller using that idiom is entitled to assume
+    // createScreenShot() returns what was just drawn; this driver was
+    // violating that contract on real DRM/GBM hardware. This is a contract
+    // fix, not a screenshot hack -- it does not special-case capture
+    // callers, and it changes nothing pixel-visible about the frame a
+    // physical display shows (same content, same total swap count; see
+    // flushPendingPresent()/CIrrDeviceFB's destructor for the one seam
+    // that needed separate handling: the very last frame before shutdown,
+    // when no further beginScene() will ever run to flush this). Verified
+    // it does not regress frame pacing on Mali -- see Review's pacing
+    // section: before/after total_ms p50/p95 on befallen (the zone with
+    // the documented CPU-draw-submission-bound p95) are statistically
+    // indistinguishable once past cold-start warmup, and no dropped/missed
+    // page-flips were observed in either configuration.
+    pendingPresent_ = true;
 
     return true;
+}
+
+void COpenGLES2Driver::flushPendingPresent()
+{
+    if (pendingPresent_) {
+        Device->present(0, 0, 0);
+        pendingPresent_ = false;
+    }
 }
 
 // ============================================================================

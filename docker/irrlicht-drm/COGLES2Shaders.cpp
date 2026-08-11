@@ -291,7 +291,16 @@ void main() {
 // ============================================================================
 
 COGLES2ShaderManager::COGLES2ShaderManager()
-    : activeProgram_(EOGLES2SP_COLOR2D),
+    // T61: EOGLES2SP_COUNT is the "nothing bound yet" sentinel (matches
+    // invalidateActiveProgram()). Initializing this to a *real* program enum
+    // (previously EOGLES2SP_COLOR2D) made the first-ever useProgram(that
+    // enum) call in the driver's lifetime a silent no-op -- activeProgram_
+    // already equaled it, so glUseProgram() was skipped even though no GL
+    // program had ever actually been bound (GL_CURRENT_PROGRAM stays 0 from
+    // context creation). Every draw issued before some *other* program was
+    // legitimately activated first then failed GL_INVALID_OPERATION and drew
+    // nothing. See refactor/T61_mali_2d_immediate_mode.md Review.
+    : activeProgram_(EOGLES2SP_COUNT),
       cacheEnabled_(false),
       glGetProgramBinaryOES_(nullptr),
       glProgramBinaryOES_(nullptr)
