@@ -15,10 +15,13 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/ui_renderer.h"
+#include "client/graphics/ui/inventory_layout.h"
+#include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 
 #include <irrlicht.h>
+#include <vector>
 
 using namespace EQT::Graphics;
 
@@ -43,11 +46,22 @@ public:
 //   spellGems:   {764, 268, 796, 552}   (8 gems, 32px + 4px margin)
 //   centerPopup: {200, 125, 600, 475}   (400x350, screen-centered)
 //
-// Inventory equipment grid (2 cols x 11 rows, slot=32, pad=2):
-//   startX = 208, startY = 147
-//   col0 slots (index = row):      x in [208,240), y = 147 + row*34
-//   col1 slots (index = 11+row):   x in [242,274), y = 147 + row*34
-// Inventory general row (8 slots, pad=2): genY = startY + 11*34 + 8 = 529
+// Inventory popup (T57 — EQ-authentic body layout, single shared source
+// InventoryLayout::slotRect() in include/client/graphics/ui/inventory_layout.h):
+// two 8-slot columns flanking an empty center, a 6-slot weapon row below
+// both columns, and the 8-slot general row below that. Global slot index
+// 0-21 is the equipment slot id (eqt::inventory::EquipmentSlot); 22-29 is
+// EQUIP_SLOTS + general index. Full slot-to-rect table (popupX=200,
+// popupY=125) is in refactor/T57_inventory_paperdoll_layout.md's Review —
+// spot values used by name below:
+//   SLOT_EAR1(1):   {208,145,240,177}   (left col, row 0 — first slot)
+//   SLOT_BACK(8):   {208,369,240,401}   (left col, row 7 — last slot)
+//   SLOT_RANGE(11): {560,209,592,241}   (right col, row 2)
+//   SLOT_PRIMARY(13): {299,403,331,435} (weapon row, col 0)
+//   SLOT_WAIST(20): {401,403,433,435}   (weapon row — unreachable before T57)
+//   SLOT_AMMO(21):  {435,403,467,435}   (weapon row — unreachable before T57)
+//   General[0](22): {265,441,297,473}   (general row — unreachable before T57)
+//   General[7](29): {503,441,535,473}
 class StaticUIInputTest : public ::testing::Test {
 protected:
     UILayout layout;
@@ -156,79 +170,149 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
 }
 
 // --- Inventory popup ---
+//
+// T57 replaced the old broken 2x11 equipment grid + separately-computed
+// general row (which put all 8 general slots and equipment slots 20-21
+// outside centerPopup at every resolution — see
+// refactor/T57_inventory_paperdoll_layout.md) with a single shared
+// geometry source, InventoryLayout::slotRect(), consumed by both
+// renderInventoryPopup() and processInput(). The tests below exercise
+// that shared source directly (containment/round-trip/no-overlap,
+// exhaustive over all 30 slots) as well as through processInput().
 
-TEST_F(StaticUIInputTest, InventoryEquipGridFirstCellHover) {
+TEST_F(StaticUIInputTest, InventoryEquipLeftColumnFirstSlotHoversEar1) {
+    // SLOT_EAR1 (id 1): rect {208,145,240,177} — left column, row 0.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(210, 150, false, layout, hotbar, gems,
                                         inventory, spellbook, skills);
     EXPECT_TRUE(consumed);
-    EXPECT_EQ(inventory.hoveredSlot, 0);
+    EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_EAR1);
 }
 
-TEST_F(StaticUIInputTest, InventoryEquipGridSecondColumnUsesColMajorIndex) {
-    // Column 1, row 0: x in [242, 274), matching col*rows+row = 1*11+0 = 11
-    // — the same col-major formula static_panels.cpp's renderInventoryPopup
-    // uses to place slot i at (i/11, i%11), so render and hit-test agree.
+TEST_F(StaticUIInputTest, InventoryEquipRightColumnHoversCorrectSlotId) {
+    // SLOT_RANGE (id 11): rect {560,209,592,241} — right column, row 2.
+    // Slot identity now comes from a lookup table (kLeftColumn/kRightColumn/
+    // kWeaponRow in inventory_layout.h), not a col-major index formula —
+    // this pins that the right column's 3rd slot really is SLOT_RANGE.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(244, 150, false, layout, hotbar, gems,
+    bool consumed = input.processInput(570, 220, false, layout, hotbar, gems,
                                         inventory, spellbook, skills);
     EXPECT_TRUE(consumed);
-    EXPECT_EQ(inventory.hoveredSlot, 11);
+    EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_RANGE);
 }
 
-TEST_F(StaticUIInputTest, InventoryEquipGridPaddingGapStillConsumesButNoHover) {
-    // x=241 is the 2px horizontal gap between column 0 (ends 240) and
-    // column 1 (starts 242). Unlike the hotbar/gem row, ANY point inside
-    // centerPopup consumes the click (set unconditionally on entry to the
-    // popup-region branch in static_ui_input.cpp) even when no slot is hit.
+TEST_F(StaticUIInputTest, InventoryWeaponRowPaddingGapStillConsumesButNoHover) {
+    // SLOT_PRIMARY spans x in [299,331), SLOT_SECONDARY x in [333,365) —
+    // x=332 falls in the 2px gap between them. Unlike the hotbar/gem row,
+    // ANY point inside centerPopup consumes the click (set unconditionally
+    // on entry to the popup-region branch in static_ui_input.cpp) even
+    // when no slot is hit.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(241, 150, false, layout, hotbar, gems,
+    bool consumed = input.processInput(332, 415, false, layout, hotbar, gems,
                                         inventory, spellbook, skills);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
 
-TEST_F(StaticUIInputTest, InventoryEquipGridLastPartiallyReachableRow) {
-    // Row 9 (0-based): y = 147 + 9*34 = 453, slot spans y in [453, 485).
-    // centerPopup's own bottom edge is y=475, so only y in [453, 475) of
-    // this slot is actually reachable through the outer popup-bounds
-    // check — the bottom ~10px of row 9 (475..485) can never be hit.
+TEST_F(StaticUIInputTest, InventoryGeneralRowPaddingGapStillConsumesButNoHover) {
+    // General[0] spans x in [265,297), General[1] x in [299,331) — x=298
+    // falls in the 2px gap between them.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(210, 460, false, layout, hotbar, gems,
+    bool consumed = input.processInput(298, 455, false, layout, hotbar, gems,
                                         inventory, spellbook, skills);
     EXPECT_TRUE(consumed);
-    EXPECT_EQ(inventory.hoveredSlot, 9);
-}
-
-TEST_F(StaticUIInputTest, InventoryEquipGridRow10IsUnreachable) {
-    // FINDING (recorded on the board, see refactor/deferred.md): row 10's
-    // slot top (y=487) is entirely below centerPopup's bottom edge
-    // (y=475). The outer bounds check in static_ui_input.cpp rejects the
-    // point before hitTestSlotGrid ever runs, so this slot — and both
-    // general-inventory slot rows below it — can never register a hover
-    // or a click at the default 800x600 layout. This is a real, provable
-    // layout-sizing defect (popH=350 is too short for 11 equip rows +
-    // 1 general row at slot=32/pad=2), not a test gap. Left unfixed per
-    // this unit's read-only-production territory; see deferred.md.
-    inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(210, 490, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills);
-    EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
 
-TEST_F(StaticUIInputTest, InventoryGeneralSlotsAreWhollyUnreachable) {
-    // Same finding as above, sharper: genY = 147 + 11*34 + 8 = 529, which
-    // is even further outside centerPopup's y in [125,475) bound than
-    // equipment row 10 is. Every point in the general-inventory row fails
-    // the outer bounds check, so none of InventoryPanelState's 8 general
-    // slots can ever be hovered or clicked through this code path at
-    // 800x600 — a production coverage gap this unit's tests newly expose.
+TEST_F(StaticUIInputTest, InventoryEquipSlotsWaistAndAmmoAreNowReachable) {
+    // FIXED (was InventoryEquipGridRow10IsUnreachable — inverted per plan):
+    // SLOT_WAIST (id 20, rect {401,403,433,435}) and SLOT_AMMO (id 21,
+    // rect {435,403,467,435}) were two of the slots the old layout drew
+    // and hit-tested past centerPopup's bottom edge (y=475 at this
+    // resolution) — permanently unreachable at every resolution, since
+    // centerPopup's size doesn't depend on screen size. Both now sit
+    // inside the weapon row, well within the popup.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(210, 534, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills);
-    EXPECT_FALSE(consumed);
-    EXPECT_EQ(inventory.hoveredSlot, -1);
+
+    bool consumedWaist = input.processInput(415, 415, false, layout, hotbar, gems,
+                                             inventory, spellbook, skills);
+    EXPECT_TRUE(consumedWaist);
+    EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_WAIST);
+
+    bool consumedAmmo = input.processInput(450, 415, false, layout, hotbar, gems,
+                                            inventory, spellbook, skills);
+    EXPECT_TRUE(consumedAmmo);
+    EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_AMMO);
+}
+
+TEST_F(StaticUIInputTest, InventoryGeneralSlotsAreNowReachable) {
+    // FIXED (was InventoryGeneralSlotsAreWhollyUnreachable — inverted per
+    // plan): the old layout's general row (genY=529) sat entirely below
+    // centerPopup's bottom edge (y=475), so none of the 8 general slots
+    // could ever be hovered or clicked. The new general row (y in
+    // [441,473)) sits inside centerPopup. Check first and last slot.
+    inventory.activePopup = PopupType::Inventory;
+
+    bool consumedFirst = input.processInput(280, 455, false, layout, hotbar, gems,
+                                             inventory, spellbook, skills);
+    EXPECT_TRUE(consumedFirst);
+    EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 0);
+
+    bool consumedLast = input.processInput(518, 455, false, layout, hotbar, gems,
+                                            inventory, spellbook, skills);
+    EXPECT_TRUE(consumedLast);
+    EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 7);
+}
+
+// --- Inventory popup: exhaustive shared-geometry regression tests ---
+// These pin the class of bug T57 fixed (renderer and hit-test drifting
+// apart from duplicated arithmetic) as untestable-to-reintroduce: both
+// consume InventoryLayout::slotRect(), and these tests check every one of
+// its 30 outputs directly, independent of the specific EQ-body arrangement.
+
+TEST_F(StaticUIInputTest, InventoryAllThirtySlotsAreWhollyInsideCenterPopup) {
+    const auto& popup = layout.centerPopup;
+    for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+        irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
+        EXPECT_GE(r.UpperLeftCorner.X, popup.UpperLeftCorner.X) << "slot " << i;
+        EXPECT_GE(r.UpperLeftCorner.Y, popup.UpperLeftCorner.Y) << "slot " << i;
+        EXPECT_LE(r.LowerRightCorner.X, popup.LowerRightCorner.X) << "slot " << i;
+        EXPECT_LE(r.LowerRightCorner.Y, popup.LowerRightCorner.Y) << "slot " << i;
+    }
+}
+
+TEST_F(StaticUIInputTest, InventoryAllThirtySlotsRoundTripThroughHitTest) {
+    // For every slot, the center of its shared-geometry rect must hit-test
+    // back to that same slot index — pins render and hit-test to the same
+    // source rather than merely both being correct today.
+    inventory.activePopup = PopupType::Inventory;
+    for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+        irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
+        int cx = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+        int cy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+        bool consumed = input.processInput(cx, cy, false, layout, hotbar, gems,
+                                            inventory, spellbook, skills);
+        EXPECT_TRUE(consumed) << "slot " << i;
+        EXPECT_EQ(inventory.hoveredSlot, i) << "slot " << i;
+    }
+}
+
+TEST_F(StaticUIInputTest, InventoryNoTwoSlotRectsOverlap) {
+    std::vector<irr::core::rect<irr::s32>> rects;
+    for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+        rects.push_back(InventoryLayout::slotRect(layout, i));
+    }
+    for (size_t i = 0; i < rects.size(); ++i) {
+        for (size_t j = i + 1; j < rects.size(); ++j) {
+            const auto& a = rects[i];
+            const auto& b = rects[j];
+            bool overlap = a.UpperLeftCorner.X < b.LowerRightCorner.X &&
+                            a.LowerRightCorner.X > b.UpperLeftCorner.X &&
+                            a.UpperLeftCorner.Y < b.LowerRightCorner.Y &&
+                            a.LowerRightCorner.Y > b.UpperLeftCorner.Y;
+            EXPECT_FALSE(overlap) << "slots " << i << " and " << j << " overlap";
+        }
+    }
 }
 
 TEST_F(StaticUIInputTest, InventoryPopupInactiveNeverHoverHits) {

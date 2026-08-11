@@ -58,11 +58,11 @@ public:
 private:
     eqt::bridge::GameStateBridge* bridge_ = nullptr;
 
-    // Hit test a point against a slot grid and return slot index, or -1
+    // Hit test a point against a horizontal slot row and return slot index,
+    // or -1. Used by the hotbar; the inventory popup's grid geometry comes
+    // from InventoryLayout::slotRect() instead (T57 — single shared source).
     int hitTestSlotRow(int mx, int my, int startX, int startY,
                        int slotSize, int padding, int count) const;
-    int hitTestSlotGrid(int mx, int my, int startX, int startY,
-                        int slotSize, int padding, int cols, int rows) const;
 };
 
 } // namespace Graphics

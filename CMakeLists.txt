@@ -659,6 +659,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(p50_mask_plumbing_probe willeq_core ${LINK_LIBS})
 ENDIF()
 
+# T57: visual-acceptance capture harness for the inventory popup. No
+# existing tool captures the static UI (--dump-png-prefix belongs to
+# gles2_zone_benchmark, which renders zones, never a popup) — this is the
+# smallest one that does, against a real headless GLES2 device (same
+# surfaceless-EGL/llvmpipe backend as the visual gate). Links willeq_core
+# for the same reason as p50_mask_plumbing_probe above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(ui_inventory_capture tools/hwcaps/ui_inventory_capture.cpp)
+    TARGET_LINK_LIBRARIES(ui_inventory_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
 # P23: SimulationWorker input/output-buffer race stress harness. Manual
 # tool (not ctest-registered — it's a bounded soak, not a fast deterministic
 # unit test); see refactor/P23_particle_race_stability.md Review for the
