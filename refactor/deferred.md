@@ -4176,3 +4176,53 @@ Conventions established, for whoever runs this next:
   `fable`'s history (like T67's `ConstrainedMeshCache` removal) needs only
   a docs pointer, not a tag.
 - A worktree pinned to a branch holds it open; remove the worktree first.
+
+## `spells.eff` parameter table (T73, 2026-08-11) — MOSTLY REFUTED, remainder UNDETERMINED
+
+The recovered `archive/fix-spell-effects-20260811:.agent/spells_eff_format.md`
+document claimed to decode T70's 800-byte `unknown_bytes` region as 8
+fields (duration, fade-in/out, min/max scale, particles/sec, particle
+lifetime, 12-float colour keyframes). T73 tested every claim directly
+against the real file and `data/willeq.db`, with no clamping, per
+`refactor/T73_spells_eff_parameter_decode.md`'s Review (full distributions,
+semantic-correlation numbers, and pinning-test names there). Summary:
+
+- **REFUTED**: `min_scale`/`max_scale` (0x280/0x288) — 68% of populated
+  emitters have `min_scale > max_scale`, the opposite of what a min/max
+  bound pair should show; negatives present, outside the document's own
+  claimed range.
+- **REFUTED as "colour"**: the 0x370 float[12] array — real values reach
+  32.0, 12x the document's own claimed [0.0, 2.0] bound. The array's
+  *location/size* (ends exactly at the 928-byte block boundary; padding
+  reads a flat `(1,1,...,1)` template; populated records show a
+  decay-to-1.0 pattern) is genuinely corroborated — only "colour" is wrong,
+  not the field's existence. Left unnamed; likelier a scale/intensity
+  keyframe curve, not proven.
+- **UNDETERMINED, real, unnamed**: `duration_ms`/`fade_in_ms`/`fade_out_ms`/
+  `particles_per_second`/`particle_lifetime` (0x274-0x298). No internal
+  contradiction (non-negative, clusters at round values, reads exactly zero
+  in both confirmed padding records 88/255). But the semantic-correlation
+  test — the plan's own "strongest test" — found nothing: records
+  referenced by long-lived buffs vs instant nukes overlap 33/38 with no
+  systematic separation, and `duration_ms` has ~zero correlation (Pearson
+  r=-0.088) with the referencing spells' `cast_time_ms`. Real structured
+  data lives at these offsets; what it means is not established.
+- The 500-byte gap the document ignored (block offset 0x80-0x274) is not
+  simply zero (0/768 emitters all-zero) — it opens with a `0xFF`-filled run
+  (matching T70's padding-template filler finding, now seen extended into
+  populated records too) followed by small structured int32-looking values.
+  Not decoded. Two more undocumented internal gaps were found and are
+  equally unclaimed (0x284-0x288, 4 bytes; 0x28C-0x294, 8 bytes;
+  0x29C-0x370, 212 bytes) — mostly zero, nonzero in a minority of records.
+
+**Nothing was adopted.** `SpellsEffEmitter::unknown_bytes` is unchanged;
+the reader gained only a doc-comment addendum and 4 new pinning tests (22
+total) that read the claimed offsets directly out of the existing raw
+array — no new accessors, zero behaviour change (T72, live in slot2,
+unaffected). Fully data-driven spell visuals via this parameter table are
+**not** unblocked by this unit. What remains for a future attempt: the
+500-byte gap's small int32-looking values right after the `0xFF` run are
+the most promising unexplored lead; a real packet capture of the client
+triggering known spell effects (rather than static file analysis) is
+probably required to close the "duration_ms means what" question, since
+static analysis found no correlate to lean on.
