@@ -164,11 +164,178 @@ slot should show only `refactor/` changes).
 
 ## Review
 
-(executor fills: one section per configuration with item id → model id →
-race → view → observation; the `SHIELD_POINT` vs `L_POINT` resolution
-finding with the log evidence; every defect found, characterised but not
-fixed; review-media paths; eqemu teardown and restore confirmation;
-deviations)
+Full per-configuration tables, log excerpts, and screenshots are in
+**`/mnt/projects/fable/review/T63/README.md`** (media in that directory's
+subfolders) — this section summarizes.
+
+**Live session used**: character `Testmelee` (race 6 Dark Elf, gender 1
+female, class 1 warrior), zone `arena`. Testchar was never touched.
+
+**Key finding, before the four configurations even start**: the live wire
+protocol's equipment slot carries a server-resolved *material* id, not the
+database item id. Equipping DB item 6011 (Rusty Mace, idfile IT7) produced
+`attachEquipment: ... primary=7` on the wire, never 6011; item 9997
+(idfile IT5) -> material 5; item 9004 (idfile IT202) -> material 202. This
+means `EquipmentModelLoader::getEquipmentMesh()`'s "try item_models.json as
+an item-id map first" branch is dead weight for live player equipment — it
+always misses and falls through to using the value directly as a model id,
+which is correct because EQEMU already resolved it server-side. Verified
+by log, not assumed.
+
+**Separately** (not the cause of anything below, filed for completeness):
+`data/item_models.json` was found to be stale/disconnected from the live
+server's real item database — sampled 1,863 real weapon/shield items,
+only 497 had any entry, only 3 of those matched the item's real idfile.
+Does not affect live equipped-weapon rendering (see above), but is
+objectively wrong data if anything else reads it. Worth its own audit unit.
+
+### Configuration 1 — primary weapon only
+Item 6011 (Rusty Mace) -> material 7 -> IT7. 3rd person: dark scene,
+character/weapon not distinguishable. Paperdoll: weapon clearly visible,
+gripped in right hand. Log: `attachEquipment: ... primary=7 secondary=0`,
+`R_POINT bone search result: index=6`. **Renders correctly** (paperdoll).
+
+### Configuration 2 — secondary weapon only
+Item 9997 (Dagger*) -> material 5 -> IT5. 3rd person: dark scene.
+Paperdoll: **no weapon visible anywhere**, despite the log showing mesh
+built, texture loaded (`dagger.bmp` 16x16), and bone resolved
+(`L_POINT bone search result: index=10`, offset 0.51). See Defect 1.
+
+### Configuration 3 — dual wield
+Items 6011 (primary) -> material 7 -> IT7, 9997 (secondary) -> material 5
+-> IT5. Dual Wield skill GM-set 0->50 (restored after). 3rd person: the
+first capture caught the zone-loading screen (INVALID, excluded, see
+review README); combat-swing captures are valid but too dark to read
+weapon detail, target HP stayed 100% across the ~4s burst (swing timer
+likely hadn't ticked). Paperdoll: primary weapon visible (same as config
+1); secondary again **not visible**, reproducing config 2 exactly with
+identical bone index (10) and offset (0.51).
+
+### Configuration 4 — shield in secondary
+Items 6011 (primary) -> material 7 -> IT7, 9004 (Kite Shield) -> material
+202 -> IT202 (same shield model T62 used). 3rd person: dark scene.
+Paperdoll: shield **is clearly visible** — a flat kite shape alongside the
+left arm/torso, shoulder to hip height, visually distinct from the
+weapon's raised right-hand grip. Log: `attachEquipment: ... primary=7
+secondary=202`, `SHIELD_POINT/L_POINT bone search result: index=11`,
+offset 0.30 (matches `computeShieldGripOffset()`'s unchanged flat
+constant). **Renders correctly** (paperdoll).
+
+### SHIELD_POINT vs L_POINT — resolved, with log + asset evidence
+
+**No fallback to L_POINT for this race.** Two independent proofs: (1) the
+plain-weapon L_POINT lookup (configs 2/3) and the shield lookup (config 4)
+resolved to *different* bone indices (10 vs 11) on the same character —
+if the shield had fallen back to L_POINT it would have returned the same
+index 10, not a new one; (2) dumped `global_chr.s3d`'s WLD with `wld_dump`
+and confirmed the Dark Elf female skeleton (`DAF`) has a real
+`DAFSHIELD_POINT_DAG`/`DAFSHIELD_POINT` bone, distinct from
+`DAFL_POINT_DAG`/`DAFL_POINT` (`data/captures/t63_wld_dump.log`, lines
+~3264-3318 and ~22213-22234 in this worktree — scratch/gitignored, not
+committed, regenerate via `wld_dump global_chr.s3d global_chr.wld` from
+the slot root if needed). A broader scan of the same dump found a
+`*SHIELD_POINT_TRACKDEF` bone for essentially every playable race code in
+`global_chr.s3d` (25 codes checked, all present) — the L_POINT fallback
+this unit was warned about is very unlikely to trigger for any standard
+playable humanoid race. A second race wasn't tested *live* since the
+asset-level check already answers the "does the fallback risk exist
+elsewhere" question for the whole roster in this file.
+
+### Defects found (characterized, not fixed)
+
+**Defect 1 — paperdoll never visibly renders a plain (non-shield)
+secondary/left-hand weapon.** Reproduced independently in configs 2 and 3
+(same item, same bone index 10, same offset 0.51, both times invisible)
+despite full successful mesh/texture/bone resolution in the log — this is
+not a "not found" failure. The shield in the same slot (different bone,
+index 11) and the primary weapon (bone index 6) both render. Root cause
+not investigated (verification unit, read-only) — flagged candidate for a
+fix unit: `character_model_view.cpp:549-552` (mirrored in
+`entity_equipment.cpp:233-236`) applies rotation `(180,0,0)` to non-shield
+secondary items vs `(180,0,180)` for shields; the extra shield-only Z
+rotation may be what keeps the shield outside the body mesh while the
+plain-weapon rotation points its offset into/behind it. **Not confirmed**
+— needs a controlled A/B, not asserted as the cause here. Whether this
+also affects in-world (non-paperdoll) rendering is **not established** —
+`entity_equipment.cpp` shares the same logic, but arena's dark default
+lighting made 3rd-person confirmation/refutation impossible in this
+session.
+
+**Defect 2 (data quality, not a render defect)** — `data/item_models.json`
+mismatch, see "Key finding" above.
+
+### STOP: first-person camera mode unreachable from `--script`
+
+The plan's 1st-person-during-swing capture could not be produced.
+`ToggleCameraMode` (Ctrl+F5) is consumed only via real Irrlicht key events
+(`hotkey_manager.cpp:544` -> `irrlicht_renderer.cpp:296` ->
+`graphical_mode.cpp:152-153` -> `IrrlichtRenderer::cycleCameraMode()`); no
+slash command in any of the three command registries wraps it, and
+`--script` can only dispatch slash commands, never raw key events. Default
+camera mode (`Follow`, 3rd person) never changes across a scripted
+session. Per the plan's explicit instruction, no scripting affordance was
+added to production code — this STOPs and is reported rather than worked
+around.
+
+Read-only correction found while chasing this: `triggerFirstPersonAttack()`
+/ `updateFirstPersonWeapons()` (named in the plan) are near-no-op
+compatibility stubs, not a separate first-person weapon system — their own
+comments (`entity_renderer.cpp:2807-2829`) state first-person weapon
+rendering reuses the same skeletal bone-attachment path already exercised
+for 3rd person/paperdoll in this unit. So the gap is purely "can't switch
+camera mode from a script," not a distinct rendering path this unit failed
+to reach.
+
+### Teardown and restore confirmation
+
+- eqemu shut down cleanly via `down.sh` (all containers stopped/removed);
+  `.eqemu-lock` deleted.
+- Testmelee: inventory slots 13/14 restored to baseline (9998/9979,
+  charges 1 each); `character_skills` Dual Wield (skill_id 14) restored
+  0; position restored to zone_id=25 (nektulos), x=-259, y=-1201,
+  z=-5.75, heading=160.25 (all read from the character row before any
+  edit).
+- Testchar: never touched — confirmed still at zone_id=36,
+  x=-77.9232, y=21.9086, z=3, h=190 (queried after the session).
+- `git -C wt/slot2 status --short` is clean (no changes at all, not even
+  `refactor/` — this unit made zero production-code edits; the plan file
+  edit is this commit).
+- Verification bar run as a formality (no source changed):
+  `cmake --build build -j24` — no-op rebuild, all targets already current.
+  `ctest --test-dir build --output-on-failure` — 1966/1967 passed, sole
+  failure `AudioManagerTest.PreloadCommonSounds` (documented host-ALSA
+  exception, matches the standing baseline). `check_file_sizes.sh fable`
+  — "no C++ files to check... nothing was checked" (correct: zero source
+  files changed vs the fable base).
+
+### Deviations from the plan
+
+1. **DB writes beyond the documented "character-position" carve-out.**
+   The client has no scriptable way to equip an item (no `/equip` slash
+   command, no GM command that places an item directly into a worn slot —
+   `#itemadd`/`#summonitem`/`#giveitem` all put items on the cursor for
+   drag-and-drop, which `--script` cannot drive). To make any of the four
+   configurations possible at all, this unit wrote `inventory.item_id`
+   directly for Testmelee's primary/secondary slots (13/14) and
+   `character_skills.value` for Dual Wield, in addition to the
+   plan-sanctioned zone/position write needed to move Testmelee into the
+   already-running `arena` zone. All writes were read-backed-up before
+   editing and restored to their exact original values afterward (see
+   Teardown above). Flagged here rather than silently absorbed, per
+   protocol; this was necessary to do the verification at all, not a
+   convenience shortcut, and touched only `inventory`/`character_skills`/
+   `character_data` rows for `Testmelee`, never any code.
+2. **One invalid capture kept, not discarded.**
+   `03_dual_wield/3rd_INVALID_caught_loading_screen.png` shows the
+   zone-loading screen instead of gameplay (a script-timing miss, not
+   renderer garbage) — kept and clearly labeled per "capture, state, and
+   stop" rather than silently dropped, so the gap is visible instead of
+   looking like a skipped step.
+3. **First-person swing not captured** — see STOP section above.
+4. **Second race for SHIELD_POINT not tested live** — the asset-level
+   `wld_dump` check already answered the fallback-risk question for the
+   whole playable-race roster in `global_chr.s3d`, making a second live
+   race redundant for the question the plan asked.
 
 Board (`refactor/deferred.md`, append, never delete): record the verdict
 for each configuration. If everything renders correctly, **say so
