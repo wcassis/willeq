@@ -18,6 +18,7 @@ using EQT::Graphics::findBoneIndex;
 using EQT::Graphics::extractBoneRotation;
 using EQT::Graphics::computeWeaponGripOffset;
 using EQT::Graphics::computeShieldGripOffset;
+using EQT::Graphics::computeSecondaryItemBaseRotation;
 
 namespace {
 
@@ -252,4 +253,36 @@ TEST(BoneAttachmentTest, RealShieldIT202BoundingBoxDoesNotAffectFlatOffset) {
                                irr::core::vector3df(1.166f, 1.132f, 0.015f));
     (void)bbox;
     EXPECT_FLOAT_EQ(computeShieldGripOffset(), 0.3f);
+}
+
+// --- computeSecondaryItemBaseRotation: T65, the invisible-secondary-weapon fix ---
+
+TEST(BoneAttachmentTest, SecondaryItemBaseRotationIsOneEightyXAndZ) {
+    // T65: before this function existed, entity_equipment.cpp (mirrored in
+    // the paperdoll and tools/model_viewer.cpp) applied (180,0,0) for a
+    // plain secondary weapon but (180,0,180) for a shield in the same
+    // slot, believing the extra Z rotation was shield-specific. A
+    // controlled A/B (see refactor/T65_secondary_weapon_invisible.md's
+    // Review) proved that split was the root cause of a plain secondary
+    // weapon (IT5 dagger, Dark Elf female skeleton -- T63's exact live
+    // repro) rendering completely invisibly: the (180,0,0) rotation
+    // pointed the grip-offset axis into/behind the torso. Both item kinds
+    // in this slot now get the same base rotation.
+    irr::core::vector3df rot = computeSecondaryItemBaseRotation();
+    EXPECT_FLOAT_EQ(rot.X, 180.0f);
+    EXPECT_FLOAT_EQ(rot.Y, 0.0f);
+    EXPECT_FLOAT_EQ(rot.Z, 180.0f);
+}
+
+TEST(BoneAttachmentTest, SecondaryItemBaseRotationDoesNotDependOnShieldFlag) {
+    // The function takes no isShield parameter by design -- shields and
+    // plain weapons in the secondary slot are not a legitimate rotation
+    // divergence (see the comment on computeSecondaryItemBaseRotation()
+    // in bone_attachment.h). This test exists so a future edit that tries
+    // to reintroduce a conditional here has to consciously break it.
+    irr::core::vector3df rotCallOne = computeSecondaryItemBaseRotation();
+    irr::core::vector3df rotCallTwo = computeSecondaryItemBaseRotation();
+    EXPECT_FLOAT_EQ(rotCallOne.X, rotCallTwo.X);
+    EXPECT_FLOAT_EQ(rotCallOne.Y, rotCallTwo.Y);
+    EXPECT_FLOAT_EQ(rotCallOne.Z, rotCallTwo.Z);
 }

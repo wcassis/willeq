@@ -120,5 +120,34 @@ inline float computeShieldGripOffset() {
     return 0.3f;
 }
 
+// Base rotation offset (Euler degrees, applied on top of the bone's own
+// world rotation via extractBoneRotation()) for an item attached at the
+// secondary/off-hand slot (L_POINT or SHIELD_POINT).
+//
+// T65: before this function existed, `entity_equipment.cpp` (mirrored in
+// the paperdoll and `tools/model_viewer.cpp`) applied (180, 0, 180) for
+// shields but only (180, 0, 0) for a plain secondary weapon -- the extra
+// Z rotation was believed shield-specific. That split was the root cause
+// of a defect where an equipped, mesh-built, texture-loaded, bone-resolved
+// plain secondary weapon rendered nothing: the missing Z rotation pointed
+// the grip-offset axis (computeWeaponGripOffset()'s return value, applied
+// along local +X) into/behind the torso instead of outward, hiding it
+// behind body geometry rather than actually placing it off-model.
+//
+// Confirmed via a controlled A/B, not assumed: forcing the shield's
+// (180, 0, 180) rotation onto a plain secondary weapon (IT5 dagger, Dark
+// Elf female skeleton -- the exact item/race T63's live session used and
+// found invisible) made the weapon visible, gripped correctly, in the
+// same run where the original (180, 0, 0) rotation produced nothing. See
+// refactor/T65_secondary_weapon_invisible.md's Review for the before/after
+// capture pair. The (isShield ? 180 : 0) split is removed: both item
+// kinds in this slot need the same base rotation, they were never a
+// legitimate divergence. Primary weapons (R_POINT, `(180, 0, 0)`) are a
+// separate bone/slot and are NOT changed by this function -- they were
+// already rendering correctly and this fix must not move them.
+inline irr::core::vector3df computeSecondaryItemBaseRotation() {
+    return irr::core::vector3df(180.0f, 0.0f, 180.0f);
+}
+
 } // namespace Graphics
 } // namespace EQT

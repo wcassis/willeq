@@ -2018,9 +2018,11 @@ void updateEquipmentPositions() {
         float py = worldXform.m[13];
         float pz = worldXform.m[14];
 
-        // Extract and apply bone rotation, then add shield's base rotation (180° around X and Z)
+        // Extract and apply bone rotation, then add the secondary-slot base
+        // rotation (T65: shields and plain weapons use the same one -- see
+        // bone_attachment.h's computeSecondaryItemBaseRotation()).
         core::vector3df boneRot = extractBoneRotation(worldXform);
-        core::vector3df shieldRot = boneRot + core::vector3df(180, 0, 180);
+        core::vector3df shieldRot = boneRot + computeSecondaryItemBaseRotation();
         secondaryEquipNode->setRotation(shieldRot);
 
         // Apply offset along local X axis
@@ -2249,8 +2251,10 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
             if (secondaryEquipNode) {
                 // Default position/rotation - offset to left side of character
                 core::vector3df pos(-2.0f, 1.5f, 0.0f);  // Local offset in character space
-                // Shields rotate 180° around X and Z so outside faces outward with correct texture, weapons use (180,0,0)
-                core::vector3df rot(180.0f, 0, isShield ? 180.0f : 0);
+                // T65: shields and plain weapons in this slot use the same
+                // base rotation -- see bone_attachment.h's
+                // computeSecondaryItemBaseRotation().
+                core::vector3df rot = computeSecondaryItemBaseRotation();
 
                 // Try to find left hand bone (various naming conventions)
                 // Bone names: qcmshield_point (lowercase, no underscore between race and "shield")

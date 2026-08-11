@@ -229,10 +229,15 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             float py = worldTransform.m[13];
             float pz = worldTransform.m[14];
 
-            // Extract and apply bone rotation, then add base rotation
-            // Shields need 180° around both X and Z axes
+            // Extract and apply bone rotation, then add base rotation. T65:
+            // shields and plain secondary weapons use the same base
+            // rotation (180° around X and Z) -- see
+            // bone_attachment.h's computeSecondaryItemBaseRotation() for
+            // why the previous isShield-conditional Z rotation was wrong
+            // (it made plain secondary weapons render invisibly, hidden
+            // inside the body mesh).
             irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
-            irr::core::vector3df itemRot = boneRot + irr::core::vector3df(180.0f, 0, isShield ? 180.0f : 0);
+            irr::core::vector3df itemRot = boneRot + computeSecondaryItemBaseRotation();
             visual.secondaryEquipNode->setRotation(itemRot);
 
             // Calculate offset based on item type and size
