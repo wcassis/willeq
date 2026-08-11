@@ -437,6 +437,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp
+        src/client/graphics/spell_visual_selection.cpp
         src/client/graphics/text_batch.cpp
         # Detail system (grass, plants, debris)
         src/client/graphics/detail/detail_manager.cpp
@@ -718,7 +719,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         third_party/sqlite3.c
         # Spell test mode dependencies
         src/client/spell/spell_database.cpp
+        src/client/spell/spells_eff_reader.cpp
         src/client/graphics/spell_visual_fx.cpp
+        src/client/graphics/spell_visual_selection.cpp
         # Particle system (required for GLES2 spell effects via ParticleManager)
         src/client/graphics/environment/particle_manager.cpp
         src/client/graphics/environment/particle_emitter.cpp

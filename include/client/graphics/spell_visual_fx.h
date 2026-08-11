@@ -16,6 +16,9 @@
 #include <utility>
 #include <string>
 
+#include "client/spell/spells_eff_reader.h"
+#include "client/graphics/spell_visual_selection.h"
+
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 
 #ifdef EQT_HAS_GLES2
@@ -235,6 +238,28 @@ private:
     void loadFallbackTexture();
     irr::video::ITexture* loadDDSTexture(const std::string& path, const std::string& name);
     irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
+
+    // ========================================================================
+    // T72: spells.eff-driven visual selection
+    // ========================================================================
+
+    // Loads spells.eff from <eqClientPath>/spells.eff. Failure is non-fatal
+    // (m_spells_eff_loaded stays false, resolveVisual() then always returns
+    // the NoAffectIndex fallback) -- spells.eff being absent must degrade
+    // exactly like a spell having no spell_affect_index, not crash the
+    // effects system.
+    void loadSpellsEff();
+
+    // spell_id -> SpellData::spell_affect_index -> spells.eff record ->
+    // resolved per-stage visual. Also logs, at DEBUG, which of the two
+    // fallback populations (no index vs. index resolves to empty padding)
+    // a spell landed in, or that it resolved to a real record with N/3
+    // stages populated -- see the T72 Review for why this distinction
+    // exists in logs.
+    SpellVisualResolution resolveVisual(uint32_t spell_id) const;
+
+    SpellsEffReader m_spells_eff;
+    bool m_spells_eff_loaded = false;
 
 #ifdef EQT_HAS_GLES2
     EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;

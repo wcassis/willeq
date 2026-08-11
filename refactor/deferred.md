@@ -4176,3 +4176,40 @@ Conventions established, for whoever runs this next:
   `fable`'s history (like T67's `ConstrainedMeshCache` removal) needs only
   a docs pointer, not a tag.
 - A worktree pinned to a branch holds it open; remove the worktree first.
+## Spell-effects arc step 3 landed (T72, 2026-08-11) — texture identity and captures are what's left
+
+- T72 built the selection layer (`spell_visual_selection.h/.cpp`:
+  spell_id -> `spell_affect_index` -> spells.eff record -> per-stage
+  Source/middle/Target `hasContent()` + resolved texture filenames, 12
+  tests) and wired staging presence/absence into `SpellVisualFX`'s GLES2
+  particle creation (`createCastGlow`/`createProjectile`/`createImpact`/
+  `createImpactAtPosition` each gate on the matching stage, but only for
+  `Resolved` records — the ~961-spell fallback population, measured exactly
+  by the new census test, is untouched). See `refactor/T72_spell_visual_layer.md`'s
+  Review for the full writeup, including a genuine upward correction of
+  T70's empty-padding count (163 measured vs. 148 in T70's five-index
+  table — both correct, T72's is a fuller scan).
+- **Two things explicitly NOT done, both natural next steps:**
+  1. **Texture identity is resolved but not rendered.** The GLES2 particle
+     path (`ParticleManager`/`SpellEffectsConfig`) draws from a fixed
+     15-shape procedural atlas (`spell_effects_config.cpp::buildTextureNameMap()`),
+     not the real per-spell `.tga` files spells.eff names
+     (`spelc1.tga` etc., verified present in `SpellEffects/` by T70). Making
+     a fire nuke's particles actually *look* different from an ice nuke's
+     needs either loading spells.eff's real sprites into the atlas or
+     extending `ParticleManager` to bind an ad-hoc per-effect texture —
+     `particle_manager.cpp`/atlas-format work, out of T72's territory
+     (shared with the weather system).
+  2. **`unknown_bytes` (800 bytes/emitter) is still fully unread** — T70's
+     original find, untouched by T72 on purpose (STOP condition in both
+     units' plans). Decoding it for timing/scale/colour/particle-rate is
+     the last piece standing between this and a fully data-driven spell
+     visual system; it needs real leverage (e.g. correlating against a
+     captured live cast), not another blind hypothesis test.
+- **No `review/T72/` media exists** — T72 STOPped on captures rather than
+  taking eqemu (owned by sibling T71) or building an out-of-territory
+  scripted-cast harness on a rushed budget. The staging-gate code itself
+  is verified by build+test, not by pixels; a future unit with eqemu
+  access (or a proper headless spell-cast capture harness, itself a
+  worthwhile small unit) should capture the before/after the T72 plan
+  originally asked for once texture identity is also wired.
