@@ -1,6 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "common/logging.h"
 #include <fmt/format.h>
@@ -12,401 +11,6 @@
 
 namespace EQT {
 namespace Graphics {
-
-void IrrlichtRenderer::processFrameLazyLoad() {
-    if (!constrainedMeshCache_ || !currentZone_ || !currentZone_->wldLoader) {
-        static int lazyLoadSkipLog = 0;
-        if (++lazyLoadSkipLog % 300 == 1) {
-            LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: SKIP — cache={} zone={} wld={}",
-                      constrainedMeshCache_ != nullptr, currentZone_ != nullptr,
-                      (currentZone_ ? (currentZone_->wldLoader != nullptr) : false));
-        }
-        return;
-    }
-
-    // GREEN-only: max 1 region build per frame to stay within budget.
-    if (governor_ && governor_->getState() != BudgetState::Green) {
-        static int lazyLoadGovLog = 0;
-        if (++lazyLoadGovLog % 300 == 1) {
-            LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: SKIP — governor state={} (not GREEN) | "
-                      "meshLoadQueue_.size={}", governor_->getStateName(),
-                      meshLoadQueue_.size());
-        }
-        return;
-    }
-
-    // Log queue state before scanning
-    size_t queueSize = meshLoadQueue_.size();
-    size_t alreadyLoaded = 0;
-    size_t needBuild = 0;
-    for (const auto& entry : meshLoadQueue_) {
-        if (constrainedMeshCache_->isLoaded(entry.regionIdx))
-            alreadyLoaded++;
-        else
-            needBuild++;
-    }
-
-    static int lazyLoadQueueLog = 0;
-    if (needBuild > 0 || ++lazyLoadQueueLog % 300 == 1) {
-        LOG_DEBUG(MOD_GRAPHICS, "processFrameLazyLoad: queue={} (loaded={} needBuild={}) | "
-                  "cache usage {}/{} bytes, {} loaded total",
-                  queueSize, alreadyLoaded, needBuild,
-                  constrainedMeshCache_->getCurrentUsage(),
-                  constrainedMeshCache_->getMemoryLimit(),
-                  constrainedMeshCache_->getLoadedCount());
-    }
-
-    bool builtRegion = false;
-    for (const auto& entry : meshLoadQueue_) {
-        if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
-        LOG_INFO(MOD_GRAPHICS, "processFrameLazyLoad: attempting region {} (first unloaded in queue)",
-                 entry.regionIdx);
-        if (rebuildRegionMesh(entry.regionIdx)) {
-            LOG_INFO(MOD_GRAPHICS, "processFrameLazyLoad: SUCCESS region {} | cache usage {}/{} bytes",
-                entry.regionIdx,
-                constrainedMeshCache_->getCurrentUsage(),
-                constrainedMeshCache_->getMemoryLimit());
-            sendLoadProgress(fmt::format("[LazyLoad] Region {} [{}/{}]",
-                entry.regionIdx, alreadyLoaded + 1, queueSize));
-            builtRegion = true;
-        } else {
-            LOG_ERROR(MOD_GRAPHICS, "processFrameLazyLoad: FAILED region {} — rebuildRegionMesh returned false",
-                      entry.regionIdx);
-        }
-        break;  // One region max per frame
-    }
-
-    // Rebuild one region whose async fallback textures have arrived (if no region was built this frame)
-    if (!builtRegion && !textureRebuildQueue_.empty()) {
-        auto texEntry = textureRebuildQueue_.front();
-        textureRebuildQueue_.erase(textureRebuildQueue_.begin());
-
-        auto existingIt = regionMeshNodes_.find(texEntry.regionIdx);
-        if (existingIt != regionMeshNodes_.end() && existingIt->second) {
-            deleteMeshHardwareBuffers(existingIt->second);
-            if (animatedTextureManager_)
-                animatedTextureManager_->removeSceneNode(existingIt->second);
-            if (existingIt->second->getParent()) existingIt->second->remove();
-            else existingIt->second->drop();
-            existingIt->second = nullptr;
-        }
-
-        constrainedMeshCache_->markForRebuild(texEntry.regionIdx);
-        if (rebuildRegionMesh(texEntry.regionIdx)) {
-            LOG_INFO(MOD_GRAPHICS, "processFrameLazyLoad: rebuilt region {} with textures (queue remaining: {})",
-                     texEntry.regionIdx, textureRebuildQueue_.size());
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "processFrameLazyLoad: FAILED to rebuild region {} with textures",
-                     texEntry.regionIdx);
-        }
-    }
-
-    // Evict with per-frame cap
-    if (constrainedMeshCache_->getCurrentUsage() > constrainedMeshCache_->getMemoryLimit()) {
-        constexpr int MAX_EVICTIONS_PER_FRAME = 10;
-        int evictionsThisFrame = 0;
-        auto evicted = constrainedMeshCache_->evictUntilAvailable(0, protectedRegions_);
-        for (size_t idx : evicted) {
-            if (evictionsThisFrame >= MAX_EVICTIONS_PER_FRAME) break;
-            auto it = regionMeshNodes_.find(idx);
-            if (it != regionMeshNodes_.end() && it->second) {
-                deleteMeshHardwareBuffers(it->second);
-                if (animatedTextureManager_)
-                    animatedTextureManager_->removeSceneNode(it->second);
-                if (it->second->getParent()) it->second->remove(); else it->second->drop();
-                it->second = nullptr;
-            }
-            // Remove evicted region from texture rebuild tracking
-            for (auto& [texName, regions] : pendingTextureRegions_) {
-                regions.erase(idx);
-            }
-            textureRebuildQueue_.erase(
-                std::remove_if(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
-                    [idx](const TextureRebuildEntry& e) { return e.regionIdx == idx; }),
-                textureRebuildQueue_.end());
-            evictionsThisFrame++;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Background mesh build: drain, finalize, material swap, submit
-// ---------------------------------------------------------------------------
-
-void IrrlichtRenderer::drainMeshResults() {
-    std::lock_guard<std::mutex> lock(meshResultMutex_);
-    if (meshResultQueue_.empty()) return;
-    for (auto& r : meshResultQueue_)
-        localMeshResults_.push_back(std::move(r));
-    meshResultQueue_.clear();
-}
-
-bool IrrlichtRenderer::finalizeOneMeshResult() {
-    if (localMeshResults_.empty()) return false;
-
-    auto result = std::move(localMeshResults_.front());
-    localMeshResults_.erase(localMeshResults_.begin());
-    pendingMeshBuilds_.erase(result.regionIdx);
-
-    // Discard stale results from a different zone
-    if (result.zoneName != currentZoneName_) {
-        if (result.mesh) result.mesh->drop();
-        return true;  // consumed work (discarded)
-    }
-
-    // Clean up existing node if present
-    auto existingIt = regionMeshNodes_.find(result.regionIdx);
-    if (existingIt != regionMeshNodes_.end() && existingIt->second) {
-        auto* oldNode = existingIt->second;
-        deleteMeshHardwareBuffers(oldNode);
-        if (animatedTextureManager_)
-            animatedTextureManager_->removeSceneNode(oldNode);
-        if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
-        existingIt->second = nullptr;
-    }
-
-    if (!result.mesh) return true;
-
-    auto* node = smgr_->addMeshSceneNode(result.mesh);
-    if (!node) {
-        result.mesh->drop();
-        return true;
-    }
-
-    // Apply standard zone region materials
-    node->setPosition(irr::core::vector3df(result.centerX, result.centerZ, result.centerY));
-    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-        node->getMaterial(i).Lighting = lightingEnabled_;
-        node->getMaterial(i).BackfaceCulling = false;
-        node->getMaterial(i).GouraudShading = true;
-        node->getMaterial(i).FogEnable = fogEnabled_;
-        node->getMaterial(i).Wireframe = wireframeMode_;
-        node->getMaterial(i).NormalizeNormals = true;
-        node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-        node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-    }
-    result.mesh->drop();
-
-    node->updateAbsolutePosition();
-    node->setVisible(false);
-
-    if (manualZoneDrawEnabled_) {
-        node->grab();
-        node->remove();
-    }
-
-    regionMeshNodes_[result.regionIdx] = node;
-
-    // Assign textures to fallback buffers (placeholder or real if already in cache)
-    auto* placeholder = constrainedTextureCache_ ? constrainedTextureCache_->getPlaceholderTexture() : nullptr;
-    for (const auto& fb : result.fallbackBuffers) {
-        if (fb.bufferIndex >= node->getMesh()->getMeshBufferCount()) continue;
-        auto* buf = node->getMesh()->getMeshBuffer(fb.bufferIndex);
-        if (!buf) continue;
-
-        auto* tex = constrainedTextureCache_ ? constrainedTextureCache_->getTexture(fb.textureName) : nullptr;
-        if (tex) {
-            buf->getMaterial().setTexture(0, tex);
-            bool hasAlpha = constrainedTextureCache_->hasAlpha(fb.textureName);
-            if (hasAlpha && zoneShader_ && zoneShader_->getActiveAlphaTest() >= 0) {
-                buf->getMaterial().MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                    zoneShader_->getActiveAlphaTest());
-            }
-        } else {
-            if (placeholder) {
-                buf->getMaterial().setTexture(0, placeholder);
-            }
-            pendingTextureBuffers_[result.regionIdx][fb.textureName].push_back(fb.bufferIndex);
-        }
-    }
-
-    // Track missing textures for arrival notification
-    for (const auto& texName : result.missingTextures) {
-        pendingTextureRegions_[texName].insert(result.regionIdx);
-    }
-
-    // Upload static VBOs (GLES2 only)
-    if (!config_.constrainedConfig.skipVBOUpload) {
-#ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable() &&
-            node->getMesh() && node->getMesh()->getMeshBufferCount() > 0) {
-            irr::scene::IMesh* mesh = node->getMesh();
-            for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
-                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
-                if (!buf || buf->getVertexCount() == 0 || buf->getIndexCount() == 0) continue;
-
-                UploadRequest req;
-                req.type = UploadRequestType::VertexBuffer;
-                req.vertexCount = buf->getVertexCount();
-                req.indexCount = buf->getIndexCount();
-
-                switch (buf->getVertexType()) {
-                    case irr::video::EVT_STANDARD:  req.vertexStride = 36; break;
-                    case irr::video::EVT_2TCOORDS:  req.vertexStride = 44; break;
-                    case irr::video::EVT_TANGENTS:  req.vertexStride = 60; break;
-                    default: req.vertexStride = 36; break;
-                }
-
-                size_t vboSize = req.vertexCount * req.vertexStride;
-                req.vertexData.resize(vboSize);
-                std::memcpy(req.vertexData.data(), buf->getVertices(), vboSize);
-                req.indexData.resize(req.indexCount);
-                std::memcpy(req.indexData.data(), buf->getIndices(), req.indexCount * sizeof(uint16_t));
-
-                req.callbackKey = (static_cast<uint64_t>(i) << 48) |
-                                  (static_cast<uint64_t>(result.regionIdx) & 0xFFFFFFFFFFFFULL);
-                req.priority = WorkPriorityKey::make(getRegionPvsDepth(result.regionIdx), AssetType::ZoneMesh).value;
-                gpuUploadThread_->submit(std::move(req));
-            }
-            pendingVBOUploads_.insert(result.regionIdx);
-        } else {
-            uploadMeshHardwareBuffers(node);
-        }
-#else
-        uploadMeshHardwareBuffers(node);
-#endif
-    }
-
-    // Register with animated texture manager (both mesh buffers and scene node)
-    // Register with animated texture manager (buffer materials only — manual draw path)
-    if (animatedTextureManager_ && currentZone_ && currentZone_->wldLoader) {
-        auto geom = currentZone_->wldLoader->getGeometryForRegion(result.regionIdx);
-        if (geom) {
-            animatedTextureManager_->addMesh(*geom, currentZone_->textures, node->getMesh());
-            LOG_TRACE(MOD_GRAPHICS, "asyncRebuild: region {} addMesh registered", result.regionIdx);
-        }
-    }
-
-    // Mesh cache bookkeeping (evict + track)
-    if (constrainedMeshCache_) {
-        size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
-        auto evicted = constrainedMeshCache_->evictUntilAvailable(meshSize, protectedRegions_);
-        for (size_t idx : evicted) {
-            auto it = regionMeshNodes_.find(idx);
-            if (it != regionMeshNodes_.end() && it->second) {
-                deleteMeshHardwareBuffers(it->second);
-                if (animatedTextureManager_)
-                    animatedTextureManager_->removeSceneNode(it->second);
-                if (it->second->getParent()) it->second->remove(); else it->second->drop();
-                it->second = nullptr;
-            }
-            pendingTextureBuffers_.erase(idx);
-            pendingMeshBuilds_.erase(idx);
-            for (auto& [texName, regions] : pendingTextureRegions_)
-                regions.erase(idx);
-        }
-        constrainedMeshCache_->onLoaded(result.regionIdx, node, meshSize);
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "finalizeOneMeshResult: region {} finalized ({:.1f}ms bg build)",
-             result.regionIdx, result.buildTimeMs);
-    return true;
-}
-
-void IrrlichtRenderer::updateRegionMaterials(size_t regionIdx, const std::string& textureName,
-                                              irr::video::ITexture* texture, bool hasAlpha) {
-    auto ptbIt = pendingTextureBuffers_.find(regionIdx);
-    if (ptbIt == pendingTextureBuffers_.end()) return;
-
-    auto bufIt = ptbIt->second.find(textureName);
-    if (bufIt == ptbIt->second.end()) return;
-
-    auto nodeIt = regionMeshNodes_.find(regionIdx);
-    if (nodeIt == regionMeshNodes_.end() || !nodeIt->second) {
-        ptbIt->second.erase(bufIt);
-        if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
-        return;
-    }
-
-    auto* mesh = nodeIt->second->getMesh();
-    if (!mesh) {
-        ptbIt->second.erase(bufIt);
-        if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
-        return;
-    }
-
-    for (irr::u32 bufferIdx : bufIt->second) {
-        if (bufferIdx >= mesh->getMeshBufferCount()) continue;
-        auto* buf = mesh->getMeshBuffer(bufferIdx);
-        if (!buf) continue;
-
-        buf->getMaterial().setTexture(0, texture);
-        if (hasAlpha && zoneShader_ && zoneShader_->getActiveAlphaTest() >= 0) {
-            buf->getMaterial().MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                zoneShader_->getActiveAlphaTest());
-        }
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "updateRegionMaterials: region {} texture '{}' → {} buffers",
-              regionIdx, textureName, bufIt->second.size());
-
-    ptbIt->second.erase(bufIt);
-    if (ptbIt->second.empty()) pendingTextureBuffers_.erase(ptbIt);
-}
-
-bool IrrlichtRenderer::processOneMaterialSwap() {
-    if (materialSwapQueue_.empty()) return false;
-
-    auto entry = std::move(materialSwapQueue_.front());
-    materialSwapQueue_.erase(materialSwapQueue_.begin());
-    updateRegionMaterials(entry.regionIdx, entry.textureName, entry.texture, entry.hasAlpha);
-    return true;
-}
-
-bool IrrlichtRenderer::submitOneBgMeshBuild() {
-    if (!constrainedMeshCache_ || !backgroundThreadPool_ || !currentZone_) return false;
-
-    for (const auto& entry : meshLoadQueue_) {
-        if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
-        if (pendingMeshBuilds_.count(entry.regionIdx)) continue;
-
-        auto zone = currentZone_;
-        auto zoneName = currentZoneName_;
-        size_t regionIdx = entry.regionIdx;
-        int shaderSolid = zoneShader_ ? zoneShader_->getActiveSolid() : -1;
-        int shaderAlpha = zoneShader_ ? zoneShader_->getActiveAlphaTest() : -1;
-        int shaderAlphaRGBA = zoneShader_ ? zoneShader_->getActiveAlphaTestRGBA() : -1;
-
-        pendingMeshBuilds_.insert(regionIdx);
-        uint32_t priority = WorkPriorityKey::make(
-            getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
-
-        backgroundThreadPool_->submit(priority, [=, this]() {
-            auto geom = zone->wldLoader->getGeometryForRegion(regionIdx);
-            if (!geom || geom->vertices.empty()) {
-                std::lock_guard<std::mutex> lock(meshResultMutex_);
-                meshResultQueue_.push_back({regionIdx, zoneName, nullptr, {}, {}, 0, 0, 0, 0});
-                return;
-            }
-
-            ZoneMeshBuilder builder(nullptr, nullptr, nullptr);
-            builder.setShaderMaterialTypes(shaderSolid, shaderAlpha, shaderAlphaRGBA);
-
-            auto start = std::chrono::steady_clock::now();
-            auto* mesh = builder.buildTexturedMesh(
-                *geom, zone->textures);
-            float elapsed = std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - start).count();
-
-            BackgroundMeshResult r;
-            r.regionIdx = regionIdx;
-            r.zoneName = zoneName;
-            r.mesh = static_cast<irr::scene::SMesh*>(mesh);
-            r.fallbackBuffers = builder.getFallbackBufferMap();
-            r.missingTextures = {builder.getMissingTextures().begin(), builder.getMissingTextures().end()};
-            r.centerX = geom->centerX;
-            r.centerY = geom->centerY;
-            r.centerZ = geom->centerZ;
-            r.buildTimeMs = elapsed;
-
-            std::lock_guard<std::mutex> lock(meshResultMutex_);
-            meshResultQueue_.push_back(std::move(r));
-        });
-
-        return true;  // consumed 1 unit of work
-    }
-    return false;
-}
 
 void IrrlichtRenderer::indexObjectMeshes() {
     if (!currentZone_) {
@@ -765,21 +369,9 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
 
     // --- Critical tasks: always proceed regardless of governor state ---
 
-    // P1: Player's BSP region (must have ground to stand on)
-    if (constrainedMeshCache_ && currentPvsRegion_ != SIZE_MAX &&
-        !constrainedMeshCache_->isLoaded(currentPvsRegion_)) {
-        LOG_INFO(MOD_GRAPHICS, "Progressive P1: building CRITICAL player region {} (not loaded in cache)",
-                 currentPvsRegion_);
-        bool ok = rebuildRegionMesh(currentPvsRegion_);
-        if (ok) {
-            addRegionToCollision(currentPvsRegion_);
-            LOG_INFO(MOD_GRAPHICS, "Progressive P1: SUCCESS built player region {} + collision",
-                     currentPvsRegion_);
-        } else {
-            LOG_ERROR(MOD_GRAPHICS, "Progressive P1: FAILED to build player region {}!",
-                      currentPvsRegion_);
-        }
-    }
+    // P1 (player's BSP region, deferred/lazy build when the mesh cache was
+    // active) removed T67 — regions are always built eagerly (SEQ Step4),
+    // so the player's region already has a node by the time this runs.
 
     // Player entity goes through processOneEntityBuildStep() like other entities
     // (no synchronous build here — avoids 7.6s render thread stall from disk I/O)
@@ -790,13 +382,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     if (governor_ && !loadingScreenVisible_ && governor_->getState() != BudgetState::Green) {
         static int progGovLog = 0;
         if (++progGovLog % 300 == 1) {
-            size_t qNeedBuild = 0;
-            for (const auto& e : meshLoadQueue_)
-                if (constrainedMeshCache_ && !constrainedMeshCache_->isLoaded(e.regionIdx))
-                    qNeedBuild++;
-            LOG_DEBUG(MOD_GRAPHICS, "Progressive: GREEN gate blocked — governor={} | "
-                      "meshLoadQueue_.size={} needBuild={}",
-                      governor_->getStateName(), meshLoadQueue_.size(), qNeedBuild);
+            LOG_DEBUG(MOD_GRAPHICS, "Progressive: GREEN gate blocked — governor={}",
+                      governor_->getStateName());
         }
         // Populate pending queue even when not GREEN (zero-cost, main-thread-only).
         // Do NOT dispatch — worker stays idle during non-GREEN frames.
@@ -847,34 +434,18 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         }
     }
 
-    // Priority 1.5: Rebuild one region whose async fallback textures have arrived
-    if (!didWork && constrainedMeshCache_ && !textureRebuildQueue_.empty()) {
-        auto entry = textureRebuildQueue_.front();
-        textureRebuildQueue_.erase(textureRebuildQueue_.begin());
-
-        // Clean up existing node before rebuild
-        auto existingIt = regionMeshNodes_.find(entry.regionIdx);
-        if (existingIt != regionMeshNodes_.end() && existingIt->second) {
-            deleteMeshHardwareBuffers(existingIt->second);
-            if (animatedTextureManager_)
-                animatedTextureManager_->removeSceneNode(existingIt->second);
-            if (existingIt->second->getParent()) existingIt->second->remove();
-            else existingIt->second->drop();
-            existingIt->second = nullptr;
-        }
-
-        constrainedMeshCache_->markForRebuild(entry.regionIdx);
-        if (rebuildRegionMesh(entry.regionIdx)) {
-            addRegionToCollision(entry.regionIdx);
-            LOG_INFO(MOD_GRAPHICS, "Progressive P1.5: rebuilt region {} with textures (queue remaining: {})",
-                     entry.regionIdx, textureRebuildQueue_.size());
-            didWork = canMarkWork;
-            logAssetBuildTime("tex_rebuild", entry.regionIdx, stepStart);
-        } else {
-            LOG_WARN(MOD_GRAPHICS, "Progressive P1.5: FAILED to rebuild region {} with textures",
-                     entry.regionIdx);
-        }
-    }
+    // Priority 1.5 (region rebuild on texture arrival) removed T67 — this
+    // branch was gated on `constrainedMeshCache_ &&`, which was never true
+    // (the cache was never constructed), so it never ran in any shipped
+    // build. textureRebuildQueue_ is still populated live by the GPU
+    // upload thread (renderer_gpu_upload.cpp) — this was already the ONLY
+    // mesh-cache-gated consumer of it in this file/renderer_frame.cpp, so
+    // with it (and its siblings below) gone, the queue is drained only at
+    // zone unload (renderer_zone_lifecycle.cpp), exactly as before this
+    // change. Pre-existing, not introduced here — see deferred.md if this
+    // unbounded-growth-until-unload pattern is ever worth revisiting.
+    // See src/client/graphics/CLAUDE.md for the removed cache's reference
+    // pointer.
 
     // Priority 1.6: Rebuild one door whose async textures have arrived
     if (!didWork && !doorTextureRebuildQueue_.empty() && doorManager_) {
@@ -912,43 +483,10 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
         }
     }
 
-    // Priority 2: Build one PVS neighbor region
-    if (!didWork && constrainedMeshCache_) {
-        size_t qNeedBuild = 0;
-        size_t firstUnloaded = SIZE_MAX;
-        for (const auto& entry : meshLoadQueue_) {
-            if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
-                if (getRegionPvsDepth(entry.regionIdx) > static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth)) continue;
-                qNeedBuild++;
-                if (firstUnloaded == SIZE_MAX) firstUnloaded = entry.regionIdx;
-            }
-        }
-        if (qNeedBuild > 0) {
-            LOG_INFO(MOD_GRAPHICS, "Progressive P2: attempting region {} ({} need building in queue of {})",
-                     firstUnloaded, qNeedBuild, meshLoadQueue_.size());
-        }
-
-        for (const auto& entry : meshLoadQueue_) {
-            if (constrainedMeshCache_->isLoaded(entry.regionIdx)) continue;
-            // PVS depth gate: skip regions beyond configured depth
-            if (getRegionPvsDepth(entry.regionIdx) > static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth)) continue;
-            if (rebuildRegionMesh(entry.regionIdx)) {
-                addRegionToCollision(entry.regionIdx);
-                LOG_INFO(MOD_GRAPHICS, "Progressive P2: SUCCESS region {} + collision (PVS={}, queue={}, "
-                          "needBuild={})",
-                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size(), qNeedBuild - 1);
-                didWork = canMarkWork;
-                logAssetBuildTime("region", entry.regionIdx, stepStart);
-                sendLoadProgress(fmt::format("[Load] Region {} [{}/{}]",
-                    entry.regionIdx, meshLoadQueue_.size() - (qNeedBuild - 1), meshLoadQueue_.size()));
-            } else {
-                LOG_ERROR(MOD_GRAPHICS, "Progressive P2: FAILED region {} — rebuildRegionMesh returned false "
-                          "(PVS={}, queue={})",
-                          entry.regionIdx, currentPvsRegion_, meshLoadQueue_.size());
-            }
-            break;  // One attempt max
-        }
-    }
+    // Priority 2 (build one PVS neighbor region from meshLoadQueue_) removed
+    // T67 — gated on `constrainedMeshCache_`, never true; regions are
+    // always already built eagerly (SEQ Step4). meshLoadQueue_ itself
+    // (populated only by the same dead-gated path) was removed too.
 
     // Priority 3: Build one door in current PVS set (nearest first)
     if (!didWork && doorManager_) {
@@ -1038,33 +576,8 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // Always queue background prep requests (free work on background thread)
     queueEntityPrepRequests();
 
-    // Mesh cache eviction (lightweight, cap per frame)
-    if (constrainedMeshCache_ &&
-        constrainedMeshCache_->getCurrentUsage() > constrainedMeshCache_->getMemoryLimit()) {
-        constexpr int MAX_EVICTIONS_PER_FRAME = 10;
-        int evictionsThisFrame = 0;
-        auto evicted = constrainedMeshCache_->evictUntilAvailable(0, protectedRegions_);
-        for (size_t idx : evicted) {
-            if (evictionsThisFrame >= MAX_EVICTIONS_PER_FRAME) break;
-            auto it = regionMeshNodes_.find(idx);
-            if (it != regionMeshNodes_.end() && it->second) {
-                deleteMeshHardwareBuffers(it->second);
-                if (animatedTextureManager_)
-                    animatedTextureManager_->removeSceneNode(it->second);
-                if (it->second->getParent()) it->second->remove(); else it->second->drop();
-                it->second = nullptr;
-            }
-            // Remove evicted region from texture rebuild tracking
-            for (auto& [texName, regions] : pendingTextureRegions_) {
-                regions.erase(idx);
-            }
-            textureRebuildQueue_.erase(
-                std::remove_if(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
-                    [idx](const TextureRebuildEntry& e) { return e.regionIdx == idx; }),
-                textureRebuildQueue_.end());
-            evictionsThisFrame++;
-        }
-    }
+    // Mesh cache eviction removed T67 — gated on `constrainedMeshCache_`,
+    // never true (no cache was ever constructed to evict from).
 
     if (didWork) {
         LOG_DEBUG(MOD_GRAPHICS, "Progressive: 1 step this frame ({:.1f}ms remaining, gov=GREEN)",
@@ -1141,7 +654,7 @@ void IrrlichtRenderer::onPvsRegionChanged() {
         });
     }
 #endif
-    // meshLoadQueue_ and textureRebuildQueue_ are repopulated each frame — no action needed
+    // textureRebuildQueue_ is repopulated each frame — no action needed
     // Note: camera BSP collision (setBspPlayerRegion) is updated inline in applySimulationOutput
     // on every region change, not gated by the neighborhood.
 }
@@ -1257,14 +770,10 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     // Periodic status log for progressive loading (every 5 seconds)
     static int progCheckLog = 0;
     if (++progCheckLog % 150 == 1) {
-        size_t unbuiltRegions = 0;
-        if (constrainedMeshCache_) {
-            for (const auto& entry : meshLoadQueue_) {
-                if (!constrainedMeshCache_->isLoaded(entry.regionIdx) &&
-                    getRegionPvsDepth(entry.regionIdx) <= static_cast<uint8_t>(config_.constrainedConfig.terrainPrepMaxPvsDepth))
-                    unbuiltRegions++;
-            }
-        }
+        // unbuiltRegions was mesh-cache-derived (meshLoadQueue_ vs. cache's
+        // isLoaded()) and always 0 in production — removed T67 along with
+        // the cache. Regions are always built eagerly (SEQ Step4).
+        const size_t unbuiltRegions = 0;
         bool pendingTextures = constrainedTextureCache_ && constrainedTextureCache_->hasPendingWork();
         size_t pendingVBOs = 0;
 #ifdef EQT_HAS_GLES2
@@ -1301,7 +810,6 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         // in and out of the scene graph during gameplay and need lazy prep.
 
         // Release object texture pixel data — all deferred objects and doors are built.
-        // Safe even with constrainedMeshCache_ active (only zone textures needed for region rebuilds).
         if (currentZone_ && !currentZone_->objectTextures.empty()) {
             size_t freed = 0;
             for (auto& [name, texInfo] : currentZone_->objectTextures) {

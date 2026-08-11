@@ -3,7 +3,6 @@
 
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame_budget_governor.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/sky_renderer.h"
 #include "common/logging.h"
@@ -338,8 +337,8 @@ void IrrlichtRenderer::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLightVisibility), pct(frameTimingsAccum_.zoneLightVisibility));
     LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
     LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.occlusionCulling), pct(frameTimingsAccum_.occlusionCulling));
-    if (constrainedMeshCache_)
-    LOG_INFO(MOD_GRAPHICS, "  Mesh Loading:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.meshLoading), pct(frameTimingsAccum_.meshLoading));
+    // "Mesh Loading" line removed T67 — was gated on constrainedMeshCache_,
+    // never true (the cache was never constructed), so it never printed.
     LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
     LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier2Update), pct(frameTimingsAccum_.tier2Update));
     LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.weatherSystemUpdate), pct(frameTimingsAccum_.weatherSystemUpdate));
@@ -667,21 +666,9 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
             formatBytes(eqe1Bytes), eqe1Count));
     }
 
-    // --- Mesh Cache ---
-    if (constrainedMeshCache_) {
-        size_t used = constrainedMeshCache_->getCurrentUsage();
-        size_t limit = constrainedMeshCache_->getMemoryLimit();
-        size_t loaded = constrainedMeshCache_->getLoadedCount();
-        size_t total = constrainedMeshCache_->getTotalCount();
-        size_t evicted = constrainedMeshCache_->getEvictedCount();
-        totalEstimate += used;
-        lines.push_back(fmt::format("[Mesh Cache] {} / {} ({}/{} regions loaded, {} evicted)",
-            formatBytes(used), formatBytes(limit), loaded, total, evicted));
-        lines.push_back(fmt::format("  Evictions: {}  Rebuilds: {}  Hit rate: {:.1f}%",
-            constrainedMeshCache_->getEvictionCount(),
-            constrainedMeshCache_->getRebuildCount(),
-            constrainedMeshCache_->getHitRate()));
-    }
+    // "Mesh Cache" section removed T67 — was gated on constrainedMeshCache_,
+    // never true (the cache was never constructed), so it never printed.
+    // See src/client/graphics/CLAUDE.md for the reference pointer.
 
     // --- Zone Geometry ---
     {

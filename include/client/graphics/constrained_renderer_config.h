@@ -133,10 +133,15 @@ struct ConstrainedRendererConfig {
     // may coalesce consecutive same-SMaterial runs of RESIDENT zone-region geometry
     // into single client-side-index glDrawElements calls (see renderer_zone_merge.h).
     // Reduced-landing scope (see refactor/P10_merge_production_landing.md Review):
-    // merge only activates for zones where ConstrainedMeshCache never evicts (fully
-    // resident); falls back to the unmerged path for the rest of that zone visit the
-    // instant an eviction occurs. Zone objects/placeables always stay unmerged (out
-    // of scope, matches the P09 prototype). Runtime-toggleable via /mergedraws.
+    // merge only activates once a zone's region set is fully resident with
+    // zero evictions so far; falls back to the unmerged path for the rest of
+    // that zone visit the instant an eviction occurs. (Originally gated on
+    // ConstrainedMeshCache's eviction count too; T67, 2026-08-11, removed
+    // that cache — it was never constructed in any shipped build — so the
+    // gate is now the live constrainedTextureCache_'s eviction count alone.
+    // See src/client/graphics/CLAUDE.md for the reference pointer.) Zone
+    // objects/placeables always stay unmerged (out of scope, matches the P09
+    // prototype). Runtime-toggleable via /mergedraws.
     bool mergeZoneDraws = false;
 
     // Adaptive per-pixel lighting: nearest N regions/objects get per-pixel player light,
@@ -206,7 +211,10 @@ struct ConstrainedRendererConfig {
     size_t totalMemoryBudgetBytes = 0;
 
     // Derived limits (computed by calculateMemoryLimits())
-    size_t meshMemoryBytes = 0;            // Max region mesh cache (0 = no constraint / no lazy loading)
+    // meshMemoryBytes (region mesh cache budget) removed T67 — it fed
+    // ConstrainedMeshCache, which was never constructed in any shipped
+    // build; consumed by nothing. See src/client/graphics/CLAUDE.md for
+    // the reference pointer.
     size_t soundBufferCacheBytes = 0;       // Max decoded sound buffer cache
     size_t chrCacheMaxEntries = 0;          // Max otherChrCaches_ entries in RaceModelLoader
     bool lazyPfsLoading = false;            // Don't keep PFS archives decompressed in memory

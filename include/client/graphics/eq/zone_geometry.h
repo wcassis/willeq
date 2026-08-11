@@ -3,6 +3,7 @@
 
 #include "wld_loader.h"
 #include <irrlicht.h>
+#include <cstddef>
 #include <memory>
 #include <map>
 #include <set>
@@ -200,6 +201,14 @@ private:
 // Helper to generate colors for visualization
 irr::video::SColor heightToColor(float height, float minHeight, float maxHeight);
 irr::video::SColor normalToColor(float nx, float ny, float nz);
+
+// Estimate a built region mesh's GPU-adjacent memory footprint (vertex +
+// index buffer bytes) from its Irrlicht scene node. Relocated verbatim
+// (T67, 2026-08-11) from the now-removed ConstrainedMeshCache::
+// estimateMeshSize() -- the calculation itself never changed, only its
+// home. See src/client/graphics/CLAUDE.md's "Constrained Memory
+// Management" section for the removed cache's history/reference pointer.
+size_t estimateMeshSizeBytes(irr::scene::IMeshSceneNode* node);
 
 } // namespace Graphics
 } // namespace EQT

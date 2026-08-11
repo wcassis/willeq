@@ -1,6 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_prep_worker.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
@@ -115,9 +114,6 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
     sectionStart_ = std::chrono::steady_clock::now();
     if (!progressiveLoadingActive_) {
-        // Drain bg mesh results (cheap mutex swap, no GL)
-        drainMeshResults();
-
         if (!governor_ || governor_->getState() == BudgetState::Green) {
             bool didWork = false;
 
@@ -128,11 +124,15 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
             // T04: processOneUpload removed. Textures uploaded via uploadTexture().
 
-            // Priority 3: Finalize background mesh build (add to scene graph)
-            if (!didWork) didWork = finalizeOneMeshResult();
-
-            // Priority 4: Material swap (placeholder → real texture)
-            if (!didWork) didWork = processOneMaterialSwap();
+            // Priorities 3/4 (finalize background mesh build, material swap)
+            // removed T67 — this whole background-mesh-build subsystem
+            // (drainMeshResults()/finalizeOneMeshResult()/
+            // processOneMaterialSwap()/submitOneBgMeshBuild()) existed only
+            // to feed and drain the never-constructed ConstrainedMeshCache's
+            // async region loading; submitOneBgMeshBuild() (ex-Priority 10,
+            // below) was its sole producer and was itself cache-gated, so
+            // the whole chain was permanently a no-op. See
+            // src/client/graphics/CLAUDE.md for the reference pointer.
 
             // Priority 5: Entity prep results
             if (!didWork && entityPrepReady_ && entityRenderer_)
@@ -142,29 +142,13 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
             if (!didWork && entityPrepReady_ && entityRenderer_ && !config_.constrainedConfig.skipEntityBuild)
                 didWork = entityRenderer_->processOneEntityBuildStep(currentPvsRegion_);
 
-            // Priority 7: Texture rebuild (full rebuild for regions without buffer map)
-            if (!didWork && constrainedMeshCache_ && !textureRebuildQueue_.empty()) {
-                auto texEntry = textureRebuildQueue_.front();
-                textureRebuildQueue_.erase(textureRebuildQueue_.begin());
-
-                auto existingIt = regionMeshNodes_.find(texEntry.regionIdx);
-                if (existingIt != regionMeshNodes_.end() && existingIt->second) {
-                    deleteMeshHardwareBuffers(existingIt->second);
-                    if (animatedTextureManager_)
-                        animatedTextureManager_->removeSceneNode(existingIt->second);
-                    if (existingIt->second->getParent()) existingIt->second->remove();
-                    else existingIt->second->drop();
-                    existingIt->second = nullptr;
-                }
-
-                constrainedMeshCache_->markForRebuild(texEntry.regionIdx);
-                if (rebuildRegionMesh(texEntry.regionIdx)) {
-                    addRegionToCollision(texEntry.regionIdx);
-                    LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt region {} with textures (queue remaining: {})",
-                             texEntry.regionIdx, textureRebuildQueue_.size());
-                }
-                didWork = true;
-            }
+            // Priority 7 (texture rebuild for regions without a buffer map)
+            // removed T67 — gated on `constrainedMeshCache_ &&`, never true.
+            // textureRebuildQueue_ is still populated live by the GPU
+            // upload thread (renderer_gpu_upload.cpp); with every
+            // mesh-cache-gated consumer of it gone, it is now drained only
+            // at zone unload, exactly as before this change (this consumer
+            // never ran in any shipped build either).
 
             // Priority 8: Door texture arrival
             if (!didWork && !doorTextureRebuildQueue_.empty() && doorManager_) {
@@ -199,8 +183,8 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                 }
             }
 
-            // Priority 10: Submit new background mesh build
-            if (!didWork && constrainedMeshCache_) didWork = submitOneBgMeshBuild();
+            // Priority 10 (submit new background mesh build) removed T67 —
+            // see the Priority 3/4 removal note above.
 
             // Priority 11: Lazy icon loading (disabled — WindowManager removed)
 
@@ -256,17 +240,10 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         // blinds the governor to GPU pipeline stalls from progressive loading.
         if (governor_) {
             bool hasPendingWork = progressiveLoadingActive_;
-            // meshLoadQueue_ is repopulated every frame by SimulationWorker
-            // (it's a "regions that should be loaded" list, not a drain queue).
-            // Only count as pending work if entries actually need building.
-            if (!hasPendingWork && constrainedMeshCache_) {
-                for (const auto& entry : meshLoadQueue_) {
-                    if (!constrainedMeshCache_->isLoaded(entry.regionIdx)) {
-                        hasPendingWork = true;
-                        break;
-                    }
-                }
-            }
+            // The meshLoadQueue_-derived pending-work check (removed T67)
+            // was gated on constrainedMeshCache_, never true (the cache was
+            // never constructed), so hasPendingWork here was always exactly
+            // progressiveLoadingActive_ in every shipped build.
             governor_->endFrame(static_cast<float>(frameTimings_.endScene), hasPendingWork);
         }
 

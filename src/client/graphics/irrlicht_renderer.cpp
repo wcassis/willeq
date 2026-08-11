@@ -9,7 +9,6 @@
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/environment/zone_biome.h"

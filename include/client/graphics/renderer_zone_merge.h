@@ -22,21 +22,27 @@
 //     tracking/shader binding unchanged.
 //
 // Reduced-landing scope (P10 plan A4 -- see refactor/P10_merge_production_landing.md
-// Review for the STOP-condition design memo): production's ConstrainedMeshCache
-// does per-region LRU eviction with live streaming, which this class does NOT
+// Review for the STOP-condition design memo): this design memo originally
+// wrote against production's ConstrainedMeshCache, which was meant to do
+// per-region LRU eviction with live streaming that this class does NOT
 // attempt to reconcile with (that would require a per-material shared-VBO
 // sub-allocator with free-list/compaction PLUS new GPUUploadThread request
 // types for safe append/free of live buffers -- a unit-sized project on its
-// own). Instead: ZoneMergeBuffers::build() is only ever called by the caller
-// (IrrlichtRenderer::drawZoneGeometrySorted()) once a zone's region set is
-// FULLY resident with zero mesh-cache evictions so far. If an eviction occurs
-// AFTER a successful build, the caller destroys the merge buffers and
+// own). T67 (2026-08-11) removed ConstrainedMeshCache entirely: it was never
+// constructed in any shipped build, so this reconciliation problem never
+// actually existed in production -- see src/client/graphics/CLAUDE.md for
+// the reference pointer. The design/gating logic below is unchanged and
+// still applies verbatim to the one live eviction source
+// (ConstrainedTextureCache): ZoneMergeBuffers::build() is only ever called
+// by the caller (IrrlichtRenderer::drawZoneGeometrySorted()) once a zone's
+// region set is FULLY resident with zero evictions so far. If an eviction
+// occurs AFTER a successful build, the caller destroys the merge buffers and
 // disables merging for the remainder of that zone visit -- the merge buffers
 // are a derived, rebuildable snapshot, never a source of truth, so this is
 // safe (never draws stale/evicted geometry) at the cost of losing the merge
-// benefit entirely for zones whose region set doesn't fit the mesh cache
-// budget. Zone objects/placeables are always excluded (out of scope, matches
-// the P09 prototype -- build() only reads region mesh nodes).
+// benefit entirely for zones whose region set doesn't fit budget. Zone
+// objects/placeables are always excluded (out of scope, matches the P09
+// prototype -- build() only reads region mesh nodes).
 
 #include "client/graphics/constrained_texture_cache.h"  // TextureEvictionListener
 

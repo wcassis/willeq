@@ -1,6 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/renderer_zone_merge.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
@@ -494,7 +493,14 @@ void IrrlichtRenderer::toggleMergeZoneDraws() {
     // same eviction-driven fallback again — that's expected, not a bug).
     if (mergeZoneDrawsEnabled_) {
         mergeZoneDrawsDisabledForZone_ = false;
-        mergeZoneDrawsBuildEvictionCount_ = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
+        // T67: was `constrainedMeshCache_ ? ...->getEvictionCount() : 0`,
+        // always 0 (the cache was never constructed). Pre-existing note:
+        // unlike drawZoneGeometrySorted()'s own gate (renderer_zone_draw.cpp),
+        // this reset never included constrainedTextureCache_'s eviction count
+        // either, so re-enabling immediately after a texture-eviction-triggered
+        // auto-disable could under-count and attempt a merge build one
+        // eviction "early" -- not introduced here, not fixed here.
+        mergeZoneDrawsBuildEvictionCount_ = 0;
     }
     LOG_INFO(MOD_GRAPHICS, "Zone draw merge (/mergedraws): {}",
              mergeZoneDrawsEnabled_ ? "ENABLED" : "DISABLED");

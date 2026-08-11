@@ -315,23 +315,19 @@ bool IrrlichtRenderer::processOneGPUResult() {
                         }
                     }
 
-                    // Check if any regions were waiting for this texture → material swap queue
+                    // Check if any regions were waiting for this texture → queue for rebuild.
+                    // T67: this used to also check pendingTextureBuffers_ for a
+                    // material-swap shortcut (materialSwapQueue_), but that map's
+                    // only writer was ConstrainedMeshCache's background-build path
+                    // (finalizeOneMeshResult(), removed with the cache — it was
+                    // never constructed in any shipped build), so pendingTextureBuffers_
+                    // was always empty and this always fell through to the full-rebuild
+                    // branch below. Behavior unchanged; the always-empty lookup is
+                    // just gone now. See src/client/graphics/CLAUDE.md for the
+                    // reference pointer.
                     auto pendIt = pendingTextureRegions_.find(result.textureName);
                     if (pendIt != pendingTextureRegions_.end()) {
-                        // Check if we have pendingTextureBuffers_ entries for material swap
-                        bool usedMaterialSwap = false;
                         for (size_t regionIdx : pendIt->second) {
-                            auto ptbIt = pendingTextureBuffers_.find(regionIdx);
-                            if (ptbIt != pendingTextureBuffers_.end()) {
-                                auto bufIt = ptbIt->second.find(result.textureName);
-                                if (bufIt != ptbIt->second.end() && !bufIt->second.empty()) {
-                                    bool texHasAlpha = constrainedTextureCache_->hasAlpha(result.textureName);
-                                    materialSwapQueue_.push_back({regionIdx, result.textureName, wrappedTex, texHasAlpha});
-                                    usedMaterialSwap = true;
-                                    continue;
-                                }
-                            }
-                            // No buffer map → fall back to full rebuild (textureRebuildQueue_)
                             bool alreadyQueued = false;
                             for (const auto& entry : textureRebuildQueue_) {
                                 if (entry.regionIdx == regionIdx) {
@@ -352,13 +348,8 @@ bool IrrlichtRenderer::processOneGPUResult() {
                                 textureRebuildQueue_.push_back({regionIdx, distSq});
                             }
                         }
-                        if (usedMaterialSwap) {
-                            LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued material swaps for regions",
-                                     result.textureName);
-                        } else {
-                            LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} regions for rebuild",
-                                     result.textureName, pendIt->second.size());
-                        }
+                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} regions for rebuild",
+                                 result.textureName, pendIt->second.size());
                         pendingTextureRegions_.erase(pendIt);
                     }
 

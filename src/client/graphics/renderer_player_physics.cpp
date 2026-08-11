@@ -2,7 +2,6 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/hc_map.h"
 #include "client/input/hotkey_manager.h"
 #include "common/logging.h"
@@ -1002,8 +1001,7 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     if (zoneBspTree_) {
         playerRegion = zoneBspTree_->findRegionIndexForPoint(playerX_, playerY_, playerZ_);
         bool alreadyBuilt = regionMeshNodes_.count(playerRegion) && regionMeshNodes_[playerRegion];
-        if (playerRegion != SIZE_MAX && !alreadyBuilt &&
-            (!constrainedMeshCache_ || !constrainedMeshCache_->isLoaded(playerRegion))) {
+        if (playerRegion != SIZE_MAX && !alreadyBuilt) {
             rebuildRegionMesh(playerRegion);
             LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
         }
