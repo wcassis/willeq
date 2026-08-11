@@ -4074,3 +4074,105 @@ enough to scope a fix unit without re-running the live session.
   from one VM's data, so it is reported only. Whoever picks this up should
   gather more repeat-run data (more zones, ideally a second machine) before
   proposing a number.
+
+## Unmerged-branch survey (orchestrator, 2026-08-11) — 16 branches audited, ONE contained work worth having
+
+Prompted by discovering that the `--dump-frames-dir` video-capture flag had
+sat unmerged on a parked branch for two weeks while T63 was reduced to
+burst-capturing an attack swing and hoping a frame landed. That raised the
+obvious question — **what else has been missed?** — and nobody had ever
+enumerated the branches.
+
+Method: every branch with commits not in `fable`
+(`git rev-list --count fable..<branch>`), then per-branch audit of whether
+the content is genuinely absent from `fable` **by comparing code, not
+ancestry** — old branches are frequently superseded by an independent
+reimplementation, which `git branch --merged` cannot see.
+
+### Verdicts
+
+- **`task/anim-video-capture`** — the one real find. Carried
+  `--dump-frames-dir`/`--dump-every`, parked in July because the branch
+  *also* bundled three workarounds rather than fixes (the right call at the
+  time). All three were later fixed properly and independently — P23
+  (`e702341`) root-caused the `saveScreenshot` guard and the
+  `ParticleManager::renderUnified` race, and the missing-equipment FATAL
+  became a WARN — but nobody went back for the 55 lines that were worth
+  having. **Extracted by T64.** Branch content now superseded.
+- **`mem`** (2 commits, 2026-01-19) — **DELETED**. Its "eviction crash fix"
+  was a self-labelled `WORKAROUND` that commented out
+  `driver_->removeTexture()`, leaking GPU memory on the 512MB target to
+  hide a dangling pointer in Burning Video — a renderer since deleted
+  entirely. `fable` fixed the same problem properly via
+  `TextureEvictionListener`, which frees the memory *and* covers the
+  detached-node case `mem` never found. Applying it today would reintroduce
+  an unbounded texture leak on the Pi. Tip archived as tag
+  **`archive/mem-20260111`** (`cd6a7712`) because the branch was unmerged
+  and its commits would otherwise be garbage-collected; the tag message
+  carries the full verdict. One idea there has no counterpart in `fable`
+  and may be worth reviving as a fresh design: `ConstrainedMemoryBudget` +
+  `IAssetCache`, a cross-asset budget coordinator. **Will has since ruled
+  that per-subsystem budgets, defined and enforced, are the model and no
+  global coordinator is wanted** (see T69) — so that idea is closed unless
+  the ruling changes.
+- **`harness/qwen-t2` / `-t3` / `-t4`** (2026-07-25) — **DELETED**, no
+  archive tag; nothing salvageable in the code. These were
+  model-evaluation runs, and their commit messages were the actual
+  artifact. Preserved here since the branches are gone: **T2**
+  (`Strings::Truncate`, 2m05s, 11 tool calls) — "27/27 tests pass BUT model
+  edited tests 3x to match impl, never fixed impl; Truncate_ExactLength now
+  contains a duplicated assertion, boundary untested". **T3** (`/uptime`
+  slash command, 9m55s, 68 tool calls) — "chose CommandProcessor correctly
+  among 3 competing command systems; diff is idiomatic; most of the run
+  wasted on a /tmp mock harness that never compiled; LATENT: `game_state.h`
+  uses `std::chrono` but `<chrono>` was added to the .cpp". **T4** (a
+  3-line comment in `eq.cpp`, 2m23s, 9 tool calls) — "never attempted a
+  whole-file read of the 165K-token file; edit landed correctly inside
+  `RegisterCommands()`; did NOT verify its own work, build was run by hand
+  afterward". Shas, if ever wanted from reflog: `b3e30807`, `6b80ccc0`,
+  `42f1cf68`.
+- **`fix-spell-effects`** (1 commit, 2026-01-08) — **mislabelled, and now
+  fully superseded.** Despite the name it contributes nothing to
+  `SpellData::effects` (spell *mechanics*); it parses `spells.eff`, the
+  client's *visual* effect file. Its parser was heuristic — a 32-byte
+  sliding scan for "Source"/"Target" markers because it missed the 8-byte
+  record header and the grouping-of-three, and it **synthesised effect ids
+  from an incrementing counter** rather than using the record index, which
+  is the one thing the file is indexed by. Kept at survey time only because
+  its parser might seed the spell-effects rewrite. **T70 has since written
+  a correct reader from scratch**, so that reason is gone. Safe to delete;
+  a worktree at `/home/user/projects/claude/willeq-fix-spell-effects` holds
+  it open and must go first.
+- **`viewer`** (2 commits, 2026-01-22) — superseded. Its
+  `getBoneWorldPosition()` Y-rotation fix, which looked alarmingly relevant
+  to the held-item work, is **already in `fable`** (verified: `nodeRot` /
+  `cosY` present). Only its model_viewer multi-view and hand-marker changes
+  may remain.
+- **`task/P07c-default-flip`** — deliberately parked as rejection evidence
+  for the P07 lighting arc. Accounted for; leave it.
+- **`renderer`** (documented reference-only, never merge), **`codex`**,
+  **`poc`**, **`metalpoc`**, **`storypoc`**, and the two ~300-commit
+  `task/eqemu-*` / `task/eqcpp-*` branches — parallel or historical lines,
+  not pending work.
+
+### The systemic point
+
+**There is no process for parked branches.** Things get parked for good
+reasons, the reasons expire, and nobody revisits — the same drift class as
+this file, but with no index and no hygiene pass. A survey like this had
+apparently never been run.
+
+Note the asymmetry with T53's `deferred.md` pass, which found six items
+marked open that were already fixed. The branch survey skewed the other
+way: things that *looked* valuable and were superseded. **Code rots faster
+than notes do**, so branch audits must compare code rather than trusting a
+title or a commit message.
+
+Conventions established, for whoever runs this next:
+- Audit by comparing code against `fable`, never by ancestry.
+- Before deleting an **unmerged** branch, tag it `archive/<name>-<date>`
+  with the verdict in the tag message — otherwise the commits become
+  unreachable and are eventually GC'd. A branch whose content is already in
+  `fable`'s history (like T67's `ConstrainedMeshCache` removal) needs only
+  a docs pointer, not a tag.
+- A worktree pinned to a branch holds it open; remove the worktree first.
