@@ -437,6 +437,11 @@ private:
     // 2D rendering state
     bool Is2DMode;
 
+    // T61: present() is deferred from endScene() to the start of the NEXT
+    // beginScene() -- see endScene()/beginScene() for why. pendingPresent_
+    // tracks whether a swap/page-flip is owed before the next frame starts.
+    bool pendingPresent_;
+
     // Hardware buffer cache (VBO/EBO for static mesh data)
     std::unordered_map<const scene::IMeshBuffer*, SHWBuffer> HWBufferMap;
 
