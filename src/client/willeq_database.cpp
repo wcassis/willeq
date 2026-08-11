@@ -132,6 +132,21 @@ private:
 // Spell queries
 // ============================================================================
 
+// Reads the 61 effect-slot columns (12 x effect_id/base/base2/max/formula +
+// spell_affect_index), verbatim as they appear in the row — markers (254 for
+// effect id, 100 for formula) are NOT interpreted here; that happens at the
+// consumer boundary (SpellDatabase::queryAndCache), per SpellInfo's contract.
+// `firstCol` is the sqlite3_column index of effect_id_1 (the first of the 61).
+static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& info) {
+    int col = firstCol;
+    for (int i = 0; i < 12; ++i) info.effectId[i]   = static_cast<int16_t>(sqlite3_column_int(stmt, col++));
+    for (int i = 0; i < 12; ++i) info.baseValue[i]  = sqlite3_column_int(stmt, col++);
+    for (int i = 0; i < 12; ++i) info.base2Value[i] = sqlite3_column_int(stmt, col++);
+    for (int i = 0; i < 12; ++i) info.maxValue[i]   = sqlite3_column_int(stmt, col++);
+    for (int i = 0; i < 12; ++i) info.formula[i]    = sqlite3_column_int(stmt, col++);
+    info.spellAffectIndex = sqlite3_column_int(stmt, col++);
+}
+
 SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
     ScopedQueryTimer timer(stats_);
     SpellInfo info;
@@ -142,7 +157,18 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         "spell_fades, cast_time_ms, recovery_time_ms, recast_time_ms, "
         "duration_formula, duration_cap, mana_cost, target_type, range_val, "
         "aoe_range, resist_type, resist_diff, casting_skill, is_beneficial, "
-        "spell_icon, gem_icon, cast_anim, zone_type, class_levels FROM spells WHERE id=?",
+        "spell_icon, gem_icon, cast_anim, zone_type, class_levels, "
+        "effect_id_1, effect_id_2, effect_id_3, effect_id_4, effect_id_5, effect_id_6, "
+        "effect_id_7, effect_id_8, effect_id_9, effect_id_10, effect_id_11, effect_id_12, "
+        "base_value_1, base_value_2, base_value_3, base_value_4, base_value_5, base_value_6, "
+        "base_value_7, base_value_8, base_value_9, base_value_10, base_value_11, base_value_12, "
+        "base2_value_1, base2_value_2, base2_value_3, base2_value_4, base2_value_5, base2_value_6, "
+        "base2_value_7, base2_value_8, base2_value_9, base2_value_10, base2_value_11, base2_value_12, "
+        "max_value_1, max_value_2, max_value_3, max_value_4, max_value_5, max_value_6, "
+        "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
+        "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
+        "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
+        "spell_affect_index FROM spells WHERE id=?",
         stmtGetSpell_);
     if (!stmt) return info;
 
@@ -184,6 +210,7 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
                            : info.classLevels.size();
             std::memcpy(info.classLevels.data(), blob, n);
         }
+        readSpellEffectColumns(stmt, 25, info);
     }
 
     return info;
@@ -199,7 +226,18 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         "spell_fades, cast_time_ms, recovery_time_ms, recast_time_ms, "
         "duration_formula, duration_cap, mana_cost, target_type, range_val, "
         "aoe_range, resist_type, resist_diff, casting_skill, is_beneficial, "
-        "spell_icon, gem_icon, cast_anim, zone_type, class_levels FROM spells WHERE name=?",
+        "spell_icon, gem_icon, cast_anim, zone_type, class_levels, "
+        "effect_id_1, effect_id_2, effect_id_3, effect_id_4, effect_id_5, effect_id_6, "
+        "effect_id_7, effect_id_8, effect_id_9, effect_id_10, effect_id_11, effect_id_12, "
+        "base_value_1, base_value_2, base_value_3, base_value_4, base_value_5, base_value_6, "
+        "base_value_7, base_value_8, base_value_9, base_value_10, base_value_11, base_value_12, "
+        "base2_value_1, base2_value_2, base2_value_3, base2_value_4, base2_value_5, base2_value_6, "
+        "base2_value_7, base2_value_8, base2_value_9, base2_value_10, base2_value_11, base2_value_12, "
+        "max_value_1, max_value_2, max_value_3, max_value_4, max_value_5, max_value_6, "
+        "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
+        "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
+        "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
+        "spell_affect_index FROM spells WHERE name=?",
         stmtGetSpellByName_);
     if (!stmt) return info;
 
@@ -241,6 +279,7 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
                            : info.classLevels.size();
             std::memcpy(info.classLevels.data(), blob, n);
         }
+        readSpellEffectColumns(stmt, 25, info);
     }
 
     return info;

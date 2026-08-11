@@ -100,7 +100,28 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             gem_icon INTEGER,
             cast_anim INTEGER,
             zone_type INTEGER,
-            class_levels BLOB
+            class_levels BLOB,
+            effect_id_1 INTEGER, effect_id_2 INTEGER, effect_id_3 INTEGER,
+            effect_id_4 INTEGER, effect_id_5 INTEGER, effect_id_6 INTEGER,
+            effect_id_7 INTEGER, effect_id_8 INTEGER, effect_id_9 INTEGER,
+            effect_id_10 INTEGER, effect_id_11 INTEGER, effect_id_12 INTEGER,
+            base_value_1 INTEGER, base_value_2 INTEGER, base_value_3 INTEGER,
+            base_value_4 INTEGER, base_value_5 INTEGER, base_value_6 INTEGER,
+            base_value_7 INTEGER, base_value_8 INTEGER, base_value_9 INTEGER,
+            base_value_10 INTEGER, base_value_11 INTEGER, base_value_12 INTEGER,
+            base2_value_1 INTEGER, base2_value_2 INTEGER, base2_value_3 INTEGER,
+            base2_value_4 INTEGER, base2_value_5 INTEGER, base2_value_6 INTEGER,
+            base2_value_7 INTEGER, base2_value_8 INTEGER, base2_value_9 INTEGER,
+            base2_value_10 INTEGER, base2_value_11 INTEGER, base2_value_12 INTEGER,
+            max_value_1 INTEGER, max_value_2 INTEGER, max_value_3 INTEGER,
+            max_value_4 INTEGER, max_value_5 INTEGER, max_value_6 INTEGER,
+            max_value_7 INTEGER, max_value_8 INTEGER, max_value_9 INTEGER,
+            max_value_10 INTEGER, max_value_11 INTEGER, max_value_12 INTEGER,
+            formula_1 INTEGER, formula_2 INTEGER, formula_3 INTEGER,
+            formula_4 INTEGER, formula_5 INTEGER, formula_6 INTEGER,
+            formula_7 INTEGER, formula_8 INTEGER, formula_9 INTEGER,
+            formula_10 INTEGER, formula_11 INTEGER, formula_12 INTEGER,
+            spell_affect_index INTEGER
         )
     )");
 
@@ -112,8 +133,25 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "cast_on_you, cast_on_other, spell_fades, cast_time_ms, recovery_time_ms, "
         "recast_time_ms, duration_formula, duration_cap, mana_cost, target_type, "
         "range_val, aoe_range, resist_type, resist_diff, casting_skill, "
-        "is_beneficial, spell_icon, gem_icon, cast_anim, zone_type, class_levels) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "is_beneficial, spell_icon, gem_icon, cast_anim, zone_type, class_levels, "
+        "effect_id_1, effect_id_2, effect_id_3, effect_id_4, effect_id_5, effect_id_6, "
+        "effect_id_7, effect_id_8, effect_id_9, effect_id_10, effect_id_11, effect_id_12, "
+        "base_value_1, base_value_2, base_value_3, base_value_4, base_value_5, base_value_6, "
+        "base_value_7, base_value_8, base_value_9, base_value_10, base_value_11, base_value_12, "
+        "base2_value_1, base2_value_2, base2_value_3, base2_value_4, base2_value_5, base2_value_6, "
+        "base2_value_7, base2_value_8, base2_value_9, base2_value_10, base2_value_11, base2_value_12, "
+        "max_value_1, max_value_2, max_value_3, max_value_4, max_value_5, max_value_6, "
+        "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
+        "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
+        "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
+        "spell_affect_index) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -174,6 +212,30 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             classLevels[c] = static_cast<uint8_t>(v < 0 ? 255 : (v > 255 ? 255 : v));
         }
         sqlite3_bind_blob(stmt, 25, classLevels, sizeof(classLevels), SQLITE_TRANSIENT);
+
+        // Effect slots (12 per spell): fields are read and stored exactly as
+        // they appear in spells_us.txt, markers included (effect id 254 =
+        // slot unused, formula 100 = unused). Normalising markers is the
+        // consumer's job (SpellDatabase::queryAndCache) — doing it here too
+        // is how the two-places-disagree drift this project keeps finding
+        // gets started. See spell_constants.h SpellField for field indices.
+        int bindIdx = 26;
+        for (int slot = 0; slot < EQ::MAX_SPELL_EFFECTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::EffectId1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_EFFECTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::BaseValue1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_EFFECTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::Base2Value1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_EFFECTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::MaxValue1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_EFFECTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::Formula1 + slot));
+        }
+        sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::SpellAffectIndex));
 
         sqlite3_step(stmt);
         count++;

@@ -127,6 +127,11 @@ struct SpellData {
 
     std::array<SpellEffectSlot, MAX_SPELL_EFFECTS> effects = {};
 
+    // Index into spells.eff (the next unit's visual-effect reader; -1 means
+    // no visual-effect record, true for 799 Titanium spells). Carried now
+    // (T68) purely as plumbing — nothing in this unit reads it.
+    int32_t spell_affect_index = -1;
+
     // ========================================================================
     // Reagents (up to 4)
     // ========================================================================

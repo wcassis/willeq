@@ -54,8 +54,25 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   the removed implementation (commit `49844c72` + paths) is in the entry
   body and in `src/client/graphics/CLAUDE.md`. Heading: `` ## ConstrainedMeshCache
   is never constructed — RESOLVED BY REMOVAL (T67, 2026-08-11) ``.
-- `SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
-  field) — confirmed still true, T53. Heading: `## From F00 test repair`.
+- ~~`SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
+  field) — confirmed still true, T53.~~ **RESOLVED BY POPULATION, T68
+  (2026-08-11).** `EQT::SpellInfo` now carries the 12-slot effect_id/base/
+  base2/max/formula columns plus `spell_affect_index`, and
+  `SpellDatabase::queryAndCache()` populates `SpellData::effects` from them,
+  interpreting the file's markers (effect id 254 / formula 100 = unused) at
+  that consumer boundary. This unblocked buff stat totals (verified: a real
+  STR buff now applies its real base_value instead of always 0),
+  `hasEffect(UltraVision/InfraVision)`, and `isDamageSpell()`/`isHealSpell()`
+  discrimination (verified against real damage/heal spells) —
+  `spell_effects.cpp:73` and `buff_manager.cpp:500` are no longer dead code.
+  This is **step 1 of the spell-effects rewrite** Will scoped (T68 plan): the
+  correct `spells.eff` reader (256 records x 2792 bytes = 8-byte header + 3 x
+  928-byte blocks, indexed by the now-carried `spell_affect_index`/
+  `SpellData::spell_affect_index`) and the data-driven visual layer are still
+  ahead. No era filtering is required by decision: `spells.eff` carries only
+  the pre-Luclin sprite vocabulary, so a post-Velious spell referencing a
+  valid index renders with a classic-era visual, which Will has ruled
+  correct. Heading: `## From F00 test repair`.
 - Auto-loot on kill never wired to the authoritative death event; shift+click
   loot path unverified. Heading: `## Auto-loot on kill has NEVER worked
   against a real server`.
@@ -597,12 +614,15 @@ grep against current tree, all still true**):
 
 ## From F00 test repair (2026-07-22)
 
-- **`SpellData::effects` is never populated.** `EQT::SpellInfo`
+- ~~**`SpellData::effects` is never populated.** `EQT::SpellInfo`
   (include/client/willeq_database.h) has no effects field, so
   `SpellDatabase::queryAndCache()` leaves every spell's effects array empty,
   and `isDamageSpell()`/`isHealSpell()` can never return true via this path.
   The old file-based loader populated it; the SQLite migration dropped it.
-  Whoever owns the spell-effects data path should restore or formally remove it.
+  Whoever owns the spell-effects data path should restore or formally remove
+  it.~~ **RESOLVED BY POPULATION, T68 (2026-08-11)** — see the `## Client
+  correctness bugs` entry above for the full writeup; this is step 1 of the
+  spell-effects rewrite arc, not the whole rewrite.
 - Case-insensitive and partial-name spell search no longer exist
   (`getSpellByName` is exact-match `WHERE name=?`); old tests covering them
   were deleted in F00. Restore only if a consumer needs them.

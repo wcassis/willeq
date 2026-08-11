@@ -551,30 +551,57 @@ TEST(BuffManagerClassification, UnknownSpellIdIsNeitherViaRealDb) {
     EXPECT_FALSE(mgr.isDetrimental(999999999));
 }
 
-// getBuffedStatMod/getPlayerStatMod: NOT in the plan's priority list for
-// this unit, included only as a short documentation pin. Per
-// test_spell_database.cpp's already-landed T22 finding, the SQLite-backed
-// SpellDatabase::queryAndCache() never populates SpellData::effects (there
-// is no `effects` field on EQT::SpellInfo to map from at all) -- so
-// getStatModFromBuff() (buff_manager.cpp:488-506), which is the only
-// producer of a nonzero stat mod, always sees an empty effects array and
-// returns 0 for every buff, on every entity, regardless of the spell's real
-// stat effect. This is a pre-existing, already-documented DB-layer gap
-// (not something this unit introduces or is fixing) -- reconfirmed current
-// here rather than filed as a new bug.
-TEST(BuffManagerStatMod, PlayerStatModAlwaysZeroBecauseEffectsAreNeverPopulated) {
+// getBuffedStatMod/getPlayerStatMod (T68 update): the T22-era version of
+// this test asserted the stat mod was ALWAYS 0, because SpellData::effects
+// was never populated -- EQT::SpellInfo had no effects field to map from at
+// all (see git history for that comment). T68 populated effects, so
+// getStatModFromBuff() (buff_manager.cpp:488-506) now has real data to walk.
+// Exercising it against a confirmed real spell: "Strengthen" (id 40) is a
+// beneficial, single-slot STR buff with base_value 4 (spot-checked directly
+// against willeq.db: effect_id_1=4/STR, effect_id_2=254/unused). Applying it
+// as a player buff must now make getPlayerStatMod(STR) report +4, not 0 --
+// this is the newly-live behavior the whole unit exists to unblock.
+//
+// (First attempt used id 21 "Berserker Strength", which turned out to also
+// carry an AGI debuff in slot 3 -- a genuinely multi-effect real spell, not
+// a bug. Switched to a single-slot spell so the "no matching effect" test
+// below isn't accidentally exercising a real second effect.)
+TEST(BuffManagerStatMod, PlayerStatModAppliesRealEffectValue) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     SpellDatabase db;
     ASSERT_TRUE(db.initFromDatabase());
+
+    const SpellData* spell = db.getSpell(40);
+    ASSERT_NE(spell, nullptr);
+    ASSERT_EQ(spell->name, "Strengthen");
+    ASSERT_EQ(spell->getEffectCount(), 1);
+    ASSERT_TRUE(spell->hasEffect(SpellEffect::STR));
+    ASSERT_EQ(spell->getEffect(SpellEffect::STR)->base_value, 4);
+
     BuffManager mgr(&db);
+    mgr.applyBuff(0, 40, 1, 50, 0xFFFFFFFF);
+    ASSERT_TRUE(mgr.hasPlayerBuff(40));
+    EXPECT_EQ(mgr.getPlayerStatMod(SpellEffect::STR), 4)
+        << "T68: SpellData::effects is now populated; getStatModFromBuff should "
+           "sum the real base_value instead of always returning 0";
+}
 
-    uint32_t id = FindSpellId(db, 1, 4000, [](const SpellData& s) { return s.is_beneficial; });
-    if (id == 0) GTEST_SKIP() << "no beneficial spell found in scanned range";
+// A beneficial spell with no AGI effect at all (still exercising the
+// now-live path) must correctly report 0 -- confirms getStatModFromBuff
+// filters by effect type rather than summing everything indiscriminately.
+TEST(BuffManagerStatMod, PlayerStatModIsZeroWhenBuffHasNoMatchingEffect) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    SpellDatabase db;
+    ASSERT_TRUE(db.initFromDatabase());
 
-    mgr.applyBuff(0, id, 1, 50, 0xFFFFFFFF);
-    ASSERT_TRUE(mgr.hasPlayerBuff(id));
-    EXPECT_EQ(mgr.getPlayerStatMod(SpellEffect::STR), 0)
-        << "known gap (T22): SpellData::effects is never populated by the DB-backed path";
+    const SpellData* spell = db.getSpell(40);  // "Strengthen" — STR only, one slot
+    ASSERT_NE(spell, nullptr);
+    ASSERT_FALSE(spell->hasEffect(SpellEffect::AGI));
+
+    BuffManager mgr(&db);
+    mgr.applyBuff(0, 40, 1, 50, 0xFFFFFFFF);
+    ASSERT_TRUE(mgr.hasPlayerBuff(40));
+    EXPECT_EQ(mgr.getPlayerStatMod(SpellEffect::AGI), 0);
 }
 
 // Main entry point: opens the real SQLite spell DB once for the whole
