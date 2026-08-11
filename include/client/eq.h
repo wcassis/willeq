@@ -1871,6 +1871,7 @@ private:
 	void RegisterMovementCommands();  // Movement/combat/utility-debug/sky commands (eq_commands_movement.cpp)
 	void RegisterSpellCommands();     // Spell/skill/hotkey/detail/audio commands (eq_commands_spells.cpp)
 	void RegisterVendorCommands();    // T48: /vendorlist, /buy, /sell (eq_commands.cpp)
+	void RegisterEquipmentCommands(); // T66: /equip (eq_commands.cpp)
 
 	// Manual zone load diagnostics helpers
 	void runPmemDiagnostics(const std::string& label);

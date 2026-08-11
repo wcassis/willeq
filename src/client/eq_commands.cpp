@@ -42,6 +42,13 @@
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
+// T66: inventory_manager.h/inventory_constants.h -- same "plain data-model
+// header" status as the T29 group above (verified against eq.cpp's own
+// unconditional include of both): no graphics dependency, needed
+// unconditionally now that RegisterEquipmentCommands()'s /equip is not
+// graphics-gated either (SendMoveItem is plain network logic).
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/inventory_constants.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -51,8 +58,6 @@
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
 #include "client/graphics/eq/wld_loader.h"
-#include "client/inventory/inventory_manager.h"
-#include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
 #include "client/input/hotkey_manager.h"
 #include "common/util/json_config.h"
@@ -78,6 +83,7 @@
 #include "client/animation_constants.h"
 #include <array>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <ctime>
 #include <algorithm>
@@ -232,6 +238,7 @@ void EverQuest::RegisterCommands()
 	RegisterMovementCommands();
 	RegisterSpellCommands();
 	RegisterVendorCommands();
+	RegisterEquipmentCommands();
 }
 
 // ── T48: vendor slash-command argument parsing helpers ─────────────────────
@@ -265,6 +272,61 @@ bool ParseVendorQuantity(const std::string& tok, uint8_t& out) {
 	} catch (const std::exception&) {
 		return false;
 	}
+}
+
+// T66: /equip slot argument parsing. Same consumed-length idiom as
+// ParseVendorSlot above, but signed/int16_t range since inventory slot ids
+// (include/client/inventory/inventory_constants.h) are the same type
+// MoveItemIntent::fromSlot/toSlot and SendMoveItem() use -- no separate
+// slot numbering invented here (T57's ruling: that enum/header is canonical).
+bool ParseEquipSlot(const std::string& tok, int16_t& out) {
+	if (tok.empty()) return false;
+	try {
+		size_t consumed = 0;
+		long v = std::stol(tok, &consumed);
+		if (v < std::numeric_limits<int16_t>::min() || v > std::numeric_limits<int16_t>::max() ||
+		    consumed != tok.size()) {
+			return false;
+		}
+		out = static_cast<int16_t>(v);
+		return true;
+	} catch (const std::exception&) {
+		return false;
+	}
+}
+
+// T66: mirrors InventoryManager::isValidSlot() (inventory_manager.cpp) --
+// that method is private (an internal helper for the UI's own drag/drop
+// path), so this reproduces its exact OR-chain over the same public
+// inventory_constants.h predicates rather than reaching into
+// InventoryManager's internals or widening its access for one caller.
+// Any recognized slot category (equipment/general/bag/cursor/bank/shared
+// bank/bank-bag/shared-bank-bag/trade/trade-bag) passes; this does NOT
+// mean the move is a legal equip (item type, class, etc.) -- that
+// judgment stays server-side, per the plan's scope fence.
+bool IsRecognizedInventorySlot(int16_t slot) {
+	using namespace eqt::inventory;
+	return isEquipmentSlot(slot) ||
+	       isGeneralSlot(slot) ||
+	       isBagSlot(slot) ||
+	       isCursorSlot(slot) ||
+	       isBankSlot(slot) ||
+	       isSharedBankSlot(slot) ||
+	       isBankBagSlot(slot) ||
+	       isSharedBankBagSlot(slot) ||
+	       isTradeSlot(slot) ||
+	       isTradeBagSlot(slot);
+}
+
+// Friendlier reply text: names the slot when it's a canonical equipment
+// slot (getSlotName(), inventory_constants.h), otherwise just the number --
+// getSlotName() itself returns "Unknown" for anything outside 0-21, which
+// would be a worse message than just showing the slot id.
+std::string DescribeEquipSlot(int16_t slot) {
+	if (eqt::inventory::isEquipmentSlot(slot)) {
+		return fmt::format("{} ({})", eqt::inventory::getSlotName(slot), slot);
+	}
+	return fmt::format("slot {}", slot);
 }
 
 }  // namespace
@@ -1361,4 +1423,76 @@ void EverQuest::RegisterVendorCommands()
 		}
 	};
 	m_command_registry->registerCommand(sell_cmd);
+}
+
+// T66 -- instance 8 of "reachable only through a UI gesture, invisible to
+// automation" (refactor/deferred.md): EverQuest::SendMoveItem(fromSlot,
+// toSlot, quantity) (eq_merchant.cpp, opcode HC_OP_MoveItem=0x420f) is the
+// real protocol path and was already fully implemented; nothing invoked it
+// from a command. T63 had to write inventory.item_id directly into the DB
+// and restart the client to get a character holding a weapon at all.
+//
+// /equip pushes the SAME MoveItemIntent{fromSlot, toSlot, quantity} the
+// inventory UI's drag-and-drop gesture pushes (inventory_manager.cpp),
+// drained by the same ProcessBridgeIntents() -> SendMoveItem() dispatch --
+// same maximum-fidelity choice T48/T50 made for vendor/bank. Slot ids use
+// the canonical eqt::inventory::EquipmentSlot enum/ranges
+// (inventory_constants.h, T57's ruling) -- no numbering invented here.
+//
+// Scope discipline (per the plan's fence): this is a thin wrapper. No
+// inventory management, no swap semantics, no client-side prediction of the
+// result -- the server is authoritative and the existing (untouched)
+// ZoneProcessMoveItem path handles the reply. Validation below only rejects
+// slot ids that don't correspond to any recognized inventory location
+// (InventoryManager::isValidSlot(), the same check the UI's own drag/drop
+// path already applies) -- it does not second-guess whether a specific
+// move is a *legal* equip (item type vs. slot, class restrictions, etc.);
+// that is exactly the swap-semantics judgment the plan says stays server-side.
+//
+// The live end-to-end leg (does a real packet actually equip a real item on
+// a real server) is explicitly OUT of this unit's territory -- sibling T65
+// holds the eqemu lock this round. See the plan's Review for what is
+// covered here (wiring: registered, parsed, invalid slots rejected, right
+// intent pushed with right fields) vs. what remains outstanding.
+void EverQuest::RegisterEquipmentCommands()
+{
+	using namespace eqt::ui;
+
+	Command equip_cmd;
+	equip_cmd.name = "equip";
+	equip_cmd.usage = "/equip <fromSlot> <toSlot>";
+	equip_cmd.description = "Move an item between inventory slots (e.g. equip a weapon: /equip 22 13)";
+	equip_cmd.category = "Inventory";
+	equip_cmd.handler = [this](const std::string& args) {
+		std::istringstream iss(args);
+		std::string fromTok, toTok;
+		iss >> fromTok;
+		iss >> toTok;
+
+		int16_t fromSlot = 0;
+		int16_t toSlot = 0;
+		if (fromTok.empty() || toTok.empty() ||
+		    !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
+			AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+			return;
+		}
+
+		if (!IsRecognizedInventorySlot(fromSlot)) {
+			AddChatSystemMessage(fmt::format("Invalid source slot: {}", fromSlot));
+			return;
+		}
+		if (!IsRecognizedInventorySlot(toSlot)) {
+			AddChatSystemMessage(fmt::format("Invalid destination slot: {}", toSlot));
+			return;
+		}
+
+		if (m_bridge) {
+			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+			AddChatSystemMessage(fmt::format("Moving item: {} -> {}",
+				DescribeEquipSlot(fromSlot), DescribeEquipSlot(toSlot)));
+		} else {
+			AddChatSystemMessage("Cannot move item - no bridge attached.");
+		}
+	};
+	m_command_registry->registerCommand(equip_cmd);
 }
