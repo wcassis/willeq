@@ -92,6 +92,31 @@ references this file; plans carry only unit-specific content.
    `--files` with absolute paths. A bad base rev is now an error, not a
    silent pass.
 
+## Media for Will's review (screenshots, video, contact sheets)
+- **Everything Will has to look at goes to
+  `/mnt/projects/fable/review/<UNIT>/`** — e.g. `review/T62/`. Not
+  `refactor/artifacts/`, not your worktree, not `/tmp`. This is an
+  explicitly sanctioned path outside the worktree, the same way the Pi
+  paths are; it is the ONE exception to stay-in-your-slot for writes.
+- It is outside the git checkout on purpose: media does not belong in the
+  repo. Do not commit captures unless they are a golden or a regression
+  fixture that genuinely needs versioning. Findings and conclusions go in
+  the plan's Review section; the pixels go in `review/`.
+- **Write a `README.md` in your unit's review directory**: what each file
+  shows, what changed, and what specifically to look at. A folder of bare
+  PNGs makes Will do the archaeology.
+- Self-describing filenames (`inventory_paperdoll_equipped_800x600.png`,
+  not `capture3.png`); `pi/` subdirectory for real-hardware captures;
+  `before/` + `after/` when the unit changes something visual, captured
+  identically — a pair that differs in two ways proves nothing.
+- Never self-assess visuals. Capture it, say what it is, stop. Will
+  judges. Garbled or unverified renders void any claim built on them —
+  check the file is what you think it is before calling it deliverable
+  (identical byte sizes across supposedly-different captures is the
+  classic tell).
+- Name the review paths in your final report so the orchestrator can
+  hand Will the link directly.
+
 ## Finish
 - Fill the plan's Review section (evidence, tables, deviations —
   deviations flagged, never silently absorbed).
