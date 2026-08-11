@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "client/eq.h"
+#include "client/bridge/game_state_bridge.h"
 #include "client/zone_lines.h"
 #include "common/net/packet.h"
 
@@ -117,6 +118,30 @@ std::vector<uint8_t> BuildZoneServerInfoPacket() {
         p.PutUInt16(130, 0);  // port
     });
 }
+
+// T58: builds a full-size (19588 fixed body + 2-byte opcode) PlayerProfile
+// payload, populated ONLY at the fields ZoneProcessPlayerProfile's
+// position/heading block reads (eq.cpp:2148-2151 -- server_x@13116,
+// server_y@13120, z@13124, heading@13128, all offsets +base(=2)). Same idiom
+// as test_zone_connection_flow.cpp's PlayerProfile builders.
+std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, float z,
+                                                float wire_heading) {
+    return BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutFloat(2 + 13116, server_x);
+        p.PutFloat(2 + 13120, server_y);
+        p.PutFloat(2 + 13124, z);
+        p.PutFloat(2 + 13128, wire_heading);
+    });
+}
+
+// T58: records every event pushed to the bridge (does not apply them to a
+// renderer), so tests can assert exactly how many PlayerMoved events reach
+// the renderer-facing queue and in what format -- same idiom as
+// test_zone_connection_flow.cpp's RecordingBridge.
+class RecordingBridge : public eqt::bridge::GameStateBridge {
+public:
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
 
 }  // namespace
 
@@ -338,4 +363,107 @@ TEST(ZonePositionConvention, ForcedRelocation_SameZoneDeathRespawnPropagatesLoca
     EXPECT_FLOAT_EQ(rawPos.x, 20.0f);
     EXPECT_FLOAT_EQ(rawPos.y, 10.0f);
     EXPECT_FLOAT_EQ(rawPos.z, 1.0f);
+}
+
+// ---------------------------------------------------------------------------
+// T58: ZoneProcessPlayerProfile (eq.cpp) -- the packet that actually
+// determines landing position on ordinary zone-in. T55 deliberately left
+// this site alone (own territory, own risk); this unit closes it.
+//
+// Step 1's traced finding (see refactor/T58_playerprofile_propagation.md
+// Review for the full evidence): EverQuest::m_game_state's state-layer
+// EventBus (fired by SetPosition/SetHeading via PlayerState::setPosition/
+// setHeading) has ZERO production listeners and is never forwarded to the
+// GameStateBridge -- it is a completely different queue from the one
+// ZoneProcessPlayerProfile's hand-rolled `m_bridge->pushEvent(...)` call
+// feeds. Routing the state write through SetPosition/SetHeading is
+// therefore additive, not a double-publish: exactly one PlayerMoved still
+// reaches the bridge, from the existing hand-rolled push, unchanged.
+// ---------------------------------------------------------------------------
+
+TEST(ZonePositionConvention, PlayerProfile_PropagatesToGameStatePlayerPosition) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // Distinct values so an x/y transposition is unmistakable: server_x=333,
+    // server_y=444. Established convention (eq.cpp:2154-2156): client m_x =
+    // server_y, client m_y = server_x.
+    auto payload = BuildPlayerProfilePayload(/*server_x=*/333.0f, /*server_y=*/444.0f,
+                                              /*z=*/5.0f, /*wire_heading=*/128.0f);
+    ReplayZone(eq, HC_OP_PlayerProfile, payload);
+
+    // Legacy raw members (already correct pre-fix -- not what this unit
+    // changes).
+    glm::vec3 rawPos = eq.GetPosition();
+    EXPECT_FLOAT_EQ(rawPos.x, 444.0f);
+    EXPECT_FLOAT_EQ(rawPos.y, 333.0f);
+    EXPECT_FLOAT_EQ(rawPos.z, 5.0f);
+
+    // The state layer's own copy -- this is the propagation gap. Pre-fix,
+    // ZoneProcessPlayerProfile never wrote m_game_state.player(), so this
+    // stays at the constructor's (0,0,0) default.
+    glm::vec3 statePos = eq.Test_GetGameStatePlayerPosition();
+    EXPECT_FLOAT_EQ(statePos.x, 444.0f);
+    EXPECT_FLOAT_EQ(statePos.y, 333.0f);
+    EXPECT_FLOAT_EQ(statePos.z, 5.0f);
+}
+
+TEST(ZonePositionConvention, PlayerProfile_HeadingConversionPreservedBitForBit) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // wire_heading=128.0 (12-bit-scaled-value/4 units, per eq.cpp:2157-2158):
+    // server_heading_deg = 128 * 360 / 512 = 90.0; m_heading = 90 - 90 = 0.0.
+    // Chosen deliberately non-degenerate for the m_heading<0/>=360 wrap
+    // branches to stay exercised elsewhere (ProducerC's own test uses a
+    // different wire_heading); this test's job is only to confirm the exact
+    // same arithmetic result reaches the state layer.
+    auto payload = BuildPlayerProfilePayload(/*server_x=*/1.0f, /*server_y=*/2.0f,
+                                              /*z=*/3.0f, /*wire_heading=*/64.0f);
+    ReplayZone(eq, HC_OP_PlayerProfile, payload);
+
+    // wire_heading=64: server_heading_deg = 64*360/512 = 45.0;
+    // m_heading = 90 - 45 = 45.0.
+    const float kExpectedHeadingDeg = 45.0f;
+
+    // GetHeading() already reads m_game_state.player().heading() (it always
+    // has -- see eq.cpp's GetHeading(), unrelated to this unit). Pre-fix,
+    // ZoneProcessPlayerProfile never wrote that field on the ordinary
+    // zone-in path, so GetHeading() would return the constructor's 0.0
+    // default here instead of the computed value -- this is the "renders in
+    // the wrong facing direction on zone-in" half of the gap.
+    EXPECT_FLOAT_EQ(eq.GetHeading(), kExpectedHeadingDeg);
+}
+
+TEST(ZonePositionConvention, PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+
+    // wire_heading=64 -> m_heading=45.0deg (see the test above) ->
+    // heading512 = 45.0 * 512/360 = 64.0 (the format the hand-rolled bridge
+    // publish at eq.cpp:2177-2184 has always sent -- this unit must not
+    // change it, only add the missing state write alongside it).
+    auto payload = BuildPlayerProfilePayload(/*server_x=*/1.0f, /*server_y=*/2.0f,
+                                              /*z=*/3.0f, /*wire_heading=*/64.0f);
+    ReplayZone(eq, HC_OP_PlayerProfile, payload);
+
+    auto events = bridge.drainEvents();
+    int playerMovedCount = 0;
+    float lastHeading512 = -1.0f;
+    for (const auto& e : events) {
+        if (e.type == eqt::state::GameEventType::PlayerMoved) {
+            playerMovedCount++;
+            const auto& d = std::get<eqt::state::PlayerMovedData>(e.data);
+            lastHeading512 = d.heading;
+        }
+    }
+
+    // The headline risk this unit's plan calls out by name: the naive fix
+    // (swap raw writes for SetPosition, leave the hand-rolled publish alone)
+    // double-publishes because SetPosition/SetHeading also fire PlayerMoved
+    // -- but on the state layer's OWN EventBus, which Step 1 established is
+    // never forwarded to this bridge. So exactly one PlayerMoved must reach
+    // it, still in the 512-scaled heading format the renderer expects.
+    EXPECT_EQ(playerMovedCount, 1)
+        << "expected exactly one PlayerMoved on the bridge per PlayerProfile zone-in";
+    EXPECT_FLOAT_EQ(lastHeading512, 64.0f);
 }

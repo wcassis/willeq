@@ -14,14 +14,11 @@ below the position code.** Do not touch `ZoneProcessZonePlayerToBind`,
 those and they are correct. Do not touch `eq_movement.cpp`,
 `eq_entities.cpp`, `eq_bridge.cpp`, `eq_commands_movement.cpp`.
 
-**STATUS: PARKED, NOT DISPATCHED (2026-08-11).** Written during the
-T57–T59 round-planning, then held when the session turned to the
-ConstrainedMeshCache/paperdoll design questions. The finding it addresses
-is real and verified (see below) — this plan is ready to dispatch
-whenever a slot frees up. Re-check the sibling-unit list against what is
-actually running before dispatching; at parking time nothing else owned
-`src/client/eq.cpp`. `refactor/deferred.md` is append-only and shared by
-every unit.
+**STATUS: DISPATCHED and CLOSED (2026-08-11, slot t2).** Written during
+the T57–T59 round-planning, held as PARKED while the session turned to
+the ConstrainedMeshCache/paperdoll design questions, then dispatched this
+round. See Review below for the trace table, fix, and verification
+evidence.
 
 Read `refactor/EXECUTOR_PROTOCOL.md`, then **`refactor/T55_position_state_propagation.md`
 in full including its Review** — this unit is its direct continuation and
@@ -121,12 +118,198 @@ zone-in) explicitly.
 
 ## Review
 
-(executor fills: the Step 1 trace table — what publishes what, to which
-queue, in which units, before and after; the pre/post test output; the
-final shape of the fix; deviations)
+### Step 1 — the trace table (established before any code change)
 
-Board (`refactor/deferred.md`, append, never delete): re-title the
-`PlayerProfile` propagation bullet T55 added. If any part of the position
-path remains unconverged after this unit, say exactly which and why —
-the per-frame movement writes are still deliberately out of scope and
-should stay recorded as such.
+Traced with evidence, not guessed, per the plan's own warning:
+
+| Path | Fires on | Consumed by | Reaches renderer? | Heading units |
+|---|---|---|---|---|
+| `SetPosition`/`SetHeading` → `PlayerState::setPosition`/`setHeading` → `firePlayerMovedEvent()` | `EverQuest::m_game_state`'s **own, private** `state::EventBus` (a value member, `eq.h:1210`) | Nothing in production. `grep -rn "\.subscribe(\|->subscribe(" src/ include/` (excluding tests) found exactly two production subscribers: `console_renderer.cpp` (subscribes to `ChatMessage`, `EntitySpawned`, `EntityDespawned`, `CombatEvent`, `ZoneChanged`, `TargetChanged`, `PetCreated`, `PetRemoved`, `PetStatsChanged`, `CastingStateChanged` — no `PlayerMoved`) and `automated_mode.cpp` (subscribes to everything) — **both attach to `Application::m_gameState`, a distinct, separately-constructed `state::GameState` instance** (`application.cpp:180`, `std::make_unique<state::GameState>()`), never to `EverQuest::m_game_state`. Confirmed by the existing comment at `application.cpp:1793-1797`: "this is a *different* state::GameState instance than EverQuest::m_game_state... EverQuest owns its own, used internally by a few Phase 7.x getters." | **No** | Raw degrees (`m_heading`, unconverted) |
+| `ZoneProcessPlayerProfile`'s hand-rolled `m_bridge->pushEvent(GameEvent(PlayerMoved, data))` (`eq.cpp:2176-2189`, unchanged by this unit) | `EverQuest::m_bridge` (a `GameStateBridge*`, set via `setBridge()`) | `GameStateBridge::drainEvents()` → `applyEvent()`, consumed by `IrrlichtBridge` (`renderer_->setPlayerPosition(...)`) or `GameStateSyncBridge` (which delegates every event it doesn't specially handle — and `PlayerMoved` is not in its narrow switch, `game_state_sync_bridge.cpp:9-...` — to the wrapped `IrrlichtBridge`/`ConsoleBridge` unchanged) | **Yes** — this is the only thing that reaches the renderer | 512-scaled (`heading512 = m_heading * 512.0f / 360.0f`, `eq.cpp:2177`) |
+
+**Verdict: the two paths are genuinely independent** — exactly the plan's
+"if independent, both publishes are needed and the fix is only the
+missing state write" branch. There is no double-publish risk: routing the
+position/heading writes through `SetPosition`/`SetHeading` adds a write to
+a bus nobody in production reads; it does not add a second event to the
+bus the renderer actually drains. The hand-rolled bridge push was left
+completely unchanged.
+
+Confirmed empirically, not just by static trace: the new
+`ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat`
+test (uses a `RecordingBridge` that only records, never applies, so it
+observes exactly what `EverQuest` pushed) **passed both before and after**
+the fix — proof the fix does not change the bridge's event count, only
+adds the missing state write.
+
+### Step 2 — pre-fix failing output (quoted)
+
+New tests added to `tests/test_zone_position_convention.cpp`, run against
+the tree exactly as inherited from `fable` (before any production change):
+
+```
+[ RUN      ] ZonePositionConvention.PlayerProfile_PropagatesToGameStatePlayerPosition
+.../test_zone_position_convention.cpp:405: Failure
+Expected equality of these values:
+  statePos.x
+    Which is: 0
+  444.0f
+    Which is: 444
+.../test_zone_position_convention.cpp:406: Failure
+  statePos.y: 0 vs 333.0f
+.../test_zone_position_convention.cpp:407: Failure
+  statePos.z: 0 vs 5.0f
+[  FAILED  ] ZonePositionConvention.PlayerProfile_PropagatesToGameStatePlayerPosition (318 ms)
+[ RUN      ] ZonePositionConvention.PlayerProfile_HeadingConversionPreservedBitForBit
+.../test_zone_position_convention.cpp:433: Failure
+Expected equality of these values:
+  eq.GetHeading()
+    Which is: 0
+  kExpectedHeadingDeg
+    Which is: 45
+[  FAILED  ] ZonePositionConvention.PlayerProfile_HeadingConversionPreservedBitForBit (1 ms)
+[ RUN      ] ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat
+[       OK ] ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat (38 ms)
+...
+[  PASSED  ] 1 test.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] ZonePositionConvention.PlayerProfile_PropagatesToGameStatePlayerPosition
+[  FAILED  ] ZonePositionConvention.PlayerProfile_HeadingConversionPreservedBitForBit
+ 2 FAILED TESTS
+```
+
+Both failures are the right reason: the state layer stays at the
+constructor's `(0,0,0)`/`0.0` defaults while the legacy raw members
+(`GetPosition()`) and the bridge push already had the correct values —
+exactly the T39-pattern propagation gap the plan describes. Incidentally,
+`GetHeading()` already reads `m_game_state.player().heading()` (unrelated
+pre-existing code, `eq.cpp`'s `GetHeading()`), so the heading gap was
+directly observable through an existing public accessor — no new accessor
+needed for that half of the fix.
+
+### Step 2 — the fix (minimal)
+
+`src/client/eq.cpp`, `ZoneProcessPlayerProfile`'s position/heading block
+(`:2153-2162`): replaced the four raw member writes (`m_x = server_y;
+m_y = server_x; m_z = z; m_heading = ...`) with `SetPosition(server_y,
+server_x, z); SetHeading(new_heading);` — same helper T55 wired at the
+other forced-relocation sites, which writes both the raw members (so
+`GetPosition()`/`GetHeading()` and every other raw-member reader keep
+working unchanged) and `m_game_state.player()`. The x/y swap and the
+12-bit-scaled heading math are byte-for-byte unchanged (same three lines
+computing `server_heading_deg`/wrap, just assigned to a local
+`new_heading` instead of `m_heading` directly, since `SetHeading` now
+owns that write). The hand-rolled bridge publish (`:2176-2189` in the
+original numbering) is completely untouched — same 512-scale conversion,
+same event, same call. A comment names the convention, the independence
+finding, and points at this unit's Review, per T52/T55 precedent.
+
+No `eq.h` change was needed — unlike T55, which added
+`Test_GetGameStatePlayerPosition()` because no position reader existed at
+all, this unit's heading assertion reuses the already-existing
+`GetHeading()` (which has read `m_game_state.player().heading()` since
+before this unit) and the position assertion reuses T55's own
+`Test_GetGameStatePlayerPosition()`. Territory stayed narrower than the
+plan allowed for.
+
+### Post-fix test output
+
+Full `test_zone_position_convention` suite, 10/10 passed, including all
+three new T58 tests and all four T55 tests + T52's own pins, untouched:
+
+```
+[==========] Running 10 tests from 1 test suite.
+[ RUN      ] ZonePositionConvention.ProducerA_SwapsWireOffsetsIntoClientFormat
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerA_DeniedChangeClearsPendingZone
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerB_ZoneLinesPassesDestinationThroughUnswapped
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.Consumer_AppliesPendingZoneWithoutASecondSwap
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ProducerC_SwapsWireOffsetsIntoClientFormat
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ForcedRelocation_CrossZoneDeathRespawnDoesNotWriteLocalPosition
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.ForcedRelocation_SameZoneDeathRespawnPropagatesLocally
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.PlayerProfile_PropagatesToGameStatePlayerPosition
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.PlayerProfile_HeadingConversionPreservedBitForBit
+[       OK ] ...
+[ RUN      ] ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat
+[       OK ] ...
+[  PASSED  ] 10 tests.
+```
+
+### Event-count result
+
+**Exactly one `PlayerMoved` reaches the bridge per `PlayerProfile` zone-in,
+both before and after this fix**, in the 512-scaled heading format the
+renderer expects (`heading512 = m_heading * 512/360`, unchanged). Pinned
+by `ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat`.
+
+### Sites changed
+
+- `src/client/eq.cpp` — `ZoneProcessPlayerProfile`'s position/heading block
+  only (`:2153-2162` original numbering): raw writes replaced with
+  `SetPosition`/`SetHeading`, comment added. Everything else in the
+  function (stats block, bridge publish, skill loading) untouched.
+- `tests/test_zone_position_convention.cpp` — added `#include
+  "client/bridge/game_state_bridge.h"`, a `BuildPlayerProfilePayload()`
+  helper, a `RecordingBridge` class, and three new tests:
+  `PlayerProfile_PropagatesToGameStatePlayerPosition`,
+  `PlayerProfile_HeadingConversionPreservedBitForBit`,
+  `PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat`.
+
+### Verification bar results
+
+1. `cmake --build build -j24` (GLES2-config tree): clean full rebuild,
+   only pre-existing unrelated `-Wpointer-arith` warnings in `eq.cpp`'s
+   trade-packet code (untouched by this unit, same warnings T55 also
+   observed).
+2. `ctest --test-dir build --output-on-failure`: **1944/1945 passed**,
+   sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA
+   host exception). All new and pre-existing position-convention tests
+   green.
+3. `bash scripts/build-gles2-x86.sh`: clean build, `willeq` +
+   `gles2_zone_benchmark` produced.
+4. `bash scripts/ci/visual_gate.sh`: `=== VISUAL GATE: PASS ===`
+   (qeynos2/gfaydark/befallen). `git status --porcelain data/` empty
+   after — goldens untouched.
+5. `bash scripts/build-arm-noble.sh`: `=== Success ===`, all ARM binaries
+   built including `build-arm-noble/bin/willeq`.
+6. `bash scripts/refactor/check_file_sizes.sh fable` (run from inside the
+   slot, task branch checked out): 2 files changed vs `fable` —
+   `src/client/eq.cpp` 3867 lines (**FAIL, pre-existing**: `git show
+   fable:src/client/eq.cpp | wc -l` = 3853, already over the 3000-line
+   threshold before this unit's +14-line net addition — same pre-existing
+   condition T55 documented at this same file, unchanged in kind);
+   `tests/test_zone_position_convention.cpp` 469 lines (ok). **No new
+   FAILs or WARNs** — the one FAIL was already present at the `fable`
+   base revision.
+
+### Deviations from the plan, flagged rather than absorbed
+
+- **No `eq.h` accessor added**, though the plan's territory allowed for
+  "a narrow accessor in `include/client/eq.h`" if needed. Not needed:
+  `GetHeading()` already read the state layer (pre-existing, unrelated to
+  this unit) and T55's `Test_GetGameStatePlayerPosition()` covered the
+  position half. Narrower footprint than the plan anticipated.
+- **No live eqemu acceptance leg** — correctly out of scope per the
+  unit's own header ("NO EQEMU... driven headlessly"); all evidence above
+  is `ReplayZonePacket`-driven.
+- No other deviations. Step 1's tracing was conclusive (not the STOP
+  case); the fix stayed inside the named territory (`eq.cpp`'s
+  `ZoneProcessPlayerProfile` position/heading block plus tests); no
+  existing test failed in a way suggesting an ordering dependency; the
+  stats block below the position code was not touched.
+
+Board (`refactor/deferred.md`): re-titled the Index's succor/evac/
+death-bind bullet to point at both the "T55 addendum" and a new "T58
+addendum" appended (never replacing prior text) to the `` #goto `` same-
+zone teleport section, documenting the independence finding and the
+closure of the `PlayerProfile` gap T55 had explicitly left open. The
+per-frame movement writes remain the one deliberately unconverged piece
+of the position path, recorded as such in both the T55 and T58
+addenda.
