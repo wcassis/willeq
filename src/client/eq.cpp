@@ -2151,15 +2151,29 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	float heading = p.GetFloat(base + 13128); // offset 13128
 
 	// Update our position (swap x and y from server)
-	m_x = server_y;
-	m_y = server_x;
-	m_z = z;
 	// PlayerProfile heading is stored as (12-bit scaled value / 4)
 	// Convert back: server_heading_deg = heading * 360 / 512, then m_heading = 90 - server_heading_deg
 	float server_heading_deg = heading * 360.0f / 512.0f;
-	m_heading = 90.0f - server_heading_deg;
-	if (m_heading < 0.0f) m_heading += 360.0f;
-	if (m_heading >= 360.0f) m_heading -= 360.0f;
+	float new_heading = 90.0f - server_heading_deg;
+	if (new_heading < 0.0f) new_heading += 360.0f;
+	if (new_heading >= 360.0f) new_heading -= 360.0f;
+	// T58: this is the packet that determines landing position on ordinary
+	// zone-in, and (per T55's own flagged follow-up) it was the last forced-
+	// relocation site still writing only the raw m_x/m_y/m_z/m_heading
+	// members -- the state layer's PlayerState was never updated here. Route
+	// through SetPosition/SetHeading (same helper T55 wired at the other
+	// forced-relocation sites) so both copies stay in sync; this preserves
+	// the x/y swap and the 12-bit-scaled heading math above bit-for-bit, it
+	// only adds the missing state write. This does NOT double-publish
+	// PlayerMoved to the renderer: SetPosition/SetHeading fire PlayerMoved
+	// on EverQuest::m_game_state's OWN state-layer EventBus, which has no
+	// production listener and is never forwarded to the GameStateBridge the
+	// hand-rolled push below feeds (verified -- see
+	// refactor/T58_playerprofile_propagation.md Review's trace table). The
+	// hand-rolled bridge push below is unchanged and remains the only thing
+	// that reaches the renderer.
+	SetPosition(server_y, server_x, z);
+	SetHeading(new_heading);
 
 	// Debug: Zone-in position tracking
 	if (s_debug_level >= 1) {

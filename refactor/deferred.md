@@ -95,9 +95,13 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   T55 (2026-08-10)**: all three are convention-clean (death/bind is producer
   C, now documented and tested). The real, now-fixed defect was a different
   one: forced-relocation position propagation to the state layer (T39
-  pattern surviving the sweep that declared it closed). Heading: `` ## `#goto`
-  same-zone teleport lands at the DB position `` (see its "T55 addendum" at
-  the end of that section).
+  pattern surviving the sweep that declared it closed). T55 deliberately
+  left the `PlayerProfile` zone-in handler's own copy of this same gap open;
+  **CLOSED by T58 (2026-08-11)** — see its "T58 addendum" in the same
+  section. Only the per-frame movement writes remain unconverged, by
+  decision, needing their own event-storm/perf investigation. Heading:
+  `` ## `#goto` same-zone teleport lands at the DB position `` (see the "T55
+  addendum" and "T58 addendum" at the end of that section).
 - The broader "UI-gesture-only reachability" pattern — narrowed to 6
   confirmed instances by T48/T51/T52, not retired; more producer-less
   intents likely remain. Heading: `## PATTERN: real features reachable
@@ -3522,3 +3526,38 @@ onto the state layer's `PlayerState`/EventBus at all) — outside T55's
 named territory (limited to `SetPosition` and
 `ZoneProcessZonePlayerToBind` within `eq.cpp`), and deliberately not
 touched given the login-path ordering risk the unit plan flagged.
+
+### T58 (2026-08-11) addendum — the `PlayerProfile` gap left open above is CLOSED; per-frame movement writes remain the only unconverged piece
+
+T55 flagged, and deliberately left alone, `ZoneProcessPlayerProfile`
+(`eq.cpp:2154-2188`) — the packet that determines landing position on
+*ordinary* zone-in, still writing only the raw `m_x/m_y/m_z/m_heading`
+members with no state-layer write. T58 traced the risk T55's own plan
+called out by name — that swapping the raw writes for `SetPosition`/
+`SetHeading` while leaving the existing hand-rolled `m_bridge->pushEvent`
+publish alone would double-publish `PlayerMoved` to the renderer — and
+found it **does not apply**: `EverQuest::m_game_state`'s own state-layer
+`EventBus` (the one `SetPosition`/`SetHeading` fire `PlayerMoved` on) has
+**zero production listeners** and is never forwarded to the
+`GameStateBridge` the hand-rolled push feeds. They are two genuinely
+independent queues (see `refactor/T58_playerprofile_propagation.md`
+Review's trace table for the full evidence chain: `PlayerState::
+firePlayerMovedEvent` → `EverQuest::m_game_state`'s private `EventBus`,
+vs. `EverQuest::m_bridge` → `GameStateBridge`/`GameStateSyncBridge` →
+`IrrlichtBridge`/`ConsoleBridge`, wired from two entirely separate
+`state::GameState` instances — `EverQuest::m_game_state` internal-only,
+`Application::m_gameState` the one `ConsoleRenderer`/`AutomatedMode`
+subscribe to). Fixed by routing `ZoneProcessPlayerProfile`'s position/
+heading writes through `SetPosition`/`SetHeading`, unchanged x/y swap and
+heading math, hand-rolled bridge publish left exactly as-is. Confirmed by
+test: exactly one `PlayerMoved` still reaches the bridge per zone-in
+(`ZonePositionConvention.PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInBridgeHeadingFormat`),
+in the same 512-scaled heading format as before.
+
+**What remains, explicitly by decision, not oversight**: the per-frame
+movement writes (`eq_movement.cpp`, `eq_entities.cpp`, `eq_bridge.cpp`,
+`eq_commands_movement.cpp`) are the one piece of the position path T55
+scoped out and T58 did not touch either (out of both units' named
+territory) — still raw and unconverged, still an event-storm/perf question
+needing its own investigation before routing hot movement through
+`SetPosition`.
