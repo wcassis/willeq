@@ -3989,3 +3989,88 @@ enough to scope a fix unit without re-running the live session.
   same class of bug T70's plan diagnosed in `48ae032b`'s `spells.eff`
   loader. Not touched by T70; flagged here for whichever future unit picks
   up `spellsnew.eff`.
+## Memory categories with no configured budget (T69, 2026-08-11) — Will's ruling needs a follow-up per-category
+
+- T69 (`refactor/T69_memory_enforcement_gate.md`) wired
+  `IrrlichtRenderer::getMemoryReportBreakdown()`'s per-subsystem byte tallies
+  into `scripts/ci/visual_gate.py` via `gles2_zone_benchmark.cpp`'s
+  `--memory-json`. Will's ruling was per-subsystem budgets, defined and
+  enforced, no global cap. T69 could only **enforce** the two categories
+  that already have a real configured ceiling in
+  `ConstrainedRendererConfig`: `textureMemoryBytes` (texture cache, H02) and
+  `framebufferMemoryBytes` (framebuffer, new in T69). Every other category
+  the gate now measures has **no configured budget at all** — T69 could
+  only baseline-guard them (exact-match regression detection against a
+  blessed value, zero tolerance measured from 9 repeat runs across all 3
+  golden zones, see the T69 Review), which catches drift but not "is this
+  too much." This is the concrete list for Will to rule on next, same shape
+  as the texture-cache/framebuffer precedent:
+  - `zoneGeometryBytes` (region/single-mesh vertex+index bytes)
+  - `placeableObjectsBytes` (currently 0 for the golden zones — none load
+    `--objects`)
+  - `s3dZoneSourceBytes` (CPU-side S3D geometry/BSP/animation data retained
+    for mesh rebuilds)
+  - `gpuTextureBytes` (actual GPU-side texture allocations — related to but
+    distinct from the texture-cache budget, which only bounds the
+    *cache's* accounting, not total GPU texture memory including
+    non-cached driver textures)
+  - `vboEboBytes` (GPU hardware buffers)
+  - `eqe1MappedBytes` (EQE1 flat pack mmap pool — currently 0 in the gate's
+    runs since the manifest's benchmark invocation doesn't pass
+    `--eqe1-path`; a real budget question here is coupled to whether that
+    changes)
+  - `characterModelsBytes` (RaceModelLoader total — currently 0 in the
+    gate's runs since none of the 3 golden zones load entities; only
+    populated when a future zone config does)
+  - Not measured by the gate at all, and so not even baseline-guardable
+    today: entity per-instance data, equipment models, HCMap/collision,
+    audio (SFX/sound-buffer/soundfont/music/PFS), network, door/spell-DB
+    game-data estimates. `gles2_zone_benchmark`'s `ZoneBenchData` never
+    constructs these subsystems (no collision map load, no AudioManager,
+    no game-state entities in the golden zones' plain-geometry runs) — see
+    `tools/hwcaps/zone_bench_memory.cpp`'s block comment for the full
+    reuse-vs-not breakdown. Getting CI coverage on these would need either
+    the benchmark tool to construct more of the subsystem graph, or a
+    live-client-based memory harness distinct from this offline benchmark.
+
+## Pi per-device memory budgets (T69, 2026-08-11) — natural follow-up, explicitly out of scope
+
+- T69's memory-ceiling gate runs entirely on x86/llvmpipe (per its plan,
+  Pi was explicitly out of scope: "ceilings measured on x86/llvmpipe do not
+  transfer to Mali400, and the Pi runs through a separate tier-2 harness").
+  The `ConstrainedRendererConfig` budgets the gate now enforces
+  (`textureMemoryBytes`, `framebufferMemoryBytes`) are preset-derived
+  (OrangePi preset, same one production ships) and therefore ARE the real
+  Pi numbers in config terms — but nothing in this unit measures Pi's
+  *actual* usage against them; `scripts/pi/pi_common.py`'s tier-2 harness
+  is the natural home for that, mirroring what T69 did here for x86.
+
+## Untracked-RSS gating recommendation (T69, 2026-08-11) — reported, not gated
+
+- `totalEstimate` vs process RSS ("untracked" = RSS minus every tallied
+  category) is now emitted, baselined, and printed prominently by
+  `scripts/ci/visual_gate.py`'s verify() for every golden zone, but
+  **deliberately not asserted** (per the T69 plan's explicit instruction —
+  see its Step 4 and the T69 Review for the full repeat-run numbers).
+  Measured data (9 runs across 3 zones, this x86/llvmpipe dev VM): every
+  byte-tally category (texture cache, zone geometry, S3D source, GPU
+  textures, VBO/EBO, framebuffer, `totalEstimate`) was bit-identical run to
+  run with zero variance. Only `processRssBytes`/`untrackedBytes` varied,
+  and by a small amount relative to RSS (roughly 0.02%-0.2% across the 5
+  qeynos2 repeats, similar for gfaydark/befallen) — RSS itself ranged
+  ~168-198MB depending on zone, untracked was consistently ~75-80% of RSS
+  (~140-153MB) across all three zones. That untracked fraction being large
+  AND stable is itself the interesting finding for a future unit to chase
+  (named suspects per `renderer_diagnostics.cpp`'s existing P04 comment:
+  glibc allocator arena/heap fragmentation, decode/staging buffers not yet
+  named as their own line, and — new since this file's last audit — the
+  benchmark process's own non-renderer overhead, e.g. SQLite/willeq_database
+  init, Irrlicht device/scene-manager bookkeeping, which
+  `getMemoryReportBreakdown()` was never meant to capture since it's a
+  renderer-only tally). A future unit could plausibly gate `untrackedBytes`
+  with a generous ceiling (e.g. RSS-relative, not absolute, given the
+  ~170-200MB scale varies by zone) given how tight the measured spread was
+  here — but T69 was explicitly instructed not to enable this on a hunch
+  from one VM's data, so it is reported only. Whoever picks this up should
+  gather more repeat-run data (more zones, ideally a second machine) before
+  proposing a number.

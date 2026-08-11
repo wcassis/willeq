@@ -533,6 +533,61 @@ struct MemoryReportInput {
     size_t stackBytes = 0;         // Thread stacks
 };
 
+// T69: structured per-subsystem memory accounting — the SAME tally
+// getMemoryReport() formats into human-readable lines, exposed as named
+// fields instead of parsed strings. Added so CI (scripts/ci/visual_gate.py,
+// via tools/hwcaps/gles2_zone_benchmark.cpp) can consume the real accounting
+// directly rather than duplicating it or scraping formatted log lines —
+// two independent tallies of the same memory is exactly the drift this
+// project keeps re-discovering (T57 slot geometry, T60 bone logic).
+// getMemoryReport() now computes this struct once and formats lines from
+// it; there is exactly one place that adds up bytes per category.
+struct MemoryReportBreakdown {
+    // --- Graphics (computed internally; renderer state, not ext input) ---
+    size_t textureCacheBytesUsed = 0;    // 0 if unconstrained (no ConstrainedTextureCache)
+    size_t textureCacheBytesLimit = 0;   // budget: ConstrainedRendererConfig::textureMemoryBytes-derived
+    size_t textureCacheCount = 0;
+    bool textureCacheActive = false;     // false in unconstrained mode (driver-managed, no budget)
+
+    size_t eqe1MappedBytes = 0;          // EQE1 flat packs, mmap/page-cache backed
+    size_t eqe1ArchiveCount = 0;
+
+    size_t zoneGeometryBytes = 0;        // single mesh OR PVS region meshes, whichever active
+    size_t placeableObjectsBytes = 0;
+
+    size_t entityInstanceBytes = 0;      // per-instance render data (EntityRenderer)
+    size_t characterModelsBytes = 0;     // RaceModelLoader total (tex+geom+skel+char+animMesh+irrMesh)
+    size_t equipmentModelsBytes = 0;     // EquipmentModelLoader total
+
+    size_t s3dZoneSourceBytes = 0;       // CPU-side S3D geometry/BSP/animation retained for mesh rebuilds
+
+    size_t gpuTextureBytes = 0;          // actual GPU-side texture allocations (shared RAM)
+
+    size_t hcmapBytes = 0;               // HCMap/collision mesh
+
+    size_t framebufferBytes = 0;         // actual usage for current resolution
+    size_t framebufferBudgetBytes = 0;   // ConstrainedRendererConfig::framebufferMemoryBytes (the real budget)
+
+    size_t vboEboBytes = 0;              // GPU hardware buffers
+
+    // --- Audio (from MemoryReportInput ext; zero/unpopulated when ext.audioAvailable is false) ---
+    size_t sfxCacheBytes = 0;
+    size_t soundBufferCacheBytes = 0;
+    size_t soundFontEstimateBytes = 0;
+    size_t musicDecodedBytes = 0;
+    size_t audioPfsArchiveBytes = 0;
+
+    // --- Game Data (from ext; zero when the caller has no game-state to report, e.g. benchmark tools) ---
+    size_t entityEstimateBytes = 0;
+    size_t doorEstimateBytes = 0;
+    size_t spellDbEstimateBytes = 0;
+
+    // --- Total ---
+    size_t totalEstimate = 0;            // sum of every category above that has a defined estimate
+    size_t processRssBytes = 0;          // passthrough of ext.processRssBytes, for convenience
+    size_t untrackedBytes = 0;           // processRssBytes - totalEstimate (0 if RSS unavailable or <= total)
+};
+
 // Main Irrlicht renderer class
 class IrrlichtRenderer {
 public:
@@ -1114,6 +1169,12 @@ public:
 
     // Memory usage report for /pmem command
     std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const;
+
+    // T69: structured accessor backing getMemoryReport() — the same tally,
+    // named fields instead of formatted strings. Use this from code that
+    // needs to consume the accounting programmatically (CI, benchmarks);
+    // do not parse getMemoryReport()'s text output.
+    MemoryReportBreakdown getMemoryReportBreakdown(const MemoryReportInput& ext) const;
 
     // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
     void setWeather(uint8_t type, uint8_t intensity);
