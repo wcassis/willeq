@@ -7,6 +7,8 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/inventory_layout.h"
+#include "client/inventory/inventory_constants.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/text_batch.h"
 #include <fmt/format.h>
@@ -270,17 +272,13 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     }
 
     constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;
-    constexpr irr::s32 PAD = 2;
-    irr::s32 startX = popup.UpperLeftCorner.X + 8;
-    irr::s32 startY = popup.UpperLeftCorner.Y + 22;
 
-    // Equipment slots: 2 columns of 11 rows on the left side
+    // Equipment slots: EQ-authentic body arrangement (two flanking columns
+    // + a bottom weapon row). All geometry comes from the single shared
+    // source, InventoryLayout::slotRect() — this function contains no
+    // slot-position arithmetic of its own (T57).
     for (int i = 0; i < InventoryPanelState::EQUIP_SLOTS; ++i) {
-        int col = i / 11;
-        int row = i % 11;
-        irr::s32 x = startX + col * (SLOT + PAD);
-        irr::s32 y = startY + row * (SLOT + PAD);
-        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+        irr::core::rect<irr::s32> slotRect = InventoryLayout::slotRect(layout, i);
 
         // Slot background
         ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
@@ -291,31 +289,43 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
             : static_cast<uint8_t>(UISprite::SlotBorderNormal);
         ui.drawSprite(slotRect, borderSprite);
 
-        // Item name (abbreviated) — placeholder until icon atlas
         const auto& slot = inv.equipSlots[i];
         if (slot.hasItem && tb) {
-            // Show first 3 chars of item name
+            // Show first 3 chars of item name — placeholder until icon atlas
             std::string abbrev = slot.itemName.substr(0, 3);
-            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
+            tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
+                slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
                 irr::video::SColor(255, 200, 200, 200));
+        } else if (tb) {
+            // Empty slot: canonical short label from inventory_constants.h
+            const char* name = eqt::inventory::getSlotName(static_cast<int16_t>(i));
+            std::string abbrev(name, 0, 3);
+            tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
+                slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
+                irr::video::SColor(120, 140, 140, 140));
         }
     }
 
-    // General inventory: row of 8 slots below equipment
-    irr::s32 genY = startY + 11 * (SLOT + PAD) + 8;
+    // General inventory: row of 8 slots below the weapon row. The row is
+    // horizontally centered in the popup (see InventoryLayout), leaving
+    // margin on both sides — the label goes in that left margin, vertically
+    // centered against the row, rather than above it (there isn't enough
+    // vertical gap above the row to fit a label without it overlapping the
+    // weapon row).
     if (tb) {
-        tb->addText("General", startX, genY - 14,
+        irr::core::rect<irr::s32> firstGeneral =
+            InventoryLayout::slotRect(layout, InventoryPanelState::EQUIP_SLOTS);
+        tb->addText("General", popup.UpperLeftCorner.X + 8,
+            firstGeneral.UpperLeftCorner.Y + SLOT / 2 - 6,
             irr::video::SColor(255, 180, 180, 180));
     }
 
     for (int i = 0; i < InventoryPanelState::GENERAL_SLOTS; ++i) {
-        irr::s32 x = startX + i * (SLOT + PAD);
-        irr::s32 y = genY;
-        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+        int globalIdx = InventoryPanelState::EQUIP_SLOTS + i;
+        irr::core::rect<irr::s32> slotRect = InventoryLayout::slotRect(layout, globalIdx);
 
         ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
 
-        int globalIdx = InventoryPanelState::EQUIP_SLOTS + i;
         uint8_t borderSprite = (inv.hoveredSlot == globalIdx)
             ? static_cast<uint8_t>(UISprite::SlotBorderHover)
             : static_cast<uint8_t>(UISprite::SlotBorderNormal);
@@ -324,12 +334,14 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
         const auto& slot = inv.generalSlots[i];
         if (slot.hasItem && tb) {
             std::string abbrev = slot.itemName.substr(0, 3);
-            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
+            tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
+                slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
                 irr::video::SColor(255, 200, 200, 200));
             // Stack count
             if (slot.quantity > 1) {
                 std::string qty = fmt::format("{}", slot.quantity);
-                tb->addText(qty, x + SLOT - 12, y + SLOT - 12,
+                tb->addText(qty, slotRect.LowerRightCorner.X - 12,
+                    slotRect.LowerRightCorner.Y - 12,
                     irr::video::SColor(255, 255, 255, 0));
             }
         }

@@ -6,6 +6,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/inventory_layout.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
@@ -62,26 +63,22 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     }
 
     // --- Inventory popup hit test ---
+    // Geometry comes entirely from InventoryLayout::slotRect() — the single
+    // shared source also used by renderInventoryPopup() (T57). No
+    // slot-position arithmetic here.
     if (inventory.activePopup == PopupType::Inventory) {
         if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
             mouseX < layout.centerPopup.LowerRightCorner.X &&
             mouseY >= layout.centerPopup.UpperLeftCorner.Y &&
             mouseY < layout.centerPopup.LowerRightCorner.Y) {
             consumed = true;
-            // Equipment slots (2 columns of 11)
-            int startX = layout.centerPopup.UpperLeftCorner.X + 8;
-            int startY = layout.centerPopup.UpperLeftCorner.Y + 22;
-            int eqSlot = hitTestSlotGrid(mouseX, mouseY, startX, startY,
-                UILayout::SLOT_SIZE, 2, 2, 11);
-            if (eqSlot >= 0) {
-                inventory.hoveredSlot = eqSlot;
-            }
-            // General inventory (1 row of 8)
-            int genY = startY + 11 * (UILayout::SLOT_SIZE + 2) + 8;
-            int genSlot = hitTestSlotRow(mouseX, mouseY, startX, genY,
-                UILayout::SLOT_SIZE, 2, InventoryPanelState::GENERAL_SLOTS);
-            if (genSlot >= 0) {
-                inventory.hoveredSlot = InventoryPanelState::EQUIP_SLOTS + genSlot;
+            for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+                irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
+                if (mouseX >= r.UpperLeftCorner.X && mouseX < r.LowerRightCorner.X &&
+                    mouseY >= r.UpperLeftCorner.Y && mouseY < r.LowerRightCorner.Y) {
+                    inventory.hoveredSlot = i;
+                    break;
+                }
             }
         }
     }
@@ -174,20 +171,6 @@ int StaticUIInput::hitTestSlotRow(int mx, int my, int startX, int startY,
     for (int i = 0; i < count; ++i) {
         int sx = startX + i * (slotSize + padding);
         if (mx >= sx && mx < sx + slotSize) return i;
-    }
-    return -1;
-}
-
-int StaticUIInput::hitTestSlotGrid(int mx, int my, int startX, int startY,
-                                    int slotSize, int padding, int cols, int rows) const {
-    for (int col = 0; col < cols; ++col) {
-        for (int row = 0; row < rows; ++row) {
-            int sx = startX + col * (slotSize + padding);
-            int sy = startY + row * (slotSize + padding);
-            if (mx >= sx && mx < sx + slotSize && my >= sy && my < sy + slotSize) {
-                return col * rows + row;
-            }
-        }
     }
     return -1;
 }
