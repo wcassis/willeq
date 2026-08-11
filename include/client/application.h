@@ -113,6 +113,27 @@ struct ApplicationConfig {
     // H03: Scripted command tour (--script <file>)
     std::string scriptPath;
 
+    // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
+    // --dump-max-frames). Off by default (empty dir = disabled) -- does not
+    // touch production behavior. Writes numbered PNGs via the existing
+    // saveScreenshot() machinery every Nth rendered frame, on the render
+    // thread, from Application::render(). Intended use: recording a temporal
+    // sequence (an attack swing, a cast, a zone transition, particle
+    // behavior) that stills can't capture, then encoding it with
+    // scripts/ci/encode_capture.sh. Costs real time/disk per frame written --
+    // see dumpFramesMaxCount below.
+    std::string dumpFramesDir;
+    int dumpFramesEvery = 0;  // 0 = disabled
+    // T64: hard cap on frames written, regardless of session length. Frame
+    // dumping is unbounded time-wise otherwise, which is a footgun on
+    // constrained targets -- the Orange Pi's /tmp tmpfs is ~242MB, and T61
+    // already had to deploy stripped binaries to make room there. At 800x600
+    // PNG, frames run a few hundred KB each, so this default keeps a capture
+    // session comfortably under that budget even on the Pi. Dumping stops
+    // (with one clear log line) once the cap is hit; the flags remain a
+    // complete no-op when dumpFramesDir is empty or dumpFramesEvery is 0.
+    int dumpFramesMaxCount = 600;
+
     // Help flag
     bool showHelp = false;
 
@@ -539,6 +560,10 @@ private:
     size_t m_scriptIndex = 0;
     float m_scriptWaitRemaining = 0.0f;
     bool m_scriptWaitStarted = false;
+
+    // T64: video-capture frame-dump state (render thread only, see render()).
+    uint64_t m_dumpFrameCounter = 0;   // increments every processFrame() call
+    uint64_t m_dumpFrameIndex = 0;     // increments only when a PNG is written
 };
 
 } // namespace eqt

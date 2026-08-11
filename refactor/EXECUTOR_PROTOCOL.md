@@ -116,6 +116,17 @@ references this file; plans carry only unit-specific content.
   classic tell).
 - Name the review paths in your final report so the orchestrator can
   hand Will the link directly.
+- **When the thing under review is temporal** (a weapon appearing mid-swing,
+  a cast, a zone transition, particle behavior) **record video rather than
+  burst-capturing stills and hoping a frame lands.** T64 productised this:
+  `--dump-frames-dir <dir> --dump-every <N> --dump-max-frames <N>` (off by
+  default, bounded, `Application::render()`) + `scripts/ci/encode_capture.sh`
+  (frame dir -> mp4, fps **computed from frame mtimes, never assumed**).
+  Every capture video must carry its measured fps/frame-count/real-time span
+  (the encode script writes this to a `.txt` next to the video) and the
+  honesty note that capture fps is an artifact of the capture, not a
+  performance measurement — see `CLAUDE.md`'s "Video capture" section and
+  `review/T64/README.md` for the worked example.
 
 ## Finish
 - Fill the plan's Review section (evidence, tables, deviations —

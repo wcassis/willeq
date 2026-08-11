@@ -121,6 +121,49 @@ targets; keep using it for the visual gate, it is unaffected by the above.
 
 RDP and VNC can run simultaneously if both X11 and RDP are enabled.
 
+### Video capture (temporal evidence — attack swings, casting, zoning, particles)
+
+Stills can't show a temporal sequence. When the thing under review is
+temporal, record video instead of burst-capturing screenshots and hoping a
+frame lands.
+
+```bash
+# Dump numbered PNG frames while connected/zoned (render-thread hook, off by
+# default — a normal run with no --dump-* flags touches none of this):
+./build/bin/willeq -c willeq.json \
+    --dump-frames-dir /tmp/capture --dump-every 1 --dump-max-frames 600
+
+# Encode the frame directory into a reviewable mp4 with MEASURED (not
+# assumed) fps:
+bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
+```
+
+- `--dump-frames-dir <dir> --dump-every <N>` (T64, extracted from the P12
+  anim-video-check session): writes a PNG via the existing
+  `IrrlichtRenderer::saveScreenshot()` path every Nth rendered frame, from
+  `Application::render()` right after a successful `processFrame()`. Empty
+  dir or `--dump-every 0` is a complete no-op — zero cost beyond one
+  string-empty + int check.
+- `--dump-max-frames <N>` (default 600) bounds total frames written — the
+  Orange Pi's `/tmp` tmpfs is only ~242MB, and unbounded dumping is a
+  footgun there (T61 already had to deploy stripped binaries to make room).
+  Dumping stops with one log line once the cap is hit.
+- `scripts/ci/encode_capture.sh` computes the **effective fps from the
+  frames' own file mtimes** — never assumes 30/60 — so the video plays back
+  at true elapsed wall-clock time. It also writes `<UNIT_ID>_capture.txt`
+  next to the video with the measured fps/frame-count/real-time span; keep
+  that file with the video, don't discard it.
+- **Capture fps is an artifact of the capture mechanism, not a performance
+  measurement.** Per-frame `glReadPixels` + PNG encode is expensive — P12
+  measured ~4-7.6 effective fps on this x86 dev VM under llvmpipe, far below
+  real-time. A viewer without that context will wrongly conclude the game
+  runs at ~5fps. Never draw a performance conclusion from a capture video.
+- Verify frames are real images before encoding — `saveScreenshot()` has a
+  documented history of returning garbage under the surfaceless path (P10,
+  P20); a video of garbage is worse than no video. See
+  `refactor/T64_video_capture_extraction.md` and `review/T64/README.md` for
+  the worked example (proof frames, verification method, deviations).
+
 ### Linux Capabilities
 
 The client requires specific Linux capabilities for optimal network performance:
