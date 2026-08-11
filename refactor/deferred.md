@@ -3619,3 +3619,68 @@ scoped out and T58 did not touch either (out of both units' named
 territory) — still raw and unconverged, still an event-storm/perf question
 needing its own investigation before routing hot movement through
 `SetPosition`.
+
+## RESOLVED by T62 (2026-08-11): held-item misalignment was a test-tooling defect, not a production bug — T60's "untextured white mass" repro traced to its root cause
+
+**Retitled, not deleted — T60's "Still open, now with an instrument to
+diagnose it" entry above is superseded by this finding.** T62 used the
+paperdoll instrument T60 built to isolate the reported held-item
+misalignment (weapon/shield equip a huge, untextured mass instead of
+appearing held) and found it was **not a defect in the shared
+`bone_attachment.h` grip math or in production's in-world rendering
+path**. Two independent mistakes in the test/debug tooling fully explain
+what T60's captures showed:
+
+1. **T60's capture equipped database item 1000, believing it was a
+   weapon.** `data/willeq.db` maps item 1000 to equipment model IT64,
+   whose only texture is `sack1.bmp` — a sack/container model, not a
+   weapon. Its odd, torso-sized silhouette is exactly what the capture
+   showed, because it genuinely is not weapon-shaped.
+2. **`ui_inventory_capture.cpp` never called
+   `equipmentModelLoader.setConstrainedTextureCache()`** (it wired the
+   cache for `raceModelLoader` only). `EquipmentModelLoader::
+   buildMeshFromGeometry()`'s texture-upload branch is gated entirely on
+   that pointer being non-null, with no fallback — so every equipment
+   mesh the tool built was untextured regardless of which item was used.
+   `tools/model_viewer.cpp` had the identical gap (no
+   `ConstrainedTextureCache` anywhere in the file). **Production
+   (`EntityRenderer::setConstrainedTextureCache`, wired from
+   `IrrlichtRenderer` init) already wires this correctly for the in-world
+   path** — this was never a live-game defect.
+
+Both tools were fixed (`ui_inventory_capture.cpp`, `model_viewer.cpp`).
+With a real weapon (IT1 sword, IT45 staff) and a real shield (IT202) and
+texture wiring fixed, all render correctly textured, correctly scaled,
+and gripped in the hand — using the shared `computeWeaponGripOffset`/
+`computeShieldGripOffset` formulas **completely unmodified** from what
+T60 converged (verified: `git diff include/client/graphics/eq/
+bone_attachment.h` against this unit's changes is empty). Real measured
+mesh dimensions (IT1: 2.746 units, one-handed branch; IT45: 5.887 units,
+two-handed branch) validate the existing `3.0f` threshold rather than
+contradicting it. The shield-offset divergence T60 documented (production's
+flat `0.3` vs the deleted paperdoll/tool's `bbox width * 0.175`) was
+re-tested with real shield data: visually near-identical for a
+representative shield, so production's flat `0.3` was kept, unchanged.
+
+**Consequence: in-world entities were never affected**, and this unit's
+STOP condition ("in-world placement would change and you cannot produce
+before/after evidence") did not trigger, because in-world placement
+provably did not change — nothing in `entity_equipment.cpp` or
+`bone_attachment.h` was touched.
+
+Also folded in: `CharacterModelView`'s default rotation changed from
+`0.0f` (profile, facing right) to `90.0f` (front-facing, facing the
+camera) per Will's request — drag rotation is relative and unaffected.
+
+See `refactor/T62_held_item_alignment.md`'s Review for the full
+investigation, measured dimensions, and before/after capture paths
+(review media at `/mnt/projects/fable/review/T62/`, not committed to the
+repo, per the coordinator's mid-flight protocol update moving Will-facing
+review media out of `refactor/artifacts/`).
+
+**What remains, explicitly by decision, not oversight**: no
+`EntityRenderer`-level in-world integration test exists (T60's honest-
+limitation note, unchanged — out of scope here since `entity_equipment.cpp`
+was not touched). If a genuine in-world held-item misalignment is
+reported again in the future, it is not this defect — re-investigate from
+scratch rather than assuming this finding covers it.

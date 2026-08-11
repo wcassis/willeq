@@ -202,3 +202,54 @@ TEST(BoneAttachmentTest, ShieldGripOffsetIsFlatConstantIndependentOfBoundingBox)
     // placement must not change.
     EXPECT_FLOAT_EQ(computeShieldGripOffset(), 0.3f);
 }
+
+// --- T62: pinned against real, measured EQ equipment mesh dimensions ---
+//
+// Measured via ui_inventory_capture's "BBOX:" diagnostic lines
+// (tools/hwcaps/ui_inventory_capture.cpp) against real gequip.s3d data
+// (/mnt/projects/EverQuestP1999). These establish that EQ weapon meshes
+// use "world units" of the same scale as the character skeleton (a human
+// is roughly 7-8 units tall), and that the existing 3.0f two-handed
+// threshold correctly separates a real one-handed sword from a real
+// two-handed staff -- see refactor/T62_held_item_alignment.md's Review
+// for the full investigation (the original "huge untextured mass" report
+// turned out to be a wrong test item -- a sack model, not a weapon -- and
+// a missing texture-cache wire-up in the capture tool itself, not a grip-
+// math defect).
+
+TEST(BoneAttachmentTest, RealOneHandedSwordIT1GripsNearHilt) {
+    // IT1 (gequip.s3d, "sword"): min=(-1.374,-0.091,-0.052) max=(1.373,0.478,0.096).
+    // Length 2.746 < 3.0 -- one-handed branch, matching a real sword.
+    irr::core::aabbox3df bbox(irr::core::vector3df(-1.374f, -0.091f, -0.052f),
+                               irr::core::vector3df(1.373f, 0.478f, 0.096f));
+    float length = bbox.MaxEdge.X - bbox.MinEdge.X;
+    ASSERT_LT(length, 3.0f);
+    float offset = computeWeaponGripOffset(bbox);
+    EXPECT_NEAR(offset, 1.0992f, 0.001f);  // -MinEdge.X * 0.8 = 1.374 * 0.8
+}
+
+TEST(BoneAttachmentTest, RealTwoHandedStaffIT45GripsAtQuarterLength) {
+    // IT45 (gequip.s3d, "wizard staff"): min=(-5.823,-0.154,-0.220) max=(0.063,0.156,0.092).
+    // Length 5.887 > 3.0 -- two-handed branch, matching a real staff/polearm.
+    irr::core::aabbox3df bbox(irr::core::vector3df(-5.823f, -0.154f, -0.220f),
+                               irr::core::vector3df(0.063f, 0.156f, 0.092f));
+    float length = bbox.MaxEdge.X - bbox.MinEdge.X;
+    ASSERT_GT(length, 3.0f);
+    float offset = computeWeaponGripOffset(bbox);
+    EXPECT_NEAR(offset, 1.4715f, 0.001f);  // length * 0.25 = 5.886 * 0.25
+}
+
+TEST(BoneAttachmentTest, RealShieldIT202BoundingBoxDoesNotAffectFlatOffset) {
+    // IT202 (gequip.s3d, "kiteshield-m"): min=(-1.504,-1.132,-0.241) max=(1.166,1.132,0.015).
+    // computeShieldGripOffset() ignores the bbox entirely (see the
+    // ShieldGripOffsetIsFlatConstantIndependentOfBoundingBox test above) --
+    // this test exists purely to record the real shield's measured extent
+    // (2.671 x 2.264 x 0.256) alongside that decision, so a future reader
+    // has the real numbers the A/B comparison in the plan's Review used
+    // (flat 0.3 vs bbox.X-width*0.175=0.467 -- visually near-identical for
+    // this shield, per the Review; production's flat 0.3 was kept).
+    irr::core::aabbox3df bbox(irr::core::vector3df(-1.504f, -1.132f, -0.241f),
+                               irr::core::vector3df(1.166f, 1.132f, 0.015f));
+    (void)bbox;
+    EXPECT_FLOAT_EQ(computeShieldGripOffset(), 0.3f);
+}

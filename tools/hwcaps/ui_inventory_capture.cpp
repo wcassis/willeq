@@ -20,6 +20,19 @@
 // stderr note) rather than failing the whole tool — T57's four slot-only
 // captures don't need any asset data and must keep working regardless.
 //
+// T62: two more per-piece captures (weapon only, shield only) isolate the
+// two items' contributions -- T60's "equipped" capture had both on at
+// once, which made it impossible to tell which item (or both) produced
+// the untextured white mass. Also: this tool's own EquipmentModelLoader
+// never had setConstrainedTextureCache() called on it (unlike
+// raceModelLoader above), so EquipmentModelLoader::buildMeshFromGeometry's
+// texture-upload branch (gated entirely on constrainedTextureCache_ being
+// non-null, no fallback) never ran -- every equipment mesh this tool ever
+// built was untextured by construction, regardless of any in-world
+// behaviour. Fixed below. Mesh bounding-box dimensions for the test
+// weapon/shield are also printed (stderr, "BBOX:" lines) to establish real
+// units for bone_attachment.h's grip-offset math.
+//
 // Usage: ui_inventory_capture <output_dir> [--eq-path <dir>]
 // Writes:
 //   <output_dir>/inventory_800x600_full.png     -- every slot populated
@@ -28,6 +41,9 @@
 //   <output_dir>/inventory_800x600_hover.png    -- one slot hovered
 //   <output_dir>/inventory_paperdoll_bare.png   -- T60: doll, no equipment
 //   <output_dir>/inventory_paperdoll_equipped.png -- T60: doll, weapon+shield
+//   <output_dir>/inventory_paperdoll_weapon_only.png -- T62: primary weapon only
+//   <output_dir>/inventory_paperdoll_shield_only.png -- T62: secondary shield only
+//   <output_dir>/inventory_paperdoll_two_handed.png  -- T62: 2H weapon, primary only
 
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/ui_renderer.h"
@@ -238,12 +254,38 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
 
         EquipmentModelLoader equipmentModelLoader(smgr, driver, device->getFileSystem());
         equipmentModelLoader.setClientPath(eqPath);
+        // T62: this call was missing. Without it, constrainedTextureCache_
+        // stays null and EquipmentModelLoader::buildMeshFromGeometry's
+        // entire texture-upload branch (equipment_model_loader.cpp, gated
+        // on constrainedTextureCache_ with no fallback) never runs -- every
+        // equipment mesh built by this tool was untextured regardless of
+        // asset availability. Production (EntityRenderer::setConstrainedTextureCache,
+        // called from IrrlichtRenderer init) already wires this correctly
+        // for the in-world path; this tool did not, mirroring the same
+        // omission in tools/model_viewer.cpp (which has no
+        // ConstrainedTextureCache at all).
+        equipmentModelLoader.setConstrainedTextureCache(&textureCache);
         equipmentModelLoader.loadItemModelMapping("data/item_models.json");
         equipmentModelLoader.loadEquipmentArchives();
 
         constexpr uint16_t kRaceHuman = 1;   // HUM
         constexpr uint8_t kGenderMale = 0;
-        constexpr uint32_t kTestPrimaryItemId = 1000;    // A weapon present in item_models.json
+        // T62 correction: the plan's original "kTestPrimaryItemId = 1000"
+        // (inherited from T60) does NOT map to a weapon. willeq.db's
+        // item_models table maps database item 1000 -> equipment model
+        // IT64, and IT64's texture (per equipment_models table) is
+        // "sack1.bmp" -- a sack/container model, not a sword. That
+        // explains the huge, wrong-shaped brown mass in T60's original
+        // capture far better than a grip-offset bug would: it was never a
+        // weapon in the first place. Switched to real weapon/shield IT
+        // model IDs, passed directly (no database item->model mapping
+        // exists for any of these three in item_models, so
+        // EquipmentModelLoader::getEquipmentMesh()'s DB-lookup-miss
+        // fallback treats the ID as a literal model ID -- the same path
+        // NPC spawn packets use).
+        constexpr uint32_t kTestPrimaryItemId = 1;      // IT1: one-handed sword (flat/sword/swordhandle.bmp)
+        constexpr uint32_t kTestTwoHandedItemId = 45;   // IT45: wizard staff (staffwiz-wood/stafwiz-jewl.bmp) -- 2H test case
+        constexpr uint32_t kTestShieldModelId = 202;    // IT202: kiteshield-m, a representative shield
 
         // hasRaceModel() only reflects the lazy-load cache (populated on
         // first actual load attempt) — loadGlobalModels()/
@@ -316,17 +358,64 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
                 return capture(driver, ui, layout, inv, path);
             };
 
+            // T62: print the raw mesh bounding boxes for the test weapon
+            // and shield BEFORE any scale/attachment logic touches them --
+            // these are the ground-truth EQ-mesh-space dimensions
+            // bone_attachment.h's computeWeaponGripOffset()'s "length > 3.0f"
+            // two-handed threshold is implicitly assumed to compare
+            // against.
+            auto printBBox = [](const char* label, irr::scene::IMesh* mesh) {
+                if (!mesh) {
+                    fprintf(stderr, "BBOX: %s -- mesh is null\n", label);
+                    return;
+                }
+                irr::core::aabbox3df bb = mesh->getBoundingBox();
+                fprintf(stderr,
+                        "BBOX: %s min=(%.3f,%.3f,%.3f) max=(%.3f,%.3f,%.3f) "
+                        "extent=(%.3f,%.3f,%.3f)\n",
+                        label, bb.MinEdge.X, bb.MinEdge.Y, bb.MinEdge.Z,
+                        bb.MaxEdge.X, bb.MaxEdge.Y, bb.MaxEdge.Z,
+                        bb.MaxEdge.X - bb.MinEdge.X, bb.MaxEdge.Y - bb.MinEdge.Y,
+                        bb.MaxEdge.Z - bb.MinEdge.Z);
+            };
+            printBBox("1H weapon (IT1, sword)", equipmentModelLoader.getEquipmentMesh(kTestPrimaryItemId));
+            printBBox("2H weapon (IT45, wizard staff)", equipmentModelLoader.getEquipmentMesh(kTestTwoHandedItemId));
+            printBBox("shield (IT202)", equipmentModelLoader.getEquipmentMesh(kTestShieldModelId));
+
             // Bare character: default appearance, no equipment.
             EntityAppearance bareAppearance{};
             doll.setCharacter(kRaceHuman, kGenderMale, bareAppearance);
             ok &= captureDoll(outputDir + "/inventory_paperdoll_bare.png", /*timeIt=*/true);
 
-            // Fully equipped: a primary weapon attached (bone-attachment
-            // path exercised — this is the instrument the plan wants for
-            // the held-item misalignment, though fixing it is explicitly
-            // out of scope here).
+            // T62: weapon only -- isolates the primary weapon's
+            // contribution from the shield's.
+            EntityAppearance weaponOnlyAppearance{};
+            weaponOnlyAppearance.equipment[7] = kTestPrimaryItemId;  // Primary slot
+            doll.setCharacter(kRaceHuman, kGenderMale, weaponOnlyAppearance);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_weapon_only.png", /*timeIt=*/false);
+
+            // T62: shield only -- isolates the secondary shield's
+            // contribution from the weapon's.
+            EntityAppearance shieldOnlyAppearance{};
+            shieldOnlyAppearance.equipment[8] = kTestShieldModelId;  // Secondary slot
+            doll.setCharacter(kRaceHuman, kGenderMale, shieldOnlyAppearance);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_shield_only.png", /*timeIt=*/false);
+
+            // T62: a two-handed weapon (bbox length > the 3.0f threshold
+            // in bone_attachment.h), primary slot only -- exercises
+            // computeWeaponGripOffset()'s two-handed branch specifically,
+            // which none of the other captures reach.
+            EntityAppearance twoHandedAppearance{};
+            twoHandedAppearance.equipment[7] = kTestTwoHandedItemId;  // Primary slot
+            doll.setCharacter(kRaceHuman, kGenderMale, twoHandedAppearance);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_two_handed.png", /*timeIt=*/false);
+
+            // Fully equipped: both weapon and shield attached (bone-
+            // attachment path exercised — this is the instrument the plan
+            // wants for the held-item misalignment).
             EntityAppearance equippedAppearance{};
-            equippedAppearance.equipment[7] = kTestPrimaryItemId;  // Primary slot
+            equippedAppearance.equipment[7] = kTestPrimaryItemId;   // Primary slot
+            equippedAppearance.equipment[8] = kTestShieldModelId;   // Secondary slot
             doll.setCharacter(kRaceHuman, kGenderMale, equippedAppearance);
             ok &= captureDoll(outputDir + "/inventory_paperdoll_equipped.png", /*timeIt=*/true);
         }
