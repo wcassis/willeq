@@ -646,6 +646,22 @@ TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE WILLEQ_DB_PATH="${CMAKE_S
 TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_database)
 
+# T70: spells.eff visual-effect-definition reader, indexed by
+# SpellAffectIndex. Deliberately no graphics/Irrlicht dependency (the reader
+# itself has none) -- links spell_database/willeq_database/sqlite3 the same
+# lightweight way test_spell_database.cpp does, for the index-resolution
+# tests that cross-reference real spells' spell_affect_index.
+ADD_EXECUTABLE(test_spells_eff_reader
+    test_spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+)
+TARGET_COMPILE_DEFINITIONS(test_spells_eff_reader PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spells_eff_reader GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_spells_eff_reader)
+
 # Test WilleqDatabase::open() schema-version validation (T56)
 ADD_EXECUTABLE(test_willeq_database
     test_willeq_database.cpp
