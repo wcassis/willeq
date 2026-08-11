@@ -45,6 +45,49 @@
  * spell_visual_fx.* / the particle system / config/spell_effects.json, or
  * invent semantics for the unknown region. See
  * refactor/T70_spells_eff_reader.md.
+ *
+ * T73 addendum: a recovered reverse-engineering document (archive/
+ * fix-spell-effects-20260811:.agent/spells_eff_format.md) claimed to decode
+ * exactly this unknown region -- duration/fade-in/fade-out (int32 ms),
+ * min/max scale (float), particles-per-second (int32), particle lifetime
+ * (float), and a 12-float colour-keyframe array, at fixed block-relative
+ * offsets 0x274-0x298 and 0x370. T73 tested it directly against the real
+ * file and data/willeq.db (refactor/T73_spells_eff_parameter_decode.md
+ * Review has the full evidence):
+ *
+ *   - REFUTED: min/max-scale ordering (0x280/0x288). 102 of 151
+ *     name-populated emitters have min_scale > max_scale (68%), and the
+ *     value set includes negatives (down to -10.0), far outside the
+ *     document's own claimed 0.01-100.0 range. Pinned by
+ *     T73_ClaimedMinMaxScaleOrderingIsRefutedByMajorityViolation.
+ *   - REFUTED (as "colour"): the 0x370 float[12] array. Real values reach
+ *     32.0, over 12x the document's own claimed [0.0, 2.0] range, and
+ *     populated records show a decay-from-burst-to-1.0 pattern more
+ *     consistent with a scale/intensity keyframe curve than RGBA colour.
+ *     The array's LOCATION and SIZE are corroborated (ends exactly at the
+ *     928-byte block boundary; padding records read a flat (1,1,...,1)
+ *     template; populated records differ systematically) -- only the name
+ *     "colour" is refuted, not the field's existence. Pinned by
+ *     T73_ClaimedColorKeyframeRangeIsRefutedByOutOfRangeValues.
+ *   - UNDETERMINED (real, unnamed): duration/fade-in/fade-out/
+ *     particles-per-second/particle-lifetime (0x274-0x298). No internal
+ *     contradiction found (always non-negative, cluster at round values,
+ *     read as exactly zero in both confirmed padding records 88 and 255)
+ *     -- but the semantic-correlation test found no relationship between
+ *     the claimed duration_ms and either the referencing spells'
+ *     duration_formula/is_beneficial classification (buff- vs
+ *     nuke-referenced records overlap 33/38 and show no systematic
+ *     separation) or their cast_time_ms (Pearson r = -0.09 across 57
+ *     distinct records). Real, structured, non-padding data lives at these
+ *     offsets; what it means is not established. NOT added as named
+ *     fields for exactly the reason T70 gave for the region as a whole.
+ *
+ * None of the eight claimed fields were added to SpellsEffEmitter --
+ * unknown_bytes() is unchanged. See
+ * tests/test_spells_eff_reader.cpp's "T73" section for the pinning tests
+ * (reading directly out of unknown_bytes, no named accessors) and
+ * refactor/T73_spells_eff_parameter_decode.md's Review for full
+ * distributions.
  */
 
 #ifndef EQT_SPELLS_EFF_READER_H

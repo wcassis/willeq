@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -377,6 +378,187 @@ TEST_F(SpellsEffIndexResolutionTest, KnownRealIndicesAreConfirmedPopulated) {
         const SpellsEffRecord* rec = eff_reader->getRecord(idx);
         ASSERT_NE(rec, nullptr) << "index " << idx;
         EXPECT_TRUE(rec->hasContent()) << "index " << idx;
+    }
+}
+
+// ============================================================================
+// T73 -- validate/refute the recovered spells.eff parameter table
+// (archive/fix-spell-effects-20260811:.agent/spells_eff_format.md) against
+// the unknown_bytes region T70 deliberately left unnamed. See
+// refactor/T73_spells_eff_parameter_decode.md's Review for the full
+// per-field verdict and distributions; these tests pin the two decisive
+// findings (a straight refutation, not merely "unproven") so they cannot
+// silently regress, plus the structural facts supporting the fields left
+// undetermined.
+//
+// The document's offsets are block-relative; unknown_bytes() starts at
+// block offset 128 (kSpellsEffEmitterStringBytes), so
+// unknown_bytes_offset = claimed_block_offset - 128. Reading directly out
+// of unknown_bytes (not through named accessors -- none were added, see
+// below) is deliberate: it proves these tests read the same bytes a caller
+// would, with no interpretation smuggled in.
+// ============================================================================
+
+namespace {
+
+int32_t readI32(const std::array<uint8_t, kSpellsEffEmitterUnknownBytes>& raw, size_t block_off) {
+    int32_t v = 0;
+    std::memcpy(&v, raw.data() + (block_off - kSpellsEffEmitterStringBytes), sizeof(v));
+    return v;
+}
+
+float readF32(const std::array<uint8_t, kSpellsEffEmitterUnknownBytes>& raw, size_t block_off) {
+    float v = 0.0f;
+    std::memcpy(&v, raw.data() + (block_off - kSpellsEffEmitterStringBytes), sizeof(v));
+    return v;
+}
+
+// Claimed block-relative offsets, from the T73 plan's table.
+constexpr size_t kClaimedDurationMs = 0x274;
+constexpr size_t kClaimedFadeInMs = 0x278;
+constexpr size_t kClaimedFadeOutMs = 0x27C;
+constexpr size_t kClaimedMinScale = 0x280;
+constexpr size_t kClaimedMaxScale = 0x288;
+constexpr size_t kClaimedParticlesPerSec = 0x294;
+constexpr size_t kClaimedParticleLifetime = 0x298;
+constexpr size_t kClaimedColorKeyframes = 0x370;  // float[12], 48 bytes, ends at 928 exactly
+
+}  // namespace
+
+// The document's own claimed offsets DO land on real, non-random numeric
+// data -- record 0 Source (the fixture already pinned above) reads cleanly
+// as small non-negative numbers at every claimed scalar offset, and the
+// colour-keyframe array is exactly 12 finite floats ending precisely at the
+// 928-byte block boundary. This test pins those raw values so a future
+// spells.eff drop or reader change that shifts them is caught -- it does
+// NOT assert the document's field names are correct; see the two refutation
+// tests below for that.
+TEST_F(SpellsEffReaderFileTest, T73_Record0SourceClaimedOffsetsReadAsPlausibleNumbers) {
+    const SpellsEffRecord* rec = reader.getRecord(0);
+    ASSERT_NE(rec, nullptr);
+    const auto& raw = rec->emitter(SpellsEffEmitterRole::Source).unknown_bytes;
+
+    EXPECT_EQ(readI32(raw, kClaimedDurationMs), 1000);
+    EXPECT_EQ(readI32(raw, kClaimedFadeInMs), 250);
+    EXPECT_EQ(readI32(raw, kClaimedFadeOutMs), 750);
+    EXPECT_FLOAT_EQ(readF32(raw, kClaimedMinScale), 0.10000000149011612f);
+    EXPECT_FLOAT_EQ(readF32(raw, kClaimedMaxScale), 0.009999999776482582f);
+    EXPECT_EQ(readI32(raw, kClaimedParticlesPerSec), 15);
+    EXPECT_FLOAT_EQ(readF32(raw, kClaimedParticleLifetime), 0.60f);
+
+    float colors[12];
+    std::memcpy(colors, raw.data() + (kClaimedColorKeyframes - kSpellsEffEmitterStringBytes),
+                sizeof(colors));
+    for (float c : colors) {
+        EXPECT_FLOAT_EQ(c, 1.0f);
+    }
+}
+
+// REFUTATION 1: if 0x280/0x288 genuinely encoded "minimum scale" / "maximum
+// scale" bounds, min should be <= max in the overwhelming majority of
+// records. Direct measurement across all 151 name-populated emitters in the
+// real file: 102 have min > max (68%), only 18 have min < max, and the
+// value set includes negatives (down to -10.0) far outside the document's
+// own claimed validation range (0.01-100.0). This is not "unproven", it is
+// a direct internal contradiction of the claimed semantics -- pinned here
+// so it cannot be silently re-adopted without someone re-deriving and
+// explaining away this majority.
+TEST_F(SpellsEffReaderFileTest, T73_ClaimedMinMaxScaleOrderingIsRefutedByMajorityViolation) {
+    int min_gt_max = 0, min_le_max = 0, populated = 0;
+    for (size_t i = 0; i < SpellsEffReader::recordCount(); ++i) {
+        const SpellsEffRecord* rec = reader.getRecord(static_cast<int>(i));
+        ASSERT_NE(rec, nullptr);
+        for (const auto& emitter : rec->emitters) {
+            if (!emitter.hasContent()) continue;
+            ++populated;
+            float min_scale = readF32(emitter.unknown_bytes, kClaimedMinScale);
+            float max_scale = readF32(emitter.unknown_bytes, kClaimedMaxScale);
+            if (min_scale > max_scale) {
+                ++min_gt_max;
+            } else {
+                ++min_le_max;
+            }
+        }
+    }
+    ASSERT_GT(populated, 0);
+    // Pin the measured finding (102/151 in the shipped file): min_scale >
+    // max_scale for the MAJORITY of populated emitters. A "min/max" pair
+    // that violates its own ordering more often than not cannot be the
+    // claimed field -- if this ratio ever flips, the claim needs
+    // re-examining, not silently trusting.
+    EXPECT_GT(min_gt_max, min_le_max)
+        << "min_scale > max_scale in " << min_gt_max << "/" << populated
+        << " populated emitters -- this refutation no longer holds, re-examine before trusting "
+           "the claimed min/max-scale semantics";
+}
+
+// REFUTATION 2: the document's own "Validation Ranges" table claims
+// color_keyframes values fall in [0.0, 2.0]. Direct measurement finds
+// values up to 32.0 in real, non-padding records (e.g. record 10's Target
+// emitter, keyframe index 2 = 25.0) -- more than an order of magnitude
+// outside the document's own stated bound. Padding records read this
+// region as a flat (1,1,...,1) template (see the padding test below), and
+// populated records show values decaying from a large burst value down to
+// that same 1.0 baseline -- a pattern much more consistent with a
+// scale/intensity keyframe curve than an RGBA colour sequence, though that
+// alternate interpretation is NOT proven here either (no field is named).
+TEST_F(SpellsEffReaderFileTest, T73_ClaimedColorKeyframeRangeIsRefutedByOutOfRangeValues) {
+    const SpellsEffRecord* rec = reader.getRecord(10);
+    ASSERT_NE(rec, nullptr);
+    const auto& target = rec->emitter(SpellsEffEmitterRole::Target);
+    ASSERT_TRUE(target.hasContent());
+
+    float colors[12];
+    std::memcpy(colors, target.unknown_bytes.data() +
+                             (kClaimedColorKeyframes - kSpellsEffEmitterStringBytes),
+                sizeof(colors));
+    EXPECT_FLOAT_EQ(colors[0], 6.0f);
+    EXPECT_FLOAT_EQ(colors[1], 10.0f);
+    EXPECT_FLOAT_EQ(colors[2], 25.0f);
+    // 25.0 is 12.5x the document's own claimed upper bound of 2.0.
+    EXPECT_GT(colors[2], 2.0f)
+        << "claimed colour_keyframes validation range is [0.0, 2.0] per the document; this "
+           "value refutes it directly";
+}
+
+// Structural corroboration (not a name claim): every claimed scalar offset
+// reads as exactly zero, and the colour-keyframe array reads as exactly
+// (1,1,...,1), across all three emitters of BOTH confirmed padding records
+// (88 and 255, T70's fixtures) -- consistent with these being real,
+// intentional fields with sane defaults, whatever their true meaning turns
+// out to be. This is why duration_ms/fade_in_ms/fade_out_ms/
+// particles_per_second/particle_lifetime are left as unnamed unknown_bytes
+// rather than declared noise: T73 found no internal contradiction for
+// these five (unlike the two refutations above), only an unconfirmed
+// semantic correlation (see the plan's Review). A future unit with a
+// working semantic test (e.g. a real packet capture of the client
+// triggering these effects) may be able to close the gap either way.
+TEST_F(SpellsEffReaderFileTest, T73_PaddingRecordsReadClaimedOffsetsAsZeroOrOneTemplate) {
+    for (int idx : {88, 255}) {
+        const SpellsEffRecord* rec = reader.getRecord(idx);
+        ASSERT_NE(rec, nullptr) << "record " << idx;
+        for (const auto& emitter : rec->emitters) {
+            EXPECT_EQ(readI32(emitter.unknown_bytes, kClaimedDurationMs), 0) << "record " << idx;
+            EXPECT_EQ(readI32(emitter.unknown_bytes, kClaimedFadeInMs), 0) << "record " << idx;
+            EXPECT_EQ(readI32(emitter.unknown_bytes, kClaimedFadeOutMs), 0) << "record " << idx;
+            EXPECT_FLOAT_EQ(readF32(emitter.unknown_bytes, kClaimedMinScale), 0.0f)
+                << "record " << idx;
+            EXPECT_FLOAT_EQ(readF32(emitter.unknown_bytes, kClaimedMaxScale), 0.0f)
+                << "record " << idx;
+            EXPECT_EQ(readI32(emitter.unknown_bytes, kClaimedParticlesPerSec), 0)
+                << "record " << idx;
+            EXPECT_FLOAT_EQ(readF32(emitter.unknown_bytes, kClaimedParticleLifetime), 0.0f)
+                << "record " << idx;
+
+            float colors[12];
+            std::memcpy(colors,
+                        emitter.unknown_bytes.data() +
+                            (kClaimedColorKeyframes - kSpellsEffEmitterStringBytes),
+                        sizeof(colors));
+            for (float c : colors) {
+                EXPECT_FLOAT_EQ(c, 1.0f) << "record " << idx;
+            }
+        }
     }
 }
 
