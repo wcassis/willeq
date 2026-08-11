@@ -177,7 +177,14 @@ private:
     uint32_t storedEquipmentTint_[9] = {0};
 
     // Rotation state
-    float rotationY_ = 0.0f;  // Current Y rotation in degrees
+    // T62 (Will, 2026-08-11): default changed from 0.0f (renders in
+    // profile, facing right -- see refactor/T62_held_item_alignment.md)
+    // to 90.0f, which faces the camera (measured empirically against this
+    // view's fixed camera at (0,8,-25) looking at (0,5,0) -- see the
+    // plan's Review for the before/after capture). Drag rotation
+    // (onMouseMove()) still works from this starting angle; only the
+    // initial value changed.
+    float rotationY_ = 90.0f;  // Current Y rotation in degrees
 
     // Zoom state
     float cameraDistance_ = 20.0f;  // Current camera distance

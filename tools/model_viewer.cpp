@@ -42,6 +42,8 @@
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/bone_attachment.h"
 #include "client/graphics/entity_renderer.h"  // For EntityAppearance
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/constrained_renderer_config.h"
 #include "common/logging.h"
 #include "model_viewer_spell_bar.h"  // Spell bar UI for casting visualization
 
@@ -98,6 +100,13 @@ uint8_t currentGender = 0;   // 0 = male
 
 // Equipment model loader for weapon/shield rendering
 std::unique_ptr<EquipmentModelLoader> equipmentModelLoader;
+// T62: EquipmentModelLoader::buildMeshFromGeometry's texture-upload path is
+// gated entirely on constrainedTextureCache_ being non-null (no fallback,
+// unlike RaceModelLoader's mesh path, which has its own MeshBuilder-based
+// texture route). Without this, every equipped weapon/shield this tool
+// renders is untextured -- found while investigating T62's held-item
+// alignment report (see refactor/T62_held_item_alignment.md's Review).
+std::unique_ptr<ConstrainedTextureCache> equipmentTextureCache;
 scene::IMeshSceneNode* primaryEquipNode = nullptr;   // Right hand weapon
 scene::IMeshSceneNode* secondaryEquipNode = nullptr; // Left hand/shield
 
@@ -2685,6 +2694,12 @@ int main(int argc, char* argv[]) {
     // Create equipment model loader for weapons/shields
     equipmentModelLoader = std::make_unique<EquipmentModelLoader>(smgr, driver, fileSystem);
     equipmentModelLoader->setClientPath(clientPath);
+    // T62: wire a texture cache so equipped weapon/shield meshes actually
+    // get textures -- see the declaration comment above.
+    equipmentTextureCache = std::make_unique<ConstrainedTextureCache>(
+        ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT));
+    equipmentTextureCache->setDriver(driver);
+    equipmentModelLoader->setConstrainedTextureCache(equipmentTextureCache.get());
 
     // Load item ID to model ID mapping
     std::string mappingPath = "data/item_models.json";
