@@ -86,6 +86,33 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
         spell.class_levels[ci] = info.classLevels[ci];
     }
 
+    // Effect slots: EQT::SpellInfo carries the raw spells_us.txt fields,
+    // markers included — interpretation happens here, at the consumer
+    // boundary, so every predicate in spell_data.h (getEffectCount,
+    // hasEffect, isDamageSpell, ...) sees an already-normalised array and
+    // never has to re-learn the marker itself.
+    //
+    // effect id 254 == "slot unused" (not SPA 254): SpellEffect::UnusedEffect
+    // is literally defined as 254 (spell_constants.h), so a raw 254 cast
+    // straight to the enum already lands on UnusedEffect and SpellEffectSlot
+    // ::isValid() correctly reports false for it. The explicit branch below
+    // documents that intent rather than relying on the numeric coincidence.
+    constexpr int16_t kEffectUnusedMarker = 254;
+    for (size_t si = 0; si < spell.effects.size() && si < info.effectId.size(); ++si) {
+        int16_t rawEffectId = info.effectId[si];
+        spell.effects[si].effect_id = (rawEffectId == kEffectUnusedMarker)
+            ? SpellEffect::UnusedEffect
+            : static_cast<SpellEffect>(rawEffectId);
+        spell.effects[si].base_value = info.baseValue[si];
+        spell.effects[si].base2_value = info.base2Value[si];
+        spell.effects[si].max_value = info.maxValue[si];
+        // formula marker 100 == "unused"; SpellEffectSlot's own default is
+        // also 100, so a verbatim copy is already the correct no-scaling
+        // value for an unused slot — no separate branch needed.
+        spell.effects[si].formula = info.formula[si];
+    }
+    spell.spell_affect_index = info.spellAffectIndex;
+
     auto [it, _] = m_cache.emplace(spell_id, std::move(spell));
 
     m_lru.push_front(spell_id);

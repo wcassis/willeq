@@ -19,7 +19,7 @@ namespace EQT {
 // the client compares against it in WilleqDatabase::open() (T56). Bump this
 // AND the builder's setMeta() call together, in the same commit, whenever
 // the schema changes — they must never drift independently again.
-inline constexpr int kWilleqDbExpectedVersion = 2;  // T27: spells.class_levels column added
+inline constexpr int kWilleqDbExpectedVersion = 3;  // T68: spells effect-slot columns added
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -105,6 +105,20 @@ struct SpellInfo {
     // Minimum level per class (16 classes, PlayerClass enum order:
     // Warrior..Berserker). 255 = class cannot use the spell.
     std::array<uint8_t, 16> classLevels{};
+
+    // Effect slots (12), verbatim from spells_us.txt — markers NOT
+    // interpreted here. effectId[i] == 254 means "slot unused" (not SPA
+    // 254); formula[i] == 100 means "unused". Interpretation happens at
+    // the consumer boundary (SpellDatabase::queryAndCache), not here.
+    std::array<int16_t, 12> effectId{};
+    std::array<int32_t, 12> baseValue{};
+    std::array<int32_t, 12> base2Value{};
+    std::array<int32_t, 12> maxValue{};
+    std::array<int32_t, 12> formula{};
+    // Index into spells.eff (T68 carries this for the next unit; -1 means
+    // no visual-effect record — 799 spells in the Titanium data have this).
+    int32_t spellAffectIndex = -1;
+
     bool found = false;
 };
 

@@ -215,14 +215,111 @@ TEST_F(SpellDatabaseTest, SpellsHaveValidData) {
     EXPECT_GT(valid_count, 0);
 }
 
-// Deleted: SpellEffectsAreValid, EffectCountAndHasEffect. The DB-backed
-// queryAndCache() (src/client/spell/spell_database.cpp) never populates
-// SpellData::effects — EQT::SpellInfo (include/client/willeq_database.h)
-// has no effects field at all, so spell->effects is always default/empty
-// for every spell returned by this API. There is nothing meaningful left
-// to assert; the underlying capability was not carried over to the
-// SQLite-backed database. Not a production bug we're fixing here (test
-// and CMake files only) — documented for follow-up.
+// ============================================================================
+// Effect Slot Tests (T68 — restores SpellEffectsAreValid/EffectCountAndHasEffect,
+// deleted when SpellData::effects was still always-empty; see the comment
+// that used to live here, still readable in git history. effects is now
+// populated by queryAndCache() from EQT::SpellInfo's 61 effect-slot columns).
+// ============================================================================
+
+// Spell id 3 ("Summon Corpse") is the plan's confirmed reference spell:
+// slot 1 = SPA 91 (SummonCorpse), base_value 70, formula 100 (unused-marker,
+// which is also SpellEffectSlot's own "no scaling" default), slots 2-12
+// carry the raw 254 "unused" marker and must NOT be interpreted as SPA 254.
+TEST_F(SpellDatabaseTest, EffectSlotsMatchConfirmedReferenceSpell) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    const SpellData* spell = db.getSpell(3);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Summon Corpse");
+
+    ASSERT_EQ(spell->effects[0].effect_id, SpellEffect::SummonCorpse);
+    EXPECT_EQ(spell->effects[0].base_value, 70);
+    EXPECT_TRUE(spell->effects[0].isValid());
+    EXPECT_EQ(spell->getEffectCount(), 1);
+
+    for (size_t i = 1; i < spell->effects.size(); ++i) {
+        EXPECT_EQ(spell->effects[i].effect_id, SpellEffect::UnusedEffect)
+            << "slot " << i << " should be the unused marker, not SPA 254";
+        EXPECT_FALSE(spell->effects[i].isValid()) << "slot " << i;
+    }
+}
+
+// Marker interpretation must happen at the consumer boundary (queryAndCache),
+// not survive as the raw 254/100 file values — that would silently corrupt
+// every predicate built on effects (hasEffect, isDamageSpell, ...). Scans a
+// broad id range and asserts the invariant holds for every returned spell:
+// an "unused" slot's effect_id must be exactly UnusedEffect, never the raw
+// 254 misread as an enumerator that happens to also be 254 in spells_us.txt
+// terms (i.e. it must be recognized as unused by isValid()).
+TEST_F(SpellDatabaseTest, UnusedSlotMarkerNeverMisreadAsRealEffect) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    auto ids = scanSpellIds(1, 9000, 500);
+    ASSERT_GT(ids.size(), 0u);
+
+    int slotFillCounts[12] = {0};
+    for (uint32_t id : ids) {
+        const SpellData* spell = db.getSpell(id);
+        ASSERT_NE(spell, nullptr);
+        for (size_t i = 0; i < spell->effects.size(); ++i) {
+            const auto& e = spell->effects[i];
+            if (e.effect_id == SpellEffect::UnusedEffect) {
+                EXPECT_FALSE(e.isValid()) << "id=" << id << " slot=" << i;
+            } else {
+                slotFillCounts[i]++;
+            }
+        }
+    }
+
+    // Slot fill must decay monotonically-ish across the 12 slots (slot 1
+    // used far more often than slot 12) — the shape the plan predicted for
+    // a correctly-interpreted marker. A marker bug (e.g. treating 254 as a
+    // real SPA) would instead show every slot uniformly "full".
+    EXPECT_GT(slotFillCounts[0], slotFillCounts[11])
+        << "slot 1 fill=" << slotFillCounts[0] << " slot 12 fill=" << slotFillCounts[11];
+}
+
+TEST_F(SpellDatabaseTest, EffectCountAndHasEffect) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    // Spell 3 has exactly one populated slot (SummonCorpse).
+    const SpellData* single = db.getSpell(3);
+    ASSERT_NE(single, nullptr);
+    EXPECT_EQ(single->getEffectCount(), 1);
+    EXPECT_TRUE(single->hasEffect(SpellEffect::SummonCorpse));
+    EXPECT_FALSE(single->hasEffect(SpellEffect::ArmorClass));
+    EXPECT_NE(single->getEffect(SpellEffect::SummonCorpse), nullptr);
+    EXPECT_EQ(single->getEffect(SpellEffect::ArmorClass), nullptr);
+
+    // Spell 891 is a confirmed full-12-slot spell (spot-checked against
+    // spells_us.txt in the T68 Review): every slot populated, none unused.
+    const SpellData* full = db.getSpell(891);
+    ASSERT_NE(full, nullptr);
+    EXPECT_EQ(full->getEffectCount(), 12);
+    for (const auto& e : full->effects) {
+        EXPECT_TRUE(e.isValid());
+    }
+}
+
+// A -1 SpellAffectIndex (799 spells in spells_us.txt, one shy of that in
+// this Titanium data file at 798) must round-trip as -1, not get clamped
+// or misread as an unsigned "no data" sentinel.
+TEST_F(SpellDatabaseTest, NegativeSpellAffectIndexRoundTrips) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    const SpellData* spell = db.getSpell(523);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->spell_affect_index, -1);
+}
 
 // ============================================================================
 // Filtering Tests — all deleted.
@@ -239,11 +336,33 @@ TEST_F(SpellDatabaseTest, SpellsHaveValidData) {
 // SpellData Helper Method Tests
 // ============================================================================
 
-// Deleted: SpellDataHelperMethods. It searched via the now-removed
-// filterSpells() for a beneficial+duration spell and a damage spell.
-// isDamageSpell()/isHealSpell() depend on SpellData::effects, which (per
-// above) is never populated by the DB-backed path, so even a 1:1 rewrite
-// would not test anything real.
+// SpellDataHelperMethods (T68 restore): isDamageSpell()/isHealSpell()
+// (spell_data.h) walk SpellData::effects — dead code until this unit
+// populated it. "Strike" (14) and "Smite" (16) are confirmed-in-DB CurrentHP
+// spells with a negative base_value (damage); "Healing" (12) is a confirmed
+// CurrentHP spell with a positive base_value (heal). Exercising the real,
+// now-live predicate rather than asserting on a hand-built SpellData.
+TEST_F(SpellDatabaseTest, IsDamageSpellDiscriminatesOnRealData) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    const SpellData* strike = db.getSpell(14);
+    ASSERT_NE(strike, nullptr);
+    EXPECT_TRUE(strike->isDamageSpell()) << "id=14 (\"Strike\") has CurrentHP base_value < 0";
+    EXPECT_FALSE(strike->isHealSpell());
+}
+
+TEST_F(SpellDatabaseTest, IsHealSpellDiscriminatesOnRealData) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    const SpellData* healing = db.getSpell(12);
+    ASSERT_NE(healing, nullptr);
+    EXPECT_TRUE(healing->isHealSpell()) << "id=12 (\"Healing\") has CurrentHP base_value > 0";
+    EXPECT_FALSE(healing->isDamageSpell());
+}
 
 TEST_F(SpellDatabaseTest, DurationCalculation) {
     if (!hasDb()) {
