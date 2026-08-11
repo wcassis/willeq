@@ -13,9 +13,26 @@ checks them against three independent assertions:
      fixed camera path), and a threshold assertion on p95 CPU-ms (<= 2x the
      recorded baseline -- generous, to catch a render-loop regression, not
      to catch scheduler noise).
-  3. Memory-ceiling assertions: texture-cache byte usage, exact-match against
-     the manifest (deterministic loads) and <= the constrained preset's
-     budget (textureCacheBytesLimit).
+  3. Memory assertions (T69 extends the H02 texture-cache-only check to the
+     full per-subsystem breakdown emitted by gles2_zone_benchmark.cpp's
+     --memory-json, itself sourced from IrrlichtRenderer::getMemoryReportBreakdown()'s
+     accounting -- see that function's doc comment and this file's MEMORY_*
+     lists below):
+       (a) Budget-enforced: usage <= a real configured ceiling
+           (ConstrainedRendererConfig fields), independent of any baseline.
+           Texture cache (pre-existing) and framebuffer (new).
+       (b) Baseline-guarded: exact-match against the blessed value. These
+           categories have NO configured budget -- this is regression
+           detection, not budget enforcement. T69 measured 9 repeat runs
+           across all 3 golden zones and found EVERY one of these fields
+           bit-identical run to run (see refactor/T69_memory_enforcement_gate.md
+           Review), so exact match is an empirically justified tolerance of
+           zero, not a guess.
+       (c) Reported, not asserted: process RSS and the untracked-RSS gap
+           (RSS minus every tallied category). Printed and baselined every
+           run for visibility, but never gated in this unit -- see the T69
+           Review for why (RSS is real but noisier than the categories in
+           (b), and a spuriously-firing gate is worse than no gate).
 
 Usage:
   visual_gate.py --bless    Regenerate goldens + manifest baselines + contact sheet.
@@ -42,6 +59,43 @@ EQ_PATH = PROJECT_DIR / "data" / "eq_client"
 ARTIFACTS_DIR = PROJECT_DIR / "build-gles2" / "ci_artifacts"  # gitignored (whole build-gles2/ is)
 
 RESOLUTION_DEFAULT = {"width": 800, "height": 600}
+
+# T69: per-category memory field classification (see module docstring).
+# Every name here must match a key gles2_zone_benchmark.cpp's --memory-json
+# writes (BenchMemorySnapshot in that file) -- kept as plain field-name
+# lists (not a schema) so bless()/verify() share one source of truth for
+# "which fields get baselined" and "which get asserted".
+
+# (a) usage/budget pairs: assert usage <= budget, independent of baseline.
+MEMORY_BUDGET_PAIRS = [
+    ("textureCacheBytesUsed", "textureCacheBytesLimit", "texture cache"),
+    ("framebufferBytes", "framebufferBudgetBytes", "framebuffer"),
+]
+
+# (b) no configured budget -- baseline with the tolerance measured in T69
+# (zero: 9 repeat runs across all 3 golden zones, every field below was
+# bit-identical run to run on this deterministic llvmpipe path). A future
+# zone/config where these are NOT bit-identical is real news, not noise --
+# see the T69 Review before loosening this to a nonzero tolerance.
+MEMORY_BASELINE_FIELDS = [
+    "textureCount",
+    "eqe1MappedBytes",
+    "eqe1ArchiveCount",
+    "zoneGeometryBytes",
+    "placeableObjectsBytes",
+    "s3dZoneSourceBytes",
+    "gpuTextureBytes",
+    "vboEboBytes",
+    "characterModelsBytes",
+    "totalEstimate",
+]
+
+# (c) reported/baselined for visibility, never asserted in this unit -- see
+# module docstring and refactor/T69_memory_enforcement_gate.md Review.
+MEMORY_REPORT_ONLY_FIELDS = [
+    "processRssBytes",
+    "untrackedBytes",
+]
 
 
 def load_manifest():
@@ -210,11 +264,21 @@ def bless(manifest):
         zone_cfg["metrics"] = metrics
         zone_cfg["p95CpuMsBaseline"] = p95([float(r["cpu_ms"]) for r in csv_rows])
         if memory:
-            zone_cfg["memory"] = {
-                "textureCacheBytesUsed": memory["textureCacheBytesUsed"],
-                "textureCacheBytesLimit": memory["textureCacheBytesLimit"],
-                "textureCount": memory["textureCount"],
-            }
+            # T69: bless every field the benchmark now emits -- budget pairs
+            # (blessed for display/debugging even though the check is
+            # against the live budget, not the blessed value), baseline
+            # fields (the actual regression-detection targets), and the
+            # report-only fields (recorded so a re-bless's diff shows RSS
+            # movement over time even though nothing gates on it).
+            mem = {}
+            for used_key, limit_key, _label in MEMORY_BUDGET_PAIRS:
+                mem[used_key] = memory[used_key]
+                mem[limit_key] = memory[limit_key]
+            for key in MEMORY_BASELINE_FIELDS:
+                mem[key] = memory[key]
+            for key in MEMORY_REPORT_ONLY_FIELDS:
+                mem[key] = memory[key]
+            zone_cfg["memory"] = mem
 
         for f, png_path in png_paths.items():
             dest = GOLDENS_DIR / f"{zone}_f{f}.png"
@@ -292,19 +356,51 @@ def verify(manifest):
                 f"{zone}: p95 CPU ms {p95_cpu:.3f} exceeds ceiling {ceiling:.3f} (baseline {baseline:.3f} x2.0)"
             )
 
-        # 3. Memory assertions.
+        # 3. Memory assertions (T69).
         if memory:
             expected_mem = zone_cfg["memory"]
-            if memory["textureCacheBytesUsed"] != expected_mem["textureCacheBytesUsed"]:
-                failures.append(
-                    f"{zone}: texture cache bytes used mismatch (expected "
-                    f"{expected_mem['textureCacheBytesUsed']}, got {memory['textureCacheBytesUsed']})"
-                )
-            if memory["textureCacheBytesUsed"] > expected_mem["textureCacheBytesLimit"]:
-                failures.append(
-                    f"{zone}: texture cache bytes used {memory['textureCacheBytesUsed']} "
-                    f"exceeds budget {expected_mem['textureCacheBytesLimit']}"
-                )
+
+            # (a) Budget pairs: usage <= a real configured ceiling, checked
+            # against the LIVE limit (not the blessed one) since the budget
+            # is a config value, not a measurement -- and separately, exact-
+            # match the usage against its blessed value (regression
+            # detection on top of the budget check; texture cache did this
+            # from H02 on, framebuffer usage is exact-deterministic per T69's
+            # repeat-run data, same as every other new field).
+            for used_key, limit_key, label in MEMORY_BUDGET_PAIRS:
+                if used_key not in memory or used_key not in expected_mem:
+                    continue  # field predates this bless (old manifest); skip rather than false-fail
+                if memory[used_key] != expected_mem[used_key]:
+                    failures.append(
+                        f"{zone}: {label} bytes used mismatch (expected "
+                        f"{expected_mem[used_key]}, got {memory[used_key]})"
+                    )
+                if memory[used_key] > memory[limit_key]:
+                    failures.append(
+                        f"{zone}: {label} bytes used {memory[used_key]} "
+                        f"exceeds budget {memory[limit_key]}"
+                    )
+
+            # (b) Baseline-guarded fields: exact match, no configured budget
+            # (see MEMORY_BASELINE_FIELDS' comment for why zero tolerance is
+            # measured, not assumed).
+            for key in MEMORY_BASELINE_FIELDS:
+                if key not in memory or key not in expected_mem:
+                    continue
+                if memory[key] != expected_mem[key]:
+                    failures.append(
+                        f"{zone}: {key} mismatch (expected {expected_mem[key]}, got {memory[key]})"
+                    )
+
+            # (c) Report-only: printed prominently, recorded in the baseline
+            # via bless(), never asserted in this unit.
+            rss = memory.get("processRssBytes")
+            untracked = memory.get("untrackedBytes")
+            total = memory.get("totalEstimate")
+            if rss is not None:
+                pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
+                print(f"  [memory] {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
+                      f"untracked={untracked}  (reported only, not gated -- see T69 Review)")
 
     if failures:
         print("\n=== VISUAL GATE: FAIL ===")

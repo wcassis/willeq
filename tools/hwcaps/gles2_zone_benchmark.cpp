@@ -53,6 +53,13 @@
 
 #endif
 
+// T69: full per-subsystem memory-JSON accounting (BenchMemorySnapshot,
+// computeMemorySnapshot(), writeMemoryJson()) -- split into its own TU;
+// see zone_bench_memory.h/.cpp for the reuse-vs-recompute accounting and
+// why (check_file_sizes.sh's FAIL ceiling was already exceeded by this file
+// before this unit).
+#include "zone_bench_memory.h"
+
 // ======== CLI Options ========
 
 struct Options {
@@ -2539,26 +2546,13 @@ int main(int argc, char** argv) {
         if (!opts.csvFile.empty()) metrics.writeCSV(opts.csvFile);
 
         if (data->textureCache) {
-            size_t used = data->textureCache->getCurrentUsage();
-            size_t limit = data->textureCache->getMemoryLimit();
-            size_t count = data->textureCache->getTextureCount();
-            printf("Texture cache: %zu / %zu bytes (%zu textures)\n", used, limit, count);
+            BenchMemorySnapshot snap = computeMemorySnapshot(*data, opts.width, opts.height);
+            printf("Texture cache: %zu / %zu bytes (%zu textures)\n",
+                   snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount);
+            printf("Total tracked: %zu bytes | RSS: %zu bytes | untracked: %zu bytes\n",
+                   snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
             if (!opts.memoryJsonPath.empty()) {
-                FILE* f = fopen(opts.memoryJsonPath.c_str(), "w");
-                if (f) {
-                    fprintf(f,
-                            "{\n"
-                            "  \"zone\": \"%s\",\n"
-                            "  \"textureCacheBytesUsed\": %zu,\n"
-                            "  \"textureCacheBytesLimit\": %zu,\n"
-                            "  \"textureCount\": %zu\n"
-                            "}\n",
-                            opts.zoneName.c_str(), used, limit, count);
-                    fclose(f);
-                    printf("[memory-json] %s: saved\n", opts.memoryJsonPath.c_str());
-                } else {
-                    printf("[memory-json] %s: FAILED to open for write\n", opts.memoryJsonPath.c_str());
-                }
+                writeMemoryJson(opts.memoryJsonPath, opts.zoneName, snap);
             }
         }
 
@@ -3014,28 +3008,16 @@ int main(int argc, char** argv) {
         printf("Draw histogram written: %s\n", opts.drawHistogramFile.c_str());
     }
 
-    // H02: report/emit texture-cache memory usage for the memory-ceiling CI gate.
+    // H02/T69: report/emit the full per-subsystem memory breakdown for the
+    // memory-ceiling CI gate (see the block comment above computeMemorySnapshot()).
     if (data->textureCache) {
-        size_t used = data->textureCache->getCurrentUsage();
-        size_t limit = data->textureCache->getMemoryLimit();
-        size_t count = data->textureCache->getTextureCount();
-        printf("Texture cache: %zu / %zu bytes (%zu textures)\n", used, limit, count);
+        BenchMemorySnapshot snap = computeMemorySnapshot(*data, opts.width, opts.height);
+        printf("Texture cache: %zu / %zu bytes (%zu textures)\n",
+               snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount);
+        printf("Total tracked: %zu bytes | RSS: %zu bytes | untracked: %zu bytes\n",
+               snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
         if (!opts.memoryJsonPath.empty()) {
-            FILE* f = fopen(opts.memoryJsonPath.c_str(), "w");
-            if (f) {
-                fprintf(f,
-                        "{\n"
-                        "  \"zone\": \"%s\",\n"
-                        "  \"textureCacheBytesUsed\": %zu,\n"
-                        "  \"textureCacheBytesLimit\": %zu,\n"
-                        "  \"textureCount\": %zu\n"
-                        "}\n",
-                        opts.zoneName.c_str(), used, limit, count);
-                fclose(f);
-                printf("[memory-json] %s: saved\n", opts.memoryJsonPath.c_str());
-            } else {
-                printf("[memory-json] %s: FAILED to open for write\n", opts.memoryJsonPath.c_str());
-            }
+            writeMemoryJson(opts.memoryJsonPath, opts.zoneName, snap);
         }
     }
 
