@@ -3959,3 +3959,33 @@ enough to scope a fix unit without re-running the live session.
   `del $f: removed (not checked)` instead of an ERROR, and add `-C`
   support (or a `--repo <path>` flag) so the script doesn't depend on
   ambient shell cwd. Not fixed here (out of T67's scope).
+
+## Spell-effects rewrite arc, step 2 of N: `spells.eff` reader landed, the data-driven visual layer is still all ahead (T70, 2026-08-11)
+
+- T68 (step 1) got spell *mechanics* data into `SpellData::effects`. T70
+  (step 2, `refactor/T70_spells_eff_reader.md`) added a validated,
+  index-by-`SpellAffectIndex` reader for the client's *visual* effect
+  definitions (`spells.eff`) — `include/client/spell/spells_eff_reader.h`
+  + `src/client/spell/spells_eff_reader.cpp`, 18 tests, no rendering wired
+  up (deliberately out of scope, per the plan's own emphasis #1).
+- What remains is the bulk of the arc: a data-driven visual layer that
+  actually consumes this reader to replace the current 10-resist-type x
+  5-school hardcoded vocabulary (`spell_visual_fx.cpp:190-219`,
+  `:879-918`) with per-spell effects sourced from `spells.eff` records via
+  `SpellData::spell_affect_index`. That includes deciding what to render
+  for the ~800 unknown bytes per emitter block (T70 proved structure, not
+  semantics — see its Review) and what to do for the 148 real spells
+  whose `spell_affect_index` resolves to an empty padding record (T70
+  Review: indices 70, 71, 80, 84, 88 — likely answer is "fall back to the
+  existing resist/school default," but that is a rendering-unit decision,
+  not made here).
+- Separately, and explicitly out of scope for T70 (different file,
+  different format, different consumer — folding it in would have muddied
+  T70's evidence): `tools/model_viewer_spell_bar.h:274` hardcodes
+  `ENTRY_SIZE = 256` for **`spellsnew.eff`**, where the correct value is
+  **268** (`112024 / 268 = 418` exactly; `256` gives `437.59` and drifts).
+  This is why that tool carries "skip entries that look like fragments"
+  logic — the fragments are drift artifacts from the wrong stride, the
+  same class of bug T70's plan diagnosed in `48ae032b`'s `spells.eff`
+  loader. Not touched by T70; flagged here for whichever future unit picks
+  up `spellsnew.eff`.
