@@ -286,6 +286,7 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
         constexpr uint32_t kTestPrimaryItemId = 1;      // IT1: one-handed sword (flat/sword/swordhandle.bmp)
         constexpr uint32_t kTestTwoHandedItemId = 45;   // IT45: wizard staff (staffwiz-wood/stafwiz-jewl.bmp) -- 2H test case
         constexpr uint32_t kTestShieldModelId = 202;    // IT202: kiteshield-m, a representative shield
+        constexpr uint32_t kTestDaggerModelId = 5;      // IT5: dagger -- T63's exact live-session repro item
 
         // hasRaceModel() only reflects the lazy-load cache (populated on
         // first actual load attempt) — loadGlobalModels()/
@@ -400,6 +401,51 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
             shieldOnlyAppearance.equipment[8] = kTestShieldModelId;  // Secondary slot
             doll.setCharacter(kRaceHuman, kGenderMale, shieldOnlyAppearance);
             ok &= captureDoll(outputDir + "/inventory_paperdoll_shield_only.png", /*timeIt=*/false);
+
+            // T65: a plain (non-shield) secondary weapon, isolated -- T63's
+            // live-session defect (secondary weapon slot renders nothing,
+            // while the shield in the same slot renders fine). Reuses
+            // kTestPrimaryItemId (IT1, a real 1H sword, model < 200 so
+            // EquipmentModelLoader::isShield() is false) but places it in
+            // the SECONDARY slot instead of primary, to hit
+            // character_model_view.cpp's non-shield secondary branch
+            // (rotation (180,0,0)) exactly as T63's dagger did.
+            EntityAppearance secondaryWeaponOnlyAppearance{};
+            secondaryWeaponOnlyAppearance.equipment[8] = kTestPrimaryItemId;  // Secondary slot, plain weapon
+            doll.setCharacter(kRaceHuman, kGenderMale, secondaryWeaponOnlyAppearance);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_secondary_weapon_only.png", /*timeIt=*/false);
+
+            // T65: the SAME item T63 used live (IT5 dagger, secondary slot)
+            // -- reproduces T63's exact repro rather than a different sword
+            // model, to rule out "it's an IT1-specific geometry quirk".
+            printBBox("secondary dagger (IT5)", equipmentModelLoader.getEquipmentMesh(kTestDaggerModelId));
+            EntityAppearance secondaryDaggerAppearance{};
+            secondaryDaggerAppearance.equipment[8] = kTestDaggerModelId;  // Secondary slot
+            doll.setCharacter(kRaceHuman, kGenderMale, secondaryDaggerAppearance);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_secondary_dagger_it5.png", /*timeIt=*/false);
+
+            // T65 diagnostic: T63's exact race/gender (Dark Elf female,
+            // race=6 gender=1) with the same dagger, to rule out "human
+            // male renders a thin sliver, DAF renders truly nothing" as a
+            // race-specific skeleton orientation difference. Not part of
+            // the tool's normal capture set -- gated so it doesn't affect
+            // default output if the DAF race model isn't available.
+            constexpr uint16_t kRaceDarkElf = 6;
+            constexpr uint8_t kGenderFemale = 1;
+            raceModelLoader.ensureModelDataLoaded(kRaceDarkElf, kGenderFemale);
+            if (raceModelLoader.hasRaceModel(kRaceDarkElf, kGenderFemale)) {
+                EntityAppearance dafDaggerAppearance{};
+                dafDaggerAppearance.equipment[8] = kTestDaggerModelId;
+                doll.setCharacter(kRaceDarkElf, kGenderFemale, dafDaggerAppearance);
+                ok &= captureDoll(outputDir + "/inventory_paperdoll_daf_secondary_dagger.png", /*timeIt=*/false);
+
+                EntityAppearance dafShieldAppearance{};
+                dafShieldAppearance.equipment[8] = kTestShieldModelId;
+                doll.setCharacter(kRaceDarkElf, kGenderFemale, dafShieldAppearance);
+                ok &= captureDoll(outputDir + "/inventory_paperdoll_daf_secondary_shield.png", /*timeIt=*/false);
+            } else {
+                fprintf(stderr, "NOTE: no DAF race model available, skipping race-specific diagnostic captures\n");
+            }
 
             // T62: a two-handed weapon (bbox length > the 3.0f threshold
             // in bone_attachment.h), primary slot only -- exercises

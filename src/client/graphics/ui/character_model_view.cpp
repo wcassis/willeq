@@ -433,6 +433,7 @@ using EQT::Graphics::extractBoneRotation;
 using EQT::Graphics::findBoneIndex;
 using EQT::Graphics::computeWeaponGripOffset;
 using EQT::Graphics::computeShieldGripOffset;
+using EQT::Graphics::computeSecondaryItemBaseRotation;
 
 void CharacterModelView::attachWeapons() {
     if (!characterNode_ || !equipmentModelLoader_) {
@@ -544,11 +545,12 @@ void CharacterModelView::attachWeapons() {
                     : computeWeaponGripOffset(secondaryMesh->getBoundingBox());
 
                 // Set initial position and rotation
-                // Shields: (180, 0, 180) - rotates so outside faces outward
-                // Weapons: (180, 0, 0)
-                irr::core::vector3df rot = secondaryIsShield_
-                    ? irr::core::vector3df(180, 0, 180)
-                    : irr::core::vector3df(180, 0, 0);
+                // T65: same base rotation for shields AND plain weapons in
+                // this slot -- see computeSecondaryItemBaseRotation()'s
+                // comment for why the previous isShield-conditional split
+                // was the root cause of the invisible-secondary-weapon
+                // defect.
+                irr::core::vector3df rot = computeSecondaryItemBaseRotation();
                 secondaryWeaponNode_->setRotation(rot);
 
                 for (irr::u32 i = 0; i < secondaryWeaponNode_->getMaterialCount(); ++i) {
@@ -610,13 +612,11 @@ void CharacterModelView::updateWeaponTransforms() {
         float py = worldTransform.m[13];
         float pz = worldTransform.m[14];
 
-        // Extract rotation from matrix and add item's base rotation
-        // Shields: (180, 0, 180) - rotates so outside faces outward
-        // Weapons: (180, 0, 0)
+        // Extract rotation from matrix and add item's base rotation. T65:
+        // same base rotation for shields and plain weapons -- see
+        // computeSecondaryItemBaseRotation().
         irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
-        irr::core::vector3df itemRot = secondaryIsShield_
-            ? boneRot + irr::core::vector3df(180, 0, 180)
-            : boneRot + irr::core::vector3df(180, 0, 0);
+        irr::core::vector3df itemRot = boneRot + computeSecondaryItemBaseRotation();
         secondaryWeaponNode_->setRotation(itemRot);
 
         // Apply offset along local X axis

@@ -131,6 +131,157 @@ not, follow T63's backup-and-restore approach and say so.
 
 ## Review
 
-(executor fills: blast-radius answer; the A/B result; the root cause; where
-the fix landed and why that layer; regression evidence for primary and
-shield; capture paths; deviations)
+### Blast radius: both paperdoll AND in-world
+
+`character_model_view.cpp` (paperdoll) and `entity_equipment.cpp`
+(in-world 3rd-person) both applied the textually identical broken
+rotation split before this fix — confirmed by direct code reading, not
+inference:
+
+```cpp
+// character_model_view.cpp:549-551 (paperdoll) — before
+irr::core::vector3df rot = secondaryIsShield_
+    ? irr::core::vector3df(180, 0, 180) : irr::core::vector3df(180, 0, 0);
+// entity_equipment.cpp:235 (in-world) — before, same shape
+irr::core::vector3df itemRot = boneRot + irr::core::vector3df(180.0f, 0, isShield ? 180.0f : 0);
+```
+
+`tools/model_viewer.cpp` had the same split at its initial-placement site
+only (its per-frame update site had already, inconsistently, hardcoded
+the shield rotation for all secondary items — an internal inconsistency
+now resolved the same way everywhere).
+
+**Headless reproduction of T63's exact repro**: `tools/hwcaps/
+ui_inventory_capture.cpp` extended with a Dark Elf female (race=6,
+gender=1 — T63's exact race/gender) + IT5 dagger (T63's exact item)
+secondary-only capture. Reproduced "nothing visible anywhere" byte-for-
+byte outside a live session — see `review/T65/headless/before/`.
+
+### A/B result: CONFIRMED, not refuted
+
+`character_model_view.cpp`'s rotation ternary was temporarily forced to
+always emit the shield's `(180, 0, 180)`, single-variable change (same
+item, same race, same bone/offset), rebuilt, recaptured: the invisible
+dagger became visible, gripped correctly in the hand — see
+`review/T65/headless/ab_test/`. The extra Z rotation the shield branch
+applied and the plain-weapon branch omitted is what was pointing the
+`computeWeaponGripOffset()` offset axis into/behind the torso, hidden
+behind body geometry — T63's "rendering inside the character" theory,
+confirmed rather than the alternative causes the plan listed (zero scale,
+culling, failed material, unexpected parenting were not investigated
+further because the A/B isolated the rotation as sufficient and
+necessary).
+
+### Root cause and fix location
+
+Root cause: the `isShield ? extraZRotation : 0` split was never a
+legitimate divergence — shields and plain weapons in the secondary slot
+need the same base rotation. Fix added `computeSecondaryItemBaseRotation()`
+to `bone_attachment.h` (the shared layer T60 converged, per the plan's
+instruction to fix here so all three consumers stay behaviour-identical):
+returns `(180, 0, 180)` unconditionally for the secondary slot. Updated
+all consumers to call it, removing the `isShield`-conditional Z rotation:
+`character_model_view.cpp` (paperdoll, 2 call sites),
+`entity_equipment.cpp` (in-world, 1 call site), `tools/model_viewer.cpp`
+(debug tool, 2 call sites). Primary weapons (`R_POINT`, `(180, 0, 0)`)
+are a separate bone/slot and are untouched by this fix.
+
+### Regression evidence for primary and shield
+
+Headless, byte-level (`numpy.array_equal`), not eyeballed — before vs
+after the fix, holding everything else constant:
+
+| Configuration | before vs after |
+|---|---|
+| Primary weapon only | identical=True |
+| Secondary shield only | identical=True |
+| DAF secondary shield | identical=True |
+| Bare character | identical=True |
+| Two-handed primary | identical=True |
+| DAF secondary dagger (the defect) | identical=False (fixed, as intended) |
+| Human secondary dagger | identical=False (fixed, as intended) |
+
+Live session regression check: `review/T65/live/03_live_paperdoll_primary_mace_secondary_shield.png`
+— live server, log-confirmed `primary=7 secondary=202`, shield renders
+correctly on the arm, unchanged from T63's finding.
+
+Full protocol test suite: 1974/1975 passing (sole failure is the
+pre-existing documented `AudioManagerTest.PreloadCommonSounds` ALSA host
+waiver — no new failures). `test_bone_attachment.cpp` extended from 20 to
+22 cases (2 new, pinning `computeSecondaryItemBaseRotation()`'s value and
+its independence from an `isShield` flag), all passing.
+
+### Live in-world confirmation (lit scene)
+
+eqemu brought up in `qeynos2` (daylight outdoor zone, visible sky/clouds
+in the captures — unlike T63's `arena`, documented as rendering "nearly
+black"). Character `Testmelee` (T63's exact Dark Elf female). Live,
+server-driven paperdoll (drawing on the same live `EntityAppearance` the
+in-world 3rd-person entity path renders from, per T60's Review) confirms
+the fix: `review/T65/live/04_live_paperdoll_primary_mace_secondary_dagger.png`,
+log-confirmed `primary=7 secondary=5` (T63's exact item ids), dagger
+now visible — `review/T65/live/crop_04_dagger_hand.png` zooms in to
+confirm it is a real mesh, not an artifact.
+
+**Honest limitation**: an actual 3rd-person (non-paperdoll) capture in
+the lit zone was attempted (`review/T65/live/05_3rd_person_lit_distant_uncertain_equip_state.png`)
+but the camera distance in the default Follow mode (character ~150px
+tall in an 800x600 frame) made the secondary item unresolvable even
+brightened/gamma-corrected — flagged as inconclusive, not claimed as
+evidence, in `review/T65/README.md`. `entity_equipment.cpp` itself was
+therefore not independently re-verified live via a clear 3rd-person
+screenshot; the live-in-world claim rests on (1) the identical-code-before,
+identical-fix-after argument, code-verified, and (2) the paperdoll's
+proven equivalence to the in-world entity's appearance data, not on a
+direct 3rd-person screenshot of the dagger. Stated rather than glossed
+over.
+
+### Deviation: `/equip`'s live leg found broken, reported, not fixed
+
+T66 merged `/equip` into `fable` after this branch was cut; per the
+plan, `fable` was merged into this task branch (`git merge fable`,
+fast-forward) to pick it up, since the plan preferred it over T63's
+direct-SQL approach if available in time. Tried first. **Finding: `/equip`'s
+live wire behaviour did not match its client-side confirmation text** —
+`/equip 30 14` printed `"Moving item: slot 30 -> Secondary (14)"` and
+`outcome=applied` (emitted on successful validation/intent-push per T66's
+own Review, not a server ack) every time, but a subsequent DB read (with
+a 5s idle-stability check ruling out query timing) showed the secondary
+slot had NOT received a clean swap in every case tried (one run left it
+holding the same item id as primary — duplicated, not swapped). This
+matches exactly what T66's Review flagged as unverified and asked the
+next eqemu-holding unit to close: it did not close cleanly here either.
+**Not fixed** — `eq_commands.cpp`/`SendMoveItem`/`ZoneProcessMoveItem`
+are outside T65's territory fence. Recorded in `review/T65/README.md` for
+the board; fell back to T63's sanctioned direct-`inventory.item_id`-write
+approach for the decisive live captures, restoring Testmelee's baseline
+inventory and position afterward (confirmed via a final `SELECT`).
+
+### eqemu discipline
+
+Lock checked absent, taken (`T65 (slot2)`), deleted after `down.sh`
+confirmed clean container teardown. Server via sanctioned
+`scripts/eqemu/up.sh qeynos2` only. `Testmelee`'s baseline
+(`zone_id=25 x=-259 y=-1201 z=-5.75 heading=160.25`, primary item
+`9998`, secondary item `9979`) was recorded before any change and fully
+restored before shutdown.
+
+### Deviations from the plan (summary)
+
+1. `git merge fable` (fast-forward) into the task branch, to pick up
+   T66's `/equip` (merged after this branch was cut) and T61's landed
+   driver work — needed for the live leg per the plan's own instruction
+   to prefer `/equip` if merged in time. No conflicts; only my 6 files
+   remained locally modified afterward (`git status` clean otherwise).
+2. `check_file_sizes.sh` was run against `738da2a5` (this branch's actual
+   fork point) rather than the literal `fable` argument, since `fable`
+   had moved forward (to T66/T61's merges) by the time this ran and
+   diffing against the literal ref would have reported those siblings'
+   files as "changed" against my branch — not a real diff for this unit.
+   Confirmed via `git merge-base`. Result: 5 ok, 0 warn, 1 pre-existing
+   FAIL (`tools/model_viewer.cpp`, 3232 lines before this unit's 4-line
+   comment addition, 3236 after — already over the 3000 ceiling before
+   T65 touched it, not a new violation).
+3. `/equip`'s live-leg finding (above) — discovered while following the
+   plan's own instruction to prefer it, reported rather than silently
+   worked around or fixed out-of-territory.
