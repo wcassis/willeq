@@ -27,6 +27,8 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/inventory/inventory_constants.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/item_instance.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -42,6 +44,38 @@ std::vector<std::string> DrainSystemMessages(eqt::bridge::GameStateBridge& bridg
         }
     }
     return out;
+}
+
+// T71 -- /equip's local-state sync fix (see the plan's Review) requires a
+// real item at fromSlot (or a real cursor item, for cursor-source moves)
+// before it will push anything -- matching InventoryManager::pickupItem()'s
+// own "nothing there to pick up" refusal. Tests exercising the happy path
+// now seed the item they intend to move first, the same way a live session
+// would have one (via CharInventory/#summonitem) before ever running /equip.
+void SeedItem(EverQuest& eq, int16_t slot, uint32_t itemId) {
+    ItemInstance item;
+    item.itemId = itemId;
+    item.name = "Test Item";
+    item.slots = 0xFFFFFFFFu;  // fits any equipment slot -- these tests exercise
+                                // /equip's wiring, not canEquipItem()'s own
+                                // (already-covered-elsewhere) legality logic.
+    eq.GetInventoryManager()->setItem(slot, item);
+}
+
+// T71 -- the local-state sync fix also pushes EquipmentChangedIntent
+// alongside MoveItemIntent whenever an endpoint is an equipment slot (the
+// same pairing InventoryManager::pickupItem()/placeItem() already do for
+// drag/drop), so happy-path intent counts grew from 1 to (up to) 2. This
+// pulls the MoveItemIntent out of a mixed intent list rather than assuming
+// its position.
+const eqt::events::MoveItemIntent* FindMoveItemIntent(
+    const std::vector<eqt::events::RendererIntent>& intents) {
+    for (const auto& intent : intents) {
+        if (std::holds_alternative<eqt::events::MoveItemIntent>(intent)) {
+            return &std::get<eqt::events::MoveItemIntent>(intent);
+        }
+    }
+    return nullptr;
 }
 
 class EqCommandsEquipTest : public ::testing::Test {
@@ -139,21 +173,26 @@ TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
 
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots) {
     // The plan's own worked example: "e.g. equip a weapon: /equip 22 13".
+    SeedItem(eq, 22, 6011);  // Rusty Mace (T63/T65/T71's shared test item)
     eq.ProcessChatInput("/equip 22 13");
 
     // The confirmation message is asserted separately below
     // (GeneralToPrimary_PrintsSlotNamesInConfirmation) -- just drain it here.
     DrainSystemMessages(bridge);
     auto intents = bridge.drainIntents();
-    ASSERT_EQ(intents.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<eqt::events::MoveItemIntent>(intents[0]));
-    const auto& mi = std::get<eqt::events::MoveItemIntent>(intents[0]);
-    EXPECT_EQ(mi.fromSlot, 22);
-    EXPECT_EQ(mi.toSlot, 13);
-    EXPECT_EQ(mi.quantity, 0u);  // 0 = move entire stack (MoveItemIntent's own documented default)
+    // toSlot 13 (Primary) is an equipment slot, so the T71 fix also pushes
+    // EquipmentChangedIntent{13} alongside MoveItemIntent (see the comment
+    // on FindMoveItemIntent above).
+    ASSERT_EQ(intents.size(), 2u);
+    const auto* mi = FindMoveItemIntent(intents);
+    ASSERT_NE(mi, nullptr);
+    EXPECT_EQ(mi->fromSlot, 22);
+    EXPECT_EQ(mi->toSlot, 13);
+    EXPECT_EQ(mi->quantity, 0u);  // 0 = move entire stack (MoveItemIntent's own documented default)
 }
 
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PrintsSlotNamesInConfirmation) {
+    SeedItem(eq, 22, 6011);
     eq.ProcessChatInput("/equip 22 13");
 
     auto msgs = DrainSystemMessages(bridge);
@@ -169,31 +208,40 @@ TEST_F(EqCommandsEquipTest, UnequipPrimaryToGeneral_PushesMoveItemIntent) {
     // exactly, so moving OUT of an equipment slot (unequip) works the same
     // way moving into one does. Scope discipline: this is not a special
     // "unequip" command with its own semantics, just the same wrapper.
+    SeedItem(eq, 13, 6011);
     eq.ProcessChatInput("/equip 13 22");
 
     auto intents = bridge.drainIntents();
-    ASSERT_EQ(intents.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<eqt::events::MoveItemIntent>(intents[0]));
-    const auto& mi = std::get<eqt::events::MoveItemIntent>(intents[0]);
-    EXPECT_EQ(mi.fromSlot, 13);
-    EXPECT_EQ(mi.toSlot, 22);
+    // fromSlot 13 (Primary) is an equipment slot -- same EquipmentChangedIntent
+    // pairing as above.
+    ASSERT_EQ(intents.size(), 2u);
+    const auto* mi = FindMoveItemIntent(intents);
+    ASSERT_NE(mi, nullptr);
+    EXPECT_EQ(mi->fromSlot, 13);
+    EXPECT_EQ(mi->toSlot, 22);
 }
 
 TEST_F(EqCommandsEquipTest, CursorToSecondary_PushesMoveItemIntent) {
     // CURSOR_SLOT (30) -> SLOT_SECONDARY (14): the other common real
     // sequence (pick an item up, then equip it).
+    SeedItem(eq, CURSOR_SLOT, 9997);  // Dagger (T63/T65/T71's shared test item)
     eq.ProcessChatInput("/equip 30 14");
 
     auto intents = bridge.drainIntents();
-    ASSERT_EQ(intents.size(), 1u);
-    const auto& mi = std::get<eqt::events::MoveItemIntent>(intents[0]);
-    EXPECT_EQ(mi.fromSlot, CURSOR_SLOT);
-    EXPECT_EQ(mi.toSlot, SLOT_SECONDARY);
+    // toSlot 14 (Secondary) is an equipment slot; this path goes through
+    // InventoryManager::placeItem(), which already pairs MoveItemIntent with
+    // EquipmentChangedIntent for drag/drop -- same pairing here now.
+    ASSERT_EQ(intents.size(), 2u);
+    const auto* mi = FindMoveItemIntent(intents);
+    ASSERT_NE(mi, nullptr);
+    EXPECT_EQ(mi->fromSlot, CURSOR_SLOT);
+    EXPECT_EQ(mi->toSlot, SLOT_SECONDARY);
 }
 
 TEST_F(EqCommandsEquipTest, BankSlotToGeneral_RecognizedAsValid_PushesMoveItemIntent) {
     // Bank slots (2000-2015) are a recognized category too -- /equip is a
     // generic slot-to-slot wrapper over SendMoveItem, not equip-only.
+    SeedItem(eq, BANK_BEGIN, 9990);  // arbitrary stackable test item
     eq.ProcessChatInput("/equip 2000 22");
 
     auto intents = bridge.drainIntents();
@@ -201,6 +249,69 @@ TEST_F(EqCommandsEquipTest, BankSlotToGeneral_RecognizedAsValid_PushesMoveItemIn
     const auto& mi = std::get<eqt::events::MoveItemIntent>(intents[0]);
     EXPECT_EQ(mi.fromSlot, BANK_BEGIN);
     EXPECT_EQ(mi.toSlot, 22);
+}
+
+// ---------------------------------------------------------------------------
+// T71 -- local-state sync. Prior to this fix, /equip never touched
+// InventoryManager's own item cache: it only ever pushed the wire-level
+// MoveItemIntent, so the client's own view of "what's in this slot" (which
+// UpdatePlayerAppearanceFromInventory() reads verbatim) went stale after
+// every successful move until an unrelated event refreshed it. These tests
+// assert the local model directly, not just the intent that was pushed.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
+    // Two occupied equipment slots, no cursor staging -- the server's own
+    // SwapItem() (proven live, see the plan's Review) does a single atomic
+    // swap here; the local model must match it.
+    SeedItem(eq, SLOT_PRIMARY, 6011);    // Rusty Mace
+    SeedItem(eq, SLOT_SECONDARY, 9997);  // Dagger
+    eq.ProcessChatInput("/equip 13 14");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv, nullptr);
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    ASSERT_NE(inv->getItem(SLOT_SECONDARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 9997u);    // Dagger moved in
+    EXPECT_EQ(inv->getItem(SLOT_SECONDARY)->itemId, 6011u);  // Mace moved in
+}
+
+TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
+    SeedItem(eq, 22, 6011);
+    eq.ProcessChatInput("/equip 22 13");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv, nullptr);
+    EXPECT_EQ(inv->getItem(22), nullptr);  // source cleared, not left duplicated
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 6011u);
+}
+
+TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
+    // No item was ever seeded at 13 -- /equip must refuse rather than send
+    // a request for a move that cannot mean anything.
+    eq.ProcessChatInput("/equip 13 14");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("empty"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(EqCommandsEquipTest, CursorToSecondary_UpdatesLocalInventoryModel) {
+    SeedItem(eq, SLOT_SECONDARY, 9990);  // pre-existing occupant, displaced to cursor
+    SeedItem(eq, CURSOR_SLOT, 9997);     // Dagger, picked up
+    eq.ProcessChatInput("/equip 30 14");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv, nullptr);
+    ASSERT_NE(inv->getItem(SLOT_SECONDARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_SECONDARY)->itemId, 9997u);  // Dagger placed
+    // The displaced original occupant goes back onto the cursor -- matching
+    // InventoryManager::placeItem()'s own drag/drop swap semantics (proven
+    // live in this unit against a real eqemu server, see the Review).
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 9990u);
 }
 
 }  // namespace
