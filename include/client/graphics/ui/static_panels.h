@@ -93,6 +93,12 @@ struct InventoryPanelState {
     SlotDisplayInfo generalSlots[8];
     // Hovered slot (-1 = none)
     int hoveredSlot = -1;
+    // T60: the character paperdoll's rendered texture (owned by
+    // IrrlichtRenderer's CharacterModelView, lazily constructed — see
+    // InventoryLayout::paperdollRect() for where it's drawn). Null if the
+    // doll hasn't been constructed yet (e.g. RTT unavailable) or has no
+    // texture this frame; renderInventoryPopup() must handle null.
+    irr::video::ITexture* paperdollTexture = nullptr;
 };
 
 /** Render inventory popup (equipment + general slots). Only when activePopup == Inventory. */

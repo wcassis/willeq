@@ -10,6 +10,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
+#include "client/graphics/eq/bone_attachment.h"
 #include "client/animation_constants.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
@@ -136,58 +137,11 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
     }
 }
 
-// Helper: Extract rotation from bone matrix (EQ to Irrlicht coordinate conversion)
-static irr::core::vector3df extractBoneRotation(const BoneMat4& m) {
-    // Convert EQ bone matrix to Irrlicht rotation
-    // We need to swap Y and Z axes
-    irr::core::matrix4 irrMat;
-    irrMat[0] = m.m[0];   irrMat[1] = m.m[2];   irrMat[2] = m.m[1];   irrMat[3] = 0;
-    irrMat[4] = m.m[8];   irrMat[5] = m.m[10];  irrMat[6] = m.m[9];   irrMat[7] = 0;
-    irrMat[8] = m.m[4];   irrMat[9] = m.m[6];   irrMat[10] = m.m[5];  irrMat[11] = 0;
-    irrMat[12] = 0;       irrMat[13] = 0;       irrMat[14] = 0;       irrMat[15] = 1;
-
-    return irrMat.getRotationDegrees();
-}
-
-// Helper: Find bone index trying multiple naming conventions
-static int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton, const std::string& raceCode,
-                         const std::vector<std::string>& suffixes) {
-    if (!skeleton) return -1;
-
-    for (const auto& suffix : suffixes) {
-        // Try uppercase race code
-        std::string upperName = raceCode + suffix;
-        int idx = skeleton->getBoneIndex(upperName);
-        if (idx >= 0) return idx;
-
-        // Try lowercase race code
-        std::string lowerRace = raceCode;
-        std::transform(lowerRace.begin(), lowerRace.end(), lowerRace.begin(),
-                      [](unsigned char c) { return std::tolower(c); });
-        std::string lowerName = lowerRace + suffix;
-        idx = skeleton->getBoneIndex(lowerName);
-        if (idx >= 0) return idx;
-
-        // Try without underscore (e.g., "qcmr_point" instead of "qcm_r_point")
-        if (suffix.length() > 0 && suffix[0] != '_') {
-            // Already no leading underscore
-        } else if (suffix.length() > 1) {
-            std::string noUnderscoreSuffix = suffix.substr(1);
-            idx = skeleton->getBoneIndex(lowerRace + noUnderscoreSuffix);
-            if (idx >= 0) return idx;
-        }
-
-        // Try with _DAG suffix removed if present
-        if (suffix.length() > 4 && suffix.substr(suffix.length() - 4) == "_DAG") {
-            std::string noDAG = suffix.substr(0, suffix.length() - 4);
-            idx = skeleton->getBoneIndex(raceCode + noDAG);
-            if (idx >= 0) return idx;
-            idx = skeleton->getBoneIndex(lowerRace + noDAG);
-            if (idx >= 0) return idx;
-        }
-    }
-    return -1;
-}
+// Bone lookup, rotation extraction, and weapon/shield grip-offset math are
+// the shared implementation in bone_attachment.h (T60, findBoneIndex /
+// extractBoneRotation / computeWeaponGripOffset / computeShieldGripOffset,
+// already visible here via the EQT::Graphics namespace) — see that
+// header's comment for why. Do not reintroduce local copies here.
 
 void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
     // Only update for animated entities with equipment
@@ -240,21 +194,7 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             float weaponOffset = 0.5f;  // Default fallback
             irr::scene::IMesh* mesh = visual.primaryEquipNode->getMesh();
             if (mesh) {
-                irr::core::aabbox3df bbox = mesh->getBoundingBox();
-                float weaponLength = bbox.MaxEdge.X - bbox.MinEdge.X;  // Length along X axis
-
-                // Check if this is a two-handed weapon (staffs, 2H swords, etc.)
-                // Two-handed weapons are typically longer (> 3 units) or specific model IDs
-                bool isTwoHanded = (weaponLength > 3.0f);
-
-                if (isTwoHanded) {
-                    // Two-handed: grip at midpoint (half the length from center)
-                    weaponOffset = weaponLength * 0.25f;
-                } else {
-                    // One-handed: grip near the hilt (small offset from end)
-                    // The hilt is at MinEdge.X, so offset is distance from center to near-hilt
-                    weaponOffset = -bbox.MinEdge.X * 0.8f;  // 80% toward hilt end
-                }
+                weaponOffset = computeWeaponGripOffset(mesh->getBoundingBox());
             }
 
             // Apply offset along the weapon's local X axis (blade direction)
@@ -300,18 +240,10 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             irr::scene::IMesh* mesh = visual.secondaryEquipNode->getMesh();
             if (mesh && !isShield) {
                 // For weapons (not shields), calculate offset from bounding box
-                irr::core::aabbox3df bbox = mesh->getBoundingBox();
-                float weaponLength = bbox.MaxEdge.X - bbox.MinEdge.X;
-
-                bool isTwoHanded = (weaponLength > 3.0f);
-                if (isTwoHanded) {
-                    itemOffset = weaponLength * 0.25f;
-                } else {
-                    itemOffset = -bbox.MinEdge.X * 0.8f;
-                }
+                itemOffset = computeWeaponGripOffset(mesh->getBoundingBox());
             } else if (isShield) {
                 // Shields: small offset to position on arm
-                itemOffset = 0.3f;
+                itemOffset = computeShieldGripOffset();
             }
 
             // Apply offset along local X axis

@@ -82,7 +82,7 @@ namespace bridge { class GameStateBridge; }
 
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
-namespace eqt { namespace ui { class ChatMessageBuffer; } }
+namespace eqt { namespace ui { class ChatMessageBuffer; class CharacterModelView; } }
 namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
 // U03: included directly for layout struct and panel data structs (small, no deps)
 #include "client/graphics/ui/ui_layout.h"
@@ -1877,6 +1877,22 @@ private:
     std::unique_ptr<UIRenderer> uiRenderer_;  // U03b
     UILayout uiLayout_;                       // U03a
     bool newUIEnabled_ = true;                // U07c1: new UI on by default
+
+    // T60: inventory paperdoll. Constructed lazily on first popup open
+    // (ensurePaperdollInitialized()) — never at renderer init, so a
+    // player who never opens the inventory never pays the RTT's memory
+    // cost. Updated (appearance + RTT re-render) only while the popup is
+    // open (updatePaperdollForFrame(), called from the frame loop) and
+    // only on markDirty() triggers, never per frame — see
+    // refactor/T60_paperdoll_restore.md's Review.
+    std::unique_ptr<eqt::ui::CharacterModelView> characterModelView_;
+    bool paperdollInitAttempted_ = false;  // Avoid retrying init() every frame if it failed once
+    uint16_t paperdollLastRaceId_ = 0;
+    uint8_t paperdollLastGender_ = 0;
+    EQT::Graphics::EntityAppearance paperdollLastAppearance_{};
+    bool paperdollHasAppearance_ = false;
+    void ensurePaperdollInitialized();
+    void updatePaperdollForFrame();
 public:
     // U03d+: Cached data from bridge events for new static UI panels.
     // Public so IrrlichtBridge can update them directly.
@@ -1895,6 +1911,16 @@ public:
     SkillsPopupState skillsPopupState_; // U06h
     XPBarState xpBarState_;             // U06i
     std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
+
+    // T60: called by IrrlichtBridge on InventorySlotChanged (equip slots
+    // 0-21) — an equip-slot display change usually means the entity's
+    // appearance changed too, so the doll should re-render next time it's
+    // visible. Safe to call even if the doll doesn't exist yet or the
+    // popup is closed (no-op in both cases). Out-of-line (defined in
+    // irrlicht_renderer.cpp): CharacterModelView is only forward-declared
+    // here, and this header is included by TUs that don't otherwise need
+    // its full definition.
+    void markPaperdollDirty();
 private:
 
     // World objects for click detection (tradeskill containers, etc.)

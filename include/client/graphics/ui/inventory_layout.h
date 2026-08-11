@@ -12,13 +12,15 @@
  *
  * Layout is an EQ-authentic body arrangement (Will's choice, 2026-08-11):
  * two 8-slot columns (left: ears/head/face/neck/shoulders/arms/back,
- * right: wrists/range/hands/rings/chest/legs) flank an empty center
- * (no paperdoll model — see T54's recorded gap), a 6-slot weapon row
+ * right: wrists/range/hands/rings/chest/legs) flank the paperdoll rect
+ * (T60: character preview — the empty center T54/T57 recorded as a
+ * deliberate gap is now filled), a 6-slot weapon row
  * (primary/secondary/feet/waist/ammo/charm) sits below both columns, and
- * the 8-slot general inventory row sits below that. All 30 rects are
- * proven to lie wholly inside the fixed 400x350 UILayout::centerPopup —
- * see the containment test in tests/test_static_ui_panels.cpp and the
- * arithmetic in the plan's Review.
+ * the 8-slot general inventory row sits below that. All 30 slot rects
+ * plus the paperdoll rect are proven to lie wholly inside the fixed
+ * 400x350 UILayout::centerPopup and not overlap each other — see the
+ * containment test in tests/test_static_ui_panels.cpp and the arithmetic
+ * in the T57/T60 plans' Reviews.
  */
 
 #pragma once
@@ -141,6 +143,32 @@ inline irr::core::rect<irr::s32> slotRect(const UILayout& layout, int globalInde
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
     return irr::core::rect<irr::s32>(x, y, x + SLOT, y + SLOT);
+}
+
+/**
+ * Returns the screen-space rect for the character paperdoll (T60), sitting
+ * between the left/right equipment columns and above the weapon row.
+ * Computed from the same constants slotRect() uses, so it moves with
+ * centerPopup and can never overlap the columns or the weapon/general rows
+ * by construction — see the exhaustive test in
+ * tests/test_static_ui_panels.cpp.
+ */
+inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
+    using namespace detail;
+    const auto& popup = layout.centerPopup;
+    const irr::s32 popupX = popup.UpperLeftCorner.X;
+    const irr::s32 popupY = popup.UpperLeftCorner.Y;
+    const irr::s32 popupW = popup.getWidth();
+
+    constexpr irr::s32 DOLL_MARGIN = 8;  // gap from the adjacent equipment columns
+    const irr::s32 rightColX = popupW - LEFT_COL_X - SLOT;
+
+    const irr::s32 x1 = popupX + LEFT_COL_X + SLOT + DOLL_MARGIN;
+    const irr::s32 x2 = popupX + rightColX - DOLL_MARGIN;
+    const irr::s32 y1 = popupY + CONTENT_TOP;
+    const irr::s32 y2 = popupY + CONTENT_TOP + COL_ROWS * SLOT;  // column height
+
+    return irr::core::rect<irr::s32>(x1, y1, x2, y2);
 }
 
 } // namespace InventoryLayout

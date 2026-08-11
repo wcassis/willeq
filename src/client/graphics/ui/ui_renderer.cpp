@@ -100,6 +100,24 @@ void UIRenderer::drawPanel(const irr::core::rect<irr::s32>& rect) {
     drawRect({x2 - 1, y1, x2, y2}, borderColor);  // Right
 }
 
+void UIRenderer::drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::ITexture* texture) {
+    if (!driver_ || !texture) return;
+
+    // T60 finding: a render-target texture's V=0 corresponds to the
+    // BOTTOM of what was rendered into it (standard GL FBO convention —
+    // origin bottom-left), while draw2DImage's source-rect convention
+    // (built for ordinary loaded images, V=0 = top row) assumes the
+    // opposite. Blitting an RTT with a normal top-to-bottom source rect
+    // renders it upside-down — confirmed visually via the paperdoll
+    // captures before this fix. Only drawTexture() (this RTT-blit path)
+    // needs the flip; drawSprite()'s atlas path uses ordinary loaded
+    // textures and is unaffected.
+    const auto size = texture->getOriginalSize();
+    irr::core::rect<irr::s32> srcRect(0, static_cast<irr::s32>(size.Height),
+                                       static_cast<irr::s32>(size.Width), 0);
+    driver_->draw2DImage(texture, rect, srcRect, nullptr, nullptr, true);
+}
+
 void UIRenderer::endFrame() {
     if (!driver_) return;
 
