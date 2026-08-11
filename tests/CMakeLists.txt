@@ -396,6 +396,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
 
+# T66: /equip coverage (eq_commands.cpp RegisterEquipmentCommands()) -- same
+# seam as test_eq_commands_vendor.cpp/test_eq_commands_bank_train.cpp above.
+# Asserts the pushed MoveItemIntent's fields directly (bridge.drainIntents())
+# -- the SAME intent the inventory UI's drag/drop gesture pushes -- plus
+# argument parsing and slot-validation refusal messages. The live leg
+# (SendMoveItem's outgoing packet, and whether a real server actually equips
+# a real item) is explicitly outstanding -- sibling T65 holds the eqemu lock
+# this round; see refactor/T66_camera_and_equip_reachability.md's Review.
+ADD_EXECUTABLE(test_eq_commands_equip
+    test_eq_commands_equip.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_commands_equip GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_equip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_commands_equip)
+
 # T64: parseArguments()-only coverage for the video-capture evidence tool's
 # CLI flags (--dump-frames-dir/--dump-every/--dump-max-frames). Static
 # method, no renderer/GL context needed -- see the file header comment for
@@ -1045,6 +1062,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_bone_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bone_attachment GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_bone_attachment)
+ENDIF()
+
+# T66: /camera coverage (irrlicht_renderer.cpp processSlashCommand()) --
+# genuinely headless end-to-end: exercises the real processSlashCommand() ->
+# setCameraMode()/cycleCameraMode()/getCameraModeString() chain via a
+# default-constructed, never-Init()'d IrrlichtRenderer (no Irrlicht device
+# needed at all -- see the file header comment for why that's safe). Same
+# "minimal fake bridge" idiom test_static_ui_panels.cpp (T54) uses to
+# capture the command's chat() replies.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_irrlicht_camera_command
+        test_irrlicht_camera_command.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_irrlicht_camera_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_irrlicht_camera_command GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
 ENDIF()
 
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)

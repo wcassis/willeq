@@ -82,6 +82,7 @@ extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
                                            int vertexType);
 #endif
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -1002,6 +1003,31 @@ void IrrlichtRenderer::hideLoadingScreen() {
     }
 }
 
+namespace {
+// T66 -- /camera mode-name parsing. Case-insensitive, spaces/hyphens/
+// underscores ignored, so it accepts anything getCameraModeString() already
+// produces ("Free", "Follow", "First Person") as a set-then-read round trip,
+// plus compact spellings ("firstperson", "fp") for scripts that would
+// rather not quote a two-word argument.
+std::string NormalizeCameraModeToken(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == ' ' || c == '-' || c == '_') continue;
+        out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+bool ParseCameraModeName(const std::string& args, EQT::Graphics::IrrlichtRenderer::CameraMode& out) {
+    std::string norm = NormalizeCameraModeToken(args);
+    if (norm == "free") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::Free; return true; }
+    if (norm == "follow") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::Follow; return true; }
+    if (norm == "firstperson" || norm == "fp") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::FirstPerson; return true; }
+    return false;
+}
+} // namespace
+
 // D20d: Handle renderer-specific slash commands forwarded from game thread
 void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // Parse command name and args
@@ -1042,6 +1068,37 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         std::string path = args.empty() ? "screenshot.png" : args;
         bool ok = saveScreenshot(path);
         chat(fmt::format("Screenshot {}: {}", path, ok ? "saved" : "FAILED"));
+    } else if (cmd == "/camera") {
+        // T66 -- instance 7 of "reachable only through a UI gesture, invisible
+        // to automation" (refactor/deferred.md): cycleCameraMode()/
+        // setCameraMode()/getCameraModeString() already existed, but the ONLY
+        // producer was HA::ToggleCameraMode, a raw Ctrl+F5 key event -- a
+        // scripted/piped session could never enter first person. Modelled on
+        // /screenshot immediately above: same registry-3 renderer command,
+        // same chat()-reply idiom, no new dispatch path invented. No-arg
+        // reports the current mode (so a script can assert rather than
+        // assume); a named mode sets it explicitly, round-tripping with
+        // getCameraModeString()'s own output -- deliberately NOT just
+        // exposing cycleCameraMode(), which would force a script to cycle
+        // blind and count (T51 documented exactly that trap for /attack).
+        // Cycling is additionally exposed via "cycle" since it was free.
+        if (args.empty()) {
+            chat(fmt::format("Camera mode: {}", getCameraModeString()));
+        } else if (args == "cycle") {
+            cycleCameraMode();
+            chat(fmt::format("Camera mode: {}", getCameraModeString()));
+        } else {
+            CameraMode mode;
+            if (ParseCameraModeName(args, mode)) {
+                setCameraMode(mode);
+                chat(fmt::format("Camera mode: {}", getCameraModeString()));
+            } else {
+                chat(fmt::format(
+                    "Unknown camera mode '{}'. Valid: Free, Follow, \"First Person\" "
+                    "(or firstperson/fp); no argument reports the current mode; "
+                    "'cycle' advances Free->Follow->First Person->Free.", args));
+            }
+        }
     } else if (cmd == "/upload") {
         toggleGPUUploadThread();
         chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));

@@ -2403,6 +2403,64 @@ caution for whoever scans the remaining intent list next: "has a handler,
 no producer" is necessary but not sufficient; check for a parallel
 direct-call command before assuming a gap.
 
+**T66 (2026-08-11) adds instances 7 and 8 — both surfaced not by scanning
+the intent list, but by a live verification unit (T63) hitting the wall
+directly, same as T26/T42 before it.** `IrrlichtRenderer::cycleCameraMode()`/
+`setCameraMode()`/`getCameraModeString()` (`irrlicht_renderer.cpp`) were
+fully implemented, with the ONLY producer being `HA::ToggleCameraMode` — a
+raw Ctrl+F5 key event. A scripted/piped session could never enter first
+person; **T63 could not produce any first-person evidence at all**, a third
+of what its plan required, and correctly STOPped rather than inventing a
+scripting affordance. T66 exposed the same functions as `/camera` (no
+argument reports the current mode via `getCameraModeString()`; a named
+argument sets a mode that round-trips with the getter's own strings —
+deliberately NOT just exposing `cycleCameraMode()`, which would force a
+script to cycle blind and count, exactly T51's `/attack` trap; cycling is
+additionally exposed via `/camera cycle` since it was free). Modelled
+directly on `/screenshot` (registry 3, the renderer's own
+`processSlashCommand()`/`RendererCommand` bridge path) — same dispatch, same
+`chat()`-reply idiom, no new path invented. Proven headlessly end to end
+(`tests/test_irrlicht_camera_command.cpp`): a default-constructed, never-
+`Init()`'d `IrrlichtRenderer` is safe to drive directly (constructor is
+empty; the functions in this path only touch `cameraMode_` and
+null-guarded members), so the test exercises the real
+`processSlashCommand()` → `setCameraMode()`/`getCameraModeString()` chain,
+not a mock of it — set-then-read round trips for all three modes, plus
+alias/cycle/unknown-mode coverage.
+
+Second: `EverQuest::SendMoveItem(fromSlot, toSlot, quantity)`
+(`eq_merchant.cpp`, opcode `HC_OP_MoveItem=0x420f`) was fully implemented
+and already had ONE producer — `MoveItemIntent`, pushed by the inventory
+UI's drag-and-drop gesture (`inventory_manager.cpp`) — but no command-line
+producer existed. **T63 had to write `inventory.item_id` directly into the
+database and restart the client** to get a character holding a weapon at
+all, a worse test than the real path since it bypasses the packet flow a
+real equip uses. T66 added `/equip <fromSlot> <toSlot>`, pushing the SAME
+`MoveItemIntent` the drag/drop gesture pushes (same maximum-fidelity choice
+T48/T50 made for vendor/bank), with slot ids from the canonical
+`eqt::inventory::EquipmentSlot` enum (`inventory_constants.h`, T57's
+ruling — no numbering invented) and validation against the same slot
+categories `InventoryManager::isValidSlot()` recognizes (that method is
+private, so the command mirrors its predicate rather than widening its
+access for one caller). Scope discipline held: no inventory management, no
+swap semantics, no client-side prediction — the server is authoritative and
+the existing `ZoneProcessMoveItem` path (untouched) handles the reply.
+**The live end-to-end leg is explicitly OUTSTANDING** — T66 ran under NO
+EQEMU (sibling T65 held the lock this round), so nothing has watched a real
+`HC_OP_MoveItem` packet leave the wire or a real server actually equip a
+real item. Coverage stops at the wiring (`tests/test_eq_commands_equip.cpp`):
+command registered, arguments parsed (missing/non-numeric/trailing-garbage
+rejected), invalid slots refused with an actionable message, and the right
+intent pushed with the right fields for the equip/unequip/cursor/bank
+directions the plan named. **The next unit that takes the eqemu lock should
+run `/equip` live** (equip a weapon from inventory, confirm server ack and
+visible appearance change) before this instance can be called closed the
+way T52 closed zoning.
+
+**That is now eight instances**, still producing exactly as this entry
+predicts whenever a unit actually needs the capability rather than scanning
+for it abstractly.
+
 Historical record follows:
 
 The 2026-08-02 ruling says anything blocking fully automated development
