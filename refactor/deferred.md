@@ -3722,3 +3722,74 @@ scope for T64 (extraction only, per its contract) — worth its own unit if
 someone wants it. Would need: a command-processor entry, some way to name/
 version successive recordings without overwriting, and a decision on
 whether `--dump-max-frames`'s bound applies per-recording or session-wide.
+## T63 (2026-08-11) live equipment verification — primary/shield render correctly; secondary-weapon-on-paperdoll does not; first-person camera unreachable from script
+
+Live eqemu session (Testmelee, Dark Elf female, `arena` zone) settled the
+question T60/T62 explicitly left open (Will's in-game report of items not
+appearing properly held) with a real character holding real, resolved
+items in a real session — full detail, item→model tables, and log
+evidence in `refactor/T63_live_equipment_render_verification.md`'s Review
+and `/mnt/projects/fable/review/T63/README.md` (media).
+
+**Verdicts, per configuration (paperdoll evidence)**:
+- Primary weapon only: **renders correctly** — gripped in right hand.
+- Secondary weapon only: **defect** — never visibly renders (see below).
+- Dual wield: primary renders correctly; secondary reproduces the same
+  defect.
+- Shield in secondary: **renders correctly** — on the arm/torso, not
+  gripped in the hand; `SHIELD_POINT` resolved (bone index 11, distinct
+  from `L_POINT`'s index 10 on the same character) — **no fallback to
+  L_POINT** for this race, and a `wld_dump` of `global_chr.s3d` found a
+  `*SHIELD_POINT_TRACKDEF` bone for all 25 playable race codes checked, so
+  the fallback risk this unit was asked to characterise does not appear to
+  exist for standard playable races in that file.
+
+**Key architectural finding**: the live wire protocol's spawn equipment
+slot carries a server-resolved material id (e.g. `7` for idfile `IT7`),
+never the database item id (e.g. `6011`) — confirmed by log, not assumed.
+`EquipmentModelLoader::getEquipmentMesh()`'s "try `item_models.json` as an
+item-id map first" branch is therefore dead weight for live player
+equipment; it always misses and falls through to using the value directly
+as a model id, which is what's actually correct. Separately,
+`data/item_models.json` itself was found stale/disconnected from the live
+server's real item database (497/1863 sampled weapon/shield items had any
+entry, only 3 of those matched the item's real idfile) — does not cause
+any defect found in this unit (the live path never calls it with a real
+item id) but is objectively wrong data if anything else reads it; worth
+its own audit unit if that's ever suspected.
+
+**Defect — needs its own fix unit**: on the paperdoll (`CharacterModelView`),
+a plain (non-shield) secondary/left-hand weapon never visibly renders,
+reproduced independently in two configurations (secondary-only and dual
+wield) with identical bone index (10, `L_POINT`) and offset (0.51) both
+times, despite the log confirming mesh build, texture load, and bone
+resolution all succeeded — this is not a "not found" failure. The shield
+in the same slot (different bone, `SHIELD_POINT` index 11) and the primary
+weapon (bone index 6) both render fine. Flagged (not confirmed) candidate:
+`character_model_view.cpp:549-552` / `entity_equipment.cpp:233-236` apply
+rotation `(180,0,0)` to non-shield secondary items vs `(180,0,180)` for
+shields — the shield-only extra Z rotation may be what keeps it outside
+the body mesh while the plain-weapon rotation points its offset into/
+behind it. Needs a controlled A/B to confirm, not asserted here. Whether
+this also affects in-world (non-paperdoll, 3rd-person) rendering is
+**not established** — `entity_equipment.cpp` shares the logic, but the
+`arena` zone's dark default lighting made 3rd-person confirmation
+impossible in this session.
+
+**STOP, not delivered**: first-person-during-swing captures. No slash
+command or renderer-bridge command wraps `ToggleCameraMode`
+(`cycleCameraMode()`) — it is reachable only via a real Ctrl+F5 key event,
+which `--script` cannot send. Per the plan's explicit instruction, no
+scripting affordance was added to production code; this is a harness gap
+for any future unit needing camera-mode control from `--script`, not a
+rendering defect. Read-only correction found while chasing this:
+`triggerFirstPersonAttack()`/`updateFirstPersonWeapons()` are near-no-op
+compatibility stubs, not a separate first-person weapon system — actual
+first-person weapon rendering reuses the same bone-attachment path already
+verified here for 3rd person/paperdoll.
+
+No production code was modified by this unit (verification-only,
+`git status` clean throughout). Board entries above are the closure for
+Will's open question: primary and shield equipment render correctly in a
+live session; secondary-weapon-only does not, characterised precisely
+enough to scope a fix unit without re-running the live session.
