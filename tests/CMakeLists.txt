@@ -662,6 +662,22 @@ TARGET_COMPILE_DEFINITIONS(test_spells_eff_reader PRIVATE WILLEQ_DB_PATH="${CMAK
 TARGET_LINK_LIBRARIES(test_spells_eff_reader GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spells_eff_reader)
 
+# T72: pure spell_affect_index -> spells.eff record -> per-stage visual
+# selection layer (spell_visual_selection.h/.cpp). No Irrlicht/rendering
+# dependency -- links the same lightweight spell_database/willeq_database/
+# sqlite3 set as test_spells_eff_reader.cpp for the DB-backed census tests.
+ADD_EXECUTABLE(test_spell_visual_selection
+    test_spell_visual_selection.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/spell_visual_selection.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_visual_selection PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_visual_selection GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_spell_visual_selection)
+
 # Test WilleqDatabase::open() schema-version validation (T56)
 ADD_EXECUTABLE(test_willeq_database
     test_willeq_database.cpp

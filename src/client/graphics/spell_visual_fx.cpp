@@ -29,6 +29,68 @@ SpellVisualFX::SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideo
     // GLES2 uses ParticleManager with color-only point sprites — no textures needed.
     loadParticleTextures();
 #endif
+    // T72: independent of the GLES2/desktop split above — loads the raw
+    // spells.eff staging data used by resolveVisual() regardless of driver.
+    loadSpellsEff();
+}
+
+void SpellVisualFX::loadSpellsEff()
+{
+    if (m_eq_client_path.empty()) {
+        LOG_DEBUG(MOD_SPELL, "T72: no eqClientPath given, spells.eff visual selection unavailable "
+                              "(all spells will use resist/school fallback)");
+        return;
+    }
+    std::string path = m_eq_client_path;
+    if (!path.empty() && path.back() != '/' && path.back() != '\\') {
+        path += '/';
+    }
+    path += "spells.eff";
+
+    m_spells_eff_loaded = m_spells_eff.load(path);
+    if (m_spells_eff_loaded) {
+        LOG_INFO(MOD_SPELL, "T72: loaded spells.eff ({} records, {} populated) from {}",
+                 SpellsEffReader::recordCount(), m_spells_eff.populatedRecordCount(), path);
+    } else {
+        LOG_WARN(MOD_SPELL, "T72: could not load spells.eff from {} ({}) — all spells will use "
+                             "resist/school fallback visuals", path, m_spells_eff.loadError());
+    }
+}
+
+SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
+{
+    int32_t affect_index = kSpellsEffNoEffectIndex;
+    if (m_spell_db) {
+        const SpellData* spell = m_spell_db->getSpell(spell_id);
+        if (spell) affect_index = spell->spell_affect_index;
+    }
+
+    SpellVisualSelector selector(m_spells_eff_loaded ? &m_spells_eff : nullptr);
+    SpellVisualResolution res = selector.resolve(affect_index);
+
+    // Distinguish the two fallback populations in logs (T72 requirement) --
+    // "no visual" for a spell must be diagnosable as "by design (-1)" vs.
+    // "referenced index but the record is empty padding" vs. a genuine
+    // resolved record, not one silently-ordinary bucket.
+    switch (res.source) {
+        case SpellVisualSource::NoAffectIndex:
+            LOG_TRACE(MOD_SPELL, "T72 visual: spell {} index={} -> NoAffectIndex fallback "
+                                  "(no spell_affect_index or reader unavailable)",
+                      spell_id, affect_index);
+            break;
+        case SpellVisualSource::EmptyRecord:
+            LOG_DEBUG(MOD_SPELL, "T72 visual: spell {} index={} -> EmptyRecord fallback "
+                                  "(referenced record has no sprite/tag content)",
+                      spell_id, affect_index);
+            break;
+        case SpellVisualSource::Resolved:
+            LOG_TRACE(MOD_SPELL, "T72 visual: spell {} index={} -> Resolved "
+                                  "(source={} middle={} target={})",
+                      spell_id, affect_index, res.hasSourceStage(), res.hasTravelStage(),
+                      res.hasTargetStage());
+            break;
+    }
+    return res;
 }
 
 SpellVisualFX::~SpellVisualFX()
@@ -297,6 +359,20 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
         m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id));
 
+        // T72: spells.eff's Source stage maps onto CastGlow/CastSpray — the
+        // caster-side emitter block. Only a *Resolved* record (a real
+        // spells.eff record, not the -1/empty-padding fallback) can
+        // suppress this; the resist/school fallback always still shows a
+        // cast glow exactly as before, per the plan's "fallback must stay
+        // good" requirement.
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        if (!visual.isFallback() && !visual.hasSourceStage()) {
+            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Source-stage content "
+                                  "— suppressing cast glow (data-driven, not a bug)",
+                      spell_id, visual.spell_affect_index);
+            return 1;
+        }
+
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
@@ -404,6 +480,17 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // T72: spells.eff's middle/travel emitter maps onto ProjectileTravel.
+        // Same fallback-preserving rule as createCastGlow: only a Resolved
+        // record with a provably-absent Middle stage suppresses this.
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        if (!visual.isFallback() && !visual.hasTravelStage()) {
+            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Middle-stage content "
+                                  "— suppressing projectile travel (data-driven, not a bug)",
+                      spell_id, visual.spell_affect_index);
+            return;
+        }
+
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
@@ -475,6 +562,16 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // T72: spells.eff's Target emitter maps onto ImpactBurst. Same
+        // fallback-preserving rule as createCastGlow/createProjectile.
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        if (!visual.isFallback() && !visual.hasTargetStage()) {
+            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Target-stage content "
+                                  "— suppressing impact burst (data-driven, not a bug)",
+                      spell_id, visual.spell_affect_index);
+            return;
+        }
+
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
@@ -507,6 +604,15 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // T72: same Target-stage gate as createImpact() above.
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        if (!visual.isFallback() && !visual.hasTargetStage()) {
+            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Target-stage content "
+                                  "— suppressing impact burst at position (data-driven, not a bug)",
+                      spell_id, visual.spell_affect_index);
+            return;
+        }
+
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
