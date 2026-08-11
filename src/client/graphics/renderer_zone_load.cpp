@@ -8,7 +8,6 @@
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/environment/zone_biome.h"
@@ -2874,7 +2873,9 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     auto sampleStep = [&](const char* stepName) {
         if (!memAudit) return;
         size_t texBytes = constrainedTextureCache_ ? constrainedTextureCache_->getCurrentUsage() : 0;
-        size_t meshBytes = constrainedMeshCache_ ? constrainedMeshCache_->getCurrentUsage() : 0;
+        // meshBytes was constrainedMeshCache_'s usage, always 0 (T67: cache
+        // removed, was never constructed in any shipped build).
+        constexpr size_t meshBytes = 0;
         logLoadMemAuditStep(stepName, getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
     };
 

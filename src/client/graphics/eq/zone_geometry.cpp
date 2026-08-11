@@ -72,6 +72,25 @@ irr::video::SColor normalToColor(float nx, float ny, float nz) {
     return irr::video::SColor(255, r, g, b);
 }
 
+// Relocated verbatim (T67, 2026-08-11) from
+// ConstrainedMeshCache::estimateMeshSize() -- see this file's header
+// declaration and src/client/graphics/CLAUDE.md for the reference pointer
+// to the removed cache's implementation history. Calculation unchanged.
+size_t estimateMeshSizeBytes(irr::scene::IMeshSceneNode* node) {
+    if (!node || !node->getMesh()) return 0;
+
+    size_t total = 0;
+    auto* mesh = node->getMesh();
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        auto* buf = mesh->getMeshBuffer(i);
+        if (buf) {
+            total += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
+            total += buf->getIndexCount() * sizeof(uint16_t);
+        }
+    }
+    return total;
+}
+
 irr::scene::IMesh* ZoneMeshBuilder::buildMesh(const ZoneGeometry& geometry) {
     if (geometry.vertices.empty() || geometry.triangles.empty()) {
         return nullptr;

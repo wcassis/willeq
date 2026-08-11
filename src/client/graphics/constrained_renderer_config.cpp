@@ -69,8 +69,7 @@ bool ConstrainedRendererConfig::validate(std::string& errors) const {
         if (totalMemoryBudgetBytes < textureMemoryBytes + framebufferMemoryBytes)
             errors += fmt::format("  - totalMemoryBudgetBytes: {} < textureMemoryBytes ({}) + framebufferMemoryBytes ({})\n",
                                   totalMemoryBudgetBytes, textureMemoryBytes, framebufferMemoryBytes);
-        if (meshMemoryBytes == 0)
-            errors += "  - meshMemoryBytes: must be > 0 when totalMemoryBudgetBytes is set\n";
+        // meshMemoryBytes validation removed T67 (field removed with ConstrainedMeshCache).
     }
 
     return errors.empty();
@@ -100,10 +99,8 @@ void ConstrainedRendererConfig::calculateMemoryLimits() {
         size_t eightMB = 8 * 1024 * 1024;
         soundBufferCacheBytes = std::min(eightMB, totalMemoryBudgetBytes / 16);
 
-        // Mesh cache: derive from total if not explicitly set by preset
-        if (meshMemoryBytes == 0) {
-            meshMemoryBytes = totalMemoryBudgetBytes / 5;
-        }
+        // Mesh cache derived-limit computation removed T67 (field removed
+        // with ConstrainedMeshCache).
 
         // Default: keep at most 4 other-zone _chr.s3d caches (overridable via JSON)
         if (chrCacheMaxEntries == 0) {
@@ -209,7 +206,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 30000;
             // System RAM budget
             config.totalMemoryBudgetBytes = 32 * 1024 * 1024;  // 32MB
-            config.meshMemoryBytes = 4 * 1024 * 1024;  // 4MB mesh cache
             config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             break;
@@ -229,7 +225,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.maxPolygonsPerFrame = 50000;
             // System RAM budget
             config.totalMemoryBudgetBytes = 64 * 1024 * 1024;  // 64MB
-            config.meshMemoryBytes = 8 * 1024 * 1024;  // 8MB mesh cache
             config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             break;
@@ -251,7 +246,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.enableShaders = true;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
-            config.meshMemoryBytes = 16 * 1024 * 1024;  // 16MB mesh cache
             config.backgroundThreadCount = 2;
             config.targetFps = 60.0f;
             break;
@@ -303,7 +297,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.anisotropicFilterLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
-            config.meshMemoryBytes = 24 * 1024 * 1024;  // 24MB mesh cache
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.enableItemIcons = false;
@@ -523,10 +516,12 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         adaptiveLightingAreaPPFloor = preset["adaptiveLightingAreaPPFloor"].asInt();
     if (preset.isMember("adaptiveLightingRadiusMargin"))
         adaptiveLightingRadiusMargin = preset["adaptiveLightingRadiusMargin"].asFloat();
-    if (preset.isMember("mesh_memory_mb"))
-        meshMemoryBytes = static_cast<size_t>(preset["mesh_memory_mb"].asUInt64()) * 1024 * 1024;
-    if (preset.isMember("meshMemoryBytes"))
-        meshMemoryBytes = static_cast<size_t>(preset["meshMemoryBytes"].asUInt64());
+    // "mesh_memory_mb"/"meshMemoryBytes" preset keys removed T67 (field
+    // removed with ConstrainedMeshCache). No shipped config/ preset used
+    // either key (verified); a local custom JSON setting one is now
+    // silently ignored, consistent with how any other unrecognized preset
+    // key is already treated here (no allowlist/reject-unknown-keys
+    // validation exists in this loader).
     if (preset.isMember("targetFps"))
         targetFps = preset["targetFps"].asFloat();
     if (preset.isMember("entityPrepMaxPvsDepth"))

@@ -424,7 +424,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
-        src/client/graphics/constrained_mesh_cache.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/client/graphics/load_mem_audit.cpp
         # Inventory UI sources (inventory_constants/inventory_manager,

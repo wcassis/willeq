@@ -1,5 +1,4 @@
 #include "client/graphics/irrlicht_renderer.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/sky_renderer.h"
@@ -655,30 +654,13 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
             }
         }
 
-        // Copy mesh load queue and protected regions for constrained mesh cache
-        if (constrainedMeshCache_) {
-            meshLoadQueue_.clear();
-            size_t needBuildCount = 0;
-            for (const auto& sr : results->meshLoadQueue) {
-                meshLoadQueue_.push_back({sr.regionIdx, sr.distanceSq});
-                if (!constrainedMeshCache_->isLoaded(sr.regionIdx))
-                    needBuildCount++;
-            }
-            // Always log when there's work to do, throttled otherwise
-            static int meshLoadQLogCounter = 0;
-            if (needBuildCount > 0 || ++meshLoadQLogCounter % 60 == 1) {
-                LOG_DEBUG(MOD_GRAPHICS, "SimWorker meshLoadQueue: {} total, {} need building, {} loaded in cache",
-                          meshLoadQueue_.size(), needBuildCount,
-                          constrainedMeshCache_->getLoadedCount());
-            }
-            // Rebuild bitvector: clear all bits, then set protected ones
-            std::fill(protectedRegions_.begin(), protectedRegions_.end(), false);
-            for (size_t regionIdx : results->protectedRegions) {
-                if (regionIdx < protectedRegions_.size()) {
-                    protectedRegions_[regionIdx] = true;
-                }
-            }
-        }
+        // Mesh load queue / protected-regions population for the constrained
+        // mesh cache removed T67 — was gated on constrainedMeshCache_, never
+        // true (the cache was never constructed), so protectedRegions_ was
+        // already permanently all-false in every shipped build (its only
+        // writer lived here). meshLoadQueue_'s only readers were the same
+        // dead-gated code and were removed alongside it. See
+        // src/client/graphics/CLAUDE.md for the reference pointer.
 
         // Apply sorted region draw list for front-to-back zone rendering
         if (manualZoneDrawEnabled_ && !results->sortedRegions.empty()) {

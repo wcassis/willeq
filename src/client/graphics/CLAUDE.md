@@ -12,7 +12,6 @@
 - `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
 - `ConstrainedTextureCache` - LRU-evicting texture cache with memory budget
-- `ConstrainedMeshCache` - Lazy/progressive zone region mesh loading with memory budget
 - `PortalSystem` - AABB-derived portal extraction and stencil-based portal occlusion
 - `SpellVisualFX` - Spell casting effects: glow, projectile, impact, aura, rain, ground circle
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
@@ -118,10 +117,10 @@ On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses 
 
 **Constrained texture cache** (`ConstrainedTextureCache`): LRU-evicting texture cache with a configurable memory budget (default 64 MB). Textures are created via `driver_->addTexture()` and tracked by byte size. On cache miss, textures are loaded from zone source data or re-decoded from S3D archives.
 
-**Constrained mesh cache** (`ConstrainedMeshCache`): Lazy/progressive mesh loading for zone region meshes. Instead of building all ~1900 region meshes at zone load, meshes are built on-demand as the player moves. Regions are evicted when the cache exceeds its budget (default 24 MB). Rebuilds use `wldLoader->getGeometryForRegion()` and require zone texture pixel data to remain available for atlas assembly.
+**Region meshes are always built eagerly at zone load** (`loadZoneStep4_Regions()`), not lazily/progressively. A `ConstrainedMeshCache` class existed for lazy/progressive region-mesh loading with LRU eviction under a memory budget (24 MB on the `orangepi` preset) but was **removed T67 (2026-08-11): it was never constructed in any shipped build.** The only statement that ever touched its owning `unique_ptr` as an lvalue was a `.reset()` sitting behind a null check on that same pointer, so it was always null for the entire process lifetime, and every one of its ~40 call sites was a read behind a guard that never passed. There was also no way to turn it on: the derived budget field (`meshMemoryBytes`) was computed per preset and consumed by nothing. If Pi memory pressure is ever measured to need this (P10b's single "71 evictions" observation was never reproduced — P13/P13b measured zero evictions across four later configurations), the implementation is fully recoverable, not reimplemented from scratch: last shipped at commit `49844c72` (2026-03-08, "PVS direct index lookup, SimWorker copy elimination, DRM page flip fix, stderr buffering"), `include/client/graphics/constrained_mesh_cache.h` + `src/client/graphics/constrained_mesh_cache.cpp` — `git show 49844c72:src/client/graphics/constrained_mesh_cache.cpp` retrieves it in one command. Its one genuinely-live piece, the mesh-size estimator, was relocated verbatim to `estimateMeshSizeBytes()` in `include/client/graphics/eq/zone_geometry.h` / `src/client/graphics/eq/zone_geometry.cpp` rather than deleted.
 
 **Zone source data lifecycle**: After zone loading completes:
-1. Texture pixel data (`releaseTexturePixelData()`) is released only when the mesh cache is NOT active (all meshes pre-built). When the mesh cache IS active, texture pixel data must be retained for progressive region mesh rebuilds.
+1. Texture pixel data (`releaseTexturePixelData()`) is released when `releaseTextureDataAfterUpload` is set (true whenever a preset has a nonzero `totalMemoryBudgetBytes` — `voodoo1`/`voodoo2`/`tnt`/`orangepi`), unconditionally of anything mesh-related. Retained otherwise (e.g. the default/unconstrained preset).
 2. Character model data (`clearCharacterData()`) is released in `hideLoadingScreen()` — `RaceModelLoader` independently loads `_chr.s3d` into its own cache, making the zone source copy redundant.
 3. Combined zone geometry vectors (vertices/triangles) are released in `initDeferredEnvironmentSystems()` when the detail system is disabled. Runtime bounds checks use cached `zoneBounds*_` member variables instead.
 

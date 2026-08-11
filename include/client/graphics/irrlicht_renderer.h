@@ -88,9 +88,8 @@ namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRen
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 
-// Forward declaration for constrained texture cache and mesh cache
+// Forward declaration for constrained texture cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
-namespace EQT { namespace Graphics { class ConstrainedMeshCache; } }
 
 namespace EQT {
 namespace Graphics {
@@ -1089,9 +1088,6 @@ public:
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
     ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_; }
 
-    // Constrained mesh cache access (may return nullptr if not in constrained mode)
-    ConstrainedMeshCache* getConstrainedMeshCache() { return constrainedMeshCache_.get(); }
-
     // Frame budget governor access (always available after init)
     FrameBudgetGovernor* getGovernor() { return governor_.get(); }
 
@@ -1213,7 +1209,6 @@ private:
     void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
     // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
     void createZoneMesh();
-    void processFrameLazyLoad();   // FPS-budgeted lazy mesh loading (constrained mode)
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
     // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
@@ -1277,7 +1272,6 @@ private:
     std::unique_ptr<AnimatedTextureManager> animatedTextureManager_;
     std::unique_ptr<SkyRenderer> skyRenderer_;
     ConstrainedTextureCache* constrainedTextureCache_ = nullptr;  // Owned by Application, mandatory
-    std::unique_ptr<ConstrainedMeshCache> constrainedMeshCache_;      // Optional, lazy mesh loading in constrained mode
     std::unique_ptr<Detail::DetailManager> detailManager_;  // Grass, plants, debris
     // P32: AnimatedTreeManager (CPU-instancing tree wind facade) deleted —
     // its live GLES2 consumers used only wind config/classification, which
@@ -1437,13 +1431,17 @@ private:
     void buildZonePlaceholder(float playerIrrX = 0, float playerIrrY = 0, float playerIrrZ = 0);
     void destroyZonePlaceholder();
 
-    // Lazy mesh loading state (constrained mode)
-    struct MeshLoadEntry {
-        size_t regionIdx;
-        float distance;  // for priority sorting
-    };
-    std::vector<MeshLoadEntry> meshLoadQueue_;
-    std::vector<bool> protectedRegions_;  // bitvector indexed by region index (true = protected from eviction)
+    // T67 (2026-08-11): protectedRegions_ was populated exclusively by the
+    // now-removed ConstrainedMeshCache's SimulationWorker-apply path (the
+    // eviction-protection bitvector). It has no writer left anywhere in the
+    // codebase, so it is permanently all-false -- the same as it already
+    // was in every shipped build, since that writer was itself dead (gated
+    // on a pointer that was never constructed). Left in place because a few
+    // live, cache-independent readers (door/PVS-object progressive-load
+    // gating) still consult it; see src/client/graphics/CLAUDE.md's
+    // "Constrained Memory Management" section for the removed cache's
+    // reference pointer.
+    std::vector<bool> protectedRegions_;
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
     // Regions waiting for async fallback textures to complete GPU upload.
@@ -1456,41 +1454,6 @@ private:
         float distanceSq;
     };
     std::vector<TextureRebuildEntry> textureRebuildQueue_;
-
-    // Background mesh build result from thread pool
-    struct BackgroundMeshResult {
-        size_t regionIdx;
-        std::string zoneName;
-        irr::scene::SMesh* mesh;
-        std::vector<ZoneMeshBuilder::FallbackBufferInfo> fallbackBuffers;
-        std::vector<std::string> missingTextures;
-        float centerX, centerY, centerZ;
-        float buildTimeMs;
-    };
-
-    std::mutex meshResultMutex_;
-    std::vector<BackgroundMeshResult> meshResultQueue_;
-    std::vector<BackgroundMeshResult> localMeshResults_;  // Drained from meshResultQueue_
-    std::unordered_set<size_t> pendingMeshBuilds_;
-
-    // Material swap: replace placeholder texture with real texture on specific buffers
-    struct MaterialSwapEntry {
-        size_t regionIdx;
-        std::string textureName;
-        irr::video::ITexture* texture;
-        bool hasAlpha;
-    };
-    std::vector<MaterialSwapEntry> materialSwapQueue_;
-
-    // regionIdx → (textureName → buffer indices with placeholder texture)
-    std::unordered_map<size_t, std::unordered_map<std::string, std::vector<irr::u32>>> pendingTextureBuffers_;
-
-    void drainMeshResults();       // Move from meshResultQueue_ to localMeshResults_ (mutex swap)
-    bool finalizeOneMeshResult();  // Add one bg mesh to scene graph (render thread, lightweight)
-    bool processOneMaterialSwap(); // Swap placeholder → real texture on one region
-    bool submitOneBgMeshBuild();   // Submit one region to bg thread pool
-    void updateRegionMaterials(size_t regionIdx, const std::string& textureName,
-                               irr::video::ITexture* texture, bool hasAlpha);
 
     // Doors waiting for async textures to complete GPU upload.
     // Maps texture name → set of door IDs that were built without that texture.

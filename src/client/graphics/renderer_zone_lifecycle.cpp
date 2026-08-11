@@ -2,7 +2,6 @@
 #include "client/graphics/renderer_zone_merge.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/hc_map.h"
@@ -169,14 +168,12 @@ void IrrlichtRenderer::unloadZone() {
     portalBuildPending_ = false;
     regionNeighbors_.clear();
 
-    // Clear constrained mesh cache
-    if (constrainedMeshCache_) {
-        LOG_INFO(MOD_GRAPHICS, "unloadZone: mesh cache had {}/{} regions loaded, {} evictions, {} rebuilds",
-            constrainedMeshCache_->getLoadedCount(), constrainedMeshCache_->getTotalCount(),
-            constrainedMeshCache_->getEvictionCount(), constrainedMeshCache_->getRebuildCount());
-        constrainedMeshCache_.reset();
-    }
-    meshLoadQueue_.clear();
+    // ConstrainedMeshCache and its background-build state (BackgroundMeshResult
+    // queue, material swap queue, meshLoadQueue_, etc.) removed T67 — the
+    // cache was never constructed in any shipped build; see
+    // src/client/graphics/CLAUDE.md for the reference pointer.
+    // protectedRegions_ is kept (still read by cache-independent progressive
+    // load code) but has no writer left, so clearing it here is now a no-op.
     protectedRegions_.clear();
     portalVisibleRegions_ = nullptr;
     indoorRegions_.clear();
@@ -189,22 +186,9 @@ void IrrlichtRenderer::unloadZone() {
     doorTextureRebuildQueue_.clear();
     pendingTextureObjects_.clear();
     objectTextureRebuildQueue_.clear();
-
-    // Clean up background mesh build state
-    pendingTextureBuffers_.clear();
-    pendingMeshBuilds_.clear();
-    materialSwapQueue_.clear();
-    localMeshResults_.clear();
 #ifdef EQT_HAS_GLES2
     pendingGPUResults_.clear();
 #endif
-    {
-        std::lock_guard<std::mutex> lock(meshResultMutex_);
-        for (auto& r : meshResultQueue_) {
-            if (r.mesh) r.mesh->drop();
-        }
-        meshResultQueue_.clear();
-    }
 
     // Clear occlusion culler data
     if (occlusionCuller_) {

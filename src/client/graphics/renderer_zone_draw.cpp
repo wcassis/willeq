@@ -1,6 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_mesh_cache.h"
 #include "client/graphics/renderer_zone_merge.h"
 #include "common/logging.h"
 #include <algorithm>
@@ -608,65 +607,47 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // renderer_zone_merge.h). Decide whether the merge path is usable THIS
     // frame before drawing. Reduced-landing contract: only ever build the
     // merge buffers once the zone's region set is fully resident with zero
-    // mesh-cache evictions so far; destroy + permanently disable for the
-    // rest of this zone visit the instant an eviction occurs (the merge
-    // buffers are a derived snapshot, never a source of truth, so this is
-    // always safe -- worst case is losing the merge benefit for a zone that
-    // doesn't fit the mesh-cache budget, never drawing stale geometry).
+    // evictions so far; destroy + permanently disable for the rest of this
+    // zone visit the instant an eviction occurs (the merge buffers are a
+    // derived snapshot, never a source of truth, so this is always safe --
+    // worst case is losing the merge benefit for a zone that doesn't fit
+    // budget, never drawing stale geometry).
     //
-    // P10b: the eviction count that gates rebuild/teardown MUST also include
-    // constrainedTextureCache_'s own eviction count, not just the (currently
-    // always-inactive-in-production, per P10's own finding) mesh cache's.
-    // The qeynos2 SIGSEGV happened precisely because this gate only ever
-    // watched constrainedMeshCache_ (nullptr in production -- evictionCount
-    // was always 0 from that source), completely blind to the texture cache
-    // evicting LRU zone-region textures once entity/equipment texture load
-    // pushed total usage over budget -- a live, active mechanism this gate
-    // never accounted for. RegionMeshTextureGuard (renderer_zone_merge.h)
-    // now keeps materials from ever going dangling on a texture-cache
-    // eviction, so this combined count is defense in depth (mirrors the
-    // existing safe-fallback pattern exactly), not the sole fix.
+    // P10b: the eviction count that gates rebuild/teardown originally also
+    // had to include constrainedTextureCache_'s eviction count alongside
+    // ConstrainedMeshCache's, because the qeynos2 SIGSEGV this defends
+    // against came from the texture cache evicting LRU zone-region textures
+    // once entity/equipment texture load pushed total usage over budget --
+    // a live, active mechanism a mesh-cache-only gate would have missed.
+    // T67 (2026-08-11) removed ConstrainedMeshCache entirely (it was never
+    // constructed in any shipped build -- ConstrainedMeshCache::
+    // getEvictionCount() had always contributed exactly 0 here; see
+    // src/client/graphics/CLAUDE.md for the reference pointer). Only the
+    // texture cache's real, live eviction count remains.
     bool mergeActive = false;
     if (mergeZoneDrawsEnabled_ && !mergeZoneDrawsDisabledForZone_) {
         if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
 
-        const size_t meshEvictionCount = constrainedMeshCache_ ? constrainedMeshCache_->getEvictionCount() : 0;
-        const size_t texEvictionCount = constrainedTextureCache_ ? constrainedTextureCache_->getEvictionCount() : 0;
-        const size_t evictionCount = meshEvictionCount + texEvictionCount;
+        const size_t evictionCount = constrainedTextureCache_ ? constrainedTextureCache_->getEvictionCount() : 0;
 
         if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
-            // A region (or its texture) evicted after we built the merge --
-            // the merge buffers may reference geometry/textures that are no
-            // longer resident/valid. Bail permanently for this zone visit
-            // rather than rebuild every eviction (rebuild-on-every-eviction
-            // would thrash for any zone near its budget, defeating the
-            // point of merging).
-            LOG_WARN(MOD_GRAPHICS, "[mergedraws] cache eviction after merge build ({} mesh + {} texture "
-                     "evictions) -- disabling merge for the rest of this zone visit (falls back to "
-                     "the unmerged path)", meshEvictionCount, texEvictionCount);
+            // A region's texture evicted after we built the merge -- the
+            // merge buffers may reference textures that are no longer
+            // resident/valid. Bail permanently for this zone visit rather
+            // than rebuild every eviction (rebuild-on-every-eviction would
+            // thrash for any zone near its budget, defeating the point of
+            // merging).
+            LOG_WARN(MOD_GRAPHICS, "[mergedraws] texture cache eviction after merge build ({} evictions) "
+                     "-- disabling merge for the rest of this zone visit (falls back to "
+                     "the unmerged path)", evictionCount);
             zoneMergeBuffers_->destroy();
             mergeZoneDrawsDisabledForZone_ = true;
         } else if (!zoneMergeBuffers_->isBuilt() && !isLoading() && !regionMeshNodes_.empty() &&
-                   evictionCount == 0 &&
-                   (!constrainedMeshCache_ ||
-                    constrainedMeshCache_->getLoadedCount() >= constrainedMeshCache_->getTotalCount())) {
-            // "Fully resident" -- two cases:
-            //   - constrainedMeshCache_ is null: the mesh cache is INACTIVE for
-            //     this preset/config (production builds region meshes eagerly at
-            //     load in that case, see loadZoneStep4_Regions() -- there is no
-            //     streaming/eviction concept to reconcile with at all, so once
-            //     loading is done every region that will ever exist already has
-            //     a node). NOTE: zoneBspTree_->regions.size() is NOT the right
-            //     comparator here (an earlier version of this gate compared
-            //     against it and never fired) -- BSP trees commonly contain
-            //     "empty" regions with no geometry that never get a mesh node
-            //     even in fully-eager mode, so regionMeshNodes_.size() can
-            //     never reach that raw count.
-            //   - constrainedMeshCache_ is active: use ITS OWN bookkeeping
-            //     (getLoadedCount() vs getTotalCount(), the registered-region
-            //     count) rather than the raw BSP region count, for the same
-            //     reason -- these counts already exclude empty regions
-            //     (registerRegion() is only called for regions that got a mesh).
+                   evictionCount == 0) {
+            // "Fully resident": regions are always built eagerly at zone
+            // load (loadZoneStep4_Regions()) -- there is no streaming
+            // concept to reconcile with, so once loading is done every
+            // region that will ever exist already has a node.
             //
             // P10b: pass the texture-liveness check (see
             // renderer_zone_merge.h's build() doc comment) -- defense in
@@ -939,12 +920,10 @@ void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
 bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     auto rebuildStart = std::chrono::steady_clock::now();
     LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: BEGIN region {} | currentZone_={} wldLoader={} "
-             "constrainedMeshCache_={} meshCacheLoaded={} regionMeshNodes_.count={}",
+             "regionMeshNodes_.count={}",
              regionIdx,
              currentZone_ != nullptr,
              (currentZone_ && currentZone_->wldLoader) ? true : false,
-             constrainedMeshCache_ != nullptr,
-             (constrainedMeshCache_ ? constrainedMeshCache_->isLoaded(regionIdx) : false),
              regionMeshNodes_.count(regionIdx));
 
     if (!currentZone_ || !currentZone_->wldLoader) {
@@ -1151,34 +1130,24 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
         }
     }
 
-    // Pre-evict to make room, then update cache
-    size_t meshSize = ConstrainedMeshCache::estimateMeshSize(node);
-    auto evicted = constrainedMeshCache_->evictUntilAvailable(meshSize, protectedRegions_);
-    for (size_t idx : evicted) {
-        auto it = regionMeshNodes_.find(idx);
-        if (it != regionMeshNodes_.end() && it->second) {
-            deleteMeshHardwareBuffers(it->second);
-            if (animatedTextureManager_)
-                animatedTextureManager_->removeSceneNode(it->second);
-            if (it->second->getParent()) it->second->remove(); else it->second->drop();
-            it->second = nullptr;
-        }
-        for (auto& [texName, regions] : pendingTextureRegions_) {
-            regions.erase(idx);
-        }
-    }
-    constrainedMeshCache_->onLoaded(regionIdx, node, meshSize);
+    // Report the built mesh's size. T67 (2026-08-11) removed the cache
+    // eviction/registration this used to feed (evictUntilAvailable()/
+    // onLoaded() on the never-constructed ConstrainedMeshCache -- this call
+    // site dereferenced constrainedMeshCache_ WITHOUT a null check, a
+    // latent crash if this lazy-rebuild path was ever reached with a live
+    // node build while the cache was absent; see this unit's Review for
+    // why that appears to never actually happen in practice). The size
+    // estimate itself is preserved verbatim as a free function — see
+    // src/client/graphics/CLAUDE.md for the reference pointer.
+    size_t meshSize = estimateMeshSizeBytes(node);
 
     auto rebuildEnd = std::chrono::steady_clock::now();
     auto totalMs = std::chrono::duration_cast<std::chrono::microseconds>(
         rebuildEnd - rebuildStart).count() / 1000.0f;
 
     LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: SUCCESS region {} — {} bytes, {:.1f}ms total "
-             "(mesh build {:.1f}ms) | cache usage {}/{} bytes, {} loaded",
-             regionIdx, meshSize, totalMs, meshBuildMs,
-             constrainedMeshCache_->getCurrentUsage(),
-             constrainedMeshCache_->getMemoryLimit(),
-             constrainedMeshCache_->getLoadedCount());
+             "(mesh build {:.1f}ms)",
+             regionIdx, meshSize, totalMs, meshBuildMs);
     return true;
 }
 

@@ -47,8 +47,13 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
 - ~~`--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp`.~~
   **FIXED by T56 (2026-08-10).** Heading: `` ## `--log-level=` is clobbered
   by `SetDebugLevel(0)` in main.cpp ``.
-- `ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
-  still true, T53. Heading: `## ConstrainedMeshCache is never constructed`.
+- ~~`ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
+  still true, T53.~~ **RESOLVED BY REMOVAL, T67 (2026-08-11)**: the class
+  was deleted from production rather than wired (Will's decision — never
+  reproduced eviction pressure, no way to turn it on). Reference pointer to
+  the removed implementation (commit `49844c72` + paths) is in the entry
+  body and in `src/client/graphics/CLAUDE.md`. Heading: `` ## ConstrainedMeshCache
+  is never constructed — RESOLVED BY REMOVAL (T67, 2026-08-11) ``.
 - `SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
   field) — confirmed still true, T53. Heading: `## From F00 test repair`.
 - Auto-loot on kill never wired to the authoritative death event; shift+click
@@ -1355,7 +1360,7 @@ mergeZoneDraws SIGSEGV retraction.
   bias. **34.3-34.6ms is the canonical KPI-guard band now**, not the
   32.24-32.5 figures above. Kept as the historical record of the arc.
 
-## ConstrainedMeshCache is never constructed (P10 finding, 2026-07-26)
+## ConstrainedMeshCache is never constructed — RESOLVED BY REMOVAL (T67, 2026-08-11)
 
 - Exhaustive grep (verified independently by orchestrator): no
   construction site exists for ConstrainedMeshCache anywhere in src/ —
@@ -1366,6 +1371,34 @@ mergeZoneDraws SIGSEGV retraction.
   it (with the P10 full shared-VBO reconciliation) or trim the docs and
   the dead conditional paths (renderer_zone_stream.cpp/renderer_zone_draw
   guard on a pointer that is never non-null).
+- **T67 (Will's decision, 2026-08-11): removed the class from production**
+  rather than wiring it — the eviction pressure it exists to relieve was
+  never reproduced beyond one unconfirmed observation (P10b's "71
+  evictions", vs zero across four later independently-measured
+  configurations), it had been independently written twice (this class,
+  plus once more on the deleted `mem` branch) and wired zero times, and
+  there was no way to even turn it on (`meshMemoryBytes` was computed per
+  preset and consumed by nothing). `constrained_mesh_cache.h`/`.cpp`
+  (385 lines) deleted outright, along with ~40 guarded call sites and an
+  entire background-mesh-build subsystem that existed only to feed it
+  (see `refactor/T67_remove_constrained_mesh_cache.md`'s Review for the
+  full per-file accounting). The one genuinely-live piece,
+  `estimateMeshSize()`, was relocated verbatim to
+  `estimateMeshSizeBytes()` in `include/client/graphics/eq/zone_geometry.h`
+  / `.cpp` rather than deleted. Full protocol verification bar passed,
+  including the visual gate (byte-identical rendering — this was
+  dead-code removal, not a behavior change) and both x86/ARM builds.
+- **This closes the item WITHOUT answering whether progressive
+  region-mesh streaming is ever wanted.** If Pi memory pressure is later
+  actually measured (it has not been, across five independent sessions'
+  worth of attempts), the implementation is fully recoverable, not
+  reimplemented from scratch: last shipped at commit `49844c72`
+  (2026-03-08, "PVS direct index lookup, SimWorker copy elimination, DRM
+  page flip fix, stderr buffering"), `include/client/graphics/
+  constrained_mesh_cache.h` + `src/client/graphics/constrained_mesh_cache.cpp`
+  — `git show 49844c72:src/client/graphics/constrained_mesh_cache.cpp`
+  retrieves it in one command (this is `fable`'s own history, not the
+  deleted `mem` branch — permanently recoverable, no archive tag needed).
 
 ## P10b's "71 evictions" scenario still unreproduced; new zone-transition crash found (P13b, 2026-07-27)
 
@@ -3851,3 +3884,58 @@ No production code was modified by this unit (verification-only,
 Will's open question: primary and shield equipment render correctly in a
 live session; secondary-weapon-only does not, characterised precisely
 enough to scope a fix unit without re-running the live session.
+
+## `protectedRegions_` bitvector is permanently all-false in production (T67 side-finding, 2026-08-11)
+
+- Found while removing `ConstrainedMeshCache` (see
+  `refactor/T67_remove_constrained_mesh_cache.md`): `protectedRegions_`'s
+  only writer anywhere in the codebase was `renderer_sim_bridge.cpp`'s
+  `applySimulationResults()`, inside an `if (constrainedMeshCache_) {...}`
+  block that never ran (the cache was never constructed). T67 removed that
+  dead block; `protectedRegions_` was already permanently all-`false` in
+  every shipped build before this, and remains so after (no behavior
+  change from T67 itself — this is a pre-existing condition T67 merely
+  made legible by deleting the last thing that made it look conditional).
+- `protectedRegions_` still has live, non-cache readers in
+  `renderer_zone_stream.cpp`'s `processFrameProgressiveLoad()`: Priority 3
+  (door build, `doorManager_->getDoorsInRegions(protectedRegions_, ...)`)
+  and Priority 4 (PVS object build, `protectedRegions_[obj.bspRegion]`
+  gates). Since the vector is always all-false, both priorities are very
+  likely already-dead in production for a reason **unrelated to**
+  `ConstrainedMeshCache` — but doors and objects are also both built
+  eagerly elsewhere (SEQ Step6/7 in `renderer_zone_load.cpp`, "Build all
+  object meshes eagerly inline (no deferred/PVS-gated build at runtime)"),
+  so this may simply be more redundant-but-harmless dead code rather than
+  a functional gap. **Not confirmed, not chased** — out of T67's scope
+  (its territory was `constrainedMeshCache_` references specifically, and
+  this is a step removed from that). Whoever next touches
+  `processFrameProgressiveLoad()`'s Priority 3/4 should check whether
+  `protectedRegions_` is worth resurrecting (e.g. repurposed from the
+  eager SEQ-step region-visibility data) or whether Priority 3/4 are
+  themselves dead code that should follow the mesh cache out.
+
+## `check_file_sizes.sh` has no handling for deleted files in the diff (T67 finding, 2026-08-11)
+
+- `scripts/refactor/check_file_sizes.sh` (`refactor/EXECUTOR_PROTOCOL.md`'s
+  verification-bar step 6) computes its file list from
+  `git diff --name-only $BASE -- '*.cpp' '*.h'`, which includes files
+  deleted since `$BASE`. For each, it then does `[ -f "$path" ] || ...`
+  and prints `ERROR $f: file not found ... — pass absolute paths or run
+  from the target worktree` with exit status 2 — worded as if the caller
+  made a mistake, when the actual cause was a legitimate deletion in the
+  diff. T67 deleted `constrained_mesh_cache.h`/`.cpp` and hit exactly
+  this: 2 spurious "file not found" lines alongside 19 genuinely-checked
+  files, `0 fail` in the real summary line, but a nonzero exit code that
+  a caller not reading the output closely could mistake for a real
+  regression. Also independently confirmed while running this same step:
+  the script's `repo_root="$(git rev-parse --show-toplevel 2>/dev/null ||
+  pwd)"` has no `-C <path>` anchor, so invoking it via `bash
+  <slot>/scripts/...` from a shell whose cwd is NOT inside that slot
+  (e.g. the Bash tool's ambient cwd) silently resolves the wrong repo
+  root and reports "base revision does not resolve" even though the
+  revision is fine — it just checked the wrong directory. Both are
+  script-only findings; no production code involved. A future
+  units-infra pass could special-case a deleted path as
+  `del $f: removed (not checked)` instead of an ERROR, and add `-C`
+  support (or a `--repo <path>` flag) so the script doesn't depend on
+  ambient shell cwd. Not fixed here (out of T67's scope).
