@@ -2432,6 +2432,9 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 // adjustment; it is the ONLY tunable this unit introduces.
 static constexpr float kFirstPersonPitchDownRad = 12.0f * 3.14159265359f / 180.0f;  // 12 degrees (irr::core::PI is not constexpr)
 
+// T76: pull camera BACK (not the plan's guessed "forward") -- measured triangles
+// straddle the near clip every pose; widens but doesn't eliminate it (near clip is the real fix, not touched -- plan Review has numbers).
+static constexpr float kFirstPersonCameraStandoffUnits = 0.3f;
 void IrrlichtRenderer::repositionFirstPersonCamera() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) {
         return;
@@ -2450,18 +2453,15 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // below camera height by the right amount for a small-angle pitch at
     // this target distance.
     float targetY = camZ - std::tan(kFirstPersonPitchDownRad) * kTargetDistance;
-    irr::core::vector3df camPos(playerX_, camZ, playerY_);
-    irr::core::vector3df target(
-        playerX_ + std::sin(headingRad) * kTargetDistance,
-        targetY,
-        playerY_ + std::cos(headingRad) * kTargetDistance
-    );
+    float camX = playerX_ - std::sin(headingRad) * kFirstPersonCameraStandoffUnits, camY = playerY_ - std::cos(headingRad) * kFirstPersonCameraStandoffUnits;
+    irr::core::vector3df camPos(camX, camZ, camY);
+    irr::core::vector3df target(camX + std::sin(headingRad) * kTargetDistance, targetY, camY + std::cos(headingRad) * kTargetDistance);
 
     camera_->setPosition(camPos);
     camera_->setTarget(target);
 
-    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}, pitchDown={:.1f}deg",
-             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ, kFirstPersonPitchDownRad * 180.0f / irr::core::PI);
+    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}, pitchDown={:.1f}deg, standoff={:.2f}",
+             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ, kFirstPersonPitchDownRad * 180.0f / irr::core::PI, kFirstPersonCameraStandoffUnits);
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {

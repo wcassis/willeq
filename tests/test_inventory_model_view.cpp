@@ -563,11 +563,34 @@ TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) 
     float eyeHeightFromFeet = bbox.MaxEdge.Y;
     ASSERT_GT(eyeHeightFromFeet, 0.0f) << "degenerate bounding box -- cannot measure";
 
+    // T76: reproduce the CURRENT production getPlayerEyeHeightFromFeet(),
+    // which now prefers the live HEAD bone Y over the static bbox top
+    // (falling back to the bbox when no HEAD bone resolves -- see that
+    // function's comment for the measured rationale).
+    int headIdx = node->getBoneIndexByName("HEAD");
+    if (headIdx < 0) {
+        auto skel = eqMesh->getSkeleton();
+        if (skel) {
+            for (size_t i = 0; i < skel->bones.size(); ++i) {
+                std::string up = skel->bones[i].name;
+                std::transform(up.begin(), up.end(), up.begin(), ::toupper);
+                if (up.find("HEAD") != std::string::npos) { headIdx = static_cast<int>(i); break; }
+            }
+        }
+    }
+    float productionEyeHeightFromFeet = eyeHeightFromFeet;  // fallback value
+    if (headIdx >= 0) {
+        irr::core::vector3df headPosEarly;
+        if (node->getBoneWorldPosition(headIdx, headPosEarly) && headPosEarly.Y > 0.0f) {
+            productionEyeHeightFromFeet = headPosEarly.Y;
+        }
+    }
+
     // Reproduces IrrlichtRenderer::repositionFirstPersonCamera(): feet(0) +
     // eyeHeight + playerConfig_.eyeHeight (default adjustment is 0.0, no
     // config loaded in this headless fixture).
     constexpr float kPlayerConfigEyeHeightAdjustDefault = 0.0f;  // playerConfig_.eyeHeight default, irrlicht_renderer.h:325
-    float cameraY = 0.0f + eyeHeightFromFeet + kPlayerConfigEyeHeightAdjustDefault;
+    float cameraY = 0.0f + productionEyeHeightFromFeet + kPlayerConfigEyeHeightAdjustDefault;
 
     // Populate armBoneIndices_ once (name-based, not pose-based -- doesn't
     // need to happen per-animation).
@@ -582,8 +605,9 @@ TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) 
     const float kDefaultVerticalFovRad = irr::core::PI / 2.5f;
     const float kHalfFovRad = kDefaultVerticalFovRad / 2.0f;
 
-    std::cout << "\nT75 arm-vs-camera geometry measurement (Human male):\n";
-    std::cout << "  eyeHeightFromFeet (bbox.MaxEdge.Y, post-fix)   = " << eyeHeightFromFeet << "\n";
+    std::cout << "\nT75/T76 arm-vs-camera geometry measurement (Human male):\n";
+    std::cout << "  eyeHeightFromFeet (bbox.MaxEdge.Y, T75 fallback)   = " << eyeHeightFromFeet << "\n";
+    std::cout << "  eyeHeightFromFeet (T76 production value, head bone preferred) = " << productionEyeHeightFromFeet << "\n";
     std::cout << "  camera Y (feet=0 + eyeHeight + adjust=0)       = " << cameraY << "\n";
     std::cout << "  camera vertical FOV                            = "
               << (kDefaultVerticalFovRad * 180.0f / irr::core::PI) << " deg (half="
@@ -593,23 +617,10 @@ TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) 
               << "] -- MinEdge != 0 is exactly the pre-fix bug (old formula used "
                  "MaxEdge-MinEdge = " << (bbox.MaxEdge.Y - bbox.MinEdge.Y)
               << " instead of MaxEdge.Y = " << bbox.MaxEdge.Y << ")\n";
-    int headIdx = node->getBoneIndexByName("HEAD");
-    if (headIdx < 0) {
-        auto skel = eqMesh->getSkeleton();
-        if (skel) {
-            for (size_t i = 0; i < skel->bones.size(); ++i) {
-                std::string up = skel->bones[i].name;
-                std::transform(up.begin(), up.end(), up.begin(), ::toupper);
-                if (up.find("HEAD") != std::string::npos) { headIdx = static_cast<int>(i); break; }
-            }
-        }
-    }
     if (headIdx >= 0) {
-        irr::core::vector3df headPos;
-        node->getBoneWorldPosition(headIdx, headPos);
-        std::cout << "  head bone Y = " << headPos.Y
-                  << " (close to eyeHeightFromFeet -- corroborates bbox.MaxEdge.Y as the "
-                     "right 'top of model' measure)\n";
+        std::cout << "  head bone Y = " << productionEyeHeightFromFeet
+                  << " (T76: this IS the production eye height now -- see"
+                     " getPlayerEyeHeightFromFeet()'s comment)\n";
     } else {
         std::cout << "  [DIAG] no HEAD bone found\n";
     }
@@ -674,6 +685,87 @@ TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) 
         // Not asserted pass/fail (this is a measurement, not a regression
         // gate) -- reported here and in the plan's Review for Will/the next
         // executor to read the raw numbers from, per the plan's Step 1.
+
+        // T76: bone JOINT positions (above) understate how close the actual
+        // skin TRIANGLES get -- a forearm's mesh extends outward from its
+        // bone by the limb's radius, so the true nearest vertex can sit
+        // closer to the camera than any bone. Walk the arm-FILTERED instance
+        // mesh's own triangle indices (post applyFirstPersonIndexFilter(),
+        // post applyAnimation() skinning) and measure the actual vertex
+        // extents T74's filter left behind -- this is what the GPU actually
+        // rasterizes, not a proxy for it.
+        irr::scene::SMesh* filteredMesh = node->getInstanceMesh();
+        ASSERT_NE(filteredMesh, nullptr);
+        float vMinY = std::numeric_limits<float>::max();
+        float vMaxY = std::numeric_limits<float>::lowest();
+        float vMinZ = std::numeric_limits<float>::max();
+        float vMaxZ = std::numeric_limits<float>::lowest();
+        size_t triCount = 0;
+        for (irr::u32 b = 0; b < filteredMesh->getMeshBufferCount(); ++b) {
+            irr::scene::IMeshBuffer* mb = filteredMesh->getMeshBuffer(b);
+            if (!mb) continue;
+            const irr::u16* idx = mb->getIndices();
+            irr::u32 idxCount = mb->getIndexCount();
+            for (irr::u32 t = 0; t + 2 < idxCount; t += 3) {
+                for (int k = 0; k < 3; ++k) {
+                    const irr::core::vector3df& p = mb->getPosition(idx[t + k]);
+                    vMinY = std::min(vMinY, p.Y);
+                    vMaxY = std::max(vMaxY, p.Y);
+                    vMinZ = std::min(vMinZ, p.Z);
+                    vMaxZ = std::max(vMaxZ, p.Z);
+                }
+                ++triCount;
+            }
+        }
+        std::cout << "  [" << sample.label << "] ARM-FILTERED TRIANGLE VERTEX extents: Y=["
+                  << vMinY << ", " << vMaxY << "], Z(forward)=[" << vMinZ << ", " << vMaxZ
+                  << "], triangle count=" << triCount << "\n";
+
+        // T76: the near clip plane is 1.0 (setupCamera()). A candidate
+        // camera sitting at world Z=cameraForwardOffset (i.e. pushed
+        // `cameraForwardOffset` units forward of the body origin along the
+        // look axis, matching how repositionFirstPersonCamera() would need
+        // to change) would see this triangle set at distance range
+        // [vMinZ - offset, vMaxZ - offset]. Report whether the CURRENT
+        // (offset=0, matches shipped repositionFirstPersonCamera()) camera
+        // has triangles straddling (spanning across) the near plane --
+        // exactly the condition the plan warns produces the smeared mass
+        // regardless of pitch.
+        const float kNearPlane = 1.0f;  // setupCamera(), irrlicht_renderer.cpp:1517
+        bool straddlesAtZeroOffset = (vMinZ < kNearPlane) && (vMaxZ > kNearPlane);
+        bool entirelyInsideNear = (vMaxZ <= kNearPlane);
+        std::cout << "  [" << sample.label << "] at CURRENT camera offset (0): straddles near plane="
+                  << (straddlesAtZeroOffset ? "YES" : "no") << ", entirely inside near clip (invisible)="
+                  << (entirelyInsideNear ? "YES" : "no") << "\n";
+
+        // T76: evaluate candidate STANDOFF (pullback) distances -- moving the
+        // camera BACKWARD along the look axis by `pullback` units, i.e.
+        // camera position Z -> -pullback, increases distance-to-vertex for
+        // every vertex uniformly (distance = vertexZ - (-pullback) =
+        // vertexZ + pullback). This is the opposite sign from the plan's a
+        // priori guess ("push camera forward of the model origin"): a
+        // FORWARD push (positive offset) SHRINKS distance to the
+        // forward-swinging (visible, important) geometry -- exactly the
+        // wrong direction, since several poses' forward reach barely clears
+        // the near plane already (idle max=1.106, 2H-slash max=1.035, both
+        // <0.11 above kNearPlane). A BACKWARD pullback is what the unit's
+        // own name describes. It is not monotonically safe, though: the
+        // near-side (currently-negative, safely-behind) vertices move
+        // TOWARD zero as pullback grows, and vertices sitting at distance
+        // near 0 (not just <kNearPlane) are the ones that blow up under
+        // perspective divide -- so an overlarge pullback can walk a
+        // comfortably-behind vertex into that danger zone before it clears
+        // kNearPlane on the far side. Report several candidates so the
+        // choice is evidence-based, not a guess in either direction.
+        for (float pullback : {0.0f, 0.2f, 0.3f, 0.5f, 1.0f}) {
+            float distMin = vMinZ + pullback;
+            float distMax = vMaxZ + pullback;
+            bool straddles = (distMin < kNearPlane) && (distMax > kNearPlane);
+            bool nearZeroDanger = (distMin > -0.1f && distMin < kNearPlane);
+            std::cout << "    pullback=" << pullback << ": distance range=[" << distMin << ", " << distMax
+                      << "], straddles=" << (straddles ? "YES" : "no")
+                      << ", near-side within [-0.1,near) danger band=" << (nearZeroDanger ? "YES" : "no") << "\n";
+        }
     }
 }
 #endif // EQT_HAS_GRAPHICS

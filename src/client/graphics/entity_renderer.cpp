@@ -3026,6 +3026,25 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
     // Find the player entity
     for (const auto& [id, visual] : entities_) {
         if (visual.isPlayer && visual.isAnimated && visual.animatedNode) {
+            // T76: prefer the skeleton's own (live, pose-aware) HEAD bone Y
+            // over the static bbox top. T75's own measurement noted the
+            // fixed bbox top (3.65, the crown of the head) sits close to but
+            // above the head bone (3.10) -- ArmVsCameraGeometryMeasurement_Headless
+            // (test_inventory_model_view.cpp) showed that gap matters for
+            // VERTICAL framing: at the arm's typical forward depth (~1-1.1
+            // units in idle), lowering the eye by that ~0.55 units moves the
+            // pitched-down frustum's vertical window from mostly ABOVE the
+            // idle arm's Y range down onto it. Falls back to the T75 bbox
+            // formula if no HEAD bone resolves (T74's per-race survey found
+            // skeleton naming schemes vary) -- never silently returns 0.
+            int headIdx = visual.animatedNode->getBoneIndexByName("HEAD");
+            if (headIdx >= 0) {
+                irr::core::vector3df headPos;
+                if (visual.animatedNode->getBoneWorldPosition(headIdx, headPos) && headPos.Y > 0.0f) {
+                    return headPos.Y;
+                }
+            }
+
             // Use BASE mesh bounding box (not instance mesh) to avoid corruption
             // from first-person mode collapsed vertices
             EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
@@ -3044,7 +3063,8 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
             // the near-clip depth they sit at) in idle AND every attack
             // anim sampled; under this fix that gap shrinks to ~0.1-0.5
             // units. No offset for "eyes" -- top of bbox, looking straight
-            // ahead, is the unchanged design intent.
+            // ahead, is the unchanged design intent. Only reached when no
+            // HEAD bone is available (T76's fallback path above).
             float cameraHeight = bbox.MaxEdge.Y;
             return cameraHeight;
         }
