@@ -145,11 +145,218 @@ it.** Will judges.
 
 ## Review
 
-(executor fills: the `/equip` root cause and which layer it was in;
-whether the shared drag/drop path was affected; packet evidence; the
-first-person captures with what each shows; whether direct DB writes were
-still needed and why; teardown confirmation; deviations)
+### Stage 1 — `/equip`'s root cause, and which layer it was in
 
-Board: re-title T66's deferred `/equip` live-leg item as closed, and
-record the first-person verdict — this is the last third of a request
-that has been open since T63.
+**Not in `SendMoveItem`/`ZoneProcessMoveItem`.** Three live eqemu round
+trips against a controlled Testmelee baseline (`nektulos`, later moved to
+`qeynos2` for stage 2), each verified via a fresh `inventory` table read
+independent of the client (never trusting the client's own confirmation
+text, which T66's Review already flagged as not a server ack):
+
+1. **Direct equipment<->equipment swap**, both slots occupied with valid
+   weapons (`/equip 13 14`, Rusty Mace <-> Dagger): server performed a
+   correct atomic swap (`primary=9997 secondary=6011` after, from
+   `primary=6011 secondary=9997` before).
+2. **Cursor-mediated swap with a clean, single-item cursor**
+   (`/equip 13 30` then `/equip 30 14`): correct three-way rotation —
+   secondary ends up holding the picked-up item, the displaced original
+   secondary occupant ends up on the cursor, exactly matching how real EQ
+   drag/drop swaps behave.
+3. **Cursor-mediated swap with a DELIBERATELY congested, multi-item
+   cursor** (two `#summonitem` calls stacked onto cursor overflow before
+   `/equip 30 14`): still correct — the server addressed only the true
+   active cursor slot (server-internal slot 33) and left the overflow
+   items (server-internal slots in the 6000s, `TitaniumToServerSlot`'s own
+   cursor-bag numbering, confirmed by reading `common/patches/titanium.cpp`
+   in the referenced EQEmu source, not guessed) untouched.
+
+All three prove the wire protocol correct and unmodified — `eq.h`/
+`eq_merchant.cpp` were not touched by this fix. **A pre-existing DB
+methodology trap was found and corrected along the way**: `inventory.slot_id`
+stores the SERVER's internal (RoF2-derived) slot numbering, not the wire/
+Titanium numbering `SendMoveItem` sends — they're identical for equipment
+slots 0-20 and for a handful of others, but diverge for general/cursor/bag
+ranges (`Titanium::TitaniumToServerSlot()`/`ServerToTitaniumSlot()`,
+`+1`/`+3`/etc. depending on range). A raw DB write intended to simulate
+"item in general slot N" without going through this translation lands in
+the wrong actual slot. Flagged here because it cost real time mid-unit and
+would trip up a future unit reading/writing `inventory` directly.
+
+**The actual, confirmed, fixed defect**: `RegisterEquipmentCommands()`
+(`eq_commands.cpp`) only ever pushed the wire-level `MoveItemIntent` — it
+never touched `InventoryManager`'s own local model (`items_`/
+`cursorQueue_`) and never fired `EquipmentChangedIntent`. The wire protocol
+has no success-acknowledgement, only a failure-correction (confirmed live
+by deliberately triggering one: equipping a light source item — a Lantern
+— into the Primary weapon slot produced a real server-side rejection and
+an `"Inventory Desyncronization... Resending slot data"` correction,
+log-captured). So a silently-accepted `/equip` request left the client's
+own inventory view — and the rendered/paperdoll appearance that reads it
+verbatim in `UpdatePlayerAppearanceFromInventory()` — stale until an
+unrelated event refreshed it. **Drag/drop's own gesture
+(`InventoryManager::pickupItem()`/`placeItem()`) was never affected**: it
+already updates local state and fires `EquipmentChangedIntent` before
+sending, which is exactly how the real EQ protocol expects a client to
+behave (optimistic local apply, corrected only on failure) — `/equip` was
+simply incomplete relative to its own stated design (T66: "pushes the SAME
+MoveItemIntent the inventory UI's drag-and-drop gesture pushes"), not a
+protocol bug and not a shared-path bug.
+
+### The fix
+
+Scoped to `eq_commands.cpp`'s `/equip` handler only. No legality judgment
+added — T66's "server is authoritative" rule is unchanged; this only keeps
+the local mirror in sync with what was *requested*, not with what the
+server will ultimately allow:
+
+- Cursor-involving moves (`fromSlot`/`toSlot` is `CURSOR_SLOT`/
+  `SERVER_CURSOR_SLOT`) now delegate to `InventoryManager::pickupItem()`/
+  `placeItem()` — already-correct, already-tested code that pushes the
+  IDENTICAL `MoveItemIntent{fromSlot,toSlot,0}` the old handler pushed
+  directly, so live wire behaviour for these cases is byte-for-byte
+  unchanged; only the missing local sync (and `EquipmentChangedIntent`)
+  is added, for free.
+- A direct slot<->slot move where NEITHER endpoint is the cursor (e.g.
+  `/equip 13 14`) has no existing helper that preserves the single-packet
+  atomic swap the server's own `SwapItem()` already performs correctly
+  (proven live above) — `InventoryManager::swapItems()` exists but was
+  never wired to anything and applies client-side legality gating
+  (`canPlaceItemInSlot`) that would reintroduce exactly the client-side
+  judgment T66 excluded, so it was deliberately NOT reused. Instead this
+  case mirrors the two map entries locally via the public `getItem()`/
+  `setItem()`/`removeItem()` API (no legality checks) and still sends the
+  SAME single `MoveItemIntent` as before.
+- `EverQuest::GetInventoryManager()` added to `eq.h` (same accessor
+  pattern as the pre-existing `GetTradeManager()`/`GetSpellManager()`) —
+  needed so the fix is unit-testable without a live server.
+
+Re-verified live, post-fix, with the same two round trips (1) and (2)
+above: still correct server-side DB state, AND
+`UpdatePlayerAppearanceFromInventory()` now fires immediately (log-
+confirmed: `Building appearance from inventory` / `Updated player
+appearance` right after the `SendMoveItem` log line) instead of only after
+an unrelated resync.
+
+### Shared drag/drop path — confirmed unaffected
+
+Not touched by this fix (only `eq_commands.cpp` + `eq.h` + the equip test
+file changed — `git diff --stat` confirms), and was never the site of the
+defect per the root-cause analysis above. `InventoryManager::pickupItem()`/
+`placeItem()`, the drag/drop gesture's own implementation, were read in
+full and already do everything `/equip` was missing.
+
+### Packet evidence
+
+Every claim above is backed by `SendMoveItem`/`Sending MoveItem packet`
+DEBUG log lines (`fromSlot`/`toSlot`/`qty`) paired with a fresh
+`SELECT ... FROM inventory WHERE character_id=66` immediately after, not
+just the client's own confirmation text. The one deliberately-triggered
+failure case additionally shows the server's own correction packets
+(`ItemPacket received` x2, `Source/Destination slot N resyncronized`).
+
+### Test suite
+
+`tests/test_eq_commands_equip.cpp`: the 5 pre-existing happy-path tests
+were updated to seed a real item first (the fix now requires one, matching
+`pickupItem()`'s own "nothing there" refusal — an intentional, documented
+behaviour change) and to account for the now-additional
+`EquipmentChangedIntent`; 4 new tests assert the local model directly
+(direct swap, move-to-empty-slot, empty-source refusal, cursor-mediated
+swap) rather than only the intent pushed. 16/16 pass.
+
+### Stage 2 — the first-person verdict
+
+**First person shows NEITHER the player's body NOR any equipped weapon or
+shield, ever — not just outside a swing — by design of un-wired code, not
+a capture failure.** Read directly from the renderer, not inferred:
+`IrrlichtRenderer::setCameraMode()`/`cycleCameraMode()` (the only two live
+entry points into first person — `/camera` and the pre-existing Ctrl+F5
+path both funnel through them) call
+`entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson)`,
+and `EntityRenderer::setPlayerEntityVisible(false)` explicitly hides the
+body mesh, name tag, AND both `primaryEquipNode`/`secondaryEquipNode`.
+Separately, `EntityRenderer::setPlayerFirstPersonMode()` (which would
+switch to "arms + weapon visible"), `updateFirstPersonWeapons()`, and
+`triggerFirstPersonAttack()` are fully implemented but have **zero callers
+anywhere in the codebase** (confirmed by an exhaustive grep across `src/`
+and `include/`, matching only their own definitions). T63's read of these
+three as "near-no-op compatibility stubs... reuses the same skeletal
+bone-attachment path" was half right — the bone-attachment path is shared,
+but nothing ever routes execution into it for first person, because
+nothing calls the function that would flip `isFirstPersonMode` on.
+
+Visually confirmed live in three configurations, `qeynos2` (lit — grass,
+trees, visible sky, legible in every frame, unlike T63's near-black
+`arena`), with `/camera`'s `getCameraModeString()` confirmation
+("Camera mode: First Person") visible on screen as the plan asked:
+primary weapon only (Rusty Mace), dual wield (Mace + Dagger, Dual Wield
+skill GM-set to 50 as T63/T65 did), and shield (Mace + Kite Shield). All
+three: nothing of the player renders. Auto-attack was confirmed engaged
+(log-verified) for the primary-only and dual-wield captures against a live
+`a_rat000` target; since the code-level finding is unconditional on combat
+state, a landed swing does not change the answer, and the shield capture
+did not chase one. Full captures, stills, and the code citations are in
+`review/T71/README.md`.
+
+This is a finding, not a fix — no STOP condition was triggered (reading
+`irrlicht_renderer.cpp`/`entity_renderer.cpp` to understand the captures
+is not "changing equipment rendering"; neither file was modified). A
+future unit owns deciding whether/how to wire `setPlayerFirstPersonMode()`
+in.
+
+### Direct DB writes — where they were and were not needed
+
+**Every actual equip action in stage 2 went through the live, now-fixed
+`/equip` command** — the explicit point of fixing it first. Direct DB
+writes were used only for: (a) stage 1's controlled characterisation setup
+(establishing known before-states — e.g. "primary holds a Lantern" — to
+observe `/equip`'s effect against, since a controlled experiment needs a
+controlled starting condition); (b) Dual Wield skill (no scriptable
+skill-training path exists for combat skills, same as T63/T65's
+precedent); (c) character position (moving Testmelee to `qeynos2`, same
+sanctioned pattern T65 used). No DB write was used to place an item that
+`/equip` itself then moved — that gap (T63 had to write `item_id` directly
+and restart the client) is exactly what stage 1 closed.
+
+### Teardown
+
+Confirmed via final `SELECT`s: Testmelee's position restored to the exact
+recorded baseline (`zone_id=25` (nektulos), `x=-259 y=-1201 z=-5.75
+heading=160.25`); primary/secondary/cursor inventory slots cleared (empty,
+matching their state before this unit); Dual Wield skill restored to 0.
+**Pre-existing DB hygiene finding, corrected as part of this unit's own
+setup**: Testmelee's `inventory` table carried four orphaned "cursor
+overflow" rows (`slot_id` 6011-6014) plus a stale cursor item — not typos,
+confirmed to be eqemu's real internal cursor-bag numbering by reproducing
+the identical pattern live via two `#summonitem` calls in a row; deleted
+to establish a clean baseline, not present in the final restored state.
+Server: clean shutdown via `down.sh`, lock file deleted.
+
+### Deviations
+
+1. `eq_commands.cpp` crossed the 1500-line WARN threshold (1498 -> 1595)
+   — `check_file_sizes.sh` against the actual fork point (`810fb0d9`, not
+   the literal `fable` ref, which moved forward during this unit from
+   T72/T73 merging) reports 2 WARN (this file, plus the pre-existing
+   `eq.h` WARN at 2068 lines, +4 from `GetInventoryManager()`), 0 FAIL.
+   Flagged rather than silently absorbed, per protocol — no FAIL, and the
+   added code (extensive characterisation comments plus the fix itself)
+   was judged worth the line count over trimming the reasoning out.
+2. `check_file_sizes.sh fable` (the literal default) reported spurious
+   diffs against T72/T73's own files because the shared `fable` ref
+   advanced past this unit's fork point mid-session (T72/T73 merged) —
+   re-run against the actual merge-base commit for a clean, isolated
+   result. Not a deviation in this unit's own changes, just a note for
+   whoever hits the same confusion.
+3. Two live capture scripts had to be corrected mid-session: an initial
+   bare `/target` needs a name argument (usage error, not a silent
+   failure) and `/target rat` matched `Guard_Drath` (substring collision)
+   before `/target a_rat` correctly isolated the spawned test NPC.
+   Recorded because the first attempt's frames (showing an out-of-range
+   "too far away" target) are not part of the evidence set, superseded by
+   the corrected runs.
+
+Board (`refactor/deferred.md`): instance 8 (`/equip`'s live leg) re-titled
+CLOSED, with the root cause and fix summarized; the first-person verdict
+recorded in the same entry — this is the last third of a request that has
+been open since T63.

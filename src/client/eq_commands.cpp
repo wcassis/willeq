@@ -1486,13 +1486,110 @@ void EverQuest::RegisterEquipmentCommands()
 			return;
 		}
 
-		if (m_bridge) {
-			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
-			AddChatSystemMessage(fmt::format("Moving item: {} -> {}",
-				DescribeEquipSlot(fromSlot), DescribeEquipSlot(toSlot)));
-		} else {
+		if (!m_bridge) {
 			AddChatSystemMessage("Cannot move item - no bridge attached.");
+			return;
 		}
+
+		// T71 -- Stage 1 fix. Characterisation (refactor/T71_equip_fix_and_first_person.md
+		// Review): SendMoveItem/ZoneProcessMoveItem (the wire protocol) were
+		// proven correct via three live eqemu round trips (direct
+		// equipment<->equipment swap, cursor-mediated swap with a clean
+		// cursor, and cursor-mediated swap with a congested multi-item
+		// cursor) -- all three produced correct server-side results verified
+		// via fresh `inventory` table reads. The actual defect was here: this
+		// handler only ever pushed the wire-level MoveItemIntent and never
+		// touched InventoryManager's own local model (items_/cursorQueue_)
+		// or fired EquipmentChangedIntent. The protocol has no
+		// success-acknowledgement (only a correction on failure -- see
+		// ZoneProcessMoveItem/processMoveItemResponse), so a request that the
+		// server silently accepts left the client's own inventory view (and
+		// therefore the rendered/paperdoll equipment appearance, which reads
+		// from that same local model in UpdatePlayerAppearanceFromInventory())
+		// stale until an unrelated event (zoning, relogging, or a drag/drop
+		// gesture touching the same slot) happened to refresh it. Drag/drop's
+		// own gesture (InventoryManager::pickupItem()/placeItem()) never hits
+		// this gap because it already updates local state (and fires
+		// EquipmentChangedIntent) before sending -- exactly mirroring how the
+		// real EQ protocol expects a client to behave (optimistic local
+		// apply, corrected server-side only on failure). This fix does not
+		// change that division of labor or add any new legality judgment
+		// here -- the server remains the sole authority on whether a move is
+		// ALLOWED (T66's "no swap semantics" rule stands unchanged); it only
+		// keeps the local mirror in sync with what was requested, and the
+		// existing resync-on-failure path (already proven live, see the
+		// Review) corrects it back if the server refuses.
+		//
+		// Cursor-involving moves (either endpoint is CURSOR_SLOT/
+		// SERVER_CURSOR_SLOT) are delegated to InventoryManager's own
+		// pickupItem()/placeItem() -- already-correct, already-tested code
+		// that pushes the IDENTICAL MoveItemIntent{fromSlot,toSlot,0} this
+		// handler used to push directly, so the wire behaviour for these
+		// cases is unchanged; only the missing local sync is added, for
+		// free. A direct slot<->slot move where NEITHER endpoint is the
+		// cursor (e.g. /equip 13 14, primary<->secondary) has no existing
+		// helper that preserves the single-packet atomic swap the server's
+		// own SwapItem() already performs correctly (proven live) -- for
+		// that case only, this mirrors the two map entries locally via the
+		// public getItem()/setItem()/removeItem() API (no legality checks,
+		// matching this handler's existing "recognized slot" -- not
+		// "legal move" -- validation bar) and still sends the SAME single
+		// MoveItemIntent{fromSlot,toSlot,0} as before.
+		if (IsRecognizedInventorySlot(fromSlot) &&
+		    eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
+			// e.g. /equip 30 14 -- cursor -> a real slot.
+			if (!m_inventory_manager || !m_inventory_manager->hasCursorItem()) {
+				AddChatSystemMessage("Cannot move item - cursor is empty.");
+				return;
+			}
+			if (!m_inventory_manager->placeItem(toSlot)) {
+				AddChatSystemMessage(fmt::format("Could not place cursor item in {}.", DescribeEquipSlot(toSlot)));
+				return;
+			}
+		} else if (!eqt::inventory::isCursorSlot(fromSlot) && eqt::inventory::isCursorSlot(toSlot)) {
+			// e.g. /equip 13 30 -- a real slot -> cursor.
+			if (!m_inventory_manager || !m_inventory_manager->pickupItem(fromSlot)) {
+				AddChatSystemMessage(fmt::format("Could not pick up item from {}.", DescribeEquipSlot(fromSlot)));
+				return;
+			}
+		} else if (!eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
+			// e.g. /equip 13 14 -- direct slot<->slot swap, no cursor
+			// staging (matches the server's own atomic SwapItem(), proven
+			// live). No legality judgment beyond what IsRecognizedInventorySlot()
+			// already checked above -- the server remains the sole arbiter
+			// of whether the move is legal; this only keeps the client's own
+			// display in sync with the request.
+			const eqt::inventory::ItemInstance* fromItemPtr = m_inventory_manager ? m_inventory_manager->getItem(fromSlot) : nullptr;
+			if (!fromItemPtr) {
+				AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", DescribeEquipSlot(fromSlot)));
+				return;
+			}
+			eqt::inventory::ItemInstance movedFromItem = *fromItemPtr;  // copy: setItem() below invalidates fromItemPtr
+			const eqt::inventory::ItemInstance* toItemPtr = m_inventory_manager->getItem(toSlot);
+			if (toItemPtr) {
+				eqt::inventory::ItemInstance movedToItem = *toItemPtr;
+				m_inventory_manager->setItem(toSlot, movedFromItem);
+				m_inventory_manager->setItem(fromSlot, movedToItem);
+			} else {
+				m_inventory_manager->setItem(toSlot, movedFromItem);
+				m_inventory_manager->removeItem(fromSlot);
+			}
+			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+			if (eqt::inventory::isEquipmentSlot(fromSlot)) {
+				m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{fromSlot});
+			}
+			if (eqt::inventory::isEquipmentSlot(toSlot)) {
+				m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{toSlot});
+			}
+		} else {
+			// Both endpoints are cursor slots (e.g. /equip 30 30) -- nothing
+			// meaningful to do; fall through to the same wire request as
+			// before for parity with pre-fix behaviour.
+			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+		}
+
+		AddChatSystemMessage(fmt::format("Moving item: {} -> {}",
+			DescribeEquipSlot(fromSlot), DescribeEquipSlot(toSlot)));
 	};
 	m_command_registry->registerCommand(equip_cmd);
 }

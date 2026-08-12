@@ -2514,6 +2514,52 @@ way T52 closed zoning.
 predicts whenever a unit actually needs the capability rather than scanning
 for it abstractly.
 
+**Instance 8 (`/equip`'s live leg) is now CLOSED (T71, 2026-08-12).** T65
+ran it live first and reported it "duplicating the primary item rather
+than swapping" — the next unit taking the lock (this one) characterised
+that report rather than trusting or dismissing it: three live eqemu round
+trips (direct equipment<->equipment swap, cursor-mediated swap with a
+clean cursor, cursor-mediated swap with a deliberately congested
+multi-item cursor), each verified via fresh `inventory` table reads. All
+three were CORRECT — `SendMoveItem`/`ZoneProcessMoveItem` (the shared wire
+path drag/drop also uses) were never broken, and T65's exact duplication
+was not reproduced despite the attempt. **The real, confirmed, fixed
+defect: `/equip` never touched `InventoryManager`'s own local model or
+fired `EquipmentChangedIntent` after a successful move** — the protocol
+has no success-ack (only a failure-correction), so a request the server
+silently accepted left the client's own inventory view (and the
+appearance it drives) stale until an unrelated event refreshed it.
+Drag/drop's own gesture was never affected — it already updates local
+state before sending, which is exactly why nobody ever saw this on the
+UI path. Fixed in `eq_commands.cpp` only, no legality judgment added (the
+server is still the sole authority on whether a move is allowed); see
+`refactor/T71_equip_fix_and_first_person.md`'s Review for the full
+evidence and `review/T71/`.
+
+**The first-person weapon question (open since T63) is also now answered
+— NOT SHOWN, by design of un-wired code, not a capture failure.** Entering
+first person (`/camera fp`, or the pre-existing Ctrl+F5 path — both funnel
+through the same `IrrlichtRenderer::setCameraMode()`/`cycleCameraMode()`)
+calls `EntityRenderer::setPlayerEntityVisible(false)`, which explicitly
+hides the player's body mesh, name tag, AND both weapon/shield equipment
+nodes for as long as the camera stays in first person — unconditionally of
+combat state. Separately, `EntityRenderer::setPlayerFirstPersonMode()`
+(which would switch to "arms + weapon visible"), `updateFirstPersonWeapons()`,
+and `triggerFirstPersonAttack()` are fully implemented but have **zero
+callers anywhere in the codebase** — confirmed by an exhaustive grep, not
+inferred from the pixels. T63's own read of these three functions ("near-
+no-op compatibility stubs... reuses the same skeletal bone-attachment
+path") was half right: the bone-attachment path is indeed shared, but
+nothing ever routes execution into it for first person, because nothing
+calls the function that would flip `isFirstPersonMode` on in the first
+place. Visually confirmed live in three equip configurations (primary
+only, dual wield, shield) in a lit zone (`qeynos2`) with `/camera`'s own
+`getCameraModeString()` round-trip visible on screen — see `review/T71/`
+for stills and video. This is a finding, not a fix — T71's stage 2 is
+verification-only and did not touch `irrlicht_renderer.cpp`/
+`entity_renderer.cpp`; a future unit owns deciding whether/how to wire
+`setPlayerFirstPersonMode()` in.
+
 Historical record follows:
 
 The 2026-08-02 ruling says anything blocking fully automated development

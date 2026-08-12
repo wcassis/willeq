@@ -844,6 +844,10 @@ public:
 	EQ::SpellEffects* GetSpellEffects() { return m_spell_effects.get(); }
 	EQ::SpellTypeProcessor* GetSpellTypeProcessor() { return m_spell_type_processor.get(); }
 	EQ::SkillManager* GetSkillManager() { return m_skill_manager.get(); }
+	// T71: needed for /equip's local-state sync fix to be testable without a
+	// live server (getItem()/hasCursorItem() must see seeded test items) --
+	// same accessor-getter pattern as the managers above, not a new seam.
+	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
 
 	// Hotbar button management (stub for future implementation).
 	// P28: eqt::ui::PendingHotbarButton is now unconditionally declared
