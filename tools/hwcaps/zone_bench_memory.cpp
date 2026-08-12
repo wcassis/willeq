@@ -32,9 +32,18 @@
 //                          preset) -- calculateFramebufferUsage() is called
 //                          on it, the identical method
 //                          getMemoryReportBreakdown() uses.
-//   - EQE1 flat packs:    summed from ZoneBenchData::eqe1Loaders directly
-//                          (same EQE1Loader class IrrlichtRenderer uses,
-//                          this tool's own loaded instances).
+//   - EQE1 flat packs:    EQE1Loader::getMappedBytes() (eqe1_loader.h, P04)
+//                          summed across ZoneBenchData::eqe1Loaders -- the
+//                          same accessor and the same summation
+//                          IrrlichtRenderer::getEQE1MappedBytesTotal()
+//                          performs over its own eqe1Loaders_ (T80: an
+//                          earlier version of this file claimed no
+//                          per-loader byte accessor existed and only counted
+//                          archives; that was wrong -- getMappedBytes() has
+//                          existed since P04, well before T69. Fixed here;
+//                          this is why eqe1MappedBytes now reads nonzero
+//                          whenever --eqe1-path is passed, not just
+//                          eqe1ArchiveCount).
 //
 // What is NOT reused, and why: zone geometry / placeable object byte totals
 // (vertex+index bytes across mesh buffers). IrrlichtRenderer sums these from
@@ -67,6 +76,7 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/eqe1_loader.h"
 
 #ifdef EQT_HAS_GLES2
 // Same driver-level accounting IrrlichtRenderer::getMemoryReportBreakdown()
@@ -140,14 +150,20 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     }
     snap.totalEstimate += snap.placeableObjectsBytes;
 
+    // T80: EQE1Loader::getMappedBytes() (eqe1_loader.h, P04) has existed
+    // since before T69 -- the "no per-loader byte count" comment T69 wrote
+    // here was simply wrong, not a real API gap. IrrlichtRenderer::
+    // getEQE1MappedBytesTotal() (renderer_effects.cpp) sums the exact same
+    // accessor over its own eqe1Loaders_; this is the equivalent sum over
+    // ZoneBenchData::eqe1Loaders, same method, same reuse discipline as
+    // every other category in this file.
     for (auto& loader : data.eqe1Loaders) {
-        if (loader) ++snap.eqe1ArchiveCount;
+        if (loader) {
+            ++snap.eqe1ArchiveCount;
+            snap.eqe1MappedBytes += loader->getMappedBytes();
+        }
     }
-    // EQE1Loader doesn't expose a per-loader byte count here (unlike
-    // IrrlichtRenderer's getEQE1MappedBytesTotal(), a renderer-level
-    // aggregate over eqe1Loaders_ this tool has no access to without
-    // constructing an IrrlichtRenderer) -- reported as archive count only;
-    // see the T69 Review.
+    snap.totalEstimate += snap.eqe1MappedBytes;
 
     if (data.zone) {
         snap.s3dZoneSourceBytes = data.zone->getMemoryUsage();

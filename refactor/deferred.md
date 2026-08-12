@@ -4209,6 +4209,44 @@ enough to scope a fix unit without re-running the live session.
     the benchmark tool to construct more of the subsystem graph, or a
     live-client-based memory harness distinct from this offline benchmark.
 
+  **T80 update (2026-08-12) — "no configured budget" and "not exercised by
+  the gate" were conflated above; they are different problems with
+  different fixes, and this paragraph separates them.** T80
+  (`refactor/T80_memory_gate_coverage.md`) added a SEPARATE memory-coverage
+  benchmark invocation (`--eqe1-path`/`--objects`/`--entities`/
+  `--test-races`, never added to the golden-image runs — see that plan's
+  Review for why) that exercises three of the categories this entry called
+  "currently 0": `eqe1MappedBytes`/`eqe1ArchiveCount`, `placeableObjectsBytes`,
+  `characterModelsBytes` all now measure real, nonzero, bit-identical-across-
+  repeat-runs values (proposed baseline table in the T80 Review, pending
+  Will's sign-off same as everything else here). **That fixes "not exercised
+  by the gate."** It does **not** fix "no configured budget" — none of these
+  three categories, nor any other bullet in this list, gained a
+  `ConstrainedRendererConfig` ceiling; they remain bucket-(b)
+  baseline-guarded (regression detection against a blessed value) exactly
+  like `zoneGeometryBytes`/`s3dZoneSourceBytes`/`gpuTextureBytes`/
+  `vboEboBytes` above. So: two axes, not one --
+    - *exercised?* eqe1/placeableObjects/characterModels: now YES (T80).
+      Everything else in this list: still NO except zoneGeometryBytes/
+      s3dZoneSourceBytes/gpuTextureBytes/vboEboBytes, which were already
+      exercised by the plain golden-image runs (T69) — those never needed
+      T80's separate invocation.
+    - *budgeted?* Every category in this list, including the three T80 just
+      turned on: still NO. This list is exactly as long as it was after
+      T69 for the budget question — T80 changed nothing here. The budget
+      ruling remains open and is Will's call, per T69's original framing;
+      T80 did not attempt it (out of that unit's Territory too).
+    - T80 also fixed one bug while extending coverage: `eqe1MappedBytes`'s
+      T69-era `computeMemorySnapshot()` counted only `eqe1ArchiveCount` and
+      left `eqe1MappedBytes` hardcoded at 0 with a comment claiming
+      `EQE1Loader` exposed no per-loader byte accessor -- that accessor
+      (`EQE1Loader::getMappedBytes()`, `eqe1_loader.h`) has existed since
+      P04, well before T69; the comment was simply wrong. Fixed in
+      `tools/hwcaps/zone_bench_memory.cpp` (now sums `getMappedBytes()`
+      across `ZoneBenchData::eqe1Loaders`, the same accessor and the same
+      summation `IrrlichtRenderer::getEQE1MappedBytesTotal()` performs in
+      production).
+
 ## Pi per-device memory budgets (T69, 2026-08-11) — natural follow-up, explicitly out of scope
 
 - T69's memory-ceiling gate runs entirely on x86/llvmpipe (per its plan,

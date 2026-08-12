@@ -94,6 +94,7 @@ config/shader_cache/
 data/detail/
 data/region_maps/
 data/eq_client
+data/eqe1_client
 data/captures
 
 # Recorded sessions / packet captures for replay-oracle tests (Batch R).

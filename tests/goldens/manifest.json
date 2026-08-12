@@ -162,6 +162,14 @@
       }
     }
   ],
+  "memoryCoverage": {
+    "note": "T80: SEPARATE from the zones[] block above -- a distinct benchmark invocation (--eqe1-path/--objects/--entities/--test-races) that exercises eqe1MappedBytes/eqe1ArchiveCount/placeableObjectsBytes/characterModelsBytes, which the zones[] golden-image runs above always baseline at zero (they never load objects, entities, or an EQE1 archive). Ships unblessed -- no zone below carries a \"memory\" baseline yet, so verify_memory_coverage() reports NOT YET BLESSED and skips assertion rather than false-failing. Proposed baseline values are in refactor/T80_memory_gate_coverage.md's Review, pending Will's sign-off in chat before a real --bless. See scripts/ci/visual_gate.py's MEMORY_COVERAGE_* constants for the fixed entity count/race list/frame count this run uses.",
+    "zones": [
+      { "zone": "qeynos2" },
+      { "zone": "gfaydark" },
+      { "zone": "befallen" }
+    ]
+  },
   "approval": {
     "status": "blessed",
     "by": "Will",
