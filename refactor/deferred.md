@@ -2560,9 +2560,22 @@ verification-only and did not touch `irrlicht_renderer.cpp`/
 `entity_renderer.cpp`; a future unit owns deciding whether/how to wire
 `setPlayerFirstPersonMode()` in.
 
-**T77 (2026-08-12) adds a ninth instance of the same standing pattern in a
+**T77 (2026-08-12) adds a TENTH instance of the same standing pattern in a
 slightly different shape: not "no producer at all" but "the validation
-existed and the caller did not use it."** T75 hit `/equip` sending a move
+existed and the caller did not use it."**
+
+> **Numbering note (orchestrator, 2026-08-12).** T77's Review called this
+> the ninth; it is the tenth. **The ninth is the first-person weapon
+> feature** described immediately above — `setPlayerFirstPersonMode()` /
+> `updateFirstPersonWeapons()` / `triggerFirstPersonAttack()`, found by
+> T71's stage 2, implemented with zero callers. It was written up as a
+> finding without being given a number, so T77 reasonably took the next
+> one. Corrected here rather than left to drift: this file is a research
+> record and later units cite these by number. The first-person instance
+> is additionally distinctive — it is the only one so far where the
+> production code was **hollow** rather than merely unreachable, which is
+> why "just add the callers" (T74's initial framing) would have produced
+> nothing visible. T75 hit `/equip` sending a move
 the server was always going to reject (`slot 23 -> Primary (13)`, `"The
 selected slot was invalid"`) — `/equip` validated only that a slot NUMBER
 was recognized, never whether the source held an item or whether the item
