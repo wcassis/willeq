@@ -314,6 +314,19 @@ void EverQuest::SyncEntityToGameState(const Entity& entity)
 			*existingEntity = stateEntity;
 		}
 	}
+
+	// T81: publish the same complete struct across the thread boundary so
+	// GameStateSyncBridge can feed Application::m_gameState->entities() --
+	// this is the one place that holds the fully-populated Entity (spawn,
+	// self-entity), called on the same three sites this function always
+	// was. Not per-tick: movement updates go through OnSpawnMovedGraphics's
+	// EntityMoved instead, never through here.
+	if (m_bridge) {
+		eqt::state::EntityStateSnapshotData snapshotData;
+		snapshotData.entity = stateEntity;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityStateSnapshot, std::move(snapshotData)));
+	}
 }
 
 void EverQuest::RemoveEntityFromGameState(uint16_t spawnId)
