@@ -82,6 +82,7 @@
 #include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
 #include <array>
+#include <cctype>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -327,6 +328,125 @@ std::string DescribeEquipSlot(int16_t slot) {
 		return fmt::format("{} ({})", eqt::inventory::getSlotName(slot), slot);
 	}
 	return fmt::format("slot {}", slot);
+}
+
+// T77 -- pre-flight destination legality, reused by both /equip forms.
+// Only meaningful when toSlot is an equipment slot: canEquipItem()'s whole
+// domain is "does this item belong in this equip slot"; moving into
+// general/bag/bank/cursor has no equip-legality question and always passes
+// here (the server remains the sole arbiter of everything else, per T66's
+// "no swap semantics" rule -- this is pre-flight to avoid sending a doomed
+// packet, not a claim to know better than the server). Reuses
+// ItemInstance::canEquipInSlot() (the paired-slot-aware bitmask check) and
+// InventoryManager::canEquipItem() (adds class/race/level restrictions) --
+// no new legality logic is written here, per the plan's explicit fence
+// against a third copy of a predicate this session has already paid twice
+// to converge (T57's slot geometry, T60's bone attachment). Returns an
+// empty string on success, else a caller-actionable reason naming the item
+// and the slot -- never eqemu's opaque "The selected slot was invalid",
+// which is what cost T75 a whole session to diagnose.
+std::string CheckEquipDestination(const eqt::inventory::InventoryManager* inv,
+                                   const eqt::inventory::ItemInstance* item,
+                                   int16_t toSlot) {
+	if (!item || !eqt::inventory::isEquipmentSlot(toSlot)) {
+		return {};
+	}
+	if (!item->canEquipInSlot(toSlot)) {
+		return fmt::format("{} cannot go in {} -- wrong slot type for this item.",
+			item->name, DescribeEquipSlot(toSlot));
+	}
+	if (inv && !inv->canEquipItem(item, toSlot)) {
+		return fmt::format(
+			"{} cannot go in {} -- your character does not meet its class/race/level requirements.",
+			item->name, DescribeEquipSlot(toSlot));
+	}
+	return {};
+}
+
+// T77 -- name resolution for /equip's item-name form. Case-insensitive
+// substring match against ItemInstance::name (say-what-you-chose is the
+// caller's job once a single match comes back). Searches only the slot
+// ranges InventoryManager already exposes accessors for -- equipment
+// (getEquipmentItems()), general 22-29 (getGeneralItems()), general-bag
+// contents (via the already-exposed getBagContentsSlots(), no new bag
+// traversal invented), and the cursor -- deliberately NOT bank/shared-bank/
+// trade: this is command-layer convenience for the "equip something you're
+// carrying" case the plan describes, not a general inventory search.
+std::vector<std::pair<int16_t, const eqt::inventory::ItemInstance*>>
+FindItemsByNameSubstring(eqt::inventory::InventoryManager* inv, const std::string& needle) {
+	std::vector<std::pair<int16_t, const eqt::inventory::ItemInstance*>> matches;
+	if (!inv || needle.empty()) {
+		return matches;
+	}
+	std::string lowerNeedle = needle;
+	std::transform(lowerNeedle.begin(), lowerNeedle.end(), lowerNeedle.begin(), ::tolower);
+
+	auto tryMatch = [&](int16_t slot, const eqt::inventory::ItemInstance* item) {
+		if (!item) return;
+		std::string lowerName = item->name;
+		std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+		if (lowerName.find(lowerNeedle) != std::string::npos) {
+			matches.emplace_back(slot, item);
+		}
+	};
+
+	for (const auto& [slot, item] : inv->getEquipmentItems()) {
+		tryMatch(slot, item);
+	}
+	for (const auto& [slot, item] : inv->getGeneralItems()) {
+		tryMatch(slot, item);
+		if (item && item->isContainer()) {
+			for (int16_t bagSlot : inv->getBagContentsSlots(slot)) {
+				tryMatch(bagSlot, inv->getItem(bagSlot));
+			}
+		}
+	}
+	if (inv->hasCursorItem()) {
+		tryMatch(eqt::inventory::CURSOR_SLOT, inv->getCursorItem());
+	}
+	return matches;
+}
+
+// T77 -- resolves the destination equipment slot from the item's own
+// `slots` bitmask via ItemInstance::canEquipInSlot() (T57's canonical slot
+// geometry -- not re-derived here). Iterating every equipment slot and
+// asking canEquipInSlot() is what makes paired slots (ears, wrists,
+// fingers) fall out for free: both members of a pair independently satisfy
+// the bitmask check, so both show up as candidates with no special-casing
+// here. Prefers an empty candidate so the name form does not silently
+// clobber an already-worn item the caller didn't name; if every candidate
+// is occupied, falls back to the first candidate (still a legal
+// destination category) and flags it so the caller can say "would
+// replace" rather than picking silently.
+struct EquipDestinationResult {
+	int16_t slot = eqt::inventory::SLOT_INVALID;  // SLOT_INVALID = item fits no equip slot at all
+	bool allCandidatesOccupied = false;
+};
+
+EquipDestinationResult ResolveEquipDestination(const eqt::inventory::InventoryManager* inv,
+                                                const eqt::inventory::ItemInstance* item) {
+	EquipDestinationResult result;
+	if (!item || !inv) {
+		return result;
+	}
+	std::vector<int16_t> candidates;
+	for (int16_t slot = eqt::inventory::EQUIPMENT_BEGIN; slot <= eqt::inventory::EQUIPMENT_END; ++slot) {
+		if (item->canEquipInSlot(slot)) {
+			candidates.push_back(slot);
+		}
+	}
+	if (candidates.empty()) {
+		return result;
+	}
+	for (int16_t slot : candidates) {
+		if (!inv->getItem(slot)) {
+			result.slot = slot;
+			return result;
+		}
+	}
+	result.slot = candidates.front();
+	result.allCandidatesOccupied = true;
+	return result;
 }
 
 }  // namespace
@@ -1442,154 +1562,296 @@ void EverQuest::RegisterVendorCommands()
 // Scope discipline (per the plan's fence): this is a thin wrapper. No
 // inventory management, no swap semantics, no client-side prediction of the
 // result -- the server is authoritative and the existing (untouched)
-// ZoneProcessMoveItem path handles the reply. Validation below only rejects
-// slot ids that don't correspond to any recognized inventory location
-// (InventoryManager::isValidSlot(), the same check the UI's own drag/drop
-// path already applies) -- it does not second-guess whether a specific
-// move is a *legal* equip (item type vs. slot, class restrictions, etc.);
-// that is exactly the swap-semantics judgment the plan says stays server-side.
+// ZoneProcessMoveItem path handles the reply. The server remains the sole
+// arbiter of whether a move is ALLOWED; nothing here second-guesses a
+// server rejection or suppresses the existing resync-on-failure path.
+//
+// T71 fixed /equip's local-state sync (this handler now keeps
+// InventoryManager's own model, and therefore the rendered/paperdoll
+// appearance, in sync with what was requested -- see that unit's Review for
+// the full characterisation). T77 adds three things on top, all
+// command-layer convenience over InventoryManager's EXISTING validation
+// (InventoryManager::canEquipItem()/ItemInstance::canEquipInSlot() -- no
+// second copy of that logic is written here, per the plan's explicit fence):
+//   1. Pre-flight: before sending, confirm fromSlot actually holds an item
+//      and, when toSlot is an equipment slot, that canEquipItem() allows it
+//      -- so a doomed move (T75 hit "The selected slot was invalid" this
+//      way) is rejected locally with a specific, actionable reason instead
+//      of being sent at all.
+//   2. `/equip <item name>` -- resolves fromSlot by a case-insensitive
+//      substring search over carried items, and toSlot from the item's own
+//      `slots` bitmask (ItemInstance::canEquipInSlot() over every equip
+//      slot -- paired slots like ears/wrists/fingers fall out for free,
+//      preferring an empty member of the pair). Reports what it resolved to
+//      so a script can assert on it.
+//   3. `/equip list` -- what's equipped and where, plus what's carried and
+//      where it would go. T63, T71, and T75 each burned session time
+//      discovering what a character was carrying before /equip could act
+//      on it.
+// The explicit `/equip <fromSlot> <toSlot>` form (numeric first token)
+// keeps working exactly as T66/T71 left it -- existing session scripts use
+// it, and T71 verified it live.
 //
 // The live end-to-end leg (does a real packet actually equip a real item on
-// a real server) is explicitly OUT of this unit's territory -- sibling T65
-// holds the eqemu lock this round. See the plan's Review for what is
-// covered here (wiring: registered, parsed, invalid slots rejected, right
-// intent pushed with right fields) vs. what remains outstanding.
+// a real server, for ANY of the three forms above) is explicitly OUT of
+// this unit's territory -- sibling T76 holds the eqemu lock this round. See
+// this plan's Review for what is covered here (wiring + pre-flight,
+// unit-tested against a populated InventoryManager) vs. what remains
+// outstanding.
 void EverQuest::RegisterEquipmentCommands()
 {
 	using namespace eqt::ui;
 
 	Command equip_cmd;
 	equip_cmd.name = "equip";
-	equip_cmd.usage = "/equip <fromSlot> <toSlot>";
-	equip_cmd.description = "Move an item between inventory slots (e.g. equip a weapon: /equip 22 13)";
+	equip_cmd.usage = "/equip <fromSlot> <toSlot> | /equip <item name> | /equip list";
+	equip_cmd.description = "Move/equip an item by slot numbers or by name (e.g. /equip 22 13, /equip Rusty Mace, /equip list)";
 	equip_cmd.category = "Inventory";
 	equip_cmd.handler = [this](const std::string& args) {
+		// T71/T77 -- shared execution for all three /equip forms: given
+		// concrete fromSlot/toSlot, validates slot recognition, rejects a
+		// no-op, pre-flights the move (source holds an item; if toSlot is an
+		// equipment slot, canEquipItem() allows it -- see
+		// CheckEquipDestination() above), then executes it via the same
+		// InventoryManager local-model sync T71 added. No legality judgment
+		// beyond what CheckEquipDestination() reuses from InventoryManager --
+		// the server remains the sole arbiter of everything else.
+		auto doMove = [this](int16_t fromSlot, int16_t toSlot) {
+			if (!IsRecognizedInventorySlot(fromSlot)) {
+				AddChatSystemMessage(fmt::format("Invalid source slot: {}", fromSlot));
+				return;
+			}
+			if (!IsRecognizedInventorySlot(toSlot)) {
+				AddChatSystemMessage(fmt::format("Invalid destination slot: {}", toSlot));
+				return;
+			}
+			if (fromSlot == toSlot) {
+				AddChatSystemMessage(fmt::format(
+					"Source and destination are the same slot ({}) -- nothing to do.",
+					DescribeEquipSlot(fromSlot)));
+				return;
+			}
+			if (!m_bridge) {
+				AddChatSystemMessage("Cannot move item - no bridge attached.");
+				return;
+			}
+
+			// T77 -- pre-flight. Determine the source item first (same
+			// cursor-vs-slot distinction the execution branches below make),
+			// so both "is there anything to move" and "can it legally go
+			// there" are checked -- and reported specifically -- before any
+			// state is mutated or any packet queued.
+			const eqt::inventory::ItemInstance* sourceItem = nullptr;
+			if (eqt::inventory::isCursorSlot(fromSlot)) {
+				if (m_inventory_manager && m_inventory_manager->hasCursorItem()) {
+					sourceItem = m_inventory_manager->getCursorItem();
+				}
+			} else if (m_inventory_manager) {
+				sourceItem = m_inventory_manager->getItem(fromSlot);
+			}
+			if (!sourceItem) {
+				AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", DescribeEquipSlot(fromSlot)));
+				return;
+			}
+			std::string legalityError = CheckEquipDestination(m_inventory_manager.get(), sourceItem, toSlot);
+			if (!legalityError.empty()) {
+				AddChatSystemMessage(legalityError);
+				return;
+			}
+
+			// T71 -- Stage 1 fix (see refactor/T71_equip_fix_and_first_person.md
+			// Review for the full characterisation of why each branch below
+			// is shaped this way; unchanged by T77's pre-flight above, which
+			// only decides whether execution reaches here at all).
+			if (eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
+				// e.g. /equip 30 14 -- cursor -> a real slot.
+				if (!m_inventory_manager->placeItem(toSlot)) {
+					AddChatSystemMessage(fmt::format("Could not place cursor item in {}.", DescribeEquipSlot(toSlot)));
+					return;
+				}
+			} else if (!eqt::inventory::isCursorSlot(fromSlot) && eqt::inventory::isCursorSlot(toSlot)) {
+				// e.g. /equip 13 30 -- a real slot -> cursor.
+				if (!m_inventory_manager->pickupItem(fromSlot)) {
+					AddChatSystemMessage(fmt::format("Could not pick up item from {}.", DescribeEquipSlot(fromSlot)));
+					return;
+				}
+			} else if (!eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
+				// e.g. /equip 13 14 -- direct slot<->slot swap, no cursor
+				// staging (matches the server's own atomic SwapItem(), proven
+				// live in T71). Pre-flight above already confirmed sourceItem
+				// exists and (if applicable) the destination is legal.
+				eqt::inventory::ItemInstance movedFromItem = *sourceItem;  // copy: setItem() below invalidates sourceItem
+				const eqt::inventory::ItemInstance* toItemPtr = m_inventory_manager->getItem(toSlot);
+				if (toItemPtr) {
+					eqt::inventory::ItemInstance movedToItem = *toItemPtr;
+					m_inventory_manager->setItem(toSlot, movedFromItem);
+					m_inventory_manager->setItem(fromSlot, movedToItem);
+				} else {
+					m_inventory_manager->setItem(toSlot, movedFromItem);
+					m_inventory_manager->removeItem(fromSlot);
+				}
+				m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+				if (eqt::inventory::isEquipmentSlot(fromSlot)) {
+					m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{fromSlot});
+				}
+				if (eqt::inventory::isEquipmentSlot(toSlot)) {
+					m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{toSlot});
+				}
+			} else {
+				// Both endpoints are cursor slots (e.g. /equip 30 33) --
+				// nothing meaningful to do locally; fall through to the same
+				// wire request as before for parity with pre-T71 behaviour.
+				m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+			}
+
+			AddChatSystemMessage(fmt::format("Moving item: {} -> {}",
+				DescribeEquipSlot(fromSlot), DescribeEquipSlot(toSlot)));
+		};
+
+		// ---- form dispatch ----
 		std::istringstream iss(args);
 		std::string fromTok, toTok;
 		iss >> fromTok;
 		iss >> toTok;
 
-		int16_t fromSlot = 0;
-		int16_t toSlot = 0;
-		if (fromTok.empty() || toTok.empty() ||
-		    !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
-			AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+		if (fromTok.empty()) {
+			AddChatSystemMessage(
+				"Usage: /equip <fromSlot> <toSlot> | /equip <item name> | /equip list "
+				"(see include/client/inventory/inventory_constants.h for slot ids)");
 			return;
 		}
 
-		if (!IsRecognizedInventorySlot(fromSlot)) {
-			AddChatSystemMessage(fmt::format("Invalid source slot: {}", fromSlot));
-			return;
-		}
-		if (!IsRecognizedInventorySlot(toSlot)) {
-			AddChatSystemMessage(fmt::format("Invalid destination slot: {}", toSlot));
-			return;
-		}
+		std::string lowerFirst = fromTok;
+		std::transform(lowerFirst.begin(), lowerFirst.end(), lowerFirst.begin(), ::tolower);
 
-		if (!m_bridge) {
-			AddChatSystemMessage("Cannot move item - no bridge attached.");
-			return;
-		}
-
-		// T71 -- Stage 1 fix. Characterisation (refactor/T71_equip_fix_and_first_person.md
-		// Review): SendMoveItem/ZoneProcessMoveItem (the wire protocol) were
-		// proven correct via three live eqemu round trips (direct
-		// equipment<->equipment swap, cursor-mediated swap with a clean
-		// cursor, and cursor-mediated swap with a congested multi-item
-		// cursor) -- all three produced correct server-side results verified
-		// via fresh `inventory` table reads. The actual defect was here: this
-		// handler only ever pushed the wire-level MoveItemIntent and never
-		// touched InventoryManager's own local model (items_/cursorQueue_)
-		// or fired EquipmentChangedIntent. The protocol has no
-		// success-acknowledgement (only a correction on failure -- see
-		// ZoneProcessMoveItem/processMoveItemResponse), so a request that the
-		// server silently accepts left the client's own inventory view (and
-		// therefore the rendered/paperdoll equipment appearance, which reads
-		// from that same local model in UpdatePlayerAppearanceFromInventory())
-		// stale until an unrelated event (zoning, relogging, or a drag/drop
-		// gesture touching the same slot) happened to refresh it. Drag/drop's
-		// own gesture (InventoryManager::pickupItem()/placeItem()) never hits
-		// this gap because it already updates local state (and fires
-		// EquipmentChangedIntent) before sending -- exactly mirroring how the
-		// real EQ protocol expects a client to behave (optimistic local
-		// apply, corrected server-side only on failure). This fix does not
-		// change that division of labor or add any new legality judgment
-		// here -- the server remains the sole authority on whether a move is
-		// ALLOWED (T66's "no swap semantics" rule stands unchanged); it only
-		// keeps the local mirror in sync with what was requested, and the
-		// existing resync-on-failure path (already proven live, see the
-		// Review) corrects it back if the server refuses.
-		//
-		// Cursor-involving moves (either endpoint is CURSOR_SLOT/
-		// SERVER_CURSOR_SLOT) are delegated to InventoryManager's own
-		// pickupItem()/placeItem() -- already-correct, already-tested code
-		// that pushes the IDENTICAL MoveItemIntent{fromSlot,toSlot,0} this
-		// handler used to push directly, so the wire behaviour for these
-		// cases is unchanged; only the missing local sync is added, for
-		// free. A direct slot<->slot move where NEITHER endpoint is the
-		// cursor (e.g. /equip 13 14, primary<->secondary) has no existing
-		// helper that preserves the single-packet atomic swap the server's
-		// own SwapItem() already performs correctly (proven live) -- for
-		// that case only, this mirrors the two map entries locally via the
-		// public getItem()/setItem()/removeItem() API (no legality checks,
-		// matching this handler's existing "recognized slot" -- not
-		// "legal move" -- validation bar) and still sends the SAME single
-		// MoveItemIntent{fromSlot,toSlot,0} as before.
-		if (IsRecognizedInventorySlot(fromSlot) &&
-		    eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
-			// e.g. /equip 30 14 -- cursor -> a real slot.
-			if (!m_inventory_manager || !m_inventory_manager->hasCursorItem()) {
-				AddChatSystemMessage("Cannot move item - cursor is empty.");
+		// T77 -- /equip list: what's equipped, and what's carried and where
+		// it would resolve to. T63, T71, and T75 each burned session time
+		// discovering what a character was carrying before scripting
+		// against it.
+		if (lowerFirst == "list" && toTok.empty()) {
+			if (!m_inventory_manager) {
+				AddChatSystemMessage("Cannot list equipment - inventory not available.");
 				return;
 			}
-			if (!m_inventory_manager->placeItem(toSlot)) {
-				AddChatSystemMessage(fmt::format("Could not place cursor item in {}.", DescribeEquipSlot(toSlot)));
-				return;
-			}
-		} else if (!eqt::inventory::isCursorSlot(fromSlot) && eqt::inventory::isCursorSlot(toSlot)) {
-			// e.g. /equip 13 30 -- a real slot -> cursor.
-			if (!m_inventory_manager || !m_inventory_manager->pickupItem(fromSlot)) {
-				AddChatSystemMessage(fmt::format("Could not pick up item from {}.", DescribeEquipSlot(fromSlot)));
-				return;
-			}
-		} else if (!eqt::inventory::isCursorSlot(fromSlot) && !eqt::inventory::isCursorSlot(toSlot)) {
-			// e.g. /equip 13 14 -- direct slot<->slot swap, no cursor
-			// staging (matches the server's own atomic SwapItem(), proven
-			// live). No legality judgment beyond what IsRecognizedInventorySlot()
-			// already checked above -- the server remains the sole arbiter
-			// of whether the move is legal; this only keeps the client's own
-			// display in sync with the request.
-			const eqt::inventory::ItemInstance* fromItemPtr = m_inventory_manager ? m_inventory_manager->getItem(fromSlot) : nullptr;
-			if (!fromItemPtr) {
-				AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", DescribeEquipSlot(fromSlot)));
-				return;
-			}
-			eqt::inventory::ItemInstance movedFromItem = *fromItemPtr;  // copy: setItem() below invalidates fromItemPtr
-			const eqt::inventory::ItemInstance* toItemPtr = m_inventory_manager->getItem(toSlot);
-			if (toItemPtr) {
-				eqt::inventory::ItemInstance movedToItem = *toItemPtr;
-				m_inventory_manager->setItem(toSlot, movedFromItem);
-				m_inventory_manager->setItem(fromSlot, movedToItem);
+			auto equipped = m_inventory_manager->getEquipmentItems();
+			if (equipped.empty()) {
+				AddChatSystemMessage("Nothing currently equipped.");
 			} else {
-				m_inventory_manager->setItem(toSlot, movedFromItem);
-				m_inventory_manager->removeItem(fromSlot);
+				AddChatSystemMessage(fmt::format("Equipped ({} item{}):",
+					equipped.size(), equipped.size() == 1 ? "" : "s"));
+				for (const auto& [slot, item] : equipped) {
+					AddChatSystemMessage(fmt::format("  {}: {}", DescribeEquipSlot(slot), item->name));
+				}
 			}
-			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
-			if (eqt::inventory::isEquipmentSlot(fromSlot)) {
-				m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{fromSlot});
+
+			// Same reachable-by-name universe as FindItemsByNameSubstring()
+			// above: general slots + general-bag contents + cursor.
+			std::vector<std::pair<int16_t, const eqt::inventory::ItemInstance*>> carried;
+			for (const auto& [slot, item] : m_inventory_manager->getGeneralItems()) {
+				carried.emplace_back(slot, item);
+				if (item && item->isContainer()) {
+					for (int16_t bagSlot : m_inventory_manager->getBagContentsSlots(slot)) {
+						const auto* bagItem = m_inventory_manager->getItem(bagSlot);
+						if (bagItem) {
+							carried.emplace_back(bagSlot, bagItem);
+						}
+					}
+				}
 			}
-			if (eqt::inventory::isEquipmentSlot(toSlot)) {
-				m_bridge->pushIntent(eqt::events::EquipmentChangedIntent{toSlot});
+			if (m_inventory_manager->hasCursorItem()) {
+				carried.emplace_back(eqt::inventory::CURSOR_SLOT, m_inventory_manager->getCursorItem());
 			}
-		} else {
-			// Both endpoints are cursor slots (e.g. /equip 30 30) -- nothing
-			// meaningful to do; fall through to the same wire request as
-			// before for parity with pre-fix behaviour.
-			m_bridge->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+
+			bool printedHeader = false;
+			for (const auto& [slot, item] : carried) {
+				EquipDestinationResult dest = ResolveEquipDestination(m_inventory_manager.get(), item);
+				if (dest.slot == eqt::inventory::SLOT_INVALID) {
+					continue;  // not equippable at all (a bag, a reagent, ...) -- not this list's business
+				}
+				if (!printedHeader) {
+					AddChatSystemMessage("Carried, equippable via /equip <name>:");
+					printedHeader = true;
+				}
+				AddChatSystemMessage(fmt::format("  {} ({}) -> {}{}",
+					item->name, DescribeEquipSlot(slot), DescribeEquipSlot(dest.slot),
+					dest.allCandidatesOccupied ? " (would replace)" : ""));
+			}
+			if (!printedHeader) {
+				AddChatSystemMessage("Nothing else carried that could be equipped.");
+			}
+			return;
 		}
 
-		AddChatSystemMessage(fmt::format("Moving item: {} -> {}",
-			DescribeEquipSlot(fromSlot), DescribeEquipSlot(toSlot)));
+		// A token that LOOKS like an attempted slot number (starts with a
+		// digit or '-') is parsed strictly as the explicit
+		// <fromSlot> <toSlot> form -- a typo'd number (e.g. "22abc") stays a
+		// slot-form usage error rather than silently becoming an item-name
+		// search for the literal text "22abc 13". Anything else is the
+		// item-name form (below), since item names are free text and may be
+		// multiple words.
+		bool firstLooksNumeric = !fromTok.empty() &&
+			(std::isdigit(static_cast<unsigned char>(fromTok[0])) || fromTok[0] == '-');
+		if (firstLooksNumeric) {
+			int16_t fromSlot = 0;
+			int16_t toSlot = 0;
+			if (toTok.empty() || !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
+				AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+				return;
+			}
+			doMove(fromSlot, toSlot);
+			return;
+		}
+
+		// T77 -- item-name form.
+		if (!m_inventory_manager) {
+			AddChatSystemMessage("Cannot resolve item name - inventory not available.");
+			return;
+		}
+		auto matches = FindItemsByNameSubstring(m_inventory_manager.get(), args);
+		if (matches.empty()) {
+			AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+			return;
+		}
+		// Ambiguous only if DISTINCT item names matched -- duplicate stacks
+		// of the identical item are interchangeable for equip purposes, so
+		// multiple slots holding the same name is not ambiguity.
+		std::string firstLowerName = matches.front().second->name;
+		std::transform(firstLowerName.begin(), firstLowerName.end(), firstLowerName.begin(), ::tolower);
+		bool ambiguous = false;
+		for (const auto& [slot, item] : matches) {
+			std::string n = item->name;
+			std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+			if (n != firstLowerName) {
+				ambiguous = true;
+				break;
+			}
+		}
+		if (ambiguous) {
+			std::string names;
+			for (const auto& [slot, item] : matches) {
+				if (!names.empty()) {
+					names += ", ";
+				}
+				names += fmt::format("{} ({})", item->name, DescribeEquipSlot(slot));
+			}
+			AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+			return;
+		}
+
+		int16_t fromSlot = matches.front().first;
+		const eqt::inventory::ItemInstance* item = matches.front().second;
+		EquipDestinationResult dest = ResolveEquipDestination(m_inventory_manager.get(), item);
+		if (dest.slot == eqt::inventory::SLOT_INVALID) {
+			AddChatSystemMessage(fmt::format("{} cannot be equipped (fits no equipment slot).", item->name));
+			return;
+		}
+		if (dest.allCandidatesOccupied) {
+			AddChatSystemMessage(fmt::format("{} would replace what's already in {}.",
+				item->name, DescribeEquipSlot(dest.slot)));
+		}
+		AddChatSystemMessage(fmt::format("Resolved '{}' to {} ({}) -> {}.",
+			args, item->name, DescribeEquipSlot(fromSlot), DescribeEquipSlot(dest.slot)));
+		doMove(fromSlot, dest.slot);
 	};
 	m_command_registry->registerCommand(equip_cmd);
 }

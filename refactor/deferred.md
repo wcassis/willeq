@@ -2560,6 +2560,44 @@ verification-only and did not touch `irrlicht_renderer.cpp`/
 `entity_renderer.cpp`; a future unit owns deciding whether/how to wire
 `setPlayerFirstPersonMode()` in.
 
+**T77 (2026-08-12) adds a ninth instance of the same standing pattern in a
+slightly different shape: not "no producer at all" but "the validation
+existed and the caller did not use it."** T75 hit `/equip` sending a move
+the server was always going to reject (`slot 23 -> Primary (13)`, `"The
+selected slot was invalid"`) — `/equip` validated only that a slot NUMBER
+was recognized, never whether the source held an item or whether the item
+could legally go in the destination, even though
+`InventoryManager::canEquipItem()`/`ItemInstance::canEquipInSlot()`
+already did exactly that legality check and T71 had already added
+`GetInventoryManager()` to reach it. T77 wired pre-flight into `/equip`
+(rejects with a specific reason — "X cannot go in Y — wrong slot type" /
+"...does not meet its class/race/level requirements" — instead of sending
+a doomed packet), added `/equip <item name>` (resolves the source by
+case-insensitive substring search over carried items, and the destination
+from the item's own `slots` bitmask via `canEquipInSlot()` — paired slots
+fall out for free by iterating every equip slot and preferring an empty
+member of the pair; reports what it resolved to), and `/equip list`
+(equipped-and-where, carried-and-where-it-would-go). No new legality
+predicate was written — same fence T71 held. **The live end-to-end leg for
+all three of T77's additions is explicitly OUTSTANDING**: T77 ran under NO
+EQEMU (sibling T76 held the lock this round), so nothing has watched a
+real pre-flight-then-send round trip, a real name-form resolution, or a
+real `/equip list` against a live character's actual inventory. Coverage
+stops at 30 tests in `tests/test_eq_commands_equip.cpp` against a populated
+(but never server-synced) `InventoryManager`: empty source, illegal
+destination (both the wrong-slot-type and the restrictions-failure
+shapes), no-op same-slot, name resolution (including case-insensitive
+substring match), name not found, ambiguous name across distinct items,
+duplicate stacks of the identical item (correctly NOT ambiguous), paired-
+slot selection preferring the empty member, both paired slots full
+("would replace", still resolves), an item fitting no equip slot at all,
+and both `/equip list` shapes (empty inventory, populated). **The next unit
+that takes the eqemu lock should run all three forms live** — a pre-flight
+rejection against a real restricted item, a successful `/equip <name>`
+resolving and equipping a real carried weapon, and `/equip list` against a
+real character's live inventory — before this instance can be called
+closed the way T52 closed zoning and T71 closed instance 8's wiring leg.
+
 Historical record follows:
 
 The 2026-08-02 ruling says anything blocking fully automated development

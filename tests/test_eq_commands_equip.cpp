@@ -109,18 +109,27 @@ TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
-TEST_F(EqCommandsEquipTest, NonNumericSlot_PrintsUsage_PushesNoIntent) {
+// T77 -- a first token that does NOT look like an attempted slot number
+// (doesn't start with a digit or '-') is now routed to the item-name form
+// instead of the slot form, since item names are free text and may be
+// multiple words (e.g. "/equip Rusty Mace"). "general 13" is therefore no
+// longer a slot-usage error -- it's an item-name search for the literal
+// text "general 13", which finds nothing in an empty inventory.
+TEST_F(EqCommandsEquipTest, NonNumericFirstToken_TreatedAsItemNameSearch_NotFound) {
     eq.ProcessChatInput("/equip general 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_NE(msgs[0].find("Usage"), std::string::npos);
+    EXPECT_NE(msgs[0].find("No carried item matches"), std::string::npos) << msgs[0];
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
-    // Same consumed-length discipline as T48's ParseVendorSlot -- "22abc"
-    // must be rejected outright, not silently truncated to 22.
+    // "22abc" starts with a digit, so T77's firstLooksNumeric heuristic
+    // still routes it through the strict slot-form parser -- same
+    // consumed-length discipline as T48's ParseVendorSlot: it must be
+    // rejected outright, not silently truncated to 22, and not reinterpreted
+    // as an item-name search.
     eq.ProcessChatInput("/equip 22abc 13");
 
     auto msgs = DrainSystemMessages(bridge);
@@ -312,6 +321,230 @@ TEST_F(EqCommandsEquipTest, CursorToSecondary_UpdatesLocalInventoryModel) {
     // live in this unit against a real eqemu server, see the Review).
     ASSERT_TRUE(inv->hasCursorItem());
     EXPECT_EQ(inv->getCursorItem()->itemId, 9990u);
+}
+
+// ---------------------------------------------------------------------------
+// T77 -- pre-flight destination legality. Reuses InventoryManager::
+// canEquipItem()/ItemInstance::canEquipInSlot() -- no new predicate is
+// written for this unit; these tests confirm the EXISTING validation is now
+// actually consulted before a move is executed or sent.
+// ---------------------------------------------------------------------------
+
+// Seeds an item with full control over name/slots-bitmask/reqLevel, unlike
+// SeedItem() above (which deliberately fits any equip slot to isolate the
+// wiring tests above from legality). slots=0 by default means "fits no
+// equipment slot at all" (ItemInstance's own default) -- callers pass the
+// EQUIPSLOT_* bit(s) they want.
+void SeedNamedItem(EverQuest& eq, int16_t slot, uint32_t itemId, const std::string& name,
+                    uint32_t slotsBitmask, uint8_t reqLevel = 0) {
+    ItemInstance item;
+    item.itemId = itemId;
+    item.name = name;
+    item.slots = slotsBitmask;
+    item.reqLevel = reqLevel;
+    eq.GetInventoryManager()->setItem(slot, item);
+}
+
+TEST_F(EqCommandsEquipTest, WrongSlotType_RejectedLocally_NamesItemAndSlot_PushesNoIntent) {
+    // A Primary-only weapon aimed at Head (slot 2): canEquipInSlot() fails
+    // first (wrong bitmask), not the restrictions check.
+    SeedNamedItem(eq, 22, 7001, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip 22 2");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Rusty Mace"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Head"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    // Local model must be untouched -- pre-flight rejected before any mutation.
+    auto* inv = eq.GetInventoryManager();
+    EXPECT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(2), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, RestrictionFailure_RejectedLocally_PushesNoIntent) {
+    // Fits Primary by slot type, but reqLevel=50 against the default test
+    // player (level 1, from InventoryManager's own playerLevel_ default) --
+    // canEquipInSlot() passes, meetsRestrictions() fails.
+    SeedNamedItem(eq, 22, 7002, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
+    eq.ProcessChatInput("/equip 22 13");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Ancient Blade"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("does not meet"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
+    // Confirms the pre-flight check is not overly strict -- a legal
+    // destination still goes through exactly as before.
+    SeedNamedItem(eq, 22, 7003, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip 22 13");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7003u);
+    auto intents = bridge.drainIntents();
+    EXPECT_NE(FindMoveItemIntent(intents), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
+    SeedItem(eq, 22, 6011);
+    eq.ProcessChatInput("/equip 22 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("same slot"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+// ---------------------------------------------------------------------------
+// T77 -- item-name form: `/equip <item name>`.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, NameForm_ResolvesSlotFromItemBitmask_MovesAndReports) {
+    SeedNamedItem(eq, 22, 7010, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip Rusty Mace");
+
+    auto msgs = DrainSystemMessages(bridge);
+    // "Resolved '<name>' to ..." followed by the usual "Moving item: ..."
+    // confirmation -- a script can assert on either.
+    ASSERT_EQ(msgs.size(), 2u);
+    EXPECT_NE(msgs[0].find("Resolved"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Rusty Mace"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Primary"), std::string::npos) << msgs[0];
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7010u);
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_SubstringMatch_CaseInsensitive) {
+    SeedNamedItem(eq, 22, 7011, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip rusty");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7011u);
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_NotFound_PushesNoIntent) {
+    eq.ProcessChatInput("/equip nonexistent item");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("No carried item matches"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_AmbiguousAcrossDistinctItems_RejectedWithBothNamed) {
+    SeedNamedItem(eq, 22, 7020, "Rusty Sword", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 23, 7021, "Broad Sword", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip sword");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("multiple"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Rusty Sword"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Broad Sword"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_DuplicateStacksOfSameItem_NotAmbiguous_TakesFirst) {
+    // Two slots holding the identical item name -- interchangeable for
+    // equip purposes, so this must NOT be treated as ambiguous.
+    SeedNamedItem(eq, 22, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 23, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
+    eq.ProcessChatInput("/equip Throwing Dagger");
+
+    auto msgs = DrainSystemMessages(bridge);
+    for (const auto& m : msgs) {
+        EXPECT_EQ(m.find("multiple"), std::string::npos) << m;
+    }
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7030u);
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_PairedSlot_PrefersEmptyEar) {
+    // An earring fits both SLOT_EAR1 (1) and SLOT_EAR2 (4) via
+    // ItemInstance::canEquipInSlot()'s paired-slot handling. EAR1 already
+    // occupied -- resolution must prefer the empty EAR2, not clobber EAR1.
+    SeedNamedItem(eq, SLOT_EAR1, 8000, "Old Earring", EQUIPSLOT_EAR);
+    SeedNamedItem(eq, 22, 8001, "Jade Earring", EQUIPSLOT_EAR);
+    eq.ProcessChatInput("/equip Jade Earring");
+
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_EAR2), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_EAR2)->itemId, 8001u);
+    // EAR1's original occupant is untouched.
+    ASSERT_NE(inv->getItem(SLOT_EAR1), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_EAR1)->itemId, 8000u);
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_BothPairedSlotsFull_ReportsWouldReplace_StillResolves) {
+    SeedNamedItem(eq, SLOT_EAR1, 8010, "Old Earring", EQUIPSLOT_EAR);
+    SeedNamedItem(eq, SLOT_EAR2, 8011, "Older Earring", EQUIPSLOT_EAR);
+    SeedNamedItem(eq, 22, 8012, "New Earring", EQUIPSLOT_EAR);
+    eq.ProcessChatInput("/equip New Earring");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_GE(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("would replace"), std::string::npos) << msgs[0];
+    // Falls back to the first candidate (SLOT_EAR1) and still executes --
+    // pre-flight above (LegalDestination_StillMoves) already confirms
+    // canEquipItem() passes for this item/slot pair.
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_EAR1), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_EAR1)->itemId, 8012u);
+}
+
+TEST_F(EqCommandsEquipTest, NameForm_ItemFitsNoEquipSlot_RejectedWithReason) {
+    SeedNamedItem(eq, 22, 8020, "A Rock", /*slotsBitmask=*/0);
+    eq.ProcessChatInput("/equip Rock");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("A Rock"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("cannot be equipped"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+// ---------------------------------------------------------------------------
+// T77 -- `/equip list`.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, ListForm_EmptyInventory_ReportsNothing) {
+    eq.ProcessChatInput("/equip list");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 2u);
+    EXPECT_NE(msgs[0].find("Nothing currently equipped"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[1].find("Nothing else carried"), std::string::npos) << msgs[1];
+}
+
+TEST_F(EqCommandsEquipTest, ListForm_ShowsEquippedAndCarriedWithResolution) {
+    SeedNamedItem(eq, SLOT_PRIMARY, 9100, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 22, 9101, "Dagger", EQUIPSLOT_SECONDARY);
+    eq.ProcessChatInput("/equip list");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_GE(msgs.size(), 4u);
+    EXPECT_NE(msgs[0].find("Equipped"), std::string::npos) << msgs[0];
+    bool sawMaceEquipped = false, sawDaggerCarried = false;
+    for (const auto& m : msgs) {
+        if (m.find("Rusty Mace") != std::string::npos && m.find("Primary") != std::string::npos) {
+            sawMaceEquipped = true;
+        }
+        if (m.find("Dagger") != std::string::npos && m.find("Secondary") != std::string::npos) {
+            sawDaggerCarried = true;
+        }
+    }
+    EXPECT_TRUE(sawMaceEquipped);
+    EXPECT_TRUE(sawDaggerCarried);
+    // /equip list is read-only.
+    EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 }  // namespace
