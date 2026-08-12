@@ -1669,6 +1669,31 @@ reconstructibility argument, not assumed from this unit's), plus **combat**,
 which stays on its existing per-tick `Application::syncCombatState()` poll
 (T78 confirmed populated, not broken — not touched by this unit).
 
+**Live leg CLOSED (T82, 2026-08-12), with an important correction to the
+paragraph above.** `/face` was confirmed live against T81's projection
+exactly as claimed — `ActionDispatcher::faceEntity()` reads
+`m_state.entities()` directly and succeeded live with zero code changes.
+**`/who`, `moveToEntity`, and `followEntity` do NOT "work against real
+data" in the sense this paragraph implies — they are unreachable through
+any live input path.** `Application::DispatchSlashCommand()`'s registry-1
+stage (`EverQuest::m_command_registry`) always runs first, and `who`/
+`moveto`/`follow` are ALL also registered there under the identical name,
+reading `EverQuest::m_entities` (a separate, pre-existing, never-broken raw
+map) — so `CommandProcessor`'s versions (the ones actually reading T81's
+projection) are permanently shadowed, confirmed live by the exact output
+text observed (registry 1's `"[{}] {} (Lvl {})"` / `"Moving to entity:
+..."` / `"Following: ..."` format, never registry 2's distinct text). This
+is not a T81 defect — T81's own scope was the projection and its consumers,
+which are correctly wired and unit-tested; the shadowing is a pre-existing
+command-dispatch property neither T81 nor this unit touched. `/list` looks
+like a fourth live proof (not shadowed, dispatches to `registry=action`)
+but also does not exercise the projection: `ActionDispatcher::
+listEntities()` forwards cross-thread to `EverQuest::ListEntities()`, the
+same raw-map path as `/who`. Full evidence:
+`refactor/T82_live_verification_session.md`'s Review, `review/T82/`.
+`interactNearest()` was not exercised (no slash-command binding at all,
+hotkey-only — same reachability class, one level further).
+
 ## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02) — **ALL THREE CLAIMS CLOSED (T28/T39/T42/T49); this is the board's own worked example of why re-verification matters**
 
 **CLOSED, T53 (2026-08-05) verification** (independently re-confirmed, not
@@ -2655,6 +2680,31 @@ rejection against a real restricted item, a successful `/equip <name>`
 resolving and equipping a real carried weapon, and `/equip list` against a
 real character's live inventory — before this instance can be called
 closed the way T52 closed zoning and T71 closed instance 8's wiring leg.
+
+**Instance 10 (T77's `/equip` pre-flight/name-form/list live leg) is now
+CLOSED (T82, 2026-08-12).** All three forms confirmed live against
+`Testmelee`: pre-flight rejections (empty source, wrong slot type, class/
+race/level restriction — the last genuinely a race exclusion, decoded
+against the item's `races` bitmask, not a level issue), `/equip <name>`
+resolving and equipping a real carried weapon end to end (item 1327,
+"Grizznot's Claws", resolved via `item_models`), `/equip list` against a
+real live inventory, and the T71 explicit-slot form round-tripped cleanly.
+Also closed, as a byproduct: the original T75/T76 server rejection
+(`/equip 23 13`, "The selected slot was invalid") — T77's pre-flight now
+catches it locally (the item in that slot, 12654 "Scaled Curskin", fits no
+equipment slot at all; it was never a weapon). See
+`refactor/T82_live_verification_session.md`'s Review for the full evidence
+and `review/T82/`. **A second, narrower gap was found live in the same
+session and is NOT closed**: `doMove()`'s direct slot-swap branch never
+validates the *displaced* item against the equipment slot it lands in when
+`fromSlot` is equipment and `toSlot` is occupied (e.g. unequipping a weapon
+into an occupied general slot can swap a non-equippable item into the now-
+empty equipment slot) — the server correctly rejects this and the client
+self-heals via its existing desync-detection/resync path (not data loss),
+but it is a real, reproducible pre-flight gap. Not fixed under T82 (larger
+than the plan's "small, clearly-scoped" exception); a future unit should
+extend `CheckEquipDestination()` (or its caller) to validate both directions
+of a swap.
 
 Historical record follows:
 

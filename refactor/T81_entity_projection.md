@@ -264,6 +264,13 @@ unmodified) — same argument applies.
   lock-held case; a live `/who` + `/face` session against a real zone would
   still be worth running as a follow-up if Will wants the user-visible
   proof.
+  **CLOSED (T82, 2026-08-12).** `/face` confirmed working live against a
+  real zone, zero code changes needed — exactly as this Review's own
+  falsification test predicted. `/who` turned out to be unreachable live for
+  a reason outside this unit's scope (shadowed by a same-named, pre-existing
+  `EverQuest::m_command_registry` command reading a different, older data
+  source — see `refactor/T82_live_verification_session.md`'s Review and
+  `refactor/deferred.md`'s updated entry for the full trace).
 
 ### Deviations
 

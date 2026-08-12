@@ -256,6 +256,17 @@ unit that takes the eqemu lock should run all three `/equip` forms live
 before this instance is called closed, the same shape T66's deferral took
 and T71 closed for the wiring leg.
 
+**CLOSED (T82, 2026-08-12).** All three forms confirmed live: pre-flight
+rejections (empty source, wrong slot type, restriction failure), `/equip
+<name>` resolving and equipping a real carried weapon end to end, `/equip
+list` against a real live inventory, and the T71 explicit-slot form. As a
+byproduct, T82 also explained (and closed, via this unit's own pre-flight)
+the T75/T76 server rejection this unit was written to guard against, and
+found one further live-reproduced gap in `CheckEquipDestination()` (reverse-
+direction swap legality) — not fixed under T82, reported as a separate
+unit's scope. Full evidence: `refactor/T82_live_verification_session.md`'s
+Review, `review/T82/`.
+
 ### Test suite
 
 `tests/test_eq_commands_equip.cpp`: 30 tests (was 12; 2 renamed/rewritten
