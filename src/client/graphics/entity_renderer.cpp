@@ -2972,19 +2972,17 @@ bool EntityRenderer::getPlayerHeadBonePosition(float& eqX, float& eqY, float& eq
         return false;
     }
 
-    // Use the BASE mesh bounding box (not instance mesh) for camera height.
-    // In first-person mode, the instance mesh has collapsed vertices (Y=-10000),
-    // which would corrupt the bounding box. The base mesh is unmodified.
-    EQAnimatedMesh* eqMesh = playerVisual->animatedNode->getEQMesh();
-    if (!eqMesh) {
+    // T75: this used to duplicate getPlayerEyeHeightFromFeet()'s bbox math
+    // verbatim (including the same MaxEdge-MinEdge bug -- see that
+    // function's comment for the measured evidence). Despite the name,
+    // this function never actually read a head bone transform; it computed
+    // the identical static "top of bbox above feet" height. Delegating to
+    // the one real implementation removes the duplicate rather than fixing
+    // the bug twice.
+    float cameraHeightFromFeet = getPlayerEyeHeightFromFeet();
+    if (cameraHeightFromFeet <= 0.0f) {
         return false;
     }
-    irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-
-    // Camera should be at the TOP of the bounding box, looking straight ahead.
-    // User requested: "looking out from the top of a bounding box over the model"
-    // Use full bbox height, no offset for "eyes" - just top of model.
-    float cameraHeightFromFeet = bbox.MaxEdge.Y - bbox.MinEdge.Y;
 
     // X and Y use entity position
     eqX = playerVisual->lastX;
@@ -2997,8 +2995,8 @@ bool EntityRenderer::getPlayerHeadBonePosition(float& eqX, float& eqY, float& eq
     // Debug logging
     static int logCount = 0;
     if (logCount++ % 100 == 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "HeadPos: lastZ={:.2f} cameraHeight={:.2f} => eqZ={:.2f} (bbox Y: {:.2f} to {:.2f})",
-                  playerVisual->lastZ, cameraHeightFromFeet, eqZ, bbox.MinEdge.Y, bbox.MaxEdge.Y);
+        LOG_DEBUG(MOD_GRAPHICS, "HeadPos: lastZ={:.2f} cameraHeight={:.2f} => eqZ={:.2f}",
+                  playerVisual->lastZ, cameraHeightFromFeet, eqZ);
     }
 
     return true;
@@ -3035,9 +3033,19 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
                 continue;
             }
             irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-            // Camera height = full model height (top of bounding box)
-            // No offset for "eyes" - user wants camera at top of bbox looking straight ahead
-            float cameraHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+            // T75 fix: camera height = bbox.MaxEdge.Y alone (node origin ==
+            // feet, see updatePlayerEntityPosition()), NOT MaxEdge-MinEdge.
+            // MinEdge.Y is NOT 0 for these models (Human male: -3.00), so
+            // the old range formula added a spurious extra ~3 units,
+            // placing the camera a body's-height above the model's actual
+            // top -- confirmed by ArmVsCameraGeometryMeasurement_Headless
+            // (test_inventory_model_view.cpp): under the old formula arm
+            // bones sat 3.1-3.6 units below camera Y (outside frustum at
+            // the near-clip depth they sit at) in idle AND every attack
+            // anim sampled; under this fix that gap shrinks to ~0.1-0.5
+            // units. No offset for "eyes" -- top of bbox, looking straight
+            // ahead, is the unchanged design intent.
+            float cameraHeight = bbox.MaxEdge.Y;
             return cameraHeight;
         }
     }

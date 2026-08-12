@@ -237,6 +237,14 @@ public:
     // reads hasValidFirstPersonGeometry() instead.
     size_t getArmBoneCount() const { return armBoneIndices_.size(); }
 
+    // T75: read-only access to the actual resolved arm bone indices (not
+    // just the count), so diagnostics/tests can look up each arm bone's
+    // world position via getBoneWorldPosition() -- needed to measure where
+    // the arm geometry sits relative to the first-person camera. Populated
+    // by the same buildArmBoneIndices() call getArmBoneCount() reads from;
+    // this accessor does not itself run or affect the filter.
+    const std::vector<int>& getArmBoneIndices() const { return armBoneIndices_; }
+
     // T74: total index count summed across the per-instance mesh's buffers
     // (i.e. 3x the currently-drawn triangle count). For diagnostics/tests to
     // confirm the first-person filter actually removed geometry rather than

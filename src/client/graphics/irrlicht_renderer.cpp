@@ -2414,6 +2414,24 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 }
 
 
+// T75: small downward pitch applied ONLY to the first-person camera's look
+// target (camera position/orientation lever, per the plan's least-change
+// preference -- no pose or node-transform change). T75's headless
+// measurement (ArmVsCameraGeometryMeasurement_Headless, human male) found
+// that even after fixing getPlayerEyeHeightFromFeet()'s bbox bug (see that
+// function's comment), the topmost arm-bone geometry sits ~0.1-0.9 units
+// below a perfectly level camera across idle and every attack animation
+// sampled, and lower arm/hand geometry sits several units further below
+// that. A purely level camera would clip the top edge of the held
+// weapon/forearm rather than frame it. 12 degrees was chosen empirically
+// against those measurements: enough to comfortably re-center the visible
+// cone on the arm/weapon geometry at the shallow (~1-2 unit) forward depth
+// it actually sits at, while staying small enough that looking forward at
+// the world -- not down at your own chest -- remains the dominant first-
+// person experience. Tune here if a live capture shows it needs
+// adjustment; it is the ONLY tunable this unit introduces.
+static constexpr float kFirstPersonPitchDownRad = 12.0f * 3.14159265359f / 180.0f;  // 12 degrees (irr::core::PI is not constexpr)
+
 void IrrlichtRenderer::repositionFirstPersonCamera() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) {
         return;
@@ -2426,18 +2444,24 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // playerZ_ is feet position, so camera Z = feet + eye height + user adjustment
     float camZ = playerZ_ + eyeHeight + playerConfig_.eyeHeight;
     float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
+    const float kTargetDistance = 100.0f;
+    // T75: pitch the look target down by kFirstPersonPitchDownRad -- see
+    // that constant's comment. tan(angle) * distance drops the target
+    // below camera height by the right amount for a small-angle pitch at
+    // this target distance.
+    float targetY = camZ - std::tan(kFirstPersonPitchDownRad) * kTargetDistance;
     irr::core::vector3df camPos(playerX_, camZ, playerY_);
     irr::core::vector3df target(
-        playerX_ + std::sin(headingRad) * 100.0f,
-        camZ,
-        playerY_ + std::cos(headingRad) * 100.0f
+        playerX_ + std::sin(headingRad) * kTargetDistance,
+        targetY,
+        playerY_ + std::cos(headingRad) * kTargetDistance
     );
 
     camera_->setPosition(camPos);
     camera_->setTarget(target);
 
-    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}",
-             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ);
+    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}, pitchDown={:.1f}deg",
+             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ, kFirstPersonPitchDownRad * 180.0f / irr::core::PI);
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
@@ -2586,37 +2610,18 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
         cameraController_->enableZoneInLogging();  // Enable one-time detailed logging
         cameraController_->setFollowPosition(x, y, z, heading);
     } else if (cameraMode_ == CameraMode::FirstPerson && camera_ && playerInBounds) {
-        // Position camera at player location
-        // z is feet position, so camera = feet + eye height
-        float eyeHeight = 6.0f;  // Default fallback for human-sized entity
-        if (entityRenderer_) {
-            float modelEyeHeight = entityRenderer_->getPlayerEyeHeightFromFeet();
-            if (modelEyeHeight > 0.0f) {
-                eyeHeight = modelEyeHeight;
-            }
-        }
-        float camZ = z + eyeHeight + playerConfig_.eyeHeight;
-
-        // Set camera direction based on heading
-        // EQ heading: 0=North(+Y), 128=West(-X), 256=South(-Y), 384=East(+X)
-        // We convert to radians and use sin/cos for X/Y offset
-        float headingRad = heading / 512.0f * 2.0f * irr::core::PI;
-        irr::core::vector3df camPos(x, camZ, y);
-        irr::core::vector3df target(
-            x + std::sin(headingRad) * 100.0f,
-            camZ,
-            y + std::cos(headingRad) * 100.0f
-        );
-
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera mode=FirstPerson: z(feet)={:.2f} eyeHeight={:.2f} adjust={:.2f}",
-                 z, eyeHeight, playerConfig_.eyeHeight);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: pos=({:.2f},{:.2f},{:.2f}) -> Irrlicht(x={:.2f},y={:.2f},z={:.2f})",
-                 x, y, camZ, camPos.X, camPos.Y, camPos.Z);
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: heading={:.2f} -> radians={:.4f} -> target({:.2f},{:.2f},{:.2f})",
-                 heading, headingRad, target.X, target.Y, target.Z);
-
-        camera_->setPosition(camPos);
-        camera_->setTarget(target);
+        // T75: this used to be a third independent copy of the first-person
+        // camera placement formula (setCameraMode()/cycleCameraMode() and
+        // setPlayerSpawnId() already call the shared repositionFirstPersonCamera()
+        // helper T74 extracted). playerX_/playerY_/playerZ_/playerHeading_
+        // were already updated above, which is everything the helper reads,
+        // so delegating here is safe and removes the last duplicate --
+        // otherwise this per-movement path would silently keep the old
+        // uncorrected/unpitched formula while every other entry point got
+        // T75's fix. T74 deliberately left this copy alone citing session
+        // time/hot-path risk, not correctness; de-duplicating it is exactly
+        // what removes that risk.
+        repositionFirstPersonCamera();
     } else {
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
                  static_cast<int>(cameraMode_), playerInBounds, camera_ != nullptr);
