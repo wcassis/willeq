@@ -164,9 +164,14 @@ TEST(ZoneEntitiesNewSpawn, ParsesDocumentedFieldsIncludingXYSwap) {
     EXPECT_EQ(e.npc_type, 1);
     EXPECT_EQ(e.hp_percent, 87);
     // INVERSEXY: entity.x <- server_y, entity.y <- server_x.
-    EXPECT_FLOAT_EQ(e.x, -567.0f);
-    EXPECT_FLOAT_EQ(e.y, 1234.0f);
-    EXPECT_FLOAT_EQ(e.z, 89.0f);
+    // T83: NewSpawn positions are fixed-point (*8), same as ZoneSpawns --
+    // this path was missing the /8.0f (a real bug: values ended up 8x too
+    // large for any spawn delivered by an individual NewSpawn packet
+    // instead of the initial bulk ZoneSpawns burst). Expected values below
+    // are the raw encoded 1234/-567/89 divided by 8.
+    EXPECT_FLOAT_EQ(e.x, -70.875f);
+    EXPECT_FLOAT_EQ(e.y, 154.25f);
+    EXPECT_FLOAT_EQ(e.z, 11.125f);
     EXPECT_FLOAT_EQ(e.heading, 90.0f);
     EXPECT_EQ(e.animation, 7u);
 }

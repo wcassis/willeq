@@ -4593,3 +4593,79 @@ static analysis found no correlate to lean on.
   a captured repro in this session — stated honestly per the plan's
   instruction, not claimed as proven. See
   `refactor/T79_tooling_cleanup.md` Review.
+
+## Befallen's empty frame and stacked entities — T83 (2026-08-12): TWO UNRELATED CAUSES, one fixed, three reported open
+
+T83 was dispatched because T82's README described Befallen screenshots as
+"the fully-loaded indoor zone" when they showed a flat blue field, a sky
+dome indoors, one grey placeholder cube, and a pile of overlapping NPCs —
+Will caught the mismatch by opening the images. Full investigation,
+before/after evidence and screenshots: `refactor/T83_entity_positions_and_missing_geometry.md`
+Review, `/mnt/projects/fable/review/T83/`.
+
+- **FIXED**: `eq_entities.cpp`'s `ZoneProcessNewSpawn` (single-spawn
+  packets) was missing the `/8.0f` fixed-point scale-down that the bulk
+  `ZoneProcessZoneSpawns` path already applies to the identical encoding —
+  a real, independent bug. Entities delivered via individual `NewSpawn`
+  packets (the majority of a populated zone, since the initial bulk burst
+  only covers what's already spawned) landed 8x too far from the player.
+  Verified against the server's own `spawn2` table post-fix (`Blugurg`,
+  `Guard_V\`Lex` in `nektulos` now match exactly after the documented X/Y
+  swap). `tests/test_zone_entities.cpp` updated to match.
+- **NOT a client bug, reported only**: Befallen's 40 stacked "entities"
+  (`SummonResupplyAgent`, `SummonClockworkBanker`, `Miltiades_Tal\`Azroth`,
+  `Brin_Stolunger`, `Chomper`, `a_scaled_wolf_pup`, `a_rat`) are NOT
+  static `spawn2` mobs (T82's README claimed this — wrong, corrected here)
+  and are NOT a decode error. The server's own `zone_state_spawns` table
+  (persisted ephemeral-NPC state) has 40 rows for zone 36 with
+  `spawn2_id=0`, all created at the identical timestamp, all positioned at
+  the player's exact spawn coordinates/heading. This is leftover test
+  debris from some prior GM-summon session that got persisted and now
+  respawns every zone boot. A `DELETE` to clean it up was attempted this
+  unit and **blocked by the session's own permission classifier**
+  (outside the "documented character-position writes" allowance) —
+  left in place, reported. The `nektulos` `/list` dump has the identical
+  pattern (`a_rat000`-`a_rat009` stacked on `Testmelee`), same debris
+  shape, different zone — not cleaned either.
+- **NOT touched, reported only (Part 4 STOP — architecture-scale)**: no
+  ground/wall geometry renders near the camera in Befallen despite the
+  camera measuring *inside* the loaded zone geometry's X/Y bounding box
+  (camera EQ~(7.39,-64.08,13.00) vs bounds X=[-1007.6,28.0]
+  Y=[-281.9,195.9]) and despite 32995-38175 polys/363 regions/8 draw calls
+  genuinely submitting every frame. A distant piece of real zone geometry
+  (an entrance bridge/walkway) renders correctly in the same frame,
+  ruling out a global coordinate-space or camera-placement bug — this
+  looks localized to region/PVS visibility selection for the player's own
+  BSP region, not measured further (out of this unit's fence).
+- **NOT touched, reported only**: sky dome renders in indoor zones because
+  `renderer_zone_load.cpp`'s `isDungeon = (zoneType == 2)` check uses the
+  wrong signal — the server already sends (and the client already stores)
+  a `skyType` field that correctly says "no sky" for Befallen
+  (`skyType=0`, matching the DB's own `zone.sky=0`), but sky-dome gating
+  keys off `zoneType` instead, which this DB doesn't populate
+  meaningfully (0/255 with no indoor/outdoor correlation across a dozen
+  sampled zones). Right shape of a fix: gate on `skyType` (or whatever
+  field the DB's `sky` column round-trips to), not `zoneType`. Not
+  implemented — outside Part 4's fence for this unit.
+- **NOT a bug, a missing test-session config field**: "Failed to load map
+  for zone: befallen" (T82) was T82's own client config
+  (`data/captures/t82_testchar_willeq.json`) omitting `maps_path`
+  entirely, falling back to a nonexistent relative `./maps`. The real
+  `.map` file exists and is valid (`/mnt/projects/akk-stack/server/maps/base/befallen.map`,
+  148KB) — confirmed by re-running with `maps_path` set: "Successfully
+  loaded map for zone: befallen". Every future live-testing config should
+  set `maps_path`/`navmesh_path` (see `casterella.json` for the known-good
+  example) or this will silently recur for every zone, every session.
+- **Confirmed, not a bug**: race 457 (`SummonClockworkBanker`,
+  `SummonResupplyAgent`) exceeds `willeq.db`'s `race_models` table ceiling
+  (`MAX(race_id)=367`), hence the placeholder cube. Right shape of a fix
+  (not implemented, Will's call per the plan): either extend the race
+  table for out-of-era summoned-NPC races or leave as-is — an era-filtering
+  policy question, not a bug fix.
+- **Two defects looked like one shared cause and are not.** Will's working
+  hypothesis (one coordinate-space/origin error explaining both the empty
+  frame and the collapsed entities) does not hold: the entity stacking is
+  DB-side test debris (server data, not a client decode issue at all), and
+  the empty-frame issue is a region/PVS-visibility question with the
+  camera already inside the correct bounding box. They happened to be
+  visible in the same screenshot; they are unrelated.
