@@ -2696,14 +2696,6 @@ void EntityRenderer::setLightingEnabled(bool enabled) {
 }
 
 void EntityRenderer::setPlayerEntityVisible(bool visible) {
-    // T74 STAGE 1 DIAGNOSTIC (throwaway, see refactor/T74_first_person_arms_and_weapons.md):
-    // when hiding the player (entering first person), leave the equipment
-    // nodes visible instead of hiding them with the rest of the player.
-    // This answers the question arm filtering cannot fix on its own: are
-    // the weapon transforms correct with the camera at the player's own
-    // position? Reverted before stage 2's real implementation lands.
-    static const bool kT74Stage1Diagnostic = true;
-
     bool foundPlayer = false;
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
@@ -2720,14 +2712,12 @@ void EntityRenderer::setPlayerEntityVisible(bool visible) {
             if (visual.nameNode) {
                 visual.nameNode->setVisible(visible);
             }
-            // Show/hide equipment (T74 stage 1: always keep visible so the
-            // diagnostic can inspect weapon transforms alone)
-            bool equipVisible = kT74Stage1Diagnostic ? true : visible;
+            // Show/hide equipment
             if (visual.primaryEquipNode) {
-                visual.primaryEquipNode->setVisible(equipVisible);
+                visual.primaryEquipNode->setVisible(visible);
             }
             if (visual.secondaryEquipNode) {
-                visual.secondaryEquipNode->setVisible(equipVisible);
+                visual.secondaryEquipNode->setVisible(visible);
             }
             break; // Only one player entity
         }
@@ -2787,28 +2777,53 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
             visual.isFirstPersonMode = enabled;
-            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={}", enabled);
 
-            // Set first-person mode on the animated mesh node
-            // This will show only arms while hiding body/head
+            // T74: an animated node only actually gets arm-only geometry if
+            // its skeleton yielded usable arm bones (buildArmBoneIndices()).
+            // A skeleton that doesn't (unrecognized race/model naming) must
+            // fall back to hiding the player entirely -- the pre-T74
+            // behaviour -- rather than showing the full, unfiltered body or
+            // a fully-empty mesh. hideEverything mirrors the OLD
+            // setPlayerEntityVisible(false) call this replaces at every
+            // call site.
+            bool hasArmGeometry = false;
             if (visual.animatedNode) {
                 visual.animatedNode->setFirstPersonMode(enabled);
-                // Keep the node visible - the mesh itself handles hiding non-arm parts
-                visual.animatedNode->setVisible(true);
+                hasArmGeometry = visual.animatedNode->hasValidFirstPersonGeometry();
+            }
+            bool hideEverything = enabled && (!visual.animatedNode || !hasArmGeometry);
 
+            if (visual.animatedNode) {
+                // Visible unless falling back to full-hide -- the mesh's
+                // own index-buffer filter (set by setFirstPersonMode above)
+                // is what actually limits what's drawn to arm geometry.
+                visual.animatedNode->setVisible(!hideEverything);
             } else if (visual.meshNode) {
-                // Static meshes don't support first-person mode, just hide
+                // Static meshes have no skeleton to filter by -- always
+                // fall back to hiding in first person.
                 visual.meshNode->setVisible(!enabled);
             }
 
-            // Always hide name tag in first-person
+            // Always hide name tag in first-person (both this and the
+            // fallback-hidden case).
             if (visual.nameNode) {
                 visual.nameNode->setVisible(!enabled);
             }
 
-            // Equipment stays attached to hand bones (visible with arms)
-            // Equipment transforms are updated by updateEquipmentTransforms()
+            // Equipment stays attached to hand bones (visible with arms);
+            // hidden along with the rest of the player in the fallback
+            // case (hideEverything == enabled when there's no animated
+            // node to filter by, which is the pre-T74 behaviour), and
+            // always shown again when leaving first person.
+            if (visual.primaryEquipNode) {
+                visual.primaryEquipNode->setVisible(!hideEverything);
+            }
+            if (visual.secondaryEquipNode) {
+                visual.secondaryEquipNode->setVisible(!hideEverything);
+            }
 
+            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} hasArmGeometry={} hideEverything={}",
+                      enabled, hasArmGeometry, hideEverything);
             break;
         }
     }
@@ -2828,14 +2843,6 @@ void EntityRenderer::updateFirstPersonWeapons(const irr::core::vector3df& camera
             break;
         }
     }
-}
-
-void EntityRenderer::triggerFirstPersonAttack() {
-    // In proper first-person mode, attack animations are played on the full character
-    // model (only arms visible). The animation system handles the weapon movement.
-    // This method is kept for compatibility but the actual attack animation
-    // is triggered via setEntityAnimation() from ZoneProcessDamage.
-    LOG_DEBUG(MOD_GRAPHICS, "triggerFirstPersonAttack: Attack anim via skeleton");
 }
 
 bool EntityRenderer::isPlayerInFirstPersonMode() const {

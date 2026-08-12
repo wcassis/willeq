@@ -1066,6 +1066,16 @@ bool EQAnimatedMeshSceneNode::isPlayingThrough() const {
     return animator_.isPlayingThrough();
 }
 
+size_t EQAnimatedMeshSceneNode::getInstanceMeshIndexCount() const {
+    if (!instanceMesh_) return 0;
+    size_t total = 0;
+    for (irr::u32 b = 0; b < instanceMesh_->getMeshBufferCount(); ++b) {
+        irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(b);
+        if (mb) total += mb->getIndexCount();
+    }
+    return total;
+}
+
 bool EQAnimatedMeshSceneNode::getBoneWorldPosition(int boneIndex, irr::core::vector3df& outPosition) const {
     const auto& boneStates = animator_.getBoneStates();
     if (boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) {
@@ -1232,13 +1242,130 @@ void EQAnimatedMeshSceneNode::setFirstPersonMode(bool enabled) {
 
     firstPersonMode_ = enabled;
 
-    // Build arm bone indices on first enable
-    if (enabled && !armBonesBuilt_) {
-        buildArmBoneIndices();
+    if (enabled) {
+        // Build arm bone indices on first enable
+        if (!armBonesBuilt_) {
+            buildArmBoneIndices();
+        }
+
+        if (!armBoneIndices_.empty()) {
+            // T74: rebuild the per-instance mesh from bind pose (discards any
+            // stale filtered index buffers from a previous enable), then
+            // drop every triangle not fully bound to an arm bone. Vertex
+            // ARRAYS are untouched -- applyAnimation() still writes all of
+            // them every frame; only which triangles the INDEX buffers
+            // reference changes, so re-enabling third person just needs a
+            // fresh, unfiltered createInstanceMesh() (below).
+            createInstanceMesh();
+            applyFirstPersonIndexFilter();
+            hasValidFirstPersonGeometry_ = true;
+        } else {
+            // T74 fallback: a skeleton that yields no usable arm bones must
+            // not render anything in first person -- picking nothing would
+            // already be invisible, but leaving the FULL body mesh visible
+            // (the pre-T74 no-filter state) would be worse than today's
+            // hide-everything behaviour. Explicit and logged so this isn't
+            // an accidental empty-filter silence; the caller
+            // (EntityRenderer::setPlayerFirstPersonMode) reads
+            // hasValidFirstPersonGeometry() and falls back to hiding the
+            // whole entity, same as before this unit.
+            hasValidFirstPersonGeometry_ = false;
+            auto skeleton = animator_.getSkeleton();
+            LOG_WARN(MOD_GRAPHICS,
+                "EQAnimatedMeshSceneNode::setFirstPersonMode: no usable arm bones "
+                "for skeleton model='{}' -- falling back to full-hide behaviour",
+                skeleton ? skeleton->modelCode : std::string("<none>"));
+        }
+        // Force applyAnimation() to reapply the current frame's bone
+        // transforms to the freshly-rebuilt (bind-pose) vertex arrays --
+        // its frame-cache optimization would otherwise skip this since the
+        // animation frame number itself did not change.
+        lastAppliedFrame_ = -1;
+    } else {
+        // Leaving first person: rebuild a full, unfiltered instance mesh.
+        // Third person's own rendering never reads armBoneIndices_/
+        // firstPersonMode_ (this whole feature is additive -- see class
+        // header), so this only restores THIS node's own geometry.
+        createInstanceMesh();
+        lastAppliedFrame_ = -1;
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::setFirstPersonMode: enabled={} armBones={}",
-              enabled, armBoneIndices_.size());
+    LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::setFirstPersonMode: enabled={} armBones={} validGeometry={}",
+              enabled, armBoneIndices_.size(), hasValidFirstPersonGeometry_);
+}
+
+void EQAnimatedMeshSceneNode::applyFirstPersonIndexFilter() {
+    if (!instanceMesh_ || !eqMesh_) {
+        return;
+    }
+
+    const auto& vertexPieces = eqMesh_->getVertexPieces();
+    const auto& vertexMapping = eqMesh_->getVertexMapping();
+    if (vertexPieces.empty() || vertexMapping.empty()) {
+        // No multi-buffer vertex-piece data to filter by -- leave the mesh
+        // as createInstanceMesh() built it (full geometry). This matches
+        // the existing single-buffer-mode gap in applyBoneTransformsToMeshImpl.
+        return;
+    }
+
+    std::set<int> armBoneSet(armBoneIndices_.begin(), armBoneIndices_.end());
+
+    // Pass 1: mark which (bufferIndex, localIndex) destinations belong to an
+    // arm-bone-bound original vertex. Walk vertexPieces the same way
+    // applyBoneTransformsToMeshImpl does (cumulative run-length per piece)
+    // so this stays consistent with how vertices are actually bound.
+    irr::u32 bufferCount = instanceMesh_->getMeshBufferCount();
+    std::vector<std::vector<bool>> isArmVertex(bufferCount);
+    for (irr::u32 b = 0; b < bufferCount; ++b) {
+        irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(b);
+        isArmVertex[b].assign(mb ? mb->getVertexCount() : 0, false);
+    }
+
+    size_t vertexIdx = 0;
+    for (const auto& piece : vertexPieces) {
+        bool pieceIsArm = armBoneSet.count(static_cast<int>(piece.boneIndex)) > 0;
+        if (pieceIsArm) {
+            for (int i = 0; i < piece.count; ++i) {
+                size_t vIdx = vertexIdx + static_cast<size_t>(i);
+                if (vIdx >= vertexMapping.size()) break;
+                for (const auto& mapping : vertexMapping[vIdx]) {
+                    if (mapping.bufferIndex < bufferCount &&
+                        mapping.localIndex < isArmVertex[mapping.bufferIndex].size()) {
+                        isArmVertex[mapping.bufferIndex][mapping.localIndex] = true;
+                    }
+                }
+            }
+        }
+        vertexIdx += piece.count;
+    }
+
+    // Pass 2: rewrite each buffer's index array, keeping only triangles
+    // whose 3 vertices are ALL arm vertices. Requiring all 3 (rather than
+    // any) avoids spiky stretched triangles at torso/arm seams -- the cost
+    // is a hairline gap at the cut, which reads as clipped geometry rather
+    // than garbage.
+    for (irr::u32 b = 0; b < bufferCount; ++b) {
+        irr::scene::SMeshBuffer* mb =
+            static_cast<irr::scene::SMeshBuffer*>(instanceMesh_->getMeshBuffer(b));
+        if (!mb) continue;
+
+        const auto& isArm = isArmVertex[b];
+        irr::core::array<irr::u16> filtered;
+        filtered.reallocate(mb->Indices.size());
+        for (irr::u32 t = 0; t + 2 < mb->Indices.size(); t += 3) {
+            irr::u16 i0 = mb->Indices[t];
+            irr::u16 i1 = mb->Indices[t + 1];
+            irr::u16 i2 = mb->Indices[t + 2];
+            bool allArm = i0 < isArm.size() && i1 < isArm.size() && i2 < isArm.size() &&
+                          isArm[i0] && isArm[i1] && isArm[i2];
+            if (allArm) {
+                filtered.push_back(i0);
+                filtered.push_back(i1);
+                filtered.push_back(i2);
+            }
+        }
+        mb->Indices = filtered;
+    }
 }
 
 void EQAnimatedMeshSceneNode::buildArmBoneIndices() {

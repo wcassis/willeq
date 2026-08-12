@@ -26,9 +26,14 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         // Set player race for vision-based lighting
         setPlayerRace(raceId);
 
-        // In FirstPerson camera, hide the player entity
-        bool shouldHide = (cameraMode_ == CameraMode::FirstPerson);
-        entityRenderer_->setPlayerEntityVisible(!shouldHide);
+        // T74: arm-filtered first-person geometry (or full-hide fallback)
+        // if the player entity is (re)created while already in FirstPerson
+        // camera mode (e.g. zoning in with first person already selected).
+        bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
+        entityRenderer_->setPlayerFirstPersonMode(firstPerson);
+        if (firstPerson) {
+            repositionFirstPersonCamera();
+        }
 
         // Player entity creation is the final step - mark zone as ready
         // This happens after all network packets are processed and other entities are loaded
@@ -449,13 +454,6 @@ void IrrlichtRenderer::queueSkillAnimation(uint16_t spawnId, const std::string& 
     if (isLoading()) return;
     if (entityRenderer_) {
         entityRenderer_->queueSkillAnimation(spawnId, animCode);
-    }
-}
-
-void IrrlichtRenderer::triggerFirstPersonAttack() {
-    if (isLoading()) return;
-    if (entityRenderer_) {
-        entityRenderer_->triggerFirstPersonAttack();
     }
 }
 

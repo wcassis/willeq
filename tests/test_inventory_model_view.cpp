@@ -338,6 +338,186 @@ TEST_F(RaceModelAnimationHeadlessTest, CreateAnimatedNodeWithEquipment_Headless)
     EXPECT_GT(node->getMaterialCount(), 0u)
         << "equipped node has no materials";
 }
+
+// T74: per-race/gender verification of buildArmBoneIndices()'s name-
+// substring heuristic ("ARM", "POINT", "DAG", "SHIELD", ... plus children --
+// see the plan's caution that this is the same class of fragile matching
+// T60 had to converge and T65 had to correct). Picking nothing gives an
+// invisible player; picking everything gives a floating torso -- this
+// asserts every tested race lands strictly between those two extremes, and
+// that the fallback (hasValidFirstPersonGeometry()==false when a skeleton
+// yields zero arm bones) is at least reachable in principle (none of these
+// real skeletons are expected to hit it, but the assertion shape covers
+// both outcomes so a future race that DOES hit it fails loudly here instead
+// of silently rendering wrong in-game).
+TEST_F(RaceModelAnimationHeadlessTest, FirstPersonArmFilter_PerRace_Headless) {
+    struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
+    const RaceCase races[] = {
+        {1, 0, "Human male"},
+        {1, 1, "Human female"},
+        {2, 0, "Barbarian male"},
+        {8, 0, "Dwarf male"},
+        {6, 1, "Dark Elf female"},   // T65's exact race/gender (secondary-weapon regression case)
+        {9, 0, "Troll male"},        // large/non-standard build
+        {128, 0, "Iksar male"},      // non-humanoid-proportioned skeleton
+    };
+
+    std::cout << "\nT74 per-race arm-bone selection:\n";
+    std::cout << "  race                | armBones | totalBones | validGeometry | "
+                 "idxFull -> idxFiltered\n";
+
+    int racesCovered = 0;
+    for (const auto& rc : races) {
+        SCOPED_TRACE(rc.label);
+
+        auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
+                                                   smgr_->getRootSceneNode());
+        if (!node) {
+            std::cout << "  " << rc.label << ": createAnimatedNode() returned "
+                         "null (race data unavailable) - skipping\n";
+            continue;
+        }
+        ASSERT_NE(node->getInstanceMesh(), nullptr)
+            << rc.label << ": animated node has no per-instance mesh";
+
+        // Step one animation frame first, matching production (setFirstPersonMode
+        // is only ever called on an already-live, already-animated node).
+        node->playAnimation("l01", true);
+        node->OnAnimate(100);
+
+        size_t fullIndexCount = node->getInstanceMeshIndexCount();
+        ASSERT_GT(fullIndexCount, 0u) << rc.label << ": bind mesh has no triangles at all";
+
+        node->setFirstPersonMode(true);
+        size_t armBones = node->getArmBoneCount();
+        bool validGeometry = node->hasValidFirstPersonGeometry();
+        size_t filteredIndexCount = node->getInstanceMeshIndexCount();
+
+        std::cout << "  " << rc.label << " (race=" << rc.raceId << " gender="
+                  << static_cast<int>(rc.gender) << ") | armBones=" << armBones
+                  << " | validGeometry=" << validGeometry
+                  << " | idx " << fullIndexCount << " -> " << filteredIndexCount << "\n";
+        ++racesCovered;
+
+        if (validGeometry) {
+            // "Picking nothing gives an invisible player" -- must have kept
+            // at least some geometry.
+            EXPECT_GT(filteredIndexCount, 0u)
+                << rc.label << ": hasValidFirstPersonGeometry()==true but the "
+                   "filtered mesh has zero triangles (picked nothing)";
+            // "Picking too much gives a floating torso" -- must have dropped
+            // a meaningful fraction of the full body (arms are a small
+            // fraction of a humanoid's total triangle budget).
+            EXPECT_LT(filteredIndexCount, fullIndexCount)
+                << rc.label << ": first-person filter kept ALL geometry -- "
+                   "arm bone selection matched the whole skeleton";
+            EXPECT_GT(armBones, 0u)
+                << rc.label << ": validGeometry true but armBoneCount is 0 "
+                   "(inconsistent with the filtered mesh)";
+        } else {
+            // Fallback path: no usable arm bones -- the filter must not have
+            // been applied (instance mesh left exactly as
+            // createInstanceMesh() built it, full geometry), since
+            // EntityRenderer::setPlayerFirstPersonMode() is what actually
+            // hides the whole entity in this case, not the mesh itself.
+            EXPECT_EQ(filteredIndexCount, fullIndexCount)
+                << rc.label << ": no valid arm geometry but the instance mesh "
+                   "was filtered anyway (should stay untouched; the ENTITY-level "
+                   "fallback is what hides it)";
+        }
+
+        // Leaving first person must restore full geometry exactly.
+        node->setFirstPersonMode(false);
+        EXPECT_EQ(node->getInstanceMeshIndexCount(), fullIndexCount)
+            << rc.label << ": leaving first person did not restore full geometry";
+    }
+
+    EXPECT_GT(racesCovered, 0) << "no race in the table had loadable model data -- "
+                                   "this test verified nothing";
+}
+
+// T74: the arm-only filter must be strictly per-NODE state (armBoneIndices_/
+// firstPersonMode_ are EQAnimatedMeshSceneNode instance members, not shared
+// via EQAnimatedMesh, which multiple nodes of the same race/gender DO
+// share). This is what CharacterModelView's paperdoll -- and every other
+// entity's in-world node -- relies on to stay untouched when the PLAYER's
+// own node enters first person. Two nodes built from the same race/gender
+// (so they share the same underlying EQAnimatedMesh, exactly like a player
+// and an NPC of the same race, or a live entity and its paperdoll instance
+// would) must not affect each other.
+TEST_F(RaceModelAnimationHeadlessTest, FirstPersonMode_IsPerNode_NotShared_Headless) {
+    auto* nodeA = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
+    auto* nodeB = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
+    if (!nodeA || !nodeB) {
+        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
+    }
+
+    nodeA->playAnimation("l01", true);
+    nodeA->OnAnimate(100);
+    nodeB->playAnimation("l01", true);
+    nodeB->OnAnimate(100);
+
+    size_t bFullIndexCount = nodeB->getInstanceMeshIndexCount();
+    ASSERT_GT(bFullIndexCount, 0u);
+
+    // Only node A enters first person (models the player's own node
+    // switching while everything else -- other entities, the paperdoll --
+    // stays in its normal, untouched mode).
+    nodeA->setFirstPersonMode(true);
+
+    EXPECT_TRUE(nodeA->isFirstPersonMode());
+    EXPECT_FALSE(nodeB->isFirstPersonMode())
+        << "node B's first-person flag changed when only node A was toggled "
+           "-- firstPersonMode_ is not per-node";
+    EXPECT_EQ(nodeB->getInstanceMeshIndexCount(), bFullIndexCount)
+        << "node B's geometry was filtered when only node A entered first "
+           "person -- armBoneIndices_/the index filter leaked across nodes";
+}
+// T74: the fallback path (a skeleton with zero usable arm bones must fall
+// back to today's hide-everything behaviour, not render an unfiltered or
+// empty-filtered mesh). None of the real skeletons in
+// FirstPersonArmFilter_PerRace_Headless hit this path -- EQ's real race
+// skeletons all have SOME bone matching the name-substring heuristic -- so
+// it needs a synthetic skeleton to exercise directly, same technique
+// test_bone_attachment.cpp uses for findBoneIndex()'s fallback chain.
+// Swaps a real node's skeleton for one with no arm-related bone names
+// (no "ARM"/"POINT"/"DAG"/"SHIELD"/"HAND"/"WRIST"/"FINGER"/"FOREARM"/
+// "BI_R"/"BI_L"/"FO_R"/"FO_L"/"FI_R"/"FI_L" substring anywhere) BEFORE the
+// first setFirstPersonMode(true) call, so buildArmBoneIndices() runs
+// against it.
+TEST_F(RaceModelAnimationHeadlessTest, FirstPersonArmFilter_FallbackWhenNoArmBones_Headless) {
+    auto* node = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
+    if (!node) {
+        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
+    }
+    node->playAnimation("l01", true);
+    node->OnAnimate(100);
+    size_t fullIndexCount = node->getInstanceMeshIndexCount();
+    ASSERT_GT(fullIndexCount, 0u);
+
+    auto barebonesSkeleton = std::make_shared<EQT::Graphics::CharacterSkeleton>();
+    barebonesSkeleton->modelCode = "XXX";
+    for (const char* name : {"TORSO", "HEAD", "PELVIS", "SPINE"}) {
+        EQT::Graphics::AnimatedBone bone;
+        bone.name = name;
+        bone.parentIndex = -1;
+        barebonesSkeleton->bones.push_back(bone);
+    }
+    node->getAnimator().setSkeleton(barebonesSkeleton);
+
+    node->setFirstPersonMode(true);
+
+    EXPECT_FALSE(node->hasValidFirstPersonGeometry())
+        << "a skeleton with no ARM/POINT/DAG/SHIELD/... bone names should not "
+           "yield valid first-person geometry";
+    EXPECT_EQ(node->getArmBoneCount(), 0u);
+    // The fallback contract: the instance mesh itself must be left
+    // untouched (full geometry) -- EntityRenderer::setPlayerFirstPersonMode()
+    // is what actually hides the whole entity in this case, not the mesh.
+    EXPECT_EQ(node->getInstanceMeshIndexCount(), fullIndexCount)
+        << "fallback path must not filter the instance mesh -- the caller "
+           "hides the whole entity instead";
+}
 #endif // EQT_HAS_GRAPHICS
 
 int main(int argc, char** argv) {

@@ -213,10 +213,35 @@ public:
     int findRightHandBoneIndex() const;
     int findLeftHandBoneIndex() const;
 
-    // First-person mode: only show arms and hands, hide body/head/legs
-    // When enabled, vertices belonging to non-arm bones are collapsed (hidden)
+    // First-person mode: only show arms and hands, hide body/head/legs.
+    // T74: EQ uses rigid vertex-piece binding (each vertex belongs to
+    // exactly one bone, no weight blending -- s3d_loader.h), so this is a
+    // triangle-selection problem, not a skinning one. When enabled, the
+    // per-instance mesh's index buffers are rebuilt to keep only triangles
+    // whose vertices are ALL bound to a bone in armBoneIndices_; the shared
+    // vertex arrays are left untouched (still written every frame by
+    // applyAnimation()), so only which triangles are DRAWN changes.
     void setFirstPersonMode(bool enabled);
     bool isFirstPersonMode() const { return firstPersonMode_; }
+
+    // T74: false when buildArmBoneIndices() found no usable arm bones for
+    // this skeleton (e.g. an unrecognized race/model naming scheme) --
+    // callers must fall back to hiding the player entirely rather than
+    // rendering an unfiltered or empty-filtered mesh as "first person".
+    // Only meaningful once setFirstPersonMode(true) has run at least once.
+    bool hasValidFirstPersonGeometry() const { return hasValidFirstPersonGeometry_; }
+
+    // T74: number of bones buildArmBoneIndices() selected as arm-related for
+    // this skeleton. For diagnostics/tests (the per-race verification the
+    // plan asks for) -- not used by any runtime rendering decision, which
+    // reads hasValidFirstPersonGeometry() instead.
+    size_t getArmBoneCount() const { return armBoneIndices_.size(); }
+
+    // T74: total index count summed across the per-instance mesh's buffers
+    // (i.e. 3x the currently-drawn triangle count). For diagnostics/tests to
+    // confirm the first-person filter actually removed geometry rather than
+    // silently doing nothing.
+    size_t getInstanceMeshIndexCount() const;
 
     // Mark this node as the player node (for debug logging)
     void setIsPlayerNode(bool isPlayer) { isPlayerNode_ = isPlayer; }
@@ -229,6 +254,11 @@ private:
     void applyAnimation();
     // Create per-instance animated mesh from base mesh
     void createInstanceMesh();
+    // T74: rewrite instanceMesh_'s index buffers in place to drop any
+    // triangle that has at least one vertex NOT bound to an armBoneIndices_
+    // bone. Must run after a fresh createInstanceMesh() (which restores the
+    // full, unfiltered index buffers) and after armBoneIndices_ is built.
+    void applyFirstPersonIndexFilter();
 
     EQAnimatedMesh* eqMesh_;                          // Shared base mesh data (skeleton, vertex pieces, original verts)
     irr::scene::ISceneManager* sceneManager_;
@@ -251,6 +281,7 @@ private:
     bool firstPersonMode_ = false;
     std::vector<int> armBoneIndices_;  // Bone indices that should be visible in first-person
     bool armBonesBuilt_ = false;       // Whether arm bone list has been built
+    bool hasValidFirstPersonGeometry_ = false;  // T74: false = caller must fall back to full-hide
 
     // Debug: mark this node as the player for targeted logging
     bool isPlayerNode_ = false;

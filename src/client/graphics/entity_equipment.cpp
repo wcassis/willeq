@@ -175,12 +175,6 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
         std::vector<std::string> suffixes = {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"};
         int boneIndex = findBoneIndex(skeleton, raceCode, suffixes);
 
-        if (visual.isPlayer) {
-            LOG_INFO(MOD_ENTITY, "T74-DIAG updateEquipmentTransforms(primary): isPlayer raceCode={} boneIndex={} boneCount={} nodePosBefore=({:.2f},{:.2f},{:.2f})",
-                      raceCode, boneIndex, static_cast<int>(boneStates.size()),
-                      visual.primaryEquipNode->getPosition().X, visual.primaryEquipNode->getPosition().Y, visual.primaryEquipNode->getPosition().Z);
-        }
-
         if (boneIndex >= 0 && boneIndex < static_cast<int>(boneStates.size())) {
             const BoneMat4& worldTransform = boneStates[boneIndex].worldTransform;
 
@@ -212,16 +206,6 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             // Convert EQ coords to Irrlicht coords: EQ(x,y,z) -> Irr(x,z,y) and apply offset
             visual.primaryEquipNode->setPosition(irr::core::vector3df(
                 px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
-
-            if (visual.isPlayer) {
-                irr::core::vector3df absPos = visual.primaryEquipNode->getAbsolutePosition();
-                irr::core::vector3df parentPos = visual.sceneNode ? visual.sceneNode->getAbsolutePosition() : irr::core::vector3df();
-                LOG_INFO(MOD_ENTITY, "T74-DIAG updateEquipmentTransforms(primary): localPos=({:.2f},{:.2f},{:.2f}) absPos=({:.2f},{:.2f},{:.2f}) parentAbsPos=({:.2f},{:.2f},{:.2f}) scale=({:.2f},{:.2f},{:.2f}) visible={} isVisibleAbs={}",
-                          px + localOffset.X, pz + localOffset.Y, py + localOffset.Z,
-                          absPos.X, absPos.Y, absPos.Z, parentPos.X, parentPos.Y, parentPos.Z,
-                          visual.primaryEquipNode->getScale().X, visual.primaryEquipNode->getScale().Y, visual.primaryEquipNode->getScale().Z,
-                          visual.primaryEquipNode->isVisible(), visual.primaryEquipNode->isTrulyVisible());
-            }
         }
     }
 
