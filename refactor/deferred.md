@@ -130,6 +130,14 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   confirmed instances by T48/T51/T52, not retired; more producer-less
   intents likely remain. Heading: `## PATTERN: real features reachable
   only through a UI gesture`.
+- NEW (T84, 2026-08-12): `EqActionHandler::setHeading()`
+  (`src/client/eq_action_handler.cpp:86-92`) double-converts degrees to EQ's
+  0-512 heading range and stores the converted value into `m_heading`, a
+  field every other site treats as plain degrees — `/turn <deg>` and (by
+  shared code path) `/face` send a heading ~1.4222x the intended value.
+  Found live via the two-client harness, not touched (heading/rotation code
+  was off-limits for that unit). Heading: `` ## `EqActionHandler::setHeading()`
+  double-converts degrees to EQ units (T84, 2026-08-12) ``.
 
 **FIXED but the board still said open — corrected by this pass** (plus one
 later correction: `race=415` missing model data — T38 fixed it 2026-08-04,
@@ -4669,3 +4677,61 @@ Review, `/mnt/projects/fable/review/T83/`.
   the empty-frame issue is a region/PVS-visibility question with the
   camera already inside the correct bounding box. They happened to be
   visible in the same screenshot; they are unrelated.
+
+## `EqActionHandler::setHeading()` double-converts degrees to EQ units (T84, 2026-08-12)
+
+Found live, via the two-client harness T84 built and proved out (see
+`refactor/T84_two_client_observation.md`'s Review, Part 1) — the exact
+kind of defect a single client cannot detect, because it is
+self-consistent with itself.
+
+`src/client/eq_action_handler.cpp:86-92`, `EqActionHandler::setHeading()`:
+```cpp
+void EqActionHandler::setHeading(float heading) {
+    // Convert from degrees (0-360) to EQ heading units (0-512)
+    float eqHeading = heading * 512.0f / 360.0f;
+    ...
+    m_eq.SetHeading(eqHeading);   // stores the *converted* value
+    ...
+}
+```
+`EverQuest::SetHeading()` (`eq.cpp:3133`) does a bare assignment,
+`m_heading = heading`, no further conversion — and every OTHER site that
+reads `m_heading` (PlayerProfile zone-in, the movement-send code in
+`eq_movement.cpp`, the self `ClientUpdate` echo path) treats it as a
+plain 0-360 degree value. `EqActionHandler::setHeading()` is the one write
+site that stores a 512-unit value into a field everyone else reads as
+degrees.
+
+Live proof (`review/T84/p1_A_turns_session.log` + `p1_B_observe_session.log`):
+issuing `/turn 90` (intended: face East) produced `m_heading=128.00deg`
+internally (should be 90), which the movement-send code then correctly
+converted per ITS OWN (correct) formula into `server_heading=322.00deg`
+on the wire — and a second, independent client (B) decoded and would
+render exactly that wrong value (`heading=321.9°`, matching to within
+12-bit quantization). Reproduced for all five of 0/90/180/270/45 —
+each commanded value comes out `* (512/360) = 1.4222` too large before
+being (correctly) sent. `/face <x y z>` / `/face <entity>`
+(`ActionDispatcher::faceLocation`/`faceEntity` -> the same
+`m_handler->setHeading()`) share the identical function and are affected
+by direct code inspection — not independently re-verified live this
+session (time-boxed), but no code-path difference would spare them. This
+means T82's "`/face` CONFIRMED WORKING" finding is correct as far as it
+went (the command dispatches, reaches the right handler, and the handler
+returns success) but never measured the resulting orientation VALUE
+against an observer, which is exactly the gap this bug lives in.
+
+**This is NOT the deliberate, documented `eq.cpp` (self, `90 -
+server_heading_deg`) vs `eq_entities.cpp`/`eq_movement.cpp` (everyone
+else, direct no-flip) asymmetry** — T84 separately measured that
+asymmetry live (its own Part 3) and found it exactly self-consistent, no
+bug. This is a third, independent site.
+
+**Not fixed — T84's plan explicitly prohibited any heading/rotation code
+change.** Right shape of a fix (not implemented): `EqActionHandler::
+setHeading()` should either store `heading` directly (degrees, matching
+every other reader of `m_heading`) and let the movement-send code's
+existing degrees->512-unit conversion do the one legitimate conversion,
+or `EverQuest::SetHeading()` needs to make explicit which unit it expects
+and enforce it at every call site — a decision for whoever picks this up,
+not assumed here.
