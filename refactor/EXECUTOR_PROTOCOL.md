@@ -93,6 +93,20 @@ references this file; plans carry only unit-specific content.
    silent pass.
 
 ## Media for Will's review (screenshots, video, contact sheets)
+- **FORCE DAYLIGHT BEFORE CAPTURING ANYTHING IN A LIVE SESSION.** Send the
+  GM command **`/say #set time 11 0`** — space-separated hour and minute.
+  Three units (T63, T74, T75's first attempt) shipped captures too dark to
+  judge, each costing a re-run; this is one command.
+  - The syntax matters. `#set time 11:00` does **not** parse —
+    eqemu's handler reads two separate numeric tokens and `"11:00"` fails
+    `IsNumber()`, silently printing usage instead. `#settime 12` is a
+    different, **nonexistent** command spelling; a 2026-07 session used it,
+    saw a crash, and wrongly concluded the whole approach was unsafe.
+  - T75 verified the correct form early in a throwaway run — 112 frames
+    over ~10s, no crash — then used it for every capture. **Do the same:
+    confirm the client survives a few seconds of rendering after the
+    command BEFORE building a capture sequence on it.** Discovering a
+    problem with half your captures made wastes the session.
 - **Everything Will has to look at goes to
   `/mnt/projects/fable/review/<UNIT>/`** — e.g. `review/T62/`. Not
   `refactor/artifacts/`, not your worktree, not `/tmp`. This is an
