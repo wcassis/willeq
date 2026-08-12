@@ -108,6 +108,40 @@ planning any capture detail:
 document exists.** These are chosen to answer open WillEQ questions, not to
 be a general play session.
 
+0. **CHARACTER CREATION — first, and it cannot be added later.** Creation
+   happens at character-select, *before* entering the world; once in-game that
+   traffic is gone until a fresh login. **Capture LOGIN and WORLD traffic
+   (`WORLD_PORT=9000`), not just zone** — a zone-filtered capture misses this
+   entirely.
+
+   This unblocks three things that are stuck today. `scripts/eqemu/seed.sh`
+   records that **no sanctioned command path creates a character from a
+   script** — a real client login is required. Consequently: concurrent
+   clients are capped at two accounts (T84 hit exactly this ceiling, since
+   `Testchar`/`Testmelee`/`Testcaster` share one account); T84's orientation
+   table had to leave the **model-default-rotation column blank** because it
+   needs characters across several races that we cannot create; and every live
+   unit pays restore-and-`SELECT` teardown because characters are scarce.
+
+   Create **three characters varying ONE attribute at a time** (baseline;
+   race-only change; gender-only change) so packet field diffs are readable,
+   plus a class-only change if time allows. **Then delete one**, so the
+   deletion exchange is captured too. Also capture the character-select list
+   exchange and an ordinary existing-character login for contrast.
+
+   **Record every choice made** — name, race, gender, class, deity, starting
+   city, and all face/hair/beard/colour slider values. Packet fields are
+   meaningless without known inputs to correlate against; an unrecorded
+   capture is a puzzle rather than a reference.
+
+   Note the three routes to automation afterward, which differ a lot in cost:
+   replaying captured packets (fragile — session state and sequencing),
+   implementing creation in willeq (real work, but willeq has no coverage of
+   this path at all today), or driving the official client via Wine+`xdotool`
+   (Tier 1, and the most robust). **The capture is the reference spec for all
+   three, and is also how a direct-DB-insert shortcut could be validated as
+   producing something equivalent.**
+
 1. **Face each cardinal direction and hold still** — N, E, S, W, then a few
    intermediate angles. Announce each in `/say` before turning, so the chat
    packet timestamps segment the capture. **This is the single most important
