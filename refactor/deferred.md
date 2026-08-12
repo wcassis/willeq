@@ -1646,6 +1646,29 @@ unrelated item, and scope full convergence (b)/(c) as a separate, larger,
 deliberately-scoped unit given its ~90+ call-site regression surface. Still
 Will's decision, not foreclosed by this note.
 
+**T81 (2026-08-12) ENTITIES CLOSED — first category of T78's recommended
+`GameStateSyncBridge` extension.** `Application::m_gameState->entities()` is
+now fed for real: `EntityStateSnapshot` (new, full `state::Entity`, published
+from `EverQuest::SyncEntityToGameState()`, add-or-replace) for spawn/self;
+existing `EntityDespawned` for despawn; existing coalesced `EntityMoved` for
+position (no per-tick full snapshot — this stayed the volume-bounded path
+per D24); existing `EntityAppearanceChanged` for post-spawn equipment
+changes (`ZoneProcessWearChange()` mutates equipment without re-invoking
+`SyncEntityToGameState()`, so a spawn-only snapshot would go stale — see
+`refactor/T81_entity_projection.md` Review); existing `ZoneUnloading` to
+clear the projection on zone change (the source-side clear,
+`eq_zone.cpp:270`, only fires events on `EverQuest::m_game_state`'s own
+private bus, which nothing production reads, so it never reached this
+decorator any other way). `/face`, `/who`, `moveToEntity`/`followEntity`,
+and the NPC half of `interactNearest()` now work against real data with
+**zero changes to `ActionDispatcher`/`CommandProcessor`** — confirming this
+was a projection gap, not a deeper bug. Still open from T78's list: **doors**
+(worse than a two-instance split — a third, unconnected `DoorStateManager`
+holds the only real data, per T78) and **group** (both need their own
+reconstructibility argument, not assumed from this unit's), plus **combat**,
+which stays on its existing per-tick `Application::syncCombatState()` poll
+(T78 confirmed populated, not broken — not touched by this unit).
+
 ## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02) — **ALL THREE CLAIMS CLOSED (T28/T39/T42/T49); this is the board's own worked example of why re-verification matters**
 
 **CLOSED, T53 (2026-08-05) verification** (independently re-confirmed, not

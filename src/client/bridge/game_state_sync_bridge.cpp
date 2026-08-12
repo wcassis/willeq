@@ -128,6 +128,87 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             m_state.player().clearTrainer();
             break;
         }
+        case state::GameEventType::EntityStateSnapshot: {
+            // T81: replaces the never-built entities() poll -- nothing ever
+            // populated Application::m_gameState->entities() before this.
+            // Add-or-replace, mirroring EverQuest::SyncEntityToGameState()'s
+            // own copy semantics exactly (eq_player_info.cpp:261): the
+            // sender always holds and sends the complete struct, so there is
+            // no accumulation state to track here -- a stale/partial spawn
+            // self-heals on the next snapshot.
+            const auto& d = std::get<state::EntityStateSnapshotData>(event.data);
+            if (m_state.entities().hasEntity(d.entity.spawnId)) {
+                auto* existing = m_state.entities().getEntityMutable(d.entity.spawnId);
+                if (existing) {
+                    *existing = d.entity;
+                }
+            } else {
+                m_state.entities().addEntity(d.entity);
+            }
+            break;
+        }
+        case state::GameEventType::EntityDespawned: {
+            // T81: already published end-to-end for graphics (eq_bridge.cpp/
+            // eq_entities.cpp, same call site as RemoveEntityFromGameState())
+            // -- the gap was that nothing fed it into this projection.
+            const auto& d = std::get<state::EntityDespawnedData>(event.data);
+            m_state.entities().removeEntity(d.spawnId);
+            break;
+        }
+        case state::GameEventType::EntityMoved: {
+            // T81: D24 already coalesces this per spawn_id before delivery,
+            // so this is the volume-bounded path -- no full snapshot per
+            // move. No-op if the entity hasn't been seen yet (a movement
+            // packet arriving before/without a spawn is not expected, and
+            // if it happens the next full snapshot recovers).
+            const auto& d = std::get<state::EntityMovedData>(event.data);
+            m_state.entities().updateEntityPosition(
+                d.spawnId, d.x, d.y, d.z, d.heading, d.dx, d.dy, d.dz,
+                static_cast<uint8_t>(d.animation));
+            break;
+        }
+        case state::GameEventType::EntityAppearanceChanged: {
+            // T81: covers the one case SyncEntityToGameState() itself
+            // doesn't -- ZoneProcessWearChange() (eq_entities.cpp) mutates
+            // m_entities' equipment slot directly without re-invoking
+            // SyncEntityToGameState(), so a spawn-time-only snapshot alone
+            // would leave post-spawn equipment/appearance changes stale in
+            // the projection (matching a pre-existing staleness the source
+            // EverQuest::m_game_state itself also has for this path -- see
+            // this unit's Review). Partial field update, not a full
+            // replace; no-op if the entity hasn't been seen yet.
+            const auto& d = std::get<state::EntityAppearanceChangedData>(event.data);
+            auto* existing = m_state.entities().getEntityMutable(d.spawnId);
+            if (existing) {
+                existing->raceId = d.raceId;
+                existing->gender = d.gender;
+                existing->face = d.face;
+                existing->haircolor = d.haircolor;
+                existing->hairstyle = d.hairstyle;
+                existing->beardcolor = d.beardcolor;
+                existing->beard = d.beard;
+                existing->equipChest2 = d.texture;
+                existing->helm = d.helm;
+                for (int i = 0; i < 9; ++i) {
+                    existing->equipment[i] = d.equipment[i];
+                    existing->equipmentTint[i] = d.equipmentTint[i];
+                }
+            }
+            break;
+        }
+        case state::GameEventType::ZoneUnloading: {
+            // T81: the source-side clear (eq_zone.cpp:270,
+            // EverQuest::CleanupZone()) only fires entity-manager events on
+            // EverQuest::m_game_state's own private bus (nothing production
+            // subscribes to it, T78 census) -- it never reaches this
+            // decorator as a per-entity despawn. ZoneUnloading is already
+            // published from the same function, before the clear, so it's
+            // the one reliable signal this projection has that the zone is
+            // about to change; without this the projection would keep every
+            // entity from the old zone forever.
+            m_state.entities().clear();
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

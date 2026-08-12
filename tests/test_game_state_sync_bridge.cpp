@@ -556,3 +556,201 @@ TEST_F(GameStateSyncBridgeTest, NpcInteractionEventsStillDelegateToWrappedBridge
     EXPECT_EQ(wrapped->appliedTypes[4], GameEventType::TrainerWindowOpened);
     EXPECT_EQ(wrapped->appliedTypes[5], GameEventType::TrainerWindowClosed);
 }
+
+// ---------------------------------------------------------------------------
+// T81: entities() projection. Application::m_gameState->entities() was
+// permanently empty before this unit -- nothing populated it, which is why
+// /who, /face, moveToEntity/followEntity, and the NPC half of
+// interactNearest() always reported "not found" against real, nearby
+// entities (refactor/T78_two_gamestate_analysis.md Review, items 2/5).
+// EntityStateSnapshot mirrors EverQuest::SyncEntityToGameState()'s own
+// add-or-replace semantics (eq_player_info.cpp:261): the sender always holds
+// the complete Entity struct, so publishing it as a snapshot is sufficient --
+// no completion state machine needed on this side. EntityMoved (already
+// D24-coalesced) carries position instead of a full snapshot;
+// EntityAppearanceChanged (already published for ZoneProcessWearChange())
+// carries post-spawn equipment/appearance changes.
+// ---------------------------------------------------------------------------
+
+namespace {
+EntityStateSnapshotData makeSnapshot(uint16_t spawnId, const std::string& name,
+                                      float x, float y, float z) {
+    EntityStateSnapshotData data;
+    data.entity.spawnId = spawnId;
+    data.entity.name = name;
+    data.entity.x = x;
+    data.entity.y = y;
+    data.entity.z = z;
+    data.entity.heading = 90.0f;
+    data.entity.level = 10;
+    data.entity.classId = 1;
+    data.entity.raceId = 2;
+    data.entity.npcType = 1;  // NPC
+    return data;
+}
+} // namespace
+
+TEST_F(GameStateSyncBridgeTest, EntityStateSnapshotSpawnsEntity) {
+    auto data = makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f);
+
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, data));
+
+    ASSERT_TRUE(state->entities().hasEntity(500));
+    const auto* entity = state->entities().getEntity(500);
+    ASSERT_NE(entity, nullptr);
+    EXPECT_EQ(entity->name, "a_gnoll");
+    EXPECT_FLOAT_EQ(entity->x, 100.0f);
+    EXPECT_FLOAT_EQ(entity->y, 200.0f);
+    EXPECT_FLOAT_EQ(entity->z, 5.0f);
+    EXPECT_EQ(entity->level, 10);
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityStateSnapshotForSelfSpawnsEntityToo) {
+    // The self-entity path (eq.cpp:2378) calls the exact same
+    // SyncEntityToGameState() as any other spawn -- no special-casing on
+    // this side, it's just another snapshot.
+    auto data = makeSnapshot(42, "Testchar", 0.0f, 0.0f, 0.0f);
+    data.entity.npcType = 0;  // player
+
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, data));
+
+    ASSERT_TRUE(state->entities().hasEntity(42));
+    EXPECT_EQ(state->entities().getEntity(42)->name, "Testchar");
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityStateSnapshotReplacesRatherThanDuplicates) {
+    auto first = makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f);
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, first));
+    ASSERT_TRUE(state->entities().hasEntity(500));
+
+    // A second snapshot for the same spawnId (e.g. re-sent on some other
+    // update) must replace in place, not create a duplicate or second entry.
+    auto second = makeSnapshot(500, "a_gnoll", 150.0f, 250.0f, 6.0f);
+    second.entity.hpPercent = 42;
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, second));
+
+    const auto* entity = state->entities().getEntity(500);
+    ASSERT_NE(entity, nullptr);
+    EXPECT_FLOAT_EQ(entity->x, 150.0f);
+    EXPECT_FLOAT_EQ(entity->y, 250.0f);
+    EXPECT_EQ(entity->hpPercent, 42);
+
+    // Still exactly one entity for this spawnId -- no duplication.
+    EXPECT_EQ(state->entities().getEntitiesInRange(150.0f, 250.0f, 6.0f, 1.0f).size(), 1u);
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityDespawnedRemovesEntity) {
+    auto data = makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f);
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, data));
+    ASSERT_TRUE(state->entities().hasEntity(500));
+
+    EntityDespawnedData despawn;
+    despawn.spawnId = 500;
+    despawn.name = "a_gnoll";
+    bridge->applyEvent(GameEvent(GameEventType::EntityDespawned, despawn));
+
+    EXPECT_FALSE(state->entities().hasEntity(500));
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityMovedUpdatesPositionOfExistingEntity) {
+    auto data = makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f);
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, data));
+
+    EntityMovedData moved;
+    moved.spawnId = 500;
+    moved.x = 110.0f;
+    moved.y = 210.0f;
+    moved.z = 5.0f;
+    moved.heading = 45.0f;
+    moved.dx = 1.0f;
+    moved.dy = 1.0f;
+    moved.dz = 0.0f;
+    moved.animation = 3;
+    bridge->applyEvent(GameEvent(GameEventType::EntityMoved, moved));
+
+    const auto* entity = state->entities().getEntity(500);
+    ASSERT_NE(entity, nullptr);
+    EXPECT_FLOAT_EQ(entity->x, 110.0f);
+    EXPECT_FLOAT_EQ(entity->y, 210.0f);
+    EXPECT_FLOAT_EQ(entity->heading, 45.0f);
+    // Name/level/etc from the original snapshot are untouched by a
+    // position-only update.
+    EXPECT_EQ(entity->name, "a_gnoll");
+    EXPECT_EQ(entity->level, 10);
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityMovedForUnknownEntityIsANoOp) {
+    // A movement update arriving before/without a spawn should not create a
+    // partial entity -- full snapshots are the only add path.
+    EntityMovedData moved;
+    moved.spawnId = 999;
+    moved.x = 1.0f;
+    moved.y = 1.0f;
+    moved.z = 1.0f;
+    bridge->applyEvent(GameEvent(GameEventType::EntityMoved, moved));
+
+    EXPECT_FALSE(state->entities().hasEntity(999));
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityAppearanceChangedUpdatesEquipmentOfExistingEntity) {
+    auto data = makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f);
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot, data));
+
+    EntityAppearanceChangedData appearance;
+    appearance.spawnId = 500;
+    appearance.raceId = 2;
+    appearance.gender = 1;
+    appearance.isPlayer = false;
+    appearance.face = 5;
+    appearance.helm = 7;
+    appearance.equipment[0] = 12345;
+    appearance.equipmentTint[0] = 0xAABBCC;
+    bridge->applyEvent(GameEvent(GameEventType::EntityAppearanceChanged, appearance));
+
+    const auto* entity = state->entities().getEntity(500);
+    ASSERT_NE(entity, nullptr);
+    EXPECT_EQ(entity->face, 5);
+    EXPECT_EQ(entity->helm, 7);
+    EXPECT_EQ(entity->equipment[0], 12345u);
+    EXPECT_EQ(entity->equipmentTint[0], 0xAABBCCu);
+    // Position from the original snapshot is untouched by an
+    // appearance-only update.
+    EXPECT_FLOAT_EQ(entity->x, 100.0f);
+}
+
+TEST_F(GameStateSyncBridgeTest, ZoneUnloadingClearsAllEntities) {
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot,
+        makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f)));
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot,
+        makeSnapshot(501, "a_wolf", 110.0f, 210.0f, 5.0f)));
+    ASSERT_TRUE(state->entities().hasEntity(500));
+    ASSERT_TRUE(state->entities().hasEntity(501));
+
+    bridge->applyEvent(GameEvent(GameEventType::ZoneUnloading, ZoneUnloadingData{}));
+
+    EXPECT_FALSE(state->entities().hasEntity(500));
+    EXPECT_FALSE(state->entities().hasEntity(501));
+}
+
+TEST_F(GameStateSyncBridgeTest, EntityEventsStillDelegateToWrappedBridge) {
+    bridge->applyEvent(GameEvent(GameEventType::EntityStateSnapshot,
+        makeSnapshot(500, "a_gnoll", 100.0f, 200.0f, 5.0f)));
+
+    EntityMovedData moved;
+    moved.spawnId = 500;
+    moved.x = 101.0f;
+    bridge->applyEvent(GameEvent(GameEventType::EntityMoved, moved));
+
+    EntityDespawnedData despawn;
+    despawn.spawnId = 500;
+    despawn.name = "a_gnoll";
+    bridge->applyEvent(GameEvent(GameEventType::EntityDespawned, despawn));
+
+    bridge->applyEvent(GameEvent(GameEventType::ZoneUnloading, ZoneUnloadingData{}));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 4u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::EntityStateSnapshot);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::EntityMoved);
+    EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::EntityDespawned);
+    EXPECT_EQ(wrapped->appliedTypes[3], GameEventType::ZoneUnloading);
+}

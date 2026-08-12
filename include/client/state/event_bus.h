@@ -9,6 +9,8 @@
 #include <memory>
 #include <glm/glm.hpp>
 
+#include "client/state/entity_manager.h"  // T81: EntityStateSnapshotData carries state::Entity by value
+
 class HCMap;
 class PathfinderNavmesh;
 
@@ -27,6 +29,10 @@ enum class GameEventType {
     EntitySpawned,
     EntityDespawned,
     EntityMoved,
+    EntityStateSnapshot,  // T81: full state::Entity snapshot, published from
+                           // EverQuest::SyncEntityToGameState() (spawn/self,
+                           // never per-tick). GameStateSyncBridge is the
+                           // only consumer.
     EntityStatsChanged,
     EntityAppearanceChanged,
     EntityLightChanged,
@@ -219,6 +225,15 @@ struct EntitySpawnedData {
 struct EntityDespawnedData {
     uint16_t spawnId;
     std::string name;
+};
+
+// T81: full-struct snapshot, mirroring EverQuest::SyncEntityToGameState()'s
+// add-or-replace copy of the complete Entity (eq_player_info.cpp:261).
+// Published only on spawn (bulk zone-in, single new-spawn) and self-entity
+// creation -- never per-tick -- so this is deliberately NOT used for
+// position updates; EntityMoved (coalesced, D24) carries those instead.
+struct EntityStateSnapshotData {
+    Entity entity;
 };
 
 struct EntityMovedData {
@@ -904,6 +919,7 @@ using EventData = std::variant<
     // Entity
     EntitySpawnedData,
     EntityDespawnedData,
+    EntityStateSnapshotData,
     EntityMovedData,
     EntityStatsChangedData,
     EntityAppearanceChangedData,
