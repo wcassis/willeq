@@ -2414,6 +2414,32 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 }
 
 
+void IrrlichtRenderer::repositionFirstPersonCamera() {
+    if (!camera_ || cameraMode_ != CameraMode::FirstPerson) {
+        return;
+    }
+    float eyeHeight = entityRenderer_ ? entityRenderer_->getPlayerEyeHeightFromFeet() : 0.0f;
+    if (eyeHeight <= 0.0f) {
+        eyeHeight = 6.0f;  // Default fallback for human-sized entity (matches setPlayerPosition())
+    }
+
+    // playerZ_ is feet position, so camera Z = feet + eye height + user adjustment
+    float camZ = playerZ_ + eyeHeight + playerConfig_.eyeHeight;
+    float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
+    irr::core::vector3df camPos(playerX_, camZ, playerY_);
+    irr::core::vector3df target(
+        playerX_ + std::sin(headingRad) * 100.0f,
+        camZ,
+        playerY_ + std::cos(headingRad) * 100.0f
+    );
+
+    camera_->setPosition(camPos);
+    camera_->setTarget(target);
+
+    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}",
+             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ);
+}
+
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
     if (isLoading()) return;
     playerSpawnId_ = spawnId;
@@ -2422,33 +2448,17 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
     if (entityRenderer_) {
         entityRenderer_->setPlayerSpawnId(spawnId);
 
-        // Apply correct visibility based on camera mode
-        bool shouldHide = (cameraMode_ == CameraMode::FirstPerson);
-        entityRenderer_->setPlayerEntityVisible(!shouldHide);
+        // T74: apply first-person (arm-filtered geometry, or full-hide
+        // fallback) / normal visibility based on the current camera mode.
+        bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
+        entityRenderer_->setPlayerFirstPersonMode(firstPerson);
 
-        // Get player model info now that the model is loaded
         float eyeHeight = entityRenderer_->getPlayerEyeHeightFromFeet();
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeHeightFromFeet={:.2f} visible={}", eyeHeight, !shouldHide);
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeHeightFromFeet={:.2f} firstPerson={}", eyeHeight, firstPerson);
 
         // Fix first-person camera height now that we have the player model
-        // playerZ_ is feet position, so camera Z = feet + eye height + user adjustment
-        if (cameraMode_ == CameraMode::FirstPerson && camera_ && eyeHeight > 0.0f) {
-            float camZ = playerZ_ + eyeHeight + playerConfig_.eyeHeight;
-
-            // Update camera position with correct height
-            float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
-            irr::core::vector3df camPos(playerX_, camZ, playerY_);
-            irr::core::vector3df target(
-                playerX_ + std::sin(headingRad) * 100.0f,
-                camZ,
-                playerY_ + std::cos(headingRad) * 100.0f
-            );
-
-            camera_->setPosition(camPos);
-            camera_->setTarget(target);
-
-            LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] First-person camera: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}",
-                     playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ);
+        if (firstPerson && eyeHeight > 0.0f) {
+            repositionFirstPersonCamera();
         }
     }
 }
@@ -2638,10 +2648,16 @@ void IrrlichtRenderer::setCameraMode(CameraMode mode) {
     if (isLoading()) return;
     cameraMode_ = mode;
 
-    // Show/hide player entity based on camera mode
+    // T74: arm-filtered first-person geometry (or full-hide fallback)
+    // instead of the old unconditional hide-everything.
     if (entityRenderer_) {
-        entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
+        entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
+    // T74: entering first person must move the camera to the player's own
+    // eye position immediately -- previously only a later position update
+    // did this, so a stationary player toggling modes kept looking through
+    // the stale third-person Follow transform (stage-1 diagnostic finding).
+    repositionFirstPersonCamera();
 }
 
 void IrrlichtRenderer::cycleCameraMode() {
@@ -2657,14 +2673,17 @@ void IrrlichtRenderer::cycleCameraMode() {
             break;
     }
 
-    // Show/hide player entity based on camera mode
+    // T74: arm-filtered first-person geometry (or full-hide fallback)
+    // instead of the old unconditional hide-everything.
     if (entityRenderer_) {
-        entityRenderer_->setPlayerEntityVisible(cameraMode_ != CameraMode::FirstPerson);
+        entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
 
     // Log eye height when entering first-person mode
     if (cameraMode_ == CameraMode::FirstPerson) {
         LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", playerConfig_.eyeHeight);
+        // T74: see setCameraMode()'s comment -- same stale-camera gap.
+        repositionFirstPersonCamera();
     }
 }
 

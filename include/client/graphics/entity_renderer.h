@@ -408,9 +408,6 @@ public:
                                    const irr::core::vector3df& cameraTarget,
                                    float deltaTime);
 
-    // Trigger a first-person attack animation (weapon swing)
-    void triggerFirstPersonAttack();
-
     // Check if player is in first-person mode
     bool isPlayerInFirstPersonMode() const;
 

@@ -788,9 +788,6 @@ public:
     void queueSkillAnimation(uint16_t spawnId, const std::string& animCode);
 
     // First-person mode methods
-    // Trigger first-person attack animation (weapon swing)
-    void triggerFirstPersonAttack();
-
     // Check if in first-person mode
     bool isFirstPersonMode() const { return cameraMode_ == CameraMode::FirstPerson; }
 
@@ -1946,6 +1943,19 @@ public:
     // its full definition.
     void markPaperdollDirty();
 private:
+
+    // T74: snap camera_ to the player's own eye position/facing. The only
+    // thing that makes a camera transform actually "first person" --
+    // setCameraMode()/cycleCameraMode() previously only flipped cameraMode_
+    // and left the camera transform wherever the Follow camera last put it
+    // (T74 stage-1 diagnostic finding: a stationary player toggling into
+    // first person kept looking through the stale ~20-unit-back Follow
+    // shot until the next server position update happened to call
+    // setPlayerPosition(), which is the only other place this math lived).
+    // No-op if camera_ is null or the player model isn't loaded yet
+    // (eyeHeight <= 0); safe to call unconditionally on entering
+    // FirstPerson mode.
+    void repositionFirstPersonCamera();
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {
