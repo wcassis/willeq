@@ -34,6 +34,19 @@ checks them against three independent assertions:
            Review for why (RSS is real but noisier than the categories in
            (b), and a spuriously-firing gate is worse than no gate).
 
+  4. T80 memory-coverage run (SEPARATE invocation, see MEMORY_COVERAGE_*
+     and run_memory_coverage_benchmark()/bless_memory_coverage()/
+     verify_memory_coverage() below): the golden-image runs above never pass
+     --eqe1-path/--objects/--entities, so three categories
+     (eqe1MappedBytes/eqe1ArchiveCount, placeableObjectsBytes,
+     characterModelsBytes) always baselined at zero there -- not because
+     nothing is wrong, but because nothing was ever loaded to measure. This
+     runs a second, separate benchmark invocation per zone with full asset
+     loading and NO pixel output at all (no --dump-frames/--dump-png-prefix/
+     --csv), so the golden PNGs and the manifest's "zones" block are
+     byte-for-byte unaffected -- see refactor/T80_memory_gate_coverage.md
+     Review for the determinism data and the separation proof.
+
 Usage:
   visual_gate.py --bless    Regenerate goldens + manifest baselines + contact sheet.
   visual_gate.py            Compare against the committed goldens/manifest.
@@ -57,6 +70,12 @@ MANIFEST_PATH = GOLDENS_DIR / "manifest.json"
 BENCH_BIN = PROJECT_DIR / "build-gles2" / "bin" / "gles2_zone_benchmark"
 EQ_PATH = PROJECT_DIR / "data" / "eq_client"
 ARTIFACTS_DIR = PROJECT_DIR / "build-gles2" / "ci_artifacts"  # gitignored (whole build-gles2/ is)
+
+# T80: ETC1 archive directory for the memory-coverage run (see
+# MEMORY_COVERAGE_* below). Mirrors the pre-existing data/eq_client
+# convention (a gitignored local symlink to an NFS path -- see .gitignore
+# and scripts/pi/env.sh's PI_EQE1_PATH, same canonical location).
+EQE1_PATH = PROJECT_DIR / "data" / "eqe1_client"
 
 RESOLUTION_DEFAULT = {"width": 800, "height": 600}
 
@@ -96,6 +115,50 @@ MEMORY_REPORT_ONLY_FIELDS = [
     "processRssBytes",
     "untrackedBytes",
 ]
+
+# T80 -- memory-coverage run (SEPARATE from the golden-image runs above).
+#
+# Three categories baselined at zero under the golden-image invocation
+# because it never exercises them: eqe1MappedBytes/eqe1ArchiveCount (no
+# --eqe1-path), placeableObjectsBytes (no --objects), characterModelsBytes
+# (no --entities). A regression in any of these would sail through the gate
+# undetected, even though the "memory" field list in the manifest makes it
+# look guarded.
+#
+# The golden-image runs are NOT extended with these flags -- loading objects
+# and entities changes what is rendered, which would move the golden PNGs
+# and force an unrelated image re-bless (see T80_memory_gate_coverage.md).
+# Instead this is a second, separate benchmark invocation per zone: full
+# asset loading, memory-JSON only, no --dump-frames/--dump-png-prefix/--csv
+# (no images, nothing that could touch tests/goldens/*.png). See
+# run_memory_coverage_benchmark(), bless_memory_coverage(),
+# verify_memory_coverage() below, and the T80 Review for the determinism
+# measurement that justifies exact-match tolerance here too.
+MEMORY_COVERAGE_FIELDS = [
+    "eqe1MappedBytes",
+    "eqe1ArchiveCount",
+    "placeableObjectsBytes",
+    "characterModelsBytes",
+]
+
+# Printed for context on every coverage run (matches MEMORY_REPORT_ONLY_FIELDS'
+# treatment on the golden-image path) -- not asserted, this run's asset mix
+# is deliberately heavier than the golden-image RSS baseline and isn't
+# comparable to it.
+MEMORY_COVERAGE_REPORT_ONLY_FIELDS = [
+    "totalEstimate",
+    "processRssBytes",
+    "untrackedBytes",
+]
+
+# T80: fixed, explicit inputs -- not the loader's implicit defaults -- so the
+# coverage run's asset mix is stable and self-documenting rather than
+# silently following whatever kDefaultRaceIds happens to be in
+# zone_bench_loader.cpp on a given day.
+MEMORY_COVERAGE_ENTITY_COUNT = 5
+MEMORY_COVERAGE_TEST_RACES = [1, 2, 3, 4, 5]
+MEMORY_COVERAGE_FRAMES = 5
+MEMORY_COVERAGE_WARMUP = 1
 
 
 def load_manifest():
@@ -162,6 +225,52 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
             memory = json.load(f)
 
     return png_paths, csv_rows, memory, proc.stdout
+
+
+def run_memory_coverage_benchmark(zone, out_dir):
+    """T80: separate benchmark invocation for the three no-longer-zero memory
+    categories. Full asset loading (--eqe1-path/--objects/--entities/
+    --test-races), memory-JSON only -- deliberately NO --dump-frames/
+    --dump-png-prefix/--csv, so this run cannot write or touch a golden PNG.
+    Uses its own output filename (f"{zone}_coverage_mem.json") distinct from
+    run_benchmark()'s f"{zone}_mem.json" so the two never collide in
+    ARTIFACTS_DIR.
+
+    Returns the memory dict, or None if EQE1_PATH isn't present on this
+    machine (see verify_memory_coverage()/bless_memory_coverage() for how
+    that's handled -- a loud skip of this section only, not a silent zero).
+    """
+    if not EQE1_PATH.exists():
+        return None
+
+    mem_path = out_dir / f"{zone}_coverage_mem.json"
+    cmd = [
+        str(BENCH_BIN),
+        "--zone", zone,
+        "--eq-path", str(EQ_PATH),
+        "--frames", str(MEMORY_COVERAGE_FRAMES),
+        "--warmup", str(MEMORY_COVERAGE_WARMUP),
+        "--res", str(RESOLUTION_DEFAULT["width"]), str(RESOLUTION_DEFAULT["height"]),
+        "--memory-json", str(mem_path),
+        "--eqe1-path", str(EQE1_PATH),
+        "--objects",
+        "--entities", str(MEMORY_COVERAGE_ENTITY_COUNT),
+        "--test-races", ",".join(str(r) for r in MEMORY_COVERAGE_TEST_RACES),
+        "--occluder-budget", "16",
+    ]
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"memory-coverage benchmark failed for zone {zone} (exit {proc.returncode}):\n"
+            f"cmd: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+
+    if not mem_path.exists():
+        raise RuntimeError(f"memory-coverage: expected memory JSON missing: {mem_path}\nstdout:\n{proc.stdout}")
+
+    with open(mem_path) as f:
+        return json.load(f)
 
 
 def extract_gl_version(stdout_text):
@@ -285,6 +394,12 @@ def bless(manifest):
             shutil.copyfile(png_path, dest)
             print(f"  wrote {dest}")
 
+    # T80: separate memory-coverage run, blessed after the golden-image loop
+    # above and written to a distinct manifest key -- the golden-image loop
+    # above (zone_cfg["memory"] on manifest["zones"]) is byte-for-byte
+    # unchanged by this addition.
+    bless_memory_coverage(manifest)
+
     with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
@@ -293,6 +408,93 @@ def bless(manifest):
     write_contact_sheet(manifest)
     print("[bless] done. Goldens are NOT approved -- Will's sign-off is required before merge.")
     return 0
+
+
+def bless_memory_coverage(manifest):
+    """T80: bless the SEPARATE memory-coverage run. Writes
+    manifest["memoryCoverage"]["zones"][i]["memory"] only -- never touches
+    manifest["zones"] (the golden-image section) or any tests/goldens/*.png.
+    No-op (with a printed note) if EQE1_PATH isn't present on this machine.
+    """
+    coverage_cfg = manifest.get("memoryCoverage")
+    if not coverage_cfg:
+        print("[bless] memoryCoverage: no section in manifest, skipping (nothing to bless)")
+        return
+    if not EQE1_PATH.exists():
+        print(f"[bless] memoryCoverage: SKIP -- {EQE1_PATH} not present on this machine "
+              f"(the three T80 categories will NOT be re-baselined this run)")
+        return
+
+    for zone_cfg in coverage_cfg["zones"]:
+        zone = zone_cfg["zone"]
+        print(f"[bless] memory-coverage {zone} ...")
+        memory = run_memory_coverage_benchmark(zone, ARTIFACTS_DIR)
+        mem = {}
+        for key in MEMORY_COVERAGE_FIELDS:
+            mem[key] = memory[key]
+        for key in MEMORY_COVERAGE_REPORT_ONLY_FIELDS:
+            mem[key] = memory[key]
+        zone_cfg["memory"] = mem
+
+
+def verify_memory_coverage(manifest, failures):
+    """T80: verify the SEPARATE memory-coverage run. Appends to `failures`
+    in place (same accumulation pattern verify() uses for the golden-image
+    checks) rather than returning its own list, so one combined FAIL/PASS
+    report covers both runs. Never reads or writes tests/goldens/*.png.
+    """
+    coverage_cfg = manifest.get("memoryCoverage")
+    if not coverage_cfg:
+        print("[verify] memoryCoverage: no section in manifest, skipping")
+        return
+    if not EQE1_PATH.exists():
+        print(f"[verify] memoryCoverage: SKIP -- {EQE1_PATH} not present on this machine. "
+              f"eqe1MappedBytes/eqe1ArchiveCount/placeableObjectsBytes/characterModelsBytes "
+              f"are NOT being checked this run -- this is a real coverage gap on this machine, "
+              f"not a pass.")
+        return
+
+    for zone_cfg in coverage_cfg["zones"]:
+        zone = zone_cfg["zone"]
+        print(f"[verify] memory-coverage {zone} ...")
+        try:
+            memory = run_memory_coverage_benchmark(zone, ARTIFACTS_DIR)
+        except RuntimeError as e:
+            failures.append(f"memory-coverage {zone}: {e}")
+            continue
+
+        expected_mem = zone_cfg.get("memory")
+        if not expected_mem:
+            # T80 ships the mechanism unblessed, same as T69 did for its new
+            # (b)-bucket fields: the committed manifest has no baseline for
+            # this zone yet (Will has not signed off on the proposed numbers
+            # -- see the T80 Review's baseline table), so this is a real,
+            # visible coverage gap, not a failure of the run itself. Printed
+            # loudly rather than silently passed.
+            print(f"  [memory-coverage] {zone}: NOT YET BLESSED -- no baseline in manifest, "
+                  f"skipping assertion (see refactor/T80_memory_gate_coverage.md Review "
+                  f"for the proposed values pending Will's sign-off)")
+            continue
+
+        # Exact match -- T80 measured 5 (qeynos2) + 3 + 3 (gfaydark, befallen)
+        # repeat runs under this exact asset mix and found every field below
+        # bit-identical run to run, same discipline and same empirically-zero
+        # tolerance as T69's MEMORY_BASELINE_FIELDS. See the T80 Review.
+        for key in MEMORY_COVERAGE_FIELDS:
+            if key not in memory or key not in expected_mem:
+                continue
+            if memory[key] != expected_mem[key]:
+                failures.append(
+                    f"memory-coverage {zone}: {key} mismatch (expected {expected_mem[key]}, got {memory[key]})"
+                )
+
+        rss = memory.get("processRssBytes")
+        untracked = memory.get("untrackedBytes")
+        total = memory.get("totalEstimate")
+        if rss is not None:
+            pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
+            print(f"  [memory-coverage] {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
+                  f"untracked={untracked}  (reported only, not gated)")
 
 
 def verify(manifest):
@@ -401,6 +603,11 @@ def verify(manifest):
                 pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
                 print(f"  [memory] {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
                       f"untracked={untracked}  (reported only, not gated -- see T69 Review)")
+
+    # T80: separate memory-coverage run, verified after the golden-image loop
+    # above and appending to the same `failures` list for one combined
+    # report. Never touches the golden-image comparisons above.
+    verify_memory_coverage(manifest, failures)
 
     if failures:
         print("\n=== VISUAL GATE: FAIL ===")
