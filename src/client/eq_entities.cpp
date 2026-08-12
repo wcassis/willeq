@@ -1068,19 +1068,26 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 	uint32_t field3 = p.GetUInt32(offset + 102); // contains z and deltaY
 	uint32_t field4 = p.GetUInt32(offset + 106); // contains deltaX and heading
 	
-	// Extract x, y, z (19 bits each, signed) - positions are in 10ths
+	// Extract x, y, z (19 bits each, signed)
+	// Positions are stored as fixed-point values (multiplied by 8) -- same
+	// encoding as ZoneSpawns (eq_entities.cpp ZoneProcessZoneSpawns). T83:
+	// this path was missing the /8.0f that ZoneSpawns already applies,
+	// producing coordinates 8x too large for any spawn that arrives via a
+	// standalone NewSpawn packet instead of the initial bulk burst (see
+	// T83's Review for the nektulos before/after evidence -- entities like
+	// "a_deathfist_scout" at raw (-16544,5656,-19) belong at (-2068,707,-2.4)).
 	// Note: Server x/y are swapped relative to zone geometry, so we swap them here
 	int32_t x_raw = (field1 >> 10) & 0x7FFFF;
 	if (x_raw & 0x40000) x_raw |= 0xFFF80000; // Sign extend
-	float server_x = static_cast<float>(x_raw);
+	float server_x = static_cast<float>(x_raw) / 8.0f;
 
 	int32_t y_raw = field2 & 0x7FFFF;
 	if (y_raw & 0x40000) y_raw |= 0xFFF80000; // Sign extend
-	float server_y = static_cast<float>(y_raw);
+	float server_y = static_cast<float>(y_raw) / 8.0f;
 
 	int32_t z_raw = field3 & 0x7FFFF;
 	if (z_raw & 0x40000) z_raw |= 0xFFF80000; // Sign extend
-	entity.z = static_cast<float>(z_raw);
+	entity.z = static_cast<float>(z_raw) / 8.0f;
 
 	// Swap x and y from server
 	entity.x = server_y;
@@ -1105,7 +1112,7 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
 			raw_heading, server_heading, entity.heading, isNPC);
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> entity_pos=({:.2f},{:.2f},{:.2f})",
-			server_x, server_y, static_cast<float>(z_raw), entity.x, entity.y, entity.z);
+			server_x, server_y, entity.z, entity.x, entity.y, entity.z);
 	}
 
 	// race is at offset 284 (uint32)
