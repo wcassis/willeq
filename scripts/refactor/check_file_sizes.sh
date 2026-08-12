@@ -5,13 +5,41 @@
 # lands — pass explicit paths to check only those.
 #
 # Usage:
-#   check_file_sizes.sh [BASE_REV]         # check files changed since BASE_REV
-#   check_file_sizes.sh --files f1 f2 ...  # check specific files
+#   check_file_sizes.sh [BASE_REV]              # check files changed since BASE_REV
+#   check_file_sizes.sh -C <repo> [BASE_REV]    # anchor to <repo> instead of the
+#                                                # script's own checkout / ambient cwd
+#   check_file_sizes.sh --files f1 f2 ...       # check specific files
+#
+# T79: this script used to resolve repo_root against the ambient cwd
+# (`git rev-parse --show-toplevel` with no -C), so running it exactly as the
+# protocol documents — `bash <slot>/scripts/refactor/check_file_sizes.sh
+# fable` from outside <slot> — silently checked the WRONG checkout (whatever
+# repo the caller's cwd happened to be in, or `pwd` itself if that wasn't a
+# git repo at all). T67, T69, T73 and T75 each independently worked around
+# this with `cd`, `env -C`, or `--files` with absolute paths. Fixed by
+# anchoring to the script's own location by default (it lives at
+# <repo>/scripts/refactor/check_file_sizes.sh, so its grandparent's parent is
+# the repo), with an explicit -C/--repo override for callers that want a
+# different tree.
 
 set -u
 WARN=1500
 FAIL=3000
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+default_repo_root="$(cd "$script_dir/../.." >/dev/null 2>&1 && pwd)"
+repo_root=""
+if [ "${1:-}" = "-C" ] || [ "${1:-}" = "--repo" ]; then
+    repo_root="${2:-}"
+    if [ -z "$repo_root" ]; then
+        echo "ERROR $1 given with no path — nothing was checked"
+        exit 2
+    fi
+    shift 2
+fi
+if [ -z "$repo_root" ]; then
+    repo_root="$(git -C "$default_repo_root" rev-parse --show-toplevel 2>/dev/null || echo "$default_repo_root")"
+fi
 
 # T37: this script used to be able to check NOTHING and still exit 0 with no
 # output — byte-identical to a clean pass from the caller's side. Every unit's
@@ -39,7 +67,10 @@ else
         echo "ERROR base revision '$base' does not resolve in $repo_root — nothing was checked"
         exit 2
     fi
-    mapfile -t files < <(git -C "$repo_root" diff --name-only "$base" -- '*.cpp' '*.h' '*.hpp')
+    # --diff-filter=d excludes files deleted in the diff (T67 hit this
+    # removing constrained_mesh_cache.{h,cpp} — a deleted path has nothing
+    # left on disk to measure and would otherwise report a false "not found").
+    mapfile -t files < <(git -C "$repo_root" diff --name-only --diff-filter=d "$base" -- '*.cpp' '*.h' '*.hpp')
     source_desc="files changed vs '$base' in $repo_root"
 fi
 

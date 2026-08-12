@@ -489,6 +489,15 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // (populated only by the same dead-gated path) was removed too.
 
     // Priority 3: Build one door in current PVS set (nearest first)
+    // T79 (2026-08-12): protectedRegions_ is permanently all-false since T67
+    // removed its only writer (see irrlicht_renderer.h), so
+    // getDoorsInRegions() always returns an empty pvsDoors and this block's
+    // body never runs. Any door not built eagerly at zone load (SEQ Step7)
+    // has no live path to be progressively built here. Rendering is
+    // unaffected only insofar as doors are otherwise built eagerly; this is
+    // a real behavior gap, not a no-op by design — left as-is pending a
+    // decision on what should drive PVS-triggered door build now that
+    // ConstrainedMeshCache is gone (out of scope for T79).
     if (!didWork && doorManager_) {
         std::vector<uint8_t> pvsDoors;
         doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
@@ -531,6 +540,11 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     }
 
     // Priority 4: Build one PVS object
+    // T79 (2026-08-12): same protectedRegions_ dead-signal issue as Priority
+    // 3 above — every condition below that reads protectedRegions_[...] is
+    // permanently false, so objCandidates below is always empty and this
+    // priority never progressively builds a deferred object. Any object not
+    // built eagerly has no live path here either.
     if (!didWork) {
         size_t totalPvsObjects = 0, builtPvsObjects = 0;
         for (const auto& obj : deferredObjects_) {
@@ -750,6 +764,12 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         }
     }
 
+    // T79 (2026-08-12): unbuiltDoors/unbuiltObjects below both read
+    // protectedRegions_, which is permanently all-false (T67 removed its
+    // only writer). Both counters are therefore permanently pinned to 0
+    // from this source, regardless of actual pending door/object state —
+    // this progressive-load status report always says "0 pending" here,
+    // silently, where it used to be a real count.
     if (doorManager_) {
         std::vector<uint8_t> pvsDoors;
         doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
