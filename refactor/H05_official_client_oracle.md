@@ -123,11 +123,38 @@ be a general play session.
    needs characters across several races that we cannot create; and every live
    unit pays restore-and-`SELECT` teardown because characters are scarce.
 
-   Create **three characters varying ONE attribute at a time** (baseline;
-   race-only change; gender-only change) so packet field diffs are readable,
-   plus a class-only change if time allows. **Then delete one**, so the
-   deletion exchange is captured too. Also capture the character-select list
-   exchange and an ordinary existing-character login for contrast.
+   **One character per account** (Will's call). Concurrency is per-account,
+   not per-character — `Testchar`/`Testmelee`/`Testcaster` share `willeq_test`
+   and cannot be logged in simultaneously, which is precisely what capped T84
+   at two concurrent clients. Each new account is another simultaneous client,
+   so this lifts the ceiling that has constrained every two-client test.
+
+   **Capture the account creation as well.** `seed.sh` records the login server
+   running with `auto_create_accounts: true`, so a first login under an unused
+   account name creates the account — a *separate* exchange from character
+   creation, and the one that would let a harness provision from scratch. The
+   capture must be running for each new account's very first login.
+
+   Create **four or more characters varying ONE attribute at a time**
+   (baseline; race-only; gender-only; class-only) so packet field diffs are
+   readable. Beyond that, more races is straightforwardly more useful — T84's
+   orientation table left its model-default-rotation column blank for want of
+   characters across races, and the placeholder-cube defect is a race-id
+   question. Keep one account/character deliberately **pristine as a control**.
+
+   **Do not delete these characters** — they are test capacity and we are short
+   of it. An incidental throwaway (mistyped name) is a free bonus deletion
+   capture, but do not create one in order to delete it.
+
+   Use a **systematic, enumerable account naming convention and one shared
+   password**, so a harness can iterate accounts without a table of exceptions.
+   The account -> character -> race/gender/class mapping is itself a
+   deliverable; it eventually belongs alongside the existing `EQ_TEST_ACCOUNT`
+   entries in `scripts/eqemu/env.sh` — propose that in the handoff rather than
+   editing the repo directly.
+
+   Also capture the character-select list exchange and an ordinary
+   existing-character login for contrast.
 
    **Record every choice made** — name, race, gender, class, deity, starting
    city, and all face/hair/beard/colour slider values. Packet fields are
