@@ -268,9 +268,16 @@ public:
         std::vector<char> data(fileSize);
         file.read(data.data(), fileSize);
 
-        // EFF format has 256-byte entries
+        // EFF format has 268-byte entries (T79: was 256, which drifted 12
+        // bytes short per record — 112024 / 268 = 418 exactly for
+        // spellsnew.eff, while /256 gives 437.59 and walks the read window
+        // out of alignment as it goes. The "skip entries that look like
+        // fragments" hack below existed only to paper over the resulting
+        // garbled names; with the correct stride it never fires (measured:
+        // 0 of 418 records), so it has been removed rather than left as
+        // dead camouflage for a future regression.
         // Each entry has a spell name in first 64 bytes
-        const size_t ENTRY_SIZE = 256;
+        const size_t ENTRY_SIZE = 268;
 
         for (size_t offset = 0; offset + ENTRY_SIZE <= fileSize; offset += ENTRY_SIZE) {
             const char* entry = data.data() + offset;
@@ -291,15 +298,10 @@ public:
                 continue;
             }
 
-            // Skip entries that look like fragments (common issue with this format)
-            if (name.find("Effect") != std::string::npos && name.length() < 10) {
-                continue;
-            }
-
             SpellEffectEntry spell;
             spell.name = name;
 
-            // Parse emitter indices from bytes 128-256
+            // Parse emitter indices from byte 128 to the end of the entry
             // These appear to be uint32 values referencing EDD entries
             for (size_t i = 128; i + 16 <= ENTRY_SIZE; i += 16) {
                 uint32_t emitterIdx = *reinterpret_cast<const uint32_t*>(entry + i);

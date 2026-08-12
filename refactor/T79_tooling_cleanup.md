@@ -118,10 +118,194 @@ cannot reproduce on demand.
 
 ## Review
 
-(executor fills: per-part outcome; Part 1's invocation proof; Part 2's
-entry counts and which workarounds were removed; Part 3's census and
-decision; Part 4's mechanism chosen and trade-off; deviations)
+All four parts landed. No STOP conditions hit; Part 3's finding (live
+consumers) is reported per the plan's own instruction, not treated as a
+blocker to the rest of the unit.
 
-Board: re-title the `check_file_sizes.sh` and `protectedRegions_` entries;
-record Part 2 against T70's entry; add a new entry for Part 4 with the
-mechanism chosen.
+### Part 1 — `check_file_sizes.sh` — FIXED
+
+Two independent defects, both fixed in one edit to
+`scripts/refactor/check_file_sizes.sh`:
+- **cwd anchor**: `repo_root` now defaults to the script's own on-disk
+  location (`<repo>/scripts/refactor/check_file_sizes.sh`'s grandparent's
+  parent), with an explicit `-C`/`--repo <path>` override. No longer
+  depends on `git rev-parse --show-toplevel` against the ambient cwd.
+- **deleted files**: the diff is now taken with `git diff --diff-filter=d`,
+  which excludes deletions before the per-file loop ever sees them.
+
+**No-wrapper invocation proof** (ambient shell cwd was `/mnt/projects/fable`,
+OUTSIDE the slot, exactly the scenario every prior workaround was needed
+for):
+```
+$ pwd
+/mnt/projects/fable
+$ bash /mnt/projects/fable/wt/slot3/scripts/refactor/check_file_sizes.sh fable
+checking 2 file(s) (files changed vs 'fable' in /mnt/projects/fable/wt/slot3)
+ok    src/client/graphics/renderer_zone_stream.cpp: 926 lines
+WARN  tools/model_viewer_spell_bar.h: 1965 lines (> 1500)
+checked 2 file(s): 1 ok, 1 warn, 0 fail
+```
+`repo_root` correctly resolved to the slot (not `/mnt/projects/fable` or
+anything else the ambient cwd could have suggested), and it checked the
+slot's real diff against `fable`. The WARN on `model_viewer_spell_bar.h` is
+pre-existing (1963 lines at the `fable` tip, before this unit's edit) — not
+a new condition, confirmed via `git show fable:tools/model_viewer_spell_bar.h
+| wc -l`.
+
+Deleted-file handling verified directly: temporarily `rm`'d a real tracked
+header (`docker/irrlicht-drm-x86/CIrrDeviceFB.h`, uncommitted), ran the
+script, confirmed it reported "no C++ files to check" (the deletion was
+silently excluded, not reported as an ERROR/"file not found" the way it
+would have been before this fix), then restored the file with
+`git checkout --`.
+
+### Part 2 — `spellsnew.eff` `ENTRY_SIZE` — FIXED
+
+`tools/model_viewer_spell_bar.h:274` (now :279 after comment expansion)
+changed from `256` to `268`. The fragment-skipping workaround at the old
+line 294-297 (`if (name.find("Effect") != npos && name.length() < 10)
+continue;`) was removed.
+
+Entry counts, measured against the real `/mnt/projects/EverQuestP1999/
+spellsnew.eff` (112,024 bytes) with a standalone probe replicating the
+exact name-extraction logic (built and run outside the repo, in the
+scratchpad, not committed):
+
+| | ENTRY_SIZE | records | kept | notes |
+|---|---|---|---|---|
+| Before | 256 | 437 | 22 | overwhelmingly garbled fragments: `"P\xef\xbf\xbd"`, `"keLight85."`, `"106 V2"`, `"jjklhefga^^[XZ^``a`bi"` |
+| After  | 268 | 418 | 416 | clean whole names throughout: `"Clinging Darkness"`, `"Frost Breath"`, `"Rain_Fall"`, `"Diseased Cell"`, `"Spitting Rock"` |
+
+418 matches `112024 / 268` exactly. With `ENTRY_SIZE=268`, re-applying the
+old fragment-skip predicate as a diagnostic (not shipped) skips **0 of 418**
+records — confirming the hack was pure compensation for the 12-byte drift,
+not a real data-quality filter, so removing it is safe. The 2 records
+filtered by the pre-existing "too short / == None" check at 268 appear to
+be legitimate empty/placeholder entries, not drift artifacts.
+
+The companion EDD parser (`:129-135` before this edit) was not touched, per
+the plan.
+
+### Part 3 — `protectedRegions_` — CENSUS DONE, left in place, decision deferred
+
+Full consumer census (declaration, writer, all 5 readers) done via
+sub-agent search and manually spot-verified by reading
+`renderer_zone_stream.cpp` and `irrlicht_renderer.h` directly. Summary:
+
+- **Declaration**: `include/client/graphics/irrlicht_renderer.h:1502`,
+  `std::vector<bool> protectedRegions_`.
+- **Writers**: only `.resize(n, false)` (`renderer_zone_load.cpp:398`) and
+  `.clear()` (`renderer_zone_lifecycle.cpp:177`) remain — no writer ever
+  sets an element `true` anywhere in the tree (T67 removed the only one,
+  which was itself dead — gated on a `ConstrainedMeshCache` pointer never
+  constructed in any shipped build).
+- **Readers — all 5 are live, reachable production code, not test-only**,
+  all in `src/client/graphics/renderer_zone_stream.cpp`:
+  - `:494` and `:755` — `doorManager_->getDoorsInRegions(protectedRegions_, ...)`
+    (Priority 3 progressive door build; progressive-load status counter).
+  - `:537`, `:547`, `:765` — direct `protectedRegions_[idx]` reads
+    (Priority 4 progressive object build; same status counter for objects).
+  - Because the vector is always empty/false, **every one of these is a
+    permanent no-op**: Priority 3/4 loop bodies never execute, and the
+    `unbuiltDoors`/`unbuiltObjects` status counters are permanently pinned
+    to 0 regardless of real pending state.
+- **A distinct, same-named sibling exists** and is NOT the same thing:
+  `SimulationWorker::Results::protectedRegions` (`std::vector<size_t>`,
+  `simulation_worker.h:430`) is still actively computed
+  (`sim_visibility.cpp`) but only feeds a debug log line
+  (`renderer_sim_bridge.cpp:634`) — it was never wired back into the
+  bitvector (that copy was the writer T67 removed). Flagged for
+  completeness; out of scope to touch.
+
+**Decision: left in place, not removed.** The plan's own framing draws the
+line exactly here — "if something live still consults it... say what that
+changes... whether the consumer needs a different signal or should also
+go" is a decision this unit reports on, not one it makes unilaterally, and
+the STOP condition ("Part 3's consumers turning out to need a real
+protection signal — report rather than inventing one") names this precise
+case. Doors/objects are also built eagerly at zone load (SEQ Step6/7), so
+whether the dead Priority 3/4 paths are a real functional gap or fully
+redundant-but-harmless dead code is **not established either way** — that
+was T67's open question and remains open after this census. What changed:
+added an inline comment at each of the 5 read sites (previously only the
+declaration carried a T67 comment) stating plainly that the site is a
+permanent no-op and why, so the next person to touch
+`processFrameProgressiveLoad()` doesn't have to re-derive this. No
+behavior changed — visual gate confirms byte-identical rendering (expected,
+since this was comment-only).
+
+### Part 4 — `gtest_discover_tests` timeout — mechanism chosen, NOT reproduced this session
+
+Chose **raising `DISCOVERY_TIMEOUT` to 60** (from the GoogleTest module's
+5s default) on the two named targets (`test_spell_manager`,
+`test_graphics` in `tests/CMakeLists.txt`), not `DISCOVERY_MODE PRE_TEST`.
+
+**Why**: `DISCOVERY_MODE` is a CMake 3.20+ keyword; this project's
+top-level `CMakeLists.txt` declares `CMAKE_MINIMUM_REQUIRED(VERSION 3.14)`,
+so adopting `PRE_TEST` would be quietly incompatible with any CMake in the
+3.14-3.19 range the project claims to support, where `DISCOVERY_TIMEOUT`
+has no such floor (it predates 3.14). `DISCOVERY_TIMEOUT` is also the
+narrower, more surgical change — it doesn't alter when/how test
+enumeration integrates with `ctest`.
+
+**Trade-off, stated plainly**: this does not remove the contention
+mechanism. Discovery still runs as part of `cmake --build`'s parallel
+graph, competing with `-j24` compilation for CPU. It only gives more slack
+(60s vs 5s) before that contention manifests as a build failure. A host
+under heavier load than today's could still exceed 60s. `PRE_TEST` would
+have removed the mechanism structurally (discovery deferred to `ctest`
+time, after the parallel build is done) at the cost of the CMake-version
+floor above, and would also change where a genuine discovery crash
+surfaces (from `cmake --build` to `ctest`) — arguably fine since `ctest`
+is in the same verification bar, but a real behavior change worth naming.
+
+**Could not provoke on demand.** This session's `cmake --build -j24` (from
+a fresh `rm -rf build` + reconfigure, followed immediately by a full
+parallel build) completed cleanly with no discovery failure of any kind.
+The fix is applied on the strength of the documented mechanism — the exact
+error text (`GoogleTestAddTests.cmake: Error running test executable`)
+matches CMake's own `DISCOVERY_TIMEOUT` failure path, and both named
+targets are legitimately heavy (link `willeq_core`, one also links
+Irrlicht) — not on a captured repro from this session. Stated honestly per
+the plan's instruction rather than claimed as proven.
+
+### Verification bar
+
+1. `cmake --build build -j24` — clean, from a fresh `rm -rf build` +
+   reconfigure (an earlier `build/` in this slot had a stale/broken cache
+   pointing `EQT_GLES2_IRRLICHT_DIR` at a nonexistent
+   `/mnt/projects/fable/third_party/...` path outside the slot — unrelated
+   pre-existing slot state, reconfigured correctly and noted here as a
+   deviation, not touched further).
+2. `ctest --test-dir build --output-on-failure` — 2057/2058 passed, 1
+   failed: `AudioManagerTest.PreloadCommonSounds` — the documented ALSA
+   host exception, no other failures. 13 tests skipped, all pre-existing
+   documented skip categories (server/DISPLAY-dependent, gems memorize
+   fixtures, etc.) — none newly introduced.
+3. `bash scripts/build-gles2-x86.sh` — clean.
+4. `bash scripts/ci/visual_gate.sh` — `=== VISUAL GATE: PASS ===`, goldens
+   untouched.
+5. `bash scripts/build-arm-noble.sh` — clean, all ARM binaries produced.
+6. `bash scripts/refactor/check_file_sizes.sh fable` (from ambient cwd
+   `/mnt/projects/fable`, no wrapper) — see Part 1 above; 1 ok, 1
+   pre-existing WARN, 0 fail.
+
+### Deviations
+
+- Part 3: no code removed, per the STOP condition being invoked for the
+  removal question specifically (see above) — this is a deviation from
+  "decide and act" toward "decide and report," but it is the plan's own
+  named STOP case, not an improvisation.
+- Part 4: mechanism applied without a captured repro this session (stated
+  honestly above), per the plan's explicit allowance for this outcome.
+- `build/`'s stale cache (pointing outside the slot) required a
+  `rm -rf build` + reconfigure before verification could run; this is
+  pre-existing slot state unrelated to T79's edits, not a finding about
+  this unit's changes.
+
+Board updates: `check_file_sizes.sh` entry re-titled FIXED; `protectedRegions_`
+entry re-titled with census-done/left-in-place/decision-deferred and a full
+write-up appended; T70's entry got a **FIXED by T79** addendum with the
+before/after counts; a new entry added for the `gtest_discover_tests`
+timeout with the mechanism chosen and trade-off. All in
+`refactor/deferred.md`.

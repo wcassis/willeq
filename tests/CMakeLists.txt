@@ -464,7 +464,18 @@ TARGET_LINK_LIBRARIES(test_spell_manager GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_manager)
+# T79 (2026-08-12): raised from the GoogleTest module's 5s default.
+# `test_spell_manager` links willeq_core (a heavy TU set); its --gtest_list_tests
+# discovery run failed 3x today under `-j24` parallel build load with
+# "GoogleTestAddTests.cmake: Error running test executable" -- a
+# discovery-time timeout, not a compile error, and each time clean on
+# retry. Raising the timeout (vs. moving to PRE_TEST discovery mode) keeps
+# discovery at build/post-build time and is compatible with this project's
+# CMAKE_MINIMUM_REQUIRED(3.14) -- DISCOVERY_MODE PRE_TEST is a 3.20+
+# keyword. Trade-off: this doesn't remove the contention (discovery still
+# runs concurrently with -j24 compilation), it just gives it more slack;
+# a sufficiently loaded host could still exceed 60s.
+GTEST_DISCOVER_TESTS(test_spell_manager DISCOVERY_TIMEOUT 60)
 
 ADD_EXECUTABLE(test_spell_manager_timing
     test_spell_manager_timing.cpp
@@ -781,7 +792,12 @@ IF(EQT_GRAPHICS)
     # mandatory-Irrlicht gate in the top-level CMakeLists.txt guarantees
     # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
     # (refactor/desktop_gl_elimination_plan.md §6 Phase 3).
-    GTEST_DISCOVER_TESTS(test_graphics)
+    # T79 (2026-08-12): same discovery-time timeout under -j24 parallel
+    # build load as test_spell_manager above (test_graphics links Irrlicht +
+    # willeq_core, another heavy binary) -- see the comment on
+    # GTEST_DISCOVER_TESTS(test_spell_manager ...) for the mechanism and
+    # trade-off.
+    GTEST_DISCOVER_TESTS(test_graphics DISCOVERY_TIMEOUT 60)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
     ADD_EXECUTABLE(test_hotkey_manager

@@ -4024,7 +4024,7 @@ Will's open question: primary and shield equipment render correctly in a
 live session; secondary-weapon-only does not, characterised precisely
 enough to scope a fix unit without re-running the live session.
 
-## `protectedRegions_` bitvector is permanently all-false in production (T67 side-finding, 2026-08-11)
+## `protectedRegions_` bitvector is permanently all-false in production (T67 side-finding, 2026-08-11) — census done by T79 (2026-08-12), NOT removed, decision deferred
 
 - Found while removing `ConstrainedMeshCache` (see
   `refactor/T67_remove_constrained_mesh_cache.md`): `protectedRegions_`'s
@@ -4052,8 +4052,38 @@ enough to scope a fix unit without re-running the live session.
   `protectedRegions_` is worth resurrecting (e.g. repurposed from the
   eager SEQ-step region-visibility data) or whether Priority 3/4 are
   themselves dead code that should follow the mesh cache out.
+- **T79 (2026-08-12) resolved the "not confirmed, not chased" question above
+  and confirmed the harder case, not the easy one.** All 5 read sites
+  (`renderer_zone_stream.cpp:494,537,547,755,765`, all inside
+  `processFrameProgressiveLoad()` and `checkProgressiveLoadingComplete()`)
+  are live, reachable production code — not test-only, not behind any
+  cache-related gate — and every one of them is a permanent no-op because
+  `protectedRegions_` is always empty/false: Priority 3 (door build) and
+  Priority 4 (object build) loop bodies never execute, and the
+  `unbuiltDoors`/`unbuiltObjects` progressive-load status counters are
+  permanently pinned to 0 regardless of actual pending state. **Left
+  in place, not removed** — per the plan's own framing, live consumers
+  that used to read a real signal are exactly the case where deleting the
+  bitvector would be inventing a decision ("these consumers should also
+  go") that isn't this unit's to make; STOP condition invoked for the
+  removal question specifically. What T79 *did* do: added inline comments
+  at all 5 read sites (was previously only documented at the declaration)
+  making the always-false status and its consequence explicit at the point
+  of use, so the next reader doesn't have to re-derive it. Two real open
+  questions for whoever picks this up next: (1) doors/objects are also
+  built eagerly at zone load (SEQ Step6/7), so whether the Priority 3/4
+  dead paths are a functional gap depends on whether anything ever needs
+  the progressive/PVS-triggered fallback that eager build doesn't already
+  cover — not established either way; (2) if Priority 3/4 are kept, they
+  need a real protection/PVS signal to replace `protectedRegions_` (T79
+  did not invent one — out of scope); if the eager build is judged
+  sufficient on its own, Priority 3/4 and the two status counters should
+  be removed together with `protectedRegions_` rather than left as dead
+  camouflage. Visual gate confirmed unaffected (expected — no behavior
+  changed, only comments added). See
+  `refactor/T79_tooling_cleanup.md` Review for the full consumer table.
 
-## `check_file_sizes.sh` has no handling for deleted files in the diff (T67 finding, 2026-08-11)
+## `check_file_sizes.sh` has no handling for deleted files in the diff (T67 finding, 2026-08-11) — **FIXED by T79 (2026-08-12)**
 
 - `scripts/refactor/check_file_sizes.sh` (`refactor/EXECUTOR_PROTOCOL.md`'s
   verification-bar step 6) computes its file list from
@@ -4078,6 +4108,23 @@ enough to scope a fix unit without re-running the live session.
   `del $f: removed (not checked)` instead of an ERROR, and add `-C`
   support (or a `--repo <path>` flag) so the script doesn't depend on
   ambient shell cwd. Not fixed here (out of T67's scope).
+- **FIXED by T79 (2026-08-12):** both defects landed in one script edit.
+  Deleted paths are now excluded via `git diff --diff-filter=d` before the
+  per-file check ever runs (no more spurious "file not found" for a
+  legitimate deletion). The cwd-anchor problem is fixed by anchoring
+  `repo_root` to the script's own on-disk location by default (it lives at
+  `<repo>/scripts/refactor/check_file_sizes.sh`, so its grandparent's
+  parent is the repo), with an explicit `-C`/`--repo <path>` override for
+  callers that want a different tree. Verified by running it exactly as
+  `refactor/EXECUTOR_PROTOCOL.md` documents — `bash
+  <slot>/scripts/refactor/check_file_sizes.sh fable` — from an ambient cwd
+  OUTSIDE the slot (`/mnt/projects/fable`), no wrapper, no `cd`/`env -C`/
+  absolute-path workaround: it correctly resolved `repo_root` to the slot
+  and reported the slot's real diff against `fable`. Also verified the
+  deleted-file case directly (temporarily deleted a real tracked header,
+  confirmed it's silently excluded from the check rather than reported as
+  an error, then restored it). See `refactor/T79_tooling_cleanup.md`
+  Review for the transcript.
 
 ## Spell-effects rewrite arc, step 2 of N: `spells.eff` reader landed, the data-driven visual layer is still all ahead (T70, 2026-08-11)
 
@@ -4108,6 +4155,16 @@ enough to scope a fix unit without re-running the live session.
   same class of bug T70's plan diagnosed in `48ae032b`'s `spells.eff`
   loader. Not touched by T70; flagged here for whichever future unit picks
   up `spellsnew.eff`.
+  **FIXED by T79 (2026-08-12):** `ENTRY_SIZE` corrected to 268, and the
+  "skip fragments" workaround it motivated removed — confirmed a no-op at
+  the correct stride (0 of 418 records skipped). Entry counts measured
+  against the real `spellsnew.eff` (112,024 bytes): before (256, with the
+  fragment-skip hack) 437 records, 22 "kept" (mostly garbled fragments like
+  `"P\xef\xbf\xbd"`, `"keLight85."`, `"106 V2"`); after (268, hack removed)
+  418 records, 416 kept (2 filtered as too-short/"None"), whole clean names
+  throughout (`"Clinging Darkness"`, `"Frost Breath"`, `"Rain_Fall"`, etc).
+  See `refactor/T79_tooling_cleanup.md` Review for the full before/after
+  sample.
 ## Memory categories with no configured budget (T69, 2026-08-11) — Will's ruling needs a follow-up per-category
 
 - T69 (`refactor/T69_memory_enforcement_gate.md`) wired
@@ -4382,3 +4439,46 @@ the most promising unexplored lead; a real packet capture of the client
 triggering known spell effects (rather than static file analysis) is
 probably required to close the "duration_ms means what" question, since
 static analysis found no correlate to lean on.
+
+## `gtest_discover_tests` timeout under parallel build load — FIXED by T79 (2026-08-12)
+
+- `cmake --build` failed 3x on 2026-08-12 with `GoogleTestAddTests.cmake:
+  Error running test executable` while discovering tests for
+  `test_spell_manager` and `test_graphics` (both heavy binaries — the
+  former links `willeq_core`, the latter also links Irrlicht) — each time
+  under `-j24` parallel compile load, each time clean on an immediate
+  retry with no source change. This is a **discovery-time timeout, not a
+  compile error**: `gtest_discover_tests()`'s default `DISCOVERY_TIMEOUT`
+  is 5 seconds, and under `-j24` CPU contention a heavy binary's
+  `--gtest_list_tests` subprocess can legitimately take longer than that
+  to even start, let alone finish. The failure makes `cmake --build` exit
+  nonzero — the whole verification-bar step 1 reads as red — even though
+  nothing is actually broken.
+- Two fixes considered: raise `DISCOVERY_TIMEOUT` on the affected targets,
+  or move them to `DISCOVERY_MODE PRE_TEST` (enumeration deferred to
+  `ctest` invocation instead of happening as a build-time/post-build
+  step). **Chose raising `DISCOVERY_TIMEOUT` to 60s** on `test_spell_manager`
+  and `test_graphics` (`tests/CMakeLists.txt`), not `PRE_TEST`, because:
+  `DISCOVERY_MODE` is a CMake 3.20+ keyword and this project's
+  `CMAKE_MINIMUM_REQUIRED(VERSION 3.14)` (top-level `CMakeLists.txt`)
+  would make that combination version-fragile for anyone building with an
+  older-but-still-declared-supported CMake, where raising
+  `DISCOVERY_TIMEOUT` has no such floor. **Trade-off, stated honestly**:
+  raising the timeout doesn't remove the underlying contention — discovery
+  still runs concurrently with `-j24` compilation, competing for the same
+  CPUs — it only gives more slack before that contention manifests as a
+  failure. A sufficiently loaded host (more parallel jobs, a slower CI
+  runner) could still exceed 60s. `PRE_TEST` would remove the mechanism
+  structurally (discovery happens after the parallel build is already
+  done), at the cost of the CMake-version floor above and of a real
+  discovery crash surfacing one step later (at `ctest` time instead of
+  `cmake --build` time).
+- **Could not provoke on demand.** A full `cmake --build -j24` from a
+  fresh configure in this unit's session completed cleanly with no
+  discovery failure — the timeout is load-dependent and this run's host
+  conditions didn't reproduce the 3 failures from earlier the same day.
+  The fix is applied based on the documented mechanism (CMake's own
+  `DISCOVERY_TIMEOUT` semantics match the exact error text seen), not on
+  a captured repro in this session — stated honestly per the plan's
+  instruction, not claimed as proven. See
+  `refactor/T79_tooling_cleanup.md` Review.
