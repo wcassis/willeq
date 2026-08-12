@@ -164,10 +164,98 @@ gate); the fallback behaviour demonstrated; and the disposition of
 
 ## Review
 
-(executor fills: stage 1's diagnostic result; where the filter landed and
-why; the per-race heuristic results; the fallback; what happened to the
-no-op function; third-person regression evidence; capture paths;
-teardown; deviations)
+### Stage 1 — diagnostic result (checkpoint; stage 2/3 findings follow in a later commit)
+
+**Method.** Temporary throwaway hack in `EntityRenderer::setPlayerEntityVisible()`
+(`kT74Stage1Diagnostic`, still in this commit, reverted before stage 2/3):
+when hiding the player for first person, keep `primaryEquipNode`/
+`secondaryEquipNode` visible instead of hiding them with the rest of the
+player. Also added temporary `LOG_INFO(MOD_ENTITY, "T74-DIAG ...")`
+instrumentation to `EntityRenderer::updateEquipmentTransforms()` (also
+reverted before stage 2/3) to print the resolved bone index, local/absolute
+weapon-node position, and visibility flags for the player's primary weapon
+node every frame. eqemu live, `qeynos2` (lit outdoor zone — daylight at
+zone-in, though the simulated clock drifted to night partway through later
+runs; noted, not chased, since it did not affect what the diagnostic needed
+to see), account `willeq_test`, character `Testchar` (race=1 Human,
+gender=0, class=1 Warrior, level 2). `/equip` (T66/T71) used for every
+equip in this stage — no direct item-slot DB writes were needed for the
+equip action itself; direct DB writes were used only for staging a weapon
+into a general inventory slot first (see finding 1) and for character
+position (both sanctioned, same as T63/T65's precedent), never for the
+equip action. `/camera` (T66) used to enter first person and
+`getCameraModeString()`'s chat echo confirmed the mode on-screen. Command
+tour via `--script` (H03), frames via `--dump-frames-dir`/`--dump-every`
+(T64).
+
+**Finding 1 (test-setup bug, not a placement bug): item 6011 (Rusty Mace)
+has no entry in `data/item_models.json`.** The first several diagnostic
+captures (against item 6011) showed nothing at all in first person even
+with the stage-1 hack forcing equipment nodes visible. Root-caused by
+adding the temporary logging above and by tracing `attachEquipment()`:
+its `LOG_DEBUG "attachEquipment: Entity N (Testchar) primary=6011
+secondary=0"` entry line fired, but the follow-up `"Attached primary
+equipment ... to entity N"` confirmation line never appeared —
+`equipmentModelLoader_->getEquipmentMesh(6011)` returned `nullptr`
+because `6011` is outside `item_models.json`'s populated key range
+(500-8456, sparse, 3661 entries; confirmed by direct lookup — no `"6011"`
+key). No `primaryEquipNode` was ever created, so
+`updateEquipmentTransforms()`'s own `if (!visual.primaryEquipNode &&
+!visual.secondaryEquipNode) return;` short-circuited it every frame — the
+diagnostic hack had nothing to make visible. This was purely my test item
+choice, not a code defect; switched to item 5140 (Iron Cudgel of the
+Petitioner, itemtype 3 blunt, present in `item_models.json`) for the rest
+of stage 1.
+
+**Finding 2 (real bug, in-territory, folded into stage 3's "wire it"
+work rather than a separate STOP): entering first person via
+`/camera firstperson` does not itself move the camera.** With item 5140
+equipped and confirmed attached (`attachEquipment` completed, node
+created), the T74-DIAG logging showed the weapon transform math is sane:
+`updateEquipmentTransforms(primary)` resolved `raceCode=HUM boneIndex=15`
+(a real R_POINT-family bone, 25 bones total on the HUM skeleton) and
+computed `localPos=(0.62,1.51,-0.83)` relative to the player's own scene
+node, i.e. `absPos≈(428.62,5.51,-74.83)` against a player world position
+of `(428,4,-74)` — a small, plausible hand-offset, not a wild or NaN
+value. Despite that, the captured first-person frames still showed
+nothing: static, unmoving views that turned out to be the **stale
+third-person Follow camera transform**, not a first-person one. Root
+cause, read directly from `irrlicht_renderer.cpp`: `setCameraMode()`
+(:2637) and `cycleCameraMode()` (:2647) only set `cameraMode_` and call
+`entityRenderer_->setPlayerEntityVisible(...)` — neither repositions
+`camera_`. The ONLY places that ever move the camera to a first-person
+eye position are `setPlayerPosition()` (fires on server position
+updates) and `setPlayerSpawnId()` (fires once at zone-in, and only helps
+if `cameraMode_` already equals `FirstPerson` at that moment). A
+stationary player who issues `/camera firstperson` therefore keeps
+looking through whatever the Follow camera's transform happened to be —
+confirmed by grepping the full run log for the two log lines that would
+prove a first-person reposition happened
+(`"Camera mode=FirstPerson"`, `"First-person camera:"`) and finding
+zero occurrences across the entire session, even though `/camera
+firstperson`'s own chat echo confirmed the mode flag flipped. The
+Follow camera's own log line for this run
+(`"[ZONE-IN] ... preferredDist=20.00 actualDist=20.00 firstPerson=false
+... Camera pos: Irrlicht(428.00,7.00,-94.00)"`) sits ~19-20 units away
+from the weapon's resolved absolute position — matching `actualDist=20`
+almost exactly, i.e. the frames were the frozen 20-unit-back follow shot,
+not a first-person one, which is why nothing recognizable was in frame.
+
+**Verdict: not a STOP.** The weapon transform math itself is not shown to
+be wrong (finding 2 shows sane, plausible numbers once a real weapon mesh
+was attached) — the failure to observe it was a test-item bug (finding 1)
+compounded by a genuine but in-territory, fixable gap in
+`setCameraMode()`/`cycleCameraMode()` (finding 2), exactly the file/
+functions this unit's territory already names for stage 3. Folding the
+camera-reposition fix into stage 3 rather than treating this as its own
+STOP/unit, since fixing it is required to visually verify stage 2's
+geometry filter at all (without it, no first-person capture can ever show
+anything, arms or otherwise, until the player happens to move). Stage 2/3
+implementation and their own verification (arm-bone table, fallback,
+`triggerFirstPersonAttack()` disposition, third-person regression
+evidence) follow in a later commit on this branch; the throwaway stage-1
+hack code (`kT74Stage1Diagnostic` and the `T74-DIAG` logging) is reverted
+there.
 
 Board: this closes **instance 9** of the "implemented but no producer"
 pattern — and note in that entry that it was the first instance where the

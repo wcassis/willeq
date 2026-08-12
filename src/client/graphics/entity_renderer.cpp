@@ -2696,6 +2696,14 @@ void EntityRenderer::setLightingEnabled(bool enabled) {
 }
 
 void EntityRenderer::setPlayerEntityVisible(bool visible) {
+    // T74 STAGE 1 DIAGNOSTIC (throwaway, see refactor/T74_first_person_arms_and_weapons.md):
+    // when hiding the player (entering first person), leave the equipment
+    // nodes visible instead of hiding them with the rest of the player.
+    // This answers the question arm filtering cannot fix on its own: are
+    // the weapon transforms correct with the camera at the player's own
+    // position? Reverted before stage 2's real implementation lands.
+    static const bool kT74Stage1Diagnostic = true;
+
     bool foundPlayer = false;
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
@@ -2712,12 +2720,14 @@ void EntityRenderer::setPlayerEntityVisible(bool visible) {
             if (visual.nameNode) {
                 visual.nameNode->setVisible(visible);
             }
-            // Show/hide equipment
+            // Show/hide equipment (T74 stage 1: always keep visible so the
+            // diagnostic can inspect weapon transforms alone)
+            bool equipVisible = kT74Stage1Diagnostic ? true : visible;
             if (visual.primaryEquipNode) {
-                visual.primaryEquipNode->setVisible(visible);
+                visual.primaryEquipNode->setVisible(equipVisible);
             }
             if (visual.secondaryEquipNode) {
-                visual.secondaryEquipNode->setVisible(visible);
+                visual.secondaryEquipNode->setVisible(equipVisible);
             }
             break; // Only one player entity
         }
