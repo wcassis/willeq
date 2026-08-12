@@ -2153,6 +2153,23 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// Update our position (swap x and y from server)
 	// PlayerProfile heading is stored as (12-bit scaled value / 4)
 	// Convert back: server_heading_deg = heading * 360 / 512, then m_heading = 90 - server_heading_deg
+	//
+	// LOAD-BEARING — DO NOT "HARMONIZE" THIS WITH THE OTHER HEADING SITES.
+	// The `90 -` flip below is applied to the PLAYER's own heading here, and
+	// deliberately NOT to other entities (eq_entities.cpp:~294-297 assigns
+	// server_heading directly, with its own extra /4.0f). That asymmetry looks
+	// exactly like the duplicated-then-drifted defect class this codebase keeps
+	// hitting, and it is not: players and NPCs do not share the same default
+	// rotation, and the model files themselves carry differing default
+	// rotations. The divergence here is compensating for a real per-model
+	// difference in the assets.
+	//
+	// This offset was hard won. Do not remove, unify, or refactor it into a
+	// shared helper "for consistency" without first establishing, by
+	// measurement, the per-entity-type and per-model default rotations and what
+	// the server actually expects. A single client cannot detect an error here
+	// because it is self-consistent — validating this requires a second client
+	// observing the first (see docs/CLAUDE.md, Heading/Rotation Conventions).
 	float server_heading_deg = heading * 360.0f / 512.0f;
 	float new_heading = 90.0f - server_heading_deg;
 	if (new_heading < 0.0f) new_heading += 360.0f;

@@ -153,6 +153,25 @@ Audio system uses client internal coordinates directly (no transformation).
   - 12-bit: `raw * 360.0 / 2048.0` = degrees
   - Position updates: `degrees * 512.0 / 360.0` = EQ units
 
+- **Player and NPC headings are NOT handled identically, and that is correct.**
+  The player's own heading from PlayerProfile gets a `90 - server_heading_deg`
+  flip (`src/client/eq.cpp`, see the load-bearing comment there); other
+  entities' headings from spawn packets do not (`src/client/eq_entities.cpp`,
+  which applies its own extra `/4.0f` instead). **Players and NPCs do not share
+  the same default rotation, and the model files carry differing default
+  rotations** — the code asymmetry compensates for a real asset difference.
+  This offset was hard won. Never unify these conversion sites, fold them into
+  a shared helper, or "fix" the asymmetry as duplicated-then-drifted. Any change
+  requires first measuring the per-entity-type and per-model default rotations
+  and what the server actually expects.
+
+  Note a single client **cannot** detect an error here — it is self-consistent
+  with itself. Orientation correctness is only observable from a second client
+  watching the first, because the server transforms and rebroadcasts what we
+  send. This has bitten before: willeq's idea of the player's position+heading
+  did not match what the server sent to other clients, and willeq has rendered
+  a player at a different orientation than the official client showed.
+
 - **WLD rotation**: 512 units = 360 degrees, with axis remapping:
   ```cpp
   finalRotX = 0.0f;                           // Always 0
