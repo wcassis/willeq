@@ -28,8 +28,10 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
 
 **Architecture / needs a ruling**
 - TWO `state::GameState` instances exist, unconnected — needs a decision, not
-  a drive-by. Heading: `## TWO \`state::GameState\` instances exist,
-  unconnected`.
+  a drive-by. **T78 (2026-08-12) did the census the decision needs — see
+  `refactor/T78_two_gamestate_analysis.md`'s Review, or this section's own
+  T78 addendum, before restating the problem.** Heading: `## TWO
+  \`state::GameState\` instances exist, unconnected`.
 - Command-registry overlap (~34 names span two registries; T51 closed 3, most
   still open). Heading: `## Command-registry overlap and the bare
   \`/target\` precedence gap`.
@@ -1623,6 +1625,26 @@ owner properly, which touches the action layer, the modes, the bridges
 and the Phase 7.x syncs. (b) sounds small and is not: the two are
 constructed at different times with different lifetimes, and the
 headless/graphical modes differ in what exists when.
+
+**T78 (2026-08-12) ANALYSIS DONE — read `refactor/T78_two_gamestate_analysis.md`'s
+Review before scoping the next unit off this entry.** Full census of both
+instances (every construct/hold/read/write site, file:line), what each
+genuinely serves, the four options with costs/risks/unblocks, and — the
+finding that changes this entry's shape — **neither instance is vestigial,
+so "delete one" is not available**, and the split currently breaks more than
+the position-write case this entry and T55/T58 described: `Application`'s
+copy is never fed `entities()`/`doors()`/`group()` at all, so `/face`,
+`/who`, `moveToEntity`/`followEntity`, `/disband`, and dispatcher-gated
+`/decline`/accept-invite all silently no-op or return a misleading "not
+found" in production today, independent of whether the two instances are
+ever connected. Doors are broken worse than a two-instance split — a third,
+unconnected `DoorStateManager` on `EverQuest` holds the only real door data,
+and neither `GameState`'s `doors()` is ever populated by anyone. T78's own
+recommendation: don't pick (a)/(b)/(c) wholesale — close the entities/group
+gaps cheaply via a `GameStateSyncBridge` extension, fix doors as its own
+unrelated item, and scope full convergence (b)/(c) as a separate, larger,
+deliberately-scoped unit given its ~90+ call-site regression surface. Still
+Will's decision, not foreclosed by this note.
 
 ## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02) — **ALL THREE CLAIMS CLOSED (T28/T39/T42/T49); this is the board's own worked example of why re-verification matters**
 
