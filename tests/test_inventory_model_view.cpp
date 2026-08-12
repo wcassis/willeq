@@ -26,6 +26,7 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <limits>
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/eq/race_model_loader.h"
@@ -517,6 +518,163 @@ TEST_F(RaceModelAnimationHeadlessTest, FirstPersonArmFilter_FallbackWhenNoArmBon
     EXPECT_EQ(node->getInstanceMeshIndexCount(), fullIndexCount)
         << "fallback path must not filter the instance mesh -- the caller "
            "hides the whole entity instead";
+}
+// T75 Step 1: measure, numerically, where the arm-filtered geometry sits
+// relative to the first-person camera -- in idle AND in an attack
+// animation. Reproduces the two production formulas exactly (rather than
+// re-deriving them) so this test would break, not silently drift, if either
+// changes:
+//   - EntityRenderer::getPlayerEyeHeightFromFeet(): camera height above feet
+//     == the FULL model bounding-box height (bbox.MaxEdge.Y - MinEdge.Y),
+//     not a fraction of it -- entity_renderer.cpp:3027.
+//   - IrrlichtRenderer::repositionFirstPersonCamera(): camZ = playerZ(feet)
+//     + eyeHeight + playerConfig_.eyeHeight (default adjust 0.0) --
+//     irrlicht_renderer.cpp:2421-2440. The camera looks perfectly level
+//     (target Y == camera Y), no pitch.
+// This does not touch T74's filter -- it only reads getArmBoneIndices()
+// (T75's new read-only accessor) and getBoneWorldPosition(), both
+// pre-existing/added-but-inert data, never mutated here.
+TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) {
+    auto* node = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());  // Human male
+    if (!node) {
+        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
+    }
+
+    // Node sits at the scene origin (feet at Y=0), matching how
+    // getBoneWorldPosition()'s node-relative math is exercised in the other
+    // fixture tests in this file -- the absolute world offset cancels out of
+    // every delta computed below, only the RELATIVE geometry matters.
+    ASSERT_FLOAT_EQ(node->getAbsolutePosition().Y, 0.0f);
+
+    node->playAnimation("l01", true);
+    node->OnAnimate(100);
+
+    // Reproduces EntityRenderer::getPlayerEyeHeightFromFeet() exactly: the
+    // BASE mesh bounding box's top edge (not the instance/filtered mesh).
+    // T75: this is bbox.MaxEdge.Y ALONE, not bbox.MaxEdge.Y - bbox.MinEdge.Y
+    // -- that "full range" formula was the bug this measurement found (see
+    // getPlayerEyeHeightFromFeet()'s comment): MinEdge.Y is NOT 0 for these
+    // models (the [DIAG] line below prints the real value), so subtracting
+    // it doubled the effective camera height instead of stopping at the
+    // model's actual top.
+    EQT::Graphics::EQAnimatedMesh* eqMesh = node->getEQMesh();
+    ASSERT_NE(eqMesh, nullptr);
+    irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
+    float eyeHeightFromFeet = bbox.MaxEdge.Y;
+    ASSERT_GT(eyeHeightFromFeet, 0.0f) << "degenerate bounding box -- cannot measure";
+
+    // Reproduces IrrlichtRenderer::repositionFirstPersonCamera(): feet(0) +
+    // eyeHeight + playerConfig_.eyeHeight (default adjustment is 0.0, no
+    // config loaded in this headless fixture).
+    constexpr float kPlayerConfigEyeHeightAdjustDefault = 0.0f;  // playerConfig_.eyeHeight default, irrlicht_renderer.h:325
+    float cameraY = 0.0f + eyeHeightFromFeet + kPlayerConfigEyeHeightAdjustDefault;
+
+    // Populate armBoneIndices_ once (name-based, not pose-based -- doesn't
+    // need to happen per-animation).
+    node->setFirstPersonMode(true);
+    const std::vector<int>& armIndices = node->getArmBoneIndices();
+    ASSERT_FALSE(armIndices.empty()) << "Human male must have arm bones -- see T74's per-race table";
+
+    // Irrlicht's default camera FOV (CCameraSceneNode.cpp: Fovy = PI/2.5,
+    // ~72 degrees vertical) -- the renderer never calls setFOV() on the
+    // main/first-person camera (only the deleted paperdoll's separate
+    // camera did), so this is the live value.
+    const float kDefaultVerticalFovRad = irr::core::PI / 2.5f;
+    const float kHalfFovRad = kDefaultVerticalFovRad / 2.0f;
+
+    std::cout << "\nT75 arm-vs-camera geometry measurement (Human male):\n";
+    std::cout << "  eyeHeightFromFeet (bbox.MaxEdge.Y, post-fix)   = " << eyeHeightFromFeet << "\n";
+    std::cout << "  camera Y (feet=0 + eyeHeight + adjust=0)       = " << cameraY << "\n";
+    std::cout << "  camera vertical FOV                            = "
+              << (kDefaultVerticalFovRad * 180.0f / irr::core::PI) << " deg (half="
+              << (kHalfFovRad * 180.0f / irr::core::PI) << " deg)\n";
+    std::cout << "  arm bone count                                 = " << armIndices.size() << "\n";
+    std::cout << "  raw bbox Y range = [" << bbox.MinEdge.Y << ", " << bbox.MaxEdge.Y
+              << "] -- MinEdge != 0 is exactly the pre-fix bug (old formula used "
+                 "MaxEdge-MinEdge = " << (bbox.MaxEdge.Y - bbox.MinEdge.Y)
+              << " instead of MaxEdge.Y = " << bbox.MaxEdge.Y << ")\n";
+    int headIdx = node->getBoneIndexByName("HEAD");
+    if (headIdx < 0) {
+        auto skel = eqMesh->getSkeleton();
+        if (skel) {
+            for (size_t i = 0; i < skel->bones.size(); ++i) {
+                std::string up = skel->bones[i].name;
+                std::transform(up.begin(), up.end(), up.begin(), ::toupper);
+                if (up.find("HEAD") != std::string::npos) { headIdx = static_cast<int>(i); break; }
+            }
+        }
+    }
+    if (headIdx >= 0) {
+        irr::core::vector3df headPos;
+        node->getBoneWorldPosition(headIdx, headPos);
+        std::cout << "  head bone Y = " << headPos.Y
+                  << " (close to eyeHeightFromFeet -- corroborates bbox.MaxEdge.Y as the "
+                     "right 'top of model' measure)\n";
+    } else {
+        std::cout << "  [DIAG] no HEAD bone found\n";
+    }
+
+    struct AnimSample { const char* code; const char* label; };
+    // "l01" = idle/stand loop. "c06" = 1H Slash/Blunt attack swing (the
+    // animation code Testchar's equipped blunt weapon resolves to via
+    // EQ::getWeaponAttackAnimation(WEAPON_1H_BLUNT) -- animation_constants.h).
+    const AnimSample anims[] = {
+        {"l01", "idle"},
+        {"c06", "attack (1H slash/blunt swing)"},
+        {"c02", "attack (1H piercing swing)"},
+        {"c03", "attack (2H slash swing)"},
+        {"c04", "attack (2H blunt swing)"},
+        {"c08", "attack (hand-to-hand swing)"},
+    };
+
+    for (const auto& sample : anims) {
+        SCOPED_TRACE(sample.label);
+        node->playAnimation(sample.code, true);
+        // Step across several frames so an attack swing (which moves
+        // through a pose, not a single static frame) is sampled mid-motion,
+        // not just at its first frame.
+        float minY = std::numeric_limits<float>::max();
+        float maxY = std::numeric_limits<float>::lowest();
+        // Camera looks along heading=0 -> forward == (0,0,+1) (repositionFirstPersonCamera()'s
+        // headingRad math: sin(0)=0 X-component, cos(0)=1 Z-component). Track how far
+        // in front of (Z>0, toward the look target) vs. beside (|X|) the camera axis
+        // the arm bones actually sit -- needed alongside the Y delta because the
+        // camera's near clip plane is 1.0 (setupCamera(), irrlicht_renderer.cpp:1517):
+        // geometry inside that distance is clipped regardless of vertical angle.
+        float minZ = std::numeric_limits<float>::max();
+        float maxZ = std::numeric_limits<float>::lowest();
+        float maxAbsX = 0.0f;
+        int sampledFrames = 0;
+        for (int t = 0; t <= 400; t += 50) {
+            node->OnAnimate(static_cast<irr::u32>(t));
+            bool anyBone = false;
+            for (int boneIdx : armIndices) {
+                irr::core::vector3df pos;
+                if (node->getBoneWorldPosition(boneIdx, pos)) {
+                    minY = std::min(minY, pos.Y);
+                    maxY = std::max(maxY, pos.Y);
+                    minZ = std::min(minZ, pos.Z);
+                    maxZ = std::max(maxZ, pos.Z);
+                    maxAbsX = std::max(maxAbsX, std::fabs(pos.X));
+                    anyBone = true;
+                }
+            }
+            if (anyBone) ++sampledFrames;
+        }
+        ASSERT_GT(sampledFrames, 0) << sample.label << ": no arm bone ever resolved a world position";
+
+        float deltaMin = minY - cameraY;  // negative == below camera
+        float deltaMax = maxY - cameraY;
+        std::cout << "  [" << sample.label << "] arm bone Y range = [" << minY << ", " << maxY
+                  << "]  (delta vs camera Y=" << cameraY << ": [" << deltaMin << ", " << deltaMax << "])\n";
+        std::cout << "  [" << sample.label << "] arm bone Z (forward) range = [" << minZ << ", " << maxZ
+                  << "], max |X| (sideways) = " << maxAbsX
+                  << "  (camera at Z=0 looking toward +Z, near clip = 1.0)\n";
+
+        // Not asserted pass/fail (this is a measurement, not a regression
+        // gate) -- reported here and in the plan's Review for Will/the next
+        // executor to read the raw numbers from, per the plan's Step 1.
+    }
 }
 #endif // EQT_HAS_GRAPHICS
 
