@@ -4764,7 +4764,7 @@ other five). **The entire observed heading error lives at
 encoder downstream of it is sound.** Not fixed, per this unit's own
 prohibition (same as T84).
 
-## Wizzy's ClientUpdate broadcasts never reached a third client (T85, 2026-08-13) — needs server-side pcap to root-cause
+## Wizzy's ClientUpdate broadcasts never reached a third client (T85, 2026-08-13) — mechanism found by T86 (2026-08-13), see addendum below; still not fixed
 
 While observing (Role 1, not touching production code), T85 found that
 `Wizzy` (a second officially-driven client, spawn_id 462, confirmed by
@@ -4794,6 +4794,54 @@ instead — the client-side evidence alone cannot distinguish these.
 **This is exactly the defect class neither one client nor two WillEQ
 clients could reach** — it needed a genuinely independent second player
 character in the zone.
+
+**T86 addendum (2026-08-13) — decisive comparison answered, and a strong
+root-cause candidate found, still not fixed.** Pure post-hoc analysis of
+the oracle's `capture.pcap` (no live session, no server access), reusing
+`tests/pcap_test_utils.h` + `tests/daybreak_test_harness.h` rather than a
+hand-rolled parser. Full evidence and tooling: `review/T86/README.md`,
+`review/T86/extract_clientupdate.cpp`.
+
+*Decisive comparison*: **YES** — `Oracledelta` (the official observer,
+also GM-flagged) received 898 `OP_ClientUpdate` broadcasts for spawn 462
+across the exact window WillEQ received zero (Wizzy's own C→S traffic to
+the server confirms he was continuously transmitting the whole time, not
+silent). This rules out GM status as the cause (Oracledelta is
+GM-flagged too and unaffected) and points squarely at something specific
+to `willeq_a`'s session — not the server's broadcast mechanism in
+general, and not Wizzy.
+
+*Root-cause candidate*: decoding WillEQ's own outbound self-position
+wire field (`PlayerPositionUpdateClient_Struct`, C→S `OP_ClientUpdate`)
+during the observation window gives `x_pos=306.462, y_pos=-646.949` —
+genuine data (the tail of a smooth, continuous 23-second walk matching
+T85's own reported `/move` timeline to the millisecond), not corruption.
+Against ground truth decoded the same way from the same capture —
+Oracledelta's own self-report exactly matches the join spec's
+coordinates (`x=-653, y=314`, confirming the struct decode itself is
+correct and the official client applies no swap), and Wizzy's true
+position (decoded from Oracledelta's received broadcast) is
+`x=-618.25, y=301.625` — WillEQ's **as-sent** wire position is ~1324.8
+units from Wizzy's true position. eqemu's broadcast gate for player
+`OP_ClientUpdate` (`zone/client_packet.cpp Handle_OP_ClientUpdate` →
+`entity_list.QueueCloseClients(..., RuleI(Range, ClientPositionUpdates),
+...)`, default 300 units) would exclude any client that far away — full
+stop, no other mechanism needed. Reading WillEQ's `x_pos`/`y_pos` with
+the axes swapped back — matching the deliberate, documented swap
+convention already in `src/client/eq_movement.cpp:1064-1068`
+(`SendPositionUpdate()`) and `src/client/eq.cpp`
+(`ZoneProcessPlayerProfile`'s `SetPosition(server_y, server_x, z)`) —
+puts WillEQ only ~29 units from Wizzy, matching "parked near
+Oracledelta" almost exactly. The outbound code's own comments say it is
+trying to undo the inbound swap bit-for-bit; the measured wire output
+does not do that. **Not root-caused to a single line** (could be the
+outbound un-swap, the inbound swap, or how `/move`'s arguments map to
+`m_x`/`m_y` — this unit did not determine which), **and not fixed** —
+static analysis + one session's wire-level numeric agreement, not a
+live-tested fix, per this unit's own no-code-changes prohibition. A
+follow-up unit doing a live position round-trip test (send a known
+position, read back what the server believes) would settle which site
+is the actual defect and confirm the fix closes the broadcast gap.
 
 ## Texture-fallback (magenta/checkerboard) defect reproduces reliably (T85, 2026-08-13) — not root-caused
 
