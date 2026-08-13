@@ -279,7 +279,14 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         }
         if (texture) {
             textureCache_[name] = texture;
-            if (constrainedCache_->hasAlpha(name)) {
+            // P50: pass applyPaletteMask through — a masked-variant entry is
+            // stored under the mangled cacheKey() and a plain-name hasAlpha()
+            // query would always miss it. In practice this OR's into a signal
+            // (texturesWithAlpha_) that is itself always dominated by the
+            // WLD-derived textureMasked() flag at mesh-build time (see the
+            // isMaskedMaterial OR below), so this fix is correctness/hygiene,
+            // not a behavior change — see this unit's Review.
+            if (constrainedCache_->hasAlpha(name, applyPaletteMask)) {
                 texturesWithAlpha_.insert(name);
             }
             return texture;
@@ -354,7 +361,16 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
                     texture = loadTextureFromBMP(texName, texIt->second->data);
                     if (!texture) {
-                        LOG_DEBUG(MOD_GRAPHICS, "buildTexturedMesh: loadTextureFromBMP returned null for '{}' ({} bytes)",
+                        // T92: was LOG_DEBUG — the sole reason zone-geometry
+                        // texture failures (the magenta/checkerboard wall and
+                        // floor defect's actual failure signal, if any) have
+                        // never been named: model-loading failures already
+                        // log at LOG_WARN, but this, the analogous failure
+                        // for zone geometry, was whispered at DEBUG and
+                        // suppressed at any production log level. Raised to
+                        // WARN with the texture name so a normal qeynos2 run
+                        // reports it.
+                        LOG_WARN(MOD_GRAPHICS, "buildTexturedMesh: loadTextureFromBMP returned null for '{}' ({} bytes)",
                             texName, texIt->second->data.size());
                     }
                 } else if (texIt == textures.end()) {

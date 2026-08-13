@@ -1126,6 +1126,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_bone_attachment)
 ENDIF()
 
+# T92: ConstrainedTextureCache coverage — the P50 masked-variant query-method
+# gap (hasAlpha/getTexture/getAlphaTexture/isETC1Texture by-name overloads
+# now take applyPaletteMask) and the Part 1 empty-input-vs-decode-failure
+# message distinction at getOrLoad(). EDT_NULL for the bulk of it (no
+# window/GPU/DISPLAY); one fixture (ConstrainedTextureCacheETC1Test) opens a
+# real EDT_OGLES2 surfaceless device + the real qeynos2_obj.eqe1 archive
+# (same asset test_eqe1_loader.cpp depends on) to exercise the ETC1-only
+# fields (isETC1/alphaTexture), which only the real upload path can set —
+# self-skips if either is unavailable.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_constrained_texture_cache
+        test_constrained_texture_cache.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_constrained_texture_cache PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_constrained_texture_cache GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_constrained_texture_cache)
+ENDIF()
+
 # T66: /camera coverage (irrlicht_renderer.cpp processSlashCommand()) --
 # genuinely headless end-to-end: exercises the real processSlashCommand() ->
 # setCameraMode()/cycleCameraMode()/getCameraModeString() chain via a
