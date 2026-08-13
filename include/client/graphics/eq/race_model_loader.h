@@ -483,6 +483,27 @@ private:
     size_t maxChrCacheEntries_ = 0;          // 0 = unlimited
     std::list<std::string> chrCacheLruOrder_; // Front = most recently used
 
+    // T91: the ONLY correct way to insert into otherChrCaches_. Stores the
+    // entry, registers it in chrCacheLruOrder_, and evicts the
+    // least-recently-loaded entry if over maxChrCacheEntries_ -- exactly
+    // what tryLoadFromArchive's lambda (preloadModelData, race_model_loader.cpp)
+    // already did inline. Before T91, five insertion sites in
+    // variant_loading.cpp (preloadVariantModel's JSON-specified-S3D and
+    // animation-source-S3D loads, both in the primary and global-fallback
+    // branches) wrote `otherChrCaches_[key] = ...` directly, bypassing this
+    // accounting entirely: those entries grew otherChrCaches_.size() without
+    // ever entering chrCacheLruOrder_, so they could never be evicted, while
+    // silently pushing otherChrCaches_.size() over maxChrCacheEntries_ and
+    // forcing the *tracked* entries (the global_chr.s3d/global2-7_chr.s3d
+    // base-model fallback chain preloadModelData legitimately needs) to be
+    // evicted and reloaded from disk far more often than the configured cap
+    // should allow -- see refactor/T91_entity_prepare_gate.md Review for the
+    // measured thrash this caused. Caller must already hold
+    // otherChrCacheMutex_ (every existing call site already does).
+    void storeOtherChrCacheLocked(const std::string& lowerFilename,
+                                   std::vector<std::shared_ptr<CharacterModel>> characters,
+                                   std::map<std::string, std::shared_ptr<TextureInfo>> textures);
+
     // Reference counts for cached meshes (cache key -> ref count)
     std::map<uint32_t, int> meshRefCounts_;
 

@@ -5062,3 +5062,93 @@ existed. Every apparent offset reported across T87 and T89 (~252°, then
 real defect this whole arc chased was `EqActionHandler::setHeading()`'s
 double conversion (T84, fixed by T90). See the T90 entry near the top of
 this file and the T87 entry it supersedes.
+## Nektulos's ~230s entity-prep stall: no load-time gate exists (as designed), plus a real `otherChrCaches_` accounting bug FIXED (T91, 2026-08-13) — full magnitude NOT reproduced headlessly, live re-verification still open
+
+**Location, precisely**: `IrrlichtRenderer::loadZoneStep8_Entities`
+(`src/client/graphics/renderer_zone_load.cpp:1298`) unconditionally loops
+every entity in `entityRenderer_->getEntities()` (`ctx.totalEntities`,
+452 for Nektulos, 171 for Befallen) and runs the full inline prep+build
+chain (8a base model, 8b variant model, 8c variant textures, 8d
+equipment, 8e distribute, 8f mesh build) for every single one, at load
+time, on the loading thread, before the zone is playable. **No distance,
+visibility, or count gate exists at this point today** — confirmed by
+reading the loop, not assumed. The 40-entity render cap
+(`Entities 40/171 (max 40)`) is a separate, later, render-time filter
+that has no interaction with Step 8 at all.
+
+A PVS-depth gate (`entityPrepMaxPvsDepth`,
+`constrained_renderer_config.h:88`) DOES exist and IS respected — but
+only by `queueEntityPrepRequests()`
+(`renderer_zone_stream.cpp:676`), the **post-load, per-frame background
+streaming path** used for entities that spawn or come into view AFTER
+the zone is already playable (`EntityPrepWorker`). It is never consulted
+by Step 8's inline load-time loop. Both shipped constrained presets
+(`orangepi`, `128x32x10`) set it to 255 anyway, i.e. effectively
+unbounded even where it does apply.
+
+**Cache-thrash quantification, from T82's own captured production logs**
+(`review/T82/testmelee_session4_clean_roundtrip.log` for Nektulos,
+`testchar_session.log` for Befallen — real live sessions, not
+reconstructed): Nektulos's Step 8 phase took **246.065s** wall-clock
+(`14:30:57.928`→`14:35:03.993`, and it DID finish — T82's "still 87% when
+killed" was the client being killed ~0.6s after Step 8 actually
+completed, not a true hang). Of that, **230.7s (93.8%)** went to 130 of
+452 entities (28.8%) whose race has no matching model in ANY archive
+(placeholder-cube fallback; the same race>367-ceiling GM-summon-debris
+class T83 already identified — races 330/415/432/436/440/468/471, with
+race 468 alone appearing 69 times). Determining "no match exists" for
+each such entity costs ~1.7–2.5s, because it walks
+`global_chr.s3d`+`global2-7_chr.s3d` (7 files) from scratch, and 6 of
+those 7 files were recorded as a MISS (full disk reload) **128–130 of
+130 times**, despite the 7-file working set fitting comfortably inside
+the configured 8-entry `chrCacheMaxEntries` cap. Befallen's same class of
+entity (14 of 171, races 415/457) does NOT pay this tax: after one
+934ms first-miss, every repeat lookup is an 8–11ms hit, because
+Befallen's smaller/less diverse population never triggers the pattern
+below. Full write-up, tables, and the headless repro's raw logs:
+`review/T91/README.md`.
+
+**Root cause of the thrash, found by source reading and fixed**:
+`RaceModelLoader::preloadVariantModel()`
+(`src/client/graphics/eq/variant_loading.cpp`, Step 8b's callee, gated on
+a nonzero helm/robe appearance byte) had five call sites that inserted
+into `otherChrCaches_` via bare `otherChrCaches_[key] = ...`, entirely
+bypassing the `chrCacheLruOrder_` registration and
+`maxChrCacheEntries_` eviction accounting that
+`RaceModelLoader::preloadModelData()`'s own `tryLoadFromArchive` lambda
+correctly performs. `config/race_models.json` confirms several races
+legitimately used as Nektulos NPCs have a canonical archive from a
+DIFFERENT zone than "nektulos" and not "global*" (race 22/BET →
+`beholder_chr.s3d`; races 36/54/74 (RAT/ORC/PIR) → `akanon_chr.s3d`;
+race 69/WIL → `airplane_chr.s3d`; race 77/NGM → `hateplane_chr.s3d`) —
+exactly the condition that trips the buggy branch. An entry inserted
+this way permanently occupies a map slot outside the tracked LRU budget,
+forcing the legitimately-tracked global fallback chain to be evicted and
+reloaded far more often than the configured cap should allow. **Fixed**:
+a new `RaceModelLoader::storeOtherChrCacheLocked()` helper is now the
+only way to insert into `otherChrCaches_` (5 buggy sites in
+`variant_loading.cpp` + 2 previously-correct-but-duplicated sites in
+`race_model_loader.cpp`, including the two failure-path early returns
+that used to leave permanently-unevictable "poisoned" empty entries).
+
+**NOT claimed as resolving the 230s** — this is the honest limit of a
+headless characterization unit. A standalone repro (real
+`RaceModelLoader`, real local EQ client data, T82's exact captured
+race/gender call sequences replayed, no eqemu; deleted before this
+unit's commit, method preserved in `review/T91/README.md`) confirms the
+accounting bug by code reading and shows no regression from the fix, but
+did **not** reproduce the 230s magnitude even pre-fix (both pre- and
+post-fix repro runs completed in ~2s). Most likely confound: this dev
+VM's OS page cache is now warm for the ~17MB of archive files (T82, T83,
+and this unit all touched them repeatedly), where T82's original capture
+read them cold over NFS; a secondary possibility is that the synthetic
+foreign-archive trigger used in the repro doesn't exactly match the live
+entities' true per-entity appearance bytes, which weren't captured in
+the log. **A live eqemu re-run of T82's Nektulos scenario against this
+fix is the only way to get a real before/after — open for a follow-up
+unit**, ideally the same one that also revisits the Part 2 design
+options below (raise-vs-gate-vs-lazy-vs-background), which remain
+Will's call, not decided here.
+
+Full plan, measurements, and Part 2 option write-up:
+`refactor/T91_entity_prepare_gate.md` Review, `review/T91/README.md`.

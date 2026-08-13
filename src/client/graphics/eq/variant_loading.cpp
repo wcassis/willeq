@@ -462,14 +462,14 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                             if (loader.loadZone(fullPath)) {
                                 auto zone = loader.getZone();
                                 if (zone && !zone->characters.empty()) {
-                                    OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                    cache.characters = zone->characters;
-                                    cache.textures = zone->characterTextures;
-                                    // Invalidate merged textures cache since we added new textures
-                                    mergedTexturesCacheValid_ = false;
-                                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} characters from JSON-specified {} for race {}",
-                                              cache.characters.size(), jsonS3dFile, raceId);
+                                    // T91: was a raw otherChrCaches_[key] = ...
+                                    // insert with no LRU registration -- see
+                                    // storeOtherChrCacheLocked's doc comment.
+                                    storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
                                     cacheIt = otherChrCaches_.find(lowerFilename);
+                                    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} characters from JSON-specified {} for race {}",
+                                              cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0,
+                                              jsonS3dFile, raceId);
                                 }
                             }
                         }
@@ -678,13 +678,13 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                                 if (loader.loadZone(fullPath)) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
-                                        OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                        cache.characters = zone->characters;
-                                        cache.textures = zone->characterTextures;
-                                        mergedTexturesCacheValid_ = false;
-                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded animation source S3D {} ({} characters)",
-                                                  animSourceS3dFile, cache.characters.size());
+                                        // T91: was a raw otherChrCaches_[key] = ...
+                                        // insert with no LRU registration.
+                                        storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
                                         cacheIt = otherChrCaches_.find(lowerFilename);
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded animation source S3D {} ({} characters)",
+                                                  animSourceS3dFile,
+                                                  cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0);
                                     }
                                 }
                             }
@@ -1034,13 +1034,13 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                                 if (loader.loadZone(fullPath)) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
-                                        OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                        cache.characters = zone->characters;
-                                        cache.textures = zone->characterTextures;
-                                        mergedTexturesCacheValid_ = false;
-                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - loaded animation source S3D {} ({} characters)",
-                                                  animSourceS3dFile, cache.characters.size());
+                                        // T91: was a raw otherChrCaches_[key] = ...
+                                        // insert with no LRU registration.
+                                        storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
                                         cacheIt = otherChrCaches_.find(lowerFilename);
+                                        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Global fallback - loaded animation source S3D {} ({} characters)",
+                                                  animSourceS3dFile,
+                                                  cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0);
                                     }
                                 }
                             }
@@ -1303,19 +1303,20 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
                             if (loader.loadZone(fullPath)) {
                                 auto zone = loader.getZone();
                                 if (zone && !zone->characters.empty()) {
-                                    OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                    cache.characters = zone->characters;
-                                    cache.textures = zone->characterTextures;
-                                    mergedTexturesCacheValid_ = false;
-                                    // Add new textures to our local merged copy
-                                    for (const auto& [name, tex] : cache.textures) {
-                                        if (mergedTextures.find(name) == mergedTextures.end()) {
-                                            mergedTextures[name] = tex;
-                                        }
-                                    }
-                                    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadVariantModel: Loaded {} characters from {}",
-                                              otherChrCaches_[lowerFilename].characters.size(), jsonS3dFile);
+                                    // T91: was a raw otherChrCaches_[key] = ...
+                                    // insert with no LRU registration.
+                                    storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
                                     cacheIt = otherChrCaches_.find(lowerFilename);
+                                    if (cacheIt != otherChrCaches_.end()) {
+                                        // Add new textures to our local merged copy
+                                        for (const auto& [name, tex] : cacheIt->second.textures) {
+                                            if (mergedTextures.find(name) == mergedTextures.end()) {
+                                                mergedTextures[name] = tex;
+                                            }
+                                        }
+                                        LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadVariantModel: Loaded {} characters from {}",
+                                                  cacheIt->second.characters.size(), jsonS3dFile);
+                                    }
                                 }
                             }
                         }
@@ -1459,10 +1460,9 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
                                 if (loader.loadZone(fullPath)) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
-                                        OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                        cache.characters = zone->characters;
-                                        cache.textures = zone->characterTextures;
-                                        mergedTexturesCacheValid_ = false;
+                                        // T91: was a raw otherChrCaches_[key] = ...
+                                        // insert with no LRU registration.
+                                        storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
                                         cacheIt = otherChrCaches_.find(lowerFilename);
                                     }
                                 }

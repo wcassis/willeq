@@ -607,6 +607,26 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
     return nullptr;
 }
 
+void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
+                                                std::vector<std::shared_ptr<CharacterModel>> characters,
+                                                std::map<std::string, std::shared_ptr<TextureInfo>> textures) {
+    OtherChrCache& cache = otherChrCaches_[lowerFilename];
+    cache.characters = std::move(characters);
+    cache.textures = std::move(textures);
+    mergedTexturesCacheValid_ = false;
+
+    if (maxChrCacheEntries_ > 0) {
+        chrCacheLruOrder_.push_front(lowerFilename);
+        while (otherChrCaches_.size() > maxChrCacheEntries_ &&
+               chrCacheLruOrder_.size() > 1) {
+            const std::string& oldest = chrCacheLruOrder_.back();
+            otherChrCaches_.erase(oldest);
+            chrCacheLruOrder_.pop_back();
+            mergedTexturesCacheValid_ = false;
+        }
+    }
+}
+
 bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int textureVariant) {
     uint32_t key = makeCacheKey(raceId, gender);
 
@@ -651,35 +671,26 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                      lowerFilename, raceId, gender);
             S3DLoader loader;
             if (!loader.loadZone(s3dPath)) {
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                // T91: route the "poisoned" empty entry through the same
+                // LRU-tracked path as a real load, so a permanently-failing
+                // filename occupies (and can eventually give up) a counted
+                // cache slot instead of squatting outside maxChrCacheEntries_
+                // forever (it used to bypass registration entirely here).
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return nullptr;
             }
             auto zone = loader.getZone();
             if (!zone || zone->characters.empty()) {
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return nullptr;
             }
 
-            OtherChrCache& cache = otherChrCaches_[lowerFilename];
-            cache.characters = zone->characters;
-            cache.textures = zone->characterTextures;
-            mergedTexturesCacheValid_ = false;
-
-            // LRU eviction
-            if (maxChrCacheEntries_ > 0) {
-                chrCacheLruOrder_.push_front(lowerFilename);
-                while (otherChrCaches_.size() > maxChrCacheEntries_ &&
-                       chrCacheLruOrder_.size() > 1) {
-                    const std::string& oldest = chrCacheLruOrder_.back();
-                    otherChrCaches_.erase(oldest);
-                    chrCacheLruOrder_.pop_back();
-                    mergedTexturesCacheValid_ = false;
-                }
-            }
+            storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
+            cacheIt = otherChrCaches_.find(lowerFilename);
 
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: cached {} characters from {} (total cached: {})",
-                      cache.characters.size(), lowerFilename, otherChrCaches_.size());
-            cacheIt = otherChrCaches_.find(lowerFilename);
+                      cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0,
+                      lowerFilename, otherChrCaches_.size());
         }
 
         if (cacheIt == otherChrCaches_.end() || cacheIt->second.characters.empty()) {
@@ -780,20 +791,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 if (animLoader.loadZone(clientPath_ + globalKey)) {
                     auto animZone = animLoader.getZone();
                     if (animZone && !animZone->characters.empty()) {
-                        OtherChrCache& cache = otherChrCaches_[globalKey];
-                        cache.characters = animZone->characters;
-                        cache.textures = animZone->characterTextures;
-                        mergedTexturesCacheValid_ = false;
-                        if (maxChrCacheEntries_ > 0) {
-                            chrCacheLruOrder_.push_front(globalKey);
-                            while (otherChrCaches_.size() > maxChrCacheEntries_ &&
-                                   chrCacheLruOrder_.size() > 1) {
-                                const std::string& oldest = chrCacheLruOrder_.back();
-                                otherChrCaches_.erase(oldest);
-                                chrCacheLruOrder_.pop_back();
-                                mergedTexturesCacheValid_ = false;
-                            }
-                        }
+                        storeOtherChrCacheLocked(globalKey, animZone->characters, animZone->characterTextures);
                     }
                 }
                 cacheIt = otherChrCaches_.find(globalKey);
