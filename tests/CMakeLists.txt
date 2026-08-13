@@ -1024,6 +1024,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_setheading_conversion)
 
+# T93: fake-substitution sweep. Regression tests for TRANSFORMS in
+# EqActionHandler that RecordingActionHandler (tests/action_test_fakes.h)
+# cannot catch -- the 1-indexed-to-0-indexed gem slot conversion shared by
+# castSpell()/castSpellOnTarget()/memorizeSpell(). targetSelf()'s self/pet
+# toggle logic was investigated and deferred (no test seam for
+# EverQuest::m_entities -- see this file's own comment and refactor/
+# deferred.md). Same headless EverQuest + EqActionHandler idiom as T88/T90
+# above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_transforms
+    test_eq_action_handler_transforms.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_transforms GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_transforms PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

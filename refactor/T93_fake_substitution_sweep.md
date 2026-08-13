@@ -117,11 +117,126 @@ README.
 
 ## Review
 
-(executor fills: the fake→interface→implementation inventory; the
-per-method classification with the TRANSFORMS group called out; which tests
-were added and which were deliberately skipped as forwarders; proof each new
-test can fail; where you stopped and what remains; any fake that contradicts
-rather than omits; deviations)
+Executed in `/mnt/projects/fable/wt/slot1`, task branch
+`task/T93-fake-sweep`, base `fable` tip `1bac2d5c`. Headless throughout, no
+eqemu. Full inventory table, per-method classification, and detail are in
+`/mnt/projects/fable/review/T93/README.md` — this section summarizes.
+
+### Inventory (fake -> interface -> real implementation)
+
+- `RecordingActionHandler` (`tests/action_test_fakes.h`) : `IActionHandler`
+  -> `EqActionHandler`. **The high-risk one** — records every call verbatim
+  with zero conversion, same shape as the fake T90 found responsible for
+  `setHeading()` shipping untested.
+- `FakeUdpTransport` (`tests/fake_udp_transport.h`) : `EQ::Net::UdpTransport`
+  -> the real socket transport. LOW RISK: only wire I/O is faked;
+  `DaybreakConnection`'s real protocol logic (compression/CRC/fragmentation/
+  sequencing) runs unmodified over it in `test_daybreak_state_machine.cpp`.
+- `FakeInputHandler` (`tests/action_test_fakes.h`) : `IInputHandler` ->
+  `GraphicsInputHandler`/`ConsoleInputHandler`/`NullInputHandler`. LOW RISK:
+  read all three real implementations end to end — pure event/state
+  forwarding, no unit conversion to miss.
+- `RecordingBridge` (3 separate inline definitions across
+  `test_game_state_sync_bridge.cpp`/`test_zone_connection_flow.cpp`/
+  `test_zone_position_convention.cpp`) : `GameStateBridge` (only the
+  pure-virtual `applyEvent()` hook is overridden; `pushEvent`/`pushIntent`/
+  `drainIntents`' real queue/coalescing logic is inherited unmodified) ->
+  `IrrlichtBridge`/`ConsoleBridge`. LOW RISK for this sweep's purposes: the
+  real `applyEvent()` 99-case switch has its own separate, already-claimed
+  100% coverage bar (CLAUDE.md) — out of scope here, not re-verified.
+- `RecordingOutputRenderer` (`test_command_processor.cpp`) :
+  `IOutputRenderer` -> `ConsoleRenderer`/`GraphicalRenderer`/`NullRenderer`.
+  LOW RISK: pure display-sink forwarder interface, no transform reachable
+  from `CommandProcessor`.
+
+### Classification (EqActionHandler, ~30 methods)
+
+TRANSFORMS (ranked first, per the plan): `setHeading` (T90, already fixed
+and tested), `castSpell`/`castSpellOnTarget`/`memorizeSpell` (gemSlot-1
+conversion — **found this unit, now tested**), `setMovementMode`/
+`setPositionState`/`sendPetCommand` (unvalidated int-to-enum casts — found,
+deferred). VALIDATES: `targetGroupMember` (deferred). MUTATES:
+`targetSelf` (self/pet toggle — investigated, deferred),
+`hailTarget` (fallback branch — deferred). Everything else (~20 methods)
+is a FORWARDER and was deliberately left untested, per the plan's explicit
+prohibition on inflating the suite. Full per-method table:
+`/mnt/projects/fable/review/T93/README.md`.
+
+### Tests added
+
+`tests/test_eq_action_handler_transforms.cpp` (registered in
+`tests/CMakeLists.txt`), 2 tests, against the real `EverQuest` +
+`EqActionHandler` + `CombatManager` (T88/T90 headless-construction idiom):
+
+- `CastSpell_GemSlotIsOneIndexedToZeroIndexedSpellSlot` — memorizes a spell
+  into gem 2 only; `castSpell(1)` must NOT start casting, `castSpell(2)`
+  must, observed via `CombatManager::IsCasting()`.
+- `CastSpellOnTarget_SharesSameGemSlotConversion` — same shape at the far
+  boundary (gem 11 empty, gem 12 memorized) via `castSpellOnTarget()`.
+
+### Proof the tests can fail
+
+Temporarily removed the `- 1` conversion from both `castSpell()` and
+`castSpellOnTarget()` in `eq_action_handler.cpp` (verbatim backup kept
+first), rebuilt just the new test target, ran it: **both tests failed**,
+each showing `combat->IsCasting()` unexpectedly `true` — the broken code
+lets `castSpell(1)` silently route into the OTHER gem's memorized spell.
+Restored the file from the verbatim backup (confirmed byte-identical via
+`diff`), rebuilt, reran: both green again. Not tautological.
+
+### Where the sweep stopped, what remains
+
+Stopped after the gem-slot TRANSFORMS group — the clearest, highest-risk
+finding, structurally identical to T90's bug (a silent off-by-one that
+routes a real player action to the wrong game-state target). NOT
+exhaustive. `targetSelf()`'s self/pet toggle was attempted and dropped:
+`CombatManager::SetTarget()` validates the target id against
+`EverQuest::GetEntities()` (EverQuest's own internal `m_entities` map,
+distinct from `GameState::entities()`), and no existing test seam
+populates it — even the reachable no-pet branch fails without one, since
+`SetTarget()` rejects the player's own spawn id set only via
+`Test_SetMySpawnIdForSeam` (which does not add an entity). Adding a new
+production seam for this felt like a second unrelated production touch
+beyond the gem-slot fix and was left for the next unit rather than forced
+into this one's budget. `setMovementMode`/`setPositionState`/
+`sendPetCommand`'s unvalidated casts, `targetGroupMember`'s validation, and
+`hailTarget`'s fallback branch are also untested and listed by name in
+`refactor/deferred.md`'s new T93 section, per the plan's Board instruction.
+
+### Fakes that contradict rather than omit
+
+None found. Every fake either correctly stands in for a true forwarder
+boundary or is a deliberate isolation fake whose real counterpart's
+coverage is a separate, already-tracked claim.
+`RecordingActionHandler` OMITS conversions (it never claims any happen);
+it does not contradict them.
+
+### Build/test/visual gate
+
+1. `cmake --build build -j24` — clean.
+2. `ctest --test-dir build --output-on-failure` — **2080/2081 passed**
+   (2081 total, 1 failure), matching the plan's expected baseline plus this
+   unit's 2 new tests; sole failure the documented ALSA
+   `AudioManagerTest.PreloadCommonSounds`.
+3. `bash scripts/build-gles2-x86.sh` — clean.
+4. `scripts/ci/visual_gate.sh` — **PASS**, goldens untouched (test-only
+   change, no production behaviour affected).
+5. `bash scripts/build-arm-noble.sh` — clean cross-compile.
+6. `scripts/refactor/check_file_sizes.sh fable` — one pre-existing `WARN`
+   (`variant_loading.cpp`, 1614 lines) in files this unit never touched
+   (diff base has moved since branch point); nothing new from this unit
+   exceeds any threshold.
+
+### Deviations from the plan
+
+- Attempted a third test (`targetSelf()`'s no-pet branch) before finding it
+  blocked on a missing test seam for `EverQuest::m_entities`; removed
+  rather than left flaky or papered over with a new production seam beyond
+  budget. Documented above and in `refactor/deferred.md` instead of
+  silently dropped.
+- No production code changed except the temporary, fully-reverted break
+  used to prove the two new tests can fail (`src/client/eq_action_handler.cpp`,
+  restored and diff-confirmed byte-identical before the final build).
 
 ## Board
 
