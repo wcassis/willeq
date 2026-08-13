@@ -4686,7 +4686,17 @@ Review, `/mnt/projects/fable/review/T83/`.
   camera already inside the correct bounding box. They happened to be
   visible in the same screenshot; they are unrelated.
 
-## `EqActionHandler::setHeading()` double-converts degrees to EQ units (T84, 2026-08-12)
+## `EqActionHandler::setHeading()` double-converts degrees to EQ units (T84, 2026-08-12) — FIXED by T90 (2026-08-13)
+
+**FIXED.** `refactor/T90_setheading_double_conversion.md`'s Review has the
+full fix, the red/green test proof, and the live wire re-verification
+(`/turn 90/225/45` and `/face` all now transmit exactly the values T89
+established are correct). This entry (and T85's reconfirmation below it)
+predate T89's confirmation that the rest of the heading stack — the
+outbound `server_heading = 90 - m_heading` conversion and the inbound
+`m_heading = 90 - server_heading` PlayerProfile flip — needed no change;
+`setHeading()`'s double conversion, found here, was the entire defect.
+Left below for the historical trail; do not re-open.
 
 Found live, via the two-client harness T84 built and proved out (see
 `refactor/T84_two_client_observation.md`'s Review, Part 1) — the exact
@@ -4744,7 +4754,9 @@ or `EverQuest::SetHeading()` needs to make explicit which unit it expects
 and enforce it at every call site — a decision for whoever picks this up,
 not assumed here.
 
-## `EqActionHandler::setHeading()` bug reconfirmed, and NO second encoding defect underneath it (T85, 2026-08-13)
+## `EqActionHandler::setHeading()` bug reconfirmed, and NO second encoding defect underneath it (T85, 2026-08-13) — FIXED by T90 (2026-08-13), see entry above
+
+**FIXED**, same fix as the T84 entry immediately above — see there.
 
 T85 joined a live official-client baseline capture as a third client
 (`willeq_a`/`Oraclealpha`) alongside two officially-driven clients
@@ -4912,7 +4924,27 @@ Combat *log* observation was unaffected (chat/combat lines arrived
 correctly throughout); combat *visual* observation in these frames
 cannot support any conclusion about animation or weapon appearance.
 
-## WillEQ's outbound heading disagrees with the official client's by ~252° (T87, 2026-08-13)
+## WillEQ's outbound heading disagrees with the official client's by ~252° (T87, 2026-08-13) — SUPERSEDED: CONFIRMED ARTIFACT by T89 (2026-08-13), no code defect
+
+**SUPERSEDED.** T89 (`refactor/T89_heading_remeasure.md`'s Review) did the
+clean re-capture this entry's own "T88 addendum" called for — `/move`d
+along known client-frame axes from a fixed centre so the six directions
+are 90° apart by construction, eliminating the position-frame mix-up this
+entry's merge-time qualification already suspected. Result: WillEQ's
+transmitted N->W->S->E steps are a clean 90.0/90.0/90.0° apart (matching
+the official client's own spacing), and — after T89's own initial "+90°"
+read of that clean data was itself corrected (see the new entry directly
+below) — WillEQ's outbound heading is now confirmed to match the official
+client's convention exactly, `heading = 90 - travel_angle(server frame)`,
+to within a uniform ~1.4° common-mode residual (the human reference
+actor's facing not being perfectly aligned with his direction of travel,
+not error in WillEQ). **There was never a ~252° (or any other) outbound
+convention defect.** The entire heading error this whole T84-T90 arc
+chased was `EqActionHandler::setHeading()`'s double conversion, fixed by
+T90. This entry's body is left below for the historical trail (it
+correctly reported what it measured, and its own merge-time qualification
+already correctly predicted the artifact) — do not act on it or the
+"~252°" number.
 
 T87 answered the question T84/T85 left open: those two units proved
 WillEQ is *internally* self-consistent (two WillEQ clients agree with
@@ -4994,3 +5026,39 @@ right frame this time) — expect the corrected Pass A run to show clean,
 evenly-spaced cardinal deltas if the merge-time qualification's
 explanation is right, which would finally isolate whatever remains of
 the outbound heading disagreement from this frame confusion.
+
+## T89's own "+90° outbound heading offset" finding — CORRECTED same-day, confirmed artifact, never a code defect (2026-08-13)
+
+Recorded here because T89's write-up crashed mid-session (see its own
+Review's header note) and this correction never made it onto this board
+until T90. **T89's plan (`refactor/T89_heading_remeasure.md`) re-measured
+WillEQ's outbound heading against the official client's own wire
+constants and initially concluded a clean, evenly-spaced, constant +90°
+offset** (mean delta 89.09°, spread 3.16° across N/W/S/E/NE/SW) — passing
+every validity check the plan asked for (uniform spacing, all six
+directions distinct), which is exactly why it was initially trusted as a
+real finding and written up as "NOT FIXED — needs Will's decision."
+
+**It was wrong, and the same Review documents its own correction inline
+(see the "CORRECTION" section at the end of that file).** Prompted by
+Will asking whether the official client's heading could be independently
+verified, the executor derived the official convention empirically from
+`Wizzy`'s (the human-driven official client) own movement, rather than
+from the tour script's own direction *labels*. Result: WillEQ's outbound
+heading matches `heading = 91.39 - travel_angle(server frame)` (R=0.957,
+83 samples) — the same formula WillEQ implements, `90 - travel_angle` —
+with an identical -1.39° common-mode residual across all four cardinals
+(the signature of imprecision in the human reference, not an error in the
+thing being measured). **The root cause of the apparent +90°: the tour
+script's own direction labels ("north"/"west"/"south"/"east") were
+assigned by CLIENT-frame axis, and client +Y is not north — it is server
++X. The comparison was measuring WillEQ against mislabeled reference
+directions, not against the official client's real facings.** The labels
+were wrong; the code was not.
+
+**Net effect on this arc**: no outbound heading convention defect ever
+existed. Every apparent offset reported across T87 and T89 (~252°, then
++90°) was a measurement-frame artifact, not a code defect — the entire
+real defect this whole arc chased was `EqActionHandler::setHeading()`'s
+double conversion (T84, fixed by T90). See the T90 entry near the top of
+this file and the T87 entry it supersedes.
