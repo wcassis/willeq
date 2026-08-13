@@ -231,8 +231,23 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     int width = 0, height = 0;
     bool hasAlpha = false;
 
+    // T92: distinguish "the caller never supplied any bytes" from "we were
+    // given real bytes and the decoder rejected them" — these are different
+    // defects with different fixes, and the old single "decode failed"
+    // message conflated them, sending a prior investigation upstream to
+    // decodeBMP/DDSDecoder when the actual bug was a caller (see
+    // race_model_loader.cpp's composite-sheet lookup, this unit's Review)
+    // passing an intentionally empty buffer expecting an EQE1 flat-pack hit
+    // that never came because no --eqe1-path was configured for the run.
+    if (data.empty()) {
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: empty input data for '{}' — no bytes were "
+                  "supplied to decode (not a decoder failure; check the caller: an EQE1-only "
+                  "lookup with no EQE1 archive configured, a missing/mis-keyed S3D archive "
+                  "entry, or a wrongly-constructed texture name)", name);
+        return nullptr;
+    }
     if (!processTextureData(data, rgbaPixels, width, height, hasAlpha, applyPaletteMask)) {
-        LOG_WARN(MOD_GRAPHICS, "Constrained cache: decode failed for '{}' ({} bytes)", name, data.size());
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: decode failed for '{}' ({} bytes supplied)", name, data.size());
         return nullptr;
     }
 
@@ -463,11 +478,15 @@ bool ConstrainedTextureCache::hasTexture(const std::string& name) const {
     return cache_.find(name) != cache_.end();
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name) {
+irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name, bool applyPaletteMask) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(name);
+    // P50: internalKey mirrors getOrLoad()/uploadTexture() — identity when
+    // applyPaletteMask is false, so every existing (unmasked) call site is
+    // byte-identical to before this parameter existed.
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    auto it = cache_.find(internalKey);
     if (it != cache_.end()) {
-        touchInternal(name);
+        touchInternal(internalKey);
         return it->second.texture;
     }
     return nullptr;
@@ -523,15 +542,17 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
     return true;
 }
 
-bool ConstrainedTextureCache::hasAlpha(const std::string& name) const {
+bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPaletteMask) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(name);
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    auto it = cache_.find(internalKey);
     return it != cache_.end() && it->second.hasAlpha;
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name) const {
+irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(name);
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    auto it = cache_.find(internalKey);
     if (it != cache_.end()) return it->second.alphaTexture;
     return nullptr;
 }
@@ -545,9 +566,10 @@ irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(irr::video::IText
     return nullptr;
 }
 
-bool ConstrainedTextureCache::isETC1Texture(const std::string& name) const {
+bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(name);
+    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    auto it = cache_.find(internalKey);
     return it != cache_.end() && it->second.isETC1;
 }
 

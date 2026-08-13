@@ -1,0 +1,362 @@
+/**
+ * T92: coverage for two things found while diagnosing the "decode failed
+ * (0 bytes)" WARNs T85's qeynos2 capture logged:
+ *
+ *  - Part 1: ConstrainedTextureCache::getOrLoad() must report an empty
+ *    input buffer distinctly from a genuine decoder rejection of non-empty
+ *    bytes. Before this unit both cases logged the identical "decode
+ *    failed" message, which sent an earlier investigation upstream into
+ *    decodeBMP()/DDSDecoder when the actual defect was a caller
+ *    (RaceModelLoader::preloadModelData()'s composite-sheet lookup)
+ *    supplying an intentionally empty buffer on the assumption an EQE1
+ *    flat pack would supply the bytes -- which never happens when no
+ *    --eqe1-path is configured for the run. See this unit's Review.
+ *
+ *  - Part 3 (P50): hasAlpha(name)/getTexture(name)/getAlphaTexture(name)/
+ *    isETC1Texture(name) looked up cache_ by plain name, but
+ *    uploadTexture(name, applyPaletteMask=true) stores masked variants
+ *    under the mangled cacheKey(name, true) = name + "\x01masked" -- a
+ *    plain-name query for a masked-variant entry always missed. This
+ *    exercises the new applyPaletteMask parameter added to all four query
+ *    methods.
+ *
+ * EDT_NULL device (no window, no GPU, no DISPLAY) -- same idiom as
+ * test_inventory_model_view.cpp's RaceModelAnimationHeadlessTest.
+ */
+
+#include <gtest/gtest.h>
+#include <chrono>
+#include <thread>
+#include <vector>
+#include <cstring>
+#include <functional>
+
+#ifdef EQT_HAS_GRAPHICS
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/eqe1_loader.h"
+#include "common/logging.h"
+#include <irrlicht.h>
+#include <fstream>
+#endif
+
+#ifdef EQT_HAS_GRAPHICS
+
+using namespace EQT::Graphics;
+
+namespace {
+
+// Mirrors ConstrainedTextureCache::cacheKey() (private) — documented format,
+// name + "\x01masked" for the masked variant. Used only to plant/verify
+// entries at the exact key uploadTexture(applyPaletteMask=true) would use,
+// via the public registerTexture()/hasTexture() API (no private access).
+std::string maskedKeyForTest(const std::string& name) {
+    return name + "\x01masked";
+}
+
+// Builds a minimal valid 24bpp BMP (uncompressed, BITMAPINFOHEADER) so
+// decodeBMP() succeeds. width/height small and fixed; fillByte lets two
+// calls produce texture data that hashes/differs if ever needed.
+std::vector<char> makeTestBmp(int width, int height, uint8_t r, uint8_t g, uint8_t b) {
+    int rowSize = ((width * 3 + 3) / 4) * 4;
+    uint32_t pixelDataSize = static_cast<uint32_t>(rowSize) * height;
+    uint32_t fileSize = 54 + pixelDataSize;
+
+    std::vector<char> bmp(fileSize, 0);
+    uint8_t* p = reinterpret_cast<uint8_t*>(bmp.data());
+
+    p[0] = 'B'; p[1] = 'M';
+    *reinterpret_cast<uint32_t*>(p + 2) = fileSize;
+    *reinterpret_cast<uint32_t*>(p + 10) = 54;  // data offset
+    *reinterpret_cast<uint32_t*>(p + 14) = 40;  // DIB header size (BITMAPINFOHEADER)
+    *reinterpret_cast<int32_t*>(p + 18) = width;
+    *reinterpret_cast<int32_t*>(p + 22) = height;  // bottom-up
+    *reinterpret_cast<uint16_t*>(p + 26) = 1;   // planes
+    *reinterpret_cast<uint16_t*>(p + 28) = 24;  // bits per pixel
+    *reinterpret_cast<uint32_t*>(p + 34) = pixelDataSize;
+
+    for (int y = 0; y < height; ++y) {
+        uint8_t* row = p + 54 + static_cast<size_t>(y) * rowSize;
+        for (int x = 0; x < width; ++x) {
+            row[x * 3 + 0] = b;  // BMP stores BGR
+            row[x * 3 + 1] = g;
+            row[x * 3 + 2] = r;
+        }
+    }
+    return bmp;
+}
+
+class ConstrainedTextureCacheTest : public ::testing::Test {
+protected:
+    irr::IrrlichtDevice* device_ = nullptr;
+    irr::video::IVideoDriver* driver_ = nullptr;
+    std::unique_ptr<ConstrainedTextureCache> cache_;
+
+    void SetUp() override {
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_NULL;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(64, 64);
+        device_ = irr::createDeviceEx(params);
+        if (!device_) {
+            GTEST_SKIP() << "Failed to create EDT_NULL Irrlicht device";
+        }
+        driver_ = device_->getVideoDriver();
+
+        auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+        cache_ = std::make_unique<ConstrainedTextureCache>(config);
+        cache_->setDriver(driver_);
+    }
+
+    void TearDown() override {
+        cache_.reset();
+        if (device_) {
+            device_->drop();
+            device_ = nullptr;
+        }
+    }
+};
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// Part 3 (P50): masked-variant query methods
+// ---------------------------------------------------------------------------
+
+// getTexture(name)/getTexture(name, true) must resolve to the DISTINCT
+// unmasked/masked uploads of the same base name -- proving the new
+// parameter reaches the mangled cacheKey() and that omitting it still finds
+// only the unmasked entry (byte-identical to pre-T92 behavior).
+TEST_F(ConstrainedTextureCacheTest, GetTextureRespectsApplyPaletteMask) {
+    const std::string name = "p50_get_texture_test";
+
+    auto unmaskedBmp = makeTestBmp(4, 4, 200, 10, 10);
+    auto maskedBmp = makeTestBmp(4, 4, 10, 10, 200);
+
+    // Unmasked variant.
+    cache_->getOrLoad(name, unmaskedBmp, "test", "GetTextureRespectsApplyPaletteMask",
+                       /*applyPaletteMask=*/false);
+    irr::video::ITexture* unmaskedTex = cache_->uploadTexture(name, /*applyPaletteMask=*/false);
+    ASSERT_NE(unmaskedTex, nullptr);
+
+    // Masked variant, SAME name, distinct internal key.
+    cache_->getOrLoad(name, maskedBmp, "test", "GetTextureRespectsApplyPaletteMask",
+                       /*applyPaletteMask=*/true);
+    irr::video::ITexture* maskedTex = cache_->uploadTexture(name, /*applyPaletteMask=*/true);
+    ASSERT_NE(maskedTex, nullptr);
+
+    // Different GPU textures for the two variants.
+    EXPECT_NE(unmaskedTex, maskedTex);
+
+    // Findable through the new parameter.
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false), unmaskedTex);
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/true), maskedTex);
+
+    // Default (no argument) matches the unmasked-only pre-T92 behavior.
+    EXPECT_EQ(cache_->getTexture(name), unmaskedTex);
+}
+
+// A masked-only upload (no unmasked variant ever uploaded for this name)
+// must NOT be findable by a plain-name query -- this is the exact P50 bug:
+// before the parameter existed, hasAlpha(name)/getTexture(name)/etc. always
+// missed a masked-only entry.
+TEST_F(ConstrainedTextureCacheTest, MaskedOnlyUploadNotFoundWithoutParameter) {
+    const std::string name = "p50_masked_only_test";
+    auto bmp = makeTestBmp(4, 4, 5, 5, 5);
+
+    cache_->getOrLoad(name, bmp, "test", "MaskedOnlyUploadNotFoundWithoutParameter",
+                       /*applyPaletteMask=*/true);
+    irr::video::ITexture* maskedTex = cache_->uploadTexture(name, /*applyPaletteMask=*/true);
+    ASSERT_NE(maskedTex, nullptr);
+
+    // Found WITH the parameter.
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/true), maskedTex);
+    EXPECT_TRUE(cache_->hasTexture(maskedKeyForTest(name)));
+
+    // NOT found without it (the P50 bug, reproduced and now fixable by
+    // callers that pass the parameter).
+    EXPECT_EQ(cache_->getTexture(name), nullptr);
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false), nullptr);
+}
+
+// hasAlpha() must key on applyPaletteMask the same way. Give the masked and
+// unmasked variants opposite alpha outcomes (via registerTexture(), which
+// stores directly under whatever key it's given and takes an explicit
+// hasAlphaFlag) so the two query results can only match if the lookup is
+// actually keyed by the mangled name -- a name-only lookup would either
+// always find the unmasked entry (masked query silently wrong) or collide.
+TEST_F(ConstrainedTextureCacheTest, HasAlphaRespectsApplyPaletteMask) {
+    const std::string name = "p50_has_alpha_test";
+
+    // Fabricate two distinct GPU textures via addTexture (EDT_NULL still
+    // creates real ITexture* handles -- see RaceModelAnimationHeadlessTest).
+    std::vector<uint32_t> pixels(4 * 4, 0xFFFFFFFF);
+    irr::video::IImage* img1 = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(4, 4), pixels.data(), false);
+    irr::video::ITexture* unmaskedTex = driver_->addTexture("p50_alpha_unmasked", img1);
+    img1->drop();
+    irr::video::IImage* img2 = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(4, 4), pixels.data(), false);
+    irr::video::ITexture* maskedTex = driver_->addTexture("p50_alpha_masked", img2);
+    img2->drop();
+    ASSERT_NE(unmaskedTex, nullptr);
+    ASSERT_NE(maskedTex, nullptr);
+
+    // Plant them at the exact keys uploadTexture(applyPaletteMask=false/true)
+    // would have used, with opposite hasAlpha flags.
+    ASSERT_TRUE(cache_->registerTexture(name, unmaskedTex, 64, /*hasAlphaFlag=*/false, "test"));
+    ASSERT_TRUE(cache_->registerTexture(maskedKeyForTest(name), maskedTex,
+                                         64, /*hasAlphaFlag=*/true, "test"));
+
+    EXPECT_FALSE(cache_->hasAlpha(name));                       // default = unmasked = false
+    EXPECT_FALSE(cache_->hasAlpha(name, /*applyPaletteMask=*/false));
+    EXPECT_TRUE(cache_->hasAlpha(name, /*applyPaletteMask=*/true));  // masked = true, only reachable with the parameter
+}
+
+// ---------------------------------------------------------------------------
+// isETC1Texture()/getAlphaTexture(): same P50 gap, but these two fields
+// (CachedTexture::isETC1, CachedTexture::alphaTexture) are only ever set by
+// the real ETC1/EQE1 upload path (uploadCompressedETC1(), which needs a
+// live GL context — glGenTextures/glCompressedTexImage2D). registerTexture()
+// (used above for hasAlpha) cannot set them. Exercise the real path instead,
+// against the same real .eqe1 archive test_eqe1_loader.cpp already depends
+// on, under a real EDT_OGLES2 surfaceless-EGL device (same backend
+// ./build/bin/willeq uses headlessly by default — see CLAUDE.md). Skips if
+// either is unavailable in this environment rather than failing the suite.
+// ---------------------------------------------------------------------------
+
+namespace {
+const char* kTestObjEqe1 = "/mnt/projects/EverQuest_ETC1/qeynos2_obj.eqe1";
+bool fileExists(const char* path) {
+    std::ifstream f(path);
+    return f.good();
+}
+}  // namespace
+
+class ConstrainedTextureCacheETC1Test : public ::testing::Test {
+protected:
+    irr::IrrlichtDevice* device_ = nullptr;
+    irr::video::IVideoDriver* driver_ = nullptr;
+    std::unique_ptr<ConstrainedTextureCache> cache_;
+    EQE1Loader loader_;
+
+    void SetUp() override {
+        if (!fileExists(kTestObjEqe1)) {
+            GTEST_SKIP() << "Real EQE1 archive not present at " << kTestObjEqe1
+                         << " (same asset test_eqe1_loader.cpp depends on) — skipping.";
+        }
+        if (!loader_.open(kTestObjEqe1)) {
+            GTEST_SKIP() << "Failed to open " << kTestObjEqe1;
+        }
+
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_OGLES2;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(64, 64);
+        device_ = irr::createDeviceEx(params);
+        if (!device_) {
+            GTEST_SKIP() << "Failed to create EDT_OGLES2 device (surfaceless EGL unavailable "
+                            "in this environment) — skipping.";
+        }
+        driver_ = device_->getVideoDriver();
+
+        auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+        cache_ = std::make_unique<ConstrainedTextureCache>(config);
+        cache_->setDriver(driver_);
+        cache_->addEQE1Loader(&loader_);
+    }
+
+    void TearDown() override {
+        cache_.reset();
+        if (device_) {
+            device_->drop();
+            device_ = nullptr;
+        }
+    }
+};
+
+// "fire1" is a known-alpha entry in qeynos2_obj.eqe1 (test_eqe1_loader.cpp's
+// testAlphaCompanion). Upload it as the MASKED variant only (applyPaletteMask
+// is irrelevant to the ETC1 path itself — see getOrLoad()'s comment — the
+// point here is purely that it's stored under the mangled key) and confirm
+// isETC1Texture()/getAlphaTexture() find it with applyPaletteMask=true and
+// correctly miss it without.
+TEST_F(ConstrainedTextureCacheETC1Test, ETC1QueriesRespectApplyPaletteMask) {
+    std::vector<char> emptyData;  // EQE1 lookup supplies the real bytes
+    cache_->getOrLoad("fire1", emptyData, "test", "ETC1QueriesRespectApplyPaletteMask",
+                       /*applyPaletteMask=*/true);
+    irr::video::ITexture* tex = cache_->uploadTexture("fire1", /*applyPaletteMask=*/true);
+    ASSERT_NE(tex, nullptr) << "fire1 should upload via the real ETC1/EQE1 path";
+
+    EXPECT_TRUE(cache_->isETC1Texture("fire1", /*applyPaletteMask=*/true));
+    EXPECT_NE(cache_->getAlphaTexture("fire1", /*applyPaletteMask=*/true), nullptr)
+        << "fire1 has a known alpha companion (test_eqe1_loader.cpp)";
+
+    // Not found without the parameter — this variant was never uploaded
+    // unmasked.
+    EXPECT_FALSE(cache_->isETC1Texture("fire1"));
+    EXPECT_FALSE(cache_->isETC1Texture("fire1", /*applyPaletteMask=*/false));
+    EXPECT_EQ(cache_->getAlphaTexture("fire1"), nullptr);
+    EXPECT_EQ(cache_->getAlphaTexture("fire1", /*applyPaletteMask=*/false), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Part 1: empty-input vs genuine decode failure must be distinguishable
+// ---------------------------------------------------------------------------
+
+namespace {
+// Polls up to ~1s for the background log-drain thread (50ms cadence,
+// include/common/logging.h) to flush this thread's buffered lines to
+// stdout after FlushThreadLog() flips the active/inactive side.
+std::string captureLoggedOutput(const std::function<void()>& action) {
+    SetLogLevel(LOG_WARN);
+    testing::internal::CaptureStdout();
+    action();
+    FlushThreadLog();
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    }
+    return testing::internal::GetCapturedStdout();
+}
+}  // namespace
+
+TEST_F(ConstrainedTextureCacheTest, EmptyInputReportedDistinctlyFromDecodeFailure) {
+    // Case 1: caller supplies a genuinely empty buffer (T92 Part 1 -- the
+    // shape of RaceModelLoader::preloadModelData()'s composite-sheet
+    // lookup call when no EQE1 archive is configured).
+    std::string emptyOutput = captureLoggedOutput([&]() {
+        std::vector<char> emptyData;
+        irr::video::ITexture* tex = cache_->getOrLoad(
+            "t92_empty_case", emptyData, "test", "EmptyInputReportedDistinctlyFromDecodeFailure");
+        EXPECT_EQ(tex, nullptr);
+    });
+    EXPECT_NE(emptyOutput.find("t92_empty_case"), std::string::npos)
+        << "expected the texture name in the log output; full capture:\n" << emptyOutput;
+    EXPECT_NE(emptyOutput.find("empty input"), std::string::npos)
+        << "expected an empty-input-specific message; full capture:\n" << emptyOutput;
+    EXPECT_EQ(emptyOutput.find("decode failed"), std::string::npos)
+        << "empty input must NOT be reported as a decode failure; full capture:\n" << emptyOutput;
+
+    // Case 2: caller supplies real, non-empty bytes that are not a valid
+    // BMP or DDS -- a genuine decoder rejection.
+    std::string garbageOutput = captureLoggedOutput([&]() {
+        std::vector<char> garbage(64, 'x');  // not "BM", not a DDS magic
+        irr::video::ITexture* tex = cache_->getOrLoad(
+            "t92_garbage_case", garbage, "test", "EmptyInputReportedDistinctlyFromDecodeFailure");
+        EXPECT_EQ(tex, nullptr);
+    });
+    EXPECT_NE(garbageOutput.find("t92_garbage_case"), std::string::npos)
+        << "expected the texture name in the log output; full capture:\n" << garbageOutput;
+    EXPECT_NE(garbageOutput.find("decode failed"), std::string::npos)
+        << "non-empty, undecodable input must be reported as a decode failure; full capture:\n"
+        << garbageOutput;
+    EXPECT_EQ(garbageOutput.find("empty input"), std::string::npos)
+        << "a genuine decode failure must NOT be reported as empty input; full capture:\n"
+        << garbageOutput;
+}
+
+#else  // !EQT_HAS_GRAPHICS
+
+TEST(ConstrainedTextureCacheTest, SkippedNoGraphics) {
+    GTEST_SKIP() << "EQT_HAS_GRAPHICS not compiled in";
+}
+
+#endif

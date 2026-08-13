@@ -127,8 +127,13 @@ public:
     // Check if texture is in cache
     bool hasTexture(const std::string& name) const;
 
-    // Get a cached texture without loading (returns nullptr if not cached)
-    irr::video::ITexture* getTexture(const std::string& name);
+    // Get a cached texture without loading (returns nullptr if not cached).
+    // P50: applyPaletteMask must match whatever was passed to the
+    // getOrLoad()/uploadTexture() call that stored this entry (see
+    // cacheKey()) — a plain-name query for a masked-variant entry always
+    // missed before this parameter existed. Defaults to false, matching
+    // every call site that never requests the masked variant.
+    irr::video::ITexture* getTexture(const std::string& name, bool applyPaletteMask = false);
 
     // Register an externally-created texture into the LRU cache.
     // The texture must already be created via driver_->addTexture().
@@ -138,12 +143,16 @@ public:
                          size_t sizeBytes, bool hasAlpha = false,
                          const std::string& category = "uncategorized");
 
-    // Check if a cached texture has alpha transparency
-    bool hasAlpha(const std::string& name) const;
+    // Check if a cached texture has alpha transparency.
+    // P50: see getTexture() above — applyPaletteMask must match the
+    // variant's original getOrLoad()/uploadTexture() call.
+    bool hasAlpha(const std::string& name, bool applyPaletteMask = false) const;
 
     // Get ETC1 alpha companion texture (for binding to texture unit 1)
     // Returns nullptr if texture has no alpha companion.
-    irr::video::ITexture* getAlphaTexture(const std::string& name) const;
+    // P50: see getTexture() above — applyPaletteMask must match the
+    // variant's original getOrLoad()/uploadTexture() call.
+    irr::video::ITexture* getAlphaTexture(const std::string& name, bool applyPaletteMask = false) const;
 
     // Reverse-lookup overload for callers that only have the GPU texture
     // pointer (e.g. ZoneMeshBuilder::buildCompositeMesh, which builds from a
@@ -159,7 +168,9 @@ public:
     // own alpha channel and never needs/builds a companion)? Callers use this
     // to pick the matching alpha-test shader variant. Returns false for
     // unknown/not-yet-uploaded names.
-    bool isETC1Texture(const std::string& name) const;
+    // P50: see getTexture() above — applyPaletteMask must match the
+    // variant's original getOrLoad()/uploadTexture() call.
+    bool isETC1Texture(const std::string& name, bool applyPaletteMask = false) const;
 
     // Reverse-lookup overload by GPU texture pointer (see getAlphaTexture(ITexture*)).
     bool isETC1Texture(irr::video::ITexture* texture) const;

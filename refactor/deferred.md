@@ -3315,7 +3315,30 @@ graphics-gate family, and T43's classification stands.
   lighting decision).
 
 ## P50 (2026-07-31): ConstrainedTextureCache's public query API doesn't
-## account for the P46d masked-variant key mangling — found, not fixed
+## account for the P46d masked-variant key mangling — FIXED by T92 (2026-08-13)
+
+**FIXED by T92 (`task/T92-texture-cache`)**: option (a) taken — `hasAlpha()`,
+`getTexture()`, `getAlphaTexture(name)`, `isETC1Texture(name)` all now take
+`applyPaletteMask = false`, mirroring `getOrLoad()`/`uploadTexture()`'s
+existing pattern; default preserves the exact old (unmasked-only) lookup
+behavior for every pre-existing call site. Caller audit found every existing
+by-name call site either never masks (zone geometry) or uses the unaffected
+`ITexture*`-reverse-lookup overloads — **except one real dependency on the
+old, missing behavior**: `zone_geometry.cpp`'s own `loadTextureFromBMP()`
+was calling `hasAlpha(name)` with no mask argument right after uploading
+under the mangled key when `applyPaletteMask=true` — fixed to pass the flag
+through. Confirmed non-visual: that call's result only feeds
+`texturesWithAlpha_`, which `buildTexturedMesh()`'s actual `MaterialType`
+decision unconditionally OR's with the WLD `textureMasked()` flag — so this
+fix can only ever ADD entries, never flip a rendering decision that WLD
+didn't already make; visual gate ran clean (goldens unchanged) confirming
+no observed behavior change. 5 new tests
+(`tests/test_constrained_texture_cache.cpp`), including one exercising the
+real ETC1/EQE1 upload path against `/mnt/projects/EverQuest_ETC1/qeynos2_obj.eqe1`
+under a real EDT_OGLES2 surfaceless-EGL device. See
+`refactor/T92_texture_cache_empty_data_and_p50.md` Review for full detail,
+red/green proof, and verification. Original finding text preserved below for
+history.
 
 While closing P46d Part B's two remaining applyPaletteMask plumbing
 gaps (`refactor/P50_mask_plumbing_gaps.md`), building evidence
@@ -3345,6 +3368,41 @@ each of these four query methods (mirroring `getOrLoad()`/
 needing the masked variant must pass the pre-mangled key themselves.
 Not fixed by P50 (outside its two-gap scope; found only while writing
 evidence, not requested).
+
+## `RaceModelLoader::preloadModelData()`'s composite-sheet lookup calls
+## getOrLoad() with an empty buffer whenever a JSON manifest exists but no
+## EQE1 archive is configured (T92, 2026-08-13) — found, not fixed
+
+T92 (`refactor/T92_texture_cache_empty_data_and_p50.md`) root-caused the 30
+`Constrained cache: decode failed for '*_hs_def_0_0' (0 bytes)` WARNs T85's
+qeynos2 capture logged (12 distinct composite-sheet names, plus
+`ship_actordef_0_0`) to exactly one call site:
+`race_model_loader.cpp`'s `preloadModelData()`, composite-sheet trigger
+(`constrainedTextureCache_->getOrLoad(compositeBaseName, emptyData,
+"composite_sheet", "preloadModelData:compositeLookup")`). Whenever a
+composite JSON manifest is found at `compositeEntityPath_/<name>.json` (a
+lookup entirely independent of EQE1 configuration), this call deliberately
+passes an empty buffer on the assumption `getOrLoad()`'s
+`findCompressedEntry()` will resolve the real bytes from an EQE1 flat pack.
+That assumption silently fails whenever the run has no `--eqe1-path`
+configured (`eqe1Loaders_` stays empty for the whole process,
+`getOrOpenEQE1()` short-circuits before ever opening anything) — confirmed
+against real T76/T85 qeynos2 client captures, neither of which configured
+EQE1. The message this produced was fixed by T92 (now correctly says "empty
+input data", not "decode failed" — see the P50 entry above), but the
+underlying caller behavior — an EQE1-only lookup with no upstream check that
+EQE1 is actually available — was intentionally left alone (T92 was scoped
+to the message, and its plan explicitly prohibited texture-cache
+restructuring; this is caller-side, not cache-side, but still out of that
+unit's scope). **Fix candidate**: gate the composite-sheet
+`getOrLoad()` call on `snapshotEQE1Loaders()` (or an equivalent
+"EQE1 configured" check exposed to `RaceModelLoader`) being non-empty before
+issuing the empty-buffer lookup, so a composite manifest with no matching
+EQE1 archive falls straight through to the existing per-part decode path
+instead of generating a guaranteed-to-fail call every time. Not measured
+whether this is common in production (every run that ships with
+`--eqe1-path` configured, e.g. the Orange Pi target, never hits it) or
+mainly a dev/test-capture artifact.
 
 ## P48 landed (2026-07-31, merged `bd0758e`): sheet-alpha recovery + a KPI-regression escalation
 
