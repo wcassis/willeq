@@ -5564,3 +5564,97 @@ cross-compile clean, `check_file_sizes.sh` correctly reports nothing to
 check (zero production-code changes). Full writeup: plan `## Review`
 (`refactor/T97_command_registry_shadowing_audit.md`) and
 `/mnt/projects/fable/review/T97/README.md`.
+
+**T97's disposition CLOSED by T98 (2026-08-13): "delete the shadowed `action`
+implementations" — Will's ruling, executed.** All 34 `Shadowed` rows from
+`review/T97/reachability_table.tsv` deleted from `action::CommandProcessor`
+(registrations + `cmdX()` handlers): say, ooc, auction, tell, reply, gsay,
+gu, emote, loc, sit, stand, camp, move, moveto, follow, stopfollow, target,
+cast, interrupt, invite, disband, decline, who, help, quit, q, debug,
+timestamp, skills, gems, mem, forget, pet, filter. `shout`
+(`Reachable-via-alias`) kept, per T97's finding that its "sh" alias escapes
+shadowing live (`game`'s own shout alias is "sho"). One helper,
+`CommandProcessor::displayHelp()`, was also removed — its only caller was
+`cmdHelp`, now deleted; nothing else called it (grepped). 31 commands
+survive (30 `Reachable` + `shout`); all 31 confirmed still registered and
+dispatching by every name and alias, both structurally (a new permanent
+test, `CommandProcessorTest.T98_AllSurvivorsRegisteredAndDispatchByNameAndAlias`,
+`tests/test_command_processor.cpp`) and live (eqemu spot-check,
+`review/T98/README.md`).
+
+**The group-invite gap T97 found is now single-sourced, not fixed.**
+`action::CommandProcessor::cmdFollow`'s invite-accept fallback (deleted by
+this unit) read:
+```cpp
+ActionResult CommandProcessor::cmdFollow(const std::string& args) {
+    if (args.empty()) {
+        // Accept group invite
+        if (m_state.group().hasPendingInvite()) {
+            return m_dispatcher.acceptGroupInvite();
+        }
+        return ActionResult::Failure("Usage: /follow <name> or use to accept group invite");
+    }
+    return m_dispatcher.followEntity(args);
+}
+```
+`m_dispatcher.acceptGroupInvite()` chains through
+`ActionDispatcher::acceptGroupInvite()` ->
+`EqActionHandler::acceptGroupInvite()` -> `EverQuest::AcceptGroupInvite()`
+(`eq_group.cpp:157`, the one real implementation all three call sites
+share). The surviving copy of this exact behavior is `game`'s Social-section
+`follow_cmd` (`eq_commands.cpp:607-638`, alias `fol`) — **still shadowed
+within `game` itself** by Movement's later `follow`
+(`eq_commands_movement.cpp:317-335`, no invite-accept branch), per T97's
+intra-registry-shadow finding. Restoring the feature is NOT "delete
+something" — it needs a `game`-registry edit (make Movement's `follow`
+invite-aware, or reorder `RegisterSocialCommands()`/`RegisterMovementCommands()`,
+both out of this unit's territory) — future unit, not chased here.
+
+**`eq_bridge.cpp`'s `GroupAcceptIntent` handler (`eq_bridge.cpp:1289-1291`)
+has NO live producer.** Grepped the whole tree for `GroupAcceptIntent{}` /
+any construction site outside its type definition
+(`include/client/events/renderer_intents.h:235`) and its
+`is_same_v`-guarded handler branch: zero matches. No UI button, keybind, or
+renderer code ever pushes this intent. So the gap is NOT narrower than T97's
+finding suggested — there is no UI path that still works; every one of the
+three call sites into `EverQuest::AcceptGroupInvite()` (the dead
+`CommandProcessor::cmdFollow` copy just deleted, the dead bridge intent
+handler, and `game`'s own intra-registry-shadowed `follow_cmd`) was already
+unreachable before this unit touched anything except the first, which this
+unit removed outright.
+
+**Cascade: ActionDispatcher/EqActionHandler methods newly unreferenced by
+production code (NOT deleted — Will's call, not a side effect of a command
+cleanup, per the plan).** Checked every one of the 34 deleted commands'
+dispatcher calls against the whole tree (excluding `command_processor.cpp`
+itself and `tests/`) for a surviving production caller. Two calls
+(`sendTell`, `moveToLocation`, `moveToEntity`, `castSpell`, `sendChatMessage`,
+`sendAnimation`, `targetNearestPC`/`targetNearestNPC`) also live in
+`input_action_bridge.cpp`/`application.cpp` and stay fully referenced.
+The rest do not — only test callers remain for:
+`sit()`, `stand()`, `startCamp()`, `replyToLastTell()`, `followEntity()`,
+`acceptGroupInvite()` (the group-invite-gap method above),
+`stopFollow()`, `targetNearest()` (its `targetNearestPC`/`NPC` siblings
+stay live), `targetEntityByName()`, `interruptCast()` (the standalone
+`SpellManager::interruptCast()` stays live via `eq_commands_spells.cpp`/
+`eq_bridge.cpp`, called directly, not through the dispatcher),
+`inviteTarget()`, `inviteToGroup()`, `leaveGroup()`, `declineGroupInvite()`,
+`forgetSpell()` at the `ActionDispatcher`/`EqActionHandler` layer
+(`SpellManager::forgetSpell()` itself stays live, called directly from
+`eq_bridge.cpp`/`eq_commands_spells.cpp`, bypassing the dispatcher), and
+all ten pet wrappers T96 fixed: `petAttack()`, `petBackOff()`,
+`petFollow()`, `petGuard()`, `petSit()`, `petTaunt()`, `petHold()`,
+`petFocus()`, `petHealth()`, `dismissPet()`. **Open question for Will**:
+delete this now-fully-dead layer, or keep it as the deliberate future
+scripting-surface API the plan named it as? Not decided here.
+
+Verification: `cmake --build` clean, `ctest` 2101/2101 (net -2 vs the
+2102/2103 baseline: -3 tests removed with their deleted commands [two
+cmdTell-specific quoting/validation tests, one cmdTimestamp toggle test]
++1 new permanent survivor-dispatch test; one Tell-splitArgs test re-pointed
+to `/face`, not counted as a net change; sole failure the documented ALSA
+exception), `visual_gate` PASS (goldens untouched), ARM cross-compile clean,
+`check_file_sizes.sh` clean on all 4 changed files, live eqemu spot-check of
+6 survivors all showing `registry=action` as before. Full writeup: plan
+`## Review` (`refactor/T98_delete_shadowed_commands.md`) and
+`/mnt/projects/fable/review/T98/README.md`.
