@@ -1,5 +1,6 @@
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
+#include "client/pet_constants.h"
 #include <cmath>
 #include <limits>
 
@@ -797,9 +798,8 @@ ActionResult ActionDispatcher::petAttack() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_ATTACK = 2 (from pet_constants.h)
     // Note: targetId=0 tells the server to use the pet owner's current target
-    m_handler->sendPetCommand(2, 0);
+    m_handler->sendPetCommand(EQT::PET_ATTACK, 0);
     return ActionResult::Success("Pet attacking");
 }
 
@@ -811,8 +811,7 @@ ActionResult ActionDispatcher::petBackOff() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_BACKOFF = 28 (from pet_constants.h)
-    m_handler->sendPetCommand(28, 0);
+    m_handler->sendPetCommand(EQT::PET_BACKOFF, 0);
     return ActionResult::Success("Pet backing off");
 }
 
@@ -824,8 +823,7 @@ ActionResult ActionDispatcher::petFollow() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_FOLLOWME = 4 (from pet_constants.h)
-    m_handler->sendPetCommand(4, 0);
+    m_handler->sendPetCommand(EQT::PET_FOLLOWME, 0);
     return ActionResult::Success("Pet following");
 }
 
@@ -837,8 +835,7 @@ ActionResult ActionDispatcher::petGuard() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_GUARDHERE = 5 (from pet_constants.h)
-    m_handler->sendPetCommand(5, 0);
+    m_handler->sendPetCommand(EQT::PET_GUARDHERE, 0);
     return ActionResult::Success("Pet guarding");
 }
 
@@ -850,8 +847,7 @@ ActionResult ActionDispatcher::petSit() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_SIT = 6 (from pet_constants.h)
-    m_handler->sendPetCommand(6, 0);
+    m_handler->sendPetCommand(EQT::PET_SITDOWN, 0);
     return ActionResult::Success();
 }
 
@@ -863,8 +859,7 @@ ActionResult ActionDispatcher::petTaunt() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_TAUNT = 12 (from pet_constants.h)
-    m_handler->sendPetCommand(12, 0);
+    m_handler->sendPetCommand(EQT::PET_TAUNT, 0);
     return ActionResult::Success();
 }
 
@@ -876,8 +871,7 @@ ActionResult ActionDispatcher::petHold() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_HOLD = 15 (from pet_constants.h)
-    m_handler->sendPetCommand(15, 0);
+    m_handler->sendPetCommand(EQT::PET_HOLD, 0);
     return ActionResult::Success();
 }
 
@@ -889,8 +883,7 @@ ActionResult ActionDispatcher::petFocus() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_FOCUS = 24 (from pet_constants.h)
-    m_handler->sendPetCommand(24, 0);
+    m_handler->sendPetCommand(EQT::PET_FOCUS, 0);
     return ActionResult::Success();
 }
 
@@ -902,8 +895,7 @@ ActionResult ActionDispatcher::petHealth() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // PET_HEALTHREPORT = 0 (from pet_constants.h)
-    m_handler->sendPetCommand(0, 0);
+    m_handler->sendPetCommand(EQT::PET_HEALTHREPORT, 0);
     return ActionResult::Success();
 }
 
