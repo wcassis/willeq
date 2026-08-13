@@ -2253,6 +2253,23 @@ these races have real model data anywhere in the client archives?) and a
 live visual acceptance only Will can give. Not attempted here per the T56
 plan's explicit scope boundary.
 
+**T94 addendum (2026-08-13), performance side only, data gap still open:**
+this class of race (`race=330`, `race=415`, and Nektulos's five other
+foreign/unmapped races — `432`, `436`, `440`, `468`, `471`) used to have a
+second, compounding cost on top of rendering as a placeholder cube: every
+*entity* carrying one of these races re-ran the full S3D fallback-chain
+search from scratch at zone load (`RaceModelLoader::preloadModelData()`
+had no negative-result memo), which was 93.8% of Nektulos's Step 8 wall
+time per T91's capture (130 of 452 entities). T94
+(`refactor/T94_negative_model_lookup_cache.md`) added a permanent
+negative cache keyed on `(raceId, gender)` so the search runs once per
+*race*, not once per *entity* — Nektulos's live-measured Step 8 wall time
+dropped from 19.425s to 14.447s with T91's fix already in place (both
+numbers dwarfed by T82's original uncorrected 246s, almost all of which
+was T91's `otherChrCaches_` LRU-accounting bug, not this one). The data
+gap itself — these races still render as placeholder cubes — is
+unchanged and remains exactly the open item described above.
+
 ## `check_file_sizes.sh` reports a vacuous pass indistinguishably from a real one (T33 finding, 2026-08-03) — **FIXED by T37 (2026-08-04)**
 
 **CLOSED.** Investigating turned up **three** routes to a silent pass, not

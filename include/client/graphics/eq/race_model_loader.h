@@ -13,6 +13,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <list>
 
@@ -195,6 +196,25 @@ public:
     // or the staging cache (preparedModelData_). Thread-safe.
     // cacheKey = (raceId << 8) | gender
     bool isModelDataCached(uint32_t cacheKey) const;
+
+    // T94: Returns true if a prior preloadModelData() call for this
+    // race/gender already walked the FULL search chain (zoneCharacters_,
+    // otherChrCaches_, JSON-specified S3D, global_chr.s3d, global2-7_chr.s3d)
+    // and found nothing. A permanent negative memo — the S3D archives are
+    // static for the process lifetime, so a race with no model at startup
+    // has none at shutdown; there is no invalidation path to build. Callers
+    // (loadZoneStep8a_BaseModelPrep, EntityPrepWorker::processRequest) use
+    // this to skip calling preloadModelData() entirely for every subsequent
+    // entity of an already-proven-absent race/gender, instead of rediscovering
+    // "no model" from scratch per entity (T94's measured cost: 130/452
+    // entities in Nektulos, 93.8% of Step 8's wall time, before this cache).
+    // cacheKey = (raceId << 8) | gender (variant/texture index do not
+    // participate — every preloadModelData() caller passes textureVariant=0,
+    // and the parameter only affects a post-success composite lookup, never
+    // whether the base model search finds a match). Thread-safe (same
+    // preparedDataMutex_ preloadModelData already holds for its other
+    // staging-cache checks).
+    bool isRaceModelKnownMissing(uint32_t cacheKey) const;
 
     // Move prepared model data from staging cache to main cache.
     // Call this on the main thread before getMeshForRace() to make
@@ -383,6 +403,15 @@ private:
     // Promoted to loadedModels_ on main thread via promotePreparedModels().
     mutable std::mutex preparedDataMutex_;
     std::map<uint32_t, std::shared_ptr<RaceModelData>> preparedModelData_;
+
+    // T94: negative-result memo for preloadModelData()'s full search chain.
+    // Key present => that race/gender has no model anywhere; value is the
+    // number of entities that have hit the negative cache so far (for the
+    // zone-load summary, so the once-per-race log line can report how many
+    // entities were affected without re-searching). Guarded by
+    // preparedDataMutex_, same as preparedModelData_/loadedModels_ staging
+    // reads elsewhere in this class.
+    std::unordered_map<uint32_t, size_t> knownMissingRaceGenders_;
 
     // P13b: per-part texture names DEFERRED (decode/upload skipped) because
     // preloadModelData() got a composite-sheet HIT for that (race, gender) —

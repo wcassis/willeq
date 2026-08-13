@@ -300,6 +300,44 @@ TEST_F(RaceModelAnimationHeadlessTest, LoadsForRaceAndGender_Headless) {
     }
 }
 
+// T94: proves the negative model-lookup cache actually memoizes a failed
+// search instead of silently doing nothing. race=330 is the same
+// known-missing race LoadsForRaceAndGender_Headless above already relies on
+// (deferred.md: "gfaydark zone-in FATAL, missing race=330 model data") — its
+// base race code resolves to empty, so preloadModelData()'s full search
+// chain (zoneCharacters_, otherChrCaches_, JSON-specified S3D, global_chr.s3d,
+// global2-7_chr.s3d) is guaranteed to fail deterministically regardless of
+// which client data set is configured.
+TEST_F(RaceModelAnimationHeadlessTest, NegativeModelCache_KnownMissingRacePersists_Headless) {
+    const uint16_t raceId = 330;
+    const uint8_t gender = 0;
+    const uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
+
+    ASSERT_FALSE(loader_->isRaceModelKnownMissing(key))
+        << "race=330 must not already be in the negative cache before it has been searched even once "
+           "(this loader instance is fresh per-test, see SetUp())";
+
+    bool firstSearch = loader_->preloadModelData(raceId, gender);
+    EXPECT_FALSE(firstSearch) << "race=330 has no model in any archive on this asset set — "
+                                  "the first full search must fail";
+
+    EXPECT_TRUE(loader_->isRaceModelKnownMissing(key))
+        << "T94: after preloadModelData() exhausts the full search chain and finds nothing, "
+           "the (raceId, gender) pair must be memoized permanently — this is what lets "
+           "loadZoneStep8a_BaseModelPrep and EntityPrepWorker::processRequest skip repeating "
+           "the search (and its per-entity log line) for every subsequent entity of this race";
+
+    // Repeat calls must remain false and the memo must stay set — this is
+    // the exact contract Step8a/EntityPrepWorker depend on to keep skipping
+    // the search for every later entity of this race/gender in the zone.
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_FALSE(loader_->preloadModelData(raceId, gender))
+            << "repeat call " << i << " must still report failure";
+        EXPECT_TRUE(loader_->isRaceModelKnownMissing(key))
+            << "repeat call " << i << " must not clear the negative memo";
+    }
+}
+
 // T54: ported from the deleted InventoryModelViewTest.EquippedWeaponsShowOnModel.
 //
 // FINDING (not a weakened test — see this unit's plan, Step 1): the original
