@@ -77,12 +77,33 @@ const float FOLLOW_FAR_DISTANCE = 30.0f;     // Full speed when this far
 const float FOLLOW_MIN_SPEED_MULT = 0.5f;    // Minimum speed multiplier when close
 const float FOLLOW_MAX_SPEED_MULT = 1.5f;    // Maximum speed multiplier when far
 
+// T88: FRAME CONTRACT -- x, y, z here are CLIENT frame, i.e. the same frame
+// as m_x/m_y/m_z (docs/CLAUDE.md's "Client Internal Coordinates"), NOT
+// server/wire frame. The two are axis-swapped (client_x = server_y,
+// client_y = server_x -- see ZoneProcessPlayerProfile in eq.cpp and
+// SendPositionUpdate below). This was previously undocumented at every
+// site on this call path (Move, MoveToWithPath, moveToLocation, and the
+// /move command registration in eq_commands_movement.cpp) -- T88 found
+// that ambiguity, not a math defect, cost a live capture session: T85 fed
+// this function server-frame coordinates (read off another client's own
+// wire self-report), which Move() correctly treated as client-frame and
+// transmitted axis-mirrored, exactly as designed. See
+// refactor/T88_position_frame_determination.md's Review for the full
+// round-trip proof (tests/test_position_frame_roundtrip.cpp) establishing
+// the encoder/decoder pair is a correct, matched inverse -- there was
+// nothing to fix here except this comment and the log line below.
 void EverQuest::Move(float x, float y, float z)
 {
-	LOG_DEBUG(MOD_MAIN, "Move called: target=({:.2f}, {:.2f}, {:.2f})", x, y, z);
+	// Log both frames up front: what was asked for (client frame) and what
+	// will actually hit the wire (server frame, per the swap above) --
+	// one line would have made T85's mismatch obvious in seconds instead
+	// of costing a capture session and two analysis units (T86, T87).
+	LOG_INFO(MOD_MAIN, "Move called: client-frame target=({:.2f}, {:.2f}, {:.2f}) -> "
+		"will transmit server-frame position=({:.2f}, {:.2f}, {:.2f})",
+		x, y, z, /*server_x=*/y, /*server_y=*/x, z);
 	// Use pathfinding by default
 	MoveToWithPath(x, y, z);
-	
+
 	// Non-blocking - movement will be handled by the update system
 }
 
@@ -470,6 +491,15 @@ void EverQuest::MoveTo(float x, float y, float z)
 		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_is_moving={}", 
 			x, y, z, m_x, m_y, m_z, m_heading, m_is_moving);
 	}
+}
+
+void EverQuest::Test_SnapToMovementTargetForSeam()
+{
+	// T88 test seam: see declaration comment in eq.h.
+	m_x = m_target_x;
+	m_y = m_target_y;
+	m_z = m_target_z;
+	StopMovement();
 }
 
 void EverQuest::StopMovement()
@@ -957,7 +987,10 @@ void EverQuest::UpdateMovement()
 
 void EverQuest::SendPositionUpdate()
 {
-	if (!IsFullyZonedIn() || !m_zone_connection) {
+	// T88 test seam: m_test_bypass_send_guard skips this guard (and the
+	// throttle below) so a headless test can reach the encoder logic
+	// without a live m_zone_connection. See Test_SetBypassSendGuardForSeam.
+	if (!m_test_bypass_send_guard && (!IsFullyZonedIn() || !m_zone_connection)) {
 		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
 			IsFullyZonedIn(), m_zone_connection != nullptr);
 		return;
@@ -973,7 +1006,7 @@ void EverQuest::SendPositionUpdate()
 	// Allow immediate send when stopping (animation goes to 0) for responsiveness
 	bool isStoppingNow = (m_animation == 0 && lastSentAnimation != 0);
 
-	if (!isStoppingNow && elapsed.count() < 250) {
+	if (!m_test_bypass_send_guard && !isStoppingNow && elapsed.count() < 250) {
 		// Throttled - skip this update
 		return;
 	}
@@ -1104,6 +1137,14 @@ void EverQuest::SendPositionUpdate()
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
 			m_x, m_y, m_z, update.x_pos, update.y_pos, update.z_pos);
 	}
+
+	// T88 test seam: capture what was actually computed, unconditionally,
+	// before the (possibly test-suppressed) send. See
+	// Test_GetLastComputedPositionUpdate.
+	m_test_last_sent_update.x_pos = update.x_pos;
+	m_test_last_sent_update.y_pos = update.y_pos;
+	m_test_last_sent_update.z_pos = update.z_pos;
+	m_test_last_sent_update.heading_scaled = update.heading_and_padding;
 
 	DumpPacket("C->S", HC_OP_ClientUpdate, p);
 	SafeQueueZonePacket(p, 0, false);  // Send unreliable
@@ -1330,9 +1371,11 @@ bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_
 	return true;
 }
 
+// T88: FRAME CONTRACT -- CLIENT frame, same as EverQuest::Move() above.
 void EverQuest::MoveToWithPath(float x, float y, float z)
 {
-	if (!IsFullyZonedIn()) {
+	// T88 test seam: see Test_SetBypassSendGuardForSeam's comment in eq.h.
+	if (!m_test_bypass_send_guard && !IsFullyZonedIn()) {
 		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
 		return;
 	}

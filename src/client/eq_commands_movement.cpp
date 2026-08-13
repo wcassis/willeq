@@ -146,17 +146,28 @@ void EverQuest::RegisterMovementCommands()
 
 	Command move_cmd;
 	move_cmd.name = "move";
-	move_cmd.usage = "/move <x> <y> <z>";
-	move_cmd.description = "Move to coordinates";
+	// T88: frame stated explicitly in the usage string itself -- this is
+	// the CLIENT frame (same as m_x/m_y; docs/CLAUDE.md's "Client Internal
+	// Coordinates"), axis-swapped from the server/wire frame that a /loc or
+	// another client's own self-report would give you. This ambiguity
+	// (undocumented at this exact surface) is what cost T85's live capture
+	// session -- see refactor/T88_position_frame_determination.md.
+	move_cmd.usage = "/move <x> <y> <z> (CLIENT frame -- swap x/y if reading a server-frame /loc)";
+	move_cmd.description = "Move to coordinates (client frame; see usage)";
 	move_cmd.category = "Movement";
 	move_cmd.handler = [this](const std::string& args) {
 		std::istringstream iss(args);
 		float x, y, z;
 		if (iss >> x >> y >> z) {
 			Move(x, y, z);
-			AddChatSystemMessage(fmt::format("Moving to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+			// T88: echo BOTH frames so a caller who fed the wrong-frame
+			// numbers sees it immediately instead of only discovering it
+			// via an absent position update minutes later.
+			AddChatSystemMessage(fmt::format(
+				"Moving to client=({:.1f}, {:.1f}, {:.1f}) -> server=({:.1f}, {:.1f}, {:.1f})",
+				x, y, z, /*server_x=*/y, /*server_y=*/x, z));
 		} else {
-			AddChatSystemMessage("Usage: /move <x> <y> <z>");
+			AddChatSystemMessage("Usage: /move <x> <y> <z> (CLIENT frame -- swap x/y if reading a server-frame /loc)");
 		}
 	};
 	m_command_registry->registerCommand(move_cmd);

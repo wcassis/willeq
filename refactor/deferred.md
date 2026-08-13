@@ -4772,7 +4772,7 @@ other five). **The entire observed heading error lives at
 encoder downstream of it is sound.** Not fixed, per this unit's own
 prohibition (same as T84).
 
-## Wizzy's ClientUpdate broadcasts never reached a third client (T85, 2026-08-13) — mechanism found by T86 (2026-08-13), see addendum below; still not fixed
+## Wizzy's ClientUpdate broadcasts never reached a third client (T85, 2026-08-13) — mechanism found by T86 (2026-08-13); T86's "real WillEQ-side defect" conclusion CORRECTED by T88 (2026-08-13), see addendum at the end of this entry
 
 While observing (Role 1, not touching production code), T85 found that
 `Wizzy` (a second officially-driven client, spawn_id 462, confirmed by
@@ -4851,6 +4851,51 @@ follow-up unit doing a live position round-trip test (send a known
 position, read back what the server believes) would settle which site
 is the actual defect and confirm the fix closes the broadcast gap.
 
+**T88 addendum (2026-08-13) — CORRECTION: not a WillEQ defect. T86's
+headline "this is a real WillEQ-side defect, not a server quirk or a
+Wizzy-side non-issue" does NOT hold up and must not be treated as
+established.** T88 built the round-trip test T86 itself said was needed
+("a live round-trip test... would settle it") — headlessly, no eqemu
+required after all: fed a known server-frame position through
+`ZoneProcessPlayerProfile` (the real inbound decoder) and read back what
+`SendPositionUpdate()` (the real outbound encoder) actually transmits.
+**The round trip is IDENTITY** — server_x/server_y come back out
+bit-for-bit unchanged, over two independently-chosen coordinate pairs
+(regression tests: `tests/test_position_frame_roundtrip.cpp`,
+`ServerFrame_InboundThenOutbound_IsIdentity[_SecondSample]`). The
+inbound swap (`m_x = server_y, m_y = server_x`) and outbound un-swap
+(`x_pos = m_y, y_pos = m_x`) are a correct, matched inverse pair — there
+is no encoder/decoder asymmetry to fix.
+
+**What actually happened**: `EverQuest::Move()` (reached from `/move` via
+`EqActionHandler::moveToLocation()`) operates in CLIENT frame — the same
+frame as `m_x`/`m_y` — confirmed by driving the real `/move` command
+surface with a client-frame target and reading back the transmitted
+server-frame position (`tests/test_position_frame_roundtrip.cpp`,
+`MoveToLocation_...`). T85's executor issued `/move -650 310 3.75` using
+`Oracledelta`'s own **server-frame** wire self-report (which T86 itself
+confirmed matches the join spec's numbers) as the argument to a
+**client-frame** command. A correct client transmits that mirrored,
+exactly as measured: feeding T85's exact issued values (-650, 310)
+through the real `Move()` path transmits server-frame (310, -650) — T86's
+own measured wire value was (306.462, -646.949), inside the documented
+~2-6 unit `/move` waypoint slop. `T85Scenario_...` in the same test file
+pins this arithmetic explicitly. **The 1324.8-unit miss, and the
+resulting silent broadcast-radius starvation T86 correctly diagnosed as
+the mechanism, were real — but the cause is a harness/command-frame
+mix-up, not a WillEQ encoder or decoder bug.**
+
+The one genuine gap this surfaced: the frame was undocumented at every
+site on this call path (`Move()`, `MoveToWithPath()`,
+`EqActionHandler::moveToLocation()`, the `/move` command registration).
+T88 documented the frame contract at all four sites and made `/move`
+echo both frames back in its chat response
+(`src/client/eq_commands_movement.cpp`) plus log both frames from
+`Move()` itself (`src/client/eq_movement.cpp`) — the fix that actually
+addresses what cost T85 a capture session. Full evidence:
+`refactor/T88_position_frame_determination.md`'s Review,
+`/mnt/projects/fable/review/T88/`.
+
 ## Texture-fallback (magenta/checkerboard) defect reproduces reliably (T85, 2026-08-13) — not root-caused
 
 Observed repeatedly and independently across multiple screenshots at
@@ -4922,3 +4967,30 @@ it did not root-cause it. A tighter oracle capture (longer `/move`
 distances, to shrink the ~2-6 unit waypoint slop T85 already flagged)
 would sharpen the ±8.2° scatter and confirm whether ~252° is a fixed
 constant or direction-dependent.
+
+**Merge-time qualification (orchestrator, `git log 381a8bd1`, still
+stands, not superseded by T88)**: the "~252° offset" characterization is
+an artifact, not a real transformation — a constant angular offset
+preserves spacing, and Pass A's cardinals are spaced 59°/74°/101° against
+the official client's clean 92°/90°/89°, so the six deltas only "average"
+to ~252° over a distorted set. The likely cause, visible only by holding
+T86 and T87 together: Pass A derived heading from `/move`'s direction of
+travel, computed in a position frame T86 (and now T88) showed was being
+fed server-frame numbers on a client-frame surface — travel-direction
+headings computed from a client-frame-vs-server-frame mix-up produce
+exactly this non-uniform, position-dependent distortion signature.
+
+**T88 addendum (2026-08-13) — sequencing gate LIFTED, but the mechanism
+above still needs re-checking, not blind re-trust.** T88 (see this file's
+Wizzy/ClientUpdate entry above) proved WillEQ's position round trip is
+IDENTITY and that `Move()`/`/move` operate correctly in client frame —
+T85's `/move`-driven Pass A was itself fed server-frame numbers on that
+same client-frame surface (the exact mix-up T86/T87 shared). Heading was
+deliberately NOT re-measured or touched by T88 (out of territory, and the
+plan's own prohibition). **A follow-up unit should re-run T87's method
+now that the position-frame ambiguity at the `/move` surface is
+documented and logged** (so a re-capture can confirm inputs were in the
+right frame this time) — expect the corrected Pass A run to show clean,
+evenly-spaced cardinal deltas if the merge-time qualification's
+explanation is right, which would finally isolate whatever remains of
+the outbound heading disagreement from this frame confusion.
