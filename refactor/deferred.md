@@ -5379,6 +5379,74 @@ territory — `eq_action_handler.cpp` only covered the three enum casts):
 `targetSelf()`'s self/pet toggle, `targetGroupMember()`'s validation,
 `hailTarget()`'s fallback branch. See the `## T93` entry above.
 
+## T96 — the `/pet` literal drift IS fixed, but the fixed code has zero live callers (2026-08-13)
+
+Full writeup: `refactor/T96_pet_command_literal_drift.md`'s Review,
+`/mnt/projects/fable/review/T96/README.md`.
+
+**Closes the T95 `/pet` drift table above.** All nine `action_dispatcher.cpp`
+wrappers now pass the named `EQT::PetCommand` enumerator instead of the
+stale literal (`petAttack`→`PET_ATTACK`=7, `petBackOff`→`PET_BACKOFF`=1,
+`petFollow`→`PET_FOLLOWME`=8, `petGuard`→`PET_GUARDHERE`=5 [unchanged,
+already correct], `petSit`→`PET_SITDOWN`=9, `petTaunt`→`PET_TAUNT`=11,
+`petHold`→`PET_HOLD`=12, `petFocus`→`PET_FOCUS`=19,
+`petHealth`→`PET_HEALTHREPORT`=4). The now-redundant `// PET_X = N (from
+pet_constants.h)` comments — several stale, all now redundant once the call
+sites are self-documenting — were deleted rather than corrected, per the
+plan's "don't reset the clock on the same failure" instruction.
+`dismissPet()` was checked separately: already correct
+(`EQT::PET_GETLOST`), no drift. Two new/updated tests in
+`tests/test_action_dispatcher.cpp` pin every wrapper to its enumerator (both
+a symbolic and an explicit-numeric assertion), proven able to fail in both
+directions (mapping broken → red, restored → green, diff-verified
+byte-identical to the pre-break original).
+
+**Live-leg finding that changes how much this fix matters in practice**:
+tracing the live `/pet` slash command during the required live leg found
+that `ActionDispatcher::petAttack()`/etc. — the code this unit fixed — has
+**zero live callers**. `Application::DispatchSlashCommand()`
+(`src/client/application.cpp`) tries three command registries in a fixed
+order and stops at the first match; `EverQuest::m_command_registry`
+(registry 1, `"game"`) has its own, entirely separate `/pet` implementation
+(`src/client/eq_commands_spells.cpp` lines ~497-602) which was **already
+using the correct named enumerators**, was never drifted, and always wins
+before `action::CommandProcessor`'s `cmdPet()` (registry 2, the sole caller
+of the code this unit fixed) is ever tried. Confirmed both by reading
+`DispatchSlashCommand()` and empirically — every `/pet` line in the live run
+logs shows `registry=game`, never `registry=action`. No hotkey, UI button,
+or renderer intent calls the `ActionDispatcher` pet family either. **This
+is (at least) a tenth instance of the project's "implemented-but-unreached"
+pattern.** The fix is still correct hygiene (dormant code that's now right
+instead of wrong, and one dispatch-order change away from becoming live if
+the "3 competing command systems" duplication [also flagged below] is ever
+deduplicated in `eq_commands_spells.cpp`'s favor), but the live leg
+demonstrates the *already-correct* `eq_commands_spells.cpp` implementation
+working end-to-end (real pet attacking/backing off/following/guarding/
+sitting/standing/taunting/reporting health/dismissing, with server chat
+confirmation for each), not a behavior change caused by this unit's diff.
+
+**New instance of the "3 competing command systems" duplication** (per
+`docs/module_map.md`'s existing note on that pattern): `/pet` is
+independently implemented in three places —
+`src/client/eq_commands_spells.cpp` (live, correct), `action::
+CommandProcessor::cmdPet()` → `ActionDispatcher::petAttack()`/etc. (dead,
+now also correct after this unit), and (not checked this unit) whatever the
+renderer command bridge might do with `/pet` if neither of the first two
+recognized it. Flagged for follow-up dedup, not fixed here (out of this
+unit's territory and explicitly out of scope per the plan: "do not extend
+to other command families").
+
+**`/pet hold` and `/pet focus` could not be behaviorally confirmed live** —
+not a T96 defect. eqemu's `Handle_OP_PetCommands()`
+(`/mnt/projects/akk-stack/code/zone/client_packet.cpp`) gates `PET_HOLD`/
+`PET_FOCUS` (and the SoD+ `_ON`/`_OFF` variants) unconditionally behind
+`aabonuses.PetCommands[PetCommand]`, an Alternate-Advancement bonus neither
+available test character's class (Warrior `Testchar`, Wizard `Testcaster`)
+can purchase (pet-command AAs belong to Necromancer/Magician/Beastlord/
+Druid/Enchanter). The packet went out correctly in both cases (client log:
+`"Sent pet command: hold/focus"`) but the server silently declined to act.
+Reported per the "say so plainly" standard rather than routed around.
+
 **Other fakes swept and found LOW RISK (checked, not just assumed)**:
 `FakeUdpTransport` (`tests/fake_udp_transport.h`) only fakes wire I/O —
 `DaybreakConnection`'s real compression/CRC/fragmentation/sequencing runs

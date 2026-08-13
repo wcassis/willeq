@@ -12,6 +12,7 @@
 #include "action_test_fakes.h"
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
+#include "client/pet_constants.h"
 #include <gtest/gtest.h>
 
 using namespace eqt::action;
@@ -419,35 +420,82 @@ TEST_F(ActionDispatcherTest, ZoneRequest_ValidatesNonEmpty) {
 // with different hardcoded command IDs. This is exactly the shape the plan
 // warns is prone to copy-paste mis-wiring, so every member gets its own
 // assertion of the exact command ID routed through.
+//
+// T96: this test previously pinned the DRIFTED literals (petAttack sending
+// 2 == PET_GETLOST, etc. -- see refactor/T96_pet_command_literal_drift.md).
+// It now pins the corrected `EQT::PetCommand` enumerator each wrapper is
+// supposed to send, so a future renumbering of pet_constants.h breaks this
+// test instead of silently mis-driving a player's pet again.
 TEST_F(ActionDispatcherTest, PetFamily_EachConvenienceMethodUsesItsOwnCommandId) {
     connectHandler();
     connectZone();
     state.pet().setPet(200, "Fido", 10);
 
     dispatcher->sendPetCommand(9, 0);   // arbitrary raw command
-    dispatcher->petAttack();            // PET_ATTACK = 2
-    dispatcher->petBackOff();           // PET_BACKOFF = 28
-    dispatcher->petFollow();            // PET_FOLLOWME = 4
-    dispatcher->petGuard();             // PET_GUARDHERE = 5
-    dispatcher->petSit();               // PET_SIT = 6
-    dispatcher->petTaunt();             // PET_TAUNT = 12
-    dispatcher->petHold();              // PET_HOLD = 15
-    dispatcher->petFocus();             // PET_FOCUS = 24
-    dispatcher->petHealth();            // PET_HEALTHREPORT = 0
+    dispatcher->petAttack();            // EQT::PET_ATTACK = 7
+    dispatcher->petBackOff();           // EQT::PET_BACKOFF = 1
+    dispatcher->petFollow();            // EQT::PET_FOLLOWME = 8
+    dispatcher->petGuard();             // EQT::PET_GUARDHERE = 5
+    dispatcher->petSit();               // EQT::PET_SITDOWN = 9
+    dispatcher->petTaunt();             // EQT::PET_TAUNT = 11
+    dispatcher->petHold();              // EQT::PET_HOLD = 12
+    dispatcher->petFocus();             // EQT::PET_FOCUS = 19
+    dispatcher->petHealth();            // EQT::PET_HEALTHREPORT = 4
     dispatcher->dismissPet();
 
     ASSERT_EQ(handler.count(), 11u);
     EXPECT_EQ(handler.calls[0], "sendPetCommand(9, 0)");
-    EXPECT_EQ(handler.calls[1], "sendPetCommand(2, 0)");
-    EXPECT_EQ(handler.calls[2], "sendPetCommand(28, 0)");
-    EXPECT_EQ(handler.calls[3], "sendPetCommand(4, 0)");
-    EXPECT_EQ(handler.calls[4], "sendPetCommand(5, 0)");
-    EXPECT_EQ(handler.calls[5], "sendPetCommand(6, 0)");
-    EXPECT_EQ(handler.calls[6], "sendPetCommand(12, 0)");
-    EXPECT_EQ(handler.calls[7], "sendPetCommand(15, 0)");
-    EXPECT_EQ(handler.calls[8], "sendPetCommand(24, 0)");
-    EXPECT_EQ(handler.calls[9], "sendPetCommand(0, 0)");
+    EXPECT_EQ(handler.calls[1],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_ATTACK)) + ", 0)");
+    EXPECT_EQ(handler.calls[2],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_BACKOFF)) + ", 0)");
+    EXPECT_EQ(handler.calls[3],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_FOLLOWME)) + ", 0)");
+    EXPECT_EQ(handler.calls[4],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_GUARDHERE)) + ", 0)");
+    EXPECT_EQ(handler.calls[5],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_SITDOWN)) + ", 0)");
+    EXPECT_EQ(handler.calls[6],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_TAUNT)) + ", 0)");
+    EXPECT_EQ(handler.calls[7],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_HOLD)) + ", 0)");
+    EXPECT_EQ(handler.calls[8],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_FOCUS)) + ", 0)");
+    EXPECT_EQ(handler.calls[9],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_HEALTHREPORT)) + ", 0)");
     EXPECT_EQ(handler.calls[10], "dismissPet()");
+}
+
+// Explicit numeric pin, independent of the symbolic assertions above: if
+// pet_constants.h's numbering ever silently drifts back (the exact failure
+// mode this unit exists to close), these literal expectations catch it even
+// if EQT::PetCommand itself were the thing that changed underneath a purely
+// symbolic comparison.
+TEST_F(ActionDispatcherTest, PetFamily_EachConvenienceMethodSendsTheDocumentedWireValue) {
+    connectHandler();
+    connectZone();
+    state.pet().setPet(200, "Fido", 10);
+
+    dispatcher->petAttack();
+    dispatcher->petBackOff();
+    dispatcher->petFollow();
+    dispatcher->petGuard();
+    dispatcher->petSit();
+    dispatcher->petTaunt();
+    dispatcher->petHold();
+    dispatcher->petFocus();
+    dispatcher->petHealth();
+
+    ASSERT_EQ(handler.count(), 9u);
+    EXPECT_EQ(handler.calls[0], "sendPetCommand(7, 0)");   // PET_ATTACK
+    EXPECT_EQ(handler.calls[1], "sendPetCommand(1, 0)");   // PET_BACKOFF
+    EXPECT_EQ(handler.calls[2], "sendPetCommand(8, 0)");   // PET_FOLLOWME
+    EXPECT_EQ(handler.calls[3], "sendPetCommand(5, 0)");   // PET_GUARDHERE
+    EXPECT_EQ(handler.calls[4], "sendPetCommand(9, 0)");   // PET_SITDOWN
+    EXPECT_EQ(handler.calls[5], "sendPetCommand(11, 0)");  // PET_TAUNT
+    EXPECT_EQ(handler.calls[6], "sendPetCommand(12, 0)");  // PET_HOLD
+    EXPECT_EQ(handler.calls[7], "sendPetCommand(19, 0)");  // PET_FOCUS
+    EXPECT_EQ(handler.calls[8], "sendPetCommand(4, 0)");   // PET_HEALTHREPORT
 }
 
 TEST_F(ActionDispatcherTest, PetFamily_NoPetFailsWithoutDispatch) {
