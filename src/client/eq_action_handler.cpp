@@ -85,11 +85,18 @@ void EqActionHandler::stopMoving(action::Direction dir) {
 }
 
 void EqActionHandler::setHeading(float heading) {
-    // Convert from degrees (0-360) to EQ heading units (0-512)
-    float eqHeading = heading * 512.0f / 360.0f;
-    while (eqHeading < 0.0f) eqHeading += 512.0f;
-    while (eqHeading >= 512.0f) eqHeading -= 512.0f;
-    m_eq.SetHeading(eqHeading);
+    // T90: EverQuest::SetHeading() stores its argument raw into m_heading,
+    // which every other site (PlayerProfile zone-in, eq_movement.cpp's
+    // outbound server_heading = 90 - m_heading, the self ClientUpdate echo)
+    // treats as plain 0-360 degrees -- confirmed by reading SetHeading()
+    // itself (eq.cpp) rather than assuming. This function used to also
+    // convert degrees to EQ's 0-512 unit range before calling it, double-
+    // converting (e.g. setHeading(90) produced m_heading == 128). Pass
+    // degrees straight through; only normalize into [0, 360).
+    float normalizedHeading = heading;
+    while (normalizedHeading < 0.0f) normalizedHeading += 360.0f;
+    while (normalizedHeading >= 360.0f) normalizedHeading -= 360.0f;
+    m_eq.SetHeading(normalizedHeading);
     m_eq.SendPositionUpdate();
 }
 

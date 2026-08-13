@@ -1010,6 +1010,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_position_frame_roundtrip)
 
+# T90: EqActionHandler::setHeading() double-conversion regression tests
+# (degrees -> EQ 512-units conversion applied on top of a value that was
+# then stored raw by EverQuest::SetHeading(), which every other site reads
+# as plain degrees). Same headless EverQuest + EqActionHandler idiom as
+# T88's test_position_frame_roundtrip above -- no network, no graphics.
+ADD_EXECUTABLE(test_setheading_conversion
+    test_setheading_conversion.cpp
+)
+TARGET_LINK_LIBRARIES(test_setheading_conversion GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_setheading_conversion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_setheading_conversion)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live
