@@ -1437,13 +1437,30 @@ bool IrrlichtRenderer::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
     // Step 8a: Base race model prep (S3D load, WLD parse, animation merge)
     uint32_t key = (static_cast<uint32_t>(ctx.vis->raceId) << 8) | ctx.vis->gender;
     bool alreadyCached = ctx.modelLoader->isModelDataCached(key);
+    // T94: a race/gender proven absent by an earlier entity's full search
+    // (preloadModelData() walked every S3D source and found nothing) never
+    // becomes "cached" in the positive sense above — it has no model data to
+    // cache. Without this check, every subsequent entity of that race/gender
+    // would redo the full search from scratch (T91 measured 130/452 entities
+    // in Nektulos doing exactly this, 93.8% of Step 8's wall time) AND log
+    // its own per-entity "preload ... took Nms" line. Checked here, at the
+    // call site, so both costs — the search and the per-entity log line —
+    // are skipped entirely, not merely made fast.
+    bool knownMissing = !alreadyCached && ctx.modelLoader->isRaceModelKnownMissing(key);
     bool success = false;
-    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} cacheKey={} cached={}",
-              ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender, key, alreadyCached);
+    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8a: entity {} ({}) race={} gender={} cacheKey={} cached={} knownMissing={}",
+              ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender, key, alreadyCached, knownMissing);
 
     if (alreadyCached) {
         success = true;
         ++ctx.modelCacheHits;
+    } else if (knownMissing) {
+        // Same accounting as the "not found" branch below, minus the
+        // per-entity search and log line — preloadModelData() already
+        // logged this race/gender's absence once, the first time it was
+        // discovered.
+        ++ctx.entitiesSkipped;
+        ctx.skippedRaceGenderPairs.insert({ctx.vis->raceId, ctx.vis->gender});
     } else {
         auto prepStart = std::chrono::steady_clock::now();
         success = ctx.modelLoader->preloadModelData(ctx.vis->raceId, ctx.vis->gender);

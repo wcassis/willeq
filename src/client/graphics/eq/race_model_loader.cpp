@@ -461,6 +461,11 @@ bool RaceModelLoader::isModelDataCached(uint32_t cacheKey) const {
     return preparedModelData_.count(cacheKey) > 0;
 }
 
+bool RaceModelLoader::isRaceModelKnownMissing(uint32_t cacheKey) const {
+    std::lock_guard<std::mutex> lock(preparedDataMutex_);
+    return knownMissingRaceGenders_.count(cacheKey) > 0;
+}
+
 void RaceModelLoader::promotePreparedModels() {
     std::lock_guard<std::mutex> lock(preparedDataMutex_);
     if (preparedModelData_.empty()) return;
@@ -637,6 +642,19 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
     {
         std::lock_guard<std::mutex> lock(preparedDataMutex_);
         if (preparedModelData_.count(key) > 0) return true;
+
+        // T94: negative-result memo. A prior call for this exact (raceId,
+        // gender) already walked the full search chain below (steps 1-5)
+        // and found nothing — the S3D archives are static for the process
+        // lifetime, so that result is permanent and the search does not
+        // need to be repeated. Just bump the hit counter (for the
+        // once-per-race summary log) and return immediately, skipping the
+        // O(archives x characters-per-archive) string search entirely.
+        auto missIt = knownMissingRaceGenders_.find(key);
+        if (missIt != knownMissingRaceGenders_.end()) {
+            ++missIt->second;
+            return false;
+        }
     }
 
     // Collect textures from safe sources for model building.
@@ -765,7 +783,27 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
     }
 
     if (!modelData) {
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no model found for race={} gender={}", raceId, gender);
+        // T94: record the negative result permanently and log it exactly
+        // once per race/gender — this is the search's first (and only)
+        // failure for this key; every later entity of this race/gender
+        // takes the early-out above instead of reaching here. Replaces
+        // what used to be per-entity noise (one LOG_INFO from every call
+        // site, for every entity, proportional to entity count — T91
+        // measured 130 such lines for Nektulos) with a single line stating
+        // how many entities are affected once the count is known (the
+        // zone-load summary in renderer_zone_load.cpp already aggregates
+        // this via skippedRaceGenderPairs/entitiesSkipped; this WARN is the
+        // "how do I even know race=457-class gaps exist" signal the plan
+        // asked for, visible without cross-referencing that summary).
+        {
+            std::lock_guard<std::mutex> lock(preparedDataMutex_);
+            knownMissingRaceGenders_.emplace(key, 1);
+        }
+        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: race={} gender={} has no model in any S3D archive "
+                 "(zoneCharacters_, otherChrCaches_, JSON-specified S3D, global_chr.s3d, global2-7_chr.s3d all searched) — "
+                 "caching this negative result permanently (S3D archives are static for the process lifetime); "
+                 "further entities of this race/gender skip the search and render as placeholder cubes",
+                 raceId, gender);
         return false;
     }
 

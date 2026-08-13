@@ -128,11 +128,19 @@ EntityPrepWorker::PrepResult EntityPrepWorker::processRequest(PrepRequest&& req)
     // Step 1: Base race model prep (S3D load, WLD parse, animation merge)
     uint32_t key = (static_cast<uint32_t>(req.raceId) << 8) | req.gender;
     bool alreadyCached = modelLoader_->isModelDataCached(key);
+    // T94: mirror loadZoneStep8a_BaseModelPrep's early-out — a race/gender
+    // already proven absent by a prior preloadModelData() call (here or on
+    // the loading thread; the negative cache is shared) skips both the
+    // repeated search and the per-entity log line.
+    bool knownMissing = !alreadyCached && modelLoader_->isRaceModelKnownMissing(key);
 
     bool success = false;
     if (alreadyCached) {
         success = true;
         LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: race={} gender={} already cached, skipping base prep",
+                  req.raceId, req.gender);
+    } else if (knownMissing) {
+        LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: race={} gender={} known missing (negative cache), skipping base prep",
                   req.raceId, req.gender);
     } else {
         // CPU-heavy work (300-500ms on ARM) — runs OFF main thread
