@@ -44,11 +44,21 @@ struct CommandInfo {
  * and use the ActionDispatcher to execute the appropriate actions.
  *
  * Built-in commands include:
- * - Chat: /say, /shout, /ooc, /auction, /tell, /reply, /gsay, /gu
- * - Movement: /loc, /sit, /stand, /camp, /move, /moveto, /follow
- * - Combat: /target, /attack, /stopattack, /cast, /aa
- * - Group: /invite, /disband, /decline
- * - Utility: /who, /help, /quit, /debug
+ * - Chat: /shout, /wave, /dance, /cheer, /laugh
+ * - Movement: /face, /walk, /run, /sneak, /crouch, /feign, /jump, /turn
+ * - Combat: /consider, /hail, /hunt, /autoloot, /listtargets, /loot
+ * - Utility: /npcstate, /door, /afk, /anon, /list, /dump, /pathfinding,
+ *   /roleplay, /logonly, /logexclude, /logmodule, /logclear
+ *
+ * T98: 34 commands that were always shadowed by EverQuest::m_command_registry
+ * (registry 1 wins every dispatch collision -- see
+ * refactor/T97_command_registry_shadowing_audit.md) were deleted along with
+ * their handlers: say, ooc, auction, tell, reply, gsay, gu, emote, loc, sit,
+ * stand, camp, move, moveto, follow, stopfollow, target, cast, interrupt,
+ * invite, disband, decline, who, help, quit, q, debug, timestamp, skills,
+ * gems, mem, forget, pet, filter. `shout` was kept despite its primary name
+ * being shadowed too -- its alias "sh" escapes because `game`'s own shout
+ * alias is spelled "sho".
  */
 class CommandProcessor {
 public:
@@ -177,34 +187,27 @@ private:
     void registerBuiltinCommands();
 
     // Built-in command handlers
-    ActionResult cmdSay(const std::string& args);
+    // T98: cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/cmdGuildSay/
+    // cmdEmote removed -- their registrations (say/ooc/auction/tell/reply/
+    // gsay/gu/emote) were shadowed dead code (registry 1 always won). cmdShout
+    // stays: its primary name is shadowed too, but alias "sh" escapes because
+    // game's own shout alias is spelled "sho". See
+    // refactor/T97_command_registry_shadowing_audit.md /
+    // refactor/T98_delete_shadowed_commands.md.
     ActionResult cmdShout(const std::string& args);
-    ActionResult cmdOOC(const std::string& args);
-    ActionResult cmdAuction(const std::string& args);
-    ActionResult cmdTell(const std::string& args);
-    ActionResult cmdReply(const std::string& args);
-    ActionResult cmdGroupSay(const std::string& args);
-    ActionResult cmdGuildSay(const std::string& args);
-    ActionResult cmdEmote(const std::string& args);
 
-    ActionResult cmdLoc(const std::string& args);
-    ActionResult cmdSit(const std::string& args);
-    ActionResult cmdStand(const std::string& args);
-    ActionResult cmdCamp(const std::string& args);
-    ActionResult cmdMove(const std::string& args);
-    ActionResult cmdMoveTo(const std::string& args);
-    ActionResult cmdFollow(const std::string& args);
-    ActionResult cmdStopFollow(const std::string& args);
+    // T98: cmdLoc/cmdSit/cmdStand/cmdCamp/cmdMove/cmdMoveTo/cmdFollow/
+    // cmdStopFollow removed -- shadowed dead code (loc/sit/stand/camp/move/
+    // moveto/follow/stopfollow). cmdFace stays: no game "face" command exists
+    // at all, so it was never shadowed.
     ActionResult cmdFace(const std::string& args);
 
-    ActionResult cmdTarget(const std::string& args);
-    // T51: cmdAttack/cmdStopAttack/cmdAutoAttack removed -- their command
-    // registrations were shadowed dead code (registry 1 always won the
-    // dispatch collision). ActionDispatcher::enableAutoAttack()/
-    // disableAutoAttack()/toggleAutoAttack() are untouched and still used
-    // directly by InputActionBridge (the keyboard gesture).
-    ActionResult cmdCast(const std::string& args);
-    ActionResult cmdInterrupt(const std::string& args);
+    // T98: cmdTarget/cmdCast/cmdInterrupt removed -- shadowed dead code
+    // (target/cast/interrupt). T51: cmdAttack/cmdStopAttack/cmdAutoAttack
+    // removed earlier -- their command registrations were shadowed dead code
+    // (registry 1 always won the dispatch collision). ActionDispatcher::
+    // enableAutoAttack()/disableAutoAttack()/toggleAutoAttack() are untouched
+    // and still used directly by InputActionBridge (the keyboard gesture).
     ActionResult cmdConsider(const std::string& args);
     ActionResult cmdHail(const std::string& args);
 
@@ -221,28 +224,27 @@ private:
     // instances" entry.
     ActionResult cmdNpcState(const std::string& args);
 
-    ActionResult cmdInvite(const std::string& args);
-    ActionResult cmdDisband(const std::string& args);
-    ActionResult cmdDecline(const std::string& args);
+    // T98: cmdInvite/cmdDisband/cmdDecline removed -- shadowed dead code
+    // (invite/disband/decline). This empties the "Group" category in this
+    // registry entirely; game's Group commands are the only reachable ones.
 
-    ActionResult cmdWho(const std::string& args);
-    ActionResult cmdHelp(const std::string& args);
-    ActionResult cmdQuit(const std::string& args);
-    ActionResult cmdDebug(const std::string& args);
-    ActionResult cmdTimestamp(const std::string& args);
+    // T98: cmdWho/cmdHelp/cmdQuit/cmdDebug/cmdTimestamp removed -- shadowed
+    // dead code (who/help/quit/q/debug/timestamp).
 
     ActionResult cmdDoor(const std::string& args);
     ActionResult cmdAFK(const std::string& args);
     ActionResult cmdAnon(const std::string& args);
 
-    ActionResult cmdSkills(const std::string& args);
-    ActionResult cmdGems(const std::string& args);
-    ActionResult cmdMem(const std::string& args);
-    ActionResult cmdForget(const std::string& args);
+    // T98: cmdSkills/cmdGems/cmdMem/cmdForget removed -- shadowed dead code
+    // (skills/gems/mem/forget). This empties the "Spells" category entirely.
 
-    ActionResult cmdPet(const std::string& args);
+    // T98: cmdPet removed -- shadowed dead code (pet). This empties the
+    // "Pet" category entirely. ActionDispatcher's petAttack()/petBackOff()/
+    // petFollow()/petGuard()/petSit()/petTaunt()/petHold()/petFocus()/
+    // petHealth()/dismissPet() (the T96-fixed wrappers) are untouched -- see
+    // refactor/T98_delete_shadowed_commands.md's cascade list.
 
-    ActionResult cmdFilter(const std::string& args);
+    // T98: cmdFilter removed -- shadowed dead code (filter).
 
     ActionResult cmdLogOnly(const std::string& args);
     ActionResult cmdLogExclude(const std::string& args);
@@ -276,7 +278,10 @@ private:
     static std::vector<std::string> splitArgs(const std::string& args);
     void displayMessage(const std::string& message);
     void displayError(const std::string& message);
-    void displayHelp(const std::string& commandName = "");
+    // T98: displayHelp() removed -- its only caller was cmdHelp (deleted, see
+    // refactor/T98_delete_shadowed_commands.md); getCommandInfo()/
+    // getCategories()/getCommandsByCategory() it used are public API used
+    // elsewhere and are untouched.
 };
 
 } // namespace action

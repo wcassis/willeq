@@ -288,18 +288,25 @@ TEST_F(InputActionBridgeTest, MouseLook_InvertMouseYHasNoObservableEffect) {
 // Console commands
 // ===================================================================
 
+// T98: /sit and /stand were deleted from action::CommandProcessor (shadowed
+// dead code -- registry 1 always won the dispatch collision, see
+// refactor/T97_command_registry_shadowing_audit.md). Re-pointed to /consider
+// and /afk, two surviving no-arg commands with distinct dispatcher calls
+// that don't depend on any world-state fixture (unlike e.g. /door, which
+// needs a nearby door in GameState to reach the handler at all), to keep
+// proving ordering is preserved across the queue drain.
 TEST_F(InputActionBridgeTest, ConsoleCommands_ForwardToCommandProcessorInOrder) {
     CommandProcessor processor(state, *dispatcher);
     bridge->setCommandProcessor(&processor);
 
-    input.rawCommands.push("/sit");
-    input.rawCommands.push("/stand");
+    input.rawCommands.push("/consider");
+    input.rawCommands.push("/afk");
 
     update();
 
     ASSERT_EQ(handler.count(), 2u);
-    EXPECT_EQ(handler.calls[0], "sit()");
-    EXPECT_EQ(handler.calls[1], "stand()");
+    EXPECT_EQ(handler.calls[0], "consider()");
+    EXPECT_EQ(handler.calls[1], "setAFK(true)");
     EXPECT_TRUE(input.rawCommands.empty());
 }
 

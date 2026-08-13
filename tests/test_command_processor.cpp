@@ -12,6 +12,8 @@
 #include "client/state/game_state.h"
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <string>
+#include <vector>
 
 using namespace eqt::action;
 using namespace eqt::action::test;
@@ -82,20 +84,25 @@ protected:
 // processCommand vs processInput
 // ===================================================================
 
+// T98: /sit and /stand were deleted (shadowed dead code -- registry 1 always
+// won, see refactor/T97_command_registry_shadowing_audit.md /
+// refactor/T98_delete_shadowed_commands.md). Re-pointed to /consider and
+// /jump, both surviving no-arg commands, to keep this test covering the
+// shared leading-slash-optional dispatch path rather than losing coverage.
 TEST_F(CommandProcessorTest, ProcessCommand_AcceptsWithOrWithoutLeadingSlash) {
-    auto r1 = processor->processCommand("/sit");
-    auto r2 = processor->processCommand("sit");
+    auto r1 = processor->processCommand("/consider");
+    auto r2 = processor->processCommand("consider");
     EXPECT_TRUE(r1.success);
     EXPECT_TRUE(r2.success);
     ASSERT_EQ(handler.count(), 2u);
-    EXPECT_EQ(handler.calls[0], "sit()");
-    EXPECT_EQ(handler.calls[1], "sit()");
+    EXPECT_EQ(handler.calls[0], "consider()");
+    EXPECT_EQ(handler.calls[1], "consider()");
 }
 
 TEST_F(CommandProcessorTest, ProcessInput_SlashPrefixDispatchesAsCommand) {
-    auto result = processor->processInput("/stand");
+    auto result = processor->processInput("/jump");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("stand()"));
+    ASSERT_TRUE(handler.calledOnceWith("jump()"));
 }
 
 TEST_F(CommandProcessorTest, ProcessInput_NoSlashSendsAsDefaultChannelMessage) {
@@ -259,13 +266,14 @@ TEST_F(CommandProcessorTest, GetCommandsByCategory_OnlyReturnsMatchingCategory) 
     // Representative sample rather than enumerating all built-ins.
     // T51: "attack"/"stopattack"/"aa" were removed from this registry (they
     // were shadowed dead code -- registry 1 always won the dispatch
-    // collision); "target" is still registered here and stands in as the
+    // collision). T98: "target"/"cast"/"interrupt" were removed for the same
+    // reason; "consider" is still registered here and stands in as the
     // representative sample.
-    bool foundTarget = false;
+    bool foundConsider = false;
     for (const auto& cmd : combatCommands) {
-        if (cmd.name == "target") foundTarget = true;
+        if (cmd.name == "consider") foundConsider = true;
     }
-    EXPECT_TRUE(foundTarget);
+    EXPECT_TRUE(foundConsider);
 }
 
 TEST_F(CommandProcessorTest, GetCommandsByCategory_UnknownCategoryReturnsEmpty) {
@@ -301,16 +309,20 @@ TEST_F(CommandProcessorTest, T51_AttackStopattackAa_ProcessCommandReportsUnknown
     EXPECT_FALSE(r3.success);
 }
 
+// T98: the original samples (say/sit/target/invite/who/mem/pet) were ALL
+// deleted -- every one of the seven was shadowed dead code (see
+// refactor/T97_command_registry_shadowing_audit.md). Deleting invite/
+// disband/decline empties "Group" entirely and deleting skills/gems/mem/
+// forget empties "Spells" entirely and deleting pet empties "Pet" entirely
+// in this registry, so those three categories have no representative left;
+// re-pointed to one surviving command per category that still has members.
 TEST_F(CommandProcessorTest, BuiltinCommands_RepresentativeSampleRegisteredWithExpectedCategory) {
     struct Expected { const char* name; const char* category; };
     static const Expected samples[] = {
-        {"say", "Chat"},
-        {"sit", "Movement"},
-        {"target", "Combat"},
-        {"invite", "Group"},
-        {"who", "Utility"},
-        {"mem", "Spells"},
-        {"pet", "Pet"},
+        {"shout", "Chat"},
+        {"face", "Movement"},
+        {"consider", "Combat"},
+        {"door", "Utility"},
     };
     for (const auto& s : samples) {
         auto info = processor->getCommandInfo(s.name);
@@ -353,108 +365,124 @@ TEST_F(CommandProcessorTest, GetCompletions_NoMatchReturnsEmpty) {
     EXPECT_TRUE(completions.empty());
 }
 
+// T98: "sit" was deleted (shadowed dead code); re-pointed to "face", a
+// surviving command with no aliases.
 TEST_F(CommandProcessorTest, GetCompletions_ExactMatchIncluded) {
-    auto completions = processor->getCompletions("sit");
-    EXPECT_NE(std::find(completions.begin(), completions.end(), "sit"),
+    auto completions = processor->getCompletions("face");
+    EXPECT_NE(std::find(completions.begin(), completions.end(), "face"),
               completions.end());
 }
 
+// T98: "say"/"s" were deleted (shadowed dead code); re-pointed to "shout"/
+// "sh" -- shout is the one command in this registry whose primary name is
+// shadowed too but whose alias escapes (game's own shout alias is "sho",
+// not "sh"), so this also incidentally exercises the surviving alias.
 TEST_F(CommandProcessorTest, GetAllCommandNames_IncludesAliasesAndIsSorted) {
     auto names = processor->getAllCommandNames();
     ASSERT_FALSE(names.empty());
     EXPECT_TRUE(std::is_sorted(names.begin(), names.end()));
-    // "s" is registered as an alias of "say".
-    EXPECT_NE(std::find(names.begin(), names.end(), "s"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "say"), names.end());
+    EXPECT_NE(std::find(names.begin(), names.end(), "sh"), names.end());
+    EXPECT_NE(std::find(names.begin(), names.end(), "shout"), names.end());
 }
 
 // ===================================================================
 // Argument handling
 // ===================================================================
 
+// T98: "sit" was deleted (shadowed dead code); re-pointed to "consider".
 TEST_F(CommandProcessorTest, ArgumentParsing_NoArgs) {
-    auto result = processor->processCommand("/sit");
+    auto result = processor->processCommand("/consider");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sit()"));
+    ASSERT_TRUE(handler.calledOnceWith("consider()"));
 }
 
+// T98: "say" was deleted (shadowed dead code); re-pointed to "shout", the
+// only surviving command that still reaches sendChatMessage() directly by
+// name (say/ooc/auction/gsay/gu/emote were all deleted too).
 TEST_F(CommandProcessorTest, ArgumentParsing_LeadingWhitespaceTrimmed) {
-    auto result = processor->processCommand("/say   hello");
+    auto result = processor->processCommand("/shout   hello");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Say, \"hello\")"));
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Shout, \"hello\")"));
 }
 
 // parseCommandLine only trims the leading run of whitespace between the
 // command name and its arguments; it does NOT trim trailing whitespace on
 // the argument string. Pin the actual (asymmetric) behavior.
 TEST_F(CommandProcessorTest, ArgumentParsing_TrailingWhitespaceNotTrimmed) {
-    auto result = processor->processCommand("/say hello  ");
+    auto result = processor->processCommand("/shout hello  ");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Say, \"hello  \")"));
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Shout, \"hello  \")"));
 }
 
 TEST_F(CommandProcessorTest, ArgumentParsing_MultipleInternalSpacesPreservedInMessage) {
-    auto result = processor->processCommand("/say hello   world");
+    auto result = processor->processCommand("/shout hello   world");
     EXPECT_TRUE(result.success);
     // sendChatMessage receives the whole args string verbatim (only the
     // leading run of whitespace before the first token is stripped).
-    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Say, \"hello   world\")"));
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Shout, \"hello   world\")"));
 }
 
-TEST_F(CommandProcessorTest, TrailingArgumentCommand_TellSplitsTargetFromMessage) {
-    auto result = processor->processCommand("/tell Bob hello there friend");
+// T98: /tell was deleted (shadowed dead code, see
+// refactor/T97_command_registry_shadowing_audit.md). cmdTell's own
+// target+message-joining logic doesn't exist on any surviving command (no
+// survivor re-joins split tokens with spaces the way cmdTell did), so the
+// two tests that pinned that exact joining/quoting behavior
+// (TellMissingMessageFails, QuotesAreNotSpecial) go with it -- they covered
+// nothing but cmdTell's own validation/assembly, which no longer exists.
+//
+// The underlying splitArgs() PRIMITIVE, however, is still shared: cmdFace
+// (a surviving command) calls it too. Re-pointed here at /face to keep
+// splitArgs itself under CommandProcessor-level test coverage rather than
+// losing it silently -- this is deliberately not a byte-for-byte rename of
+// the old Tell test since no survivor's args-joining shape matches cmdTell's.
+TEST_F(CommandProcessorTest, TrailingArgumentCommand_FaceUsesSplitArgsForThreeCoordinates) {
+    auto result = processor->processCommand("/face 1 2 3");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sendTell(\"Bob\", \"hello there friend\")"));
-}
-
-TEST_F(CommandProcessorTest, TrailingArgumentCommand_TellMissingMessageFails) {
-    auto result = processor->processCommand("/tell Bob");
-    EXPECT_FALSE(result.success);
-    EXPECT_TRUE(handler.empty());
-}
-
-// splitArgs uses istream >> token, which does NOT honor quotes: a quoted
-// phrase is still split on internal whitespace. Pin the current (unquoted)
-// behavior rather than assuming shell-like quoting is supported.
-TEST_F(CommandProcessorTest, TrailingArgumentCommand_QuotesAreNotSpecial) {
-    auto result = processor->processCommand("/tell Bob \"hello there\"");
-    EXPECT_TRUE(result.success);
-    // splitArgs tokenizes on whitespace only: parts = {"Bob", "\"hello",
-    // "there\""}; message reassembles parts[1..] with single spaces, so the
-    // literal quote characters from the input end up embedded in the
-    // message string (toStr then wraps that whole string in its own
-    // quotes for the call-log representation).
-    ASSERT_TRUE(handler.calledOnceWith("sendTell(\"Bob\", \"\"hello there\"\")"));
+    // cmdFace only takes the >=3-numeric-token branch (faceLocation) if
+    // splitArgs actually tokenized "1 2 3" into 3 parts; the exact heading
+    // value depends on the player's position so only the dispatched method
+    // is pinned, not its argument, to avoid a brittle floating-point match.
+    ASSERT_EQ(handler.count(), 1u);
+    EXPECT_EQ(handler.calls[0].rfind("setHeading(", 0), 0u)
+        << "expected faceLocation's setHeading(...) call, got: " << handler.calls[0];
 }
 
 // ===================================================================
 // Case sensitivity
 // ===================================================================
 
+// T98: "sit" was deleted (shadowed dead code); re-pointed to "consider".
 TEST_F(CommandProcessorTest, CommandLookup_IsCaseInsensitive) {
-    auto result = processor->processCommand("/SIT");
+    auto result = processor->processCommand("/CONSIDER");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sit()"));
+    ASSERT_TRUE(handler.calledOnceWith("consider()"));
 }
 
+// T98: "target"/"tar" were deleted (shadowed dead code); re-pointed to
+// shout's "sh" alias, which is the one alias in this registry that actually
+// escapes shadowing live (see T97's Review) -- a bonus check that it still
+// resolves case-insensitively.
 TEST_F(CommandProcessorTest, CommandLookup_MixedCaseAlias) {
-    auto result = processor->processCommand("/Tar Bob");
+    auto result = processor->processCommand("/Sh hello");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("targetEntityByName(\"Bob\")"));
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Shout, \"hello\")"));
 }
 
+// T98: "sit" was deleted (shadowed dead code); re-pointed to "face".
 TEST_F(CommandProcessorTest, HasCommand_IsCaseInsensitive) {
-    EXPECT_TRUE(processor->hasCommand("SIT"));
-    EXPECT_TRUE(processor->hasCommand("Sit"));
-    EXPECT_TRUE(processor->hasCommand("sit"));
+    EXPECT_TRUE(processor->hasCommand("FACE"));
+    EXPECT_TRUE(processor->hasCommand("Face"));
+    EXPECT_TRUE(processor->hasCommand("face"));
 }
 
 // Command *arguments* are case-preserved even though the command name
 // lookup is not — e.g. entity names and messages must not be lowercased.
+// T98: "target" was deleted (shadowed dead code); re-pointed to "dump",
+// which also dispatches its single string argument case-preserved.
 TEST_F(CommandProcessorTest, ArgumentCase_PreservedThroughDispatch) {
-    auto result = processor->processCommand("/target BobTheBuilder");
+    auto result = processor->processCommand("/dump BobTheBuilder");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("targetEntityByName(\"BobTheBuilder\")"));
+    ASSERT_TRUE(handler.calledOnceWith("dumpEntityAppearance(\"BobTheBuilder\")"));
 }
 
 // ===================================================================
@@ -516,6 +544,7 @@ TEST_F(CommandProcessorTest, Loot_ZeroIsAValidCorpseId) {
 // Output renderer integration (echo + timestamp toggle)
 // ===================================================================
 
+// T98: "sit" was deleted (shadowed dead code); re-pointed to "consider".
 TEST_F(CommandProcessorTest, EchoEnabled_DisplaysTypedCommand) {
     RecordingOutputRenderer renderer;
     processor->setOutputRenderer(&renderer);
@@ -523,9 +552,9 @@ TEST_F(CommandProcessorTest, EchoEnabled_DisplaysTypedCommand) {
     processor->setEchoEnabled(true);
     EXPECT_TRUE(processor->isEchoEnabled());
 
-    processor->processCommand("/sit");
+    processor->processCommand("/consider");
     ASSERT_FALSE(renderer.systemMessages.empty());
-    EXPECT_EQ(renderer.systemMessages[0], "/sit");
+    EXPECT_EQ(renderer.systemMessages[0], "/consider");
 }
 
 TEST_F(CommandProcessorTest, UnknownCommand_DisplaysErrorViaRenderer) {
@@ -537,16 +566,12 @@ TEST_F(CommandProcessorTest, UnknownCommand_DisplaysErrorViaRenderer) {
     EXPECT_NE(renderer.systemMessages.back().find("bogus"), std::string::npos);
 }
 
-TEST_F(CommandProcessorTest, Timestamp_TogglesRendererSetting) {
-    RecordingOutputRenderer renderer;
-    renderer.showTimestamps = true;
-    processor->setOutputRenderer(&renderer);
-
-    processor->processCommand("/timestamp");
-    EXPECT_FALSE(renderer.showTimestamps);
-    processor->processCommand("/timestamp");
-    EXPECT_TRUE(renderer.showTimestamps);
-}
+// T98: Timestamp_TogglesRendererSetting removed along with cmdTimestamp
+// ("timestamp" was shadowed dead code, see
+// refactor/T97_command_registry_shadowing_audit.md). This test covered only
+// cmdTimestamp's own IOutputRenderer::setShowTimestamps() toggle -- no
+// surviving command touches renderer timestamp state, so there is no shared
+// logic to re-point at.
 
 // ===================================================================
 // cmdHail (T39) -- reads m_state.combat().hasTarget(). Until this unit,
@@ -686,6 +711,88 @@ TEST_F(CommandProcessorTest, NpcState_IgnoresArguments) {
 
     EXPECT_TRUE(result.success);
     ASSERT_EQ(renderer.systemMessages.size(), 3u);
+}
+
+// ===================================================================
+// T98 verification: enumerate the 31 commands that survive the shadowed-
+// command deletion (30 previously "Reachable" + "shout", which is
+// "Reachable-via-alias" -- see refactor/T97_command_registry_shadowing_audit.md
+// and refactor/T98_delete_shadowed_commands.md) and confirm each is still
+// registered and dispatches, by primary name AND by every one of its
+// aliases. This is the check the plan calls out as mattering most: a
+// deletion that accidentally clips a survivor is the failure mode T98 must
+// not produce. hasCommand()/getCommandInfo() prove registration; dispatching
+// via processCommand() and asserting the failure (if any) is never the
+// "Unknown command: ..." string proves the lookup itself resolves -- some
+// of these legitimately fail for other reasons with no live GameState setup
+// (e.g. requiresArgs commands given no args, or /loot with a synthetic id),
+// and that is fine; only an "Unknown command" result would mean the survivor
+// was not actually reachable.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T98_AllSurvivorsRegisteredAndDispatchByNameAndAlias) {
+    struct Survivor { const char* name; std::vector<const char*> aliases; };
+    static const std::vector<Survivor> survivors = {
+        {"shout", {"sh"}},
+        {"face", {}},
+        {"consider", {"con"}},
+        {"hail", {}},
+        {"npcstate", {}},
+        {"door", {"u"}},
+        {"afk", {}},
+        {"anon", {}},
+        {"walk", {}},
+        {"run", {}},
+        {"sneak", {}},
+        {"crouch", {"duck"}},
+        {"feign", {"fd"}},
+        {"jump", {}},
+        {"turn", {}},
+        {"list", {}},
+        {"dump", {}},
+        {"hunt", {}},
+        {"autoloot", {}},
+        {"listtargets", {}},
+        {"loot", {}},
+        {"pathfinding", {}},
+        {"roleplay", {"rp"}},
+        {"wave", {}},
+        {"dance", {}},
+        {"cheer", {}},
+        {"laugh", {}},
+        {"logonly", {}},
+        {"logexclude", {}},
+        {"logmodule", {}},
+        {"logclear", {}},
+    };
+    ASSERT_EQ(survivors.size(), 31u) << "the survivor list itself drifted from 31";
+
+    for (const auto& s : survivors) {
+        EXPECT_TRUE(processor->hasCommand(s.name)) << "primary name not registered: " << s.name;
+        auto info = processor->getCommandInfo(s.name);
+        ASSERT_TRUE(info.has_value()) << "getCommandInfo missing: " << s.name;
+        EXPECT_EQ(info->name, s.name);
+
+        // shout needs an argument (requiresArgs=true); everything else can
+        // be dispatched bare. Either way, "Unknown command" is the only
+        // outcome that would mean the name failed to resolve.
+        std::string cmdLine = "/" + std::string(s.name) + (std::string(s.name) == "shout" ? " hi" : "");
+        auto result = processor->processCommand(cmdLine);
+        EXPECT_EQ(result.message.find("Unknown command"), std::string::npos)
+            << "primary name failed to dispatch: " << s.name << " -> " << result.message;
+
+        for (const char* alias : s.aliases) {
+            EXPECT_TRUE(processor->hasCommand(alias)) << "alias not registered: " << alias << " (of " << s.name << ")";
+            auto aliasInfo = processor->getCommandInfo(alias);
+            ASSERT_TRUE(aliasInfo.has_value()) << "getCommandInfo missing for alias: " << alias;
+            EXPECT_EQ(aliasInfo->name, s.name) << "alias " << alias << " does not resolve to " << s.name;
+
+            std::string aliasLine = "/" + std::string(alias) + (std::string(s.name) == "shout" ? " hi" : "");
+            auto aliasResult = processor->processCommand(aliasLine);
+            EXPECT_EQ(aliasResult.message.find("Unknown command"), std::string::npos)
+                << "alias failed to dispatch: " << alias << " (of " << s.name << ") -> " << aliasResult.message;
+        }
+    }
 }
 
 } // namespace
