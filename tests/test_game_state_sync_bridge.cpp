@@ -754,3 +754,151 @@ TEST_F(GameStateSyncBridgeTest, EntityEventsStillDelegateToWrappedBridge) {
     EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::EntityDespawned);
     EXPECT_EQ(wrapped->appliedTypes[3], GameEventType::ZoneUnloading);
 }
+
+// ===================================================================
+// Group (T99) -- these cases were entirely absent before this unit.
+// Application::m_gameState's GroupState never received a single update
+// from any group event: EverQuest's own m_game_state/m_has_pending_invite
+// updated correctly and the local chat line printed on a real invite, but
+// CommandProcessor's m_state.group().hasPendingInvite() stayed false
+// forever, discovered LIVE while verifying the T99 pilot's group-accept
+// fix (review/T99/). Same "two GameState instances" shape T49 documented,
+// this time on the write side. See refactor/T99_action_layer_unification_
+// pilot.md.
+// ===================================================================
+
+TEST_F(GameStateSyncBridgeTest, GroupInviteReceivedSetsPendingInvite) {
+    GroupInviteReceivedData data;
+    data.inviterName = "Alice";
+
+    bridge->applyEvent(GameEvent(GameEventType::GroupInviteReceived, data));
+
+    EXPECT_TRUE(state->group().hasPendingInvite());
+    EXPECT_EQ(state->group().pendingInviterName(), "Alice");
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupChangedJoinSetsInGroupLeaderAndName) {
+    GroupChangedData data;
+    data.inGroup = true;
+    data.isLeader = false;
+    data.leaderName = "Alice";
+    data.memberCount = 2;
+
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, data));
+
+    EXPECT_TRUE(state->group().inGroup());
+    EXPECT_FALSE(state->group().isLeader());
+    EXPECT_EQ(state->group().leaderName(), "Alice");
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupChangedJoinAsLeaderSetsIsLeaderTrue) {
+    GroupChangedData data;
+    data.inGroup = true;
+    data.isLeader = true;
+    data.leaderName = "Bob";
+    data.memberCount = 1;
+
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, data));
+
+    EXPECT_TRUE(state->group().inGroup());
+    EXPECT_TRUE(state->group().isLeader());
+    EXPECT_EQ(state->group().leaderName(), "Bob");
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupChangedLeaveClearsGroupAndPendingInvite) {
+    GroupChangedData joinData;
+    joinData.inGroup = true;
+    joinData.isLeader = false;
+    joinData.leaderName = "Alice";
+    joinData.memberCount = 2;
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, joinData));
+    ASSERT_TRUE(state->group().inGroup());
+
+    // A pending invite that arrives after we're already in a group (e.g. a
+    // second, unrelated invite) should also be cleared by leaving.
+    GroupInviteReceivedData inviteData;
+    inviteData.inviterName = "Carol";
+    bridge->applyEvent(GameEvent(GameEventType::GroupInviteReceived, inviteData));
+    ASSERT_TRUE(state->group().hasPendingInvite());
+
+    GroupChangedData leaveData;
+    leaveData.inGroup = false;
+    leaveData.isLeader = false;
+    leaveData.leaderName = "";
+    leaveData.memberCount = 0;
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, leaveData));
+
+    EXPECT_FALSE(state->group().inGroup());
+    EXPECT_FALSE(state->group().isLeader());
+    EXPECT_FALSE(state->group().hasPendingInvite());
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupChangedCancelInviteClearsPendingInviteWithoutTouchingGroup) {
+    // Mirrors eq_group.cpp's ZoneProcessGroupCancelInvite: publishes
+    // GroupChanged carrying the CURRENT (already-false) inGroup value
+    // solely to signal "hide the pending-invite banner".
+    GroupInviteReceivedData inviteData;
+    inviteData.inviterName = "Dave";
+    bridge->applyEvent(GameEvent(GameEventType::GroupInviteReceived, inviteData));
+    ASSERT_TRUE(state->group().hasPendingInvite());
+
+    GroupChangedData cancelData;
+    cancelData.inGroup = false;
+    cancelData.isLeader = false;
+    cancelData.leaderName = "";
+    cancelData.memberCount = 0;
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, cancelData));
+
+    EXPECT_FALSE(state->group().hasPendingInvite());
+    EXPECT_FALSE(state->group().inGroup());
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupMemberUpdatedSetsMemberFields) {
+    GroupChangedData joinData;
+    joinData.inGroup = true;
+    joinData.isLeader = true;
+    joinData.leaderName = "Testmelee";
+    joinData.memberCount = 1;
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, joinData));
+
+    GroupMemberUpdatedData memberData;
+    memberData.memberIndex = 1;
+    memberData.name = "Testbuddy";
+    memberData.spawnId = 33;
+    memberData.level = 12;
+    memberData.classId = 1;
+    memberData.hpPercent = 88;
+    memberData.manaPercent = 50;
+    memberData.inZone = true;
+    bridge->applyEvent(GameEvent(GameEventType::GroupMemberUpdated, memberData));
+
+    const auto* member = state->group().getMember(1);
+    ASSERT_NE(member, nullptr);
+    EXPECT_EQ(member->name, "Testbuddy");
+    EXPECT_EQ(member->spawnId, 33);
+    EXPECT_EQ(member->level, 12);
+    EXPECT_EQ(member->hpPercent, 88);
+    EXPECT_EQ(member->manaPercent, 50);
+    EXPECT_TRUE(member->inZone);
+    EXPECT_FALSE(member->isLeader);
+}
+
+TEST_F(GameStateSyncBridgeTest, GroupEventsStillDelegateToWrappedBridge) {
+    GroupInviteReceivedData inviteData;
+    inviteData.inviterName = "Alice";
+    bridge->applyEvent(GameEvent(GameEventType::GroupInviteReceived, inviteData));
+
+    GroupChangedData changedData;
+    changedData.inGroup = true;
+    bridge->applyEvent(GameEvent(GameEventType::GroupChanged, changedData));
+
+    GroupMemberUpdatedData memberData;
+    memberData.memberIndex = 0;
+    memberData.name = "Testmelee";
+    bridge->applyEvent(GameEvent(GameEventType::GroupMemberUpdated, memberData));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 3u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::GroupInviteReceived);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::GroupChanged);
+    EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::GroupMemberUpdated);
+}

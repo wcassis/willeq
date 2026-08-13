@@ -795,4 +795,120 @@ TEST_F(CommandProcessorTest, T98_AllSurvivorsRegisteredAndDispatchByNameAndAlias
     }
 }
 
+// ===================================================================
+// Group commands (T99 -- migrated from EverQuest::m_command_registry, see
+// refactor/T99_action_layer_unification_pilot.md). These exercise the
+// SAME RecordingActionHandler used throughout this file, so a passing test
+// here is proof the call reaches ActionDispatcher -> IActionHandler, not
+// just that CommandProcessor's own bookkeeping is happy.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T99_GroupCommandsRegisteredWithGroupCategory) {
+    struct Expected { const char* name; const char* category; };
+    static const Expected samples[] = {
+        {"invite", "Group"},
+        {"disband", "Group"},
+        {"decline", "Group"},
+        {"groupaccept", "Group"},
+    };
+    for (const auto& s : samples) {
+        auto info = processor->getCommandInfo(s.name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << s.name;
+        EXPECT_EQ(info->category, s.category) << "wrong category for: " << s.name;
+    }
+    // Aliases from the port: /inv (invite), /gaccept (groupaccept).
+    EXPECT_TRUE(processor->hasCommand("inv"));
+    EXPECT_TRUE(processor->hasCommand("gaccept"));
+}
+
+TEST_F(CommandProcessorTest, Invite_WithExplicitName_DispatchesInviteToGroup) {
+    auto result = processor->processCommand("/invite Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("inviteToGroup(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, Invite_AliasWithExplicitName_DispatchesInviteToGroup) {
+    auto result = processor->processCommand("/inv Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("inviteToGroup(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, Invite_NoArgsWithTarget_DispatchesInviteTarget) {
+    state.combat().setTarget(1234, "a decrepit skeleton", 100, 10);
+    auto result = processor->processCommand("/invite");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("inviteTarget()"));
+}
+
+TEST_F(CommandProcessorTest, Invite_NoArgsNoTarget_FailsCleanlyWithoutDispatching) {
+    ASSERT_FALSE(state.combat().hasTarget());
+    auto result = processor->processCommand("/invite");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Disband_NotInGroup_FailsCleanlyWithoutDispatching) {
+    ASSERT_FALSE(state.group().inGroup());
+    auto result = processor->processCommand("/disband");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Disband_AsLeader_DispatchesLeaveGroupAndReportsDisbanded) {
+    state.group().setInGroup(true);
+    state.group().setIsLeader(true);
+    auto result = processor->processCommand("/disband");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("leaveGroup()"));
+}
+
+TEST_F(CommandProcessorTest, Disband_AsMember_DispatchesLeaveGroupAndReportsLeft) {
+    state.group().setInGroup(true);
+    state.group().setIsLeader(false);
+    auto result = processor->processCommand("/disband");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("leaveGroup()"));
+}
+
+TEST_F(CommandProcessorTest, Decline_NoPendingInvite_FailsCleanlyWithoutDispatching) {
+    ASSERT_FALSE(state.group().hasPendingInvite());
+    auto result = processor->processCommand("/decline");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Decline_PendingInvite_DispatchesDeclineGroupInvite) {
+    state.group().setPendingInvite("Alice");
+    auto result = processor->processCommand("/decline");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("declineGroupInvite()"));
+}
+
+// The group-invite-accept path (T97/T98: dead by every route -- game's own
+// Social follow_cmd shadowed by Movement's follow, action's old copy
+// shadowed then deleted, eq_bridge.cpp's GroupAcceptIntent has no live
+// producer). This test is the headless proof that /groupaccept reaches
+// ActionDispatcher::acceptGroupInvite(); the live leg proves it against a
+// real server (review/T99/).
+TEST_F(CommandProcessorTest, GroupAccept_NoPendingInvite_FailsCleanlyWithoutDispatching) {
+    ASSERT_FALSE(state.group().hasPendingInvite());
+    auto result = processor->processCommand("/groupaccept");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, GroupAccept_PendingInvite_DispatchesAcceptGroupInvite) {
+    state.group().setPendingInvite("Alice");
+    auto result = processor->processCommand("/groupaccept");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("acceptGroupInvite()"));
+}
+
+TEST_F(CommandProcessorTest, GroupAccept_Alias_DispatchesAcceptGroupInvite) {
+    state.group().setPendingInvite("Alice");
+    auto result = processor->processCommand("/gaccept");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("acceptGroupInvite()"));
+}
+
 } // namespace

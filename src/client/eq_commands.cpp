@@ -573,104 +573,28 @@ void EverQuest::RegisterSocialCommands()
 	m_command_registry->registerCommand(reply);
 
 	// === Group Commands ===
-
-	Command invite_cmd;
-	invite_cmd.name = "invite";
-	invite_cmd.aliases = {"inv"};
-	invite_cmd.usage = "/invite [name]";
-	invite_cmd.description = "Invite player to group";
-	invite_cmd.category = "Group";
-	invite_cmd.handler = [this](const std::string& args) {
-		std::string target_name = args;
-
-		// If no name provided, use current target
-		if (target_name.empty()) {
-			if (m_combat_manager && m_combat_manager->HasTarget()) {
-				uint16_t target_id = m_combat_manager->GetTargetId();
-				auto it = m_entities.find(target_id);
-				if (it != m_entities.end()) {
-					target_name = it->second.name;
-				}
-			}
-		}
-
-		if (target_name.empty()) {
-			AddChatSystemMessage("Usage: /invite <name> or target a player");
-			return;
-		}
-
-		SendGroupInvite(target_name);
-		AddChatSystemMessage(fmt::format("Inviting {} to group", EQT::toDisplayName(target_name)));
-	};
-	m_command_registry->registerCommand(invite_cmd);
-
-	Command follow_cmd;
-	follow_cmd.name = "follow";
-	follow_cmd.aliases = {"fol"};
-	follow_cmd.usage = "/follow [name]";
-	follow_cmd.description = "Accept group invite or follow player";
-	follow_cmd.category = "Group";
-	follow_cmd.handler = [this](const std::string& args) {
-		// If we have a pending invite, accept it
-		if (m_has_pending_invite) {
-			AcceptGroupInvite();
-			return;
-		}
-
-		// Otherwise, try to follow a player
-		std::string target_name = args;
-		if (target_name.empty() && m_combat_manager && m_combat_manager->HasTarget()) {
-			uint16_t target_id = m_combat_manager->GetTargetId();
-			auto it = m_entities.find(target_id);
-			if (it != m_entities.end()) {
-				target_name = it->second.name;
-			}
-		}
-
-		if (!target_name.empty()) {
-			// Start following the target
-			Follow(target_name);
-			AddChatSystemMessage(fmt::format("Following {}", EQT::toDisplayName(target_name)));
-		} else {
-			AddChatSystemMessage("No pending invite. Use /follow <name> to follow a player.");
-		}
-	};
-	m_command_registry->registerCommand(follow_cmd);
-
-	Command disband_cmd;
-	disband_cmd.name = "disband";
-	disband_cmd.usage = "/disband";
-	disband_cmd.description = "Leave or disband group";
-	disband_cmd.category = "Group";
-	disband_cmd.handler = [this](const std::string& args) {
-		if (!m_in_group) {
-			AddChatSystemMessage("You are not in a group");
-			return;
-		}
-
-		if (m_is_group_leader) {
-			SendGroupDisband();
-			AddChatSystemMessage("Group disbanded");
-		} else {
-			SendLeaveGroup();
-			AddChatSystemMessage("You have left the group");
-		}
-	};
-	m_command_registry->registerCommand(disband_cmd);
-
-	Command decline_cmd;
-	decline_cmd.name = "decline";
-	decline_cmd.usage = "/decline";
-	decline_cmd.description = "Decline pending group invite";
-	decline_cmd.category = "Group";
-	decline_cmd.handler = [this](const std::string& args) {
-		if (!m_has_pending_invite) {
-			AddChatSystemMessage("No pending group invite");
-			return;
-		}
-		DeclineGroupInvite();
-	};
-	m_command_registry->registerCommand(decline_cmd);
+	//
+	// T99: invite/disband/decline (and the Social follow_cmd's group-invite
+	// -accept branch, folded in below) migrated OUT of this registry and INTO
+	// action::CommandProcessor -- see refactor/T99_action_layer_unification_
+	// pilot.md. This registry is tried BEFORE action::CommandProcessor
+	// (Application::DispatchSlashCommand's stage 1 vs
+	// dispatchToActionOrRenderer's stage 2), so leaving these registrations
+	// here while also adding them to CommandProcessor would have made the
+	// migration invisible -- removal from here is the other half of the same
+	// change as the addition there, not a separate step.
+	//
+	// The Social-section follow_cmd that lived here (name "follow", alias
+	// "fol") was ALREADY dead by the time this unit ran: T97 found
+	// eq_commands_movement.cpp registers its own later "follow" (no
+	// invite-accept branch) that always won the same-registry collision, so
+	// no reachable spelling of /follow could ever accept a pending invite.
+	// Movement's "follow"/"stopfollow" (actual entity-following, a different
+	// feature) are untouched -- they were never part of the Group family.
+	// The pending-invite-accept behaviour this dead follow_cmd used to gate
+	// on m_has_pending_invite now lives at action::CommandProcessor's
+	// explicit /groupaccept (alias /gaccept) -- see that file's cmdGroupAccept
+	// for why an explicit spelling was chosen over reviving bare /follow.
 
 	// === Trade Commands ===
 
