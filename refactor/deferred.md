@@ -138,6 +138,14 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   Found live via the two-client harness, not touched (heading/rotation code
   was off-limits for that unit). Heading: `` ## `EqActionHandler::setHeading()`
   double-converts degrees to EQ units (T84, 2026-08-12) ``.
+- NEW (T87, 2026-08-13): WillEQ's outbound `OP_ClientUpdate` heading (Pass
+  A, the correct/non-buggy `/move`-driven path) disagrees with the
+  official client's wire heading for the same real-world facing by a
+  **measured, systematic ~252° (mod 360)**, not a round 90/180/270 —
+  characterized against the baseline oracle capture, not touched (this
+  unit's own blanket prohibition on heading/rotation code). Heading: `##
+  WillEQ's outbound heading disagrees with the official client's by ~252°
+  (T87, 2026-08-13)`.
 
 **FIXED but the board still said open — corrected by this pass** (plus one
 later correction: `race=415` missing model data — T38 fixed it 2026-08-04,
@@ -4858,3 +4866,59 @@ populated zone — not confirmed, not root-caused, not touched this unit.
 Combat *log* observation was unaffected (chat/combat lines arrived
 correctly throughout); combat *visual* observation in these frames
 cannot support any conclusion about animation or weapon appearance.
+
+## WillEQ's outbound heading disagrees with the official client's by ~252° (T87, 2026-08-13)
+
+T87 answered the question T84/T85 left open: those two units proved
+WillEQ is *internally* self-consistent (two WillEQ clients agree with
+each other; the encoder faithfully carries a correct `m_heading` to the
+wire) but neither established that WillEQ's *convention itself* is
+correct, since a self-consistent misinterpretation is invisible to every
+WillEQ instance. T87 compared WillEQ's outbound wire heading against the
+baseline oracle capture's official Titanium client (`Wizzy`,
+`10.0.30.169`, human-driven through a `/say`-marked cardinal-heading
+routine) for the same six real-world facings. Full table, validation
+method, and analysis scripts: `refactor/T87_heading_convention_vs_official.md`'s
+Review and `/mnt/projects/fable/review/T87/`.
+
+**Result: systematic disagreement, not a match.** WillEQ's Pass A
+(`/move`-driven, the correct non-buggy path T84/T85 verified) wire
+heading is offset from the official client's by **~252° (mod 360),
+measured** — East/South/West/NE (the four reliable samples; North and SW
+flagged, see below) show deltas 248.84°/261.42°/244.97°/253.03°, mean
+252.1°, spread 16.45° (±8.2° from the mean) — tight enough to be a real
+systematic pattern, not noise, but not a clean textbook constant either.
+**Report only, per this unit's prohibition — nothing in
+`src/client/eq_movement.cpp`, `eq_action_handler.cpp`, or any
+heading/rotation/coordinate code was touched.**
+
+Two samples flagged, not silently folded into the mean: **North**
+(WillEQ's `/move` queued 12 conversion lines before settling vs 5-9 for
+every other direction — noisier execution, delta 212.23° still in the
+same large-offset regime but further from the clean four); **SW**
+(WillEQ side reproduces T85's own already-flagged artifact byte-for-bit:
+landed on the identical `m_heading` as the preceding West sample because
+the prior move hadn't completed within the script's hold).
+
+**Validated before trusting**: the WillEQ-side extraction reproduces
+T84/T85's known Pass B values exactly on all six directions (including
+the plan's two named checks, `/turn 90 -> m_heading 128` and `/turn 225
+-> m_heading 320`). The official-client-side extraction (a from-scratch
+pcap decode using the *real* `DaybreakConnection::ProcessPacket()`, not a
+hand-rolled parser) has no external ground truth to check against, but
+all eight of Wizzy's `/say`-marked directions independently land within
+~5.5° of `docs/CLAUDE.md`'s documented 0/128/256/384-unit compass rose —
+an internal-consistency check the pipeline has no way to fake.
+
+**This is an outbound-path finding only.** It says nothing about, and
+this unit did not touch, the guarded inbound `90 - server_heading_deg`
+PlayerProfile flip (`eq.cpp`'s load-bearing comment, unrelated code).
+
+**Open for a follow-up unit**: the exact root cause of the ~252° offset
+(candidate: something in `CalculateHeading()`'s movement-vector-to-degrees
+math producing a heading in a different reference frame than the wire
+expects) is not established — this unit characterized the disagreement,
+it did not root-cause it. A tighter oracle capture (longer `/move`
+distances, to shrink the ~2-6 unit waypoint slop T85 already flagged)
+would sharpen the ±8.2° scatter and confirm whether ~252° is a fixed
+constant or direction-dependent.
