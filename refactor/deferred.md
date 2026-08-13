@@ -4735,3 +4735,78 @@ existing degrees->512-unit conversion do the one legitimate conversion,
 or `EverQuest::SetHeading()` needs to make explicit which unit it expects
 and enforce it at every call site — a decision for whoever picks this up,
 not assumed here.
+
+## `EqActionHandler::setHeading()` bug reconfirmed, and NO second encoding defect underneath it (T85, 2026-08-13)
+
+T85 joined a live official-client baseline capture as a third client
+(`willeq_a`/`Oraclealpha`) alongside two officially-driven clients
+(`Wizzy`, human-driven; `Oracledelta`, parked GM observer). Full detail:
+`refactor/T85_join_official_baseline_capture.md`'s Review.
+
+**Role 2's two-pass test (the reason to re-run this) answered the open
+question the T84 finding above left unanswered**: is the wire encoder
+itself sound, independent of `EqActionHandler::setHeading()`'s bug?
+Pass A drove heading via `/move <x> <y> <z>` (real movement input,
+verified live to route through `CalculateHeading()`/`UpdateMovement()`,
+never through `EqActionHandler::setHeading()` — confirmed by matching the
+log's own `CalculateHeading: ... adjusted=X°` value against the
+subsequent `POS C->S [SELF] m_heading=X°` exactly). Pass B drove heading
+via `/turn`, the known-buggy path (T84).
+
+**Result: no second defect.** Both passes' `POS C->S [SELF] m_heading=X
+-> server_heading=Y` line applies the identical, correct `server_heading
+= 90 - m_heading` (mod 360) conversion — movement-driven and slash-
+command-driven alike. Pass B reproduced T84's exact bug signature,
+extended with a 6th data point (`/turn 225 -> m_heading=320.00`, i.e.
+`225 * 512/360 = 320`, the same `1.4222`-too-large signature as T84's
+other five). **The entire observed heading error lives at
+`EqActionHandler::setHeading()`, exactly where T84 found it — the wire
+encoder downstream of it is sound.** Not fixed, per this unit's own
+prohibition (same as T84).
+
+## Wizzy's ClientUpdate broadcasts never reached a third client (T85, 2026-08-13) — needs server-side pcap to root-cause
+
+While observing (Role 1, not touching production code), T85 found that
+`Wizzy` (a second officially-driven client, spawn_id 462, confirmed by
+Will to be actively moving/turning through a cardinal-heading routine)
+sent WillEQ's connection (`willeq_a`) exactly **one** `OP_ClientUpdate`
+(0x14cb) packet — the initial zone-sync echo — and **zero** more across
+~28 minutes of continuous observation spanning that exact routine.
+Cross-checked two independent ways: the `-d4`/DEBUG application log
+(`eq_entities.cpp`'s `POS S->C spawn_id=` line, gated only by
+`s_debug_level>=2`) and a direct parse of the raw `.sleq` wire capture
+(`include/common/net/session_log.h` format;
+`review/T85/parse_sleq.py` + `wizzy_wire_evidence.txt`) — both show the
+identical picture. In the same window, other spawn_ids (self, and
+several NPCs) produced dozens to hundreds of `OP_ClientUpdate` records
+each, proving the opcode path, capture, and decode handler
+(`ProcessClientUpdate`) were all live and correctly working — this is
+not a WillEQ decode or logging failure.
+
+**Not root-caused — needs the oracle session's server-side pcap.**
+Candidate causes (distance/interest-based server-side broadcast
+filtering, GM-flag-related suppression specific to `hc_test1`, or a
+subscription/spawn-list issue for third-party-account visibility) are
+unconfirmed hypotheses. If the server-side pcap shows the server DID
+send these broadcasts toward `willeq_a`'s socket and they still didn't
+arrive/decode, that would point back at WillEQ (network layer or decode)
+instead — the client-side evidence alone cannot distinguish these.
+**This is exactly the defect class neither one client nor two WillEQ
+clients could reach** — it needed a genuinely independent second player
+character in the zone.
+
+## Texture-fallback (magenta/checkerboard) defect reproduces reliably (T85, 2026-08-13) — not root-caused
+
+Observed repeatedly and independently across multiple screenshots at
+multiple times in North Qeynos (large flat magenta or dark-blue/red
+checkerboard covering most surfaces — walls, ceiling slabs, at least one
+entity model) and, in a different color, in dark South Qeynos night
+scenes (purple/black checkerboard ground). See `review/T85/README.md`
+for the full screenshot-by-screenshot description. Consistent with the
+documented 64MB constrained texture budget (`Constrained rendering mode:
+Custom (800x600, 64MB texture...)`, logged at every startup) under memory
+pressure from the known prepare-all-entities-at-load defect in a
+populated zone — not confirmed, not root-caused, not touched this unit.
+Combat *log* observation was unaffected (chat/combat lines arrived
+correctly throughout); combat *visual* observation in these frames
+cannot support any conclusion about animation or weapon appearance.
