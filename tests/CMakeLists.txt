@@ -1041,6 +1041,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms)
 
+# T95: regression tests for the previously-unvalidated int->enum casts in
+# EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
+# T93's deferred finding. MovementMode/PositionState are plain enums with no
+# fixed underlying type, so an out-of-range static_cast into them was
+# undefined behaviour, not merely a wrong result. Same headless EverQuest +
+# EqActionHandler idiom as T88/T90/T93 above -- no network, no graphics, no
+# eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_enum_guards
+    test_eq_action_handler_enum_guards.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_enum_guards GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_enum_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

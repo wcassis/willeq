@@ -172,6 +172,14 @@ private:
 
     // Convert ChatChannel enum to EQ channel string
     std::string channelToString(action::ChatChannel channel);
+
+    // T95: bounds-check helpers for the caller-supplied ints that
+    // setMovementMode()/setPositionState()/sendPetCommand() cast into
+    // enums. Reject-and-report, never clamp -- see eq_action_handler.cpp
+    // for the rationale and refactor/T95_unvalidated_enum_casts.md.
+    static bool isValidMovementMode(int mode);
+    static bool isValidPositionState(int state);
+    static bool isValidPetCommand(uint8_t command);
 };
 
 } // namespace eqt

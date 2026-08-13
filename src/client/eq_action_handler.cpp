@@ -17,6 +17,56 @@ CombatManager* EqActionHandler::getCombatManager() {
     return m_eq.GetCombatManager();
 }
 
+// ---------------------------------------------------------------------
+// T95: enum-bounds guards for setMovementMode()/setPositionState()/
+// sendPetCommand(). See refactor/T95_unvalidated_enum_casts.md.
+//
+// MovementMode and PositionState (client/eq.h) are plain enums with no
+// fixed underlying type and a contiguous 0..N range, so a simple min/max
+// check suffices. PetCommand (client/pet_constants.h) has a FIXED
+// underlying type (uint32_t) but a NON-contiguous valid set (gaps at 0,
+// 15, and 22+), so it needs membership checking, not a range check --
+// deliberately not sharing the same helper shape as the other two.
+// ---------------------------------------------------------------------
+
+bool EqActionHandler::isValidMovementMode(int mode) {
+    return mode >= static_cast<int>(MOVE_MODE_RUN) &&
+           mode <= static_cast<int>(MOVE_MODE_SNEAK);
+}
+
+bool EqActionHandler::isValidPositionState(int state) {
+    return state >= static_cast<int>(POS_STANDING) &&
+           state <= static_cast<int>(POS_DEAD);
+}
+
+bool EqActionHandler::isValidPetCommand(uint8_t command) {
+    switch (command) {
+        case EQT::PET_BACKOFF:
+        case EQT::PET_GETLOST:
+        case EQT::PET_ASYOUWERE:
+        case EQT::PET_HEALTHREPORT:
+        case EQT::PET_GUARDHERE:
+        case EQT::PET_GUARDME:
+        case EQT::PET_ATTACK:
+        case EQT::PET_FOLLOWME:
+        case EQT::PET_SITDOWN:
+        case EQT::PET_STANDUP:
+        case EQT::PET_TAUNT:
+        case EQT::PET_HOLD:
+        case EQT::PET_TAUNT_ON:
+        case EQT::PET_TAUNT_OFF:
+        case EQT::PET_LEADER:
+        case EQT::PET_FEIGN:
+        case EQT::PET_SPELLHOLD:
+        case EQT::PET_FOCUS:
+        case EQT::PET_HOLD_ON:
+        case EQT::PET_HOLD_OFF:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void EqActionHandler::updateRendererTargetInfo(uint16_t spawnId) {
     // D20e1: TargetChanged event is already published by ProcessBridgeIntents
     // handler in eq.cpp when TargetIntent is processed. This method only
@@ -531,6 +581,27 @@ void EqActionHandler::requestZone(const std::string& zoneName) {
 // ========== Pet ==========
 
 void EqActionHandler::sendPetCommand(uint8_t command, uint16_t targetId) {
+    // T95: `command` arrives here as a caller-supplied raw byte (currently
+    // only ever a compile-time constant from ActionDispatcher's /pet
+    // convenience wrappers -- see the plan's Review for the reachability
+    // finding). EQT::PetCommand has a fixed uint32_t underlying type, so an
+    // out-of-range static_cast is not technically UB the way the plain
+    // MovementMode/PositionState casts below are -- but it still silently
+    // sends a meaningless command byte to the server, which is exactly the
+    // caller-bug-hiding failure mode this unit exists to close. Validate
+    // against the actual (non-contiguous) enumerator set, not a min/max
+    // range: PetCommand has gaps (no 0, no 15, no 22+).
+    if (!isValidPetCommand(command)) {
+        LOG_ERROR(MOD_COMBAT,
+                  "sendPetCommand: {} is not a valid pet command byte "
+                  "(valid: 1-14, 16-21 -- see EQT::PetCommand in "
+                  "pet_constants.h); command rejected, nothing sent",
+                  static_cast<int>(command));
+        m_eq.AddChatSystemMessage(
+            "Pet command " + std::to_string(static_cast<int>(command)) +
+            " is not valid and was not sent.");
+        return;
+    }
     m_eq.SendPetCommand(static_cast<EQT::PetCommand>(command), targetId);
 }
 
@@ -553,10 +624,42 @@ void EqActionHandler::tradeskillCombine() {
 // ========== Extended Movement ==========
 
 void EqActionHandler::setMovementMode(int mode) {
+    // T95: `mode` arrives here as a caller-supplied int from
+    // ActionDispatcher::setMovementMode(), which every current call site
+    // (CommandProcessor's /run,/walk,/sneak) passes as a compile-time
+    // constant -- but the public IActionHandler surface accepts any int,
+    // and MovementMode is a plain enum with no fixed underlying type: an
+    // out-of-range static_cast into it is undefined behaviour, not merely
+    // a wrong result. Validate before casting.
+    if (!isValidMovementMode(mode)) {
+        LOG_ERROR(MOD_MOVEMENT,
+                  "setMovementMode: {} is not a valid movement mode "
+                  "(valid: 0=Run, 1=Walk, 2=Sneak); rejected, mode unchanged",
+                  mode);
+        m_eq.AddChatSystemMessage(
+            "Movement mode " + std::to_string(mode) +
+            " is not valid (must be 0=Run, 1=Walk, or 2=Sneak).");
+        return;
+    }
     m_eq.SetMovementMode(static_cast<MovementMode>(mode));
 }
 
 void EqActionHandler::setPositionState(int state) {
+    // T95: same shape as setMovementMode() above -- PositionState is also
+    // a plain enum with no fixed underlying type, so an unvalidated
+    // out-of-range cast is undefined behaviour.
+    if (!isValidPositionState(state)) {
+        LOG_ERROR(MOD_MOVEMENT,
+                  "setPositionState: {} is not a valid position state "
+                  "(valid: 0=Standing, 1=Sitting, 2=Crouching, "
+                  "3=FeignDeath, 4=Dead); rejected, state unchanged",
+                  state);
+        m_eq.AddChatSystemMessage(
+            "Position state " + std::to_string(state) +
+            " is not valid (must be 0-4: Standing/Sitting/Crouching/"
+            "FeignDeath/Dead).");
+        return;
+    }
     m_eq.SetPositionState(static_cast<PositionState>(state));
 }
 
