@@ -198,3 +198,64 @@ independently. If client +Y is not true north, the 90-degree offset is
 expected rather than defective. Resolving it needs one official client and one
 WillEQ client facing the same landmark — a short two-client capture.
 
+
+---
+
+## CORRECTION — the +90° finding above is WRONG. WillEQ's outbound heading is correct.
+
+Prompted by Will asking why the official client's heading could not be
+verified: it can, and two ways. He read facings off the official client's
+**compass window**, and — needing nothing from him — `Wizzy` moved during the
+capture, so his own position deltas give the server-axis-to-heading mapping
+empirically.
+
+Derived from T87's `wizzy_clientupdate.csv`, using 83 samples filtered to
+sustained translation (>4 units between updates) with a rock-steady heading
+(<1° change), displacement-weighted circular mean, **R = 0.957**:
+
+> **official: `heading = 91.39° − travel_angle(server frame)`**
+
+Testing WillEQ's four cardinals against that mapping (client delta → server
+delta via the documented `client (x,y) → server (y,x)` swap):
+
+| script label | server travel | predicted | WillEQ sent | diff |
+|---|---|---|---|---|
+| "north" | 0.0° | 91.39 | 90.00 | −1.39 |
+| "west" | 270.0° | 181.39 | 180.00 | −1.39 |
+| "south" | 180.0° | 271.39 | 270.00 | −1.39 |
+| "east" | 90.0° | 1.39 | 0.00 | −1.39 |
+
+**The difference is identical across all four directions.** A constant
+common-mode difference is the signature of a residual in the *reference*
+estimate — the human's facing not being perfectly aligned with his direction
+of travel — not of error in the thing being measured. WillEQ's relation is
+exactly `heading = 90 − travel_angle`, which is the official convention.
+
+### Where the +90° came from
+
+The tour script labelled its moves "north", "west", "south", "east" by
+**client-frame axis**. Client +Y is server +X, which is not north. The
+comparison above measured WillEQ's travel-derived heading against those
+*labels* rather than against a physical direction, and the 90° was the
+client-to-server axis rotation showing up as a fake offset.
+
+The labels were wrong. The code was not.
+
+### Consequences
+
+- **The outbound heading convention is CORRECT and needs no change.** Nothing
+  should be edited on the strength of the superseded section above.
+- The heading defect surfaced by this whole arc is **only** T84's
+  `EqActionHandler::setHeading()` double-conversion. That closes the question
+  opened at T84.
+- The "one unverified assumption" flagged above is resolved, and no further
+  capture is needed.
+
+### The methodological lesson, which is the third instance in this arc
+
+T87 computed a mean over unevenly-spaced samples. T86 asserted a defect from a
+correct client fed mirrored input. T89 compared against human-assigned labels
+instead of measured physical directions. **Each time the measurement was sound
+and the frame of reference was not.** The check that works is the one used
+here: derive the reference empirically from the independent implementation's
+own behaviour, then predict the thing under test.
