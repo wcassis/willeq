@@ -5491,3 +5491,76 @@ forwarder with no transform logic reachable from `CommandProcessor`.
 behaviour it stands for** in this sweep — worth stating explicitly since
 the plan asked for it as the worst-case finding. If a future sweep finds
 one, it supersedes this line.
+
+## T97 — CommandProcessor reachability audit: 34/65 unreachable, a second intra-registry shadow found, no dead-is-better case (2026-08-13)
+
+Full audit, no production code changed. `action::CommandProcessor` (registry
+2) registers 65 commands; `Application::DispatchSlashCommand()` always tries
+`EverQuest::m_command_registry` (registry 1, "game") first
+(`application.cpp`). Checking every one of the 65 against `game`'s full name
+space (125 primary names + 78 aliases, both directions):
+
+**34 of 65 are unreachable under every spelling they have**: `say`, `ooc`,
+`auction`, `tell`, `reply`, `gsay`, `gu`, `emote`, `loc`, `sit`, `stand`,
+`camp`, `move`, `moveto`, `follow`, `stopfollow`, `target`, `cast`,
+`interrupt`, `invite`, `disband`, `decline`, `who`, `help`, `quit`, `q`,
+`debug`, `timestamp`, `skills`, `gems`, `mem`, `forget`, `pet`, `filter`.
+**1 more (`shout`) is reachable only via a non-obvious alias** (`/sh` — its
+primary is shadowed but `game`'s own shout alias is spelled `sho`, not
+`sh`). **30 are fully reachable** with no collision at all (`face`,
+`consider`, `hail`, `npcstate`, `door`, `afk`, `anon`, `walk`, `run`,
+`sneak`, `crouch`, `feign`, `jump`, `turn`, `list`, `dump`, `hunt`,
+`autoloot`, `listtargets`, `loot`, `pathfinding`, `roleplay`, `wave`,
+`dance`, `cheer`, `laugh`, `logonly`, `logexclude`, `logmodule`,
+`logclear`). Full table with file:line evidence:
+`/mnt/projects/fable/review/T97/reachability_table.tsv`.
+
+This is the same shape as T82's `/who` finding and T96's `/pet` finding,
+generalized: roughly half of `CommandProcessor` was already dead before
+this unit, discovered by two separate accidents. This audit is the
+systematic sweep that names the full set.
+
+**Second intra-`game`-registry shadow found: `follow` (G02 previously
+documented only `who`).** Full sweep of every primary name across the three
+`game`-registry files found exactly two duplicates in the whole registry:
+`who` (known) and `follow` (new). `game`'s Social-section `follow_cmd`
+(`eq_commands.cpp:607`) accepts a pending group invite on empty args;
+Movement's later `follow` (`eq_commands_movement.cpp:317`, registered after,
+wins) has no such branch. `action::CommandProcessor::cmdFollow` has the
+identical invite-accept fallback but is separately shadowed by `game`'s.
+**No reachable spelling of `/follow`, in either registry or any alias, can
+accept a pending group invite today** — a real gameplay gap, not previously
+flagged. Not fixed (production code is read-only for this audit unit) —
+open for a future unit.
+
+**Divergence check (the 34 shadowed pairs): no dead-is-better case found.**
+Every pair was traced to its terminal call before classifying — checked, not
+assumed. Result: mostly Equivalent (both sides call the identical
+`EverQuest::` method — chat commands, loc/sit/stand, move/moveto/
+stopfollow, invite/decline, who, help, debug, timestamp) or clearly **live
+is better**, several times because the dead `action` side is a literal
+stub: `cmdMem` and `EqActionHandler::forgetSpell` both return a **false
+success** without doing anything; `cmdGems`/`cmdSkills` are cosmetic no-ops;
+`cmdFilter` has no effect anywhere while `game`'s `/filter` pushes a real
+renderer toggle; `cmdDisband` always sends `SendLeaveGroup()` with no
+leader/member branch (`game`'s does); `cmdQuit` is the exact pre-T30 broken
+advisory-only behavior; dead `/pet`'s vocabulary is a strict subset of
+live's even after T96's literal fix. Full table:
+`/mnt/projects/fable/review/T97/divergence_table.tsv`.
+
+**Disposition is Will's call, not acted on.** Options recorded in
+`review/T97/README.md` and the plan's Review: delete the shadowed `action`
+implementations (smallest blast radius, loses nothing given no dead-is-better
+case, but doesn't fix the `/follow` gap or `game`'s own stubs); reorder the
+registries (global/risky, would flip all 34 at once, order is now confirmed
+load-bearing for both `who` and `follow`); merge per command (most work,
+best outcome — this audit's divergence table is the direct input); leave and
+document (cheapest, defers the same discovery cost to the next accidental
+find).
+
+Verification: `cmake --build` clean (no source changes), `ctest` 2102/2103
+(sole failure the documented ALSA exception), `visual_gate` PASS, ARM
+cross-compile clean, `check_file_sizes.sh` correctly reports nothing to
+check (zero production-code changes). Full writeup: plan `## Review`
+(`refactor/T97_command_registry_shadowing_audit.md`) and
+`/mnt/projects/fable/review/T97/README.md`.
