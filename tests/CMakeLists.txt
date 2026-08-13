@@ -996,6 +996,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_position_convention)
 
+# T88: headless position-frame round-trip regression tests (inbound
+# server-frame decode -> outbound client-frame encode -> server-frame
+# re-encode is identity; Move()/MoveToWithPath() operates in client frame).
+# Same replay-seam idiom as test_zone_position_convention above -- no
+# network, no graphics, no live connection -- so safe to auto-discover.
+ADD_EXECUTABLE(test_position_frame_roundtrip
+    test_position_frame_roundtrip.cpp
+)
+TARGET_LINK_LIBRARIES(test_position_frame_roundtrip GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_position_frame_roundtrip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_position_frame_roundtrip)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

@@ -119,6 +119,12 @@ void EqActionHandler::stopAllMovement() {
     // Note: StopMovement() is private - the above calls handle keyboard movement
 }
 
+// T88: FRAME CONTRACT -- x, y, z are CLIENT frame (same as EverQuest::Move(),
+// which this forwards to verbatim -- see that function's comment in
+// eq_movement.cpp for the full swap relationship to server/wire frame).
+// Callers reading coordinates off another client's own wire self-report
+// (e.g. a join spec captured from a live session) are reading SERVER frame
+// and must swap x/y before calling this.
 void EqActionHandler::moveToLocation(float x, float y, float z) {
     m_eq.Move(x, y, z);
 }

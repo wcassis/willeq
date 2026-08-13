@@ -756,6 +756,48 @@ public:
 	// any production path.
 	void Test_SetZoneConnectedForSeam(bool connected) { m_zone_connected = connected; }
 
+	// T88 test seam: SendPositionUpdate()'s top guard
+	// (`!IsFullyZonedIn() || !m_zone_connection`) and MoveToWithPath()'s
+	// "Not in zone yet" guard both require a live UDP zone connection that
+	// no headless test can construct. Everything past those guards already
+	// degrades gracefully with a null m_zone_connection --
+	// SafeQueueZonePacket() and SendMovementHistory() both self-check and
+	// no-op -- so this flag exists ONLY to skip those specific guards (and
+	// SendPositionUpdate's send throttle, which is a single process-wide
+	// static and would otherwise make test order/timing-dependent) so a
+	// test can read back what the outbound C->S coordinate conversion
+	// actually computed. Default false; production behavior is bit-for-bit
+	// unchanged when unset. Not called from any production path.
+	void Test_SetBypassSendGuardForSeam(bool bypass) { m_test_bypass_send_guard = bypass; }
+
+	// T88 test seam: SendPositionUpdate() silently no-ops (by design) when
+	// m_my_spawn_id is still 0 -- normally only ever set from a decoded
+	// PlayerProfile/ZoneSpawns entity id. Lets a test drive Move()/
+	// MoveToWithPath() without first replaying a full PlayerProfile.
+	// Test-only; not called from any production path.
+	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_my_spawn_id = spawn_id; }
+
+	// T88 test seam: the last outbound PlayerPositionUpdateClient_Struct
+	// fields SendPositionUpdate() computed, captured unconditionally right
+	// before the (possibly-suppressed) send -- this is the actual
+	// production encoder output, not a re-derivation of the formula in the
+	// test. Read-only; test-only.
+	struct TestSentPositionUpdate {
+		float x_pos = 0.0f;
+		float y_pos = 0.0f;
+		float z_pos = 0.0f;
+		uint16_t heading_scaled = 0;
+	};
+	TestSentPositionUpdate Test_GetLastComputedPositionUpdate() const { return m_test_last_sent_update; }
+
+	// T88 test seam: forces immediate arrival at the current movement
+	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
+	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
+	// m_z = m_target_z; then StopMovement(), which sends the final
+	// position) -- without depending on wall-clock-driven incremental
+	// movement steps for targets outside that 2-unit snap radius. Test-only.
+	void Test_SnapToMovementTargetForSeam();
+
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
@@ -1476,6 +1518,10 @@ private:
 	// Batch R: incremented whenever a Zone packet sender no-ops because
 	// m_zone_connection is null (replay/test mode has no live connection).
 	uint64_t m_replay_suppressed_sends = 0;
+
+	// T88 test seam (see Test_SetBypassSendGuardForSeam / Test_GetLastComputedPositionUpdate).
+	bool m_test_bypass_send_guard = false;
+	TestSentPositionUpdate m_test_last_sent_update;
 
 	// Loading phase tracking (covers entire pre-gameplay process)
 	LoadingPhase m_loading_phase = LoadingPhase::DISCONNECTED;
