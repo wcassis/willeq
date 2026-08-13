@@ -209,6 +209,63 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             m_state.entities().clear();
             break;
         }
+        case state::GameEventType::GroupChanged: {
+            // T99: was entirely missing -- Application::m_gameState's
+            // GroupState never received a single update from any group
+            // event before this unit, discovered live while verifying the
+            // T99 pilot's group-invite-accept fix (a real invite arrived on
+            // the wire, EverQuest's OWN m_game_state/m_has_pending_invite
+            // updated correctly and the local chat line printed, but
+            // CommandProcessor's m_state.group().hasPendingInvite() stayed
+            // false forever -- the exact "two GameState instances" trap
+            // T49 documented, this time on the write side rather than the
+            // read side: nothing was writing to the copy ActionDispatcher/
+            // CommandProcessor actually read). Same pattern as every other
+            // case above (Pet/Spell/Vendor/Bank/Trainer/Entity/Inventory).
+            const auto& d = std::get<state::GroupChangedData>(event.data);
+            if (d.inGroup) {
+                m_state.group().setLeaderName(d.leaderName);
+                m_state.group().setInGroup(true);
+                m_state.group().setIsLeader(d.isLeader);
+            } else {
+                // GroupState::setInGroup(false) only runs its side effects
+                // (clearGroup(), which also clears the pending-invite flag)
+                // on a value TRANSITION -- a no-op if we were already not in
+                // a group. That matters here: eq_group.cpp's
+                // ZoneProcessGroupCancelInvite publishes GroupChanged with
+                // the CURRENT (already-false) inGroup value solely to
+                // signal "hide the pending-invite banner"
+                // ("GroupChanged to trigger bridge hidePendingInvite"), so
+                // relying on setInGroup(false)'s transition-only side
+                // effect would silently drop that case (caught by
+                // GroupChangedCancelInviteClearsPendingInviteWithoutTouching
+                // Group in tests/test_game_state_sync_bridge.cpp -- red
+                // without this explicit call, green with it). Clear the
+                // pending invite unconditionally instead.
+                m_state.group().setInGroup(false);
+                m_state.group().clearPendingInvite();
+            }
+            break;
+        }
+        case state::GameEventType::GroupMemberUpdated: {
+            const auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
+            state::GroupMember member;
+            member.name = d.name;
+            member.spawnId = d.spawnId;
+            member.level = d.level;
+            member.classId = d.classId;
+            member.hpPercent = d.hpPercent;
+            member.manaPercent = d.manaPercent;
+            member.inZone = d.inZone;
+            member.isLeader = (!d.name.empty() && d.name == m_state.group().leaderName());
+            m_state.group().setMember(d.memberIndex, member);
+            break;
+        }
+        case state::GameEventType::GroupInviteReceived: {
+            const auto& d = std::get<state::GroupInviteReceivedData>(event.data);
+            m_state.group().setPendingInvite(d.inviterName);
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

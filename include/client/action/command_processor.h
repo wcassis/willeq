@@ -49,6 +49,10 @@ struct CommandInfo {
  * - Combat: /consider, /hail, /hunt, /autoloot, /listtargets, /loot
  * - Utility: /npcstate, /door, /afk, /anon, /list, /dump, /pathfinding,
  *   /roleplay, /logonly, /logexclude, /logmodule, /logclear
+ * - Group: /invite, /disband, /decline, /groupaccept (T99 -- migrated
+ *   upward from EverQuest::m_command_registry, the game registry's
+ *   handlers deleted from eq_commands.cpp in the same change; /groupaccept
+ *   is new, see cmdGroupAccept)
  *
  * T98: 34 commands that were always shadowed by EverQuest::m_command_registry
  * (registry 1 wins every dispatch collision -- see
@@ -59,6 +63,14 @@ struct CommandInfo {
  * gems, mem, forget, pet, filter. `shout` was kept despite its primary name
  * being shadowed too -- its alias "sh" escapes because `game`'s own shout
  * alias is spelled "sho".
+ *
+ * T99: invite/disband/decline MIGRATED BACK, this time as the sole
+ * implementation -- the game-registry registrations that used to shadow
+ * them were removed from eq_commands.cpp in the same change (see
+ * refactor/T99_action_layer_unification_pilot.md). Not a reversal of T98:
+ * T98 deleted the worse duplicate that could never run; T99 moves the
+ * better implementation into the layer Will designated as the route
+ * commands take (ActionDispatcher), rather than reviving the deleted one.
  */
 class CommandProcessor {
 public:
@@ -224,9 +236,22 @@ private:
     // instances" entry.
     ActionResult cmdNpcState(const std::string& args);
 
-    // T98: cmdInvite/cmdDisband/cmdDecline removed -- shadowed dead code
-    // (invite/disband/decline). This empties the "Group" category in this
-    // registry entirely; game's Group commands are the only reachable ones.
+    // T99: invite/disband/decline migrated HERE from EverQuest::
+    // m_command_registry -- the game registry's implementations were better
+    // (T97's divergence table) and are ported below, verbatim in behaviour,
+    // with the corresponding registrations REMOVED from eq_commands.cpp in
+    // the same change (atomicity: game is tried first, so leaving the old
+    // registration in place would silently keep routing through it). Also
+    // new here: cmdGroupAccept (/groupaccept, alias /gaccept) -- gives
+    // ActionDispatcher::acceptGroupInvite() a live caller, fixing the
+    // group-invite-accept gap T97/T98 found dead by every route (game's own
+    // Social follow_cmd shadowed by Movement's follow; action's old copy
+    // shadowed then deleted; eq_bridge.cpp's GroupAcceptIntent handler has no
+    // live producer). See refactor/T99_action_layer_unification_pilot.md.
+    ActionResult cmdInvite(const std::string& args);
+    ActionResult cmdDisband(const std::string& args);
+    ActionResult cmdDecline(const std::string& args);
+    ActionResult cmdGroupAccept(const std::string& args);
 
     // T98: cmdWho/cmdHelp/cmdQuit/cmdDebug/cmdTimestamp removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp).

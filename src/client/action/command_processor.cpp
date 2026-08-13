@@ -305,9 +305,25 @@ void CommandProcessor::registerBuiltinCommands() {
         "npcstate", {}, "/npcstate", "Show current vendor/banker/trainer interaction state", "Utility", false
     }, [this](const std::string& args) { return cmdNpcState(args); });
 
-    // T98: invite/disband/decline registrations removed -- shadowed dead
-    // code. This empties the "Group" category in this registry entirely;
-    // game's Group commands are the only reachable ones now.
+    // T99: invite/disband/decline migrated here from EverQuest::
+    // m_command_registry (removed from eq_commands.cpp in the same change).
+    // groupaccept is new -- see cmdGroupAccept and
+    // refactor/T99_action_layer_unification_pilot.md.
+    registerCommand({
+        "invite", {"inv"}, "/invite [name]", "Invite player to group", "Group", false
+    }, [this](const std::string& args) { return cmdInvite(args); });
+
+    registerCommand({
+        "disband", {}, "/disband", "Leave or disband group", "Group", false
+    }, [this](const std::string& args) { return cmdDisband(args); });
+
+    registerCommand({
+        "decline", {}, "/decline", "Decline pending group invite", "Group", false
+    }, [this](const std::string& args) { return cmdDecline(args); });
+
+    registerCommand({
+        "groupaccept", {"gaccept"}, "/groupaccept", "Accept pending group invite", "Group", false
+    }, [this](const std::string& args) { return cmdGroupAccept(args); });
 
     // T98: who/help/quit/q/debug/timestamp registrations removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp; "q" was shadowed via
@@ -526,6 +542,99 @@ ActionResult CommandProcessor::cmdAFK(const std::string& args) {
 ActionResult CommandProcessor::cmdAnon(const std::string& args) {
     bool currentState = m_state.player().isAnonymous();
     return m_dispatcher.setAnonymous(!currentState);
+}
+
+// ========== Group Commands (T99) ==========
+//
+// Ported from EverQuest::m_command_registry's Group-category handlers
+// (eq_commands.cpp, deleted from there in this same change -- see
+// refactor/T99_action_layer_unification_pilot.md's atomicity section).
+// T97's divergence table found game's invite/disband/decline better than
+// action's old (T98-deleted) copies; these are that better implementation,
+// re-expressed against ActionDispatcher/GameState instead of EverQuest's
+// private members directly.
+
+ActionResult CommandProcessor::cmdInvite(const std::string& args) {
+    // Ported from game's invite_cmd: explicit name wins; otherwise fall back
+    // to the current combat target. inviteToGroup()/inviteTarget() are the
+    // two ActionDispatcher methods this call gives production callers to --
+    // T98 reported both newly caller-free after deleting the old dead copy.
+    if (!args.empty()) {
+        auto result = m_dispatcher.inviteToGroup(args);
+        if (result.success) {
+            displayMessage("Inviting " + args + " to group");
+        }
+        return result;
+    }
+
+    if (!m_state.combat().hasTarget()) {
+        return ActionResult::Failure("Usage: /invite <name> or target a player");
+    }
+
+    auto result = m_dispatcher.inviteTarget();
+    if (result.success) {
+        displayMessage("Inviting " + m_state.combat().targetName() + " to group");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdDisband(const std::string& args) {
+    // Ported from game's disband_cmd: leader vs member gets a different
+    // local message (matches EQ's own player-facing wording). The network
+    // effect is identical either way -- EverQuest::SendLeaveGroup() is
+    // itself just a call to SendGroupDisband() (eq_group.cpp) -- so a single
+    // ActionDispatcher::leaveGroup() call covers both cases; only the
+    // message construction needs the leader/member branch.
+    if (!m_state.group().inGroup()) {
+        return ActionResult::Failure("You are not in a group");
+    }
+
+    bool wasLeader = m_state.group().isLeader();
+    auto result = m_dispatcher.leaveGroup();
+    if (result.success) {
+        displayMessage(wasLeader ? "Group disbanded" : "You have left the group");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdDecline(const std::string& args) {
+    // Ported from game's decline_cmd. ActionDispatcher::declineGroupInvite()
+    // already performs the same hasPendingInvite() check internally
+    // (returning Failure("No pending group invite") itself); the check here
+    // is kept so the pre-check short-circuits before touching the dispatcher
+    // at all, matching game's exact shape and giving a clean early return
+    // for the group-accept unreachability test below.
+    if (!m_state.group().hasPendingInvite()) {
+        return ActionResult::Failure("No pending group invite");
+    }
+
+    auto result = m_dispatcher.declineGroupInvite();
+    if (result.success) {
+        displayMessage("Group invite declined");
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdGroupAccept(const std::string& args) {
+    // T99: NEW command. This is where the group-invite-accept gap gets
+    // fixed. game's own Social follow_cmd used to gate accept-on-no-args
+    // behind bare /follow, but that was itself dead (shadowed by Movement's
+    // later "follow" registration -- T97) even before T98 deleted action's
+    // separately-shadowed copy. Reviving bare /follow here would put it back
+    // in a head-on collision with Movement's live entity-following /follow,
+    // so this pilot uses an explicit spelling instead: /groupaccept (alias
+    // /gaccept). Gives ActionDispatcher::acceptGroupInvite() -- orphaned
+    // since T98 -- its first live caller.
+    if (!m_state.group().hasPendingInvite()) {
+        return ActionResult::Failure("No pending group invite");
+    }
+
+    std::string inviterName = m_state.group().pendingInviterName();
+    auto result = m_dispatcher.acceptGroupInvite();
+    if (result.success) {
+        displayMessage("You have joined " + inviterName + "'s group");
+    }
+    return result;
 }
 
 // ========== Extended Command Implementations ==========

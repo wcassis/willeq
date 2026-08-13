@@ -5658,3 +5658,89 @@ exception), `visual_gate` PASS (goldens untouched), ARM cross-compile clean,
 6 survivors all showing `registry=action` as before. Full writeup: plan
 `## Review` (`refactor/T98_delete_shadowed_commands.md`) and
 `/mnt/projects/fable/review/T98/README.md`.
+
+## T99: Group family migrated to `action::CommandProcessor`; group-invite-accept gap FIXED and live-verified; two new pre-existing bugs found
+
+Closes T97/T98's open Group items. `invite`/`disband`/`decline` moved out of
+`EverQuest::m_command_registry` (`eq_commands.cpp`) and into
+`action::CommandProcessor`, ported from the game-registry implementation
+T97 found better (disband's leader/member branch), atomically (removed
+from `eq_commands.cpp` in the same commit as the `CommandProcessor`
+addition — `registry=action` confirmed live for all four, `registry=game`
+confirmed for an untouched command in the same session as a control).
+New: `/groupaccept` (alias `/gaccept`) gives `ActionDispatcher::
+acceptGroupInvite()` its first live caller — the dead Social `follow_cmd`
+(`eq_commands.cpp:607-638`, T97/T98's open item above) was deleted rather
+than revived, since it was itself intra-registry-shadowed by Movement's
+`follow` and reviving bare `/follow` would re-create that exact collision.
+Full writeup: `refactor/T99_action_layer_unification_pilot.md`'s Review,
+`/mnt/projects/fable/review/T99/README.md`.
+
+**Infrastructure gap found and fixed (outside the plan's listed territory,
+judged necessary to make the plan's own live-verification requirement
+possible at all — see the plan's Review for the full justification):
+`GameStateSyncBridge` had no case for `GroupChanged`/`GroupMemberUpdated`/
+`GroupInviteReceived`.** `Application::m_gameState`'s `GroupState` — the
+instance `ActionDispatcher`/`CommandProcessor` actually read — never
+received a single update from any group event before this unit, for every
+prior unit that touched Group, because nothing had ever tried to read
+group state live through the action layer before. This is the T49 "two
+GameState instances" trap again, this time on the write side: `EverQuest`'s
+own `m_game_state` mirror was always correct (confirmed live: the "Testmelee
+has invited you to join a group" chat line comes from that copy and always
+printed correctly), but `Application::m_gameState` was simply never told.
+Fixed by adding the three missing cases to `game_state_sync_bridge.cpp`,
+following the exact established pattern used for Pet/Spell/Vendor/Bank/
+Trainer/Entity/Inventory. Caught by a genuinely red test before the fix
+(`GroupChangedCancelInviteClearsPendingInviteWithoutTouchingGroup`) —
+`GroupState::setInGroup(false)` only runs its clear-group side effect on a
+value *transition*, so the cancel-invite-only case (already not in a group)
+needed an explicit `clearPendingInvite()` call, not just `setInGroup(false)`.
+
+**Two new pre-existing bugs found live, neither introduced by T99, both
+out of this pilot's territory to fix (both below the action layer, in
+`eq_group.cpp`/eqemu's own packet construction):**
+
+1. **`EverQuest::AcceptGroupInvite()` reads `m_pending_inviter_name` AFTER
+   passing it by const-reference into `SendGroupFollow()`, which clears
+   that same member as its last action before returning** (`eq_group.cpp:
+   157-163`). Aliasing bug: the parameter is a reference to the member, so
+   `SendGroupFollow`'s own `m_pending_inviter_name.clear()` blanks the
+   reference `SendGroupFollow` itself is about to log
+   (`LOG_INFO(..., "Accepted group invite from {}", inviter_name)` prints
+   empty), and `AcceptGroupInvite()`'s own subsequent chat message
+   (`"You have joined " + m_pending_inviter_name + "'s group"`) reads the
+   now-cleared member too. Confirmed live twice
+   (`review/T99/t99_b_testbuddy_evidence.log`: "Accepted group invite from
+   " and "You have joined 's group", both blank, both times B accepted).
+   **Functionally harmless in this session** — the server's own invite
+   bookkeeping is authoritative regardless of what name the client's
+   follow-ack packet carries, and the group formed correctly both times
+   (confirmed by the server's own `GroupUpdate` broadcast reporting
+   `leader: Testmelee` to both clients) — but the local chat text is wrong,
+   and had literally never been observed before because nothing had a live
+   caller into `AcceptGroupInvite()` until this pilot. Not fixed:
+   `eq_group.cpp` is below the action layer, off-limits per the plan's
+   layering constraint and outside its listed territory.
+2. **The group LEADER's own client sees an empty `leadersname` on the
+   `GroupUpdate` packet describing its own group** — `A`'s log shows
+   `leader: ` (blank) both times a group formed, while `B` (the same
+   group, same packet type, different recipient) correctly shows
+   `leader: Testmelee` (`review/T99/t99_a_testmelee_evidence.log` vs
+   `t99_b_testbuddy_evidence.log`, same timestamps). Net effect measured
+   live: `EverQuest::m_is_group_leader` stays `false` on the leader's own
+   client (`m_group_leader_name == m_character` compares `"" ==
+   "Testmelee"`), so `CommandProcessor::cmdDisband`'s leader/member
+   message branch (ported from `game`'s `disband_cmd`, this unit) picked
+   the member wording ("You have left the group") on `A`'s own screen even
+   though `A` really was the leader and the packet effect was correct
+   either way (`SendLeaveGroup()`/`SendGroupDisband()` are the same call,
+   see the plan's Review) — confirmed by the group actually disbanding for
+   both clients. Likely an eqemu server quirk (omitting a leader's own name
+   from their own copy of the packet) rather than a client bug, but not
+   root-caused past that; server code is off-limits to modify regardless.
+   Not fixed here.
+
+Both are reported, not chased — genuinely new findings this pilot's live
+leg surfaced by being the first code path to give these dead methods a
+real caller, exactly as T97/T98 predicted would keep happening.
