@@ -43,6 +43,17 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   audit" list).
 
 **Client correctness bugs**
+- T93's fake-substitution sweep found the T90 double-conversion pattern
+  (a test fake hiding a real transform bug) recurs at
+  `EqActionHandler::castSpell()`/`castSpellOnTarget()`/`memorizeSpell()`'s
+  gemSlot-1 conversion — FIXED WITH TESTS by T93 itself, but the sweep only
+  covered 3 of ~11 identified TRANSFORMS/VALIDATES/MUTATES methods on
+  `EqActionHandler` before stopping; the rest (`setMovementMode`,
+  `setPositionState`, `sendPetCommand`'s unchecked int-to-enum casts,
+  `targetSelf`'s self/pet toggle, `targetGroupMember`'s validation,
+  `hailTarget`'s fallback branch) remain untested against the real
+  implementation. Heading: `## T93 fake-substitution sweep —
+  EqActionHandler TRANSFORMS inventory and what remains untested`.
 - ~~`willeq.db` schema version bumped but never validated at open.~~ **FIXED
   by T56 (2026-08-10).** Heading: `## willeq.db schema version is bumped but
   never validated`.
@@ -5152,3 +5163,103 @@ Will's call, not decided here.
 
 Full plan, measurements, and Part 2 option write-up:
 `refactor/T91_entity_prepare_gate.md` Review, `review/T91/README.md`.
+
+## T93 fake-substitution sweep — EqActionHandler TRANSFORMS inventory and what remains untested (2026-08-13)
+
+Full writeup: `refactor/T93_fake_substitution_sweep.md`'s Review,
+`/mnt/projects/fable/review/T93/README.md`. Summary for future units
+scoping off this board.
+
+**The recurring pattern (same shape as T90's `setHeading()` finding):**
+`RecordingActionHandler` (`tests/action_test_fakes.h`) implements every
+`IActionHandler` method as a bare recording call with zero unit
+conversion, validation, or state logic. `test_action_dispatcher.cpp`
+exercises `ActionDispatcher` end-to-end against that fake and asserts
+routing/bounds-checking at the dispatcher layer only — it never
+constructs a real `EqActionHandler`. Any method where the REAL
+`EqActionHandler` does actual work beyond forwarding therefore had zero
+test coverage of that work, exactly like `setHeading()` before T90.
+
+**Found and FIXED WITH TESTS this unit** (`tests/test_eq_action_handler_transforms.cpp`,
+2 tests, both proven able to fail — see the plan's Review):
+`castSpell(gemSlot)`/`castSpellOnTarget(gemSlot, targetId)`/
+`memorizeSpell(gemSlot, spellId)` all convert a 1-indexed UI gem slot
+(1..12, what `ActionDispatcher` validates and forwards) to the 0-indexed
+`SpellSlot` enum (`SPELL_GEM_1 == 0`) via `gemSlot - 1` before touching
+`CombatManager`. Verified end-to-end (real `EverQuest` + real
+`EqActionHandler` + real `CombatManager`, no fakes) via
+`CombatManager::IsCasting()`: memorizing into gem 2 only and casting gem
+1 must fail, casting gem 2 must succeed (and the boundary pair 11/12).
+
+**Investigated and explicitly deferred — no test, no seam added:**
+- `EqActionHandler::targetSelf()` — real self/pet toggle branching logic
+  (not a forwarder). Blocked on `CombatManager::SetTarget()` validating
+  the target id against `EverQuest::GetEntities()` (EverQuest's own
+  internal `std::map<uint16_t, Entity> m_entities`, separate from
+  `GameState::entities()` which does have a test-populatable path). No
+  existing seam adds to `m_entities`; adding one would be a second new
+  production touch beyond the gem-slot fix and was judged not
+  "genuinely unavoidable" for this unit's budget. Needs either a
+  `Test_*ForSeam` entity-injection seam or a live-verification pass.
+- `setMovementMode(int)` / `setPositionState(int)` — `static_cast` an
+  arbitrary `int` straight into `MovementMode`/`PositionState` enums with
+  **no range validation at all**. Not necessarily a bug (callers may
+  always pass valid values today) but an unvalidated cast is exactly the
+  TRANSFORMS/VALIDATES risk shape this sweep hunts for — worth a
+  dedicated look at every call site before deciding whether to add
+  clamping or just a regression test pinning current (permissive)
+  behavior.
+- `sendPetCommand(uint8_t command, ...)` — same unchecked
+  `static_cast<PetCommand>` pattern.
+- `targetGroupMember(int index)` — has real validation
+  (`member && member->spawn_id != 0`) before dispatching; untested
+  against the real `EverQuest::GetGroupMember()`.
+- `hailTarget()` — real fallback branching (uses target's display name if
+  resolvable, else plain `hail()`); untested against a real entity lookup.
+- `clickNearestDoor()` — delegates the actual nearest-door computation to
+  `GameState::doors().getNearestDoor()`, so the search logic itself is
+  someone else's TRANSFORMS surface, not this method's; whether THAT
+  function has direct test coverage was not checked in this sweep.
+
+**Classified as FORWARDER, deliberately left untested (~20 of
+`EqActionHandler`'s ~30 methods)**: `startMoving`/`stopMoving`,
+`moveToLocation`/`moveToEntity`/`moveToEntityWithinRange`/`followEntity`/
+`stopFollow`, `jump`/`sit`/`stand`/`stopAllMovement`, `targetEntity`/
+`targetEntityByName`/`clearTarget`/`cycleTargets*`/`enableAutoAttack`/
+`disableAutoAttack`/`toggleAutoAttack`, `hail`, `clickDoor`,
+`lootCorpse`/`lootItem`/`lootAll`, `consider`, `sendChatMessage`/
+`sendTell`/`replyToLastTell`, `inviteToGroup`/`inviteTarget`/
+`acceptGroupInvite`/`declineGroupInvite`/`leaveGroup`, `setAFK`/
+`setAnonymous`/`startCamp`/`cancelCamp`, `dismissPet`, `clickWorldObject`,
+`setRoleplay`/`setPathfinding`, `setAutoHunting`/`setAutoLoot`/
+`listHuntTargets`, `listEntities`/`dumpEntityAppearance`,
+`sendAnimation`/`sendPositionUpdate`. Full per-method table is in
+`/mnt/projects/fable/review/T93/README.md`.
+
+**Other fakes swept and found LOW RISK (checked, not just assumed)**:
+`FakeUdpTransport` (`tests/fake_udp_transport.h`) only fakes wire I/O —
+`DaybreakConnection`'s real compression/CRC/fragmentation/sequencing runs
+unmodified over it in `test_daybreak_state_machine.cpp`, so the protocol
+logic itself is never faked away. `FakeInputHandler`
+(`tests/action_test_fakes.h`) stands in for `IInputHandler`; the real
+implementations (`GraphicsInputHandler`, `ConsoleInputHandler`,
+`NullInputHandler`) were read end to end and contain no unit
+conversion/scaling — pure event/state forwarding, mouse-look and turn-rate
+scaling live elsewhere (already covered by T90's `InputActionBridge`
+finding that its callers pass plain degrees). `RecordingBridge : GameStateBridge`
+(three separate inline definitions, `test_game_state_sync_bridge.cpp`/
+`test_zone_connection_flow.cpp`/`test_zone_position_convention.cpp`) only
+overrides the pure-virtual `applyEvent()` hook; `pushEvent`/`pushIntent`/
+`drainIntents`' real thread-safe queue/coalescing logic is inherited
+unmodified from the real `GameStateBridge` base, not faked. `IrrlichtBridge`/
+`ConsoleBridge`'s own `applyEvent()` (the 99-case event switch) is real
+production code with its own separate coverage claim (100%, per
+`CLAUDE.md`) not investigated further here — out of scope for this sweep.
+`RecordingOutputRenderer : IOutputRenderer` (`test_command_processor.cpp`)
+substitutes for a pure display sink; every method is a rendering/UI
+forwarder with no transform logic reachable from `CommandProcessor`.
+
+**No fake found to CONTRADICT (rather than merely omit) the real
+behaviour it stands for** in this sweep — worth stating explicitly since
+the plan asked for it as the worst-case finding. If a future sweep finds
+one, it supersedes this line.
