@@ -5259,16 +5259,13 @@ test coverage of that work, exactly like `setHeading()` before T90.
   production touch beyond the gem-slot fix and was judged not
   "genuinely unavoidable" for this unit's budget. Needs either a
   `Test_*ForSeam` entity-injection seam or a live-verification pass.
-- `setMovementMode(int)` / `setPositionState(int)` — `static_cast` an
-  arbitrary `int` straight into `MovementMode`/`PositionState` enums with
-  **no range validation at all**. Not necessarily a bug (callers may
-  always pass valid values today) but an unvalidated cast is exactly the
-  TRANSFORMS/VALIDATES risk shape this sweep hunts for — worth a
-  dedicated look at every call site before deciding whether to add
-  clamping or just a regression test pinning current (permissive)
-  behavior.
-- `sendPetCommand(uint8_t command, ...)` — same unchecked
-  `static_cast<PetCommand>` pattern.
+- ~~`setMovementMode(int)` / `setPositionState(int)` / `sendPetCommand`'s
+  unchecked int-to-enum casts.~~ **FIXED WITH TESTS by T95 (2026-08-13)** —
+  and T95 additionally found a live, currently-shipping bug while tracing
+  `sendPetCommand()`'s call sites: most `/pet` subcommands send the WRONG
+  (or now-invalid) command byte, pre-dating and unrelated to the cast fix.
+  Heading: `## T95 unvalidated enum casts — fixed, plus a live /pet
+  command-drift bug found along the way`.
 - `targetGroupMember(int index)` — has real validation
   (`member && member->spawn_id != 0`) before dispatching; untested
   against the real `EverQuest::GetGroupMember()`.
@@ -5293,6 +5290,94 @@ test coverage of that work, exactly like `setHeading()` before T90.
 `listHuntTargets`, `listEntities`/`dumpEntityAppearance`,
 `sendAnimation`/`sendPositionUpdate`. Full per-method table is in
 `/mnt/projects/fable/review/T93/README.md`.
+
+## T95 unvalidated enum casts — fixed, plus a live /pet command-drift bug found along the way (2026-08-13)
+
+Full writeup: `refactor/T95_unvalidated_enum_casts.md`'s Review,
+`/mnt/projects/fable/review/T95/README.md`.
+
+**The three casts T93 deferred are now guarded, reject-and-report (never
+clamp), with 15 new tests against the real `EqActionHandler`** (all proven
+able to fail — guard removed → red, guard forced to always-reject →
+the complementary set goes red — then restored, verified byte-identical,
+green): `tests/test_eq_action_handler_enum_guards.cpp`.
+
+- `setMovementMode(int)` — `MovementMode` (`client/eq.h`) is a plain enum
+  with **no fixed underlying type** and a contiguous range `0..2`
+  (`MOVE_MODE_RUN=0`/`WALK=1`/`SNEAK=2`); an out-of-range `static_cast` into
+  it is genuine UB, not just a wrong value. Reachable only from
+  `CommandProcessor::cmdWalk/cmdRun/cmdSneak`, each of which passes a
+  compile-time constant (`0`/`1`/`2`) — not reachable from raw user input
+  today. Guarded anyway per the plan (robustness + the public
+  `IActionHandler::setMovementMode(int)` surface accepts any `int` from any
+  future caller).
+- `setPositionState(int)` — same shape, `PositionState` range `0..4`
+  (`STANDING`/`SITTING`/`CROUCHING`/`FEIGN_DEATH`/`DEAD`), reachable only
+  from `cmdCrouch`/`cmdFeign`'s compile-time constants (`2`/`3`) plus a few
+  internal `SetPositionState(POS_SITTING/STANDING)` call sites — none
+  user-controlled today.
+- `sendPetCommand(uint8_t command, uint16_t targetId)` — `EQT::PetCommand`
+  (`client/pet_constants.h`) has a **fixed** `uint32_t` underlying type, so
+  per the standard an out-of-range `static_cast` into it is NOT the same UB
+  class as the other two (any `uint8_t` value is representable in
+  `uint32_t`) — but it is still a silent-garbage-onto-the-wire defect, and
+  the set is **non-contiguous** (gaps at 0, 15, and 22+), so the guard is
+  membership-checked against the real enumerator list, not a min/max range
+  (a range check would have wrongly accepted the gap value 15 — tested
+  explicitly). Reachable from `ActionDispatcher`'s nine `/pet <name>`
+  convenience wrappers, all of which pass hardcoded literals — see the live
+  bug below for why that "unreachable-from-raw-input" fact doesn't mean
+  harmless.
+
+**Found while tracing `sendPetCommand()`'s call sites for reachability, NOT
+fixed (out of `eq_action_handler.cpp`/enum-defs/tests territory):**
+`git log -p` on `include/client/pet_constants.h` shows commit `b1c722b0`
+("Fix pet commands and add animation fallback") renumbered `EQT::PetCommand`
+to the correct Titanium wire values (previously `PET_ATTACK` collided with
+Titanium's actual "get lost" value). That commit touched
+`pet_constants.h`/`eq.cpp` only — it never touched
+`src/client/action/action_dispatcher.cpp`'s nine `/pet` wrapper methods
+(`petAttack`/`petBackOff`/`petFollow`/`petSit`/`petTaunt`/`petHold`/
+`petFocus`/`petHealth`; `petGuard` is the one exception), which still call
+`sendPetCommand()` with the OLD raw integer literals in comments claiming
+the NEW enumerator names:
+
+| Wrapper | Sends (literal) | Comment claims | Actually is | Now (post-T95) |
+|---|---|---|---|---|
+| `petAttack` | 2 | `PET_ATTACK`(=7) | `PET_GETLOST`(=2) — dismisses the pet | wrong command sent silently (in-range) |
+| `petBackOff` | 28 | `PET_BACKOFF`(=1) | no enumerator (max is 21) | **rejected** by T95's guard |
+| `petFollow` | 4 | `PET_FOLLOWME`(=8) | `PET_HEALTHREPORT`(=4) | wrong command sent silently |
+| `petGuard` | 5 | `PET_GUARDHERE`(=5) | correct (coincidence — literal, not enum name) | correct |
+| `petSit` | 6 | `PET_SIT`(=9) | `PET_GUARDME`(=6) | wrong command sent silently |
+| `petTaunt` | 12 | `PET_TAUNT`(=11) | `PET_HOLD`(=12) | wrong command sent silently |
+| `petHold` | 15 | `PET_HOLD`(=12) | no enumerator (gap value) | **rejected** by T95's guard |
+| `petFocus` | 24 | `PET_FOCUS`(=19) | no enumerator (max is 21) | **rejected** by T95's guard |
+| `petHealth` | 0 | `PET_HEALTHREPORT`(=4) | no enumerator (min is 1) | **rejected** by T95's guard |
+
+`dismissPet()` (a separate `EqActionHandler` method, not one of the nine
+wrappers) correctly uses the named constant `EQT::PET_GETLOST` and is fine.
+Net effect: **`/pet guard` and `/pet dismiss` are the only two currently-
+correct `/pet` subcommands.** The other seven were already silently sending
+the wrong (or, for four of them, a value with no enumerator at all) command
+byte to the server before this unit; T95's new validation makes the four
+out-of-range ones start reporting "Pet command N is not valid" instead of
+silently going out wrong — a visible behavior change worth flagging even
+though it's a strict improvement (reject-and-report over silent-wrong, per
+the plan's T77 standard). The four merely-WRONG-but-in-range ones
+(`petAttack`/`petFollow`/`petSit`/`petTaunt`) are NOT caught by
+range/membership validation since they're valid enumerators, just the wrong
+ones; only a value-level fix in `action_dispatcher.cpp` (replace
+every literal with the correctly-named `EQT::PetCommand` enumerator) closes
+this. **Needs a follow-up unit** — territory would be
+`src/client/action/action_dispatcher.cpp`, a one-line-per-wrapper literal
+swap, cross-checked against a live `/pet` session (this finding is from
+static analysis + `git log -p`, not live-verified — no eqemu was used or
+needed to find it, but confirming server-side effect needs one).
+
+**Still open from T93's original inventory, unchanged by T95** (out of
+territory — `eq_action_handler.cpp` only covered the three enum casts):
+`targetSelf()`'s self/pet toggle, `targetGroupMember()`'s validation,
+`hailTarget()`'s fallback branch. See the `## T93` entry above.
 
 **Other fakes swept and found LOW RISK (checked, not just assumed)**:
 `FakeUdpTransport` (`tests/fake_udp_transport.h`) only fakes wire I/O —
