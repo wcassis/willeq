@@ -109,3 +109,92 @@ and describe what is actually visible.
 pre-send; the six-direction table against the official constants; **your own
 samples' spacing**; whether all six are distinct; the verdict and, if a
 transformation exists, exactly what it is; deviations)
+## Review
+
+**Executed in `/mnt/projects/fable/wt/slot1`. The live session completed and
+its data survived; the executor agent died on an API error at the write-up
+stage. Server was town down cleanly and the lock released before the failure —
+verified independently (no containers, no lock, no client processes). This
+Review was completed by the orchestrator from the surviving capture.**
+
+Raw evidence: `/mnt/projects/fable/review/T89/` — `t89_full.sleq` (327K),
+`willeq_run.log` (440K), `t89_tour_script.txt`.
+
+### Verdict: a constant +90 degree offset, and this one passes the validity test
+
+| direction | WillEQ raw | official raw | WillEQ deg | official deg | delta |
+|---|---|---|---|---|---|
+| North | 512 | 2046 | 90.00 | 359.65 | 90.35 |
+| West | 1024 | 520 | 180.00 | 91.41 | 88.59 |
+| South | 1536 | 1033 | 270.00 | 181.58 | 88.42 |
+| East | 0 | 1538 | 0.00 | 270.35 | 89.65 |
+| NE | 256 | 1808 | 45.00 | 317.81 | 87.19 |
+| SW | 1279 | 765 | 224.82 | 134.47 | 90.35 |
+
+**Mean delta 89.09 degrees, spread 3.16 degrees.**
+
+Validity checks, which T87 failed and this passes:
+- **Spacing is uniform**: WillEQ's transmitted N->W->S->E steps are 90.0 /
+  90.0 / 90.0, matching the official client's 90-degree steps. A constant
+  offset preserves spacing, and this one does.
+- **All six directions are distinct** (T87's Pass A produced byte-identical
+  values for SW and West).
+- Residual spread of 3.16 degrees is consistent with a human facing by eye.
+
+### Method
+
+Facing was achieved by `/move`ing 100 units along each client-frame axis from
+a fixed centre at client `(-1009, 146, 51)`, so the six directions are
+90 degrees apart **by construction** rather than by judgement, and
+`setHeading()` (T84's double-conversion bug, used by `/turn` and `/face`) is
+never involved.
+
+T88's both-frames logging confirmed the position frame was correct throughout:
+`client_pos=(-1009.00,146.00,51.00) -> server_pos=(146.00,-1009.00,51.00)`,
+the documented `m_x = server_y, m_y = server_x` swap.
+
+**Measurement caveat, stated because it initially caught the orchestrator
+out**: the comparison must be WillEQ's *transmitted* heading against the
+official client's *wire* value. An early pass compared client-frame
+`m_heading` against official wire values and produced a spurious "exact
+negation" result. The outbound code does apply `server_heading = 90 -
+m_heading` (`eq_movement.cpp:1048`); the log line that appears to show a
+pass-through is 45 degrees being a fixed point of that reflection.
+
+### What this means
+
+Mapped onto the documented convention the offset is concrete. The official
+client's cardinals land on 0 / 512 / 1024 / 1536, exactly matching
+`docs/CLAUDE.md`'s 0=North, 128=West, 256=South, 384=East (x4 for 12-bit) —
+so the human's facings were true and the constants are sound.
+
+WillEQ moving client **+Y**, which `docs/CLAUDE.md` itself defines as north,
+transmits **512 = West**.
+
+Inbound (`m_heading = 90 - server_heading`) and outbound
+(`server_heading = 90 - m_heading`) are exact mutual inverses, which is why
+T88's round-trip test passes identity. **Being a self-consistent pair does not
+make the convention correct** — a self-consistent misinterpretation is
+precisely the defect class that no amount of WillEQ-only testing can detect,
+and the reason the official-client oracle was built.
+
+### NOT FIXED — this needs Will's decision
+
+Heading code was not touched, per the standing prohibition. T84, T85 and T87
+each found real heading problems, reported them and changed nothing; this unit
+does the same.
+
+The obvious-looking change (adjust the 90-degree term) is **exactly** the kind
+of edit the load-bearing comment in `src/client/eq.cpp` and
+`docs/CLAUDE.md`'s Heading/Rotation Conventions warn against. The inbound
+offset is hard won, players and NPCs do not share default rotations, and the
+model files carry differing ones. A 90-degree correction applied to the wrong
+end, or applied to both ends, would break rendering that currently works.
+
+**One assumption remains unverified**: that WillEQ's client +Y is the same
+physical direction the human faced as north. The official constants and our
+documentation agree that it should be, but this capture cannot prove it
+independently. If client +Y is not true north, the 90-degree offset is
+expected rather than defective. Resolving it needs one official client and one
+WillEQ client facing the same landmark — a short two-client capture.
+
