@@ -6144,3 +6144,38 @@ territory) a third `TradeManager` gap (#7 above). Full detail:
 
 Reported per the same standard prior units set: fix what directly blocks
 the plan's own live-verification bar (finding #4), report the rest.
+
+## T105 (zone-in working set measurement) — findings
+
+1. **`/pmem`'s real `processRssBytes`/`untrackedBytes` are unreachable in a
+   running client** — another instance of the implemented-but-unreached
+   pattern (the codebase's memory notes already track nine of these). The
+   only slash-command path to `/pmem`
+   (`irrlicht_renderer.cpp:1219`, `cmd == "/pmem"`) constructs an **empty**
+   `MemoryReportInput ext{}` and calls `getMemoryReport(ext)` directly —
+   `ext.processRssBytes` is always 0 through this path, so the "against RSS"
+   / untracked lines in `getMemoryReport()`'s output never print for a live
+   player-run `/pmem`. The code that *does* populate real RSS from
+   `/proc/self/statm` and pushes it via `DiagnosticsMemoryReport`
+   (`EverQuest::runPmemDiagnostics`, `eq_commands.cpp:117`) is only ever
+   called from `EverQuest::runLoadDiagnostics` (`eq_commands.cpp:212`),
+   which itself has **zero callers anywhere in the codebase** (grepped).
+   T105 measured live-populated-zone RSS via the standalone
+   `gles2_zone_benchmark` tool instead (which does wire real RSS), not by
+   fixing this — it's production behaviour, out of a measurement unit's
+   read-only scope. A future unit could wire `runLoadDiagnostics()` (or at
+   minimum `runPmemDiagnostics()`) to the `/pmem` command path, or to zone-
+   load completion, so a live session's own memory report becomes trustworthy
+   for RSS/untracked without a second, separate benchmark run.
+2. **The zone-in working set is now sized, not guessed** — distinct
+   (race,gender) pairs and distinct equipment-model-IDs actually within the
+   renderer's own 300-unit render distance are small (6-9 race/gender pairs,
+   3-8 equipment models per zone measured), and EQE1's ~110-120MB "mapped"
+   figure is 1.6-10.6% resident in every zone measured. Character Models,
+   not the equipment archives, is the largest real (resident) tracked cost.
+   ~34-36% of RSS remains untracked by any existing counter, consistently
+   across zones — a stable, real gap, not zone-specific noise. Full tables:
+   `refactor/T105_zonein_working_set_measurement.md`'s Review,
+   `/mnt/projects/fable/review/T105/`. This sizes the load-gate design Will's
+   direction calls for; a follow-up unit can build the gate directly from
+   these numbers without re-measuring.
