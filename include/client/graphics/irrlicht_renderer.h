@@ -549,7 +549,9 @@ struct MemoryReportBreakdown {
     size_t textureCacheCount = 0;
     bool textureCacheActive = false;     // false in unconstrained mode (driver-managed, no budget)
 
-    size_t eqe1MappedBytes = 0;          // EQE1 flat packs, mmap/page-cache backed
+    size_t eqe1MappedBytes = 0;          // EQE1 flat packs, mmap/page-cache backed. MAPPED size, not
+                                          // resident (T105: typically 1.6-10.6% resident) -- deliberately
+                                          // NOT included in totalEstimate (T108); reported separately.
     size_t eqe1ArchiveCount = 0;
 
     size_t zoneGeometryBytes = 0;        // single mesh OR PVS region meshes, whichever active
@@ -583,7 +585,9 @@ struct MemoryReportBreakdown {
     size_t spellDbEstimateBytes = 0;
 
     // --- Total ---
-    size_t totalEstimate = 0;            // sum of every category above that has a defined estimate
+    size_t totalEstimate = 0;            // sum of every category above that has a defined estimate,
+                                          // EXCEPT eqe1MappedBytes (T108: that field is mapped/address-
+                                          // space size, not resident, and would inflate this beyond RSS)
     size_t processRssBytes = 0;          // passthrough of ext.processRssBytes, for convenience
     size_t untrackedBytes = 0;           // processRssBytes - totalEstimate (0 if RSS unavailable or <= total)
 };

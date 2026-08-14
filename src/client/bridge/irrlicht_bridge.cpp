@@ -864,6 +864,13 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto report = renderer_->getMemoryReport(ext);
             for (const auto& line : report) {
                 LOG_INFO(MOD_MAIN, "{}", line);
+                // T108: mirror to in-game chat -- the old renderer-side
+                // "/pmem" handler this replaced did both LOG_INFO and chat;
+                // preserve that visibility now that the real (non-empty)
+                // report reaches players via this path instead.
+                if (renderer_->newUIChatBuffer_) {
+                    renderer_->newUIChatBuffer_->addSystemMessage(line);
+                }
             }
         }
         break;

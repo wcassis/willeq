@@ -6147,8 +6147,12 @@ the plan's own live-verification bar (finding #4), report the rest.
 
 ## T105 (zone-in working set measurement) — findings
 
-1. **`/pmem`'s real `processRssBytes`/`untrackedBytes` are unreachable in a
-   running client** — another instance of the implemented-but-unreached
+1. **RESOLVED by T108** (see that section below) — `/pmem` now reaches
+   `EverQuest::runPmemDiagnostics()` directly and reports real RSS/audio/
+   entity/door/spellDb data in a live client. Original finding preserved
+   below for context. **`/pmem`'s real `processRssBytes`/`untrackedBytes`
+   are unreachable in a running client** — another instance of the
+   implemented-but-unreached
    pattern (the codebase's memory notes already track nine of these). The
    only slash-command path to `/pmem`
    (`irrlicht_renderer.cpp:1219`, `cmd == "/pmem"`) constructs an **empty**
@@ -6289,3 +6293,60 @@ chunk this unit identified is accounted for.
 Full paired category table, the smaps captures for both hosts, and the
 per-finding evidence: `refactor/T107_paired_pi_x86_memory_baseline.md`'s
 Review, `/mnt/projects/fable/review/T107/`.
+
+## T108 (totalEstimate mapped-vs-resident fix) — findings, closes an open item above
+
+1. **Fixed**: `totalEstimate` no longer credits `eqe1MappedBytes` (mapped/
+   address-space size, not RSS). Option B chosen over parsing `/proc/self/
+   smaps` at report time (Option A): the real resident figure is already
+   measured correctly and used elsewhere (`ext.processRssBytes`/
+   `untrackedBytes`), so removing the credit is cheap, adds no new `/proc`
+   parsing to a hot diagnostics path, and `eqe1MappedBytes` is still
+   reported on its own line (now explicitly labeled "not counted in Tracked
+   total"). Fixed in **two places**: `IrrlichtRenderer::
+   getMemoryReportBreakdown()` (`renderer_diagnostics.cpp:646`) AND
+   `computeMemorySnapshot()` (`tools/hwcaps/zone_bench_memory.cpp:166`) —
+   the latter is a documented, necessary duplicate of the former (see that
+   file's header comment: `gles2_zone_benchmark` never constructs a full
+   `IrrlichtRenderer`) and had duplicated the same bug. This is the actual
+   code path `scripts/ci/visual_gate.py`'s memory gate runs, so the fix
+   would not have reached CI without both.
+2. **The predicted ~110-120MB baseline movement materialized only in the
+   T80 memory-coverage run, not the three golden-image zones** — the
+   golden-image benchmark invocation never passes `--eqe1-path`, so
+   `eqe1MappedBytes` is 0 there with or without this fix; nothing in
+   `tests/goldens/manifest.json`'s `zones[]` block moved. The committed
+   manifest also turned out to **not carry a `totalEstimate`/
+   `eqe1MappedBytes` baseline for the golden zones at all** (only
+   `textureCacheBytesUsed`/`textureCacheBytesLimit`/`textureCount` are
+   blessed there — confirmed by inspection and by `git log`, T69's own
+   commits never touched `manifest.json`), so `verify()`'s `MEMORY_BASELINE_
+   FIELDS` loop silently skips them (`if key not in expected_mem: continue`)
+   regardless of this fix. **No re-bless was needed or performed** — the
+   gate passes unchanged before and after. The T80 `memoryCoverage` section
+   (which *does* exercise EQE1) already ships explicitly unblessed pending
+   Will's sign-off (`refactor/T80_memory_gate_coverage.md`); this unit did
+   not bless it either, per the same rule, but measured the corrected
+   numbers Will will need when that sign-off happens: totalEstimate dropped
+   by exactly `eqe1MappedBytes` per zone (qeynos2: 172,352,354 →
+   52,408,963, Δ119,943,391; gfaydark: 183,871,942 → 65,262,459,
+   Δ118,609,483; befallen: 159,450,602 → 46,356,623, Δ113,093,979 —
+   every delta matches that run's `eqe1MappedBytes` exactly). Full numbers:
+   `refactor/T108_totalestimate_mapped_vs_resident.md`'s Review.
+3. **`/pmem`'s live reachability gap (T105 finding #1 above) is now fixed**,
+   not just recommended. The `pmem` command (`eq_commands_spells.cpp`) no
+   longer routes through the renderer-side `RendererCommand` bridge to an
+   empty `MemoryReportInput{}`; it calls `EverQuest::runPmemDiagnostics()`
+   directly (which already existed, fully built, and had zero callers —
+   confirmed by grep before this unit and now closed). Real RSS/audio/
+   entity/door/spellDb data reaches the report via the existing
+   `DiagnosticsMemoryReport` bridge event; in-game chat visibility was
+   preserved by adding `addSystemMessage()` calls to that event's handler
+   in `irrlicht_bridge.cpp` (the old renderer-side handler both chatted and
+   logged; the real path only logged). The now-dead empty-`MemoryReportInput{}`
+   branch in `IrrlichtRenderer::processSlashCommand` was deleted (confirmed
+   unreachable: `processSlashCommand` has exactly one caller, the
+   `RendererCommand` bridge case, which nothing pushes for `/pmem` anymore).
+   Audio's own reachability (T106 finding #3) is fixed as a side effect,
+   since it depends on the same `ext.audioAvailable` populated by the same
+   real path.

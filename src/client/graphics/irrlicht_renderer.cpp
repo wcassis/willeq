@@ -1216,14 +1216,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     } else if (cmd == "/simworker") {
         auto info = getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
-    } else if (cmd == "/pmem") {
-        MemoryReportInput ext{};  // Empty external data — game thread pushes its own stats
-        auto report = getMemoryReport(ext);
-        for (const auto& line : report) {
-            chat(line);
-            LOG_INFO(MOD_GRAPHICS, "{}", line);
-        }
     }
+    // T108: "/pmem" moved off this empty-MemoryReportInput{} path (runLoadDiagnostics
+    // had zero callers, per T105/T106) — EverQuest::runPmemDiagnostics() is now
+    // called directly by the command handler; see irrlicht_bridge.cpp.
     // --- UI ---
     else if (cmd == "/newui") {
         newUIEnabled_ = !newUIEnabled_;

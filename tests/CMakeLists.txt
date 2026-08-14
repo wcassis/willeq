@@ -1513,3 +1513,17 @@ ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
 # whether build-gles2/ has ever been built in this worktree.
 ADD_TEST(NAME visual_gate COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/visual_gate.sh)
 SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125)
+
+# T108: regression test -- totalEstimate must not credit eqe1MappedBytes
+# (address-space/mapped size, not RSS) as if it were resident. Drives the
+# already-built gles2_zone_benchmark (same tool + same computeMemorySnapshot()
+# the memory gate uses -- tools/hwcaps/zone_bench_memory.cpp) with real EQE1
+# archive data. SKIPs (125, same convention as visual_gate above) if the
+# benchmark wasn't built (EQT_GRAPHICS off) or no EQE1 archive data is present
+# on this machine -- see the script's own docstring.
+IF(TARGET gles2_zone_benchmark)
+    ADD_TEST(NAME test_eqe1_totalestimate_accounting
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_eqe1_totalestimate_accounting.py
+                $<TARGET_FILE:gles2_zone_benchmark>)
+    SET_TESTS_PROPERTIES(test_eqe1_totalestimate_accounting PROPERTIES SKIP_RETURN_CODE 125)
+ENDIF()
