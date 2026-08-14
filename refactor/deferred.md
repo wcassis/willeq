@@ -6179,3 +6179,56 @@ the plan's own live-verification bar (finding #4), report the rest.
    `/mnt/projects/fable/review/T105/`. This sizes the load-gate design Will's
    direction calls for; a follow-up unit can build the gate directly from
    these numbers without re-measuring.
+
+## T106 (untracked-memory attribution) — findings
+
+1. **The 34-36% "untracked" figure is itself an artifact of `totalEstimate`
+   crediting EQE1 at its mapped, not resident, size** — correcting for
+   EQE1's already-measured (T105) resident percentage puts the *true*
+   untracked share at **75-90% of RSS**, confirmed two independent ways
+   (hand-corrected T105 numbers, and this unit's own `visual_gate.sh` run
+   from a different harness). `eqe1MappedBytes` should eventually report
+   resident bytes; not changed here (production code, read-only unit).
+   Full arithmetic: `refactor/T106_untracked_memory_attribution.md`'s
+   Review, `/mnt/projects/fable/review/T106/corrected_untracked_percentages.md`.
+2. **~69-73 MB of RSS, roughly fixed regardless of zone/scene, is Mesa's
+   llvmpipe software rasterizer plus its LLVM JIT shader compiler** — 100%
+   dev-VM-only, does not exist on the Orange Pi's native Mali400/GLES2
+   driver. The single largest individually-identified dev-only chunk.
+3. **Audio is invisible through the live `/pmem` path for the same reason
+   RSS/untracked are (finding #1 above)**: `MemoryReportBreakdown` already
+   has a real Audio section (`audioPfsArchiveBytes` etc.) gated on
+   `ext.audioAvailable`, which the `/pmem` handler's empty
+   `MemoryReportInput{}` never sets true — same root cause as #1 above, not
+   a new bug. This is the plan's own "large and trivially attributable to
+   an existing subsystem that simply lacks reachability" exception;
+   **recommended, not fixed here**: wire real `audioAvailable`/audio bytes
+   into the same path the RSS fix would touch — one fix closes both gaps.
+4. **~25.6% of the live client's RSS (148 MB, befallen) is glibc allocator
+   overhead/fragmentation** — measured directly via `mallinfo2()`/
+   `malloc_stats()` (external, via `gdb`-attach, zero code changes; chosen
+   because `valgrind`/massif is not installed in this environment,
+   confirmed before choosing). Real, large, distinct from both llvmpipe and
+   genuinely-held-but-uncounted objects; not an artifact of the ~65
+   per-thread malloc arenas Mesa/llvmpipe's worker-thread pool creates
+   (confirmed via `malloc_stats()`'s per-arena dump — they're all
+   essentially empty; all real allocation activity is in one arena).
+5. **After removing llvmpipe/LLVM-JIT, the tracked total, self-binary text,
+   other shared libs, and allocator fragmentation, ~271 MB (47% of RSS,
+   befallen live client) remains genuinely unattributable** with the tools
+   available in this environment — no heap profiler installed, and
+   attributing further would need call-stack capture this read-only unit's
+   scope doesn't license building. An `strace` mmap trace narrowed ~110 MB
+   of the largest anonymous blocks to plausible-but-unconfirmed candidates
+   (a PulseAudio-shaped `MAP_SHARED`+fd block, an RWX JIT-code-shaped
+   block) by timing correlation only — not proof, stated as such. A future
+   unit should install and run a real heap profiler (massif/heaptrack)
+   against a real populated zone-in to close this.
+
+Full detail, the `smaps` categorization tooling (reusable,
+`review/T106/scripts/analyze_smaps.py`), and the per-chunk Pi-existence
+table: `refactor/T106_untracked_memory_attribution.md`'s Review,
+`/mnt/projects/fable/review/T106/`. This is the answer the memory-gate
+runtime-control-surface question was blocked on — the gate cannot yet see
+roughly half of real RSS (the genuine remainder) even after every other
+chunk this unit identified is accounted for.
