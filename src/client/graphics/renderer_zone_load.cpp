@@ -1333,6 +1333,29 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                 ctx.spawnId = spawnId;
                 ctx.vis = &it->second;
 
+                // T105: single consolidated per-entity working-set snapshot for
+                // offline analysis (distinct race/gender pairs, distinct
+                // equipment/texture variants, distance from player at zone-in).
+                // LOG_DEBUG only — same discipline as the existing Step8a-8d
+                // per-entity lines above/below, default-off at the project's
+                // default log level (NONE); left in place per the plan's
+                // "default-off instrumentation may stay" allowance rather than
+                // reverted, since it costs nothing when disabled and the same
+                // question will recur when the load gate itself is designed.
+                {
+                    float dx = ctx.vis->lastX - playerX_;
+                    float dy = ctx.vis->lastY - playerY_;
+                    float dz = ctx.vis->lastZ - playerZ_;
+                    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    LOG_DEBUG(MOD_GRAPHICS, "T105 ENTITY spawn={} race={} gender={} dist={:.1f} "
+                              "texture={} helm={} chestMat={} equip7={} equip8={} isNPC={} isPlayer={}",
+                              ctx.spawnId, ctx.vis->raceId, ctx.vis->gender, dist,
+                              ctx.vis->appearance.texture, ctx.vis->appearance.helm,
+                              ctx.vis->appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF,
+                              ctx.vis->appearance.equipment[7], ctx.vis->appearance.equipment[8],
+                              ctx.vis->isNPC, ctx.vis->isPlayer);
+                }
+
                 // Update progress within entity phase (80-88%)
                 if (ctx.totalEntities > 0) {
                     int pct = 80 + static_cast<int>(8.0f * ctx.prepCount / ctx.totalEntities);
