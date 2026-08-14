@@ -285,6 +285,52 @@ private:
     ActionResult cmdDecline(const std::string& args);
     ActionResult cmdGroupAccept(const std::string& args);
 
+    // T102: Combat (12) migrated here from EverQuest::m_command_registry's
+    // Combat category (assist/shield/duel/duelaccept/dueldecline in
+    // eq_commands.cpp; target/attack/stopattack/aa/combat/taunt/autofire in
+    // eq_commands_movement.cpp) and Social (10 distinct names/11
+    // registrations -- "who" is duplicated, see cmdWho) from
+    // eq_commands.cpp's RegisterSocialCommands() plus Movement's second
+    // `who`. Registrations removed from both game-registry files in the
+    // same change. See refactor/T102_migrate_combat_social.md.
+    ActionResult cmdTarget(const std::string& args);
+    ActionResult cmdAttack(const std::string& args);
+    ActionResult cmdStopAttack(const std::string& args);
+    ActionResult cmdAA(const std::string& args);
+    ActionResult cmdCombat(const std::string& args);
+    ActionResult cmdTaunt(const std::string& args);
+    ActionResult cmdAutofire(const std::string& args);
+    ActionResult cmdAssist(const std::string& args);
+    ActionResult cmdShield(const std::string& args);
+    ActionResult cmdDuel(const std::string& args);
+    ActionResult cmdDuelAccept(const std::string& args);
+    ActionResult cmdDuelDecline(const std::string& args);
+
+    ActionResult cmdTrade(const std::string& args);
+    ActionResult cmdTradeAccept(const std::string& args);
+    ActionResult cmdTradeDecline(const std::string& args);
+    ActionResult cmdCancelTrade(const std::string& args);
+    // T102: ported from the Social section's who_cmd (real server /who
+    // request, SendWhoAllRequest()) -- CHOSEN over Movement's who (a
+    // client-side local-entity-scan substitute that currently wins the
+    // intra-registry `who`/`who_cmd` collision T97/T82 found; see cmdWho's
+    // own comment for the full reasoning).
+    ActionResult cmdWho(const std::string& args);
+    ActionResult cmdInspect(const std::string& args);
+    ActionResult cmdLFG(const std::string& args);
+    ActionResult cmdSurname(const std::string& args);
+    ActionResult cmdRandom(const std::string& args);
+    ActionResult cmdYell(const std::string& args);
+
+    // Shared helper: resolve a target spawn id for the Combat/Social
+    // commands above that take an optional player name and otherwise fall
+    // back to the current combat target (m_state.combat(), kept live by
+    // Application::syncCombatState() -- a per-frame CombatManager poll,
+    // NOT GameStateSyncBridge; see this unit's Review for why that's the
+    // correct read path here). Returns 0 (with *outError set) if neither a
+    // name match nor a current target is available.
+    uint16_t resolveCombatTarget(const std::string& name, std::string* outError);
+
     // T98: cmdWho/cmdHelp/cmdQuit/cmdDebug/cmdTimestamp removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp).
 

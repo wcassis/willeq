@@ -1066,6 +1066,12 @@ public:
 	void SendDuelDecline(uint32_t target_id);
 	bool IsInDuel() const { return m_is_dueling; }
 	bool HasPendingDuel() const { return m_has_pending_duel; }
+	// T102: accessor for EqActionHandler::duelAccept()/duelDecline() -- the
+	// duel_cmd/duelaccept_cmd/dueldecline_cmd handlers being migrated read
+	// m_duel_initiator_id directly (same TU); the action layer can't (no
+	// friendship), so it needs a plain public getter, same shape as
+	// GetCombatManager()/GetTradeManager() above.
+	uint32_t GetPendingDuelInitiatorId() const { return m_duel_initiator_id; }
 	// Phase 4: Skills
 	void SendBindWound(uint32_t target_id);
 	void SendTrackTarget(uint32_t target_id);

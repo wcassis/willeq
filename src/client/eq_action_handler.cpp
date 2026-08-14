@@ -3,8 +3,12 @@
 #include "client/combat.h"
 #include "client/pet_constants.h"
 #include "client/spell/spell_manager.h"
+#include "client/trade_manager.h"
+#include "client/state/game_state.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
+#include <fmt/format.h>
+#include <cmath>
 
 namespace eqt {
 
@@ -340,6 +344,139 @@ void EqActionHandler::toggleAutoAttack() {
             combat->EnableAutoAttack();
         }
     }
+}
+
+// ========== Combat (T102) ==========
+// Ported from game's Combat-category handlers (eq_commands_movement.cpp/
+// eq_commands.cpp). targetId==0 means "no explicit name given" --
+// CommandProcessor resolves an explicit name via GameState::entities()
+// before calling; when it passes 0, the live CombatManager target (read
+// here, not via GameState::combat() -- see T28's comment on
+// assist_cmd/shield_cmd/duel_cmd, "never populated in production") is used,
+// matching game's own "use current target" fallback exactly.
+
+void EqActionHandler::assist(uint16_t targetId) {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+
+    uint16_t resolved = targetId;
+    if (resolved == 0) {
+        if (!combat->HasTarget()) {
+            m_eq.AddChatSystemMessage("You don't have a target.");
+            return;
+        }
+        resolved = combat->GetTargetId();
+    }
+    m_eq.SendAssist(resolved);
+}
+
+void EqActionHandler::shieldTarget(uint16_t targetId) {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+
+    uint16_t resolved = targetId;
+    if (resolved == 0) {
+        if (!combat->HasTarget()) {
+            m_eq.AddChatSystemMessage("You don't have a target to shield.");
+            return;
+        }
+        resolved = combat->GetTargetId();
+    }
+    m_eq.SendShielding(resolved);
+}
+
+void EqActionHandler::taunt() {
+    auto* combat = getCombatManager();
+    if (combat && combat->HasTarget()) {
+        combat->Taunt();
+        m_eq.AddChatSystemMessage("Taunting target");
+    } else {
+        m_eq.AddChatSystemMessage("No target to taunt");
+    }
+}
+
+void EqActionHandler::toggleAutoFire() {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+    if (combat->IsAutoFireEnabled()) {
+        combat->DisableAutoFire();
+        m_eq.AddChatSystemMessage("Auto fire OFF");
+    } else if (combat->HasTarget()) {
+        combat->EnableAutoFire();
+        m_eq.AddChatSystemMessage("Auto fire ON");
+    } else {
+        m_eq.AddChatSystemMessage("No target - auto fire not enabled");
+    }
+}
+
+// enableCombatManager()/disableCombatManager()/toggleCombatManager() wrap
+// CombatManager's own m_enabled flag (IsEnabled()/Enable()/Disable()) --
+// NOT the same flag as auto-attack (above) or setAutoHunting() (below,
+// m_auto_hunting_enabled). This is /combat on|off|<toggle>, T26's
+// historically-unreachable command; T29's unified command channel made it
+// reachable in `game`, and T102 gives it the sole (migrated) registration.
+void EqActionHandler::enableCombatManager() {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->Enable();
+        m_eq.AddChatSystemMessage("Combat manager enabled");
+    }
+}
+
+void EqActionHandler::disableCombatManager() {
+    auto* combat = getCombatManager();
+    if (combat) {
+        combat->Disable();
+        m_eq.AddChatSystemMessage("Combat manager disabled");
+    }
+}
+
+void EqActionHandler::toggleCombatManager() {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+    if (combat->IsEnabled()) {
+        combat->Disable();
+        m_eq.AddChatSystemMessage("Combat manager disabled");
+    } else {
+        combat->Enable();
+        m_eq.AddChatSystemMessage("Combat manager enabled");
+    }
+}
+
+void EqActionHandler::duelRequest(uint16_t targetId) {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+
+    uint16_t resolved = targetId;
+    if (resolved == 0) {
+        if (!combat->HasTarget()) {
+            m_eq.AddChatSystemMessage("You don't have a target.");
+            return;
+        }
+        resolved = combat->GetTargetId();
+    }
+    m_eq.SendDuelRequest(resolved);
+}
+
+// duelAccept()/duelDecline(): EverQuest's own pending-duel state
+// (HasPendingDuel()/GetPendingDuelInitiatorId(), both public) is read
+// directly -- GameState has no duel domain to project it into, and unlike
+// combat targeting there is no CombatManager-equivalent "authoritative
+// live source" to delegate to instead.
+void EqActionHandler::duelAccept() {
+    if (!m_eq.HasPendingDuel()) {
+        m_eq.AddChatSystemMessage("You have no pending duel challenge.");
+        return;
+    }
+    m_eq.SendDuelAccept(m_eq.GetPendingDuelInitiatorId());
+}
+
+void EqActionHandler::duelDecline() {
+    if (!m_eq.HasPendingDuel()) {
+        m_eq.AddChatSystemMessage("You have no pending duel challenge.");
+        return;
+    }
+    m_eq.SendDuelDecline(m_eq.GetPendingDuelInitiatorId());
 }
 
 void EqActionHandler::castSpell(uint8_t gemSlot) {
@@ -699,17 +836,124 @@ void EqActionHandler::listMemorizedSpells() {
 
 // ========== Trade ==========
 
+// T102: repointed (not a new method -- T101's rule: repoint when the
+// existing method's internals are untested; test_action_dispatcher.cpp's
+// coverage of requestTrade/acceptTrade/cancelTrade is fake-handler routing
+// only, confirmed before making this change). Ported from game's trade_cmd/
+// accept_cmd/canceltrade_cmd (eq_commands.cpp). targetId==0 fallback and
+// name resolution follow the same split as assist()/shieldTarget() above.
+// The self-trade guard from game's trade_cmd is NOT ported: it needs "my
+// own spawn id", which has no public accessor from this layer (unlike
+// CombatManager's target, TradeManager/GameState don't expose it) --
+// flagged as a deviation in the Review rather than silently dropped.
 void EqActionHandler::requestTrade(uint16_t targetId) {
-    // Would need to construct and send trade request
-    LOG_DEBUG(MOD_INPUT, "Request trade not yet implemented");
+    auto* trade = m_eq.GetTradeManager();
+    if (!trade) {
+        m_eq.AddChatSystemMessage("Trade not available");
+        return;
+    }
+    if (trade->isTrading()) {
+        m_eq.AddChatSystemMessage("You are already trading");
+        return;
+    }
+    auto* combat = getCombatManager();
+    if (combat && combat->GetCombatState() == COMBAT_STATE_ENGAGED) {
+        m_eq.AddChatSystemMessage("You cannot trade while in combat");
+        return;
+    }
+
+    uint16_t resolved = targetId;
+    if (resolved == 0 && combat && combat->HasTarget()) {
+        resolved = combat->GetTargetId();
+    }
+    if (resolved == 0) {
+        m_eq.AddChatSystemMessage("No target - use /trade <name> or target a player");
+        return;
+    }
+
+    const auto& entities = m_eq.GetGameState().entities();
+    const auto* entity = entities.getEntity(resolved);
+    bool isNpc = entity && entity->npcType == 1;
+    std::string targetName = entity ? entity->name : std::string();
+
+    if (entity) {
+        auto& player = m_eq.GetGameState().player();
+        float dx = player.x() - entity->x;
+        float dy = player.y() - entity->y;
+        float dz = player.z() - entity->z;
+        float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        constexpr float MAX_TRADE_DISTANCE = 150.0f;
+        if (distance > MAX_TRADE_DISTANCE) {
+            m_eq.AddChatSystemMessage("You are too far away to trade");
+            return;
+        }
+    }
+
+    trade->requestTrade(resolved, targetName, isNpc);
+    m_eq.AddChatSystemMessage(fmt::format("Requesting trade with {}", EQT::toDisplayName(targetName)));
 }
 
 void EqActionHandler::acceptTrade() {
-    LOG_DEBUG(MOD_INPUT, "Accept trade not yet implemented");
+    auto* trade = m_eq.GetTradeManager();
+    if (!trade) {
+        m_eq.AddChatSystemMessage("Trade not available");
+        return;
+    }
+    if (trade->getState() != TradeState::PendingAccept) {
+        m_eq.AddChatSystemMessage("No pending trade request");
+        return;
+    }
+    auto* combat = getCombatManager();
+    if (combat && combat->GetCombatState() == COMBAT_STATE_ENGAGED) {
+        m_eq.AddChatSystemMessage("You cannot trade while in combat");
+        return;
+    }
+    // NOTE: acceptTradeRequest() must run BEFORE reading getPartnerName() --
+    // TradeManager only copies the pending request's name into
+    // m_partner_name INSIDE acceptTradeRequest() itself (trade_manager.cpp);
+    // reading it first returns empty. Found live (T102's own trade session:
+    // "Accepting trade with " printed blank) and fixed here before
+    // shipping -- same aliasing-order class of bug T99 found in
+    // EverQuest::AcceptGroupInvite() (m_pending_inviter_name read after the
+    // call that clears it), mirror image (read too EARLY here, not too LATE).
+    trade->acceptTradeRequest();
+    m_eq.AddChatSystemMessage(fmt::format("Accepting trade with {}", EQT::toDisplayName(trade->getPartnerName())));
 }
 
 void EqActionHandler::cancelTrade() {
-    LOG_DEBUG(MOD_INPUT, "Cancel trade not yet implemented");
+    auto* trade = m_eq.GetTradeManager();
+    if (!trade) {
+        m_eq.AddChatSystemMessage("Trade not available");
+        return;
+    }
+    if (trade->getState() != TradeState::Active) {
+        m_eq.AddChatSystemMessage("You are not trading");
+        return;
+    }
+    trade->cancelTrade();
+    m_eq.AddChatSystemMessage("Trade cancelled");
+}
+
+void EqActionHandler::declineTrade() {
+    auto* trade = m_eq.GetTradeManager();
+    if (!trade) {
+        m_eq.AddChatSystemMessage("Trade not available");
+        return;
+    }
+    if (trade->getState() != TradeState::PendingAccept) {
+        m_eq.AddChatSystemMessage("No pending trade request");
+        return;
+    }
+    // Unlike acceptTrade() above, there is no fix-by-reordering available
+    // here: TradeManager exposes no public accessor for the pending
+    // request's name on the decline path (only m_partner_name, which
+    // rejectTradeRequest() never populates -- only acceptTradeRequest()
+    // does). Adding one would mean touching trade_manager.h/.cpp, outside
+    // this unit's declared territory; the message is deliberately
+    // name-free rather than silently printing a blank the way the
+    // pre-fix acceptTrade() did. Flagged in the Review, not chased further.
+    trade->rejectTradeRequest();
+    m_eq.AddChatSystemMessage("Declined trade request");
 }
 
 // ========== Zone ==========
@@ -855,6 +1099,50 @@ void EqActionHandler::sendAnimation(uint8_t animationId, uint8_t speed) {
 
 void EqActionHandler::sendPositionUpdate() {
     m_eq.SendPositionUpdate();
+}
+
+// ========== Social (T102) ==========
+// Ported from game's Social-category handlers (eq_commands.cpp). /who
+// (requestWho) ports the Social section's who_cmd -- see
+// command_processor.cpp's cmdWho for why that one was chosen over
+// Movement's later, intra-registry-shadowing-winner `who`.
+
+void EqActionHandler::inspectTarget(uint16_t targetId) {
+    uint16_t resolved = targetId;
+    if (resolved == 0) {
+        auto* combat = getCombatManager();
+        if (combat && combat->HasTarget()) {
+            resolved = combat->GetTargetId();
+        }
+    }
+    if (resolved == 0) {
+        m_eq.AddChatSystemMessage("No target - use /inspect <name> or target a player");
+        return;
+    }
+    m_eq.SendInspectRequest(resolved);
+    m_eq.AddChatSystemMessage("Inspecting...");
+}
+
+void EqActionHandler::toggleLFG() {
+    m_eq.SendLFGCommand(!m_eq.IsLFG());
+}
+
+void EqActionHandler::setSurname(const std::string& surname) {
+    m_eq.SendSurname(surname);
+}
+
+void EqActionHandler::rollRandom(uint32_t low, uint32_t high) {
+    if (high < low) high = low;
+    m_eq.SendRandom(low, high);
+}
+
+void EqActionHandler::yellForHelp() {
+    m_eq.SendYellForHelp();
+}
+
+void EqActionHandler::requestWho(const std::string& name, int lvlLow, int lvlHigh) {
+    m_eq.SendWhoAllRequest(name, lvlLow, lvlHigh);
+    m_eq.AddChatSystemMessage("Searching for players...");
 }
 
 } // namespace eqt

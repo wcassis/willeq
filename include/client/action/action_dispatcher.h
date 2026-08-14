@@ -103,6 +103,32 @@ public:
     virtual void disableAutoAttack() = 0;
     virtual void toggleAutoAttack() = 0;
 
+    // T102: ported from game's Combat-category handlers
+    // (eq_commands_movement.cpp/eq_commands.cpp). assist()/shieldTarget()/
+    // duelRequest() take a resolved spawnId (0 = "use the live CombatManager
+    // target", resolved inside the handler -- CommandProcessor does its own
+    // by-name resolution via GameState::entities() first, matching game's
+    // precedence, then falls back to 0 for "no name given").
+    virtual void assist(uint16_t targetId) = 0;
+    virtual void shieldTarget(uint16_t targetId) = 0;
+    virtual void taunt() = 0;
+    virtual void toggleAutoFire() = 0;
+    // CombatManager's own m_enabled flag (Enable()/Disable()/IsEnabled()) --
+    // NOT the same as auto-attack or setAutoHunting()'s m_auto_hunting_enabled,
+    // both pre-existing and untouched. This is /combat on|off|<toggle>,
+    // historically unreachable (T26) until T29's unified command channel.
+    virtual void enableCombatManager() = 0;
+    virtual void disableCombatManager() = 0;
+    virtual void toggleCombatManager() = 0;
+
+    // T102: dueling -- ported from game's duel_cmd/duelaccept_cmd/
+    // dueldecline_cmd. duelAccept()/duelDecline() read EverQuest's own
+    // pending-duel state (HasPendingDuel()/GetPendingDuelInitiatorId(),
+    // both public) since GameState has no duel domain to project it into.
+    virtual void duelRequest(uint16_t targetId) = 0;
+    virtual void duelAccept() = 0;
+    virtual void duelDecline() = 0;
+
     virtual void castSpell(uint8_t gemSlot) = 0;
     virtual void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) = 0;
     virtual void interruptCast() = 0;
@@ -184,6 +210,12 @@ public:
     virtual void requestTrade(uint16_t targetId) = 0;
     virtual void acceptTrade() = 0;
     virtual void cancelTrade() = 0;
+    // T102: game's tradedecline_cmd -- decline a RECEIVED trade request
+    // (TradeState::PendingAccept), distinct from cancelTrade() (an ACTIVE
+    // trade, TradeState::Active). Both existed as ActionDispatcher stubs
+    // before T102; only cancelTrade() had a name already -- this adds the
+    // missing decline half.
+    virtual void declineTrade() = 0;
 
     // ========== Zone ==========
 
@@ -224,6 +256,18 @@ public:
 
     virtual void sendAnimation(uint8_t animationId, uint8_t speed = 10) = 0;
     virtual void sendPositionUpdate() = 0;
+
+    // ========== Social (T102) ==========
+    // Ported from game's Social-category handlers (eq_commands.cpp);
+    // /who ported from the Social section's who_cmd, CHOSEN over
+    // Movement's later-registered, intra-registry-shadowing-winner `who` --
+    // see command_processor.cpp's cmdWho for why.
+    virtual void inspectTarget(uint16_t targetId) = 0;
+    virtual void toggleLFG() = 0;
+    virtual void setSurname(const std::string& surname) = 0;
+    virtual void rollRandom(uint32_t low, uint32_t high) = 0;
+    virtual void yellForHelp() = 0;
+    virtual void requestWho(const std::string& name, int lvlLow, int lvlHigh) = 0;
 };
 
 /**
@@ -402,6 +446,58 @@ public:
      * Toggle auto-attack.
      */
     ActionResult toggleAutoAttack();
+
+    // ===== T102: Combat family additions =====
+
+    /**
+     * Assist a target (or the current combat target if targetId is 0).
+     */
+    ActionResult assist(uint16_t targetId);
+
+    /**
+     * Shield a target (or the current combat target if targetId is 0).
+     */
+    ActionResult shieldTarget(uint16_t targetId);
+
+    /**
+     * Taunt the current combat target.
+     */
+    ActionResult taunt();
+
+    /**
+     * Toggle ranged auto-attack (archery/throwing).
+     */
+    ActionResult toggleAutoFire();
+
+    /**
+     * Enable the combat manager (auto-attack/hunting subsystem).
+     */
+    ActionResult enableCombatManager();
+
+    /**
+     * Disable the combat manager.
+     */
+    ActionResult disableCombatManager();
+
+    /**
+     * Toggle the combat manager.
+     */
+    ActionResult toggleCombatManager();
+
+    /**
+     * Challenge a target (or the current combat target if targetId is 0) to a duel.
+     */
+    ActionResult duelRequest(uint16_t targetId);
+
+    /**
+     * Accept a pending duel challenge.
+     */
+    ActionResult duelAccept();
+
+    /**
+     * Decline a pending duel challenge.
+     */
+    ActionResult duelDecline();
 
     /**
      * Cast spell from gem slot (1-8).
@@ -637,6 +733,12 @@ public:
      */
     ActionResult cancelTrade();
 
+    /**
+     * Decline a received (PendingAccept) trade request. Distinct from
+     * cancelTrade(), which cancels an already-Active trade.
+     */
+    ActionResult declineTrade();
+
     // ========== Zone Actions ==========
 
     /**
@@ -814,6 +916,38 @@ public:
      * Force send position update to server.
      */
     ActionResult sendPositionUpdate();
+
+    // ========== Social Actions (T102) ==========
+
+    /**
+     * Inspect a target (or the current combat target if targetId is 0).
+     */
+    ActionResult inspectTarget(uint16_t targetId);
+
+    /**
+     * Toggle Looking For Group status.
+     */
+    ActionResult toggleLFG();
+
+    /**
+     * Request a surname (last name).
+     */
+    ActionResult setSurname(const std::string& surname);
+
+    /**
+     * Roll a random number in [low, high].
+     */
+    ActionResult rollRandom(uint32_t low, uint32_t high);
+
+    /**
+     * Yell for help.
+     */
+    ActionResult yellForHelp();
+
+    /**
+     * Search the server's /who listing.
+     */
+    ActionResult requestWho(const std::string& name, int lvlLow, int lvlHigh);
 
 private:
     state::GameState& m_state;

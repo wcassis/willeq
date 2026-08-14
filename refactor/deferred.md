@@ -5952,3 +5952,73 @@ migration's job is to move the better implementation into the action
 layer and prove it dispatches and works over the wire, not to fix every
 below-the-layer or orthogonal defect its first live caller happens to
 surface.
+
+## T102 (Combat + Social migration) — findings deferred, not fixed
+
+1. **`Trade` has no `GameState` domain at all** — checked before the live
+   leg, per T99's addendum: `game_state.h` has `tradeskill()`
+   (tradeskill-combine state) but nothing for player-to-player trading.
+   Neither `GameStateSyncBridge` (event-driven) nor an
+   `Application::syncCombatState()`-style per-frame poll covers it. T102
+   worked around this by putting `trade`/`accept`/`tradedecline`/
+   `canceltrade`'s full precondition logic in `EqActionHandler`, reading
+   `EverQuest::GetTradeManager()`/`GetCombatManager()` directly (both
+   pre-existing public accessors, live/authoritative) instead of a
+   `GameState` projection — correct and sufficient for this migration, but
+   means no other action-layer/render-layer consumer can currently read
+   "am I trading, and with whom" without doing the same workaround. A
+   future unit that wants trade UI state exposed to the action layer
+   proper (e.g., a static UI panel showing pending-trade status) will need
+   an actual `TradeState` domain + bridge or poll wiring — a real, if
+   currently avoidable, gap.
+2. **`game`'s `trade_cmd` self-trade guard was not ported.** It compares
+   the resolved target's spawn id against "my own spawn id"; no clean
+   public accessor for the latter was found reachable from
+   `EqActionHandler` (unlike `CombatManager`'s target, which IS
+   accessible). A player could theoretically `/trade` themselves via a
+   same-named alt or a name collision; low practical risk (the server's
+   own trade-request handling likely rejects self-targeting too, untested
+   here), not chased further.
+3. **`/duel` dispatches and sends a real packet
+   (`SendDuelRequest`/`HC_OP_RequestDuel`) but the second live client never
+   visibly received a duel request, in two separate live rounds**, even
+   with a ~14s wait margin. `SendDuelRequest`/`SendDuelAccept`/
+   `SendDuelDecline` are 100% pre-existing, unmodified code (T102 only
+   added routing to them) — reads as an eqemu test-server dueling-support
+   gap, the same shape as T96's AA-purchase gate that blocked live `/pet
+   hold`/`/pet focus` verification. Not root-caused (server code is
+   off-limits), not chased further per the plan's own precedent for this
+   class of finding.
+4. **A real, live-found `acceptTrade()` bug WAS fixed within T102** (not
+   deferred): `EqActionHandler::acceptTrade()` read
+   `TradeManager::getPartnerName()` before calling
+   `acceptTradeRequest()`, which is what actually populates it — printed
+   "Accepting trade with " (blank) on the receiving client. Fixed by
+   reordering; re-verified live (`Accepting trade with Testmelee`). Same
+   aliasing-order bug class as T99's `EverQuest::AcceptGroupInvite()`
+   finding (read too early here, vs. too late there) — recorded as a
+   pattern worth watching for in any future "read some manager state after
+   a call that itself mutates that state" port.
+5. **`declineTrade()`'s message omits the declining party's name**
+   (game's `tradedecline_cmd` included it) — `TradeManager` has no public
+   accessor for the pending request's name on the decline path (only
+   `m_partner_name`, populated exclusively by `acceptTradeRequest()`).
+   Fixing this needs a small `trade_manager.h`/`.cpp` accessor addition,
+   outside T102's declared territory. Deferred for a future unit or a
+   dedicated small fix.
+6. **Testmelee's DB position was found already relocated to `arena`**
+   (zone 77) at T102's own live-session start, not by any action T102
+   took. T100's Review documents Testmelee's true baseline as `zone_id=25`
+   (nektulos, `x=-259, y=-1201, z=-5.75, heading=160.25`) — some session
+   since T100/T101 moved it to `arena` and never restored it, and that
+   session's identity is not established here. T102 did not move either
+   character further and confirmed the position was unchanged after its
+   own clients logged out, so there was nothing for T102 itself to
+   restore — but the drift from T100's documented baseline is real and
+   unexplained. Left as-is (arena) rather than guessed back to nektulos;
+   a future unit taking the eqemu lock should be aware Testmelee is not
+   where T100 last documented it, and either investigate or treat `arena`
+   as the new accepted baseline going forward.
+
+Reported per the same standard prior units set: fix what directly blocks
+the plan's own live-verification bar (finding #4), report the rest.
