@@ -720,6 +720,22 @@ public:
     void applyStoredZoneEnvironment();
     // Check if all deferred assets are built
     void checkProgressiveLoadingComplete();
+    // T111: pure predicate for whether one entity blocks progressive-load
+    // completion. Extracted out of checkProgressiveLoadingComplete() so it's
+    // unit-testable without a scene graph/device, and so it can be kept
+    // deliberately symmetric with queueEntityPrepRequests()'s own gate
+    // (entityPrepMaxPvsDepth) rather than the currentPvsRegion_-equality
+    // check T109 shipped, which is why deferred entities outside the
+    // player's landing region were never picked up (see
+    // refactor/T111_progressive_loading_rearm.md's Review). An entity this
+    // predicate says blocks MUST be one queueEntityPrepRequests() will
+    // actually queue, or completion would wait forever; one it excludes
+    // must not silently vanish from the count either, or the T109 bug
+    // recurs.
+    static bool isEntityBlockingProgressiveLoad(bool meshBuilt, bool inSceneGraph,
+                                                 bool isPlayerEntity, bool pvsValid,
+                                                 uint8_t regionPvsDepth,
+                                                 uint8_t entityPrepMaxPvsDepth);
     // Queue background prep requests for unbuilt entities
     void queueEntityPrepRequests();
     // Log build time and warn if over budget

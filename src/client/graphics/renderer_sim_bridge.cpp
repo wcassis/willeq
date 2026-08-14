@@ -967,6 +967,29 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                     if (visual.lightNode) {
                         smgr_->getRootSceneNode()->addChild(visual.lightNode);
                     }
+                    // T111: checkProgressiveLoadingComplete()/queueEntityPrepRequests()
+                    // only ever consider entities with inSceneGraph==true (this has
+                    // always been true, not new to this unit) — which, per this
+                    // function, is NOT "has a scene node" but "is currently within
+                    // the visible-entity set" (the 40-entity render cap / render
+                    // distance culling), a set that changes every frame as the
+                    // player moves. An entity T109's load-distance gate deferred
+                    // (meshBuilt=false) sits with inSceneGraph=false until it enters
+                    // that set — at which point, if progressive loading already
+                    // declared itself complete and went inactive, nothing would
+                    // ever notice this entity became a real candidate. Re-arm here,
+                    // exactly mirroring registerEntity()'s brand-new-spawn re-arm
+                    // (renderer_entities.cpp) and gated the same way
+                    // (entityPrepReady_ — the worker must exist first). Live-caught
+                    // in this unit's own proof session: without this, a player
+                    // walking toward deferred entities never picked them up because
+                    // progressiveLoadingActive_ had already gone false long before
+                    // they entered view.
+                    if (!visual.meshBuilt && !progressiveLoadingActive_ && entityPrepReady_) {
+                        progressiveLoadingActive_ = true;
+                        LOG_DEBUG(MOD_GRAPHICS, "Progressive loading re-enabled: entity {} ({}) "
+                                  "became visible while still unbuilt", visual.spawnId, visual.name);
+                    }
                 } else if (!er.shouldBeVisible && visual.inSceneGraph) {
                     visual.sceneNode->remove();
                     visual.inSceneGraph = false;

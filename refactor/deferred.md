@@ -6422,3 +6422,56 @@ finding independent of the gate's own effect.
 Full write-up, before/after tables, and the live-reproduction evidence:
 `refactor/T109_entity_load_distance_gate.md`'s Review,
 `/mnt/projects/fable/review/T109/`.
+
+## T111 (progressive-loading pickup/re-arm) — CLOSES the T109 blocker above: the gate is now ACTIVE. Two new pre-existing concurrency bugs found and fixed along the way; T110's Pi shutdown crash independently reproduced but NOT fixed
+
+**T109's blocker (above) is resolved.** `checkProgressiveLoadingComplete()`
+now uses a pure, unit-tested predicate (`isEntityBlockingProgressiveLoad()`)
+symmetric with `queueEntityPrepRequests()`'s own gate instead of scoping to
+the current BSP region, AND `applySimulationOutput()` re-arms
+`progressiveLoadingActive_` when an entity's `inSceneGraph` flag flips
+false→true (the 40-entity render-cap/render-distance visibility set, NOT
+"has a scene node" — a genuine misreading risk for the next person to touch
+this) while still unbuilt. **Both were needed**: the completion-test fix
+alone converged to a hard plateau in one live test (a completion check that
+correctly waits on the CURRENT visible set, but nothing ever refreshes that
+set once it empties). Live-proven with monotonically increasing
+modeled-entity counts (no plateau) across multiple region changes and
+away-and-back movement, in Befallen (177 entities) AND Nektulos (452
+entities, T105/T109's own "gating bug shows here" zone), on x86 AND the
+Orange Pi. `config/constrained_presets.json`'s `orangepi` preset now ships
+`"entityLoadRadius": 400.0` — the gate is live in the build both the Pi and
+x86 dev builds default to.
+
+**Two more pre-existing, previously-latent concurrency bugs found and fixed
+as direct prerequisites** (both unreachable until the pickup fix made
+`EntityPrepWorker`'s background thread do sustained real concurrent work for
+the first time):
+1. `regionPvsDepthMap_` pointed into a local `SimulationOutput` in
+   `loadZoneStep12b_Simulation`'s synchronous first-frame computation — the
+   exact same dangling-local hazard the code already guarded for
+   `particleRenderBuffer_` three lines away, just never guarded here. Fixed:
+   null it at the same point (`renderer_zone_load.cpp`).
+2. `WilleqDatabase::open()` used `SQLITE_OPEN_NOMUTEX` (SQLite's own
+   documented "not safe for concurrent multi-thread use" flag), crashing
+   inside `btreeCursor()` once the background `EntityPrepWorker` thread and
+   the main thread's `EntityRenderer::updateEquipmentTransforms()` both
+   queried the same connection concurrently for real. Fixed:
+   `SQLITE_OPEN_FULLMUTEX` (`willeq_database.cpp`).
+
+**T110 (`refactor/T110_pi_shutdown_segv.md`) was NOT executed this unit**
+despite being named in the task prompt as ready for the Pi — T111's own
+scope filled the session. Its crash WAS independently reproduced, though, as
+a byproduct of this unit's own Pi testing: `corrupted size vs. prev_size` →
+`SIGABRT` during `unloadZone()`'s teardown, Pi-only, after the scripted tour
+completed cleanly. Full `gdb` backtrace:
+`/mnt/projects/fable/review/T111/pi_befallen_gated_pickup_and_shutdown_crash.log`
+— a head start for whoever picks up T110, not a diagnosis under T110's own
+bar (several consecutive clean shutdowns, narrowest fix).
+
+Full write-up, before/after load-time tables (single-sample re-measurement,
+not a full characterization — flagged as a limit), post-zone-in frame-cost
+finding (x86: real but small, 7 spikes/6682 frames; Pi: not reliably
+measured, flagged as a gap), and the live pickup-proof evidence:
+`refactor/T111_progressive_loading_rearm.md`'s Review,
+`/mnt/projects/fable/review/T111/`.
