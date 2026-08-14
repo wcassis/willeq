@@ -1332,8 +1332,8 @@ void Application::updateGameState(float deltaTime) {
         }
     }
 
-    // Sync game state from client
-    syncGameStateFromClient();
+    // syncGameStateFromClient() was deleted (T104) -- it had no remaining
+    // work; see application.h's "Synchronization" section for the history.
 
     // Update loading progress
     updateLoadingProgress();
@@ -1807,84 +1807,22 @@ void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
 }
 #endif
 
-void Application::syncGameStateFromClient() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
+// Application::syncGameStateFromClient() was deleted (T104) -- its only
+// remaining body was a call to syncCombatState() (also deleted, see below);
+// once that was gone there was nothing left to sync from this hook. This
+// closes the state-layer poll sweep started at T39 (see application.h's
+// "Synchronization" section for the full history).
 
-    // Phase 7 Migration Note:
-    // Player position, stats, and zone info are now synced directly from EQ class
-    // packet handlers (Phase 7.1-7.3), so polling is no longer needed for those.
-    // Pet state (T40), inventory slot occupancy (T42), spell state (T44), and
-    // NPC interaction state -- vendor/banker/trainer (T49) -- are now
-    // event-fed via GameStateSyncBridge -- see Application::initialize()'s
-    // bridge construction -- instead of polled here. This closes the
-    // state-layer sweep (T39->T49). Combat (below) is out of this sweep's
-    // territory and still polls CombatManager each tick -- see
-    // syncCombatState()'s own comment.
-
-    // Sync subsystems (not yet migrated to direct sync)
-    syncCombatState();
-}
-
-void Application::syncCombatState() {
-    if (!m_eqClient || !m_gameState) {
-        return;
-    }
-
-    // T39: CombatManager is authoritative; mirror it into GameState::combat()
-    // so CommandProcessor (cmdHail, via state::GameState&) and ConsoleRenderer
-    // (subscribed to GameState's EventBus) see real target/auto-attack data.
-    // NOTE: this is a *different* state::GameState instance than
-    // EverQuest::m_game_state (EverQuest owns its own, used internally by a
-    // few Phase 7.x getters) -- CommandProcessor and the game-mode renderers
-    // are constructed with Application::m_gameState (application.cpp:266,302),
-    // so that is the instance that matters for this migration's payoff.
-    CombatManager* combatManager = m_eqClient->GetCombatManager();
-    if (!combatManager) {
-        return;
-    }
-
-    bool hasTarget = combatManager->HasTarget();
-    uint16_t targetId = hasTarget ? combatManager->GetTargetId() : 0;
-
-    if (targetId != m_lastCombatTargetId) {
-        if (targetId != 0) {
-            const auto& entities = m_eqClient->GetEntities();
-            auto it = entities.find(targetId);
-            if (it != entities.end()) {
-                const Entity& e = it->second;
-                m_gameState->combat().setTarget(targetId, e.name, e.hp_percent, e.level);
-                m_lastCombatTargetHp = e.hp_percent;
-            } else {
-                // Target id known to CombatManager but not yet in the entity
-                // map (e.g. race condition on spawn); mirror the id anyway
-                // with placeholder display fields rather than skipping the
-                // sync entirely.
-                m_gameState->combat().setTarget(targetId, "", 100, 0);
-                m_lastCombatTargetHp = 100;
-            }
-        } else {
-            m_gameState->combat().clearTarget();
-            m_lastCombatTargetHp = 100;
-        }
-        m_lastCombatTargetId = targetId;
-    } else if (targetId != 0) {
-        // Same target: mirror HP changes.
-        const auto& entities = m_eqClient->GetEntities();
-        auto it = entities.find(targetId);
-        if (it != entities.end() && it->second.hp_percent != m_lastCombatTargetHp) {
-            m_gameState->combat().updateTargetHP(it->second.hp_percent);
-            m_lastCombatTargetHp = it->second.hp_percent;
-        }
-    }
-
-    bool autoAttacking = combatManager->IsAutoAttackEnabled();
-    if (autoAttacking != m_lastAutoAttacking) {
-        m_gameState->combat().setAutoAttacking(autoAttacking);
-        m_lastAutoAttacking = autoAttacking;
-    }
-}
+// Application::syncCombatState() was deleted (T104) -- CombatManager remains
+// authoritative; its target id/auto-attack flag now publish
+// TargetChanged/AutoAttackChanged bridge events from their sole choke points
+// (CombatManager::SetTarget/ClearTarget/EnableAutoAttack/DisableAutoAttack,
+// combat.cpp), picked up by GameStateSyncBridge into GameState::combat() --
+// see game_state_sync_bridge.cpp's TargetChanged/AutoAttackChanged cases and
+// refactor/T104_combat_poll_to_bridge.md's Review for the reconstructibility
+// argument (including how target-HP-while-still-targeted is covered without
+// a new event, via the pre-existing ZoneProcessMobHealth() re-publish in
+// eq_entities.cpp).
 
 // Application::syncNPCInteractionState() was deleted (T49) -- vendor,
 // banker, and trainer window state (m_vendor_npc_id/m_banker_npc_id/

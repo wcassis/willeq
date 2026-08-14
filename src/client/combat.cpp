@@ -1,5 +1,6 @@
 #include "client/combat.h"
 #include "client/eq.h"
+#include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
 #ifdef WITH_AUDIO
@@ -241,6 +242,16 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 
 			LOG_DEBUG(MOD_COMBAT, "Target set to {} (ID: {})", entity.name, entity_id);
 
+			// T104: publish so Application::m_gameState->combat() picks up
+			// the new target regardless of which caller reached this choke
+			// point (mouse-click TargetIntent already publishes its own
+			// TargetChanged in eq_bridge.cpp -- this is a harmless redundant
+			// publish for that one path, see this unit's Review; every other
+			// caller -- /target, targetNearest*, cycleTargets, assist/duel/
+			// taunt current-target reads, auto-hunt -- had NO publish before
+			// this).
+			PublishTargetChanged(entity);
+
 			return true;
 		}
 	}
@@ -279,6 +290,67 @@ void CombatManager::ClearTarget() {
 	ct->new_target = 0;
 
 	m_eq->QueuePacket(HC_OP_TargetMouse, &packet);
+
+	// T104: publish so the projection clears regardless of caller (despawn
+	// of the current target, ProcessCombatRound's post-death clear,
+	// EqActionHandler::clearTarget(), etc.) -- none of these published
+	// before this unit except the OnSpawnRemovedGraphics despawn path
+	// (eq_bridge.cpp), which already pushes its own clear -- harmless
+	// redundant publish there, see Review.
+	PublishTargetCleared();
+}
+
+// T104: the three publish helpers below are the sole place this class
+// pushes cross-thread bridge events. Called only from SetTarget(uint16_t)/
+// ClearTarget()/EnableAutoAttack()/DisableAutoAttack() -- the choke points
+// that own m_current_target_id/m_auto_attack_enabled -- so every caller
+// (SetTarget(name), CycleTargets, auto-hunt, EqActionHandler's direct
+// calls, the TargetIntent path) is covered without touching any of them.
+// No-op if there is no bridge (headless-without-graphics runs, or tests
+// that never call EverQuest::setBridge()) -- mirrors every other
+// m_bridge-gated publish in this codebase (eq_bridge.cpp).
+void CombatManager::PublishTargetChanged(const Entity& entity) {
+	if (!m_eq->m_bridge) {
+		return;
+	}
+	eqt::state::TargetChangedData data;
+	data.spawnId = entity.spawn_id;
+	data.name = entity.name;
+	data.level = entity.level;
+	data.hpPercent = entity.hp_percent;
+	data.raceId = entity.race_id;
+	data.gender = entity.gender;
+	data.classId = entity.class_id;
+	data.bodyType = entity.bodytype;
+	data.npcType = entity.npc_type;
+	data.helm = entity.helm;
+	data.showHelm = entity.showhelm;
+	data.texture = entity.equip_chest2;
+	for (int i = 0; i < 9; ++i) {
+		data.equipment[i] = entity.equipment[i];
+		data.equipmentTint[i] = entity.equipment_tint[i];
+	}
+	m_eq->m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::TargetChanged, std::move(data)));
+}
+
+void CombatManager::PublishTargetCleared() {
+	if (!m_eq->m_bridge) {
+		return;
+	}
+	eqt::state::TargetChangedData data;  // spawnId=0 = cleared
+	m_eq->m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::TargetChanged, std::move(data)));
+}
+
+void CombatManager::PublishAutoAttackChanged(bool enabled) {
+	if (!m_eq->m_bridge) {
+		return;
+	}
+	eqt::state::AutoAttackChangedData data;
+	data.enabled = enabled;
+	m_eq->m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::AutoAttackChanged, std::move(data)));
 }
 
 void CombatManager::ConsiderTarget() {
@@ -426,6 +498,9 @@ void CombatManager::EnableAutoAttack() {
 #endif
 
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoAttack: Auto attack ENABLED (sent both AutoAttack and AutoAttack2)");
+
+	// T104: replaces the auto-attack half of Application::syncCombatState().
+	PublishAutoAttackChanged(true);
 }
 
 void CombatManager::DisableAutoAttack() {
@@ -457,6 +532,9 @@ void CombatManager::DisableAutoAttack() {
 		audio->stopAutoAttackMusic();
 	}
 #endif
+
+	// T104: replaces the auto-attack half of Application::syncCombatState().
+	PublishAutoAttackChanged(false);
 }
 
 void CombatManager::NotifyTargetDied(uint16_t victim_id) {

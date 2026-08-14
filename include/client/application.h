@@ -344,35 +344,35 @@ private:
 
     // ========== Synchronization ==========
 
-    /**
-     * Sync game state from EverQuest client.
-     *
-     * This updates the GameState from the EverQuest client's internal state.
-     * Called periodically to keep state in sync during the transition period.
-     */
-    void syncGameStateFromClient();
+    // syncGameStateFromClient() was deleted (T104) -- it had shrunk to a
+    // single call to syncCombatState() (see below), and once that was
+    // deleted too there was nothing left to sync from this hook. This
+    // closes the state-layer poll sweep started at T39: pet (T40),
+    // inventory (T42), spells (T44), NPC interaction (T49), and now
+    // combat (T104) are all event-fed via GameStateSyncBridge.
 
     // syncNPCInteractionState() was deleted (T49) -- vendor/banker/trainer
     // state is now fed from GameStateSyncBridge via bridge events
     // (VendorWindowOpened/Closed, BankWindowOpened/Closed,
     // TrainerWindowOpened/Closed), constructed in initialize() alongside the
-    // T40/T42/T44 pet/inventory/spell cases. This was the last poll in the
-    // state-layer sweep (T39->T49).
+    // T40/T42/T44 pet/inventory/spell cases.
 
     // syncSpellState() was deleted (T44) -- spell state (casting, gem
     // occupancy/state, gem cooldown) is now fed from GameStateSyncBridge via
     // bridge events (SpellCastStarted, SpellCastComplete, SpellGemChanged),
     // constructed in initialize() alongside the T40/T42 pet/inventory cases.
 
-    /**
-     * Sync combat target/auto-attack state from CombatManager (T39).
-     *
-     * CombatManager remains authoritative; this mirrors its target id,
-     * auto-attack flag, and the target entity's HP/name/level into
-     * GameState::combat() so CommandProcessor (cmdHail) and
-     * ConsoleRenderer (EventBus TargetChanged subscriber) see real data.
-     */
-    void syncCombatState();
+    // syncCombatState() was deleted (T104) -- CombatManager remains
+    // authoritative; its target id/auto-attack flag now publish
+    // TargetChanged/AutoAttackChanged bridge events at their sole choke
+    // points (CombatManager::SetTarget/ClearTarget/EnableAutoAttack/
+    // DisableAutoAttack, combat.cpp), fed into GameState::combat() by
+    // GameStateSyncBridge -- the same pattern as every case above. Target
+    // HP-while-still-targeted is covered by the pre-existing
+    // ZoneProcessMobHealth() re-publish of TargetChanged when the updated
+    // entity is the current target (eq_entities.cpp) -- see
+    // refactor/T104_combat_poll_to_bridge.md's Review for the
+    // reconstructibility argument.
 
     /**
      * Update loading progress for the renderer.
@@ -550,10 +550,9 @@ private:
     // Spell state tracking members (m_lastIsCasting/m_lastCastingSpellId)
     // were deleted (T44) along with syncSpellState() -- see above.
 
-    // Combat state tracking (T39)
-    uint16_t m_lastCombatTargetId = 0;
-    uint8_t m_lastCombatTargetHp = 100;
-    bool m_lastAutoAttacking = false;
+    // Combat state tracking members (m_lastCombatTargetId/
+    // m_lastCombatTargetHp/m_lastAutoAttacking) were deleted (T104) along
+    // with syncCombatState() -- see "Synchronization" above.
 
     // H03: Scripted command tour state (game thread only)
     std::vector<ScriptStep> m_scriptSteps;

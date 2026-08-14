@@ -756,6 +756,105 @@ TEST_F(GameStateSyncBridgeTest, EntityEventsStillDelegateToWrappedBridge) {
 }
 
 // ===================================================================
+// Combat (T104) -- replaces Application::syncCombatState(), the last poll
+// in the state-layer sweep started at T39. TargetChanged/AutoAttackChanged
+// are published from CombatManager's own choke points (combat.cpp), so
+// unlike pet/inventory/spells these are exercised end-to-end (via
+// EverQuest+CombatManager) in tests/test_combat_manager.cpp; the cases here
+// cover only this decorator's own translation of the event into
+// GameState::combat() calls, matching every other section's shape.
+// ===================================================================
+
+TEST_F(GameStateSyncBridgeTest, TargetChangedSetsCombatTarget) {
+    TargetChangedData data;
+    data.spawnId = 42;
+    data.name = "a_gnoll";
+    data.level = 7;
+    data.hpPercent = 88;
+
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, data));
+
+    EXPECT_TRUE(state->combat().hasTarget());
+    EXPECT_EQ(state->combat().targetId(), 42u);
+    EXPECT_EQ(state->combat().targetName(), "a_gnoll");
+    EXPECT_EQ(state->combat().targetLevel(), 7);
+    EXPECT_EQ(state->combat().targetHPPercent(), 88);
+}
+
+TEST_F(GameStateSyncBridgeTest, TargetChangedWithZeroSpawnIdClearsTarget) {
+    TargetChangedData set;
+    set.spawnId = 42;
+    set.name = "a_gnoll";
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, set));
+    ASSERT_TRUE(state->combat().hasTarget());
+
+    TargetChangedData clear;  // spawnId=0 = cleared, matches the production convention
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, clear));
+
+    EXPECT_FALSE(state->combat().hasTarget());
+    EXPECT_EQ(state->combat().targetId(), 0u);
+    EXPECT_EQ(state->combat().targetHPPercent(), 100);
+}
+
+// The correlation risk the plan named directly: re-applying TargetChanged
+// for the SAME spawnId with a new hpPercent (the shape ZoneProcessMobHealth's
+// re-publish takes when the current target is damaged) must update HP, not
+// be dropped as a no-op identity change.
+TEST_F(GameStateSyncBridgeTest, TargetChangedForSameTargetUpdatesHP) {
+    TargetChangedData first;
+    first.spawnId = 42;
+    first.name = "a_gnoll";
+    first.hpPercent = 100;
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, first));
+    ASSERT_EQ(state->combat().targetHPPercent(), 100);
+
+    TargetChangedData damaged;
+    damaged.spawnId = 42;
+    damaged.name = "a_gnoll";
+    damaged.hpPercent = 63;
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, damaged));
+
+    EXPECT_EQ(state->combat().targetId(), 42u);
+    EXPECT_EQ(state->combat().targetHPPercent(), 63);
+}
+
+TEST_F(GameStateSyncBridgeTest, AutoAttackChangedSetsFlag) {
+    AutoAttackChangedData data;
+    data.enabled = true;
+
+    bridge->applyEvent(GameEvent(GameEventType::AutoAttackChanged, data));
+
+    EXPECT_TRUE(state->combat().isAutoAttacking());
+}
+
+TEST_F(GameStateSyncBridgeTest, AutoAttackChangedClearsFlag) {
+    AutoAttackChangedData on;
+    on.enabled = true;
+    bridge->applyEvent(GameEvent(GameEventType::AutoAttackChanged, on));
+    ASSERT_TRUE(state->combat().isAutoAttacking());
+
+    AutoAttackChangedData off;
+    off.enabled = false;
+    bridge->applyEvent(GameEvent(GameEventType::AutoAttackChanged, off));
+
+    EXPECT_FALSE(state->combat().isAutoAttacking());
+}
+
+TEST_F(GameStateSyncBridgeTest, CombatEventsStillDelegateToWrappedBridge) {
+    TargetChangedData target;
+    target.spawnId = 42;
+    bridge->applyEvent(GameEvent(GameEventType::TargetChanged, target));
+
+    AutoAttackChangedData autoAttack;
+    autoAttack.enabled = true;
+    bridge->applyEvent(GameEvent(GameEventType::AutoAttackChanged, autoAttack));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 2u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::TargetChanged);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::AutoAttackChanged);
+}
+
+// ===================================================================
 // Group (T99) -- these cases were entirely absent before this unit.
 // Application::m_gameState's GroupState never received a single update
 // from any group event: EverQuest's own m_game_state/m_has_pending_invite

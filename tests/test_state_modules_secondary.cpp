@@ -466,8 +466,10 @@ TEST(CombatStateTest, ResetClearsAllState) {
 // T39: this used to be DELIBERATE_GAP_SetTargetDoesNotPublishPendingMigration,
 // pinning a documented non-publishing stub pending the state-layer
 // migration. That migration is this unit: setTarget()/clearTarget() are now
-// wired to a real caller (Application::syncCombatState(), mirroring the
-// authoritative CombatManager -- see application.cpp) and
+// wired to a real caller -- originally Application::syncCombatState(), a
+// per-frame poll of CombatManager; T104 replaced that poll with
+// GameStateSyncBridge's TargetChanged case, fed from CombatManager's own
+// SetTarget()/ClearTarget() choke points (combat.cpp) -- and
 // fireTargetChangedEvent() now publishes real data on the EventBus. This is
 // NOT a double-publish: eq_bridge.cpp's three TargetChanged pushes go onto
 // the GameStateBridge (IrrlichtBridge/ConsoleBridge), a channel disjoint
@@ -517,11 +519,14 @@ TEST(CombatStateTest, ClearTargetPublishesTargetChangedWithZeroSpawnId) {
 // comment in combat_state.cpp: CombatEventData models a combat round
 // outcome (Hit/Miss/.../Death against a source/target pair with a damage
 // amount), and no field or other GameEventType means "auto-attack
-// toggled". setAutoAttacking() is still wired now (Application::
-// syncCombatState() mirrors CombatManager::IsAutoAttackEnabled()) so
-// isAutoAttacking() reflects real state, but publishing was correctly left
-// undone rather than inventing data. Pinning that this remains an
-// intentional, examined gap, not a silent regression.
+// toggled". setAutoAttacking() is still wired now -- originally via
+// Application::syncCombatState()'s poll, T104 replaced that with
+// GameStateSyncBridge's AutoAttackChanged case, fed from
+// CombatManager::EnableAutoAttack()/DisableAutoAttack() -- so
+// isAutoAttacking() reflects real state, but publishing on THIS EventBus
+// was correctly left undone rather than inventing data (AutoAttackChanged
+// is a separate, cross-thread bridge event, not published here). Pinning
+// that this remains an intentional, examined gap, not a silent regression.
 TEST(CombatStateTest, SetAutoAttackingStillDoesNotPublish_NoMatchingEventType) {
     CombatState cs;
     EventBus bus;

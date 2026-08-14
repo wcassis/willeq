@@ -1721,6 +1721,62 @@ same raw-map path as `/who`. Full evidence:
 `interactNearest()` was not exercised (no slash-command binding at all,
 hotkey-only — same reachability class, one level further).
 
+**T104 (2026-08-14) COMBAT CLOSED — the last category of T78's Option B
+migration apart from doors.** `Application::syncCombatState()` (the
+per-tick poll T78 confirmed populated `GameState::combat()`, and which
+T81 explicitly left untouched) is **deleted**, along with its three
+dedupe members (`m_lastCombatTargetId`/`m_lastCombatTargetHp`/
+`m_lastAutoAttacking`). Replaced by two events feeding
+`GameStateSyncBridge`: `TargetChanged` (already existed and was already
+published end-to-end for the graphics/renderer target HUD before this
+unit — `eq_bridge.cpp`'s `TargetIntent` handler, `OnSpawnRemovedGraphics`,
+and `eq_entities.cpp`'s `ZoneProcessMobHealth()` re-publish when the
+updated entity is the current target — but nothing fed it into
+`Application::m_gameState->combat()`, and most `SetTarget()`/
+`ClearTarget()` callers — `/target`, `targetNearest*`, `cycleTargets`,
+`assist`/`duel`/`taunt`, auto-hunt — never published it at all) and
+`AutoAttackChanged` (new typed event). The fix moves the publish into
+`CombatManager::SetTarget(uint16_t)`/`ClearTarget()`/`EnableAutoAttack()`/
+`DisableAutoAttack()` themselves (`combat.cpp`) — the sole choke points
+that mutate `m_current_target_id`/`m_auto_attack_enabled` — so every
+caller is covered without touching any of them individually, and the
+target-HP-while-still-targeted correlation risk (the plan's own "hard
+part") is resolved by **reusing** the pre-existing
+`ZoneProcessMobHealth()` re-publish rather than adding a second,
+competing correlation mechanism. Falsification test held: **zero changes
+to `CommandProcessor`/`ConsoleRenderer`** — both already read
+`GameState::combat()` the same way; only the feed changed. Live-verified
+(`review/T104/`): a real, server-driven HP change (100%->72%->36%->0%,
+via the sanctioned GM command `#set hp <amount>` — real melee produced
+zero `ZoneProcessDamage` packets against Testchar's test account, found
+live to have **zero items equipped in any slot**, an environmental gap
+unrelated to this unit) produced four fresh `TargetChanged` publishes
+with the correct decreasing HP each time; the kill automatically
+triggered both `TargetChanged(clear)` and `AutoAttackChanged(false)` via
+`ProcessCombatRound()`'s pre-existing `hp_percent<=0` branch. One
+command-surface gap found and flagged, not fixed (out of territory):
+**no slash command reaches `EqActionHandler::clearTarget()`** —
+`ActionDispatcher::clearTarget()`'s only production caller is
+`InputActionBridge` (a keybinding); the headless verification of the
+clear path relies on this unit's own unit tests
+(`GameStateSyncBridgeTest.TargetChangedWithZeroSpawnIdClearsTarget`,
+both-directions-proven) plus the live kill's automatic clear. `TargetHPUpdatedData`/
+`GameEventType::TargetHPUpdated` remain defined but **still have zero
+production publishers** (confirmed unchanged by this unit) — `TargetChanged`
+already carries `hpPercent` and is what both the pre-existing HP-while-
+targeted re-publish and this unit's projection wiring use; flagged, not
+touched, since publishing it would be scope creep this unit's territory
+didn't ask for. Full detail: `refactor/T104_combat_poll_to_bridge.md`'s
+Review, `review/T104/README.md`.
+
+**Board status after T104: entities (T81), group (T99), and now combat
+are all migrated off polls onto typed bridge events. Doors remain the
+sole open category** — per T78's finding, worse than a two-instance
+split (a third, unconnected `DoorStateManager` on `EverQuest` holds the
+only real door data; neither `GameState::doors()` is ever populated by
+anyone) — its own unit, its own reconstructibility argument, separately
+blocked on routing.
+
 ## Dead parallel state copies in the state layer, WITH LIVE READERS (orchestrator, 2026-08-02) — **ALL THREE CLAIMS CLOSED (T28/T39/T42/T49); this is the board's own worked example of why re-verification matters**
 
 **CLOSED, T53 (2026-08-05) verification** (independently re-confirmed, not

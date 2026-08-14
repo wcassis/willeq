@@ -1,0 +1,1443 @@
+[2026-08-14 12:38:02.641] [INFO ] [MAIN] --log-level=DEBUG and -d 4 disagree; --log-level= wins (effective level: DEBUG)
+[2026-08-14 12:38:02.641] [INFO ] [MAIN] Starting WillEQ with debug level 4, config file: /mnt/projects/fable/wt/slot2/benchmarks/audits/T104/willeq_t104.json, pathfinding: enabled
+[2026-08-14 12:38:02.641] [INFO ] [MAIN] Log level: DEBUG (use --log-level=LEVEL to change)
+[2026-08-14 12:38:02.641] [INFO ] [MAIN] Loading config file: /mnt/projects/fable/wt/slot2/benchmarks/audits/T104/willeq_t104.json
+[2026-08-14 12:38:02.646] [INFO ] [INPUT] HotkeyManager: Loaded 93 bindings from config/hotkeys.json
+
+=== WillEQ Console Mode ===
+Type 'help' for available commands.
+
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and CancelInput both bound to Escape in global mode
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and ClearTarget both bound to Escape (global conflicts with player)
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelInput and ClearTarget both bound to Escape (global conflicts with player)
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ChatAutocomplete and CycleTargets both bound to Tab (global conflicts with player)
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and SubmitInput both bound to Return in global mode
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and OpenChat both bound to Return (global conflicts with player)
+[2026-08-14 12:38:02.646] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: SubmitInput and OpenChat both bound to Return (global conflicts with player)
+[2026-08-14 12:38:02.646] [INFO ] [MAIN] Initializing application...
+[2026-08-14 12:38:02.646] [INFO ] [MAIN] No constrained preset specified, defaulting to 'orangepi'
+[2026-08-14 12:38:02.646] [DEBUG] [MAIN] S01: Config validation passed
+[2026-08-14 12:38:02.646] [INFO ] [MAIN] Config: host=127.0.0.1, server=WillEQ, character=Testchar
+[2026-08-14 12:38:02.646] [DEBUG] [MAIN] Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGTERM=clean shutdown, SIGHUP=hotkey reload)
+[2026-08-14 12:38:02.646] [DEBUG] [MAIN] Game state created
+[2026-08-14 12:38:02.646] [DEBUG] [MAIN] Creating EverQuest client...
+[2026-08-14 12:38:02.647] [DEBUG] [INVENTORY] Inventory manager initialized
+[2026-08-14 12:38:02.648] [DEBUG] [MAIN] Command registry initialized
+[2026-08-14 12:38:02.684] [INFO ] [MAIN] WilleqDatabase: opened data/willeq.db (version 3)
+[2026-08-14 12:38:02.685] [INFO ] [MAIN] WilleqDatabase opened: data/willeq.db (cache: 31120 bytes)
+[2026-08-14 12:38:02.685] [INFO ] [MAIN] StringDatabase: initialized from SQLite
+[2026-08-14 12:38:02.685] [INFO ] [MAIN] Loaded strings from SQLite (5901 eqstr, 8305 dbstr)
+[2026-08-14 12:38:02.685] [DEBUG] [MAIN] EverQuest client created
+[2026-08-14 12:38:02.685] [DEBUG] [MAIN] S04: Initializing spell system from '/mnt/projects/EverQuestP1999'...
+[2026-08-14 12:38:02.690] [INFO ] [SPELL] SpellDatabase: initialized from SQLite (8066 spells, cache capacity 256)
+[2026-08-14 12:38:02.690] [INFO ] [SPELL] Spell database initialized from SQLite (8066 spells)
+[2026-08-14 12:38:02.696] [INFO ] [MAIN] Game thread started
+[2026-08-14 12:38:03.201] [INFO ] [WORLD] Login connected.
+[2026-08-14 12:38:03.262] [INFO ] [MAIN] [LOADING][Phase 2/15] (5%) Authenticating...
+[2026-08-14 12:38:03.402] [INFO ] [WORLD] Logged in successfully with dbid 1 and key LPXJE5SBSC
+[2026-08-14 12:38:03.434] [INFO ] [WORLD] Found world server WillEQ, attempting to login.
+[2026-08-14 12:38:03.485] [DEBUG] [WORLD] PlayEverquestResponse: allowed=1, server_id=2
+[2026-08-14 12:38:03.485] [INFO ] [WORLD] Connecting to world server WillEQ at 10.0.30.23:9000
+[2026-08-14 12:38:03.485] [DEBUG] [WORLD] Creating new world connection manager for 10.0.30.23:9000
+[2026-08-14 12:38:03.485] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-08-14 12:38:03.485] [INFO ] [NET] PosixUdpTransport: connected to 10.0.30.23:9000 fd=7
+[2026-08-14 12:38:03.485] [DEBUG] [WORLD] World connection created: valid
+[2026-08-14 12:38:03.989] [DEBUG] [WORLD] World connected, sending client auth
+[2026-08-14 12:38:03.989] [INFO ] [WORLD] Sending login info: dbid=1, key=LPXJE5SBSC, zoning=0
+[2026-08-14 12:38:03.989] [DEBUG] [WORLD] Client auth sent
+[2026-08-14 12:38:04.031] [DEBUG] [WORLD] Received guilds list
+[2026-08-14 12:38:04.031] [DEBUG] [WORLD] Received log server info
+[2026-08-14 12:38:04.031] [DEBUG] [WORLD] World approved, sending response
+[2026-08-14 12:38:04.032] [DEBUG] [WORLD] Server acknowledged enter world
+[2026-08-14 12:38:04.032] [DEBUG] [WORLD] Post enter world received
+[2026-08-14 12:38:04.032] [DEBUG] [WORLD] Expansion info: 0x7f7ff
+[2026-08-14 12:38:04.033] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+[2026-08-14 12:38:04.033] [DEBUG] [MAIN] Checking character names in Titanium format:
+[2026-08-14 12:38:04.033] [DEBUG] [MAIN] Character 0: name='Testcaster', level=1, class=12, race=6, zone=25
+[2026-08-14 12:38:04.033] [DEBUG] [MAIN] Character 1: name='Testchar', level=2, class=1, race=1, zone=36
+[2026-08-14 12:38:04.033] [DEBUG] [MAIN] Found our character 'Testchar' at index 1
+[2026-08-14 12:38:04.033] [DEBUG] [MAIN] Character 2: name='Testmelee', level=1, class=1, race=6, zone=77
+[2026-08-14 12:38:04.073] [DEBUG] [WORLD] Received MOTD
+[2026-08-14 12:38:04.073] [DEBUG] [NET] Received chat server info: 10.0.30.23,7778,WillEQ Private Server.Testchar,B2EE41F5E
+[2026-08-14 12:38:04.073] [DEBUG] [WORLD] UCS connection info: 10.0.30.23:7778, type: 'B'
+[2026-08-14 12:38:04.073] [DEBUG] [NET] Received chat server info: 10.0.30.23,7778,WillEQ Private Server.Testchar,b2EE41F5E
+[2026-08-14 12:38:04.073] [DEBUG] [WORLD] UCS connection info: 10.0.30.23:7778, type: 'b'
+[2026-08-14 12:38:04.088] [DEBUG] [WORLD] Received ZoneServerInfo packet
+[2026-08-14 12:38:04.088] [DEBUG] [ZONE] Zone server info received: 10.0.30.23:7000
+[2026-08-14 12:38:04.088] [DEBUG] [ZONE] Connecting to zone server at 10.0.30.23:7000
+[2026-08-14 12:38:04.088] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-08-14 12:38:04.089] [INFO ] [NET] PosixUdpTransport: connected to 10.0.30.23:7000 fd=8
+[2026-08-14 12:38:04.089] [DEBUG] [ZONE] Zone connection created
+[2026-08-14 12:38:04.122] [DEBUG] [WORLD] World connection lost
+[2026-08-14 12:38:04.216] [DEBUG] [MOVEMENT] SendPositionUpdate skipped: zoned_in=false zone_conn=true
+[2026-08-14 12:38:04.592] [DEBUG] [ZONE] Zone connected
+[2026-08-14 12:38:04.592] [DEBUG] [ZONE] Sending stream identify with opcode 0x7213 (Titanium_zone)
+[2026-08-14 12:38:04.676] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] PlayerProfile received, size=19594 bytes
+[2026-08-14 12:38:04.677] [INFO ] [ZONE] [ZONE-IN] PlayerProfile position: server=(-77.88,21.88,3.00) heading=128.00 -> client=(21.88,-77.88,3.00) heading=0.00
+[2026-08-14 12:38:04.677] [DEBUG] [MOVEMENT] POS S->C PlayerProfile [SELF] profile_heading=128.00 -> server_heading_deg=90.00 -> m_heading=0.00deg
+[2026-08-14 12:38:04.677] [DEBUG] [MOVEMENT] POS S->C PlayerProfile [SELF] server_pos=(-77.88,21.88,3.00) -> client_pos=(21.88,-77.88,3.00)
+[2026-08-14 12:38:04.677] [INFO ] [ZONE] [ZONE-IN] Publishing PlayerMoved from PlayerProfile: (21.88,-77.88,3.00) heading=0.00deg -> 0.00 (512 fmt)
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Loaded skill caps for class 1 level 2
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] SkillManager initialized: class=1 race=1 level=2
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[0] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[1] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[2] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[3] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[9] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[10] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[15] = 4
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[28] = 8
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[30] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[33] = 15
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[36] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[51] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[67] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Skill[73] = 1
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Updated 100 skills from profile
+[2026-08-14 12:38:04.677] [INFO ] [MAIN] Loaded 100 skills from PlayerProfile (14 non-zero)
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] === CHARACTER DATA ===
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Name: Testchar  (Level 2 Warrior Human)
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Gender: 0 Race: 1 Class: 1 Deity: 396
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] === POSITION DATA ===
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Server raw: x=-77.88 y=21.88 z=3.00 heading=128.00
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Internal (swapped): m_x=21.88 m_y=-77.88 m_z=3.00 m_heading=0.00
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Size: 6.00 (default, will be updated from spawn)
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] === BIND POINT ===
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Bind raw: zone=1 x=-510.00 y=57.00 z=31.75 heading=0.00
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Bind internal: zone=1 m_bind_x=57.00 m_bind_y=-510.00 m_bind_z=31.75
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] === STATS ===
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] HP: 60 Mana: 0 End: 40
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] STR:75 STA:75 CHA:55 DEX:70 INT:60 AGI:75 WIS:55
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Currency: 982pp 17gp 13sp 8cp
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Bank Currency: 0pp 0gp 0sp 0cp
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Practice points (training sessions): 5
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Entity ID: 215 (from offset 14384)
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] ===========================
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Added self to entity list: Testchar (ID: 215)
+[2026-08-14 12:38:04.677] [DEBUG] [SPELL] Set 400 spells in spellbook
+[2026-08-14 12:38:04.677] [DEBUG] [SPELL] Loaded 0 spells from spellbook
+[2026-08-14 12:38:04.677] [DEBUG] [SPELL] Set 8 spell gems
+[2026-08-14 12:38:04.677] [DEBUG] [SPELL] Memorized spells:
+[2026-08-14 12:38:04.677] [DEBUG] [SPELL] Loaded 0 active buffs from profile
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Zone entry response, size: 387
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN] Potential spawn IDs in ZoneEntry response:
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN]   uint16 at offset 2: 0
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN]   uint16 at offset 4: 0
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN]   uint32 at offset 2: 0
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN]   uint32 at offset 6: 1409286144
+[2026-08-14 12:38:04.677] [DEBUG] [MAIN]   Spawn name at offset 7: 'Testchar'
+[2026-08-14 12:38:04.682] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Received zone spawns packet, size: 38502 bytes
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 1: a_scaled_wolf_pup018 (ID: 214) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 2: a_giant_rat003 (ID: 212) Level 2 Race 36 Size 9.00 at (-324.62, -213.88, -8.38)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 3: a_scaled_wolf_pup017 (ID: 211) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 4: a_scaled_wolf_pup016 (ID: 209) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 5: a_scaled_wolf_pup015 (ID: 207) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 6: SummonResupplyAgent004 (ID: 174) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 7: Miltiades_Tal`Azroth005 (ID: 173) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 8: SummonResupplyAgent003 (ID: 172) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 9: a_rat005 (ID: 171) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 10: a_rat004 (ID: 170) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.12)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 11: Chomper000 (ID: 169) Level 3 Race 24 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 12: a_rat003 (ID: 168) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.12)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 13: a_rat002 (ID: 167) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 14: a_rat001 (ID: 166) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.682] [DEBUG] [ENTITY] Loaded spawn 15: a_rat000 (ID: 165) Level 1 Race 415 Size 2.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 16: SummonResupplyAgent002 (ID: 164) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 17: SummonResupplyAgent001 (ID: 163) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 18: SummonResupplyAgent000 (ID: 162) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 19: SummonClockworkBanker003 (ID: 161) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 20: Brin_Stolunger003 (ID: 160) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 21: Miltiades_Tal`Azroth004 (ID: 159) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 22: SummonClockworkBanker002 (ID: 158) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 23: Brin_Stolunger002 (ID: 157) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 24: Miltiades_Tal`Azroth003 (ID: 156) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 25: SummonClockworkBanker001 (ID: 155) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 26: Brin_Stolunger001 (ID: 154) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 27: Miltiades_Tal`Azroth002 (ID: 153) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 28: SummonClockworkBanker000 (ID: 152) Level 1 Race 457 Size 3.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 29: Brin_Stolunger000 (ID: 151) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 30: Miltiades_Tal`Azroth001 (ID: 150) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 31: a_scaled_wolf_pup014 (ID: 149) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 32: a_scaled_wolf_pup013 (ID: 148) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 33: a_scaled_wolf_pup012 (ID: 147) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 34: a_scaled_wolf_pup011 (ID: 146) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 35: a_scaled_wolf_pup010 (ID: 145) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 36: a_scaled_wolf_pup009 (ID: 144) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 37: a_scaled_wolf_pup008 (ID: 143) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 38: a_scaled_wolf_pup007 (ID: 142) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 39: a_scaled_wolf_pup006 (ID: 141) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 40: a_scaled_wolf_pup005 (ID: 140) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 41: a_scaled_wolf_pup004 (ID: 139) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 42: a_scaled_wolf_pup003 (ID: 138) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 43: a_scaled_wolf_pup002 (ID: 137) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 44: a_scaled_wolf_pup001 (ID: 136) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 45: a_scaled_wolf_pup000 (ID: 135) Level 1 Race 42 Size 4.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.683] [DEBUG] [ENTITY] Loaded spawn 46: Miltiades_Tal`Azroth000 (ID: 134) Level 61 Race 1 Size 6.00 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 47: ariam_depoper000 (ID: 133) Level 1 Race 240 Size 6.00 at (-246.00, -39.00, 3.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 48: a_greater_skeleton019 (ID: 131) Level 11 Race 367 Size 7.00 at (-556.00, 18.00, -37.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 49: Zeek000 (ID: 129) Level 61 Race 11 Size 3.50 at (-201.00, 22.00, -11.62)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 50: a_shadowknight002 (ID: 128) Level 12 Race 10 Size 9.00 at (-511.00, 152.00, -38.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 51: a_greater_skeleton000 (ID: 51) Level 12 Race 367 Size 7.00 at (-512.00, -79.00, -65.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 52: a_ghoul002 (ID: 50) Level 13 Race 33 Size 6.00 at (-480.00, -94.00, -66.75)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 53: a_necro_acolyte000 (ID: 49) Level 15 Race 12 Size 3.00 at (-359.00, 91.00, -67.88)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 54: a_putrid_skeleton005 (ID: 48) Level 5 Race 367 Size 6.00 at (-275.00, 80.00, -10.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 55: a_large_plague_rat003 (ID: 47) Level 9 Race 36 Size 7.00 at (-350.38, 94.00, -9.62)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 56: a_sturdy_skeleton001 (ID: 46) Level 8 Race 367 Size 6.00 at (-369.12, 98.50, -10.25)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 57: a_ghoul001 (ID: 45) Level 13 Race 33 Size 6.00 at (-392.00, 92.00, -66.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 58: a_large_plague_rat002 (ID: 44) Level 9 Race 36 Size 7.00 at (-350.12, 93.25, -9.62)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 59: a_necro_neophyte007 (ID: 43) Level 9 Race 6 Size 5.00 at (-348.62, 92.25, -10.88)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 60: a_necro_neophyte006 (ID: 42) Level 9 Race 6 Size 5.00 at (-348.50, 92.25, -10.88)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 61: a_plague_rat006 (ID: 41) Level 5 Race 36 Size 9.00 at (-344.00, 96.38, -8.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 62: a_giant_rat002 (ID: 40) Level 2 Race 36 Size 9.00 at (-274.88, 125.88, -9.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 63: a_cracked_skeleton003 (ID: 39) Level 6 Race 367 Size 6.00 at (-282.00, 139.88, -10.62)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 64: a_putrid_skeleton004 (ID: 38) Level 7 Race 367 Size 6.00 at (-334.00, 183.00, -10.62)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 65: a_necro_neophyte005 (ID: 37) Level 7 Race 12 Size 3.00 at (-332.00, 166.00, -11.88)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 66: a_giant_rat001 (ID: 35) Level 2 Race 36 Size 9.00 at (-164.00, 80.00, -8.12)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 67: a_putrid_skeleton003 (ID: 34) Level 6 Race 367 Size 6.00 at (-148.00, 94.00, -10.00)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 68: a_cracked_skeleton002 (ID: 33) Level 4 Race 367 Size 6.00 at (-136.00, 118.00, -9.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 69: a_putrid_skeleton002 (ID: 32) Level 5 Race 367 Size 6.00 at (-216.00, 139.00, -9.38)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 70: a_necro_neophyte004 (ID: 31) Level 8 Race 1 Size 6.00 at (-209.00, 162.00, -11.88)
+[2026-08-14 12:38:04.684] [DEBUG] [ENTITY] Loaded spawn 71: a_necro_neophyte003 (ID: 30) Level 7 Race 1 Size 6.00 at (-130.00, 154.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 72: a_skeletal_excavator003 (ID: 11) Level 7 Race 367 Size 6.00 at (-78.00, -118.00, 3.75)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 73: a_skeletal_excavator002 (ID: 10) Level 7 Race 367 Size 6.00 at (-299.00, -74.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 74: a_skeletal_excavator001 (ID: 9) Level 7 Race 367 Size 6.00 at (-82.00, -92.00, 3.75)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 75: a_skeletal_excavator000 (ID: 8) Level 8 Race 367 Size 6.00 at (-298.00, -11.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 76: a_large_plague_rat000 (ID: 7) Level 8 Race 36 Size 7.00 at (-140.00, -26.00, 4.38)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 77: a_putrid_skeleton000 (ID: 6) Level 7 Race 367 Size 6.00 at (-350.50, 96.50, -10.25)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 78: a_cracked_skeleton001 (ID: 5) Level 4 Race 367 Size 6.00 at (-216.00, 52.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 79: a_cracked_skeleton000 (ID: 4) Level 5 Race 367 Size 6.00 at (-350.50, 96.50, -10.25)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 80: a_sturdy_skeleton000 (ID: 3) Level 8 Race 367 Size 6.00 at (-77.00, -45.00, 3.75)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 81: a_plague_rat000 (ID: 17) Level 6 Race 36 Size 9.00 at (-71.00, -124.00, 5.62)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 82: a_necro_neophyte000 (ID: 19) Level 9 Race 1 Size 6.00 at (-217.00, -211.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 83: a_necro_neophyte001 (ID: 20) Level 9 Race 6 Size 5.00 at (-189.00, -244.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 84: a_putrid_skeleton001 (ID: 21) Level 7 Race 367 Size 6.00 at (-131.00, -238.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 85: a_plague_rat001 (ID: 22) Level 5 Race 36 Size 9.00 at (-171.00, -102.00, -8.12)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 86: a_plague_rat002 (ID: 23) Level 4 Race 36 Size 9.00 at (-200.00, -121.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 87: a_necro_neophyte002 (ID: 24) Level 9 Race 1 Size 6.00 at (-141.00, -107.00, -11.88)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 88: a_plague_rat003 (ID: 25) Level 4 Race 36 Size 9.00 at (-135.00, -161.00, -11.12)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 89: a_large_plague_rat001 (ID: 26) Level 8 Race 36 Size 7.00 at (-250.00, -134.00, -9.88)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 90: a_giant_rat000 (ID: 27) Level 2 Race 36 Size 9.00 at (-253.00, -179.00, -8.12)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 91: a_plague_rat004 (ID: 28) Level 6 Race 36 Size 9.00 at (-192.00, 42.00, -5.50)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 92: a_plague_rat005 (ID: 29) Level 4 Race 36 Size 9.00 at (-159.00, 47.00, -4.88)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 93: skeleton_Lrodd000 (ID: 60) Level 13 Race 367 Size 7.00 at (-357.25, 97.12, -9.62)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 94: ice_boned_skeleton003 (ID: 62) Level 13 Race 367 Size 6.00 at (-357.00, -124.00, -81.12)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 95: a_greater_skeleton004 (ID: 63) Level 11 Race 367 Size 7.00 at (-372.00, -105.00, -77.38)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 96: a_large_plague_rat004 (ID: 64) Level 9 Race 36 Size 7.00 at (-365.75, 88.38, -9.62)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 97: a_putrid_skeleton006 (ID: 65) Level 7 Race 367 Size 6.00 at (-273.00, -141.00, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 98: a_putrid_skeleton007 (ID: 70) Level 5 Race 367 Size 6.00 at (-276.88, -168.88, -10.00)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 99: a_putrid_skeleton008 (ID: 71) Level 5 Race 367 Size 6.00 at (-293.00, -237.00, -10.25)
+[2026-08-14 12:38:04.685] [DEBUG] [ENTITY] Loaded spawn 100: a_cracked_skeleton004 (ID: 72) Level 4 Race 367 Size 6.00 at (-283.00, -215.00, -10.00)
+[2026-08-14 12:38:04.685] [INFO ] [ZONE] Loaded 100 spawns in zone
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Received zone spawns packet, size: 13862 bytes
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 1: a_necro_neophyte008 (ID: 73) Level 7 Race 1 Size 6.00 at (-325.00, -226.00, -10.25)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 2: a_necro_initiate000 (ID: 74) Level 10 Race 1 Size 6.00 at (-363.00, -161.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 3: a_dread_bone003 (ID: 75) Level 8 Race 367 Size 6.00 at (-384.00, -175.00, -38.12)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 4: a_dread_bone004 (ID: 76) Level 10 Race 367 Size 6.00 at (-358.00, -96.00, -79.25)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 5: a_dread_bone005 (ID: 77) Level 9 Race 367 Size 6.00 at (-491.00, -166.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 6: a_dread_bone006 (ID: 78) Level 9 Race 367 Size 6.00 at (-350.00, -88.00, -79.75)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 7: a_dread_bone007 (ID: 79) Level 10 Race 367 Size 6.00 at (-500.00, -231.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 8: a_lesser_mummy000 (ID: 80) Level 12 Race 70 Size 6.00 at (-533.00, -159.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 9: a_greater_skeleton010 (ID: 92) Level 12 Race 367 Size 7.00 at (-483.00, 71.00, -77.25)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 10: a_greater_skeleton011 (ID: 95) Level 12 Race 367 Size 7.00 at (-400.00, 98.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 11: a_lesser_mummy001 (ID: 96) Level 12 Race 70 Size 6.00 at (-456.00, 80.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 12: a_necro_apprentice000 (ID: 97) Level 13 Race 12 Size 3.00 at (-437.00, 104.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 13: a_sturdy_skeleton002 (ID: 98) Level 8 Race 367 Size 6.00 at (-372.00, 29.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 14: a_necro_initiate001 (ID: 99) Level 9 Race 1 Size 6.00 at (-372.00, 7.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 15: a_sturdy_skeleton003 (ID: 100) Level 8 Race 367 Size 6.00 at (-456.00, -31.00, -37.38)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 16: a_burnt_zombie000 (ID: 101) Level 11 Race 70 Size 6.00 at (-439.00, -211.00, -37.38)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 17: a_burnt_zombie001 (ID: 102) Level 11 Race 70 Size 6.00 at (-429.00, -242.00, -38.00)
+[2026-08-14 12:38:04.687] [DEBUG] [ENTITY] Loaded spawn 18: a_necro_neophyte009 (ID: 103) Level 7 Race 12 Size 3.00 at (-437.00, -82.00, -39.88)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 19: a_sturdy_skeleton004 (ID: 104) Level 9 Race 367 Size 6.00 at (-416.00, -114.00, -38.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 20: a_lesser_mummy002 (ID: 106) Level 12 Race 70 Size 6.00 at (-392.00, -100.00, -37.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 21: a_necro_neophyte010 (ID: 107) Level 7 Race 12 Size 3.00 at (-488.00, -105.00, -37.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 22: a_putrid_skeleton009 (ID: 108) Level 5 Race 367 Size 6.00 at (-305.00, -94.00, -10.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 23: a_large_plague_rat005 (ID: 109) Level 10 Race 36 Size 7.00 at (-295.00, -116.00, -9.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 24: a_plague_rat007 (ID: 110) Level 6 Race 36 Size 9.00 at (-334.00, -167.00, -8.12)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 25: a_shadowknight001 (ID: 112) Level 9 Race 1 Size 6.00 at (-552.00, -54.00, -38.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 26: the_thaumaturgist000 (ID: 113) Level 20 Race 3 Size 6.00 at (-486.00, 86.00, -76.88)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 27: a_greater_skeleton013 (ID: 115) Level 12 Race 367 Size 7.00 at (-435.00, -150.00, -68.25)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 28: ice_boned_skeleton007 (ID: 116) Level 14 Race 367 Size 6.00 at (-438.00, 37.00, -74.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 29: a_necro_theurgist004 (ID: 117) Level 15 Race 12 Size 3.00 at (-494.00, 95.00, -75.62)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 30: a_ghoul007 (ID: 118) Level 13 Race 33 Size 6.00 at (-470.00, 7.00, -71.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 31: a_necro_theurgist005 (ID: 119) Level 18 Race 3 Size 6.00 at (-401.00, -2.00, -66.88)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 32: a_cracked_skeleton005 (ID: 120) Level 4 Race 367 Size 6.00 at (-465.00, 20.00, -38.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 33: a_lesser_mummy003 (ID: 121) Level 11 Race 70 Size 6.00 at (-400.00, -41.00, -37.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 34: a_greater_skeleton014 (ID: 122) Level 13 Race 367 Size 7.00 at (-449.00, 47.00, -37.38)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 35: a_greater_skeleton015 (ID: 123) Level 13 Race 367 Size 7.00 at (-540.00, 85.00, -38.00)
+[2026-08-14 12:38:04.688] [DEBUG] [ENTITY] Loaded spawn 36: a_lesser_mummy004 (ID: 127) Level 10 Race 70 Size 6.00 at (-519.00, 130.00, -38.00)
+[2026-08-14 12:38:04.688] [INFO ] [ZONE] Loaded 36 spawns in zone
+[2026-08-14 12:38:04.689] [DEBUG] [ZONE] Time of day: 12:33 20/014003
+[2026-08-14 12:38:04.689] [DEBUG] [ZONE] Received tribute update
+[2026-08-14 12:38:04.689] [DEBUG] [ZONE] Received tribute timer
+[2026-08-14 12:38:04.689] [DEBUG] [INVENTORY] Received character inventory packet, size=3362
+[2026-08-14 12:38:04.689] [DEBUG] [UI] InventoryManager Received CharInventory packet, size: 3362
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '�S0|0|22|0|1|0|257|0|1|0|0|' (quote at pos 27)
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=22 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='�S0' 1='0' 2='22' 3='0' 4='1' 5='0' 6='257' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 22
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|23|0|1|0|258|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=23 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='23' 3='0' 4='1' 5='0' 6='258' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 23
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|24|0|1|0|259|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=24 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='24' 3='0' 4='1' 5='0' 6='259' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.689] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 24
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|25|0|1|0|260|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=25 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='25' 3='0' 4='1' 5='0' 6='260' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.689] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 25
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|26|0|1|0|261|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=26 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='26' 3='0' 4='1' 5='0' 6='261' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 26
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|27|0|1|0|262|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=27 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='27' 3='0' 4='1' 5='0' 6='262' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 27
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|28|0|1|0|263|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=28 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='28' 3='0' 4='1' 5='0' 6='263' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 28
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser BEFORE QUOTE (first 80 chars): '0|0|29|0|1|0|264|0|1|0|0|' (quote at pos 25)
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser INSTANCE: slot=29 stackCount=0 count=1 price=0 charges=1 attuned=0 [fields: 0='0' 1='0' 2='29' 3='0' 4='1' 5='0' 6='264' 7='0' 8='1' 9='0' 10='0']
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser RAW STATIC (first 100 chars): '0|Scaled Curskin|Scaled Curskin|IT63|12654|50|1|1|2|0|8|553|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|'
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FIELDS 'Scaled Curskin': [0]=0 [1]=Scaled Curskin [2]=Scaled Curskin [3]=IT63 [4]=12654 [5]=50 [6]=1 [7]=1 [8]=2 [9]=0 [10]=8 [11]=553 [12]=0 [13]=0 [14]=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser STATIC: 'Scaled Curskin' itemId=12654 noRent=false noDrop=false (field[6]='1' field[7]='1')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser FINAL: 'Scaled Curskin' noDrop=false (field[7]=0, field[132]/NoTransfer=0, field[124]/Attuneable='0')
+[2026-08-14 12:38:04.690] [DEBUG] [UI] TitaniumItemParser Scroll effect for 'Scaled Curskin': effectId=-1 type=0
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Parsed item: Scaled Curskin in slot 29
+[2026-08-14 12:38:04.690] [DEBUG] [UI] InventoryManager Loaded 8 items and 0 bag contents from CharInventory
+[2026-08-14 12:38:04.690] [DEBUG] [ZONE] Weather update received
+[2026-08-14 12:38:04.690] [INFO ] [ZONE] Weather packet: type=255, intensity=0
+[2026-08-14 12:38:04.690] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:04.691] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] Zone environment: ztype=0, sky=0, fog RGB=(0,0,30), clip=10-800
+[2026-08-14 12:38:04.711] [DEBUG] [ZONE] Zone safe coordinates: server=(35.00,-82.00,3.00) -> client=(-82.00,35.00,3.00)
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] Received new zone data for: befallen (zone_id=36)
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] LoadPathfinder: Loading pathfinder for zone 'befallen'
+[2026-08-14 12:38:04.711] [DEBUG] [MAP] IPathfinder::Load: Using default path
+[2026-08-14 12:38:04.711] [DEBUG] [MAP] IPathfinder::Load: Looking for navmesh at: maps/nav/befallen.nav
+[2026-08-14 12:38:04.711] [DEBUG] [MAP] IPathfinder::Load: No navmesh file found, returning PathfinderNull
+[2026-08-14 12:38:04.711] [DEBUG] [MAP] PathfinderNull::FindPath: Returning direct path (no navmesh available)
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] Loaded pathfinder for zone: befallen (type: Null)
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] LoadZoneMap: Loading map for zone 'befallen'
+[2026-08-14 12:38:04.711] [DEBUG] [MAIN] LoadZoneMap: Using maps path: ./maps
+[2026-08-14 12:38:04.711] [DEBUG] [MAP] HCMap::Load: Attempting to load: ./maps/befallen.map
+[2026-08-14 12:38:04.712] [WARN ] [MAP] Failed to load map for zone: befallen
+[2026-08-14 12:38:04.712] [DEBUG] [MAIN] LoadZoneLines: Loading zone lines for 'befallen'
+[2026-08-14 12:38:04.714] [INFO ] [MAP] Loaded 0 zone lines from zone-specific file
+[2026-08-14 12:38:04.728] [DEBUG] [MAP] Loaded zone line: #1 -> commons (id 21) world box (-77.8,32.7,-26.9) to (-72.8,37.7,33.1)
+[2026-08-14 12:38:04.729] [INFO ] [MAP] Loaded 1 pre-extracted zone lines for befallen from data/zone_lines.json
+[2026-08-14 12:38:04.729] [DEBUG] [MAP] LoadZoneLines: Loaded 1 zone lines from WLD
+[2026-08-14 12:38:04.737] [DEBUG] [GRAPHICS] WldLoader::parseFromOpenArchive: wld='befallen.wld'
+[2026-08-14 12:38:04.768] [DEBUG] [GRAPHICS] WldLoader::parseFromArchive: WLD buffer size=2547776 bytes
+[2026-08-14 12:38:04.712] [ERROR] [MAP] Unable to open map file: ./maps/befallen.map
+[2026-08-14 12:38:04.712] [ERROR] [MAP] errno: 2 - No such file or directory
+[2026-08-14 12:38:04.768] [DEBUG] [GRAPHICS] WldLoader::parseWldBuffer: version=0x15500 oldFormat=true fragmentCount=7723 bspRegionCount=4046 hashLength=96892
+[2026-08-14 12:38:04.770] [DEBUG] [GRAPHICS] WldLoader::parseWldBuffer: collected 7723 fragment offsets
+[2026-08-14 12:38:05.365] [DEBUG] [GRAPHICS] WldLoader::parseWldBuffer: results — geometries=3609 geometryByFragIndex=3609 textures_=14 brushes_=14 textureRefs_=14 materials_=14 brushSets_=1 resolvedMaterialListCache_=1 skeletonTracks=0 modelRefs=0 placeables=0 objectDefs=1 lights=0
+[2026-08-14 12:38:05.365] [DEBUG] [GRAPHICS] WldLoader::parseWldBuffer: returning true
+[2026-08-14 12:38:05.369] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'befallen' in 640ms (4046 BSP regions, 9882 nodes)
+[2026-08-14 12:38:05.369] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-309.50, -211.38, -8.38) heading=9.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.369] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-309.50, -211.38, -8.38) heading=98.3 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.370] [INFO ] [ZONE] [ZONE] Entering befallen at (-82, 35, 3)
+[2026-08-14 12:38:05.390] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.390] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.406] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.407] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received AA table data
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received AA response
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.408] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received tribute info
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-08-14 12:38:05.409] [INFO ] [ZONE] Zone Request phase complete, sending ReqClientSpawn
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.409] [DEBUG] [ZONE] Received guild tributes
+[2026-08-14 12:38:05.422] [INFO ] [ENTITY] Received 31 doors (2482 bytes)
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 0 raw bytes @60-67: 1f 36 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 31: 'DOOR1' at (-531.8, -49.8, -30.2) heading=0.0 incline=0 size=100 type=54 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 1 raw bytes @60-67: 1e 36 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 30: 'DOOR1' at (-531.9, -59.6, -30.2) heading=0.0 incline=0 size=100 type=54 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 2 raw bytes @60-67: 0d 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 13: 'DOOR1' at (-211.9, -83.8, -14.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 3 raw bytes @60-67: 0c 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 12: 'DOOR1' at (-221.8, 0.3, -14.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 4 raw bytes @60-67: 0b 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 11: 'DOOR1' at (-277.9, -0.2, -14.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 5 raw bytes @60-67: 0a 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 10: 'DOOR1' at (-267.9, -83.4, -14.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 6 raw bytes @60-67: 09 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 9: 'DOOR1' at (-319.9, -153.3, -14.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 7 raw bytes @60-67: 08 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 8: 'DOOR1' at (-463.3, -100.0, -42.0) heading=0.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 8 raw bytes @60-67: 07 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 7: 'DOOR1' at (-475.1, -225.9, -42.0) heading=0.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 9 raw bytes @60-67: 06 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 6: 'DOOR1' at (-533.8, -196.8, -42.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 10 raw bytes @60-67: 05 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 5: 'DOOR1' at (-630.7, -179.9, -70.0) heading=256.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 11 raw bytes @60-67: 04 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 4: 'DOOR1' at (-670.4, -71.9, -70.0) heading=0.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 12 raw bytes @60-67: 03 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 3: 'DOOR1' at (-711.8, -26.5, -70.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 13 raw bytes @60-67: 02 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 2: 'DOOR1' at (-309.9, 68.9, -14.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 14 raw bytes @60-67: 01 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 1: 'DOOR1' at (-319.9, 99.2, -14.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 15 raw bytes @60-67: 0e 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 14: 'DOOR1' at (-950.6, -71.9, -70.0) heading=0.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 16 raw bytes @60-67: 0f 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 15: 'DOOR1' at (-851.7, -180.8, -70.0) heading=127.5 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 17 raw bytes @60-67: 10 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 16: 'DOOR1' at (-602.9, -40.0, -70.0) heading=256.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 18 raw bytes @60-67: 11 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 17: 'DOOR1' at (-561.8, 53.7, -42.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 19 raw bytes @60-67: 12 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 18: 'DOOR1' at (-571.8, -12.0, -42.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 20 raw bytes @60-67: 13 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 19: 'DOOR1' at (-558.9, 166.0, -42.0) heading=0.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 21 raw bytes @60-67: 14 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 20: 'DOOR1' at (-571.9, 112.7, -42.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 22 raw bytes @60-67: 15 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 21: 'DOOR1' at (-431.9, -12.9, -42.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 23 raw bytes @60-67: 16 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 22: 'DOOR1' at (-421.7, -72.1, -42.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 24 raw bytes @60-67: 17 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 23: 'DOOR1' at (-169.8, 69.0, -14.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 25 raw bytes @60-67: 18 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 24: 'DOOR1' at (-851.9, 27.1, -70.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 26 raw bytes @60-67: 19 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 25: 'DOOR1' at (-179.9, -153.1, -14.0) heading=128.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 27 raw bytes @60-67: 1a 00 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 26: 'DOOR1' at (-169.9, -183.1, -14.0) heading=384.0 incline=0 size=100 type=0 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 28 raw bytes @60-67: 1b 36 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 27: 'DOOR1' at (-362.8, -155.4, -14.7) heading=214.0 incline=0 size=100 type=54 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 29 raw bytes @60-67: 1c 36 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 28: 'DOOR1' at (-533.6, -70.7, -28.5) heading=384.0 incline=0 size=100 type=54 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 30 raw bytes @60-67: 1d 36 00 00 00 00 00 00
+[2026-08-14 12:38:05.422] [DEBUG] [ENTITY] Door 29: 'DOOR1' at (-543.5, -70.5, -28.5) heading=384.0 incline=0 size=100 type=54 state_at_spawn=0 invert=0
+[2026-08-14 12:38:05.423] [DEBUG] [ZONE] Received zone points: 1 entries
+[2026-08-14 12:38:05.423] [DEBUG] [ZONE] Stored 1 zone points in ZoneLines
+[2026-08-14 12:38:05.423] [DEBUG] [ZONE] Received AA stats
+[2026-08-14 12:38:05.423] [DEBUG] [ZONE] Received exp zone in - this triggers SendZoneInPackets()
+[2026-08-14 12:38:05.423] [DEBUG] [ZONE] Received world objects sent
+[2026-08-14 12:38:05.485] [DEBUG] [ZONE] Received exp zone in - this triggers SendZoneInPackets()
+[2026-08-14 12:38:05.485] [DEBUG] [ENTITY:0] SpawnAppearance spawn_id=0, type=16, parameter=215
+[2026-08-14 12:38:05.485] [INFO ] [ZONE] Server assigned new spawn ID: 215 (was 215)
+[2026-08-14 12:38:05.485] [DEBUG] [ZONE] Received exp update: exp=178 aaxp=0 (was exp=0 aaxp=0)
+[2026-08-14 12:38:05.485] [DEBUG] [ZONE] Received raid update: action=10, 138 bytes
+[2026-08-14 12:38:05.488] [DEBUG] [ZONE] Received guild MOTD
+[2026-08-14 12:38:05.488] [DEBUG] [ZONE] Sending OP_SetServerFilter
+[2026-08-14 12:38:05.488] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-08-14 12:38:05.488] [DEBUG] [ZONE] Sending OP_ClientReady
+[2026-08-14 12:38:05.488] [DEBUG] [ZONE] Sent ClientReady, waiting for position confirmation...
+[2026-08-14 12:38:05.551] [DEBUG] [ENTITY] Equipment change for spawn_id=173: slot 7 material 10648 color FF000000
+[2026-08-14 12:38:05.551] [DEBUG] [ENTITY] Equipment change for spawn_id=159: slot 7 material 10648 color FF000000
+[2026-08-14 12:38:05.551] [DEBUG] [ENTITY] Equipment change for spawn_id=153: slot 7 material 10648 color FF000000
+[2026-08-14 12:38:05.551] [DEBUG] [ENTITY] Equipment change for spawn_id=150: slot 7 material 10648 color FF000000
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_greater_skeleton018 (ID: 130) Level 13 1 Race 367 at (-571.00, 26.00, -38.00)
+[2026-08-14 12:38:05.583] [DEBUG] [MAIN] Update loop started
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_dread_bone002 (ID: 59) Level 8 1 Race 367 at (-732.00, -65.00, -65.38)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_greater_skeleton003 (ID: 58) Level 11 1 Race 367 at (-652.00, 113.00, -65.38)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_necro_theurgist000 (ID: 57) Level 19 11 Race 12 at (-676.00, 130.00, -67.88)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] Equipment change for spawn_id=57: slot 7 material 10613 color FF000000
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_ghoul003 (ID: 56) Level 13 1 Race 33 at (-678.00, 35.00, -66.00)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_shadowknight000 (ID: 55) Level 15 5 Race 6 at (-843.00, 154.00, -65.38)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_greater_skeleton002 (ID: 54) Level 12 1 Race 367 at (-835.00, 162.00, -65.38)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_greater_skeleton001 (ID: 53) Level 12 1 Race 367 at (-592.00, -97.00, -68.88)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_dread_bone001 (ID: 52) Level 9 1 Race 367 at (-620.00, -90.00, -66.00)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] Equipment change for spawn_id=49: slot 3 material 23 color FF000000
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_willowisp000 (ID: 36) Level 11 1 Race 69 at (-999.00, -62.00, -65.38)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] Equipment change for spawn_id=30: slot 7 material 10100 color FF000000
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: a_ghoul000 (ID: 13) Level 13 1 Race 33 at (-705.00, -38.00, -66.00)
+[2026-08-14 12:38:05.579] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton000 (ID: 12) Level 14 1 Race 367 at (-645.00, -125.00, -66.00)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: Boondin_Babbinsbort000 (ID: 2) Level 25 11 Race 12 at (-814.00, -206.00, -67.88)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: zone_controller000 (ID: 1) Level 200 1 Race 240 at (10000.00, 30000.00, -9999.88)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton001 (ID: 14) Level 13 1 Race 367 at (-984.25, -183.12, -68.00)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: a_zombie000 (ID: 15) Level 10 1 Race 70 at (-988.00, -195.00, -68.50)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton002 (ID: 16) Level 13 1 Race 367 at (-976.00, -204.38, -67.50)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: a_dread_bone000 (ID: 18) Level 8 1 Race 367 at (-665.00, -184.00, -67.00)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=20: slot 7 material 10650 color FF000000
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: a_necro_theurgist001 (ID: 61) Level 19 11 Race 12 at (-750.00, 32.00, -65.12)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=61: slot 1 material 16 color FF823C0A
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=61: slot 7 material 20 color FF000000
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: a_necro_acolyte001 (ID: 66) Level 15 11 Race 6 at (-887.00, 48.00, -66.62)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton004 (ID: 67) Level 14 1 Race 367 at (-847.00, -205.00, -65.38)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: a_necro_theurgist002 (ID: 68) Level 18 11 Race 3 at (-797.00, -148.00, -67.62)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=68: slot 1 material 16 color FFC8B496
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=68: slot 7 material 10613 color FF000000
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton005 (ID: 69) Level 12 1 Race 367 at (-706.00, -102.00, -66.00)
+[2026-08-14 12:38:05.580] [DEBUG] [ENTITY] Equipment change for spawn_id=73: slot 7 material 10100 color FF000000
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] Equipment change for spawn_id=74: slot 7 material 10650 color FF000000
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_ghoul004 (ID: 81) Level 13 1 Race 33 at (-777.00, -102.00, -67.50)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_ghoul005 (ID: 82) Level 13 1 Race 33 at (-647.00, -21.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_greater_skeleton005 (ID: 83) Level 13 1 Race 367 at (-627.00, -33.00, -66.00)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: ice_boned_skeleton006 (ID: 84) Level 14 1 Race 367 at (-852.00, -23.00, -66.00)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_necro_acolyte002 (ID: 85) Level 17 11 Race 12 at (-837.00, -127.00, -66.62)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_greater_skeleton006 (ID: 86) Level 11 1 Race 367 at (-821.00, -103.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_necro_acolyte003 (ID: 87) Level 16 11 Race 12 at (-622.00, -186.00, -67.88)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] Equipment change for spawn_id=87: slot 3 material 23 color FF000000
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] Equipment change for spawn_id=87: slot 7 material 10613 color FF000000
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_willowisp001 (ID: 88) Level 9 1 Race 69 at (-851.00, -227.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_greater_skeleton007 (ID: 89) Level 13 1 Race 367 at (-900.00, -73.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_greater_skeleton008 (ID: 90) Level 13 1 Race 367 at (-902.00, -86.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_greater_skeleton009 (ID: 91) Level 12 1 Race 367 at (-816.00, 136.00, -65.38)
+[2026-08-14 12:38:05.581] [DEBUG] [ENTITY] New spawn: a_ghoul006 (ID: 93) Level 13 1 Race 33 at (-818.00, 38.00, -66.00)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_necro_theurgist003 (ID: 94) Level 19 11 Race 3 at (-875.00, 39.00, -65.38)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=94: slot 1 material 16 color FF823C0A
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=94: slot 7 material 10613 color FF000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_dread_bone008 (ID: 105) Level 8 1 Race 367 at (-586.00, -60.00, -38.00)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=107: slot 7 material 20 color FF000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_necro_acolyte004 (ID: 111) Level 15 11 Race 12 at (-623.00, -162.00, -65.38)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=112: slot 7 material 10653 color FF000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_greater_skeleton012 (ID: 114) Level 11 1 Race 367 at (-1002.00, -80.00, -65.38)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=117: slot 7 material 10613 color FF000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_greater_skeleton016 (ID: 124) Level 11 1 Race 367 at (-591.00, 88.00, -38.00)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_necro_acolyte005 (ID: 125) Level 15 11 Race 3 at (-568.00, 161.00, -38.00)
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] New spawn: a_greater_skeleton017 (ID: 126) Level 13 1 Race 367 at (-546.00, 191.00, -37.38)
+[2026-08-14 12:38:05.582] [DEBUG] [MAIN] Received completed tasks list (6 bytes)
+[2026-08-14 12:38:05.582] [DEBUG] [ZONE] Received world objects sent
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 0 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 1 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 2 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 3 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 4 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 5 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 6 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 7 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Equipment change for spawn_id=215: slot 8 material 0 color 00000000
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY:215] SpawnAppearance spawn_id=215, type=5, parameter=0
+[2026-08-14 12:38:05.582] [DEBUG] [ENTITY] Entity 215 light set to 0
+[2026-08-14 12:38:05.582] [DEBUG] [ZONE] Weather update received
+[2026-08-14 12:38:05.582] [INFO ] [ZONE] Weather packet: type=0, intensity=0
+[2026-08-14 12:38:05.583] [INFO ] [ZONE] *** RECEIVED OUR OWN ClientUpdate! spawn_id=215 ***
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=215 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C [SELF] raw_heading=512 (12-bit field=512) -> server_h=90.00deg -> h_player=90.00deg
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C [SELF] server_pos=(-77.88,21.88,3.00) -> client_pos=(21.88,-77.88,3.00)
+[2026-08-14 12:38:05.583] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-08-14 12:38:05.583] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=215).
+[2026-08-14 12:38:05.583] [DEBUG] [GRAPHICS] Expected entity count: 179, network ready: true
+[2026-08-14 12:38:05.583] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 215, Zone: befallen
+[2026-08-14 12:38:05.583] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-08-14 12:38:05.583] [INFO ] [MAIN] Publishing full state snapshot to bridge
+[2026-08-14 12:38:05.583] [INFO ] [MAIN] State snapshot published
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=214 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-310.88, -202.12, -8.38) heading=98.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=211 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=209 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=207 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=174 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=173 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=172 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.583] [DEBUG] [MOVEMENT] POS S->C spawn_id=171 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=170 pos=(21.88, -77.88, 3.12) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=169 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=168 pos=(21.88, -77.88, 3.12) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=167 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=166 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=165 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=164 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=163 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=162 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=161 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=160 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=159 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=158 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=157 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=156 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=155 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=154 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=153 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=152 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=151 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=150 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=149 pos=(21.88, -77.88, 3.00) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=148 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=147 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=146 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=145 pos=(21.88, -77.88, 3.00) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=144 pos=(21.88, -77.88, 3.00) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=143 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=142 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=141 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=140 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=139 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=138 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=137 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=136 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=135 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=134 pos=(21.88, -77.88, 3.00) heading=133.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=133 pos=(-246.00, -39.00, 3.00) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=131 pos=(-556.00, 18.00, -37.38) heading=353.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=130 pos=(-571.00, 26.00, -38.00) heading=228.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=129 pos=(-201.00, 22.00, -11.62) heading=71.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=128 pos=(-511.00, 152.00, -38.00) heading=164.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=59 pos=(-732.00, -65.00, -65.38) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=58 pos=(-652.00, 113.00, -65.38) heading=186.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=57 pos=(-676.00, 130.00, -67.88) heading=246.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=56 pos=(-678.00, 35.00, -66.00) heading=177.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=55 pos=(-843.00, 154.00, -65.38) heading=286.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=54 pos=(-835.00, 162.00, -65.38) heading=286.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=53 pos=(-592.00, -97.00, -68.88) heading=154.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=52 pos=(-620.00, -90.00, -66.00) heading=212.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=51 pos=(-512.00, -79.00, -65.38) heading=255.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=50 pos=(-480.00, -94.00, -66.75) heading=182.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=49 pos=(-359.00, 91.00, -67.88) heading=253.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=48 pos=(-275.00, 80.00, -10.00) heading=274.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=47 pos=(-350.38, 94.00, -9.62) heading=148.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=46 pos=(-369.12, 98.50, -10.25) heading=15.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=45 pos=(-392.00, 92.00, -66.00) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=44 pos=(-350.12, 93.25, -9.62) heading=146.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=43 pos=(-348.62, 92.25, -10.88) heading=145.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=42 pos=(-348.50, 92.25, -10.88) heading=146.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=41 pos=(-344.00, 96.38, -8.38) heading=165.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=40 pos=(-274.88, 125.88, -9.38) heading=203.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=39 pos=(-282.00, 139.88, -10.62) heading=223.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=38 pos=(-334.00, 183.00, -10.62) heading=329.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=37 pos=(-332.00, 166.00, -11.88) heading=37.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=36 pos=(-999.00, -62.00, -65.38) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=35 pos=(-164.00, 80.00, -8.12) heading=162.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=34 pos=(-148.00, 94.00, -10.00) heading=189.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=33 pos=(-136.00, 118.00, -9.38) heading=199.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=32 pos=(-216.00, 139.00, -9.38) heading=353.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.584] [DEBUG] [MOVEMENT] POS S->C spawn_id=31 pos=(-209.00, 162.00, -11.88) heading=298.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=30 pos=(-130.00, 154.00, -10.00) heading=235.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=13 pos=(-705.00, -38.00, -66.00) heading=301.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=12 pos=(-645.00, -125.00, -66.00) heading=264.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=11 pos=(-78.00, -118.00, 3.75) heading=84.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=10 pos=(-299.00, -74.00, -10.00) heading=0.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=9 pos=(-82.00, -92.00, 3.75) heading=323.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=8 pos=(-298.00, -11.00, -10.00) heading=347.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=7 pos=(-140.00, -26.00, 4.38) heading=343.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=6 pos=(-350.50, 96.50, -10.25) heading=158.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=5 pos=(-216.00, 52.00, -10.00) heading=268.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=4 pos=(-350.50, 96.50, -10.25) heading=158.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=3 pos=(-77.00, -45.00, 3.75) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=2 pos=(-814.00, -206.00, -67.88) heading=41.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=1 pos=(10000.00, 30000.00, -9999.88) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=14 pos=(-984.25, -183.12, -68.00) heading=266.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=15 pos=(-988.00, -195.00, -68.50) heading=359.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=16 pos=(-976.00, -204.38, -67.50) heading=122.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=17 pos=(-71.00, -124.00, 5.62) heading=130.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=18 pos=(-665.00, -184.00, -67.00) heading=63.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=19 pos=(-217.00, -211.00, -10.00) heading=22.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=20 pos=(-189.00, -244.00, -10.00) heading=74.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=21 pos=(-131.00, -238.00, -10.00) heading=268.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=22 pos=(-171.00, -102.00, -8.12) heading=270.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=23 pos=(-200.00, -121.00, -10.00) heading=322.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=24 pos=(-141.00, -107.00, -11.88) heading=202.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=25 pos=(-135.00, -161.00, -11.12) heading=175.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=26 pos=(-250.00, -134.00, -9.88) heading=300.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=27 pos=(-253.00, -179.00, -8.12) heading=45.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=28 pos=(-192.00, 42.00, -5.50) heading=61.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=29 pos=(-159.00, 47.00, -4.88) heading=148.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=60 pos=(-357.25, 97.12, -9.62) heading=138.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=61 pos=(-750.00, 32.00, -65.12) heading=2.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=62 pos=(-357.00, -124.00, -81.12) heading=222.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=63 pos=(-372.00, -105.00, -77.38) heading=263.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=64 pos=(-365.75, 88.38, -9.62) heading=69.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=65 pos=(-273.00, -141.00, -10.00) heading=87.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=66 pos=(-887.00, 48.00, -66.62) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=67 pos=(-847.00, -205.00, -65.38) heading=87.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=68 pos=(-797.00, -148.00, -67.62) heading=41.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=69 pos=(-706.00, -102.00, -66.00) heading=53.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=70 pos=(-276.88, -168.88, -10.00) heading=75.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=71 pos=(-293.00, -237.00, -10.25) heading=107.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=72 pos=(-283.00, -215.00, -10.00) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=73 pos=(-325.00, -226.00, -10.25) heading=59.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=74 pos=(-363.00, -161.00, -38.00) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=75 pos=(-384.00, -175.00, -38.12) heading=284.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=76 pos=(-358.00, -96.00, -79.25) heading=182.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=77 pos=(-491.00, -166.00, -38.00) heading=355.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=78 pos=(-350.00, -88.00, -79.75) heading=182.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=79 pos=(-500.00, -231.00, -38.00) heading=67.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=80 pos=(-533.00, -159.00, -38.00) heading=263.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=81 pos=(-777.00, -102.00, -67.50) heading=286.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=82 pos=(-647.00, -21.00, -65.38) heading=272.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=83 pos=(-627.00, -33.00, -66.00) heading=232.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=84 pos=(-852.00, -23.00, -66.00) heading=341.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=85 pos=(-837.00, -127.00, -66.62) heading=37.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.585] [DEBUG] [MOVEMENT] POS S->C spawn_id=86 pos=(-821.00, -103.00, -65.38) heading=24.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=87 pos=(-622.00, -186.00, -67.88) heading=14.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=88 pos=(-851.00, -227.00, -65.38) heading=81.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=89 pos=(-900.00, -73.00, -65.38) heading=344.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=90 pos=(-902.00, -86.00, -65.38) heading=356.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=91 pos=(-816.00, 136.00, -65.38) heading=228.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=92 pos=(-483.00, 71.00, -77.25) heading=192.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=93 pos=(-818.00, 38.00, -66.00) heading=205.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=94 pos=(-875.00, 39.00, -65.38) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=95 pos=(-400.00, 98.00, -38.00) heading=228.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=96 pos=(-456.00, 80.00, -38.00) heading=350.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=97 pos=(-437.00, 104.00, -38.00) heading=300.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=98 pos=(-372.00, 29.00, -38.00) heading=213.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=99 pos=(-372.00, 7.00, -38.00) heading=214.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=100 pos=(-456.00, -31.00, -37.38) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=101 pos=(-439.00, -211.00, -37.38) heading=279.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=102 pos=(-429.00, -242.00, -38.00) heading=171.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=103 pos=(-437.00, -82.00, -39.88) heading=229.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=104 pos=(-416.00, -114.00, -38.00) heading=159.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=105 pos=(-586.00, -60.00, -38.00) heading=59.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=106 pos=(-392.00, -100.00, -37.38) heading=180.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=107 pos=(-488.00, -105.00, -37.38) heading=284.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=108 pos=(-305.00, -94.00, -10.00) heading=257.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=109 pos=(-295.00, -116.00, -9.38) heading=253.1 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=110 pos=(-334.00, -167.00, -8.12) heading=351.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=111 pos=(-623.00, -162.00, -65.38) heading=354.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=112 pos=(-552.00, -54.00, -38.00) heading=116.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=113 pos=(-486.00, 86.00, -76.88) heading=257.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=114 pos=(-1002.00, -80.00, -65.38) heading=0.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=115 pos=(-435.00, -150.00, -68.25) heading=151.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=116 pos=(-438.00, 37.00, -74.00) heading=228.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=117 pos=(-494.00, 95.00, -75.62) heading=277.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=118 pos=(-470.00, 7.00, -71.38) heading=317.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=119 pos=(-401.00, -2.00, -66.88) heading=217.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=120 pos=(-465.00, 20.00, -38.00) heading=315.7 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=121 pos=(-400.00, -41.00, -37.38) heading=227.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=122 pos=(-449.00, 47.00, -37.38) heading=301.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=123 pos=(-540.00, 85.00, -38.00) heading=222.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=124 pos=(-591.00, 88.00, -38.00) heading=307.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=125 pos=(-568.00, 161.00, -38.00) heading=269.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=126 pos=(-546.00, 191.00, -37.38) heading=262.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MOVEMENT] POS S->C spawn_id=127 pos=(-519.00, 130.00, -38.00) heading=141.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:05.586] [DEBUG] [MAIN] Received DZ expedition lockout timers (10 bytes)
+[2026-08-14 12:38:05.586] [DEBUG] [ENTITY] Player HP: 60/60 (spawn_id=215)
+[2026-08-14 12:38:05.588] [INFO ] [MAIN] Fully connected to zone!
+[2026-08-14 12:38:05.588] [DEBUG] [CONFIG] No hotbar config found in /mnt/projects/fable/wt/slot2/benchmarks/audits/T104/willeq_t104.json
+[2026-08-14 12:38:05.592] [INFO ] [ZONE] [ZONE] befallen loaded
+[2026-08-14 12:38:05.592] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:05.592] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:05.592] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:06.652] [DEBUG] [SPELL] ManaChange: mana=0, stamina=40, spell_id=0, keepcasting=1
+Sending say message: '#set time 11 0'
+CMD outcome=applied registry=action recognized=true cmd="/say #set time 11 0"
+[2026-08-14 12:38:06.652] [DEBUG] [SPELL] ManaChange: mana=0, stamina=40, spell=0
+[2026-08-14 12:38:06.652] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-315.62, -170.00, -8.38) heading=98.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:06.653] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:06.653] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:06.716] [INFO ] [MAIN] Setting world time to 11:00 AM.
+[2026-08-14 12:38:06.717] [DEBUG] [ZONE] Time of day: 12:00 20/014003
+[2026-08-14 12:38:06.723] [INFO ] [MAIN] [SYS] Setting world time to 11:00 AM.
+[2026-08-14 12:38:06.784] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-315.62, -170.00, -8.38) heading=355.1 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:06.816] [DEBUG] [ENTITY] Door 9 closed
+[2026-08-14 12:38:07.113] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-305.50, -170.88, -6.88) heading=359.6 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:07.145] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-303.75, -170.88, -9.38) heading=5.6 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:07.243] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:07.243] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:07.243] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:07.243] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:08.135] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-274.62, -167.88, -8.38) heading=5.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:08.201] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-274.62, -167.88, -8.38) heading=88.4 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+CMD outcome=applied registry=action recognized=true cmd="/who"
+[2026-08-14 12:38:08.673] [DEBUG] [MAIN] Sent OP_WhoAllRequest: name='', race=-1, class=-1, lvl=-1--1
+[2026-08-14 12:38:08.673] [INFO ] [MAIN] Searching for players...
+[2026-08-14 12:38:08.673] [INFO ] [MAIN] [SYS] Searching for players...
+[2026-08-14 12:38:08.760] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:08.760] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:08.760] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:08.760] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:10.260] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Sending say message: '#npctypespawn 79037'
+CMD outcome=applied registry=action recognized=true cmd="/say #npctypespawn 79037"
+[2026-08-14 12:38:10.260] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:10.260] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:10.260] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:10.746] [INFO ] [MAIN] [Loot] [AddLootDrop] NPC [a_scaled_wolf_pup019] Item (12654) [00316E000000000000000000000000000000000000000Scaled Curskin] charges [1] chance [100] trivial min/max [0/0] npc min/max [0/0]
+[2026-08-14 12:38:10.746] [DEBUG] [MOVEMENT] POS S->C spawn_id=216 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:10.746] [INFO ] [MAIN] Spawned a scaled wolf pup (79037).
+[2026-08-14 12:38:10.760] [INFO ] [MAIN] [SYS] [Loot] [AddLootDrop] NPC [a_scaled_wolf_pup019] Item (12654) [00316E000000000000000000000000000000000000000Scaled Curskin] charges [1] chance [100] trivial min/max [0/0] npc min/max [0/0]
+[2026-08-14 12:38:10.760] [INFO ] [MAIN] [SYS] Spawned a scaled wolf pup (79037).
+[2026-08-14 12:38:10.803] [DEBUG] [ENTITY] New spawn: a_scaled_wolf_pup019 (ID: 216) Level 1 1 Race 42 at (21.88, -77.88, 3.00)
+[2026-08-14 12:38:10.812] [INFO ] [ENTITY] [SPAWN] NPC 'a_scaled_wolf_pup019' (id=216) at (22, -78, 3) level=1
+[2026-08-14 12:38:10.814] [DEBUG] [MOVEMENT] POS S->C spawn_id=216 pos=(21.88, -77.88, 3.00) heading=90.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:11.029] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-272.50, -84.88, -8.38) heading=88.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:11.162] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-272.50, -84.88, -8.38) heading=86.3 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:11.686] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-271.62, -69.75, -8.25) heading=86.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:11.761] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:11.761] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:11.761] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:11.761] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:11.803] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-271.62, -69.75, -8.25) heading=0.5 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[90m[12:38:12] [0m[93m[System] Targeting: a_scaled_wolf_pup019[0m
+CMD outcome=applied registry=action recognized=true cmd="/target a_scaled_wolf_pup019"
+[90m[12:38:12] [0m[94mTarget: a_scaled_wolf_pup019 (Level 1) - HP: 100%[0m
+[2026-08-14 12:38:12.728] [DEBUG] [COMBAT] Target set to a_scaled_wolf_pup019 (ID: 216)
+[2026-08-14 12:38:12.729] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=216 name='a_scaled_wolf_pup019' hp=100% level=1
+[2026-08-14 12:38:12.729] [INFO ] [MAIN] [TARGET] a_scaled_wolf_pup019 (id=216) level=1 HP=100%%
+[2026-08-14 12:38:12.774] [DEBUG] [ENTITY] [HP] Entity 216 (a_scaled_wolf_pup019) health: 100% -> 100%
+[2026-08-14 12:38:12.774] [DEBUG] [MAIN] Target 0 has target 0
+[2026-08-14 12:38:12.780] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=216 name='a_scaled_wolf_pup019' hp=100% level=1
+[2026-08-14 12:38:12.780] [INFO ] [MAIN] [TARGET] a_scaled_wolf_pup019 (id=216) level=1 HP=100%%
+[2026-08-14 12:38:13.278] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+CMD outcome=applied registry=action recognized=true message="Combat manager enabled" cmd="/combat on"
+[2026-08-14 12:38:13.278] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:13.278] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:13.278] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:13.742] [INFO ] [COMBAT] Combat manager enabled
+[2026-08-14 12:38:13.742] [INFO ] [MAIN] Combat manager enabled
+[2026-08-14 12:38:13.743] [INFO ] [MAIN] [SYS] Combat manager enabled
+[2026-08-14 12:38:13.769] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-213.88, -69.12, -8.38) heading=0.5 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:13.870] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-213.88, -69.12, -8.38) heading=91.4 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:14.002] [DEBUG] [ENTITY] Door 13 closed
+[2026-08-14 12:38:14.732] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-214.62, -43.88, -8.38) heading=91.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+CMD outcome=applied registry=action recognized=true message="Auto-attack enabled" cmd="/attack"
+[2026-08-14 12:38:14.756] [DEBUG] [COMBAT] EnableAutoAttack called (has_target=true, target_id=216)
+[2026-08-14 12:38:14.756] [DEBUG] [COMBAT] Combat state changed to: 1
+[2026-08-14 12:38:14.756] [DEBUG] [COMBAT] EnableAutoAttack: Sending auto attack packet
+[2026-08-14 12:38:14.756] [DEBUG] [COMBAT] EnableAutoAttack: Auto attack ENABLED (sent both AutoAttack and AutoAttack2)
+[2026-08-14 12:38:14.756] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: AutoAttackChanged -> projection enabled=true
+[2026-08-14 12:38:14.766] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-214.62, -43.88, -8.38) heading=358.2 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:14.791] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:15.087] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:15.087] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:15.087] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:15.087] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:15.087] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:15.087] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:15.087] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:15.087] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:15.087] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:15.588] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:15.588] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:15.588] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:15.588] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:15.588] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:15.588] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:15.588] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:14.791] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:14.791] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:14.791] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:16.351] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-168.00, -45.12, -8.38) heading=358.2 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:16.434] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-168.00, -45.12, -8.38) heading=4.0 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:16.089] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:16.089] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:16.089] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:16.089] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:16.089] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:16.089] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:16.089] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:16.089] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:16.589] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:16.589] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:16.589] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:16.590] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:16.590] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:16.590] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:16.590] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:17.397] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-140.12, -43.00, 4.50) heading=4.0 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:17.464] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-140.12, -43.00, 4.50) heading=358.4 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:17.090] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:17.090] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:17.090] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:17.091] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:17.091] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:17.091] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:17.091] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:17.091] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:17.091] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:17.591] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:17.591] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:17.591] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:17.591] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:17.591] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:17.591] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:17.591] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:18.092] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:18.092] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:18.092] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:18.092] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:18.092] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:18.092] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:18.092] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:18.092] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:18.592] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:18.592] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:18.592] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:18.593] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:18.593] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:18.593] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:18.593] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:19.093] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:19.093] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:19.093] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:19.094] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:19.094] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:19.094] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:19.094] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:19.094] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:19.094] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+[2026-08-14 12:38:19.620] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-76.88, -44.25, 5.62) heading=358.4 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:19.653] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-76.88, -44.25, 5.62) heading=89.8 anim=50 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:19.594] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:19.594] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:19.594] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:19.594] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:19.594] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:19.594] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:19.594] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:20.095] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:20.095] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:20.095] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:20.095] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:20.095] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:20.095] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:20.095] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:20.095] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+Sending say message: '#set hp 12'
+CMD outcome=applied registry=action recognized=true cmd="/say #set hp 12"
+[2026-08-14 12:38:20.858] [INFO ] [MAIN] Set a scaled wolf pup (216) to 11 Health.
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:20.595] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:20.596] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:20.596] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:20.596] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:20.596] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:20.596] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:20.596] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:21.096] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:21.096] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:21.096] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:21.097] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:21.097] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:21.097] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:21.097] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:21.097] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:21.097] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+[2026-08-14 12:38:20.863] [INFO ] [MAIN] [SYS] Set a scaled wolf pup (216) to 11 Health.
+[2026-08-14 12:38:22.009] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-76.88, 24.00, 5.62) heading=89.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:21.597] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:21.597] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:21.597] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:21.597] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:21.597] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:21.597] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:21.597] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:22.360] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:22.098] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:22.098] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:22.098] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:22.098] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:22.098] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:22.098] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:22.098] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:22.098] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:22.360] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:22.360] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:22.935] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-76.88, 24.00, 5.62) heading=268.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:22.599] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:22.599] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:22.599] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:22.599] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:23.099] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:23.100] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:23.100] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:23.100] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:23.100] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:23.100] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:23.100] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:23.100] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:23.100] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+Sending say message: '#set hp 8'
+CMD outcome=applied registry=action recognized=true cmd="/say #set hp 8"
+[2026-08-14 12:38:22.935] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-76.88, 24.00, 5.62) heading=268.8 anim=18 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:23.846] [DEBUG] [ENTITY] [HP] Entity 216 (a_scaled_wolf_pup019) health: 100% -> 72%
+[2026-08-14 12:38:23.846] [INFO ] [MAIN] Set a scaled wolf pup (216) to 8 Health.
+[2026-08-14 12:38:23.858] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=216 name='a_scaled_wolf_pup019' hp=72% level=1
+[2026-08-14 12:38:23.858] [INFO ] [MAIN] [TARGET] a_scaled_wolf_pup019 (id=216) level=1 HP=72%%
+[2026-08-14 12:38:23.858] [INFO ] [MAIN] [SYS] Set a scaled wolf pup (216) to 8 Health.
+[2026-08-14 12:38:23.875] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:23.600] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:23.600] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:23.600] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:23.601] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:23.601] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:23.601] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:23.601] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:24.101] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:24.101] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:24.101] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:24.102] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:24.602] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:24.602] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:24.602] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:24.602] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:24.602] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:24.602] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:24.602] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:24.602] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:23.875] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:23.875] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:25.388] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:25.103] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:25.103] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:25.103] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:25.103] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:25.103] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:25.103] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:25.103] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:25.103] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:25.103] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:25.604] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:25.604] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:25.604] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:25.604] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:26.104] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:26.104] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:26.104] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:26.105] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:26.105] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:26.105] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:26.105] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:26.105] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+Sending say message: '#set hp 4'
+CMD outcome=applied registry=action recognized=true cmd="/say #set hp 4"
+[2026-08-14 12:38:25.388] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:25.388] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:26.872] [DEBUG] [ENTITY] [HP] Entity 216 (a_scaled_wolf_pup019) health: 72% -> 36%
+[2026-08-14 12:38:26.873] [INFO ] [MAIN] Set a scaled wolf pup (216) to 4 Health.
+[2026-08-14 12:38:26.889] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:26.605] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:26.605] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:26.605] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:26.605] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:26.605] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:26.605] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:26.605] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:27.106] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:27.106] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:27.106] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:27.106] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:27.106] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+[2026-08-14 12:38:26.889] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:26.889] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:26.889] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=216 name='a_scaled_wolf_pup019' hp=36% level=1
+[2026-08-14 12:38:26.889] [INFO ] [MAIN] [TARGET] a_scaled_wolf_pup019 (id=216) level=1 HP=36%%
+[2026-08-14 12:38:26.889] [INFO ] [MAIN] [SYS] Set a scaled wolf pup (216) to 4 Health.
+[2026-08-14 12:38:27.960] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-77.62, -28.38, 5.62) heading=268.8 anim=18 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:27.606] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:27.607] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:27.607] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:27.607] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:27.607] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:27.607] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:27.607] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:27.607] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:28.403] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:28.107] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:28.107] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:28.107] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:28.108] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:28.108] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:28.108] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:28.108] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:28.108] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:28.608] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:28.608] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:28.608] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:28.608] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:28.403] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:28.403] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:29.444] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-77.88, -43.75, 5.62) heading=268.8 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[2026-08-14 12:38:29.109] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:29.109] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:29.109] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:29.109] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:29.109] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:29.109] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:29.109] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:29.109] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:29.109] [DEBUG] [COMBAT] ProcessCombatRound: Attack timer ready - server should process melee attack
+Sending say message: '#set hp 0'
+CMD outcome=applied registry=action recognized=true cmd="/say #set hp 0"
+[2026-08-14 12:38:29.859] [DEBUG] [ENTITY] [HP] Entity 216 (a_scaled_wolf_pup019) health: 36% -> 0%
+[2026-08-14 12:38:29.859] [INFO ] [MAIN] Set a scaled wolf pup (216) to 0 Health.
+[2026-08-14 12:38:29.870] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=216 name='a_scaled_wolf_pup019' hp=0% level=1
+[2026-08-14 12:38:29.870] [INFO ] [MAIN] [TARGET] a_scaled_wolf_pup019 (id=216) level=1 HP=0%%
+[2026-08-14 12:38:29.870] [INFO ] [MAIN] [SYS] Set a scaled wolf pup (216) to 0 Health.
+[2026-08-14 12:38:29.892] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-77.88, -43.75, 5.62) heading=179.3 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+Facing entity 'a_scaled_wolf_pup019'
+[90m[12:38:30] [0m[94mTarget cleared.[0m
+[2026-08-14 12:38:29.892] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-77.88, -43.75, 5.62) heading=179.6 anim=18 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:29.904] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:29.904] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:29.904] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged(clear) -> projection cleared
+[2026-08-14 12:38:29.610] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:29.610] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:29.610] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:29.610] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:29.610] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:29.610] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:29.610] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:30.111] [INFO ] [MAIN] [TARGET] Cleared
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: AutoAttackChanged -> projection enabled=false
+[2026-08-14 12:38:30.157] [DEBUG] [MAIN] Target 0 has target 0
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] ProcessCombatRound: has_target=true, auto_attack=true, target_id=216
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] ProcessCombatRound: target=a_scaled_wolf_pup019 (216), distance=0.0, combat_range=8.5, in_range=true
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] ProcessCombatRound: In range, facing target
+[2026-08-14 12:38:30.111] [DEBUG] [MAIN] Face: current pos (21.9,-77.9), target (21.9,-77.9), old heading 0.0°, new heading 0.0°
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] Target a_scaled_wolf_pup019 (ID: 216) died! hp_percent=0
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] Combat state changed to: 0
+[2026-08-14 12:38:30.111] [DEBUG] [COMBAT] Not looking for corpse: auto_loot=true, auto_hunt=false
+[2026-08-14 12:38:31.420] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[90m[12:38:32] [0m[93m[System] Targeting: Testchar[0m
+CMD outcome=applied registry=action recognized=true cmd="/target Testchar"
+[90m[12:38:32] [0m[94mTarget: Testchar (Level 2) - HP: 100%[0m
+[2026-08-14 12:38:31.420] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:31.420] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:31.420] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:32.833] [DEBUG] [COMBAT] Target set to Testchar (ID: 215)
+[2026-08-14 12:38:32.833] [DEBUG] [COMBAT] [T104] GameStateSyncBridge: TargetChanged -> projection spawnId=215 name='Testchar' hp=100% level=2
+[2026-08-14 12:38:32.833] [INFO ] [MAIN] [TARGET] Testchar (id=215) level=2 HP=100%%
+[2026-08-14 12:38:32.891] [DEBUG] [MAIN] Target 215 has target 0
+[2026-08-14 12:38:32.891] [DEBUG] [ENTITY] Player HP: 60/60 (spawn_id=215)
+[2026-08-14 12:38:32.891] [DEBUG] [MAIN] Target 215 has target 0
+[2026-08-14 12:38:32.902] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:32.902] [INFO ] [MAIN] [STATS] HP=60/60 Mana=0/0 End=40/40
+[2026-08-14 12:38:32.937] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:32.937] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:32.937] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:32.937] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:34.437] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:34.437] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:34.437] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:34.437] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:34.907] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-130.12, -43.75, 5.50) heading=179.6 anim=18 delta=(0.00, 0.00, 0.00) (my_id=215)
+CMD outcome=applied registry=action recognized=true cmd="/who"
+[2026-08-14 12:38:35.830] [DEBUG] [MAIN] Sent OP_WhoAllRequest: name='', race=-1, class=-1, lvl=-1--1
+[2026-08-14 12:38:35.830] [INFO ] [MAIN] Searching for players...
+[2026-08-14 12:38:35.830] [INFO ] [MAIN] [SYS] Searching for players...
+[2026-08-14 12:38:35.835] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-140.12, -43.62, 4.62) heading=179.6 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:35.902] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-140.12, -43.62, 4.62) heading=177.9 anim=0 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:35.902] [DEBUG] [MOVEMENT] POS S->C spawn_id=212 pos=(-140.12, -43.62, 4.62) heading=178.2 anim=18 delta=(0.00, 0.00, 0.00) (my_id=215)
+[2026-08-14 12:38:35.951] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+[2026-08-14 12:38:35.951] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:35.951] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:35.951] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:37.462] [DEBUG] [MOVEMENT] POS C->S [SELF] m_heading=0.00deg -> server_heading=90.00deg -> heading_scaled=512 (12-bit)
+CMD outcome=applied registry=game recognized=true cmd="/quit"
+[2026-08-14 12:38:37.462] [DEBUG] [MOVEMENT] POS C->S spawn_id=215 server_pos=(-77.88, 21.88, 3.00) heading=0.0 anim=0 server_delta=(0.00, 0.00, 0.00)
+[2026-08-14 12:38:37.462] [DEBUG] [MOVEMENT] POS C->S [SELF] client_pos=(21.88,-77.88,3.00) -> server_pos=(-77.88,21.88,3.00)
+[2026-08-14 12:38:37.462] [DEBUG] [ZONE] About to queue OP_FloatListThing as reliable packet
+[2026-08-14 12:38:37.840] [INFO ] [MAIN] Game thread stopped
+
+=== Console renderer shutdown ===
+[2026-08-14 12:38:02.693] [DEBUG] [SPELL] Spell database loaded from SQLite
+[2026-08-14 12:38:02.693] [DEBUG] [SPELL] Buff manager initialized
+[2026-08-14 12:38:02.693] [DEBUG] [SPELL] Spell effects processor initialized
+[2026-08-14 12:38:02.693] [DEBUG] [SPELL] SpellTypeProcessor initialized
+[2026-08-14 12:38:02.693] [DEBUG] [SPELL] Spell type processor initialized
+[2026-08-14 12:38:02.693] [DEBUG] [MAIN] Action handler created
+[2026-08-14 12:38:02.693] [DEBUG] [MAIN] Action dispatcher created
+[2026-08-14 12:38:02.694] [DEBUG] [MAIN] Command processor created
+[2026-08-14 12:38:02.694] [INFO ] [MAIN] Creating game mode with renderer type: Software
+[2026-08-14 12:38:02.695] [DEBUG] [MAIN] Game mode initialized: headless
+[2026-08-14 12:38:02.695] [DEBUG] [MAIN] Input action bridge created
+[2026-08-14 12:38:02.695] [DEBUG] [MAIN] Input handler connected to bridge
+[2026-08-14 12:38:02.695] [DEBUG] [MAIN] Command processor connected to renderer
+[2026-08-14 12:38:02.695] [DEBUG] [MAIN] Renderer callbacks connected
+[2026-08-14 12:38:02.695] [INFO ] [MAIN] Console bridge attached (headless mode)
+[2026-08-14 12:38:02.695] [INFO ] [MAIN] Connecting to login server (127.0.0.1:5998)...
+[2026-08-14 12:38:02.695] [INFO ] [MAIN] [LOADING][Phase 1/15] (2%) Connecting to login server...
+[2026-08-14 12:38:02.696] [INFO ] [NET] PosixUdpTransport: connected to 127.0.0.1:5998 fd=6
+[2026-08-14 12:38:02.696] [INFO ] [WORLD] Connecting...
+[2026-08-14 12:38:02.696] [INFO ] [MAIN] Application initialized successfully
+[2026-08-14 12:38:02.696] [INFO ] [MAIN] Starting main loop...
+[2026-08-14 12:38:02.696] [INFO ] [MAIN] Starting game thread
+[2026-08-14 12:38:02.696] [INFO ] [MAIN] Entering render loop (main thread)
+[2026-08-14 12:38:37.852] [INFO ] [MAIN] Render loop exited, joining game thread
+[2026-08-14 12:38:37.852] [INFO ] [MAIN] Game thread joined
+[2026-08-14 12:38:37.852] [INFO ] [MAIN] Main loop exited
+[2026-08-14 12:38:37.852] [INFO ] [MAIN] Shutting down application...
+[2026-08-14 12:38:37.852] [DEBUG] [GRAPHICS] Graphics detached
+[2026-08-14 12:38:37.852] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 5 ms
+  Client Creation                               38 ms
+  TOTAL                                         43 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    35211 ms (35.2 sec)
+  Startup time:          43 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-08-14 12:38:38.032] [DEBUG] [MAIN] EverQuest destructor called, outputting performance report...
+[2026-08-14 12:38:38.116] [DEBUG] [MAIN] Update loop stopped
+[2026-08-14 12:38:38.032] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 5 ms
+  Client Creation                               38 ms
+  TOTAL                                         43 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    35390 ms (35.4 sec)
+  Startup time:          43 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-08-14 12:38:38.123] [INFO ] [MAIN] Application shutdown complete
