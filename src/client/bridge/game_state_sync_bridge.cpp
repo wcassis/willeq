@@ -2,6 +2,7 @@
 
 #include "client/state/game_state.h"
 #include "client/inventory/inventory_constants.h"
+#include "common/logging.h"
 
 namespace eqt {
 namespace bridge {
@@ -317,6 +318,47 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
         }
         case state::GameEventType::TradeCompleted: {
             m_state.trade().reset();
+            break;
+        }
+        case state::GameEventType::TargetChanged: {
+            // T104: replaces the target-identity/name/HP/level half of
+            // Application::syncCombatState(). Published from
+            // CombatManager::SetTarget(uint16_t)/ClearTarget() (combat.cpp,
+            // the sole choke points that mutate m_current_target_id -- every
+            // caller, direct or via the pre-existing TargetIntent/despawn
+            // paths, routes through them) AND, for HP-while-still-targeted,
+            // from the pre-existing ZoneProcessMobHealth() re-publish
+            // (eq_entities.cpp) when the updated entity is the current
+            // target -- that correlation ("is this entity my target?")
+            // already lived at the one place that owns both m_current_target_id
+            // and the entity map, so this unit reuses it rather than
+            // duplicating it here or in CombatState. setTarget() copies
+            // spawnId/name/hpPercent/level unconditionally on every call
+            // (event_bus/combat_state.cpp), so re-applying the same id with
+            // a new hpPercent is exactly the "republish the full struct"
+            // pattern T81 established -- no separate HP-update path needed.
+            const auto& d = std::get<state::TargetChangedData>(event.data);
+            if (d.spawnId != 0) {
+                m_state.combat().setTarget(d.spawnId, d.name, d.hpPercent, d.level);
+                LOG_DEBUG(MOD_COMBAT, "[T104] GameStateSyncBridge: TargetChanged -> projection "
+                          "spawnId={} name='{}' hp={}% level={}",
+                          d.spawnId, d.name, d.hpPercent, d.level);
+            } else {
+                m_state.combat().clearTarget();
+                LOG_DEBUG(MOD_COMBAT, "[T104] GameStateSyncBridge: TargetChanged(clear) -> projection cleared");
+            }
+            break;
+        }
+        case state::GameEventType::AutoAttackChanged: {
+            // T104: replaces the auto-attack-flag half of
+            // Application::syncCombatState(). Published from
+            // CombatManager::EnableAutoAttack()/DisableAutoAttack()
+            // (combat.cpp), the sole choke points that mutate
+            // m_auto_attack_enabled.
+            const auto& d = std::get<state::AutoAttackChangedData>(event.data);
+            m_state.combat().setAutoAttacking(d.enabled);
+            LOG_DEBUG(MOD_COMBAT, "[T104] GameStateSyncBridge: AutoAttackChanged -> projection enabled={}",
+                      d.enabled);
             break;
         }
         case state::GameEventType::InventorySlotChanged: {

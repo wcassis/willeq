@@ -315,7 +315,7 @@ ADD_EXECUTABLE(test_game_state_sync_bridge
     ${CMAKE_SOURCE_DIR}/src/client/bridge/game_state_sync_bridge.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
-TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main)
+TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_game_state_sync_bridge)
 
 # T47: bridge-pointer teardown hygiene (EverQuest::m_bridge + the four

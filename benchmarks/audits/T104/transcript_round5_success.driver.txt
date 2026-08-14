@@ -1,0 +1,26 @@
+== starting willeq (headless, piped stdin, -d 4/DEBUG) ==
+willeq pid=1938444
+[driver] matched 'Zone connection complete! Player position confirmed' after 4s
+[driver] sent: /say #set time 11 0
+[driver] sent: /who
+[driver] sent: /say #npctypespawn 79037
+[driver] matched 'New spawn: a_scaled_wolf_pup[0-9]+ \(ID: [0-9]+\)' after 1s
+[driver] fresh spawn resolved: New spawn: a_scaled_wolf_pup019 (ID: 216) -> targeting 'a_scaled_wolf_pup019'
+[driver] sent: /target a_scaled_wolf_pup019
+[driver] matched '\[T104\] GameStateSyncBridge: TargetChanged -> projection' after 1s
+[driver] sent: /combat on
+[driver] sent: /attack
+[driver] matched '\[T104\] GameStateSyncBridge: AutoAttackChanged -> projection enabled=true' after 1s
+[driver] ZoneProcessDamage count after plain /attack: 0
+[driver] no real melee damage observed -- falling back to sanctioned #set hp GM command to exercise the same HP-update wire path
+[driver] sent: /say #set hp 12
+[driver] sent: /say #set hp 8
+[driver] sent: /say #set hp 4
+[driver] sent: /say #set hp 0
+[driver] matched 'Target .*died|has been slain|AutoAttackChanged -> projection enabled=false|ZoneProcessDamage|hp=0%' after 0s
+[driver] sent: /target Testchar
+[driver] sent: /who
+[driver] sequence complete, sending /quit
+[driver] sent: /quit
+[driver] willeq exited cleanly
+[driver] done. WPID=1938444

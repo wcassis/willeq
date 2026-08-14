@@ -64,6 +64,11 @@ enum class GameEventType {
     CombatEvent,
     TargetChanged,
     TargetHPUpdated,
+    AutoAttackChanged,  // T104: replaces the auto-attack half of
+                         // Application::syncCombatState()'s poll --
+                         // published from CombatManager::EnableAutoAttack()/
+                         // DisableAutoAttack(), the sole choke points that
+                         // mutate m_auto_attack_enabled.
     DamageEvent,
     SpellCastStarted,
     SpellCastComplete,
@@ -415,6 +420,11 @@ struct TargetChangedData {
 
 struct TargetHPUpdatedData {
     uint8_t hpPercent = 100;
+};
+
+// T104: replaces the auto-attack-flag half of Application::syncCombatState().
+struct AutoAttackChangedData {
+    bool enabled = false;
 };
 
 struct DamageEventData {
@@ -947,6 +957,7 @@ using EventData = std::variant<
     CombatEventData,
     TargetChangedData,
     TargetHPUpdatedData,
+    AutoAttackChangedData,
     DamageEventData,
     SpellCastStartedData,
     SpellCastCompleteData,

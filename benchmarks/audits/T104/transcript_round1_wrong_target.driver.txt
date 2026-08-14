@@ -1,0 +1,27 @@
+== starting willeq (headless, piped stdin, -d 4/DEBUG) ==
+willeq pid=1932274
+[driver] matched 'Zone connection complete! Player position confirmed' after 5s
+[driver] sent: /say #set time 11 0
+[driver] sent: /who
+[driver] sent: /say #npctypespawn 79037
+[driver] matched 'Spawned a_scaled_wolf_pup|Spawned .*79037' after 1s
+[driver] sent: /target wolf_pup
+[driver] matched '\[T104\] GameStateSyncBridge: TargetChanged -> projection' after 1s
+[driver] sent: /combat on
+[driver] sent: /attack
+[driver] matched '\[T104\] GameStateSyncBridge: AutoAttackChanged -> projection enabled=true' after 1s
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] sent: /target wolf_pup
+[driver] TIMEOUT waiting for 'Target .*died|has been slain|AutoAttackChanged -> projection enabled=false' after 30s
+[driver] sent: /target Testchar
+[driver] sent: /who
+[driver] sequence complete, sending /quit
+[driver] sent: /quit
+[driver] willeq exited cleanly
+[driver] done. WPID=1932274

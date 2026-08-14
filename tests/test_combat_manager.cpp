@@ -133,6 +133,66 @@ TEST(CombatManagerTargeting, ClearTarget) {
     EXPECT_EQ(cm->GetTargetId(), 0);
 }
 
+// T104: SetTarget()/ClearTarget() are the sole choke points that publish
+// TargetChanged so Application::m_gameState->combat() can be fed without a
+// per-frame poll (see combat.cpp's PublishTargetChanged()/
+// PublishTargetCleared() and refactor/T104_combat_poll_to_bridge.md). Proven
+// via a real bridge attached to EverQuest -- every other test in this file
+// runs without one, which exercises the null-bridge no-op guard implicitly
+// (none of them crash).
+TEST(CombatManagerTargeting, SetTargetPublishesTargetChangedWithEntityData) {
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+    bridge.drainEvents();  // discard the spawn's own EntityStateSnapshot publish (T81)
+
+    ASSERT_TRUE(cm->SetTarget(100));
+
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, eqt::state::GameEventType::TargetChanged);
+    const auto& d = std::get<eqt::state::TargetChangedData>(events[0].data);
+    EXPECT_EQ(d.spawnId, 100u);
+    EXPECT_EQ(d.name, "a_test_rat");
+    EXPECT_EQ(d.level, 5);
+    EXPECT_EQ(d.hpPercent, 100);
+}
+
+TEST(CombatManagerTargeting, ClearTargetPublishesTargetChangedWithZeroSpawnId) {
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+    ASSERT_TRUE(cm->SetTarget(100));
+    bridge.drainEvents();  // discard the SetTarget publish, isolate ClearTarget's
+
+    cm->ClearTarget();
+
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, eqt::state::GameEventType::TargetChanged);
+    const auto& d = std::get<eqt::state::TargetChangedData>(events[0].data);
+    EXPECT_EQ(d.spawnId, 0u);
+}
+
+TEST(CombatManagerTargeting, SetTargetMissDoesNotPublish) {
+    // Falsification pair for SetTargetPublishesTargetChangedWithEntityData:
+    // a failed SetTarget (unknown id) must NOT publish -- proves the publish
+    // is gated on success, not called unconditionally.
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    auto* cm = eq.GetCombatManager();
+
+    EXPECT_FALSE(cm->SetTarget(999));
+    EXPECT_TRUE(bridge.drainEvents().empty());
+}
+
 TEST(CombatManagerTargeting, ConsiderTarget_NoTargetIsNoOp) {
     EverQuest eq = MakeEq();
     auto* cm = eq.GetCombatManager();
@@ -214,6 +274,57 @@ TEST(CombatManagerAutoAttack, DisableWhileNotEngagedLeavesStateAlone) {
 
     cm->DisableAutoAttack();
     EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_HUNTING);
+}
+
+// T104: EnableAutoAttack()/DisableAutoAttack() are the sole choke points
+// that publish AutoAttackChanged (see combat.cpp's
+// PublishAutoAttackChanged() and refactor/T104_combat_poll_to_bridge.md).
+TEST(CombatManagerAutoAttack, EnableAutoAttackPublishesAutoAttackChangedTrue) {
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+    ASSERT_TRUE(cm->SetTarget(100));
+    bridge.drainEvents();  // discard the SetTarget publish
+
+    cm->EnableAutoAttack();
+
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, eqt::state::GameEventType::AutoAttackChanged);
+    const auto& d = std::get<eqt::state::AutoAttackChangedData>(events[0].data);
+    EXPECT_TRUE(d.enabled);
+}
+
+TEST(CombatManagerAutoAttack, EnableWithoutTargetDoesNotPublish) {
+    // Falsification pair: the no-target early return (see
+    // EnableWithoutTargetIsNoOp above) must not publish either -- the
+    // publish sits after the guard, not before it.
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    auto* cm = eq.GetCombatManager();
+
+    cm->EnableAutoAttack();
+
+    EXPECT_TRUE(bridge.drainEvents().empty());
+}
+
+TEST(CombatManagerAutoAttack, DisableAutoAttackPublishesAutoAttackChangedFalse) {
+    EverQuest eq = MakeEq();
+    zonetest::TestBridge bridge;
+    eq.setBridge(&bridge);
+    auto* cm = eq.GetCombatManager();
+
+    cm->DisableAutoAttack();
+
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, eqt::state::GameEventType::AutoAttackChanged);
+    const auto& d = std::get<eqt::state::AutoAttackChangedData>(events[0].data);
+    EXPECT_FALSE(d.enabled);
 }
 
 TEST(CombatManagerAutoFire, EnableWithoutTargetIsNoOp) {

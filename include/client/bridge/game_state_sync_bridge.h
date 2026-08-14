@@ -104,6 +104,31 @@ namespace bridge {
  * decorator separately populates Application::m_gameState.entities() from
  * the same underlying data via events (T81) -- two instances, two
  * mechanisms, same source of truth.
+ * T104 added TargetChanged and AutoAttackChanged, replacing
+ * Application::syncCombatState() -- the last poll in the sweep this class
+ * started (T39: pet/inventory/spells/NPC-interaction; T81/T99: entities/
+ * group; doors remain separately blocked on routing). TargetChanged was
+ * already published end-to-end for the graphics/renderer target HUD before
+ * this unit (eq_bridge.cpp's TargetIntent handler, OnSpawnRemovedGraphics,
+ * and eq_entities.cpp's ZoneProcessMobHealth re-publish when the updated
+ * entity is the current target) -- the gap was that nothing fed it into
+ * this projection, and that most SetTarget()/ClearTarget() callers (the
+ * /target command, targetNearest*, cycleTargets, assist/duel/taunt,
+ * auto-hunt) never published it at all. This unit closes both gaps at once
+ * by moving the publish into CombatManager::SetTarget(uint16_t)/
+ * ClearTarget()/EnableAutoAttack()/DisableAutoAttack() (combat.cpp) -- the
+ * sole choke points that mutate m_current_target_id/m_auto_attack_enabled --
+ * so every caller is covered without touching any of them individually.
+ * This does create a harmless double-publish for the two paths that already
+ * published manually (TargetIntent, despawn-clears-target) -- same
+ * cosmetic-only shape as T81's entity double-publish finding, not a
+ * correctness issue (CombatState::setTarget()/clearTarget() only fire their
+ * own downstream event on an actual value transition). Target HP tracking
+ * under damage deliberately reuses the existing ZoneProcessMobHealth()
+ * TargetChanged re-publish rather than adding a second correlation
+ * mechanism or moving HP reads to a live entities() lookup at each call
+ * site -- see refactor/T104_combat_poll_to_bridge.md's Review for the full
+ * reasoning and the falsification-test result.
  */
 class GameStateSyncBridge : public GameStateBridge {
 public:

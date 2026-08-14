@@ -64,10 +64,14 @@ void CombatState::reset() {
 
 void CombatState::fireTargetChangedEvent() {
     if (m_eventBus) {
-        // T39: this CombatState instance is fed by Application::syncCombatState()
-        // (application.cpp), which mirrors the authoritative CombatManager's
-        // target id/HP/name/level -- CombatManager remains the source of
-        // truth, this only publishes what it was just told. This does NOT
+        // T39/T104: this CombatState instance is fed by GameStateSyncBridge's
+        // TargetChanged case (game_state_sync_bridge.cpp), itself published
+        // from CombatManager::SetTarget()/ClearTarget() (combat.cpp) and
+        // from eq_entities.cpp's target-HP re-publish -- CombatManager
+        // remains the source of truth, this only publishes what it was just
+        // told. (T104 replaced the prior feed, Application::syncCombatState(),
+        // a per-frame poll, with these events -- see
+        // refactor/T104_combat_poll_to_bridge.md.) This does NOT
         // double-publish the T28-era concern: eq_bridge.cpp's three
         // TargetChanged pushes go onto the GameStateBridge (consumed by
         // IrrlichtBridge/ConsoleBridge), a channel entirely disjoint from
@@ -87,20 +91,24 @@ void CombatState::fireTargetChangedEvent() {
 
 void CombatState::fireCombatEvent() {
     if (m_eventBus) {
-        // T39: setAutoAttacking() is now wired (Application::syncCombatState()
-        // mirrors CombatManager::IsAutoAttackEnabled()), but this stays a
-        // non-publishing stub: CombatEventData (event_bus.h:365) models a
-        // single combat *round outcome* (Hit/Miss/Dodge/Parry/Block/
-        // Riposte/CriticalHit/Death against a source/target pair with a
-        // damage amount) -- there is no field of that struct, and no other
-        // GameEventType in this header, that means "auto-attack toggled".
-        // Reusing CombatEventData with a fabricated Type or invented damage
-        // value to represent a toggle would be inventing data the caller
-        // never provided, which is the trap this migration is explicitly
-        // supposed to avoid (see refactor/deferred.md and
-        // T39_state_layer_migration.md's inventory guidance, same
-        // principle). isAutoAttacking() now reflects real state and can be
-        // read directly; it has zero production readers today.
+        // T39/T104: setAutoAttacking() is now wired via GameStateSyncBridge's
+        // AutoAttackChanged case (game_state_sync_bridge.cpp), fed from
+        // CombatManager::EnableAutoAttack()/DisableAutoAttack() (combat.cpp)
+        // -- T104 replaced the prior feed, Application::syncCombatState(), a
+        // per-frame poll, with that typed event. This method itself stays a
+        // non-publishing stub, deliberately: CombatEventData (event_bus.h)
+        // models a single combat *round outcome* (Hit/Miss/Dodge/Parry/
+        // Block/Riposte/CriticalHit/Death against a source/target pair with
+        // a damage amount) -- there is no field of that struct, and no other
+        // GameEventType meant for THIS EventBus (the one ConsoleRenderer
+        // subscribes to), that means "auto-attack toggled". Reusing
+        // CombatEventData with a fabricated Type or invented damage value to
+        // represent a toggle would be inventing data the caller never
+        // provided, the same trap T104's own new AutoAttackChanged (a
+        // cross-thread bridge event, a different channel from this
+        // EventBus) was added to avoid rather than repeat. isAutoAttacking()
+        // now reflects real state and can be read directly; it has zero
+        // production readers today.
     }
 }
 

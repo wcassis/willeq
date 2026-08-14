@@ -343,6 +343,14 @@ private:
 	float m_combat_range;
 	float m_spell_range;
 
+	// T104: publish the two combat projection events at their sole choke
+	// points (see combat.cpp) -- replaces Application::syncCombatState()'s
+	// poll. Not a behavior change: these do not affect targeting/auto-attack
+	// decisions, only make the resulting state observable cross-thread.
+	void PublishTargetChanged(const Entity& entity);
+	void PublishTargetCleared();
+	void PublishAutoAttackChanged(bool enabled);
+
 	// Helper methods
 	void ScanForTargets();
 	void UpdateTargetPriorities();
