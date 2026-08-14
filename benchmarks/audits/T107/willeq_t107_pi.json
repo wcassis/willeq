@@ -1,0 +1,13 @@
+{
+  "clients": [
+    {
+      "host": "10.0.30.23",
+      "port": 5998,
+      "user": "willeq_buddy",
+      "pass": "WillEqBuddyPass",
+      "server": "WillEQ",
+      "character": "Testbuddy",
+      "eq_client_path": "/mnt/projects/EverQuestP1999"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+wait 10
+/say #set time 11 0
+wait 180
+/pmem
+wait 5
+/camp
