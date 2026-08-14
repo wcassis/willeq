@@ -911,4 +911,254 @@ TEST_F(CommandProcessorTest, GroupAccept_Alias_DispatchesAcceptGroupInvite) {
     ASSERT_TRUE(handler.calledOnceWith("acceptGroupInvite()"));
 }
 
+// ===================================================================
+// Spells / Pet commands (T101 -- migrated from EverQuest::m_command_
+// registry's Spells (6) and Pet (1) categories, see
+// refactor/T101_migrate_spells_pet_family.md). Same shape as the T99 Group
+// tests above: RecordingActionHandler proves the call reaches
+// ActionDispatcher -> IActionHandler, not just that CommandProcessor's own
+// bookkeeping is happy.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T101_SpellsAndPetCommandsRegisteredWithCorrectCategory) {
+    struct Expected { const char* name; const char* category; };
+    static const Expected samples[] = {
+        {"cast", "Spells"},
+        {"mem", "Spells"},
+        {"forget", "Spells"},
+        {"gems", "Spells"},
+        {"interrupt", "Spells"},
+        {"spellbook", "Spells"},
+        {"pet", "Pet"},
+    };
+    for (const auto& s : samples) {
+        auto info = processor->getCommandInfo(s.name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << s.name;
+        EXPECT_EQ(info->category, s.category) << "wrong category for: " << s.name;
+    }
+    // Aliases carried over from game's registrations verbatim.
+    EXPECT_TRUE(processor->hasCommand("memspell"));
+    EXPECT_TRUE(processor->hasCommand("memorize"));
+    EXPECT_TRUE(processor->hasCommand("ducking"));
+    EXPECT_TRUE(processor->hasCommand("book"));
+    // /skills is deliberately NOT migrated here: registered category
+    // "Utility" in game, not "Spells" -- outside this unit's confirmed
+    // membership (see refactor/T101_migrate_spells_pet_family.md's Review).
+    EXPECT_FALSE(processor->hasCommand("skills"));
+}
+
+TEST_F(CommandProcessorTest, Cast_ValidGem_DispatchesBeginCastFromGem) {
+    auto result = processor->processCommand("/cast 3");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("beginCastFromGem(3, 0)"));
+}
+
+TEST_F(CommandProcessorTest, Cast_WithTarget_PassesTargetId) {
+    state.combat().setTarget(555, "a rat", 100, 10);
+    auto result = processor->processCommand("/cast 1");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("beginCastFromGem(1, 555)"));
+}
+
+TEST_F(CommandProcessorTest, Cast_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/cast");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Cast_OutOfRangeGem_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/cast 9");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Cast_MalformedGem_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/cast abc");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Mem_ValidArgs_DispatchesMemorizeSpellByName) {
+    auto result = processor->processCommand("/mem 4 Minor Healing");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("memorizeSpellByName(\"Minor Healing\", 4)"));
+}
+
+TEST_F(CommandProcessorTest, Mem_Alias_DispatchesMemorizeSpellByName) {
+    auto result = processor->processCommand("/memorize 2 Root");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("memorizeSpellByName(\"Root\", 2)"));
+}
+
+TEST_F(CommandProcessorTest, Mem_MissingSpellName_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/mem 4");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Mem_OutOfRangeGem_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/mem 9 Root");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Forget_ValidGem_DispatchesForgetSpell) {
+    auto result = processor->processCommand("/forget 5");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("forgetSpell(5)"));
+}
+
+TEST_F(CommandProcessorTest, Forget_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/forget");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Forget_OutOfRangeGem_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/forget 13");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Gems_DispatchesListMemorizedSpells) {
+    auto result = processor->processCommand("/gems");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("listMemorizedSpells()"));
+}
+
+TEST_F(CommandProcessorTest, Interrupt_DispatchesInterruptCast) {
+    auto result = processor->processCommand("/interrupt");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("interruptCast()"));
+}
+
+TEST_F(CommandProcessorTest, Interrupt_Alias_DispatchesInterruptCast) {
+    auto result = processor->processCommand("/ducking");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("interruptCast()"));
+}
+
+TEST_F(CommandProcessorTest, Spellbook_DisplaysMessageWithoutDispatching) {
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    auto result = processor->processCommand("/spellbook");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.empty());
+    ASSERT_EQ(renderer.systemMessages.size(), 1u);
+    EXPECT_EQ(renderer.systemMessages[0], "Spellbook window not yet implemented in UI");
+}
+
+// ---- Pet ----
+
+TEST_F(CommandProcessorTest, Pet_NoPet_FailsCleanlyWithoutDispatching) {
+    ASSERT_FALSE(state.pet().hasPet());
+    auto result = processor->processCommand("/pet attack");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Pet_Attack_ExplicitName_ResolvesEntityAndDispatches) {
+    state.pet().setPet(999, "a wolf", 10);
+    eqt::state::Entity e;
+    e.spawnId = 1234;
+    e.name = "a decrepit skeleton";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/pet attack skeleton");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendPetCommand(7, 1234)"));  // EQT::PET_ATTACK == 7
+}
+
+TEST_F(CommandProcessorTest, Pet_Attack_ExplicitNameNotFound_FailsCleanlyWithoutDispatching) {
+    state.pet().setPet(999, "a wolf", 10);
+    auto result = processor->processCommand("/pet attack nosuchmob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Pet_Attack_NoNameFallsBackToCombatTarget) {
+    state.pet().setPet(999, "a wolf", 10);
+    state.combat().setTarget(555, "a rat", 100, 10);
+    auto result = processor->processCommand("/pet attack");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendPetCommand(7, 555)"));
+}
+
+TEST_F(CommandProcessorTest, Pet_Attack_NoNameNoTarget_FailsCleanlyWithoutDispatching) {
+    state.pet().setPet(999, "a wolf", 10);
+    ASSERT_FALSE(state.combat().hasTarget());
+    auto result = processor->processCommand("/pet attack");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Pet_Vocabulary_DispatchesExpectedCommandId) {
+    // T97: game's /pet vocabulary is a strict superset of the pre-T101
+    // ActionDispatcher wrapper set (leader/spellhold/nospellhold/notaunt/
+    // nohold/standup were all missing). This table covers every subcommand
+    // -- the new ones (T101-added wrappers) alongside the pre-existing
+    // (T96-fixed) ones, all through the SAME cmdPet() code path.
+    struct Case { const char* args; int expectedCommandId; };
+    static const Case cases[] = {
+        {"back", 1},          // PET_BACKOFF
+        {"stop", 1},
+        {"follow", 8},        // PET_FOLLOWME
+        {"guard", 5},         // PET_GUARDHERE
+        {"sit", 9},           // PET_SITDOWN
+        {"sitdown", 9},
+        {"stand", 10},        // PET_STANDUP (T101-added wrapper)
+        {"standup", 10},
+        {"taunt", 11},        // PET_TAUNT
+        {"notaunt", 14},      // PET_TAUNT_OFF (T101-added wrapper)
+        {"hold", 12},         // PET_HOLD
+        {"nohold", 21},       // PET_HOLD_OFF (T101-added wrapper)
+        {"unhold", 21},
+        {"focus", 19},        // PET_FOCUS
+        {"nofocus", 19},      // toggle-only, same id
+        {"health", 4},        // PET_HEALTHREPORT
+        {"report", 4},
+        {"leader", 16},       // PET_LEADER (T101-added wrapper)
+        {"spellhold", 18},    // PET_SPELLHOLD (T101-added wrapper)
+        {"ghold", 18},
+        {"nospellhold", 18},  // toggle-only, same id
+        {"noghold", 18},
+    };
+    for (const auto& c : cases) {
+        state.pet().setPet(999, "a wolf", 10);
+        handler.clear();
+        auto result = processor->processCommand(std::string("/pet ") + c.args);
+        EXPECT_TRUE(result.success) << "subcommand: " << c.args;
+        std::string expected = "sendPetCommand(" + std::to_string(c.expectedCommandId) + ", 0)";
+        EXPECT_TRUE(handler.calledOnceWith(expected))
+            << "subcommand: " << c.args << " expected: " << expected;
+    }
+}
+
+TEST_F(CommandProcessorTest, Pet_Dismiss_DispatchesDismissPet) {
+    state.pet().setPet(999, "a wolf", 10);
+    for (const char* args : {"dismiss", "getlost", "leave"}) {
+        handler.clear();
+        auto result = processor->processCommand(std::string("/pet ") + args);
+        EXPECT_TRUE(result.success);
+        ASSERT_TRUE(handler.calledOnceWith("dismissPet()")) << "subcommand: " << args;
+    }
+}
+
+TEST_F(CommandProcessorTest, Pet_EmptyArgs_ListsCommandsWithoutDispatching) {
+    state.pet().setPet(999, "a wolf", 10);
+    RecordingOutputRenderer renderer;
+    processor->setOutputRenderer(&renderer);
+    auto result = processor->processCommand("/pet");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.empty());
+    ASSERT_FALSE(renderer.systemMessages.empty());
+}
+
+TEST_F(CommandProcessorTest, Pet_UnknownSubcommand_FailsCleanlyWithoutDispatching) {
+    state.pet().setPet(999, "a wolf", 10);
+    auto result = processor->processCommand("/pet somethingmadeup");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 } // namespace

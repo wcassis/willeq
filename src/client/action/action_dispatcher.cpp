@@ -334,6 +334,21 @@ ActionResult ActionDispatcher::interruptCast() {
     return ActionResult::Success("Cast interrupted");
 }
 
+ActionResult ActionDispatcher::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    // T101: matches game's /cast bound (1-8, EQ::SpellManager's real gem
+    // count) -- distinct from castSpell()'s 1-12 (the older CombatManager
+    // path's more permissive, and less correct, bound).
+    if (gemSlot < 1 || gemSlot > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
+    }
+
+    m_handler->beginCastFromGem(gemSlot, targetId);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::useAbility(uint32_t abilityId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
@@ -700,8 +715,14 @@ ActionResult ActionDispatcher::forgetSpell(uint8_t gemSlot) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (gemSlot < 1 || gemSlot > 12) {
-        return ActionResult::Failure("Invalid gem slot (1-12)");
+    // T101: narrowed from 1-12 to 1-8 -- forgetSpell() now routes through
+    // the real EQ::SpellManager (only 8 gems exist), fixing the stub
+    // ("Would need to send forget spell packet") T97 found underneath this
+    // dispatcher method. See the plan's Review: this is a repoint, not a
+    // new method -- forgetSpell()'s signature/callers are unchanged, no
+    // test asserted on the old stub's behavior.
+    if (gemSlot < 1 || gemSlot > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
     }
 
     m_handler->forgetSpell(gemSlot);
@@ -721,6 +742,31 @@ ActionResult ActionDispatcher::closeSpellbook() {
     if (!result.success) return result;
 
     m_handler->closeSpellbook();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (gemSlot < 1 || gemSlot > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
+    }
+    if (spellName.empty()) {
+        return ActionResult::Failure("Usage: /mem <gem# 1-8> <spell_name>");
+    }
+
+    m_handler->memorizeSpellByName(spellName, gemSlot);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::listMemorizedSpells() {
+    // T101: read-only report, no zone requirement -- matches game's /gems,
+    // which only checked for a spell manager, not a zone connection.
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->listMemorizedSpells();
     return ActionResult::Success();
 }
 
@@ -790,7 +836,7 @@ ActionResult ActionDispatcher::dismissPet() {
     return ActionResult::Success("Dismissing pet");
 }
 
-ActionResult ActionDispatcher::petAttack() {
+ActionResult ActionDispatcher::petAttack(uint16_t targetId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
@@ -798,8 +844,10 @@ ActionResult ActionDispatcher::petAttack() {
         return ActionResult::Failure("You don't have a pet");
     }
 
-    // Note: targetId=0 tells the server to use the pet owner's current target
-    m_handler->sendPetCommand(EQT::PET_ATTACK, 0);
+    // targetId=0 tells the server to use the pet owner's current target;
+    // a nonzero value (T101: CommandProcessor's /pet attack <name>
+    // resolution) attacks that specific entity instead.
+    m_handler->sendPetCommand(EQT::PET_ATTACK, targetId);
     return ActionResult::Success("Pet attacking");
 }
 
@@ -896,6 +944,71 @@ ActionResult ActionDispatcher::petHealth() {
     }
 
     m_handler->sendPetCommand(EQT::PET_HEALTHREPORT, 0);
+    return ActionResult::Success();
+}
+
+// T101: five wrappers added to close the vocabulary gap T97 found (game's
+// /pet has leader/spellhold/notaunt/nohold/standup; the pre-T101 wrapper
+// set didn't). All route through the existing generic sendPetCommand()
+// IActionHandler virtual -- no interface change needed.
+
+ActionResult ActionDispatcher::petStand() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(EQT::PET_STANDUP, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petTauntOff() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(EQT::PET_TAUNT_OFF, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petHoldOff() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(EQT::PET_HOLD_OFF, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petLeader() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(EQT::PET_LEADER, 0);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petSpellHold() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You don't have a pet");
+    }
+
+    m_handler->sendPetCommand(EQT::PET_SPELLHOLD, 0);
     return ActionResult::Success();
 }
 

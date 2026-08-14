@@ -2,6 +2,7 @@
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/pet_constants.h"
+#include "client/spell/spell_manager.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
 
@@ -359,9 +360,57 @@ void EqActionHandler::castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) {
 }
 
 void EqActionHandler::interruptCast() {
-    auto* combat = getCombatManager();
-    if (combat) {
-        combat->InterruptCast();
+    // T101: repointed from CombatManager::InterruptCast() to
+    // EQ::SpellManager -- ported from game's /interrupt (eq_commands_
+    // spells.cpp), which is the subsystem the real /cast path
+    // (beginCastFromGem() below) actually uses. Not covered by any
+    // existing test against real CombatManager state (T93 tests castSpell/
+    // castSpellOnTarget/memorizeSpell only), so this repoint is safe -- see
+    // refactor/T101_migrate_spells_pet_family.md's Review.
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+    if (spellMgr->isCasting()) {
+        spellMgr->interruptCast();
+        m_eq.AddChatSystemMessage("Casting interrupted");
+    } else {
+        m_eq.AddChatSystemMessage("Not casting");
+    }
+}
+
+void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
+    // T101: ported from game's /cast (eq_commands_spells.cpp) verbatim --
+    // the real EQ::SpellManager casting path, distinct from castSpell()/
+    // castSpellOnTarget() above (CombatManager, untouched per T93).
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+    // gemSlot arrives 1-indexed (ActionDispatcher::beginCastFromGem()
+    // already validated 1-8); SpellManager's gems are 0-indexed.
+    EQ::CastResult result = spellMgr->beginCastFromGem(static_cast<uint8_t>(gemSlot - 1), targetId);
+    switch (result) {
+        case EQ::CastResult::Success:
+            m_eq.AddChatSystemMessage("Casting from gem " + std::to_string(gemSlot));
+            break;
+        case EQ::CastResult::NotMemorized:
+            m_eq.AddChatSystemMessage("No spell in gem " + std::to_string(gemSlot));
+            break;
+        case EQ::CastResult::NotEnoughMana:
+            m_eq.AddChatSystemMessage("Insufficient mana");
+            break;
+        case EQ::CastResult::SpellNotReady:
+            m_eq.AddChatSystemMessage("Spell not ready");
+            break;
+        case EQ::CastResult::AlreadyCasting:
+            m_eq.AddChatSystemMessage("Already casting");
+            break;
+        default:
+            m_eq.AddChatSystemMessage("Cannot cast spell");
+            break;
     }
 }
 
@@ -543,8 +592,22 @@ void EqActionHandler::memorizeSpell(uint8_t gemSlot, uint32_t spellId) {
 }
 
 void EqActionHandler::forgetSpell(uint8_t gemSlot) {
-    // Would need to send forget spell packet
-    LOG_DEBUG(MOD_COMBAT, "Forget spell not yet implemented");
+    // T101: fixed -- ported from game's /forget (eq_commands_spells.cpp).
+    // Was a stub ("Would need to send forget spell packet") that always
+    // silently no-op'd; T97 flagged this as a false-success two layers
+    // down from a dispatcher method that otherwise looked fully wired.
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+    // gemSlot arrives 1-indexed (ActionDispatcher::forgetSpell() already
+    // validated 1-8); SpellManager's gems are 0-indexed.
+    if (spellMgr->forgetSpell(static_cast<uint8_t>(gemSlot - 1))) {
+        m_eq.AddChatSystemMessage("Forgot spell in gem " + std::to_string(gemSlot));
+    } else {
+        m_eq.AddChatSystemMessage("No spell in gem " + std::to_string(gemSlot));
+    }
 }
 
 void EqActionHandler::openSpellbook() {
@@ -554,6 +617,84 @@ void EqActionHandler::openSpellbook() {
 
 void EqActionHandler::closeSpellbook() {
     LOG_DEBUG(MOD_UI, "Close spellbook not yet implemented");
+}
+
+void EqActionHandler::memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) {
+    // T101: ported from game's /mem (eq_commands_spells.cpp) verbatim --
+    // exact match, else partial match with disambiguation (first 5 shown).
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+
+    const EQ::SpellData* spell = spellMgr->getDatabase().getSpellByName(spellName);
+    if (!spell) {
+        auto matches = spellMgr->getDatabase().findSpellsByName(spellName);
+        if (matches.empty()) {
+            m_eq.AddChatSystemMessage("Spell '" + spellName + "' not found");
+            return;
+        }
+        if (matches.size() == 1) {
+            spell = matches[0];
+        } else {
+            m_eq.AddChatSystemMessage("Multiple matches found:");
+            size_t count = 0;
+            for (const auto* s : matches) {
+                m_eq.AddChatSystemMessage("  " + s->name + " (ID: " + std::to_string(s->id) + ")");
+                if (++count >= 5) {
+                    if (matches.size() > 5) {
+                        m_eq.AddChatSystemMessage("  ... and " + std::to_string(matches.size() - 5) + " more");
+                    }
+                    break;
+                }
+            }
+            return;
+        }
+    }
+
+    // gemSlot arrives 1-indexed (ActionDispatcher::memorizeSpellByName()
+    // already validated 1-8); SpellManager's gems are 0-indexed.
+    if (spellMgr->memorizeSpell(spell->id, static_cast<uint8_t>(gemSlot - 1))) {
+        m_eq.AddChatSystemMessage("Memorizing " + spell->name + " in gem " + std::to_string(gemSlot));
+    } else {
+        m_eq.AddChatSystemMessage("Cannot memorize " + spell->name + " - check if scribed and level requirement");
+    }
+}
+
+void EqActionHandler::listMemorizedSpells() {
+    // T101: ported from game's /gems (eq_commands_spells.cpp) verbatim --
+    // fixes the "(Spell data not available in current implementation)"
+    // stub T97 found underneath the pre-T101 dispatcher method.
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+    m_eq.AddChatSystemMessage("=== Spell Gems ===");
+    for (int i = 0; i < 8; i++) {
+        uint32_t spellId = spellMgr->getMemorizedSpell(static_cast<uint8_t>(i));
+        if (spellId != EQ::SPELL_UNKNOWN && spellId != 0xFFFFFFFF) {
+            const EQ::SpellData* spell = spellMgr->getSpell(spellId);
+            std::string stateStr;
+            EQ::GemState state = spellMgr->getGemState(static_cast<uint8_t>(i));
+            switch (state) {
+                case EQ::GemState::Ready: stateStr = "Ready"; break;
+                case EQ::GemState::Refresh:
+                    stateStr = "Refresh (" + std::to_string(spellMgr->getGemCooldownRemaining(static_cast<uint8_t>(i)) / 1000) + "s)";
+                    break;
+                case EQ::GemState::MemorizeProgress:
+                    stateStr = "Memorizing (" + std::to_string(static_cast<int>(spellMgr->getMemorizeProgress(static_cast<uint8_t>(i)) * 100)) + "%)";
+                    break;
+                case EQ::GemState::Casting: stateStr = "Casting"; break;
+                default: stateStr = ""; break;
+            }
+            std::string spellLabel = spell ? spell->name : ("Unknown(" + std::to_string(spellId) + ")");
+            m_eq.AddChatSystemMessage("[" + std::to_string(i + 1) + "] " + spellLabel + " " + stateStr);
+        } else {
+            m_eq.AddChatSystemMessage("[" + std::to_string(i + 1) + "] <empty>");
+        }
+    }
 }
 
 // ========== Trade ==========

@@ -510,6 +510,121 @@ TEST_F(ActionDispatcherTest, PetFamily_NoPetFailsWithoutDispatch) {
     EXPECT_TRUE(handler.empty());
 }
 
+// T101: the five pet wrappers added to close the vocabulary gap T97 found
+// (game's /pet has leader/spellhold/notaunt/nohold/standup; the T96-fixed
+// wrapper set didn't). Same shape as the pre-existing pet family tests
+// above -- one dispatcher call, one exact command id.
+TEST_F(ActionDispatcherTest, PetFamily_T101AddedWrappersUseCorrectCommandId) {
+    connectHandler();
+    connectZone();
+    state.pet().setPet(200, "Fido", 10);
+
+    dispatcher->petStand();      // EQT::PET_STANDUP = 10
+    dispatcher->petTauntOff();   // EQT::PET_TAUNT_OFF = 14
+    dispatcher->petHoldOff();    // EQT::PET_HOLD_OFF = 21
+    dispatcher->petLeader();     // EQT::PET_LEADER = 16
+    dispatcher->petSpellHold();  // EQT::PET_SPELLHOLD = 18
+
+    ASSERT_EQ(handler.count(), 5u);
+    EXPECT_EQ(handler.calls[0],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_STANDUP)) + ", 0)");
+    EXPECT_EQ(handler.calls[1],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_TAUNT_OFF)) + ", 0)");
+    EXPECT_EQ(handler.calls[2],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_HOLD_OFF)) + ", 0)");
+    EXPECT_EQ(handler.calls[3],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_LEADER)) + ", 0)");
+    EXPECT_EQ(handler.calls[4],
+              "sendPetCommand(" + std::to_string(static_cast<int>(EQT::PET_SPELLHOLD)) + ", 0)");
+}
+
+TEST_F(ActionDispatcherTest, PetFamily_T101AddedWrappers_NoPetFailsWithoutDispatch) {
+    connectHandler();
+    connectZone();
+    // Default GameState has no pet.
+
+    EXPECT_FALSE(dispatcher->petStand().success);
+    EXPECT_FALSE(dispatcher->petTauntOff().success);
+    EXPECT_FALSE(dispatcher->petHoldOff().success);
+    EXPECT_FALSE(dispatcher->petLeader().success);
+    EXPECT_FALSE(dispatcher->petSpellHold().success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(ActionDispatcherTest, PetAttack_ExplicitTargetId_PassedThrough) {
+    // T101: petAttack() gained an explicit-target overload (default still
+    // 0, "server uses current target") to carry CommandProcessor's /pet
+    // attack <name> resolution.
+    connectHandler();
+    connectZone();
+    state.pet().setPet(200, "Fido", 10);
+
+    dispatcher->petAttack(4321);
+
+    ASSERT_TRUE(handler.calledOnceWith("sendPetCommand(7, 4321)"));
+}
+
+// T101: the real (SpellManager-backed) cast/mem/gems path, distinct from
+// castSpell()/castSpellOnTarget() (CombatManager, untouched -- see
+// SpellbookFamily_GemBoundsAndRouting above and T93's real-EqActionHandler
+// coverage) and from memorizeSpell()/forgetSpell() (also CombatManager
+// except forgetSpell(), which T101 repointed to SpellManager underneath
+// without changing its dispatcher signature/bounds shape below).
+TEST_F(ActionDispatcherTest, RealSpellFamily_GemBoundsAndRouting) {
+    connectHandler();
+    connectZone();
+
+    EXPECT_FALSE(dispatcher->beginCastFromGem(0, 0).success);
+    EXPECT_FALSE(dispatcher->beginCastFromGem(9, 0).success);
+    EXPECT_FALSE(dispatcher->memorizeSpellByName("", 1).success);
+    EXPECT_FALSE(dispatcher->memorizeSpellByName("Root", 0).success);
+    EXPECT_FALSE(dispatcher->memorizeSpellByName("Root", 9).success);
+    EXPECT_TRUE(handler.empty());
+
+    dispatcher->beginCastFromGem(3, 777);
+    dispatcher->memorizeSpellByName("Minor Healing", 2);
+    dispatcher->listMemorizedSpells();
+
+    ASSERT_EQ(handler.count(), 3u);
+    EXPECT_EQ(handler.calls[0], "beginCastFromGem(3, 777)");
+    EXPECT_EQ(handler.calls[1], "memorizeSpellByName(\"Minor Healing\", 2)");
+    EXPECT_EQ(handler.calls[2], "listMemorizedSpells()");
+}
+
+TEST_F(ActionDispatcherTest, RealSpellFamily_NoHandlerFailsWithoutDispatch) {
+    // Handler intentionally not set.
+    EXPECT_FALSE(dispatcher->beginCastFromGem(1, 0).success);
+    EXPECT_FALSE(dispatcher->memorizeSpellByName("Root", 1).success);
+    EXPECT_FALSE(dispatcher->listMemorizedSpells().success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(ActionDispatcherTest, ListMemorizedSpells_HandlerOnlyNoZoneRequired) {
+    // T101: matches game's /gems, which only required a spell manager, not
+    // a zone connection -- checkHandler() only, not checkZoneConnection().
+    connectHandler();
+    ASSERT_FALSE(state.world().isZoneConnected());
+
+    EXPECT_TRUE(dispatcher->listMemorizedSpells().success);
+    ASSERT_TRUE(handler.calledOnceWith("listMemorizedSpells()"));
+}
+
+TEST_F(ActionDispatcherTest, ForgetSpell_NarrowedBoundIsOneToEight) {
+    // T101: forgetSpell()'s bound narrowed from 1-12 to 1-8 (SpellManager
+    // only has 8 gems) when its implementation was repointed off the stub.
+    connectHandler();
+    connectZone();
+
+    EXPECT_TRUE(dispatcher->forgetSpell(1).success);
+    EXPECT_TRUE(dispatcher->forgetSpell(8).success);
+    EXPECT_FALSE(dispatcher->forgetSpell(9).success);
+    EXPECT_FALSE(dispatcher->forgetSpell(0).success);
+
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "forgetSpell(1)");
+    EXPECT_EQ(handler.calls[1], "forgetSpell(8)");
+}
+
 TEST_F(ActionDispatcherTest, TradeskillFamily_Routing) {
     connectHandler();
     connectZone();

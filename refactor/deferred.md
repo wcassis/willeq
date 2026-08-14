@@ -5744,3 +5744,91 @@ out of this pilot's territory to fix (both below the action layer, in
 Both are reported, not chased — genuinely new findings this pilot's live
 leg surfaced by being the first code path to give these dead methods a
 real caller, exactly as T97/T98 predicted would keep happening.
+
+## T101 — Spells (6) + Pet (1) families migrated; T99's recipe generalised to the hard case unchanged; both-directions test proof; live cast + pet obedience verified (2026-08-13/14)
+
+The deliberately-early "hard case" T99 flagged (`cast`/`interrupt`/`mem`/
+`forget`/`gems`/`pet` route through a different, older subsystem than the
+live one, or are stubs). `cast`, `mem`, `forget`, `gems`, `interrupt`,
+`spellbook` (game's Spells category, confirmed exactly 6 by
+`category=="Spells"` on the registrations) and `pet` moved from
+`EverQuest::m_command_registry` (`eq_commands_spells.cpp`) into
+`action::CommandProcessor`, atomically (removed from the game registry in
+the same commit). Full writeup: `refactor/T101_migrate_spells_pet_family.md`'s
+Review, `/mnt/projects/fable/review/T101/README.md`.
+
+**Key finding: the recipe held, with one refinement T99 didn't need.**
+T97 found `cast`/`interrupt`/`mem`/`forget` each had an EXISTING
+`ActionDispatcher`/`EqActionHandler` method already — but pointed at the
+wrong subsystem (`castSpell`/`castSpellOnTarget`/`interruptCast`/
+`memorizeSpell` all route through the older `CombatManager` path; T93
+has real-behavior test coverage pinning `castSpell`/`castSpellOnTarget`/
+`memorizeSpell`'s `CombatManager`-based gem-slot conversion specifically,
+per the plan's "do not re-litigate it" instruction). Rather than repoint
+those (which would have broken T93's coverage), this unit added THREE new
+methods (`beginCastFromGem`, `memorizeSpellByName`, `listMemorizedSpells`)
+for the real `EQ::SpellManager` path game's commands actually use, and
+REPOINTED two (`interruptCast()`, `forgetSpell()`) whose underlying
+implementation had zero existing test coverage of its internals (only
+fake-handler routing tests) — `interruptCast()` from `CombatManager::
+InterruptCast()` to `SpellManager`-based, `forgetSpell()` from a stub
+("Would need to send forget spell packet", a false success) to real
+`SpellManager::forgetSpell()`. T93's own tests (`test_eq_action_handler_transforms.cpp`)
+pass UNCHANGED — confirmed by running them before and after every change
+in this unit.
+
+**Pet vocabulary gap closed**: T97 found game's `/pet` (leader/spellhold/
+nospellhold/notaunt/nohold/standup) was a strict superset of the
+pre-existing `ActionDispatcher` pet wrappers even after T96's literal
+fixes. Five new wrappers added (`petStand`/`petTauntOff`/`petHoldOff`/
+`petLeader`/`petSpellHold`), all routing through the EXISTING generic
+`sendPetCommand()` `IActionHandler` virtual — no interface change needed
+for pet (unlike spells). `petAttack()` gained an optional explicit-target
+parameter (default 0, unchanged) to carry `/pet attack <name>`'s
+entity-name resolution, done in `CommandProcessor` via `GameState::
+entities().findEntityByName()` (same case-insensitive-partial-match
+primitive `T99`'s `/invite`/`/face` already used).
+
+**`GameStateSyncBridge` coverage — the one thing T99 warned to check
+first — was ALREADY THERE** for both domains (`PetCreated`/`PetRemoved`/
+`PetStatsChanged`/`PetButtonStateChanged`, `SpellGemChanged`/
+`SpellCastStarted`/`SpellCastComplete`, all pre-existing since T40/T44).
+Group was the outlier T99 hit, not the norm — no bridge changes needed
+this unit, confirming T99's own prediction that Group's gap was a one-time
+class of risk.
+
+**Live evidence** (`review/T101/README.md`, both sessions):
+- Pet (GM-summoned `skel_pet_11_`, same fixture T96 verified): every
+  migrated/new `/pet` subcommand shows `registry=action`/`outcome=applied`;
+  the pet audibly obeyed (`"Following you, Master."`, `"My leader is
+  Testchar."` [T101-new], real attack+kill — `"Attacking a rat Master."` +
+  `"Libartik hits a rat for 18 points of damage."` + `"You gain
+  experience!!"`, clean dismiss). `hold`/`focus`/`spellhold` toggles sent
+  packets with no server response — the same eqemu AA-gate T96 root-caused,
+  not a T101 bug.
+- Spells (`Testcaster`, Wizard, `Frost Bolt` id 54 resolved via
+  `data/willeq.db`, never guessed): `/mem` did a real async memorize
+  (`MemorizeProgress` -> `Ready`, confirmed via `/gems`); the first
+  `/cast` genuinely fizzled (a real server-rolled outcome, not a scripted
+  ack); a later cast was server-confirmed and a real `SpellAction` damage
+  packet landed; `/forget` correctly REFUSED while the gem was mid-cooldown
+  (real `SpellManager` state-machine behavior, ported verbatim, not a bug).
+  Un-migrated controls (`/target`, `/say #...`, `/camp`) show
+  `registry=game` in the same sessions — atomicity proof.
+
+**Both-directions test proof** (T95 standard): broke `petStand()`'s
+command id and `ActionDispatcher::memorizeSpellByName()`'s gem bound one
+at a time, confirmed the corresponding new tests went red with the exact
+expected mismatch, restored from a diffed-identical backup, confirmed
+green again.
+
+**No STOP condition was hit** — the recipe generalised to the hard family
+with the refinements above (new methods where an existing one was
+semantically pinned by another unit's tests; repoint where it wasn't),
+not a breakdown. Effort was larger than T99's Group pilot (7 commands vs
+4, 3 new dispatcher methods + 5 new pet wrappers + a repoint pair + a new
+DB-gated real-`SpellManager` test file, two live sessions instead of one)
+— at the higher end of T99's own "needs new dispatcher methods" 4-6h
+per-family estimate rather than matching it exactly, but still inside
+T99's 60-90h total-programme band for the ~120-command remainder. See the
+plan's own Review "effort estimate" for the full reasoning.

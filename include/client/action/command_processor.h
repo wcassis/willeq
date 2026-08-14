@@ -71,6 +71,11 @@ struct CommandInfo {
  * T98 deleted the worse duplicate that could never run; T99 moves the
  * better implementation into the layer Will designated as the route
  * commands take (ActionDispatcher), rather than reviving the deleted one.
+ *
+ * T101: cast/interrupt/gems/mem/forget/pet MIGRATED BACK the same way,
+ * from EverQuest::m_command_registry's Spells (6) and Pet (1) categories --
+ * game's registrations removed from eq_commands_spells.cpp in the same
+ * change. See refactor/T101_migrate_spells_pet_family.md.
  */
 class CommandProcessor {
 public:
@@ -214,10 +219,14 @@ private:
     // at all, so it was never shadowed.
     ActionResult cmdFace(const std::string& args);
 
-    // T98: cmdTarget/cmdCast/cmdInterrupt removed -- shadowed dead code
-    // (target/cast/interrupt). T51: cmdAttack/cmdStopAttack/cmdAutoAttack
-    // removed earlier -- their command registrations were shadowed dead code
-    // (registry 1 always won the dispatch collision). ActionDispatcher::
+    // T98 removed cmdTarget/cmdCast/cmdInterrupt (shadowed dead code:
+    // target/cast/interrupt). T101 migrates cast/interrupt back, this time
+    // as the sole implementation (game's registrations removed from
+    // eq_commands_spells.cpp in the same change) -- see cmdCast/cmdInterrupt
+    // below. cmdTarget stays removed: not in the Spells/Pet scope T101
+    // covers. T51: cmdAttack/cmdStopAttack/cmdAutoAttack removed earlier --
+    // their command registrations were shadowed dead code (registry 1
+    // always won the dispatch collision). ActionDispatcher::
     // enableAutoAttack()/disableAutoAttack()/toggleAutoAttack() are untouched
     // and still used directly by InputActionBridge (the keyboard gesture).
     ActionResult cmdConsider(const std::string& args);
@@ -260,14 +269,30 @@ private:
     ActionResult cmdAFK(const std::string& args);
     ActionResult cmdAnon(const std::string& args);
 
-    // T98: cmdSkills/cmdGems/cmdMem/cmdForget removed -- shadowed dead code
-    // (skills/gems/mem/forget). This empties the "Spells" category entirely.
+    // T101: cmdGems/cmdMem/cmdForget/cmdCast/cmdInterrupt/cmdSpellbook
+    // migrated here from EverQuest::m_command_registry (T98 had removed
+    // action's shadowed dead copies of gems/mem/forget/cast/interrupt;
+    // spellbook was never shadowed -- it simply didn't exist on this side).
+    // The corresponding game registrations are removed from
+    // eq_commands_spells.cpp in the same change (atomicity). cmdSkills
+    // stays NOT migrated: game's /skills is registered category "Utility",
+    // not "Spells" -- outside this unit's confirmed membership. See
+    // refactor/T101_migrate_spells_pet_family.md.
+    ActionResult cmdCast(const std::string& args);
+    ActionResult cmdMem(const std::string& args);
+    ActionResult cmdForget(const std::string& args);
+    ActionResult cmdGems(const std::string& args);
+    ActionResult cmdInterrupt(const std::string& args);
+    ActionResult cmdSpellbook(const std::string& args);
 
-    // T98: cmdPet removed -- shadowed dead code (pet). This empties the
-    // "Pet" category entirely. ActionDispatcher's petAttack()/petBackOff()/
-    // petFollow()/petGuard()/petSit()/petTaunt()/petHold()/petFocus()/
-    // petHealth()/dismissPet() (the T96-fixed wrappers) are untouched -- see
-    // refactor/T98_delete_shadowed_commands.md's cascade list.
+    // T101: cmdPet migrated here -- T98's shadowed dead copy is gone;
+    // game's registration removed from eq_commands_spells.cpp in the same
+    // change. game's /pet vocabulary was a strict superset of the
+    // ActionDispatcher wrapper set even after T96's literal fixes (T97);
+    // this port carries the full vocabulary, using 5 new ActionDispatcher
+    // wrappers (petStand/petTauntOff/petHoldOff/petLeader/petSpellHold) for
+    // the subcommands that had none.
+    ActionResult cmdPet(const std::string& args);
 
     // T98: cmdFilter removed -- shadowed dead code (filter).
 
