@@ -5971,6 +5971,24 @@ surface.
    proper (e.g., a static UI panel showing pending-trade status) will need
    an actual `TradeState` domain + bridge or poll wiring — a real, if
    currently avoidable, gap.
+   **CLOSED (T103, 2026-08-14).** `state::TradeState` added to
+   `state::GameState`, populated on both instances (`EverQuest::m_game_state`
+   directly at `TradeManager`'s existing callback sites, `Application::
+   m_gameState` via 7 new `GameStateSyncBridge` cases over `TradeManager`'s
+   pre-existing-but-previously-unconsumed events — no new event type
+   needed). `EqActionHandler`'s four trade methods now read the projection
+   for every precondition/display check; `GetTradeManager()` is only
+   reached for the four calls that actually send a packet. One field is
+   still NOT tracked (own-side offered items — `TradeManager`'s own-item
+   path has zero production callers, items move via the ordinary inventory
+   slot flow instead, which `InventoryState` doesn't model either; a real,
+   reported reconstructibility gap, not fixed). See
+   `refactor/T103_trade_state_domain.md`'s Review for full detail,
+   including a third `TradeManager` gap found in the process (below) and
+   live evidence of two of the projection's three observable stages
+   (pending-request and decline-reset; the accept/Active stage was proven
+   headlessly instead of live, for a pre-existing, unrelated
+   command-surface reason also detailed there).
 2. **`game`'s `trade_cmd` self-trade guard was not ported.** It compares
    the resolved target's spawn id against "my own spawn id"; no clean
    public accessor for the latter was found reachable from
@@ -6006,6 +6024,14 @@ surface.
    Fixing this needs a small `trade_manager.h`/`.cpp` accessor addition,
    outside T102's declared territory. Deferred for a future unit or a
    dedicated small fix.
+   **CLOSED (T103, 2026-08-14).** Fixed without touching
+   `trade_manager.h`/`.cpp`: the name now comes from
+   `state::TradeState::pendingPartnerName()`, populated from the
+   pre-existing `TradeRequestReceived` bridge event fired when the request
+   first arrived — a route independent of the `m_partner_name` gap this
+   item described. Message restored to `game`'s original wording,
+   `"Declined trade request from {name}"`. Live-confirmed,
+   `review/T103/t103_b_testbuddy_evidence.log`.
 6. **Testmelee's DB position was found already relocated to `arena`**
    (zone 77) at T102's own live-session start, not by any action T102
    took. T100's Review documents Testmelee's true baseline as `zone_id=25`
@@ -6019,6 +6045,46 @@ surface.
    a future unit taking the eqemu lock should be aware Testmelee is not
    where T100 last documented it, and either investigate or treat `arena`
    as the new accepted baseline going forward.
+7. **A third `TradeManager` gap found by T103, while verifying Trade-domain
+   reconstructibility**: `TradeManager::rejectTradeRequest()` (the decline
+   path, `trade_manager.cpp`) calls `resetTradeState()` directly, **never**
+   invoking `m_on_cancelled()` — unlike `cancelTrade()` and the
+   partner-initiated `handleCancelTrade()`, both of which do. So a local
+   decline publishes **no event at all** for the state reset (no
+   `TradeCancelled`, nothing). Left unhandled, this would leave any
+   consumer's "is there a pending request" flag stuck true forever after a
+   successful decline. `trade_manager.cpp` is outside T103's declared
+   territory too, so not fixed there; `EqActionHandler::declineTrade()`
+   works around it in-territory by clearing the `state::TradeState`
+   projection directly after a successful decline, rather than relying on
+   an event `TradeManager` never sends for this transition. Live-confirmed
+   the workaround holds: a subsequent `/accept` against the now-stale,
+   already-declined request correctly reported "No pending trade request"
+   rather than attempting a stale accept. A future unit could fix this
+   properly with a one-line `m_on_cancelled()` call added to
+   `rejectTradeRequest()`.
+8. **T103's own live session did not reach the `/accept`→`Active` round
+   trip** (`TradeStarted`, "Accepting trade with X" from a real network
+   exchange) — not because of any Trade-domain defect, but because **no
+   command in this system cancels one's own outgoing pending trade
+   request** (`/canceltrade` is `Active`-only, by design, matching `game`'s
+   original `canceltrade_cmd`). Once A's first `/trade` was outstanding and
+   B had already declined it, A had no way to clear its own
+   still-`PendingRequest` `TradeManager` state before sending a second
+   `/trade` to set up an accept round — `TradeManager` itself correctly
+   refused ("Cannot request trade while already in a trade"). This is a
+   pre-existing gap in the whole command surface (there is also no
+   `/tradedecline`-equivalent for "cancel a request I sent"), not new to
+   T103 and out of its scope; the accept/Active path was instead proven
+   headlessly (`tests/test_eq_action_handler_trade.cpp`). Flagged for
+   whichever future unit next touches Trade commands.
+
+## T103 (Trade state domain) — summary
+
+Closed T102's findings #1 and #5 (Trade domain, `declineTrade()` naming).
+Found and worked around (not fixed in `trade_manager.cpp`, out of
+territory) a third `TradeManager` gap (#7 above). Full detail:
+`refactor/T103_trade_state_domain.md`'s Review, `/mnt/projects/fable/review/T103/`.
 
 Reported per the same standard prior units set: fix what directly blocks
 the plan's own live-verification bar (finding #4), report the rest.

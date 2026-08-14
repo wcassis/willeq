@@ -80,6 +80,30 @@ namespace bridge {
  * re-fire onto Application::m_gameState's own EventBus, which ConsoleRenderer
  * subscribes to -- a real, cosmetic-only duplicate console line on
  * spawn/despawn in console-connected modes, not a data-correctness issue).
+ *
+ * T103 added trade() -- unlike every case above, TradeManager
+ * (client/trade_manager.h) already published a complete, typed event for
+ * every state transition it has (TradeRequestReceived, TradeStarted,
+ * TradeItemUpdated, TradeMoneyUpdated, TradeAcceptStateChanged,
+ * TradeCancelled, TradeCompleted -- eq_merchant.cpp's
+ * SetupTradeWindowCallbacks(), predating this unit); the gap was purely
+ * that nothing consumed them (IrrlichtBridge only LOG_TRACE'd each case).
+ * No new event type was needed. Two fields are NOT reconstructible from
+ * the existing event stream and are NOT tracked in TradeState, both
+ * verified rather than assumed missing -- see trade_state.h's class
+ * comment and refactor/T103_trade_state_domain.md's Review: the player's
+ * own offered items (TradeManager's own-item path has zero production
+ * callers; items move via the ordinary inventory MoveItem flow instead,
+ * which InventoryState does not model either), and the outgoing
+ * "request sent, awaiting response" sub-state (its transition publishes no
+ * event at all). This same trade domain is also populated directly and
+ * synchronously on EverQuest's OWN GameState instance (not through this
+ * bridge -- see EverQuest::SetupTradeWindowCallbacks()), which is what
+ * EqActionHandler reads; that mirrors how SyncEntityToGameState() already
+ * populates EverQuest::m_game_state.entities() directly while this
+ * decorator separately populates Application::m_gameState.entities() from
+ * the same underlying data via events (T81) -- two instances, two
+ * mechanisms, same source of truth.
  */
 class GameStateSyncBridge : public GameStateBridge {
 public:

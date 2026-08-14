@@ -902,3 +902,166 @@ TEST_F(GameStateSyncBridgeTest, GroupEventsStillDelegateToWrappedBridge) {
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::GroupChanged);
     EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::GroupMemberUpdated);
 }
+
+// ---------------------------------------------------------------------
+// Trade (T103) -- TradeManager (client/trade_manager.h) has published a
+// complete, typed event for every one of these transitions since before
+// this unit (eq_merchant.cpp's SetupTradeManagerCallbacks()); the gap was
+// purely that nothing consumed them (IrrlichtBridge only LOG_TRACE'd each
+// case). No new event type was needed -- see game_state_sync_bridge.h's
+// T103 addendum and trade_state.h's class comment for the two fields
+// verified NOT reconstructible (own-side items, outgoing pending-request
+// sub-state) and why neither is tracked.
+// ---------------------------------------------------------------------
+
+TEST_F(GameStateSyncBridgeTest, TradeRequestReceivedSetsPendingRequest) {
+    TradeRequestReceivedData data;
+    data.spawnId = 555;
+    data.name = "Testbuddy";
+
+    bridge->applyEvent(GameEvent(GameEventType::TradeRequestReceived, data));
+
+    EXPECT_TRUE(state->trade().hasPendingRequest());
+    EXPECT_EQ(state->trade().pendingPartnerId(), 555u);
+    EXPECT_EQ(state->trade().pendingPartnerName(), "Testbuddy");
+    EXPECT_FALSE(state->trade().active());
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeStartedSetsActiveAndClearsPendingRequest) {
+    TradeRequestReceivedData pending;
+    pending.spawnId = 555;
+    pending.name = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeRequestReceived, pending));
+    ASSERT_TRUE(state->trade().hasPendingRequest());
+
+    TradeStartedData started;
+    started.partnerId = 555;
+    started.partnerName = "Testbuddy";
+    started.isNpc = false;
+    bridge->applyEvent(GameEvent(GameEventType::TradeStarted, started));
+
+    EXPECT_TRUE(state->trade().active());
+    EXPECT_EQ(state->trade().partnerId(), 555);
+    EXPECT_EQ(state->trade().partnerName(), "Testbuddy");
+    EXPECT_FALSE(state->trade().isNpcTrade());
+    EXPECT_FALSE(state->trade().hasPendingRequest())
+        << "a request that just became active is no longer pending";
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeItemUpdatedPartnerSideSetsPartnerItem) {
+    TradeStartedData started;
+    started.partnerId = 555;
+    started.partnerName = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeStarted, started));
+
+    TradeItemUpdatedData item;
+    item.who = 1;  // partner
+    item.slot = 2;
+    item.itemId = 1001;
+    item.itemName = "Rusty Sword";
+    bridge->applyEvent(GameEvent(GameEventType::TradeItemUpdated, item));
+
+    EXPECT_TRUE(state->trade().hasPartnerItem(2));
+    EXPECT_EQ(state->trade().partnerItemId(2), 1001u);
+    EXPECT_EQ(state->trade().partnerItemName(2), "Rusty Sword");
+    EXPECT_FALSE(state->trade().hasPartnerItem(0))
+        << "only slot 2 was set";
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeItemUpdatedOwnSideIsIgnored) {
+    // who==0 (own side) is never actually published in production (see
+    // trade_state.h's class comment) -- confirm this decorator doesn't
+    // crash or misfile it as a partner item if it ever were.
+    TradeItemUpdatedData item;
+    item.who = 0;  // own
+    item.slot = 0;
+    item.itemId = 1001;
+    item.itemName = "Rusty Sword";
+    bridge->applyEvent(GameEvent(GameEventType::TradeItemUpdated, item));
+
+    EXPECT_FALSE(state->trade().hasPartnerItem(0));
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeMoneyUpdatedSetsOwnAndPartnerIndependently) {
+    TradeMoneyUpdatedData own;
+    own.who = 0;
+    own.platinum = 1;
+    own.gold = 2;
+    own.silver = 3;
+    own.copper = 4;
+    bridge->applyEvent(GameEvent(GameEventType::TradeMoneyUpdated, own));
+
+    TradeMoneyUpdatedData partner;
+    partner.who = 1;
+    partner.platinum = 10;
+    partner.gold = 20;
+    partner.silver = 30;
+    partner.copper = 40;
+    bridge->applyEvent(GameEvent(GameEventType::TradeMoneyUpdated, partner));
+
+    EXPECT_EQ(state->trade().ownMoney().platinum, 1u);
+    EXPECT_EQ(state->trade().ownMoney().copper, 4u);
+    EXPECT_EQ(state->trade().partnerMoney().platinum, 10u);
+    EXPECT_EQ(state->trade().partnerMoney().copper, 40u);
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeAcceptStateChangedSetsBothFlags) {
+    TradeAcceptStateChangedData data;
+    data.ownAccepted = true;
+    data.partnerAccepted = false;
+    bridge->applyEvent(GameEvent(GameEventType::TradeAcceptStateChanged, data));
+
+    EXPECT_TRUE(state->trade().ownAccepted());
+    EXPECT_FALSE(state->trade().partnerAccepted());
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeCancelledResetsEverything) {
+    TradeStartedData started;
+    started.partnerId = 555;
+    started.partnerName = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeStarted, started));
+    TradeAcceptStateChangedData accept;
+    accept.ownAccepted = true;
+    accept.partnerAccepted = false;
+    bridge->applyEvent(GameEvent(GameEventType::TradeAcceptStateChanged, accept));
+    ASSERT_TRUE(state->trade().active());
+
+    bridge->applyEvent(GameEvent(GameEventType::TradeCancelled, TradeCancelledData{}));
+
+    EXPECT_FALSE(state->trade().active());
+    EXPECT_FALSE(state->trade().hasPendingRequest());
+    EXPECT_FALSE(state->trade().ownAccepted());
+    EXPECT_EQ(state->trade().partnerName(), "");
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeCompletedResetsEverything) {
+    TradeStartedData started;
+    started.partnerId = 555;
+    started.partnerName = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeStarted, started));
+    ASSERT_TRUE(state->trade().active());
+
+    bridge->applyEvent(GameEvent(GameEventType::TradeCompleted, TradeCompletedData{}));
+
+    EXPECT_FALSE(state->trade().active());
+    EXPECT_EQ(state->trade().partnerName(), "");
+}
+
+TEST_F(GameStateSyncBridgeTest, TradeEventsStillDelegateToWrappedBridge) {
+    TradeRequestReceivedData pending;
+    pending.spawnId = 555;
+    pending.name = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeRequestReceived, pending));
+
+    TradeStartedData started;
+    started.partnerId = 555;
+    started.partnerName = "Testbuddy";
+    bridge->applyEvent(GameEvent(GameEventType::TradeStarted, started));
+
+    bridge->applyEvent(GameEvent(GameEventType::TradeCancelled, TradeCancelledData{}));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 3u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::TradeRequestReceived);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::TradeStarted);
+    EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::TradeCancelled);
+}
