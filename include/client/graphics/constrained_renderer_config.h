@@ -85,6 +85,42 @@ struct ConstrainedRendererConfig {
     int maxVisibleEntities = 50;           // Max NPCs/players rendered at once
     int maxPolygonsPerFrame = 50000;       // Soft limit for zone geometry
     float entityRenderDistance = 200.0f;   // Max distance to render entities
+    // T109: max distance (EQ units, from the player's landing position) at which
+    // Step 8 (loadZoneStep8_Entities) runs the full inline prep+build chain for
+    // an entity at zone load. Entities beyond this are deferred — left unbuilt
+    // (meshBuilt=false) — intended to be picked up by the post-load background
+    // streaming path (EntityPrepWorker + processFrameProgressiveLoad ->
+    // queueEntityPrepRequests) once the zone is playable. Separate from
+    // entityRenderDistance (the render cap, protects FPS): this protects load
+    // time. Must be >= entityRenderDistance (validate()) — you cannot draw what
+    // you did not load.
+    //
+    // SHIPS INERT (struct default effectively unbounded, no preset overrides
+    // it — see fromPreset()/config/constrained_presets.json). T109 built and
+    // live-verified the gate itself (measured savings: x86 befallen Step 8
+    // -20%/zone-request-to-ready -8%, Pi Step 8 -12%/zone-request-to-ready -7%,
+    // at a 400-unit radius = entityRenderDistance+100, the elbow T105/T109
+    // measured across befallen/nektulos/qeynos2 where most of the distance-
+    // gated race-model saving is already captured) — but ALSO live-verified
+    // that its prerequisite is broken: entities deferred here are NOT reliably
+    // picked back up. `EntityPrepWorker` had zero construction sites anywhere
+    // in the codebase (fixed by this unit, independently valuable), but even
+    // fixed, `checkProgressiveLoadingComplete()` (renderer_zone_stream.cpp)
+    // declares progressive loading complete based only on the player's
+    // CURRENT BSP region's unbuilt entities, and nothing re-arms
+    // `progressiveLoadingActive_` on a PVS region change (only brand-new
+    // entity registration does, in `registerEntity()`) — so a deferred entity
+    // outside the landing region never gets queued again, even as the player
+    // walks toward it. Live-confirmed in befallen: modeled-entity count froze
+    // at 82-83/178 across ~40s idle and after two large `/move`s (-400, -700
+    // units, crossing regions); zero `EntityBuild:`/`EntityPrepWorker: queued`
+    // log lines fired after Step 8 in either test. Per this unit's plan
+    // ("STOP and report if the deferred path does not reliably pick entities
+    // up — a half-working gate that loses NPCs is worse than no gate"), the
+    // gate ships present-but-inert. Reactivating it is a scoped follow-up:
+    // fix the completion/re-arm logic first (see refactor/deferred.md), then
+    // set this field (or the JSON presets) to entityRenderDistance+100.
+    float entityLoadRadius = 1'000'000.0f;
     int entityPrepMaxPvsDepth = 0;         // Max PVS portal depth for entity prep queueing (0 = same region only)
     int terrainPrepMaxPvsDepth = 255;      // Max PVS depth for region mesh building (255 = no limit)
     int objectPrepMaxPvsDepth = 255;       // Max PVS depth for object + door building (255 = no limit)
