@@ -266,6 +266,59 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             m_state.group().setPendingInvite(d.inviterName);
             break;
         }
+        case state::GameEventType::TradeRequestReceived: {
+            // T103: was entirely unconsumed -- TradeManager has published
+            // this (eq_merchant.cpp's SetupTradeWindowCallbacks) since
+            // before this unit; IrrlichtBridge only ever LOG_TRACE'd it.
+            // Same shape as T99's GroupChanged gap: the data existed, the
+            // projection just never read it.
+            const auto& d = std::get<state::TradeRequestReceivedData>(event.data);
+            m_state.trade().setPendingRequest(d.spawnId, d.name);
+            break;
+        }
+        case state::GameEventType::TradeStarted: {
+            const auto& d = std::get<state::TradeStartedData>(event.data);
+            m_state.trade().startTrade(d.partnerId, d.partnerName, d.isNpc);
+            break;
+        }
+        case state::GameEventType::TradeItemUpdated: {
+            // T103: TradeItemUpdatedData::who==0 (own side) is never
+            // actually published in production -- TradeManager's own-item
+            // path (addItemToTrade()/removeItemFromTrade()) has zero
+            // callers; own items move via the ordinary inventory MoveItem
+            // flow instead (see trade_state.h's class comment). Only the
+            // partner side (who==1) is handled; an own-side event, if one
+            // ever appeared, would be silently ignored here rather than
+            // guessed at.
+            const auto& d = std::get<state::TradeItemUpdatedData>(event.data);
+            if (d.who == 1) {
+                m_state.trade().setPartnerItem(d.slot, d.itemId, d.itemName);
+            }
+            break;
+        }
+        case state::GameEventType::TradeMoneyUpdated: {
+            const auto& d = std::get<state::TradeMoneyUpdatedData>(event.data);
+            state::TradeMoney money;
+            money.platinum = d.platinum;
+            money.gold = d.gold;
+            money.silver = d.silver;
+            money.copper = d.copper;
+            m_state.trade().setMoney(d.who == 0, money);
+            break;
+        }
+        case state::GameEventType::TradeAcceptStateChanged: {
+            const auto& d = std::get<state::TradeAcceptStateChangedData>(event.data);
+            m_state.trade().setAcceptState(d.ownAccepted, d.partnerAccepted);
+            break;
+        }
+        case state::GameEventType::TradeCancelled: {
+            m_state.trade().reset();
+            break;
+        }
+        case state::GameEventType::TradeCompleted: {
+            m_state.trade().reset();
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

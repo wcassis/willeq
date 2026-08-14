@@ -523,7 +523,20 @@ void EverQuest::SetupTradeManagerCallbacks()
 	});
 
 	// Set up UI callbacks (via bridge events)
+	//
+	// T103: each lambda below now ALSO writes the same data directly into
+	// m_game_state.trade() (EverQuest's OWN GameState instance), same-thread,
+	// synchronous -- mirroring how SyncEntityToGameState() already writes
+	// m_game_state.entities() directly (eq_player_info.cpp:261) rather than
+	// only through the cross-thread bridge. This is what EqActionHandler
+	// reads (m_eq.GetGameState().trade()); the bridge events these lambdas
+	// already pushed are, separately, what GameStateSyncBridge now also
+	// consumes into Application::m_gameState.trade() (see
+	// game_state_sync_bridge.cpp) for any render-side consumer. Two
+	// instances, two mechanisms, one source of truth -- same shape T81
+	// established for entities.
 	m_trade_manager->setOnRequestReceived([this](uint32_t spawnId, const std::string& name) {
+		m_game_state.trade().setPendingRequest(spawnId, name);
 		if (m_bridge) {
 			eqt::state::TradeRequestReceivedData tdata;
 			tdata.spawnId = spawnId;
@@ -545,6 +558,10 @@ void EverQuest::SetupTradeManagerCallbacks()
 
 		if (state == TradeState::Active) {
 			// Publish TradeStarted
+			m_game_state.trade().startTrade(
+				static_cast<uint16_t>(m_trade_manager->getPartnerSpawnId()),
+				m_trade_manager->getPartnerName(),
+				m_trade_manager->isNpcTrade());
 			if (m_bridge) {
 				eqt::state::TradeStartedData tdata;
 				tdata.partnerId = m_trade_manager->getPartnerSpawnId();
@@ -555,6 +572,7 @@ void EverQuest::SetupTradeManagerCallbacks()
 			}
 		} else if (state == TradeState::None) {
 			// Only close on None state (cancel) - Completed is handled by m_on_completed
+			m_game_state.trade().reset();
 			if (m_bridge) {
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
@@ -563,35 +581,50 @@ void EverQuest::SetupTradeManagerCallbacks()
 	});
 
 	m_trade_manager->setOnItemUpdated([this](bool isOwn, int slot) {
-		if (!isOwn && m_bridge) {
-			// Partner item updated - publish to bridge
+		if (!isOwn) {
+			// Partner item updated - publish to bridge and the projection.
+			// Own items are displayed from inventory trade slots (not
+			// tracked here -- see trade_state.h's class comment; this isOwn
+			// branch is never actually taken in production, since nothing
+			// calls TradeManager::addItemToTrade()).
 			const auto* item = m_trade_manager->getPartnerItem(slot);
-			eqt::state::TradeItemUpdatedData tdata;
-			tdata.who = 1;  // partner
-			tdata.slot = static_cast<uint8_t>(slot);
-			tdata.itemId = item ? item->itemId : 0;
-			tdata.itemName = item ? item->name : "";
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
+			uint32_t itemId = item ? item->itemId : 0;
+			std::string itemName = item ? item->name : "";
+			m_game_state.trade().setPartnerItem(slot, itemId, itemName);
+			if (m_bridge) {
+				eqt::state::TradeItemUpdatedData tdata;
+				tdata.who = 1;  // partner
+				tdata.slot = static_cast<uint8_t>(slot);
+				tdata.itemId = itemId;
+				tdata.itemName = itemName;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
+			}
 		}
-		// Own items are displayed from inventory trade slots
 	});
 
 	m_trade_manager->setOnMoneyUpdated([this](bool isOwn) {
+		const auto& srcMoney = isOwn ? m_trade_manager->getOwnMoney() : m_trade_manager->getPartnerMoney();
+		eqt::state::TradeMoney projMoney;
+		projMoney.platinum = srcMoney.platinum;
+		projMoney.gold = srcMoney.gold;
+		projMoney.silver = srcMoney.silver;
+		projMoney.copper = srcMoney.copper;
+		m_game_state.trade().setMoney(isOwn, projMoney);
 		if (m_bridge) {
 			eqt::state::TradeMoneyUpdatedData tdata;
 			tdata.who = isOwn ? 0 : 1;
-			const auto& money = isOwn ? m_trade_manager->getOwnMoney() : m_trade_manager->getPartnerMoney();
-			tdata.platinum = money.platinum;
-			tdata.gold = money.gold;
-			tdata.silver = money.silver;
-			tdata.copper = money.copper;
+			tdata.platinum = srcMoney.platinum;
+			tdata.gold = srcMoney.gold;
+			tdata.silver = srcMoney.silver;
+			tdata.copper = srcMoney.copper;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeMoneyUpdated, std::move(tdata)));
 		}
 	});
 
 	m_trade_manager->setOnAcceptStateChanged([this](bool ownAccepted, bool partnerAccepted) {
+		m_game_state.trade().setAcceptState(ownAccepted, partnerAccepted);
 		if (m_bridge) {
 			eqt::state::TradeAcceptStateChangedData tdata;
 			tdata.ownAccepted = ownAccepted;
@@ -651,7 +684,12 @@ void EverQuest::SetupTradeManagerCallbacks()
 			}
 		}
 
-		// Publish TradeCompleted event to bridge
+		// Publish TradeCompleted event to bridge. Read from the source
+		// TradeManager above (still populated -- TradeManager::
+		// resetTradeState() hasn't run yet at this point in
+		// handleFinishTrade()'s sequence), then clear the projection now
+		// that the summary has been read out of it.
+		m_game_state.trade().reset();
 		if (m_bridge) {
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeCompleted, eqt::state::TradeCompletedData{}));
@@ -662,6 +700,7 @@ void EverQuest::SetupTradeManagerCallbacks()
 		AddChatSystemMessage("Trade cancelled.");
 
 		// Publish TradeCancelled event to bridge
+		m_game_state.trade().reset();
 		if (m_bridge) {
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));

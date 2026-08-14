@@ -238,6 +238,7 @@ ADD_EXECUTABLE(test_state_modules_secondary
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/group_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/pet_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/trade_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/world_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/tradeskill_state.cpp
@@ -259,6 +260,7 @@ SET(ACTION_LAYER_STATE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/group_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/pet_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/state/trade_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/world_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/tradeskill_state.cpp
@@ -1050,6 +1052,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_enum_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards)
+
+# T103: regression tests proving EqActionHandler's trade methods
+# (requestTrade/acceptTrade/cancelTrade/declineTrade) read precondition/
+# display state from state::TradeState (the projection T103 added) rather
+# than reaching into TradeManager directly. Same headless EverQuest +
+# EqActionHandler idiom as T95 above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_trade
+    test_eq_action_handler_trade.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_trade GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_trade PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_trade)
 
 # T101: real-EqActionHandler coverage for the SpellManager-backed methods
 # the Spells+Pet migration added/repointed (beginCastFromGem(),

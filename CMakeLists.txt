@@ -301,6 +301,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/state/group_state.cpp
 
     src/client/state/pet_state.cpp
+    src/client/state/trade_state.cpp
     src/client/state/tradeskill_state.cpp
     src/client/state/inventory_state.cpp
     src/client/state/spell_state.cpp

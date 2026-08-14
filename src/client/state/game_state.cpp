@@ -11,6 +11,7 @@ GameState::GameState() {
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
     m_petState.setEventBus(&m_eventBus);
+    m_tradeState.setEventBus(&m_eventBus);
     m_tradeskillState.setEventBus(&m_eventBus);
     m_inventoryState.setEventBus(&m_eventBus);
     m_spellState.setEventBus(&m_eventBus);
@@ -45,6 +46,7 @@ void GameState::resetForZoneChange() {
     m_worldState.resetZoneState();
     m_combatState.reset();
     m_petState.reset();
+    m_tradeState.reset();
     m_tradeskillState.reset();
 
     // Player state persists across zones but we clear movement target
@@ -76,6 +78,7 @@ void GameState::clearAll() {
     m_combatState.reset();
     m_groupState.clearGroup();
     m_petState.reset();
+    m_tradeState.reset();
     m_tradeskillState.reset();
     m_inventoryState.reset();
     m_spellState.reset();
@@ -94,6 +97,7 @@ void GameState::clearAll() {
     m_combatState.setEventBus(&m_eventBus);
     m_groupState.setEventBus(&m_eventBus);
     m_petState.setEventBus(&m_eventBus);
+    m_tradeState.setEventBus(&m_eventBus);
     m_tradeskillState.setEventBus(&m_eventBus);
     m_inventoryState.setEventBus(&m_eventBus);
     m_spellState.setEventBus(&m_eventBus);

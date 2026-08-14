@@ -846,13 +846,22 @@ void EqActionHandler::listMemorizedSpells() {
 // own spawn id", which has no public accessor from this layer (unlike
 // CombatManager's target, TradeManager/GameState don't expose it) --
 // flagged as a deviation in the Review rather than silently dropped.
+//
+// T103: precondition/display reads below now go through
+// m_eq.GetGameState().trade() (state::TradeState, the projection T103
+// added) instead of reading TradeManager directly -- closing the layering
+// compromise T102 recorded honestly rather than hiding. TradeManager
+// itself is still reached for the four calls that actually perform a
+// trade action (requestTrade()/acceptTradeRequest()/cancelTrade()/
+// rejectTradeRequest() -- these send real packets, nothing else does that)
+// -- same shape as CombatManager's calls elsewhere in this file.
 void EqActionHandler::requestTrade(uint16_t targetId) {
     auto* trade = m_eq.GetTradeManager();
     if (!trade) {
         m_eq.AddChatSystemMessage("Trade not available");
         return;
     }
-    if (trade->isTrading()) {
+    if (m_eq.GetGameState().trade().active()) {
         m_eq.AddChatSystemMessage("You are already trading");
         return;
     }
@@ -899,7 +908,7 @@ void EqActionHandler::acceptTrade() {
         m_eq.AddChatSystemMessage("Trade not available");
         return;
     }
-    if (trade->getState() != TradeState::PendingAccept) {
+    if (!m_eq.GetGameState().trade().hasPendingRequest()) {
         m_eq.AddChatSystemMessage("No pending trade request");
         return;
     }
@@ -908,16 +917,19 @@ void EqActionHandler::acceptTrade() {
         m_eq.AddChatSystemMessage("You cannot trade while in combat");
         return;
     }
-    // NOTE: acceptTradeRequest() must run BEFORE reading getPartnerName() --
-    // TradeManager only copies the pending request's name into
-    // m_partner_name INSIDE acceptTradeRequest() itself (trade_manager.cpp);
-    // reading it first returns empty. Found live (T102's own trade session:
-    // "Accepting trade with " printed blank) and fixed here before
-    // shipping -- same aliasing-order class of bug T99 found in
-    // EverQuest::AcceptGroupInvite() (m_pending_inviter_name read after the
-    // call that clears it), mirror image (read too EARLY here, not too LATE).
+    // T103: acceptTradeRequest() drives TradeManager's setState(Active),
+    // which synchronously (same thread, same call) fires
+    // EverQuest::SetupTradeWindowCallbacks()'s Active branch and populates
+    // m_eq.GetGameState().trade() BEFORE this call returns -- so reading the
+    // projection's partnerName() after the call is safe and correct, and
+    // sidesteps the read-before-populate aliasing class of bug entirely
+    // (the pre-T103 fix here read TradeManager::getPartnerName() after
+    // acceptTradeRequest() too, for the same reason -- see T102's Review --
+    // this is the same ordering, just through the projection instead of
+    // TradeManager directly).
     trade->acceptTradeRequest();
-    m_eq.AddChatSystemMessage(fmt::format("Accepting trade with {}", EQT::toDisplayName(trade->getPartnerName())));
+    m_eq.AddChatSystemMessage(fmt::format("Accepting trade with {}",
+        EQT::toDisplayName(m_eq.GetGameState().trade().partnerName())));
 }
 
 void EqActionHandler::cancelTrade() {
@@ -926,7 +938,7 @@ void EqActionHandler::cancelTrade() {
         m_eq.AddChatSystemMessage("Trade not available");
         return;
     }
-    if (trade->getState() != TradeState::Active) {
+    if (!m_eq.GetGameState().trade().active()) {
         m_eq.AddChatSystemMessage("You are not trading");
         return;
     }
@@ -940,20 +952,34 @@ void EqActionHandler::declineTrade() {
         m_eq.AddChatSystemMessage("Trade not available");
         return;
     }
-    if (trade->getState() != TradeState::PendingAccept) {
+    auto& tradeState = m_eq.GetGameState().trade();
+    if (!tradeState.hasPendingRequest()) {
         m_eq.AddChatSystemMessage("No pending trade request");
         return;
     }
-    // Unlike acceptTrade() above, there is no fix-by-reordering available
-    // here: TradeManager exposes no public accessor for the pending
-    // request's name on the decline path (only m_partner_name, which
-    // rejectTradeRequest() never populates -- only acceptTradeRequest()
-    // does). Adding one would mean touching trade_manager.h/.cpp, outside
-    // this unit's declared territory; the message is deliberately
-    // name-free rather than silently printing a blank the way the
-    // pre-fix acceptTrade() did. Flagged in the Review, not chased further.
+    // T103: the partner name CAN now be included. TradeManager itself still
+    // exposes no accessor for it on the decline path (only m_partner_name,
+    // which rejectTradeRequest() never populates -- only
+    // acceptTradeRequest() does; see T102's Review) -- but
+    // state::TradeState::pendingPartnerName() is populated from the
+    // TradeRequestReceived event fired when the request first arrived
+    // (eq_merchant.cpp), independent of that gap. Read before rejecting,
+    // since the reject call below clears it.
+    std::string partnerName = EQT::toDisplayName(tradeState.pendingPartnerName());
     trade->rejectTradeRequest();
-    m_eq.AddChatSystemMessage("Declined trade request");
+    // T103 finding, reported not fixed (trade_manager.cpp is outside this
+    // unit's territory): TradeManager::rejectTradeRequest() is the one
+    // trade-state transition that never invokes m_on_cancelled() -- unlike
+    // cancelTrade() and the partner-initiated handleCancelTrade(), it calls
+    // resetTradeState() directly with no callback, so a LOCAL decline
+    // publishes no TradeCancelled event at all. Left as-is, this would
+    // leave hasPendingRequest() stuck true in the projection forever after
+    // a successful decline (until the next TradeRequestReceived/
+    // TradeStarted/TradeCancelled happened to overwrite it). Worked around
+    // here, in-territory: clear the projection directly rather than rely on
+    // an event that TradeManager never sends for this specific transition.
+    m_eq.GetGameState().trade().reset();
+    m_eq.AddChatSystemMessage(fmt::format("Declined trade request from {}", partnerName));
 }
 
 // ========== Zone ==========
