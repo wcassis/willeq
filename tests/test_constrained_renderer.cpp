@@ -888,17 +888,27 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius_AbsentLeaves
     std::remove(testJsonPath.c_str());
 }
 
-TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_EntityLoadRadiusNotSet_ShipsInert) {
-    // Active-proof against the REAL shipped config/constrained_presets.json —
-    // the orangepi preset must NOT carry an entityLoadRadius key (the gate
-    // ships inert pending the follow-up fix), so this resolves to the struct
-    // default, not some smaller active value.
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_EntityLoadRadiusEnabled_T111) {
+    // Active-proof against the REAL shipped config/constrained_presets.json.
+    // T109 shipped this preset WITHOUT an entityLoadRadius key (gate inert)
+    // because the post-load deferred-entity pickup path was live-confirmed
+    // broken. T111 fixed that pickup path (checkProgressiveLoadingComplete()
+    // completion-test bug + progressive-loading re-arm on entities becoming
+    // visible + a pre-existing WilleqDatabase SQLite thread-safety bug the
+    // fix's own increased background-thread activity exposed), proved the
+    // pickup converges to the full population via multiple live sessions
+    // (see refactor/T111_progressive_loading_rearm.md's Review), and per the
+    // plan's own instruction ("if — and only if — the pickup proof is
+    // unambiguous, set entityLoadRadius... to entityRenderDistance + 100")
+    // now ships the preset with the gate ACTIVE at 400 (300 + 100). This
+    // replaces T109's "...ShipsInert" test, which asserted the opposite of
+    // what's shipped as of this unit — a real code change, not a drift.
 #ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
-    ConstrainedRendererConfig defaults;
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
     EXPECT_TRUE(applied);
-    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, config.entityRenderDistance + 100.0f);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, 400.0f);
 #else
     GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
 #endif

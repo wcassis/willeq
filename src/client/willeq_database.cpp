@@ -16,8 +16,24 @@ WilleqDatabase::~WilleqDatabase() {
 bool WilleqDatabase::open(const std::string& dbPath) {
     if (db_) close();
 
+    // T111: SQLITE_OPEN_FULLMUTEX (was SQLITE_OPEN_NOMUTEX) -- NOMUTEX makes
+    // this connection handle explicitly unsafe for concurrent multi-thread
+    // use (SQLite's own documented meaning of the flag), which was latent
+    // and unreachable in practice as long as EntityPrepWorker's background
+    // thread rarely did meaningful concurrent work (T109's pickup path was
+    // broken, so it mostly sat idle). T111's fix to the pickup path makes
+    // EntityPrepWorker (background thread) and
+    // EntityRenderer::updateEquipmentTransforms() (main/render thread, via
+    // RaceModelLoader::getRaceCode() -> WilleqDatabase::getRaceModel()) both
+    // query this SAME connection concurrently, for real, for the first
+    // time -- live-caught as a reproducible SIGSEGV inside SQLite's
+    // btreeCursor() (see refactor/T111_progressive_loading_rearm.md's
+    // Review for the core-dump backtrace). FULLMUTEX serializes access to
+    // the connection's internal structures; cheap here since the database
+    // is opened SQLITE_OPEN_READONLY with a small (1MB) page cache and
+    // small per-lookup queries, not a hot per-frame path.
     int rc = sqlite3_open_v2(dbPath.c_str(), &db_,
-                              SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nullptr);
+                              SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
     if (rc != SQLITE_OK) {
         LOG_ERROR(MOD_MAIN, "WilleqDatabase: failed to open {}: {}", dbPath,
                   db_ ? sqlite3_errmsg(db_) : "unknown error");

@@ -2810,7 +2810,7 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         // dangling pointer. Null it now — the runtime SimulationWorker will
         // set it correctly from its persistent double-buffered output.
         particleRenderBuffer_ = nullptr;
-
+        regionPvsDepthMap_ = nullptr;  // T111: same dangling-local hazard -- see Review
         // Update door PVS visibility now that currentPvsRegion_ is set
         if (doorManager_) {
             doorManager_->setPvsRegion(currentPvsRegion_);

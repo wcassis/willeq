@@ -1237,6 +1237,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
 ENDIF()
 
+# T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
+# pure predicate extracted from checkProgressiveLoadingComplete() to fix the
+# deferred-entity-pickup bug T109 shipped inert around. No device needed --
+# same reasoning as test_irrlicht_camera_command above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_progressive_load_rearm
+        test_progressive_load_rearm.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_progressive_load_rearm PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_progressive_load_rearm GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_progressive_load_rearm)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.

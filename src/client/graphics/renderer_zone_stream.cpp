@@ -735,6 +735,52 @@ void IrrlichtRenderer::sendLoadProgress(const std::string& msg) {
     LOG_DEBUG(MOD_GRAPHICS, "LoadProgress: {}", msg);
 }
 
+bool IrrlichtRenderer::isEntityBlockingProgressiveLoad(bool meshBuilt, bool inSceneGraph,
+                                                        bool isPlayerEntity, bool pvsValid,
+                                                        uint8_t regionPvsDepth,
+                                                        uint8_t entityPrepMaxPvsDepth) {
+    // inSceneGraph is NOT "has a scene node" — applySimulationOutput()
+    // (renderer_sim_bridge.cpp) toggles it every frame to reflect the
+    // 40-entity render cap / render-distance culling result, independent of
+    // whether a mesh has ever been built. An entity T109's load-distance
+    // gate deferred sits with inSceneGraph=false until the player gets close
+    // enough to bring it into the visible set — completion correctly does
+    // NOT wait on it before then (queueEntityPrepRequests() wouldn't queue
+    // it either — same gate). See applySimulationOutput()'s matching T111
+    // comment for the re-arm this implies is needed on the OTHER side: when
+    // inSceneGraph flips false->true for a still-unbuilt entity.
+    if (meshBuilt || !inSceneGraph) return false;
+    if (isPlayerEntity) return true;
+    // When the player's own BSP region is unknown, queueEntityPrepRequests()
+    // won't queue this entity yet either (it has the identical early-continue)
+    // — but that means we cannot yet rule it OUT as blocking. Treat it as
+    // blocking (not "doesn't count") until pvsValid is known.
+    //
+    // Live-caught during this unit's own proof session: sequentialLoadComplete_
+    // can flip true (and this function starts being called) in the single
+    // frame BEFORE the SimulationWorker background thread's first real
+    // swapAndGetResults() ever establishes currentPvsRegion_ — the
+    // synchronous Step12b "first-frame" computation logs
+    // currentPvsRegion_=SIZE_MAX at that exact instant. Returning false here
+    // (as an earlier version of this fix did) made checkProgressiveLoadingComplete()
+    // declare victory one frame after Step 8, before a single deferred
+    // entity had a chance to be queued — a NEW, faster way to reproduce
+    // T109's original bug (89/178 Befallen entities never picked up),
+    // confirmed live via /pmem staying at a fixed "modeled" count across
+    // repeated snapshots and multiple region-crossing /move commands. See
+    // refactor/T111_progressive_loading_rearm.md's Review.
+    if (!pvsValid) return true;
+    // Same gate queueEntityPrepRequests() uses. entityPrepMaxPvsDepth ships
+    // at 255 (unbounded) on both presets today, so in practice this counts
+    // every unbuilt, in-scene-graph entity zone-wide — deliberately NOT
+    // scoped to the player's current region (that scoping was T109's bug:
+    // entities deferred by the T109 load-distance gate outside the landing
+    // region were invisible to this count, so completion declared itself
+    // done — and permanently stopped — while 82-89/178 entities in Befallen
+    // sat forever in Placeholder phase).
+    return regionPvsDepth <= entityPrepMaxPvsDepth;
+}
+
 void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     if (!progressiveLoadingActive_) return;
 
@@ -748,17 +794,13 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
     size_t unbuiltObjects = 0;
 
     if (entityRenderer_) {
+        const bool pvsValid = (currentPvsRegion_ != SIZE_MAX);
+        const uint8_t maxPrepDepth = static_cast<uint8_t>(config_.constrainedConfig.entityPrepMaxPvsDepth);
         for (const auto& [id, vis] : entityRenderer_->getEntities()) {
-            if (!vis.meshBuilt && vis.inSceneGraph) {
-                // Only count entities in the player's PVS region as blocking.
-                // Out-of-region entities will be built lazily when the player moves.
-                // When player is outside all BSP regions (SIZE_MAX), only the player
-                // entity counts as blocking — other entities can't be built anyway.
-                if (currentPvsRegion_ == SIZE_MAX && id != playerSpawnId_)
-                    continue;
-                if (currentPvsRegion_ != SIZE_MAX &&
-                    id != playerSpawnId_ && vis.cachedBspRegion != currentPvsRegion_)
-                    continue;
+            const bool isPlayerEntity = (id == playerSpawnId_);
+            const uint8_t depth = isPlayerEntity ? 0 : getRegionPvsDepth(vis.cachedBspRegion);
+            if (isEntityBlockingProgressiveLoad(vis.meshBuilt, vis.inSceneGraph, isPlayerEntity,
+                                                 pvsValid, depth, maxPrepDepth)) {
                 unbuiltEntities++;
             }
         }
