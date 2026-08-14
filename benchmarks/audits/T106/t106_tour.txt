@@ -1,0 +1,5 @@
+wait 8
+/say #set time 11 0
+wait 5
+wait 120
+/camp
