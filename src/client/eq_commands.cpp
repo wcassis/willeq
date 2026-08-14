@@ -456,121 +456,20 @@ void EverQuest::RegisterSocialCommands()
 	using namespace eqt::ui;
 
 	// === Chat Commands ===
-
-	Command say;
-	say.name = "say";
-	say.aliases = {"s"};
-	say.usage = "/say <message>";
-	say.description = "Say message to nearby players";
-	say.category = "Chat";
-	say.handler = [this](const std::string& args) {
-		SendChatMessage(args, "say");
-	};
-	m_command_registry->registerCommand(say);
-
-	Command shout;
-	shout.name = "shout";
-	shout.aliases = {"sho"};
-	shout.usage = "/shout <message>";
-	shout.description = "Shout message to entire zone";
-	shout.category = "Chat";
-	shout.handler = [this](const std::string& args) {
-		SendChatMessage(args, "shout");
-	};
-	m_command_registry->registerCommand(shout);
-
-	Command ooc;
-	ooc.name = "ooc";
-	ooc.aliases = {"o"};
-	ooc.usage = "/ooc <message>";
-	ooc.description = "Out of character message";
-	ooc.category = "Chat";
-	ooc.handler = [this](const std::string& args) {
-		SendChatMessage(args, "ooc");
-	};
-	m_command_registry->registerCommand(ooc);
-
-	Command auction;
-	auction.name = "auction";
-	auction.aliases = {"auc"};
-	auction.usage = "/auction <message>";
-	auction.description = "Auction channel message";
-	auction.category = "Chat";
-	auction.handler = [this](const std::string& args) {
-		SendChatMessage(args, "auction");
-	};
-	m_command_registry->registerCommand(auction);
-
-	Command gsay;
-	gsay.name = "gsay";
-	gsay.aliases = {"g"};
-	gsay.usage = "/gsay <message>";
-	gsay.description = "Group chat message";
-	gsay.category = "Chat";
-	gsay.handler = [this](const std::string& args) {
-		SendChatMessage(args, "group");
-	};
-	m_command_registry->registerCommand(gsay);
-
-	Command gu;
-	gu.name = "gu";
-	gu.aliases = {"guildsay"};
-	gu.usage = "/gu <message>";
-	gu.description = "Guild chat message";
-	gu.category = "Chat";
-	gu.handler = [this](const std::string& args) {
-		SendChatMessage(args, "guild");
-	};
-	m_command_registry->registerCommand(gu);
-
-	Command tell;
-	tell.name = "tell";
-	tell.aliases = {"t", "msg"};
-	tell.usage = "/tell <player> <message>";
-	tell.description = "Send private message to player";
-	tell.category = "Chat";
-	tell.requiresArgs = true;
-	tell.handler = [this](const std::string& args) {
-		size_t space_pos = args.find(' ');
-		if (space_pos != std::string::npos) {
-			std::string target = args.substr(0, space_pos);
-			std::string message = args.substr(space_pos + 1);
-			SendChatMessage(message, "tell", target);
-		} else if (!args.empty()) {
-			AddChatSystemMessage("Usage: /tell <player> <message>");
-		}
-	};
-	m_command_registry->registerCommand(tell);
-
-	Command emote;
-	emote.name = "emote";
-	emote.aliases = {"em", "me"};
-	emote.usage = "/emote <action>";
-	emote.description = "Perform custom emote";
-	emote.category = "Chat";
-	emote.handler = [this](const std::string& args) {
-		SendChatMessage(args, "emote");
-	};
-	m_command_registry->registerCommand(emote);
-
-	Command reply;
-	reply.name = "reply";
-	reply.aliases = {"r"};
-	reply.usage = "/reply <message>";
-	reply.description = "Reply to last tell";
-	reply.category = "Chat";
-	reply.handler = [this](const std::string& args) {
-		if (m_last_tell_sender.empty()) {
-			AddChatSystemMessage("No one to reply to");
-			return;
-		}
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /reply <message>");
-			return;
-		}
-		SendChatMessage(args, "tell", m_last_tell_sender);
-	};
-	m_command_registry->registerCommand(reply);
+	//
+	// T100: say/shout/ooc/auction/gsay/gu/tell/emote/reply migrated OUT of
+	// this registry and INTO action::CommandProcessor -- see
+	// refactor/T100_migrate_chat_family.md. This registry is tried BEFORE
+	// action::CommandProcessor (Application::DispatchSlashCommand's stage 1
+	// vs dispatchToActionOrRenderer's stage 2), so leaving these
+	// registrations here while also adding them to CommandProcessor would
+	// have made the migration invisible -- removal from here is the other
+	// half of the same change as the addition there, not a separate step.
+	// `shout` in particular used to exist in BOTH registries at once (this
+	// one via primary name "shout"/alias "sho", CommandProcessor's via the
+	// escaping alias "sh" only, since T98); T100 reconciled that duplicate
+	// by folding "sho" into CommandProcessor's alias list and deleting this
+	// registration, rather than leaving shout split across two registries.
 
 	// === Group Commands ===
 	//

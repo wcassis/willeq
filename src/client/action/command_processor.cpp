@@ -264,15 +264,55 @@ void CommandProcessor::displayError(const std::string& message) {
 // ========== Register Built-in Commands ==========
 
 void CommandProcessor::registerBuiltinCommands() {
-    // T98: say/ooc/auction/tell/reply/gsay/gu/emote registrations removed --
-    // shadowed dead code (game's registry always won the dispatch collision
-    // for these primary names; see
-    // refactor/T97_command_registry_shadowing_audit.md). shout stays: its
-    // primary name is shadowed too, but alias "sh" escapes because game's own
-    // shout alias is spelled "sho", not "sh".
+    // T98 deleted say/ooc/auction/tell/reply/gsay/gu/emote as shadowed dead
+    // code (game's registry always won the dispatch collision for these
+    // primary names; see refactor/T97_command_registry_shadowing_audit.md).
+    // T100 migrates the whole Chat family upward -- game's registrations
+    // (eq_commands.cpp's RegisterSocialCommands()) removed in the same
+    // change. shout's alias list grew "sho" (game's own shout alias,
+    // reconciled here instead of left duplicated) on top of the pre-existing
+    // "sh" escape alias. Aliases/usage/requiresArgs below are ported
+    // verbatim from game's registrations.
     registerCommand({
-        "shout", {"sh"}, "/shout <message>", "Shout to the zone", "Chat", true
+        "shout", {"sh", "sho"}, "/shout <message>", "Shout to the zone", "Chat", true
     }, [this](const std::string& args) { return cmdShout(args); });
+
+    // requiresArgs ported exactly as game had it: false for all of these
+    // except tell (game's own tell.requiresArgs = true). CommandProcessor's
+    // pre-existing shout registration (above) sets true, a pre-T100
+    // deliberate deviation from game's shout (which had no requiresArgs) --
+    // not touched here, left as found.
+    registerCommand({
+        "say", {"s"}, "/say <message>", "Say message to nearby players", "Chat", false
+    }, [this](const std::string& args) { return cmdSay(args); });
+
+    registerCommand({
+        "ooc", {"o"}, "/ooc <message>", "Out of character message", "Chat", false
+    }, [this](const std::string& args) { return cmdOOC(args); });
+
+    registerCommand({
+        "auction", {"auc"}, "/auction <message>", "Auction channel message", "Chat", false
+    }, [this](const std::string& args) { return cmdAuction(args); });
+
+    registerCommand({
+        "gsay", {"g"}, "/gsay <message>", "Group chat message", "Chat", false
+    }, [this](const std::string& args) { return cmdGsay(args); });
+
+    registerCommand({
+        "gu", {"guildsay"}, "/gu <message>", "Guild chat message", "Chat", false
+    }, [this](const std::string& args) { return cmdGu(args); });
+
+    registerCommand({
+        "tell", {"t", "msg"}, "/tell <player> <message>", "Send private message to player", "Chat", true
+    }, [this](const std::string& args) { return cmdTell(args); });
+
+    registerCommand({
+        "emote", {"em", "me"}, "/emote <action>", "Perform custom emote", "Chat", false
+    }, [this](const std::string& args) { return cmdEmote(args); });
+
+    registerCommand({
+        "reply", {"r"}, "/reply <message>", "Reply to last tell", "Chat", false
+    }, [this](const std::string& args) { return cmdReply(args); });
 
     // T98: loc/sit/stand/camp/move/moveto/follow/stopfollow registrations
     // removed -- shadowed dead code. face stays: no game "face" command
@@ -488,6 +528,84 @@ void CommandProcessor::registerBuiltinCommands() {
 
 ActionResult CommandProcessor::cmdShout(const std::string& args) {
     return m_dispatcher.sendChatMessage(ChatChannel::Shout, args);
+}
+
+// ========== Chat Commands (T100) ==========
+//
+// Ported from EverQuest::m_command_registry's Chat-category handlers
+// (eq_commands.cpp's RegisterSocialCommands(), deleted from there in this
+// same change -- see refactor/T100_migrate_chat_family.md's atomicity
+// section). T97's divergence table rated the whole family "Equivalent" --
+// both sides terminate in EverQuest::SendChatMessage() either way -- so
+// these are direct ports, re-expressed against ActionDispatcher's existing
+// sendChatMessage()/sendTell()/replyToLastTell() (already correct, already
+// implemented in EqActionHandler; no new ActionDispatcher method needed).
+
+ActionResult CommandProcessor::cmdSay(const std::string& args) {
+    return m_dispatcher.sendChatMessage(ChatChannel::Say, args);
+}
+
+ActionResult CommandProcessor::cmdOOC(const std::string& args) {
+    return m_dispatcher.sendChatMessage(ChatChannel::OOC, args);
+}
+
+ActionResult CommandProcessor::cmdAuction(const std::string& args) {
+    return m_dispatcher.sendChatMessage(ChatChannel::Auction, args);
+}
+
+ActionResult CommandProcessor::cmdGsay(const std::string& args) {
+    return m_dispatcher.sendChatMessage(ChatChannel::Group, args);
+}
+
+ActionResult CommandProcessor::cmdGu(const std::string& args) {
+    return m_dispatcher.sendChatMessage(ChatChannel::Guild, args);
+}
+
+ActionResult CommandProcessor::cmdTell(const std::string& args) {
+    // Ported from game's tell.handler verbatim: split on the FIRST space
+    // only, so "/tell Name multi word message" -> target="Name",
+    // message="multi word message" (the message itself may contain further
+    // spaces, unsplit). game's else-if branch ("no space found, args
+    // non-empty") showed a usage message and did nothing; requiresArgs=true
+    // on this registration already rejects the fully-empty case before this
+    // handler is ever called, so only the "single word, no space" case needs
+    // handling here.
+    size_t spacePos = args.find(' ');
+    if (spacePos != std::string::npos) {
+        std::string target = args.substr(0, spacePos);
+        std::string message = args.substr(spacePos + 1);
+        return m_dispatcher.sendTell(target, message);
+    }
+    return ActionResult::Failure("Usage: /tell <player> <message>");
+}
+
+ActionResult CommandProcessor::cmdEmote(const std::string& args) {
+    // game's /emote always sends the literal text as a text emote (matches
+    // real EQ). T97 flagged this as the "Live is better" case for this
+    // family: the old (T98-deleted) action copy silently reinterpreted 9
+    // known words as animation triggers instead of text -- NOT ported; this
+    // is the real-EQ text-emote behavior only.
+    return m_dispatcher.sendChatMessage(ChatChannel::Emote, args);
+}
+
+ActionResult CommandProcessor::cmdReply(const std::string& args) {
+    // Ported from game's reply_cmd's args-empty branch ("Usage: /reply
+    // <message>"). game's OTHER pre-check (m_last_tell_sender.empty() ->
+    // "No one to reply to") is NOT reproduced here: that state lives only on
+    // EverQuest (m_last_tell_sender), not in state::GameState or anywhere
+    // IActionHandler exposes to the dispatcher, so ActionDispatcher::
+    // replyToLastTell() cannot make the same check game's registry could --
+    // it already silently no-ops via EqActionHandler::replyToLastTell() when
+    // there is no pending sender, returning ActionResult::Success() rather
+    // than surfacing an error. This is a pre-existing action-layer gap (the
+    // dispatcher/handler shape predates T100), not introduced by this
+    // migration, but T100 is what gives it its first live caller. Reported,
+    // not fixed -- see refactor/T100_migrate_chat_family.md's Review and
+    // refactor/deferred.md.
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /reply <message>");
+    }
+    return m_dispatcher.replyToLastTell(args);
 }
 
 ActionResult CommandProcessor::cmdFace(const std::string& args) {

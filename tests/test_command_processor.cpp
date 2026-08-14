@@ -1161,4 +1161,165 @@ TEST_F(CommandProcessorTest, Pet_UnknownSubcommand_FailsCleanlyWithoutDispatchin
     EXPECT_EQ(handler.count(), 0u);
 }
 
+
+// ===================================================================
+// Chat commands (T100 -- migrated from EverQuest::m_command_registry, see
+// refactor/T100_migrate_chat_family.md). Same shape as the T99 Group tests
+// above: exercising RecordingActionHandler proves the call reaches
+// ActionDispatcher -> IActionHandler, not just that CommandProcessor's own
+// bookkeeping is happy.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T100_ChatCommandsRegisteredWithChatCategory) {
+    struct Expected { const char* name; const char* category; };
+    static const Expected samples[] = {
+        {"say", "Chat"},     {"ooc", "Chat"},   {"auction", "Chat"},
+        {"gsay", "Chat"},    {"gu", "Chat"},    {"tell", "Chat"},
+        {"emote", "Chat"},   {"reply", "Chat"},
+    };
+    for (const auto& s : samples) {
+        auto info = processor->getCommandInfo(s.name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << s.name;
+        EXPECT_EQ(info->category, s.category) << "wrong category for: " << s.name;
+    }
+    // Aliases ported verbatim from game's registrations.
+    EXPECT_TRUE(processor->hasCommand("s"));          // say
+    EXPECT_TRUE(processor->hasCommand("o"));           // ooc
+    EXPECT_TRUE(processor->hasCommand("auc"));         // auction
+    EXPECT_TRUE(processor->hasCommand("g"));           // gsay
+    EXPECT_TRUE(processor->hasCommand("guildsay"));    // gu
+    EXPECT_TRUE(processor->hasCommand("t"));           // tell
+    EXPECT_TRUE(processor->hasCommand("msg"));         // tell
+    EXPECT_TRUE(processor->hasCommand("em"));          // emote
+    EXPECT_TRUE(processor->hasCommand("me"));          // emote
+    EXPECT_TRUE(processor->hasCommand("r"));           // reply
+}
+
+TEST_F(CommandProcessorTest, Say_DispatchesSendChatMessageSayChannel) {
+    auto result = processor->processCommand("/say hello there");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Say, \"hello there\")"));
+}
+
+TEST_F(CommandProcessorTest, OOC_DispatchesSendChatMessageOOCChannel) {
+    auto result = processor->processCommand("/ooc anyone selling a lantern");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(OOC, \"anyone selling a lantern\")"));
+}
+
+TEST_F(CommandProcessorTest, Auction_DispatchesSendChatMessageAuctionChannel) {
+    auto result = processor->processCommand("/auction WTS fine steel rapier");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Auction, \"WTS fine steel rapier\")"));
+}
+
+TEST_F(CommandProcessorTest, Gsay_DispatchesSendChatMessageGroupChannel) {
+    auto result = processor->processCommand("/gsay incoming add");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Group, \"incoming add\")"));
+}
+
+TEST_F(CommandProcessorTest, Gu_DispatchesSendChatMessageGuildChannel) {
+    auto result = processor->processCommand("/gu raid at 8pm server time");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Guild, \"raid at 8pm server time\")"));
+}
+
+TEST_F(CommandProcessorTest, Emote_DispatchesSendChatMessageEmoteChannel_AsLiteralText) {
+    // T97's divergence finding: game's /emote always sends the literal text
+    // as a text emote (real EQ behaviour) -- the OLD (T98-deleted) action
+    // copy silently reinterpreted 9 known words as animation triggers
+    // instead. This test pins the text-emote behaviour, not the animation
+    // reinterpretation, matching what was ported.
+    auto result = processor->processCommand("/emote dances a jig");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendChatMessage(Emote, \"dances a jig\")"));
+}
+
+// /tell argument parsing: preserved EXACTLY per the plan's caution --
+// split on the FIRST space only, so a multi-word message is passed through
+// unsplit as a single string argument to sendTell().
+TEST_F(CommandProcessorTest, Tell_SplitsTargetFromMultiWordMessage) {
+    auto result = processor->processCommand("/tell Bob multi word message");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendTell(\"Bob\", \"multi word message\")"));
+}
+
+TEST_F(CommandProcessorTest, Tell_Alias_SplitsTargetFromMessage) {
+    auto result = processor->processCommand("/t Bob hey there");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendTell(\"Bob\", \"hey there\")"));
+}
+
+// game's tell.handler did NOT treat quote characters specially -- they are
+// just ordinary characters inside the message string, split only on the
+// first space (T98 removed a test named exactly for this,
+// TrailingArgumentCommand_QuotesAreNotSpecial; this is its T100 revival now
+// that /tell is live again).
+TEST_F(CommandProcessorTest, Tell_QuotesAreNotSpecial) {
+    auto result = processor->processCommand("/tell Bob \"quoted phrase\" rest");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sendTell(\"Bob\", \"\"quoted phrase\" rest\")"));
+}
+
+TEST_F(CommandProcessorTest, Tell_MissingMessage_SingleWordFailsCleanlyWithoutDispatching) {
+    // A single word with no following space (e.g. "/tell Bob") is NOT
+    // rejected by requiresArgs (Bob alone is non-empty args) -- it must
+    // reach cmdTell's own "no space found" branch and fail there without
+    // calling the dispatcher, exactly matching game's else-if(!args.empty())
+    // usage-message branch.
+    auto result = processor->processCommand("/tell Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Tell_NoArgsAtAll_FailsViaRequiresArgsWithoutDispatching) {
+    // Fully empty args is rejected by CommandProcessor::processCommand's own
+    // requiresArgs gate before cmdTell is ever invoked (tell.requiresArgs is
+    // true, ported verbatim from game's registration).
+    auto result = processor->processCommand("/tell");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Reply_WithMessage_DispatchesReplyToLastTell) {
+    auto result = processor->processCommand("/reply thanks for the tell");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("replyToLastTell(\"thanks for the tell\")"));
+}
+
+TEST_F(CommandProcessorTest, Reply_Alias_DispatchesReplyToLastTell) {
+    auto result = processor->processCommand("/r ok");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("replyToLastTell(\"ok\")"));
+}
+
+TEST_F(CommandProcessorTest, Reply_NoMessage_FailsCleanlyWithoutDispatching) {
+    // reply.requiresArgs is false (ported verbatim from game), so this must
+    // reach cmdReply's own empty-args check rather than being rejected by
+    // CommandProcessor's generic gate.
+    auto result = processor->processCommand("/reply");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// shout reconciliation (T100): game's own `shout`/`sho` registration was
+// deleted from eq_commands.cpp; CommandProcessor's pre-existing shout
+// (previously reachable only via the escaping alias "sh") gained "sho" so
+// the exact same command surface game used to offer is preserved, now
+// entirely inside the action layer. All three spellings must resolve to
+// the identical handler.
+TEST_F(CommandProcessorTest, Shout_PrimaryNameAndBothAliasesAllDispatch) {
+    auto r1 = processor->processCommand("/shout hello1");
+    auto r2 = processor->processCommand("/sh hello2");
+    auto r3 = processor->processCommand("/sho hello3");
+    EXPECT_TRUE(r1.success);
+    EXPECT_TRUE(r2.success);
+    EXPECT_TRUE(r3.success);
+    ASSERT_EQ(handler.count(), 3u);
+    EXPECT_EQ(handler.calls[0], "sendChatMessage(Shout, \"hello1\")");
+    EXPECT_EQ(handler.calls[1], "sendChatMessage(Shout, \"hello2\")");
+    EXPECT_EQ(handler.calls[2], "sendChatMessage(Shout, \"hello3\")");
+}
+
 } // namespace

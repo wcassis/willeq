@@ -44,7 +44,8 @@ struct CommandInfo {
  * and use the ActionDispatcher to execute the appropriate actions.
  *
  * Built-in commands include:
- * - Chat: /shout, /wave, /dance, /cheer, /laugh
+ * - Chat: /say, /shout, /ooc, /auction, /gsay, /gu, /tell, /emote, /reply
+ *   (T100 -- migrated upward from EverQuest::m_command_registry, see below)
  * - Movement: /face, /walk, /run, /sneak, /crouch, /feign, /jump, /turn
  * - Combat: /consider, /hail, /hunt, /autoloot, /listtargets, /loot
  * - Utility: /npcstate, /door, /afk, /anon, /list, /dump, /pathfinding,
@@ -76,6 +77,17 @@ struct CommandInfo {
  * from EverQuest::m_command_registry's Spells (6) and Pet (1) categories --
  * game's registrations removed from eq_commands_spells.cpp in the same
  * change. See refactor/T101_migrate_spells_pet_family.md.
+ * T100: say/ooc/auction/gsay/gu/tell/emote/reply MIGRATED BACK too, same
+ * shape as T99 -- game's Chat-category handlers (T97: "Equivalent", both
+ * sides terminate in the same EverQuest::SendChatMessage() call) ported
+ * here re-expressed against ActionDispatcher::sendChatMessage()/sendTell()/
+ * replyToLastTell(), with the corresponding registrations removed from
+ * eq_commands.cpp's RegisterSocialCommands() in the same change. `shout`
+ * (already living here since before T99, reachable only via alias "sh")
+ * is RECONCILED, not duplicated: its alias list gained "sho" and game's
+ * own `shout` registration was deleted, so shout is now fully migrated
+ * like its 8 Chat siblings instead of existing in both registries at
+ * once. See refactor/T100_migrate_chat_family.md.
  */
 class CommandProcessor {
 public:
@@ -204,14 +216,25 @@ private:
     void registerBuiltinCommands();
 
     // Built-in command handlers
-    // T98: cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/cmdGuildSay/
-    // cmdEmote removed -- their registrations (say/ooc/auction/tell/reply/
-    // gsay/gu/emote) were shadowed dead code (registry 1 always won). cmdShout
-    // stays: its primary name is shadowed too, but alias "sh" escapes because
-    // game's own shout alias is spelled "sho". See
-    // refactor/T97_command_registry_shadowing_audit.md /
-    // refactor/T98_delete_shadowed_commands.md.
+    // T98 deleted cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/
+    // cmdGuildSay/cmdEmote as shadowed dead code (registry 1 always won).
+    // T100 re-adds all eight, this time as the sole implementation -- ported
+    // from game's Chat-category handlers (eq_commands.cpp's
+    // RegisterSocialCommands(), registrations removed from there in the same
+    // change). cmdShout predates T100 (added when T98 kept `shout` alive via
+    // its escaping "sh" alias); T100 reconciled it by adding "sho" to its
+    // alias list and deleting game's own now-redundant `shout` registration,
+    // so it's fully migrated alongside its siblings rather than living in
+    // both registries. See refactor/T100_migrate_chat_family.md.
     ActionResult cmdShout(const std::string& args);
+    ActionResult cmdSay(const std::string& args);
+    ActionResult cmdOOC(const std::string& args);
+    ActionResult cmdAuction(const std::string& args);
+    ActionResult cmdGsay(const std::string& args);
+    ActionResult cmdGu(const std::string& args);
+    ActionResult cmdTell(const std::string& args);
+    ActionResult cmdEmote(const std::string& args);
+    ActionResult cmdReply(const std::string& args);
 
     // T98: cmdLoc/cmdSit/cmdStand/cmdCamp/cmdMove/cmdMoveTo/cmdFollow/
     // cmdStopFollow removed -- shadowed dead code (loc/sit/stand/camp/move/

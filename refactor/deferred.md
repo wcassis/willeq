@@ -5832,3 +5832,123 @@ DB-gated real-`SpellManager` test file, two live sessions instead of one)
 per-family estimate rather than matching it exactly, but still inside
 T99's 60-90h total-programme band for the ~120-command remainder. See the
 plan's own Review "effort estimate" for the full reasoning.
+## T100: Chat family migrated to `action::CommandProcessor`; `shout` reconciled; three new pre-existing findings (2026-08-14)
+
+Second family in the migration programme (after T99's Group pilot), same
+recipe, no deviation needed. All 9 of `game`'s Chat-category commands
+(`say`, `shout`, `ooc`, `auction`, `gsay`, `gu`, `tell`, `emote`, `reply`)
+moved out of `EverQuest::m_command_registry` (`eq_commands.cpp`) and into
+`action::CommandProcessor`, atomically (removed from `eq_commands.cpp` in
+the same commit as the `CommandProcessor` addition — `registry=action`
+confirmed live for all 9, `registry=game` confirmed for `/target` in the
+same session as a control). T97 rated the whole family "Equivalent" (both
+registries terminate in the same `EverQuest::SendChatMessage()` call), so
+these are direct ports against the pre-existing, already-correct
+`ActionDispatcher::sendChatMessage()`/`sendTell()`/`replyToLastTell()` — no
+new `ActionDispatcher` method was needed. `shout` (already living in
+`CommandProcessor` since before T99, reachable only via the escaping alias
+"sh" because game's own alias was "sho") was **reconciled, not
+duplicated**: "sho" was folded into `CommandProcessor`'s alias list and
+game's own `shout` registration deleted, so it is now fully migrated like
+its 8 siblings instead of existing in both registries at once. Full
+writeup: `refactor/T100_migrate_chat_family.md`'s Review,
+`/mnt/projects/fable/review/T100/README.md`.
+
+**`GameStateSyncBridge` coverage checked BEFORE the live leg, per T99's own
+addendum — found N/A, not a gap.** None of the 9 Chat commands read any
+`state::GameState` field (unlike Group's `hasPendingInvite()`/`inGroup()`
+reads); `state::GameState` has no chat domain at all (`grep -n "chat\|Chat"
+include/client/state/game_state.h` — zero hits). Chat is write-only from
+the action layer's perspective, so there was nothing for the bridge to
+sync. This is the "most families won't hit this" case T99's recipe
+predicted, confirmed on the second family tested.
+
+**`ConsoleInputHandler`'s third, non-slash chat vocabulary
+(`console_input_handler.cpp:374-409`, `say`/`tell`/`shout`/`ooc`/
+`auction`) does NOT diverge functionally after this migration — if
+anything the divergence narrowed.** It never reached either command
+registry before or after T100 (confirmed, not touched, per the plan's
+prohibition) — but tracing where its `ChatMessage` structs actually go
+(`InputActionBridge::processChatMessages()`, `input_action_bridge.cpp:
+291-321`) shows it calls `ActionDispatcher::sendChatMessage()`/`sendTell()`
+directly, the exact same dispatcher methods `CommandProcessor`'s newly-
+migrated `cmdSay`/`cmdTell`/etc. now call too. Before T100, `game`'s
+(then-live) `say`/`tell`/etc. called `EverQuest::SendChatMessage()`
+directly while `ConsoleInputHandler`'s path went through the dispatcher —
+two different entry points converging on the same terminal call (T97:
+"Equivalent"). After T100, both the slash-command path and
+`ConsoleInputHandler`'s bespoke path terminate at the identical
+`ActionDispatcher` method calls. The one remaining difference:
+`ConsoleInputHandler`'s path bypasses `CommandProcessor::processCommand()`
+entirely, so it never produces a `CMD outcome=... registry=...` log line —
+an observability gap, not a behavioral one. `ConsoleInputHandler`'s
+vocabulary is also a strict subset (5 of 9: no `reply`/`gsay`/`gu`/
+`emote`) and was not extended, per the plan's prohibition on touching it.
+
+**Three new findings, reported not fixed, none below the action layer this
+time — all in `eq_chat.cpp` (F06, below the action layer, out of this
+unit's territory) or in the action-layer's own pre-existing shape (predates
+T100, given its first live caller by this migration):**
+
+1. **`shout`/`ooc`/`gsay` (group chat) were sent correctly — confirmed
+   live via the debug `Sending shout/ooc/group message: '...'` line plus
+   `outcome=applied registry=action` every time, across two live sessions —
+   but never visibly arrived on the second client, not even as a self-echo
+   back to the sender** (unlike `say`/`auction`/`tell`/`reply`, which all
+   self-echo and were confirmed arriving on the *other* client too, with
+   `tell`'s multi-word message intact). Round 2 specifically retested
+   `gsay` against a real, server-confirmed group (both clients logged
+   "Group update: 2 members" and, later, both independently logged "Your
+   group has been disbanded") and it still never appeared as a `[CHAT]`
+   line on either client. The client-side code path
+   (`EverQuest::SendChatMessage()`/`ZoneSendChannelMessage()`,
+   `eq_chat.cpp`) is untouched by T100 and identical to what the deleted
+   `game`-registry commands called before migration — T97 rated this whole
+   family "Equivalent" precisely because both sides hit this same call — so
+   this is not a T100 regression. It appears to be the first time any unit
+   has live-tested these three specific channels cross-client at all (T84/
+   T99's live legs used `tell`/group-*state* commands, not broadcast chat).
+   Likely an eqemu/akk-stack server-side relay gap for broadcast-style
+   channels, but not root-caused past that — server code is off-limits to
+   modify. Full evidence: `review/T100/README.md`.
+2. **`eq_chat.cpp:74-84`'s debug print (`ZoneSendChannelMessage`,
+   "Sending X message") has no `CHAT_CHANNEL_EMOTE` case in its inline
+   ternary**, so a real `/emote` (which sends the correct
+   `CHAT_CHANNEL_EMOTE` constant — confirmed by the packet itself, only the
+   debug label is wrong) logs as "Sending unknown message" instead of
+   "Sending emote message". Similarly, `ZoneProcessChannelMessage`'s
+   *incoming*-print ternary (`eq_chat.cpp:117-127`) has no
+   `CHAT_CHANNEL_AUCTION` case, so a received auction message logs as
+   `chan4` instead of `auction` (confirmed live: `[CHAT] Testmelee
+   (chan4): ...` for a message correctly sent and displayed as auction
+   content). Purely cosmetic debug-log gaps, pre-existing (F06, well before
+   T100), out of this unit's territory (`eq_chat.cpp` is below the action
+   layer) — not fixed.
+3. **`CommandProcessor::cmdReply` cannot reproduce game's "No one to reply
+   to" message.** game's `reply_cmd` checked `EverQuest::
+   m_last_tell_sender.empty()` directly and told the user; the ported
+   `cmdReply` calls `ActionDispatcher::replyToLastTell()`, which has no way
+   to make the same check — `m_last_tell_sender` lives only on `EverQuest`,
+   not in `state::GameState` or anywhere `IActionHandler` exposes to the
+   dispatcher. `EqActionHandler::replyToLastTell()` (pre-existing, not
+   changed by T100) already silently no-ops in that case, and
+   `ActionDispatcher::replyToLastTell()` returns `ActionResult::Success()`
+   regardless — so a user who `/reply`s with no pending tell gets a silent
+   success instead of an error message. This is a pre-existing
+   action-layer characteristic (the dispatcher/handler shape predates
+   T100's changes entirely) that T100 is simply the first migration to give
+   a live slash-command caller. Not exercised live in this unit's session
+   (both clients always had a pending tell by the time `/reply` ran) —
+   found by code inspection while porting, not by a live repro. Fixing it
+   properly would mean adding either a `state::GameState` chat domain or an
+   `IActionHandler::hasTellToReplyTo()`-style query, both of which reach
+   outside this unit's declared territory (`src/client/action/`,
+   `eq_commands*.cpp` removals, `bridge/game_state_sync_bridge.*`,
+   `tests/`) — deferred for a future unit or Will's call on which shape to
+   add.
+
+All three reported, not chased, per the same standard T99 set: this
+migration's job is to move the better implementation into the action
+layer and prove it dispatches and works over the wire, not to fix every
+below-the-layer or orthogonal defect its first live caller happens to
+surface.
