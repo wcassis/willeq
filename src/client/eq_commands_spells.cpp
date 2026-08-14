@@ -408,7 +408,23 @@ void EverQuest::RegisterSpellCommands()
 	pmem.usage = "/pmem";
 	pmem.description = "Show memory usage breakdown across all subsystems";
 	pmem.category = "Utility";
-	pmem.handler = rendererCmd("pmem");
+	// T108: was rendererCmd("pmem") -- routed to a RendererCommand bridge
+	// event handled entirely inside IrrlichtRenderer::processSlashCommand's
+	// "/pmem" branch, which built an empty MemoryReportInput{} and so could
+	// never report real processRssBytes/audio/entity/door/spellDb data (the
+	// exact reachability gap T105 and T106 both named: "runLoadDiagnostics
+	// has zero callers"). EverQuest::runPmemDiagnostics() already exists,
+	// fully built, and populates all of that from real subsystems via the
+	// DiagnosticsMemoryReport bridge event (see irrlicht_bridge.cpp) -- it
+	// just had nothing calling it. Call it directly instead of routing
+	// through the empty renderer-side path.
+	pmem.handler = [this](const std::string& args) {
+#ifdef EQT_HAS_GRAPHICS
+		runPmemDiagnostics(args.empty() ? "pmem" : args);
+#else
+		AddChatSystemMessage("/pmem requires graphics mode (not available in this headless build).");
+#endif
+	};
 	m_command_registry->registerCommand(pmem);
 
 #ifdef WITH_AUDIO

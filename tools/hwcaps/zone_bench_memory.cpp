@@ -157,13 +157,24 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     // accessor over its own eqe1Loaders_; this is the equivalent sum over
     // ZoneBenchData::eqe1Loaders, same method, same reuse discipline as
     // every other category in this file.
+    //
+    // T108: eqe1MappedBytes is MAPPED (address-space) size, not RESIDENT
+    // size -- deliberately NOT added to totalEstimate, mirroring the
+    // identical fix in renderer_diagnostics.cpp::getMemoryReportBreakdown()
+    // (this file duplicates that function's category-by-category logic by
+    // necessity -- see this file's header comment -- and had duplicated its
+    // eqe1MappedBytes-in-totalEstimate bug along with it). T105 measured
+    // EQE1 archives at 1.6-10.6% resident; crediting the mapped size here
+    // inflated totalEstimate by ~110-120MB whenever --eqe1-path is passed
+    // (the T80 memory-coverage run), silently deflating untrackedBytes by
+    // the same amount. Still reported on its own line in the JSON below.
     for (auto& loader : data.eqe1Loaders) {
         if (loader) {
             ++snap.eqe1ArchiveCount;
             snap.eqe1MappedBytes += loader->getMappedBytes();
         }
     }
-    snap.totalEstimate += snap.eqe1MappedBytes;
+    // Intentionally NOT: snap.totalEstimate += snap.eqe1MappedBytes; (T108)
 
     if (data.zone) {
         snap.s3dZoneSourceBytes = data.zone->getMemoryUsage();

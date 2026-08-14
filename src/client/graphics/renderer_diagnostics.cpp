@@ -635,6 +635,18 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     // memory. Now mmap'd (page-cache backed, reclaimable) and only opened
     // on demand, but still worth naming explicitly since it can still be a
     // multi-MB resident pool for zones that touch many global archives.
+    //
+    // T108: eqe1MappedBytes is MAPPED (address-space) size, not RESIDENT
+    // (RSS) size -- mmap'd/page-cache-backed archives are only as resident
+    // as the OS has actually faulted in. T105 measured EQE1 archives at
+    // 1.6-10.6% resident (e.g. lgequip.eqe1: 23.6MB mapped, 64KB resident).
+    // Deliberately NOT added to totalEstimate: doing so previously credited
+    // ~110-120MB of never-faulted-in address space as "accounted for",
+    // which silently deflated untrackedBytes (RSS - totalEstimate) by the
+    // same amount -- see T106/T107's Reviews for the corrected untracked
+    // percentages (75-90% on x86, 32.8% on the Pi, vs. the ~34-36% the
+    // inflated total produced). Reported on its own line below (mapped, not
+    // resident -- callers reading this field must not treat it as RSS).
     {
         b.eqe1MappedBytes = getEQE1MappedBytesTotal();
         {
@@ -643,7 +655,7 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
                 if (loader) ++b.eqe1ArchiveCount;
             }
         }
-        b.totalEstimate += b.eqe1MappedBytes;
+        // Intentionally NOT: b.totalEstimate += b.eqe1MappedBytes; (T108)
     }
 
     // "Mesh Cache" section removed T67 — was gated on constrainedMeshCache_,
@@ -841,7 +853,12 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- EQE1 Flat Packs ---
-    lines.push_back(fmt::format("[EQE1 Flat Packs] {} mmap'd ({} archives open, mmap/page-cache backed)",
+    // T108: mapped size, NOT resident -- excluded from totalEstimate below
+    // (see getMemoryReportBreakdown()'s comment). Typically 1.6-10.6%
+    // resident per T105's smaps measurement; printed here for visibility
+    // into the mmap pool's address-space footprint, not as a memory cost.
+    lines.push_back(fmt::format("[EQE1 Flat Packs] {} mmap'd, not counted in Tracked total below "
+        "({} archives open, mmap/page-cache backed, typically ~2-11% resident)",
         formatBytes(b.eqe1MappedBytes), b.eqe1ArchiveCount));
 
     // --- Zone Geometry ---
