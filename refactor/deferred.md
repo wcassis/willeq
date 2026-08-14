@@ -6232,3 +6232,60 @@ table: `refactor/T106_untracked_memory_attribution.md`'s Review,
 runtime-control-surface question was blocked on — the gate cannot yet see
 roughly half of real RSS (the genuine remainder) even after every other
 chunk this unit identified is accounted for.
+
+## T107 (paired Pi/x86 memory baseline) — findings
+
+1. **The Pi runs the full client fine and fits comfortably** — 92.9 MB RSS
+   live, populated Befallen, against ~395 MB headroom (23.5% used, ~302 MB
+   free). T106's stated worry that the client might not fit at all did not
+   materialize. Not a defect entry, recorded here for the board record.
+2. **A real, ARM-only shutdown crash**: the Pi client SIGSEGVs during its
+   own local teardown, consistently, AFTER the server has already confirmed
+   a clean logout (`Logout confirmed by server` / `Game thread stopped`
+   both precede the crash in the log every time). Reproduced twice
+   (a smoke test and the full paired session). Does not affect any
+   measurement — server-side logout and the gdb capture both complete
+   first — but is a genuine defect. **Not root-caused, not fixed** (T107
+   is read-only). A future unit should attach `gdb` on the Pi around the
+   final `Shutting down application...` sequence to find the faulting
+   frame; `Graphics detached` / `GPU upload thread: stopped` are the last
+   clean log lines before the crash in every capture, suggesting the GLES2/
+   DRM teardown path as the first place to look.
+3. **Most of x86's "34-36%"/T106's corrected "75-90% untracked" figure does
+   NOT transfer to the Pi.** Same method, same zone, same paired live
+   session: x86 89.1% untracked, Pi 32.8% untracked. Do not use the x86
+   untracked-share numbers as a stand-in for the target.
+4. **llvmpipe/LLVM JIT explains only ~14% of the x86→Pi RSS gap, not most
+   of it.** Confirmed near-zero (0.55 MB) on the Pi as T106 predicted, but
+   the total RSS delta between hosts is 487.0 MB and llvmpipe+JIT accounts
+   for only 68.4 MB of it. The bulk (~81% of the delta) is `[heap]` and
+   `anon-other` collapsing on the smaller/32-bit ARM build, most plausibly
+   downstream of far fewer worker threads (75 spawned on x86 this session,
+   10 on the Pi) — stated as hypothesis, not proven attribution. **T106's
+   `mallinfo2()`-based fragmentation percentage (~25.6% of RSS on x86) also
+   does not transfer**, for a stronger reason than "different scale": see
+   finding #5.
+5. **A new methodological limit in the `mallinfo2()` method itself, found
+   on the Pi.** T106 validated arena-total ⊆ RSS on x86 (502.8 MB inside
+   593.8 MB), which is what let it treat `fordblks` as real resident
+   fragmentation. On the Pi, `malloc_stats()`'s own "Total (incl. mmap)"
+   figure (250.5 MB) **exceeds the entire process RSS (92.9 MB) by 2.7x** —
+   most of what glibc's allocator considers "committed" there is
+   demand-paged virtual reservation, never faulted in. The Pi's nominal
+   `fordblks` figure (48.0 MB / 51.7% of RSS) is very likely a substantial
+   overestimate and should not be read as a real fragmentation cost the way
+   T106's x86 reading could be. A future unit attributing Pi memory further
+   should not reuse `mallinfo2()`'s arena/fordblks fields as a resident
+   proxy without first checking this self-consistency (arena vs RSS) holds.
+6. **Pi RSS may understate real GPU-side memory pressure.** The Pi's smaps
+   shows 13,250 separate DRM (`renderD128`) device mappings totalling
+   88.1 MB *mapped* but 0 KB *resident* in every one — DRM/GEM buffer
+   objects are a known case the kernel often doesn't attribute to the
+   owning process's smaps `Rss`. `scripts/pi/pi_common.py`'s `CmaFree`
+   monitor exists for exactly this class of measurement but is wired into
+   the benchmark-tool path, not a live-client eqemu session. A future unit
+   pairing `CmaFree` sampling with a live eqemu session would close this.
+
+Full paired category table, the smaps captures for both hosts, and the
+per-finding evidence: `refactor/T107_paired_pi_x86_memory_baseline.md`'s
+Review, `/mnt/projects/fable/review/T107/`.
