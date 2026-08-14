@@ -368,6 +368,107 @@ void CommandProcessor::registerBuiltinCommands() {
     // T98: who/help/quit/q/debug/timestamp registrations removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp; "q" was shadowed via
     // game's alias table, not a game primary name -- see T97's Review).
+    // T102 re-adds `who` below (this time deliberately: the Social section's
+    // real server request, not Movement's local-scan substitute).
+
+    // T102: Combat (12), migrated from EverQuest::m_command_registry's
+    // Combat category -- eq_commands_movement.cpp's target/attack/
+    // stopattack/aa/combat/taunt/autofire and eq_commands.cpp's assist/
+    // shield/duel/duelaccept/dueldecline, registrations removed from both
+    // in the same change. See refactor/T102_migrate_combat_social.md.
+    registerCommand({
+        "target", {"tar"}, "/target <name>", "Target entity by name", "Combat", false
+    }, [this](const std::string& args) { return cmdTarget(args); });
+
+    registerCommand({
+        "attack", {"att"}, "/attack", "Begin auto-attack", "Combat", false
+    }, [this](const std::string& args) { return cmdAttack(args); });
+
+    registerCommand({
+        "stopattack", {}, "/stopattack", "Stop auto-attack", "Combat", false
+    }, [this](const std::string& args) { return cmdStopAttack(args); });
+
+    registerCommand({
+        "aa", {"~"}, "/aa", "Toggle auto-attack on/off", "Combat", false
+    }, [this](const std::string& args) { return cmdAA(args); });
+
+    registerCommand({
+        "combat", {}, "/combat [on|off]", "Enable/disable combat manager (auto-attack, hunting, etc.)", "Combat", false
+    }, [this](const std::string& args) { return cmdCombat(args); });
+
+    registerCommand({
+        "taunt", {}, "/taunt", "Taunt current target (warrior/paladin/shadowknight ability)", "Combat", false
+    }, [this](const std::string& args) { return cmdTaunt(args); });
+
+    registerCommand({
+        "autofire", {"af"}, "/autofire", "Toggle ranged auto-attack (archery/throwing)", "Combat", false
+    }, [this](const std::string& args) { return cmdAutofire(args); });
+
+    registerCommand({
+        "assist", {"a"}, "/assist [target]", "Assist your target or specified player", "Combat", false
+    }, [this](const std::string& args) { return cmdAssist(args); });
+
+    registerCommand({
+        "shield", {}, "/shield", "Shield your current target (Warrior/Paladin)", "Combat", false
+    }, [this](const std::string& args) { return cmdShield(args); });
+
+    registerCommand({
+        "duel", {}, "/duel", "Challenge your target to a duel", "Combat", false
+    }, [this](const std::string& args) { return cmdDuel(args); });
+
+    registerCommand({
+        "duelaccept", {}, "/duelaccept", "Accept a duel challenge", "Combat", false
+    }, [this](const std::string& args) { return cmdDuelAccept(args); });
+
+    registerCommand({
+        "dueldecline", {}, "/dueldecline", "Decline a duel challenge", "Combat", false
+    }, [this](const std::string& args) { return cmdDuelDecline(args); });
+
+    // T102: Social (10 distinct names / 11 game-registry registrations --
+    // `who` is duplicated, see cmdWho below), migrated from
+    // eq_commands.cpp's RegisterSocialCommands() (trade/accept/
+    // tradedecline/canceltrade/who_cmd/inspect/lfg/surname/random/yell) and
+    // eq_commands_movement.cpp's second `who` (deleted, not migrated -- see
+    // cmdWho).
+    registerCommand({
+        "trade", {}, "/trade [name]", "Initiate trade with target or named player", "Social", false
+    }, [this](const std::string& args) { return cmdTrade(args); });
+
+    registerCommand({
+        "accept", {}, "/accept", "Accept pending trade request", "Social", false
+    }, [this](const std::string& args) { return cmdTradeAccept(args); });
+
+    registerCommand({
+        "tradedecline", {"rejecttrade"}, "/tradedecline", "Decline pending trade request", "Social", false
+    }, [this](const std::string& args) { return cmdTradeDecline(args); });
+
+    registerCommand({
+        "canceltrade", {"stoptrade"}, "/canceltrade", "Cancel active trade", "Social", false
+    }, [this](const std::string& args) { return cmdCancelTrade(args); });
+
+    registerCommand({
+        "who", {"whoall"}, "/who [name] [level range]", "Search for players online", "Social", false
+    }, [this](const std::string& args) { return cmdWho(args); });
+
+    registerCommand({
+        "inspect", {}, "/inspect [name]", "Inspect target or named player", "Social", false
+    }, [this](const std::string& args) { return cmdInspect(args); });
+
+    registerCommand({
+        "lfg", {}, "/lfg", "Toggle Looking For Group status", "Social", false
+    }, [this](const std::string& args) { return cmdLFG(args); });
+
+    registerCommand({
+        "surname", {}, "/surname <lastname>", "Request to set your surname", "Social", false
+    }, [this](const std::string& args) { return cmdSurname(args); });
+
+    registerCommand({
+        "random", {"roll"}, "/random [low] [high]", "Roll a random number", "Social", false
+    }, [this](const std::string& args) { return cmdRandom(args); });
+
+    registerCommand({
+        "yell", {}, "/yell", "Yell for help", "Social", false
+    }, [this](const std::string& args) { return cmdYell(args); });
 
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
@@ -787,6 +888,277 @@ ActionResult CommandProcessor::cmdGroupAccept(const std::string& args) {
         displayMessage("You have joined " + inviterName + "'s group");
     }
     return result;
+}
+
+// ========== Combat + Social Commands (T102) ==========
+//
+// Ported from EverQuest::m_command_registry's Combat and Social categories
+// (eq_commands.cpp/eq_commands_movement.cpp, deleted from there in this
+// same change -- see refactor/T102_migrate_combat_social.md's atomicity
+// section). Unlike Group's GameStateSyncBridge gap (T99) or Trade's total
+// absence of a GameState projection (see cmdTrade below), combat targeting
+// IS reliably live here: m_state.combat() is kept current by
+// Application::syncCombatState() (application.cpp), a per-frame
+// CombatManager poll that predates GameStateSyncBridge and is unrelated to
+// it -- the same read path cmdHail (T39) already uses. Checked by reading
+// syncCombatState() in full before writing any of the code below.
+
+uint16_t CommandProcessor::resolveCombatTarget(const std::string& name, std::string* outError) {
+    if (!name.empty()) {
+        const auto* entity = m_state.entities().findEntityByName(name);
+        if (!entity) {
+            if (outError) *outError = "No target found matching '" + name + "'";
+            return 0;
+        }
+        return entity->spawnId;
+    }
+    if (!m_state.combat().hasTarget()) {
+        if (outError) *outError = "You don't have a target.";
+        return 0;
+    }
+    return m_state.combat().targetId();
+}
+
+ActionResult CommandProcessor::cmdTarget(const std::string& args) {
+    // Ported from game's target.handler: no-args is a usage error (unlike
+    // assist/shield/duel below, target has no "use current target"
+    // fallback -- it IS how you set the current target). Resolution itself
+    // (case-insensitive substring match) is EntityManager::findEntityByName(),
+    // matching game's own lowercase-both-sides search semantics exactly --
+    // CombatManager::SetTarget(std::string) (T97: case-SENSITIVE, a real,
+    // if minor, divergence) is deliberately NOT used for the search; only
+    // its resolved-id overload (via ActionDispatcher::targetEntity(), unchanged) is.
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /target <name>");
+    }
+    const auto* entity = m_state.entities().findEntityByName(args);
+    if (!entity) {
+        return ActionResult::Failure("No target found matching '" + args + "'");
+    }
+    auto result = m_dispatcher.targetEntity(entity->spawnId);
+    if (result.success) {
+        displayMessage("Targeting: " + entity->name);
+    }
+    return result;
+}
+
+ActionResult CommandProcessor::cmdAttack(const std::string& args) {
+    // Ported from game's attack.handler -- enableAutoAttack() already does
+    // the "no target" check inside the handler (CombatManager), matching
+    // game's own pre-check exactly (T51's comment: "Target check is done by
+    // the handler").
+    return m_dispatcher.enableAutoAttack();
+}
+
+ActionResult CommandProcessor::cmdStopAttack(const std::string& args) {
+    return m_dispatcher.disableAutoAttack();
+}
+
+ActionResult CommandProcessor::cmdAA(const std::string& args) {
+    // Ported from game's aa.handler: disable if enabled, else enable if
+    // targeted, else no-op -- toggleAutoAttack() (pre-existing, used
+    // directly by InputActionBridge's keyboard gesture too) already
+    // implements exactly this.
+    return m_dispatcher.toggleAutoAttack();
+}
+
+ActionResult CommandProcessor::cmdCombat(const std::string& args) {
+    // Ported from game's combat.handler verbatim: on/1/true, off/0/false,
+    // empty = toggle, else usage. This is /combat on|off -- T26's
+    // historically-unreachable command, reachable since T29's unified
+    // command channel; migrating it here keeps it reachable as the sole
+    // (migrated) implementation.
+    std::string arg = args;
+    while (!arg.empty() && arg.front() == ' ') arg.erase(arg.begin());
+    while (!arg.empty() && arg.back() == ' ') arg.pop_back();
+
+    if (arg.empty()) {
+        return m_dispatcher.toggleCombatManager();
+    } else if (arg == "on" || arg == "1" || arg == "true") {
+        return m_dispatcher.enableCombatManager();
+    } else if (arg == "off" || arg == "0" || arg == "false") {
+        return m_dispatcher.disableCombatManager();
+    }
+    return ActionResult::Failure("Usage: /combat [on|off]");
+}
+
+ActionResult CommandProcessor::cmdTaunt(const std::string& args) {
+    if (!m_state.combat().hasTarget()) {
+        return ActionResult::Failure("No target to taunt");
+    }
+    return m_dispatcher.taunt();
+}
+
+ActionResult CommandProcessor::cmdAutofire(const std::string& args) {
+    // Ported from game's autofire.handler: same enable/disable-toggle shape
+    // as /aa, over CombatManager's auto-fire flag instead of auto-attack's.
+    return m_dispatcher.toggleAutoFire();
+}
+
+ActionResult CommandProcessor::cmdAssist(const std::string& args) {
+    // Ported from game's assist_cmd: explicit name wins (resolved here via
+    // EntityManager, matching FindEntityByName's game-side substring
+    // search), else falls back to the current combat target.
+    std::string error;
+    uint16_t targetId = resolveCombatTarget(args, &error);
+    if (targetId == 0) {
+        return ActionResult::Failure(error.empty() ? ("Could not find '" + args + "'") : error);
+    }
+    return m_dispatcher.assist(targetId);
+}
+
+ActionResult CommandProcessor::cmdShield(const std::string& args) {
+    // Ported from game's shield_cmd: current target only, no name argument.
+    if (!m_state.combat().hasTarget()) {
+        return ActionResult::Failure("You don't have a target to shield.");
+    }
+    return m_dispatcher.shieldTarget(m_state.combat().targetId());
+}
+
+ActionResult CommandProcessor::cmdDuel(const std::string& args) {
+    // Ported from game's duel_cmd: current target only, no name argument.
+    if (!m_state.combat().hasTarget()) {
+        return ActionResult::Failure("You don't have a target.");
+    }
+    return m_dispatcher.duelRequest(m_state.combat().targetId());
+}
+
+ActionResult CommandProcessor::cmdDuelAccept(const std::string& args) {
+    // Ported from game's duelaccept_cmd. The pending-duel pre-check itself
+    // (EverQuest::HasPendingDuel(), GameState has no duel domain) lives in
+    // EqActionHandler::duelAccept() -- there is nothing for this layer to
+    // check first, unlike Group's hasPendingInvite() which IS projected
+    // into GameState.
+    return m_dispatcher.duelAccept();
+}
+
+ActionResult CommandProcessor::cmdDuelDecline(const std::string& args) {
+    return m_dispatcher.duelDecline();
+}
+
+// ---------- Social ----------
+
+ActionResult CommandProcessor::cmdTrade(const std::string& args) {
+    // Ported from game's trade_cmd. Unlike Combat above, Trade has NO
+    // GameState projection at all (checked: no GameStateSyncBridge case,
+    // no per-frame poll analogous to syncCombatState() -- see this unit's
+    // Review). So this command's full precondition chain (already trading?
+    // in combat? too far away? self-trade?) lives in
+    // EqActionHandler::requestTrade(), which reads EverQuest::
+    // GetTradeManager()/GetCombatManager() directly (both public, live,
+    // authoritative) instead of a GameState field. This layer only does
+    // name resolution (when a name is given) and passes 0 through
+    // otherwise, letting the handler fall back to the live combat target
+    // exactly like game's own code did.
+    uint16_t targetId = 0;
+    if (!args.empty()) {
+        const auto* entity = m_state.entities().findEntityByName(args);
+        if (!entity) {
+            return ActionResult::Failure("No player found matching '" + args + "'");
+        }
+        targetId = entity->spawnId;
+    }
+    return m_dispatcher.requestTrade(targetId);
+}
+
+ActionResult CommandProcessor::cmdTradeAccept(const std::string& args) {
+    return m_dispatcher.acceptTrade();
+}
+
+ActionResult CommandProcessor::cmdTradeDecline(const std::string& args) {
+    return m_dispatcher.declineTrade();
+}
+
+ActionResult CommandProcessor::cmdCancelTrade(const std::string& args) {
+    return m_dispatcher.cancelTrade();
+}
+
+ActionResult CommandProcessor::cmdWho(const std::string& args) {
+    // T97/T82: `who` is G02's intra-registry duplicate -- `game` itself has
+    // TWO "who" registrations (this one, Social's who_cmd; and Movement's
+    // `who`), and because RegisterMovementCommands() runs after
+    // RegisterSocialCommands(), Movement's has been the one silently
+    // winning every dispatch since G02, with Social's who_cmd dead by
+    // shadowing. This port CHOSE Social's who_cmd -- the real server /who
+    // request (SendWhoAllRequest(), with name/level-range parsing, a real
+    // OP_WhoAllResponse round trip) -- over Movement's `who` (a client-side
+    // scan of locally-known m_entities, format "[id] Name (Lvl N)",
+    // "...and N more"), because Social's is what real EQ's /who actually
+    // does; Movement's is a client-only substitute. Movement's `who`
+    // registration is deleted (not migrated) in the same change -- see
+    // eq_commands_movement.cpp. Argument parsing ported verbatim from
+    // who_cmd.handler.
+    std::string name;
+    int lvllow = -1, lvlhigh = -1;
+
+    std::istringstream iss(args);
+    std::string token;
+    std::vector<std::string> tokens;
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+
+    if (!tokens.empty()) {
+        bool firstIsLevel = false;
+        try {
+            lvllow = std::stoi(tokens[0]);
+            firstIsLevel = true;
+        } catch (...) {
+            name = tokens[0];
+        }
+
+        if (firstIsLevel && tokens.size() >= 2) {
+            try {
+                lvlhigh = std::stoi(tokens[1]);
+            } catch (...) {
+                lvlhigh = lvllow;
+            }
+        } else if (!firstIsLevel && tokens.size() >= 2) {
+            try {
+                lvllow = std::stoi(tokens[1]);
+                lvlhigh = (tokens.size() >= 3) ? std::stoi(tokens[2]) : lvllow;
+            } catch (...) {
+                // Ignore level parsing errors, matching game's handler.
+            }
+        }
+    }
+
+    return m_dispatcher.requestWho(name, lvllow, lvlhigh);
+}
+
+ActionResult CommandProcessor::cmdInspect(const std::string& args) {
+    // Ported from game's inspect_cmd: explicit name wins, else current target.
+    std::string error;
+    uint16_t targetId = resolveCombatTarget(args, &error);
+    if (targetId == 0) {
+        std::string usageError = args.empty()
+            ? "No target - use /inspect <name> or target a player"
+            : ("Player '" + args + "' not found");
+        return ActionResult::Failure(usageError);
+    }
+    return m_dispatcher.inspectTarget(targetId);
+}
+
+ActionResult CommandProcessor::cmdLFG(const std::string& args) {
+    return m_dispatcher.toggleLFG();
+}
+
+ActionResult CommandProcessor::cmdSurname(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /surname <lastname>");
+    }
+    return m_dispatcher.setSurname(args);
+}
+
+ActionResult CommandProcessor::cmdRandom(const std::string& args) {
+    uint32_t low = 0, high = 100;
+    std::istringstream iss(args);
+    iss >> low >> high;
+    return m_dispatcher.rollRandom(low, high);
+}
+
+ActionResult CommandProcessor::cmdYell(const std::string& args) {
+    return m_dispatcher.yellForHelp();
 }
 
 // ========== Spells Commands (T101) ==========

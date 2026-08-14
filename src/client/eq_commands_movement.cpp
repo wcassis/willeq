@@ -346,168 +346,10 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(stopfollow);
 
-	// === Combat Commands ===
-
-	Command target;
-	target.name = "target";
-	target.aliases = {"tar"};
-	target.usage = "/target <name>";
-	target.description = "Target entity by name";
-	target.category = "Combat";
-	target.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /target <name>");
-			return;
-		}
-		// Find entity by name (partial match)
-		std::string searchName = args;
-		std::transform(searchName.begin(), searchName.end(), searchName.begin(), ::tolower);
-
-		for (const auto& [id, entity] : m_entities) {
-			std::string entityName = entity.name;
-			std::transform(entityName.begin(), entityName.end(), entityName.begin(), ::tolower);
-			if (entityName.find(searchName) != std::string::npos) {
-				if (m_combat_manager) {
-					m_combat_manager->SetTarget(entity.spawn_id);
-					AddChatSystemMessage(fmt::format("Targeting: {}", EQT::toDisplayName(entity.name)));
-				}
-				return;
-			}
-		}
-		AddChatSystemMessage(fmt::format("No target found matching '{}'", args));
-	};
-	m_command_registry->registerCommand(target);
-
-	// T51: this is now the SOLE implementation of attack/stopattack/aa.
-	// Before T51 there were three: this one (registry 1, wins T29's
-	// dispatch order over everything else), a byte-for-byte duplicate in
-	// action::CommandProcessor (registry 2, always shadowed dead code,
-	// deleted), and two producer-less RendererIntent structs
-	// (AttackIntent/ToggleAutoAttackIntent, deleted). The keyboard gesture
-	// does NOT go through this registry -- it reaches
-	// ActionDispatcher::enableAutoAttack()/disableAutoAttack()/
-	// toggleAutoAttack() directly via InputActionBridge, which is why that
-	// path (and its checkZoneConnection() gate, absent here) is untouched.
-	// See refactor/T51_attack_path_consolidation.md.
-	Command attack;
-	attack.name = "attack";
-	attack.aliases = {"att"};
-	attack.usage = "/attack";
-	attack.description = "Begin auto-attack";
-	attack.category = "Combat";
-	attack.handler = [this](const std::string& args) {
-		if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
-			m_combat_manager->EnableAutoAttack();
-			AddChatSystemMessage("Auto attack ON");
-		} else {
-			AddChatSystemMessage("No target - auto attack not enabled");
-		}
-	};
-	m_command_registry->registerCommand(attack);
-
-	Command stopattack;
-	stopattack.name = "stopattack";
-	stopattack.usage = "/stopattack";
-	stopattack.description = "Stop auto-attack";
-	stopattack.category = "Combat";
-	stopattack.handler = [this](const std::string& args) {
-		if (m_combat_manager) {
-			m_combat_manager->DisableAutoAttack();
-			AddChatSystemMessage("Auto attack OFF");
-		}
-	};
-	m_command_registry->registerCommand(stopattack);
-
-	Command aa;
-	aa.name = "aa";
-	aa.aliases = {"~"};
-	aa.usage = "/aa";
-	aa.description = "Toggle auto-attack on/off";
-	aa.category = "Combat";
-	aa.handler = [this](const std::string& args) {
-		if (m_combat_manager) {
-			if (m_combat_manager->IsAutoAttackEnabled()) {
-				m_combat_manager->DisableAutoAttack();
-				AddChatSystemMessage("Auto attack OFF");
-			} else if (m_combat_manager->GetTargetId() != 0) {
-				m_combat_manager->EnableAutoAttack();
-				AddChatSystemMessage("Auto attack ON");
-			} else {
-				AddChatSystemMessage("No target - auto attack not enabled");
-			}
-		}
-	};
-	m_command_registry->registerCommand(aa);
-
-	Command combat;
-	combat.name = "combat";
-	combat.aliases = {};
-	combat.usage = "/combat [on|off]";
-	combat.description = "Enable/disable combat manager (auto-attack, hunting, etc.)";
-	combat.category = "Combat";
-	combat.handler = [this](const std::string& args) {
-		if (!m_combat_manager) return;
-
-		std::string arg = args;
-		// Trim whitespace
-		while (!arg.empty() && arg[0] == ' ') arg = arg.substr(1);
-		while (!arg.empty() && arg.back() == ' ') arg.pop_back();
-
-		if (arg.empty()) {
-			// Toggle
-			if (m_combat_manager->IsEnabled()) {
-				m_combat_manager->Disable();
-				AddChatSystemMessage("Combat manager disabled");
-			} else {
-				m_combat_manager->Enable();
-				AddChatSystemMessage("Combat manager enabled");
-			}
-		} else if (arg == "on" || arg == "1" || arg == "true") {
-			m_combat_manager->Enable();
-			AddChatSystemMessage("Combat manager enabled");
-		} else if (arg == "off" || arg == "0" || arg == "false") {
-			m_combat_manager->Disable();
-			AddChatSystemMessage("Combat manager disabled");
-		} else {
-			AddChatSystemMessage("Usage: /combat [on|off]");
-		}
-	};
-	m_command_registry->registerCommand(combat);
-
-	Command taunt;
-	taunt.name = "taunt";
-	taunt.usage = "/taunt";
-	taunt.description = "Taunt current target (warrior/paladin/shadowknight ability)";
-	taunt.category = "Combat";
-	taunt.handler = [this](const std::string& args) {
-		if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
-			m_combat_manager->Taunt();
-			AddChatSystemMessage("Taunting target");
-		} else {
-			AddChatSystemMessage("No target to taunt");
-		}
-	};
-	m_command_registry->registerCommand(taunt);
-
-	Command autofire;
-	autofire.name = "autofire";
-	autofire.aliases = {"af"};
-	autofire.usage = "/autofire";
-	autofire.description = "Toggle ranged auto-attack (archery/throwing)";
-	autofire.category = "Combat";
-	autofire.handler = [this](const std::string& args) {
-		if (!m_combat_manager) return;
-		if (m_combat_manager->IsAutoFireEnabled()) {
-			m_combat_manager->DisableAutoFire();
-			AddChatSystemMessage("Auto fire OFF");
-		} else if (m_combat_manager->GetTargetId() != 0) {
-			m_combat_manager->EnableAutoFire();
-			AddChatSystemMessage("Auto fire ON");
-		} else {
-			AddChatSystemMessage("No target - auto fire not enabled");
-		}
-	};
-	m_command_registry->registerCommand(autofire);
+	// T102: target/attack/stopattack/aa/combat/taunt/autofire MIGRATED to
+	// action::CommandProcessor (cmdTarget/cmdAttack/cmdStopAttack/cmdAA/
+	// cmdCombat/cmdTaunt/cmdAutofire). See
+	// refactor/T102_migrate_combat_social.md.
 
 	// === Utility Commands ===
 
@@ -989,32 +831,11 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(time_cmd);
 
-	Command who;
-	who.name = "who";
-	who.usage = "/who [filter]";
-	who.description = "List nearby entities";
-	who.category = "Social";
-	who.handler = [this](const std::string& args) {
-		std::string filter = args;
-		std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
-
-		int count = 0;
-		for (const auto& [id, entity] : m_entities) {
-			std::string name = entity.name;
-			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-			if (filter.empty() || name.find(filter) != std::string::npos) {
-				AddChatSystemMessage(fmt::format("[{}] {} (Lvl {})", entity.spawn_id, EQT::toDisplayName(entity.name), entity.level));
-				count++;
-				if (count >= 20) {
-					AddChatSystemMessage(fmt::format("... and {} more", m_entities.size() - count));
-					break;
-				}
-			}
-		}
-		if (count == 0) {
-			AddChatSystemMessage("No entities found.");
-		}
-	};
-	m_command_registry->registerCommand(who);
+	// T102: this `who` (client-side m_entities scan, previously winning
+	// the intra-registry collision with Social's who_cmd over in
+	// eq_commands.cpp -- T97/T82) is DELETED, not migrated. Social's
+	// who_cmd (the real server /who request) was ported instead -- see
+	// action::CommandProcessor::cmdWho and
+	// refactor/T102_migrate_combat_social.md for why.
 
 }

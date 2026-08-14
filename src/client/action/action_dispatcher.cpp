@@ -302,6 +302,94 @@ ActionResult ActionDispatcher::toggleAutoAttack() {
     return ActionResult::Success();
 }
 
+// ===== T102: Combat family additions =====
+// All the target-precondition/messaging logic (no target, already trading,
+// no pending duel, etc.) lives in EqActionHandler -- it has access to
+// EverQuest's live CombatManager/TradeManager/duel state, which
+// ActionDispatcher (only state::GameState + the IActionHandler interface)
+// does not. This matches the established "target check is done by the
+// handler" pattern above.
+
+ActionResult ActionDispatcher::assist(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->assist(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::shieldTarget(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->shieldTarget(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::taunt() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->taunt();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::toggleAutoFire() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->toggleAutoFire();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::enableCombatManager() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->enableCombatManager();
+    return ActionResult::Success("Combat manager enabled");
+}
+
+ActionResult ActionDispatcher::disableCombatManager() {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->disableCombatManager();
+    return ActionResult::Success("Combat manager disabled");
+}
+
+ActionResult ActionDispatcher::toggleCombatManager() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->toggleCombatManager();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::duelRequest(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->duelRequest(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::duelAccept() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->duelAccept();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::duelDecline() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->duelDecline();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::castSpell(uint8_t gemSlot) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
@@ -796,6 +884,14 @@ ActionResult ActionDispatcher::cancelTrade() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::declineTrade() {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->declineTrade();
+    return ActionResult::Success();
+}
+
 // ========== Zone Actions ==========
 
 ActionResult ActionDispatcher::requestZone(const std::string& zoneName) {
@@ -1125,6 +1221,60 @@ ActionResult ActionDispatcher::sendPositionUpdate() {
     if (!result.success) return result;
 
     m_handler->sendPositionUpdate();
+    return ActionResult::Success();
+}
+
+// ========== Social Actions (T102) ==========
+
+ActionResult ActionDispatcher::inspectTarget(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->inspectTarget(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::toggleLFG() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->toggleLFG();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::setSurname(const std::string& surname) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (surname.empty()) {
+        return ActionResult::Failure("Usage: /surname <lastname>");
+    }
+
+    m_handler->setSurname(surname);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::rollRandom(uint32_t low, uint32_t high) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->rollRandom(low, high);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::yellForHelp() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->yellForHelp();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::requestWho(const std::string& name, int lvlLow, int lvlHigh) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->requestWho(name, lvlLow, lvlHigh);
     return ActionResult::Success();
 }
 

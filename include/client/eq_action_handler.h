@@ -59,6 +59,18 @@ public:
     void disableAutoAttack() override;
     void toggleAutoAttack() override;
 
+    // T102
+    void assist(uint16_t targetId) override;
+    void shieldTarget(uint16_t targetId) override;
+    void taunt() override;
+    void toggleAutoFire() override;
+    void enableCombatManager() override;
+    void disableCombatManager() override;
+    void toggleCombatManager() override;
+    void duelRequest(uint16_t targetId) override;
+    void duelAccept() override;
+    void duelDecline() override;
+
     void castSpell(uint8_t gemSlot) override;
     void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) override;
     void interruptCast() override;
@@ -123,6 +135,7 @@ public:
     void requestTrade(uint16_t targetId) override;
     void acceptTrade() override;
     void cancelTrade() override;
+    void declineTrade() override;
 
     // ========== Zone ==========
 
@@ -163,6 +176,15 @@ public:
 
     void sendAnimation(uint8_t animationId, uint8_t speed) override;
     void sendPositionUpdate() override;
+
+    // ========== Social (T102) ==========
+
+    void inspectTarget(uint16_t targetId) override;
+    void toggleLFG() override;
+    void setSurname(const std::string& surname) override;
+    void rollRandom(uint32_t low, uint32_t high) override;
+    void yellForHelp() override;
+    void requestWho(const std::string& name, int lvlLow, int lvlHigh) override;
 
 private:
     EverQuest& m_eq;

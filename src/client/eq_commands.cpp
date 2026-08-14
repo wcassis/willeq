@@ -495,159 +495,9 @@ void EverQuest::RegisterSocialCommands()
 	// explicit /groupaccept (alias /gaccept) -- see that file's cmdGroupAccept
 	// for why an explicit spelling was chosen over reviving bare /follow.
 
-	// === Trade Commands ===
-
-	Command trade_cmd;
-	trade_cmd.name = "trade";
-	trade_cmd.usage = "/trade [name]";
-	trade_cmd.description = "Initiate trade with target or named player";
-	trade_cmd.category = "Social";
-	trade_cmd.handler = [this](const std::string& args) {
-		if (!m_trade_manager) {
-			AddChatSystemMessage("Trade not available");
-			return;
-		}
-		if (m_trade_manager->isTrading()) {
-			AddChatSystemMessage("You are already trading");
-			return;
-		}
-		// Cannot trade while in combat
-		if (m_combat_manager && m_combat_manager->GetCombatState() == COMBAT_STATE_ENGAGED) {
-			AddChatSystemMessage("You cannot trade while in combat");
-			return;
-		}
-
-		uint32_t target_spawn_id = 0;
-		std::string target_name;
-
-		if (args.empty()) {
-			// Use current target
-			if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
-				target_spawn_id = m_combat_manager->GetTargetId();
-				auto it = m_entities.find(target_spawn_id);
-				if (it != m_entities.end()) {
-					target_name = it->second.name;
-				}
-			}
-			if (target_spawn_id == 0) {
-				AddChatSystemMessage("No target - use /trade <name> or target a player");
-				return;
-			}
-		} else {
-			// Find player by name
-			std::string searchName = args;
-			std::transform(searchName.begin(), searchName.end(), searchName.begin(), ::tolower);
-
-			for (const auto& [id, entity] : m_entities) {
-				// Only trade with players (not corpses, class_id > 0 indicates player class)
-				if (entity.class_id == 0 || entity.is_corpse) continue;
-
-				std::string entityName = entity.name;
-				std::transform(entityName.begin(), entityName.end(), entityName.begin(), ::tolower);
-				if (entityName.find(searchName) != std::string::npos) {
-					target_spawn_id = entity.spawn_id;
-					target_name = entity.name;
-					break;
-				}
-			}
-			if (target_spawn_id == 0) {
-				AddChatSystemMessage(fmt::format("No player found matching '{}'", args));
-				return;
-			}
-		}
-
-		// Cannot trade with self
-		if (target_spawn_id == m_my_spawn_id) {
-			AddChatSystemMessage("You cannot trade with yourself");
-			return;
-		}
-
-		// Check distance to target (max trade range ~150 units)
-		constexpr float MAX_TRADE_DISTANCE = 150.0f;
-		bool isNpc = false;
-		auto target_it = m_entities.find(target_spawn_id);
-		if (target_it != m_entities.end()) {
-			const auto& target_entity = target_it->second;
-			isNpc = (target_entity.npc_type == 1);
-			float dx = m_x - target_entity.x;
-			float dy = m_y - target_entity.y;
-			float dz = m_z - target_entity.z;
-			float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
-			if (distance > MAX_TRADE_DISTANCE) {
-				AddChatSystemMessage("You are too far away to trade");
-				return;
-			}
-		}
-
-		m_trade_manager->requestTrade(target_spawn_id, target_name, isNpc);
-		AddChatSystemMessage(fmt::format("Requesting trade with {}", EQT::toDisplayName(target_name)));
-	};
-	m_command_registry->registerCommand(trade_cmd);
-
-	Command accept_cmd;
-	accept_cmd.name = "accept";
-	accept_cmd.usage = "/accept";
-	accept_cmd.description = "Accept pending trade request";
-	accept_cmd.category = "Social";
-	accept_cmd.handler = [this](const std::string& args) {
-		if (!m_trade_manager) {
-			AddChatSystemMessage("Trade not available");
-			return;
-		}
-		if (m_trade_manager->getState() != TradeState::PendingAccept) {
-			AddChatSystemMessage("No pending trade request");
-			return;
-		}
-		// Cannot accept trade while in combat
-		if (m_combat_manager && m_combat_manager->GetCombatState() == COMBAT_STATE_ENGAGED) {
-			AddChatSystemMessage("You cannot trade while in combat");
-			return;
-		}
-		m_trade_manager->acceptTradeRequest();
-		AddChatSystemMessage(fmt::format("Accepting trade with {}", EQT::toDisplayName(m_trade_manager->getPartnerName())));
-	};
-	m_command_registry->registerCommand(accept_cmd);
-
-	Command tradedecline_cmd;
-	tradedecline_cmd.name = "tradedecline";
-	tradedecline_cmd.aliases = {"rejecttrade"};
-	tradedecline_cmd.usage = "/tradedecline";
-	tradedecline_cmd.description = "Decline pending trade request";
-	tradedecline_cmd.category = "Social";
-	tradedecline_cmd.handler = [this](const std::string& args) {
-		if (!m_trade_manager) {
-			AddChatSystemMessage("Trade not available");
-			return;
-		}
-		if (m_trade_manager->getState() != TradeState::PendingAccept) {
-			AddChatSystemMessage("No pending trade request");
-			return;
-		}
-		std::string partner_name = m_trade_manager->getPartnerName();
-		m_trade_manager->rejectTradeRequest();
-		AddChatSystemMessage(fmt::format("Declined trade request from {}", EQT::toDisplayName(partner_name)));
-	};
-	m_command_registry->registerCommand(tradedecline_cmd);
-
-	Command canceltrade_cmd;
-	canceltrade_cmd.name = "canceltrade";
-	canceltrade_cmd.aliases = {"stoptrade"};
-	canceltrade_cmd.usage = "/canceltrade";
-	canceltrade_cmd.description = "Cancel active trade";
-	canceltrade_cmd.category = "Social";
-	canceltrade_cmd.handler = [this](const std::string& args) {
-		if (!m_trade_manager) {
-			AddChatSystemMessage("Trade not available");
-			return;
-		}
-		if (m_trade_manager->getState() != TradeState::Active) {
-			AddChatSystemMessage("You are not trading");
-			return;
-		}
-		m_trade_manager->cancelTrade();
-		AddChatSystemMessage("Trade cancelled");
-	};
-	m_command_registry->registerCommand(canceltrade_cmd);
+	// T102: trade/accept/tradedecline/canceltrade MIGRATED to
+	// action::CommandProcessor (cmdTrade/cmdTradeAccept/cmdTradeDecline/
+	// cmdCancelTrade) -- see refactor/T102_migrate_combat_social.md.
 
 	// === Resurrection Commands ===
 
@@ -673,101 +523,11 @@ void EverQuest::RegisterSocialCommands()
 	};
 	m_command_registry->registerCommand(rezdecline_cmd);
 
-	// === Who Command ===
-
-	Command who_cmd;
-	who_cmd.name = "who";
-	who_cmd.aliases = {"whoall"};
-	who_cmd.usage = "/who [name] [level range]";
-	who_cmd.description = "Search for players online";
-	who_cmd.category = "Social";
-	who_cmd.handler = [this](const std::string& args) {
-		// Parse arguments: /who [name] [minlvl maxlvl]
-		std::string name;
-		int lvllow = -1, lvlhigh = -1;
-
-		std::istringstream iss(args);
-		std::string token;
-		std::vector<std::string> tokens;
-		while (iss >> token) {
-			tokens.push_back(token);
-		}
-
-		if (!tokens.empty()) {
-			// First check if first arg is a number (level range)
-			bool first_is_level = false;
-			try {
-				lvllow = std::stoi(tokens[0]);
-				first_is_level = true;
-			} catch (...) {
-				name = tokens[0];
-			}
-
-			if (first_is_level && tokens.size() >= 2) {
-				try {
-					lvlhigh = std::stoi(tokens[1]);
-				} catch (...) {
-					lvlhigh = lvllow;  // Single level
-				}
-			} else if (!first_is_level && tokens.size() >= 2) {
-				try {
-					lvllow = std::stoi(tokens[1]);
-					if (tokens.size() >= 3) {
-						lvlhigh = std::stoi(tokens[2]);
-					} else {
-						lvlhigh = lvllow;
-					}
-				} catch (...) {
-					// Ignore level parsing errors
-				}
-			}
-		}
-
-		SendWhoAllRequest(name, lvllow, lvlhigh);
-		AddChatSystemMessage("Searching for players...");
-	};
-	m_command_registry->registerCommand(who_cmd);
-
-	Command inspect_cmd;
-	inspect_cmd.name = "inspect";
-	inspect_cmd.usage = "/inspect [name]";
-	inspect_cmd.description = "Inspect target or named player";
-	inspect_cmd.category = "Social";
-	inspect_cmd.handler = [this](const std::string& args) {
-		uint32_t target_id = 0;
-
-		if (args.empty()) {
-			// Use current target
-			if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {
-				target_id = m_combat_manager->GetTargetId();
-			}
-			if (target_id == 0) {
-				AddChatSystemMessage("No target - use /inspect <name> or target a player");
-				return;
-			}
-		} else {
-			// Find player by name
-			std::string searchName = args;
-			std::transform(searchName.begin(), searchName.end(), searchName.begin(), ::tolower);
-
-			for (const auto& [id, entity] : m_entities) {
-				std::string entityName = entity.name;
-				std::transform(entityName.begin(), entityName.end(), entityName.begin(), ::tolower);
-				if (entityName.find(searchName) != std::string::npos) {
-					target_id = id;
-					break;
-				}
-			}
-			if (target_id == 0) {
-				AddChatSystemMessage(fmt::format("Player '{}' not found", args));
-				return;
-			}
-		}
-
-		SendInspectRequest(target_id);
-		AddChatSystemMessage("Inspecting...");
-	};
-	m_command_registry->registerCommand(inspect_cmd);
+	// T102: who (who_cmd -- the Social section's real server /who
+	// request) and inspect MIGRATED to action::CommandProcessor
+	// (cmdWho/cmdInspect). See refactor/T102_migrate_combat_social.md for
+	// why who_cmd was chosen over Movement's who (eq_commands_movement.cpp,
+	// deleted, not migrated).
 
 	// === Guild Commands ===
 
@@ -926,39 +686,7 @@ void EverQuest::RegisterSocialCommands()
 
 	// === Phase 3: Combat Targeting Commands ===
 
-	Command assist_cmd;
-	assist_cmd.name = "assist";
-	assist_cmd.aliases = {"a"};
-	assist_cmd.usage = "/assist [target]";
-	assist_cmd.description = "Assist your target or specified player";
-	assist_cmd.category = "Combat";
-	assist_cmd.handler = [this](const std::string& args) {
-		uint32_t target_id = 0;
-		if (args.empty()) {
-			// Use current target. T28: repointed from m_game_state.combat()
-			// (state-layer CombatState target fields, never populated in
-			// production -- see refactor/deferred.md "Dead parallel state
-			// copies...") to the authoritative CombatManager, matching
-			// eq_bridge.cpp's usage.
-			target_id = (m_combat_manager && m_combat_manager->HasTarget())
-				? m_combat_manager->GetTargetId() : 0;
-			if (target_id == 0) {
-				AddChatSystemMessage("You don't have a target.");
-				return;
-			}
-		} else {
-			// Find player by name
-			Entity* entity = FindEntityByName(args);
-			if (entity) {
-				target_id = entity->spawn_id;
-			} else {
-				AddChatSystemMessage(fmt::format("Could not find '{}'", args));
-				return;
-			}
-		}
-		SendAssist(target_id);
-	};
-	m_command_registry->registerCommand(assist_cmd);
+	// T102: assist MIGRATED to action::CommandProcessor (cmdAssist).
 
 	// === Phase 3: Group Commands ===
 
@@ -981,35 +709,12 @@ void EverQuest::RegisterSocialCommands()
 
 	// === Phase 3: LFG Commands ===
 
-	Command lfg_cmd;
-	lfg_cmd.name = "lfg";
-	lfg_cmd.usage = "/lfg";
-	lfg_cmd.description = "Toggle Looking For Group status";
-	lfg_cmd.category = "Social";
-	lfg_cmd.handler = [this](const std::string& args) {
-		SendLFGCommand(!m_is_lfg);
-	};
-	m_command_registry->registerCommand(lfg_cmd);
+	// T102: lfg MIGRATED to action::CommandProcessor (cmdLFG).
 
 	// === Phase 3: Combat Ability Commands ===
 
-	Command shield_cmd;
-	shield_cmd.name = "shield";
-	shield_cmd.usage = "/shield";
-	shield_cmd.description = "Shield your current target (Warrior/Paladin)";
-	shield_cmd.category = "Combat";
-	shield_cmd.handler = [this](const std::string& args) {
-		// T28: repointed from the never-populated state-layer CombatState
-		// target to the authoritative CombatManager (see /assist above).
-		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
-			? m_combat_manager->GetTargetId() : 0;
-		if (target_id == 0) {
-			AddChatSystemMessage("You don't have a target to shield.");
-			return;
-		}
-		SendShielding(target_id);
-	};
-	m_command_registry->registerCommand(shield_cmd);
+	// T102: shield MIGRATED to action::CommandProcessor (cmdShield).
+	// See refactor/T102_migrate_combat_social.md.
 
 	// === Phase 3: Misc Commands ===
 
@@ -1023,53 +728,8 @@ void EverQuest::RegisterSocialCommands()
 	};
 	m_command_registry->registerCommand(save_cmd);
 
-	// === Phase 4: Duel Commands ===
-
-	Command duel_cmd;
-	duel_cmd.name = "duel";
-	duel_cmd.usage = "/duel";
-	duel_cmd.description = "Challenge your target to a duel";
-	duel_cmd.category = "Combat";
-	duel_cmd.handler = [this](const std::string& args) {
-		// T28: repointed from the never-populated state-layer CombatState
-		// target to the authoritative CombatManager (see /assist above).
-		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
-			? m_combat_manager->GetTargetId() : 0;
-		if (target_id == 0) {
-			AddChatSystemMessage("You don't have a target.");
-			return;
-		}
-		SendDuelRequest(target_id);
-	};
-	m_command_registry->registerCommand(duel_cmd);
-
-	Command duelaccept_cmd;
-	duelaccept_cmd.name = "duelaccept";
-	duelaccept_cmd.usage = "/duelaccept";
-	duelaccept_cmd.description = "Accept a duel challenge";
-	duelaccept_cmd.category = "Combat";
-	duelaccept_cmd.handler = [this](const std::string& args) {
-		if (!m_has_pending_duel) {
-			AddChatSystemMessage("You have no pending duel challenge.");
-			return;
-		}
-		SendDuelAccept(m_duel_initiator_id);
-	};
-	m_command_registry->registerCommand(duelaccept_cmd);
-
-	Command dueldecline_cmd;
-	dueldecline_cmd.name = "dueldecline";
-	dueldecline_cmd.usage = "/dueldecline";
-	dueldecline_cmd.description = "Decline a duel challenge";
-	dueldecline_cmd.category = "Combat";
-	dueldecline_cmd.handler = [this](const std::string& args) {
-		if (!m_has_pending_duel) {
-			AddChatSystemMessage("You have no pending duel challenge.");
-			return;
-		}
-		SendDuelDecline(m_duel_initiator_id);
-	};
-	m_command_registry->registerCommand(dueldecline_cmd);
+	// T102: duel/duelaccept/dueldecline MIGRATED to
+	// action::CommandProcessor (cmdDuel/cmdDuelAccept/cmdDuelDecline).
 
 	// === Phase 4: Skill Commands ===
 
@@ -1093,36 +753,11 @@ void EverQuest::RegisterSocialCommands()
 
 	// === Phase 4: Cosmetic Commands ===
 
-	Command surname_cmd;
-	surname_cmd.name = "surname";
-	surname_cmd.usage = "/surname <lastname>";
-	surname_cmd.description = "Request to set your surname";
-	surname_cmd.category = "Social";
-	surname_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /surname <lastname>");
-			return;
-		}
-		SendSurname(args);
-	};
-	m_command_registry->registerCommand(surname_cmd);
+	// T102: surname MIGRATED to action::CommandProcessor (cmdSurname).
 
 	// === Phase 4: Misc Commands ===
 
-	Command random_cmd;
-	random_cmd.name = "random";
-	random_cmd.aliases = {"roll"};
-	random_cmd.usage = "/random [low] [high]";
-	random_cmd.description = "Roll a random number";
-	random_cmd.category = "Social";
-	random_cmd.handler = [this](const std::string& args) {
-		uint32_t low = 0, high = 100;
-		std::istringstream iss(args);
-		iss >> low >> high;
-		if (high < low) high = low;
-		SendRandom(low, high);
-	};
-	m_command_registry->registerCommand(random_cmd);
+	// T102: random MIGRATED to action::CommandProcessor (cmdRandom).
 
 	Command rewind_cmd;
 	rewind_cmd.name = "rewind";
@@ -1134,15 +769,7 @@ void EverQuest::RegisterSocialCommands()
 	};
 	m_command_registry->registerCommand(rewind_cmd);
 
-	Command yell_cmd;
-	yell_cmd.name = "yell";
-	yell_cmd.usage = "/yell";
-	yell_cmd.description = "Yell for help";
-	yell_cmd.category = "Social";
-	yell_cmd.handler = [this](const std::string& args) {
-		SendYellForHelp();
-	};
-	m_command_registry->registerCommand(yell_cmd);
+	// T102: yell MIGRATED to action::CommandProcessor (cmdYell).
 
 	Command bug_cmd;
 	bug_cmd.name = "bug";

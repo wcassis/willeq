@@ -125,6 +125,18 @@ public:
     void disableAutoAttack() override { record("disableAutoAttack"); }
     void toggleAutoAttack() override { record("toggleAutoAttack"); }
 
+    // T102
+    void assist(uint16_t targetId) override { record("assist", targetId); }
+    void shieldTarget(uint16_t targetId) override { record("shieldTarget", targetId); }
+    void taunt() override { record("taunt"); }
+    void toggleAutoFire() override { record("toggleAutoFire"); }
+    void enableCombatManager() override { record("enableCombatManager"); }
+    void disableCombatManager() override { record("disableCombatManager"); }
+    void toggleCombatManager() override { record("toggleCombatManager"); }
+    void duelRequest(uint16_t targetId) override { record("duelRequest", targetId); }
+    void duelAccept() override { record("duelAccept"); }
+    void duelDecline() override { record("duelDecline"); }
+
     void castSpell(uint8_t gemSlot) override {
         record("castSpell", static_cast<int>(gemSlot));
     }
@@ -218,6 +230,7 @@ public:
     }
     void acceptTrade() override { record("acceptTrade"); }
     void cancelTrade() override { record("cancelTrade"); }
+    void declineTrade() override { record("declineTrade"); }
 
     // ========== Zone ==========
     void requestZone(const std::string& zoneName) override {
@@ -262,6 +275,16 @@ public:
         record("sendAnimation", static_cast<int>(animationId), static_cast<int>(speed));
     }
     void sendPositionUpdate() override { record("sendPositionUpdate"); }
+
+    // ========== Social (T102) ==========
+    void inspectTarget(uint16_t targetId) override { record("inspectTarget", targetId); }
+    void toggleLFG() override { record("toggleLFG"); }
+    void setSurname(const std::string& surname) override { record("setSurname", surname); }
+    void rollRandom(uint32_t low, uint32_t high) override { record("rollRandom", low, high); }
+    void yellForHelp() override { record("yellForHelp"); }
+    void requestWho(const std::string& name, int lvlLow, int lvlHigh) override {
+        record("requestWho", name, lvlLow, lvlHigh);
+    }
 
 private:
     template <typename... Args>

@@ -426,21 +426,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_video_capture_flags)
 
-# T51: coverage for the consolidated attack path (eq_commands_movement.cpp's
-# registry-1 attack/stopattack/aa, the sole survivor after registry 2's
-# always-shadowed duplicate registrations and the producer-less
-# AttackIntent/ToggleAutoAttackIntent were deleted) -- same MakeEq()/
-# TestBridge/ProcessChatInput seam as test_eq_commands_assist.cpp above.
-# Covers every surviving alias (attack/att/stopattack/aa/~) plus the "/a
-# means assist, not attack" finding from T51's live probe.
-ADD_EXECUTABLE(test_eq_commands_attack
-    test_eq_commands_attack.cpp
-)
-TARGET_LINK_LIBRARIES(test_eq_commands_attack GTest::gtest_main willeq_core)
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
-    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_attack PRIVATE ${IRRLICHT_INCLUDE_DIR})
-ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_commands_attack)
+# T51 added coverage here for the then-consolidated attack path
+# (eq_commands_movement.cpp's registry-1 attack/stopattack/aa). T102
+# MIGRATES attack/stopattack/aa/target (plus assist/shield/duel from
+# test_eq_commands_assist.cpp) to action::CommandProcessor and deletes the
+# game-registry registrations this file's ProcessChatInput()-seam tests
+# depended on -- test_eq_commands_attack.cpp is REMOVED (not repointed);
+# equivalent coverage now lives in test_command_processor.cpp's T102
+# section (FakeActionHandler-based, matching every other migrated family).
+# See refactor/T102_migrate_combat_social.md.
 
 # T24: SpellManager coverage (gem state machine, cast validation matrix via
 # direct validateCast()/checkMana()/checkRange()/adjustTargetForSpellType()
