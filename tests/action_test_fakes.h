@@ -132,6 +132,9 @@ public:
         record("castSpellOnTarget", static_cast<int>(gemSlot), targetId);
     }
     void interruptCast() override { record("interruptCast"); }
+    void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) override {
+        record("beginCastFromGem", static_cast<int>(gemSlot), targetId);
+    }
 
     void useAbility(uint32_t abilityId) override {
         record("useAbility", abilityId);
@@ -204,6 +207,10 @@ public:
     }
     void openSpellbook() override { record("openSpellbook"); }
     void closeSpellbook() override { record("closeSpellbook"); }
+    void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) override {
+        record("memorizeSpellByName", spellName, static_cast<int>(gemSlot));
+    }
+    void listMemorizedSpells() override { record("listMemorizedSpells"); }
 
     // ========== Trade ==========
     void requestTrade(uint16_t targetId) override {

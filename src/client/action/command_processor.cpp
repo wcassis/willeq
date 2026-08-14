@@ -341,13 +341,47 @@ void CommandProcessor::registerBuiltinCommands() {
         "anon", {}, "/anon", "Toggle anonymous status", "Utility", false
     }, [this](const std::string& args) { return cmdAnon(args); });
 
-    // T98: skills/gems/mem/forget registrations removed -- shadowed dead
-    // code. This empties the "Spells" category entirely.
+    // T101: gems/mem/forget/cast/interrupt/spellbook migrated here from
+    // EverQuest::m_command_registry's Spells category (removed from
+    // eq_commands_spells.cpp in the same change -- see
+    // refactor/T101_migrate_spells_pet_family.md). cmdSkills stays NOT
+    // migrated: game's /skills is registered category "Utility", outside
+    // this unit's confirmed "Spells category (6)" membership.
+    registerCommand({
+        "cast", {}, "/cast <gem#>", "Cast spell from gem slot (1-8)", "Spells", true
+    }, [this](const std::string& args) { return cmdCast(args); });
 
-    // T98: pet registration removed -- shadowed dead code. This empties the
-    // "Pet" category entirely. ActionDispatcher's pet wrappers (T96-fixed)
-    // are untouched -- see refactor/T98_delete_shadowed_commands.md's
-    // cascade list.
+    registerCommand({
+        "mem", {"memspell", "memorize"}, "/mem <gem#> <spell_name>", "Memorize spell to gem slot", "Spells", true
+    }, [this](const std::string& args) { return cmdMem(args); });
+
+    registerCommand({
+        "forget", {}, "/forget <gem#>", "Forget spell from gem slot", "Spells", true
+    }, [this](const std::string& args) { return cmdForget(args); });
+
+    registerCommand({
+        "gems", {}, "/gems", "Show memorized spells", "Spells", false
+    }, [this](const std::string& args) { return cmdGems(args); });
+
+    registerCommand({
+        "interrupt", {"ducking"}, "/interrupt", "Interrupt current spell cast", "Spells", false
+    }, [this](const std::string& args) { return cmdInterrupt(args); });
+
+    registerCommand({
+        "spellbook", {"book"}, "/spellbook", "Open spellbook window", "Spells", false
+    }, [this](const std::string& args) { return cmdSpellbook(args); });
+
+    // T101: pet migrated here from EverQuest::m_command_registry's Pet
+    // category (removed from eq_commands_spells.cpp in the same change).
+    // game's vocabulary (attack/back/follow/guard/sit/stand/taunt/notaunt/
+    // hold/nohold/focus/nofocus/health/dismiss/leader/spellhold/
+    // nospellhold) is ported in full -- a strict superset of what the
+    // pre-T101 ActionDispatcher wrapper set covered (T97).
+    registerCommand({
+        "pet", {}, "/pet <command> [target]",
+        "Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)",
+        "Pet", false
+    }, [this](const std::string& args) { return cmdPet(args); });
 
     // T98: filter registration removed -- shadowed dead code.
 
@@ -635,6 +669,212 @@ ActionResult CommandProcessor::cmdGroupAccept(const std::string& args) {
         displayMessage("You have joined " + inviterName + "'s group");
     }
     return result;
+}
+
+// ========== Spells Commands (T101) ==========
+//
+// Ported from EverQuest::m_command_registry's Spells-category handlers
+// (eq_commands_spells.cpp, deleted from there in this same change -- see
+// refactor/T101_migrate_spells_pet_family.md's atomicity section). T97's
+// divergence table found game's cast/interrupt/mem/forget/gems all better
+// than action's old (T98-deleted) copies -- cast/interrupt because game
+// uses the real EQ::SpellManager path (the old action copies routed
+// through an unconnected CombatManager-based subsystem); mem/forget/gems
+// because the old action copies were literal stubs. The name-lookup/
+// disambiguation and SpellManager-touching logic lives in
+// EqActionHandler (below the action layer's own state-reading surface --
+// it needs EverQuest::GetSpellManager()); this layer stays thin parsing +
+// dispatch, matching every other migrated family.
+
+ActionResult CommandProcessor::cmdCast(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /cast <gem# 1-8>");
+    }
+    int gem = 0;
+    try {
+        gem = std::stoi(args);
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Usage: /cast <gem# 1-8>");
+    }
+    if (gem < 1 || gem > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
+    }
+    uint16_t targetId = m_state.combat().hasTarget() ? m_state.combat().targetId() : 0;
+    return m_dispatcher.beginCastFromGem(static_cast<uint8_t>(gem), targetId);
+}
+
+ActionResult CommandProcessor::cmdMem(const std::string& args) {
+    std::istringstream iss(args);
+    int gem = 0;
+    std::string spellName;
+    if (!(iss >> gem)) {
+        return ActionResult::Failure("Usage: /mem <gem# 1-8> <spell_name>");
+    }
+    std::getline(iss >> std::ws, spellName);
+    if (spellName.empty()) {
+        return ActionResult::Failure("Usage: /mem <gem# 1-8> <spell_name>");
+    }
+    if (gem < 1 || gem > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
+    }
+    return m_dispatcher.memorizeSpellByName(spellName, static_cast<uint8_t>(gem));
+}
+
+ActionResult CommandProcessor::cmdForget(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /forget <gem# 1-8>");
+    }
+    int gem = 0;
+    try {
+        gem = std::stoi(args);
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Usage: /forget <gem# 1-8>");
+    }
+    if (gem < 1 || gem > 8) {
+        return ActionResult::Failure("Gem slot must be 1-8");
+    }
+    return m_dispatcher.forgetSpell(static_cast<uint8_t>(gem));
+}
+
+ActionResult CommandProcessor::cmdGems(const std::string& args) {
+    return m_dispatcher.listMemorizedSpells();
+}
+
+ActionResult CommandProcessor::cmdInterrupt(const std::string& args) {
+    return m_dispatcher.interruptCast();
+}
+
+ActionResult CommandProcessor::cmdSpellbook(const std::string& args) {
+    // Matches game's stub exactly -- no spellbook UI window exists on
+    // either side of this migration; a pure message, no dispatcher call.
+    displayMessage("Spellbook window not yet implemented in UI");
+    return ActionResult::Success();
+}
+
+// ========== Pet Commands (T101) ==========
+//
+// Ported from EverQuest::m_command_registry's pet_cmd handler
+// (eq_commands_spells.cpp). T97 found game's vocabulary is a strict
+// superset of the pre-T101 ActionDispatcher wrapper set even after T96's
+// literal fixes (leader/spellhold/nospellhold/notaunt/nohold/standup were
+// all missing); this port carries the full vocabulary, using 5 new
+// ActionDispatcher wrappers for the subcommands that had none.
+
+ActionResult CommandProcessor::cmdPet(const std::string& args) {
+    if (!m_state.pet().hasPet()) {
+        return ActionResult::Failure("You do not have a pet.");
+    }
+
+    std::istringstream iss(args);
+    std::string subcommand;
+    std::string targetName;
+    iss >> subcommand;
+    std::getline(iss >> std::ws, targetName);
+    std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (subcommand == "attack") {
+        uint16_t targetId = 0;
+        if (!targetName.empty()) {
+            const auto* entity = m_state.entities().findEntityByName(targetName);
+            if (!entity) {
+                return ActionResult::Failure("Could not find target: " + targetName);
+            }
+            targetId = entity->spawnId;
+        } else if (m_state.combat().hasTarget()) {
+            targetId = m_state.combat().targetId();
+        } else {
+            return ActionResult::Failure("You must specify a target or have one selected.");
+        }
+        auto result = m_dispatcher.petAttack(targetId);
+        if (result.success) displayMessage("Commanding pet to attack.");
+        return result;
+    }
+    if (subcommand == "back" || subcommand == "stop") {
+        auto result = m_dispatcher.petBackOff();
+        if (result.success) displayMessage("Commanding pet to back off.");
+        return result;
+    }
+    if (subcommand == "follow") {
+        auto result = m_dispatcher.petFollow();
+        if (result.success) displayMessage("Commanding pet to follow.");
+        return result;
+    }
+    if (subcommand == "guard") {
+        auto result = m_dispatcher.petGuard();
+        if (result.success) displayMessage("Commanding pet to guard here.");
+        return result;
+    }
+    if (subcommand == "sit" || subcommand == "sitdown") {
+        auto result = m_dispatcher.petSit();
+        if (result.success) displayMessage("Commanding pet to sit.");
+        return result;
+    }
+    if (subcommand == "stand" || subcommand == "standup") {
+        auto result = m_dispatcher.petStand();
+        if (result.success) displayMessage("Commanding pet to stand.");
+        return result;
+    }
+    if (subcommand == "taunt") {
+        auto result = m_dispatcher.petTaunt();
+        if (result.success) displayMessage("Toggling pet taunt.");
+        return result;
+    }
+    if (subcommand == "notaunt") {
+        auto result = m_dispatcher.petTauntOff();
+        if (result.success) displayMessage("Disabling pet taunt.");
+        return result;
+    }
+    if (subcommand == "hold") {
+        auto result = m_dispatcher.petHold();
+        if (result.success) displayMessage("Toggling pet hold.");
+        return result;
+    }
+    if (subcommand == "nohold" || subcommand == "unhold") {
+        auto result = m_dispatcher.petHoldOff();
+        if (result.success) displayMessage("Disabling pet hold.");
+        return result;
+    }
+    if (subcommand == "focus") {
+        auto result = m_dispatcher.petFocus();
+        if (result.success) displayMessage("Toggling pet focus.");
+        return result;
+    }
+    if (subcommand == "nofocus") {
+        // Titanium only has toggle, no explicit off -- use toggle (matches game).
+        auto result = m_dispatcher.petFocus();
+        if (result.success) displayMessage("Toggling pet focus off.");
+        return result;
+    }
+    if (subcommand == "health" || subcommand == "report") {
+        auto result = m_dispatcher.petHealth();
+        if (result.success) displayMessage("Requesting pet health report.");
+        return result;
+    }
+    if (subcommand == "dismiss" || subcommand == "getlost" || subcommand == "leave") {
+        return m_dispatcher.dismissPet();
+    }
+    if (subcommand == "leader") {
+        auto result = m_dispatcher.petLeader();
+        if (result.success) displayMessage("Commanding pet to become leader.");
+        return result;
+    }
+    if (subcommand == "spellhold" || subcommand == "ghold") {
+        auto result = m_dispatcher.petSpellHold();
+        if (result.success) displayMessage("Toggling pet spell hold.");
+        return result;
+    }
+    if (subcommand == "nospellhold" || subcommand == "noghold") {
+        // Titanium only has toggle, no explicit off -- use toggle (matches game).
+        auto result = m_dispatcher.petSpellHold();
+        if (result.success) displayMessage("Toggling pet spell hold off.");
+        return result;
+    }
+    if (subcommand.empty()) {
+        displayMessage("Pet commands: attack, back, follow, guard, sit, stand, taunt, hold, focus, health, dismiss");
+        return ActionResult::Success();
+    }
+    return ActionResult::Failure("Unknown pet command: " + subcommand + ". Use /pet for a list of commands.");
 }
 
 // ========== Extended Command Implementations ==========

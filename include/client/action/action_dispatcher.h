@@ -107,6 +107,14 @@ public:
     virtual void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) = 0;
     virtual void interruptCast() = 0;
 
+    // T101: the REAL casting path, ported from game's /cast (eq_commands_
+    // spells.cpp) -- routes through EQ::SpellManager::beginCastFromGem(),
+    // NOT CombatManager (the subsystem castSpell()/castSpellOnTarget() above
+    // use). T97 found these are two different, unconnected casting
+    // subsystems; see refactor/T101_migrate_spells_pet_family.md's Review.
+    // gemSlot is 1-indexed (1-8), same convention as castSpell() above.
+    virtual void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) = 0;
+
     virtual void useAbility(uint32_t abilityId) = 0;
     virtual void useSkill(uint32_t skillId) = 0;
 
@@ -158,6 +166,18 @@ public:
     virtual void forgetSpell(uint8_t gemSlot) = 0;
     virtual void openSpellbook() = 0;
     virtual void closeSpellbook() = 0;
+
+    // T101: ported from game's /mem and /gems (eq_commands_spells.cpp).
+    // memorizeSpellByName() does the real name lookup (exact + partial +
+    // multi-match disambiguation) against EQ::SpellManager's database --
+    // memorizeSpell() above takes a spellId directly and routes through the
+    // older CombatManager path, and is left untouched (T93 tests its
+    // gem-slot conversion against real CombatManager state; see the plan's
+    // Review). listMemorizedSpells() reports all 8 gems' real spell names
+    // and states, replacing the "(Spell data not available)" stub that used
+    // to sit behind this same dispatcher.
+    virtual void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) = 0;
+    virtual void listMemorizedSpells() = 0;
 
     // ========== Trade ==========
 
@@ -399,6 +419,13 @@ public:
     ActionResult interruptCast();
 
     /**
+     * Cast a spell from a gem slot (1-8) via the real EQ::SpellManager path
+     * -- ported from game's /cast, T101. Distinct from castSpell() above,
+     * which routes through the older CombatManager subsystem.
+     */
+    ActionResult beginCastFromGem(uint8_t gemSlot, uint16_t targetId = 0);
+
+    /**
      * Use an ability by ID.
      */
     ActionResult useAbility(uint32_t abilityId);
@@ -582,6 +609,17 @@ public:
      */
     ActionResult closeSpellbook();
 
+    /**
+     * Memorize a spell by name (exact/partial lookup + disambiguation),
+     * ported from game's /mem, T101.
+     */
+    ActionResult memorizeSpellByName(const std::string& spellName, uint8_t gemSlot);
+
+    /**
+     * List memorized spells (all 8 gems), ported from game's /gems, T101.
+     */
+    ActionResult listMemorizedSpells();
+
     // ========== Trade Actions ==========
 
     /**
@@ -621,9 +659,12 @@ public:
     ActionResult dismissPet();
 
     /**
-     * Command pet to attack current target.
+     * Command pet to attack. targetId defaults to 0 (server uses the pet
+     * owner's current target); T101 added the explicit-target overload to
+     * carry game's /pet attack <name> resolution (the pet convenience
+     * wrappers previously always sent 0).
      */
-    ActionResult petAttack();
+    ActionResult petAttack(uint16_t targetId = 0);
 
     /**
      * Command pet to back off (stop attacking).
@@ -664,6 +705,38 @@ public:
      * Get pet health report.
      */
     ActionResult petHealth();
+
+    // T101: game's /pet vocabulary (eq_commands_spells.cpp) is a strict
+    // superset of the pre-T101 wrapper set above -- these five close that
+    // gap (see refactor/T101_migrate_spells_pet_family.md's Review for
+    // which were added and why). All route through the existing generic
+    // sendPetCommand()/IActionHandler::sendPetCommand() -- no new
+    // IActionHandler virtual needed for any of them.
+
+    /**
+     * Command pet to stand up (explicit, distinct from petSit()'s toggle).
+     */
+    ActionResult petStand();
+
+    /**
+     * Explicitly disable pet taunt (distinct from petTaunt()'s toggle).
+     */
+    ActionResult petTauntOff();
+
+    /**
+     * Explicitly disable pet hold (distinct from petHold()'s toggle).
+     */
+    ActionResult petHoldOff();
+
+    /**
+     * Command pet to become leader (show who it follows).
+     */
+    ActionResult petLeader();
+
+    /**
+     * Toggle pet spell-hold (don't cast spells).
+     */
+    ActionResult petSpellHold();
 
     // ========== Tradeskill Actions ==========
 

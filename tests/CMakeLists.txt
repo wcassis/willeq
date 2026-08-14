@@ -1057,6 +1057,26 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards)
 
+# T101: real-EqActionHandler coverage for the SpellManager-backed methods
+# the Spells+Pet migration added/repointed (beginCastFromGem(),
+# interruptCast() [repointed from CombatManager], forgetSpell() [repointed
+# from a stub], memorizeSpellByName()). Same headless EverQuest +
+# EqActionHandler idiom as T88/T90/T93/T95 above -- no network, no
+# graphics, no eqemu. DB-dependent cases follow test_spell_manager.cpp's
+# hasDb() + GTEST_SKIP precedent.
+ADD_EXECUTABLE(test_eq_action_handler_spell_pet
+    test_eq_action_handler_spell_pet.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_spell_pet PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_eq_action_handler_spell_pet GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_spell_pet PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+# T79 precedent (test_spell_manager, above): links willeq_core (a heavy TU
+# set); its --gtest_list_tests discovery run can exceed the GoogleTest
+# module's 5s default under -j24 parallel build load.
+GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet DISCOVERY_TIMEOUT 60)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

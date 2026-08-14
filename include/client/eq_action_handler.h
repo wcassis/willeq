@@ -62,6 +62,7 @@ public:
     void castSpell(uint8_t gemSlot) override;
     void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) override;
     void interruptCast() override;
+    void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) override;
 
     void useAbility(uint32_t abilityId) override;
     void useSkill(uint32_t skillId) override;
@@ -114,6 +115,8 @@ public:
     void forgetSpell(uint8_t gemSlot) override;
     void openSpellbook() override;
     void closeSpellbook() override;
+    void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) override;
+    void listMemorizedSpells() override;
 
     // ========== Trade ==========
 
