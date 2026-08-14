@@ -93,6 +93,9 @@ struct IrrlichtRenderer::ZoneLoadContext {
     size_t entitiesSkipped = 0;
     std::set<std::pair<uint16_t, uint8_t>> skippedRaceGenderPairs;  // {raceId, gender}
 
+    size_t deferredCount = 0;  // T109 distance-gate deferrals (vs. entitiesSkipped's prepped-but-no-model)
+    std::set<std::pair<uint16_t, uint8_t>> deferredRaceGenderPairs, preppedRaceGenderPairs;
+
     struct EquipPrepData {
         int modelId = 0;
         uint32_t equipmentId = 0;
@@ -1308,6 +1311,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
             ctx.modelLoader = entityRenderer_->getRaceModelLoader();
             ctx.equipLoader = entityRenderer_->getEquipmentModelLoader();
+            ensureEntityPrepWorkerStarted(ctx.modelLoader, ctx.equipLoader);  // T109
             const auto& entities = entityRenderer_->getEntities();
             ctx.totalEntities = entities.size();
             ctx.prepCount = 0;
@@ -1333,28 +1337,17 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                 ctx.spawnId = spawnId;
                 ctx.vis = &it->second;
 
-                // T105: single consolidated per-entity working-set snapshot for
-                // offline analysis (distinct race/gender pairs, distinct
-                // equipment/texture variants, distance from player at zone-in).
-                // LOG_DEBUG only — same discipline as the existing Step8a-8d
-                // per-entity lines above/below, default-off at the project's
-                // default log level (NONE); left in place per the plan's
-                // "default-off instrumentation may stay" allowance rather than
-                // reverted, since it costs nothing when disabled and the same
-                // question will recur when the load gate itself is designed.
-                {
-                    float dx = ctx.vis->lastX - playerX_;
-                    float dy = ctx.vis->lastY - playerY_;
-                    float dz = ctx.vis->lastZ - playerZ_;
-                    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                    LOG_DEBUG(MOD_GRAPHICS, "T105 ENTITY spawn={} race={} gender={} dist={:.1f} "
-                              "texture={} helm={} chestMat={} equip7={} equip8={} isNPC={} isPlayer={}",
-                              ctx.spawnId, ctx.vis->raceId, ctx.vis->gender, dist,
-                              ctx.vis->appearance.texture, ctx.vis->appearance.helm,
-                              ctx.vis->appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF,
-                              ctx.vis->appearance.equipment[7], ctx.vis->appearance.equipment[8],
-                              ctx.vis->isNPC, ctx.vis->isPlayer);
-                }
+                // T105: per-entity working-set snapshot (LOG_DEBUG only, default-off);
+                // distFromPlayer is also T109's gate input below.
+                float dx = ctx.vis->lastX - playerX_, dy = ctx.vis->lastY - playerY_, dz = ctx.vis->lastZ - playerZ_;
+                float distFromPlayer = std::sqrt(dx * dx + dy * dy + dz * dz);
+                LOG_DEBUG(MOD_GRAPHICS, "T105 ENTITY spawn={} race={} gender={} dist={:.1f} "
+                          "texture={} helm={} chestMat={} equip7={} equip8={} isNPC={} isPlayer={}",
+                          ctx.spawnId, ctx.vis->raceId, ctx.vis->gender, distFromPlayer,
+                          ctx.vis->appearance.texture, ctx.vis->appearance.helm,
+                          ctx.vis->appearance.equipment[static_cast<uint8_t>(EquipSlot::Chest)] & 0xFF,
+                          ctx.vis->appearance.equipment[7], ctx.vis->appearance.equipment[8],
+                          ctx.vis->isNPC, ctx.vis->isPlayer);
 
                 // Update progress within entity phase (80-88%)
                 if (ctx.totalEntities > 0) {
@@ -1362,6 +1355,13 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                     ctx.updateProgress(pct, "Preparing entities [" + std::to_string(ctx.prepCount + 1)
                                         + "/" + std::to_string(ctx.totalEntities) + "]");
                 }
+
+                // T109 load-distance gate (renderer_entity_load_gate.cpp).
+                if (deferEntityForLoadGate(ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender,
+                                           distFromPlayer, ctx.deferredCount, ctx.deferredRaceGenderPairs)) {
+                    ++ctx.prepCount; continue;  // still "processed" for the progress bar
+                }
+                ctx.preppedRaceGenderPairs.insert({ctx.vis->raceId, ctx.vis->gender});
 
                 // ── Inline entity prep (EntityPrepWorker::processRequest logic) ──
 
@@ -1405,6 +1405,14 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
             bool hasBoats = entityRenderer_->hasBoatsInZone();
             LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes (model cache hits={}, disk loads={}, hasBoats={})",
                      ctx.prepCount, ctx.buildCount, ctx.modelCacheHits, ctx.modelDiskLoads, hasBoats);
+            // T109: unconditional, same discipline as entitiesSkipped below.
+            // Ships inert (radius ~unbounded) — see refactor/deferred.md's
+            // T109 entry: deferred entities are NOT reliably rebuilt today.
+            LOG_INFO(MOD_GRAPHICS, "T109: load-distance gate radius={:.1f} — {} in-radius ({} distinct "
+                     "race/gender), {} deferred ({} distinct race/gender)",
+                     config_.constrainedConfig.entityLoadRadius,
+                     ctx.prepCount - ctx.deferredCount, ctx.preppedRaceGenderPairs.size(),
+                     ctx.deferredCount, ctx.deferredRaceGenderPairs.size());
             if (hasBoats) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: zone has boats — boat collision checks enabled");
             } else {

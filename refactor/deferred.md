@@ -6350,3 +6350,75 @@ Review, `/mnt/projects/fable/review/T107/`.
    Audio's own reachability (T106 finding #3) is fixed as a side effect,
    since it depends on the same `ext.audioAvailable` populated by the same
    real path.
+## T109 (entity load distance gate) — built and measured, SHIPS INERT — the deferred-entity streaming pickup path is confirmed broken
+
+**Priority follow-up, blocking**: T109 built a distance gate for
+`loadZoneStep8_Entities` (entities beyond `entityLoadRadius` skip the
+inline prep+build chain at zone load) and designed it, per Will's ruling,
+to lean on the existing post-load background-streaming path
+(`EntityPrepWorker` + `processFrameProgressiveLoad()` ->
+`queueEntityPrepRequests()`) to pick deferred entities back up. Two defects
+were found in that path while verifying it, live, before activating the
+gate (exactly what the plan required):
+
+1. **`EntityPrepWorker` was never constructed anywhere in the codebase**
+   (fixed by T109 — `IrrlichtRenderer::ensureEntityPrepWorkerStarted()`,
+   `src/client/graphics/renderer_entity_load_gate.cpp`). Same
+   "implemented-but-unreached" pattern as `ConstrainedMeshCache`/
+   `SetPosition`/etc. Independently valuable: without it, any entity
+   spawning post-load with a never-before-seen race also got stuck in
+   `Placeholder` phase forever, not just T109's deferred entities.
+2. **NOT fixed — this is the blocking one.**
+   `checkProgressiveLoadingComplete()` (`renderer_zone_stream.cpp`) only
+   counts unbuilt entities in the player's *current* BSP region as
+   "blocking" completion, so it declares progressive loading complete and
+   sets `progressiveLoadingActive_ = false` within ~2s of Step 8 finishing
+   — long before entities deferred in other regions could ever be prepped.
+   Once false, `queueEntityPrepRequests()` (called only from inside
+   `processFrameProgressiveLoad()`, itself gated on
+   `progressiveLoadingActive_`) never runs again. The only re-arm path
+   (`registerEntity()`) fires for brand-new server-side entity spawns —
+   never for a PVS region change bringing an already-registered-but-
+   deferred entity into relevance. **Live-confirmed** in Befallen: with the
+   gate temporarily active (radius=400, 89/178 entities deferred at
+   zone-load), modeled-entity count stayed at exactly 82 across a 40s idle
+   hold AND after two large `/move` commands (-400, -700 units, crossing
+   multiple BSP regions) — `EntityBuild:`/`EntityPrepWorker: queued prep`
+   log lines never fire again after Step 8 in either test.
+
+**Consequence, and what ships**: activating T109's gate today would produce
+permanently-invisible NPCs for any entity deferred outside the player's
+landing BSP region — worse than not gating at all. Per the plan's own STOP
+condition, T109 ships the gate's code, tests, and the `EntityPrepWorker`
+fix, but `entityLoadRadius` is left at an explicit "unbounded" sentinel
+(`1,000,000.0f`) in both the C++ defaults and
+`config/constrained_presets.json` — no shipped preset activates the gate.
+
+**What the next unit needs to do before flipping this on**: fix
+`checkProgressiveLoadingComplete()` to count deferred entities anywhere in
+the zone (not just the current region) as blocking full completion, or
+(better) add a re-arm path for `progressiveLoadingActive_` on PVS region
+change (`onPvsRegionChanged()` currently only re-sorts/re-prioritizes
+existing queues, doesn't re-scan for newly-relevant deferred entities).
+Once fixed and live-verified with the same movement-based reproduction
+T109 used, set `entityLoadRadius` back to `entityRenderDistance + 100`
+(measured elbow: 400 for the `orangepi`/default preset — see T105's
+distance-vs-distinct-race/gender-count data, re-analyzed at 300-600 unit
+radii) in the shipped presets.
+
+**Secondary, characterization-only findings** (measured with the gate
+temporarily active, reverted before commit — not what ships, but real
+data for whoever does the follow-up): Step 8 wall time drops 12-20% at
+radius=400 (x86 -20.1%, Pi -11.6%), but overall zone-request-to-ready only
+drops 6-8% (x86 -8.1%, Pi -6.6%) — a real but modest win, well short of the
+"30-56% cut" the plan's own justification framed as the upside (that number
+describes the cut in *distinct race models*, 19→9, which is real, but Step
+8's wall time isn't purely proportional to distinct-model count — a lot of
+it is per-entity loop/cache-hit overhead that doesn't disappear with fewer
+distinct models). Step 8 is 43-62% of total zone-load time either way
+(bigger share on the Pi), cross-validating T91's "Step 8 dominates"
+finding independent of the gate's own effect.
+
+Full write-up, before/after tables, and the live-reproduction evidence:
+`refactor/T109_entity_load_distance_gate.md`'s Review,
+`/mnt/projects/fable/review/T109/`.

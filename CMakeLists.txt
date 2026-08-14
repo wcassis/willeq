@@ -382,6 +382,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/irrlicht_renderer.cpp
         src/client/graphics/renderer_zone_load.cpp
+        src/client/graphics/renderer_entity_load_gate.cpp
         src/client/graphics/renderer_zone_lifecycle.cpp
         src/client/graphics/renderer_diagnostics.cpp
         src/client/graphics/renderer_debug.cpp

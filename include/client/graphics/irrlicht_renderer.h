@@ -12,6 +12,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
+#include <utility>
 #include <glm/glm.hpp>
 #include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
@@ -1252,6 +1254,16 @@ private:
     void loadZoneStep6_Objects(ZoneLoadContext& ctx);
     void loadZoneStep7_Doors(ZoneLoadContext& ctx);
     bool loadZoneStep8_Entities(ZoneLoadContext& ctx);
+    // T109 load-distance gate — out-of-line in renderer_entity_load_gate.cpp
+    // (keeps renderer_zone_load.cpp under the file-size gate; see that file
+    // for why ensureEntityPrepWorkerStarted needs to exist at all).
+    void ensureEntityPrepWorkerStarted(class RaceModelLoader* modelLoader, class EquipmentModelLoader* equipLoader);
+    // Returns true (and records the deferral) if distFromPlayer exceeds
+    // entityLoadRadius — the caller should skip the entity's prep+build
+    // chain and let background streaming pick it up post-load.
+    bool deferEntityForLoadGate(uint16_t spawnId, const std::string& name, uint16_t raceId, uint8_t gender,
+                                 float distFromPlayer, size_t& deferredCount,
+                                 std::set<std::pair<uint16_t, uint8_t>>& deferredPairs) const;
     bool loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx);
     void loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx);
     void loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx);

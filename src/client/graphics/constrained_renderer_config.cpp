@@ -35,6 +35,12 @@ bool ConstrainedRendererConfig::validate(std::string& errors) const {
         errors += fmt::format("  - clipDistance: {} (must be > 0)\n", clipDistance);
     if (entityRenderDistance <= 0)
         errors += fmt::format("  - entityRenderDistance: {} (must be > 0)\n", entityRenderDistance);
+    if (entityLoadRadius <= 0)
+        errors += fmt::format("  - entityLoadRadius: {} (must be > 0)\n", entityLoadRadius);
+    if (entityLoadRadius < entityRenderDistance)
+        errors += fmt::format("  - entityLoadRadius: {} must be >= entityRenderDistance: {} "
+                               "(you cannot draw what you did not load)\n",
+                               entityLoadRadius, entityRenderDistance);
     if (maxVisibleEntities <= 0)
         errors += fmt::format("  - maxVisibleEntities: {} (must be > 0)\n", maxVisibleEntities);
     if (maxPolygonsPerFrame <= 0)
@@ -464,6 +470,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         clipDistance = preset["clipDistance"].asFloat();
     if (preset.isMember("entityRenderDistance"))
         entityRenderDistance = preset["entityRenderDistance"].asFloat();
+    if (preset.isMember("entityLoadRadius"))
+        entityLoadRadius = preset["entityLoadRadius"].asFloat();
     if (preset.isMember("framebufferMemoryBytes"))
         framebufferMemoryBytes = static_cast<size_t>(preset["framebufferMemoryBytes"].asUInt64());
     if (preset.isMember("textureMemoryBytes"))

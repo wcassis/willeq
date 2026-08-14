@@ -774,6 +774,136 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesMemor
 #endif
 }
 
+// T109: entity load distance gate. entityLoadRadius must be at least
+// entityRenderDistance (you cannot draw what you did not load) — validate()
+// enforces that. The gate mechanism itself SHIPS INERT (see the field's
+// comment in constrained_renderer_config.h for why: the post-load
+// background-streaming pickup path was found live-broken for entities
+// deferred at zone load, a permanently-missing-NPC risk). No preset sets
+// entityLoadRadius — every preset's fromPreset() output, and the shipped
+// JSON, must therefore resolve to the struct's own (huge, effectively
+// unbounded) default, not some smaller per-preset value.
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_EntityLoadRadius_ShipsInert) {
+    ConstrainedRendererConfig defaults;  // struct-default baseline
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 300.0f);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+    EXPECT_GE(config.entityLoadRadius, config.entityRenderDistance);
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo1_EntityLoadRadius_ShipsInert) {
+    ConstrainedRendererConfig defaults;
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo1);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 150.0f);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+    EXPECT_GE(config.entityLoadRadius, config.entityRenderDistance);
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_Voodoo2_EntityLoadRadius_ShipsInert) {
+    ConstrainedRendererConfig defaults;
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::Voodoo2);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 250.0f);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+    EXPECT_GE(config.entityLoadRadius, config.entityRenderDistance);
+}
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_TNT_EntityLoadRadius_ShipsInert) {
+    ConstrainedRendererConfig defaults;
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+    EXPECT_FLOAT_EQ(config.entityRenderDistance, 400.0f);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+    EXPECT_GE(config.entityLoadRadius, config.entityRenderDistance);
+}
+
+TEST_F(ConstrainedRendererConfigTest, Validate_EntityLoadRadiusBelowRenderDistance_Fails) {
+    // Fails in one direction: a radius smaller than the render distance means
+    // the renderer could try to draw entities it never loaded.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    config.entityRenderDistance = 300.0f;
+    config.entityLoadRadius = 200.0f;  // below render distance — invalid
+    std::string errors;
+    EXPECT_FALSE(config.validate(errors));
+    EXPECT_NE(errors.find("entityLoadRadius"), std::string::npos);
+}
+
+TEST_F(ConstrainedRendererConfigTest, Validate_EntityLoadRadiusAtOrAboveRenderDistance_Passes) {
+    // ...and passes in the other direction, proving the check isn't
+    // vacuously true/always-failing.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    config.entityRenderDistance = 300.0f;
+    config.entityLoadRadius = 300.0f;  // exactly equal — allowed
+    std::string errors;
+    EXPECT_TRUE(config.validate(errors)) << errors;
+
+    config.entityLoadRadius = 400.0f;  // exceeds — also allowed
+    EXPECT_TRUE(config.validate(errors)) << errors;
+}
+
+TEST_F(ConstrainedRendererConfigTest, Validate_EntityLoadRadiusZeroOrNegative_Fails) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    config.entityLoadRadius = 0.0f;
+    std::string errors;
+    EXPECT_FALSE(config.validate(errors));
+    EXPECT_NE(errors.find("entityLoadRadius"), std::string::npos);
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_loadradius.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "custom": {
+                    "entityLoadRadius": 555.0
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.entityLoadRadius = 300.0f;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, 555.0f);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius_AbsentLeavesBaseline) {
+    const std::string testJsonPath = "/tmp/test_constrained_presets_loadradius_absent.json";
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
+    }
+
+    ConstrainedRendererConfig config;
+    config.entityLoadRadius = 321.0f;
+
+    bool applied = config.loadJsonOverrides("custom", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, 321.0f);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_EntityLoadRadiusNotSet_ShipsInert) {
+    // Active-proof against the REAL shipped config/constrained_presets.json —
+    // the orangepi preset must NOT carry an entityLoadRadius key (the gate
+    // ships inert pending the follow-up fix), so this resolves to the struct
+    // default, not some smaller active value.
+#ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
+    ConstrainedRendererConfig defaults;
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
+    EXPECT_TRUE(applied);
+    EXPECT_FLOAT_EQ(config.entityLoadRadius, defaults.entityLoadRadius);
+#else
+    GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
+#endif
+}
+
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_UseGLES2KeyIgnored) {
     const std::string testJsonPath = "/tmp/test_constrained_presets_bc.json";
     {
