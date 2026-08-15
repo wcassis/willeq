@@ -6729,3 +6729,43 @@ causes without closing it. Start from
 Full write-up, the file-by-file inventory table, the TSAN before/after
 reports, and the Pi crash-rate table: `refactor/T114_worker_render_race_audit.md`'s
 Review, `/mnt/projects/fable/review/T114/`.
+
+## T115 (2026-08-15) — ASAN hunt for `ZoneMergeBuffers::ranges_`: not closed; a real sibling bug found and fixed instead
+
+**`ZoneMergeBuffers::ranges_`'s mid-tour SIGSEGV (T113/T114's `__x=0x2601`
+signature) is STILL OPEN.** ASAN was applied per the plan (x86 first, Pi as
+fallback) but never caught it: 7 x86 ASAN runs and 3 Pi ASAN attempts
+produced zero reports implicating `ranges_`/`ZoneMergeBuffers`. The Pi
+attempts are the honest gap — all three were cut short by the
+ASAN-instrumented ARM binary's own memory footprint (two kernel OOM kills,
+one 300s timeout still mid-zone-load) before a full tour could complete,
+so this is "not caught" rather than "ruled out." `regionMeshNodes_`'s
+lifecycle was newly audited by reading (not ASAN) and confirmed stable for
+a whole zone visit — no code path replaces a region's `IMeshBuffer*` after
+`build()` runs — which weakens but does not disprove T113's "stale pointer
+key" hypothesis specifically.
+
+**A real, different, reproducible bug WAS found and fixed**: x86 ASAN
+caught (2 of 3 pre-fix runs, byte-identical) a SEGV in
+`drawZoneGeometrySorted()` reading a dangling `portalVisibleRegions_`
+pointer — the exact same "dangling pointer into a local `SimulationOutput`"
+class T111 fixed for `regionPvsDepthMap_`/`particleRenderBuffer_`, just a
+sibling field (added later, for portal occlusion) that missed the same
+first-frame nulling. Fixed in `renderer_zone_load.cpp` (one line, same spot
+as T111's fix). Verified: 3 consecutive clean x86 ASAN runs post-fix, 0
+recurrences.
+
+**Next unit on this thread**: the Pi's ASAN memory ceiling must be solved
+before ASAN gets a fair trial at `ranges_` on real hardware — a
+smaller/stripped ASAN build, a shorter tour that reaches the hazard box
+faster, or falling back to a different technique entirely (T113's original
+gdb-based alternative, or a `ranges_`-specific debug instrumentation). Do
+not repeat T115's exact Pi ASAN invocation unmodified — it failed to
+complete a full tour 3 times in a row for a resource reason (OOM/timeout),
+not a code reason.
+
+Full write-up (verbatim ASAN reports, the `portalVisibleRegions_` root
+cause and fix, the three-attempt Pi OOM/timeout table, explicit answers to
+every open question the plan posed):
+`refactor/T115_asan_zonemergebuffers.md`'s Review,
+`/mnt/projects/fable/review/T115/`.
