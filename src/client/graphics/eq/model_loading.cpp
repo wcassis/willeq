@@ -158,9 +158,16 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     mergedTexturesCacheValid_ = false;
 
     // Clear model caches - models will be re-loaded on demand with new zone textures
-    loadedModels_.clear();
+    {
+        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        loadedModels_.clear();
+    }
     meshCache_.clear();
-    variantModels_.clear();
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        variantModels_.clear();
+    }
     variantMeshCache_.clear();
     animatedMeshCache_.clear();
     variantAnimatedMeshCache_.clear();
@@ -248,7 +255,11 @@ bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t race
         }
 
         uint32_t key = makeCacheKey(raceId, gender);
-        loadedModels_[key] = modelData;
+        {
+            // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+            std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+            loadedModels_[key] = modelData;
+        }
 
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from {} ({} vertices, {} animations, {} vertex pieces)",
             raceId, s3dPath, combinedGeom->vertices.size(),
@@ -380,7 +391,11 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
                 }
 
                 uint32_t key = makeCacheKey(raceId, gender);
-                loadedModels_[key] = modelData;
+                {
+                    // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                    loadedModels_[key] = modelData;
+                }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} ({}) from global_chr.s3d ({}, {} parts, {} vertices, {} animations, {} vertex pieces)",
                     raceId, codeToTry, character->name, selectedSkinnedParts.size(), combinedGeom->vertices.size(),
@@ -485,7 +500,11 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
                 modelData->scale = getRaceScale(raceId);
 
                 uint32_t key = makeCacheKey(raceId, gender);
-                loadedModels_[key] = modelData;
+                {
+                    // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                    loadedModels_[key] = modelData;
+                }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from global{}_chr.s3d ({}, {} vertices, no animation data)",
                     raceId, globalNum, character->name, combinedGeom->vertices.size());
@@ -519,7 +538,11 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
             }
 
             uint32_t key = makeCacheKey(raceId, gender);
-            loadedModels_[key] = modelData;
+            {
+                // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                loadedModels_[key] = modelData;
+            }
 
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from global{}_chr.s3d ({}, {} parts, {} vertices, {} animations, {} vertex pieces)",
                 raceId, globalNum, character->name, selectedSkinnedParts.size(), combinedGeom->vertices.size(),
@@ -648,7 +671,11 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                     modelData->scale = getRaceScale(raceId);
 
                     uint32_t key = makeCacheKey(raceId, gender);
-                    loadedModels_[key] = modelData;
+                    {
+                        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                        loadedModels_[key] = modelData;
+                    }
 
                     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} (code {}) from {}_chr.s3d ({}, {} vertices, no animation data)",
                         raceId, upperCode, zoneName, character->name, combinedGeom->vertices.size());
@@ -813,7 +840,11 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                 }
 
                 uint32_t key = makeCacheKey(raceId, gender);
-                loadedModels_[key] = modelData;
+                {
+                    // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                    loadedModels_[key] = modelData;
+                }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} (code {}) from {}_chr.s3d ({}, {} parts, {} vertices, {} animations, {} vertex pieces)",
                     raceId, upperCode, zoneName, character->name, selectedSkinnedParts.size(), combinedGeom->vertices.size(),
@@ -986,7 +1017,11 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                     modelData->scale = getRaceScale(raceId);
 
                     uint32_t key = makeCacheKey(raceId, gender);
-                    loadedModels_[key] = modelData;
+                    {
+                        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                        loadedModels_[key] = modelData;
+                    }
 
                     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from cached {} (no animation)",
                         raceId, chrFilename);
@@ -1127,7 +1162,11 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                 }
 
                 uint32_t key = makeCacheKey(raceId, gender);
-                loadedModels_[key] = modelData;
+                {
+                    // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                    loadedModels_[key] = modelData;
+                }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from cached {} ({} parts, {} vertices, {} animations)",
                     raceId, chrFilename, selectedSkinnedParts.size(), combinedGeom->vertices.size(),
@@ -1272,7 +1311,11 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                     modelData->scale = getRaceScale(raceId);
 
                     uint32_t key = makeCacheKey(raceId, gender);
-                    loadedModels_[key] = modelData;
+                    {
+                        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                        loadedModels_[key] = modelData;
+                    }
 
                     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from {} ({}, {} vertices, no animation data)",
                         raceId, sourceFilename, character->name, combinedGeom->vertices.size());
@@ -1312,7 +1355,11 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                 }
 
                 uint32_t key = makeCacheKey(raceId, gender);
-                loadedModels_[key] = modelData;
+                {
+                    // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+                    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                    loadedModels_[key] = modelData;
+                }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} from {} ({}, {} parts, {} vertices, {} animations, {} vertex pieces)",
                     raceId, sourceFilename, character->name, selectedSkinnedParts.size(), combinedGeom->vertices.size(),
@@ -1457,7 +1504,15 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
         }
 
         // Remove model data
-        loadedModels_.erase(key);
+        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_
+        // comment. This was the confirmed race: removeMeshRef() (render
+        // thread, entity despawn) erased loadedModels_ unlocked while
+        // EntityPrepWorker's background thread read the same map unlocked
+        // via getRaceModelData()/isModelDataCached().
+        {
+            std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+            loadedModels_.erase(key);
+        }
 
         // Also evict variant and animated caches for this race/gender
         // Variant keys encode raceId in upper 32 bits, gender in bits 24-31
@@ -1474,7 +1529,13 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
             }
         }
 
-        // Erase variant models
+        // Erase variant models. T113: variantModelsMutex_ — this was the
+        // second half of the confirmed race, matching the captured
+        // teardown backtrace (~RaceModelLoader -> map<uint64_t,
+        // shared_ptr<RaceModelData>>::~map, i.e. variantModels_): this
+        // erase loop ran unlocked while preloadVariantModel() (background
+        // thread) inserted into the same map under variantModelsMutex_.
+        std::lock_guard<std::mutex> variantModelsLock(variantModelsMutex_);
         auto vmIt = variantModels_.begin();
         while (vmIt != variantModels_.end()) {
             uint64_t vkey = vmIt->first;
@@ -1604,7 +1665,11 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         stats.otherChrTextureBytes += sumMapBytes(cache.textures);
     }
 
-    stats.loadedModelCount = loadedModels_.size();
+    {
+        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        stats.loadedModelCount = loadedModels_.size();
+    }
     stats.meshCacheCount = meshCache_.size();
     stats.variantMeshCacheCount = variantMeshCache_.size();
     stats.animatedMeshCacheCount = animatedMeshCache_.size() + variantAnimatedMeshCache_.size() +
@@ -1627,17 +1692,24 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         return total;
     };
 
-    for (const auto& [key, model] : loadedModels_) {
-        if (!model) continue;
-        if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
-        if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
-        stats.modelGeometryBytes += model->vertexPieces.capacity() * sizeof(VertexPiece);
-        stats.modelSkeletonBytes += calcSkeletonBytes(model->skeleton);
+    {
+        // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        for (const auto& [key, model] : loadedModels_) {
+            if (!model) continue;
+            if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
+            if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+            stats.modelGeometryBytes += model->vertexPieces.capacity() * sizeof(VertexPiece);
+            stats.modelSkeletonBytes += calcSkeletonBytes(model->skeleton);
+        }
     }
-    for (const auto& [key, model] : variantModels_) {
-        if (!model) continue;
-        if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
-        if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        for (const auto& [key, model] : variantModels_) {
+            if (!model) continue;
+            if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
+            if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+        }
     }
 
     // --- CharacterModel data (global + numbered + zone + other) ---

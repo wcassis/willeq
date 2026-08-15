@@ -436,7 +436,21 @@ private:
         const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
         uint16_t raceId, uint8_t gender) const;
 
-    // Cache of loaded race model data (main thread only — no mutex needed)
+    // Cache of loaded race model data. Was documented "main thread only — no
+    // mutex needed" until T113: EntityPrepWorker's background thread reads
+    // this directly (getRaceModelData() from prepVariantTextures(),
+    // isModelDataCached() from processRequest()) while the main/loading
+    // thread inserts/erases/clears it from many sites in model_loading.cpp
+    // and race_model_loader.cpp. That invariant broke silently when the
+    // worker started doing sustained concurrent work (T111) — unprotected
+    // concurrent std::map mutation corrupts the map's internal tree, which
+    // then either SIGSEGVs on a later find() walk (mid-play) or SIGABRTs
+    // with "double free or corruption"/"corrupted size vs. prev_size" when
+    // a destructor walks the same corrupted tree at shutdown (T110). See
+    // refactor/T113_pi_midtour_segv.md Review. Now protected by
+    // loadedModelsMutex_ at every access site (same pattern as
+    // variantModelsMutex_/preparedDataMutex_/otherChrCacheMutex_ below).
+    mutable std::mutex loadedModelsMutex_;
     std::map<uint32_t, std::shared_ptr<RaceModelData>> loadedModels_;
 
     // Cache of Irrlicht meshes (separate from model data for memory management)
