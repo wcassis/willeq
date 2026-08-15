@@ -6960,8 +6960,8 @@ unit's stated purpose, not a less comparable one. Full detail, per-run
 table, and every backtrace: `refactor/T117_pi_stability_rebaseline.md`'s
 Review; evidence in `review/T117/`.
 
-## T118 (2026-08-15) — heap-corruptor hunt: every ASAN axis clean, target
-signature reproduced under a malloc probe, write not yet found
+## T118 (2026-08-15) — heap-corruptor hunt: every ASAN axis clean, `0x2601` is
+`GL_LINEAR`, candidate write site named (not yet confirmed)
 
 **Closes:** the ASAN-blind-spot scoping T115/T117 left open. x86 ASAN now
 run for the first time with `--constrained orangepi --renderer gles2`, audio
@@ -6977,29 +6977,59 @@ path fully exercised everywhere.**
 
 **Not closed:** the write itself. Leg 4 (`MALLOC_CHECK_=3
 MALLOC_PERTURB_=165`, plain non-ASAN ARM binary) reproduced the exact
-`ZoneMergeBuffers::ranges_`/`0x2601` signature T113/T117 already
-established — crash at `/move -700`, SIGSEGV inside
-`std::map<void const*, RegionBufferRange>::find()` called from
-`ZoneMergeBuffers::renderMerged()` (`renderer_zone_merge.cpp:230`), register
-state `r0=r2=r3=0x2601` (9729), identical across every prior sighting. Full
-symbolized backtrace and register dump:
-`review/T118/leg4_malloc_probe/pi_run1_backtrace.txt`; core preserved at
+`ZoneMergeBuffers::ranges_` crash T113/T117 already established — crash at
+`/move -700`, SIGSEGV inside `std::map<void const*, RegionBufferRange>`'s
+red-black tree walk, called from `ZoneMergeBuffers::renderMerged()`
+(`renderer_zone_merge.cpp:230`), register state `r0=r2=r3=0x2601` (9729),
+identical across every prior sighting.
+
+**`0x2601` is `GL_LINEAR`** (`GL_NEAREST` is `0x2600`, `GLES2/gl2.h`) — not
+an unidentified small integer, as this entry originally (incorrectly) left
+it. A coordinator review caught the gap: the value is a named GLenum
+constant in a codebase whose entire renderer is GLES2, and that recurring
+*exactly* across every sighting is expected of a constant, not evidence of
+"a deterministic computation" as first drafted here. Corrected disassembly
+(Pi-native `gdb`, against the *exact* binary+core pair — a first attempt
+against `build-arm-noble/bin/willeq` was invalidated because this unit's own
+later ARM verification rebuild had silently overwritten that file; recovered
+via the still-preserved stripped binary + core) shows the fault is `ldr r2,
+[r3, #16]` with `r3` corrupted — libstdc++'s `_Rb_tree_node_base` is 16
+bytes (`_M_color`/`_M_parent`/`_M_left`/`_M_right`), so this is `_S_key(__x)`
+inside the tree-walk loop: `r3` is the **tree-node cursor**, not the search
+key as first drafted here. One of `ranges_`'s own heap-allocated rb-tree
+nodes has a `_M_left`/`_M_right` child-pointer slot holding the literal
+value `GL_LINEAR`.
+
+**Candidate write site, not confirmed**: `COGLES2Texture::cacheTexParams()`
+(`docker/irrlicht-drm/COGLES2Texture.h:79`), called from `COpenGLES2Driver::
+applyMaterialRenderState()` (`docker/irrlicht-drm/COpenGLES2Driver.cpp:1319`)
+on every draw where filter state changed, writes `GL_LINEAR`/`GL_NEAREST`
+into `mutable` cache fields through a `const COGLES2Texture*` obtained from
+`material.getTexture(0)`. If that texture was evicted by
+`ConstrainedTextureCache`'s LRU (`constrained_texture_cache.cpp:599`)
+while a queued draw's material still referenced it, the write lands wherever
+that freed memory has been reused — plausibly one of `ranges_`'s own tree
+nodes, both being ordinary allocations from the same heap. **Not verified**:
+this unit did not instrument `tex`'s staleness at the crash moment, and did
+not confirm the eviction-timing mechanism — this is the leading lead, not a
+root cause. If real, it explains Legs 1-3's clean ASAN runs precisely: a
+well-formed write of a valid value into a different, currently-live
+allocation crosses no redzone and touches no freed-and-poisoned region —
+exactly the shape T115 already demonstrated for the unrelated
+`portalVisibleRegions_` field ("can not provide additional info").
+
+Full symbolized backtrace, corrected disassembly, and register dump:
+`review/T118/leg4_malloc_probe/pi_run1_backtrace.txt` and
+`pi_run1_disassembly.txt`; core preserved at
 `review/T118/leg4_malloc_probe/pi_cores/core.willeq_t118_pla.8840` (NFS).
 
-**New reasoning, not yet conclusive**: `0x2601` recurring byte-for-byte
-across ASAN-clean runs, a plain build, and a malloc-perturbed build (which
-overwrites freed *memory contents*, not address *values*) is at least as
-consistent with a **deterministic wrong-pointer computation** (stale/
-uninitialized/reused-after-teardown value written into
-`sortedEntries[k].buffer`, populated in `collectMeshBuffers()`
-(`renderer_zone_draw.cpp:365`) from `mesh->getMeshBuffer(i)`) as with a
-classic address-dependent heap-layout OOB write. This reframes — without yet
-resolving — where the next unit should look: trace `collectMeshBuffers()`'s
-mesh-buffer lifecycle at the exact BSP-region transition `/move -700`
-triggers, rather than another sanitizer pass. ASAN's absence of a report
-here is now well-evidenced as expected-given-the-bug-shape, not a sign the
-bug doesn't exist: T115 already saw the same "wild pointer, no ASAN
-allocation info" pattern for the unrelated `portalVisibleRegions_` field.
+**On "was T113's original 'corrupted tree' reading wrong": no.** T113's
+entry above already said, correctly, "`__x=0x2601` as a tree-node pointer
+means that map's own tree structure is corrupted, not merely missing the
+key." This unit's own first-draft Review briefly mislabeled the same value
+as "the map key comparand" — an error in T118's drafting, not in T113's
+original record — caught and corrected via the disassembly above. T113's
+characterization stands as written.
 
 **Incidental production fix**: `CMakeLists.txt` defined `EQT_HAS_NAVMESH`
 whenever the Recast/Detour **headers** were found, but only compiled
