@@ -6729,3 +6729,80 @@ causes without closing it. Start from
 Full write-up, the file-by-file inventory table, the TSAN before/after
 reports, and the Pi crash-rate table: `refactor/T114_worker_render_race_audit.md`'s
 Review, `/mnt/projects/fable/review/T114/`.
+
+## T115 (2026-08-15) — ASAN hunt for `ZoneMergeBuffers::ranges_`: not closed; a real sibling bug found and fixed instead
+
+**`ZoneMergeBuffers::ranges_`'s mid-tour SIGSEGV (T113/T114's `__x=0x2601`
+signature) is STILL OPEN.** ASAN was applied per the plan (x86 first, Pi as
+fallback) but never caught it: 7 x86 ASAN runs and 3 Pi ASAN attempts
+produced zero reports implicating `ranges_`/`ZoneMergeBuffers`. The Pi
+attempts are the honest gap — all three were cut short by the
+ASAN-instrumented ARM binary's own memory footprint (two kernel OOM kills,
+one 300s timeout still mid-zone-load) before a full tour could complete,
+so this is "not caught" rather than "ruled out." `regionMeshNodes_`'s
+lifecycle was newly audited by reading (not ASAN) and confirmed stable for
+a whole zone visit — no code path replaces a region's `IMeshBuffer*` after
+`build()` runs — which weakens but does not disprove T113's "stale pointer
+key" hypothesis specifically.
+
+**A real, different, reproducible bug WAS found and fixed**: x86 ASAN
+caught (2 of 3 pre-fix runs, byte-identical) a SEGV in
+`drawZoneGeometrySorted()` reading a dangling `portalVisibleRegions_`
+pointer — the exact same "dangling pointer into a local `SimulationOutput`"
+class T111 fixed for `regionPvsDepthMap_`/`particleRenderBuffer_`, just a
+sibling field (added later, for portal occlusion) that missed the same
+first-frame nulling. Fixed in `renderer_zone_load.cpp` (one line, same spot
+as T111's fix). Verified: 3 consecutive clean x86 ASAN runs post-fix, 0
+recurrences.
+
+**Next unit on this thread**: the Pi's ASAN memory ceiling must be solved
+before ASAN gets a fair trial at `ranges_` on real hardware — a
+smaller/stripped ASAN build, a shorter tour that reaches the hazard box
+faster, or falling back to a different technique entirely (T113's original
+gdb-based alternative, or a `ranges_`-specific debug instrumentation). Do
+not repeat T115's exact Pi ASAN invocation unmodified — it failed to
+complete a full tour 3 times in a row for a resource reason (OOM/timeout),
+not a code reason.
+
+Full write-up (verbatim ASAN reports, the `portalVisibleRegions_` root
+cause and fix, the three-attempt Pi OOM/timeout table, explicit answers to
+every open question the plan posed):
+`refactor/T115_asan_zonemergebuffers.md`'s Review,
+`/mnt/projects/fable/review/T115/`.
+
+### T115 side-finding — out-of-bounds read in TinySoundFont's sample interpolation (UNFIXED)
+
+x86 ASAN's very first T115 run caught a **heap-buffer-overflow READ of 4
+bytes, 0 bytes past an 884016-byte sample region**, on the miniaudio
+callback thread:
+`tsf_voice_render` (`third_party/TinySoundFont/tsf.h:1295`) ->
+`MidiPlayer::render` (`src/client/audio/midi_player.cpp:252`) ->
+`MusicPlayer::mixerRenderCallback` -> `AudioMixer::render`. The region is
+the soundfont sample pool allocated once at startup by `tsf_load_samples`
+via `MidiPlayer::init` / `AudioManager::initialize`.
+
+**Root cause (read, not merely reported):** the linear-interpolation line
+reads `input[nextPos]` where `nextPos = (pos >= tmpLoopEnd && isLooping ?
+tmpLoopStart : pos + 1)`. For a **non-looping** voice on its **final**
+sample, `pos + 1` runs one element past the pool. Upstream off-by-one, not
+ours.
+
+**Why it matters despite being third-party and a read:** on x86 it lands in
+heap slack and is invisible without ASAN, which is why it went unnoticed.
+On the Pi it is a genuine fault candidate — if the pool happens to end on a
+page boundary the read touches an unmapped page, and the faulting thread is
+the audio callback. **This has not been tested as a contributor to the Pi
+instability arc and should not be assumed innocent.** It is a distinct
+suspect from the `ZoneMergeBuffers::ranges_` corruption and from the class
+of renderer-lifetime bugs T111/T115 fixed.
+
+T115 did not fix it — audio is outside that unit's territory — and worked
+around it with `--no-audio` for runs 2-7. Note that the workaround means
+**every subsequent x86 ASAN run in T115 was audio-free**, so ASAN coverage
+of the audio path stops at run 1.
+
+Fix shape when scoped: clamp `nextPos` to the sample end for the
+non-looping case, as a local patch over the vendored `tsf.h` (the file is
+already vendored, so patching is in-tree). Verbatim report with full
+allocation and thread-creation stacks:
+`/mnt/projects/fable/review/T115/x86_asan_run1_report_audio_tsf_overflow.txt`.
