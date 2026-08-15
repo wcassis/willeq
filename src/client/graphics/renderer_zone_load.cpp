@@ -2810,22 +2810,7 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         // dangling pointer. Null it now — the runtime SimulationWorker will
         // set it correctly from its persistent double-buffered output.
         particleRenderBuffer_ = nullptr;
-        regionPvsDepthMap_ = nullptr;  // T111: same dangling-local hazard -- see Review
-        // T115: portalVisibleRegions_ is the SAME hazard, missed when portal
-        // occlusion was added after T111's fix landed here -- applySimulationOutput()
-        // (renderer_sim_bridge.cpp) points it at &output.portalVisibleRegions, and
-        // 'output' is this function's local variable. Once loadZoneSequential()
-        // returns and the loading thread's stack is reused/torn down, the pointer
-        // dangles into now-unmapped memory. The runtime SimulationWorker sets it
-        // correctly (into its persistent double-buffered output_[2]) on the next
-        // real applySimulationOutput() call from applySimulationResults(); nulling
-        // it here just closes the same first-frame window T111 closed for
-        // regionPvsDepthMap_/particleRenderBuffer_. Root-caused via a reproducible
-        // x86 ASAN SEGV (drawZoneGeometrySorted():385, portalVisibleRegions_->empty()
-        // on a wild pointer, "AddressSanitizer can not provide additional info" --
-        // i.e. the target address isn't even a known allocation, consistent with a
-        // torn-down thread stack) -- see refactor/T115_asan_zonemergebuffers.md Review.
-        portalVisibleRegions_ = nullptr;
+        regionPvsDepthMap_ = nullptr; portalVisibleRegions_ = nullptr;  // T111/T115: same hazard -- see Review
         // Update door PVS visibility now that currentPvsRegion_ is set
         if (doorManager_) {
             doorManager_->setPvsRegion(currentPvsRegion_);
