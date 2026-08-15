@@ -6806,3 +6806,63 @@ non-looping case, as a local patch over the vendored `tsf.h` (the file is
 already vendored, so patching is in-tree). Verbatim report with full
 allocation and thread-creation stacks:
 `/mnt/projects/fable/review/T115/x86_asan_run1_report_audio_tsf_overflow.txt`.
+
+## T116 (2026-08-15) — `SimulationOutput` dangling-pointer class closed by
+construction; ASAN re-verification of T115's fix NOT obtained this session
+
+**Closes:** the recurring shape of T111's/T115's bug class — the same
+mistake made three times in the same struct (`regionPvsDepthMap_`/
+`particleRenderBuffer_` by T111, `portalVisibleRegions_` by T115, the third
+added directly beneath T111's own warning comment). `IrrlichtRenderer::
+applySimulationOutput()` was split by lifetime contract into a value-only
+half (safe with any `SimulationOutput` lifetime, including a stack local —
+this is what `loadZoneSequential()` Step12b now calls) and a new
+`bindFrameSimulationBuffers(const SimulationOutput* persistent)` (stores all
+four pointer members — `regionPvsDepthMap_`, `portalVisibleRegions_`,
+`particleRenderBuffer_`, `currentFrameSimResults_` — reachable ONLY from
+`applySimulationResults()`, the runtime path holding `SimulationWorker`'s
+persistent double-buffered storage). The T111/T115 nulling lines at
+`renderer_zone_load.cpp` (previously :2812-2813) are **deleted**, not
+extended — nothing is ever set on the load path anymore, so nothing needs
+unsetting. Verified by 6 new tests
+(`tests/test_simulation_output_lifetime.cpp`) that call the real,
+split production functions directly (via hand-expanded `friend class
+..._Test` declarations, gtest's own `FRIEND_TEST` macro expansion written
+out rather than included — see the ARM cross-compile deviation in the
+plan's Review) under the exact conditions T111's/T115's crashes needed, and
+assert all four members are provably untouched by the value-only half.
+Also found and folded in while scoping: `currentFrameSimResults_` (a
+fourth member of the same class, safe today only by three coincidences, its
+"null otherwise" comment was false — fixed in place) and
+`particleRenderBuffer_`'s absence from `renderer_zone_lifecycle.cpp`'s
+zone-teardown nulling block (an inconsistency, not a hazard post-split,
+since all four members can now only ever point into the never-freed
+persistent worker storage — nulled anyway, for staleness, not safety).
+
+**Does NOT close:**
+- **`ZoneMergeBuffers::ranges_`** — T115 established this is a separate,
+  uncaught defect; this unit does not bear on it at all.
+- **A fifth member repeating the class** is now higher-friction (an
+  explicit, unmissable header comment on both split functions and on every
+  existing pointer member) but not compile-time-impossible. The plan's
+  optional stretch (a compile-time-enforced handle type obtainable only
+  from `SimulationWorker`) was **not attempted** — explicitly descoped, not
+  merely skipped for time; the plan itself named the split alone as the
+  required deliverable.
+- **x86 ASAN re-verification of T115's fix** (the plan's own required
+  verification step, "cheap and directly on point") was **not obtained**.
+  `review/T115/run_asan_x86.sh` drives the real client through a live
+  EQEmu zone connection; there is no offline path to the changed code
+  (`gles2_zone_benchmark` is a documented "benchmark-only mirror" that
+  doesn't link `IrrlichtRenderer`/`SimulationWorker` at all). This unit's
+  task prompt explicitly said no eqemu lock was needed and to STOP rather
+  than take one if it turned out to be needed — it turned out to be needed
+  for this one verification item, and this session stopped rather than
+  override that instruction. No `.eqemu-lock` existed and no server was
+  listening at session start. See `/mnt/projects/fable/review/T116/README.md`
+  and the plan's Review "Deviations" section for the full account. A future
+  session with eqemu access should run T115's tour against an ASAN build of
+  this unit's tree (not built this session) to close this specific gap —
+  the new unit tests are real but narrower evidence (deterministic
+  per-function assertion vs. a tour that can also catch unknown
+  regressions elsewhere).

@@ -178,6 +178,20 @@ void IrrlichtRenderer::unloadZone() {
     portalVisibleRegions_ = nullptr;
     indoorRegions_.clear();
     regionPvsDepthMap_ = nullptr;
+    // T116: particleRenderBuffer_/currentFrameSimResults_ were the two
+    // members of this same "pointer into SimulationOutput" class missing
+    // from this block (found while scoping T116). Post-split, all four
+    // members can only ever be bound by bindFrameSimulationBuffers() to
+    // SimulationWorker's persistent, never-reset output_[2] storage, so
+    // leaving them unset here is NOT a dangling-pointer hazard (unlike the
+    // pre-split load-path case this whole unit exists to fix) -- the worker
+    // outlives every zone. It is a staleness inconsistency: without this,
+    // a frame rendered in the unload/load gap could read the previous
+    // zone's last particle buffer or occlusion-culled-region set. Nulled
+    // here for the same reason the other two already were, not because
+    // leaving them would be unsafe.
+    particleRenderBuffer_ = nullptr;
+    currentFrameSimResults_ = nullptr;
     pvsNeighborhood_.clear();
     pvsNeighborhoodAnchor_ = SIZE_MAX;
     pendingTextureRegions_.clear();

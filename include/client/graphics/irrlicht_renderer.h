@@ -1252,8 +1252,24 @@ private:
     void registerSimulationWorkerVertexAnimData();  // Add vertex anim data after objects are installed
     void stopSimulationWorker();     // Stop worker (zone transition)
     void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
-    void applySimulationResults();   // Apply worker output → scene graph
-    void applySimulationOutput(const SimulationOutput& results);  // Apply output directly (loading thread or runtime)
+    // T116: applySimulationOutput()/bindFrameSimulationBuffers() are split by
+    // lifetime contract -- see the two functions' own comments
+    // (renderer_sim_bridge.cpp) and refactor/T116_simulationoutput_lifetime.md.
+    // applySimulationResults() (the runtime path, called every frame from a
+    // persistent SimulationWorker buffer) is the ONLY caller of the bind step;
+    // loadZoneSequential()'s Step12b (renderer_zone_load.cpp) calls
+    // applySimulationOutput() alone, with a local SimulationOutput, and must
+    // never be given a reason to call the bind step too.
+    void applySimulationResults();   // Apply worker output → scene graph, then bind frame pointers
+    void applySimulationOutput(const SimulationOutput& results);  // Value-only: no pointers stored. Safe with ANY lifetime, including a stack local.
+    // Stores pointers into `persistent`'s containers on four members (see
+    // their declarations below). `persistent` MUST outlive every frame the
+    // pointers are read on -- call this ONLY with a pointer into
+    // SimulationWorker's persistent, double-buffered output_[2]. Passing a
+    // stack-local SimulationOutput here reopens the exact dangling-pointer
+    // hazard T111 and T115 each patched (see the plan). This is why the
+    // load path (Step12b) does not call it.
+    void bindFrameSimulationBuffers(const SimulationOutput* persistent);
     SimulationZoneData buildSimulationZoneData();  // Build zone data snapshot for SimulationWorker
 
     // loadZoneSequential() per-step helpers (G01 decomposition).
@@ -1338,7 +1354,17 @@ private:
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
     int entityPrepScanCounter_ = 0;  // Throttle queueEntityPrepRequests to every ~10 frames
     std::unique_ptr<SimulationWorker> simulationWorker_;  // Background simulation (visibility, lighting, animation)
-    const SimulationOutput* currentFrameSimResults_ = nullptr;  // Valid during processFrame, null otherwise
+    // T116: set ONLY by bindFrameSimulationBuffers(), from the runtime path's
+    // persistent worker buffer. Previously commented "Valid during
+    // processFrame, null otherwise" -- that was FALSE: nothing ever nulled
+    // it, so it survived zone transitions pointing at recycled (not freed)
+    // storage. It was safe only by three coincidences (simulationWorker_ is
+    // constructed once and never reset; clearZoneData() replaces
+    // output_[i] with a fresh empty SimulationOutput rather than freeing it;
+    // both read sites guard on !empty()). The split doesn't change those
+    // coincidences, but see renderer_zone_lifecycle.cpp for where it's now
+    // also nulled at zone teardown, for consistency with its three siblings.
+    const SimulationOutput* currentFrameSimResults_ = nullptr;
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
     std::unordered_set<size_t> pendingVBOUploads_;       // Region indices with VBO uploads in flight
@@ -1355,7 +1381,9 @@ private:
     // Particle I/O state for SimulationWorker
     std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityPositions_;   // Resolved positions for next frame
     std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityDirections_;  // Resolved directions for next frame
-    const std::vector<Environment::UnifiedParticle>* particleRenderBuffer_ = nullptr;  // Points into SimulationOutput
+    // T116: set ONLY by bindFrameSimulationBuffers() -- see that function's
+    // comment. Points into SimulationOutput's persistent storage.
+    const std::vector<Environment::UnifiedParticle>* particleRenderBuffer_ = nullptr;
 
     std::unique_ptr<DoorManager> doorManager_;
     std::unique_ptr<RendererEventReceiver> eventReceiver_;
@@ -1489,13 +1517,34 @@ private:
     std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;
     void buildRegionNeighborMap();
 
-    // Portal-based entity culling — pointer to SimulationOutput front buffer (no copy)
+    // Portal-based entity culling — pointer to SimulationOutput front buffer
+    // (no copy). T116: set ONLY by bindFrameSimulationBuffers().
     const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
 
-    // PVS depth map — pointer to SimulationOutput front buffer (no copy)
+    // PVS depth map — pointer to SimulationOutput front buffer (no copy).
+    // T116: set ONLY by bindFrameSimulationBuffers().
     const std::unordered_map<size_t, uint8_t>* regionPvsDepthMap_ = nullptr;
     uint8_t getRegionPvsDepth(size_t regionIdx) const;
     void onPvsRegionChanged();
+
+    // T116 (refactor/T116_simulationoutput_lifetime.md): test-only access to
+    // applySimulationOutput()/bindFrameSimulationBuffers() and the four
+    // pointer members they split, asserting the real production functions
+    // (not a hand-constructed fake) uphold the lifetime split. Hand-expanded
+    // from gtest's FRIEND_TEST(SimulationOutputLifetimeTest, X) macro
+    // (-> `friend class SimulationOutputLifetimeTest_X_Test;`) rather than
+    // including <gtest/gtest_prod.h>: the ARM cross-compile toolchain
+    // (docker/Dockerfile.arm-noble) has no gtest headers at all (gtest is
+    // fetched only for the x86 CMake tree's EQT_BUILD_TESTS targets), so an
+    // unconditional gtest include in a production header that ships to ARM
+    // is a hard build break there -- caught by this unit's own ARM
+    // cross-compile verification step.
+    friend class SimulationOutputLifetimeTest_ApplyOutputAloneLeavesAllFourPointersUntouched_Test;
+    friend class SimulationOutputLifetimeTest_ApplyOutputAloneLeavesAllFourPointersUntouched_PvsCullingOff_Test;
+    friend class SimulationOutputLifetimeTest_BindBindsAllFourFromThePassedPersistentPointer_Test;
+    friend class SimulationOutputLifetimeTest_BindOnlyBindsPvsMembersWhenPvsCullingConditionsHold_Test;
+    friend class SimulationOutputLifetimeTest_BindOnlyBindsParticleBufferWhenParticleOutputValid_Test;
+    friend class SimulationOutputLifetimeTest_RepeatedApplyOutputWithFreshLocalsNeverDangles_Test;
 
     // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.

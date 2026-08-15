@@ -2800,17 +2800,13 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
                   output.regionVisible.size(), output.objectVisible.size(),
                   output.lightVisible.size(), output.entityResults.size());
 
-        // Apply results to renderer state
+        // T116: applySimulationOutput() is value-only now -- stores no
+        // pointers into `output`, a local about to go out of scope. The
+        // T111/T115 nulling lines formerly here are gone: bindFrameSimulationBuffers()
+        // (the pointer-storing half) is reachable only from the runtime path.
         applySimulationOutput(output);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: applySimulationOutput applied, currentPvsRegion_={}", currentPvsRegion_);
 
-        // CRITICAL: applySimulationOutput sets particleRenderBuffer_ to point
-        // into output.particleOutput.renderBuffer. But 'output' is a local
-        // variable that will be destroyed when this scope ends, leaving a
-        // dangling pointer. Null it now — the runtime SimulationWorker will
-        // set it correctly from its persistent double-buffered output.
-        particleRenderBuffer_ = nullptr;
-        regionPvsDepthMap_ = nullptr; portalVisibleRegions_ = nullptr;  // T111/T115: same hazard -- see Review
         // Update door PVS visibility now that currentPvsRegion_ is set
         if (doorManager_) {
             doorManager_->setPvsRegion(currentPvsRegion_);
