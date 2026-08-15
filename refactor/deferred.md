@@ -6475,3 +6475,47 @@ finding (x86: real but small, 7 spikes/6682 frames; Pi: not reliably
 measured, flagged as a gap), and the live pickup-proof evidence:
 `refactor/T111_progressive_loading_rearm.md`'s Review,
 `/mnt/projects/fable/review/T111/`.
+
+## T112 (Pi gate frame-cost) — CLOSES the T111 gap: the gate's in-play cost on the Pi is measured and it is NOT a cost. New Pi-only mid-tour SIGSEGV found (not T110, not fixed)
+
+**T111's gap is closed**: paired on the same Pi, same Befallen movement tour,
+gate-active (`entityLoadRadius=400`) vs gate-inert (`1,000,000`, via a
+runtime CWD config override — no source or shipped-config change). Result is
+the opposite of the concern that opened this unit — gate-active had **fewer**
+frame spikes than gate-inert (254 vs 675 over comparable ~1,620-1,636-frame
+windows, ~155 vs ~417 per 1,000 frames) and a slightly better worst frame
+(369.5ms vs 409.2ms). The mechanism: `meshLoading` dominates 674/675 of the
+INERT arm's spikes (23.1ms avg) and is **absent** from all 253 of the ACTIVE
+arm's — with the gate off, all 181 entities (19 distinct race/gender) are
+eligible to build and the client spends the whole in-play session
+progressively building meshes for them; with the gate on, fewer distinct
+models are ever built, so there's less work left to do during play, not more.
+The gate doesn't trade load time for play-time cost — it reduces both.
+Verdict: gate ships as-is, no throttle/radius change indicated.
+
+Re-arm-timestamp correlation (the plan's "sharpest evidence" ask) could not
+be produced on a completed run — every `--log-level=DEBUG` Pi run this
+session (re-arm events log at `LOG_DEBUG`) crashed mid-tour before reaching
+`/camp`; the headline numbers above are instead from `--log-level=INFO` runs,
+which still carry `SPIKE:`/`BUDGET:` (both `LOG_WARN`) even without DEBUG. A
+partial DEBUG-level run's evidence points the same direction as a supplement
+(422 spikes fired in the post-load settle window, entirely before either of
+that run's 2 re-arm events).
+
+**New finding, separate from T110**: an intermittent, Pi-only **mid-tour
+SIGSEGV** (not T110's teardown SIGABRT, which also reproduced here exactly
+as documented and is expected/unfixed noise) — 5 of 9 Pi invocations this
+session, reproducing under BOTH gate states and both log levels, arriving as
+the player nears Befallen's `x≈-333..-400, y≈5..20` (the T109/T111-proven
+`/move -400 20 3` destination) with `RegionVis` jumping to 1,100+/3,596 just
+before the crash — but not deterministic (the same tour completed cleanly
+twice). Unrelated to the gate (reproduces at both `entityLoadRadius` values);
+**reported, not fixed**, per this unit's scope. Whoever picks up T110 should
+budget for this as a second, related-but-distinct Pi movement/teardown
+stability defect in the same zone — possibly worth a single combined
+diagnosis session given the shared territory (`renderer_zone_load.cpp`
+teardown path, Befallen, real hardware only).
+
+Full write-up, the paired-run tables, per-phase spike breakdowns, and the
+DEBUG-logging-as-a-cost measurement: `refactor/T112_pi_gate_frame_cost.md`'s
+Review, `/mnt/projects/fable/review/T112/`.
