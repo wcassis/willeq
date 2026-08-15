@@ -6519,3 +6519,94 @@ teardown path, Befallen, real hardware only).
 Full write-up, the paired-run tables, per-phase spike breakdowns, and the
 DEBUG-logging-as-a-cost measurement: `refactor/T112_pi_gate_frame_cost.md`'s
 Review, `/mnt/projects/fable/review/T112/`.
+
+## T113 (Pi mid-tour SIGSEGV) — T110 CLOSES for its own signature (root-caused + fixed); the mid-tour SIGSEGV itself does NOT close — different defect, diagnosed not fixed; a third crash signature (SIGBUS) also found, unexplained
+
+**Tested the plan's own hypothesis first**: is T110's teardown SIGABRT and
+T112's mid-tour SIGSEGV one defect wearing two faces? **Partially yes, more
+precisely than "yes/no."** A pre-fix Pi run captured T110's exact documented
+signature (`double free or corruption (!prev)` → SIGABRT at `unloadZone()`
+teardown) with, for the first time, a FULLY SYMBOLIZED backtrace (T111's own
+capture stopped at `unlink_chunk`/`malloc_consolidate`, "previous frame
+identical to this frame" — no debug info that time). This one names the
+exact object: `RaceModelLoader::~RaceModelLoader()` destroying
+`variantModels_` (`std::map<uint64_t, std::shared_ptr<RaceModelData>>`),
+whose internal red-black tree was corrupted earlier by an unprotected
+concurrent mutation — `RaceModelLoader::removeMeshRef()` (called from
+`EntityRenderer::removeEntity()` on the render thread every time an entity
+despawns, a routine in-play path) erases from `variantModels_` WITHOUT the
+documented `variantModelsMutex_`, while `EntityPrepWorker`'s background
+thread inserts into the same map WITH the lock via `preloadVariantModel()`.
+**This is a genuine sibling of T111's own `regionPvsDepthMap_` fix** — same
+class of bug (worker thread writes shared renderer state, a lock exists but
+not every access site uses it), different subsystem, confirming the plan's
+"check whether T111's fix was complete or a sibling survives" framing.
+A second instance of the identical class was found while auditing (not
+crash-driven — by reading, not guessing): `loadedModels_`
+(`std::map<uint32_t, ...>`, documented "main thread only — no mutex
+needed") is read from `EntityPrepWorker`'s background thread via
+`getRaceModelData()`/`isModelDataCached()` while ~10 sites insert into it
+unprotected from the main/loading thread.
+
+**Fixed, narrowly**: one new mutex (`loadedModelsMutex_`) plus locking the
+three previously-unprotected `variantModels_` access sites
+(`removeMeshRef()`, `clearCache()`, `getMemoryStats()`) — pure additive
+synchronization extending the SAME per-map-mutex pattern this file already
+uses correctly elsewhere (T91/T111 precedent), no threading redesign, no API
+change. **T110 closes for this specific signature** — it did not recur in
+either of two post-fix Pi runs.
+
+**But the plan's own primary subject — the mid-tour SIGSEGV — is a
+DIFFERENT defect and does NOT close.** Two more live Pi runs with the fix
+already built and deployed both still crashed (0/2 clean — the plan's
+"beat 5-of-9" bar is explicitly not met). One reproduced mid-tour, in the
+same named hazard box (`x≈-333..-400, y≈5..20`), inside
+`ZoneMergeBuffers::renderMerged()`'s lookup into its own `ranges_` map
+(`std::map<const void*, RegionBufferRange>`) — `__x=0x2601` as a tree-node
+pointer means that map's own tree structure is corrupted, not merely
+missing the key (a miss is already handled gracefully two lines later).
+**Directly, mechanistically tied to the `RegionVis` lead**, traced through
+the source rather than inferred from timing: the crashing frame's
+`sortedEntries` vector (length 2271/capacity 4096) is built every frame from
+`SimulationOutput::sortedRegions` — the exact vector `computeVisibility()`
+logs as `RegionVis: N/3596`, which balloons to near-full-zone population
+whenever the PVS candidate lookup misses and falls back to all 3596 regions.
+A frame drawing ~2271 regions makes ~2271 `ranges_.find()` calls instead of
+a normal PVS-neighbourhood-sized handful — far more likely to be the call
+that touches already-corrupted memory. Root cause not isolated to a single
+write site (candidate causes: fallout from a still-undiscovered sibling of
+the class just fixed, vs. a defect intrinsic to `ZoneMergeBuffers` itself,
+e.g. `MergedGeneration::buf`'s index array under the same region-count
+blowup) — **diagnosed, not fixed; needs ASAN or a longer targeted Pi session
+than this unit's remaining budget allowed.** `mergeZoneDraws: true` ships in
+the `orangepi` preset — this is live production code on the target hardware.
+
+**A third, completely separate crash signature was also captured and is
+unexplained**: the other post-fix run completed the full tour cleanly to
+`/camp` and progressed further into `unloadZone()` teardown than the pre-fix
+run did, then SIGBUS'd inside the Mesa/Lima GL driver (`libgallium`, no
+symbols available on this Pi image). Different failure shape from the other
+two (SIGBUS vs SIGABRT/SIGSEGV) — could be fallout from the same corruption
+family or a genuinely separate GL/DRM teardown-ordering bug; not
+distinguishable without a debug Mesa/Lima build this session didn't have.
+
+**Method note for whoever picks this up**: post-mortem core dumps worked
+(no live gdb, no DEBUG-logging distortion, per T111/T112's own
+established technique) — BUT `core_pattern` must point at an NFS path, NOT
+the Pi's local `/tmp`. The first run this session wrote a ~200MB core to the
+242MB RAM-backed tmpfs on this 512MB device and the kernel OOM-killed the
+process mid-dump (competing with the live process's own memory) — a
+self-inflicted measurement artifact, not the bug. Every run after the first
+pointed `core_pattern` at NFS instead and worked cleanly.
+
+Full backtraces (verbatim), the RegionVis→sortedEntries data-flow trace,
+the exact fix diff description, and the crash-rate table:
+`refactor/T113_pi_midtour_segv.md`'s Review,
+`/mnt/projects/fable/review/T113/` (backtrace `.txt` files + one raw core
+for the unexplained SIGBUS).
+
+**Next unit on this thread should start from
+`review/T113/run3_midtour_sigsegv_backtrace_POSTFIX.txt`
+(`ZoneMergeBuffers`) and `run4_teardown_sigbus_backtrace_POSTFIX.txt`
+(Mesa SIGBUS) rather than re-diagnosing from scratch, and should budget for
+ASAN instrumentation** — a second gdb-only pass did not close either.

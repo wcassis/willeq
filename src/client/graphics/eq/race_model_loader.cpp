@@ -98,11 +98,16 @@ void RaceModelLoader::setClientPath(const std::string& path) {
 
 bool RaceModelLoader::hasRaceModel(uint16_t raceId, uint8_t gender) const {
     uint32_t key = makeCacheKey(raceId, gender);
+    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
     return loadedModels_.find(key) != loadedModels_.end();
 }
 
 std::shared_ptr<RaceModelData> RaceModelLoader::getRaceModelData(uint16_t raceId, uint8_t gender) {
+    // T113: called from EntityPrepWorker's background thread
+    // (prepVariantTextures()) as well as the main/loading thread —
+    // loadedModelsMutex_ makes the lookup safe against concurrent inserts.
     uint32_t key = makeCacheKey(raceId, gender);
+    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
     auto it = loadedModels_.find(key);
     if (it != loadedModels_.end()) {
         return it->second;
@@ -131,7 +136,10 @@ void RaceModelLoader::clearCache() {
         }
     }
     meshCache_.clear();
-    loadedModels_.clear();
+    {
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        loadedModels_.clear();
+    }
 
     // Also clear variant caches
     for (auto& [key, mesh] : variantMeshCache_) {
@@ -140,7 +148,10 @@ void RaceModelLoader::clearCache() {
         }
     }
     variantMeshCache_.clear();
-    variantModels_.clear();
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        variantModels_.clear();
+    }
 
     // Clear animated mesh caches (properly drop references)
     for (auto& [key, mesh] : animatedMeshCache_) {
@@ -454,8 +465,13 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
 }
 
 bool RaceModelLoader::isModelDataCached(uint32_t cacheKey) const {
-    // Check main cache (main-thread only, no lock)
-    if (loadedModels_.count(cacheKey) > 0) return true;
+    // Check main cache — T113: this is called from EntityPrepWorker's
+    // background thread (processRequest()), so loadedModels_ needs
+    // loadedModelsMutex_ here even though most writers are main-thread.
+    {
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        if (loadedModels_.count(cacheKey) > 0) return true;
+    }
     // Check staging cache (shared with background thread)
     std::lock_guard<std::mutex> lock(preparedDataMutex_);
     return preparedModelData_.count(cacheKey) > 0;
@@ -469,10 +485,15 @@ bool RaceModelLoader::isRaceModelKnownMissing(uint32_t cacheKey) const {
 void RaceModelLoader::promotePreparedModels() {
     std::lock_guard<std::mutex> lock(preparedDataMutex_);
     if (preparedModelData_.empty()) return;
-    for (auto& [key, data] : preparedModelData_) {
-        if (loadedModels_.count(key) == 0) {
-            loadedModels_[key] = std::move(data);
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: promoted preloaded model key={} to main cache", key);
+    {
+        // T113: loadedModelsMutex_ nested inside preparedDataMutex_ — always
+        // acquired in this order, never the reverse, so no deadlock risk.
+        std::lock_guard<std::mutex> loadedLock(loadedModelsMutex_);
+        for (auto& [key, data] : preparedModelData_) {
+            if (loadedModels_.count(key) == 0) {
+                loadedModels_[key] = std::move(data);
+                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: promoted preloaded model key={} to main cache", key);
+            }
         }
     }
     preparedModelData_.clear();
