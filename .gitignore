@@ -104,6 +104,10 @@ data/captures
 # Agent working directory
 .agent/
 third_party/irrlicht-gles2-x86/
+# T118 Leg 2: 32-bit sibling of the above, built the same way (irrlicht-drm
+# sources + irrlicht-drm-patch.py, `make CXX="g++ -m32" ... staticlib`) for
+# an i386 ASAN tree. Same local-build-artifact status as the x86_64 one.
+third_party/irrlicht-gles2-x86-m32/
 build-gles2/
 
 # Q01 (repo hygiene): benchmarks/pi_runs/ used to be gitignored here

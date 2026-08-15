@@ -209,6 +209,17 @@ ENDIF()
 
 IF(RECAST_INCLUDE_DIR AND DETOUR_INCLUDE_DIR)
     INCLUDE_DIRECTORIES(${RECAST_INCLUDE_DIR} ${DETOUR_INCLUDE_DIR})
+ENDIF()
+# T118: EQT_HAS_NAVMESH must gate on the LIBRARY being found (matching the
+# CLIENT_CORE_SOURCES condition below that actually compiles
+# pathfinder_nav_mesh.cpp), not merely the headers. Headers are
+# architecture-independent and can be present system-wide (e.g.
+# /usr/include/recastnavigation) even when no matching-arch .so exists —
+# gating on headers alone defined the macro with no implementation linked
+# in, an undefined-reference link failure discovered building an i386 tree
+# where librecast-dev has no i386 package. This was previously silent only
+# because every environment that had the headers also had the amd64 .so.
+IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
     ADD_DEFINITIONS(-DEQT_HAS_NAVMESH)
 ENDIF()
 

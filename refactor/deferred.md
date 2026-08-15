@@ -6959,3 +6959,126 @@ exercise teardown — the fuller tour is the more comparable choice for this
 unit's stated purpose, not a less comparable one. Full detail, per-run
 table, and every backtrace: `refactor/T117_pi_stability_rebaseline.md`'s
 Review; evidence in `review/T117/`.
+
+## T118 (2026-08-15) — heap-corruptor hunt: every ASAN axis clean, `0x2601` is
+`GL_LINEAR`, candidate write site named (not yet confirmed)
+
+**Closes:** the ASAN-blind-spot scoping T115/T117 left open. x86 ASAN now
+run for the first time with `--constrained orangepi --renderer gles2`, audio
+**enabled**, full 15-step Befallen tour incl. `/camp` — 3/3 clean. 32-bit x86
+ASAN (`-m32`) built from scratch (no i386 toolchain existed for this
+project's dependency chain before this unit) and run clean, 2/2. A
+Pi-fitted ASAN ARM build (`-g1` instead of `-g`, stripped to 36.7MB vs.
+T115's 292MB that never fit `/tmp`) actually deploys and completes full
+tours on real hardware now — 2/2 clean. **Every shape ASAN's shadow-memory
+model can detect (heap/stack overflow, UAF, double-free) is now ruled out
+on 64-bit x86, 32-bit x86, and native ARM, with the constrained/gles2/audio
+path fully exercised everywhere.**
+
+**Not closed:** the write itself. Leg 4 (`MALLOC_CHECK_=3
+MALLOC_PERTURB_=165`, plain non-ASAN ARM binary) reproduced the exact
+`ZoneMergeBuffers::ranges_` crash T113/T117 already established — crash at
+`/move -700`, SIGSEGV inside `std::map<void const*, RegionBufferRange>`'s
+red-black tree walk, called from `ZoneMergeBuffers::renderMerged()`
+(`renderer_zone_merge.cpp:230`), register state `r0=r2=r3=0x2601` (9729),
+identical across every prior sighting.
+
+**`0x2601` is `GL_LINEAR`** (`GL_NEAREST` is `0x2600`, `GLES2/gl2.h`) — not
+an unidentified small integer, as this entry originally (incorrectly) left
+it. A coordinator review caught the gap: the value is a named GLenum
+constant in a codebase whose entire renderer is GLES2, and that recurring
+*exactly* across every sighting is expected of a constant, not evidence of
+"a deterministic computation" as first drafted here. Corrected disassembly
+(Pi-native `gdb`, against the *exact* binary+core pair — a first attempt
+against `build-arm-noble/bin/willeq` was invalidated because this unit's own
+later ARM verification rebuild had silently overwritten that file; recovered
+via the still-preserved stripped binary + core) shows the fault is `ldr r2,
+[r3, #16]` with `r3` corrupted — libstdc++'s `_Rb_tree_node_base` is 16
+bytes (`_M_color`/`_M_parent`/`_M_left`/`_M_right`), so this is `_S_key(__x)`
+inside the tree-walk loop: `r3` is the **tree-node cursor**, not the search
+key as first drafted here. One of `ranges_`'s own heap-allocated rb-tree
+nodes has a `_M_left`/`_M_right` child-pointer slot holding the literal
+value `GL_LINEAR`.
+
+**Candidate write site, not confirmed**: `COGLES2Texture::cacheTexParams()`
+(`docker/irrlicht-drm/COGLES2Texture.h:79`), called from `COpenGLES2Driver::
+applyMaterialRenderState()` (`docker/irrlicht-drm/COpenGLES2Driver.cpp:1319`)
+on every draw where filter state changed, writes `GL_LINEAR`/`GL_NEAREST`
+into `mutable` cache fields through a `const COGLES2Texture*` obtained from
+`material.getTexture(0)`. If that texture was evicted by
+`ConstrainedTextureCache`'s LRU (`constrained_texture_cache.cpp:599`)
+while a queued draw's material still referenced it, the write lands wherever
+that freed memory has been reused — plausibly one of `ranges_`'s own tree
+nodes, both being ordinary allocations from the same heap. **Not verified**:
+this unit did not instrument `tex`'s staleness at the crash moment, and did
+not confirm the eviction-timing mechanism — this is the leading lead, not a
+root cause. If real, it explains Legs 1-3's clean ASAN runs precisely: a
+well-formed write of a valid value into a different, currently-live
+allocation crosses no redzone and touches no freed-and-poisoned region —
+exactly the shape T115 already demonstrated for the unrelated
+`portalVisibleRegions_` field ("can not provide additional info").
+
+Full symbolized backtrace, corrected disassembly, and register dump:
+`review/T118/leg4_malloc_probe/pi_run1_backtrace.txt` and
+`pi_run1_disassembly.txt`; core preserved at
+`review/T118/leg4_malloc_probe/pi_cores/core.willeq_t118_pla.8840` (NFS).
+
+**On "was T113's original 'corrupted tree' reading wrong": no.** T113's
+entry above already said, correctly, "`__x=0x2601` as a tree-node pointer
+means that map's own tree structure is corrupted, not merely missing the
+key." This unit's own first-draft Review briefly mislabeled the same value
+as "the map key comparand" — an error in T118's drafting, not in T113's
+original record — caught and corrected via the disassembly above. T113's
+characterization stands as written.
+
+**Incidental production fix**: `CMakeLists.txt` defined `EQT_HAS_NAVMESH`
+whenever the Recast/Detour **headers** were found, but only compiled
+`pathfinder_nav_mesh.cpp` (the implementation) when the **library** was also
+found. Every prior environment had both together, so this never surfaced —
+until this unit's i386 tree had the (architecture-independent) headers but
+no i386 `librecast-dev` package, producing an undefined-reference link
+failure for `PathfinderNavmesh`. Fixed by gating the macro on
+`RECAST_LIBRARY AND DETOUR_LIBRARY`, matching the source-inclusion
+condition. Narrow, additive, verified on x86_64 build+ctest (2271/2272, the
+documented ALSA waiver) and ARM cross-compile.
+
+**Ruled out this unit, with evidence** (narrows, does not merely report
+emptiness):
+- Heap-buffer-overflow / use-after-free / double-free in the constrained +
+  GLES2 + audio-enabled path, on x86-64 — Leg 1, 3/3 clean.
+- The same, under 32-bit pointer/size_t arithmetic — Leg 2, 2/2 clean (first
+  time this project has ever built an i386 tree).
+- The same, natively on the Pi's own CPU/allocator, with real GLES2/DRM —
+  Leg 3, 2/2 clean (first time a Pi ASAN build has completed a full tour
+  without OOM/timeout — T115's 3/3 attempts all failed for resource reasons,
+  never reached a verdict).
+- The TinySoundFont `tsf.h:1295` OOB read as a fatal-on-Pi hazard specifically
+  — Leg 1 ran audio enabled with only a local, uncommitted, test-only clamp
+  patch (never landed on the branch) working around the *known* bug so the
+  *rest* of ASAN's coverage wasn't sacrificed the way T115's `--no-audio`
+  workaround sacrificed it. The upstream `tsf.h` bug itself remains open,
+  unfixed, exactly as T115 left it (see the T115 side-finding entry above)
+  — still worth a scoped fix in an audio-owning unit, still a fault
+  candidate on the Pi's audio callback thread, still untested as a
+  contributor to this arc.
+
+**Axes still open** (x86-uncoverable even with ASAN running on the Pi
+itself): the Lima/Mali kernel DRM/GEM path below ASAN's userspace shadow;
+a wild write that lands outside any ASAN-tracked allocation entirely (the
+leading theory now, given Leg 4's evidence); real `-O2` ARM codegen under
+no sanitizer at all (Leg 3 used `-O1` to match ASAN's recommendations, not
+T113/T114/T117's normal `-O2` deployment config); and Pi-real-time
+scheduling/vsync timing, which ASAN's ~15-20x slowdown changes substantially
+versus an unsanitized run.
+
+**STOP conditions honored**: did not touch `ZoneMergeBuffers::ranges_` or
+its lifecycle (the plan's explicit exclusion); did not attempt a fix on the
+corruptor itself (tracing `collectMeshBuffers()`'s mesh-buffer lifecycle at
+the `/move -700` BSP transition is squarely "the zone merge/rebuild
+lifecycle," its own unit per the plan); found no second independent
+corrupting write (Leg 4's reproduction matches the existing single-corruptor
+signature exactly, doesn't add a new one).
+
+Full write-up (verbatim configs/logs/reports, binary-size table, per-leg
+detail, deviations):
+`refactor/T118_heap_corruptor_hunt.md`'s Review, `/mnt/projects/fable/review/T118/`.
