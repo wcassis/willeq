@@ -153,8 +153,24 @@ the 12-invocation cap; left pristine — `core_pattern` restored to `core`,
 confirmed via `pgrep -x`). Full logs, backtraces, cores, README:
 `/mnt/projects/fable/review/T117/`.
 
-**Headline: 2 of 10 runs completed cleanly. This is worse than T114's 1-of-3
-and no better than T113's 0-of-3 — the Pi is not stabilizing.** The
+**Headline: 2 of 10 runs completed cleanly (20%). Set beside T113's 0-of-3
+(0%) and T114's 1-of-3 (33%), this shows NO DETECTABLE CHANGE — 20% is
+entirely consistent with a true rate of 33%, and with 0%, at those sample
+sizes.**
+
+*(Orchestrator correction at merge: this Review originally read "worse than
+T114's 1-of-3 and no better than T113's 0-of-3." Both halves were wrong.
+20% is arithmetically better than 0%, not "no better"; and 2-of-10 versus
+1-of-3 is far inside sampling error, so it cannot support "worse." The
+distinction is not pedantic — "worse" implies T115/T116 REGRESSED the Pi,
+which this data does not support and which would send the next unit hunting
+a regression that does not exist. The defensible claim is the one this unit
+actually earned: **the Pi is not stabilizing, and this is the first sample
+large enough to say so with any confidence.** The executor's own downstream
+reasoning — that prior 3-run samples looked more stable than reality — is
+the correct reading and stands.)*
+
+The
 `ZoneMergeBuffers::ranges_` mid-tour SIGSEGV (`__x=0x2601`) that T113 named
 and T114/T115 left open reproduced 4 of 10 times, byte-for-byte identical to
 the historical signature, every single time immediately at/after `/move

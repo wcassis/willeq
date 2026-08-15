@@ -6877,8 +6877,9 @@ Logs: `review/T116/x86_asan_run{1,2,3}.log`.
   merely skipped for time; the plan itself named the split alone as the
   required deliverable.
 
-## T117 (2026-08-15) — Pi stability re-baseline: 2 of 10 clean, worse than
-T113 (0/3) and T114 (1/3); `ranges_` unchanged, three more signatures found
+## T117 (2026-08-15) — Pi stability re-baseline: 2 of 10 clean, no detectable
+change vs T113 (0/3) and T114 (1/3); `ranges_` unchanged, three more
+signatures found
 
 **Measurement unit — nothing fixed, per its own charter.** Built a normal
 (non-sanitizer) ARM cross-compile of fable tip `045f2512`, staged the
@@ -6887,11 +6888,16 @@ choice), and ran the same Befallen zone-in + `/move -400`/`/move -700` +
 `/camp` tour T113/T114 used (audio enabled, `--log-level=INFO`) 10 times.
 
 **Result: 2 of 10 runs completed cleanly to `Application shutdown
-complete`.** This sits below T114's 1-of-3 and is no improvement on T113's
-0-of-3 — despite T115 fixing `portalVisibleRegions_` and T116 closing that
-whole dangling-`SimulationOutput`-pointer class structurally in between.
-Those fixes were real and correct; neither touches whatever is actually
-corrupting the heap here.
+complete` (20%).** Against T113's 0-of-3 (0%) and T114's 1-of-3 (33%) this is
+**no detectable change** — 20% is well inside sampling error of both, so the
+data supports neither "improved" nor "regressed." (Orchestrator corrected this
+line at merge; it originally read "below T114 and no improvement on T113,"
+which implied T115/T116 regressed the Pi. They did not, and chasing a
+non-existent regression would waste the next unit.) What this sample *does*
+establish, which the 3-run samples could not, is that **the Pi is not
+stabilizing**: T115's `portalVisibleRegions_` fix and T116's structural
+closure of that class were both real and correct, and neither touches whatever
+is actually corrupting the heap here.
 
 **`ZoneMergeBuffers::ranges_`** (T113's original named defect, `__x=0x2601`
 mid-tour SIGSEGV) reproduced **4 of 10 times** (5 of 11 counting a
