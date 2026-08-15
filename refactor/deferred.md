@@ -6769,3 +6769,40 @@ cause and fix, the three-attempt Pi OOM/timeout table, explicit answers to
 every open question the plan posed):
 `refactor/T115_asan_zonemergebuffers.md`'s Review,
 `/mnt/projects/fable/review/T115/`.
+
+### T115 side-finding — out-of-bounds read in TinySoundFont's sample interpolation (UNFIXED)
+
+x86 ASAN's very first T115 run caught a **heap-buffer-overflow READ of 4
+bytes, 0 bytes past an 884016-byte sample region**, on the miniaudio
+callback thread:
+`tsf_voice_render` (`third_party/TinySoundFont/tsf.h:1295`) ->
+`MidiPlayer::render` (`src/client/audio/midi_player.cpp:252`) ->
+`MusicPlayer::mixerRenderCallback` -> `AudioMixer::render`. The region is
+the soundfont sample pool allocated once at startup by `tsf_load_samples`
+via `MidiPlayer::init` / `AudioManager::initialize`.
+
+**Root cause (read, not merely reported):** the linear-interpolation line
+reads `input[nextPos]` where `nextPos = (pos >= tmpLoopEnd && isLooping ?
+tmpLoopStart : pos + 1)`. For a **non-looping** voice on its **final**
+sample, `pos + 1` runs one element past the pool. Upstream off-by-one, not
+ours.
+
+**Why it matters despite being third-party and a read:** on x86 it lands in
+heap slack and is invisible without ASAN, which is why it went unnoticed.
+On the Pi it is a genuine fault candidate — if the pool happens to end on a
+page boundary the read touches an unmapped page, and the faulting thread is
+the audio callback. **This has not been tested as a contributor to the Pi
+instability arc and should not be assumed innocent.** It is a distinct
+suspect from the `ZoneMergeBuffers::ranges_` corruption and from the class
+of renderer-lifetime bugs T111/T115 fixed.
+
+T115 did not fix it — audio is outside that unit's territory — and worked
+around it with `--no-audio` for runs 2-7. Note that the workaround means
+**every subsequent x86 ASAN run in T115 was audio-free**, so ASAN coverage
+of the audio path stops at run 1.
+
+Fix shape when scoped: clamp `nextPos` to the sample end for the
+non-looping case, as a local patch over the vendored `tsf.h` (the file is
+already vendored, so patching is in-tree). Verbatim report with full
+allocation and thread-creation stacks:
+`/mnt/projects/fable/review/T115/x86_asan_run1_report_audio_tsf_overflow.txt`.
