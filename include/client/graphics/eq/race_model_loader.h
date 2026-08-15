@@ -238,7 +238,14 @@ public:
     }
 
     // Get number of loaded race models
-    size_t getLoadedModelCount() const { return loadedModels_.size(); }
+    // T114: loadedModels_ is written by EntityPrepWorker's background thread
+    // (via promotePreparedModels()) as well as the main/loading thread --
+    // every other accessor in this class takes loadedModelsMutex_ (T113);
+    // this one, called from renderer_diagnostics.cpp's /pmem path, did not.
+    size_t getLoadedModelCount() const {
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        return loadedModels_.size();
+    }
 
     // Release raw texture data after GPU upload (frees CPU-side pixel data)
     // Armor texture cache is also released (reconstructible from index)
@@ -551,9 +558,18 @@ private:
     std::map<uint32_t, int> meshRefCounts_;
 
     // Temporary storage for vertex data during animated mesh building
-    // (populated by buildMeshFromGeometry, consumed by getAnimatedMeshForRace)
+    // (populated by buildMeshFromGeometry/buildCompositeMeshFromGeometry,
+    // consumed immediately after by getAnimatedMeshForRace() on the
+    // main/render thread AND preloadVariantModel() on EntityPrepWorker's
+    // background thread -- protected by animScratchMutex_, held across the
+    // whole build-then-consume sequence at both call sites. T114: found via
+    // a Pi core dump ("double free or corruption" SIGABRT inside
+    // RaceModelLoader::~RaceModelLoader()'s vertexMappingForAnimation_
+    // destruction) -- these two vectors had no synchronization at all
+    // before this fix.
     std::vector<irr::video::S3DVertex> originalVerticesForAnimation_;
     std::vector<VertexMappingList> vertexMappingForAnimation_;  // one-to-many, see P08D-RETAKE note
+    mutable std::mutex animScratchMutex_;
 };
 
 } // namespace Graphics

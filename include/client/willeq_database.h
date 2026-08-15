@@ -193,10 +193,33 @@ private:
     static inline WilleqDatabase* s_instance = nullptr;
 
     // Prepare a statement and cache it. Returns the cached stmt.
+    // Caller must already hold dbMutex_ (every call site does, via the
+    // per-query-method lock_guard below).
     sqlite3_stmt* prepare(const char* sql, sqlite3_stmt*& cached);
 
     // Helper: extract a string column, returns "" if null
     static std::string colText(sqlite3_stmt* stmt, int col);
+
+    // T114: every public query method reuses ONE cached sqlite3_stmt* per
+    // query type (see the members below) across a non-atomic
+    // prepare()+sqlite3_reset()+sqlite3_bind_*()+sqlite3_step() sequence.
+    // SQLITE_OPEN_FULLMUTEX (T111) only serializes SQLite's own internal
+    // calls -- it does NOT make that whole sequence atomic when two threads
+    // share the same statement handle. EntityPrepWorker's background thread
+    // (via EquipmentModelLoader::getModelIdForItem(), RaceModelLoader's
+    // race_codes.cpp queries, getArmorTexture()) and the main/render/game
+    // thread (audio_manager.cpp, spell_database.cpp, string_database.cpp,
+    // eff_loader.cpp, more race_codes.cpp call sites) hit the SAME cached
+    // statement objects concurrently -- an unguarded reset/bind/step
+    // interleaving would silently cross-contaminate query parameters
+    // between two in-flight calls rather than crash outright, which is why
+    // this went unnoticed until the T114 worker/render race audit. Every
+    // public query method below takes dbMutex_ for its whole body (a single
+    // mutex per shared resource -- the statement cache is one resource, not
+    // fifteen -- matching the existing per-container mutex idiom this
+    // codebase already uses for RaceModelLoader's variantModelsMutex_/
+    // loadedModelsMutex_, additive only, no threading-model change).
+    mutable std::mutex dbMutex_;
 
     sqlite3* db_ = nullptr;
     DatabaseStats stats_;

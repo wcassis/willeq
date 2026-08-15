@@ -6610,3 +6610,122 @@ for the unexplained SIGBUS).
 (`ZoneMergeBuffers`) and `run4_teardown_sigbus_backtrace_POSTFIX.txt`
 (Mesa SIGBUS) rather than re-diagnosing from scratch, and should budget for
 ASAN instrumentation** — a second gdb-only pass did not close either.
+
+## T114 (worker/render race audit) — the inventory, five fixed, three reported-not-fixed, `ZoneMergeBuffers::ranges_` still NOT closed
+
+**TSAN ran for real** (x86, `-fsanitize=thread`, over the live GLES2/
+llvmpipe render path, through repeated full zone-ins and movement tours) —
+see `refactor/T114_worker_render_race_audit.md`'s Review for the invocation,
+the `setarch -R` ASLR workaround, and the config-CWD wrapper. Suppression
+list: exactly one entry, `race:libgallium*.so*` (Mesa's software rasterizer,
+third-party, no willeq frame in either stack) — **no willeq symbol
+suppressed**.
+
+**The dominant noise source in the first TSAN run (568 of 633 warnings) was
+a genuine, own-code race in `include/common/logging.h`**:
+`ThreadLogBuffer::flush()`'s unlocked peek at the drain thread's side of its
+double-buffer raced against `LogManager::drainAllBuffers()`'s concurrent
+read+clear of the exact same `std::string`. Fixed with one mutex per
+`ThreadLogBuffer` (thread-local, so contention is only ever between that
+buffer's own thread and the single shared drain thread); the hot-path
+`append()` writes stay lock-free. This was necessary infrastructure to make
+the rest of the audit legible, landed regardless of being outside the plan's
+named graphics territory (same reasoning T109/T111 used for their own
+out-of-territory fixes). Cut the warning count from 633 to 32.
+
+**The inventory (full table, 16 items, in the plan's Review) — record here
+as the map of this defect class**:
+
+- **Fixed this unit** (all additive, per-container-mutex, same pattern
+  T91/T111/T113 established):
+  - `WilleqDatabase`'s per-query cached `sqlite3_stmt*` — reset/bind/step
+    was entirely unguarded, shared between `EntityPrepWorker` and every
+    other thread that queries spells/strings/race models/assets. One mutex
+    per connection, held per query. Not previously documented anywhere as a
+    race — found by reading, not a crash (would silently cross-contaminate
+    query parameters between two in-flight calls rather than crash, which
+    is why it went unnoticed).
+  - `RaceModelLoader::otherChrCaches_` — a genuine sibling of T113's
+    `variantModels_`/`loadedModels_` fix, in the exact same class (worker
+    thread writes shared renderer state via `storeOtherChrCacheLocked()`,
+    but ~10 sites in `model_loading.cpp` bypassed it entirely, unlocked).
+  - `RaceModelLoader::getLoadedModelCount()` — one unlocked `size()` read
+    of `loadedModels_` that T113's own fix missed.
+  - **`RaceModelLoader::originalVerticesForAnimation_`/
+    `vertexMappingForAnimation_`** — the standout finding. Root-caused from
+    a **live Pi crash captured this session**
+    (`double free or corruption (!prev)` inside
+    `RaceModelLoader::~RaceModelLoader()`'s destruction of
+    `vertexMappingForAnimation_`): two scratch member vectors, written by
+    `mesh_building.cpp`'s mesh builders and immediately consumed by the
+    caller, touched with zero synchronization by both
+    `getAnimatedMeshForRace()` (render thread) and `preloadVariantModel()`
+    (`EntityPrepWorker`'s background thread). Fixed with one mutex held
+    across the whole build-then-consume sequence at both call sites (not
+    just each field). Did not recur in 3 further Pi runs.
+  - `EquipmentModelLoader::archivesLoaded_`/`mappingLoaded_` — a
+    double-checked-locking fast path reading a plain, non-atomic `bool`
+    outside the lock (UB, unlikely to tear on this arch but a real bypass).
+    Changed to `std::atomic<bool>`.
+- **Confirmed safe, not a race** (worth recording so it isn't re-audited
+  from scratch): `ZoneMergeBuffers` (`ranges_`/`buckets_`) — every caller of
+  `build()`/`renderMerged()`/`destroy()` traced and confirmed render-thread
+  only; TSAN reached and exercised this code repeatedly (9 texture buckets
+  built, multiple successful 80-90%-reduction merged-draw frames) with zero
+  warnings. `regionMeshNodes_` — confirmed `GPUUploadThread`'s worker thread
+  never touches it directly. `background_work_queue.h`/
+  `background_thread_pool.h`/`GPUUploadThread`'s queues, `ConstrainedTextureCache`'s
+  decode/upload split, `SimulationWorker`'s P23 double-buffer — all
+  confirmed correctly synchronized.
+- **Found, real, TSAN-confirmed, deliberately NOT fixed here — recommend
+  follow-up units**:
+  - `RaceModelLoader::ensureModelDataLoaded()`'s ~20 unlocked `loadedModels_`
+    reads. Confirmed **not currently live** (the only concurrent writer,
+    `EntityPrepWorker`, never writes `loadedModels_` directly). A naive
+    blanket lock around the function would **self-deadlock** — it calls
+    `loadModelFromZoneChr()`/`loadModelFromGlobalChr()`/etc., which already
+    acquire `loadedModelsMutex_` internally. Needs either a recursive mutex
+    (its own design decision, not "additive locking") or a refactor to
+    extract the lock-needing reads from the lock-taking calls. Flagged, not
+    started.
+  - `RendererEventReceiver`'s ~15 "read-and-reset" plain-bool/int8_t fields
+    (`enterKeyPressed_`, `slashKeyPressed_`, `escapeKeyPressed_`,
+    `spellGemCastRequest_`, mouse-click flags, …) — game thread
+    (`GraphicsInputHandler::updateFromEventReceiver()`) vs render thread
+    (`processChatInput()`), zero synchronization, TSAN caught ~10 instances
+    of the identical shape this session. Not the worker/render (prep-worker)
+    boundary this unit was chartered for — a different thread pair (game↔
+    render input state). Correct fix is either converting the whole field
+    set to atomics or a class-wide synchronization redesign, not "add a
+    mutex to one container" — recommend a dedicated unit.
+  - `AudioMixer`'s per-voice active flag — audio-callback thread
+    (`miniaudioDataCallback`) vs game thread (`SfxManager::play`), plain
+    bool, TSAN-confirmed, recurs across multiple `audio_mixer.cpp` call
+    sites. Same reasoning: different subsystem boundary, recommend a
+    dedicated unit rather than expanding this one.
+  - `GraphicalMode::requestQuit()`'s quit flag — one TSAN hit, teardown-only,
+    minor, reported not chased.
+
+**`ZoneMergeBuffers::ranges_` (T113's named target) is STILL NOT CLOSED.**
+T113's own two candidate explanations were "(a) fallout from a
+still-undiscovered sibling [heap corruption bleeding across unrelated
+objects]" or "(b) a defect intrinsic to `ZoneMergeBuffers` itself." This
+unit found and fixed two real siblings in class (a) — `otherChrCaches_` and
+`originalVerticesForAnimation_`/`vertexMappingForAnimation_` — and the crash
+**still recurred**: 2 of 3 post-fix Pi runs hit the identical signature
+(`ranges_.find()` on a corrupted tree, `__x=0x2601`, byte-identical frame
+chain to T113's own capture). Since TSAN reached and exercised
+`ZoneMergeBuffers` itself repeatedly with zero races, this now points more
+strongly at (b) — a defect intrinsic to `ZoneMergeBuffers` or a THIRD,
+still-undiscovered corrupting write elsewhere — than a threading race TSAN
+can find. **The next unit on this thread should budget for ASAN
+instrumentation specifically** (per the plan's own Part 3 fallback and
+T113's prior recommendation) rather than another TSAN/gdb pass, since two
+gdb/TSAN passes in a row have now ruled out the two most likely sibling
+causes without closing it. Start from
+`review/T114/pi_run4_midtour_sigsegv_backtrace.txt` and
+`review/T113/run3_midtour_sigsegv_backtrace_POSTFIX.txt`.
+
+Full write-up, the file-by-file inventory table, the TSAN before/after
+reports, and the Pi crash-rate table: `refactor/T114_worker_render_race_audit.md`'s
+Review, `/mnt/projects/fable/review/T114/`.
