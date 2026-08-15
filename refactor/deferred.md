@@ -6806,3 +6806,73 @@ non-looping case, as a local patch over the vendored `tsf.h` (the file is
 already vendored, so patching is in-tree). Verbatim report with full
 allocation and thread-creation stacks:
 `/mnt/projects/fable/review/T115/x86_asan_run1_report_audio_tsf_overflow.txt`.
+
+## T116 (2026-08-15) — `SimulationOutput` dangling-pointer class closed by
+construction; x86 ASAN re-verified 3/3 clean, matching T115's post-fix result
+
+**Closes:** the recurring shape of T111's/T115's bug class — the same
+mistake made three times in the same struct (`regionPvsDepthMap_`/
+`particleRenderBuffer_` by T111, `portalVisibleRegions_` by T115, the third
+added directly beneath T111's own warning comment). `IrrlichtRenderer::
+applySimulationOutput()` was split by lifetime contract into a value-only
+half (safe with any `SimulationOutput` lifetime, including a stack local —
+this is what `loadZoneSequential()` Step12b now calls) and a new
+`bindFrameSimulationBuffers(const SimulationOutput* persistent)` (stores all
+four pointer members — `regionPvsDepthMap_`, `portalVisibleRegions_`,
+`particleRenderBuffer_`, `currentFrameSimResults_` — reachable ONLY from
+`applySimulationResults()`, the runtime path holding `SimulationWorker`'s
+persistent double-buffered storage, which calls **bind first, then
+apply** — see the ordering note below). The T111/T115 nulling lines at
+`renderer_zone_load.cpp` (previously :2812-2813) are **deleted**, not
+extended — nothing is ever set on the load path anymore, so nothing needs
+unsetting. Verified by 6 new tests
+(`tests/test_simulation_output_lifetime.cpp`) that call the real,
+split production functions directly (via hand-expanded `friend class
+..._Test` declarations, gtest's own `FRIEND_TEST` macro expansion written
+out rather than included — see the ARM cross-compile deviation in the
+plan's Review) under the exact conditions T111's/T115's crashes needed, and
+assert all four members are provably untouched by the value-only half.
+Also found and folded in while scoping: `currentFrameSimResults_` (a
+fourth member of the same class, safe today only by three coincidences, its
+"null otherwise" comment was false — fixed in place) and
+`particleRenderBuffer_`'s absence from `renderer_zone_lifecycle.cpp`'s
+zone-teardown nulling block (an inconsistency, not a hazard post-split,
+since all four members can now only ever point into the never-freed
+persistent worker storage — nulled anyway, for staleness, not safety).
+
+**Ordering deviation, caught by review, not by this unit's own
+verification:** the first version bound the four pointers AFTER calling
+`applySimulationOutput()`, on the claim that nothing in that function reads
+them back — checked only by reading its own body, and wrong via a
+transitive call: `applySimulationOutput()`'s PVS-boundary-crossing block
+calls `onPvsRegionChanged()`, which reads `regionPvsDepthMap_` through
+`getRegionPvsDepth()`. Apply-then-bind would have fed that
+re-prioritization the *previous* frame's depths exactly at the moment the
+depth map changes — a real, silent regression neither the visual gate
+(static frames) nor this unit's own tests (which call the split functions
+independently) could catch. Fixed by swapping to bind-then-apply, which
+restores the pre-split ordering exactly; re-verified by tracing every
+callee of `applySimulationOutput()` (not just its own body) for reads of
+the four members. Full re-verification after the fix: x86 suite
+2271/2272, ARM cross-compile clean, visual gate PASS, 3/3 clean ASAN — see
+the plan's Review for the complete trace and the corrected code.
+
+**x86 ASAN re-verification: 3 of 3 clean**, run against the
+ordering-fixed build (`build-asan/`, live eqemu, `scripts/eqemu/up.sh
+befallen`, `review/T116/run_asan_x86.sh` — full 15-step tour, three
+`/move` waypoints crossing the hazard box each run). Matches T115's own
+post-fix 3-of-3 result exactly; zero ASAN reports of any kind across all
+three runs. Server torn down cleanly, lock released and confirmed gone.
+Logs: `review/T116/x86_asan_run{1,2,3}.log`.
+
+**Does NOT close:**
+- **`ZoneMergeBuffers::ranges_`** — T115 established this is a separate,
+  uncaught defect; this unit's ASAN runs found zero reports of any kind, so
+  they neither reproduce nor rule it out, same as T115 itself.
+- **A fifth member repeating the class** is now higher-friction (an
+  explicit, unmissable header comment on both split functions and on every
+  existing pointer member) but not compile-time-impossible. The plan's
+  optional stretch (a compile-time-enforced handle type obtainable only
+  from `SimulationWorker`) was **not attempted** — explicitly descoped, not
+  merely skipped for time; the plan itself named the split alone as the
+  required deliverable.

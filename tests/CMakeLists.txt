@@ -1250,6 +1250,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_progressive_load_rearm)
 ENDIF()
 
+# T116: coverage for the SimulationOutput dangling-pointer class made
+# impossible by construction -- applySimulationOutput()/
+# bindFrameSimulationBuffers() split by lifetime contract. FRIEND_TEST-based
+# access to private members, same "default-constructed, never-Init()'d
+# IrrlichtRenderer, no device needed" idiom as test_irrlicht_camera_command
+# above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_simulation_output_lifetime
+        test_simulation_output_lifetime.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_simulation_output_lifetime PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_simulation_output_lifetime GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_simulation_output_lifetime)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.

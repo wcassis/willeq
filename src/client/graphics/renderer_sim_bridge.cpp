@@ -578,11 +578,41 @@ void IrrlichtRenderer::applySimulationResults() {
 
     const SimulationOutput* results = simulationWorker_->swapAndGetResults();
     if (!results) return;
-    currentFrameSimResults_ = results;
 
+    // Bind the frame-scoped pointers FIRST, then apply values -- this
+    // restores the pre-split ordering exactly (currentFrameSimResults_ was
+    // set at old :581, before the apply call; regionPvsDepthMap_/
+    // portalVisibleRegions_/particleRenderBuffer_ were set inline at their
+    // old assignment points, all of which ran before applySimulationOutput()
+    // returned). It matters because applySimulationOutput() reads
+    // regionPvsDepthMap_ TRANSITIVELY: inside the `currentPvsRegion_ !=
+    // prevPvsRegion` block it calls onPvsRegionChanged()
+    // (renderer_zone_stream.cpp), which calls getRegionPvsDepth() (via
+    // entityPrepWorker_->updateDepths() and gpuUploadThread_->reprioritize()),
+    // which reads regionPvsDepthMap_ -- and this is exactly the PVS-boundary
+    // moment the depth map changes, so binding after the call would have
+    // fed that re-prioritization stale, previous-frame depths right when it
+    // matters most. Checked (not merely by reading this function's body,
+    // which is what the first version of this comment claimed and got
+    // wrong): traced every function applySimulationOutput() calls
+    // (rebuildPvsNeighborhood(), onPvsRegionChanged(), and its
+    // entityRenderer_/particleManager_/spellVisualFX_/detailManager_/
+    // weatherSystem_/skyRenderer_ callees) for reads of all four pointer
+    // members; only the getRegionPvsDepth() path above reads any of them.
+    // Binding first is safe because bindFrameSimulationBuffers()'s own gate
+    // condition (usePvsCulling_ && !regionVisible.empty()) reads the same
+    // `results`/`usePvsCulling_` state either order -- nothing between the
+    // two calls mutates either.
+    bindFrameSimulationBuffers(results);
     applySimulationOutput(*results);
 }
 
+// T116: value-only half of the old applySimulationOutput(). Stores no
+// pointers anywhere -- safe to call with a SimulationOutput of ANY lifetime,
+// including loadZoneSequential()'s Step12b stack local. If you are adding a
+// member that stores a pointer/reference into `results`, it does NOT belong
+// in this function -- it belongs in bindFrameSimulationBuffers() below,
+// which only the runtime path (applySimulationResults()) may call.
 void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef) {
     const SimulationOutput* results = &resultsRef;
 
@@ -607,8 +637,9 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         size_t prevPvsRegion = currentPvsRegion_;
         currentPvsRegion_ = results->currentPvsRegion;
 
-        // Point to PVS depth map in front buffer (no copy — stable until next swap)
-        regionPvsDepthMap_ = &results->regionPvsDepth;
+        // T116: regionPvsDepthMap_ used to be pointed at results->regionPvsDepth
+        // here. That store moved to bindFrameSimulationBuffers() -- see this
+        // function's header comment. This function only applies values now.
 
         // Re-prioritize pending queues only when leaving the PVS neighborhood.
         // Small region crossings within the neighborhood are suppressed to avoid
@@ -635,9 +666,9 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                       results->regionVisible.size());
         }
 
-        // Point to portal visible regions in front buffer (no copy — stable until next swap)
-        // Used for geometry stencil masking only (not entity/light culling)
-        portalVisibleRegions_ = &results->portalVisibleRegions;
+        // T116: portalVisibleRegions_ used to be pointed at
+        // results->portalVisibleRegions here. That store moved to
+        // bindFrameSimulationBuffers() -- see this function's header comment.
 
         // Per-region portal occlusion: enable/disable based on camera's indoor status
         // When indoor region map is loaded, dynamically toggle portal occlusion as
@@ -881,11 +912,11 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         }
     }
 
-    // Apply particle output from worker
+    // Apply particle output from worker. T116: particleRenderBuffer_ used to
+    // be pointed/nulled here; that store moved to bindFrameSimulationBuffers()
+    // -- see this function's header comment. Everything else in this block
+    // (active count, position resolution) is value application and stays.
     if (results->particleOutput.valid && particleManager_) {
-        // Store render buffer pointer for use during rendering
-        particleRenderBuffer_ = &results->particleOutput.renderBuffer;
-
         // Update particle manager's active count from worker
         particleManager_->setWorkerActiveCount(results->particleOutput.activeCount);
 
@@ -899,8 +930,6 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                 pendingParticleEntityPositions_[entityID] = pos;
             }
         }
-    } else {
-        particleRenderBuffer_ = nullptr;
     }
 
     // Apply boids output from worker
@@ -1003,6 +1032,45 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
             }
         }
         entityRenderer_->setVisibleEntityCount(results->entityVisibleCount);
+    }
+}
+
+// T116 (refactor/T116_simulationoutput_lifetime.md): the ONLY function
+// allowed to store a pointer/reference into a SimulationOutput on a member.
+// `persistent` MUST outlive every frame the bound members are read on --
+// call this ONLY from applySimulationResults(), with the SimulationWorker's
+// stable, persistent, double-buffered output_[2] pointer. If you are adding
+// a new member that points into SimulationOutput, it goes here, guarded by
+// the same condition its value-side counterpart in applySimulationOutput()
+// uses (so a member never binds under conditions applySimulationOutput()
+// itself wouldn't have populated it under) -- NEVER in applySimulationOutput()
+// itself, which loadZoneSequential()'s Step12b calls with a stack local that
+// does not outlive the frame. This is the fix for three separate dangling-
+// pointer bugs (T111 x2, T115 x1) made in this exact spot, each patched
+// after the fact by nulling the member again on the loading thread -- see
+// the plan for why a fourth nulling line was rejected in favor of this split.
+void IrrlichtRenderer::bindFrameSimulationBuffers(const SimulationOutput* persistent) {
+    currentFrameSimResults_ = persistent;
+
+    // Mirrors applySimulationOutput()'s own regionPvsDepthMap_/
+    // portalVisibleRegions_ value-application gate exactly (usePvsCulling_ &&
+    // non-empty regionVisible) -- if that block didn't run, these two
+    // pointers keep whatever they were bound to on the last frame that DID
+    // run it (matches the pre-split behavior, which never nulled them here
+    // either).
+    if (usePvsCulling_ && !persistent->regionVisible.empty()) {
+        regionPvsDepthMap_ = &persistent->regionPvsDepth;
+        portalVisibleRegions_ = &persistent->portalVisibleRegions;
+    }
+
+    // Mirrors applySimulationOutput()'s particleOutput.valid && particleManager_
+    // gate exactly, including the null-on-else (pre-split behavior: goes null
+    // the instant particle output stops being valid, so stale-frame data is
+    // never read).
+    if (persistent->particleOutput.valid && particleManager_) {
+        particleRenderBuffer_ = &persistent->particleOutput.renderBuffer;
+    } else {
+        particleRenderBuffer_ = nullptr;
     }
 }
 
