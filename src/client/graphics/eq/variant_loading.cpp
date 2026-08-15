@@ -299,6 +299,18 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
     // to the existing per-slot-capable multi-buffer build (byte-identical to pre-P08d) if
     // no sheet exists or the texture isn't uploaded yet — same fallback discipline as
     // getAnimatedMeshForRace's default-variant composite path.
+    //
+    // T114: animScratchMutex_ guards originalVerticesForAnimation_/
+    // vertexMappingForAnimation_ across the whole build-then-consume sequence
+    // (through setOriginalVertices()/setVertexMapping() below) -- this
+    // function runs on EntityPrepWorker's background thread, and
+    // getAnimatedMeshForRace() (animated_mesh_creation.cpp) writes/reads the
+    // exact same two RaceModelLoader-scratch vectors from the main/render
+    // thread. See that call site's comment for the crash this closes (a
+    // Pi-reproduced "double free or corruption" SIGABRT inside
+    // RaceModelLoader::~RaceModelLoader()'s vertexMappingForAnimation_
+    // destruction).
+    std::lock_guard<std::mutex> animScratchLock(animScratchMutex_);
     irr::scene::IMesh* rawMesh = nullptr;
     if (tryVariantComposite) {
         std::string modelName = modelData->raceName;

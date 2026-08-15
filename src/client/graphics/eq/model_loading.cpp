@@ -171,7 +171,14 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     variantMeshCache_.clear();
     animatedMeshCache_.clear();
     variantAnimatedMeshCache_.clear();
-    otherChrCaches_.clear();  // Also clear cached _chr.s3d files from other zones
+    {
+        // T114: otherChrCaches_ is written by the worker thread
+        // (preloadVariantModel) and the render thread -- see race_model_loader.h
+        // otherChrCaches_ comment; every touch site below now takes
+        // otherChrCacheMutex_.
+        std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+        otherChrCaches_.clear();  // Also clear cached _chr.s3d files from other zones
+    }
 
     std::string zoneFilename = clientPath_ + zoneName + "_chr.s3d";
 
@@ -734,6 +741,13 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                                 std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
                                                [](unsigned char c) { return std::tolower(c); });
 
+                                // T114: otherChrCaches_ is shared with the worker
+                                // thread (preloadVariantModel) -- lock for the
+                                // whole find/load/insert/search sequence, same
+                                // discipline T113 applied to loadedModels_/
+                                // variantModels_.
+                                std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+
                                 // Check if already cached
                                 auto cacheIt = otherChrCaches_.find(lowerFilename);
                                 if (cacheIt == otherChrCaches_.end()) {
@@ -868,40 +882,52 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
     std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    // Check if already in cache
-    auto cacheIt = otherChrCaches_.find(lowerFilename);
-    if (cacheIt == otherChrCaches_.end()) {
-        // Load the chr file
-        std::string fullPath = clientPath_ + chrFilename;
-        S3DLoader loader;
-        if (!loader.loadZone(fullPath)) {
-            // Cache empty entry to avoid repeated load attempts
-            otherChrCaches_[lowerFilename] = OtherChrCache{};
+    // T114: otherChrCaches_ is shared with the worker thread
+    // (preloadVariantModel). Lock for find/load/insert, then copy out the
+    // (shared_ptr, so cheap) characters vector and release the lock before
+    // the heavy, lock-free-elsewhere model-building work below -- avoids
+    // holding otherChrCacheMutex_ across combineCharacterParts()/
+    // getMergedTextures() and the nested loadedModelsMutex_ acquisition
+    // further down, so no new lock-ordering relationship is introduced.
+    std::vector<std::shared_ptr<CharacterModel>> characters;
+    {
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+
+        // Check if already in cache
+        auto cacheIt = otherChrCaches_.find(lowerFilename);
+        if (cacheIt == otherChrCaches_.end()) {
+            // Load the chr file
+            std::string fullPath = clientPath_ + chrFilename;
+            S3DLoader loader;
+            if (!loader.loadZone(fullPath)) {
+                // Cache empty entry to avoid repeated load attempts
+                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                return false;
+            }
+
+            auto zone = loader.getZone();
+            if (!zone || zone->characters.empty()) {
+                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                return false;
+            }
+
+            OtherChrCache& cache = otherChrCaches_[lowerFilename];
+            cache.characters = zone->characters;
+            cache.textures = zone->characterTextures;
+            // Invalidate merged textures cache since we added new textures
+            mergedTexturesCacheValid_ = false;
+
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {}", cache.characters.size(), chrFilename);
+            cacheIt = otherChrCaches_.find(lowerFilename);
+        }
+
+        // Check if cache entry exists and has characters
+        if (cacheIt == otherChrCaches_.end() || cacheIt->second.characters.empty()) {
             return false;
         }
 
-        auto zone = loader.getZone();
-        if (!zone || zone->characters.empty()) {
-            otherChrCaches_[lowerFilename] = OtherChrCache{};
-            return false;
-        }
-
-        OtherChrCache& cache = otherChrCaches_[lowerFilename];
-        cache.characters = zone->characters;
-        cache.textures = zone->characterTextures;
-        // Invalidate merged textures cache since we added new textures
-        mergedTexturesCacheValid_ = false;
-
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {}", cache.characters.size(), chrFilename);
-        cacheIt = otherChrCaches_.find(lowerFilename);
+        characters = cacheIt->second.characters;
     }
-
-    // Check if cache entry exists and has characters
-    if (cacheIt == otherChrCaches_.end() || cacheIt->second.characters.empty()) {
-        return false;
-    }
-
-    const auto& characters = cacheIt->second.characters;
 
     // Build list of race codes to try
     std::vector<std::string> codesToTry;
@@ -1051,6 +1077,15 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
 
                         // Load the animation_source_s3d file if specified for this race
                         std::string animSourceS3d = getAnimationSourceS3DFile(raceId);
+
+                        // T114: otherChrCaches_ is shared with the worker thread.
+                        // Locked from here through the end of the search loop below
+                        // because searchSources holds raw pointers straight into
+                        // otherChrCaches_ elements (&cache.characters) that must
+                        // stay valid (no concurrent insert/erase) for as long as
+                        // they're dereferenced.
+                        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+
                         if (!animSourceS3d.empty()) {
                             std::string lowerAnimS3d = animSourceS3d;
                             std::transform(lowerAnimS3d.begin(), lowerAnimS3d.end(), lowerAnimS3d.begin(),
@@ -1371,6 +1406,13 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
         return false;
     };
 
+    // T114: otherChrCaches_ is shared with the worker thread. Locked across
+    // both the cache scan below and the directory-scan/load/insert/evict
+    // loop that follows -- coarse, but this whole function is a cold,
+    // rarely-hit fallback path (main/loading thread only), not a hot
+    // per-frame path, so correctness is worth more here than granularity.
+    std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+
     // First, search already-cached _chr.s3d files
     for (const auto& [filename, cache] : otherChrCaches_) {
         if (searchAndBuildModel(cache.characters, cache.textures, filename)) {
@@ -1627,8 +1669,12 @@ size_t RaceModelLoader::releaseRawTextureData() {
     releaseMap(zoneTextures_);
 
     // Release other chr cache textures
-    for (auto& [filename, cache] : otherChrCaches_) {
-        releaseMap(cache.textures);
+    {
+        // T114: otherChrCaches_ is shared with the worker thread.
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+        for (auto& [filename, cache] : otherChrCaches_) {
+            releaseMap(cache.textures);
+        }
     }
 
     // Release cached merged textures (they're copies referencing same shared_ptrs)
@@ -1661,8 +1707,12 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     stats.armorTextureCount = armorTextureIndex_.size();
     stats.zoneTextureBytes = sumMapBytes(zoneTextures_);
 
-    for (const auto& [filename, cache] : otherChrCaches_) {
-        stats.otherChrTextureBytes += sumMapBytes(cache.textures);
+    {
+        // T114: otherChrCaches_ is shared with the worker thread.
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+        for (const auto& [filename, cache] : otherChrCaches_) {
+            stats.otherChrTextureBytes += sumMapBytes(cache.textures);
+        }
     }
 
     {
@@ -1729,8 +1779,12 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     for (const auto& [num, chars] : numberedGlobalCharacters_)
         stats.characterModelBytes += calcCharModels(chars);
     stats.characterModelBytes += calcCharModels(zoneCharacters_);
-    for (const auto& [name, cache] : otherChrCaches_)
-        stats.characterModelBytes += calcCharModels(cache.characters);
+    {
+        // T114: otherChrCaches_ is shared with the worker thread.
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+        for (const auto& [name, cache] : otherChrCaches_)
+            stats.characterModelBytes += calcCharModels(cache.characters);
+    }
 
     // --- EQAnimatedMesh working data ---
     for (const auto& [key, mesh] : animatedMeshCache_)

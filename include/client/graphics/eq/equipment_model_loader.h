@@ -4,6 +4,7 @@
 #include "s3d_loader.h"
 #include "zone_geometry.h"
 #include <irrlicht.h>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -200,8 +201,16 @@ private:
     // Reference counts for cached meshes (model ID -> ref count)
     std::map<int, int> meshRefCounts_;
 
-    bool archivesLoaded_ = false;
-    bool mappingLoaded_ = false;
+    // T114: plain bools read/written across the double-checked-locking fast
+    // path in ensureIndexLoaded() (worker thread via EntityPrepWorker::
+    // prepEquipmentModels(), main thread via loadEquipmentModelOnDemand()/
+    // getEquipmentTexture()) -- the fast-path read races the locked write,
+    // UB for a non-atomic bool even though it's unlikely to tear in
+    // practice. atomic<bool> makes the double-checked-locking idiom actually
+    // well-defined; initMutex_ still guards the one-time population of
+    // equipmentModelIndex_/textureIndex_ itself.
+    std::atomic<bool> archivesLoaded_{false};
+    std::atomic<bool> mappingLoaded_{false};
     std::mutex initMutex_;  // Guards ensureIndexLoaded() for thread safety
 
     // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)

@@ -162,6 +162,25 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
 
     // Build mesh from RAW (unskinned) geometry for animation
     // This is critical - animated meshes need the original vertex positions
+    //
+    // T114: originalVerticesForAnimation_/vertexMappingForAnimation_ are
+    // RaceModelLoader-scratch member vectors -- buildCompositeMeshFromGeometry()/
+    // buildMeshFromGeometry() (mesh_building.cpp) write them as a side effect,
+    // and setOriginalVertices()/setVertexMapping() below read them immediately
+    // after. This same pair is ALSO written+read by
+    // preloadVariantModel() (variant_loading.cpp), which runs on
+    // EntityPrepWorker's background thread -- so this function (reachable from
+    // the main/render thread) and the worker thread can race on these two
+    // vectors with zero prior synchronization. Found via a Pi core dump: SIGABRT
+    // inside RaceModelLoader::~RaceModelLoader()'s vertexMappingForAnimation_
+    // destruction, "double free or corruption (!prev)" -- glibc detecting
+    // corruption caused earlier by exactly this race, the same
+    // detected-later-than-caused pattern T113 diagnosed for the RaceModelLoader
+    // map races. animScratchMutex_ is held across the whole
+    // build-then-consume sequence (not just each read/write) because a
+    // concurrent write from the other thread landing between the build and the
+    // consume would still corrupt the read.
+    std::lock_guard<std::mutex> animScratchLock(animScratchMutex_);
     irr::scene::IMesh* rawMesh = nullptr;
 
     // If composite data is available AND this call is composite-eligible (P08d gate),

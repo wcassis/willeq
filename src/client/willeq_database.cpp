@@ -14,6 +14,7 @@ WilleqDatabase::~WilleqDatabase() {
 }
 
 bool WilleqDatabase::open(const std::string& dbPath) {
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (db_) close();
 
     // T111: SQLITE_OPEN_FULLMUTEX (was SQLITE_OPEN_NOMUTEX) -- NOMUTEX makes
@@ -83,6 +84,11 @@ bool WilleqDatabase::open(const std::string& dbPath) {
 }
 
 void WilleqDatabase::close() {
+    // T114: callers of close() (open()'s re-open path, dtor) may already hold
+    // dbMutex_ (open()) or run before any other thread has a reference to
+    // `this` (dtor) -- close() itself is not re-entered concurrently by
+    // design (destructor runs single-threaded, open()'s self-call already
+    // holds the lock), so it does not re-lock here.
     // Finalize all cached statements
     auto fin = [](sqlite3_stmt*& s) { if (s) { sqlite3_finalize(s); s = nullptr; } };
     fin(stmtGetSpell_);
@@ -120,6 +126,7 @@ std::string WilleqDatabase::colText(sqlite3_stmt* stmt, int col) {
 }
 
 size_t WilleqDatabase::getMemoryUsage() const {
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return 0;
     int current = 0, highwater = 0;
     sqlite3_db_status(db_, SQLITE_DBSTATUS_CACHE_USED, &current, &highwater, 0);
@@ -165,6 +172,7 @@ static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& 
 
 SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     SpellInfo info;
     if (!db_) return info;
 
@@ -234,6 +242,7 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
 
 SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     SpellInfo info;
     if (!db_) return info;
 
@@ -303,6 +312,7 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
 
 uint32_t WilleqDatabase::getSpellCount() {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return 0;
 
     auto* stmt = prepare("SELECT count(*) FROM spells", stmtGetSpellCount_);
@@ -320,6 +330,7 @@ uint32_t WilleqDatabase::getSpellCount() {
 
 std::string WilleqDatabase::getString(uint32_t stringId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return "";
 
     auto* stmt = prepare("SELECT text FROM eqstrings WHERE id=?", stmtGetString_);
@@ -335,6 +346,7 @@ std::string WilleqDatabase::getString(uint32_t stringId) {
 
 std::string WilleqDatabase::getDbString(uint32_t category, uint32_t subId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return "";
 
     auto* stmt = prepare(
@@ -357,6 +369,7 @@ std::string WilleqDatabase::getDbString(uint32_t category, uint32_t subId) {
 
 int32_t WilleqDatabase::getItemModel(uint32_t itemId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return -1;
 
     auto* stmt = prepare("SELECT model_id FROM item_models WHERE item_id=?",
@@ -377,6 +390,7 @@ int32_t WilleqDatabase::getItemModel(uint32_t itemId) {
 
 AssetLocation WilleqDatabase::getAssetLocation(const std::string& assetName) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     AssetLocation loc;
     if (!db_) return loc;
 
@@ -403,6 +417,7 @@ AssetLocation WilleqDatabase::getAssetLocation(const std::string& assetName) {
 
 std::vector<AssetLocation> WilleqDatabase::getAssetsInArchive(const std::string& archiveName) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     std::vector<AssetLocation> results;
     if (!db_) return results;
 
@@ -435,6 +450,7 @@ std::vector<AssetLocation> WilleqDatabase::getAssetsInArchive(const std::string&
 
 RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     RaceModelInfo info;
     if (!db_) return info;
 
@@ -470,6 +486,7 @@ RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
 
 RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     RaceModelInfo info;
     if (!db_) return info;
 
@@ -509,6 +526,7 @@ RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
 
 std::vector<ZoneCharacterEntry> WilleqDatabase::getZoneCharacters(const std::string& zoneName) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     std::vector<ZoneCharacterEntry> results;
     if (!db_) return results;
 
@@ -536,6 +554,7 @@ std::vector<ZoneCharacterEntry> WilleqDatabase::getZoneCharacters(const std::str
 
 std::string WilleqDatabase::getSoundAsset(uint32_t soundId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return "";
 
     auto* stmt = prepare("SELECT filename FROM sound_assets WHERE id=?",
@@ -552,6 +571,7 @@ std::string WilleqDatabase::getSoundAsset(uint32_t soundId) {
 
 int32_t WilleqDatabase::getAnimationSound(const std::string& animationName) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return -1;
 
     auto* stmt = prepare(
@@ -573,6 +593,7 @@ int32_t WilleqDatabase::getAnimationSound(const std::string& animationName) {
 
 std::string WilleqDatabase::getMusicFile(int index) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return "";
 
     auto* stmt = prepare("SELECT filename FROM music_files WHERE id=?",
@@ -593,6 +614,7 @@ std::string WilleqDatabase::getMusicFile(int index) {
 
 std::string WilleqDatabase::getLoginString(uint32_t stringId) {
     ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return "";
 
     auto* stmt = prepare("SELECT text FROM login_strings WHERE id=?",

@@ -207,12 +207,24 @@ public:
         std::string* buffers;        // Pointer to the double-buffer array [2] (stdout)
         std::string* errBuffers;     // Pointer to the error double-buffer array [2] (stderr)
         std::atomic<int>* activeIdx; // Pointer to the writer's active index
+        // T114: guards the INACTIVE side's std::string content (the side the
+        // drain thread reads/clears) against the owning thread's flush(),
+        // which also reads that same side's .empty() to decide whether it's
+        // safe to flip. TSAN caught this as a real, high-volume data race
+        // (owning thread's flush() vs. drainAllBuffers(), both touching
+        // buffers[1-old]/errBuffers[1-old] with no happens-before edge --
+        // activeIdx's acquire/release only orders the SIDE THAT'S BEING
+        // SWITCHED TO, not the peek at the other side). One mutex per
+        // ThreadLogBuffer, contended only between that buffer's owning
+        // thread and the single shared drain thread -- not a global lock
+        // across all threads' buffers.
+        std::mutex* sideMutex;
     };
 
     void registerBuffer(std::string* buffers, std::string* errBuffers,
-                        std::atomic<int>* activeIdx) {
+                        std::atomic<int>* activeIdx, std::mutex* sideMutex) {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
-        m_buffers.push_back({buffers, errBuffers, activeIdx});
+        m_buffers.push_back({buffers, errBuffers, activeIdx, sideMutex});
         ensureDrainThread();
     }
 
@@ -283,9 +295,17 @@ private:
         bool wroteOut = false, wroteErr = false;
         std::lock_guard<std::mutex> lock(m_registry_mutex);
         for (auto& entry : m_buffers) {
+            // T114: entry.sideMutex serializes this read-index +
+            // touch-inactive-side sequence against the owning thread's
+            // flush() (which does the symmetric check-inactive-side +
+            // flip under the SAME mutex) -- see BufferEntry::sideMutex's
+            // comment. Nested inside m_registry_mutex (already held for
+            // this whole loop); always acquired in this order (registry
+            // then per-entry), never the reverse, so no new deadlock risk.
+            std::lock_guard<std::mutex> sideLock(*entry.sideMutex);
             // Read the active index — the writer is using this side.
             // We read the OTHER side (the one the writer flipped away from).
-            int active = entry.activeIdx->load(std::memory_order_acquire);
+            int active = entry.activeIdx->load(std::memory_order_relaxed);
             int drainSide = 1 - active;
             std::string& drainBuf = entry.buffers[drainSide];
             if (!drainBuf.empty()) {
@@ -330,6 +350,13 @@ struct ThreadLogBuffer {
     std::string errBuffers[2];  // Separate buffer for ERROR/FATAL → stderr
     std::atomic<int> activeIdx{0};
     bool registered = false;
+    // T114: see LogManager::BufferEntry::sideMutex's comment -- guards the
+    // inactive-side peek/flip here in flush() against LogManager's drain
+    // thread reading/clearing the same side in drainAllBuffers(). One
+    // instance per ThreadLogBuffer (thread_local, one per logging thread),
+    // so contention is only ever between this buffer's owning thread and
+    // the single shared drain thread, never across unrelated threads.
+    std::mutex sideMutex;
 
     ThreadLogBuffer() = default;
 
@@ -342,7 +369,7 @@ struct ThreadLogBuffer {
     void ensureRegistered() {
         if (!registered) {
             registered = true;
-            LogManager::Instance().registerBuffer(buffers, errBuffers, &activeIdx);
+            LogManager::Instance().registerBuffer(buffers, errBuffers, &activeIdx, &sideMutex);
         }
     }
 
@@ -424,11 +451,20 @@ struct ThreadLogBuffer {
     void flush() {
         int old = activeIdx.load(std::memory_order_relaxed);
         if (active().empty() && activeErr().empty()) return;
+        // T114: sideMutex guards the peek at buffers[1-old]/errBuffers[1-old]
+        // (the drain thread's side) and the flip together -- TSAN caught
+        // this unlocked peek racing against drainAllBuffers()'s read+clear
+        // of the exact same strings (see BufferEntry::sideMutex's comment).
+        // Only this critical section is locked; active()/activeErr() above
+        // (this thread's OWN side) and the actual data += appends in
+        // append()/appendError()/appendEntity() stay lock-free, since only
+        // this (owning) thread ever touches the active side.
+        std::lock_guard<std::mutex> lock(sideMutex);
         // Only flip if the drain side has been drained (is empty).
         // If it still has content, skip — prevents the writer from
         // flipping back to the side the drain thread is reading.
         if (!buffers[1 - old].empty() || !errBuffers[1 - old].empty()) return;
-        activeIdx.store(1 - old, std::memory_order_release);
+        activeIdx.store(1 - old, std::memory_order_relaxed);
     }
 };
 
