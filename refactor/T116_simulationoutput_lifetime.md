@@ -191,20 +191,60 @@ void IrrlichtRenderer::applySimulationResults() {
     if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
     const SimulationOutput* results = simulationWorker_->swapAndGetResults();
     if (!results) return;
-    applySimulationOutput(*results);
     bindFrameSimulationBuffers(results);
+    applySimulationOutput(*results);
 }
 ```
 
-Value application runs first, then the bind. This ordering is safe: reading
-every line of `applySimulationOutput()` (not from memory — the whole
-function body was read start to finish while scoping) confirmed none of it
-reads back any of the four pointer members it used to set, so nothing
-inside the value-application half depends on the pointers already being
-bound. `loadZoneSequential()` Step12b (`renderer_zone_load.cpp`) calls only
-`applySimulationOutput(output)`, never the bind step — `output` is the
-local `SimulationOutput` on the loading thread, exactly the object T111 and
-T115 each found dangling pointers into.
+**Correction (post-review, before merge): the bind runs FIRST, then value
+application** — this is the opposite of this Review's first draft, which
+had them the other way around on the claim that "nothing in
+`applySimulationOutput()` reads the four pointer members it used to set."
+That claim was checked only by reading `applySimulationOutput()`'s own
+function body, and it was **wrong via a transitive call**: inside the
+`currentPvsRegion_ != prevPvsRegion` block, `applySimulationOutput()` calls
+`onPvsRegionChanged()` (`renderer_zone_stream.cpp:644`), which calls
+`getRegionPvsDepth()` (via `entityPrepWorker_->updateDepths()` and
+`gpuUploadThread_->reprioritize()`), which reads `regionPvsDepthMap_`
+(`renderer_zone_stream.cpp:603-608`). That block runs exactly when the
+camera crosses a PVS-neighborhood boundary — the precise moment the depth
+map is supposed to change — so binding *after* `applySimulationOutput()`
+would have fed that frame's re-prioritization the **previous** frame's
+depths, silently, with no test able to catch it (not the visual gate,
+which only checks static frames, and not this unit's own new tests, which
+call the two split functions independently rather than through
+`applySimulationResults()`). Caught by review, not by this session's own
+verification — flagged here rather than absorbed quietly. See
+`renderer_sim_bridge.cpp`'s in-code comment on `applySimulationResults()`
+for the full trace.
+
+**Re-verified by tracing transitive callees, not just the function body**:
+every function `applySimulationOutput()` calls —
+`rebuildPvsNeighborhood()`, `onPvsRegionChanged()` (both call sites of
+`getRegionPvsDepth()` inside it), and its `entityRenderer_`/
+`particleManager_`/`spellVisualFX_`/`detailManager_`/`weatherSystem_`/
+`skyRenderer_` callees (grepped for the four member names across
+`renderer_entities.cpp`, `environment/particle_manager.cpp`,
+`spell_visual_fx.cpp`, `detail/detail_manager.cpp` — zero hits) — was
+checked for reads of any of the four pointer members. Only the
+`getRegionPvsDepth()` path reads any of them (`regionPvsDepthMap_`
+specifically; the other three are never read by any callee). Binding
+first is safe: `bindFrameSimulationBuffers()`'s own gate condition
+(`usePvsCulling_ && !regionVisible.empty()`) reads the same `results`/
+`usePvsCulling_` state regardless of which call goes first, since nothing
+between the two calls mutates either.
+
+This restores the **pre-split ordering exactly** for all four members —
+`currentFrameSimResults_` was originally set at old `renderer_sim_bridge.cpp:581`,
+*before* the `applySimulationOutput(*results)` call; `regionPvsDepthMap_`/
+`portalVisibleRegions_`/`particleRenderBuffer_` were set inline at their
+old assignment points, all of which ran before `applySimulationOutput()`
+returned. `loadZoneSequential()` Step12b (`renderer_zone_load.cpp`) still
+calls only `applySimulationOutput(output)`, never the bind step — `output`
+is the local `SimulationOutput` on the loading thread, exactly the object
+T111 and T115 each found dangling pointers into. This part of the original
+claim stands: the load path is unaffected by the ordering fix, since it
+never calls the bind step at all.
 
 Header (`irrlicht_renderer.h`) documents the contract at both ends: on the
 two function declarations (`applySimulationOutput`'s says "safe with ANY
@@ -317,7 +357,37 @@ Full suite result: `[ PASSED ] 6 tests` (`build/bin/test_simulation_output_lifet
 - **Visual gate**: `PASS`, goldens unchanged, all three zones including
   **befallen** (the exact zone T111/T115 fixed the crash in).
 
-### x86 ASAN re-run of T115's Befallen tour: NOT executed — see deviation below
+### x86 ASAN re-run of T115's Befallen tour: 3 of 3 clean, matching T115's post-fix result
+
+Executed after the ordering fix above, so the evidence covers the code that
+merges. Live eqemu (lock free at session start — confirmed via `ls
+/mnt/projects/fable/.eqemu-lock`, no server listening on 5998 — taken,
+used, released cleanly: `down.sh` run, lock file deleted, confirmed gone,
+no leftover `willeq`/`akk-stack-*` containers). ASAN tree built at
+`build-asan/` (`-fsanitize=address -g -O1 -fno-omit-frame-pointer`,
+`-DEQT_BUILD_TESTS=OFF`, same GLES2/Irrlicht config as the normal tree);
+confirmed real (41 `__asan_*` symbols via `nm`). Ran
+`review/T116/run_asan_x86.sh` (adapted from `review/T115/run_asan_x86.sh`
+for slot2's paths, `--no-audio` carried over to route around T115's
+already-known, out-of-territory `tsf.h` audio overflow) three times against
+the full 15-step Befallen tour (`review/T116/tour_x86.txt`, identical to
+T115's): zone-in, `#set time 11 0`, `/pmem`, three `/move` waypoints
+(`-400`/`-700`/`-400`) crossing the PVS-neighborhood hazard box each time,
+`/pmem` again, `/camp`.
+
+| Run | Outcome |
+|---|---|
+| 1 | Full tour to completion, `Application shutdown complete` reached, zero ASAN report, no `asan_report*` file written |
+| 2 | Same — full tour, clean shutdown, zero ASAN report |
+| 3 | Same — full tour, clean shutdown, zero ASAN report |
+
+**3 of 3 clean**, matching T115's own post-fix 3-of-3 result exactly (T115's
+pre-fix rate was 2 of 3 crashing). No ASAN report of any kind — no
+`portalVisibleRegions_`-class SEGV, no other memory-safety finding — across
+any of the three runs. Logs: `review/T116/x86_asan_run1.log` /
+`run2.log` / `run3.log`. This demonstrates the ordering-fixed refactor did
+not reopen the T111/T115 crash window, on the actual client binary through
+a live zone connection — not merely via this unit's own unit tests.
 
 ### Fifth-member risk: reduced, not eliminated
 
@@ -357,36 +427,61 @@ the mistake are both substantially higher than before.**
    `FRIEND_TEST` would have expanded to — zero header dependency, identical
    effect. Both x86 (retested, 6/6 pass) and ARM (retested, 0 errors)
    rebuilt clean after the fix.
-2. **The x86 ASAN re-run of T115's Befallen tour was not executed** — see
-   the dedicated section above and `/mnt/projects/fable/review/T116/README.md`
-   for the full explanation. In short: `review/T115/run_asan_x86.sh` drives
-   the real client through a **live EQEmu zone connection**
-   (`127.0.0.1:5998`, real `/move` commands over the network), and there is
-   no offline equivalent that reaches `IrrlichtRenderer::loadZoneSequential()`/
-   `applySimulationResults()` — `gles2_zone_benchmark`, the only offline
-   zone-loading tool in this repo, is a self-documented "benchmark-only
-   mirror" (`tools/hwcaps/zone_bench_loader.cpp`) that does not link
-   `IrrlichtRenderer` or `SimulationWorker` at all. This unit's task prompt
-   explicitly instructed "No Pi run and no eqemu lock are needed... If you
-   believe you need either, STOP and explain why rather than taking them."
-   No `.eqemu-lock` was present and no server was listening on 5998 at
-   session start (both checked) — running the tour would have required
-   bringing the server up and taking the lock, contradicting that explicit
-   instruction. Per the instruction's own clause, this session stopped
-   short of that rather than overriding it, and is reporting the gap here
-   rather than silently omitting it. **What substitutes for it**: the 6 new
-   unit tests above call the real split functions directly under the exact
-   conditions that triggered T111's and T115's crashes, which is
-   deterministic per-call evidence that the specific pointer-storing lines
-   T115's crash needed are structurally absent from the load path's call —
-   a narrower but non-probabilistic form of the same claim. It does **not**
-   substitute for the ASAN tour's other value (catching an *unknown*
-   regression elsewhere in the same code, the way T115's own tour
-   originally found the bug this unit is closing). If eqemu is available in
-   a future session, `review/T115/run_asan_x86.sh` should be re-run against
-   an ASAN build of this unit's tree (not built this session, for the same
-   reason) to close this gap.
-3. Two members not named in the plan's original scoping table
+2. **The x86 ASAN tour needed a live eqemu session; the task prompt's "no
+   eqemu lock needed" instruction was wrong, and this session initially
+   stopped rather than override it — correctly, per the coordinator's
+   own review.** `review/T115/run_asan_x86.sh` drives the real client
+   through a **live EQEmu zone connection** (`127.0.0.1:5998`, real
+   `/move` commands over the network); there is no offline equivalent that
+   reaches `IrrlichtRenderer::loadZoneSequential()`/`applySimulationResults()`
+   — `gles2_zone_benchmark`, the only offline zone-loading tool in this
+   repo, is a self-documented "benchmark-only mirror"
+   (`tools/hwcaps/zone_bench_loader.cpp`) that does not link
+   `IrrlichtRenderer` or `SimulationWorker` at all. This unit's original
+   task prompt said "No Pi run and no eqemu lock are needed... If you
+   believe you need either, STOP and explain why rather than taking
+   them" — a scoping error on the coordinator's part (it believed
+   `run_asan_x86.sh` had an offline path; it does not), not this
+   session's. The first pass of this unit stopped short of taking the
+   lock and reported the gap rather than overriding the instruction; the
+   coordinator's review confirmed that was the correct call and then
+   explicitly authorized taking the lock. **Resolved**: eqemu lock taken
+   (confirmed free first), server brought up (`scripts/eqemu/up.sh
+   befallen`), 3 clean ASAN runs against the ordering-fixed build (see
+   the dedicated ASAN section above), server torn down (`down.sh`), lock
+   deleted and confirmed gone. No `.eqemu-lock` leftover, no leftover
+   `akk-stack-*` containers or `willeq` processes.
+3. **The first-pass bind/apply ordering was wrong — a real behavior
+   change, caught by the coordinator's review, not by this session's own
+   verification.** The first version of the split ran
+   `applySimulationOutput(*results); bindFrameSimulationBuffers(results);`
+   (apply then bind), on the claim that nothing in
+   `applySimulationOutput()` reads the four pointer members. That claim
+   was checked only by reading the function's own body, and missed a
+   transitive read: `onPvsRegionChanged()`, called from inside
+   `applySimulationOutput()`'s PVS-boundary-crossing block, reads
+   `regionPvsDepthMap_` via `getRegionPvsDepth()`. Pre-split, that read
+   saw the *current* frame's depth map (bound inline before the read);
+   post-split with apply-then-bind, it would have seen the *previous*
+   frame's depth map, exactly at the PVS-boundary-crossing moment that
+   block exists to handle — a real regression in progressive-load/GPU-
+   upload prioritization that neither the visual gate (static frames) nor
+   this unit's own new tests (which call the two split functions
+   independently, not through `applySimulationResults()`) could have
+   caught. Fixed by swapping to bind-then-apply, which restores the
+   pre-split ordering exactly for all four members and was re-verified by
+   tracing every function `applySimulationOutput()` calls (not just its
+   own body) for reads of the four members — see the corrected "split as
+   landed" section above for the full trace. Full re-verification after
+   the fix: x86 suite 2271/2272 (same sole ALSA exception), ARM
+   cross-compile clean, visual gate PASS goldens unchanged, 3/3 clean
+   ASAN. This is exactly the STOP-condition class the plan named
+   ("You find the runtime path depends on the pointers being set *before*
+   something that currently runs between :581 and the end of
+   applySimulationOutput()") — it did fire, correctly, and the fix (a
+   reorder, not a redesign) resolved it without reopening any other
+   question the split answered.
+4. Two members not named in the plan's original scoping table
    (`currentFrameSimResults_`'s zone-teardown nulling, and
    `particleRenderBuffer_`'s) were added to `renderer_zone_lifecycle.cpp`'s
    nulling block for consistency, as the plan invited ("establish whether
@@ -413,6 +508,10 @@ items, not touched by this unit), and the still-unexplained
 reproduce or rule out. **This unit does not fix or narrow `ranges_`** — T115
 established it is a separate, uncaught defect, and nothing in this unit's
 scope (a compile-time-provable refactor of an already-diagnosed bug class)
-bears on it. The x86 ASAN re-verification that would have been the cheapest
-next data point on `ranges_` (by virtue of re-running the same tour) was not
-obtained this session — see the deviation above.
+bears on it. The x86 ASAN re-verification (3 of 3 clean, matching T115's
+own post-fix result, run against the ordering-fixed build) confirms the
+refactor didn't reopen the `portalVisibleRegions_`-class window T115 closed,
+but — consistent with T115's own finding — implicated nothing about
+`ranges_` either way: zero ASAN reports of any kind across all three runs,
+so this unit's ASAN evidence is silent on `ranges_`, neither reproducing
+nor ruling it out, same as T115 itself.

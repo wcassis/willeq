@@ -579,14 +579,32 @@ void IrrlichtRenderer::applySimulationResults() {
     const SimulationOutput* results = simulationWorker_->swapAndGetResults();
     if (!results) return;
 
-    // Value application first, then bind the frame-scoped pointers. Nothing
-    // in applySimulationOutput() reads the four pointer members it used to
-    // set (verified while scoping T116), so this ordering is safe and keeps
-    // the "this pointer must outlive the frame" contract in exactly one
-    // place: bindFrameSimulationBuffers(), the ONLY function allowed to
-    // write them, called ONLY from here with the worker's persistent buffer.
-    applySimulationOutput(*results);
+    // Bind the frame-scoped pointers FIRST, then apply values -- this
+    // restores the pre-split ordering exactly (currentFrameSimResults_ was
+    // set at old :581, before the apply call; regionPvsDepthMap_/
+    // portalVisibleRegions_/particleRenderBuffer_ were set inline at their
+    // old assignment points, all of which ran before applySimulationOutput()
+    // returned). It matters because applySimulationOutput() reads
+    // regionPvsDepthMap_ TRANSITIVELY: inside the `currentPvsRegion_ !=
+    // prevPvsRegion` block it calls onPvsRegionChanged()
+    // (renderer_zone_stream.cpp), which calls getRegionPvsDepth() (via
+    // entityPrepWorker_->updateDepths() and gpuUploadThread_->reprioritize()),
+    // which reads regionPvsDepthMap_ -- and this is exactly the PVS-boundary
+    // moment the depth map changes, so binding after the call would have
+    // fed that re-prioritization stale, previous-frame depths right when it
+    // matters most. Checked (not merely by reading this function's body,
+    // which is what the first version of this comment claimed and got
+    // wrong): traced every function applySimulationOutput() calls
+    // (rebuildPvsNeighborhood(), onPvsRegionChanged(), and its
+    // entityRenderer_/particleManager_/spellVisualFX_/detailManager_/
+    // weatherSystem_/skyRenderer_ callees) for reads of all four pointer
+    // members; only the getRegionPvsDepth() path above reads any of them.
+    // Binding first is safe because bindFrameSimulationBuffers()'s own gate
+    // condition (usePvsCulling_ && !regionVisible.empty()) reads the same
+    // `results`/`usePvsCulling_` state either order -- nothing between the
+    // two calls mutates either.
     bindFrameSimulationBuffers(results);
+    applySimulationOutput(*results);
 }
 
 // T116: value-only half of the old applySimulationOutput(). Stores no
