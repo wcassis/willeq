@@ -6876,3 +6876,86 @@ Logs: `review/T116/x86_asan_run{1,2,3}.log`.
   from `SimulationWorker`) was **not attempted** — explicitly descoped, not
   merely skipped for time; the plan itself named the split alone as the
   required deliverable.
+
+## T117 (2026-08-15) — Pi stability re-baseline: 2 of 10 clean, no detectable
+change vs T113 (0/3) and T114 (1/3); `ranges_` unchanged, three more
+signatures found
+
+**Measurement unit — nothing fixed, per its own charter.** Built a normal
+(non-sanitizer) ARM cross-compile of fable tip `045f2512`, staged the
+stripped ~9.8MB binary to Pi `/tmp` (matching T113's/T114's deployment
+choice), and ran the same Befallen zone-in + `/move -400`/`/move -700` +
+`/camp` tour T113/T114 used (audio enabled, `--log-level=INFO`) 10 times.
+
+**Result: 2 of 10 runs completed cleanly to `Application shutdown
+complete` (20%).** Against T113's 0-of-3 (0%) and T114's 1-of-3 (33%) this is
+**no detectable change** — 20% is well inside sampling error of both, so the
+data supports neither "improved" nor "regressed." (Orchestrator corrected this
+line at merge; it originally read "below T114 and no improvement on T113,"
+which implied T115/T116 regressed the Pi. They did not, and chasing a
+non-existent regression would waste the next unit.) What this sample *does*
+establish, which the 3-run samples could not, is that **the Pi is not
+stabilizing**: T115's `portalVisibleRegions_` fix and T116's structural
+closure of that class were both real and correct, and neither touches whatever
+is actually corrupting the heap here.
+
+**`ZoneMergeBuffers::ranges_`** (T113's original named defect, `__x=0x2601`
+mid-tour SIGSEGV) reproduced **4 of 10 times** (5 of 11 counting a
+discounted smoke-test run that hit the identical `0x2601` value), 100% of
+the time at the exact `/move -700` window T113 first identified. **Not
+closed, not new — same shape, same location, same rate its history
+predicts.**
+
+**Three more crash signatures appeared in the same 10 runs**, none of them
+`ranges_`:
+- **Mesa/Lima SIGBUS at teardown, inside `libgallium`, no symbols** — T113's
+  own previously-*unexplained* signature, reproduced here for the first
+  time since T113 itself. Still unexplained; still no symbols available.
+- **A brand-new teardown signature**: SIGABRT "corrupted size vs.
+  prev_size" inside `SkyData::~SkyData()` destroying its texture map — a
+  container neither T113's nor T114's audits ever touched.
+- **A reproduction of T113's *original* T110-class double-free**
+  (`RaceModelLoader::~RaceModelLoader()` destroying
+  `vertexMappingForAnimation_`) — verified NOT a regression of T114's
+  `animScratchMutex_` fix (the mutex and both its call sites are still
+  correctly in place in current source); more likely fallout from the same
+  broader heap corruption than a race in this specific pair.
+
+**Read on convergence: not converging.** Four independent victim containers
+across ten runs, with no single write site implicated by any of them,
+point at one wild/out-of-bounds write somewhere upstream rather than four
+narrow independent bugs — the same "detection is far from origin" pattern
+T113 and T115 already established for their own single findings, now seen
+repeated across unrelated containers in one session. T113's and T114's
+3-run samples were very likely too small to see the full shape of this;
+this unit's 10-run sample is the first to show all four signatures
+together.
+
+**Audio**: enabled throughout (per the plan), not implicated in any of the
+10 crash backtraces (all were main/render-thread, mid-frame or teardown
+destructor unwind) — does not rule out T115's documented TinySoundFont OOB
+*read*, which wouldn't necessarily crash and this unit's method (no ASAN on
+the Pi) couldn't have caught either way.
+
+**Board recommendation**: the next Pi unit should be a general
+heap-corruption hunt (ASAN or a targeted bounds check), not another
+`ranges_`-only chase — `ranges_` is the most frequent victim but
+demonstrably not the only one. The ASAN-memory-ceiling problem T115 left
+unsolved is the actual blocker; this unit's normal-build runs show the Pi
+session budget itself is generous (10 full tours in one session, well under
+the 12-invocation cap), so a shorter tour (skip the dead-air warmup and
+early `/pmem` calls) aimed specifically at the hazard box would give a
+future ASAN attempt real headroom without changing what's exercised. The
+Mesa/Lima SIGBUS, now confirmed twice with zero symbols either time, is a
+separate, cheaper next step: a Mesa build with debug symbols for
+`libgallium` alone.
+
+Deviation flagged: the plan named `review/T115/tour_pi.txt` (a 14-step
+variant with `/camp` deliberately dropped, an ASAN-OOM-specific
+adjustment) as the tour to reuse; switched mid-session to the 15-step
+T113/T114-equivalent version (with `/camp` restored) after a first attempt
+on the literal file never reached a natural end state and could not
+exercise teardown — the fuller tour is the more comparable choice for this
+unit's stated purpose, not a less comparable one. Full detail, per-run
+table, and every backtrace: `refactor/T117_pi_stability_rebaseline.md`'s
+Review; evidence in `review/T117/`.
