@@ -152,18 +152,246 @@ is larger than this unit," that is a success.
 
 ## Review
 
-(executor fills: whether a dead texture ever reaches `cacheTexParams()`, and
-how that was demonstrated; the `clear()` vs `evictTexture()` finding
-confirmed or refuted; the full destruction-path table; `clearTextureReferences()`
-completeness with the holders it misses; the re-run ASAN result **with
-quarantine enabled** and whether it changes T118's negatives; the fix and why
-it is narrow, or the diagnosis; **N of 10** Pi runs; deviations)
+### Does a dead texture reach `cacheTexParams()`? — Not demonstrated (and the mechanism is now confirmed too narrow to explain it alone)
+
+A temporary diagnostic (`ConstrainedTextureCache::isLiveTexture()` checked at
+the `cacheTexParams()` call site in `COpenGLES2Driver::
+applyMaterialRenderState()`, gated behind `-DWILLEQ_T119_DIAG_DEAD_TEXTURE`,
+removed from the final commit per the plan's own instruction) was run across:
+
+- Two full x86 zone-crossing tours (Befallen → Qeynos2 → Befallen → `/camp`),
+  one of which **independently reproduced a real crash** (see below) on the
+  first attempt.
+- One x86 run under `gdb` with the same tour (did not crash — see the
+  gdb/race-sensitivity note below).
+
+**Zero hits, including on the run that crashed.** The diagnostic never once
+observed `cacheTexParams()` being called with a texture `isLiveTexture()`
+reported dead. This refutes — for every path this unit's instrumentation
+covered — the T118 candidate mechanism as *the* (or at least as *the sole*)
+route by which `GL_LINEAR` (`0x2601`) lands in freed memory. It does not
+prove the mechanism is impossible (a call from a code path this session's
+tour never exercised could still hit it), but it means T118's candidate is
+no longer the leading hypothesis without further narrowing.
+
+### `clear()` vs `evictTexture()` — confirmed, and fixed
+
+Confirmed exactly as the plan's scoping section described:
+`clearTextureReferences()` (`constrained_texture_cache.cpp`, "removes
+texture from mesh materials before deletion ... prevents crashes from
+dangling texture pointers during rendering") was called from exactly one
+place, `evictTexture()` (`:1122`, old line numbers). `clear()` (`:595`, the
+zone-unload hook, called from `IrrlichtRenderer::unloadZone()`) iterated
+`cache_`, notified eviction listeners, and called `driver_->
+removeTexture()` for every entry — **without ever calling
+`clearTextureReferences()`.**
+
+This is a real, demonstrable use-after-free hazard, not a theoretical one.
+Verified mechanistically, not just by inspection:
+
+- `SMaterial::setTexture()` (`third_party/irrlicht-gles2-x86/include/
+  SMaterial.h:482`) is a **raw, non-owning pointer assignment** — `TextureLayer[i].Texture = tex;`, no `grab()`/refcount participation.
+- `CNullDriver::removeTexture()` (`third_party/irrlicht-gles2-x86/source/
+  Irrlicht/CNullDriver.cpp:362`) unconditionally calls `texture->drop()` on
+  the texture's one owning reference (the `Textures` list's own `grab()`
+  from `addTexture()`), which deletes the `COGLES2Texture` object the
+  instant its refcount hits zero — there is **no reference-counting
+  protection** for any `SMaterial` that still points at it.
+- This is exactly the failure mode `clearTextureReferences()`, and the two
+  purpose-built `TextureEvictionListener` guard classes
+  (`RegionMeshTextureGuard` and its entity-mesh sibling,
+  `renderer_zone_merge.h`) already exist to prevent — but all three are
+  wired only to the `evictTexture()` path (`addEvictionListener()` /
+  `clearTextureReferences()`'s own single call site), never to `clear()`.
+  `SkyRenderer` independently registers as an eviction listener too
+  (`sky_renderer.cpp:38-53`) and correctly nulls its own `textureCache_`
+  entries on both `evictTexture()` *and* `clear()` (listeners are notified
+  from both) — but that only protects its private lookup map, not the raw
+  `ITexture*` already baked into its scene-node materials
+  (`skyDomeMeshNode_`/`sunNode_`/`moonNode_`/`sunGlowNode_`), which
+  `clearTextureReferences()` would have covered but nothing else does.
+
+**The fix** (`constrained_texture_cache.cpp`, `clear()`): call
+`clearTextureReferences(pair.second.texture)` for every entry, immediately
+before `driver_->removeTexture(pair.second.texture)` — the exact ordering
+`evictTexture()` already uses. This is narrow: it adds one call already
+proven safe on the sibling path, changes no ownership/refcounting semantics,
+reorders nothing in GL teardown, and touches no rendering behavior when no
+stale reference exists (the common case, since `unloadZone()` already
+removes almost every scene node — zone mesh, region meshes, entities, doors,
+objects — before `clear()` runs). The gap it closes is specifically the
+handful of things `unloadZone()` only **disables** rather than removes at
+that point (notably `SkyRenderer`'s dome/sun/moon/glow nodes, see below), or
+future code that adds a new such case.
+
+### Destruction-path table
+
+| Path | Calls `clearTextureReferences()`? | Notes |
+|---|---|---|
+| `evictTexture()` (LRU path, `:1099`) | **Yes**, always did | Also notifies `evictionListeners_` before either step |
+| `clear()` (zone-unload hook, `:595`→now `:614`) | **No, until this fix — now yes** | Sole zone-unload hook per its own comment; also called harmlessly from the destructor |
+| Same-name replacement (`registerTexture()`, old `:511`) | Indirectly — delegates to `evictTexture(name)` | Already safe, no change needed |
+| Any other `driver_->removeTexture()` call outside this class | None found | `removeTexture()` calls in this file are all inside `ConstrainedTextureCache` (`clear()`, `evictTexture()`, and the compressed-upload failure paths, which remove a texture that was never registered/exposed to any material) |
+
+### `clearTextureReferences()` completeness audit — what it covers and what it misses
+
+**Covers:** any `ITexture*` reachable by walking `smgr_->getRootSceneNode()`
+recursively — both `IMeshSceneNode`/`IAnimatedMeshSceneNode` mesh-buffer
+materials *and* the generic per-node override material slot
+(`node->getMaterial(i)`), which also catches `IBillboardSceneNode` (sun,
+moon, sun glow) since that check is type-agnostic. Combined with the
+existing `RegionMeshTextureGuard`/entity-mesh-guard eviction listeners for
+merged-mesh buffers built outside the live scene graph
+(`renderer_zone_merge.h`), and `SkyRenderer`'s own eviction-listener
+nulling of its private texture lookup map, this is comprehensive for the
+`evictTexture()` path.
+
+**Misses (all real, none newly introduced by this unit):**
+
+- **Anything a manager only disables rather than removes at the point
+  `clear()`/`evictTexture()` runs.** `SkyRenderer::setEnabled(false)`
+  (called from `unloadZone()`) sets `setVisible(false)` on its nodes but
+  does not call `clearSkyNodes()` — the nodes, and their stale material
+  texture pointers, survive in the scene graph until the *next* zone's
+  `createSkyDome()` call. `TumbleweedManager::onZoneLeave()` does the same
+  (`node->setVisible(false)`, pool entries kept). Because
+  `clearTextureReferences()` walks the live scene graph, it *would* catch
+  these if invoked — and now is, via this unit's `clear()` fix — but a
+  future manager that adds a similar "hide, don't remove" pattern without
+  also being covered by a `clear()`/`evictTexture()` pass would reintroduce
+  this class of gap.
+  - Note this is why disabled-not-removed sky/tumbleweed nodes were **not**
+    a live crash vector for the *normal* render path even before this fix:
+    `ISceneNode::setVisible(false)` means `OnRegisterSceneNode()` never
+    queues the node for a solid/transparent draw pass, so
+    `applyMaterialRenderState()` is never called on their stale materials
+    through ordinary scene-graph rendering. The hazard was real (a manual
+    draw path, a re-enable race, or any code that bypasses the visibility
+    gate could still reach it) but this unit did not find a path that
+    proves it as *the* render-time write.
+- **2D UI textures and anything that caches a raw `ITexture*` outside a
+  scene-node `SMaterial` or a listener-registered lookup map.** Not audited
+  exhaustively this unit — flagged, not chased, since it is outside the
+  `clear()`/`evictTexture()` asymmetry this unit was scoped to.
+
+### Re-run ASAN with quarantine enabled — NOT completed this unit (deviation, flagged)
+
+**Not run.** Session time was spent instead on (a) the diagnostic
+instrumentation and its two x86 zone-crossing tours, one of which
+independently reproduced a real, previously-undocumented crash signature
+(see below) on the very first attempt without any sanitizer, and (b) five
+live Pi runs re-measuring the crash rate after the fix (see next section).
+Both were judged higher-value than the ASAN-quarantine re-run given what
+they actually found. **This is an explicit deviation from the plan**,
+recorded rather than silently dropped: Leg 2/3's `quarantine_size_mb=0`
+weakness (T118) is unresolved, and T118's ASAN negatives remain exactly as
+weak as T118 itself already documented. A future unit should still do this
+if the corruption survives further narrowing.
+
+### A new signature, found for free: "double free or corruption (out)"
+
+Running the diagnostic build through the x86 zone-crossing tour (Befallen →
+Qeynos2 → Befallen → `/camp`, no ASAN, no Pi) **crashed on the first
+attempt**, immediately after `/camp` teardown, with glibc's `double free or
+corruption (out)` — a **fifth distinct heap-corruption sub-signature**
+across this arc (T117 catalogued four: the historical mid-tour `ranges_`
+SIGSEGV, `SkyData::~SkyData()`'s "corrupted size vs. prev_size", the
+unsymbolized Mesa/Lima SIGBUS, and `RaceModelLoader::~RaceModelLoader()`'s
+"double free or corruption (!prev)"). `(out)` is glibc's `_int_free()`
+rejecting a pointer whose chunk metadata places it outside the arena's
+expected bounds — consistent with the same "corrupted container differs per
+run" pattern T118/T117 already established, not a new independent bug
+class. The diagnostic logged **zero** dead-texture hits during this same
+run, meaning this specific crash was not observed going through
+`cacheTexParams()`.
+
+A repeat of the identical tour under `gdb` (`handle SIGABRT stop`) did
+**not** crash within the same tour length — consistent with a
+timing/allocator-layout-sensitive defect (gdb's overhead measurably changes
+scheduling/allocator behavior), not a deterministic one. This matches the
+established character of every prior signature in this arc.
+
+**Post-fix, the same tour run twice cleanly** (`review/T119/
+x86_postfix_run1.log`, `x86_postfix_run2.log` — both reached `Game thread
+stopped`/teardown logging with no crash text). Two clean repeats after one
+crashing pre-fix attempt is suggestive, not a rate — see the Pi numbers
+below for the real measurement, which complicates this.
+
+### Pi re-measurement: **0 of 5 clean** — the fix does NOT close T117's crash signatures
+
+**Deviation, flagged clearly**: the plan calls for 10 runs; this unit
+completed **5** before session time ran out, and reports the partial tally
+rather than stopping on convenient early results or silently truncating.
+Binary: normal (non-sanitizer) ARM cross-compile of this unit's fix,
+stripped to 10,275,568 bytes (matches the documented ~10MB baseline),
+staged to Pi `/tmp`. Same tour, config, and flags as T117
+(`--constrained orangepi --drm --renderer gles2 -r 800 600 --log-level=INFO`,
+audio enabled) for direct comparability. Logs: `review/T119/pi/run{1..5}.log`.
+
+| Run | Outcome | Signature |
+|---|---|---|
+| 1 | Killed by kernel OOM mid-tour (before `/move -700`) | `oom-kill` in `dmesg`, anon-rss 270848kB on a 512MB device — a different failure mode than T117's four, not one of them |
+| 2 | Reached `/camp`, crashed at final teardown | `corrupted size vs. prev_size` — **matches T117 run 2's `SkyData`-adjacent signature; persists after this unit's fix** |
+| 3 | Crashed immediately after `/move -700 20 3`, mid-tour, no message | Silent death (no dmesg entry, no glibc text) — **matches the historical mid-tour `ranges_`/`0x2601` SIGSEGV signature exactly (same triggering movement); persists after this unit's fix** |
+| 4 | Reached `/camp`, crashed during `unloadZone()`/`clear()`'s own teardown sequence | `corrupted size vs. prev_size` again, appearing right at/after the code this unit's fix touches — but the corruption clearly originates earlier in the same run (this arc's established "manifests far from its cause" pattern), not from the fix itself (verified the fix does not touch the placeholder texture: `placeholderTexture_` is never stored in `cache_`, so it is never iterated/destroyed by `clear()`'s loop, and remains valid for `clearTextureReferences()`'s replacement use throughout) |
+| 5 | Crashed immediately after `/move -700 20 3`, mid-tour, no message | Same as run 3 |
+
+**0 of 5 clean, versus T117's 2 of 10 baseline.** This sample is too small
+to claim a worse rate with confidence, but it flatly does not show an
+improvement, and two of five runs reproduce the *exact* pre-fix mid-tour
+signature at the *exact* triggering movement. **Caveat honestly noted**:
+this session's Pi runs showed unusually heavy frame-time degradation (RED
+frame states 44–60ms against a 33.3ms budget throughout, versus T117's
+reported 40-54 FPS baseline) — a plausible sign of thermal or scheduling
+contention specific to this session that could itself perturb the
+timing-sensitive corruption's trigger rate in either direction. This is
+noted as a confound, not used to discount the result.
+
+### Conclusion: fix is real and justified, but does not close this arc
+
+The `clear()`/`clearTextureReferences()` asymmetry was real, is now fixed,
+and is defensible on its own terms (mirrors an already-proven-safe sibling
+path, changes no ownership semantics, x86 suite/visual-gate/ARM
+cross-compile all clean). But the Pi evidence is unambiguous: **the T117
+crash signatures survive this fix.** Per the plan's own success criterion,
+this is reported as "here is a real, narrow, justified fix — and here is
+the evidence that the arc's actual corruptor is something else, or at
+least something larger, that this unit did not reach." The diagnostic's
+zero hits on `cacheTexParams()` (including during an independently
+reproduced crash) further argue against T118's candidate mechanism as the
+(sole) explanation.
+
+### Deviations (summary)
+
+1. ASAN-with-quarantine Pi re-run (plan's Step 2) not completed — time spent
+   on the diagnostic + Pi re-measurement instead; explicitly flagged above,
+   not silently dropped.
+2. Pi run count is 5, not the target 10, due to session time; reported as a
+   partial tally per protocol ("if you must stop early... say exactly why
+   and how many you got"), not rounded up or presented as a full baseline.
+3. The diagnostic instrumentation (`WILLEQ_T119_DIAG_DEAD_TEXTURE`) was
+   written, used to gather the "zero hits" evidence above, and then removed
+   from the final commit per the plan's own instruction ("keep it out of
+   the final commit unless it earns its place") — it did not confirm the
+   hypothesis, so it did not earn a place in the shipped diff.
 
 ## Board
 
-If this closes, say what it means for all four T117 signatures — one
-mechanism should explain the mid-tour `ranges_` crash **and** the teardown
-ones, and if it only explains some, say which remain. If it does not close,
-record what was eliminated: the destruction-path table and the
-`clearTextureReferences()` completeness audit are durable regardless of
-outcome.
+**Does not close.** One mechanism was hoped to explain both the mid-tour
+`ranges_` crash and the teardown ones; this unit's fix targets only a
+teardown-adjacent hazard and the Pi evidence shows the mid-tour signature
+(`ranges_`/`0x2601`, runs 3 and 5) and one teardown signature (`SkyData`-
+adjacent "corrupted size vs. prev_size", runs 2 and 4) **both still
+reproduce after the fix.** What the fix does close: a real,
+now-demonstrated (via the code-level ownership/refcounting analysis above)
+use-after-free hazard in `clear()` that had no protection at all before —
+worth keeping regardless of whether it was the arc's dominant cause. What
+remains open, unchanged from before this unit: the actual source of the
+mid-tour `ranges_` corruption and of the `SkyData`-adjacent teardown
+corruption. Durable artifacts for the next unit regardless of outcome: the
+destruction-path table and the `clearTextureReferences()` completeness
+audit above, plus a fifth heap-corruption signature (`double free or
+corruption (out)`) and a live x86 (non-Pi, non-ASAN) repro recipe for a
+crash in this same family — the zone-crossing + `/camp` tour in
+`review/T119/tour_zone_cross_x86.txt`, which crashed on its first-ever
+attempt with no sanitizer and no hardware required.
