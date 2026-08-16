@@ -1,6 +1,7 @@
 #include "client/graphics/environment/boids_manager.h"
 #include "client/graphics/environment/environment_config.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/renderer_zone_merge.h"  // swapTextureInMaterial (T124 shared primitive)
 #include "common/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -233,6 +234,24 @@ void BoidsManager::getAtlasUVs(uint8_t tileIndex, float& u0, float& v0, float& u
     v0 = row * tileHeight;
     u1 = u0 + tileWidth;
     v1 = v0 + tileHeight;
+}
+
+void BoidsManager::swapEvictedTexture(irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!from) return;
+    int swapped = 0;
+    if (atlasTexture_ == from) {
+        atlasTexture_ = to;
+        ++swapped;
+    }
+    // creatureMaterial_ is set from atlasTexture_ once in init() and never
+    // rebuilt; render() reads it every frame via driver_->setMaterial().
+    swapped += swapTextureInMaterial(creatureMaterial_, from, to);
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[boidstex] BoidsManager::swapEvictedTexture: swapped {} reference(s) "
+                  "(atlasTexture_ and/or creatureMaterial_) to evicted texture -> placeholder (T124 — "
+                  "creatureMaterial_ is read every frame via driver_->setMaterial() outside the scene "
+                  "graph, so clearTextureReferences()'s scene walk could never reach it)", swapped);
+    }
 }
 
 } // namespace Environment

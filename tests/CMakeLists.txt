@@ -1235,6 +1235,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_object_node_texture_guard)
 ENDIF()
 
+# T124: shared eviction-swap primitive coverage (swapTextureInMaterial/
+# swapTextureInMesh/swapTextureInNodeMaterials/swapTextureInMeshSceneNode)
+# plus DoorTextureGuard (doors_ sibling of T123's ObjectNodeTextureGuard)
+# and the singleton-subsystem holders (SpellVisualFX::swapEvictedTexture,
+# BoidsManager::swapEvictedTexture). See
+# refactor/T124_remaining_texture_holders.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_t124_texture_holder_guards
+        test_t124_texture_holder_guards.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_t124_texture_holder_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_t124_texture_holder_guards GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards)
+ENDIF()
+
 # T66: /camera coverage (irrlicht_renderer.cpp processSlashCommand()) --
 # genuinely headless end-to-end: exercises the real processSlashCommand() ->
 # setCameraMode()/cycleCameraMode()/getCameraModeString() chain via a

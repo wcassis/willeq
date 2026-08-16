@@ -487,6 +487,12 @@ class EntityMeshTextureGuard;
 // object-node sibling of RegionMeshTextureGuard/EntityMeshTextureGuard, see
 // its own doc comment).
 class ObjectNodeTextureGuard;
+// Forward declarations -- full definitions in renderer_zone_merge.h (T124:
+// doors_ sibling of ObjectNodeTextureGuard, and the generic forwarding
+// guard used for the singleton-subsystem holders -- see their own doc
+// comments).
+class DoorTextureGuard;
+class ForwardingTextureGuard;
 
 // Entry for material-sorted zone draw list (mesh buffer level)
 struct ZoneDrawEntry {
@@ -710,6 +716,16 @@ public:
 
     // Create and configure EntityRenderer (idempotent — skips if already created)
     void createEntityRenderer();
+
+    // T124: idempotent guard-registration helpers, defined in
+    // renderer_zone_merge.cpp (not here -- irrlicht_renderer.cpp is at the
+    // check_file_sizes.sh budget). ensureBoidsTextureGuard() is safe to
+    // call from either of boidsManager_'s two lazy-construction sites. See
+    // DoorTextureGuard/BoidsManager::swapEvictedTexture()'s doc comments
+    // for the gaps these close.
+    void ensureDoorTextureGuard();
+    void ensureBoidsTextureGuard();
+    void unregisterRemainingT124Guards();
 
     // Background zone loading — instant scene + deferred S3D
     // Build HCMap placeholder + collision for immediate gameplay (<5ms)
@@ -1514,6 +1530,35 @@ private:
     // the renderer's lifetime) and registered the same way. See
     // renderer_zone_merge.h's ObjectNodeTextureGuard doc comment.
     std::unique_ptr<ObjectNodeTextureGuard> objectNodeTextureGuard_;
+
+    // T124: doors_ sibling of objectNodeTextureGuard_ above -- closes the
+    // identical detached-pivotNode gap for doors (DoorManager's PVS-driven
+    // visibility remove()/addChild() cycle, same shape as
+    // applySimulationOutput()'s objectNodes_ handling). Constructed once in
+    // initLoadingScreen() alongside the placeholder-resolving guards above
+    // ONLY if doorManager_ already exists at that point; otherwise
+    // constructed lazily the first time doorManager_ itself is (see
+    // irrlicht_renderer.cpp, both sites). See renderer_zone_merge.h's
+    // DoorTextureGuard doc comment.
+    std::unique_ptr<DoorTextureGuard> doorTextureGuard_;
+
+    // T124: forwarding guards for the singleton-subsystem holders that
+    // actually need one -- SpellVisualFX and BoidsManager (see their own
+    // swapEvictedTexture() doc comments). RainOverlay/SnowOverlay were
+    // investigated and found NOT to need a guard: WeatherEffectsController
+    // only ever constructs rainOverlay_/snowOverlay_ inside
+    // `#ifndef EQT_HAS_GLES2` (weather_effects_controller.cpp), and
+    // EQT_HAS_GLES2 is unconditionally defined whenever EQT_GLES2=ON, the
+    // only supported renderer configuration since P32
+    // (docs/decisions.md) -- so both stay permanently null in every
+    // shipped build; there is nothing for a guard to protect. Flagged in
+    // refactor/T124_remaining_texture_holders.md Review, not silently
+    // skipped. TumbleweedManager was also investigated and found already
+    // covered by the ordinary scene-graph scan (pool nodes are hidden via
+    // setVisible(false), never detached -- see the Review for the full
+    // argument); it needs no guard either.
+    std::unique_ptr<ForwardingTextureGuard> spellVisualFXTextureGuard_;
+    std::unique_ptr<ForwardingTextureGuard> boidsTextureGuard_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);

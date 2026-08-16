@@ -864,9 +864,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         LOG_TRACE(MOD_GRAPHICS, "Creating boids manager (loading atlas)...");
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
         boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);
-        if (!boidsManager_->init(config_.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
-        }
+        if (!boidsManager_->init(config_.eqClientPath)) LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
+        ensureBoidsTextureGuard();
         LOG_INFO(MOD_GRAPHICS, "Boids manager initialized (ambient creatures enabled in settings)");
     } else if (!boidsManager_) {
         LOG_INFO(MOD_GRAPHICS, "Boids manager skipped (ambient creatures disabled in settings)");
@@ -940,18 +939,15 @@ bool IrrlichtRenderer::loadGlobalAssets() {
         if (currentZone_) {
             doorManager_->setZone(currentZone_);
         }
-        if (zoneBspTree_) {
-            doorManager_->setBspTree(zoneBspTree_.get());
-        }
+        if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
         doorManager_->setPvsRegion(currentPvsRegion_);
-        if (frustumCuller_) {
-            doorManager_->setFrustumCuller(frustumCuller_.get());
-        }
+        if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
         if (zoneShader_ && zoneShader_->isAvailable()) {
             doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                  zoneShader_->getActiveAlphaTest(),
                                                  zoneShader_->getActiveAlphaTestRGBA());
         }
+        ensureDoorTextureGuard();  // T124
     }
 
     // S05: skyRenderer_ and detailManager_ already created in initLoadingScreen()
@@ -1391,6 +1387,7 @@ void IrrlichtRenderer::shutdown() {
         constrainedTextureCache_->removeEvictionListener(entityMeshTextureGuard_.get());
     }
     entityMeshTextureGuard_.reset();
+    unregisterRemainingT124Guards();  // T124, see Review
 
     // Stop GPU upload thread before any other cleanup (must stop before EGL context destroyed)
 #ifdef EQT_HAS_GLES2
@@ -1944,11 +1941,13 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     // --- Boids Manager: lazy create if toggled on ---
     if (settings.ambientCreatures && !boidsManager_ && smgr_ && driver_) {
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
+        if (constrainedTextureCache_) boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);  // T124
         if (!boidsManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager (lazy)");
         } else {
             LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
         }
+        ensureBoidsTextureGuard();
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
             if (zoneBoundsValid_) {

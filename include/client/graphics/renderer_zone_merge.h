@@ -49,14 +49,15 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <string>
 #include <vector>
 
 namespace irr {
-namespace video { class IVideoDriver; class ITexture; }
-namespace scene { class IMeshSceneNode; }
+namespace video { class IVideoDriver; class ITexture; struct SMaterial; }
+namespace scene { class IMesh; class ISceneNode; class IMeshSceneNode; }
 }
 
-namespace EQT { namespace Graphics { struct EntityVisual; } }
+namespace EQT { namespace Graphics { struct EntityVisual; struct DoorVisual; } }
 
 namespace EQT {
 namespace Graphics {
@@ -358,6 +359,123 @@ private:
     const std::vector<irr::scene::IMeshSceneNode*>& objectNodes_;
     irr::video::ITexture* placeholder_;
 };
+
+// ---------------------------------------------------------------------------
+// T124: shared eviction-swap primitives.
+//
+// Four guards above (RegionMeshTextureGuard, EntityMeshTextureGuard,
+// ObjectNodeTextureGuard, and the trivial SingleTexturePointerGuard) each
+// re-implemented some form of "walk a material's texture units, swap the
+// evicted pointer for a replacement." T124 found six more holders needing
+// the identical operation. Per the T124 plan's explicit instruction, the
+// loop is extracted ONCE here rather than copied six more times -- every
+// holder below (existing and new) is a thin wrapper composing these.
+//
+// All four free functions are pure bookkeeping: no allocation, no locking,
+// no calls back into ConstrainedTextureCache -- safe to call from inside
+// onTextureEvicted() under the cache's mutex_, same as the hand-written
+// loops they replace.
+
+// The one true loop: swaps every texture-unit slot in `mat` currently
+// holding `from` to `to`. Returns the number of slots swapped (0 or 1 in
+// practice -- a texture normally occupies at most one unit per material,
+// but MATERIAL_MAX_TEXTURES units are all checked defensively).
+int swapTextureInMaterial(irr::video::SMaterial& mat, irr::video::ITexture* from, irr::video::ITexture* to);
+
+// Walks every buffer of `mesh`, swapping each buffer's own material via
+// swapTextureInMaterial(). Mirrors RegionMeshTextureGuard's existing scan
+// and the mesh-buffer half of ObjectNodeTextureGuard's. No-op if mesh is
+// null.
+int swapTextureInMesh(irr::scene::IMesh* mesh, irr::video::ITexture* from, irr::video::ITexture* to);
+
+// Walks `node`'s own override-materials array (getMaterial(i)/
+// getMaterialCount(), NOT the mesh buffers) via swapTextureInMaterial().
+// This is what render() actually binds for ReadOnlyMaterials=false nodes
+// (Irrlicht's default) -- mirrors the node-materials half of
+// ObjectNodeTextureGuard's scan and EntityMeshTextureGuard's materials_
+// scan. No-op if node is null.
+int swapTextureInNodeMaterials(irr::scene::ISceneNode* node, irr::video::ITexture* from, irr::video::ITexture* to);
+
+// Convenience composing the two functions above for an ordinary
+// IMeshSceneNode: mesh-buffer materials AND the node's own override
+// materials. Exactly ObjectNodeTextureGuard's two-part scan and doors'
+// required coverage (see DoorTextureGuard below) -- both hold their actual
+// mesh on an IMeshSceneNode child, not the pivot.
+int swapTextureInMeshSceneNode(irr::scene::IMeshSceneNode* node, irr::video::ITexture* from, irr::video::ITexture* to);
+
+// T124: doors_ sibling of ObjectNodeTextureGuard. DoorManager's
+// per-door pivotNode is continuously detached/reattached from the scene
+// graph, PVS-driven, the identical shape T123 found for objectNodes_ (see
+// door_manager.cpp: setDoorState()/update()/rebuildSingleDoor(), all of
+// which node->remove()/addChild() the pivotNode on visibility changes --
+// NOT a one-time thing settled at zone load, and NOT an unload-time gap:
+// clearDoors() unconditionally re-attaches-then-removes-then-drops every
+// entry regardless of state before doors_.clear()). The door's actual mesh
+// lives on DoorVisual::sceneNode (an IMeshSceneNode child of pivotNode) --
+// when pivotNode is detached, sceneNode goes with it and is equally
+// unreachable from smgr_->getRootSceneNode(). Scans DoorManager's own
+// doors_ bookkeeping directly, exactly like ObjectNodeTextureGuard scans
+// objectNodes_, bypassing scene-graph reachability entirely.
+class DoorTextureGuard : public TextureEvictionListener {
+public:
+    // doors: DoorManager::doors_ -- renderer-owned (via doorManager_),
+    // persists for the renderer's lifetime (clearDoors() empties the map,
+    // never destroys/recreates DoorManager itself -- doorManager_ is
+    // constructed lazily exactly once, guarded by `if (!doorManager_)` in
+    // irrlicht_renderer.cpp), safe to hold a reference for the guard's own
+    // lifetime (also renderer-owned, constructed alongside doorManager_).
+    //
+    // placeholder: resolved ONCE by the caller before construction, same
+    // load-bearing non-reentrancy constraint as the other guards above
+    // (never re-derive it inside onTextureEvicted()).
+    DoorTextureGuard(const std::map<uint8_t, DoorVisual>& doors,
+                      irr::video::ITexture* placeholder);
+
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
+
+private:
+    const std::map<uint8_t, DoorVisual>& doors_;
+    irr::video::ITexture* placeholder_;
+};
+
+// T124: forwarding guard for holders that are singleton renderer
+// subsystems (SpellVisualFX, RainOverlay, SnowOverlay, BoidsManager) rather
+// than node/map collections. Each of those classes owns its cached
+// ITexture* members privately and exposes a single swapEvictedTexture()-
+// shaped method that internally uses the same swapTextureInMaterial/
+// swapTexturePointer primitives -- this guard is pure forwarding, it
+// contains no swap logic of its own (avoiding a fifth near-identical
+// TextureEvictionListener subclass for what is, underneath, the exact same
+// "call one function with (from, to)" shape four times over).
+class ForwardingTextureGuard : public TextureEvictionListener {
+public:
+    using SwapFn = std::function<void(irr::video::ITexture* from, irr::video::ITexture* to)>;
+
+    // fn: bound to the owning subsystem's swapEvictedTexture()-shaped
+    // method (e.g. std::bind or a lambda capturing the subsystem pointer).
+    // placeholder: resolved ONCE by the caller before construction, same
+    // load-bearing constraint as every guard above.
+    ForwardingTextureGuard(SwapFn fn, irr::video::ITexture* placeholder)
+        : fn_(std::move(fn)), placeholder_(placeholder) {}
+
+    void onTextureEvicted(const std::string& /*name*/, irr::video::ITexture* texture) override {
+        if (texture && fn_) fn_(texture, placeholder_);
+    }
+
+private:
+    SwapFn fn_;
+    irr::video::ITexture* placeholder_;
+};
+
+// T124: shutdown()-time unregister-before-destroy helper, shared to avoid
+// the 3-line `if (cache && guard) cache->removeEvictionListener(guard.get());
+// guard.reset();` pattern being copy-pasted once per guard (irrlicht_renderer.cpp
+// is at the check_file_sizes.sh budget -- this also directly serves that).
+template <typename GuardPtr>
+void unregisterGuard(ConstrainedTextureCache* cache, GuardPtr& guard) {
+    if (cache && guard) cache->removeEvictionListener(guard.get());
+    guard.reset();
+}
 
 } // namespace Graphics
 } // namespace EQT

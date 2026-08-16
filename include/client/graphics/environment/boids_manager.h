@@ -85,6 +85,21 @@ public:
 
     void reloadSettings();
 
+    // T124: called by the renderer's Boids eviction guard
+    // (renderer_zone_merge.h's ForwardingTextureGuard) whenever
+    // ConstrainedTextureCache evicts a texture. atlasTexture_ and
+    // creatureMaterial_ are both set exactly ONCE, in init() (BoidsManager
+    // is a renderer-lifetime singleton, lazily constructed at most once per
+    // renderer -- both call sites in irrlicht_renderer.cpp guard with
+    // `if (!boidsManager_)`), and never rebuilt per zone. render() reads
+    // creatureMaterial_ EVERY FRAME via driver_->setMaterial() -- this is
+    // not a scene-node holder at all (creatures are drawn with raw
+    // drawVertexPrimitiveList() calls, never attached to the scene graph),
+    // so ConstrainedTextureCache::clearTextureReferences()'s scene walk can
+    // never reach it; an eviction leaves a continuously-read dangling
+    // pointer with no guard at all before this fix.
+    void swapEvictedTexture(irr::video::ITexture* from, irr::video::ITexture* to);
+
 private:
     bool loadCreatureAtlas(const std::string& path);
     void getAtlasUVs(uint8_t tileIndex, float& u0, float& v0, float& u1, float& v1) const;

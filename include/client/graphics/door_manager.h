@@ -191,6 +191,11 @@ public:
     // Get all door scene nodes for collision detection
     std::vector<irr::scene::IMeshSceneNode*> getDoorSceneNodes() const;
 
+    // T124: exposes doors_ directly for DoorTextureGuard registration
+    // (renderer_zone_merge.h) -- mirrors EntityRenderer::getEntities()'s
+    // existing precedent for the same purpose (EntityMeshTextureGuard).
+    const std::map<uint8_t, DoorVisual>& getDoors() const { return doors_; }
+
 private:
     // Find matching mesh in zone objects by name
     irr::scene::IMesh* findDoorMesh(const std::string& doorName) const;
