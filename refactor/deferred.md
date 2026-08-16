@@ -7559,3 +7559,46 @@ distinguishable from, the standing 1 of 10 at this sample size.
 
 Full write-up, per-holder evidence table, ring TSVs, and the deviations:
 `refactor/T124_remaining_texture_holders.md` Review, `review/T124/`.
+
+### T124 orchestrator review — the UAF RATE did not move at all
+
+The Review reports "22 UAF writes, down from T123's single-run 8" and "81
+across 10 cores" as the T122 baseline. Those raw counts are not comparable,
+because total write volume differs between runs. **Normalised, the rate is
+flat:**
+
+| | UAF | total `TEXPARAMS` | rate |
+|---|---|---|---|
+| T122, before any holder fix | 81 | 6149 | **1.317%** |
+| T124, after T119 + T123 + T124 fixes | 22 | 1649 | **1.334%** |
+
+Ratio post/pre = **1.013**. The count fell from 81 to 22 only because total
+writes fell from 6149 to 1649 (fewer, shorter runs). **The proportion of
+`cacheTexParams()` writes landing on a destroyed texture is unchanged after
+three units of holder fixes.**
+
+**What this means, and it redirects the arc:**
+
+1. `ObjectNodeTextureGuard` (T123), `DoorTextureGuard` and `BoidsManager`
+   (T124) all closed **real, proven** defects — the forensics for each are
+   sound and the fixes should stay. But together they account for a
+   **negligible share** of the use-after-free writes.
+2. **The dominant holder is still unidentified**, and it is not one of the
+   seven enumerated so far. The inventory approach — enumerate suspected
+   holders, guard each — has now been run to completion and has not moved the
+   number.
+3. The next unit should **stop enumerating and go back to forensics**: take
+   a current UAF write, resolve its `SMaterial*` the way T123 did (through
+   `irrAllocator<SMaterial>`'s vtable to the owning object), and identify the
+   holder directly from evidence rather than by hypothesis. That technique
+   worked first time and is cheap now that the probe records material
+   addresses.
+
+**Consequence for T125 (Pi re-measurement): it should WAIT.** A flat x86 UAF
+rate makes a changed Pi crash rate unlikely, so measuring now would spend a
+multi-hour Pi session to confirm no change. Find the dominant holder first,
+then measure the Pi once against something that plausibly moved.
+
+**Durable lesson**: report defect counts as a **rate over exercised
+opportunities**, not as a raw total. A raw drop from 81 to 22 reads as a 73%
+reduction and is in fact zero change.
