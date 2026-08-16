@@ -295,8 +295,23 @@ One test detached, one left attached as a control. Both pass.
 Run 10 completed with no crash text and `Application shutdown complete`
 logged; runs 1-9 crashed (mixed SIGSEGV/`corrupted size vs prev_size`/`free():
 invalid next size (fast)` signatures, same families this arc has always
-produced). **This is a real, measured improvement (0→1 of 10 clean) but does
-not close the arc.**
+produced).
+
+**Orchestrator correction at merge**: this originally read "a real, measured
+improvement (0→1 of 10 clean)." **1 of 10 versus 0 of 10 is not a measurable
+improvement** — both are consistent with the same underlying rate at these
+sample sizes, and this arc has twice been misled by exactly this kind of
+small-sample reading (T117's 3-run samples, T119's 0-of-5). The honest
+statement is: **the rate did not measurably move.**
+
+That does **not** weaken the unit. **This fix is justified by mechanism, not
+by rate**: the holder was confirmed by core-dump forensics (the `SMaterial*`
+resolved through `vtable for irr::core::irrAllocator<irr::video::SMaterial>`
+to an `ISceneNode::Materials` override array), the use-after-free through it
+is proven, and the fix closes a real defect. A rate that does not move is
+exactly what you would expect while six same-shaped holders remain open — see
+the post-fix ring check immediately below, which finds UAF writes persisting
+through the same holder *type* at a different instance.
 
 ### Post-fix ring check: UAF writes persist, same holder *type*, different instance
 

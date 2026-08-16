@@ -7421,3 +7421,55 @@ lists now carry `t122_texprobe.h`.
 Full write-up, ring excerpts, backtraces, and the 10-run/6149-write table:
 `refactor/T122_texture_lifecycle_probe.md` Review,
 `/mnt/projects/fable/review/T122/`.
+
+## T123 (2026-08-16) — detached `objectNodes_` confirmed and fixed; SIX same-shaped holders remain OPEN
+
+**The holder question from T122 is answered, for one holder.**
+`IrrlichtRenderer::applySimulationOutput()` detaches object nodes via
+`node->remove()` when they go invisible while the renderer keeps them in
+`objectNodes_`. A detached node is unreachable from `smgr_->getRootSceneNode()`,
+so `ConstrainedTextureCache::clearTextureReferences()` — which finds references
+*only* by walking the scene graph — never sweeps its materials. The node is
+later re-attached and drawn, and `applyMaterialRenderState()` calls
+`cacheTexParams()` on the stale texture pointer.
+
+**Confirmed by forensics, not inference**: T122's probe was extended to record
+the `SMaterial*` at each write; the offending material's embedded allocator
+resolved via `gdb` to `vtable for irr::core::irrAllocator<irr::video::SMaterial>
++ 16`, proving it is an `ISceneNode::Materials` override array (which
+`CMeshSceneNode::render()` reads instead of the mesh-buffer material whenever
+`ReadOnlyMaterials=false` — the unmodified default here).
+
+**Fixed** with `ObjectNodeTextureGuard`, a third sibling of the already-proven
+`RegionMeshTextureGuard`/`EntityMeshTextureGuard` eviction-listener pattern,
+with a test that exercises the real `clear()` destruction path against a real
+detached Irrlicht node.
+
+### STILL OPEN — six holders with the identical gap shape
+
+Found during the inventory, deliberately not fixed (scope discipline), and
+**each is a candidate contributor to the remaining crash rate**:
+
+- **doors** — assessed as the largest remaining contributor
+- **SpellVisualFX**
+- **TumbleweedManager**
+- **RainOverlay**
+- **SnowOverlay**
+- **BoidsManager**
+
+Covered and safe: region meshes, entity meshes, sky.
+
+**Next unit: apply the same guard pattern to these six**, doors first. The
+pattern is now proven three times over and the test shape exists.
+
+### Rate: did NOT measurably move
+
+Uninstrumented baseline post-fix is **1 of 10 clean** against the standing
+**0 of 10**. That is **not** a measurable improvement — both are consistent
+with the same underlying rate, and this arc has twice been misled by exactly
+this kind of small-sample reading (T117, T119). **The fix stands on proven
+mechanism, not on the number**, and a flat rate is what you would expect with
+six same-shaped holders still open. The post-fix probe ring confirms UAF writes
+persisting through the same holder *type* at a different instance.
+
+**Do not read the flat rate as evidence the fix was wrong or unnecessary.**
