@@ -1493,4 +1493,25 @@ void SpellVisualFX::applyWorkerResults(const EQT::Graphics::SimulationOutput& re
     }
 }
 
+void SpellVisualFX::swapEvictedTexture(irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!from) return;
+    irr::video::ITexture** slots[] = {
+        &m_particle_texture, &m_fire_texture, &m_frost_texture,   &m_magic_texture,
+        &m_poison_texture,   &m_disease_texture, &m_chromatic_texture, &m_corruption_texture,
+    };
+    int swapped = 0;
+    for (irr::video::ITexture** slot : slots) {
+        if (*slot == from) {
+            *slot = to;
+            ++swapped;
+        }
+    }
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[spellfxtex] SpellVisualFX::swapEvictedTexture: swapped {} cached "
+                  "particle-texture member(s) to evicted texture -> placeholder (T124 — prevents a "
+                  "future createXNode() from baking a dangling ITexture* into a brand new node's "
+                  "material)", swapped);
+    }
+}
+
 } // namespace EQ

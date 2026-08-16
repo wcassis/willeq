@@ -1,6 +1,7 @@
 #include "client/graphics/renderer_zone_merge.h"
 #include "client/graphics/irrlicht_renderer.h"  // ZoneDrawEntry
 #include "client/graphics/entity_renderer.h"    // EntityVisual, EQAnimatedMeshSceneNode
+#include "client/graphics/door_manager.h"       // DoorVisual
 #include "common/logging.h"
 
 #include <irrlicht.h>
@@ -279,6 +280,52 @@ int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
 }
 
 // ---------------------------------------------------------------------------
+// T124: shared eviction-swap primitives (see header comment for the full
+// rationale) -- the ONE loop every guard below composes instead of
+// re-implementing.
+// ---------------------------------------------------------------------------
+
+int swapTextureInMaterial(irr::video::SMaterial& mat, irr::video::ITexture* from, irr::video::ITexture* to) {
+    int swapped = 0;
+    for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+        if (mat.getTexture(t) == from) {
+            mat.setTexture(t, to);
+            ++swapped;
+        }
+    }
+    return swapped;
+}
+
+int swapTextureInMesh(irr::scene::IMesh* mesh, irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!mesh) return 0;
+    int swapped = 0;
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (!buf) continue;
+        swapped += swapTextureInMaterial(buf->getMaterial(), from, to);
+    }
+    return swapped;
+}
+
+int swapTextureInNodeMaterials(irr::scene::ISceneNode* node, irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!node) return 0;
+    int swapped = 0;
+    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+        swapped += swapTextureInMaterial(node->getMaterial(i), from, to);
+    }
+    return swapped;
+}
+
+int swapTextureInMeshSceneNode(irr::scene::IMeshSceneNode* node, irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!node) return 0;
+    // 1. Mesh-buffer materials. 2. The node's own override materials array
+    // (ISceneNode::Materials, what render() actually reads for the default
+    // ReadOnlyMaterials=false -- see ObjectNodeTextureGuard's doc comment
+    // in the header for the T123 forensics establishing this).
+    return swapTextureInMesh(node->getMesh(), from, to) + swapTextureInNodeMaterials(node, from, to);
+}
+
+// ---------------------------------------------------------------------------
 // RegionMeshTextureGuard -- P10b root-cause fix (see header comment)
 // ---------------------------------------------------------------------------
 
@@ -298,23 +345,13 @@ void RegionMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
     irr::video::ITexture* placeholder = placeholder_;
     int swapped = 0;
 
+    // T124: migrated onto swapTextureInMesh() -- behaviour-preserving,
+    // this guard only ever scanned mesh-buffer materials (region mesh
+    // nodes carry no node-level override materials of their own), so this
+    // is exactly the same scan as before, just de-duplicated.
     for (const auto& [regionIdx, node] : regionMeshNodes_) {
         if (!node) continue;
-        irr::scene::IMesh* mesh = node->getMesh();
-        if (!mesh) continue;
-
-        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
-            irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
-            if (!buf) continue;
-
-            irr::video::SMaterial& mat = buf->getMaterial();
-            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
-                if (mat.getTexture(t) == texture) {
-                    mat.setTexture(t, placeholder);
-                    ++swapped;
-                }
-            }
-        }
+        swapped += swapTextureInMesh(node->getMesh(), texture, placeholder);
     }
 
     if (swapped > 0) {
@@ -343,37 +380,23 @@ void EntityMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
     irr::video::ITexture* placeholder = placeholder_;
     int swapped = 0;
 
+    // T124: migrated onto the shared primitives -- behaviour-preserving.
+    // EntityMeshTextureGuard's two-part scan doesn't match
+    // swapTextureInMeshSceneNode() (EQAnimatedMeshSceneNode isn't an
+    // IMeshSceneNode and its second material source is getInstanceMesh(),
+    // not getMesh()), but each half maps onto one of the two lower-level
+    // primitives exactly.
     for (const auto& [spawnId, visual] : entities_) {
         EQAnimatedMeshSceneNode* node = visual.animatedNode;
         if (!node) continue;
 
         // 1. The node's own materials_ vector (what render() actually binds
         //    at draw time — see class doc comment in renderer_zone_merge.h).
-        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-            irr::video::SMaterial& mat = node->getMaterial(i);
-            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
-                if (mat.getTexture(t) == texture) {
-                    mat.setTexture(t, placeholder);
-                    ++swapped;
-                }
-            }
-        }
+        swapped += swapTextureInNodeMaterials(node, texture, placeholder);
 
         // 2. The per-instance mesh buffers' own materials (e.g. attached
         //    equipment pieces as separate buffers).
-        if (irr::scene::SMesh* instMesh = node->getInstanceMesh()) {
-            for (irr::u32 i = 0; i < instMesh->getMeshBufferCount(); ++i) {
-                irr::scene::IMeshBuffer* buf = instMesh->getMeshBuffer(i);
-                if (!buf) continue;
-                irr::video::SMaterial& mat = buf->getMaterial();
-                for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
-                    if (mat.getTexture(t) == texture) {
-                        mat.setTexture(t, placeholder);
-                        ++swapped;
-                    }
-                }
-            }
-        }
+        swapped += swapTextureInMesh(node->getInstanceMesh(), texture, placeholder);
     }
 
     if (swapped > 0) {
@@ -403,41 +426,15 @@ void ObjectNodeTextureGuard::onTextureEvicted(const std::string& /*name*/,
     irr::video::ITexture* placeholder = placeholder_;
     int swapped = 0;
 
+    // T124: migrated onto swapTextureInMeshSceneNode() -- behaviour-
+    // preserving, this is byte-for-byte the same two-part scan (mesh-buffer
+    // materials, mirrors RegionMeshTextureGuard; node-level override
+    // materials, what ConstrainedTextureCache::clearTextureReferences()
+    // already checks for reachable nodes -- T123 confirmed via live core
+    // dump this is the holder type an observed UAF write traced back to),
+    // just de-duplicated into the shared primitive.
     for (irr::scene::IMeshSceneNode* node : objectNodes_) {
-        if (!node) continue;
-
-        // 1. Mesh-buffer materials — what most object nodes actually bind
-        //    at render time (mirrors RegionMeshTextureGuard).
-        if (irr::scene::IMesh* mesh = node->getMesh()) {
-            for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
-                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
-                if (!buf) continue;
-                irr::video::SMaterial& mat = buf->getMaterial();
-                for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
-                    if (mat.getTexture(t) == texture) {
-                        mat.setTexture(t, placeholder);
-                        ++swapped;
-                    }
-                }
-            }
-        }
-
-        // 2. The node's own override materials array (ISceneNode::Materials,
-        //    via getMaterial(i)/getMaterialCount()) — what
-        //    ConstrainedTextureCache::clearTextureReferences() already checks
-        //    for nodes reachable from the scene-graph root. T123 confirmed
-        //    via a live core dump (irrAllocator<SMaterial> vtable match on
-        //    the array's embedded allocator) that this is exactly the
-        //    holder type an observed use-after-free write traced back to.
-        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-            irr::video::SMaterial& mat = node->getMaterial(i);
-            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
-                if (mat.getTexture(t) == texture) {
-                    mat.setTexture(t, placeholder);
-                    ++swapped;
-                }
-            }
-        }
+        swapped += swapTextureInMeshSceneNode(node, texture, placeholder);
     }
 
     if (swapped > 0) {
@@ -447,6 +444,83 @@ void ObjectNodeTextureGuard::onTextureEvicted(const std::string& /*name*/,
                   "graph, making clearTextureReferences()'s scene walk unable to reach them while hidden)",
                   swapped);
     }
+}
+
+// ---------------------------------------------------------------------------
+// DoorTextureGuard — T124 (doors_ sibling of ObjectNodeTextureGuard, see
+// header comment for the confirmed detach/reattach mechanism)
+// ---------------------------------------------------------------------------
+
+DoorTextureGuard::DoorTextureGuard(const std::map<uint8_t, DoorVisual>& doors,
+                                    irr::video::ITexture* placeholder)
+    : doors_(doors), placeholder_(placeholder) {}
+
+void DoorTextureGuard::onTextureEvicted(const std::string& /*name*/,
+                                         irr::video::ITexture* texture) {
+    if (!texture) return;
+
+    // Same load-bearing constraint as every guard above: MUST NOT call
+    // back into ConstrainedTextureCache here. placeholder_ was resolved
+    // once, safely, at construction time.
+    irr::video::ITexture* placeholder = placeholder_;
+    int swapped = 0;
+
+    for (const auto& [doorId, visual] : doors_) {
+        // The door's actual mesh/materials live on sceneNode (an
+        // IMeshSceneNode child of pivotNode) — pivotNode itself is an
+        // addEmptySceneNode() with no mesh and (in practice) no materials
+        // of its own, so scanning sceneNode covers everything doors_ can
+        // hold. sceneNode is a child of pivotNode either way, so when
+        // pivotNode is detached (setDoorState()/update()/
+        // rebuildSingleDoor()'s PVS-driven remove()/addChild() cycle,
+        // matching applySimulationOutput()'s objectNodes_ pattern exactly),
+        // sceneNode goes with it and clearTextureReferences()'s
+        // root-down scene walk cannot reach it either way — scanning
+        // doors_ directly bypasses that reachability question entirely,
+        // same as ObjectNodeTextureGuard.
+        swapped += swapTextureInMeshSceneNode(visual.sceneNode, texture, placeholder);
+    }
+
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[doortex] DoorTextureGuard: swapped {} door material reference(s) to "
+                  "evicted texture -> placeholder (T124 — closes the same detached-node gap "
+                  "ObjectNodeTextureGuard fixed for objectNodes_, for door pivotNode/sceneNode pairs "
+                  "detached during PVS-driven visibility updates)", swapped);
+    }
+}
+
+// T124: shutdown()-time unregister for objectNodeTextureGuard_ (T123 --
+// registered in initLoadingScreen() but never unregistered before this
+// unit) and the four T124 guards. Defined here, not irrlicht_renderer.cpp
+// (at the check_file_sizes.sh budget).
+void IrrlichtRenderer::unregisterRemainingT124Guards() {
+    unregisterGuard(constrainedTextureCache_, objectNodeTextureGuard_);
+    unregisterGuard(constrainedTextureCache_, doorTextureGuard_);
+    unregisterGuard(constrainedTextureCache_, spellVisualFXTextureGuard_);
+    unregisterGuard(constrainedTextureCache_, boidsTextureGuard_);
+}
+
+// T124: defined here (not irrlicht_renderer.cpp, which is at the
+// check_file_sizes.sh budget). Called once from loadGlobalAssets() right
+// after doorManager_'s own lazy construction. See DoorTextureGuard's doc
+// comment (header) for the gap closed.
+void IrrlichtRenderer::ensureDoorTextureGuard() {
+    if (doorTextureGuard_ || !constrainedTextureCache_ || !doorManager_) return;
+    doorTextureGuard_ = std::make_unique<DoorTextureGuard>(
+        doorManager_->getDoors(), constrainedTextureCache_->getPlaceholderTexture());
+    constrainedTextureCache_->addEvictionListener(doorTextureGuard_.get());
+}
+
+// T124: idempotent, safe to call from either of boidsManager_'s two
+// lazy-construction sites in irrlicht_renderer.cpp. See BoidsManager::
+// swapEvictedTexture()'s doc comment for the gap closed.
+void IrrlichtRenderer::ensureBoidsTextureGuard() {
+    if (boidsTextureGuard_ || !constrainedTextureCache_ || !boidsManager_) return;
+    Environment::BoidsManager* boids = boidsManager_.get();
+    boidsTextureGuard_ = std::make_unique<ForwardingTextureGuard>(
+        [boids](irr::video::ITexture* from, irr::video::ITexture* to) { boids->swapEvictedTexture(from, to); },
+        constrainedTextureCache_->getPlaceholderTexture());
+    constrainedTextureCache_->addEvictionListener(boidsTextureGuard_.get());
 }
 
 } // namespace Graphics

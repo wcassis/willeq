@@ -7473,3 +7473,89 @@ six same-shaped holders still open. The post-fix probe ring confirms UAF writes
 persisting through the same holder *type* at a different instance.
 
 **Do not read the flat rate as evidence the fix was wrong or unnecessary.**
+
+## T124 (2026-08-16) — doors + BoidsManager fixed; SpellVisualFX gap real but currently inert; ring did NOT reach zero
+
+**Closed two of T123's six flagged holders after verifying each actually
+needed a guard** (the plan's explicit instruction — T123 flagged them by
+shape, not proof):
+
+- **Doors** (`DoorTextureGuard`) — same detach/reattach shape as T123's
+  `objectNodes_`, confirmed via `door_manager.cpp`'s 5+ PVS-driven
+  `remove()`/`addChild()` sites.
+- **BoidsManager** (`BoidsManager::swapEvictedTexture()` +
+  `ForwardingTextureGuard`) — `creatureMaterial_` is read every frame via
+  `driver_->setMaterial()` outside the scene graph entirely (creatures are
+  drawn with raw `drawVertexPrimitiveList()`, never attached as scene
+  nodes), so `clearTextureReferences()`'s scan could never reach it under
+  any circumstance — arguably the most active of the gaps found.
+
+**Three of the six needed NO guard, verified rather than assumed:**
+
+- **TumbleweedManager** — already covered: the cached `tumbleweedTexture_`
+  is read exactly once at mesh-build time (`init()`, guarded against
+  re-entry) and baked into a shared mesh's material; all pool nodes using
+  that mesh stay attached to the scene graph forever (`setVisible()`, never
+  `remove()`d until the manager's destructor), so the existing
+  `clearTextureReferences()` scan already covers it.
+- **RainOverlay / SnowOverlay** — unreachable in production. Both are only
+  ever constructed inside `#ifndef EQT_HAS_GLES2` in
+  `WeatherEffectsController::initialize()`, and `EQT_HAS_GLES2` is
+  unconditionally defined in every build since P32 (GLES2 is the only
+  supported renderer) — both stay permanently null, forever, in every
+  shipped build. Another instance of the "implemented-but-unreached"
+  defect class already tracked in project memory.
+- **SpellVisualFX** — needed a guard *by shape*, but investigation found
+  `loadParticleTextures()` (the only code that populates the 8 members the
+  guard protects) is *also* only called under `#ifndef EQT_HAS_GLES2` —
+  permanently dead on the only shipped renderer. Guard added anyway (cheap,
+  correct, future-proofing), but it is currently a no-op. **Separate,
+  unrelated bug found in the same investigation, NOT fixed (a functional
+  bug, not a UAF)**: `setParticleManager()` runs during
+  `createEntityRenderer()`, which itself runs *before* `particleManager_`
+  is constructed (both inside `initLoadingScreen()`), so
+  `SpellVisualFX::m_particle_manager` is *also* always null — the GLES2
+  particle-delegation path this class exists to prefer never engages
+  either. Someone should check whether spell particle effects visually
+  look wrong in production as a result (this unit did not capture visual
+  evidence of spell casting).
+
+**Two bonus fixes** found adjacent to this unit's own territory (both
+one-line, both applied): `objectNodeTextureGuard_` (T123) was registered
+but never unregistered in `shutdown()` — a dangling-listener hazard one
+level up from the texture UAFs this whole family exists to prevent; and
+`BoidsManager`'s runtime-toggle lazy-construction path
+(`applyEnvironmentalDisplaySettings()`) was missing
+`setConstrainedTextureCache()` entirely, which would have null-pointer-
+dereferenced the first time a player toggled ambient creatures on after
+startup.
+
+**Extracted the shared eviction-swap primitive** (the plan's explicit
+requirement, not optional): `swapTextureInMaterial`/`swapTextureInMesh`/
+`swapTextureInNodeMaterials`/`swapTextureInMeshSceneNode`
+(`renderer_zone_merge.h`/`.cpp`). Migrated all four existing guards
+(`RegionMeshTextureGuard`, `EntityMeshTextureGuard`, `ObjectNodeTextureGuard`)
+onto it, verified behavior-preserving via the existing T123 test staying
+green unchanged.
+
+### STILL OPEN — ring did not reach zero, remaining holder not identified
+
+Three probe runs with the full fix (doors + BoidsManager + SpellVisualFX
+guards all active): **22 UAF `TEXPARAMS` writes out of 1649 total (~1.3%),
+not zero** — lower than T123's single-run 8 in two of three runs (5, 5) but
+higher in the third (12). Attempted to resolve the offending `SMaterial*`
+via T123's gdb method for two entries; neither resolved cleanly this time
+(unlike T123's clean `irrAllocator<SMaterial>` match) — **a definitive
+attribution of the remaining UAF writes to a specific holder was not
+completed**. Candidates for the next unit: `RaceModelLoader`
+equipment/mesh texture caches (not audited by T123 or T124), or a re-audit
+of the self-registering listeners (`AnimatedTextureManager`/
+`DetailManager`/`StormCloudLayer`) both units assumed were covered but
+neither has re-verified directly.
+
+Uninstrumented baseline: **N=5 (deviation — the plan asked for N=10, cut
+short by a tool-timeout interaction), 1 of 5 clean** — consistent with, not
+distinguishable from, the standing 1 of 10 at this sample size.
+
+Full write-up, per-holder evidence table, ring TSVs, and the deviations:
+`refactor/T124_remaining_texture_holders.md` Review, `review/T124/`.

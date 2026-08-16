@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/light_source.h"
+#include "client/graphics/renderer_zone_merge.h"  // ForwardingTextureGuard (T124)
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
@@ -327,6 +328,22 @@ void IrrlichtRenderer::initDeferredGraphics() {
         if (simulationWorker_ && simulationWorker_->isRunning()) {
             spellVisualFX_->setWorkerDriven(true);
             LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: worker-driven mode enabled");
+        }
+
+        // T124: register the SpellVisualFX texture-eviction guard -- see
+        // SpellVisualFX::swapEvictedTexture()'s doc comment (spell_visual_fx.h)
+        // for the gap this closes. spellVisualFX_ is constructed at most once
+        // (guarded by this same `if (!spellVisualFX_)`), so this registration
+        // also runs at most once. Placeholder resolved ONCE here, same
+        // non-reentrancy constraint as every other guard.
+        if (constrainedTextureCache_) {
+            EQ::SpellVisualFX* spellFX = spellVisualFX_.get();
+            spellVisualFXTextureGuard_ = std::make_unique<ForwardingTextureGuard>(
+                [spellFX](irr::video::ITexture* from, irr::video::ITexture* to) {
+                    spellFX->swapEvictedTexture(from, to);
+                },
+                constrainedTextureCache_->getPlaceholderTexture());
+            constrainedTextureCache_->addEvictionListener(spellVisualFXTextureGuard_.get());
         }
     }
 }

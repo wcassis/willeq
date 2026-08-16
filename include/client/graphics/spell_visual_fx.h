@@ -188,6 +188,57 @@ public:
     void setParticleManager(EQT::Graphics::Environment::ParticleManager* pm) { m_particle_manager = pm; }
 #endif
 
+    // T124: called by the renderer's SpellVisualFX eviction guard
+    // (renderer_zone_merge.h's ForwardingTextureGuard) whenever
+    // ConstrainedTextureCache evicts a texture. Swaps any of the 8 cached
+    // particle-texture members below that currently equal `from` to `to`.
+    //
+    // Gap this closes: loadParticleTextures() resolves these 8 members
+    // exactly ONCE, in the constructor (SpellVisualFX is a renderer-
+    // lifetime singleton, lazily constructed once in createEntityRenderer()
+    // -- see renderer_entities.cpp -- and never rebuilt per zone). Every
+    // createXNode() call (createGlowNode/createProjectileNode/...) reads
+    // one of these members via getTextureForSpell() and calls
+    // setMaterialTexture(0, tex) on a BRAND NEW particle/billboard node.
+    // The nodes themselves, once created, ARE ordinary scene-graph-attached
+    // nodes covered by ConstrainedTextureCache::clearTextureReferences()
+    // while they exist (cleanupEffectNode() always remove()s them outright
+    // on cleanup, never detaches-and-reattaches the way doors/objects do)
+    // -- so this is NOT the same "detached node" shape T123/T124's other
+    // guards fix. It's a distinct hazard: these 8 members are a persistent
+    // cache that seeds every FUTURE node's material, so if one of them goes
+    // dangling after an eviction, the next spell cast bakes a
+    // use-after-free pointer straight into a brand new node's material at
+    // creation time. `to` is expected to be the cache's placeholder texture
+    // (resolved once, safely, by the guard's own constructor) -- matches
+    // every other T123/T124 guard's convention instead of nulling and
+    // losing the particle's texture entirely.
+    //
+    // T124 finding, IMPORTANT: loadParticleTextures() (the ONLY code that
+    // ever populates the 8 members below) is called from the constructor
+    // only under `#ifndef EQT_HAS_GLES2` -- and EQT_HAS_GLES2 is
+    // unconditionally defined in every build since P32 (docs/decisions.md),
+    // the only supported renderer. So in every shipped build, all 8
+    // members are permanently nullptr for the object's entire lifetime and
+    // this guard is currently a no-op. Kept anyway (cheap, provably
+    // correct, exactly the shape needed if that dead branch is ever
+    // revived) rather than removed -- see
+    // refactor/T124_remaining_texture_holders.md Review for the full
+    // investigation, including a SEPARATE, PRE-EXISTING bug this uncovered:
+    // setParticleManager() (renderer_entities.cpp) is called during
+    // createEntityRenderer(), which itself runs BEFORE particleManager_ is
+    // constructed (both inside initLoadingScreen()), so m_particle_manager
+    // is ALSO always null -- meaning the GLES2 particle-delegation path
+    // this class was built to prefer never engages either. Not fixed here
+    // (a functional/feature bug, not a UAF); flagged in refactor/deferred.md.
+    void swapEvictedTexture(irr::video::ITexture* from, irr::video::ITexture* to);
+
+    // T124: exposed (was private) so the eviction-guard regression test can
+    // observe swapEvictedTexture()'s effect through the same lookup
+    // createXNode() call sites actually use, rather than needing a friend
+    // declaration or a test-only accessor. Behavior unchanged.
+    irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
+
 private:
     // Get spell color based on resist type/school
     irr::video::SColor getSpellColor(uint32_t spell_id) const;
@@ -237,7 +288,6 @@ private:
     void loadParticleTextures();
     void loadFallbackTexture();
     irr::video::ITexture* loadDDSTexture(const std::string& path, const std::string& name);
-    irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
 
     // ========================================================================
     // T72: spells.eff-driven visual selection
