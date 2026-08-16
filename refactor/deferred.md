@@ -7082,3 +7082,69 @@ signature exactly, doesn't add a new one).
 Full write-up (verbatim configs/logs/reports, binary-size table, per-leg
 detail, deviations):
 `refactor/T118_heap_corruptor_hunt.md`'s Review, `/mnt/projects/fable/review/T118/`.
+
+## T119 (2026-08-15/16) — texture-lifecycle fix landed, but does not close the T117/T118 heap-corruption arc
+
+**Fixed and committed**: `ConstrainedTextureCache::clear()` (the zone-unload
+hook) never called `clearTextureReferences()` before destroying cached
+textures, unlike `evictTexture()` (the LRU path), which always has. Verified
+mechanistically: `SMaterial::setTexture()` is a raw non-owning pointer
+assignment (no refcount), and `driver_->removeTexture()` unconditionally
+frees the texture's sole owning reference — so any scene node `clear()`
+left behind with a stale material texture pointer (notably `SkyRenderer`'s
+dome/sun/moon/glow nodes, which `unloadZone()` only disables, not removes,
+at that point) was an unprotected use-after-free. Fix: call
+`clearTextureReferences()` per entry in `clear()`, mirroring
+`evictTexture()`'s existing order. Narrow — no ownership/refcounting or GL
+teardown changes. x86 suite 2271/2272 (sole failure the documented ALSA
+quirk, matches baseline), visual gate PASS goldens untouched, ARM
+cross-compile clean.
+
+**Does NOT close the arc.** Pi re-measurement (T117's exact tour/config/
+flags, 5 of the target 10 runs completed — session time, flagged honestly
+as a deviation) came back **0 of 5 clean**, versus T117's 2 of 10. Two runs
+reproduced the historical mid-tour `ranges_`/`0x2601` SIGSEGV at the exact
+same triggering movement (`/move -700 20 3`) the fix does not touch; two
+more reproduced T117's `SkyData`-adjacent "corrupted size vs. prev_size"
+teardown signature even after the fix (the corruption clearly originates
+earlier in the run — this arc's established "manifests far from its cause"
+pattern — not from the fix's own new `clearTextureReferences()` call,
+which was checked against the placeholder-texture double-free risk and
+found safe: `placeholderTexture_` is never stored in `cache_`, so `clear()`
+never iterates/destroys it). One run was killed by the kernel OOM-killer, a
+different failure mode from any of T117's four.
+
+**T118's `cacheTexParams()`-through-a-stale-`tex` candidate is weakened,
+not confirmed.** A temporary diagnostic (`isLiveTexture()` checked at the
+`cacheTexParams()` call site, removed from the final commit — it did not
+earn a place) recorded **zero** dead-texture hits across two x86
+zone-crossing tours, including one that independently reproduced a real
+crash (`double free or corruption (out)` — a **fifth** distinct
+heap-corruption sub-signature for this arc, first attempt, no sanitizer, no
+Pi). That crash was not observed going through `cacheTexParams()`.
+
+**Deviation, not completed**: the plan's Step 2 (re-run Pi ASAN with a real
+quarantine — T118's Legs 2/3 both ran `quarantine_size_mb=0`, which
+disables UAF detection) was not done this unit; time went to the diagnostic
++ Pi re-measurement instead, which surfaced more actionable evidence. Still
+open for a future unit.
+
+**Next unit should NOT restart from the `clear()`/eviction-listener
+asymmetry** — that's closed. The live leads are: (1) the mid-tour
+`ranges_`/`0x2601` SIGSEGV, unchanged since T113, still triggers on
+`/move -700 20 3` specifically — worth instrumenting that exact call
+path (`ZoneMergeBuffers`/`collectMeshBuffers()`'s mesh-buffer lifecycle at
+the BSP-region transition that movement crosses, per T118's own STOP-scoped
+note); (2) the `SkyData`-adjacent teardown signature, which per this unit's
+audit is NOT caused by a scene-node-material dangling pointer (SkyData's
+own `std::map<string, shared_ptr<TextureInfo>>` holds CPU-side pixel data,
+no `ITexture*` at all — its corruption must come from elsewhere, consistent
+with "corrupted container differs per run, not the cause"); (3) the new
+`double free or corruption (out)` x86 repro
+(`review/T119/tour_zone_cross_x86.txt`) is a cheap (no ASAN, no Pi) starting
+point for a live catch under a slower/more-observant tool than plain `gdb`
+(which failed to reproduce it once, consistent with a timing-sensitive
+defect).
+
+Full write-up: `refactor/T119_texture_lifecycle_gl_linear.md` Review,
+`/mnt/projects/fable/review/T119/`.

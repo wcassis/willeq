@@ -599,7 +599,27 @@ void ConstrainedTextureCache::clear() {
         for (auto* listener : evictionListeners_) {
             listener->onTextureEvicted(pair.first, pair.second.texture);
         }
+        // T119: clear() is the zone-unload hook and, until this fix, was the
+        // one texture-destruction path in this class that did NOT call
+        // clearTextureReferences() before driver_->removeTexture() --
+        // evictTexture() (the LRU path) always has. SMaterial::setTexture()
+        // (Irrlicht SMaterial.h) is a raw, non-owning pointer assignment (no
+        // grab/refcount), and driver_->removeTexture() unconditionally
+        // drops the texture's sole owning reference (CNullDriver::
+        // removeTexture() -> texture->drop()), which deletes the
+        // COGLES2Texture the instant its refcount hits zero. Any scene node
+        // that survives clear() with a still-live material slot pointing at
+        // one of these textures -- e.g. SkyRenderer's dome/sun/moon/glow
+        // nodes, which unloadZone() only disables (setVisible(false)), not
+        // removes -- is left holding a dangling ITexture* with no protection
+        // at all. clearTextureReferences() (used by evictTexture() and,
+        // via RegionMeshTextureGuard/its entity-mesh sibling, wired as an
+        // eviction *listener* for buffers outside the scene graph) is the
+        // exact mechanism that already solves this for eviction; mirroring
+        // it here closes the same gap for zone unload without touching
+        // ownership/refcounting semantics or GL teardown order.
         if (pair.second.texture) {
+            clearTextureReferences(pair.second.texture);
             driver_->removeTexture(pair.second.texture);
         }
     }
