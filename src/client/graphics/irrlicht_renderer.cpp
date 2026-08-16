@@ -716,6 +716,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         // found while verifying this unit's own fix).
         softwareCursorTextureGuard_ = std::make_unique<SingleTexturePointerGuard>(softwareCursorTexture_);
         constrainedTextureCache_->addEvictionListener(softwareCursorTextureGuard_.get());
+
+        // T123: guards detached objectNodes_ entries -- see renderer_zone_merge.h.
+        objectNodeTextureGuard_ = std::make_unique<ObjectNodeTextureGuard>(objectNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        constrainedTextureCache_->addEvictionListener(objectNodeTextureGuard_.get());
     }
 
     // Create event receiver

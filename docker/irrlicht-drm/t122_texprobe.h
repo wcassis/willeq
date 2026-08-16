@@ -1,5 +1,21 @@
 // t122_texprobe.h — T122 lock-free texture-lifecycle probe.
 //
+// T123 extension: adds EventKind::MATERIAL, recording the SMaterial* the
+// driver holds at each applyMaterialRenderState() call (irrespective of
+// whether cacheTexParams() actually fires -- P42's texParamsMatch() dedup
+// skips most calls). Recorded at the OUTERMOST non-copied reference
+// (COpenGLES2Driver::applyMaterialState()'s own `material` parameter for the
+// built-in path, and applyCustomShaderState()'s own `material` parameter --
+// BEFORE it is copied into a local `baseMat` -- for the custom-shader path),
+// specifically so the recorded address is never a stack-local copy. Because
+// both the MATERIAL record and any resulting TEXPARAMS record happen
+// synchronously on the same thread with nothing else in this translation
+// unit recording between them, the MATERIAL entry immediately preceding a
+// given TEXPARAMS entry in the same thread's per-thread sequence is that
+// write's real material address -- resolvable offline against mesh-buffer/
+// node-override materials to name the holder. See
+// refactor/T123_texture_holder_audit.md.
+//
 // Generic sanitizers are exhausted on this arc (T120: ASAN with a real
 // quarantine only ever catches the corruption at *free* time, never at the
 // write; T121: TSAN found no race on the zone-crossing/teardown path). What
@@ -52,6 +68,10 @@ enum class EventKind : uint8_t {
     CREATE    = 1,  // COGLES2Texture constructed
     DESTROY   = 2,  // COGLES2Texture destructed
     TEXPARAMS = 3,  // cacheTexParams() entered (the candidate corrupting write)
+    MATERIAL  = 4,  // T123: SMaterial* the driver holds at applyMaterialRenderState()
+                    // entry, recorded at the outermost non-copied reference (see
+                    // header comment above). `ptr` is the SMaterial address; `value`
+                    // is unused (0).
 };
 
 // 24 bytes on x86_64 (8-byte pointer), 20 on armhf — POD, no padding surprises
@@ -96,11 +116,14 @@ inline void t122Record(EventKind kind, const void* ptr, uint32_t value) {
     ::irr::video::t122::t122Record(::irr::video::t122::EventKind::DESTROY, (ptr), (value))
 #define T122_RECORD_TEXPARAMS(ptr, value) \
     ::irr::video::t122::t122Record(::irr::video::t122::EventKind::TEXPARAMS, (ptr), (value))
+#define T122_RECORD_MATERIAL(matPtr) \
+    ::irr::video::t122::t122Record(::irr::video::t122::EventKind::MATERIAL, (matPtr), 0)
 
 #else  // !WILLEQ_T122_TEXPROBE
 
 #define T122_RECORD_CREATE(ptr, value) ((void)0)
 #define T122_RECORD_DESTROY(ptr, value) ((void)0)
 #define T122_RECORD_TEXPARAMS(ptr, value) ((void)0)
+#define T122_RECORD_MATERIAL(matPtr) ((void)0)
 
 #endif  // WILLEQ_T122_TEXPROBE

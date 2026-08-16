@@ -48,7 +48,7 @@ assert ENTRY_SIZE_64 == 24, ENTRY_SIZE_64
 
 RING_CAPACITY = 1 << 18  # must match t122_texprobe.h's kRingCapacity
 
-KIND_NAMES = {1: "CREATE", 2: "DESTROY", 3: "TEXPARAMS"}
+KIND_NAMES = {1: "CREATE", 2: "DESTROY", 3: "TEXPARAMS", 4: "MATERIAL"}
 
 RING_SYMBOL = "irr::video::t122::g_t122Ring"
 IDX_SYMBOL = "irr::video::t122::g_t122RingIndex"

@@ -1287,6 +1287,47 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
 // Material
 // ============================================================================
 
+#ifdef WILLEQ_T122_TEXPROBE
+namespace {
+// T123: record the MATERIAL probe event only when a cacheTexParams() write
+// is actually about to fire for this material -- mirrors the same
+// texParamsMatch() gate applyMaterialRenderState() itself uses just before
+// tex->cacheTexParams(...). Recording unconditionally on every
+// applyMaterialState()/applyCustomShaderState() call (one per drawn mesh
+// buffer, most of which are P42 dedup no-ops) was tried first and wrapped
+// the ring 3-4x per run, evicting the CREATE/DESTROY history the classifier
+// depends on and producing spurious TYPE_CONFUSE_NEVER results that were a
+// ring-wraparound artifact, not a real finding -- see
+// refactor/T123_texture_holder_audit.md Review. Gating here keeps MATERIAL
+// volume proportional to actual TEXPARAMS volume, same order of magnitude
+// as T122's original probe.
+//
+// This duplicate-reads `tex` (a second time, redundantly with the real call
+// moments later) but does not add a new hazard: it is a read-only
+// comparison of the same mutable cache fields the production code is about
+// to read anyway. If it races with a concurrent destroy differently than
+// the later "real" check does, the worst case is a missed/extra MATERIAL
+// record (the resolver already reports "UNRESOLVED" for a TEXPARAMS entry
+// with no preceding MATERIAL entry on its thread) -- never a new crash.
+inline void t123MaybeRecordMaterial(const SMaterial& material) {
+    if (const irr::video::ITexture* rawTex = material.getTexture(0)) {
+        const COGLES2Texture* t = static_cast<const COGLES2Texture*>(rawTex);
+        GLint mf = material.TextureLayer[0].BilinearFilter ? GL_LINEAR : GL_NEAREST;
+        bool clampX = material.TextureLayer[0].TextureWrapU == ETC_CLAMP ||
+                      material.TextureLayer[0].TextureWrapU == ETC_CLAMP_TO_EDGE;
+        GLenum wrapX = clampX ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+        if (!t->texParamsMatch(mf, mf, wrapX, wrapX)) {
+            T122_RECORD_MATERIAL(&material);
+        }
+    }
+}
+}  // namespace
+#else
+namespace {
+inline void t123MaybeRecordMaterial(const SMaterial&) {}
+}  // namespace
+#endif
+
 void COpenGLES2Driver::setMaterial(const SMaterial& material)
 {
     LastMaterial = Material;
@@ -1407,6 +1448,11 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
     // which changes the GL program without updating currentCustomProgram_.
     currentCustomProgram_ = 0;
 
+    // T123: record the real (non-copied) SMaterial* for this call, before
+    // handing off to applyMaterialRenderState() -- see t122_texprobe.h and
+    // t123MaybeRecordMaterial()'s comment (gated to actual-write calls only).
+    t123MaybeRecordMaterial(material);
+
     // Apply blend, depth, cull, texture state
     applyMaterialRenderState(material);
 
@@ -1486,6 +1532,12 @@ void COpenGLES2Driver::applyCustomShaderState(s32 materialType, const SMaterial&
         return;
 
     const SOGLES2CustomShader& cs = CustomShaders[idx];
+
+    // T123: record the real (non-copied) SMaterial* BEFORE it is copied into
+    // baseMat below -- &baseMat would be a stack-local copy, useless for
+    // offline holder resolution. See t122_texprobe.h and
+    // t123MaybeRecordMaterial()'s comment (gated to actual-write calls only).
+    t123MaybeRecordMaterial(material);
 
     // Apply only blend/depth/cull/texture state from base material — skip
     // built-in program selection and uniform upload (the custom shader callback
