@@ -61,8 +61,11 @@ done
 
 PROBE_CXXFLAGS=""
 if [ "$T122_TEXPROBE" -eq 1 ]; then
-    echo "*** T122 probe build: WILLEQ_T122_TEXPROBE defined, -g kept for core symbolization ***"
-    PROBE_CXXFLAGS="-g -DWILLEQ_T122_TEXPROBE"
+    # T126: -fno-omit-frame-pointer is load-bearing for the TEXPARAMS
+    # return-address chain (__builtin_return_address(N>0) needs a real
+    # frame-pointer chain to walk beyond frame 0 -- see t122_texprobe.h).
+    echo "*** T122 probe build: WILLEQ_T122_TEXPROBE defined, -g + -fno-omit-frame-pointer kept for core symbolization / call-chain capture ***"
+    PROBE_CXXFLAGS="-g -fno-omit-frame-pointer -DWILLEQ_T122_TEXPROBE"
 fi
 
 if [ ! -d "$PRISTINE_IRRLICHT" ]; then

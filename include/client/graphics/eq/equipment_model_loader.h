@@ -3,6 +3,7 @@
 
 #include "s3d_loader.h"
 #include "zone_geometry.h"
+#include "client/graphics/constrained_texture_cache.h"  // TextureEvictionListener
 #include <irrlicht.h>
 #include <atomic>
 #include <map>
@@ -13,8 +14,6 @@
 
 namespace EQT {
 namespace Graphics {
-
-class ConstrainedTextureCache;
 
 // Equipment model data - geometry for a single equipment item
 struct EquipmentModelData {
@@ -29,14 +28,46 @@ struct EquipmentModelData {
 };
 
 // Loads and caches equipment models from gequip S3D archives
-class EquipmentModelLoader {
+//
+// T126: self-registers as a TextureEvictionListener (mirrors
+// AnimatedTextureManager/SkyRenderer's precedent) because meshCache_ is a
+// PERSISTENT cache -- IMesh* objects survive zone unload/reload, kept alive
+// by refcounting (addMeshRef/removeMeshRef), not rebuilt per zone the way
+// object/region meshes are (see renderer_zone_load.cpp: those call
+// buildTexturedMesh() fresh every zone load). If a cached mesh's own
+// mesh-buffer material still points at a texture ConstrainedTextureCache
+// evicts, EVERY future scene node built from that mesh
+// (EntityRenderer::attachEquipment() -> smgr_->addMeshSceneNode(mesh, ...))
+// inherits the dangling pointer the instant it's constructed -- Irrlicht's
+// CMeshSceneNode constructor copies each mesh buffer's CURRENT material into
+// its own per-node override array at that moment, so fixing only the
+// already-attached nodes (EntityMeshTextureGuard's job) does not stop a
+// brand new equip/re-equip from reintroducing the same stale pointer from
+// this cache. onTextureEvicted() here fixes the root: the cached IMesh's own
+// buffer materials, once, at eviction time -- see
+// refactor/T126_uaf_attribution.md for the write-time evidence that named
+// this specific gap (a live, normally-rendered IMeshSceneNode was the
+// dominant unattributed UAF holder across the whole T122-T126 arc; equip
+// nodes were the one entity-mesh scan target EntityMeshTextureGuard never
+// actually covered despite T123's holder-inventory table claiming
+// "equipment" was included).
+class EquipmentModelLoader : public TextureEvictionListener {
 public:
     EquipmentModelLoader(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                          irr::io::IFileSystem* fileSystem);
     ~EquipmentModelLoader();
 
-    // Set constrained texture cache for LRU tracking of equipment textures
-    void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
+    // Set constrained texture cache for LRU tracking of equipment textures.
+    // Also (un)registers this loader as an eviction listener -- see class
+    // doc comment above.
+    void setConstrainedTextureCache(ConstrainedTextureCache* cache);
+
+    // TextureEvictionListener. MUST NOT call back into
+    // ConstrainedTextureCache (mutex_ is held by the calling frame) -- same
+    // load-bearing constraint every other guard in this file family
+    // documents; placeholder_ is resolved once, safely, in
+    // setConstrainedTextureCache() before any eviction can occur.
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
     // Set the base path for EQ client files
     void setClientPath(const std::string& path);
@@ -63,6 +94,20 @@ public:
 
     // Check if a model ID is a shield (IT200-IT299)
     static bool isShield(int modelId);
+
+    // T126: test-only seam -- inject a mesh directly into meshCache_ so
+    // tests can drive the REAL onTextureEvicted() path (via
+    // ConstrainedTextureCache::clear()) against a real cached entry, the
+    // same discipline test_object_node_texture_guard.cpp established
+    // (exercise the real destruction path, not a synthetic call to the
+    // listener interface). Takes ownership of the ONE reference the caller
+    // hands in, exactly like getEquipmentMeshByModelId()'s own
+    // `meshCache_[modelId] = mesh;` after buildMeshFromGeometry() (no extra
+    // grab() -- the destructor's mesh->drop() per cached entry expects
+    // exactly one owned reference). Not used by any non-test code path.
+    void debugInjectCachedMeshForTest(int modelId, irr::scene::IMesh* mesh) {
+        meshCache_[modelId] = mesh;
+    }
 
     // Check if equipment archives have been loaded
     bool isLoaded() const { return archivesLoaded_; }
@@ -215,6 +260,10 @@ private:
 
     // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)
     ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
+
+    // T126: resolved once in setConstrainedTextureCache(), before any
+    // eviction can occur -- see class doc comment and onTextureEvicted().
+    irr::video::ITexture* placeholder_ = nullptr;
 };
 
 } // namespace Graphics
