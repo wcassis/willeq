@@ -7148,3 +7148,85 @@ defect).
 
 Full write-up: `refactor/T119_texture_lifecycle_gl_linear.md` Review,
 `/mnt/projects/fable/review/T119/`.
+
+## T120 (2026-08-16) — the arc now has a cheap, reliable x86 reproducer; ASAN with a real quarantine fires and names a concrete unsynchronized-access pattern
+
+**No production code changed — diagnosis only, per the plan's explicit
+permission.** The board question this unit answers: **the arc is no longer
+Pi-bound.** T119's un-amplified single-crossing tour was `n=1`, unknown
+rate. This unit's amplified tour (3 round trips, 6 crossings,
+`review/T120/tour_zone_cross_x86_amplified.txt`) crashed **10 of 10** on a
+clean, non-diagnostic, non-gdb x86 build at current `fable` — almost always
+on the very first crossing, so the amplification itself turned out to be
+less load-bearing than simply running clean (no `WILLEQ_T119_DIAG_*`
+instrumentation, no gdb). Five backtraced crashes (of the 10) each `free()`
+or walk a **different** C++ container (`SMesh` mesh-buffer array, a raw
+`std::map<size_t, vector<triangle3d>>`, a `ZoneGeometry`/
+`ResolvedMaterialList`/`TextureAnimationInfo` chain, a `Portal`'s
+`vector<float>`) — heap-metadata corruption from an earlier write,
+detected wherever `unloadZone()`'s mass container-destruction happens to
+walk it next, not a bug local to any one of those five destructors.
+
+**ASAN with `quarantine_size_mb=256` (explicitly non-zero, unlike T118's
+Legs 2/3) + `detect_stack_use_after_return=1` over the same amplified tour
+fired, 2 of 3 runs** — the first ASAN run in this whole arc to combine a
+real quarantine with an actual zone crossing, and it did not stay clean.
+Audio kept enabled throughout (`-fsanitize-recover=address` compiled in +
+`halt_on_error=0`, plus the plan's uncommitted `tsf.h` `nextPos` clamp for
+one characterization run only — fully restored, verified byte-identical to
+backup before commit). One report (`review/T120/asan_x86/
+asan_report_run2.2736335`) is fully symbolized: `AddressSanitizer: SEGV ...
+WRITE`, inside ASAN's **own allocator internals**
+(`AtomicallySetQuarantineFlagIfAllocated`), while freeing a
+`std::vector<std::string>` inside `EquipmentModelLoader::EquipmentModelRef`
+— reached via `EquipmentModelLoader::adoptIndex()`'s `std::map`
+move-assignment on the LoadingThread. A SEGV inside ASAN's own chunk-header
+bookkeeping during an ordinary, correctly-called `delete` means that
+chunk's ASAN metadata was already corrupted by something earlier — the
+same "detected far from caused" shape as the baseline crashes above, now
+confirmed under a tool built to catch exactly this class of defect.
+
+**Concrete mechanism named, not yet proven as the sole cause**:
+`adoptIndex()` (`equipment_model_loader.cpp:728-739`) replaces
+`equipmentModelIndex_`/`textureIndex_`/`itemToModelMap_` via `std::move()`
+with **no lock**. Audited every other access point in the file: `initMutex_`
+is taken in exactly one place, `ensureIndexLoaded()`'s lazy-init fallback —
+every other reader (`getModelForItem()`, equipment-check helpers, stats
+accessors) reads the same maps **unguarded**. If any of those run on the
+render thread — which keeps rendering the outgoing zone's entities,
+equipment included, during the loading-thread overlap window — while
+`adoptIndex()` destroys the old map's rb-tree on the LoadingThread, that is
+an unsynchronized concurrent `std::map` mutation, architecturally
+consistent with the corruption shape observed. **Not caught in the act**
+(no TSAN run, no live interleaving proof) — a code-level finding backed by
+a matching ASAN report, not a captured race.
+
+**Why no fix was attempted**: the baseline crashes (Step 1) hit at least
+three *other* containers `EquipmentModelLoader` never touches
+(`regionWorldTriangles_`/`objectWorldTriangles_` in
+`renderer_player_physics.cpp`, mutated with no mutex found and
+unconditionally `.clear()`'d by `unloadZone()` on the LoadingThread — same
+missing-lock shape). This looks like a **recurring architectural pattern**
+— several "loading thread mutates a container the render thread also
+touches, no lock" managers — not one isolated bug. Patching
+`EquipmentModelLoader` alone risks the exact "fixed one path, arc
+continues" outcome T119 already produced for
+`ConstrainedTextureCache::clear()`.
+
+**Next unit should**: run ThreadSanitizer (never yet tried in this arc,
+and TSAN — not ASAN — is the right tool for a same-allocation
+concurrent-access race; a `build-tsan/` tree already has precedent from
+T114) over the amplified tour, targeting `EquipmentModelLoader::adoptIndex()`
+and `renderer_player_physics.cpp`'s `regionWorldTriangles_`/
+`objectWorldTriangles_` writers specifically. If TSAN confirms a race on
+either, the fix is a synchronization audit (likely a shared-mutex or a
+"pause render-thread reads during the LoadingThread's swap" barrier) across
+every manager with this same LoadingThread-mutates/render-thread-reads
+shape — bigger than a single-unit patch, but now scoped to a named list of
+suspects instead of an open-ended heap-corruption hunt.
+
+**No Pi session this unit** — correctly, per the plan's own "Pi only if
+x86 stays clean" gate; x86 did not stay clean.
+
+Full write-up: `refactor/T120_zone_crossing_asan.md` Review,
+`/mnt/projects/fable/review/T120/`.
