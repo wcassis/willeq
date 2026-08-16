@@ -9,6 +9,7 @@
 #ifdef _IRR_COMPILE_WITH_OGLES2_
 
 #include "ITexture.h"
+#include "t122_texprobe.h"
 #include <GLES2/gl2.h>
 
 namespace irr
@@ -78,6 +79,11 @@ public:
     }
     void cacheTexParams(GLint magFilter, GLint minFilter, GLenum wrapS, GLenum wrapT) const
     {
+        // T122: record the write BEFORE it happens, so a crash mid-write
+        // (e.g. because `this` is not actually a live COGLES2Texture) still
+        // leaves the TEXPARAMS entry in the ring. No-op when
+        // WILLEQ_T122_TEXPROBE is not defined.
+        T122_RECORD_TEXPARAMS(this, static_cast<uint32_t>(magFilter));
         TexParamsCached = true;
         CachedMagFilter = magFilter;
         CachedMinFilter = minFilter;
