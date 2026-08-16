@@ -7230,3 +7230,40 @@ x86 stays clean" gate; x86 did not stay clean.
 
 Full write-up: `refactor/T120_zone_crossing_asan.md` Review,
 `/mnt/projects/fable/review/T120/`.
+
+### T120 orchestrator review — why T119's x86 result disagreed, and what it invalidates
+
+T119 reported **2 clean post-fix x86 zone-crossing runs**; T120, on the same
+tour family and the same `--constrained orangepi` + GLES2/llvmpipe
+configuration, got **10 of 10 crashed**. That discrepancy is not noise and it
+has a specific cause.
+
+**T119's x86 runs used its diagnostic build** (`-DWILLEQ_T119_DIAG_DEAD_TEXTURE`),
+which called `ConstrainedTextureCache::isLiveTexture()` at the
+`cacheTexParams()` call site — i.e. **on every material application, on every
+frame**. That function takes `mutex_` and then linear-scans the whole texture
+cache (`constrained_texture_cache.cpp:585-593`).
+
+So the diagnostic acquired a lock and walked a container on the renderer's
+hottest path. For a defect this arc has repeatedly shown to be
+timing-sensitive — gdb suppresses it, DEBUG logging perturbed it (T112),
+frame-time load shifted it (T119's own thermal caveat) — that is a
+**Heisenberg probe**, not a passive observer.
+
+**Two T119 conclusions are therefore unsound and must not be carried forward
+as established:**
+
+1. **"Two clean post-fix runs"** says nothing about whether the `clear()` fix
+   helped. The instrument plausibly suppressed the crash on its own. T120's
+   10-of-10 on a clean build is the trustworthy number.
+2. **"Zero dead-texture hits ⇒ T118's `cacheTexParams()` candidate refuted"**
+   is not safe. The same serialization that suppressed the crash could
+   suppress the dead-texture window the probe was looking for. **T118's
+   candidate is weakened but NOT refuted**, and should be re-tested with a
+   probe that does not lock — e.g. record the raw pointer to a lock-free ring
+   buffer and resolve liveness offline, never touching `mutex_` on the hot
+   path.
+
+**Durable lesson for this arc**: any instrumentation added to a timing-
+sensitive defect must be lock-free and allocation-free on the hot path, or it
+measures itself. Prefer post-mortem resolution of cheaply-recorded raw data.
