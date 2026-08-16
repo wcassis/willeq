@@ -7357,3 +7357,67 @@ chunk header later discovered at the swap.
 
 Full write-up: `refactor/T121_tsan_zone_crossing.md` Review,
 `/mnt/projects/fable/review/T121/`.
+
+### T122 — texture-lifecycle ring probe: `cacheTexParams()` CONFIRMED as a use-after-free write, type confusion eliminated
+
+Built the targeted, lock-free instrument the T120 orchestrator review
+prescribed: a fixed BSS ring (`docker/irrlicht-drm/t122_texprobe.h`,
+`WILLEQ_T122_TEXPROBE`, default off), recording CREATE/DESTROY/TEXPARAMS
+for every `COGLES2Texture`, resolved entirely offline from a core dump
+(`scripts/t122_extract_ring.py` + `scripts/t122_classify_ring.py`).
+
+**Acceptance gate passed cleanly: probe-build 10 of 10 crashed**, matching
+T120's uninstrumented 10-of-10 baseline exactly — the probe does not
+perturb the defect (contrast T119's mutex-taking probe, which turned the
+same 10/10 into 2 clean runs and produced a false negative that survived
+into a merged conclusion).
+
+**Findings, all 10 cores, 6149 total `TEXPARAMS` writes:**
+- **0 type confusion** (question 2, the untested hypothesis T122's plan
+  specifically called out) — every `TEXPARAMS` pointer has a prior CREATE
+  in every run. Eliminated.
+- **81 use-after-free writes** (question 1) across all 10 runs (every run
+  had at least 4) — `cacheTexParams()` writing `0x2601` (`GL_LINEAR`)
+  through a pointer whose most recent lifecycle event was DESTROY, with no
+  intervening CREATE. Worked example and full ring excerpt in
+  `refactor/T122_texture_lifecycle_probe.md`'s Review.
+- **6068 legitimate writes** (98.7%) — `cacheTexParams()` itself is correct;
+  the defect is entirely in what hands it a stale pointer.
+- Direct register-level corroboration: one core's fault register `rax =
+  0x260100002601` (two `0x2601`s back-to-back — `CachedMagFilter` +
+  `CachedMinFilter`) dereferenced as a `std::_Rb_tree` node pointer inside
+  `unloadZone()`'s `std::map<size_t,vector<triangle3d>>::clear()` — the
+  exact container T120's baseline already crashed in. A second core's
+  glibc `malloc_printerr("double free or corruption (out)")` reports a
+  corrupted chunk size of `0x260100002600` (same bit pattern) 0x70 bytes
+  from a confirmed-UAF pointer in the same run.
+
+**This closes T117's signature #1** (the original `ranges_`/`0x2601`
+family — now traced end-to-end, write to crash) **and T119's fifth
+sub-signature** (`double free or corruption (out)`). It does NOT explain
+(not ruled out, just not re-encountered) the `SkyData` teardown or
+Mesa/Lima SIGBUS signatures.
+
+**No fix attempted.** The write site is confirmed but the *owner* of the
+dangling pointer — whatever still holds an `SMaterial` referencing a
+texture that `unloadZone()` already destroyed — is not identified. Per the
+plan's STOP condition (zone load/unload lifecycle territory), finding it
+needs a completeness audit of every scene-node type's teardown (in the
+spirit of T119's `ConstrainedTextureCache::clear()` fix, which closed one
+such leak but — per T119's own Pi re-measurement, 0 of 5 clean — not all of
+them). **That audit is this arc's next unit.** No liveness guard was added
+to `cacheTexParams()` (the plan's explicit anti-papering-over rule).
+
+Probe kept in tree, default-off, zero-footprint verified (`nm` shows zero
+`t122` symbols in a plain build) — reusable as-is by the next unit.
+
+Also fixed in passing: `docker/Dockerfile.arm-noble` has its own
+independent copy-list for `docker/irrlicht-drm/*.h`, separate from
+`scripts/build-gles2-x86.sh`'s — missed on the first pass, caught by the
+ARM cross-compile failing even with the probe *disabled* (the header itself
+must exist unconditionally; only its macro bodies are gated). Both copy
+lists now carry `t122_texprobe.h`.
+
+Full write-up, ring excerpts, backtraces, and the 10-run/6149-write table:
+`refactor/T122_texture_lifecycle_probe.md` Review,
+`/mnt/projects/fable/review/T122/`.

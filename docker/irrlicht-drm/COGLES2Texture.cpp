@@ -20,6 +20,13 @@ namespace irr
 namespace video
 {
 
+#ifdef WILLEQ_T122_TEXPROBE
+namespace t122 {
+Entry g_t122Ring[kRingCapacity];
+std::atomic<uint32_t> g_t122RingIndex{0};
+}  // namespace t122
+#endif
+
 // ============================================================================
 // Constructor: from IImage
 // ============================================================================
@@ -40,6 +47,10 @@ COGLES2Texture::COGLES2Texture(IImage* image, const io::path& name,
     TextureSize = OriginalSize;
 
     uploadImage(image);
+
+    // T122: record CREATE after upload so TextureName reflects the real GL
+    // name (0 would mean upload failed silently before this point).
+    T122_RECORD_CREATE(this, static_cast<uint32_t>(TextureName));
 }
 
 // ============================================================================
@@ -59,6 +70,9 @@ COGLES2Texture::COGLES2Texture(const core::dimension2d<u32>& size, const io::pat
     TextureSize = size;
 
     createRenderTarget(size);
+
+    // T122: record CREATE after createRenderTarget() populates TextureName.
+    T122_RECORD_CREATE(this, static_cast<uint32_t>(TextureName));
 }
 
 // ============================================================================
@@ -78,6 +92,11 @@ COGLES2Texture::COGLES2Texture(const io::path& name, GLuint glTexName,
 {
     OriginalSize = size;
     TextureSize = size;
+
+    // T122: record CREATE — this constructor wraps an already-uploaded GL
+    // texture, so the name is known immediately (no upload/render-target
+    // call to wait for).
+    T122_RECORD_CREATE(this, static_cast<uint32_t>(TextureName));
 }
 
 // ============================================================================
@@ -86,6 +105,12 @@ COGLES2Texture::COGLES2Texture(const io::path& name, GLuint glTexName,
 
 COGLES2Texture::~COGLES2Texture()
 {
+    // T122: record DESTROY first, before any teardown, so the entry reflects
+    // the object's state at the moment it stopped being a live texture (the
+    // exact boundary the ring exists to reconstruct against TEXPARAMS/CREATE
+    // entries for the same pointer).
+    T122_RECORD_DESTROY(this, static_cast<uint32_t>(TextureName));
+
     if (FBO)
         glDeleteFramebuffers(1, &FBO);
     if (DepthBuffer)

@@ -41,15 +41,29 @@ IRRLICHT_BUILD_DIR="$PROJECT_DIR/third_party/irrlicht-gles2-x86"
 JOBS="${JOBS:-24}"
 
 IRRLICHT_ONLY=0
+T122_TEXPROBE=0
 for arg in "$@"; do
     case "$arg" in
         --irrlicht-only) IRRLICHT_ONLY=1 ;;
+        --t122-texprobe)
+            # T122: compile the lock-free texture-lifecycle ring probe into
+            # the driver (WILLEQ_T122_TEXPROBE) and keep -g so a resulting
+            # core dump can be symbolized. OFF unless explicitly requested —
+            # a plain ./build-gles2-x86.sh run never defines this macro.
+            T122_TEXPROBE=1
+            ;;
         --help|-h)
-            echo "Usage: $0 [--irrlicht-only]"
+            echo "Usage: $0 [--irrlicht-only] [--t122-texprobe]"
             exit 0
             ;;
     esac
 done
+
+PROBE_CXXFLAGS=""
+if [ "$T122_TEXPROBE" -eq 1 ]; then
+    echo "*** T122 probe build: WILLEQ_T122_TEXPROBE defined, -g kept for core symbolization ***"
+    PROBE_CXXFLAGS="-g -DWILLEQ_T122_TEXPROBE"
+fi
 
 if [ ! -d "$PRISTINE_IRRLICHT" ]; then
     echo "ERROR: pristine Irrlicht source not found at $PRISTINE_IRRLICHT" >&2
@@ -86,6 +100,7 @@ cp "$DRM_SRC/COGLES2MaterialRenderer.h" "$DEST_SRC/COGLES2MaterialRenderer.h"
 cp "$DRM_SRC/COGLES2MaterialRenderer.cpp" "$DEST_SRC/COGLES2MaterialRenderer.cpp"
 cp "$DRM_SRC/gl_call_counters.h"        "$DEST_SRC/gl_call_counters.h"
 cp "$DRM_SRC/gpu_sync_probe.h"          "$DEST_SRC/gpu_sync_probe.h"
+cp "$DRM_SRC/t122_texprobe.h"           "$DEST_SRC/t122_texprobe.h"
 # x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
 cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
 cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"
@@ -127,6 +142,7 @@ sed -i 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o |' \
 echo "--- Building libIrrlicht.a (native x86_64, make -j$JOBS) ---"
 make -C "$DEST_SRC" NDEBUG=1 -j"$JOBS" \
     CXX=g++ CC=gcc AR=ar \
+    CXXFLAGS="$PROBE_CXXFLAGS" \
     CXXINCS="-I../../include -Izlib -Ijpeglib -Ilibpng -I/usr/include/libdrm" \
     staticlib
 
