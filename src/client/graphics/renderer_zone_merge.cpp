@@ -386,24 +386,54 @@ void EntityMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
     // IMeshSceneNode and its second material source is getInstanceMesh(),
     // not getMesh()), but each half maps onto one of the two lower-level
     // primitives exactly.
+    //
+    // T126: added a THIRD scan target, visual.primaryEquipNode/
+    // secondaryEquipNode (right-hand/left-hand weapon-and-shield meshes,
+    // EntityRenderer::attachEquipment()). These are real IMeshSceneNode
+    // instances attached as children of the entity's own scene node --
+    // unlike the animated body above, they were never scanned by this guard
+    // at all despite T123's holder-inventory table claiming "equipment" was
+    // covered under "Entity/character + equipment". Confirmed the dominant
+    // still-open UAF holder via T126's write-time return-address probe: 118
+    // of 118 UAF TEXPARAMS writes across a 10-run acceptance gate resolved
+    // to the IDENTICAL call chain applyMaterialRenderState() <-
+    // applyCustomShaderState() <- applyMaterialState() <- setMaterial() <-
+    // CMeshSceneNode::render()+1122 <- CSceneManager::drawAll() -- i.e. a
+    // live, attached, normally-rendered IMeshSceneNode, not a
+    // detached/hidden one (the shape every earlier guard in this arc
+    // assumed). See refactor/T126_uaf_attribution.md.
     for (const auto& [spawnId, visual] : entities_) {
         EQAnimatedMeshSceneNode* node = visual.animatedNode;
-        if (!node) continue;
+        if (node) {
+            // 1. The node's own materials_ vector (what render() actually
+            //    binds at draw time — see class doc comment in
+            //    renderer_zone_merge.h).
+            swapped += swapTextureInNodeMaterials(node, texture, placeholder);
 
-        // 1. The node's own materials_ vector (what render() actually binds
-        //    at draw time — see class doc comment in renderer_zone_merge.h).
-        swapped += swapTextureInNodeMaterials(node, texture, placeholder);
+            // 2. The per-instance mesh buffers' own materials (e.g.
+            //    attached equipment pieces as separate buffers).
+            swapped += swapTextureInMesh(node->getInstanceMesh(), texture, placeholder);
+        }
 
-        // 2. The per-instance mesh buffers' own materials (e.g. attached
-        //    equipment pieces as separate buffers).
-        swapped += swapTextureInMesh(node->getInstanceMesh(), texture, placeholder);
+        // 3. T126: the actual attached weapon/shield IMeshSceneNode
+        //    instances (mesh-buffer materials AND per-node override
+        //    materials -- swapTextureInMeshSceneNode() covers both, same as
+        //    ObjectNodeTextureGuard/DoorTextureGuard do for their nodes).
+        if (visual.primaryEquipNode) {
+            swapped += swapTextureInMeshSceneNode(visual.primaryEquipNode, texture, placeholder);
+        }
+        if (visual.secondaryEquipNode) {
+            swapped += swapTextureInMeshSceneNode(visual.secondaryEquipNode, texture, placeholder);
+        }
     }
 
     if (swapped > 0) {
         LOG_DEBUG(MOD_GRAPHICS, "[entitytex] EntityMeshTextureGuard: swapped {} entity-mesh material "
                   "reference(s) to evicted texture -> placeholder (P17 — closes the entity-mesh gap "
                   "RegionMeshTextureGuard's own doc comment already flagged: region meshes were "
-                  "covered by P10b, entity meshes were not)", swapped);
+                  "covered by P10b, entity meshes were not; T126 — closes the equip-node gap this "
+                  "guard's own scan never actually covered despite T123's inventory claiming it did)",
+                  swapped);
     }
 }
 

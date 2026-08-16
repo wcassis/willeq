@@ -1250,6 +1250,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards)
 ENDIF()
 
+# T126: the dominant UAF holder named by this unit's write-time
+# return-address probe -- EntityVisual::primaryEquipNode/secondaryEquipNode
+# (weapon/shield meshes) were never scanned by EntityMeshTextureGuard despite
+# T123's holder-inventory table claiming "equipment" was covered, AND
+# EquipmentModelLoader's own persistent meshCache_ was never registered as a
+# TextureEvictionListener at all. See refactor/T126_uaf_attribution.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_t126_equip_texture_guard
+        test_t126_equip_texture_guard.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_t126_equip_texture_guard PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_t126_equip_texture_guard GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_t126_equip_texture_guard)
+ENDIF()
+
 # T66: /camera coverage (irrlicht_renderer.cpp processSlashCommand()) --
 # genuinely headless end-to-end: exercises the real processSlashCommand() ->
 # setCameraMode()/cycleCameraMode()/getCameraModeString() chain via a

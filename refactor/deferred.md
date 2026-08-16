@@ -7602,3 +7602,53 @@ then measure the Pi once against something that plausibly moved.
 **Durable lesson**: report defect counts as a **rate over exercised
 opportunities**, not as a raw total. A raw drop from 81 to 22 reads as a 73%
 reduction and is in fact zero change.
+
+### T126 — the dominant UAF holder found and fixed: equip-node meshes, uncovered by any guard
+
+T126 (`refactor/T126_uaf_attribution.md`) followed the redirect above but
+replaced the T123 gdb technique (which T124 tried and got inconclusive
+results from — a core taken at crash time may already have reused the
+memory around a resolved `SMaterial*`) with **write-time evidence**: every
+`cacheTexParams()` call now records an 8-deep `__builtin_return_address`
+chain directly into the T122 probe ring, symbolised offline against the
+matching core.
+
+**Result: all 118 UAF writes across a 10-run pre-fix acceptance gate
+resolved to the IDENTICAL 8-frame call chain**, terminating in
+`CMeshSceneNode::render()` called from `CSceneManager::drawAll()` — a
+**live, normally-attached, currently-rendering node**, not a
+detached/hidden one (the shape every one of T123/T124's guards was built
+for). Traced by reading code: `EntityVisual::primaryEquipNode`/
+`secondaryEquipNode` (weapon/shield meshes,
+`EntityRenderer::attachEquipment()`), built from
+`EquipmentModelLoader::meshCache_` — a **persistent** cache whose meshes
+survive zone unload/reload (refcounted, not rebuilt per zone the way
+object/region meshes are). `EntityMeshTextureGuard` (P17) never scanned
+these two node pointers at all, despite T123's own holder-inventory table
+claiming "equipment" was covered; `EquipmentModelLoader` was never
+registered as a `TextureEvictionListener` at all. None of the 118 writes
+originated in T123/T124's own guards (checked directly).
+
+**Fixed, two parts**: `EntityMeshTextureGuard` now also scans
+`primaryEquipNode`/`secondaryEquipNode`; `EquipmentModelLoader`
+self-registers as a listener and fixes its own cached meshes' materials
+(the root-cause half — without it, a future re-equip from the same stale
+cache entry would reintroduce the dangling pointer immediately).
+
+**Rate: 1.688% (118/6989) pre-fix -> 0% (0/1020, ring-measured via a live
+`gcore` snapshot) post-fix. Crash rate: 10/10 -> 0/10** — the first
+genuinely zero measurement this five-unit arc (T122-T126) has produced.
+
+**Consequence for T125: dispatch it now.** The wait condition from the
+T124 entry above ("find the dominant holder first, then measure the Pi
+once against something that plausibly moved") is now satisfied.
+
+Deviations worth carrying forward: the probe's return-address depth needed
+to go to 8, not the originally-suggested 4 (4 frames landed entirely inside
+`COpenGLES2Driver.cpp`'s own dispatch chain, short of the external caller);
+`t126_resolve_callchain.py`'s first per-address-gdb-invocation design was
+too slow for real use and was rewritten to batch a whole run's addresses
+into one gdb session; `EquipmentModelLoader`'s fix uses a small, explicitly-
+flagged local duplicate of `swapTextureInMesh()` rather than reusing it
+directly, because that primitive's home file pulls dependencies
+`tools/model_viewer.cpp`'s minimal link set doesn't build.

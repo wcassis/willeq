@@ -14,6 +14,35 @@
 namespace EQT {
 namespace Graphics {
 
+namespace {
+// T126: a deliberately narrow, LOCAL duplicate of
+// renderer_zone_merge.cpp's swapTextureInMesh(). Reusing that primitive
+// directly would pull renderer_zone_merge.cpp's own #includes
+// (irrlicht_renderer.h, entity_renderer.h, door_manager.h) into every target
+// that links equipment_model_loader.cpp -- including tools/model_viewer.cpp,
+// whose CMakeLists.txt link set is deliberately minimal and does not build
+// IrrlichtRenderer/DoorManager at all. Flagged explicitly rather than
+// silently duplicated: if a THIRD copy of this loop is ever needed, extract
+// swapTextureInMesh()/swapTextureInMaterial() into a small header with no
+// dependency beyond <irrlicht.h> instead of adding a fourth divergent copy.
+int swapTextureInMeshLocal(irr::scene::IMesh* mesh, irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!mesh) return 0;
+    int swapped = 0;
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (!buf) continue;
+        irr::video::SMaterial& mat = buf->getMaterial();
+        for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+            if (mat.getTexture(t) == from) {
+                mat.setTexture(t, to);
+                ++swapped;
+            }
+        }
+    }
+    return swapped;
+}
+}  // namespace
+
 EquipmentModelLoader::EquipmentModelLoader(irr::scene::ISceneManager* smgr,
                                            irr::video::IVideoDriver* driver,
                                            irr::io::IFileSystem* fileSystem)
@@ -22,11 +51,61 @@ EquipmentModelLoader::EquipmentModelLoader(irr::scene::ISceneManager* smgr,
 }
 
 EquipmentModelLoader::~EquipmentModelLoader() {
+    // T126: unregister before the cache (or this object) goes away -- same
+    // discipline every other TextureEvictionListener in this codebase
+    // follows (see T124's Bonus Findings: a missing unregister here was
+    // exactly the class of dangling-listener hazard this guard family
+    // exists to prevent, one level up).
+    if (constrainedTextureCache_) {
+        constrainedTextureCache_->removeEvictionListener(this);
+    }
     // Drop all cached meshes
     for (auto& [id, mesh] : meshCache_) {
         if (mesh) {
             mesh->drop();
         }
+    }
+}
+
+void EquipmentModelLoader::setConstrainedTextureCache(ConstrainedTextureCache* cache) {
+    if (constrainedTextureCache_) {
+        constrainedTextureCache_->removeEvictionListener(this);
+    }
+    constrainedTextureCache_ = cache;
+    if (constrainedTextureCache_) {
+        // Resolved ONCE, here, before any eviction can occur -- see class
+        // doc comment in equipment_model_loader.h and onTextureEvicted()'s
+        // non-reentrancy constraint.
+        placeholder_ = constrainedTextureCache_->getPlaceholderTexture();
+        constrainedTextureCache_->addEvictionListener(this);
+    }
+}
+
+void EquipmentModelLoader::onTextureEvicted(const std::string& /*name*/,
+                                             irr::video::ITexture* texture) {
+    if (!texture) return;
+
+    // T126: fix the CACHED MESH's own buffer material, not any scene node --
+    // scene nodes (EntityVisual::primaryEquipNode/secondaryEquipNode) are
+    // EntityMeshTextureGuard's job (renderer_zone_merge.cpp). This is the
+    // root-cause half: meshCache_ entries persist across zone unload/reload,
+    // so leaving their baked material stale means every FUTURE
+    // addMeshSceneNode(mesh, ...) call (a re-equip, another entity wearing
+    // the same item, a later zone) constructs a brand new node that inherits
+    // the dangling pointer immediately, regardless of what
+    // EntityMeshTextureGuard does for nodes that already existed at eviction
+    // time. See the class doc comment for the full mechanism.
+    int swapped = 0;
+    for (auto& [modelId, mesh] : meshCache_) {
+        if (!mesh) continue;
+        swapped += swapTextureInMeshLocal(mesh, texture, placeholder_);
+    }
+
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[equiptex] EquipmentModelLoader: swapped {} cached equipment-mesh "
+                  "material reference(s) to evicted texture -> placeholder (T126 -- prevents future "
+                  "addMeshSceneNode() calls from this cache from reintroducing a dangling texture "
+                  "pointer)", swapped);
     }
 }
 

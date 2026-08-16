@@ -31,16 +31,23 @@ pointer (`ptr` column) and classifies it:
 If TEXPARAMS entries are 100% LEGIT, cacheTexParams() is exonerated for that
 run (T122 plan question 3) — say so plainly, don't stretch a UAF/type-
 confusion narrative onto legitimate data.
+
+T126: --findings-out <path> writes every non-LEGIT (UAF/TYPE_CONFUSE_*) seq
+as a TSV (seq, ptr, class) for scripts/t126_resolve_callchain.py to cross-
+reference against the same ring TSV's retaddr columns and symbolise.
 """
+import argparse
 import sys
 from collections import defaultdict
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} <ring.tsv>", file=sys.stderr)
-        sys.exit(1)
-    path = sys.argv[1]
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("ring_tsv")
+    ap.add_argument("--findings-out", default=None,
+                     help="write non-LEGIT (seq, ptr, class) rows here for t126_resolve_callchain.py")
+    args = ap.parse_args()
+    path = args.ring_tsv
 
     events = defaultdict(list)  # ptr -> [(seq, kind), ...]
     texparams = []  # [(seq, ptr, value), ...]
@@ -48,7 +55,10 @@ def main():
         for line in f:
             if line.startswith("#") or line.startswith("seq"):
                 continue
-            seq, kind, ptr, tid, value = line.rstrip("\n").split("\t")
+            # T126 added 4 retaddr columns after `value`; tolerate both the
+            # old 5-column and new 9-column TSV shape.
+            fields = line.rstrip("\n").split("\t")
+            seq, kind, ptr, tid, value = fields[:5]
             seq = int(seq)
             events[ptr].append((seq, kind))
             if kind == "TEXPARAMS":
@@ -83,6 +93,13 @@ def main():
     print(f"Non-legit findings ({len(findings)} total, up to 20 shown):")
     for seq, ptr, value, cls, ctx in findings[:20]:
         print(f"  seq={seq} ptr={ptr} value={value} class={cls} recent_history={ctx}")
+
+    if args.findings_out:
+        with open(args.findings_out, "w") as f:
+            f.write("seq\tptr\tclass\n")
+            for seq, ptr, value, cls, ctx in findings:
+                f.write(f"{seq}\t{ptr}\t{cls}\n")
+        print(f"\nWrote {len(findings)} non-legit rows to {args.findings_out}")
 
 
 if __name__ == "__main__":

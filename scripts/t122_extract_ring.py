@@ -34,17 +34,19 @@ import sys
 import tempfile
 
 # Must match docker/irrlicht-drm/t122_texprobe.h's Entry layout exactly:
-#   const void* ptr;   // 8 bytes on x86_64
+#   const void* ptr;             // 8 bytes on x86_64
+#   const void* retaddr[8];      // T126: 64 bytes -- TEXPARAMS-only call chain,
+#                                // zero-filled for CREATE/DESTROY/MATERIAL
 #   uint32_t seq;
 #   uint32_t tid;
 #   uint32_t value;
 #   uint8_t kind;
 #   uint8_t pad[3];
-# Total: 24 bytes on x86_64 (this script targets the x86 probe build only —
-# T122 is x86-only, no Pi run).
-ENTRY_FMT_64 = "<QIIIB3x"
+# Total: 88 bytes on x86_64 (this script targets the x86 probe build only —
+# T122/T126 are x86-only, no Pi run).
+ENTRY_FMT_64 = "<Q8QIIIB3x"
 ENTRY_SIZE_64 = struct.calcsize(ENTRY_FMT_64)
-assert ENTRY_SIZE_64 == 24, ENTRY_SIZE_64
+assert ENTRY_SIZE_64 == 88, ENTRY_SIZE_64
 
 RING_CAPACITY = 1 << 18  # must match t122_texprobe.h's kRingCapacity
 
@@ -113,10 +115,11 @@ def main():
     entries = []
     for i in range(RING_CAPACITY):
         chunk = raw[i * ENTRY_SIZE_64 : (i + 1) * ENTRY_SIZE_64]
-        ptr, seq, tid, value, kind = struct.unpack(ENTRY_FMT_64, chunk)
+        unpacked = struct.unpack(ENTRY_FMT_64, chunk)
+        ptr, ra0, ra1, ra2, ra3, ra4, ra5, ra6, ra7, seq, tid, value, kind = unpacked
         if seq == 0 and ptr == 0 and value == 0 and kind == 0 and tid == 0:
             continue  # slot never written (ring hasn't wrapped that far yet)
-        entries.append((seq, kind, ptr, tid, value))
+        entries.append((seq, kind, ptr, tid, value, (ra0, ra1, ra2, ra3, ra4, ra5, ra6, ra7)))
 
     entries.sort(key=lambda e: e[0])
 
@@ -125,10 +128,11 @@ def main():
         out.write(f"# g_t122RingIndex (total fetch_add calls, pre-wrap) = {total_written}\n")
         out.write(f"# ring capacity = {RING_CAPACITY}, wrapped = {total_written > RING_CAPACITY}\n")
         out.write(f"# entries recovered from core = {len(entries)}\n")
-        out.write("seq\tkind\tptr\ttid\tvalue\n")
-        for seq, kind, ptr, tid, value in entries:
+        out.write("seq\tkind\tptr\ttid\tvalue\t" + "\t".join(f"retaddr{i}" for i in range(8)) + "\n")
+        for seq, kind, ptr, tid, value, retaddr in entries:
             kind_name = KIND_NAMES.get(kind, f"UNKNOWN({kind})")
-            out.write(f"{seq}\t{kind_name}\t0x{ptr:x}\t0x{tid:x}\t0x{value:x}\n")
+            ra_str = "\t".join(f"0x{ra:x}" for ra in retaddr)
+            out.write(f"{seq}\t{kind_name}\t0x{ptr:x}\t0x{tid:x}\t0x{value:x}\t{ra_str}\n")
     finally:
         if args.out:
             out.close()
