@@ -7267,3 +7267,93 @@ as established:**
 **Durable lesson for this arc**: any instrumentation added to a timing-
 sensitive defect must be lock-free and allocation-free on the hot path, or it
 measures itself. Prefer post-mortem resolution of cheaply-recorded raw data.
+
+## T121 (2026-08-16) — TSAN over the crossing tour finds zero races on the path; the arc's corruption is now better explained as an out-of-bounds write than a data race
+
+**No production code changed — diagnosis only, per the plan's explicit
+permission.** T114's TSAN never crossed a zone (single-zone tour, unload
+only at process exit); this unit pointed the same harness at T120's exact
+amplified crossing tour and flags. Result: **TSAN found zero races anywhere
+on the crossing/teardown path** — not in `EquipmentModelLoader`
+(`adoptIndex()` included), not in `unloadZone()`'s container teardown, not
+in `regionWorldTriangles_`/`objectWorldTriangles_`, not in
+`ZoneMergeBuffers` — across two complete 6-crossing runs with clean
+shutdown. The only races TSAN found anywhere in any of the 3 runs were
+T114's already-inventoried items #10 (`RendererEventReceiver`) and #11
+(`AudioMixer`/TinySoundFont), neither on the crossing/teardown path (both
+fire continuously regardless of zone state, confirmed by identical
+recurrence in the crash run and the two clean runs).
+
+**A dedicated call-site trace establishes WHY `adoptIndex()` doesn't race in
+practice, despite being genuinely unguarded**: it runs on the LoadingThread;
+the render thread never calls `processFrame()` for the LoadingThread's
+entire active window (`Application::render()`'s `isLoadingThreadActive()`
+early-return); and `EntityPrepWorker` — the only other reader — is
+synchronously stopped-and-joined by `unloadZone()` *before* `adoptIndex()`
+runs and not restarted until three steps later. This is orchestration
+safety, not lock safety (nothing in the class itself enforces it, and it
+depends on three files staying correctly ordered), but it means there is no
+concurrent-access window for TSAN to have caught — and TSAN's own findings
+agree with that structural proof.
+
+**The corruption T120's ASAN implicated at `adoptIndex()` is still real,
+but this unit's evidence points away from a race as its cause.** TSAN run 1
+did not survive the very first zone load: it hit its *own* internal
+allocator integrity check (`CHECK failed: sanitizer_allocator_secondary.h:297
+"IsAligned(p, page_size_)"`) — not a data-race report — while deallocating
+inside `EquipmentModelLoader::adoptIndex()`'s map move-assignment, the exact
+code location T120's ASAN (a different allocator, a different sanitizer)
+SEGV'd inside its own quarantine-flag bookkeeping. Two independent
+sanitizers, two different detection mechanisms, the same corrupted-metadata
+site — combined with the proof above that no reader could be racing it at
+that moment — is now the strongest evidence this arc has that the
+corruption is an **out-of-bounds write from somewhere else in the program**,
+landing near this allocation's header, detected wherever the next
+deallocation happens to touch it (matching this arc's established
+"corruption detected far from its cause" pattern from T115/T118/T119/T120).
+This did not recur in TSAN runs 2 or 3 (both completed cleanly) —
+non-deterministic, consistent with the whole arc's timing-sensitivity.
+
+**Uninstrumented baseline: 0 of 2 clean this unit** (both crashed —
+`double free or corruption (out)` and `malloc(): unsorted double linked list
+corrupted`, both familiar T120 siblings), **not independently re-run to
+N=10** since zero code changed and T120's 10/10 at an equivalent `fable` tip
+already stands unmoved — flagged as a deviation from the plan's instruction,
+not silently substituted. A future unit that lands an actual fix on this arc
+owes the full N=10 post-fix comparison; this unit made no fix and so owes
+none.
+
+**No fix was attempted.** TSAN found zero races on the territory this unit
+was chartered to fix; adding a lock to `EquipmentModelLoader` anyway —
+despite proof no concurrent access exists during the exact scenario tested —
+would be exactly the "lock added to quiet a report not understood" the
+plan forbids, and risks manufacturing a false "fixed" signal the way T119's
+diagnostic probe already did once on this arc (see T120 orchestrator
+review, this file, above).
+
+**Cross-referenced against T114's still-open inventory items**: `#9`
+(`ZoneMergeBuffers::ranges_`) is squarely on this crossing path — this unit
+reconfirms T114's "render-thread-only, not a threading defect" finding under
+the harder crossing-tour condition T114 never tested; still open as a crash
+elsewhere, but TSAN-clean on x86 crossing twice more now. `#7`
+(`ensureModelDataLoaded()`'s unlocked reads) sits adjacent to the crossing
+path (new-zone model loading, same window `adoptIndex()`'s readers are
+excluded from) but was not independently re-tested. `#10`/`#11` recur every
+run, confirmed still real, confirmed still out of the crossing-path
+territory. `#12` not observed this unit.
+
+**What this rules out and rules in**: rules out (with the caveat that 3 runs
+is not the Pi-rate discipline's N=10) TSAN finding a live, catchable race as
+the crossing-path corruption's cause under the conditions tested. Rules in,
+more strongly than before, that the corruption is a memory-safety defect
+(an out-of-bounds write) rather than a synchronization defect — meaning the
+right next instrument is **not** another TSAN/gdb pass (a third pass with
+the same tool that already found nothing here is unlikely to find something
+different) but a targeted **ASAN bisection of `adoptIndex()`'s own write
+path** — the actual archive-parsing/index-building code that populates the
+maps `adoptIndex()` later move-assigns, on the theory that an overflow while
+*building* the index (not while *swapping* it in) is what corrupts the
+chunk header later discovered at the swap.
+
+Full write-up: `refactor/T121_tsan_zone_crossing.md` Review,
+`/mnt/projects/fable/review/T121/`.
