@@ -131,15 +131,246 @@ it.
 
 ## Review
 
-(executor fills: whether detached object nodes are confirmed as the holder;
-the full holder inventory table; the probe extension and its re-run acceptance
-gate N of 10; the offending `SMaterial*` resolved to a holder, with entries
-quoted; the fix and why it is narrow; **uninstrumented N of 10 clean**; the
-post-fix ring check; deviations)
+### Detached object nodes — CONFIRMED as one real holder, not the only one
+
+`IrrlichtRenderer::applySimulationOutput()` (`renderer_sim_bridge.cpp:712-731`)
+does exactly what the plan named: `node->remove()` on any `objectNodes_[i]`
+that becomes invisible, `addChild()` again when it becomes visible — a
+continuous, live detach/reattach cycle for the whole zone visit, not a
+one-time thing. Checked `unloadZone()` (`renderer_zone_lifecycle.cpp:228-240`)
+directly: it tears every `objectNodes_` entry down cleanly regardless of
+attach state (`remove()` only if in-graph, `drop()` unconditionally), so this
+is **not** an unload-time gap — it is the transient window during normal play
+while an object is hidden and therefore unreachable from
+`smgr_->getRootSceneNode()`.
+
+**Resolved via live core-dump forensics, not inference.** T123's probe
+extension (below) recorded the `SMaterial*` for a confirmed UAF `TEXPARAMS`
+write (run3, seq=2833, `tex_ptr=0x7a554fed95b0`, `material_ptr=0x7a554fb20470`).
+gdb against the core:
+
+```
+0x7a554fb20470: 0x00007a554fed95b0 0x00007a5500000500   <- Texture[0] == the dead tex_ptr, confirmed
+0x7a554fb20520: 0x00007a554dd81db0 ...                  <- next entry, matches seq=2835's tex_ptr exactly
+```
+
+Found the array's own descriptor 40 bytes earlier
+(`find /8 <heap>, <heap>, 0x7a554fb20470` → `0x7a5557cf4890`), which decodes
+as `data=0x...20470, allocated=6, used=2`, with an embedded allocator at
+`+0x10` that `info symbol` resolves to **`vtable for
+irr::core::irrAllocator<irr::video::SMaterial> + 16`** — definitive proof
+this is an `irr::core::array<irr::video::SMaterial>`, i.e. `ISceneNode`'s own
+`Materials` member (`CMeshSceneNode::Materials`), not a mesh-buffer material.
+Cross-checked against Irrlicht source
+(`third_party/irrlicht-gles2-x86/source/Irrlicht/CMeshSceneNode.cpp:162`):
+with `ReadOnlyMaterials=false` (the default, and never overridden by this
+codebase — confirmed by grep, the only hit is a comment in
+`renderer_debug.cpp` documenting exactly this default), `render()` reads
+`Materials[i]`, **not** the mesh buffer's own material. So every ordinary
+`objectNodes_` entry's real, render-time-authoritative material is this
+per-node copy — exactly what `clearTextureReferences()`'s
+`node->getMaterial(i)` branch already checks for *reachable* nodes, and
+exactly what is invisible to it while detached.
+
+### Holder inventory table
+
+Enumerated by a research pass over every subsystem the plan named, plus
+`addEvictionListener()`'s full call-site list and `clearTextureReferences()`'s
+own scan logic:
+
+| Holder | Tracked by | Detach/gap mechanism | Coverage |
+|---|---|---|---|
+| Zone objects | `objectNodes_`/`objectInSceneGraph_` | continuous detach/reattach (visibility), NOT cleared at unload-time (unload is clean) | **was a gap — fixed this unit** (`ObjectNodeTextureGuard`) |
+| Entity/character + equipment | `entities_` (`EntityVisual`), same detach/reattach pattern | listener scans `entities_`/`instanceMesh_` directly | Covered (`EntityMeshTextureGuard`, P17) |
+| Zone region meshes / `ZoneMergeBuffers` | `regionMeshNodes_`, unconditionally detached for manual draw | listener scans `regionMeshNodes_` directly | Covered (`RegionMeshTextureGuard`, P10b) |
+| Sky dome/sun/moon/glow | `SkyRenderer` scene nodes, stay **attached**, only `setVisible(false)` | reachable by scene walk while attached; also self-registers as listener | Covered (double) |
+| **Doors** | `doors_` (`DoorVisual.pivotNode`), continuous PVS-driven detach/reattach (`door_manager.cpp:1195-1215` and 4 more sites) | **zero eviction-listener registration anywhere in door_manager.\*** | **Gap — same shape as objectNodes_, NOT fixed this unit (flagged below)** |
+| `SpellVisualFX` | 8 raw `ITexture*` members (`m_*_texture`) | plain class, no `TextureEvictionListener` | **Gap — not fixed** |
+| `TumbleweedManager` | `tumbleweedTexture_` member (node materials themselves are fine — hide, not remove) | no listener | **Gap — not fixed** |
+| `RainOverlay`/`SnowOverlay`/`BoidsManager` | cached atlas/layer `ITexture*` members | no listener | **Gap — not fixed** |
+| Particles (`ParticleManager`) | `atlasTexture_` | self-registers as listener | Covered |
+| `softwareCursorTexture_` | single member | `SingleTexturePointerGuard` | Covered (P10b) |
+| `AnimatedTextureManager`/`DetailManager`/`StormCloudLayer` | own caches | each self-registers | Covered |
+| UI (`UIRenderer::drawTexture`) | per-call param, never stored | N/A | Not a holder |
+| `RaceModelLoader` mesh/texture caches | `meshCache_`, `meshBuilder_->textureCache_`, etc. | `clearMeshCaches()` + `meshBuilder_->clearTextureCache()`, both called at every `unloadZone()`, **before** `clear()` destroys textures | Covered (P17 fix, verified still wired at `renderer_zone_lifecycle.cpp:251-263`) |
+
+Only `objectNodes_` was fixed this unit — it is the one the plan named and
+the one the probe forensics directly confirmed. Doors, `SpellVisualFX`,
+`TumbleweedManager`, `RainOverlay`, `SnowOverlay`, and `BoidsManager` are the
+**same shape of gap** (raw cached `ITexture*`/detachable node materials, zero
+listener coverage) and are explicitly **not fixed** — flagged for a follow-up
+unit, not silently dropped.
+
+### Probe extension and its re-run acceptance gate
+
+Extended T122's ring with a 4th event kind, `MATERIAL` (`ptr` = the
+`SMaterial*`), recorded at the **outermost non-copied** `SMaterial&`
+reference in `COpenGLES2Driver.cpp` — `applyMaterialState()`'s own parameter
+for the built-in path, and `applyCustomShaderState()`'s own parameter
+*before* it is copied into a local `baseMat` for the custom-shader path (the
+copy would make `&material` inside `applyMaterialRenderState()` useless for
+holder resolution on that path). `scripts/t123_resolve_material.py`
+correlates each `TEXPARAMS` entry to the nearest-preceding `MATERIAL` entry
+on the same thread.
+
+**First attempt (recording unconditionally on every material-apply call)
+found a real problem, not just a data point**: 10 of 10 crashed (matching the
+gate), but the ring **wrapped 3-4x per run** (912K-962K fetch_adds against a
+262144-entry ring), evicting the CREATE/DESTROY history the UAF/type-confusion
+classifier depends on and producing dozens of spurious `TYPE_CONFUSE_NEVER`
+results that were a wraparound artifact, not a finding. **Fixed** by gating
+the `MATERIAL` record to only fire when a write is actually about to happen
+(mirroring `applyMaterialRenderState()`'s own `texParamsMatch()` P42-dedup
+gate) — `t123MaybeRecordMaterial()`, entirely compiled out when
+`WILLEQ_T122_TEXPROBE` is undefined. Re-verified: ring volume dropped back to
+2930-4650 entries/run (T122's own order of magnitude), zero wraparound,
+zero `TYPE_CONFUSE_*` across all 3 runs classified.
+
+**Re-run acceptance gate (the fixed probe): 9 of 10 crashed**, against the
+standing 10-of-10 (T122's own gate). One run (run 4) completed cleanly. Judged
+*not* a probe perturbation: every prior unit on this arc (T119, T120, T122
+itself) documents this exact corruption as timing/allocator-layout-sensitive
+(gdb overhead alone flips crash/no-crash in T119's own testing), and a single
+clean run out of 10 is well inside that documented noise band — but this is
+reported as 9/10, not rounded to "matches," per the plan's own instruction to
+state the number before interpreting anything.
+
+### The offending `SMaterial*`, resolved to a holder
+
+Classified all 10 runs post-fix-to-the-probe-itself; extracted+resolved
+runs 1-3 (`review/T123/probe_gate/run{1,2,3}_ring.tsv`):
+
+| run | TEXPARAMS | LEGIT | UAF | TYPE_CONFUSE |
+|---|---|---|---|---|
+| 1 | 590 | 587 | 3 | 0 |
+| 2 | 853 | 848 | 5 | 0 |
+| 3 | 586 | 578 | 8 | 0 |
+
+Worked example (run3, seq=2833): `tex_ptr=0x7a554fed95b0`,
+`material_ptr=0x7a554fb20470` — the gdb chain in the "Detached object nodes"
+section above resolves this to a `core::array<SMaterial>` whose render-time
+role (per `CMeshSceneNode::render()`, `ReadOnlyMaterials=false`) is exactly
+an object node's own `Materials` copy. Question 2 (type confusion) stayed at
+zero across all 3 runs, same as T122.
+
+### The fix, and why it is narrow
+
+`ObjectNodeTextureGuard` (`renderer_zone_merge.h`/`.cpp`, `irrlicht_renderer.h`/
+`.cpp`) — a third sibling of `RegionMeshTextureGuard` (P10b) and
+`EntityMeshTextureGuard` (P17), registered as a `TextureEvictionListener` the
+identical way, bound to `objectNodes_` (a persistent renderer member) with the
+placeholder resolved once up front (same non-reentrancy constraint the other
+two document). On eviction, scans `objectNodes_` directly — bypassing
+scene-graph reachability entirely — covering **both** mesh-buffer materials
+(defensive, mirrors `RegionMeshTextureGuard`) **and** the node's own override
+materials via `node->getMaterial(i)` (the confirmed holder, mirrors what
+`clearTextureReferences()` does for reachable nodes). It is narrow because:
+it adds one new class following an exact, twice-already-proven-safe pattern;
+it changes no texture ownership/refcounding semantics; it does not touch zone
+load/unload ordering or GL teardown; and it is a no-op whenever no stale
+reference exists (the common case).
+
+One deviation from the plan's suggested "just cover it in the reference
+sweep" phrasing: implemented as a **third eviction listener**, not an
+extension of `clearTextureReferences()`'s scene walk — matching the plan's
+own alternative ("or give the uncovered holder an eviction listener like the
+ones that already exist") and the precedent both existing detached-node gaps
+(region meshes, entity meshes) already used.
+
+**Test** (`tests/test_object_node_texture_guard.cpp`, 2 cases): exercises the
+**real** destruction path, `ConstrainedTextureCache::clear()` — the exact
+call `unloadZone()` makes — against a real `addMeshSceneNode()`-built node
+with a real Irrlicht-populated `Materials` copy, detached via `node->remove()`
+after a production-matching `grab()` (mirrors `renderer_zone_load.cpp`'s own
+`objNode->grab(); ...push_back()` pattern exactly, including why: `remove()`
+without an extra `grab()` would destroy the node instead of merely detaching
+it — caught by this test suite itself when first written, SIGSEGV, fixed).
+One test detached, one left attached as a control. Both pass.
+
+### Uninstrumented acceptance test: **9 of 10 crashed, 1 of 10 clean**
+
+`review/T123/postfix_baseline/`, clean non-probe `build-gles2-x86.sh` build
+(verified zero `t122` symbols via `nm`), 10 runs of
+`review/T120/run_baseline_x86.sh` — against the standing **0 of 10 clean**.
+Run 10 completed with no crash text and `Application shutdown complete`
+logged; runs 1-9 crashed (mixed SIGSEGV/`corrupted size vs prev_size`/`free():
+invalid next size (fast)` signatures, same families this arc has always
+produced). **This is a real, measured improvement (0→1 of 10 clean) but does
+not close the arc.**
+
+### Post-fix ring check: UAF writes persist, same holder *type*, different instance
+
+`review/T123/postfix_probe/run1_ring.tsv` (probe+fix combined build, same
+tour): **8 UAF `TEXPARAMS` entries, not zero.** Resolved the first
+(seq=2017, `tex_ptr=0x7b607ac90750`, `material_ptr=0x7b60677e81c0`) via the
+same gdb method — content at `material_ptr` matches `tex_ptr` exactly, same
+`core::array<SMaterial>`-shaped memory layout as before. This is **not**
+evidence the fix is broken (the unit test proves it works for `objectNodes_`
+specifically); it is direct confirmation that a **different, still-uncovered
+holder of the identical shape** (most plausibly `DoorManager`'s `pivotNode`
+materials, given the identical continuous-detach/zero-listener profile found
+in the holder inventory above) is responsible for most of the remaining
+crashes. A definitive per-holder attribution (proving it's specifically
+doors, not `SpellVisualFX`/`TumbleweedManager`/etc.) was not completed this
+unit — the memory forensics identify the holder *type*, not which live C++
+object owns this specific instance, and doing that for every remaining
+candidate is the honest scope of a follow-up unit, not a rushed guess here.
+
+### Verification
+
+- x86 suite: **2273/2274 passing** (sole failure: documented ALSA
+  `AudioManagerTest.PreloadCommonSounds`), including the 2 new
+  `ObjectNodeTextureGuardTest` cases.
+- `scripts/build-gles2-x86.sh` (uninstrumented): clean, `nm` confirms zero
+  `t122`/probe symbols.
+- Visual gate: **PASS**, goldens untouched (`scripts/ci/visual_gate.sh`,
+  exit 0, qeynos2/gfaydark/befallen all verified).
+- `scripts/build-arm-noble.sh`: clean cross-compile, no new header needed in
+  `docker/Dockerfile.arm-noble`'s copy-list (no new probe header this unit —
+  only edits to the existing `t122_texprobe.h` and `COpenGLES2Driver.cpp`).
+- `check_file_sizes.sh fable`: **0 new FAILs** — `irrlicht_renderer.cpp`
+  crossed the 3000-line FAIL threshold by 9 lines on the first pass (2996→3005);
+  trimmed the added comments/formatting back to exactly 3000 lines (WARN, not
+  FAIL, matching the file's pre-existing over-1500 status). 3 pre-existing
+  WARNs unchanged, 0 FAILs.
+- **No Pi run**, per the plan — the Pi is not yet measured for this fix,
+  consistent with T122's own precedent.
+
+### Deviations
+
+1. The probe extension's first design (unconditional `MATERIAL` recording)
+   was tried, found to wrap the ring and corrupt the classifier's
+   CREATE/DESTROY history, and was **reverted and redesigned** (gated
+   recording) before any conclusion was drawn from it — flagged rather than
+   silently discarded, since it's a real methodological finding for whoever
+   next extends this probe.
+2. The fix is implemented as a new `TextureEvictionListener` rather than
+   literally extending `clearTextureReferences()`'s scene walk — an explicit
+   plan-sanctioned alternative, matching the two existing precedents exactly.
+3. Per-holder attribution of the *remaining* post-fix crashes (doors vs.
+   SpellVisualFX vs. TumbleweedManager vs. RainOverlay/SnowOverlay/
+   BoidsManager) was not completed — the holder inventory table names all of
+   them as same-shaped, unfixed gaps, and the post-fix ring check confirms
+   *a* same-type holder remains, but does not pin down *which* one
+   definitively. Flagged as the natural next step, not silently absorbed
+   into "fix didn't fully work."
+4. `irrlicht_renderer.cpp` needed a same-unit trim (comment/formatting only,
+   no logic change) to stay under the 3000-line FAIL threshold — documented
+   above under Verification.
 
 ## Board
 
-If the baseline goes clean, say so — and say explicitly that **the Pi is not
-yet measured**, because that is the next unit and this arc has been burned
-before by inferring one platform from another. If the baseline improves but
-does not reach clean, report the rate and say what remains.
+**The baseline does not go clean.** 1 of 10 uninstrumented runs is clean post-fix
+(up from the standing 0 of 10) — a real, measured, narrow improvement, not a
+full close. The confirmed, fixed holder (`objectNodes_`, detached-object-node
+materials) is real and now covered by `ObjectNodeTextureGuard`, backed by
+live core-dump forensics (an `irrAllocator<SMaterial>` vtable symbol match,
+not inference) and a regression test against the real destruction path. The
+post-fix probe ring shows the *same holder type* persisting through a
+*different* instance — the holder inventory's other flagged gaps (doors is
+the strongest candidate: identical continuous-detach pattern, zero listener
+coverage found by this unit's own audit) are the natural next unit's target,
+not a re-hunt from scratch. **The Pi is not yet measured for this fix** — a
+Pi re-run of this exact recipe, and/or a DoorManager-equivalent of
+`ObjectNodeTextureGuard`, are both immediate, well-scoped follow-ups this
+unit's evidence points at directly.

@@ -384,5 +384,70 @@ void EntityMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
     }
 }
 
+// ---------------------------------------------------------------------------
+// ObjectNodeTextureGuard — T123 (object-node sibling of the two guards above)
+// ---------------------------------------------------------------------------
+
+ObjectNodeTextureGuard::ObjectNodeTextureGuard(
+    const std::vector<irr::scene::IMeshSceneNode*>& objectNodes,
+    irr::video::ITexture* placeholder)
+    : objectNodes_(objectNodes), placeholder_(placeholder) {}
+
+void ObjectNodeTextureGuard::onTextureEvicted(const std::string& /*name*/,
+                                               irr::video::ITexture* texture) {
+    if (!texture) return;
+
+    // Same load-bearing constraint as the other two guards: MUST NOT call
+    // back into ConstrainedTextureCache here. placeholder_ was resolved
+    // once, safely, at construction time.
+    irr::video::ITexture* placeholder = placeholder_;
+    int swapped = 0;
+
+    for (irr::scene::IMeshSceneNode* node : objectNodes_) {
+        if (!node) continue;
+
+        // 1. Mesh-buffer materials — what most object nodes actually bind
+        //    at render time (mirrors RegionMeshTextureGuard).
+        if (irr::scene::IMesh* mesh = node->getMesh()) {
+            for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+                irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+                if (!buf) continue;
+                irr::video::SMaterial& mat = buf->getMaterial();
+                for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+                    if (mat.getTexture(t) == texture) {
+                        mat.setTexture(t, placeholder);
+                        ++swapped;
+                    }
+                }
+            }
+        }
+
+        // 2. The node's own override materials array (ISceneNode::Materials,
+        //    via getMaterial(i)/getMaterialCount()) — what
+        //    ConstrainedTextureCache::clearTextureReferences() already checks
+        //    for nodes reachable from the scene-graph root. T123 confirmed
+        //    via a live core dump (irrAllocator<SMaterial> vtable match on
+        //    the array's embedded allocator) that this is exactly the
+        //    holder type an observed use-after-free write traced back to.
+        for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
+            irr::video::SMaterial& mat = node->getMaterial(i);
+            for (irr::u32 t = 0; t < irr::video::MATERIAL_MAX_TEXTURES; ++t) {
+                if (mat.getTexture(t) == texture) {
+                    mat.setTexture(t, placeholder);
+                    ++swapped;
+                }
+            }
+        }
+    }
+
+    if (swapped > 0) {
+        LOG_DEBUG(MOD_GRAPHICS, "[objecttex] ObjectNodeTextureGuard: swapped {} object-node material "
+                  "reference(s) to evicted texture -> placeholder (T123 — closes the detached-object-node "
+                  "gap: applySimulationOutput() detaches invisible objectNodes_ entries from the scene "
+                  "graph, making clearTextureReferences()'s scene walk unable to reach them while hidden)",
+                  swapped);
+    }
+}
+
 } // namespace Graphics
 } // namespace EQT

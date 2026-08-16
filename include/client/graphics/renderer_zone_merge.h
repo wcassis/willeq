@@ -313,6 +313,52 @@ private:
     irr::video::ITexture* placeholder_;
 };
 
+// T123: object-node sibling of RegionMeshTextureGuard/EntityMeshTextureGuard
+// above. `IrrlichtRenderer::applySimulationOutput()` (renderer_sim_bridge.cpp)
+// calls `objectNodes_[i]->remove()` on any zone-object node that becomes
+// invisible (PVS/simulation-driven), and `addChild()` again when it becomes
+// visible -- a continuous, live detach/reattach cycle for as long as the zone
+// is loaded, NOT a one-time thing settled at zone load or unload.
+// `unloadZone()` itself tears every objectNodes_ entry down cleanly
+// (`remove()` + `drop()`, confirmed -- see refactor/T123_texture_holder_audit.md),
+// so this is not an unload-time gap; it is the WINDOW during normal play
+// while an object is hidden and therefore unreachable from
+// `smgr_->getRootSceneNode()`. A texture eviction/zone-unload `clear()` that
+// runs while an object is in that detached state leaves its material's
+// texture reference un-nulled (both its mesh-buffer materials AND its own
+// node-level override `Materials` array, per `ISceneNode::getMaterial(i)` --
+// T123 confirmed via a live core dump that the actual holder for one
+// observed use-after-free write was exactly a node's own override-materials
+// array, `irr::core::array<irr::video::SMaterial>`, identified via its
+// embedded `irrAllocator<SMaterial>` vtable). When the object becomes
+// visible again and is re-attached, `applyMaterialRenderState()` renders it
+// with the stale pointer still in place -> `cacheTexParams()`
+// use-after-free. This guard closes it exactly like the two guards above:
+// scan `objectNodes_` directly (renderer bookkeeping, not scene-graph
+// reachability) on every eviction notification, covering mesh-buffer
+// materials AND the node's own override materials (mirroring
+// ConstrainedTextureCache::clearTextureReferences()'s own two-part scan, but
+// without requiring scene-graph reachability).
+class ObjectNodeTextureGuard : public TextureEvictionListener {
+public:
+    // objectNodes: IrrlichtRenderer::objectNodes_ -- renderer-owned, cleared
+    // (remove()+drop() each entry) not destroyed/recreated between zone
+    // visits (renderer_zone_lifecycle.cpp), safe to hold a reference for the
+    // guard's own lifetime (also renderer-owned, constructed once).
+    //
+    // placeholder: resolved ONCE by the caller before construction, same
+    // load-bearing non-reentrancy constraint as RegionMeshTextureGuard's
+    // constructor doc above (never re-derive it inside onTextureEvicted()).
+    ObjectNodeTextureGuard(const std::vector<irr::scene::IMeshSceneNode*>& objectNodes,
+                           irr::video::ITexture* placeholder);
+
+    void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
+
+private:
+    const std::vector<irr::scene::IMeshSceneNode*>& objectNodes_;
+    irr::video::ITexture* placeholder_;
+};
+
 } // namespace Graphics
 } // namespace EQT
 

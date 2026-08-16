@@ -483,6 +483,10 @@ class SingleTexturePointerGuard;
 // Forward declaration -- full definition in renderer_zone_merge.h (P17:
 // entity-mesh sibling of RegionMeshTextureGuard, see its own doc comment).
 class EntityMeshTextureGuard;
+// Forward declaration -- full definition in renderer_zone_merge.h (T123:
+// object-node sibling of RegionMeshTextureGuard/EntityMeshTextureGuard, see
+// its own doc comment).
+class ObjectNodeTextureGuard;
 
 // Entry for material-sorted zone draw list (mesh buffer level)
 struct ZoneDrawEntry {
@@ -1499,6 +1503,17 @@ private:
     // initLoadingScreen()) and registered the same way. See
     // renderer_zone_merge.h's EntityMeshTextureGuard doc comment.
     std::unique_ptr<EntityMeshTextureGuard> entityMeshTextureGuard_;
+
+    // T123: object-node sibling of regionMeshTextureGuard_/
+    // entityMeshTextureGuard_ above -- closes the detached-object-node gap
+    // (applySimulationOutput() detaches invisible objectNodes_ entries from
+    // the scene graph, making them unreachable to
+    // ConstrainedTextureCache::clearTextureReferences()'s scan). Constructed
+    // once in initLoadingScreen() alongside regionMeshTextureGuard_
+    // (objectNodes_ is a persistent member, safe to bind a reference to for
+    // the renderer's lifetime) and registered the same way. See
+    // renderer_zone_merge.h's ObjectNodeTextureGuard doc comment.
+    std::unique_ptr<ObjectNodeTextureGuard> objectNodeTextureGuard_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
