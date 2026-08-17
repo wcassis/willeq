@@ -976,6 +976,14 @@ irr::scene::ISceneNode* EQAnimatedMeshSceneNode::clone(irr::scene::ISceneNode* n
 
     EQAnimatedMeshSceneNode* newNode = new EQAnimatedMeshSceneNode(
         eqMesh_, newParent, newManager, ID, RelativeTranslation, RelativeRotation, RelativeScale);
+    // T127: same missing balancing drop() as RaceModelLoader's node-factory
+    // functions (animated_mesh_creation.cpp) -- newParent->addChild() already
+    // grab()'d newNode; this factory must release its own `new`-acquired
+    // reference before returning the raw pointer. Not currently reachable
+    // from any call site (no caller of clone() exists in this codebase today)
+    // but fixed alongside the live bug to avoid leaving the same defect for
+    // the next caller.
+    newNode->drop();
 
     newNode->setAnimationSpeed(getAnimationSpeed());
     newNode->setLoopMode(looping_);

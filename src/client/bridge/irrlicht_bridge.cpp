@@ -835,6 +835,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             ext.sharedLibBytes = d.sharedLibBytes;
             ext.anonBytes = d.anonBytes;
             ext.stackBytes = d.stackBytes;
+            ext.mallocArenaBytes = d.mallocArenaBytes;
+            ext.mallocInUseBytes = d.mallocInUseBytes;
             ext.audioAvailable = d.audioAvailable;
             ext.soundBufferCacheBytes = d.soundBufferCacheBytes;
             ext.soundBufferCacheMaxBytes = d.soundBufferCacheMaxBytes;

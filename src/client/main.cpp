@@ -2,11 +2,41 @@
 #include <cstring>
 #include <string>
 
+#if defined(__linux__)
+#include <malloc.h>
+#endif
+
 #include "client/application.h"
 #include "client/eq.h"
 #include "common/logging.h"
 
 int main(int argc, char* argv[]) {
+#if defined(__linux__)
+    // T127: glibc gives every thread that contends on the main arena its own
+    // fresh arena (up to 8x the CPU count by default). This app spawns a
+    // brand-new LoadingThread for every zone crossing to do the bulk of the
+    // zone-build allocation (WLD/S3D parse, mesh/texture build -- hundreds of
+    // MB of churn per crossing, see renderer_zone_load.cpp), and glibc does
+    // not return a thread's arena pages to the OS just because the thread
+    // exited and its allocations were freed -- the pages sit in that arena's
+    // free lists, unreclaimed, while the NEXT crossing's LoadingThread gets
+    // ANOTHER fresh arena. Measured directly (review/T127/): RSS growth over
+    // a 6-crossing tour dropped from +297MB (all threads share the default
+    // multi-arena policy) to +37MB with a single arena forced -- an 8x
+    // reduction, and the single largest lever found for T127's zone-crossing
+    // RSS growth, well ahead of the EQAnimatedMeshSceneNode refcount leak
+    // fixed alongside it (animated_mesh_creation.cpp). A single shared arena
+    // means allocations from different threads serialize on one lock instead
+    // of running lock-free in separate arenas -- an acceptable tradeoff here
+    // (this is not a many-core allocation-bound app; the constrained-device
+    // target is a single-core-class Orange Pi) against an 8x RSS-growth cut
+    // on a 512MB machine where that growth is currently fatal. Must run
+    // before any other thread is created (Application::run() spawns the
+    // game thread, audio threads, worker pool, etc.), so this is the first
+    // statement in main().
+    mallopt(M_ARENA_MAX, 1);
+#endif
+
     auto config = eqt::Application::parseArguments(argc, argv);
 
     if (config.showHelp) {

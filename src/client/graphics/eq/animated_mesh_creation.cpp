@@ -286,6 +286,17 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
         targetSmgr,
         id
     );
+    // T127: ISceneNode's constructor already registered `node` with
+    // parentNode->addChild(), which grab()s it -- that grab is meant to be
+    // the sole owning reference (stock Irrlicht convention, see any
+    // addXSceneNode() factory: construct, configure, drop() before
+    // returning). Without this the node sits at refcount 2 forever: nothing
+    // in this codebase ever holds a second owning pointer to balance it, so
+    // EntityRenderer's later remove()+drop() teardown can only bring it back
+    // to 1, never 0 -- ~EQAnimatedMeshSceneNode() (and the instanceMesh_/
+    // eqMesh_ it owns) never runs. Confirmed as a true LSAN-unreachable leak
+    // over a repeated zone-crossing tour, not a live/bounded cache question.
+    node->drop();
 
     // Set scale
     float scale = getRaceScale(raceId);
@@ -323,6 +334,9 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithAppearance(uint1
         targetSmgr,
         id
     );
+    // T127: see the identical drop() in createAnimatedNode() above -- same
+    // missing balancing drop() after parentNode->addChild()'s grab().
+    node->drop();
 
     // Set scale
     float scale = getRaceScale(raceId);
@@ -441,6 +455,13 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
         targetSmgr,
         id
     );
+    // T127: see the identical drop() in createAnimatedNode() above -- same
+    // missing balancing drop() after parentNode->addChild()'s grab(). Safe to
+    // drop here, before the extensive node->getMaterial()/node->getMesh()
+    // configuration below: the parent's own reference (from addChild) keeps
+    // the node alive for the rest of this function and for the caller, this
+    // factory just stops holding a second, never-released owning reference.
+    node->drop();
 
     // Apply equipment textures to the scene node's materials (NOT the cached mesh!)
     // We modify the node's materials, not the mesh buffer's materials, to avoid corrupting the cache
