@@ -17,9 +17,21 @@ references this file; plans carry only unit-specific content.
   grep/tail/tee.
 - Run long commands FOREGROUND with explicit timeouts (600000 ms max
   per call); re-run on timeout. NEVER end a turn waiting on a
-  background task or monitor — poll output files in bounded foreground
-  loops inside a single Bash call (e.g. 60 iterations x 10s). This
-  failure mode has stalled 5+ units; it is forbidden.
+  background task or monitor. This failure mode has stalled 5+ units
+  (T128 alone stalled 3 times in one unit); it is forbidden. Use
+  `scripts/wait_for.sh` instead of writing your own polling loop — it
+  is a bounded, re-invokable, dependency-free poller built for exactly
+  this (T129):
+  ```
+  scripts/wait_for.sh --exit-file <path> [--interval 10] [--deadline 240] [--label NAME]
+  scripts/wait_for.sh --file <path> --contains <text> [--interval 10] [--deadline 240] [--label NAME]
+  ```
+  Exit 0 = condition met; exit 2 = deadline reached, still running (not
+  an error — just call it again); exit 1 = usage error; exit 3 = target
+  path unusable. It prints elapsed time, file size, and a tail on every
+  exit, so you can act without a second command. Deadline is capped at
+  540s so a single invocation can never approach the Bash tool's 600s
+  ceiling. `scripts/wait_for.sh --help` for full usage.
 - Stay out of parallel units' file territory (named in each plan).
 - Honor STOP conditions exactly; report narrowed evidence, don't thrash.
 - Evidence discipline: garbled/invalid renders void any claim built on
