@@ -268,6 +268,21 @@ public:
     virtual void rollRandom(uint32_t low, uint32_t high) = 0;
     virtual void yellForHelp() = 0;
     virtual void requestWho(const std::string& name, int lvlLow, int lvlHigh) = 0;
+
+    // ========== Guild (T132) ==========
+    // Net-new: no game-registry counterpart was reconciled here -- T98
+    // emptied the Guild category and there was nothing underneath it (see
+    // refactor/T132_migrate_guild_family.md). These wrap the pre-existing
+    // EverQuest::SendGuild*() senders, which already implement the guard/
+    // argument logic; the wrappers are pure routing.
+    virtual void guildInvite(const std::string& playerName) = 0;
+    virtual void guildAcceptInvite() = 0;
+    virtual void guildDeclineInvite() = 0;
+    virtual void guildRemove(const std::string& playerName) = 0;
+    virtual void guildDemote(const std::string& playerName) = 0;
+    virtual void guildMakeLeader(const std::string& playerName) = 0;
+    virtual void requestGuildMOTD() = 0;
+    virtual void setGuildMOTD(const std::string& motd) = 0;
 };
 
 /**
@@ -948,6 +963,48 @@ public:
      * Search the server's /who listing.
      */
     ActionResult requestWho(const std::string& name, int lvlLow, int lvlHigh);
+
+    // ========== Guild Actions (T132) ==========
+
+    /**
+     * Invite a player to your guild.
+     */
+    ActionResult guildInvite(const std::string& playerName);
+
+    /**
+     * Accept a pending guild invite.
+     */
+    ActionResult guildAcceptInvite();
+
+    /**
+     * Decline a pending guild invite.
+     */
+    ActionResult guildDeclineInvite();
+
+    /**
+     * Remove a member from your guild.
+     */
+    ActionResult guildRemove(const std::string& playerName);
+
+    /**
+     * Demote a guild member.
+     */
+    ActionResult guildDemote(const std::string& playerName);
+
+    /**
+     * Transfer guild leadership to a member.
+     */
+    ActionResult guildMakeLeader(const std::string& playerName);
+
+    /**
+     * Request the guild's message of the day.
+     */
+    ActionResult requestGuildMOTD();
+
+    /**
+     * Set the guild's message of the day.
+     */
+    ActionResult setGuildMOTD(const std::string& motd);
 
 private:
     state::GameState& m_state;

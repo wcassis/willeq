@@ -8074,3 +8074,59 @@ instance. Documented directly in code above the method's definition so it
 can't be added without noticing the warning. Full evidence: this unit's
 Review (`refactor/T131_tsf_preallocate.md`) and
 `/mnt/projects/fable/review/T131/`.
+
+## T132 (2026-08-17) — `EverQuest::m_guild_id` is dead: guild commands other
+than `/guildmotd`'s get-path have never had a live effect
+
+Found while live-verifying the Guild family's migration to
+`action::CommandProcessor` (net-new plumbing over the pre-existing
+`EverQuest::SendGuild*()` senders — see `refactor/T132_migrate_guild_family.md`).
+`EverQuest::m_guild_id` (`include/client/eq.h:1846`) is the field every
+`SendGuild*()` sender in `src/client/eq_guild.cpp` guards on
+(`if (m_guild_id == 0) { AddChatSystemMessage("You are not in a guild.");
+return; }`), but **nothing in the codebase ever assigns it** — grepped
+`src/client/*.cpp`/`include/client/*.h` for `m_guild_id\s*=`; the only
+matches are the five `== 0` guard reads and its own `= 0` default. The
+zone-in `PlayerProfile` packet does parse a guild id (`eq.cpp:2143`), but
+into `self_entity.guild_id` — the per-entity `Entity` struct's field, a
+completely different member — never copied into `EverQuest::m_guild_id`.
+
+**Effect, confirmed live** (`/mnt/projects/fable/review/T132/`):
+`/guildinvite`, `/guildremove`, `/guilddemote`, `/guildleader`, and
+`/guildmotd`'s set-path are permanently dead on the wire — they print "You
+are not in a guild." and send no packet, regardless of the character's
+actual server-side guild membership. `/guildaccept`/`/guilddecline` guard
+on a different field (`m_has_pending_guild_invite`, set only by
+`ZoneProcessGuildInvite`), which in practice can also never fire, because
+the only way an invite would arrive is a working `/guildinvite` — blocked
+by the same dead field. Only `SendGetGuildMOTD()` (unguarded) has a real,
+confirmed-live server round trip.
+
+**Not a T132 regression** — `game`'s original handlers (deleted from
+`eq_commands.cpp` in T132's commit) called these exact same `Send*()`
+methods with the exact same guard; the migration preserved this behavior
+identically, as required. This predates T132 and was invisible until this
+unit gave these code paths their first live callers to actually test —
+same pattern T99 hit with `GameStateSyncBridge`'s missing Group case, T101
+found with disconnected spell dispatcher paths, etc.
+
+**Also checked and ruled out**: a GM-status test account (`willeq_test`,
+account status 200, above the `Steward` (10) gate `#guild` GM commands
+require) IS available and `#guild create` IS reachable — so this is not a
+"live leg needs Will" gap. GM-forming a guild would not fix anything: the
+blocker is that the *client* never learns it's in a guild no matter what's
+true server-side, so no in-session action (GM or otherwise) can make these
+six commands produce a network effect. Confirmed cheaply via a throwaway
+single-client run before committing session time to a full two-client
+guild-formation script that would have been invisible to the client anyway.
+
+**Shape of the fix**: wire `EverQuest::m_guild_id` from the zone-in
+`PlayerProfile` parse (`eq.cpp:2143`'s `guild_id` local is already
+available at that call site) and keep it current via
+`ZoneProcessGuildMOTD`/member-update packets as guild state changes. Real
+code change to core connection/zone-in state in `src/client/eq_guild.cpp`
+and `eq.cpp` — outside `action::CommandProcessor`/`ActionDispatcher`
+territory, the same class of out-of-territory cost T103 flagged for
+`GameStateSyncBridge` gaps. Not fixed here; worth its own small unit, with
+the same live two-client harness (`data/captures/t132_*` pattern) as its
+acceptance test once fixed.

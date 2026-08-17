@@ -186,6 +186,17 @@ public:
     void yellForHelp() override;
     void requestWho(const std::string& name, int lvlLow, int lvlHigh) override;
 
+    // ========== Guild (T132) ==========
+
+    void guildInvite(const std::string& playerName) override;
+    void guildAcceptInvite() override;
+    void guildDeclineInvite() override;
+    void guildRemove(const std::string& playerName) override;
+    void guildDemote(const std::string& playerName) override;
+    void guildMakeLeader(const std::string& playerName) override;
+    void requestGuildMOTD() override;
+    void setGuildMOTD(const std::string& motd) override;
+
 private:
     EverQuest& m_eq;
 

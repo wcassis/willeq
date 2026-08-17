@@ -559,104 +559,13 @@ void EverQuest::RegisterSocialCommands()
 	// why who_cmd was chosen over Movement's who (eq_commands_movement.cpp,
 	// deleted, not migrated).
 
-	// === Guild Commands ===
-
-	Command guildinvite_cmd;
-	guildinvite_cmd.name = "guildinvite";
-	guildinvite_cmd.aliases = {"ginvite"};
-	guildinvite_cmd.usage = "/guildinvite <name>";
-	guildinvite_cmd.description = "Invite player to guild";
-	guildinvite_cmd.category = "Guild";
-	guildinvite_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /guildinvite <name>");
-			return;
-		}
-		SendGuildInvite(args);
-	};
-	m_command_registry->registerCommand(guildinvite_cmd);
-
-	Command guildaccept_cmd;
-	guildaccept_cmd.name = "guildaccept";
-	guildaccept_cmd.aliases = {"acceptguild"};
-	guildaccept_cmd.usage = "/guildaccept";
-	guildaccept_cmd.description = "Accept pending guild invite";
-	guildaccept_cmd.category = "Guild";
-	guildaccept_cmd.handler = [this](const std::string& args) {
-		SendGuildInviteAccept(true);
-	};
-	m_command_registry->registerCommand(guildaccept_cmd);
-
-	Command guilddecline_cmd;
-	guilddecline_cmd.name = "guilddecline";
-	guilddecline_cmd.aliases = {"declineguild"};
-	guilddecline_cmd.usage = "/guilddecline";
-	guilddecline_cmd.description = "Decline pending guild invite";
-	guilddecline_cmd.category = "Guild";
-	guilddecline_cmd.handler = [this](const std::string& args) {
-		SendGuildInviteAccept(false);
-	};
-	m_command_registry->registerCommand(guilddecline_cmd);
-
-	Command guildremove_cmd;
-	guildremove_cmd.name = "guildremove";
-	guildremove_cmd.aliases = {"gremove", "gkick"};
-	guildremove_cmd.usage = "/guildremove <name>";
-	guildremove_cmd.description = "Remove member from guild";
-	guildremove_cmd.category = "Guild";
-	guildremove_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /guildremove <name>");
-			return;
-		}
-		SendGuildRemove(args);
-	};
-	m_command_registry->registerCommand(guildremove_cmd);
-
-	Command guilddemote_cmd;
-	guilddemote_cmd.name = "guilddemote";
-	guilddemote_cmd.aliases = {"gdemote"};
-	guilddemote_cmd.usage = "/guilddemote <name>";
-	guilddemote_cmd.description = "Demote guild member";
-	guilddemote_cmd.category = "Guild";
-	guilddemote_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /guilddemote <name>");
-			return;
-		}
-		SendGuildDemote(args);
-	};
-	m_command_registry->registerCommand(guilddemote_cmd);
-
-	Command guildleader_cmd;
-	guildleader_cmd.name = "guildleader";
-	guildleader_cmd.aliases = {"gleader"};
-	guildleader_cmd.usage = "/guildleader <name>";
-	guildleader_cmd.description = "Transfer guild leadership";
-	guildleader_cmd.category = "Guild";
-	guildleader_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /guildleader <name>");
-			return;
-		}
-		SendGuildLeader(args);
-	};
-	m_command_registry->registerCommand(guildleader_cmd);
-
-	Command guildmotd_cmd;
-	guildmotd_cmd.name = "guildmotd";
-	guildmotd_cmd.aliases = {"gmotd"};
-	guildmotd_cmd.usage = "/guildmotd [message]";
-	guildmotd_cmd.description = "View or set guild MOTD";
-	guildmotd_cmd.category = "Guild";
-	guildmotd_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			SendGetGuildMOTD();
-		} else {
-			SendSetGuildMOTD(args);
-		}
-	};
-	m_command_registry->registerCommand(guildmotd_cmd);
+	// T132: Guild (guildinvite/guildaccept/guilddecline/guildremove/
+	// guilddemote/guildleader/guildmotd) MIGRATED to
+	// action::CommandProcessor (cmdGuildInvite/cmdGuildAccept/
+	// cmdGuildDecline/cmdGuildRemove/cmdGuildDemote/cmdGuildLeader/
+	// cmdGuildMotd). Net-new plumbing, not a reconcile-and-delete --
+	// action::CommandProcessor had zero guild registrations before this
+	// unit. See refactor/T132_migrate_guild_family.md.
 
 	// === Phase 3: Corpse Commands ===
 

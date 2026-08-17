@@ -470,6 +470,40 @@ void CommandProcessor::registerBuiltinCommands() {
         "yell", {}, "/yell", "Yell for help", "Social", false
     }, [this](const std::string& args) { return cmdYell(args); });
 
+    // T132: Guild (7), migrated from eq_commands.cpp's Guild block --
+    // action::CommandProcessor had zero guild registrations before this
+    // unit (net-new plumbing over the existing EverQuest::SendGuild*()
+    // senders, not a reconcile-and-delete -- see
+    // refactor/T132_migrate_guild_family.md). Registrations removed from
+    // eq_commands.cpp's Guild block in the same change.
+    registerCommand({
+        "guildinvite", {"ginvite"}, "/guildinvite <name>", "Invite player to guild", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildInvite(args); });
+
+    registerCommand({
+        "guildaccept", {"acceptguild"}, "/guildaccept", "Accept pending guild invite", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildAccept(args); });
+
+    registerCommand({
+        "guilddecline", {"declineguild"}, "/guilddecline", "Decline pending guild invite", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildDecline(args); });
+
+    registerCommand({
+        "guildremove", {"gremove", "gkick"}, "/guildremove <name>", "Remove member from guild", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildRemove(args); });
+
+    registerCommand({
+        "guilddemote", {"gdemote"}, "/guilddemote <name>", "Demote guild member", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildDemote(args); });
+
+    registerCommand({
+        "guildleader", {"gleader"}, "/guildleader <name>", "Transfer guild leadership", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildLeader(args); });
+
+    registerCommand({
+        "guildmotd", {"gmotd"}, "/guildmotd [message]", "View or set guild MOTD", "Guild", false
+    }, [this](const std::string& args) { return cmdGuildMotd(args); });
+
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
     }, [this](const std::string& args) { return cmdDoor(args); });
@@ -1159,6 +1193,61 @@ ActionResult CommandProcessor::cmdRandom(const std::string& args) {
 
 ActionResult CommandProcessor::cmdYell(const std::string& args) {
     return m_dispatcher.yellForHelp();
+}
+
+// ========== Guild Commands (T132) ==========
+//
+// Ported from eq_commands.cpp's Guild block (deleted from there in this
+// same change -- see refactor/T132_migrate_guild_family.md's atomicity
+// section). Net-new: game's handlers already do all their own guarding
+// inside EverQuest::SendGuild*() (guild membership, pending-invite state),
+// so these are thin parsing + dispatch, matching every other migrated
+// family's shape. The empty-name usage checks below are ported verbatim
+// from game's pre-dispatch guards (identical usage strings).
+
+ActionResult CommandProcessor::cmdGuildInvite(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /guildinvite <name>");
+    }
+    return m_dispatcher.guildInvite(args);
+}
+
+ActionResult CommandProcessor::cmdGuildAccept(const std::string& args) {
+    return m_dispatcher.guildAcceptInvite();
+}
+
+ActionResult CommandProcessor::cmdGuildDecline(const std::string& args) {
+    return m_dispatcher.guildDeclineInvite();
+}
+
+ActionResult CommandProcessor::cmdGuildRemove(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /guildremove <name>");
+    }
+    return m_dispatcher.guildRemove(args);
+}
+
+ActionResult CommandProcessor::cmdGuildDemote(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /guilddemote <name>");
+    }
+    return m_dispatcher.guildDemote(args);
+}
+
+ActionResult CommandProcessor::cmdGuildLeader(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /guildleader <name>");
+    }
+    return m_dispatcher.guildMakeLeader(args);
+}
+
+ActionResult CommandProcessor::cmdGuildMotd(const std::string& args) {
+    // Ported from game's guildmotd_cmd: empty args requests the current
+    // MOTD, non-empty args sets a new one.
+    if (args.empty()) {
+        return m_dispatcher.requestGuildMOTD();
+    }
+    return m_dispatcher.setGuildMOTD(args);
 }
 
 // ========== Spells Commands (T101) ==========

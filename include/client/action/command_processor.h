@@ -322,6 +322,22 @@ private:
     ActionResult cmdRandom(const std::string& args);
     ActionResult cmdYell(const std::string& args);
 
+    // T132: Guild (7), migrated from eq_commands.cpp's Guild block.
+    // action::CommandProcessor had ZERO guild registrations before this
+    // unit -- T98 emptied the Guild category and there was nothing
+    // underneath it to revive, unlike T99-T102's reconcile-and-delete
+    // families. This is net-new plumbing over the pre-existing
+    // EverQuest::SendGuild*() senders (eq_guild.cpp), not a reconciliation.
+    // Registrations removed from eq_commands.cpp's Guild block in the same
+    // change. See refactor/T132_migrate_guild_family.md.
+    ActionResult cmdGuildInvite(const std::string& args);
+    ActionResult cmdGuildAccept(const std::string& args);
+    ActionResult cmdGuildDecline(const std::string& args);
+    ActionResult cmdGuildRemove(const std::string& args);
+    ActionResult cmdGuildDemote(const std::string& args);
+    ActionResult cmdGuildLeader(const std::string& args);
+    ActionResult cmdGuildMotd(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by
