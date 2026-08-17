@@ -1091,6 +1091,25 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
             if (ext.stackBytes > 0)
                 lines.push_back(fmt::format("[Thread Stacks] {}", formatBytes(ext.stackBytes)));
         }
+        // T127: glibc allocator arena vs. in-use -- the gap between these
+        // two is free memory glibc is holding onto rather than returning to
+        // the OS (arena fragmentation). This was previously invisible here
+        // (T106 flagged it as "no dedicated counter") and was the dominant
+        // driver of zone-crossing RSS growth on this codebase (measured:
+        // repeated per-crossing LoadingThread creation fragmented the
+        // default multi-arena glibc policy; mallopt(M_ARENA_MAX, 1) in
+        // main.cpp cut a 6-crossing tour's RSS growth ~8x). If this gap
+        // grows again in the future, it means the arena fix regressed or a
+        // new source of thread churn was added -- check here first, before
+        // re-running a profiler from scratch.
+        if (ext.mallocArenaBytes > 0) {
+            size_t freeNotReleased = (ext.mallocArenaBytes > ext.mallocInUseBytes)
+                ? (ext.mallocArenaBytes - ext.mallocInUseBytes) : 0;
+            lines.push_back(fmt::format(
+                "[Allocator] arena {} | in-use {} | free-not-released {}",
+                formatBytes(ext.mallocArenaBytes), formatBytes(ext.mallocInUseBytes),
+                formatBytes(freeNotReleased)));
+        }
     }
 
     // --- Total ---

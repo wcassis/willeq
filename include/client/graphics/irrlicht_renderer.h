@@ -543,6 +543,13 @@ struct MemoryReportInput {
     size_t sharedLibBytes = 0;     // Shared clean + shared dirty mapped files
     size_t anonBytes = 0;          // Anonymous (heap + mmap anon)
     size_t stackBytes = 0;         // Thread stacks
+
+    // T127: glibc mallinfo2() allocator bookkeeping -- see event_bus.h's
+    // DiagnosticsMemoryReportData field comments for what these measure and
+    // why they were added (T106 named this exact gap: allocator
+    // fragmentation is real and large but had "no dedicated counter").
+    size_t mallocArenaBytes = 0;   // Total committed arena (brk + mmap'd arena blocks)
+    size_t mallocInUseBytes = 0;   // Subset actually holding live allocations
 };
 
 // T69: structured per-subsystem memory accounting — the SAME tally

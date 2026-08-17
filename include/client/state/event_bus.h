@@ -886,6 +886,18 @@ struct DiagnosticsMemoryReportData {
     size_t sharedLibBytes = 0;
     size_t anonBytes = 0;
     size_t stackBytes = 0;
+    // T127: glibc mallinfo2() allocator bookkeeping -- makes arena
+    // fragmentation/unreleased-free-chunk growth visible in /pmem instead of
+    // silently inflating "untracked" with no lever to see WHY (T106 found
+    // this exact gap: "No dedicated counter -- the lever is malloc_trim() at
+    // quiet points, not a report line item"). mallocArenaBytes is glibc's
+    // total committed arena size (brk+mmap'd arena blocks); mallocInUseBytes
+    // is the subset actually holding live allocations; the difference is
+    // free-but-not-released-to-the-OS memory sitting in the allocator's own
+    // free lists -- exactly what mallopt(M_ARENA_MAX, 1) (main.cpp) was
+    // measured to cut by 8x across a zone-crossing tour.
+    size_t mallocArenaBytes = 0;
+    size_t mallocInUseBytes = 0;
     bool audioAvailable = false;
     size_t soundBufferCacheBytes = 0;
     size_t soundBufferCacheMaxBytes = 0;

@@ -99,6 +99,7 @@
 #include <fstream>
 #ifdef __linux__
 #include <unistd.h>
+#include <malloc.h>
 #endif
 
 #ifndef M_PI
@@ -161,6 +162,16 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 			}
 			fclose(f);
 		}
+	}
+
+	// T127: glibc allocator bookkeeping (arena committed vs. actually in
+	// use) -- see the field comments in event_bus.h. mallinfo2() is a plain
+	// aggregate query, no code-change/instrumentation needed, same
+	// zero-distortion property as the rest of this diagnostic.
+	{
+		struct mallinfo2 mi = mallinfo2();
+		d.mallocArenaBytes = static_cast<size_t>(mi.arena) + static_cast<size_t>(mi.hblkhd);
+		d.mallocInUseBytes = static_cast<size_t>(mi.uordblks);
 	}
 #endif
 

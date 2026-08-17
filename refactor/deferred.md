@@ -7711,3 +7711,67 @@ real hardware. That is not the same as "the Pi arc is closed" — Tour B and
 the ring count, the two instruments best suited to catching a residual or
 reintroduced defect, are both still open. Say the good news plainly and the
 gap plainly, in the same breath.
+
+### T127 — Zone-crossing RSS growth: two additive fixes, 306.8MB -> 42.0MB (7.3x) over a 6-crossing tour; small residual leak and a one-time audio leak still open
+
+T127 (`refactor/T127_zone_crossing_leak.md`) found and fixed **two
+independent, additive causes** of the +306.9MB/1.6x RSS growth T125's Tour B
+OOM-killed on (that growth is x86-reproducible, no Pi needed — confirmed by
+re-measuring T120's exact tour at +306.8MB, matching almost exactly).
+
+1. **True unreachable leak (LSAN-confirmed, 89MB->33MB / 291K->34K
+   allocations after the fix)**: `RaceModelLoader::createAnimatedNode`/
+   `createAnimatedNodeWithAppearance`/`createAnimatedNodeWithEquipment`
+   (`src/client/graphics/eq/animated_mesh_creation.cpp`) each construct an
+   `EQAnimatedMeshSceneNode` with a live scene-graph parent (which Irrlicht's
+   own `ISceneNode` constructor auto-`grab()`s via `addChild()`) but never
+   called the balancing `drop()` stock Irrlicht's own `addXSceneNode()`
+   factories always do — every entity's node sat at refcount 2 from birth,
+   so `EntityRenderer`'s already-correct `remove()+drop()` teardown could
+   only bring it to 1, never 0, and `~EQAnimatedMeshSceneNode()` never ran.
+   Fixed: one `node->drop()` per factory (4 sites total, including
+   `EQAnimatedMeshSceneNode::clone()`, not currently called but same bug).
+2. **glibc per-thread-arena fragmentation, the dominant driver (~8x RSS-growth
+   reduction on its own, A/B-confirmed with `MALLOC_ARENA_MAX=1`)**: every
+   zone crossing spawns a brand-new OS thread (`LoadingThread`) to do the
+   bulk of zone-build allocation; glibc gives each newly-contending thread
+   its own malloc arena and never returns that arena's freed pages to the OS
+   after the thread exits — confirmed via heaptrack that the memory really
+   is being freed (32.79MB total leaked at exit, matching LSAN), just not
+   given back by the allocator. Fixed: `mallopt(M_ARENA_MAX, 1)` as the
+   first statement in `main()` (`src/client/main.cpp`), forcing a single
+   shared arena. This is the scenario T106
+   (`refactor/T106_untracked_memory_attribution.md`) flagged as "the lever...
+   out of this unit's scope" after measuring a single static zone visit (no
+   crossings) and concluding the per-thread-arena mechanism wasn't the
+   driver there — T127 is the first measurement of the actual
+   repeated-crossing scenario, where it is.
+
+**Combined result: +306.8MB (1.61x) -> +42.0MB (1.09x) over T120's 6-crossing
+tour, and the remaining +42.0MB is a one-time cost of visiting the tour's
+larger zone once (crossing 1), not per-crossing growth — crossings 2-6 each
+add 0.0-0.1MB.** `/pmem` now surfaces glibc allocator arena/in-use/
+free-not-released bytes directly (`[Allocator]` line,
+`renderer_diagnostics.cpp`), closing the exact "no dedicated counter" gap
+T106 named — a future regression of either fix should show up there first.
+
+**Two small things found but NOT closed this unit, named rather than
+dropped:**
+- A residual leak (~9MB net of the flat one-time item below, over 6
+  crossings) still exists in the same entity/mesh-build family
+  (`RaceModelLoader::loadGlobalModels`, `EQAnimatedMesh::copyBaseMesh`,
+  `SkeletalAnimator::computeBoneTransforms`) — roughly two orders of
+  magnitude smaller than the leak that was fixed, not chased further this
+  unit since it didn't move the RSS-growth number once the arena fix was
+  applied on top.
+- `EverQuest::InitializeAudio()` (`eq_bridge.cpp:1780`) leaks ~23MB **once**
+  at startup (TinySoundFont init) — identical byte-for-byte in both pre- and
+  post-node-fix LSAN reports, so it's flat/one-time, not zone-crossing
+  related, and out of this unit's territory, but real and worth its own
+  small unit.
+
+**Board: recommend re-running T125's Tour B and the Pi OOM confirmation
+next** — this closes the leg T125 could not complete (killed by kernel OOM
+under exactly the repeated-crossing pattern this unit's fixes target).
+Neither fix is a deliberate cache being bounded/gutted, so there is no
+design tradeoff pending sign-off here.
