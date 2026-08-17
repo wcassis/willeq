@@ -907,6 +907,20 @@ struct DiagnosticsMemoryReportData {
     size_t sfxCacheBytes = 0;
     size_t zoneEmitterCount = 0;
     size_t activeEmitterCount = 0;
+    // T130: real-time audio callback timing (EQT::Audio::AudioCallbackProbe,
+    // include/client/audio/audio_callback_probe.h). Answers T127's open
+    // question -- whether M_ARENA_MAX=1 (a single glibc malloc arena, shared
+    // with every other thread including the per-zone-crossing LoadingThread)
+    // ever visibly stalls the audio callback -- with a direct measurement
+    // instead of inference. audioLateCallbackCount counts callbacks whose
+    // gap from the previous one exceeded 1.5x the configured period
+    // (periodSizeInFrames / sampleRate); audioWorstCallbackDeltaUs is the
+    // single worst gap seen since audio init, in microseconds. Both are
+    // read here (game thread, /pmem command) from lock-free atomics the
+    // audio thread itself only ever writes, never reads.
+    uint64_t audioCallbackCount = 0;
+    uint64_t audioLateCallbackCount = 0;
+    int64_t audioWorstCallbackDeltaUs = 0;
     size_t entityCount = 0;
     size_t entityEstimateBytes = 0;
     size_t doorCount = 0;

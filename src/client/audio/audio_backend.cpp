@@ -1,18 +1,50 @@
 #ifdef WITH_AUDIO
 
 #include "client/audio/audio_backend.h"
+#include "client/audio/audio_callback_probe.h"
 #include "client/audio/audio_mixer.h"
 #include "common/logging.h"
 
 #include <vector>
 #include <cstring>
 #include <chrono>
+#include <ctime>
 
 // miniaudio implementation — only in this .cpp
 #define MA_IMPLEMENTATION
 #define MA_NO_ENCODING       // We don't need encoding
 #define MA_NO_GENERATION     // We don't need waveform generation
 #include "miniaudio.h"
+
+#ifdef WILLEQ_T130_AUDIO_TID_PROBE
+// T130 diagnostic only — NOT part of a normal build (opt-in compile define,
+// unset by default). Writes the audio callback thread's tid to a fixed path
+// exactly once, so an out-of-process LD_PRELOAD allocator interposer
+// (review/T130/audio_alloc_interposer.c) can attribute allocations to this
+// specific thread. Allocation-free (direct write() syscall, stack-only
+// snprintf) and gated by a std::atomic so it costs one relaxed load per
+// callback after the first.
+#include <atomic>
+#include <cstdio>
+#include <fcntl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+static std::atomic<bool> g_t130TidWritten{false};
+static void t130WriteAudioTidOnce() {
+    bool expected = false;
+    if (!g_t130TidWritten.compare_exchange_strong(expected, true)) return;
+    long tid = static_cast<long>(syscall(SYS_gettid));
+    const char* path = std::getenv("WILLEQ_T130_TID_FILE");
+    if (!path) path = "/tmp/willeq_t130_audio_tid";
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        char buf[32];
+        int n = snprintf(buf, sizeof(buf), "%ld\n", tid);
+        if (n > 0) { ssize_t w = write(fd, buf, static_cast<size_t>(n)); (void)w; }
+        close(fd);
+    }
+}
+#endif  // WILLEQ_T130_AUDIO_TID_PROBE
 
 namespace EQT {
 namespace Audio {
@@ -25,7 +57,21 @@ struct MiniaudioBackend::Impl {
     AudioMixer* mixer = nullptr;
 };
 
+// T130: monotonic timestamp for AudioCallbackProbe. clock_gettime(CLOCK_MONOTONIC)
+// is vDSO-resolved on Linux -- no kernel entry, no context switch -- so this
+// is compatible with the real-time callback's no-syscalls constraint (same
+// reasoning T122's own probe used for its timestamps).
+static inline int64_t t130MonotonicNs() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
+
 static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void* /*pInput*/, ma_uint32 frameCount) {
+#ifdef WILLEQ_T130_AUDIO_TID_PROBE
+    t130WriteAudioTidOnce();
+#endif
+    AudioCallbackProbe::onCallback(t130MonotonicNs());
     auto* mixer = static_cast<AudioMixer*>(pDevice->pUserData);
     if (mixer) {
         mixer->render(static_cast<float*>(pOutput), static_cast<int>(frameCount));
@@ -55,6 +101,16 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
     if (result != MA_SUCCESS) {
         LOG_ERROR(MOD_AUDIO, "Failed to initialize miniaudio device: {}", static_cast<int>(result));
         return false;
+    }
+
+    // T130: configure the callback-timing probe's expected period so it can
+    // classify "late" callbacks. sampleRate is validated >0 by the caller
+    // chain (AudioManager); config.periodSizeInFrames is the literal 512 set
+    // above.
+    if (sampleRate > 0) {
+        int64_t periodNs = (static_cast<int64_t>(config.periodSizeInFrames) * 1000000000LL) /
+                            static_cast<int64_t>(sampleRate);
+        AudioCallbackProbe::configure(periodNs);
     }
 
     impl_->deviceInitialized = true;

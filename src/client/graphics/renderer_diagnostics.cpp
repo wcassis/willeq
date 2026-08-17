@@ -1042,6 +1042,19 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
 
         lines.push_back(fmt::format("[Zone Emitters] {} total, {} active",
             ext.zoneEmitterCount, ext.activeEmitterCount));
+
+        // T130: the direct answer to T127's open question -- does the
+        // M_ARENA_MAX=1 single malloc arena ever visibly stall the
+        // real-time audio callback (e.g. contending with the per-crossing
+        // LoadingThread)? "Late" = a callback whose gap from the previous
+        // one exceeded 1.5x the configured period. 0 callbacks means audio
+        // hasn't produced any frames yet (e.g. no track loaded), not that
+        // the probe is inactive.
+        if (ext.audioCallbackCount > 0) {
+            lines.push_back(fmt::format(
+                "[Audio Callback] {} calls | {} late (>1.5x period) | worst gap {}us",
+                ext.audioCallbackCount, ext.audioLateCallbackCount, ext.audioWorstCallbackDeltaUs));
+        }
     }
 
     // ============================================================

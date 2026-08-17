@@ -42,6 +42,7 @@ JOBS="${JOBS:-24}"
 
 IRRLICHT_ONLY=0
 T122_TEXPROBE=0
+T130_AUDIO_TIDPROBE=0
 for arg in "$@"; do
     case "$arg" in
         --irrlicht-only) IRRLICHT_ONLY=1 ;;
@@ -52,8 +53,21 @@ for arg in "$@"; do
             # a plain ./build-gles2-x86.sh run never defines this macro.
             T122_TEXPROBE=1
             ;;
+        --t130-audio-tidprobe)
+            # T130: compile in a one-shot write of the audio callback
+            # thread's tid to a file (WILLEQ_T130_AUDIO_TID_PROBE), for use
+            # with an out-of-process LD_PRELOAD allocator interposer
+            # (review/T130/audio_alloc_interposer.c) that attributes
+            # malloc/calloc/realloc/free calls to that specific thread.
+            # Diagnostic only, allocation-free, OFF unless explicitly
+            # requested — a plain ./build-gles2-x86.sh run never defines
+            # this macro. Distinct from the always-on
+            # EQT::Audio::AudioCallbackProbe callback-timing counters
+            # (audio_callback_probe.h), which need no flag.
+            T130_AUDIO_TIDPROBE=1
+            ;;
         --help|-h)
-            echo "Usage: $0 [--irrlicht-only] [--t122-texprobe]"
+            echo "Usage: $0 [--irrlicht-only] [--t122-texprobe] [--t130-audio-tidprobe]"
             exit 0
             ;;
     esac
@@ -176,13 +190,20 @@ fi
 BUILD_DIR="$PROJECT_DIR/build-gles2"
 echo "=== Configuring $BUILD_DIR (EQT_GLES2=ON) ==="
 mkdir -p "$BUILD_DIR"
+MAIN_CXXFLAGS=""
+if [ "$T130_AUDIO_TIDPROBE" -eq 1 ]; then
+    echo "*** T130 probe build: WILLEQ_T130_AUDIO_TID_PROBE defined ***"
+    MAIN_CXXFLAGS="-DWILLEQ_T130_AUDIO_TID_PROBE"
+fi
+
 cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
     -DEQT_DRM=OFF \
     -DEQT_GLES2_IRRLICHT_DIR="$IRRLICHT_BUILD_DIR" \
     -DEQT_BUILD_TESTS=OFF \
-    -DWITH_RDP=OFF
+    -DWITH_RDP=OFF \
+    -DCMAKE_CXX_FLAGS="$MAIN_CXXFLAGS"
 
 echo "=== Building willeq + gles2_zone_benchmark ($BUILD_DIR, -j$JOBS) ==="
 cmake --build "$BUILD_DIR" --target willeq -j"$JOBS"

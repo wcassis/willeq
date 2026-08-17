@@ -200,6 +200,16 @@ ADD_EXECUTABLE(test_titanium_opcodes
 TARGET_LINK_LIBRARIES(test_titanium_opcodes GTest::gtest_main ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_titanium_opcodes)
 
+# T130: regression test for the vendored TinySoundFont OOB read
+# (third_party/TinySoundFont/tsf.h's "WILLEQ T130" clamp). Self-contained --
+# includes tsf.h with TSF_IMPLEMENTATION directly (same pattern as
+# midi_player.cpp), no audio backend/device needed, no WITH_AUDIO gate.
+ADD_EXECUTABLE(test_tsf_oob_read
+    test_tsf_oob_read.cpp
+)
+TARGET_LINK_LIBRARIES(test_tsf_oob_read GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_tsf_oob_read)
+
 # T02: EventBus unit tests (src/client/state/event_bus.cpp). No graphics,
 # no Irrlicht -- links only the EventBus TU itself.
 ADD_EXECUTABLE(test_event_bus
