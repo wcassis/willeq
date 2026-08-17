@@ -9,6 +9,36 @@
 #include "common/packet_structs.h"
 #include <cstring>
 
+// T133: every sender below used to build its OWN opcode-prefixed packet
+// (Resize(2 + sizeof(Struct)) + PutUInt16(0, opcode) + memcpy at +2) and
+// THEN call EverQuest::QueuePacket(opcode, &packet) -- which ALSO prepends
+// a 2-byte opcode (eq.cpp: `p.Resize(packet->Length() + 2); p.PutUInt16(0,
+// opcode); memcpy(...+2, packet->Data(), packet->Length());`). That is a
+// double opcode prefix: the wire packet ends up as
+// [real opcode(2)][sender's own duplicate opcode(2)][struct bytes], i.e.
+// struct_size + 2 bytes of body where the server expects exactly
+// struct_size -- confirmed live from the eqemu zone log this unit's live
+// leg produced: "Wrong size: OP_GuildInvite, size=138, expected 136" and
+// "Error: app size of 650 != size of GuildMOTD_Struct of 648" (136+2=138,
+// 648+2=650). QueuePacket's OWN callers elsewhere in this codebase (e.g.
+// combat.cpp's ConsiderTarget: `packet.Resize(28); packet.PutUInt32(0,
+// ...); ...; m_eq->QueuePacket(HC_OP_Consider, &packet);` -- no opcode
+// written into the packet at all) confirm the correct calling convention:
+// QueuePacket(opcode, packet) wants packet to be the BODY ONLY.
+//
+// This bug predates T133 and was invisible until now: every guarded
+// sender here was blocked by `m_guild_id == 0` before ever reaching
+// QueuePacket (T132's finding), and the one unguarded sender
+// (SendGetGuildMOTD) has no fixed-size struct for the server to size-check
+// against, so its two harmless extra bytes were silently ignored. Fixing
+// m_guild_id's population (this unit) is what finally let a real
+// SendGuildInvite/SendSetGuildMOTD reach the server and expose this --
+// without also fixing this, the acceptance bar this unit's plan sets
+// ("a guild command reaches the server and gets a response") is
+// unreachable no matter how correct m_guild_id is. In territory
+// (src/client/eq_guild.cpp), not a new packet handler, so fixed here
+// rather than reported as a STOP.
+
 void EverQuest::SendGuildInvite(const std::string& player_name)
 {
 	if (m_guild_id == 0) {
@@ -24,9 +54,8 @@ void EverQuest::SendGuildInvite(const std::string& player_name)
 	invite.officer = 2;  // TODO: Use actual rank
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildCommand_Struct));
-	packet.PutUInt16(0, HC_OP_GuildInvite);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &invite, sizeof(EQT::GuildCommand_Struct));
+	packet.Resize(sizeof(EQT::GuildCommand_Struct));
+	memcpy(packet.Data(), &invite, sizeof(EQT::GuildCommand_Struct));
 	QueuePacket(HC_OP_GuildInvite, &packet);
 
 	AddChatSystemMessage(fmt::format("Inviting {} to join your guild.", player_name));
@@ -47,9 +76,8 @@ void EverQuest::SendGuildInviteAccept(bool accept)
 	response.guildeqid = m_guild_invite_id;
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildInviteAccept_Struct));
-	packet.PutUInt16(0, HC_OP_GuildInviteAccept);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &response, sizeof(EQT::GuildInviteAccept_Struct));
+	packet.Resize(sizeof(EQT::GuildInviteAccept_Struct));
+	memcpy(packet.Data(), &response, sizeof(EQT::GuildInviteAccept_Struct));
 	QueuePacket(HC_OP_GuildInviteAccept, &packet);
 
 	m_has_pending_guild_invite = false;
@@ -77,9 +105,8 @@ void EverQuest::SendGuildRemove(const std::string& player_name)
 	remove.leaderstatus = 2;  // TODO: Use actual rank
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildRemove_Struct));
-	packet.PutUInt16(0, HC_OP_GuildRemove);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &remove, sizeof(EQT::GuildRemove_Struct));
+	packet.Resize(sizeof(EQT::GuildRemove_Struct));
+	memcpy(packet.Data(), &remove, sizeof(EQT::GuildRemove_Struct));
 	QueuePacket(HC_OP_GuildRemove, &packet);
 
 	AddChatSystemMessage(fmt::format("Removing {} from the guild.", player_name));
@@ -98,9 +125,8 @@ void EverQuest::SendGuildDemote(const std::string& player_name)
 	strncpy(demote.target, player_name.c_str(), 63);
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildDemote_Struct));
-	packet.PutUInt16(0, HC_OP_GuildDemote);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &demote, sizeof(EQT::GuildDemote_Struct));
+	packet.Resize(sizeof(EQT::GuildDemote_Struct));
+	memcpy(packet.Data(), &demote, sizeof(EQT::GuildDemote_Struct));
 	QueuePacket(HC_OP_GuildDemote, &packet);
 
 	AddChatSystemMessage(fmt::format("Demoting {} in the guild.", player_name));
@@ -119,9 +145,8 @@ void EverQuest::SendGuildLeader(const std::string& player_name)
 	strncpy(leader.target, player_name.c_str(), 63);
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildMakeLeader_Struct));
-	packet.PutUInt16(0, HC_OP_GuildLeader);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &leader, sizeof(EQT::GuildMakeLeader_Struct));
+	packet.Resize(sizeof(EQT::GuildMakeLeader_Struct));
+	memcpy(packet.Data(), &leader, sizeof(EQT::GuildMakeLeader_Struct));
 	QueuePacket(HC_OP_GuildLeader, &packet);
 
 	AddChatSystemMessage(fmt::format("Transferring guild leadership to {}.", player_name));
@@ -129,9 +154,10 @@ void EverQuest::SendGuildLeader(const std::string& player_name)
 
 void EverQuest::SendGetGuildMOTD()
 {
-	// Empty packet to request MOTD
+	// Empty packet to request MOTD -- body-only convention (see file
+	// header comment): QueuePacket() adds the opcode itself, so an empty
+	// DynamicPacket here means "opcode, zero-byte body" on the wire.
 	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_GetGuildMOTD);
 	QueuePacket(HC_OP_GetGuildMOTD, &packet);
 }
 
@@ -149,9 +175,8 @@ void EverQuest::SendSetGuildMOTD(const std::string& motd)
 	strncpy(gmotd.motd, motd.c_str(), 511);
 
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::GuildMOTD_Struct));
-	packet.PutUInt16(0, HC_OP_SetGuildMOTD);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &gmotd, sizeof(EQT::GuildMOTD_Struct));
+	packet.Resize(sizeof(EQT::GuildMOTD_Struct));
+	memcpy(packet.Data(), &gmotd, sizeof(EQT::GuildMOTD_Struct));
 	QueuePacket(HC_OP_SetGuildMOTD, &packet);
 
 	AddChatSystemMessage("Guild MOTD updated.");

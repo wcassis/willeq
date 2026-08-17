@@ -1117,6 +1117,11 @@ public:
 	uint16_t GetCurrentTargetId() const { return m_current_target_id; }
 	void SetCurrentTargetId(uint16_t id) { m_current_target_id = id; }
 
+	// T133: populated from the player's own PlayerProfile packet
+	// (ZoneProcessPlayerProfile, eq.cpp). 0 means "not in a guild" -- every
+	// SendGuild*() sender in eq_guild.cpp guards on that, correctly.
+	uint32_t GetGuildID() const { return m_guild_id; }
+
 	// Game state access (new state management system)
 	eqt::state::GameState& GetGameState() { return m_game_state; }
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }

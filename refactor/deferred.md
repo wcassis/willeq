@@ -8075,7 +8075,7 @@ can't be added without noticing the warning. Full evidence: this unit's
 Review (`refactor/T131_tsf_preallocate.md`) and
 `/mnt/projects/fable/review/T131/`.
 
-## T132 (2026-08-17) — `EverQuest::m_guild_id` is dead: guild commands other
+## T132 (2026-08-17) — CLOSED by T133 — `EverQuest::m_guild_id` is dead: guild commands other
 than `/guildmotd`'s get-path have never had a live effect
 
 Found while live-verifying the Guild family's migration to
@@ -8130,3 +8130,69 @@ territory, the same class of out-of-territory cost T103 flagged for
 `GameStateSyncBridge` gaps. Not fixed here; worth its own small unit, with
 the same live two-client harness (`data/captures/t132_*` pattern) as its
 acceptance test once fixed.
+
+**CLOSED by T133 (2026-08-17)** — see below.
+
+## T133 (2026-08-17) — `m_guild_id` populated (zone-in + mid-session); a
+second, independent packet-sizing bug in `eq_guild.cpp` found and fixed in
+the same unit
+
+Fixed T132's finding. `EverQuest::m_guild_id` is now assigned in two
+places, both confirmed live (`refactor/T133_guild_id_population.md`
+Review, `/mnt/projects/fable/review/T133/`):
+
+- **Zone-in**: `ZoneProcessPlayerProfile` (`eq.cpp`) now copies its
+  already-decoded `guild_id` local (offset 13036, previously only written
+  to `self_entity.guild_id` — a display-only per-entity field) into
+  `m_guild_id`. Chosen over `Spawn_Struct`'s `guildID` (offset 238,
+  decoded per-entity in `eq_entities.cpp`) because the profile packet
+  unconditionally describes the player — no spawn-id matching or ordering
+  hazard, unlike the spawn path, which would have needed exact
+  `spawn_id == m_my_spawn_id` timing (verified moot for the chosen hook: a
+  test — `GuildIdPopulation.OwnPlayerProfile_PopulatesGuildId` — and a live
+  zone-in-only session both confirm it works with zero mid-session events).
+- **Mid-session** (join/leave/kick): eqemu's `Client::SendGuildSpawnAppearance()`
+  sends `OP_SpawnAppearance(type=AppearanceType::GuildID)` to the whole
+  zone including self (confirmed from the eqemu server source,
+  `zone/guild.cpp`/`zone/client_packet.cpp`, not guessed) on every guild
+  invite-accept and `SetGuild()` call. `ZoneProcessSpawnAppearance`
+  (`eq_entities.cpp`) had no `AT_GUILD_ID` case before this unit — the
+  packet arrived and was silently dropped. Added one case to the existing
+  switch (`GUILD_NONE`/`0xFFFFFFFF` normalized to 0 so a guild-leave
+  doesn't defeat the `m_guild_id == 0` guards). Live-confirmed twice in the
+  same two-client session.
+
+**A second, independent bug found and fixed in the same unit, in the same
+file**: populating `m_guild_id` alone was not sufficient — the first
+two-client attempt still failed, with the eqemu zone log showing
+`Wrong size: OP_GuildInvite, size=138, expected 136` /
+`Error: app size of 650 != size of GuildMOTD_Struct of 648`. Every
+`SendGuild*()` sender in `eq_guild.cpp` built its own opcode-prefixed
+packet and then called `EverQuest::QueuePacket(opcode, &packet)`, which
+**also** prepends a 2-byte opcode (`eq.cpp:3850`) — a double opcode prefix
+that pushed every size-checked guild struct 2 bytes over what the server
+expected. This predates T133 and was invisible before it: every guarded
+sender was blocked by `m_guild_id == 0` first (T132's bug), and the one
+unguarded sender (`SendGetGuildMOTD`) has no struct for the server to
+size-check against. Fixed in the same commit, in territory
+(`src/client/eq_guild.cpp`), not a new packet handler.
+
+**Live evidence, contrasted against T132's** (`review/T133/README.md`):
+`/guildinvite` now reaches the invitee (`"Testmelee has invited you to
+join a guild."`), `/guildaccept` completes a real round trip (server
+broadcasts `"Testbuddy has joined the guild."` back to both clients), and
+`/guildmotd`'s set-path now works on both a guild-leader-at-zone-in client
+AND a client that joined mid-session (proving the `AT_GUILD_ID` fix, not
+just the zone-in fix).
+
+**Not verified live this unit** (board item, not folded into "guild works
+now"): `guilddecline`, `guildremove`, `guilddemote`, `guildleader` all got
+the same double-opcode-prefix fix (mechanically identical to the four
+senders that WERE verified) but were not separately exercised in the
+two-client session — `guildremove`/`guilddemote`/`guildleader` would have
+altered guild membership/rank mid-script in ways that complicate the rest
+of the test, and `guilddecline` needs a second, throwaway invite (accepting
+the real one was needed for the mid-session `AT_GUILD_ID` proof). No reason
+to expect divergence given the identical fix shape, but not directly
+observed — a small follow-up could close this cheaply with a second
+two-client script exercising just these four.
