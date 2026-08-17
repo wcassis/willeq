@@ -849,6 +849,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             ext.audioCallbackCount = d.audioCallbackCount;
             ext.audioLateCallbackCount = d.audioLateCallbackCount;
             ext.audioWorstCallbackDeltaUs = d.audioWorstCallbackDeltaUs;
+            ext.audioPeakVoices = d.audioPeakVoices;
+            ext.audioNoteOnFailures = d.audioNoteOnFailures;
             ext.entityCount = d.entityCount;
             ext.entityEstimateBytes = d.entityEstimateBytes;
             ext.doorCount = d.doorCount;

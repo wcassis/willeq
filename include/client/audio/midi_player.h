@@ -61,6 +61,27 @@ public:
 
     bool isInitialized() const { return initialized_; }
 
+    // T131: single source of truth for the max_voices value every
+    // construction path configures via tsf_set_max_voices — see the Review
+    // in refactor/T131_tsf_preallocate.md for the measured peak this was
+    // chosen against and the headroom/byte-cost accounting.
+    static constexpr int kMaxVoices = 256;
+
+    // T131 test/diagnostic accessors: whether the callback-thread-allocation
+    // preconditions (tsf_set_max_voices + all 16 MIDI channels pre-created)
+    // have been applied to the currently ACTIVE SoundFont instance
+    // (impl_->soundFont). Production code never needs these; they exist so
+    // test_midi_player_prealloc.cpp can assert the invariant — "every
+    // construction path applies the same setup" — directly, since that is
+    // exactly the kind of thing this codebase has silently regressed before
+    // (T115: a member added directly beneath a comment warning about the
+    // previous three construction paths).
+    // Returns 0 if there is no active SoundFont.
+    int getConfiguredMaxVoices() const;
+    // Returns the number of MIDI channels tsf has allocated for the active
+    // SoundFont (0 if none allocated yet / no active SoundFont).
+    int getPreallocatedChannelCount() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

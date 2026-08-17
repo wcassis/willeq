@@ -1055,6 +1055,19 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
                 "[Audio Callback] {} calls | {} late (>1.5x period) | worst gap {}us",
                 ext.audioCallbackCount, ext.audioLateCallbackCount, ext.audioWorstCallbackDeltaUs));
         }
+
+        // T131: peak concurrent TinySoundFont voices seen, and how many
+        // note-ons were silently dropped because every pre-allocated voice
+        // (MidiPlayer::kMaxVoices) was busy. audioNoteOnFailures > 0 means
+        // the cap is too low for what was actually played -- see this
+        // unit's Review (refactor/T131_tsf_preallocate.md) for the headroom
+        // it was chosen with. 0 peak voices means nothing has played yet,
+        // not that the probe is inactive (same convention as [Audio Callback]).
+        if (ext.audioPeakVoices > 0 || ext.audioNoteOnFailures > 0) {
+            lines.push_back(fmt::format(
+                "[Audio Voices] peak {} concurrent | {} note-on(s) dropped (cap exceeded)",
+                ext.audioPeakVoices, ext.audioNoteOnFailures));
+        }
     }
 
     // ============================================================

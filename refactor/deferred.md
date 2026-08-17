@@ -8027,3 +8027,50 @@ have pre-empted the measurement. **Worth its own small unit**, and it should
 re-run T130's interposer as its acceptance test: the target is *zero*
 allocation calls attributed to the audio thread in steady state, which is a
 sharper measure than the late-callback count.
+
+## T131 (2026-08-17) — TSF pre-allocation: audio-thread allocation reaches
+ZERO; one open item carried forward
+
+Did the fix the T130 orchestrator-review entry above described: one helper
+(`configureTsfForRealtimeCallback`, `midi_player.cpp`) calling
+`tsf_set_max_voices(font, MidiPlayer::kMaxVoices)` (256, ~6x headroom over a
+measured peak of 43 concurrent voices, ~129KB worst-case total cost) and
+pre-creating all 16 MIDI channels, on **every** construction path — the two
+`init()` overloads, both SoundFont slots in the dual-SoundFont path, and the
+runtime `loadSoundFont()` reload path. Also had to patch `tsf_reset()`
+itself (a second local `tsf.h` deviation, banner-commented like T130's OOB
+fix) to reset channel state in place instead of freeing `f->channels` — the
+pre-allocation alone was NOT sufficient, because `tsf_reset` is called
+directly from the audio thread on every loop wrap and would otherwise have
+undone the pre-creation on the very next program-change event. This was the
+single most consequential finding of the unit; it would not have been
+caught by testing `MidiPlayer::init()` alone.
+
+**Result: re-running T130's own interposer over two independent live-eqemu
+runs, each spanning a full zone crossing, measured `audio_thread_allocs=0`
+in BOTH runs** (against T130's baseline of 76 and 30).
+**T127's `M_ARENA_MAX=1` caveat is now discharged by construction, not
+measured-and-tolerated** — a callback that never allocates cannot contend
+on the single arena lock. **T114's item #11 (`AudioMixer`/TSF race) is
+addressed** per upstream's own "mostly thread safe" claim once both
+preconditions are met.
+
+Late callbacks did NOT reach zero despite allocations reaching zero (5 of
+~10,565 in both runs, ~0.047%, worst ~36.5ms — comparable to T130's
+2-of-5395/44.16ms) — informative rather than a failure: whatever causes
+these small residual gaps is not (solely) the callback-thread TSF
+allocation this unit eliminated. Not investigated further; a separate unit
+if Will wants it pursued.
+
+**One item carried forward, not a STOP**: `MidiPlayer::loadSoundFont()` (the
+reload path) swaps `impl_->soundFont` — a raw pointer, no atomic/mutex —
+and frees the old `tsf*` after the swap. Its sole call site today
+(`AudioManager::initialize()`) runs before the audio backend/callback
+thread exists, so there is no concurrent renderer to race and this is safe
+today. But the method is public API; a future caller that invokes it while
+the backend is running (e.g. a hypothetical runtime `/soundfont reload`
+command) would race the audio thread and risk a use-after-free on the freed
+instance. Documented directly in code above the method's definition so it
+can't be added without noticing the warning. Full evidence: this unit's
+Review (`refactor/T131_tsf_preallocate.md`) and
+`/mnt/projects/fable/review/T131/`.
