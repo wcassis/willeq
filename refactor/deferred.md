@@ -7819,3 +7819,60 @@ without a global allocator change — but that is a zone load/unload lifecycle
 change, i.e. one of this unit's own STOP conditions, correctly not taken here.
 **Worth scoping as its own unit**, at which point the `mallopt` could
 potentially be dropped.
+
+### T128 — Pi Tour B confirmed 10/10 clean; arena cost discharged for OOM/frame, audio-underrun check found uninstrumented, not clean
+
+T128 (`refactor/T128_pi_tourb_confirmation.md`) re-ran the fullest
+zone-crossing tour T125 could not complete on the Pi at all — T120/T127's
+exact 6-crossing, 3-round-trip recipe, not the reduced single-crossing
+fallback T125 eventually settled for. **Result: 10 of 10 clean.** Zero OOM
+kills (confirmed via `dmesg` diff on every single run, and a whole-session
+OOM line count that never moved past the 14 pre-existing lines from T125's
+prior session), zero crashes, zero new signatures, zero stray processes.
+**This closes T125's open Tour B leg** — the leg T125 flagged as
+"could not be completed as designed" after 8 straight OOM kills on this
+exact recipe now passes 10/10 with T127's fixes in place.
+
+**The `M_ARENA_MAX` tradeoff the T127 orchestrator-review flagged as
+unmeasured is now measured, with a mixed but mostly-clean result:**
+- **RSS "flat profile" does not reproduce x86's clean shape on the Pi** —
+  T127's x86 figure was +36.1MB on crossing 1 then 0.0-0.1MB flat; on the
+  Pi, net growth across 10 runs averaged -9.6MB with a 23.6MB standard
+  deviation (range -54.3MB to +41.6MB), i.e. noise centered near zero, not
+  a clean one-time-cost-then-flat curve. Read plainly: the Pi's ~4-6x
+  smaller absolute footprint (~85-152MB vs x86's ~460-810MB) means ordinary
+  allocator/OS-reclaim sampling noise is a much larger fraction of the
+  total, swamping the same underlying signal T127 saw cleanly on x86.
+  **What does hold**: no run showed a sustained, monotonic climb across all
+  6 crossings — the actual OOM-causing mechanism T125 hit is absent in all
+  10 runs — and the new `[Allocator]` `arena` figure (added by T127) stayed
+  flat *within* every run (e.g. 232-236MB throughout a run), the direct
+  confirmation that no new arena accumulates per crossing.
+- **Frame cost: no regression found.** Average spikes(>50ms)/1000 frames
+  across the 10 runs (125.8) is *below* T112's single-zone gate-ACTIVE
+  baseline (155/1000), despite this tour doing six full zone loads T112's
+  tour never did. Worst-frame figures are higher than T112's (473-1550ms vs
+  369.5-409.2ms) but track zone-load work (`meshLoading`/`sceneDrawAll` in
+  the SPIKE breakdowns), not an allocator-attributable category — no
+  distinct arena-lock-contention signature appears anywhere in the data.
+- **Audio underrun: genuinely unresolved, not cleared.** Grepping all 10
+  logs for "underrun"/"xrun" found zero matches, but tracing the code
+  confirmed this is an **instrumentation gap, not a clean result**:
+  `miniaudio.h` does detect ALSA xrun state internally, but
+  `MiniaudioBackend::init()` (`src/client/audio/audio_backend.cpp`) never
+  wires a log callback into `ma_context_config`/`ma_device_config`, so
+  miniaudio's own internal underrun messages have no path into willeq's log
+  file regardless of whether an underrun ever occurs. **The absence of the
+  string in the logs proves nothing about the real-time audio callback's
+  behavior under the single-arena lock.** Closing this needs either wiring
+  `ma_context_config.pLog` into the existing logger (small, a few lines) or
+  an external capture during a crossing — neither done this unit (measurement
+  only, no `src/` changes per scope).
+
+**Board: `M_ARENA_MAX=1` is discharged for the OOM and frame-cost concerns
+the T127 orchestrator review raised — this data gives no reason to move to
+`2`/`4`.** The audio-callback-contention question specifically remains open,
+not because a problem was found but because the current build cannot detect
+one if it exists. Recommend a small follow-up unit: wire miniaudio's log
+callback into the existing logger, then re-run a Tour-B-style crossing and
+check for real signal both ways.
