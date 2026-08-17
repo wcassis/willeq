@@ -12,6 +12,24 @@
    a future vendor sync overwrites this file wholesale.
    ============================================================================ */
 
+/* ============================================================================
+   WILLEQ LOCAL DEVIATION (T131, do not drop on a future vendor bump):
+   tsf_reset() unconditionally does `TSF_FREE(f->channels); f->channels =
+   TSF_NULL;`. That is real-time-unsafe: this codebase's MidiPlayer::render()
+   calls tsf_reset() directly on the audio callback thread (loop-wrap), and
+   MidiPlayer::stop()/play()/seekTo() (which also call it) are reachable from
+   the same thread via the mixer's fade-completion path. Freeing here forces
+   the very next tsf_channel_set_*() call to TSF_MALLOC/TSF_REALLOC
+   f->channels right back -- exactly the callback-thread allocation T130's
+   interposer caught. Upstream's own header (see "Thread safety" comment
+   above) says to pre-create all channels up front for exactly this reason;
+   freeing them out from under that precondition on every reset defeats it.
+   Fix: reset each already-allocated channel's fields to the same defaults
+   tsf_channel_init() gives a brand-new channel, in place, instead of
+   freeing. Behaviourally identical (same default values), zero allocation.
+   Search this file for "WILLEQ T131" to find the patched site.
+   ============================================================================ */
+
 /* TinySoundFont - v0.9 - SoundFont2 synthesizer - https://github.com/schellingb/TinySoundFont
                                      no warranty implied; use at your own risk
    Do this:
@@ -1518,7 +1536,27 @@ TSFDEF void tsf_reset(tsf* f)
 	for (; v != vEnd; v++)
 		if (v->playingPreset != -1 && (v->ampenv.segment < TSF_SEGMENT_RELEASE || v->ampenv.parameters.release))
 			tsf_voice_endquick(f, v);
-	if (f->channels) { TSF_FREE(f->channels); f->channels = TSF_NULL; }
+	// WILLEQ T131: was `if (f->channels) { TSF_FREE(f->channels); f->channels
+	// = TSF_NULL; }`. Reset in place instead of freeing -- see the banner
+	// comment above this function's definition. Field defaults copied
+	// verbatim from tsf_channel_init()'s own initialization loop.
+	if (f->channels)
+	{
+		int i;
+		for (i = 0; i < f->channels->channelNum; i++)
+		{
+			struct tsf_channel* c = &f->channels->channels[i];
+			c->presetIndex = c->bank = 0;
+			c->pitchWheel = c->midiPan = 8192;
+			c->midiVolume = c->midiExpression = 16383;
+			c->midiRPN = 0xFFFF;
+			c->midiData = c->sustain = 0;
+			c->panOffset = 0.0f;
+			c->gainDB = 0.0f;
+			c->pitchRange = 2.0f;
+			c->tuning = 0.0f;
+		}
+	}
 }
 
 TSFDEF int tsf_get_presetindex(const tsf* f, int bank, int preset_number)

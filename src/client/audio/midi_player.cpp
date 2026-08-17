@@ -1,6 +1,7 @@
 #ifdef WITH_AUDIO
 
 #include "client/audio/midi_player.h"
+#include "client/audio/midi_voice_probe.h"
 #include "common/logging.h"
 
 #include <cstring>
@@ -24,6 +25,55 @@ struct MidiPlayer::Impl {
     tml_message* currentMessage = nullptr;  // Playback cursor
     double midiTimeMs = 0.0;               // Current playback position in ms
 };
+
+namespace {
+
+// WILLEQ T131: TinySoundFont's own header documents two preconditions for
+// calling tsf_render*() from a different thread than the one issuing
+// tsf_note_on/tsf_channel_set_*() (tsf.h, "Thread safety" comment,
+// ~line 141-162):
+//   1. tsf_set_max_voices() after loading, so tsf_note_on() never
+//      reallocates the voice array on the render thread.
+//   2. Pre-create every MIDI channel that will ever be used, so
+//      tsf_channel_set_*() never mallocs/reallocs f->channels on the
+//      render thread.
+// T130's runtime interposer proved this codebase satisfied neither: the
+// steady-state audio callback (MidiPlayer::render()'s MIDI-event pump)
+// reached tsf_note_on/tsf_channel_init directly. This is the ONE place
+// that precondition is established -- every MidiPlayer construction path
+// (single-soundfont init, dual-soundfont init, and the GM-slot reload)
+// calls this immediately after tsf_set_output(), so a future fifth
+// construction path can't silently skip it (T115 was a member added
+// directly beneath a comment warning about exactly that pattern).
+//
+// MidiPlayer::kMaxVoices (declared in the header) is the single source of
+// truth for this value -- see the Review for the measured peak-concurrent-
+// voice count it was chosen against, the headroom, and the byte cost.
+
+void configureTsfForRealtimeCallback(tsf* font) {
+    if (!font) return;
+
+    if (!tsf_set_max_voices(font, MidiPlayer::kMaxVoices)) {
+        LOG_ERROR(MOD_AUDIO,
+                  "MidiPlayer: tsf_set_max_voices({}) failed (allocation failure at init) "
+                  "-- the audio callback may still allocate under tsf_note_on",
+                  MidiPlayer::kMaxVoices);
+    }
+
+    // Pre-create all 16 MIDI channels (0-15; channel 9 is General MIDI's
+    // percussion channel per the flag_mididrums convention this codebase's
+    // own render() dispatch already uses at TML_PROGRAM_CHANGE) via the
+    // public API that triggers tsf_channel_init(). Preset 0 is a
+    // placeholder -- every TML_PROGRAM_CHANGE event overwrites it before
+    // any note sounds; this call exists only to force channel-array
+    // allocation to happen here, at init/reload, instead of on the
+    // callback thread the first time a channel is actually used.
+    for (int channel = 0; channel < 16; ++channel) {
+        tsf_channel_set_presetnumber(font, channel, 0, channel == 9 ? 1 : 0);
+    }
+}
+
+}  // namespace
 
 MidiPlayer::MidiPlayer()
     : impl_(std::make_unique<Impl>()) {
@@ -59,6 +109,7 @@ bool MidiPlayer::init(const std::string& soundFontPath, uint32_t sampleRate) {
     }
 
     tsf_set_output(impl_->soundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+    configureTsfForRealtimeCallback(impl_->soundFont);
     initialized_ = true;
     LOG_INFO(MOD_AUDIO, "MidiPlayer initialized with SoundFont: {} ({}Hz)", soundFontPath, sampleRate_);
     return true;
@@ -76,6 +127,7 @@ bool MidiPlayer::init(const std::string& gmPath, const std::string& customPath, 
         return false;
     }
     tsf_set_output(impl_->gmSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+    configureTsfForRealtimeCallback(impl_->gmSoundFont);
     impl_->soundFont = impl_->gmSoundFont;
     activeSoundFont_ = SoundFontType::GM;
 
@@ -86,6 +138,7 @@ bool MidiPlayer::init(const std::string& gmPath, const std::string& customPath, 
         impl_->customSoundFont = tsf_load_filename(customPath.c_str());
         if (impl_->customSoundFont) {
             tsf_set_output(impl_->customSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+            configureTsfForRealtimeCallback(impl_->customSoundFont);
             LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded custom SoundFont: {}", customPath);
         } else {
             LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load custom SoundFont: {} (continuing with GM only)", customPath);
@@ -118,6 +171,23 @@ void MidiPlayer::selectSoundFont(SoundFontType type) {
              type == SoundFontType::Custom ? "custom" : "GM");
 }
 
+// WILLEQ T131: thread requirement, established by reading every call site
+// (grepped the whole tree -- the sole caller today is
+// AudioManager::initialize(), and it calls this BEFORE creating the audio
+// backend, i.e. before the audio callback thread exists at all; see
+// AudioManager::initialize()'s ordering in audio_manager.cpp). That makes
+// today's one call site safe by construction, not by locking: there is no
+// concurrent renderer to race. But this method is public API on a class
+// instance the audio thread reads via impl_->soundFont (a raw pointer, no
+// atomic, no mutex) once playback starts, and it frees the old tsf instance
+// (tsf_close(oldGm) below) after swapping the pointer. A FUTURE caller that
+// invokes this while the backend is running (e.g. a "/soundfont reload"
+// command added later) WOULD race the audio thread on impl_->soundFont and
+// risk a use-after-free on the old instance -- that is a real hazard this
+// unit did not need to fix because it does not exist today, not one that
+// has been made safe. See this unit's Review for the STOP-condition
+// analysis. Do not add a runtime-reachable caller of this method without
+// adding synchronization first.
 bool MidiPlayer::loadSoundFont(const std::string& path) {
     if (!initialized_) return false;
 
@@ -133,6 +203,7 @@ bool MidiPlayer::loadSoundFont(const std::string& path) {
     tsf* oldGm = impl_->gmSoundFont;
     impl_->gmSoundFont = newSf;
     tsf_set_output(impl_->gmSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+    configureTsfForRealtimeCallback(impl_->gmSoundFont);
 
     // If active pointer was pointing at the old GM instance, update it
     if (impl_->soundFont == oldGm || activeSoundFont_ == SoundFontType::GM) {
@@ -207,7 +278,14 @@ void MidiPlayer::render(float* buffer, int frame_count) {
                     tsf_channel_set_presetnumber(impl_->soundFont, msg->channel, msg->program, (msg->channel == 9));
                     break;
                 case TML_NOTE_ON:
-                    tsf_channel_note_on(impl_->soundFont, msg->channel, msg->key, msg->velocity / 127.0f);
+                    // T131: tsf_channel_note_on returns 0 when tsf_note_on
+                    // couldn't find or steal a voice -- with max_voices set,
+                    // that means the note was silently dropped, not that TSF
+                    // tried to allocate. Surface it so a too-low cap is
+                    // visible instead of an inaudible, unmeasured drop.
+                    if (!tsf_channel_note_on(impl_->soundFont, msg->channel, msg->key, msg->velocity / 127.0f)) {
+                        MidiVoiceProbe::recordNoteOnFailure();
+                    }
                     break;
                 case TML_NOTE_OFF:
                     tsf_channel_note_off(impl_->soundFont, msg->channel, msg->key);
@@ -222,6 +300,14 @@ void MidiPlayer::render(float* buffer, int frame_count) {
 
             impl_->currentMessage = impl_->currentMessage->next;
         }
+
+        // T131: sample peak concurrent voices right after this chunk's
+        // note-on events have been applied (the natural local-peak point),
+        // once per iteration of this loop rather than once per frame.
+        // tsf_active_voice_count() only iterates the pre-allocated,
+        // fixed-size voice array (no allocation) -- see MidiVoiceProbe's
+        // own header comment for why this is cheap enough for the hot path.
+        MidiVoiceProbe::observe(tsf_active_voice_count(impl_->soundFont));
 
         // If no more messages and not looping, render remaining and stop
         if (!impl_->currentMessage) {
@@ -338,6 +424,19 @@ void MidiPlayer::seekTo(double timeMs) {
 
 void MidiPlayer::setVolume(float vol) {
     volume_.store(std::clamp(vol, 0.0f, 1.0f));
+}
+
+// T131: struct tsf is a complete type in this TU (TSF_IMPLEMENTATION is
+// defined above), so these read tsf's own bookkeeping directly rather than
+// duplicating it. See the header comment for why these exist.
+int MidiPlayer::getConfiguredMaxVoices() const {
+    if (!impl_->soundFont) return 0;
+    return impl_->soundFont->maxVoiceNum;
+}
+
+int MidiPlayer::getPreallocatedChannelCount() const {
+    if (!impl_->soundFont || !impl_->soundFont->channels) return 0;
+    return impl_->soundFont->channels->channelNum;
 }
 
 } // namespace Audio

@@ -921,6 +921,18 @@ struct DiagnosticsMemoryReportData {
     uint64_t audioCallbackCount = 0;
     uint64_t audioLateCallbackCount = 0;
     int64_t audioWorstCallbackDeltaUs = 0;
+    // T131: peak concurrent TinySoundFont voices seen (EQT::Audio::
+    // MidiVoiceProbe, include/client/audio/midi_voice_probe.h) and how many
+    // times a note-on was silently dropped because every pre-allocated
+    // voice was busy (tsf_note_on's steal-a-releasing-voice path found
+    // nothing to steal). Both read here (game thread, /pmem command) from
+    // lock-free atomics the audio thread only ever writes -- same pattern
+    // as the audioCallback* fields above. If audioNoteOnFailures is ever
+    // nonzero, MidiPlayer::kMaxVoices (see its Review,
+    // refactor/T131_tsf_preallocate.md) is too low for what was actually
+    // played and should be raised with fresh headroom, not ignored.
+    int audioPeakVoices = 0;
+    uint64_t audioNoteOnFailures = 0;
     size_t entityCount = 0;
     size_t entityEstimateBytes = 0;
     size_t doorCount = 0;

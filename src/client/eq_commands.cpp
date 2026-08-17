@@ -72,6 +72,7 @@
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_callback_probe.h"
+#include "client/audio/midi_voice_probe.h"
 #include "client/audio/audio_manager.h"
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/sfx_manager.h"
@@ -201,6 +202,13 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 		d.audioCallbackCount = AudioCallbackProbe::callbackCount.load(std::memory_order_relaxed);
 		d.audioLateCallbackCount = AudioCallbackProbe::lateCallbackCount.load(std::memory_order_relaxed);
 		d.audioWorstCallbackDeltaUs = AudioCallbackProbe::worstDeltaNs.load(std::memory_order_relaxed) / 1000;
+	}
+	// T131: peak concurrent TSF voices / dropped-note count (see event_bus.h
+	// field comments). Same lock-free single-reader-of-record pattern.
+	{
+		using EQT::Audio::MidiVoiceProbe;
+		d.audioPeakVoices = MidiVoiceProbe::peakVoicesSeen.load(std::memory_order_relaxed);
+		d.audioNoteOnFailures = MidiVoiceProbe::noteOnFailures.load(std::memory_order_relaxed);
 	}
 #endif
 

@@ -519,6 +519,10 @@ struct MemoryReportInput {
     uint64_t audioCallbackCount = 0;
     uint64_t audioLateCallbackCount = 0;
     int64_t audioWorstCallbackDeltaUs = 0;
+    // T131: peak concurrent TSF voices / dropped-note count -- see
+    // event_bus.h's DiagnosticsMemoryReportData field comments.
+    int audioPeakVoices = 0;
+    uint64_t audioNoteOnFailures = 0;
 
     // Network
     struct ConnectionInfo {
