@@ -901,6 +901,31 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		}
 		break;
 
+	case AT_GUILD_ID:
+		// T133: guild membership changed mid-session (join/leave/kick).
+		// The server sends this to the WHOLE ZONE, including self
+		// (Mob::SendAppearancePacket(AppearanceType::GuildID, ..., true) in
+		// zone/guild.cpp -- confirmed from the eqemu server source, not
+		// guessed), on every SetGuild() call. On leave, `parameter` is
+		// GUILD_NONE (server-side 0xFFFFFFFF, common/guilds.h), NOT 0 --
+		// normalize that to 0 so the `m_guild_id == 0` guards every
+		// SendGuild*() sender relies on still correctly read "guildless"
+		// instead of latching a bogus nonzero id that would let a
+		// guildless player's guild commands reach the wire with garbage
+		// data.
+		{
+			uint32_t normalized = (parameter == 0xFFFFFFFFu) ? 0u : parameter;
+			auto it = m_entities.find(spawn_id);
+			if (it != m_entities.end()) {
+				it->second.guild_id = normalized;
+			}
+			if (spawn_id == m_my_spawn_id) {
+				m_guild_id = normalized;
+				LOG_INFO(MOD_ENTITY, "Our guild id changed to {} via SpawnAppearance", normalized);
+			}
+		}
+		break;
+
 	case AT_LIGHT:
 		// Light source change
 		{

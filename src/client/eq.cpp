@@ -2227,6 +2227,20 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_race = race;
 	m_gender = gender;
 	m_deity = deity;
+	// T133: this `guild_id` local (parsed just above, offset 13036) was
+	// already being written into self_entity.guild_id further down --
+	// display-only, per-entity data -- but never into m_guild_id, the field
+	// every SendGuild*() sender in eq_guild.cpp guards on. That left
+	// guildinvite/remove/demote/leader and guildmotd's set-path permanently
+	// dead on the wire (T132's finding). This is the player's own profile
+	// packet -- unlike Spawn_Struct's guildID (offset 238, decoded per-
+	// entity in eq_entities.cpp and correctly NOT propagated here, since a
+	// spawn's guildID describes THAT entity, not necessarily the player --
+	// see ZoneProcessSpawnAll/NewSpawn), this value unconditionally
+	// describes the player, so no spawn-id matching or ordering hazard
+	// applies. See refactor/T133_guild_id_population.md Review for the
+	// live-log evidence this is the correct, and only necessary, hook.
+	m_guild_id = guild_id;
 	m_cur_hp = cur_hp;
 	m_max_hp = cur_hp;  // Will be updated when we get buffs/equipment
 	m_mana = mana;

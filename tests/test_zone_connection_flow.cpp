@@ -907,3 +907,167 @@ TEST(FullStateSnapshot, HeadlessZoneInPopulatesGameState) {
     EXPECT_TRUE(sawSpellGem) << "SpellGemChanged for the memorized spell never reached the bridge";
     EXPECT_TRUE(sawPetCreated) << "PetCreated for the pre-existing pet never reached the bridge";
 }
+
+// ============================================================================
+// 4. T133: m_guild_id population from the player's own PlayerProfile.
+//
+// Before T133, EverQuest::m_guild_id was declared, read by every
+// SendGuild*() sender's `if (m_guild_id == 0) return;` guard in
+// eq_guild.cpp, and assigned nowhere -- so guildinvite/remove/demote/leader
+// and guildmotd's set-path were permanently dead on the wire (T132's
+// finding). ZoneProcessPlayerProfile already decoded a `guild_id` local at
+// offset 13036 and wrote it into self_entity.guild_id (display-only, per-
+// entity data) but never into m_guild_id.
+//
+// Two things this test suite has to pin down (see the plan's "two things
+// that decide whether the minimal fix actually works"):
+//   1. The player's own PlayerProfile sets GetGuildID() -- the fix works.
+//   2. Another entity's ZoneSpawns/NewSpawn entry, which also carries a
+//      guildID field (Spawn_Struct offset 238, decoded into per-entity
+//      Entity::guild_id in eq_entities.cpp), must NOT leak into
+//      m_guild_id -- that field describes the OTHER entity's guild, not
+//      necessarily the player's, and conflating them would be a new bug,
+//      not a fix. This is the "second half that would rot" the plan warns
+//      about.
+// ============================================================================
+
+TEST(GuildIdPopulation, OwnPlayerProfile_PopulatesGuildId) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_EQ(eq.GetGuildID(), 0u) << "guild id must start at 0 (guildless) before any PlayerProfile arrives";
+
+    const uint32_t kGuildId = 17;
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2 + 8, 1);     // race
+        p.PutUInt32(2 + 12, 1);    // class
+        p.PutUInt8(2 + 20, 10);    // level
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 13036, kGuildId);   // guildID -- the field this unit wires up
+        p.PutUInt32(2 + 14384, 5005);       // our own spawn id
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+
+    EXPECT_EQ(eq.GetGuildID(), kGuildId)
+        << "PlayerProfile's guildID (offset 13036) must reach m_guild_id, not just self_entity.guild_id";
+}
+
+TEST(GuildIdPopulation, GuildlessPlayerProfile_LeavesGuildIdZero) {
+    // A guild id of 0 in the profile (the common case -- most characters
+    // are guildless) must not be misread as "unset" vs "explicitly zero";
+    // both look identical on the wire and both correctly leave the
+    // SendGuild*() guards active.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, 5005);
+        // guildID at offset 13036 left at the packet's default zero fill.
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+    EXPECT_EQ(eq.GetGuildID(), 0u);
+}
+
+TEST(GuildIdPopulation, OtherEntitySpawn_DoesNotPopulateOwnGuildId) {
+    // The second half the plan calls out as "the one that would rot": a
+    // ZoneSpawns entry for a DIFFERENT spawn (some other player/NPC, not
+    // us) carries its own guildID at Spawn_Struct offset 238. That value
+    // belongs to Entity::guild_id for THAT spawn (eq_entities.cpp:318) --
+    // it must never be mistaken for, or copied into, the player's own
+    // m_guild_id.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // Establish our own spawn id first (via a minimal PlayerProfile, guild
+    // id left at 0 -- guildless), the same way a real zone-in sequences it.
+    const uint16_t kMySpawnId = 5005;
+    auto profilePayload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, kMySpawnId);
+    });
+    Replay(eq, HC_OP_PlayerProfile, profilePayload);
+    ASSERT_EQ(eq.GetGuildID(), 0u);
+
+    // Now a ZoneSpawns entry for a DIFFERENT spawn, guilded.
+    const uint16_t kOtherSpawnId = 4242;
+    auto spawnPayload = BuildPayload(2 + 385, [&](EQ::Net::DynamicPacket& p) {
+        size_t off = 2;
+        p.PutCString(off + 7, "a_guilded_rat");
+        p.PutUInt32(off + 340, kOtherSpawnId);
+        p.PutUInt8(off + 151, 10);
+        p.PutUInt8(off + 86, 100);
+        p.PutUInt8(off + 83, 1);
+        p.PutFloat(off + 75, 5.0f);
+        p.PutUInt32(off + 238, 99);  // guildID -- belongs to the OTHER entity
+    });
+    Replay(eq, HC_OP_ZoneSpawns, spawnPayload);
+
+    ASSERT_EQ(eq.GetEntities().count(kOtherSpawnId), 1u);
+    EXPECT_EQ(eq.GetEntities().at(kOtherSpawnId).guild_id, 99u)
+        << "the other entity's own guild_id field should still be recorded (display data)";
+    EXPECT_EQ(eq.GetGuildID(), 0u)
+        << "another entity's guildID must NOT leak into the player's own m_guild_id";
+}
+
+// ----------------------------------------------------------------------------
+// Mid-session join/leave: the plan's scope-boundary question. Checked against
+// the eqemu server source (zone/guild.cpp): every Client::SetGuild() call --
+// which is what a guild invite accept, kick, or leave triggers server-side --
+// sends OP_SpawnAppearance(type=AppearanceType::GuildID) to the WHOLE ZONE
+// (whole_zone=true), including self. So the wire mechanism for mid-session
+// updates DOES exist; before T133, ZoneProcessSpawnAppearance's switch had no
+// AT_GUILD_ID case, so the packet arrived and was silently dropped (logged
+// as "Unhandled SpawnAppearance type"). This is a small addition to an
+// EXISTING handler, not a new packet handler, so it's covered in this unit
+// per the plan's "small" carve-out.
+// ----------------------------------------------------------------------------
+
+std::vector<uint8_t> SpawnAppearancePayload(uint16_t spawnId, uint16_t type, uint32_t parameter) {
+    return BuildPayload(2 + 8, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt16(2, spawnId);
+        p.PutUInt16(4, type);
+        p.PutUInt32(6, parameter);
+    });
+}
+
+TEST(GuildIdPopulation, MidSessionSpawnAppearance_UpdatesOwnGuildId) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    // Establish our own spawn id, guildless, as at a normal zone-in.
+    const uint16_t kMySpawnId = 5005;
+    auto profilePayload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, kMySpawnId);
+    });
+    Replay(eq, HC_OP_PlayerProfile, profilePayload);
+    ASSERT_EQ(eq.GetGuildID(), 0u);
+
+    // Server-driven mid-session join (e.g. accepting a guild invite):
+    // OP_SpawnAppearance(spawn_id=us, type=AT_GUILD_ID, parameter=new id).
+    Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kMySpawnId, AT_GUILD_ID, 42));
+    EXPECT_EQ(eq.GetGuildID(), 42u)
+        << "a mid-session AT_GUILD_ID SpawnAppearance for our own spawn must update m_guild_id";
+
+    // Server-driven mid-session leave/kick: parameter is GUILD_NONE
+    // (0xFFFFFFFF, common/guilds.h on the server), which must normalize to
+    // 0 -- not latch as a bogus nonzero id that would defeat the
+    // `m_guild_id == 0` guildless guards.
+    Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kMySpawnId, AT_GUILD_ID, 0xFFFFFFFFu));
+    EXPECT_EQ(eq.GetGuildID(), 0u)
+        << "GUILD_NONE (0xFFFFFFFF) on leave must normalize to 0, not latch as a nonzero guild id";
+}
+
+TEST(GuildIdPopulation, MidSessionSpawnAppearance_OtherEntity_DoesNotAffectOwnGuildId) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    const uint16_t kMySpawnId = 5005;
+    auto profilePayload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, kMySpawnId);
+    });
+    Replay(eq, HC_OP_PlayerProfile, profilePayload);
+
+    // AT_GUILD_ID for a DIFFERENT spawn (another player in the zone joining
+    // some guild) must not touch our own m_guild_id.
+    const uint16_t kOtherSpawnId = 4242;
+    Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kOtherSpawnId, AT_GUILD_ID, 7));
+    EXPECT_EQ(eq.GetGuildID(), 0u);
+}
