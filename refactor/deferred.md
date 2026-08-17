@@ -7980,3 +7980,50 @@ late-callback table, every verification step, deviations including a
 `git clean -fdx` setup trap that transiently broke 4 unrelated tests via
 missing `data/eq_client`/`data/eqe1_client` symlinks):
 `refactor/T130_audio_cluster.md`'s Review, `/mnt/projects/fable/review/T130/`.
+
+### T130 orchestrator review — the callback allocation is closeable BY CONSTRUCTION, and upstream says how
+
+T130 established by runtime interposer that the audio callback allocates in
+steady state, and root-caused it to `MidiPlayer::render`'s MIDI-event pump
+reaching `tsf_note_on`/`tsf_channel_init`/`tsf_reset` on the callback thread,
+noting `tsf_set_max_voices` is never called anywhere.
+
+**That root cause is not just an observation — TinySoundFont's own header
+documents it as the supported fix**, verbatim (`tsf.h:136-148`):
+
+> "...play simultaneously by calling `tsf_set_max_voices` after loading. **That
+> way memory re-allocation will not happen during `tsf_note_on`** and TSF
+> should become mostly thread safe."
+
+and, immediately after:
+
+> "Calls to `tsf_channel_set_...` functions may allocate new channels if no
+> channel with that number was previously used. **Make sure to create all
+> channels at the beginning** as required if you call `tsf_render*` from a
+> different thread."
+
+**Upstream states both preconditions for calling `tsf_render*` off-thread, and
+this codebase currently satisfies neither.** That is the whole finding.
+
+**Why it matters beyond tidiness — it closes three separate open threads at
+once:**
+
+1. **T127's `M_ARENA_MAX=1` caveat.** T130 measured the residual cost (2 late
+   callbacks in 5395, 0.037%, worst gap 44.16ms) rather than closing it. A
+   callback that does not allocate cannot contend on the arena lock at all, so
+   this would be **closed by construction** rather than measured and tolerated.
+2. **T114's inventory item #11** — the `AudioMixer`/TinySoundFont race,
+   reconfirmed real by T121 and still open. Upstream says these same two calls
+   make TSF "mostly thread safe".
+3. The 44.16ms worst-case gap itself, which is large enough to be audible.
+
+**Shape of the fix**: call `tsf_set_max_voices()` with a sized-for-worst-case
+voice count, and pre-create all MIDI channels, both at `MidiPlayer::init()`
+time — i.e. move the allocation from the real-time thread to startup, where
+T130 already confirmed allocation is expected and harmless.
+
+**Not done in T130, correctly** — it was outside that unit's ordering and would
+have pre-empted the measurement. **Worth its own small unit**, and it should
+re-run T130's interposer as its acceptance test: the target is *zero*
+allocation calls attributed to the audio thread in steady state, which is a
+sharper measure than the late-callback count.
