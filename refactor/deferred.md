@@ -7775,3 +7775,47 @@ next** — this closes the leg T125 could not complete (killed by kernel OOM
 under exactly the repeated-crossing pattern this unit's fixes target).
 Neither fix is a deliberate cache being bounded/gutted, so there is no
 design tradeoff pending sign-off here.
+
+### T127 orchestrator review — the `M_ARENA_MAX=1` tradeoff is reasoned but UNMEASURED
+
+The fix is sound and the numbers are real (+306.8MB → +42.0MB, with a flat
+per-crossing profile). One caveat needs to be on the board rather than only in
+a code comment.
+
+`mallopt(M_ARENA_MAX, 1)` **serializes every thread's allocation onto a single
+arena lock**. The Review argues this is acceptable — "not a many-core
+allocation-bound app", single-core-class Pi target — and that reasoning is
+plausible. **But it was not measured**, and this project has a standing habit
+of measuring exactly this kind of assumption (T112 measured Pi frame cost
+precisely because a plausible assumption about logging had already been
+wrong).
+
+**The specific risk worth measuring**: this process runs a **real-time audio
+callback thread** (miniaudio → `AudioMixer::render` → `MidiPlayer::render`)
+alongside the game thread, render thread, `EntityPrepWorker`,
+`SimulationWorker`, GPU upload thread, and the per-crossing `LoadingThread`.
+With one arena, an audio callback that allocates would block on a lock the
+**loading thread** can hold during zone load. Audio underruns or stutter
+during zoning would be a user-visible regression, and no current gate would
+catch it.
+
+Two things would settle it cheaply:
+- Confirm the audio render path is allocation-free in steady state (if it is,
+  the concern largely evaporates — say so and close this).
+- Re-run T112's Pi frame-cost methodology with the fix in, and listen for
+  audio glitches across a zone crossing.
+
+`M_ARENA_MAX=2` or `4` is an available middle ground if contention shows up —
+the measurement showed the *arena-per-exited-thread* accumulation is the
+mechanism, so a small bound may capture most of the win without full
+serialization. Not proposing it blind; measure first.
+
+### The principled fix was correctly deferred
+
+The actual root cause is that **every zone crossing spawns a fresh
+`LoadingThread`, and glibc never returns an exited thread's arena to the OS**.
+Reusing one persistent loading thread would remove the mechanism entirely
+without a global allocator change — but that is a zone load/unload lifecycle
+change, i.e. one of this unit's own STOP conditions, correctly not taken here.
+**Worth scoping as its own unit**, at which point the `mallopt` could
+potentially be dropped.
