@@ -1,3 +1,17 @@
+/* ============================================================================
+   WILLEQ LOCAL DEVIATION (T130, do not drop on a future vendor bump):
+   tsf_voice_render()'s three linear-interpolation blocks (TSF_STEREO_INTERLEAVED,
+   TSF_STEREO_UNWEAVED, TSF_MONO) each clamp `nextPos` to avoid reading one
+   element past a non-looping voice's sample region on its final sample.
+   Upstream computes nextPos unconditionally as `pos + 1` in the non-looping
+   case; for pos == region->end - 1 that reads input[region->end], one float
+   past the allocated sample pool. Confirmed by ASAN in T115 (heap-buffer-
+   overflow READ of size 4, 0 bytes after an 884016-byte region, on the
+   miniaudio callback thread) and left open until this unit. Search this file
+   for "WILLEQ T130" to find the three patched sites; re-apply them by hand if
+   a future vendor sync overwrites this file wholesale.
+   ============================================================================ */
+
 /* TinySoundFont - v0.9 - SoundFont2 synthesizer - https://github.com/schellingb/TinySoundFont
                                      no warranty implied; use at your own risk
    Do this:
@@ -1289,7 +1303,10 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 				gainLeft = gainMono * v->panFactorLeft, gainRight = gainMono * v->panFactorRight;
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
-					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+					// WILLEQ T130 (local deviation from upstream tsf.h, see below): clamp
+					// nextPos for a non-looping voice on its final sample -- upstream's
+					// unconditional "pos + 1" reads one element past region->end here.
+					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : (pos + 1 < (unsigned int)region->end ? pos + 1 : pos));
 
 					// Simple linear interpolation.
 					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
@@ -1310,7 +1327,9 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 				gainLeft = gainMono * v->panFactorLeft, gainRight = gainMono * v->panFactorRight;
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
-					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+					// WILLEQ T130 (local deviation from upstream tsf.h): see the
+					// stereo-interleaved case above for the rationale.
+					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : (pos + 1 < (unsigned int)region->end ? pos + 1 : pos));
 
 					// Simple linear interpolation.
 					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
@@ -1330,7 +1349,9 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 			case TSF_MONO:
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
-					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+					// WILLEQ T130 (local deviation from upstream tsf.h): see the
+					// stereo-interleaved case above for the rationale.
+					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : (pos + 1 < (unsigned int)region->end ? pos + 1 : pos));
 
 					// Simple linear interpolation.
 					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);

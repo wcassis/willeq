@@ -514,6 +514,11 @@ struct MemoryReportInput {
     size_t musicDecodedBytes = 0;
     size_t zoneEmitterCount = 0;
     size_t activeEmitterCount = 0;
+    // T130: real-time audio callback timing -- see event_bus.h's
+    // DiagnosticsMemoryReportData field comments.
+    uint64_t audioCallbackCount = 0;
+    uint64_t audioLateCallbackCount = 0;
+    int64_t audioWorstCallbackDeltaUs = 0;
 
     // Network
     struct ConnectionInfo {

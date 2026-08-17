@@ -71,6 +71,7 @@
 #include "client/bridge/irrlicht_bridge.h"
 
 #ifdef WITH_AUDIO
+#include "client/audio/audio_callback_probe.h"
 #include "client/audio/audio_manager.h"
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/sfx_manager.h"
@@ -190,6 +191,16 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 	if (m_zone_audio_manager) {
 		d.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
 		d.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
+	}
+	// T130: real-time audio callback timing (see event_bus.h field comments).
+	// Read here on the game thread from atomics the audio thread only ever
+	// writes -- same lock-free single-reader-of-record pattern as every
+	// other /pmem external-input field.
+	{
+		using EQT::Audio::AudioCallbackProbe;
+		d.audioCallbackCount = AudioCallbackProbe::callbackCount.load(std::memory_order_relaxed);
+		d.audioLateCallbackCount = AudioCallbackProbe::lateCallbackCount.load(std::memory_order_relaxed);
+		d.audioWorstCallbackDeltaUs = AudioCallbackProbe::worstDeltaNs.load(std::memory_order_relaxed) / 1000;
 	}
 #endif
 
