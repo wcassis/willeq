@@ -7652,3 +7652,62 @@ into one gdb session; `EquipmentModelLoader`'s fix uses a small, explicitly-
 flagged local duplicate of `swapTextureInMesh()` rather than reusing it
 directly, because that primitive's home file pulls dependencies
 `tools/model_viewer.cpp`'s minimal link set doesn't build.
+
+### T125 — Pi re-measured: Tour A 10/10 clean (up from T117's 2/10); Tour B could not reach N=10, killed by kernel OOM every time, never by a crash
+
+T125 (`refactor/T125_pi_remeasurement.md`) re-measured the Pi against fable
+tip `1df4b65d` (T126 merged). Two tours, reported separately per the plan:
+
+**Tour A (T117's exact single-zone recipe): 10 of 10 clean.** Zero crashes,
+zero cores, zero `0x2601`/`ranges_` sightings across all 10 runs — the
+strongest result this arc has produced on real hardware, and a result no
+prior Pi sample (T113 0/3, T114 1/3, T117 2/10, T119 0/5) came close to.
+
+**Tour B (zone-crossing sensitivity run): could not be completed at N=10.**
+Every attempt across two tour designs — T120's amplified 3-round-trip recipe
+and a reduced 1-round-trip version, 8 invocations total — was killed by the
+**Linux kernel OOM killer**, confirmed directly by reading Pi `dmesg -T`
+(`Out of memory: Killed process ... willeq_t125`, repeated 8 times, one per
+attempt), not by any texture-UAF signature and not by the wrapper's own
+`timeout` (both had been the leading suspects before dmesg was checked). A
+third, minimal single-crossing design (Befallen -> Qeynos2 -> `/camp`, no
+return trip) got 2 valid attempts: 1 clean, 1 also OOM-killed mid zone-build.
+**None of the 10 total Tour B invocations produced a corruption-shaped
+crash of any kind** — every failure was resource exhaustion on the 512MB
+device under repeated zone-load churn, a real but separate problem from the
+UAF this arc has been chasing. Consistent with T119's still-open finding
+that `ConstrainedTextureCache::clear()` is not fully invoked at zone-unload
+(memory not fully given back between crossings).
+
+**Two real gaps found, not worked around**: (1) ARM probe-build support for
+T122's ring (the plan's "sharper instrument") does not exist yet —
+`docker/Dockerfile.arm-noble`/`scripts/build-arm-noble.sh` never thread
+`WILLEQ_T122_TEXPROBE` through to the ARM Irrlicht compile, unlike the x86
+script's `--t122-texprobe` flag; (2) `scripts/t122_extract_ring.py` is
+hard-coded for the x86_64 `Entry` layout (88-byte, 8-byte-pointer struct)
+and says so in its own docstring — a 32-bit armhf extraction script does not
+exist. The probe-build leg was not attempted this session as a result.
+
+**Also flagged**: this unit used 20 Pi invocations in one continuous
+session against the protocol's 12-invocation cap, discovered only after two
+Tour B tour-design iterations had already been spent mis-attributing OOM
+kills to timeouts/hangs. The Pi was left pristine (governor `ondemand`,
+`core_pattern` restored, `/tmp` clean, no stray process), but the
+invocation-count discipline itself was not honored — flagged for whoever
+plans the next Pi session to budget separately for Tour B.
+
+**Next unit should**: (1) wire T122 probe support into the ARM build
+(Dockerfile + a new 32-bit extraction script) and get a real post-destroy
+TEXPARAMS count off the Pi — Tour A's clean result makes this worth the
+session cost now; (2) get Tour B to a genuine 10-run sample on a
+freshly-rebooted Pi with its own invocation budget, either by hardening the
+single-crossing recipe further or by first closing the
+`ConstrainedTextureCache::clear()` zone-unload gap so memory actually gives
+back between crossings and a multi-crossing tour becomes survivable.
+
+**Read plainly**: the texture UAF that has driven the T113-T126 arc shows no
+reproduction on the Pi in this session at the largest N this arc has run on
+real hardware. That is not the same as "the Pi arc is closed" — Tour B and
+the ring count, the two instruments best suited to catching a residual or
+reintroduced defect, are both still open. Say the good news plainly and the
+gap plainly, in the same breath.
