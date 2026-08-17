@@ -7876,3 +7876,37 @@ not because a problem was found but because the current build cannot detect
 one if it exists. Recommend a small follow-up unit: wire miniaudio's log
 callback into the existing logger, then re-run a Tour-B-style crossing and
 check for real signal both ways.
+
+## T129 (2026-08-17) — anti-stall rule given a tool (`scripts/wait_for.sh`); this removes friction, it does NOT guarantee compliance
+
+T128's executor stalled three times in one unit despite `EXECUTOR_PROTOCOL.md`
+already stating, in these words, that ending a turn waiting on a background
+task or monitor is forbidden ("this failure mode has stalled 5+ units"). The
+diagnosis: the rule asked every agent to invent a bounded polling loop from
+scratch under time pressure, with nothing in `scripts/` to invoke instead — a
+rule without a tool gets skipped. T129 built `scripts/wait_for.sh`, a
+dependency-free, re-invokable, bounded poller (default deadline 240s, hard
+cap enforced at 540s so a caller can never accidentally exceed the Bash
+tool's 600s single-call ceiling) covering the two shapes that recur on this
+project: `--exit-file <path>` (the Pi batch `.exit` pattern) and `--file
+<path> --contains <text>` (the build/ctest growing-log marker pattern). Exit
+0 = condition met, exit 2 = deadline reached and still running (distinct from
+broken, so the agent just re-invokes), exit 1 = usage error, exit 3 = target
+path unusable (parent directory doesn't exist — a caller mistake, not "still
+running"). On every exit it prints elapsed time, file size, and a tail, so
+the agent can act without a second command. `EXECUTOR_PROTOCOL.md`'s Hard
+Rules bullet now names the tool and gives a copy-pasteable invocation instead
+of describing a pattern to reinvent.
+
+**Board: this is scoped explicitly as friction removal, not enforcement.**
+Nothing stops an agent from writing its own ad hoc loop again, or from
+spawning a background Task/Monitor and waiting on it anyway (as T128 did on
+its third stall) — `wait_for.sh` only makes the compliant path cheaper than
+the noncompliant one. **If a stall recurs after this unit, the next lever is
+mechanical (a hook that can actually block/flag disallowed tool-call shapes),
+not a fourth round of protocol rewording.** T129 verified the script
+end-to-end (both shapes, success and deadline paths, against real background
+processes over `/mnt/projects/fable/review/T129/` on NFS) — see
+`refactor/T129_polling_helper.md`'s Review for the transcripts — but did not
+and could not test whether it changes agent *behavior* under pressure; that
+only shows up empirically in future units.
