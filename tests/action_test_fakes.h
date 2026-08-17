@@ -286,6 +286,16 @@ public:
         record("requestWho", name, lvlLow, lvlHigh);
     }
 
+    // ========== Guild (T132) ==========
+    void guildInvite(const std::string& playerName) override { record("guildInvite", playerName); }
+    void guildAcceptInvite() override { record("guildAcceptInvite"); }
+    void guildDeclineInvite() override { record("guildDeclineInvite"); }
+    void guildRemove(const std::string& playerName) override { record("guildRemove", playerName); }
+    void guildDemote(const std::string& playerName) override { record("guildDemote", playerName); }
+    void guildMakeLeader(const std::string& playerName) override { record("guildMakeLeader", playerName); }
+    void requestGuildMOTD() override { record("requestGuildMOTD"); }
+    void setGuildMOTD(const std::string& motd) override { record("setGuildMOTD", motd); }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

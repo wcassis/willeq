@@ -1171,4 +1171,44 @@ void EqActionHandler::requestWho(const std::string& name, int lvlLow, int lvlHig
     m_eq.AddChatSystemMessage("Searching for players...");
 }
 
+// ========== Guild (T132) ==========
+//
+// Pure routing to the pre-existing senders (src/client/eq_guild.cpp) --
+// guild-membership checks, pending-invite checks, and player-facing chat
+// messages ("Inviting X to join your guild.", etc.) already live inside
+// those Send*() calls, so no logic is duplicated here. game's own command
+// handlers called these same methods directly.
+
+void EqActionHandler::guildInvite(const std::string& playerName) {
+    m_eq.SendGuildInvite(playerName);
+}
+
+void EqActionHandler::guildAcceptInvite() {
+    m_eq.SendGuildInviteAccept(true);
+}
+
+void EqActionHandler::guildDeclineInvite() {
+    m_eq.SendGuildInviteAccept(false);
+}
+
+void EqActionHandler::guildRemove(const std::string& playerName) {
+    m_eq.SendGuildRemove(playerName);
+}
+
+void EqActionHandler::guildDemote(const std::string& playerName) {
+    m_eq.SendGuildDemote(playerName);
+}
+
+void EqActionHandler::guildMakeLeader(const std::string& playerName) {
+    m_eq.SendGuildLeader(playerName);
+}
+
+void EqActionHandler::requestGuildMOTD() {
+    m_eq.SendGetGuildMOTD();
+}
+
+void EqActionHandler::setGuildMOTD(const std::string& motd) {
+    m_eq.SendSetGuildMOTD(motd);
+}
+
 } // namespace eqt

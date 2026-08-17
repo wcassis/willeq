@@ -1715,4 +1715,171 @@ TEST_F(CommandProcessorTest, Yell_DispatchesYellForHelp) {
     ASSERT_TRUE(handler.calledOnceWith("yellForHelp()"));
 }
 
+// ===================================================================
+// Guild commands (T132)
+//
+// Net-new family -- action::CommandProcessor had zero guild registrations
+// before this unit (T98 emptied the category and there was nothing
+// underneath to revive, unlike T99-T102's reconcile-and-delete families).
+// See refactor/T132_migrate_guild_family.md.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T132_GuildCommandsRegisteredWithGuildCategory) {
+    for (const char* name : {"guildinvite", "guildaccept", "guilddecline",
+                              "guildremove", "guilddemote", "guildleader",
+                              "guildmotd"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Guild") << "wrong category for: " << name;
+    }
+    // Aliases ported verbatim from eq_commands.cpp's Guild block.
+    EXPECT_TRUE(processor->hasCommand("ginvite"));
+    EXPECT_TRUE(processor->hasCommand("acceptguild"));
+    EXPECT_TRUE(processor->hasCommand("declineguild"));
+    EXPECT_TRUE(processor->hasCommand("gremove"));
+    EXPECT_TRUE(processor->hasCommand("gkick"));
+    EXPECT_TRUE(processor->hasCommand("gdemote"));
+    EXPECT_TRUE(processor->hasCommand("gleader"));
+    EXPECT_TRUE(processor->hasCommand("gmotd"));
+}
+
+// ---------- guildinvite ----------
+
+TEST_F(CommandProcessorTest, GuildInvite_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/guildinvite");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, GuildInvite_WithName_DispatchesGuildInvite) {
+    auto result = processor->processCommand("/guildinvite Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildInvite(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildInvite_Alias_DispatchesGuildInvite) {
+    auto result = processor->processCommand("/ginvite Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildInvite(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildInvite_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/guildinvite Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- guildaccept / guilddecline ----------
+
+TEST_F(CommandProcessorTest, GuildAccept_DispatchesGuildAcceptInvite) {
+    auto result = processor->processCommand("/guildaccept");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildAcceptInvite()"));
+}
+
+TEST_F(CommandProcessorTest, GuildAccept_Alias_DispatchesGuildAcceptInvite) {
+    auto result = processor->processCommand("/acceptguild");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildAcceptInvite()"));
+}
+
+TEST_F(CommandProcessorTest, GuildDecline_DispatchesGuildDeclineInvite) {
+    auto result = processor->processCommand("/guilddecline");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildDeclineInvite()"));
+}
+
+TEST_F(CommandProcessorTest, GuildDecline_Alias_DispatchesGuildDeclineInvite) {
+    auto result = processor->processCommand("/declineguild");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildDeclineInvite()"));
+}
+
+// ---------- guildremove ----------
+
+TEST_F(CommandProcessorTest, GuildRemove_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/guildremove");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, GuildRemove_WithName_DispatchesGuildRemove) {
+    auto result = processor->processCommand("/guildremove Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildRemove(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildRemove_AliasGremove_DispatchesGuildRemove) {
+    auto result = processor->processCommand("/gremove Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildRemove(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildRemove_AliasGkick_DispatchesGuildRemove) {
+    auto result = processor->processCommand("/gkick Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildRemove(\"Bob\")"));
+}
+
+// ---------- guilddemote ----------
+
+TEST_F(CommandProcessorTest, GuildDemote_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/guilddemote");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, GuildDemote_WithName_DispatchesGuildDemote) {
+    auto result = processor->processCommand("/guilddemote Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildDemote(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildDemote_Alias_DispatchesGuildDemote) {
+    auto result = processor->processCommand("/gdemote Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildDemote(\"Bob\")"));
+}
+
+// ---------- guildleader ----------
+
+TEST_F(CommandProcessorTest, GuildLeader_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/guildleader");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, GuildLeader_WithName_DispatchesGuildMakeLeader) {
+    auto result = processor->processCommand("/guildleader Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildMakeLeader(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildLeader_Alias_DispatchesGuildMakeLeader) {
+    auto result = processor->processCommand("/gleader Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("guildMakeLeader(\"Bob\")"));
+}
+
+// ---------- guildmotd ----------
+
+TEST_F(CommandProcessorTest, GuildMotd_NoArgs_DispatchesRequestGuildMOTD) {
+    auto result = processor->processCommand("/guildmotd");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("requestGuildMOTD()"));
+}
+
+TEST_F(CommandProcessorTest, GuildMotd_WithMessage_DispatchesSetGuildMOTD) {
+    auto result = processor->processCommand("/guildmotd Welcome to the guild!");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setGuildMOTD(\"Welcome to the guild!\")"));
+}
+
+TEST_F(CommandProcessorTest, GuildMotd_Alias_DispatchesRequestGuildMOTD) {
+    auto result = processor->processCommand("/gmotd");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("requestGuildMOTD()"));
+}
+
 } // namespace

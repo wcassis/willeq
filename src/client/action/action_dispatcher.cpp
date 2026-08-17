@@ -1278,5 +1278,94 @@ ActionResult ActionDispatcher::requestWho(const std::string& name, int lvlLow, i
     return ActionResult::Success();
 }
 
+// ========== Guild Actions (T132) ==========
+//
+// Net-new: EqActionHandler wraps the pre-existing EverQuest::SendGuild*()
+// senders, which already implement the guild-membership/pending-invite
+// guards and player-facing messages (game's handlers did no additional
+// checks of their own -- see refactor/T132_migrate_guild_family.md). The
+// empty-name usage checks below mirror game's own pre-dispatch guard so the
+// exact usage string is preserved even before reaching the handler.
+
+ActionResult ActionDispatcher::guildInvite(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /guildinvite <name>");
+    }
+
+    m_handler->guildInvite(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::guildAcceptInvite() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->guildAcceptInvite();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::guildDeclineInvite() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->guildDeclineInvite();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::guildRemove(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /guildremove <name>");
+    }
+
+    m_handler->guildRemove(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::guildDemote(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /guilddemote <name>");
+    }
+
+    m_handler->guildDemote(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::guildMakeLeader(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /guildleader <name>");
+    }
+
+    m_handler->guildMakeLeader(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::requestGuildMOTD() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->requestGuildMOTD();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::setGuildMOTD(const std::string& motd) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->setGuildMOTD(motd);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt
