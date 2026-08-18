@@ -1934,7 +1934,8 @@ private:
 	// T136: RegisterVendorCommands() (T48: /vendorlist, /buy, /sell) removed
 	// -- migrated to action::CommandProcessor. See RequestVendorToggle()/
 	// RequestVendorBuy()/RequestVendorSell() below.
-	void RegisterEquipmentCommands(); // T66: /equip (eq_commands.cpp)
+	// T141: RegisterEquipmentCommands() (T66: /equip) removed -- migrated to
+	// action::CommandProcessor. See RequestEquip() below.
 
 	// Manual zone load diagnostics helpers
 	void runPmemDiagnostics(const std::string& label);

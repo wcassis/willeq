@@ -45,8 +45,9 @@
 // T66: inventory_manager.h/inventory_constants.h -- same "plain data-model
 // header" status as the T29 group above (verified against eq.cpp's own
 // unconditional include of both): no graphics dependency, needed
-// unconditionally now that RegisterEquipmentCommands()'s /equip is not
-// graphics-gated either (SendMoveItem is plain network logic).
+// unconditionally for RequestEquip() (T141: the former
+// RegisterEquipmentCommands()'s /equip handler, still defined in this file)
+// since SendMoveItem is plain network logic, not graphics-gated.
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 
@@ -271,7 +272,9 @@ void EverQuest::RegisterCommands()
 	// T136: RegisterVendorCommands() removed -- vendor/vendorlist/buy/sell
 	// MIGRATED to action::CommandProcessor. See the T136 block below (near
 	// RequestVendorToggle()) and refactor/T136_migrate_merchant_family.md.
-	RegisterEquipmentCommands();
+	// T141: RegisterEquipmentCommands() removed -- equip MIGRATED to
+	// action::CommandProcessor (cmdEquip), the last of the game-registry
+	// migration programme. See refactor/T141_equip_extraction.md.
 }
 
 namespace {
@@ -602,25 +605,16 @@ void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
 // keeps working exactly as T66/T71 left it -- existing session scripts use
 // it, and T71 verified it live.
 //
-// The live end-to-end leg (does a real packet actually equip a real item on
-// a real server, for ANY of the three forms above) is explicitly OUT of
-// this unit's territory -- sibling T76 holds the eqemu lock this round. See
-// this plan's Review for what is covered here (wiring + pre-flight,
-// unit-tested against a populated InventoryManager) vs. what remains
-// outstanding.
-void EverQuest::RegisterEquipmentCommands()
-{
-	using namespace eqt::ui;
-
-	Command equip_cmd;
-	equip_cmd.name = "equip";
-	equip_cmd.usage = "/equip <fromSlot> <toSlot> | /equip <item name> | /equip list";
-	equip_cmd.description = "Move/equip an item by slot numbers or by name (e.g. /equip 22 13, /equip Rusty Mace, /equip list)";
-	equip_cmd.category = "Inventory";
-	equip_cmd.handler = [this](const std::string& args) { RequestEquip(args); };
-	m_command_registry->registerCommand(equip_cmd);
-}
-
+// T141 -- RegisterEquipmentCommands() (the game-registry registration
+// wrapper that used to sit here) is REMOVED: /equip MIGRATED to
+// action::CommandProcessor (cmdEquip -> action::EqActionHandler::equip() ->
+// RequestEquip() below, same call target as before -- see
+// refactor/T141_equip_extraction.md). This was the last row of the
+// game-registry migration programme; eq_commands.cpp no longer registers
+// any command into m_command_registry at all (RegisterSocialCommands()
+// above was already all-migrated by earlier units, and now has no sibling
+// still registering here either).
+//
 // T141 -- /equip's thin orchestration entry point (T136's Request* recipe).
 // The ~150-line legality+execution block this handler used to contain
 // moved to InventoryManager::moveItem()/checkEquipDestination()/

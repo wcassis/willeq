@@ -579,6 +579,17 @@ void CommandProcessor::registerBuiltinCommands() {
         "sell", {}, "/sell <slot> [quantity]", "Sell an item from your inventory to the open vendor", "Commerce", false
     }, [this](const std::string& args) { return cmdSell(args); });
 
+    // T141: equip -- the one command T136 explicitly excluded from the
+    // Merchant family (different mechanism, different category) and the
+    // last row of the whole game-registry migration programme. Category
+    // ported verbatim from eq_commands.cpp ("Inventory", not "Commerce").
+    // See refactor/T141_equip_extraction.md.
+    registerCommand({
+        "equip", {}, "/equip <fromSlot> <toSlot> | /equip <item name> | /equip list",
+        "Move/equip an item by slot numbers or by name (e.g. /equip 22 13, /equip Rusty Mace, /equip list)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdEquip(args); });
+
     // T140: final 16 of the game-registry migration programme (equip
     // excluded). Registrations removed from eq_commands_movement.cpp/
     // eq_commands_spells.cpp in the same change -- see
@@ -1546,6 +1557,14 @@ ActionResult CommandProcessor::cmdBuy(const std::string& args) {
         return ActionResult::Failure("Invalid quantity (must be 1-255)");
     }
     return m_dispatcher.buyFromVendor(slot, quantity);
+}
+
+// T141: raw arg string passed straight through -- same idiom as cmdWarp()
+// above. All three input-form parsing (slot-pair / item-name / list) and
+// all legality/execution happens in EverQuest::RequestEquip() ->
+// InventoryManager, reached via m_dispatcher.equip().
+ActionResult CommandProcessor::cmdEquip(const std::string& args) {
+    return m_dispatcher.equip(args);
 }
 
 ActionResult CommandProcessor::cmdSell(const std::string& args) {

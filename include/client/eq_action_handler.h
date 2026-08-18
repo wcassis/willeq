@@ -120,6 +120,7 @@ public:
     void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity) override;
     void deleteItem(int16_t slot) override;
     void useItem(int16_t slot) override;
+    void equip(const std::string& args) override;  // T141
 
     // ========== Spellbook ==========
 
