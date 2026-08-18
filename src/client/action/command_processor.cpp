@@ -504,6 +504,32 @@ void CommandProcessor::registerBuiltinCommands() {
         "guildmotd", {"gmotd"}, "/guildmotd [message]", "View or set guild MOTD", "Guild", false
     }, [this](const std::string& args) { return cmdGuildMotd(args); });
 
+    // T134: Corpse (4) + Resurrection (2). Aliases ported verbatim from
+    // eq_commands.cpp's Corpse/Resurrection blocks.
+    registerCommand({
+        "corpsedrag", {"drag"}, "/corpsedrag <corpse_name>", "Start dragging a corpse", "Corpse", false
+    }, [this](const std::string& args) { return cmdCorpseDrag(args); });
+
+    registerCommand({
+        "corpsedrop", {"drop"}, "/corpsedrop", "Drop the corpse you are dragging", "Corpse", false
+    }, [this](const std::string& args) { return cmdCorpseDrop(args); });
+
+    registerCommand({
+        "consent", {}, "/consent <player_name>", "Grant permission to drag your corpse", "Corpse", false
+    }, [this](const std::string& args) { return cmdConsent(args); });
+
+    registerCommand({
+        "deny", {}, "/deny <player_name>", "Revoke permission to drag your corpse", "Corpse", false
+    }, [this](const std::string& args) { return cmdConsentDeny(args); });
+
+    registerCommand({
+        "rezaccept", {"acceptrez"}, "/rezaccept", "Accept pending resurrection offer", "Utility", false
+    }, [this](const std::string& args) { return cmdRezAccept(args); });
+
+    registerCommand({
+        "rezdecline", {"declinerez"}, "/rezdecline", "Decline pending resurrection offer", "Utility", false
+    }, [this](const std::string& args) { return cmdRezDecline(args); });
+
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
     }, [this](const std::string& args) { return cmdDoor(args); });
@@ -1248,6 +1274,41 @@ ActionResult CommandProcessor::cmdGuildMotd(const std::string& args) {
         return m_dispatcher.requestGuildMOTD();
     }
     return m_dispatcher.setGuildMOTD(args);
+}
+
+// ========== Corpse / Resurrection Commands (T134) ==========
+
+ActionResult CommandProcessor::cmdCorpseDrag(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /corpsedrag <corpse_name>");
+    }
+    return m_dispatcher.corpseDrag(args);
+}
+
+ActionResult CommandProcessor::cmdCorpseDrop(const std::string& args) {
+    return m_dispatcher.corpseDrop();
+}
+
+ActionResult CommandProcessor::cmdConsent(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /consent <player_name>");
+    }
+    return m_dispatcher.consent(args);
+}
+
+ActionResult CommandProcessor::cmdConsentDeny(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /deny <player_name>");
+    }
+    return m_dispatcher.consentDeny(args);
+}
+
+ActionResult CommandProcessor::cmdRezAccept(const std::string& args) {
+    return m_dispatcher.rezAccept();
+}
+
+ActionResult CommandProcessor::cmdRezDecline(const std::string& args) {
+    return m_dispatcher.rezDecline();
 }
 
 // ========== Spells Commands (T101) ==========

@@ -296,6 +296,14 @@ public:
     void requestGuildMOTD() override { record("requestGuildMOTD"); }
     void setGuildMOTD(const std::string& motd) override { record("setGuildMOTD", motd); }
 
+    // ========== Corpse / Resurrection (T134) ==========
+    void corpseDrag(const std::string& corpseName) override { record("corpseDrag", corpseName); }
+    void corpseDrop() override { record("corpseDrop"); }
+    void consent(const std::string& playerName) override { record("consent", playerName); }
+    void consentDeny(const std::string& playerName) override { record("consentDeny", playerName); }
+    void rezAccept() override { record("rezAccept"); }
+    void rezDecline() override { record("rezDecline"); }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

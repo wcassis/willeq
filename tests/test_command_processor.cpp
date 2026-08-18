@@ -1882,4 +1882,139 @@ TEST_F(CommandProcessorTest, GuildMotd_Alias_DispatchesRequestGuildMOTD) {
     ASSERT_TRUE(handler.calledOnceWith("requestGuildMOTD()"));
 }
 
+// ========== Corpse / Resurrection (T134) ==========
+
+TEST_F(CommandProcessorTest, T134_CorpseCommandsRegisteredWithCorpseCategory) {
+    for (const char* name : {"corpsedrag", "corpsedrop", "consent", "deny"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Corpse") << "wrong category for: " << name;
+    }
+    // Aliases ported verbatim from eq_commands.cpp's Corpse block.
+    EXPECT_TRUE(processor->hasCommand("drag"));
+    EXPECT_TRUE(processor->hasCommand("drop"));
+}
+
+TEST_F(CommandProcessorTest, T134_RezCommandsRegisteredWithUtilityCategory) {
+    for (const char* name : {"rezaccept", "rezdecline"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Utility") << "wrong category for: " << name;
+    }
+    // Aliases ported verbatim from eq_commands.cpp's Resurrection block.
+    EXPECT_TRUE(processor->hasCommand("acceptrez"));
+    EXPECT_TRUE(processor->hasCommand("declinerez"));
+}
+
+// ---------- corpsedrag ----------
+
+TEST_F(CommandProcessorTest, CorpseDrag_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/corpsedrag");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, CorpseDrag_WithName_DispatchesCorpseDrag) {
+    auto result = processor->processCommand("/corpsedrag Bob's Corpse");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("corpseDrag(\"Bob's Corpse\")"));
+}
+
+TEST_F(CommandProcessorTest, CorpseDrag_Alias_DispatchesCorpseDrag) {
+    auto result = processor->processCommand("/drag Bob's Corpse");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("corpseDrag(\"Bob's Corpse\")"));
+}
+
+TEST_F(CommandProcessorTest, CorpseDrag_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/corpsedrag Bob's Corpse");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- corpsedrop ----------
+
+TEST_F(CommandProcessorTest, CorpseDrop_DispatchesCorpseDrop) {
+    auto result = processor->processCommand("/corpsedrop");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("corpseDrop()"));
+}
+
+TEST_F(CommandProcessorTest, CorpseDrop_Alias_DispatchesCorpseDrop) {
+    auto result = processor->processCommand("/drop");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("corpseDrop()"));
+}
+
+// ---------- consent / deny ----------
+
+TEST_F(CommandProcessorTest, Consent_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/consent");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Consent_WithName_DispatchesConsent) {
+    auto result = processor->processCommand("/consent Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("consent(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, Deny_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/deny");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Deny_WithName_DispatchesConsentDeny) {
+    auto result = processor->processCommand("/deny Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("consentDeny(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, Consent_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/consent Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- rezaccept / rezdecline ----------
+// Both route to EverQuest::SendRezzAnswer(bool) on the sender side, but at
+// the dispatch layer they are two distinct IActionHandler/ActionDispatcher
+// methods (rezAccept()/rezDecline()) -- these assertions are the flag
+// distinction the plan calls out explicitly.
+
+TEST_F(CommandProcessorTest, RezAccept_DispatchesRezAccept) {
+    auto result = processor->processCommand("/rezaccept");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rezAccept()"));
+}
+
+TEST_F(CommandProcessorTest, RezAccept_Alias_DispatchesRezAccept) {
+    auto result = processor->processCommand("/acceptrez");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rezAccept()"));
+}
+
+TEST_F(CommandProcessorTest, RezDecline_DispatchesRezDecline) {
+    auto result = processor->processCommand("/rezdecline");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rezDecline()"));
+}
+
+TEST_F(CommandProcessorTest, RezDecline_Alias_DispatchesRezDecline) {
+    auto result = processor->processCommand("/declinerez");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rezDecline()"));
+}
+
+TEST_F(CommandProcessorTest, RezAccept_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/rezaccept");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 } // namespace

@@ -8196,3 +8196,61 @@ the real one was needed for the mid-session `AT_GUILD_ID` proof). No reason
 to expect divergence given the identical fix shape, but not directly
 observed — a small follow-up could close this cheaply with a second
 two-client script exercising just these four.
+
+## T134 (2026-08-18) — Corpse + Resurrection families migrated; two
+independent, pre-existing wire bugs found and fixed in the same unit
+
+Net-new plumbing over the pre-existing `EverQuest::SendCorpseDrag()`/
+`SendCorpseDrop()`/`SendConsent()`/`SendConsentDeny()`/`SendRezzAnswer(bool)`
+senders (`eq_player_info.cpp`), same shape as Guild (T132). All six —
+`corpsedrag`, `corpsedrop`, `consent`, `deny`, `rezaccept`, `rezdecline` —
+verified **end-to-end on the wire** in a two-client live session, unlike
+T132's six-of-seven dispatch-only result. Full detail:
+`refactor/T134_migrate_corpse_rez.md` Review, `/mnt/projects/fable/review/T134/`.
+
+**Two independent, pre-existing bugs found and fixed, same class as T133's
+finding in `eq_guild.cpp`:**
+
+1. **`SendRezzAnswer`'s double opcode prefix** — built its own
+   opcode-prefixed packet and then called `EverQuest::QueuePacket(opcode,
+   &packet)`, which also prepends an opcode. Fixed by building a body-only
+   packet before calling `QueuePacket()` once
+   (`src/client/eq_player_info.cpp`). Note: `corpsedrag`/`corpsedrop`/
+   `consent`/`deny`'s senders were NOT affected — they call
+   `m_zone_connection->QueuePacket(packet)` directly, a different, correct
+   convention (packet already carries its own opcode, no second prefix
+   added by that path).
+2. **`Resurrect_Struct` missing a 4-byte field** (`include/common/
+   packet_structs.h`) — a `unknown020` field present in eqemu's own struct
+   right after `z` (offset 20) was absent from ours, shifting every field
+   after `z` by 4 bytes on both read and write. Before the fix, every
+   `OP_RezzRequest` parsed with an empty `rezzer_name`, a garbled
+   `corpse_name`, and `spellid=0`; every `OP_RezzAnswer`'s `action` field
+   landed at the wrong offset, so the server could not reliably distinguish
+   accept from decline. Confirmed byte-for-byte against a captured server
+   packet's hex dump in the eqemu zone log (`review/T134/
+   eqemu_zone_arena_server_log.txt`) — `your_name` starts at wire offset 24,
+   not the 20 our struct assumed. Fixed by adding the missing field;
+   `sizeof(Resurrect_Struct)` is now 228, was 224. Every use in the
+   codebase goes through `sizeof()`, so nothing else needed to change.
+
+Neither bug is a T134 regression — both predate this unit and were
+invisible before it because no `action::` registration had previously
+exercised these senders' full round trip. **This bug class (a sender
+building its own opcode prefix, then double-prefixing via `QueuePacket`)
+is worth a deliberate sweep** across the remaining un-migrated families'
+senders (Merchant, Utility) rather than waiting to find each instance one
+family at a time — T132/T133 found it in Guild, T134 found it once more in
+Resurrection; two occurrences in two units is enough of a pattern to check
+proactively next time rather than reactively.
+
+**How the pending resurrection was produced** (board item, not obvious):
+a single GM account (`willeq_test`, status 200) is sufficient — no second
+GM character, no Will action. `#kill` on your own target self-kills, but
+this eqemu config auto-teleports the dead character to its bind zone
+almost immediately, away from its own corpse — resolved with the GM
+`#zone <zone> <x> <y> <z>` command to teleport back, then `/target` +
+GM `#castspell 994` ("Customer Service Resurrect", found via
+`effectid*=81`/`SpellEffect::Revive` in `spells_new`) on the corpse.
+`Corpse::CastRezz` (eqemu `zone/corpse.cpp`) is target-and-caster-agnostic,
+so self-casting works identically to a second character casting.

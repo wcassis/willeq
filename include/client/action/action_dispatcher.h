@@ -283,6 +283,23 @@ public:
     virtual void guildMakeLeader(const std::string& playerName) = 0;
     virtual void requestGuildMOTD() = 0;
     virtual void setGuildMOTD(const std::string& motd) = 0;
+
+    // ========== Corpse / Resurrection (T134) ==========
+    // Net-new, same shape as Guild (T132): no game-registry counterpart was
+    // reconciled here -- action::CommandProcessor had zero registrations for
+    // this family before this unit. These wrap the pre-existing
+    // EverQuest::SendCorpseDrag()/SendCorpseDrop()/SendConsent()/
+    // SendConsentDeny()/SendRezzAnswer(bool) senders, which already implement
+    // the guard/argument logic (m_is_dragging_corpse, m_has_pending_rezz);
+    // the wrappers are pure routing. rezAccept()/rezDecline() both route to
+    // SendRezzAnswer(bool) -- two thin methods, matching guildAcceptInvite()/
+    // guildDeclineInvite()'s identical shape over SendGuildInviteAccept(bool).
+    virtual void corpseDrag(const std::string& corpseName) = 0;
+    virtual void corpseDrop() = 0;
+    virtual void consent(const std::string& playerName) = 0;
+    virtual void consentDeny(const std::string& playerName) = 0;
+    virtual void rezAccept() = 0;
+    virtual void rezDecline() = 0;
 };
 
 /**
@@ -1005,6 +1022,38 @@ public:
      * Set the guild's message of the day.
      */
     ActionResult setGuildMOTD(const std::string& motd);
+
+    // ========== Corpse / Resurrection Actions (T134) ==========
+
+    /**
+     * Start dragging a corpse (requires consent from the corpse's owner).
+     */
+    ActionResult corpseDrag(const std::string& corpseName);
+
+    /**
+     * Drop the corpse currently being dragged.
+     */
+    ActionResult corpseDrop();
+
+    /**
+     * Grant a player permission to drag your corpse.
+     */
+    ActionResult consent(const std::string& playerName);
+
+    /**
+     * Revoke a player's permission to drag your corpse.
+     */
+    ActionResult consentDeny(const std::string& playerName);
+
+    /**
+     * Accept a pending resurrection offer.
+     */
+    ActionResult rezAccept();
+
+    /**
+     * Decline a pending resurrection offer.
+     */
+    ActionResult rezDecline();
 
 private:
     state::GameState& m_state;

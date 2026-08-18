@@ -1367,5 +1367,76 @@ ActionResult ActionDispatcher::setGuildMOTD(const std::string& motd) {
     return ActionResult::Success();
 }
 
+// ========== Corpse / Resurrection (T134) ==========
+// Usage-string guards below mirror game's original corpsedrag/consent/deny
+// handlers verbatim (eq_commands.cpp), matching the Guild family's
+// belt-and-suspenders shape -- the empty-argument check is duplicated here
+// AND inside game's ported usage strings would have been if game still
+// registered them; corpsedrop/rezAccept/rezDecline take no argument so have
+// no usage guard, matching game's shape for those too. The stateful guards
+// (m_is_dragging_corpse, m_has_pending_rezz) are NOT duplicated here -- they
+// live in the senders (SendCorpseDrop, SendRezzAnswer) and are preserved
+// there unchanged.
+
+ActionResult ActionDispatcher::corpseDrag(const std::string& corpseName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (corpseName.empty()) {
+        return ActionResult::Failure("Usage: /corpsedrag <corpse_name>");
+    }
+
+    m_handler->corpseDrag(corpseName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::corpseDrop() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->corpseDrop();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::consent(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /consent <player_name>");
+    }
+
+    m_handler->consent(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::consentDeny(const std::string& playerName) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (playerName.empty()) {
+        return ActionResult::Failure("Usage: /deny <player_name>");
+    }
+
+    m_handler->consentDeny(playerName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::rezAccept() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->rezAccept();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::rezDecline() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->rezDecline();
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

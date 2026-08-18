@@ -944,6 +944,17 @@ static_assert(sizeof(Track_Struct) == 8, "Track_Struct must be 8 bytes");
  * Size: 228 bytes (Titanium format)
  * Used in: OP_RezzRequest (S->C), OP_RezzAnswer (C->S), OP_RezzComplete (S->C)
  */
+// T134: this struct was missing a 4-byte field (unknown020) right after z,
+// found live -- a real OP_RezzRequest packet captured from the eqemu zone
+// log had "Testmelee" (your_name) starting at byte offset 24, not 20 as
+// this struct assumed, shifting every field after z by 4 bytes. Confirmed
+// byte-for-byte against eqemu's own Resurrect_Struct
+// (common/eq_packet_structs.h): total size 228, not 224. Before this fix,
+// every resurrection offer parsed with an empty rezzer_name, a garbled
+// corpse_name, and spellid=0 (LOG_INFO's "Resurrection offer from  for
+// corpse '<garbage>' (spell 0)" was this bug, not a formatting issue), and
+// every OP_RezzAnswer sent back had `action` written at the wrong byte
+// offset, so the server could not reliably tell accept from decline.
 struct Resurrect_Struct {
 /*0000*/ uint32_t unknown00;          // Unknown, always 0
 /*0004*/ uint16_t zone_id;            // Zone to resurrect in
@@ -951,15 +962,16 @@ struct Resurrect_Struct {
 /*0008*/ float    y;                  // Y coordinate to rez at
 /*0012*/ float    x;                  // X coordinate to rez at
 /*0016*/ float    z;                  // Z coordinate to rez at
-/*0020*/ char     your_name[64];      // Name of the person being rezzed
-/*0084*/ uint32_t unknown88;          // Unknown
-/*0088*/ char     rezzer_name[64];    // Name of the person casting rez
-/*0152*/ uint32_t spellid;            // Spell ID of the resurrection spell
-/*0156*/ char     corpse_name[64];    // Name of the corpse (with "'s corpse")
-/*0220*/ uint32_t action;             // 0=decline, 1=accept (in OP_RezzAnswer)
-/*0224*/
+/*0020*/ uint32_t unknown020;         // Unknown, always 0 (T134: the missing field)
+/*0024*/ char     your_name[64];      // Name of the person being rezzed
+/*0088*/ uint32_t unknown88;          // Unknown
+/*0092*/ char     rezzer_name[64];    // Name of the person casting rez
+/*0156*/ uint32_t spellid;            // Spell ID of the resurrection spell
+/*0160*/ char     corpse_name[64];    // Name of the corpse (with "'s corpse")
+/*0224*/ uint32_t action;             // 0=decline, 1=accept (in OP_RezzAnswer)
+/*0228*/
 };
-static_assert(sizeof(Resurrect_Struct) == 224, "Resurrect_Struct must be 224 bytes");
+static_assert(sizeof(Resurrect_Struct) == 228, "Resurrect_Struct must be 228 bytes");
 
 /**
  * Who All Request Struct

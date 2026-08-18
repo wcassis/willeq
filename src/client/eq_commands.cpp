@@ -529,29 +529,11 @@ void EverQuest::RegisterSocialCommands()
 	// action::CommandProcessor (cmdTrade/cmdTradeAccept/cmdTradeDecline/
 	// cmdCancelTrade) -- see refactor/T102_migrate_combat_social.md.
 
-	// === Resurrection Commands ===
-
-	Command rezaccept_cmd;
-	rezaccept_cmd.name = "rezaccept";
-	rezaccept_cmd.aliases = {"acceptrez"};
-	rezaccept_cmd.usage = "/rezaccept";
-	rezaccept_cmd.description = "Accept pending resurrection offer";
-	rezaccept_cmd.category = "Utility";
-	rezaccept_cmd.handler = [this](const std::string& args) {
-		SendRezzAnswer(true);
-	};
-	m_command_registry->registerCommand(rezaccept_cmd);
-
-	Command rezdecline_cmd;
-	rezdecline_cmd.name = "rezdecline";
-	rezdecline_cmd.aliases = {"declinerez"};
-	rezdecline_cmd.usage = "/rezdecline";
-	rezdecline_cmd.description = "Decline pending resurrection offer";
-	rezdecline_cmd.category = "Utility";
-	rezdecline_cmd.handler = [this](const std::string& args) {
-		SendRezzAnswer(false);
-	};
-	m_command_registry->registerCommand(rezdecline_cmd);
+	// T134: Resurrection (rezaccept/rezdecline) MIGRATED to
+	// action::CommandProcessor (cmdRezAccept/cmdRezDecline). Net-new
+	// plumbing, not a reconcile-and-delete -- action::CommandProcessor had
+	// zero registrations for this family before this unit. See
+	// refactor/T134_migrate_corpse_rez.md.
 
 	// T102: who (who_cmd -- the Social section's real server /who
 	// request) and inspect MIGRATED to action::CommandProcessor
@@ -567,61 +549,10 @@ void EverQuest::RegisterSocialCommands()
 	// action::CommandProcessor had zero guild registrations before this
 	// unit. See refactor/T132_migrate_guild_family.md.
 
-	// === Phase 3: Corpse Commands ===
-
-	Command corpsedrag_cmd;
-	corpsedrag_cmd.name = "corpsedrag";
-	corpsedrag_cmd.aliases = {"drag"};
-	corpsedrag_cmd.usage = "/corpsedrag <corpse_name>";
-	corpsedrag_cmd.description = "Start dragging a corpse";
-	corpsedrag_cmd.category = "Corpse";
-	corpsedrag_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /corpsedrag <corpse_name>");
-			return;
-		}
-		SendCorpseDrag(args);
-	};
-	m_command_registry->registerCommand(corpsedrag_cmd);
-
-	Command corpsedrop_cmd;
-	corpsedrop_cmd.name = "corpsedrop";
-	corpsedrop_cmd.aliases = {"drop"};
-	corpsedrop_cmd.usage = "/corpsedrop";
-	corpsedrop_cmd.description = "Drop the corpse you are dragging";
-	corpsedrop_cmd.category = "Corpse";
-	corpsedrop_cmd.handler = [this](const std::string& args) {
-		SendCorpseDrop();
-	};
-	m_command_registry->registerCommand(corpsedrop_cmd);
-
-	Command consent_cmd;
-	consent_cmd.name = "consent";
-	consent_cmd.usage = "/consent <player_name>";
-	consent_cmd.description = "Grant permission to drag your corpse";
-	consent_cmd.category = "Corpse";
-	consent_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /consent <player_name>");
-			return;
-		}
-		SendConsent(args);
-	};
-	m_command_registry->registerCommand(consent_cmd);
-
-	Command deny_cmd;
-	deny_cmd.name = "deny";
-	deny_cmd.usage = "/deny <player_name>";
-	deny_cmd.description = "Revoke permission to drag your corpse";
-	deny_cmd.category = "Corpse";
-	deny_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /deny <player_name>");
-			return;
-		}
-		SendConsentDeny(args);
-	};
-	m_command_registry->registerCommand(deny_cmd);
+	// T134: Corpse (corpsedrag/corpsedrop/consent/deny) MIGRATED to
+	// action::CommandProcessor (cmdCorpseDrag/cmdCorpseDrop/cmdConsent/
+	// cmdConsentDeny). Net-new plumbing, not a reconcile-and-delete -- see
+	// refactor/T134_migrate_corpse_rez.md.
 
 	// === Phase 3: Combat Targeting Commands ===
 

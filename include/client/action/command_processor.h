@@ -338,6 +338,21 @@ private:
     ActionResult cmdGuildLeader(const std::string& args);
     ActionResult cmdGuildMotd(const std::string& args);
 
+    // T134: Corpse (4) + Resurrection (2), migrated from eq_commands.cpp's
+    // Corpse and Resurrection blocks. Same net-new shape as Guild (T132):
+    // action::CommandProcessor had ZERO registrations for either family
+    // before this unit. Net-new plumbing over the pre-existing
+    // EverQuest::SendCorpseDrag()/SendCorpseDrop()/SendConsent()/
+    // SendConsentDeny()/SendRezzAnswer(bool) senders (eq_player_info.cpp).
+    // Registrations removed from eq_commands.cpp's Corpse/Resurrection
+    // blocks in the same change. See refactor/T134_migrate_corpse_rez.md.
+    ActionResult cmdCorpseDrag(const std::string& args);
+    ActionResult cmdCorpseDrop(const std::string& args);
+    ActionResult cmdConsent(const std::string& args);
+    ActionResult cmdConsentDeny(const std::string& args);
+    ActionResult cmdRezAccept(const std::string& args);
+    ActionResult cmdRezDecline(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by
