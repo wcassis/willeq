@@ -2075,6 +2075,13 @@ public:
 	void RequestVendorBuy(uint32_t slot, uint8_t quantity);
 	void RequestVendorSell(uint32_t slot, uint8_t quantity);
 
+	// T141: /equip's thin orchestration entry point -- form dispatch +
+	// read-only report formatting only; all legality/mutation/bridge-push
+	// logic lives in InventoryManager::moveItem() and friends
+	// (include/client/inventory/inventory_manager.h). Defined in
+	// eq_commands.cpp. See refactor/T141_equip_extraction.md.
+	void RequestEquip(const std::string& args);
+
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
 	void CloseBankWindow();

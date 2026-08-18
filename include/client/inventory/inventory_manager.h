@@ -176,6 +176,77 @@ public:
     bool meetsRestrictions(const ItemInstance* item) const;
     bool hasLoreConflict(const ItemInstance* item, int16_t excludeSlot = SLOT_INVALID) const;
 
+    // T141 -- equip orchestration, extracted from eq_commands.cpp's
+    // RegisterEquipmentCommands() handler (see refactor/T141_equip_extraction.md).
+    // 250 lines of inventory manipulation had accumulated in a command
+    // handler despite InventoryManager already owning the legality question
+    // (canEquipItem() above) and, since D20b1, its own bridge_ pointer for
+    // pushing the resulting intents -- moveItem() below is a natural
+    // extension of the SAME bridge-push pattern pickupItem()/placeItem()
+    // already use, not new architecture.
+
+    // Result of a destination-resolution search (name-form /equip and
+    // /equip list): which equipment slot an item would land in, and
+    // whether every candidate slot for a paired slot (ears/wrists/fingers)
+    // is already occupied (so the caller can say "would replace").
+    // SLOT_INVALID means the item fits no equipment slot at all.
+    struct EquipDestinationResult {
+        int16_t slot = SLOT_INVALID;
+        bool allCandidatesOccupied = false;
+    };
+
+    // Result of a moveItem() orchestration: on failure, `message` is a
+    // caller-actionable reason (never eqemu's opaque "The selected slot
+    // was invalid"); on success it is the same "Moving item: X -> Y"
+    // confirmation text the pre-extraction handler printed, so
+    // EverQuest::RequestEquip() can pass it straight to
+    // AddChatSystemMessage() without re-deriving it.
+    struct MoveItemOutcome {
+        bool success = false;
+        std::string message;
+    };
+
+    // T77 -- pre-flight destination legality, reused by both /equip forms
+    // (moveItem() below and the name-resolution path). Only meaningful
+    // when toSlot is an equipment slot: canEquipItem()'s whole domain is
+    // "does this item belong in this equip slot"; moving into
+    // general/bag/bank/cursor has no equip-legality question and always
+    // passes here (the server remains the sole arbiter of everything
+    // else -- this is pre-flight to avoid sending a doomed packet, not a
+    // claim to know better than the server). Reuses
+    // ItemInstance::canEquipInSlot() and this->canEquipItem() -- no new
+    // legality logic. Returns an empty string on success, else a reason
+    // naming the item and the slot.
+    std::string checkEquipDestination(const ItemInstance* item, int16_t toSlot) const;
+
+    // T77 -- resolves the destination equipment slot from the item's own
+    // `slots` bitmask via ItemInstance::canEquipInSlot(). Prefers an empty
+    // candidate so the name form does not silently clobber an
+    // already-worn item; if every candidate is occupied, falls back to
+    // the first candidate and flags allCandidatesOccupied.
+    EquipDestinationResult resolveEquipDestination(const ItemInstance* item) const;
+
+    // T77 -- name resolution for /equip's item-name form. Case-insensitive
+    // substring match against ItemInstance::name, searching only
+    // equipment + general (incl. bag contents) + cursor -- deliberately
+    // NOT bank/shared-bank/trade: command-layer convenience for "equip
+    // something you're carrying", not a general inventory search.
+    std::vector<std::pair<int16_t, const ItemInstance*>>
+    findItemsByNameSubstring(const std::string& needle) const;
+
+    // T71/T77 -- shared execution for /equip's explicit
+    // `<fromSlot> <toSlot>` form (and the resolved destination of the
+    // name form): validates slot recognition (this->isValidSlot(), no
+    // second copy of that predicate), rejects a no-op, pre-flights via
+    // checkEquipDestination(), then executes the T71 branch logic
+    // (cursor<->slot via pickupItem()/placeItem(), direct slot<->slot
+    // swap, or cursor<->cursor parity fallback) and pushes MoveItemIntent/
+    // EquipmentChangedIntent via bridge_ for the branch that doesn't
+    // already get them from pickupItem()/placeItem(). No legality
+    // judgment beyond checkEquipDestination() -- the server remains the
+    // sole arbiter of everything else.
+    MoveItemOutcome moveItem(int16_t fromSlot, int16_t toSlot);
+
     // Bag utilities
     bool isBag(int16_t slotId) const;
     int getBagSize(int16_t slotId) const;
