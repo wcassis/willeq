@@ -1,6 +1,11 @@
-// T50 -- coverage for /bank and /train (eq_commands_spells.cpp), which
-// close two automation-reachability gaps this project has now hit five
-// times (refactor/deferred.md "PATTERN"): /bank used to bypass its own
+// T50 -- coverage for /bank and /train's guard/validation logic, now living
+// in EverQuest::RequestBankToggle()/RequestTraining() (T140 migrated the
+// commands themselves to action::CommandProcessor -- see
+// refactor/T140_migrate_final_seventeen.md; the guard bodies moved
+// verbatim into these two new EverQuest methods, since they read private
+// m_combat_manager/m_entities/m_class/m_bridge state). Closes two
+// automation-reachability gaps this project has now hit five times
+// (refactor/deferred.md "PATTERN"): /bank used to bypass its own
 // gesture-validated intent (BankerInteractIntent) via a no-arg
 // OpenBankWindow() that falls back to a hardcoded dummy npc id, and /train
 // had no distance or class checks of its own -- the server drops both
@@ -9,9 +14,10 @@
 // zone/client_packet.cpp's Handle_OP_BankerChange), so previously the only
 // symptom was "nothing happened". See refactor/T50_bank_train_prevalidation.md.
 //
-// Modelled on test_eq_commands_vendor.cpp's (T48) MakeEq()/TestBridge/
-// ProcessChatInput seam -- /bank and /train live in the SAME registry
-// (EverQuest::m_command_registry) T48's vendor commands do.
+// Modelled on test_eq_commands_vendor.cpp's (T48) MakeEq()/TestBridge seam,
+// but calls the new EverQuest methods directly (T136/T140's pattern for
+// EqActionHandler-fronted wrappers) rather than going through
+// ProcessChatInput/the now-deleted game-registry commands.
 //
 // /bank's assertions stop at "the right intent was pushed with the right
 // npc id" -- BankerInteractIntent's own handler (npc_type/distance/
@@ -83,7 +89,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsBankTrainTest, Bank_NoTargetNotOpen_PrintsNoTarget_PushesNoIntent) {
-    eq.ProcessChatInput("/bank");
+    eq.RequestBankToggle();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -105,7 +111,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_WithNonBankerTarget_StillPushesIntent_Handl
     auto* cm = eq.GetCombatManager();
     ASSERT_TRUE(cm->SetTarget(100));
 
-    eq.ProcessChatInput("/bank");
+    eq.RequestBankToggle();
 
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
     auto intents = bridge.drainIntents();
@@ -120,7 +126,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_WithValidBankerTarget_PushesBankerInteractI
     auto* cm = eq.GetCombatManager();
     ASSERT_TRUE(cm->SetTarget(200));
 
-    eq.ProcessChatInput("/bank");
+    eq.RequestBankToggle();
 
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
     auto intents = bridge.drainIntents();
@@ -141,7 +147,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_AlreadyOpen_ClosesDirectly_WithoutRequiring
     bridge.drainIntents();
     ASSERT_FALSE(eq.GetCombatManager()->HasTarget());  // no target set at all
 
-    eq.ProcessChatInput("/bank");
+    eq.RequestBankToggle();
 
     EXPECT_FALSE(eq.IsBankWindowOpen());
     EXPECT_TRUE(bridge.drainIntents().empty());  // close is a direct call, not an intent
@@ -156,7 +162,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_AlreadyOpen_ClosesDirectly_WithoutRequiring
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsBankTrainTest, Train_NoTarget_PrintsNoTrainerTargeted) {
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -170,7 +176,7 @@ TEST_F(EqCommandsBankTrainTest, Train_NotAnNpc_PrintsNotAnNpc) {
     bridge.drainEvents();
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(300));
 
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -181,7 +187,7 @@ TEST_F(EqCommandsBankTrainTest, Train_TargetClassOutsideGmRange_PrintsNotATraine
     SpawnNpcAt(301, "a_random_npc", /*classId=*/1);  // not in [20,35]
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(301));
 
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -193,7 +199,7 @@ TEST_F(EqCommandsBankTrainTest, Train_TooFar_PrintsActionableDistanceMessage) {
     SpawnNpcAt(302, "Distant_WarriorGM", /*classId=*/20, /*x=*/1000, /*y=*/1000);
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(302));
 
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -209,7 +215,7 @@ TEST_F(EqCommandsBankTrainTest, Train_WrongClassTrainer_PrintsActionableMessageN
     SpawnNpcAt(303, "Miltiades_Tal_Azroth", /*classId=*/22);
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(303));
 
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -224,7 +230,7 @@ TEST_F(EqCommandsBankTrainTest, Train_MatchingClassInRange_SendsTrainerRequest_N
     SpawnNpcAt(304, "a_warrior_gm", CLASS_WARRIOR_GM);  // trains class 20-19=1=Warrior
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(304));
 
-    eq.ProcessChatInput("/train");
+    eq.RequestTraining();
 
     // No refusal message -- the pre-validation passed and RequestTrainerWindow()
     // (untouched, pre-existing code, out of this unit's territory) was called.

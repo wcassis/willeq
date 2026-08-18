@@ -2088,6 +2088,19 @@ public:
 	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
 	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
 
+	// T140: four thin wrappers, same rationale as T136's
+	// RequestVendorToggle/Buy/Sell -- action::EqActionHandler has no access
+	// to EverQuest's private m_bridge/m_combat_manager/m_entities, so each
+	// carries its old eq_commands_*.cpp lambda body verbatim (guard logic
+	// included, unchanged) rather than exposing those members directly.
+	// Defined in eq_commands_movement.cpp (RequestWarp/RequestTimeOfDay,
+	// where the old lambdas lived) and eq_commands_spells.cpp
+	// (RequestBankToggle/RequestTraining, ditto).
+	void RequestWarp(const std::string& args);
+	void RequestTimeOfDay(const std::string& args);
+	void RequestBankToggle();
+	void RequestTraining();
+
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);
 

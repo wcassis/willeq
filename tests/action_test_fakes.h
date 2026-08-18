@@ -324,6 +324,18 @@ public:
         record("sellToVendor", slot, static_cast<uint32_t>(quantity));
     }
 
+    // ========== Movement / Utility / Skills (T140) ==========
+    void showLocation() override { record("showLocation"); }
+    void warp(const std::string& args) override { record("warp", args); }
+    void showOrSetZoning(const std::string& args) override { record("showOrSetZoning", args); }
+    void requestQuit() override { record("requestQuit"); }
+    void campNow() override { record("campNow"); }
+    void debugLevel(const std::string& args) override { record("debugLevel", args); }
+    void perfReport() override { record("perfReport"); }
+    void timeOfDay(const std::string& args) override { record("timeOfDay", args); }
+    void bankToggle() override { record("bankToggle"); }
+    void trainWithTarget() override { record("trainWithTarget"); }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

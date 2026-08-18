@@ -8376,6 +8376,25 @@ move up?) rather than be bent to fit the Merchant family's shape. `equip`
 is untouched — still registered in `EverQuest::m_command_registry`, still
 covered by `tests/test_eq_commands_equip.cpp`.
 
+## T140 (2026-08-18): `/equip` migration — third confirmation, still deferred
+
+T140 (the "final seventeen" migration unit) named `equip` as its 17th row,
+sequenced last with an explicit instruction to STOP the moment it needed
+more than a thin accessor rather than re-litigate T136's finding under
+batch pressure. Confirmed the same three reasons hold, unchanged: `equip`
+still carries category `"Inventory"`, its mechanism is still
+`InventoryManager` (no `EqActionHandler` reachability the way
+`getCombatManager()` gives `CombatManager`), and the handler is still
+~150 lines across three input forms plus cursor-vs-slot staging and
+pre-flight legality checking. No new investigation was needed beyond
+re-reading the T136 finding — this is the second unit (after T136 itself)
+to reach the STOP rather than attempt the migration, so it is now a
+two-for-two pattern, not a one-off scoping call. `equip` remains untouched;
+this unit's other 16 rows (all of T138's remaining `migrate-action` rows
+except `equip`) migrated cleanly. A future unit taking this on should
+budget it as its own design pass from the start, not a leftover to squeeze
+into a batch.
+
 ## T136 (2026-08-18): Merchant vendor-state-domain question — resolved, not deferred
 
 T103 (Trade domain) and T134's Board both flagged Merchant as the family

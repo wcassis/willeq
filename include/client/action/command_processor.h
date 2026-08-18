@@ -383,6 +383,36 @@ private:
     ActionResult cmdBuy(const std::string& args);
     ActionResult cmdSell(const std::string& args);
 
+    // T140: final 16 of the game-registry migration programme (equip
+    // deliberately excluded -- see refactor/T140_migrate_final_seventeen.md).
+    // cmdSit/cmdStand/cmdMove/cmdMoveTo/cmdFollow/cmdStopFollow REUSE the
+    // pre-existing ActionDispatcher::sit()/stand()/moveToLocation()/
+    // moveToEntity()/followEntity()/stopFollow() wrappers (T98 had removed
+    // this side's shadowed dead copies; those dispatcher methods themselves
+    // were never dead, just unreachable from a game-registry-shadowed
+    // command name) -- only cmdLoc/cmdWarp/cmdZoning/cmdQuit/cmdCamp/
+    // cmdDebug/cmdPerf/cmdTime/cmdBank/cmdTrain route to new
+    // ActionDispatcher/IActionHandler surface. cmdMove/cmdMoveTo/cmdFollow
+    // override their dispatcher's generic success message with the
+    // original game-registry wording (T88's dual-frame echo for /move in
+    // particular -- load-bearing, see eq_commands_movement.cpp's comment).
+    ActionResult cmdLoc(const std::string& args);
+    ActionResult cmdSit(const std::string& args);
+    ActionResult cmdStand(const std::string& args);
+    ActionResult cmdMove(const std::string& args);
+    ActionResult cmdMoveTo(const std::string& args);
+    ActionResult cmdWarp(const std::string& args);
+    ActionResult cmdZoning(const std::string& args);
+    ActionResult cmdFollow(const std::string& args);
+    ActionResult cmdStopFollow(const std::string& args);
+    ActionResult cmdQuit(const std::string& args);
+    ActionResult cmdCamp(const std::string& args);
+    ActionResult cmdDebug(const std::string& args);
+    ActionResult cmdPerf(const std::string& args);
+    ActionResult cmdTime(const std::string& args);
+    ActionResult cmdBank(const std::string& args);
+    ActionResult cmdTrain(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by
