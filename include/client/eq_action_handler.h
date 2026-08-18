@@ -197,6 +197,14 @@ public:
     void requestGuildMOTD() override;
     void setGuildMOTD(const std::string& motd) override;
 
+    // Corpse / Resurrection (T134)
+    void corpseDrag(const std::string& corpseName) override;
+    void corpseDrop() override;
+    void consent(const std::string& playerName) override;
+    void consentDeny(const std::string& playerName) override;
+    void rezAccept() override;
+    void rezDecline() override;
+
 private:
     EverQuest& m_eq;
 

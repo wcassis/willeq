@@ -1211,4 +1211,28 @@ void EqActionHandler::setGuildMOTD(const std::string& motd) {
     m_eq.SendSetGuildMOTD(motd);
 }
 
+void EqActionHandler::corpseDrag(const std::string& corpseName) {
+    m_eq.SendCorpseDrag(corpseName);
+}
+
+void EqActionHandler::corpseDrop() {
+    m_eq.SendCorpseDrop();
+}
+
+void EqActionHandler::consent(const std::string& playerName) {
+    m_eq.SendConsent(playerName);
+}
+
+void EqActionHandler::consentDeny(const std::string& playerName) {
+    m_eq.SendConsentDeny(playerName);
+}
+
+void EqActionHandler::rezAccept() {
+    m_eq.SendRezzAnswer(true);
+}
+
+void EqActionHandler::rezDecline() {
+    m_eq.SendRezzAnswer(false);
+}
+
 } // namespace eqt

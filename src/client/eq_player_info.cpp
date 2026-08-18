@@ -993,11 +993,16 @@ void EverQuest::SendRezzAnswer(bool accept)
 	EQT::Resurrect_Struct rez = m_pending_rezz;
 	rez.action = accept ? 1 : 0;
 
-	// Build and send the packet
+	// Build and send the packet. T134: this used to build its own
+	// opcode-prefixed packet (Resize(2+struct); PutUInt16(0, opcode);
+	// memcpy at +2) and THEN call EverQuest::QueuePacket(opcode, &packet),
+	// which itself prepends another 2-byte opcode -- the same
+	// double-opcode-prefix bug T133 found and fixed in eq_guild.cpp's
+	// senders (confirmed via the eqemu zone log's "Wrong size" complaint).
+	// Fixed by building a body-only packet and calling QueuePacket once.
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::Resurrect_Struct));
-	packet.PutUInt16(0, HC_OP_RezzAnswer);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &rez, sizeof(EQT::Resurrect_Struct));
+	packet.Resize(sizeof(EQT::Resurrect_Struct));
+	packet.PutData(0, &rez, sizeof(EQT::Resurrect_Struct));
 	QueuePacket(HC_OP_RezzAnswer, &packet);
 
 	if (accept) {
