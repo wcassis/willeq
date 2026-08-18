@@ -1,6 +1,7 @@
 #include "client/application.h"
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
+#include "client/help/merged_help.h"
 #include "client/eq_action_handler.h"
 #include "client/combat.h"
 #include "client/inventory/inventory_manager.h"
@@ -1128,6 +1129,31 @@ void Application::updateScript(float deltaTime) {
 // already tried and failed there too, via ProcessChatInput's own call to
 // EverQuest::DispatchSlashCommand). See refactor/T29_unified_command_channel.md.
 bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, CommandDispatchResult& result) {
+    // T143: registry-aware /help. /help (and aliases h, ?) is no longer
+    // registered in registry 1 (EverQuest::m_command_registry) precisely so
+    // it reaches HERE -- Application is the only object holding pointers to
+    // both registry 1 (via m_eqClient->GetCommandRegistry()) and registry 2
+    // (m_commandProcessor), so it is the only place that can build a merged
+    // view. Intercepted before the registry-2 name check below so a /help
+    // that also happens to collide with a real registry-2 command name
+    // (it doesn't today, but nothing enforces that) can never be shadowed.
+    // See include/client/help/merged_help.h and
+    // refactor/T143_registry_aware_help.md.
+    if (m_eqClient) {
+        eqt::help::HelpResponse helpResponse = eqt::help::BuildHelpResponse(
+            cmdBody, m_eqClient->GetCommandRegistry(), m_commandProcessor.get());
+        if (helpResponse.handled) {
+            for (const auto& line : helpResponse.lines) {
+                m_eqClient->AddChatSystemMessage(line);
+            }
+            result.recognized = true;
+            result.registry = "help";
+            result.success = true;
+            result.message = fmt::format("{} lines", helpResponse.lines.size());
+            return true;
+        }
+    }
+
     // Registry 2: action::CommandProcessor. Only attempt it if it actually
     // recognizes the command name -- calling processCommand() unconditionally
     // would also swallow "Unknown command" as a (failed) CommandProcessor
@@ -1182,8 +1208,10 @@ void Application::printCommandResult(const CommandDispatchResult& result) const 
     // that actually delivers automation (see refactor/T29_unified_command_
     // channel.md scope item 3). A script can synchronise on:
     //   - "recognized=true/false": did ANY registry accept it at all.
-    //   - "registry=...": which of the 4 vocabularies handled it (chat/
-    //     game/action/renderer/none).
+    //   - "registry=...": which vocabulary handled it (chat/game/action/
+    //     renderer/help/none). T143: "help" is the merged registry-1 +
+    //     registry-2 /help view (Application::dispatchToActionOrRenderer),
+    //     not a registry of its own.
     //   - "outcome=...": applied (registries 1/2, handler ran and reported
     //     success), failed (registries 1/2, handler ran and reported
     //     failure -- see message=), queued (registry 3 -- fire-and-forget

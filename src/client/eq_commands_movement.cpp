@@ -128,49 +128,24 @@ void EverQuest::RegisterMovementCommands()
 
 	// === Utility Commands ===
 
-	Command help;
-	help.name = "help";
-	help.aliases = {"h", "?"};
-	help.usage = "/help [command]";
-	help.description = "Show help for commands";
-	help.category = "Utility";
-	help.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			// Show all categories and commands
-			AddChatSystemMessage("=== Available Commands ===");
-			for (const auto& category : m_command_registry->getCategories()) {
-				auto cmds = m_command_registry->getCommandsByCategory(category);
-				if (!cmds.empty()) {
-					std::string cmdList;
-					for (const auto* cmd : cmds) {
-						if (!cmdList.empty()) cmdList += ", ";
-						cmdList += cmd->name;
-					}
-					AddChatSystemMessage(fmt::format("{}: {}", category, cmdList));
-				}
-			}
-			AddChatSystemMessage("Type /help <command> for detailed help.");
-		} else {
-			// Show help for specific command
-			const auto* cmd = m_command_registry->findCommand(args);
-			if (cmd) {
-				AddChatSystemMessage(fmt::format("=== {} ===", cmd->name));
-				AddChatSystemMessage(cmd->description);
-				AddChatSystemMessage(fmt::format("Usage: {}", cmd->usage));
-				if (!cmd->aliases.empty()) {
-					std::string aliases;
-					for (const auto& a : cmd->aliases) {
-						if (!aliases.empty()) aliases += ", ";
-						aliases += "/" + a;
-					}
-					AddChatSystemMessage(fmt::format("Aliases: {}", aliases));
-				}
-			} else {
-				AddChatSystemMessage(fmt::format("Unknown command: {}", args));
-			}
-		}
-	};
-	m_command_registry->registerCommand(help);
+	// T143: /help (aliases h, ?) is DELETED from this registry, not just
+	// moved. It used to live here as a "stay-game" command (T138's
+	// needs-decision row) specifically BECAUSE it only ever introspected
+	// this registry's own catalog -- migrating it as-is would just relocate
+	// the blindness to wherever it landed. That blindness stopped being
+	// tolerable once the migration programme (T139/T140/T142) emptied this
+	// registry down to a handful of commands: /help was describing 11 of
+	// 122 commands, a regression this programme caused.
+	//
+	// The fix requires seeing BOTH EverQuest::m_command_registry (this
+	// registry) and action::CommandProcessor's catalog, and only
+	// Application holds pointers to both. So /help now lives in
+	// Application::dispatchToActionOrRenderer() (application.cpp),
+	// implemented via eqt::help::BuildHelpResponse()
+	// (include/client/help/merged_help.h) -- it is reached through the SAME
+	// unrecognized-command fallback every other action/renderer command
+	// already uses, now that no registration here shadows it. See
+	// refactor/T143_registry_aware_help.md.
 
 	// T140: quit/camp/debug/perf MIGRATED to action::CommandProcessor
 	// (cmdQuit/cmdCamp/cmdDebug/cmdPerf) -- all net-new EqActionHandler

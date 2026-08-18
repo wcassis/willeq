@@ -337,6 +337,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/action_dispatcher.cpp
     src/client/action/input_action_bridge.cpp
     src/client/action/command_processor.cpp
+    # Help system sources (T143: merges EverQuest::m_command_registry +
+    # action::CommandProcessor catalogs for a registry-aware /help)
+    src/client/help/merged_help.cpp
     # Application layer sources
     src/client/application.cpp
     src/client/eq_action_handler.cpp

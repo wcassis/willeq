@@ -8684,3 +8684,60 @@ this unit. Not fixed here: fixing it would mean adding a console echo to
 every `chat()` call site in `processSlashCommand()` (dozens of call sites,
 well outside this unit's diff), or accepting the asymmetry as intrinsic to
 which thread produced the message.
+
+## T143 (2026-08-18) — `/help` is now registry-1 + registry-2 aware (114 of 114 reachable commands, deduplicated); registry 3 (renderer) is STILL invisible to help — a queryable catalog there is a follow-up, not started here
+
+`/help` (`include/client/help/merged_help.h`,
+`src/client/help/merged_help.cpp`) now merges `EverQuest::
+m_command_registry` (registry 1) and `action::CommandProcessor` (registry 2)
+into one categories overview, one category-detail view (new — neither side
+supported querying by category name before this unit), and one
+command-detail view, deduplicated (a name/alias present in both is shown
+once, resolved by registry 1 since that is the one actually reached at
+runtime — see `Application::dispatchToActionOrRenderer`'s dispatch order).
+Lives in `Application::dispatchToActionOrRenderer`, the one place holding
+pointers to both catalogs (added `EverQuest::GetCommandRegistry()` as a
+read-only accessor for this); `/help`'s own registration was DELETED from
+registry 1 (`eq_commands_movement.cpp`) so it falls through to the
+unrecognized-command fallback that already reaches this method for every
+other action/renderer command. Live-measured: 11 -> 114 distinct commands,
+zero duplicates in the no-args overview (`review/T143/README.md`).
+
+**Still open**: registry 3 (`IrrlichtRenderer::processSlashCommand()`'s
+~36-command `cmd == "/x"` if/else chain, reached via the renderer command
+bridge — the T139/T142 deletions' destination) has no catalog to query at
+all, so it is **excluded from this merge, not merely deprioritized** —
+`Application::printCommandResult()`'s own comment already says so ("the
+renderer-side registry has no query interface reachable from the game
+thread"), and this unit does not change that. Those ~36 commands remain
+permanently invisible to `/help` (and to `getCompletions()`/tab-complete,
+which has the identical two-registry blindness `/help` had before this
+unit — not touched here, out of scope) until the renderer gets a queryable
+command table.
+
+**Follow-up estimate** (giving the renderer a real catalog, registry-3):
+this is real, separate work, not a copy of this unit's mechanism — the
+renderer's ~36 commands are plain `if (cmd == "/x") { ... }` branches with
+no `Command`/`CommandInfo`-shaped metadata (name/aliases/usage/
+description/category) attached anywhere, and `processSlashCommand()` runs
+on the RENDER thread (P10's GL-context-affinity trap; this unit's own
+`/help` deliberately stays on the game thread and only ever pushes a
+fire-and-forget bridge event toward registry 3, never queries it). Building
+a real catalog means: (1) retrofitting each of the ~36 branches with
+metadata — either a parallel `std::vector<CommandInfo>` hand-maintained
+alongside the if/else chain, or restructuring the chain itself into a
+registered-command-table dispatch (the bigger, more correct option); (2)
+exposing that table across the thread boundary for the game thread to read
+it (a new query-intent + response path over the existing bridge, or a
+read-only snapshot published each frame — GameStateBridge has no precedent
+for a synchronous cross-thread query today, only fire-and-forget
+events/intents, so this is new bridge shape, not a reuse of an existing
+one); (3) wiring `/help`'s merge to a third source. Rough size: **1
+medium-to-large unit** (~1 day) for the retrofit-in-place option (adding
+metadata beside the existing chain, no behavior change to the branches
+themselves) plus the new cross-thread query path; **2-3 units** if the
+if/else chain itself is restructured into a real registry first (arguably
+the more durable fix, since a hand-maintained parallel metadata list will
+drift the same way registries 1/2 already nearly did — T97's whole
+finding). Not started here — out of this unit's scope per the plan's
+explicit scope boundary.

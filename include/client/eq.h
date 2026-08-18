@@ -829,6 +829,14 @@ public:
 	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
 	void AddChatMissMessage(const std::string &text);  // Add miss message (filterable separately)
 
+	// T143: read-only access to registry 1's catalog (name/alias/category
+	// introspection only -- NOT a way to execute commands; use
+	// DispatchSlashCommand() for that). Added so Application, which is the
+	// only object that also holds registry 2 (action::CommandProcessor),
+	// can build a merged /help view across both. See
+	// refactor/T143_registry_aware_help.md.
+	const eqt::ui::CommandRegistry* GetCommandRegistry() const { return m_command_registry.get(); }
+
 	// Public movement interface
 	void Move(float x, float y, float z);
 	void MoveToEntity(const std::string &name);

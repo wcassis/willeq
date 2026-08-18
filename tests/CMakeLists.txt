@@ -321,6 +321,21 @@ ADD_EXECUTABLE(test_command_processor
 TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_command_processor)
 
+# T143: registry-aware /help. Merges registry 1's CommandRegistry (game,
+# graphics/ui) and registry 2's CommandProcessor (action) catalogs -- needs
+# both, plus the same ACTION_LAYER_STATE_SOURCES dependency set as
+# test_command_processor.cpp, but no Irrlicht, no EverQuest, no Application.
+ADD_EXECUTABLE(test_merged_help
+    test_merged_help.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_merged_help GTest::gtest_main fmt::fmt)
+GTEST_DISCOVER_TESTS(test_merged_help)
+
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the
 # ActionCallback and the recording handler behind a real ActionDispatcher.
