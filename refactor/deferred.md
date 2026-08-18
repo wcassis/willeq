@@ -8644,3 +8644,43 @@ opcode files in T141's territory list), and the right fix -- either a
 general-slot translation table alongside the existing cursor one, or
 confirming this eqemu server's config is itself nonstandard -- deserves its
 own small investigation rather than a guess bolted onto this unit's diff.
+
+## T142 — headless regression widened by 2 more names (not fixed, same root cause as T139's)
+
+`spellreload`/`reloadspells`/`reloadspellfx` and `weatherquality`/`wq`/
+`weatherpreset` are now routed through `IrrlichtRenderer::processSlashCommand()`
+via registry-3's fallback, same as T139's 34. Both handlers used to have an
+`#else` branch (`#ifdef EQT_HAS_GRAPHICS`) printing "requires graphics mode
+(not available in this headless build)" when the game registry owned them.
+Registry-3 has no such guard, so a **headless** build now reports
+`outcome=queued` for all six names instead — the identical regression T139
+already recorded for its 34 names (see the entry above, "headless"). Not
+fixed here for the same reason: the fix site is `Application::
+dispatchToActionOrRenderer` (`application.cpp`), outside this unit's
+territory (`eq_commands_movement.cpp`, `irrlicht_renderer.cpp`, `tests/`,
+`refactor/`, `review/T142/`). If `application.cpp`'s catch-all is ever
+revisited, this brings the running total needing that fix to 36 names.
+
+## T142 — `chat()`'s console echo is lost for these two commands (observed, not fixed)
+
+`EverQuest::AddChatSystemMessage()` (`eq_chat.cpp:199-212`, the game-thread
+helper the deleted handlers used to call) does two things: pushes a
+`SystemMessage` event to the bridge AND calls `LOG_INFO(MOD_MAIN, "{}",
+text)` directly to console. `IrrlichtRenderer::processSlashCommand()`'s
+`chat()` helper (`irrlicht_renderer.cpp:1043`, the replacement path) does
+only the first — it has no console echo. Live A/B evidence
+(`review/T142/pre_change_full.log` vs `post_change_full.log`) shows this
+concretely: pre-change, `/spellreload` logged `[MAIN] Spell effect settings
+reloaded` and `/weatherquality` (query form) logged `[MAIN] Weather quality:
+low`; post-change, neither line appears — only the underlying `[GRAPHICS]`
+effect lines do. This is **not a new asymmetry introduced by this unit** —
+already-bridge-routed `/reloadeffects`/`/reloadfx` (T139) show the identical
+gap (`review/T139/post_deletion_full.log`: no `[MAIN]` echo of "Environment
+effects settings reloaded" either). The UI chat window still receives the
+message (per the plan's design), so nothing user-visible is lost — only a
+console-log convenience for anyone grepping `[MAIN]` output, which was
+already inconsistent across renderer- vs game-registry-owned commands before
+this unit. Not fixed here: fixing it would mean adding a console echo to
+every `chat()` call site in `processSlashCommand()` (dozens of call sites,
+well outside this unit's diff), or accepting the asymmetry as intrinsic to
+which thread produced the message.

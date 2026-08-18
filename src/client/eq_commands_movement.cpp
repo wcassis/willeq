@@ -42,8 +42,6 @@
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/weather_effects_controller.h"
-#include "client/graphics/weather_config_loader.h"
-#include "client/graphics/weather_quality_preset.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
@@ -53,7 +51,6 @@
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/seasonal_controller.h"
-#include "client/graphics/environment/spell_effects_config.h"
 #endif
 
 #include "client/bridge/game_state_bridge.h"
@@ -193,54 +190,18 @@ void EverQuest::RegisterMovementCommands()
 	// action-registry command claims the name, so nothing here needs
 	// replacing -- the same renderer entry points still run.
 
-	Command reloadspells;
-	reloadspells.name = "spellreload";
-	reloadspells.aliases = {"reloadspells", "reloadspellfx"};
-	reloadspells.usage = "/spellreload";
-	reloadspells.description = "Reload spell effect settings from config/spell_effects.json";
-	reloadspells.category = "Utility";
-	reloadspells.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-		EQT::Graphics::Environment::SpellEffectsConfig::instance().reload();
-		AddChatSystemMessage("Spell effect settings reloaded");
-#else
-		AddChatSystemMessage("/spellreload requires graphics mode (not available in this headless build).");
-#endif
-	};
-	m_command_registry->registerCommand(reloadspells);
-
-	Command weatherquality;
-	weatherquality.name = "weatherquality";
-	weatherquality.aliases = {"wq", "weatherpreset"};
-	weatherquality.usage = "/weatherquality [low|medium|high|ultra|custom]";
-	weatherquality.description = "Get or set weather effects quality preset";
-	weatherquality.category = "Utility";
-	weatherquality.handler = [this](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-		auto& loader = EQT::Graphics::WeatherConfigLoader::instance();
-
-		if (args.empty()) {
-			// Show current preset
-			auto preset = loader.getQualityPreset();
-			std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
-
-			AddChatSystemMessage(fmt::format("Weather quality: {}", presetName));
-			AddChatSystemMessage("Available: low, medium, high, ultra, custom");
-		} else {
-			// Set new preset
-			if (loader.setQualityPreset(args)) {
-				auto preset = loader.getQualityPreset();
-				std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
-				AddChatSystemMessage(fmt::format("Weather quality set to: {}", presetName));
-			} else {
-				AddChatSystemMessage("Invalid preset. Use: low, medium, high, ultra, custom");
-			}
-		}
-#else
-		AddChatSystemMessage("/weatherquality requires graphics mode (not available in this headless build).");
-#endif
-	};
-	m_command_registry->registerCommand(weatherquality);
+	// T142: spellreload (aliases reloadspells, reloadspellfx) and
+	// weatherquality (aliases wq, weatherpreset) DELETED from the game
+	// registry -- these were the two exceptions noted above that called
+	// graphics-only singletons (SpellEffectsConfig, WeatherConfigLoader)
+	// directly from the game thread, with no lock protecting them against
+	// the render thread (T138). Both are now implemented in
+	// IrrlichtRenderer::processSlashCommand() (irrlicht_renderer.cpp),
+	// reached via registry-3's fallback exactly like reloadeffects/
+	// reloadweather already were -- see refactor/T142_bridge_route_
+	// singletons.md. All four aliases were taught to processSlashCommand()
+	// as literal cmd == "/alias" arms (T139's alias trap: registry 3 does
+	// not resolve Command::aliases).
 
 	// === Sky Commands ===
 

@@ -11,6 +11,9 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/weather_effects_controller.h"
+#include "client/graphics/weather_config_loader.h"
+#include "client/graphics/weather_quality_preset.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/zone_biome.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
@@ -1293,6 +1296,37 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             }
         } else {
             chat("Weather effects system not available");
+        }
+    } else if (cmd == "/spellreload" || cmd == "/reloadspells" || cmd == "/reloadspellfx") {
+        // T142: moved from eq_commands_movement.cpp -- was one of the two
+        // documented exceptions calling a graphics-only singleton directly
+        // from the game thread (T138 found no lock protecting it against
+        // this, the render thread). Now the mutation happens here, on the
+        // render thread, so the race dissolves by construction.
+        EQT::Graphics::Environment::SpellEffectsConfig::instance().reload();
+        chat("Spell effect settings reloaded");
+    } else if (cmd == "/weatherquality" || cmd == "/wq" || cmd == "/weatherpreset") {
+        // T142: moved from eq_commands_movement.cpp -- see /spellreload
+        // above for why (same lock-free cross-thread mutation defect,
+        // same fix).
+        auto& loader = EQT::Graphics::WeatherConfigLoader::instance();
+
+        if (args.empty()) {
+            // Show current preset
+            auto preset = loader.getQualityPreset();
+            std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
+
+            chat(fmt::format("Weather quality: {}", presetName));
+            chat("Available: low, medium, high, ultra, custom");
+        } else {
+            // Set new preset
+            if (loader.setQualityPreset(args)) {
+                auto preset = loader.getQualityPreset();
+                std::string presetName = EQT::Graphics::WeatherQualityManager::presetToString(preset);
+                chat(fmt::format("Weather quality set to: {}", presetName));
+            } else {
+                chat("Invalid preset. Use: low, medium, high, ultra, custom");
+            }
         }
     }
     // --- Detail ---
