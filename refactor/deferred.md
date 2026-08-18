@@ -41,6 +41,15 @@ does not. Grouped by kind; ungrouped placement in the body is unchanged
   `door_manager.cpp` — all three confirmed still true, T53. Heading:
   `## Decoupling residue — CLOSED by S2` (see its "Still open from that
   audit" list).
+- `action::EqActionHandler` cannot push a `GameStateBridge` intent directly
+  (no bridge access, only `EverQuest&`) — any future action-layer migration
+  whose mechanism is a bridge intent (not a `Send*()` packet) will hit this.
+  Heading: `## T136 (2026-08-18): \`EqActionHandler\` cannot push bridge
+  intents — a real, load-bearing architectural gap`.
+- `/equip` migration to `action::CommandProcessor` — scoped out of T136 on
+  purpose (different mechanism, own design questions), not yet claimed by
+  any unit. Heading: `## T136 (2026-08-18): \`/equip\` migration —
+  genuinely deferred, not dropped`.
 
 **Client correctness bugs**
 - T93's fake-substitution sweep found the T90 double-conversion pattern
@@ -8348,3 +8357,62 @@ wrong field semantics is a distinct failure mode from a malformed packet
 (T133/T134's findings), and neither showed up as a zone-log error. Merchant's
 live leg should budget a DB-level check (actual inventory/currency changes)
 for `buy`/`sell`, not just packet-size correctness.
+
+## T136 (2026-08-18): `/equip` migration — genuinely deferred, not dropped
+
+`T136_migrate_merchant_family.md` scoped five commands
+(`vendor`/`vendorlist`/`buy`/`sell`/`equip`) but migrated only four.
+`equip` was deliberately excluded: it already carries category
+`"Inventory"` (not `"Commerce"`) in `eq_commands.cpp`'s own registration,
+its mechanism is `InventoryManager` (not the `Vendor*Intent` family the
+other four share), and its handler is ~150 lines covering three input
+forms (`fromSlot toSlot` / item-name resolution / `list`), cursor-vs-slot
+staging (T71), and pre-flight legality checking (T77). A future unit
+migrating it needs to answer its own design questions (does the three-form
+dispatch move to `CommandProcessor`? does `EqActionHandler` need
+`InventoryManager` reachability the way it has `getCombatManager()` for
+`CombatManager`? does the pre-flight legality check stay in `EverQuest` or
+move up?) rather than be bent to fit the Merchant family's shape. `equip`
+is untouched — still registered in `EverQuest::m_command_registry`, still
+covered by `tests/test_eq_commands_equip.cpp`.
+
+## T136 (2026-08-18): Merchant vendor-state-domain question — resolved, not deferred
+
+T103 (Trade domain) and T134's Board both flagged Merchant as the family
+most likely to need a `GameStateSyncBridge`-fed vendor state domain the way
+Trade got one. **T136 investigated this directly and found it NOT
+warranted**: the actual state gap was two reads (`m_vendor_items`,
+`m_vendor_name`) serving exactly one display command (`/vendorlist`), not a
+cross-cutting need multiple consumers share. Confirmed the renderer does
+NOT duplicate this state (it reads through the same `m_vendor_items`/event
+path), and the two new `EverQuest` accessors added
+(`GetVendorItems()`/`GetVendorName()`) return `const&` — no mutable handle
+leaks. Resolved by adding the two accessors directly rather than building a
+domain. Recording this as CLOSED (not open) in case merchant state grows
+later and someone re-raises the question — the reasoning here is why it
+wasn't needed *at this scope*, not a blanket "never build one."
+
+## T136 (2026-08-18): `EqActionHandler` cannot push bridge intents — a real, load-bearing architectural gap
+
+`action::EqActionHandler` (the `IActionHandler` implementation wrapping
+`EverQuest`) has **no access to `EverQuest::m_bridge`** (private) and is
+constructed with only an `EverQuest&` (`EqActionHandler(EverQuest& eq)`,
+`application.cpp:283`, no `GameStateBridge*` parameter). Every existing
+`EqActionHandler` method that needs to act calls an `EverQuest::Send*()`
+sender or reads `EverQuest`/`CombatManager` state — **none of them push a
+bridge intent directly**, because none of them have ever needed to before.
+T136's `vendor`/`buy`/`sell` needed exactly that (they push
+`eqt::events::Vendor*Intent`, not a packet), and worked around it by adding
+three new `EverQuest` methods (`RequestVendorToggle`/`RequestVendorBuy`/
+`RequestVendorSell`) that do the guard-then-push on `EverQuest`'s own side,
+so `EqActionHandler` still only ever calls into `EverQuest`. This is a
+reasonable per-unit workaround but is genuinely a gap: **any future
+action-layer migration whose underlying mechanism is a bridge intent
+(rather than a `Send*()` packet) will hit this same wall** and either repeat
+the same "add an `EverQuest` wrapper" workaround or need
+`EqActionHandler`'s construction wiring widened to also carry a
+`GameStateBridge*` (a real, if modest, `application.cpp` change, out of
+T136's territory). Flagged here rather than fixed, since T136's territory
+list explicitly restricted `eq.h` changes to "accessors only" and widening
+`EqActionHandler`'s constructor is a bigger, different-shaped change than a
+command migration unit should make unprompted.

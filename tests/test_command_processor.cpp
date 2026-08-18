@@ -2167,4 +2167,139 @@ TEST_F(CommandProcessorTest, Petition_NotConnectedToZone_FailsCleanlyWithoutDisp
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== Merchant (T136) ==========
+// vendor/vendorlist/buy/sell -- 4 of the 5-command family (equip stays in
+// eq_commands.cpp, see refactor/T136_migrate_merchant_family.md's Review).
+// Unlike every prior family, the "You are not at a vendor."/"no target"
+// stateful guards live inside the real EverQuest (RequestVendorToggle/
+// RequestVendorBuy/RequestVendorSell, EqActionHandler::vendorList()), not
+// here -- RecordingActionHandler is a fake with no vendor state, so those
+// guard paths are covered instead in test_eq_action_handler_vendor.cpp
+// (real EverQuest, real wire-replayed vendor state). These tests cover only
+// what belongs at this layer: registration/category, dispatch reaching the
+// right ActionDispatcher method, and cmdBuy/cmdSell's own numeric-token
+// parsing (a formatting concern ported from the old buy_cmd/sell_cmd
+// istringstream parsing).
+
+TEST_F(CommandProcessorTest, T136_MerchantCommandsRegisteredWithCommerceCategory) {
+    for (const char* name : {"vendor", "vendorlist", "buy", "sell"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Commerce") << "wrong category for: " << name;
+    }
+}
+
+TEST_F(CommandProcessorTest, Vendor_DispatchesVendorToggle) {
+    auto result = processor->processCommand("/vendor");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("vendorToggle()"));
+}
+
+TEST_F(CommandProcessorTest, Vendor_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/vendor");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, VendorList_DispatchesVendorList) {
+    auto result = processor->processCommand("/vendorlist");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("vendorList()"));
+}
+
+TEST_F(CommandProcessorTest, VendorList_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/vendorlist");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/buy");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Usage:"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_MalformedSlot_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/buy notanumber");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid slot"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_TrailingGarbageSlot_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/buy 5abc");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid slot"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_MalformedQuantity_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/buy 5 zero");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid quantity"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_ZeroQuantity_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/buy 5 0");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid quantity"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Buy_ValidSlotNoQuantity_DispatchesWithDefaultQuantityOne) {
+    auto result = processor->processCommand("/buy 5");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("buyFromVendor(5, 1)"));
+}
+
+TEST_F(CommandProcessorTest, Buy_ValidSlotAndQuantity_DispatchesExactValues) {
+    auto result = processor->processCommand("/buy 5 3");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("buyFromVendor(5, 3)"));
+}
+
+TEST_F(CommandProcessorTest, Buy_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/buy 5");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Sell_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/sell");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Usage:"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Sell_MalformedSlot_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/sell -1");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid slot"), std::string::npos);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Sell_ValidSlotNoQuantity_DispatchesWithDefaultQuantityOne) {
+    auto result = processor->processCommand("/sell 23");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(23, 1)"));
+}
+
+TEST_F(CommandProcessorTest, Sell_ValidSlotAndQuantity_DispatchesExactValues) {
+    auto result = processor->processCommand("/sell 23 4");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(23, 4)"));
+}
+
+TEST_F(CommandProcessorTest, Sell_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/sell 23");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 } // namespace

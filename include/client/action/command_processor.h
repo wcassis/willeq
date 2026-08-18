@@ -370,6 +370,19 @@ private:
     ActionResult cmdBug(const std::string& args);
     ActionResult cmdPetition(const std::string& args);
 
+    // T136: Merchant (vendor/vendorlist/buy/sell -- 4 of the 5-command
+    // family; equip stays in eq_commands.cpp, see this unit's Review for
+    // why), migrated from eq_commands.cpp's Commerce block. Unlike every
+    // prior family, no EverQuest::Send*() senders existed to wrap -- see
+    // ActionDispatcher's Merchant section for what these route to.
+    // cmdBuy/cmdSell own the numeric slot/quantity token parsing (a
+    // formatting concern, ported from the old buy_cmd/sell_cmd lambdas'
+    // istringstream parsing), not a guard -- same precedent as cmdSplit's.
+    ActionResult cmdVendor(const std::string& args);
+    ActionResult cmdVendorList(const std::string& args);
+    ActionResult cmdBuy(const std::string& args);
+    ActionResult cmdSell(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by

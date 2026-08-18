@@ -557,6 +557,27 @@ void CommandProcessor::registerBuiltinCommands() {
         "petition", {}, "/petition <text>", "Submit a petition", "Utility", false
     }, [this](const std::string& args) { return cmdPetition(args); });
 
+    // T136: Merchant (vendor/vendorlist/buy/sell) -- category ported
+    // verbatim from eq_commands.cpp ("Commerce"), matching this unit's
+    // question-1 decision to keep these four together for discoverability
+    // rather than splitting vendorlist into a different category. equip
+    // stays out of this family (see refactor/T136_migrate_merchant_family.md).
+    registerCommand({
+        "vendor", {}, "/vendor", "Open (or close) a vendor window with your current target", "Commerce", false
+    }, [this](const std::string& args) { return cmdVendor(args); });
+
+    registerCommand({
+        "vendorlist", {}, "/vendorlist", "List the open vendor's inventory (slot, name, price, quantity)", "Commerce", false
+    }, [this](const std::string& args) { return cmdVendorList(args); });
+
+    registerCommand({
+        "buy", {}, "/buy <slot> [quantity]", "Buy an item from the open vendor (see /vendorlist)", "Commerce", false
+    }, [this](const std::string& args) { return cmdBuy(args); });
+
+    registerCommand({
+        "sell", {}, "/sell <slot> [quantity]", "Sell an item from your inventory to the open vendor", "Commerce", false
+    }, [this](const std::string& args) { return cmdSell(args); });
+
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
     }, [this](const std::string& args) { return cmdDoor(args); });
@@ -1383,6 +1404,96 @@ ActionResult CommandProcessor::cmdPetition(const std::string& args) {
         return ActionResult::Failure("Usage: /petition <text>");
     }
     return m_dispatcher.petition(args);
+}
+
+// ========== Merchant Commands (T136) ==========
+// No usage guard on /vendor or /vendorlist: game's originals took no
+// arguments either. The "You don't have a target"/"You are not at a
+// vendor." messages are stateful guards -- they live inside
+// EverQuest::RequestVendorToggle() / EqActionHandler::vendorList(), not
+// duplicated here (T134's rule).
+
+ActionResult CommandProcessor::cmdVendor(const std::string& args) {
+    return m_dispatcher.vendorToggle();
+}
+
+ActionResult CommandProcessor::cmdVendorList(const std::string& args) {
+    return m_dispatcher.vendorList();
+}
+
+// Slot/quantity token parsing, ported verbatim (same consumed-length +
+// range-check idiom eq_commands.cpp's old ParseVendorSlot/
+// ParseVendorQuantity used) from buy_cmd/sell_cmd's istringstream parsing
+// -- a formatting concern, matching cmdSplit's precedent, not a guard.
+// Slot range is uint16_t (0-0xFFFF, matches VendorBuyIntent/
+// VendorSellIntent's own uint16_t slot field); quantity is 1-255,
+// defaulting to 1 when omitted, exactly as before.
+namespace {
+bool ParseMerchantSlot(const std::string& tok, uint32_t& out) {
+    if (tok.empty()) return false;
+    try {
+        size_t consumed = 0;
+        long v = std::stol(tok, &consumed);
+        if (v < 0 || v > 0xFFFF || consumed != tok.size()) return false;
+        out = static_cast<uint32_t>(v);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool ParseMerchantQuantity(const std::string& tok, uint8_t& out) {
+    if (tok.empty()) return false;
+    try {
+        size_t consumed = 0;
+        long v = std::stol(tok, &consumed);
+        if (v < 1 || v > 0xFF || consumed != tok.size()) return false;
+        out = static_cast<uint8_t>(v);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+}  // namespace
+
+ActionResult CommandProcessor::cmdBuy(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /buy <slot> [quantity] - see /vendorlist");
+    }
+    std::istringstream iss(args);
+    std::string slotTok, qtyTok;
+    iss >> slotTok;
+    iss >> qtyTok;  // optional; empty if not present
+
+    uint32_t slot = 0;
+    if (!ParseMerchantSlot(slotTok, slot)) {
+        return ActionResult::Failure("Invalid slot - see /vendorlist");
+    }
+    uint8_t quantity = 1;  // default, per the plan ("optional quantity")
+    if (!qtyTok.empty() && !ParseMerchantQuantity(qtyTok, quantity)) {
+        return ActionResult::Failure("Invalid quantity (must be 1-255)");
+    }
+    return m_dispatcher.buyFromVendor(slot, quantity);
+}
+
+ActionResult CommandProcessor::cmdSell(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /sell <slot> [quantity] - <slot> is your inventory slot");
+    }
+    std::istringstream iss(args);
+    std::string slotTok, qtyTok;
+    iss >> slotTok;
+    iss >> qtyTok;
+
+    uint32_t slot = 0;
+    if (!ParseMerchantSlot(slotTok, slot)) {
+        return ActionResult::Failure("Invalid slot");
+    }
+    uint8_t quantity = 1;
+    if (!qtyTok.empty() && !ParseMerchantQuantity(qtyTok, quantity)) {
+        return ActionResult::Failure("Invalid quantity (must be 1-255)");
+    }
+    return m_dispatcher.sellToVendor(slot, quantity);
 }
 
 // ========== Spells Commands (T101) ==========

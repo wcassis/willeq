@@ -1272,4 +1272,48 @@ void EqActionHandler::petition(const std::string& text) {
     m_eq.SendPetition(text);
 }
 
+// ========== Merchant (T136) ==========
+// vendorToggle()/buyFromVendor()/sellToVendor() are thin wrappers over the
+// three new EverQuest methods (eq_commands.cpp) that push the same
+// eqt::events::Vendor*Intent the renderer's vendor-window gesture pushes --
+// EqActionHandler has no access to the private m_bridge, so EverQuest keeps
+// owning the push, same as every guard/send in this family.
+
+void EqActionHandler::vendorToggle() {
+    m_eq.RequestVendorToggle();
+}
+
+// Pure state read + print, ported verbatim from eq_commands.cpp's old
+// vendorlist_cmd lambda -- see EverQuest::GetVendorItems()/GetVendorName()
+// (eq.h, T136) for why this reads via accessor here rather than through a
+// new EverQuest method (this unit's plan asked explicitly what "migrate"
+// means for a command that sends nothing; see the plan's Review).
+void EqActionHandler::vendorList() {
+    if (!m_eq.IsVendorWindowOpen()) {
+        m_eq.AddChatSystemMessage("You are not at a vendor.");
+        return;
+    }
+    const auto& items = m_eq.GetVendorItems();
+    const auto& vendorName = m_eq.GetVendorName();
+    if (items.empty()) {
+        m_eq.AddChatSystemMessage(fmt::format("{}'s inventory is empty (or still loading).", vendorName));
+        return;
+    }
+    m_eq.AddChatSystemMessage(fmt::format("{}'s inventory ({} item{}):",
+        vendorName, items.size(), items.size() == 1 ? "" : "s"));
+    for (const auto& [slot, item] : items) {
+        std::string qtyStr = (item.quantity < 0) ? "unlimited" : std::to_string(item.quantity);
+        m_eq.AddChatSystemMessage(fmt::format("  [slot {}] {} - {} (qty: {})",
+            slot, item.name, EverQuest::FormatVendorPrice(item.price), qtyStr));
+    }
+}
+
+void EqActionHandler::buyFromVendor(uint32_t slot, uint8_t quantity) {
+    m_eq.RequestVendorBuy(slot, quantity);
+}
+
+void EqActionHandler::sellToVendor(uint32_t slot, uint8_t quantity) {
+    m_eq.RequestVendorSell(slot, quantity);
+}
+
 } // namespace eqt

@@ -397,22 +397,29 @@ GTEST_DISCOVER_TESTS(test_combat_manager)
 # based, matching every other migrated family). See
 # refactor/T135_migrate_utility_family.md.
 
-# T48: /vendorlist, /buy, /sell coverage (eq_commands.cpp
-# RegisterVendorCommands()) -- same MakeEq()/TestBridge/ProcessChatInput seam
-# as test_eq_commands_assist.cpp above, plus ReplayZone()-driven vendor-open
-# setup (HC_OP_ShopRequest, HC_OP_ItemPacket) and bridge.drainIntents() to
-# assert the pushed VendorBuyIntent/VendorSellIntent fields directly.
-ADD_EXECUTABLE(test_eq_commands_vendor
-    test_eq_commands_vendor.cpp
+# T136: vendor/vendorlist/buy/sell coverage -- test_eq_commands_vendor.cpp
+# (T48, the old game-registry ProcessChatInput seam) DELETED and replaced by
+# test_eq_action_handler_vendor.cpp: same MakeEq()/TestBridge/ReplayZone()-
+# driven vendor-open setup (HC_OP_ShopRequest, HC_OP_ItemPacket) and
+# bridge.drainIntents()/drainEvents() assertions, but calling the new real
+# entry points directly (EverQuest::RequestVendorToggle/RequestVendorBuy/
+# RequestVendorSell, EqActionHandler::vendorList()) since eq_commands.cpp's
+# RegisterVendorCommands() no longer exists. Argument-parsing cases moved to
+# test_command_processor.cpp's T136 section (RecordingActionHandler, no wire
+# replay needed). See refactor/T136_migrate_merchant_family.md.
+ADD_EXECUTABLE(test_eq_action_handler_vendor
+    test_eq_action_handler_vendor.cpp
 )
-TARGET_LINK_LIBRARIES(test_eq_commands_vendor GTest::gtest_main willeq_core)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_vendor GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
-    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_vendor PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_vendor PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_commands_vendor)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_vendor)
 
 # T50: /bank, /train coverage (eq_commands_spells.cpp RegisterSpellCommands())
-# -- same seam as test_eq_commands_vendor.cpp above. /bank asserts the pushed
+# -- same seam test_eq_commands_vendor.cpp (T48) used to use, before T136
+# deleted it; see test_eq_action_handler_vendor.cpp above for the retargeted
+# replacement. /bank asserts the pushed
 # BankerInteractIntent's fields (bridge.drainIntents()); /train's new
 # distance/class pre-validation is a direct check, not an intent, so those
 # cases assert the printed SystemMessage text itself, per the plan's bar.
@@ -426,7 +433,11 @@ ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
 
 # T66: /equip coverage (eq_commands.cpp RegisterEquipmentCommands()) -- same
-# seam as test_eq_commands_vendor.cpp/test_eq_commands_bank_train.cpp above.
+# seam test_eq_commands_vendor.cpp (T48) used to use (see
+# test_eq_action_handler_vendor.cpp above) and test_eq_commands_bank_train.cpp
+# still uses. T136 (Merchant family migration) deliberately did NOT migrate
+# /equip -- it stays registered in eq_commands.cpp/m_command_registry, so
+# this file is unaffected; see refactor/T136_migrate_merchant_family.md.
 # Asserts the pushed MoveItemIntent's fields directly (bridge.drainIntents())
 # -- the SAME intent the inventory UI's drag/drop gesture pushes -- plus
 # argument parsing and slot-validation refusal messages. The live leg
