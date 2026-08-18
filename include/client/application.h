@@ -173,7 +173,7 @@ struct ScriptStep {
 struct CommandDispatchResult {
     std::string command;      // The raw input line, as given.
     bool recognized = false;  // Did ANY registry (or the chat fallback) accept it?
-    std::string registry;     // "chat" | "game" | "action" | "renderer" | "none" | "pending"
+    std::string registry;     // "chat" | "game" | "action" | "renderer" | "help" | "none" | "pending"
     bool success = false;     // Registries 1/2 only: the handler's own reported outcome.
     std::string message;      // Optional detail (failure reason, echoed usage, ...).
 
