@@ -193,6 +193,12 @@ RUN RECAST_COMMIT=e75adf86f91eb3082220085e42dda62679f9a3ea && \
 # DRM/KMS/GBM/EGL patches replace X11 with direct framebuffer rendering.
 ARG ENABLE_GRAPHICS=ON
 ARG ENABLE_GLES2=ON
+# T137: mirrors scripts/build-gles2-x86.sh's --t122-texprobe. OFF by default
+# -- a plain `bash scripts/build-arm-noble.sh` (no --t122-texprobe) passes
+# ENABLE_T122_TEXPROBE=OFF here and PROBE_CXXFLAGS stays empty below, so the
+# probe macro is never defined and a normal ARM build contains no probe
+# symbols, exactly like the x86 default build.
+ARG ENABLE_T122_TEXPROBE=OFF
 COPY docker/irrlicht-drm/CIrrDeviceFB.h /tmp/irrlicht-drm/CIrrDeviceFB.h
 COPY docker/irrlicht-drm/CIrrDeviceFB.cpp /tmp/irrlicht-drm/CIrrDeviceFB.cpp
 COPY docker/irrlicht-drm/COpenGLES2Driver.h /tmp/irrlicht-drm/COpenGLES2Driver.h
@@ -235,10 +241,16 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cd irrlicht-1.8.5/source/Irrlicht && \
         sed -i 's|^LIBPNGOBJ = |LIBPNGOBJ = libpng/arm/arm_init.o libpng/arm/filter_neon_intrinsics.o libpng/arm/palette_neon_intrinsics.o |' Makefile && \
         sed -i 's|^IRRMESHOBJ = |IRRMESHOBJ = COpenGLES2Driver.o COGLES2Texture.o COGLES2Shaders.o COGLES2MaterialRenderer.o |' Makefile && \
+        PROBE_CXXFLAGS="" && \
+        if [ "$ENABLE_T122_TEXPROBE" = "ON" ]; then \
+            echo "*** T122 probe ARM build: WILLEQ_T122_TEXPROBE defined, -g + -fno-omit-frame-pointer kept for core symbolization / call-chain capture ***" && \
+            PROBE_CXXFLAGS="-g -fno-omit-frame-pointer -DWILLEQ_T122_TEXPROBE"; \
+        fi && \
         make NDEBUG=1 \
             CC="${CROSS}-gcc --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -I${ARM_SYSROOT}/usr/include/libdrm" \
             CXX="${CROSS}-g++ --sysroot=${ARM_SYSROOT} -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -I${ARM_SYSROOT}/usr/include/libdrm" \
             AR="${CROSS}-ar" \
+            CXXFLAGS="$PROBE_CXXFLAGS" \
             staticlib && \
         cp ../../lib/Linux/libIrrlicht.a ${ARM_SYSROOT}/usr/lib/ && \
         cp -r ../../include ${ARM_SYSROOT}/usr/include/irrlicht && \

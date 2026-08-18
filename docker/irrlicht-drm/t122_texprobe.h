@@ -112,11 +112,20 @@ enum class EventKind : uint8_t {
 constexpr uint32_t kCallChainDepth = 8;
 
 // 88 bytes on x86_64 (8-byte pointer + 8x8-byte retaddr + 12 bytes of
-// uint32_t fields + 1 kind byte + 3 pad), 68 on armhf — POD,
-// no padding surprises beyond natural alignment (pointer fields first keeps
-// 8-byte alignment on 64-bit without an explicit alignas). retaddr[] is only
-// populated for TEXPARAMS entries (T126); it is zero-filled for CREATE/
-// DESTROY/MATERIAL, which don't need a call path.
+// uint32_t fields + 1 kind byte + 3 pad), 52 on armhf (4-byte pointer +
+// 8x4-byte retaddr + 12 bytes of uint32_t fields + 1 kind byte + 3 pad) —
+// POD, no padding surprises beyond natural alignment (pointer fields first
+// keeps pointer-width alignment without an explicit alignas). retaddr[] is
+// only populated for TEXPARAMS entries (T126); it is zero-filled for
+// CREATE/DESTROY/MATERIAL, which don't need a call path.
+//
+// T137: the 52-byte armhf figure (and the layout scripts/t122_extract_ring.py
+// parses for a 32-bit ring) is not just asserted here -- it was independently
+// derived and cross-checked against Python's struct.calcsize("<I8IIIIB3x")
+// before this static_assert was written; see refactor/T137_arm_probe_infra.md's
+// Review. The two static_asserts below exist so a future change to Entry's
+// fields breaks the build loudly, on both widths, instead of silently
+// shifting every offset the extractor (and this comment) assume.
 struct Entry {
     const void* ptr;                     // COGLES2Texture* (CREATE/DESTROY) or tex (TEXPARAMS/MATERIAL's SMaterial*)
     const void* retaddr[kCallChainDepth]; // T126: TEXPARAMS only -- __builtin_return_address(0..7)
@@ -131,6 +140,22 @@ struct Entry {
     uint8_t kind;        // EventKind
     uint8_t pad[3];
 };
+
+// T137: source-of-truth size assertions -- scripts/t122_extract_ring.py's
+// ENTRY_FMT_64/ENTRY_FMT_32 must match these exactly, and are cross-checked
+// against a synthesised ring of known values in
+// scripts/tests/test_t122_extract_ring.py. Written as one width-generic
+// assertion (keyed off sizeof(void*)) rather than two #ifdef'd ones so it
+// applies correctly whichever architecture this header is compiled for,
+// without needing to know in advance which that is.
+static_assert(sizeof(void*) == 8 || sizeof(void*) == 4,
+              "t122_texprobe.h::Entry only has documented/verified layouts "
+              "for 32-bit and 64-bit pointer widths");
+static_assert(sizeof(Entry) == (sizeof(void*) == 8 ? 88u : 52u),
+              "t122_texprobe.h::Entry size changed -- update the 88/52-byte "
+              "layout comment above AND scripts/t122_extract_ring.py's "
+              "ENTRY_FMT_64/ENTRY_FMT_32 (and their assert sizes) to match, "
+              "or a probe-ring extraction will silently misparse every field");
 
 constexpr uint32_t kRingCapacity = 1u << 18;  // 262144 entries (~23.1MB on x86_64 at 88B/entry), power of two
 constexpr uint32_t kRingMask = kRingCapacity - 1;
@@ -148,7 +173,16 @@ inline void t122Record(EventKind kind, const void* ptr, uint32_t value) {
     e.ptr = ptr;
     for (uint32_t i = 0; i < kCallChainDepth; ++i) e.retaddr[i] = nullptr;
     e.seq = seq;
-    e.tid = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+    // T137: static_cast, not reinterpret_cast -- pthread_t is glibc's
+    // `unsigned long int` on every Linux target, but uintptr_t is NOT the
+    // same typedef on all of them (it's `unsigned long` on x86_64, where
+    // this reinterpret_cast happened to be a same-type no-op and compiled
+    // silently, but `unsigned int` on armhf, where reinterpret_cast between
+    // two genuinely different non-pointer integral types is ill-formed --
+    // GCC's ARM cross-compiler rejects it: "invalid cast from type
+    // 'pthread_t' ... to type 'uintptr_t'"). static_cast performs the
+    // identical arithmetic narrowing conversion portably on both.
+    e.tid = static_cast<uint32_t>(static_cast<uintptr_t>(pthread_self()));
     e.value = value;
     e.kind = static_cast<uint8_t>(kind);
 }
@@ -178,7 +212,16 @@ inline void t122RecordTexParamsWithCallChain(const void* ptr, uint32_t value,
     e.retaddr[6] = ra6;
     e.retaddr[7] = ra7;
     e.seq = seq;
-    e.tid = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+    // T137: static_cast, not reinterpret_cast -- pthread_t is glibc's
+    // `unsigned long int` on every Linux target, but uintptr_t is NOT the
+    // same typedef on all of them (it's `unsigned long` on x86_64, where
+    // this reinterpret_cast happened to be a same-type no-op and compiled
+    // silently, but `unsigned int` on armhf, where reinterpret_cast between
+    // two genuinely different non-pointer integral types is ill-formed --
+    // GCC's ARM cross-compiler rejects it: "invalid cast from type
+    // 'pthread_t' ... to type 'uintptr_t'"). static_cast performs the
+    // identical arithmetic narrowing conversion portably on both.
+    e.tid = static_cast<uint32_t>(static_cast<uintptr_t>(pthread_self()));
     e.value = value;
     e.kind = static_cast<uint8_t>(EventKind::TEXPARAMS);
 }
