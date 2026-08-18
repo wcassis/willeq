@@ -8348,3 +8348,84 @@ wrong field semantics is a distinct failure mode from a malformed packet
 (T133/T134's findings), and neither showed up as a zone-log error. Merchant's
 live leg should budget a DB-level check (actual inventory/currency changes)
 for `buy`/`sell`, not just packet-size correctness.
+
+## T137 (2026-08-18) — ARM texture-probe infra: build-and-parse now works on
+both architectures; end-to-end Pi capture still open, and one build-cache
+bug found that would have quietly broken the "off by default" guarantee
+
+Closes T125's two infrastructure gaps (ARM build never threaded
+`WILLEQ_T122_TEXPROBE`; `t122_extract_ring.py` was 64-bit-only) without
+touching eqemu or the Pi, per the plan. Full detail:
+`refactor/T137_arm_probe_infra.md` Review, `/mnt/projects/fable/review/T137/`.
+
+**ARM flag plumbing**: `docker/Dockerfile.arm-noble` gets `ARG
+ENABLE_T122_TEXPROBE=OFF`; `scripts/build-arm-noble.sh` gets a
+`--t122-texprobe` flag mirroring the x86 script. `nm` confirms the resulting
+binary has zero probe symbols by default and the full expected symbol set
+with the flag — but getting to that clean result required fixing two real
+bugs, not just adding plumbing:
+
+1. **ARM-only compile break** in `docker/irrlicht-drm/t122_texprobe.h`:
+   `reinterpret_cast<uintptr_t>(pthread_self())` is ill-formed on armhf
+   (`pthread_t` and `uintptr_t` are different non-pointer integral types
+   there; on x86_64 they're the identical typedef, which is why this never
+   broke before). Fixed to `static_cast`, no behavior change.
+2. **Stale persistent Docker build cache**: `build-arm-noble.sh`'s
+   incremental build cache did not reliably relink `willeq` when only the
+   probe flag toggled, so a "plain" rebuild silently reused a
+   probe-tainted binary from a prior probe-ON run — directly undermining
+   the "off by default" contract T122's design depends on. Fixed with a
+   marker-file cache-invalidation guard (wipe the cache when the flag's
+   value differs from the last recorded run); verified the fix by toggling
+   OFF→ON→OFF three times post-fix and confirming correct `nm` output and
+   a genuine full recompile at each toggle.
+
+**Extractor now width-generic**: `scripts/t122_extract_ring.py` detects
+32-bit vs. 64-bit from the target binary's own ELF `EI_CLASS` byte (no
+flag — a mis-parsed ring is plausible garbage, the worst failure mode for
+a diagnostic). The 32-bit `Entry` layout (52 bytes, `"<I8IIIIB3x"`) was
+derived by hand, cross-checked via `struct.calcsize`, and backed by a new
+width-generic `static_assert(sizeof(Entry) == (sizeof(void*)==8?88:52))`
+added directly in the header (a real compiler check on both the x86_64 and
+ARM builds, not just a script-side assumption). Both widths'
+parse-from-raw-bytes logic are regression-tested against a synthesised
+ring (`scripts/tests/test_t122_extract_ring.py`, 29/29 checks, standalone
+— not wired into ctest, same rationale as `t122_extract_ring.py`'s own
+existing precedent).
+
+**What's still open, and why**: two legs the plan explicitly scoped out or
+that turned out to be evidence-preservation gaps, not implementation gaps:
+
+- **End-to-end Pi capture** — needs eqemu (T136 held the lock) and real
+  hardware, out of scope for this unit by design. **The next unit that
+  takes the eqemu lock and touches the Pi should run this as its first
+  step**: stage a `--t122-texprobe` ARM binary, reproduce a crash, extract
+  the resulting core. That is the one thing that would make "usable on
+  ARM" end-to-end rather than build-and-parse-only.
+- **Re-parsing the exact T122/T126 checked-in cores** — attempted, could
+  not be completed: the exact probe binary that produced those cores was
+  never checked in (only the cores and their already-extracted TSVs were),
+  and the worktree that built it no longer contains it. Diagnosed with a
+  PIE load-bias reconstruction from the core's own `AT_PHDR` auxv entry
+  (confirmed the bias-computation mechanism is sound — it matches `info
+  proc mappings` exactly) — the mismatch is a genuinely different static
+  layout between this checkout's current source and whatever the T122
+  session was built from, not a defect in the extractor. **Lesson for
+  future probe-evidence units**: check in the matching binary alongside
+  any core meant for later re-verification, or the evidence rots as soon
+  as the worktree that produced it gets reused.
+- **A real ARM core, extracted** — no Pi run happened, so the 32-bit
+  extraction path (unlike the 64-bit path above) has never been tried
+  against real data, only synthesised. The layout is compiler-verified and
+  the parse logic is regression-tested, but whether gdb cleanly resolves
+  an armhf core's symbols the way it does for x86_64 is untested — flagged
+  explicitly since that's a plausible place for a new failure mode (e.g.
+  needing a target-aware/multiarch gdb) to show up first.
+
+**Verification**: x86 suite 2351/2352 (sole failure the documented ALSA
+quirk, matching baseline); plain `bash scripts/build-gles2-x86.sh` confirmed
+probe-free (`nm` 0 matches); ARM cross-compile confirmed clean/tainted
+correctly in both configurations (table + BuildIDs in the Review);
+`check_file_sizes.sh` zero new FAILs (11 of 12 flagged files are T136's
+in-flight work, inherited from this branch's root commit, not this unit's
+changes — only `t122_texprobe.h` is actually touched, and it's `ok`).
