@@ -300,6 +300,24 @@ public:
     virtual void consentDeny(const std::string& playerName) = 0;
     virtual void rezAccept() = 0;
     virtual void rezDecline() = 0;
+
+    // ========== Utility (T135) ==========
+    // Net-new, same shape as Guild/Corpse-Rez: no game-registry counterpart
+    // was reconciled here -- action::CommandProcessor had zero registrations
+    // for this family before this unit. These wrap the pre-existing
+    // EverQuest::SendSplit()/SendSave()/SendBindWound()/SendRewind()/
+    // SendReport()/SendPetition() senders, which already implement the
+    // guard/argument logic (m_in_group + affordability inside SendSplit);
+    // the wrappers are pure routing. bandage() resolves targetId==0 to the
+    // current CombatManager target, falling back to SELF (m_my_spawn_id) --
+    // NOT an error like assist()/shieldTarget() -- matching game's original
+    // bandage handler exactly (eq_commands.cpp bindwound_cmd).
+    virtual void split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) = 0;
+    virtual void save() = 0;
+    virtual void bandage(uint16_t targetId) = 0;
+    virtual void rewind() = 0;
+    virtual void bug(const std::string& description) = 0;
+    virtual void petition(const std::string& text) = 0;
 };
 
 /**
@@ -1054,6 +1072,40 @@ public:
      * Decline a pending resurrection offer.
      */
     ActionResult rezDecline();
+
+    // ========== Utility Actions (T135) ==========
+
+    /**
+     * Split money with your group. Guarded inside SendSplit (m_in_group,
+     * affordability), not duplicated here.
+     */
+    ActionResult split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+
+    /**
+     * Request a character save.
+     */
+    ActionResult save();
+
+    /**
+     * Use bind wound skill. targetId==0 resolves to the current combat
+     * target, falling back to self.
+     */
+    ActionResult bandage(uint16_t targetId);
+
+    /**
+     * Attempt to return to a safe position.
+     */
+    ActionResult rewind();
+
+    /**
+     * Submit a bug report.
+     */
+    ActionResult bug(const std::string& description);
+
+    /**
+     * Submit a petition.
+     */
+    ActionResult petition(const std::string& text);
 
 private:
     state::GameState& m_state;

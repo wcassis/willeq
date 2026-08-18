@@ -1438,5 +1438,71 @@ ActionResult ActionDispatcher::rezDecline() {
     return ActionResult::Success();
 }
 
+// ========== Utility (T135) ==========
+// Net-new, same shape as Guild (T132) / Corpse-Rez (T134). split/save/
+// rewind/bandage take no usage-string guard here because game's original
+// handlers had none for them either (only split_cmd/bug_cmd/petition_cmd
+// had one, and split's is a parsing concern handled by
+// CommandProcessor::cmdSplit -- see its comment). bug()/petition() port
+// game's empty-argument usage guard verbatim, matching corpsedrag/consent's
+// belt-and-suspenders shape. The stateful guards (m_in_group + affordability
+// in SendSplit) are NOT duplicated here -- they stay in the sender.
+
+ActionResult ActionDispatcher::split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->split(platinum, gold, silver, copper);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::save() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->save();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::bandage(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->bandage(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::rewind() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->rewind();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::bug(const std::string& description) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (description.empty()) {
+        return ActionResult::Failure("Usage: /bug <description>");
+    }
+
+    m_handler->bug(description);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::petition(const std::string& text) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (text.empty()) {
+        return ActionResult::Failure("Usage: /petition <text>");
+    }
+
+    m_handler->petition(text);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

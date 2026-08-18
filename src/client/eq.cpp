@@ -3808,9 +3808,14 @@ void EverQuest::StopUpdateLoop()
 
 void EverQuest::SendPetition(const std::string& text)
 {
+	// T135: PutCString() not PutString() -- eqemu's Handle_OP_Petition reads
+	// this as a NUL-terminated C string; PutString() wrote none, so the
+	// server's read ran into adjacent heap memory (confirmed live via a
+	// corrupted peq.petitions row). Pre-existing bug, not a T135 regression
+	// -- see refactor/deferred.md's T135 entry.
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_Petition);
-	packet.PutString(2, text);
+	packet.PutCString(2, text.c_str());
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);

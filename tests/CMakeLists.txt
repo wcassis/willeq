@@ -388,14 +388,14 @@ GTEST_DISCOVER_TESTS(test_combat_manager)
 # point production chat input uses -- to reach the command-registry lambda
 # handlers in eq_commands.cpp, and the bridge's SystemMessage event (same
 # idiom as test_zone_chat.cpp) to observe AddChatSystemMessage() output.
-ADD_EXECUTABLE(test_eq_commands_assist
-    test_eq_commands_assist.cpp
-)
-TARGET_LINK_LIBRARIES(test_eq_commands_assist GTest::gtest_main willeq_core)
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
-    TARGET_INCLUDE_DIRECTORIES(test_eq_commands_assist PRIVATE ${IRRLICHT_INCLUDE_DIR})
-ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_commands_assist)
+# T102 already removed assist/shield/duel's cases (migrated to
+# action::CommandProcessor), leaving only /bandage on this seam. T135
+# MIGRATES bandage too and deletes its eq_commands.cpp registration --
+# test_eq_commands_assist.cpp is REMOVED (not repointed), same shape as
+# T102's test_eq_commands_attack.cpp removal below; equivalent coverage now
+# lives in test_command_processor.cpp's T135 section (FakeActionHandler-
+# based, matching every other migrated family). See
+# refactor/T135_migrate_utility_family.md.
 
 # T48: /vendorlist, /buy, /sell coverage (eq_commands.cpp
 # RegisterVendorCommands()) -- same MakeEq()/TestBridge/ProcessChatInput seam

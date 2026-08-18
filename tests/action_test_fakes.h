@@ -304,6 +304,16 @@ public:
     void rezAccept() override { record("rezAccept"); }
     void rezDecline() override { record("rezDecline"); }
 
+    // ========== Utility (T135) ==========
+    void split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) override {
+        record("split", platinum, gold, silver, copper);
+    }
+    void save() override { record("save"); }
+    void bandage(uint16_t targetId) override { record("bandage", targetId); }
+    void rewind() override { record("rewind"); }
+    void bug(const std::string& description) override { record("bug", description); }
+    void petition(const std::string& text) override { record("petition", text); }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

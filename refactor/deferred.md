@@ -8254,3 +8254,97 @@ GM `#castspell 994` ("Customer Service Resurrect", found via
 `effectid*=81`/`SpellEffect::Revive` in `spells_new`) on the corpse.
 `Corpse::CastRezz` (eqemu `zone/corpse.cpp`) is target-and-caster-agnostic,
 so self-casting works identically to a second character casting.
+
+## T135 (2026-08-18) — Utility family migrated (split/save/bandage/rewind/
+bug/petition); one wire bug found and fixed, a second found and deliberately
+left open
+
+Net-new plumbing over the pre-existing `EverQuest::SendSplit()`/`SendSave()`/
+`SendBindWound()`/`SendRewind()`/`SendReport()`/`SendPetition()` senders,
+same shape as Guild (T132) and Corpse/Rez (T134) — these six do not share a
+scenario (unlike Guild or Corpse/Rez) but share a unit. `bandage` reuses
+T102's `CombatManager` targeting via `EqActionHandler::getCombatManager()`
+(same helper `assist`/`shieldTarget` use), with self-target fallback instead
+of an error message, matching `game`'s original `bindwound_cmd` exactly. Full
+detail: `refactor/T135_migrate_utility_family.md` Review,
+`/mnt/projects/fable/review/T135/`.
+
+**THE TRAP, checked live and confirmed NOT present**: `grep -i 'wrong size'`
+across the whole session's eqemu zone log returns zero matches — `SendSave`/
+`SendRewind`/`SendReport`/`SendPetition`'s `PutUInt16(0, HC_OP_...)` really is
+the correct connection-level convention, untouched, as the plan predicted
+from static analysis.
+
+**One wire bug found and fixed:**
+
+1. **`SendPetition`'s missing NUL terminator** (`src/client/eq.cpp`) —
+   eqemu's `Handle_OP_Petition` (`zone/client_packet.cpp`) reads the petition
+   text via `pet->SetPetitionText((char*)app->pBuffer)`, a strlen-based
+   C-string read. `EQ::Net::Packet::PutString()` (unlike `PutCString()`,
+   `src/common/net/packet.cpp`) writes no terminator and leaves the packet
+   exactly `str.length()` bytes long, so the server's read ran past our
+   buffer into adjacent heap memory. Confirmed live byte-for-byte: a
+   submitted `"stuck in geometry"` petition persisted to `peq.petitions` as
+   `"stuck in geometrye.lua"`. Fixed by switching to `PutCString()`;
+   re-verified live with the exact text persisting cleanly. See
+   `review/T135/petition_db_evidence.txt`.
+
+**One wire bug found, left open — needs a design decision, not a mechanical
+fix:**
+
+2. **`SendReport`'s wire format doesn't match eqemu's `OP_Report` protocol at
+   all.** `Handle_OP_Report` (`zone/client_packet.cpp`) parses a
+   pipe-delimited `<reported>|<reporter>|<message>\0` string; our sender
+   sends a 4-byte `category_id` (always 0) then raw text — a different
+   layout entirely, not a small mechanical bug. Walking eqemu's byte-by-byte
+   parser against our actual output shows `database.AddReport()` is never
+   reached (`mode` never advances past 0 because our leading zero bytes and
+   text contain no `|`). Confirmed empty `peq.bug_reports`/`peq.bugs` before
+   and after. **Why not fixed in T135**: `/bug`'s existing single free-text
+   argument has no concept of a "reported" player name the real protocol
+   wants — a correct fix needs either a new command shape (e.g.
+   `/bug <player> <description>`) or a policy choice (e.g. reported=self),
+   which is a design decision the plan didn't ask for, not a mechanical
+   wire-format correction like the petition fix above. Migration preserves
+   `game`'s identical (already-broken) behavior, matching the programme's
+   "behaviour must be identical" bar. **Next unit that touches `/bug` should
+   design the wire format properly rather than patch around it.**
+
+**Test-data cleanup gotcha worth remembering**: deleting a test petition row
+directly via SQL desyncs eqemu's in-memory `PetitionList::Instance()` from
+the DB (the server doesn't reread it), causing a legitimate subsequent
+`/petition` from the same character to be wrongly rejected with "You already
+have a petition in the queue." Use the client's own petition-delete path
+(`SendPetitionDelete`, not currently exposed as a slash command) or a fresh
+character instead of a raw DB delete when a live leg needs to retry a
+petition submission.
+
+**`tests/test_eq_commands_assist.cpp` deleted** (not repointed) — T102 had
+already trimmed it to a single remaining case (`bandage`'s self-target
+fallback on the `game`-registry `ProcessChatInput()` seam); migrating
+`bandage` out of `eq_commands.cpp` in T135 removed that seam too, leaving
+zero tests. Removed following T102's `test_eq_commands_attack.cpp` precedent
+(documented in `tests/CMakeLists.txt`) rather than leaving a zero-test
+executable target. Equivalent coverage now lives in
+`test_command_processor.cpp`'s T135 section.
+
+**`check_file_sizes.sh` FAIL, pre-existing, not caused by T135**:
+`src/client/eq.cpp` was already 3898 lines at `fable` tip (before T135
+touched it), past the 3000-line FAIL threshold — the `SendPetition` fix
+above (in `eq.cpp`, where the sender already lived) added 5 net lines,
+nudging an already-failing file marginally further. Not attempted to fix by
+splitting `eq.cpp` in this unit (out of scope for a command-migration
+unit); flagged per the protocol's "no new FAILs" bar rather than silently
+absorbed.
+
+**Board**: with Utility done, only the Merchant family (`vendor`,
+`vendorlist`, `buy`, `sell`, `equip`) remains registered in
+`eq_commands.cpp`. Nothing in T135 contradicts T134's read that Merchant is
+the family most likely to need T103's `GameStateSyncBridge`/state-domain
+work. One new data point for that unit's live leg: this unit's petition bug
+was found by checking **persisted server-side data** (a DB table), not the
+zone console log or a packet-size complaint — a correctly-sized packet with
+wrong field semantics is a distinct failure mode from a malformed packet
+(T133/T134's findings), and neither showed up as a zone-log error. Merchant's
+live leg should budget a DB-level check (actual inventory/currency changes)
+for `buy`/`sell`, not just packet-size correctness.

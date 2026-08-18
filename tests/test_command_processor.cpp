@@ -2017,4 +2017,154 @@ TEST_F(CommandProcessorTest, RezAccept_NotConnectedToZone_FailsCleanlyWithoutDis
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== Utility (T135) ==========
+// split/save/bandage/rewind/bug/petition do not share a scenario (unlike
+// Guild or Corpse-Rez) -- six independent groups of assertions, per the
+// plan's explicit instruction not to force one live scenario onto them.
+
+TEST_F(CommandProcessorTest, T135_UtilityCommandsRegisteredWithPortedCategories) {
+    struct Expect { const char* name; const char* category; };
+    for (const auto& e : {
+        Expect{"split", "Group"}, Expect{"save", "Utility"},
+        Expect{"bandage", "Skills"}, Expect{"rewind", "Movement"},
+        Expect{"bug", "Utility"}, Expect{"petition", "Utility"},
+    }) {
+        auto info = processor->getCommandInfo(e.name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << e.name;
+        EXPECT_EQ(info->category, e.category) << "wrong category for: " << e.name;
+    }
+    // Aliases ported verbatim from eq_commands.cpp.
+    EXPECT_TRUE(processor->hasCommand("bindwound"));
+    EXPECT_TRUE(processor->hasCommand("report"));
+}
+
+// ---------- split ----------
+
+TEST_F(CommandProcessorTest, Split_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/split");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Split_PlatinumOnly_DefaultsRestToZero) {
+    auto result = processor->processCommand("/split 10");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("split(10, 0, 0, 0)"));
+}
+
+TEST_F(CommandProcessorTest, Split_AllFourDenominations_DispatchesSplit) {
+    auto result = processor->processCommand("/split 1 2 3 4");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("split(1, 2, 3, 4)"));
+}
+
+TEST_F(CommandProcessorTest, Split_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/split 10");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- save ----------
+
+TEST_F(CommandProcessorTest, Save_DispatchesSave) {
+    auto result = processor->processCommand("/save");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("save()"));
+}
+
+TEST_F(CommandProcessorTest, Save_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/save");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- bandage ----------
+// No usage guard (game's bindwound_cmd took no args): both the primary name
+// and the bindwound alias always dispatch bandage(0), letting
+// EqActionHandler resolve current-target-or-self.
+
+TEST_F(CommandProcessorTest, Bandage_DispatchesBandageWithZeroTargetId) {
+    auto result = processor->processCommand("/bandage");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bandage(0)"));
+}
+
+TEST_F(CommandProcessorTest, Bandage_Alias_DispatchesBandageWithZeroTargetId) {
+    auto result = processor->processCommand("/bindwound");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bandage(0)"));
+}
+
+TEST_F(CommandProcessorTest, Bandage_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/bandage");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- rewind ----------
+
+TEST_F(CommandProcessorTest, Rewind_DispatchesRewind) {
+    auto result = processor->processCommand("/rewind");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rewind()"));
+}
+
+TEST_F(CommandProcessorTest, Rewind_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/rewind");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- bug ----------
+
+TEST_F(CommandProcessorTest, Bug_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/bug");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Bug_WithDescription_DispatchesBug) {
+    auto result = processor->processCommand("/bug the door is stuck");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bug(\"the door is stuck\")"));
+}
+
+TEST_F(CommandProcessorTest, Bug_Alias_DispatchesBug) {
+    auto result = processor->processCommand("/report the door is stuck");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bug(\"the door is stuck\")"));
+}
+
+TEST_F(CommandProcessorTest, Bug_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/bug the door is stuck");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- petition ----------
+
+TEST_F(CommandProcessorTest, Petition_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/petition");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Petition_WithText_DispatchesPetition) {
+    auto result = processor->processCommand("/petition stuck in geometry");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("petition(\"stuck in geometry\")"));
+}
+
+TEST_F(CommandProcessorTest, Petition_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/petition stuck in geometry");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 } // namespace
