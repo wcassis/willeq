@@ -107,15 +107,203 @@ deleted test file always deserves a stated reason.
 
 ## Review
 
-(executor fills: the measured size of what moved and where it went; the
-argument for that home; how `CheckEquipDestination` was handled; confirmation
-the bridge-push constraint dissolved rather than being worked around; the
-two-commit structure; the existing test's fate with reasoning; live evidence
-including DB state; **measured wall-clock**; deviations)
+### What moved, measured, and where it went
+
+The scoped ~250-line handler (`eq_commands.cpp:751-1001`) plus its five
+file-local helpers (`IsRecognizedInventorySlot`, `DescribeEquipSlot`,
+`CheckEquipDestination`, `FindItemsByNameSubstring`,
+`EquipDestinationResult`/`ResolveEquipDestination` — `eq_commands.cpp:300-451`
+pre-extraction) moved into `InventoryManager`
+(`include/client/inventory/inventory_manager.h`,
+`src/client/inventory/inventory_manager.cpp`) as five new members:
+`checkEquipDestination()`, `resolveEquipDestination()`,
+`findItemsByNameSubstring()`, `moveItem()`, plus the `EquipDestinationResult`
+and `MoveItemOutcome` structs. A sixth piece, `DescribeEquipSlot`, became a
+shared free function `eqt::inventory::describeSlot()` in
+`inventory_constants.h` next to the `getSlotName()` it wraps, since both
+`InventoryManager`'s own messages and `EverQuest`'s report-formatting need
+it — one formatter instead of the two copies a straight cut-and-paste would
+have produced. `CheckEquipDestination` moved alongside `moveItem()` as the
+companion helper the plan named it — both now live where `canEquipItem()`
+(the legality predicate they call) already lived.
+
+What's left in `eq_commands.cpp` is `EverQuest::RequestEquip()`: the
+three-form dispatch (slot-pair / item-name / `list`) and read-only report
+formatting — genuinely command-layer concerns, not domain logic. Diff stats:
+`git diff --stat` across both commits show `eq_commands.cpp` net **-207
+lines** (793 lines post, was ~1001-line region pre-extraction inclusive of
+the moved block) and `inventory_manager.cpp` net **+189 lines**. Prior
+units' "~150 lines" estimate for the handler undercounted by not including
+the helpers; this unit's own "250 lines" scoping estimate (handler +
+`CheckEquipDestination`, not counting `ResolveEquipDestination`/
+`FindItemsByNameSubstring`/`IsRecognizedInventorySlot`) undercounted too —
+the real movable surface, helpers included, was closer to 340 lines.
+
+### The argument for `InventoryManager`, not `EverQuest`
+
+Not just followed as given — checked against the actual code before
+committing to it. Two independent facts confirmed it was right:
+
+1. **`InventoryManager` already owned the legality question**
+   (`canEquipItem()`) — the extracted logic's *other* half (orchestration)
+   belongs with it for the same reason a class's invariants and the code
+   that maintains them belong together.
+2. **`InventoryManager` already had its own `bridge_` member and used it**
+   (`setBridge()`, D20b1) — `pickupItem()`/`placeItem()` already push
+   `MoveItemIntent`/`EquipmentChangedIntent` through it. `moveItem()`'s
+   bridge pushes for the direct-slot-swap and cursor-parity branches are
+   not new capability, just the same pattern extended to two branches that
+   used to live in the command handler instead.
+
+A concrete duplication died as a result, not just moved: `eq_commands.cpp`'s
+`IsRecognizedInventorySlot()` existed *solely* because
+`InventoryManager::isValidSlot()` is private with no accessor — its own
+comment said so verbatim ("that method is private ... so this reproduces
+its exact OR-chain"). As a member function, `moveItem()` calls
+`isValidSlot()` directly. One copy of that ten-predicate OR-chain now,
+not two that could silently drift apart (the exact failure mode the T57/T60
+comments in the old code were already anxious about for the *other*
+predicates it reused).
+
+### The bridge-push constraint: dissolved, not worked around
+
+Checked, not assumed: `EqActionHandler::equip()` and
+`EverQuest::RequestEquip()` do not reference `m_bridge` anywhere (`grep -n
+"m_bridge" src/client/eq_commands.cpp` after this unit's changes returns
+zero hits inside `RequestEquip()`). All four of the pre-extraction handler's
+bridge pushes now happen inside `InventoryManager::moveItem()` via the
+`bridge_` pointer `EverQuest::setBridge()` already wires
+(`eq_bridge.cpp:238`, unchanged by this unit — it already called
+`m_inventory_manager->setBridge(bridge)` before T141 touched anything). No
+`GameStateBridge*` was added to `EqActionHandler`; none was needed. This
+matches the plan's prediction exactly — getting the *home* right is what
+made the constraint stop applying, not a workaround around it.
+
+### Two-commit structure
+
+- `e45c7f99` — **step 1, extraction only.** `equip` still registered in the
+  game registry (`eq_commands.cpp`'s `m_command_registry`), calling into the
+  new `InventoryManager` methods instead of duplicating the logic locally.
+  `tests/test_eq_commands_equip.cpp` run **unmodified** before writing any
+  code (30/30 passing against the pre-extraction handler, establishing the
+  baseline) and again after (30/30, byte-identical assertions) — proof
+  behaviour did not change, independent of step 2.
+- `b71c885b` — **step 2, migration.** `RegisterEquipmentCommands()` and its
+  registration removed; `equip` registered in `action::CommandProcessor`
+  instead (category `"Inventory"`, ported verbatim, not `"Commerce"`).
+  `EqActionHandler::equip()` is a one-line call to the same
+  `RequestEquip()` step 1 introduced — the migration really is the thin
+  wrapper the plan predicted, not a second design pass.
+
+If the migration had turned out to be wrong for some reason (it wasn't),
+step 1 stands alone: `InventoryManager` gaining real orchestration methods
+is worth doing regardless of which registry calls them.
+
+### `CheckEquipDestination`
+
+Moved verbatim as `InventoryManager::checkEquipDestination()` — same two
+checks (`canEquipInSlot()` for slot-type, `canEquipItem()` for
+class/race/level), same message text (now built with plain `std::string`
+concatenation instead of `fmt::format`, since `InventoryManager` doesn't
+otherwise depend on `fmt` and the message shape is trivial enough not to
+need it — a deliberate, disclosed choice, not an accidental format-string
+divergence; the produced strings are byte-identical, confirmed by the
+unmodified pre-existing tests asserting substrings of them). No longer
+takes an `InventoryManager*` parameter — it's a member now, so `this->`
+replaces the old `inv &&` null-check entirely (the check was only ever
+guarding against a caller passing `nullptr`, which can't happen for a
+member calling its own methods).
+
+### Test fate: retargeted, not deleted
+
+`tests/test_eq_commands_equip.cpp`'s seam **survives** — `RequestEquip()`
+is exactly as reachable and exactly as testable after the migration as
+before, just no longer reachable via `EverQuest::ProcessChatInput()` once
+`equip` left the game registry. Per T140's precedent (retarget) rather than
+T136's (delete, only when the seam itself stops existing): all 30 tests'
+`eq.ProcessChatInput("/equip ...")` calls became
+`eq.RequestEquip("...")` — same `EverQuest`, same `InventoryManager`, same
+bridge-intent assertions, one layer lower (below registry selection instead
+of through it). All 30 pass unmodified in assertion content. Added 5 new
+`test_command_processor.cpp` tests (registration/category, raw-args
+passthrough for both slot-pair and item-name forms, no-args still
+dispatches, zone-connection guard) at the same density T136 used for
+`vendor`/`buy`/`sell` and T140 used for `warp` — the CommandProcessor-layer
+coverage the retargeted file no longer reaches on its own.
+`RecordingActionHandler` (`tests/action_test_fakes.h`) gained an `equip()`
+override; `EqActionHandler` gained a real one.
+
+### Live evidence (wire-verified, not dispatch-layer-only)
+
+Full detail in `/mnt/projects/fable/review/T141/` (README + DB dumps + raw
+run logs). Summary:
+
+- **`registry=action` live, with a `registry=game` control in the same
+  run**: `/equip list`, `/equip 30 13`, `/equip 13 22` all logged
+  `CMD outcome=applied registry=action recognized=true` against a real
+  eqemu server; `/volume` (one of the 7 `stay-game` commands) in the same
+  session logged `registry=game`. This is the exact A/B the plan asked for,
+  captured live rather than inferred from the unit tests.
+- **Equip (cursor -> Primary) and unequip (Primary -> cursor) both
+  persisted server-side**, confirmed by reading `peq.inventory` directly
+  (not the zone log) before and after: item 6011 (Rusty Mace) moved from
+  `slot_id` 33 (server-side cursor) to `slot_id` 13 (Primary) and back,
+  matching `inventory_constants.h`'s own documented client/server cursor
+  offset (`CURSOR_SLOT=30` client-side, `SERVER_CURSOR_SLOT=33` here).
+- **The item-name form (`/equip Rusty Mace`) also reached the server**:
+  `Resolved 'Rusty Mace' to Rusty Mace (slot 30) -> Primary (13).` /
+  `Moving item: slot 30 -> Primary (13)` in the client log, followed by the
+  DB showing item 6011 at `slot_id` 13.
+- **One live-leg finding, logged to `refactor/deferred.md` and NOT fixed
+  here** (out of territory, and not caused by this unit): `/equip 13 22`
+  (Primary -> the client's general-slot numbering) was rejected server-side
+  ("The selected slot was invalid.") and correctly triggered the
+  pre-existing (untouched) desync-recovery path. Root cause is a
+  client/server general-slot numbering offset this eqemu server has that
+  `SendMoveItem` never translates — unrelated to `/equip`'s own logic,
+  which sends exactly the packet it always sent. Re-tested with the
+  known-good `13 <-> 30` pair (proven live by T71), which round-tripped
+  cleanly both directions — see the DB evidence above.
+- Testchar's position was restored to the documented canonical point
+  (zone_id=36, x=-77.9232, y=21.9086, z=3, h=190) and the summoned test item
+  removed before the eqemu lock was released.
+
+### Deviations from the plan
+
+- `ActionDispatcher::equip()` adds a `checkZoneConnection()` guard the
+  pre-migration game-registry handler never had. Every other migrated
+  inventory/vendor action in `action_dispatcher.cpp` gates on it, and a
+  disconnected `EverQuest` has no meaningful inventory state to move items
+  through — flagged as the one deliberate behavior addition in step 2's
+  commit message, not silently folded in.
+- `CheckEquipDestination`'s ported message text uses `std::string`
+  concatenation instead of `fmt::format` inside `InventoryManager` (see
+  above) — a formatting-mechanism change, not a content change; disclosed
+  because the plan's STOP condition is about *behaviour*, and message text
+  is user-visible behaviour even though its bytes are unchanged here.
+- The plan's territory list did not include eqemu wire-protocol files, so
+  the general-slot numbering finding above is reported, not fixed.
+
+### Measured wall-clock
+
+Approximately **2.5–3 hours** end to end (protocol/plan reading and
+scoping through server teardown and this Review), across a single
+uninterrupted session — no STOP, no retry-from-scratch. The two live-leg
+false starts (log verbosity too low to see `[SYS]` messages at `-d 3`; the
+slot-22 rejection requiring a second live run with the known-good pair)
+account for a modest fraction of that, not a re-run of the whole leg.
 
 ## Board
 
-Say whether `equip` is now closed. If it is, the command-migration programme
-reduces to **7 `stay-game` (no work) and 3 `needs-decision` for Will** — say
-that plainly. If the extraction revealed something that changes the picture,
-say what.
+**`equip` is closed.** Both the extraction (step 1) and the migration
+(step 2) landed, verified at both the unit-test and the live-wire level,
+with the pre-existing test suite retargeted rather than discarded. This
+was genuinely the last row: the command-migration programme now reduces to
+**7 `stay-game`** (`hotkeys`, `pmem`, `music`, `sound`, `volume`,
+`musicvolume`, `effectsvolume` — no work, confirmed still registry=game
+live via this unit's own `/volume` control) **and 3 `needs-decision` for
+Will** (unchanged by this unit). The extraction did not reveal anything
+that changes that picture — if anything it reinforces T136/T138/T140's
+read that `equip` really was the one command whose difficulty was about
+*where the logic lived*, not about the registry mechanics every other
+command hit.
