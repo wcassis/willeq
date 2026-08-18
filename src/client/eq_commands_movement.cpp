@@ -459,38 +459,15 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(debug);
 
-	// D20d: Helper — renderer commands push RendererCommand event via bridge
-	// (drained on the render thread, never called directly -- see the P10
-	// note on eq_commands_movement.cpp's rendererCmd/RendererCommand usage
-	// in docs/decisions.md 2026-08-02).
-	// T29: in a headless-compiled build there is no render thread to drain
-	// this queue, so silently queuing would look accepted but never take
-	// effect. Say so honestly instead (plan item 4: an unrecognised-
-	// because-headless command must say so, not fail silently).
-	auto rendererCmd = [this](const std::string& cmdName) {
-		return [this, cmdName](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-			if (m_bridge) {
-				std::string fullCmd = "/" + cmdName;
-				if (!args.empty()) fullCmd += " " + args;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::RendererCommand,
-					eqt::state::RendererCommandData{fullCmd}));
-			}
-#else
-			AddChatSystemMessage(fmt::format("/{} requires graphics mode (not available in this headless build).", cmdName));
-#endif
-		};
-	};
-
-	Command timestamp;
-	timestamp.name = "timestamp";
-	timestamp.aliases = {"timestamps", "ts"};
-	timestamp.usage = "/timestamp";
-	timestamp.description = "Toggle timestamps in chat";
-	timestamp.category = "Utility";
-	timestamp.handler = rendererCmd("timestamp");
-	m_command_registry->registerCommand(timestamp);
+	// T139: rendererCmd() (the helper that pushed a RendererCommand bridge
+	// event for a game-registry command name) is deleted here -- every
+	// remaining caller in this file was one of the 26 redundant duplicates
+	// removed by T139 (see refactor/T139_delete_duplicate_commands.md).
+	// registry-3's fallback (Application::dispatchToActionOrRenderer,
+	// application.cpp) forwards the identical "/" + cmdBody string to
+	// IrrlichtRenderer::processSlashCommand() automatically once no game- or
+	// action-registry command claims the name, so nothing here needs
+	// replacing -- the same renderer entry points still run.
 
 	Command perf;
 	perf.name = "perf";
@@ -518,15 +495,6 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(perf);
 
-	Command reloadeffects;
-	reloadeffects.name = "reloadeffects";
-	reloadeffects.aliases = {"reloadfx", "reloadparticles"};
-	reloadeffects.usage = "/reloadeffects";
-	reloadeffects.description = "Reload environment effects settings from config/environment_effects.json";
-	reloadeffects.category = "Utility";
-	reloadeffects.handler = rendererCmd("reloadeffects");
-	m_command_registry->registerCommand(reloadeffects);
-
 	Command reloadspells;
 	reloadspells.name = "spellreload";
 	reloadspells.aliases = {"reloadspells", "reloadspellfx"};
@@ -542,15 +510,6 @@ void EverQuest::RegisterMovementCommands()
 #endif
 	};
 	m_command_registry->registerCommand(reloadspells);
-
-	Command reloadweather;
-	reloadweather.name = "reloadweather";
-	reloadweather.aliases = {"weather_reload"};
-	reloadweather.usage = "/reloadweather";
-	reloadweather.description = "Reload weather effects settings from config/weather_effects.json";
-	reloadweather.category = "Utility";
-	reloadweather.handler = rendererCmd("reloadweather");
-	m_command_registry->registerCommand(reloadweather);
 
 	Command weatherquality;
 	weatherquality.name = "weatherquality";
@@ -585,213 +544,7 @@ void EverQuest::RegisterMovementCommands()
 	};
 	m_command_registry->registerCommand(weatherquality);
 
-	Command frametiming;
-	frametiming.name = "frametiming";
-	frametiming.aliases = {"frametime", "ft"};
-	frametiming.usage = "/frametiming";
-	frametiming.description = "Toggle frame timing profiler (outputs breakdown every 60 frames)";
-	frametiming.category = "Utility";
-	frametiming.handler = rendererCmd("frametiming");
-	m_command_registry->registerCommand(frametiming);
-
-	Command simworkercmd;
-	simworkercmd.name = "simworker";
-	simworkercmd.aliases = {"sw"};
-	simworkercmd.usage = "/simworker";
-	simworkercmd.description = "Show simulation worker thread status";
-	simworkercmd.category = "Utility";
-	simworkercmd.handler = rendererCmd("simworker");
-	m_command_registry->registerCommand(simworkercmd);
-
-	Command sceneprofile;
-	sceneprofile.name = "sceneprofile";
-	sceneprofile.aliases = {"sp", "scenebreak"};
-	sceneprofile.usage = "/sceneprofile";
-	sceneprofile.description = "Profile scene rendering by category (zone, entities, objects, doors)";
-	sceneprofile.category = "Utility";
-	sceneprofile.handler = rendererCmd("sceneprofile");
-	m_command_registry->registerCommand(sceneprofile);
-
-	Command dumpscenecmd;
-	dumpscenecmd.name = "dumpscene";
-	dumpscenecmd.aliases = {"ds"};
-	dumpscenecmd.usage = "/dumpscene";
-	dumpscenecmd.description = "Dump all scene graph nodes with positions and PVS regions to console";
-	dumpscenecmd.category = "Utility";
-	dumpscenecmd.handler = rendererCmd("dumpscene");
-	m_command_registry->registerCommand(dumpscenecmd);
-
-	Command sortcmd;
-	sortcmd.name = "sort";
-	sortcmd.aliases = {};
-	sortcmd.usage = "/sort";
-	sortcmd.description = "Toggle front-to-back zone geometry sorting (manual draw vs scene graph)";
-	sortcmd.category = "Utility";
-	sortcmd.handler = rendererCmd("sort");
-	m_command_registry->registerCommand(sortcmd);
-
-	Command mergedrawscmd;
-	mergedrawscmd.name = "mergedraws";
-	mergedrawscmd.aliases = {};
-	mergedrawscmd.usage = "/mergedraws";
-	mergedrawscmd.description = "Toggle cross-region zone draw merge (P10, flag-gated production landing)";
-	mergedrawscmd.category = "Utility";
-	mergedrawscmd.handler = rendererCmd("mergedraws");
-	m_command_registry->registerCommand(mergedrawscmd);
-
-	Command screenshotcmd;
-	screenshotcmd.name = "screenshot";
-	screenshotcmd.aliases = {};
-	screenshotcmd.usage = "/screenshot <path>";
-	screenshotcmd.description = "Save a screenshot to the given path (P10: scriptable A/B capture hook)";
-	screenshotcmd.category = "Utility";
-	screenshotcmd.handler = rendererCmd("screenshot");
-	m_command_registry->registerCommand(screenshotcmd);
-
-	Command uploadcmd;
-	uploadcmd.name = "upload";
-	uploadcmd.aliases = {};
-	uploadcmd.usage = "/upload";
-	uploadcmd.description = "Toggle GPU upload thread (async texture/VBO uploads)";
-	uploadcmd.category = "Utility";
-	uploadcmd.handler = rendererCmd("upload");
-	m_command_registry->registerCommand(uploadcmd);
-
-	Command portalcmd;
-	portalcmd.name = "portal";
-	portalcmd.aliases = {};
-	portalcmd.usage = "/portal [on|off|debug]";
-	portalcmd.description = "Toggle portal occlusion or portal debug overlay";
-	portalcmd.category = "Utility";
-	portalcmd.handler = rendererCmd("portal");
-	m_command_registry->registerCommand(portalcmd);
-
-	Command stencilcmd;
-	stencilcmd.name = "stencil";
-	stencilcmd.aliases = {};
-	stencilcmd.usage = "/stencil";
-	stencilcmd.description = "Toggle stencil buffer debug overlay";
-	stencilcmd.category = "Utility";
-	stencilcmd.handler = rendererCmd("stencil");
-	m_command_registry->registerCommand(stencilcmd);
-
-	Command governorcmd;
-	governorcmd.name = "governor";
-	governorcmd.aliases = {"gov", "budget"};
-	governorcmd.usage = "/governor [status|fps <N>|force green|yellow|red|auto]";
-	governorcmd.description = "Frame budget governor: controls loading throttle based on FPS";
-	governorcmd.category = "Utility";
-	governorcmd.handler = rendererCmd("governor");
-	m_command_registry->registerCommand(governorcmd);
-
-	Command placeholdercmd;
-	placeholdercmd.name = "placeholder";
-	placeholdercmd.aliases = {};
-	placeholdercmd.usage = "/placeholder";
-	placeholdercmd.description = "Toggle zone placeholder mesh visibility (debug)";
-	placeholdercmd.category = "Utility";
-	placeholdercmd.handler = rendererCmd("placeholder");
-	m_command_registry->registerCommand(placeholdercmd);
-
-	Command plightcmd;
-	plightcmd.name = "plight";
-	plightcmd.aliases = {};
-	plightcmd.usage = "/plight";
-	plightcmd.description = "Toggle per-pixel player light (debug: isolate FPS impact)";
-	plightcmd.category = "Utility";
-	plightcmd.handler = rendererCmd("plight");
-	m_command_registry->registerCommand(plightcmd);
-
-	Command olightcmd;
-	olightcmd.name = "olight";
-	olightcmd.aliases = {};
-	olightcmd.usage = "/olight";
-	olightcmd.description = "Toggle object/torch point lights (debug: isolate FPS impact)";
-	olightcmd.category = "Utility";
-	olightcmd.handler = rendererCmd("olight");
-	m_command_registry->registerCommand(olightcmd);
-
-	Command zlightcmd;
-	zlightcmd.name = "zlight";
-	zlightcmd.aliases = {};
-	zlightcmd.usage = "/zlight";
-	zlightcmd.description = "Toggle directional sun/ambient lighting (debug: isolate FPS impact)";
-	zlightcmd.category = "Utility";
-	zlightcmd.handler = rendererCmd("zlight");
-	m_command_registry->registerCommand(zlightcmd);
-
-	Command lightmodecmd;
-	lightmodecmd.name = "lightmode";
-	lightmodecmd.aliases = {};
-	lightmodecmd.usage = "/lightmode";
-	lightmodecmd.description = "Toggle lighting mode: additive (default) vs unified (pointLight scaled by vertex color)";
-	lightmodecmd.category = "Utility";
-	lightmodecmd.handler = rendererCmd("lightmode");
-	m_command_registry->registerCommand(lightmodecmd);
-
-	Command shaderdebugcmd;
-	shaderdebugcmd.name = "shaderdebug";
-	shaderdebugcmd.aliases = {"sd"};
-	shaderdebugcmd.usage = "/shaderdebug [0-8]";
-	shaderdebugcmd.description = "Shader debug visualization (0=normal, 1=texColor, 2=vColor, 3=LUT, 4=pLight, 5=normal, 6=lightDir, 7=alpha, 8=tex*vColor)";
-	shaderdebugcmd.category = "Utility";
-	shaderdebugcmd.handler = rendererCmd("shaderdebug");
-	m_command_registry->registerCommand(shaderdebugcmd);
-
-	Command firecmd;
-	firecmd.name = "fire";
-	firecmd.aliases = {};
-	firecmd.usage = "/fire";
-	firecmd.description = "Toggle unified fire particle effects (point sprite emitters)";
-	firecmd.category = "Utility";
-	firecmd.handler = rendererCmd("fire");
-	m_command_registry->registerCommand(firecmd);
-
-	Command renderdist;
-	renderdist.name = "renderdist";
-	renderdist.aliases = {"clipplane", "viewdist"};
-	renderdist.usage = "/renderdist [distance]";
-	renderdist.description = "Get or set render distance for entities, objects, and zone geometry";
-	renderdist.category = "Utility";
-	renderdist.handler = rendererCmd("renderdist");
-	m_command_registry->registerCommand(renderdist);
-
-	Command clipdist;
-	clipdist.name = "clipdist";
-	clipdist.aliases = {"clip", "farplane"};
-	clipdist.usage = "/clipdist [distance]";
-	clipdist.description = "Get or set camera clip distance (far plane)";
-	clipdist.category = "Utility";
-	clipdist.handler = rendererCmd("clipdist");
-	m_command_registry->registerCommand(clipdist);
-
-	Command filter;
-	filter.name = "filter";
-	filter.usage = "/filter [channel]";
-	filter.description = "Toggle chat channel filter";
-	filter.detailedHelp = "Channels: say, tell, group, guild, shout, auction, ooc, emote, combat, miss, exp, loot, npc, all";
-	filter.category = "Utility";
-	filter.handler = rendererCmd("filter");
-	m_command_registry->registerCommand(filter);
-
 	// === Sky Commands ===
-
-	Command sky;
-	sky.name = "sky";
-	sky.usage = "/sky";
-	sky.description = "Toggle sky rendering on/off";
-	sky.category = "Utility";
-	sky.handler = rendererCmd("sky");
-	m_command_registry->registerCommand(sky);
-
-	Command skytype;
-	skytype.name = "skytype";
-	skytype.usage = "/skytype <id>";
-	skytype.description = "Force sky type (0=default, 6=luclin, 10=grey, 11=fire, 12=storms)";
-	skytype.category = "Utility";
-	skytype.requiresArgs = true;
-	skytype.handler = rendererCmd("skytype");
-	m_command_registry->registerCommand(skytype);
 
 	Command time_cmd;
 	time_cmd.name = "time";

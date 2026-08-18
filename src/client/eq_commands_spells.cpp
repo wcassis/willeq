@@ -100,27 +100,19 @@ void EverQuest::RegisterSpellCommands()
 {
 	using namespace eqt::ui;
 
-	// D20d: Helper — renderer commands push RendererCommand event via bridge
-	// (G02: duplicated verbatim from RegisterMovementCommands, where it's
-	// also used — this domain's Detail System Commands and /pmem also route
-	// through it. Stateless, no behavior change from having two copies.)
-	// T29: headless honesty -- see the identical note in
-	// eq_commands_movement.cpp's rendererCmd.
-	auto rendererCmd = [this](const std::string& cmdName) {
-		return [this, cmdName](const std::string& args) {
-#ifdef EQT_HAS_GRAPHICS
-			if (m_bridge) {
-				std::string fullCmd = "/" + cmdName;
-				if (!args.empty()) fullCmd += " " + args;
-				m_bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::RendererCommand,
-					eqt::state::RendererCommandData{fullCmd}));
-			}
-#else
-			AddChatSystemMessage(fmt::format("/{} requires graphics mode (not available in this headless build).", cmdName));
-#endif
-		};
-	};
+	// T139: rendererCmd() (this file's copy of the helper that pushed a
+	// RendererCommand bridge event for a game-registry command name) is
+	// deleted here -- every caller in this file (detail/togglegrass/
+	// toggleplants/togglerocks/toggledebris/season/detailinfo) was one of
+	// the 8 redundant duplicates this file contributed to T139's 34 (see
+	// refactor/T139_delete_duplicate_commands.md). registry-3's fallback
+	// (Application::dispatchToActionOrRenderer, application.cpp) forwards
+	// the identical "/" + cmdBody string to
+	// IrrlichtRenderer::processSlashCommand() automatically once no game- or
+	// action-registry command claims the name, so nothing here needs
+	// replacing -- the same renderer entry points still run. /skills is
+	// deleted too (see Review: it pushed ToggleSkillsWindow, a confirmed-
+	// dead event with zero consumer -- not a rendererCmd/registry-3 case).
 
 	// === Spell Commands ===
 	//
@@ -132,22 +124,6 @@ void EverQuest::RegisterSpellCommands()
 	// keep routing through this copy, per the atomicity rule T99
 	// established). /skills stays: it's registered category "Utility", not
 	// "Spells", outside this unit's confirmed membership.
-
-	Command skills;
-	skills.name = "skills";
-	skills.usage = "/skills";
-	skills.description = "Toggle skills window";
-	skills.category = "Utility";
-	skills.handler = [this](const std::string& args) {
-		if (m_bridge) {
-			m_bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::ToggleSkillsWindow,
-				eqt::state::ToggleSkillsWindowData{}));
-		} else {
-			AddChatSystemMessage("Skills window requires graphics mode");
-		}
-	};
-	m_command_registry->registerCommand(skills);
 
 	Command bank;
 	bank.name = "bank";
@@ -344,63 +320,6 @@ void EverQuest::RegisterSpellCommands()
 	m_command_registry->registerCommand(hotkeys);
 
 	// === Detail System Commands (grass, plants, debris) ===
-
-	Command detailCmd;
-	detailCmd.name = "detail";
-	detailCmd.aliases = {"detaildensity", "grass"};
-	detailCmd.usage = "/detail [0-100]";
-	detailCmd.description = "Set or show detail density (grass, plants)";
-	detailCmd.category = "Utility";
-	detailCmd.handler = rendererCmd("detail");
-	m_command_registry->registerCommand(detailCmd);
-
-	Command togglegrass;
-	togglegrass.name = "togglegrass";
-	togglegrass.usage = "/togglegrass";
-	togglegrass.description = "Toggle grass rendering on/off";
-	togglegrass.category = "Utility";
-	togglegrass.handler = rendererCmd("togglegrass");
-	m_command_registry->registerCommand(togglegrass);
-
-	Command toggleplants;
-	toggleplants.name = "toggleplants";
-	toggleplants.usage = "/toggleplants";
-	toggleplants.description = "Toggle plants rendering on/off";
-	toggleplants.category = "Utility";
-	toggleplants.handler = rendererCmd("toggleplants");
-	m_command_registry->registerCommand(toggleplants);
-
-	Command togglerocks;
-	togglerocks.name = "togglerocks";
-	togglerocks.usage = "/togglerocks";
-	togglerocks.description = "Toggle rocks rendering on/off";
-	togglerocks.category = "Utility";
-	togglerocks.handler = rendererCmd("togglerocks");
-	m_command_registry->registerCommand(togglerocks);
-
-	Command toggledebris;
-	toggledebris.name = "toggledebris";
-	toggledebris.usage = "/toggledebris";
-	toggledebris.description = "Toggle debris rendering on/off";
-	toggledebris.category = "Utility";
-	toggledebris.handler = rendererCmd("toggledebris");
-	m_command_registry->registerCommand(toggledebris);
-
-	Command season;
-	season.name = "season";
-	season.usage = "/season [default|snow|autumn|desert|swamp|auto]";
-	season.description = "Override seasonal detail variant";
-	season.category = "Utility";
-	season.handler = rendererCmd("season");
-	m_command_registry->registerCommand(season);
-
-	Command detailinfo;
-	detailinfo.name = "detailinfo";
-	detailinfo.usage = "/detailinfo";
-	detailinfo.description = "Show detail system debug info";
-	detailinfo.category = "Utility";
-	detailinfo.handler = rendererCmd("detailinfo");
-	m_command_registry->registerCommand(detailinfo);
 
 	Command pmem;
 	pmem.name = "pmem";
