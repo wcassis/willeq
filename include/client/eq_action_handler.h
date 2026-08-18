@@ -213,6 +213,12 @@ public:
     void bug(const std::string& description) override;
     void petition(const std::string& text) override;
 
+    // ========== Merchant (T136) ==========
+    void vendorToggle() override;
+    void vendorList() override;
+    void buyFromVendor(uint32_t slot, uint8_t quantity) override;
+    void sellToVendor(uint32_t slot, uint8_t quantity) override;
+
 private:
     EverQuest& m_eq;
 

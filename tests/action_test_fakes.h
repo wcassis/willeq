@@ -314,6 +314,16 @@ public:
     void bug(const std::string& description) override { record("bug", description); }
     void petition(const std::string& text) override { record("petition", text); }
 
+    // ========== Merchant (T136) ==========
+    void vendorToggle() override { record("vendorToggle"); }
+    void vendorList() override { record("vendorList"); }
+    void buyFromVendor(uint32_t slot, uint8_t quantity) override {
+        record("buyFromVendor", slot, static_cast<uint32_t>(quantity));
+    }
+    void sellToVendor(uint32_t slot, uint8_t quantity) override {
+        record("sellToVendor", slot, static_cast<uint32_t>(quantity));
+    }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

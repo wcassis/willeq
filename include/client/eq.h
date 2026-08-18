@@ -1931,7 +1931,9 @@ private:
 	void RegisterSocialCommands();    // Chat/group/trade/guild/corpse/duel/misc social commands (eq_commands.cpp)
 	void RegisterMovementCommands();  // Movement/combat/utility-debug/sky commands (eq_commands_movement.cpp)
 	void RegisterSpellCommands();     // Spell/skill/hotkey/detail/audio commands (eq_commands_spells.cpp)
-	void RegisterVendorCommands();    // T48: /vendorlist, /buy, /sell (eq_commands.cpp)
+	// T136: RegisterVendorCommands() (T48: /vendorlist, /buy, /sell) removed
+	// -- migrated to action::CommandProcessor. See RequestVendorToggle()/
+	// RequestVendorBuy()/RequestVendorSell() below.
 	void RegisterEquipmentCommands(); // T66: /equip (eq_commands.cpp)
 
 	// Manual zone load diagnostics helpers
@@ -2048,6 +2050,30 @@ public:
 	void CloseVendorWindow();
 	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
 	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+
+	// T136: minimal read accessors for the migrated /vendorlist command --
+	// see refactor/T136_migrate_merchant_family.md ("the state gap") for why
+	// these two reads were exposed instead of building a vendor state
+	// domain (T103's GameStateSyncBridge precedent doesn't apply: this
+	// serves exactly one display command, not a cross-cutting need).
+	// GameVendorItem is private, but its members are public (default for a
+	// struct) -- callers iterate via structured bindings without ever
+	// naming the type, same idiom already used throughout eq_commands.cpp.
+	const std::string& GetVendorName() const { return m_vendor_name; }
+	const std::map<uint32_t, GameVendorItem>& GetVendorItems() const { return m_vendor_items; }
+	static std::string FormatVendorPrice(int32_t copperAmount) { return FormatPrice(copperAmount); }
+
+	// T136: /vendor, /buy, /sell push the SAME eqt::events::Vendor*Intent
+	// the renderer's vendor-window gesture pushes (T48's max-fidelity
+	// choice, preserved). action::EqActionHandler has no access to the
+	// private m_bridge, so these thin wrappers carry the exact guard bodies
+	// eq_commands.cpp's old RegisterVendorCommands() lambdas had --
+	// stateful guards stay in the layer owning the state (T134); only
+	// usage-string/numeric-token parsing moved up to
+	// action::CommandProcessor::cmdBuy/cmdSell. Defined in eq_commands.cpp.
+	void RequestVendorToggle();
+	void RequestVendorBuy(uint32_t slot, uint8_t quantity);
+	void RequestVendorSell(uint32_t slot, uint8_t quantity);
 
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);

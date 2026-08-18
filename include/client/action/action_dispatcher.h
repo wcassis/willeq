@@ -318,6 +318,29 @@ public:
     virtual void rewind() = 0;
     virtual void bug(const std::string& description) = 0;
     virtual void petition(const std::string& text) = 0;
+
+    // ========== Merchant (T136) ==========
+    // Unlike every prior family, NOT thin wrappers over a pre-existing
+    // EverQuest::Send*() -- there were no senders. vendorToggle()/
+    // buyFromVendor()/sellToVendor() wrap three new EverQuest methods
+    // (RequestVendorToggle/RequestVendorBuy/RequestVendorSell,
+    // eq_commands.cpp) that push the SAME eqt::events::Vendor*Intent the
+    // renderer's vendor-window gesture pushes -- the T48 maximum-fidelity
+    // choice, preserved. These new EverQuest methods exist only because
+    // EqActionHandler has no access to EverQuest::m_bridge (private);
+    // IActionHandler still can't reach the intent queue directly, so
+    // EverQuest keeps owning the push, same as it always has.
+    // vendorList() is a pure state read + print -- no dispatcher-level
+    // guard beyond checkZoneConnection(); see EqActionHandler::vendorList()
+    // for the guard/format logic (ported verbatim from the old
+    // vendorlist_cmd handler), which reads the two new EverQuest accessors
+    // (GetVendorItems()/GetVendorName()) added for exactly this purpose --
+    // see the plan's "the state gap" section for why accessors were chosen
+    // over a vendor state domain.
+    virtual void vendorToggle() = 0;
+    virtual void vendorList() = 0;
+    virtual void buyFromVendor(uint32_t slot, uint8_t quantity) = 0;
+    virtual void sellToVendor(uint32_t slot, uint8_t quantity) = 0;
 };
 
 /**
@@ -1106,6 +1129,36 @@ public:
      * Submit a petition.
      */
     ActionResult petition(const std::string& text);
+
+    // ========== Merchant Actions (T136) ==========
+
+    /**
+     * Open a vendor window with your current target, or close it if
+     * already open. Target/NPC-type/class validation is guarded inside
+     * EverQuest::RequestVendorToggle(), not duplicated here.
+     */
+    ActionResult vendorToggle();
+
+    /**
+     * List the open vendor's inventory. Pure state read + print --
+     * EqActionHandler::vendorList() reads EverQuest::GetVendorItems()/
+     * GetVendorName() directly and reports "not at a vendor" itself.
+     */
+    ActionResult vendorList();
+
+    /**
+     * Buy an item from the open vendor. Slot-existence and
+     * vendor-window-open guards live inside EverQuest::RequestVendorBuy().
+     */
+    ActionResult buyFromVendor(uint32_t slot, uint8_t quantity);
+
+    /**
+     * Sell an item to the open vendor. Vendor-window-open guard lives
+     * inside EverQuest::RequestVendorSell(); item-in-slot/NO_DROP/stack
+     * validation stays entirely inside SellToVendor() (eq_merchant.cpp),
+     * untouched.
+     */
+    ActionResult sellToVendor(uint32_t slot, uint8_t quantity);
 
 private:
     state::GameState& m_state;

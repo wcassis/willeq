@@ -268,45 +268,16 @@ void EverQuest::RegisterCommands()
 	RegisterSocialCommands();
 	RegisterMovementCommands();
 	RegisterSpellCommands();
-	RegisterVendorCommands();
+	// T136: RegisterVendorCommands() removed -- vendor/vendorlist/buy/sell
+	// MIGRATED to action::CommandProcessor. See the T136 block below (near
+	// RequestVendorToggle()) and refactor/T136_migrate_merchant_family.md.
 	RegisterEquipmentCommands();
 }
 
-// ── T48: vendor slash-command argument parsing helpers ─────────────────────
-// Same idiom as action::CommandProcessor::cmdLoot() (T34): std::stol with a
-// consumed-length check so trailing garbage ("5abc") is rejected instead of
-// silently truncated, plus an explicit range check instead of relying on
-// stol's own (wider, signed) overflow behavior.
 namespace {
 
-bool ParseVendorSlot(const std::string& tok, uint32_t& out) {
-	if (tok.empty()) return false;
-	try {
-		size_t consumed = 0;
-		long v = std::stol(tok, &consumed);
-		if (v < 0 || v > 0xFFFF || consumed != tok.size()) return false;
-		out = static_cast<uint32_t>(v);
-		return true;
-	} catch (const std::exception&) {
-		return false;
-	}
-}
-
-bool ParseVendorQuantity(const std::string& tok, uint8_t& out) {
-	if (tok.empty()) return false;
-	try {
-		size_t consumed = 0;
-		long v = std::stol(tok, &consumed);
-		if (v < 1 || v > 0xFF || consumed != tok.size()) return false;
-		out = static_cast<uint8_t>(v);
-		return true;
-	} catch (const std::exception&) {
-		return false;
-	}
-}
-
-// T66: /equip slot argument parsing. Same consumed-length idiom as
-// ParseVendorSlot above, but signed/int16_t range since inventory slot ids
+// T66: /equip slot argument parsing. Same consumed-length idiom T48's
+// (now-removed, T136) ParseVendorSlot used, but signed/int16_t range since inventory slot ids
 // (include/client/inventory/inventory_constants.h) are the same type
 // MoveItemIntent::fromSlot/toSlot and SendMoveItem() use -- no separate
 // slot numbering invented here (T57's ruling: that enum/header is canonical).
@@ -558,9 +529,21 @@ void EverQuest::RegisterSocialCommands()
 	// action::CommandProcessor (cmdSplit/cmdSave/cmdBandage/cmdRewind/
 	// cmdBug/cmdPetition). Net-new plumbing, not a reconcile-and-delete --
 	// these six do not share a scenario, unlike Guild/Corpse-Rez, but share
-	// a unit. See refactor/T135_migrate_utility_family.md. This closes the
-	// registry: eq_commands.cpp now holds only the Merchant family
-	// (vendor/vendorlist/buy/sell/equip below).
+	// a unit. See refactor/T135_migrate_utility_family.md.
+
+	// T136: vendor/vendorlist/buy/sell (of the five-command Merchant family)
+	// MIGRATED to action::CommandProcessor (cmdVendor/cmdVendorList/cmdBuy/
+	// cmdSell). Net-new plumbing over three new EverQuest methods
+	// (RequestVendorToggle/RequestVendorBuy/RequestVendorSell, near the top
+	// of this file) -- there were no pre-existing senders, unlike every
+	// prior family. equip is DELIBERATELY NOT migrated here: it already
+	// carries category "Inventory", not "Commerce", in this very registry,
+	// and its mechanism (InventoryManager, three input forms, cursor
+	// staging, pre-flight legality) shares nothing with vendor/buy/sell's
+	// bridge-intent shape. See refactor/T136_migrate_merchant_family.md's
+	// Review for the full argument and refactor/deferred.md for the
+	// follow-up unit this defers /equip to. This leaves eq_commands.cpp's
+	// registry holding only /equip (below).
 
 	// === Phase 3: Combat Targeting Commands ===
 
@@ -607,198 +590,104 @@ void EverQuest::RegisterSocialCommands()
 	// T135: petition MIGRATED to action::CommandProcessor (cmdPetition).
 }
 
-// T48: vendor buy/sell were previously reachable ONLY through the renderer's
-// vendor-window UI gesture -- VendorBuyIntent/VendorSellIntent existed as
-// types with working handlers in ProcessBridgeIntents() (eq_bridge.cpp:
-// 1069-1074, dispatching to BuyFromVendor()/SellToVendor()), but nothing
-// anywhere constructed either intent (refactor/deferred.md "PATTERN: real
-// features reachable only through a UI gesture, invisible to automation";
-// refactor/T48_vendor_reachability.md). T42 had to add temporary scratch
-// hooks calling BuyFromVendor()/SellToVendor() directly just to run its live
-// acceptance, then revert them.
+// T136: vendor/vendorlist/buy/sell MIGRATED to action::CommandProcessor
+// (cmdVendor/cmdVendorList/cmdBuy/cmdSell). Unlike every other family, there
+// were no EverQuest::Send*() senders to wrap -- these three EverQuest
+// methods (RequestVendorToggle/RequestVendorBuy/RequestVendorSell) ARE the
+// net-new senders this unit adds, carrying the exact guard bodies the old
+// vendor_cmd/buy_cmd/sell_cmd lambdas had verbatim (stateful guards stay in
+// the layer owning the state, T134's rule), so action::EqActionHandler --
+// which has no access to the private m_bridge -- has something to call.
+// /buy and /sell still push the SAME VendorBuyIntent/VendorSellIntent the
+// vendor-window gesture pushes (T48's maximum-fidelity choice, preserved
+// unchanged); /vendor still pushes the same VendorToggleIntent, whose
+// target/NPC-type/class==merchant validation remains exactly where it was,
+// inside ProcessBridgeIntents() (eq_bridge.cpp) -- untouched, since that
+// logic reads m_entities/m_combat_manager directly and has no public
+// accessor to duplicate it through.
 //
-// These three commands close that gap. /vendorlist surfaces m_vendor_items
-// (populated in memory by ZoneProcessVendorItemToUI, eq_merchant.cpp) so a
-// script can discover what's for sale without guessing slot numbers -- T42's
-// exact blocker. /buy and /sell push the SAME VendorBuyIntent/VendorSellIntent
-// the vendor-window gesture pushes (maximum-fidelity choice; see the
-// commentary on buy_cmd's handler below for exactly which hops differ from
-// the gesture's). All three default to the currently open vendor
-// (GetVendorNpcId()/IsVendorWindowOpen()) rather than making the caller pass
-// an npc id, per the plan.
-void EverQuest::RegisterVendorCommands()
+// /vendorlist MIGRATED too, but as a pure state read + print --
+// EqActionHandler::vendorList() calls the two new GetVendorItems()/
+// GetVendorName() accessors (eq.h) directly rather than routing through a
+// new EverQuest method, per the plan's explicit design question 1: see this
+// plan's Review for the full argument.
+//
+// Argument PARSING (numeric slot/quantity tokens) moved up to
+// action::CommandProcessor::cmdBuy/cmdSell -- a formatting concern, not a
+// guard, same precedent as cmdSplit/cmdWho's own token parsing. The old
+// ParseVendorSlot()/ParseVendorQuantity() free functions below are UNUSED
+// now (equip's ParseEquipSlot is a separate, still-used, function) --
+// removed rather than left as dead code.
+//
+// Registrations removed from eq_commands.cpp's m_command_registry in the
+// same commit as the CommandProcessor registrations (RegisterCommands()
+// above no longer calls RegisterVendorCommands() -- see the removed call
+// and this plan's Board for what that means for the registry).
+
+void EverQuest::RequestVendorToggle()
 {
-	using namespace eqt::ui;
+	if (!IsVendorWindowOpen() && (!m_combat_manager || !m_combat_manager->HasTarget())) {
+		AddChatSystemMessage("You don't have a target - target a merchant first.");
+		return;
+	}
+	if (m_bridge) {
+		m_bridge->pushIntent(eqt::events::VendorToggleIntent{});
+	} else {
+		AddChatSystemMessage("Cannot open vendor - no bridge attached.");
+	}
+}
 
-	// /vendor was added alongside /vendorlist, /buy, /sell once scoping this
-	// unit's mandated live acceptance ("open a vendor, list its inventory,
-	// buy an item, sell it back -- all via piped commands, no scratch
-	// hooks") surfaced that VendorToggleIntent -- the intent the renderer's
-	// right-click-a-merchant gesture pushes to OPEN the window in the first
-	// place (renderer_frame.cpp:618) -- has exactly the same problem as
-	// VendorBuyIntent/VendorSellIntent: its handler exists in
-	// ProcessBridgeIntents() (eq_bridge.cpp:866, validating target/NPC-type/
-	// class==merchant then calling RequestOpenVendor()), but nothing ever
-	// constructed it either. Without a command-channel way to OPEN a vendor,
-	// the plan's own mandated live acceptance would have been impossible to
-	// run without a scratch hook -- precisely what this unit exists to
-	// avoid. This command pushes the SAME VendorToggleIntent{} the gesture
-	// pushes (same fidelity choice as /buy and /sell below), so it is a
-	// direct, in-spirit extension of the T48 pattern, not a new feature:
-	// the actual open/close logic (target/NPC-type/class validation,
-	// RequestOpenVendor()/CloseVendorWindow()) is untouched, unmoved,
-	// pre-existing code.
-	Command vendor_cmd;
-	vendor_cmd.name = "vendor";
-	vendor_cmd.usage = "/vendor";
-	vendor_cmd.description = "Open (or close) a vendor window with your current target";
-	vendor_cmd.category = "Commerce";
-	vendor_cmd.handler = [this](const std::string& /*args*/) {
-		if (!IsVendorWindowOpen() && (!m_combat_manager || !m_combat_manager->HasTarget())) {
-			AddChatSystemMessage("You don't have a target - target a merchant first.");
-			return;
-		}
-		if (m_bridge) {
-			m_bridge->pushIntent(eqt::events::VendorToggleIntent{});
-		} else {
-			AddChatSystemMessage("Cannot open vendor - no bridge attached.");
-		}
-	};
-	m_command_registry->registerCommand(vendor_cmd);
+void EverQuest::RequestVendorBuy(uint32_t slot, uint8_t quantity)
+{
+	if (!IsVendorWindowOpen()) {
+		AddChatSystemMessage("You are not at a vendor.");
+		return;
+	}
+	if (m_vendor_items.find(slot) == m_vendor_items.end()) {
+		AddChatSystemMessage(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
+		return;
+	}
 
-	Command vendorlist_cmd;
-	vendorlist_cmd.name = "vendorlist";
-	vendorlist_cmd.usage = "/vendorlist";
-	vendorlist_cmd.description = "List the open vendor's inventory (slot, name, price, quantity)";
-	vendorlist_cmd.category = "Commerce";
-	vendorlist_cmd.handler = [this](const std::string& /*args*/) {
-		if (!IsVendorWindowOpen()) {
-			AddChatSystemMessage("You are not at a vendor.");
-			return;
-		}
-		if (m_vendor_items.empty()) {
-			AddChatSystemMessage(fmt::format("{}'s inventory is empty (or still loading).", m_vendor_name));
-			return;
-		}
-		AddChatSystemMessage(fmt::format("{}'s inventory ({} item{}):",
-			m_vendor_name, m_vendor_items.size(), m_vendor_items.size() == 1 ? "" : "s"));
-		for (const auto& [slot, item] : m_vendor_items) {
-			std::string qtyStr = (item.quantity < 0) ? "unlimited" : std::to_string(item.quantity);
-			AddChatSystemMessage(fmt::format("  [slot {}] {} - {} (qty: {})",
-				slot, item.name, FormatPrice(item.price), qtyStr));
-		}
-	};
-	m_command_registry->registerCommand(vendorlist_cmd);
+	// FIDELITY (maximum-fidelity choice, per the plan): this pushes the
+	// exact same eqt::events::VendorBuyIntent the renderer's vendor-window
+	// "buy" click pushes. From here every hop is IDENTICAL to the
+	// gesture's: the intent sits in GameStateBridge's intent queue and is
+	// drained by the same EverQuest::ProcessBridgeIntents() ->
+	// BuyFromVendor(npcId, slot, quantity) dispatch (eq_bridge.cpp:1069)
+	// on the next GameTick(). The one hop that differs from the pre-T136
+	// game-registry path: the caller is now action::EqActionHandler,
+	// reached via action::CommandProcessor -- but both the OLD
+	// m_command_registry path and the NEW action:: path dispatch on the
+	// GAME thread (see this plan's Review, "Threading" section, for the
+	// traced call chain proving this for both entry points), so this is
+	// not a new cross-thread hazard.
+	if (m_bridge) {
+		m_bridge->pushIntent(eqt::events::VendorBuyIntent{
+			GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+	} else {
+		AddChatSystemMessage("Cannot buy - no bridge attached.");
+	}
+}
 
-	Command buy_cmd;
-	buy_cmd.name = "buy";
-	buy_cmd.usage = "/buy <slot> [quantity]";
-	buy_cmd.description = "Buy an item from the open vendor (see /vendorlist)";
-	buy_cmd.category = "Commerce";
-	buy_cmd.handler = [this](const std::string& args) {
-		if (!IsVendorWindowOpen()) {
-			AddChatSystemMessage("You are not at a vendor.");
-			return;
-		}
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /buy <slot> [quantity] - see /vendorlist");
-			return;
-		}
+void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
+{
+	if (!IsVendorWindowOpen()) {
+		AddChatSystemMessage("You are not at a vendor.");
+		return;
+	}
 
-		std::istringstream iss(args);
-		std::string slotTok, qtyTok;
-		iss >> slotTok;
-		iss >> qtyTok;  // optional; empty if not present
-
-		uint32_t slot = 0;
-		if (!ParseVendorSlot(slotTok, slot)) {
-			AddChatSystemMessage("Invalid slot - see /vendorlist");
-			return;
-		}
-
-		uint8_t quantity = 1;  // default, per the plan ("optional quantity")
-		if (!qtyTok.empty() && !ParseVendorQuantity(qtyTok, quantity)) {
-			AddChatSystemMessage("Invalid quantity (must be 1-255)");
-			return;
-		}
-
-		if (m_vendor_items.find(slot) == m_vendor_items.end()) {
-			AddChatSystemMessage(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
-			return;
-		}
-
-		// FIDELITY (maximum-fidelity choice, per the plan): this pushes the
-		// exact same eqt::events::VendorBuyIntent the renderer's vendor-window
-		// "buy" click pushes. From here every hop is IDENTICAL to the
-		// gesture's: the intent sits in GameStateBridge's intent queue and is
-		// drained by the same EverQuest::ProcessBridgeIntents() ->
-		// BuyFromVendor(npcId, slot, quantity) dispatch (eq_bridge.cpp:1069)
-		// on the next GameTick(), which (T45) now runs in headless mode too.
-		// The ONE hop that differs: WHO calls pushIntent() and on which
-		// thread. The gesture's caller is renderer code on the render
-		// thread, crossing to the game thread via the bridge. Here the
-		// caller is EverQuest itself (m_command_registry's handler, which
-		// piped-command dispatch invokes on the GAME thread -- see
-		// Application::DispatchSlashCommand()/dispatchToActionOrRenderer()'s
-		// registry-1 stage), so push and the later drain both happen on the
-		// game thread. GameStateBridge::pushIntent()'s mutex makes this safe
-		// either way; it is an honest difference in the calling thread, not
-		// a gap in what gets dispatched or how.
-		if (m_bridge) {
-			m_bridge->pushIntent(eqt::events::VendorBuyIntent{
-				GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
-		} else {
-			AddChatSystemMessage("Cannot buy - no bridge attached.");
-		}
-	};
-	m_command_registry->registerCommand(buy_cmd);
-
-	Command sell_cmd;
-	sell_cmd.name = "sell";
-	sell_cmd.usage = "/sell <slot> [quantity]";
-	sell_cmd.description = "Sell an item from your inventory to the open vendor";
-	sell_cmd.category = "Commerce";
-	sell_cmd.handler = [this](const std::string& args) {
-		if (!IsVendorWindowOpen()) {
-			AddChatSystemMessage("You are not at a vendor.");
-			return;
-		}
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /sell <slot> [quantity] - <slot> is your inventory slot");
-			return;
-		}
-
-		std::istringstream iss(args);
-		std::string slotTok, qtyTok;
-		iss >> slotTok;
-		iss >> qtyTok;
-
-		uint32_t slot = 0;
-		if (!ParseVendorSlot(slotTok, slot)) {
-			AddChatSystemMessage("Invalid slot");
-			return;
-		}
-
-		uint8_t quantity = 1;
-		if (!qtyTok.empty() && !ParseVendorQuantity(qtyTok, quantity)) {
-			AddChatSystemMessage("Invalid quantity (must be 1-255)");
-			return;
-		}
-
-		// Same fidelity note as /buy above: pushes the SAME VendorSellIntent
-		// the vendor-window gesture pushes, drained by the same
-		// ProcessBridgeIntents() -> SellToVendor() dispatch. Item-in-slot /
-		// NO_DROP / stack-size validation stays entirely inside SellToVendor()
-		// (eq_merchant.cpp) -- unchanged, per the plan's fence against
-		// touching that function -- so this handler does not duplicate it.
-		if (m_bridge) {
-			m_bridge->pushIntent(eqt::events::VendorSellIntent{
-				GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
-		} else {
-			AddChatSystemMessage("Cannot sell - no bridge attached.");
-		}
-	};
-	m_command_registry->registerCommand(sell_cmd);
+	// Same fidelity note as RequestVendorBuy above: pushes the SAME
+	// VendorSellIntent the vendor-window gesture pushes, drained by the
+	// same ProcessBridgeIntents() -> SellToVendor() dispatch. Item-in-slot /
+	// NO_DROP / stack-size validation stays entirely inside SellToVendor()
+	// (eq_merchant.cpp) -- unchanged, per the plan's fence against touching
+	// that function -- so this does not duplicate it.
+	if (m_bridge) {
+		m_bridge->pushIntent(eqt::events::VendorSellIntent{
+			GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+	} else {
+		AddChatSystemMessage("Cannot sell - no bridge attached.");
+	}
 }
 
 // T66 -- instance 8 of "reachable only through a UI gesture, invisible to

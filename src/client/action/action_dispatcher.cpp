@@ -1504,5 +1504,48 @@ ActionResult ActionDispatcher::petition(const std::string& text) {
     return ActionResult::Success();
 }
 
+// ========== Merchant (T136) ==========
+// No usage-string guards ported here beyond checkZoneConnection() -- none
+// of game's original vendor_cmd/vendorlist_cmd existed at the dispatcher
+// level either (their "You are not at a vendor."/"no target" messages are
+// stateful guards, so they live inside the new EverQuest methods /
+// EqActionHandler::vendorList(), per T134's rule). buy/sell's slot and
+// quantity ARGUMENT PARSING (numeric-token validation, matching
+// ParseVendorSlot/ParseVendorQuantity's old idiom) moved up to
+// CommandProcessor::cmdBuy/cmdSell -- a formatting concern, not a guard,
+// same precedent as cmdSplit/cmdWho's own token parsing.
+
+ActionResult ActionDispatcher::vendorToggle() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->vendorToggle();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::vendorList() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->vendorList();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::buyFromVendor(uint32_t slot, uint8_t quantity) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->buyFromVendor(slot, quantity);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::sellToVendor(uint32_t slot, uint8_t quantity) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->sellToVendor(slot, quantity);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt
