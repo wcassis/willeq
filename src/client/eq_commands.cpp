@@ -554,28 +554,21 @@ void EverQuest::RegisterSocialCommands()
 	// cmdConsentDeny). Net-new plumbing, not a reconcile-and-delete -- see
 	// refactor/T134_migrate_corpse_rez.md.
 
+	// T135: Utility (split/save/bandage/rewind/bug/petition) MIGRATED to
+	// action::CommandProcessor (cmdSplit/cmdSave/cmdBandage/cmdRewind/
+	// cmdBug/cmdPetition). Net-new plumbing, not a reconcile-and-delete --
+	// these six do not share a scenario, unlike Guild/Corpse-Rez, but share
+	// a unit. See refactor/T135_migrate_utility_family.md. This closes the
+	// registry: eq_commands.cpp now holds only the Merchant family
+	// (vendor/vendorlist/buy/sell/equip below).
+
 	// === Phase 3: Combat Targeting Commands ===
 
 	// T102: assist MIGRATED to action::CommandProcessor (cmdAssist).
 
 	// === Phase 3: Group Commands ===
 
-	Command split_cmd;
-	split_cmd.name = "split";
-	split_cmd.usage = "/split <platinum> [gold] [silver] [copper]";
-	split_cmd.description = "Split money with your group";
-	split_cmd.category = "Group";
-	split_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /split <platinum> [gold] [silver] [copper]");
-			return;
-		}
-		uint32_t p = 0, g = 0, s = 0, c = 0;
-		std::istringstream iss(args);
-		iss >> p >> g >> s >> c;
-		SendSplit(p, g, s, c);
-	};
-	m_command_registry->registerCommand(split_cmd);
+	// T135: split MIGRATED to action::CommandProcessor (cmdSplit).
 
 	// === Phase 3: LFG Commands ===
 
@@ -588,38 +581,14 @@ void EverQuest::RegisterSocialCommands()
 
 	// === Phase 3: Misc Commands ===
 
-	Command save_cmd;
-	save_cmd.name = "save";
-	save_cmd.usage = "/save";
-	save_cmd.description = "Request character save";
-	save_cmd.category = "Utility";
-	save_cmd.handler = [this](const std::string& args) {
-		SendSave();
-	};
-	m_command_registry->registerCommand(save_cmd);
+	// T135: save MIGRATED to action::CommandProcessor (cmdSave).
 
 	// T102: duel/duelaccept/dueldecline MIGRATED to
 	// action::CommandProcessor (cmdDuel/cmdDuelAccept/cmdDuelDecline).
 
 	// === Phase 4: Skill Commands ===
 
-	Command bindwound_cmd;
-	bindwound_cmd.name = "bandage";
-	bindwound_cmd.aliases = {"bindwound"};
-	bindwound_cmd.usage = "/bandage";
-	bindwound_cmd.description = "Use bind wound skill on target";
-	bindwound_cmd.category = "Skills";
-	bindwound_cmd.handler = [this](const std::string& args) {
-		// T28: repointed from the never-populated state-layer CombatState
-		// target to the authoritative CombatManager (see /assist above).
-		uint32_t target_id = (m_combat_manager && m_combat_manager->HasTarget())
-			? m_combat_manager->GetTargetId() : 0;
-		if (target_id == 0) {
-			target_id = m_my_spawn_id;  // Self-target
-		}
-		SendBindWound(target_id);
-	};
-	m_command_registry->registerCommand(bindwound_cmd);
+	// T135: bandage MIGRATED to action::CommandProcessor (cmdBandage).
 
 	// === Phase 4: Cosmetic Commands ===
 
@@ -629,46 +598,13 @@ void EverQuest::RegisterSocialCommands()
 
 	// T102: random MIGRATED to action::CommandProcessor (cmdRandom).
 
-	Command rewind_cmd;
-	rewind_cmd.name = "rewind";
-	rewind_cmd.usage = "/rewind";
-	rewind_cmd.description = "Attempt to return to a safe position";
-	rewind_cmd.category = "Movement";
-	rewind_cmd.handler = [this](const std::string& args) {
-		SendRewind();
-	};
-	m_command_registry->registerCommand(rewind_cmd);
+	// T135: rewind MIGRATED to action::CommandProcessor (cmdRewind).
 
 	// T102: yell MIGRATED to action::CommandProcessor (cmdYell).
 
-	Command bug_cmd;
-	bug_cmd.name = "bug";
-	bug_cmd.aliases = {"report"};
-	bug_cmd.usage = "/bug <description>";
-	bug_cmd.description = "Submit a bug report";
-	bug_cmd.category = "Utility";
-	bug_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /bug <description>");
-			return;
-		}
-		SendReport(args);
-	};
-	m_command_registry->registerCommand(bug_cmd);
+	// T135: bug MIGRATED to action::CommandProcessor (cmdBug).
 
-	Command petition_cmd;
-	petition_cmd.name = "petition";
-	petition_cmd.usage = "/petition <text>";
-	petition_cmd.description = "Submit a petition";
-	petition_cmd.category = "Utility";
-	petition_cmd.handler = [this](const std::string& args) {
-		if (args.empty()) {
-			AddChatSystemMessage("Usage: /petition <text>");
-			return;
-		}
-		SendPetition(args);
-	};
-	m_command_registry->registerCommand(petition_cmd);
+	// T135: petition MIGRATED to action::CommandProcessor (cmdPetition).
 }
 
 // T48: vendor buy/sell were previously reachable ONLY through the renderer's

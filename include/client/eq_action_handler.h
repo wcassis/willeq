@@ -205,6 +205,14 @@ public:
     void rezAccept() override;
     void rezDecline() override;
 
+    // ========== Utility (T135) ==========
+    void split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) override;
+    void save() override;
+    void bandage(uint16_t targetId) override;
+    void rewind() override;
+    void bug(const std::string& description) override;
+    void petition(const std::string& text) override;
+
 private:
     EverQuest& m_eq;
 

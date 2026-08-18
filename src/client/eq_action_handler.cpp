@@ -1235,4 +1235,41 @@ void EqActionHandler::rezDecline() {
     m_eq.SendRezzAnswer(false);
 }
 
+// ========== Utility (T135) ==========
+
+void EqActionHandler::split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
+    m_eq.SendSplit(platinum, gold, silver, copper);
+}
+
+void EqActionHandler::save() {
+    m_eq.SendSave();
+}
+
+// Ported from game's bindwound_cmd (eq_commands.cpp) exactly: targetId==0
+// resolves to the CombatManager's current target if one exists, otherwise
+// falls back to SELF (m_my_spawn_id) -- unlike assist()/shieldTarget()
+// above, which report "You don't have a target." instead of self-targeting.
+// Reuses the same getCombatManager() helper T102 built for the Combat
+// family rather than introducing any new targeting concept.
+void EqActionHandler::bandage(uint16_t targetId) {
+    auto* combat = getCombatManager();
+    uint16_t resolved = targetId;
+    if (resolved == 0) {
+        resolved = (combat && combat->HasTarget()) ? combat->GetTargetId() : m_eq.GetMySpawnID();
+    }
+    m_eq.SendBindWound(resolved);
+}
+
+void EqActionHandler::rewind() {
+    m_eq.SendRewind();
+}
+
+void EqActionHandler::bug(const std::string& description) {
+    m_eq.SendReport(description);
+}
+
+void EqActionHandler::petition(const std::string& text) {
+    m_eq.SendPetition(text);
+}
+
 } // namespace eqt

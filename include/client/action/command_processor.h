@@ -353,6 +353,23 @@ private:
     ActionResult cmdRezAccept(const std::string& args);
     ActionResult cmdRezDecline(const std::string& args);
 
+    // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
+    // Split / Misc / Skill / Movement / Utility blocks -- these six do not
+    // share a scenario, unlike Guild/Corpse-Rez; grouped here only because
+    // they share a unit. Same net-new shape: action::CommandProcessor had
+    // ZERO registrations for any of them before this unit. Net-new plumbing
+    // over the pre-existing EverQuest::SendSplit()/SendSave()/
+    // SendBindWound()/SendRewind()/SendReport()/SendPetition() senders
+    // (eq_player_info.cpp / eq.cpp). Registrations removed from
+    // eq_commands.cpp in the same change. See
+    // refactor/T135_migrate_utility_family.md.
+    ActionResult cmdSplit(const std::string& args);
+    ActionResult cmdSave(const std::string& args);
+    ActionResult cmdBandage(const std::string& args);
+    ActionResult cmdRewind(const std::string& args);
+    ActionResult cmdBug(const std::string& args);
+    ActionResult cmdPetition(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by

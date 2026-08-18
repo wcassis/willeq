@@ -530,6 +530,33 @@ void CommandProcessor::registerBuiltinCommands() {
         "rezdecline", {"declinerez"}, "/rezdecline", "Decline pending resurrection offer", "Utility", false
     }, [this](const std::string& args) { return cmdRezDecline(args); });
 
+    // T135: Utility (6) -- categories ported verbatim from eq_commands.cpp's
+    // per-command category, not unified, since the plan explicitly treats
+    // these as six independent migrations that happen to share a unit.
+    registerCommand({
+        "split", {}, "/split <platinum> [gold] [silver] [copper]", "Split money with your group", "Group", false
+    }, [this](const std::string& args) { return cmdSplit(args); });
+
+    registerCommand({
+        "save", {}, "/save", "Request character save", "Utility", false
+    }, [this](const std::string& args) { return cmdSave(args); });
+
+    registerCommand({
+        "bandage", {"bindwound"}, "/bandage", "Use bind wound skill on target", "Skills", false
+    }, [this](const std::string& args) { return cmdBandage(args); });
+
+    registerCommand({
+        "rewind", {}, "/rewind", "Attempt to return to a safe position", "Movement", false
+    }, [this](const std::string& args) { return cmdRewind(args); });
+
+    registerCommand({
+        "bug", {"report"}, "/bug <description>", "Submit a bug report", "Utility", false
+    }, [this](const std::string& args) { return cmdBug(args); });
+
+    registerCommand({
+        "petition", {}, "/petition <text>", "Submit a petition", "Utility", false
+    }, [this](const std::string& args) { return cmdPetition(args); });
+
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
     }, [this](const std::string& args) { return cmdDoor(args); });
@@ -1309,6 +1336,53 @@ ActionResult CommandProcessor::cmdRezAccept(const std::string& args) {
 
 ActionResult CommandProcessor::cmdRezDecline(const std::string& args) {
     return m_dispatcher.rezDecline();
+}
+
+// ========== Utility Commands (T135) ==========
+
+// Ported from game's split_cmd exactly: usage guard on empty args, then
+// parse up to four whitespace-separated numeric tokens (platinum required,
+// gold/silver/copper default to 0 if omitted). This is a formatting concern
+// that belongs at this layer, matching who_cmd's lvllow/lvlhigh parsing
+// above -- ActionDispatcher::split() takes four already-typed uint32_t and
+// does no string parsing.
+ActionResult CommandProcessor::cmdSplit(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /split <platinum> [gold] [silver] [copper]");
+    }
+    uint32_t p = 0, g = 0, s = 0, c = 0;
+    std::istringstream iss(args);
+    iss >> p >> g >> s >> c;
+    return m_dispatcher.split(p, g, s, c);
+}
+
+ActionResult CommandProcessor::cmdSave(const std::string& args) {
+    return m_dispatcher.save();
+}
+
+// No usage guard: game's bindwound_cmd took no arguments and always
+// resolved a target itself. targetId=0 tells ActionDispatcher::bandage()
+// (via EqActionHandler) to resolve current-combat-target-or-self.
+ActionResult CommandProcessor::cmdBandage(const std::string& args) {
+    return m_dispatcher.bandage(0);
+}
+
+ActionResult CommandProcessor::cmdRewind(const std::string& args) {
+    return m_dispatcher.rewind();
+}
+
+ActionResult CommandProcessor::cmdBug(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /bug <description>");
+    }
+    return m_dispatcher.bug(args);
+}
+
+ActionResult CommandProcessor::cmdPetition(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /petition <text>");
+    }
+    return m_dispatcher.petition(args);
 }
 
 // ========== Spells Commands (T101) ==========
