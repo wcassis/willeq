@@ -8496,3 +8496,57 @@ correctly in both configurations (table + BuildIDs in the Review);
 `check_file_sizes.sh` zero new FAILs (11 of 12 flagged files are T136's
 in-flight work, inherited from this branch's root commit, not this unit's
 changes — only `t122_texprobe.h` is actually touched, and it's `ok`).
+
+## T138 (2026-08-18): The 61-command triage — 34 deletions, 17 migrations, 7 stay, 3 decisions for Will; the GameStateBridge* gap does NOT block a whole class after all
+
+Full evidence: `review/T138/triage_table.tsv` + `review/T138/README.md`,
+narrative in `refactor/T138_command_registry_triage.md`'s Review/Board. Three
+findings worth surfacing here specifically, since a future unit acting on
+the table shouldn't have to re-derive them:
+
+1. **32 of the 34 `delete` rows are redundant duplicates, not dead code** —
+   each pushes `RendererCommand{"/name"}` onto the bridge from the `game`
+   registry, and `IrrlichtRenderer::processSlashCommand()`
+   (`irrlicht_renderer.cpp:1031-1370`) **already has a native, live branch
+   for that exact name**. `Application::dispatchToActionOrRenderer`'s
+   registry-3 fallback (`application.cpp:1150-1174`) reaches that branch
+   automatically the moment the `game`-registry copy is deleted — nothing
+   needs to be built or moved, only removed. This falsifies the plan's own
+   "~38 renderer commands need `move-renderer`" hypothesis: the
+   recommendation fires **zero times** in the finished table.
+
+2. **`skills` is a wired-but-unconsumed event (T132's `m_guild_id` shape)
+   AND the real feature exists under an unregistered alias.**
+   `eq_commands_spells.cpp:136-150` pushes `GameEvent(ToggleSkillsWindow,
+   {})`; its only consumer, `irrlicht_bridge.cpp:724-726`, is a single
+   `LOG_TRACE` with no state change. The actual working skills-window toggle
+   is `/newskills` (`irrlicht_renderer.cpp:1237-1243`, flips
+   `skillsPopupState_.isOpen` for real) — registered in NEITHER the `game`
+   nor `action` registry, so it's reachable today only by a user who already
+   knows to type it. Deleting dead `/skills` loses nothing; giving
+   `/newskills` a real registration (in whichever registry ends up owning
+   UI-popup toggles) is a separate, still-open discoverability gap.
+
+3. **Correction to T97's Review**: T97's `divergence_table.tsv` called
+   `game`'s (then-)live `/filter` the better side of a comparison because
+   "live pushes a real renderer-side toggle." T138 found that toggle is
+   itself a dead stub (`irrlicht_renderer.cpp:1261-1262`, unconditional
+   "Filter command not available (WindowManager removed)") — `/filter` was
+   non-functional on BOTH sides of that comparison, not just the one T97
+   called dead. Not a defect either unit introduced; flagging so the record
+   is accurate if `/filter` is ever revisited.
+
+4. **The `GameStateBridge*` gap T136 flagged does not block a whole class of
+   migrations, contrary to what T136's phrasing might suggest to a future
+   reader.** Traced all 17 of this unit's `migrate-action` rows
+   individually: 12 call an `EverQuest` method that's already public (no new
+   plumbing at all), 3 (`warp`/`time`/`bank`) need exactly one new thin
+   `EverQuest::Request*`-style wrapper each — same shape/size as T136's
+   three vendor wrappers, not a new capability — and 2 (`debug`/`perf`)
+   match an existing action-registry diagnostic precedent
+   (`logmodule`/`logexclude`/`logclear`/`logonly`). The only row that's a
+   genuine prerequisite-sized migration is `equip`, and that's the same
+   `InventoryManager`-reachability gap T136 already identified and deferred
+   — not a new instance. **Net: the per-command wrapper-method recipe
+   (T99-T136) already fully absorbs this gap; no standalone
+   "give `EqActionHandler` a `GameStateBridge*`" unit is needed.**
