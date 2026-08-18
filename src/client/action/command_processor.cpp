@@ -2,6 +2,7 @@
 #include "client/state/game_state.h"
 #include "client/output/output_renderer.h"
 #include "common/logging.h"
+#include <fmt/format.h>
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -577,6 +578,77 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "sell", {}, "/sell <slot> [quantity]", "Sell an item from your inventory to the open vendor", "Commerce", false
     }, [this](const std::string& args) { return cmdSell(args); });
+
+    // T140: final 16 of the game-registry migration programme (equip
+    // excluded). Registrations removed from eq_commands_movement.cpp/
+    // eq_commands_spells.cpp in the same change -- see
+    // refactor/T140_migrate_final_seventeen.md.
+    registerCommand({
+        "loc", {"location"}, "/loc", "Show current coordinates", "Movement", false
+    }, [this](const std::string& args) { return cmdLoc(args); });
+
+    registerCommand({
+        "sit", {}, "/sit", "Sit down", "Movement", false
+    }, [this](const std::string& args) { return cmdSit(args); });
+
+    registerCommand({
+        "stand", {}, "/stand", "Stand up", "Movement", false
+    }, [this](const std::string& args) { return cmdStand(args); });
+
+    registerCommand({
+        "move", {}, "/move <x> <y> <z> (CLIENT frame -- swap x/y if reading a server-frame /loc)",
+        "Move to coordinates (client frame; see usage)", "Movement", true
+    }, [this](const std::string& args) { return cmdMove(args); });
+
+    registerCommand({
+        "moveto", {}, "/moveto <entity_name>", "Move to named entity", "Movement", true
+    }, [this](const std::string& args) { return cmdMoveTo(args); });
+
+    registerCommand({
+        "warp", {}, "/warp [x y z | entity_name]",
+        "Instantly teleport to coordinates, entity, or current target", "Movement", false
+    }, [this](const std::string& args) { return cmdWarp(args); });
+
+    registerCommand({
+        "zoning", {}, "/zoning [on|off]",
+        "Show or set whether crossing a zone line triggers an actual zone change", "Movement", false
+    }, [this](const std::string& args) { return cmdZoning(args); });
+
+    registerCommand({
+        "follow", {}, "/follow <entity_name>", "Follow an entity", "Movement", true
+    }, [this](const std::string& args) { return cmdFollow(args); });
+
+    registerCommand({
+        "stopfollow", {"stop"}, "/stopfollow", "Stop following", "Movement", false
+    }, [this](const std::string& args) { return cmdStopFollow(args); });
+
+    registerCommand({
+        "quit", {"exit", "q"}, "/quit", "Exit the game immediately (aliases: /exit, /q)", "Utility", false
+    }, [this](const std::string& args) { return cmdQuit(args); });
+
+    registerCommand({
+        "camp", {}, "/camp", "Sit down and camp out (logout)", "Utility", false
+    }, [this](const std::string& args) { return cmdCamp(args); });
+
+    registerCommand({
+        "debug", {}, "/debug <0-6>", "Set debug level", "Utility", false
+    }, [this](const std::string& args) { return cmdDebug(args); });
+
+    registerCommand({
+        "perf", {"performance", "metrics"}, "/perf", "Show performance metrics report", "Utility", false
+    }, [this](const std::string& args) { return cmdPerf(args); });
+
+    registerCommand({
+        "time", {"settime"}, "/time [hour]", "Show or set game time (0-23)", "Utility", false
+    }, [this](const std::string& args) { return cmdTime(args); });
+
+    registerCommand({
+        "bank", {}, "/bank", "Open (or close) a bank window with your current target", "Utility", false
+    }, [this](const std::string& args) { return cmdBank(args); });
+
+    registerCommand({
+        "train", {}, "/train", "Open trainer window with current target", "Skills", false
+    }, [this](const std::string& args) { return cmdTrain(args); });
 
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
@@ -1494,6 +1566,126 @@ ActionResult CommandProcessor::cmdSell(const std::string& args) {
         return ActionResult::Failure("Invalid quantity (must be 1-255)");
     }
     return m_dispatcher.sellToVendor(slot, quantity);
+}
+
+// ========== Movement / Utility / Skills Commands (T140) ==========
+//
+// Final 16 of the game-registry migration programme (equip excluded --
+// see refactor/T140_migrate_final_seventeen.md). Registrations removed
+// from eq_commands_movement.cpp/eq_commands_spells.cpp in the same change.
+
+ActionResult CommandProcessor::cmdLoc(const std::string& args) {
+    return m_dispatcher.showLocation();
+}
+
+// sit/stand REUSE the pre-existing ActionDispatcher::sit()/stand() (no new
+// plumbing), but override the dispatcher's generic empty-message Success()
+// with game's original acknowledgement text.
+ActionResult CommandProcessor::cmdSit(const std::string& args) {
+    auto result = m_dispatcher.sit();
+    if (result.success) return ActionResult::Success("You sit down.");
+    return result;
+}
+
+ActionResult CommandProcessor::cmdStand(const std::string& args) {
+    auto result = m_dispatcher.stand();
+    if (result.success) return ActionResult::Success("You stand up.");
+    return result;
+}
+
+// T88: FRAME CONTRACT -- x, y, z are CLIENT frame (see
+// ActionDispatcher::moveToLocation()/EverQuest::Move()'s own comment for
+// the full swap relationship to server/wire frame). Echoes BOTH frames,
+// same as game's original /move -- this dual-frame echo is load-bearing
+// (cost T85's live capture session once already; see
+// refactor/T88_position_frame_determination.md), so it is preserved here
+// rather than left to ActionDispatcher::moveToLocation()'s generic
+// "Moving to location" message. requiresArgs=true on this command's
+// registration handles the empty-args usage message (T134's rule: the
+// usage-string guard moved up; the registration's own `usage` string is
+// byte-identical to game's original, so the auto-generated "Usage: ..."
+// text is unchanged).
+ActionResult CommandProcessor::cmdMove(const std::string& args) {
+    std::istringstream iss(args);
+    float x, y, z;
+    if (!(iss >> x >> y >> z)) {
+        return ActionResult::Failure("Usage: /move <x> <y> <z> (CLIENT frame -- swap x/y if reading a server-frame /loc)");
+    }
+    auto result = m_dispatcher.moveToLocation(x, y, z);
+    if (!result.success) return result;
+    return ActionResult::Success(fmt::format(
+        "Moving to client=({:.1f}, {:.1f}, {:.1f}) -> server=({:.1f}, {:.1f}, {:.1f})",
+        x, y, z, /*server_x=*/y, /*server_y=*/x, z));
+}
+
+ActionResult CommandProcessor::cmdMoveTo(const std::string& args) {
+    std::string entity = args;
+    while (!entity.empty() && entity[0] == ' ') {
+        entity = entity.substr(1);
+    }
+    auto result = m_dispatcher.moveToEntity(entity);
+    if (!result.success) return result;
+    return ActionResult::Success(fmt::format("Moving to entity: {}", entity));
+}
+
+// Raw arg string passed straight through -- all parsing (coords vs. entity
+// name vs. no-args-use-target) happens inside EverQuest::RequestWarp(),
+// which m_dispatcher.warp() routes to. See that method for why (guard
+// state is private to EverQuest).
+ActionResult CommandProcessor::cmdWarp(const std::string& args) {
+    return m_dispatcher.warp(args);
+}
+
+ActionResult CommandProcessor::cmdZoning(const std::string& args) {
+    return m_dispatcher.showOrSetZoning(args);
+}
+
+// follow REUSES the pre-existing ActionDispatcher::followEntity() (no new
+// plumbing), but overrides the dispatcher's message ("Following " + name)
+// with game's original wording ("Following: " + name).
+ActionResult CommandProcessor::cmdFollow(const std::string& args) {
+    std::string entity = args;
+    while (!entity.empty() && entity[0] == ' ') {
+        entity = entity.substr(1);
+    }
+    auto result = m_dispatcher.followEntity(entity);
+    if (!result.success) return result;
+    return ActionResult::Success(fmt::format("Following: {}", entity));
+}
+
+// stopfollow REUSES the pre-existing ActionDispatcher::stopFollow(), whose
+// own message ("Stopped following") already matches game's original
+// wording verbatim -- no override needed.
+ActionResult CommandProcessor::cmdStopFollow(const std::string& args) {
+    return m_dispatcher.stopFollow();
+}
+
+ActionResult CommandProcessor::cmdQuit(const std::string& args) {
+    return m_dispatcher.quit();
+}
+
+ActionResult CommandProcessor::cmdCamp(const std::string& args) {
+    return m_dispatcher.camp();
+}
+
+ActionResult CommandProcessor::cmdDebug(const std::string& args) {
+    return m_dispatcher.debugLevel(args);
+}
+
+ActionResult CommandProcessor::cmdPerf(const std::string& args) {
+    return m_dispatcher.perfReport();
+}
+
+ActionResult CommandProcessor::cmdTime(const std::string& args) {
+    return m_dispatcher.timeOfDay(args);
+}
+
+ActionResult CommandProcessor::cmdBank(const std::string& args) {
+    return m_dispatcher.bankToggle();
+}
+
+ActionResult CommandProcessor::cmdTrain(const std::string& args) {
+    return m_dispatcher.trainWithTarget();
 }
 
 // ========== Spells Commands (T101) ==========

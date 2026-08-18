@@ -341,6 +341,31 @@ public:
     virtual void vendorList() = 0;
     virtual void buyFromVendor(uint32_t slot, uint8_t quantity) = 0;
     virtual void sellToVendor(uint32_t slot, uint8_t quantity) = 0;
+
+    // ========== Movement / Utility / Skills (T140) ==========
+    // Final batch of the game-registry migration programme. loc/warp/
+    // zoning/quit/camp/debug/perf/timeOfDay/bankToggle/trainWithTarget are
+    // net-new IActionHandler methods -- each does its own AddChatSystemMessage
+    // reporting inside EqActionHandler (same shape as vendorList() above),
+    // so the ActionDispatcher wrapper just guards and calls, returning a
+    // generic Success(). warp/timeOfDay/bankToggle/trainWithTarget route to
+    // four new EverQuest methods (RequestWarp/RequestTimeOfDay/
+    // RequestBankToggle/RequestTraining) for the same reason Merchant
+    // needed new EverQuest methods: EqActionHandler has no access to
+    // EverQuest's private m_bridge/m_combat_manager/m_entities. sit()/
+    // stand()/moveToLocation()/moveToEntity()/followEntity()/stopFollow()
+    // (declared above) are REUSED, not duplicated here, for /sit /stand
+    // /move /moveto /follow /stopfollow.
+    virtual void showLocation() = 0;
+    virtual void warp(const std::string& args) = 0;
+    virtual void showOrSetZoning(const std::string& args) = 0;
+    virtual void requestQuit() = 0;
+    virtual void campNow() = 0;
+    virtual void debugLevel(const std::string& args) = 0;
+    virtual void perfReport() = 0;
+    virtual void timeOfDay(const std::string& args) = 0;
+    virtual void bankToggle() = 0;
+    virtual void trainWithTarget() = 0;
 };
 
 /**
@@ -1159,6 +1184,72 @@ public:
      * untouched.
      */
     ActionResult sellToVendor(uint32_t slot, uint8_t quantity);
+
+    // ========== Movement / Utility / Skills Actions (T140) ==========
+
+    /**
+     * Show current coordinates. Pure state read + print (EverQuest::
+     * GetPosition(), already public) -- no dispatcher-level guard beyond
+     * checkHandler().
+     */
+    ActionResult showLocation();
+
+    /**
+     * Instantly teleport to coordinates, entity, or current target (raw
+     * arg string, parsed inside EverQuest::RequestWarp() -- see that
+     * method for why). No server round trip for the teleport itself;
+     * SendPositionUpdate() is still called afterward, unchanged.
+     */
+    ActionResult warp(const std::string& args);
+
+    /**
+     * Show or set whether crossing a zone line triggers a real zone
+     * change. Pure state read/write via the already-public
+     * SetZoningEnabled()/IsZoningEnabled().
+     */
+    ActionResult showOrSetZoning(const std::string& args);
+
+    /**
+     * Exit the game immediately (no server-side logout courtesy) --
+     * distinct from camp(). checkHandler() only, deliberately NOT
+     * checkZoneConnection(): quit must work whether connected or not
+     * (T30).
+     */
+    ActionResult quit();
+
+    /**
+     * Sit down and start the 30-second camp-out timer.
+     */
+    ActionResult camp();
+
+    /**
+     * Show or set the client debug log level (0-6).
+     */
+    ActionResult debugLevel(const std::string& args);
+
+    /**
+     * Show a performance metrics report (console + chat summary).
+     */
+    ActionResult perfReport();
+
+    /**
+     * Show or set the game clock (0-23 hour).
+     */
+    ActionResult timeOfDay(const std::string& args);
+
+    /**
+     * Open a bank window with your current target, or close it if
+     * already open. Target guard lives inside EverQuest::
+     * RequestBankToggle(), not duplicated here.
+     */
+    ActionResult bankToggle();
+
+    /**
+     * Request the trainer window for your current target. Target/
+     * npc_type/class-range/distance/trained_class guards live inside
+     * EverQuest::RequestTraining(), not duplicated here.
+     */
+    ActionResult trainWithTarget();
 
 private:
     state::GameState& m_state;

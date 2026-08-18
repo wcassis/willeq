@@ -315,7 +315,10 @@ ADD_EXECUTABLE(test_command_processor
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
-TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main)
+# T140: cmdMove/cmdMoveTo/cmdFollow use fmt::format directly (T88's
+# dual-frame /move echo, and the original /moveto and /follow ack wording),
+# so this target now needs fmt linked -- previously it didn't use fmt at all.
+TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_command_processor)
 
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
@@ -431,6 +434,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
+
+# T140: final 16 of the game-registry migration programme (equip excluded).
+# Real-EqActionHandler/EverQuest coverage for showLocation/warp/
+# showOrSetZoning/campNow/debugLevel/perfReport/timeOfDay -- the net-new
+# surface this unit added. sit/stand/move/moveto/follow/stopfollow REUSE
+# pre-existing IActionHandler methods with no new state to exercise here
+# (covered at the CommandProcessor layer, test_command_processor.cpp);
+# bank/train stay in test_eq_commands_bank_train.cpp above (retargeted from
+# ProcessChatInput to the new EverQuest::RequestBankToggle()/
+# RequestTraining() entry points in this same unit). See
+# refactor/T140_migrate_final_seventeen.md.
+ADD_EXECUTABLE(test_eq_action_handler_movement_utility
+    test_eq_action_handler_movement_utility.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_movement_utility GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_movement_utility PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_movement_utility)
 
 # T66: /equip coverage (eq_commands.cpp RegisterEquipmentCommands()) -- same
 # seam test_eq_commands_vendor.cpp (T48) used to use (see

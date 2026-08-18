@@ -219,6 +219,18 @@ public:
     void buyFromVendor(uint32_t slot, uint8_t quantity) override;
     void sellToVendor(uint32_t slot, uint8_t quantity) override;
 
+    // ========== Movement / Utility / Skills (T140) ==========
+    void showLocation() override;
+    void warp(const std::string& args) override;
+    void showOrSetZoning(const std::string& args) override;
+    void requestQuit() override;
+    void campNow() override;
+    void debugLevel(const std::string& args) override;
+    void perfReport() override;
+    void timeOfDay(const std::string& args) override;
+    void bankToggle() override;
+    void trainWithTarget() override;
+
 private:
     EverQuest& m_eq;
 

@@ -1547,5 +1547,89 @@ ActionResult ActionDispatcher::sellToVendor(uint32_t slot, uint8_t quantity) {
     return ActionResult::Success();
 }
 
+// ========== Movement / Utility / Skills Actions (T140) ==========
+
+ActionResult ActionDispatcher::showLocation() {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->showLocation();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::warp(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->warp(args);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::showOrSetZoning(const std::string& args) {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->showOrSetZoning(args);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::quit() {
+    // T30: quit must work whether connected or not -- checkHandler() only,
+    // deliberately not checkZoneConnection().
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->requestQuit();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::camp() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->campNow();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::debugLevel(const std::string& args) {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->debugLevel(args);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::perfReport() {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->perfReport();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::timeOfDay(const std::string& args) {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    m_handler->timeOfDay(args);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::bankToggle() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->bankToggle();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::trainWithTarget() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->trainWithTarget();
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

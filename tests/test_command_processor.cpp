@@ -2302,4 +2302,260 @@ TEST_F(CommandProcessorTest, Sell_NotConnectedToZone_FailsCleanlyWithoutDispatch
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== Movement / Utility / Skills (T140) ==========
+// Final 16 of the game-registry migration programme (equip excluded --
+// see refactor/T140_migrate_final_seventeen.md). Stateful guards
+// (warp/timeOfDay's parsing, bank/train's target validation) live inside
+// real EverQuest (RequestWarp/RequestTimeOfDay/RequestBankToggle/
+// RequestTraining) or EqActionHandler (showLocation/showOrSetZoning/
+// campNow/debugLevel/perfReport) -- covered instead in
+// test_eq_action_handler_movement_utility.cpp and
+// test_eq_commands_bank_train.cpp (real EverQuest). What belongs at this
+// layer: registration/category, dispatch reaching the right
+// ActionDispatcher method with the right (possibly reformatted) message,
+// and the requiresArgs usage-guard for move/moveto/follow.
+
+TEST_F(CommandProcessorTest, T140_MovementCommandsRegisteredWithMovementCategory) {
+    for (const char* name : {"loc", "sit", "stand", "move", "moveto", "warp", "zoning", "follow", "stopfollow"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Movement") << "wrong category for: " << name;
+    }
+}
+
+TEST_F(CommandProcessorTest, T140_UtilityCommandsRegisteredWithUtilityCategory) {
+    for (const char* name : {"quit", "camp", "debug", "perf", "time", "bank"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "Utility") << "wrong category for: " << name;
+    }
+}
+
+TEST_F(CommandProcessorTest, T140_TrainRegisteredWithSkillsCategory) {
+    auto info = processor->getCommandInfo("train");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->category, "Skills");
+}
+
+TEST_F(CommandProcessorTest, Loc_DispatchesShowLocation) {
+    auto result = processor->processCommand("/loc");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("showLocation()"));
+}
+
+TEST_F(CommandProcessorTest, Sit_DispatchesSit_WithOriginalAckText) {
+    auto result = processor->processCommand("/sit");
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.message, "You sit down.");
+    ASSERT_TRUE(handler.calledOnceWith("sit()"));
+}
+
+TEST_F(CommandProcessorTest, Stand_DispatchesStand_WithOriginalAckText) {
+    auto result = processor->processCommand("/stand");
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.message, "You stand up.");
+    ASSERT_TRUE(handler.calledOnceWith("stand()"));
+}
+
+// T88: dual-frame echo is load-bearing -- see cmdMove's comment.
+TEST_F(CommandProcessorTest, Move_ValidArgs_DispatchesMoveToLocation_WithDualFrameEcho) {
+    auto result = processor->processCommand("/move 1 2 3");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("moveToLocation(1, 2, 3)"));
+    EXPECT_NE(result.message.find("client=(1.0, 2.0, 3.0)"), std::string::npos) << result.message;
+    EXPECT_NE(result.message.find("server=(2.0, 1.0, 3.0)"), std::string::npos) << result.message;
+}
+
+// requiresArgs=true on the registration handles the empty-args case
+// generically (processCommand() itself refuses before reaching cmdMove,
+// with its own "Missing arguments" ActionResult -- the "Usage: ..." text,
+// byte-identical to game's original, goes to displayError()/console, not
+// into ActionResult::message).
+TEST_F(CommandProcessorTest, Move_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/move");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Move_MalformedArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/move x y z");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, MoveTo_DispatchesMoveToEntity_WithOriginalAckWording) {
+    eqt::state::Entity e;
+    e.spawnId = 42;
+    e.name = "a_goblin";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/moveto a_goblin");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("moveToEntity(\"a_goblin\")"));
+    EXPECT_EQ(result.message, "Moving to entity: a_goblin");
+}
+
+TEST_F(CommandProcessorTest, MoveTo_UnknownEntity_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/moveto no_such_entity");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, MoveTo_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/moveto");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Warp_RawArgsPassedThrough) {
+    auto result = processor->processCommand("/warp 10 20 30");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("warp(\"10 20 30\")"));
+}
+
+TEST_F(CommandProcessorTest, Warp_NoArgs_StillDispatches_GuardLivesInEverQuest) {
+    auto result = processor->processCommand("/warp");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("warp(\"\")"));
+}
+
+TEST_F(CommandProcessorTest, Warp_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/warp 10 20 30");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Zoning_RawArgsPassedThrough) {
+    auto result = processor->processCommand("/zoning on");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("showOrSetZoning(\"on\")"));
+}
+
+TEST_F(CommandProcessorTest, Follow_DispatchesFollowEntity_WithOriginalAckWording) {
+    eqt::state::Entity e;
+    e.spawnId = 43;
+    e.name = "a_ranger";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/follow a_ranger");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("followEntity(\"a_ranger\")"));
+    EXPECT_EQ(result.message, "Following: a_ranger");
+}
+
+TEST_F(CommandProcessorTest, Follow_UnknownEntity_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/follow no_such_entity");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Follow_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/follow");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, StopFollow_DispatchesStopFollow_MessageAlreadyMatchesOriginal) {
+    auto result = processor->processCommand("/stopfollow");
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.message, "Stopped following");
+    ASSERT_TRUE(handler.calledOnceWith("stopFollow()"));
+}
+
+TEST_F(CommandProcessorTest, StopFollow_StopAlias_DispatchesSameAsPrimary) {
+    auto result = processor->processCommand("/stop");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("stopFollow()"));
+}
+
+// T30: quit must work whether connected or not.
+TEST_F(CommandProcessorTest, Quit_DispatchesRequestQuit_EvenWhenNotConnectedToZone) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/quit");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("requestQuit()"));
+}
+
+TEST_F(CommandProcessorTest, Quit_ExitAndQAliases_DispatchSameAsPrimary) {
+    auto r1 = processor->processCommand("/exit");
+    auto r2 = processor->processCommand("/q");
+    EXPECT_TRUE(r1.success);
+    EXPECT_TRUE(r2.success);
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "requestQuit()");
+    EXPECT_EQ(handler.calls[1], "requestQuit()");
+}
+
+TEST_F(CommandProcessorTest, Camp_DispatchesCampNow) {
+    auto result = processor->processCommand("/camp");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("campNow()"));
+}
+
+TEST_F(CommandProcessorTest, Camp_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/camp");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Debug_RawArgsPassedThrough) {
+    auto result = processor->processCommand("/debug 3");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("debugLevel(\"3\")"));
+}
+
+TEST_F(CommandProcessorTest, Perf_DispatchesPerfReport) {
+    auto result = processor->processCommand("/perf");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("perfReport()"));
+}
+
+TEST_F(CommandProcessorTest, Perf_AliasesDispatchSameAsPrimary) {
+    auto r1 = processor->processCommand("/performance");
+    auto r2 = processor->processCommand("/metrics");
+    EXPECT_TRUE(r1.success);
+    EXPECT_TRUE(r2.success);
+    ASSERT_EQ(handler.count(), 2u);
+}
+
+TEST_F(CommandProcessorTest, Time_RawArgsPassedThrough) {
+    auto result = processor->processCommand("/time 14");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("timeOfDay(\"14\")"));
+}
+
+TEST_F(CommandProcessorTest, Time_SettimeAlias_DispatchesSameAsPrimary) {
+    auto result = processor->processCommand("/settime 14");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("timeOfDay(\"14\")"));
+}
+
+TEST_F(CommandProcessorTest, Bank_DispatchesBankToggle) {
+    auto result = processor->processCommand("/bank");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bankToggle()"));
+}
+
+TEST_F(CommandProcessorTest, Bank_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/bank");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, Train_DispatchesTrainWithTarget) {
+    auto result = processor->processCommand("/train");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("trainWithTarget()"));
+}
+
+TEST_F(CommandProcessorTest, Train_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/train");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 } // namespace

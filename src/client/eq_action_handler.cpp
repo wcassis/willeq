@@ -7,6 +7,7 @@
 #include "client/state/game_state.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
+#include "common/performance_metrics.h"
 #include <fmt/format.h>
 #include <cmath>
 
@@ -1314,6 +1315,109 @@ void EqActionHandler::buyFromVendor(uint32_t slot, uint8_t quantity) {
 
 void EqActionHandler::sellToVendor(uint32_t slot, uint8_t quantity) {
     m_eq.RequestVendorSell(slot, quantity);
+}
+
+// ========== Movement / Utility / Skills (T140) ==========
+
+// Pure state read + print, ported verbatim from eq_commands_movement.cpp's
+// old loc_cmd lambda -- EverQuest::GetPosition() (eq.h) was already public
+// and already reads the same m_x/m_y/m_z this used directly, so no new
+// EverQuest surface was needed here.
+void EqActionHandler::showLocation() {
+    auto pos = m_eq.GetPosition();
+    m_eq.AddChatSystemMessage(fmt::format("Your location is {:.1f}, {:.1f}, {:.1f}", pos.x, pos.y, pos.z));
+}
+
+void EqActionHandler::warp(const std::string& args) {
+    m_eq.RequestWarp(args);
+}
+
+// Ported verbatim from eq_commands_movement.cpp's old zoning_cmd lambda --
+// SetZoningEnabled()/IsZoningEnabled() (eq.h) were already public, so no
+// new EverQuest surface was needed here (unlike warp/timeOfDay/bankToggle/
+// trainWithTarget below, which do).
+void EqActionHandler::showOrSetZoning(const std::string& args) {
+    std::string trimmed = args;
+    while (!trimmed.empty() && trimmed[0] == ' ') {
+        trimmed = trimmed.substr(1);
+    }
+    if (trimmed.empty()) {
+        m_eq.AddChatSystemMessage(fmt::format("Zoning is {}", m_eq.IsZoningEnabled() ? "on" : "off"));
+        return;
+    }
+    if (trimmed == "on") {
+        m_eq.SetZoningEnabled(true);
+        m_eq.AddChatSystemMessage("Zoning is now on");
+    } else if (trimmed == "off") {
+        m_eq.SetZoningEnabled(false);
+        m_eq.AddChatSystemMessage("Zoning is now off");
+    } else {
+        m_eq.AddChatSystemMessage("Usage: /zoning [on|off]");
+    }
+}
+
+void EqActionHandler::requestQuit() {
+    m_eq.RequestQuit();  // D20c4: Application checks quit flag
+}
+
+// Ported verbatim from eq_commands_movement.cpp's old camp_cmd lambda: sit
+// down, ack, then start the 30-second camp timer. SetPositionState()/
+// StartCampTimer() were already public.
+void EqActionHandler::campNow() {
+    m_eq.SetPositionState(POS_SITTING);
+    m_eq.AddChatSystemMessage("You have begun to camp. You will log out in 30 seconds.");
+    m_eq.StartCampTimer();
+}
+
+// Ported verbatim from eq_commands_movement.cpp's old debug_cmd lambda --
+// EverQuest::SetDebugLevel()/GetDebugLevel() (eq.h) are static and already
+// public, so no new EverQuest surface was needed here.
+void EqActionHandler::debugLevel(const std::string& args) {
+    if (args.empty()) {
+        m_eq.AddChatSystemMessage(fmt::format("Debug level: {}", EverQuest::GetDebugLevel()));
+    } else {
+        try {
+            int level = std::stoi(args);
+            EverQuest::SetDebugLevel(level);
+            m_eq.AddChatSystemMessage(fmt::format("Debug level set to {}", level));
+        } catch (...) {
+            m_eq.AddChatSystemMessage("Usage: /debug <0-6>");
+        }
+    }
+}
+
+// Ported verbatim from eq_commands_movement.cpp's old perf_cmd lambda --
+// EQT::PerformanceMetrics::instance() is a process-global singleton, no
+// EverQuest state involved beyond the AddChatSystemMessage/LOG_INFO calls.
+void EqActionHandler::perfReport() {
+    std::string report = EQT::PerformanceMetrics::instance().generateReport();
+    // Output to console
+    LOG_INFO(MOD_MAIN, "{}", report);
+    // Also show summary in chat
+    auto stats = EQT::PerformanceMetrics::instance().getStats("Frame Time");
+    if (stats.count > 0) {
+        double avgFps = stats.avgMs() > 0 ? 1000.0 / stats.avgMs() : 0;
+        m_eq.AddChatSystemMessage(fmt::format("=== Performance Metrics ==="));
+        m_eq.AddChatSystemMessage(fmt::format("Startup: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Startup)));
+        m_eq.AddChatSystemMessage(fmt::format("Zoning: {} ms", EQT::PerformanceMetrics::instance().getCategoryTotalMs(EQT::MetricCategory::Zoning)));
+        m_eq.AddChatSystemMessage(fmt::format("Avg FPS: {:.1f} (avg frame: {:.1f} ms)", avgFps, stats.avgMs()));
+        m_eq.AddChatSystemMessage(fmt::format("Frame time: min {} ms, max {} ms", stats.minMs, stats.maxMs));
+        m_eq.AddChatSystemMessage("Full report written to console.");
+    } else {
+        m_eq.AddChatSystemMessage("No performance data collected yet.");
+    }
+}
+
+void EqActionHandler::timeOfDay(const std::string& args) {
+    m_eq.RequestTimeOfDay(args);
+}
+
+void EqActionHandler::bankToggle() {
+    m_eq.RequestBankToggle();
+}
+
+void EqActionHandler::trainWithTarget() {
+    m_eq.RequestTraining();
 }
 
 } // namespace eqt
