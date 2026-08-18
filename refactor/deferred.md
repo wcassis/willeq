@@ -8550,3 +8550,47 @@ the table shouldn't have to re-derive them:
    — not a new instance. **Net: the per-command wrapper-method recipe
    (T99-T136) already fully absorbs this gap; no standalone
    "give `EqActionHandler` a `GameStateBridge*`" unit is needed.**
+
+## T139 — headless `#ifdef EQT_HAS_GRAPHICS` guard not preserved (out of territory)
+
+Deleting the 34 redundant game-registry commands (see
+`refactor/T139_delete_duplicate_commands.md`) means their names now reach
+`Application::dispatchToActionOrRenderer`'s registry-3 fallback
+(`application.cpp`) instead of the deleted `rendererCmd()` helper.
+`rendererCmd()` was `#ifdef EQT_HAS_GRAPHICS`-guarded: in a headless build it
+replied `"/x requires graphics mode (not available in this headless build)."`
+instead of queuing. Registry-3's fallback has no such guard — `m_bridge` is
+always non-null (attached to `ConsoleBridge` in headless builds instead of
+`IrrlichtBridge`, per `application.cpp`'s own comment) — so a headless build
+now reports `outcome=queued` for these 34 names (and, structurally, for
+**any** unrecognized name, not just these 34) with no acknowledgment that
+nothing is listening. This is a small, real regression in headless
+ergonomics for these 34 specific names (they used to say so explicitly;
+now they silently join every other unclaimed name in reporting `queued`).
+
+Not fixed by T139: the only fix site is `application.cpp`, which was outside
+T139's declared territory (`eq_commands_movement.cpp`,
+`eq_commands_spells.cpp`, `irrlicht_renderer.cpp` alias handling only,
+`tests/`, `refactor/`, `review/T139/`), and a proper fix there would guard
+registry-3's *entire* fallback path headless (affecting every name that
+reaches it, not just these 34) — a bigger and more deliberate change than
+"restore what these 34 used to do," worth its own small unit with its own
+review rather than a scope-creep add to T139.
+
+## T139 — `timestamp`/`filter` dead stubs kept, not removed
+
+T138 confirmed `timestamp` and `filter` are dead on both the game-registry
+and renderer sides (`irrlicht_renderer.cpp`'s stubs unconditionally reply
+"not available (WindowManager removed)"). T139 deleted the game-registry
+copies (per the `delete` disposition) but deliberately left the renderer-side
+stubs in place rather than removing them too. Reasoning (see the plan's
+Review, "`timestamp`/`filter` (dead on both ends)" section, for the full
+argument): registry-3's fallback reports `outcome=queued` for *any*
+unclaimed name regardless of what (if anything) is behind it — that
+mislabeling is structural to the catch-all in `application.cpp`, not
+something specific to these two names, and not fixable by touching the
+renderer stub. Removing the stub would only delete the one accurate thing it
+still does (naming the feature as unavailable) without fixing the `queued`
+lie. If `application.cpp`'s catch-all is ever revisited (see the headless
+entry above — same file, same territory boundary), whether to special-case
+confirmed-dead names there too would be worth deciding at the same time.

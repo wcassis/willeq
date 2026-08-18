@@ -1177,7 +1177,14 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
     }
     // --- Distance ---
-    else if (cmd == "/renderdist") {
+    // T139: /renderdist's clipplane/viewdist and /clipdist's clip/farplane
+    // aliases were only ever resolved by the game-registry Command::aliases
+    // field (eq_commands_movement.cpp, now deleted) -- registry-3's fallback
+    // forwards raw text and only ever matched literal names here. Added so
+    // deleting the game-registry copy doesn't silently drop them (T139
+    // plan's "THE TRAP"; see refactor/T139_delete_duplicate_commands.md
+    // Review for the full alias audit).
+    else if (cmd == "/renderdist" || cmd == "/clipplane" || cmd == "/viewdist") {
         if (!args.empty()) {
             float dist = std::atof(args.c_str());
             if (dist >= 50.0f && dist <= 10000.0f) {
@@ -1189,7 +1196,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         } else {
             chat(fmt::format("Render distance: {:.0f}", getRenderDistance()));
         }
-    } else if (cmd == "/clipdist") {
+    } else if (cmd == "/clipdist" || cmd == "/clip" || cmd == "/farplane") {
         if (!args.empty()) {
             float dist = std::atof(args.c_str());
             setClipDistance(dist);
@@ -1199,7 +1206,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
     }
     // --- Profiling/debug ---
-    else if (cmd == "/frametiming") {
+    // T139: frametime/ft, sp/scenebreak, ds, sw were game-registry aliases
+    // (eq_commands_movement.cpp, deleted) resolved only there -- added here
+    // for the same reason as the renderdist/clipdist aliases above.
+    else if (cmd == "/frametiming" || cmd == "/frametime" || cmd == "/ft") {
         bool newState = !isFrameTimingEnabled();
         setFrameTimingEnabled(newState);
         if (newState) {
@@ -1207,13 +1217,13 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         } else {
             chat("Frame timing profiler DISABLED");
         }
-    } else if (cmd == "/sceneprofile") {
+    } else if (cmd == "/sceneprofile" || cmd == "/sp" || cmd == "/scenebreak") {
         runSceneProfile();
         chat("Scene profile running - check console for breakdown");
-    } else if (cmd == "/dumpscene") {
+    } else if (cmd == "/dumpscene" || cmd == "/ds") {
         dumpScene();
         chat("Scene dump written to console log");
-    } else if (cmd == "/simworker") {
+    } else if (cmd == "/simworker" || cmd == "/sw") {
         auto info = getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
     }
@@ -1256,18 +1266,25 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
         chat(fmt::format("New UI inventory: {}",
             inventoryState_.activePopup == PopupType::Inventory ? "OPEN" : "CLOSED"));
-    } else if (cmd == "/timestamp" || cmd == "/timestamps") {
+    } else if (cmd == "/timestamp" || cmd == "/timestamps" || cmd == "/ts") {
+        // T139: dead stub on both ends (confirmed T138) -- "ts" alias added
+        // for consistency with the other aliases in this unit even though
+        // the command itself does nothing; see Review for why the stub
+        // itself was kept rather than deleted (registry-3's catch-all
+        // reports "queued" regardless of whether anything is behind the
+        // name, so removing this reply would only lose information, not
+        // fix the outcome= mislabeling).
         chat("Timestamps command not available (WindowManager removed)");
     } else if (cmd == "/filter") {
         chat("Filter command not available (WindowManager removed)");
-    } else if (cmd == "/reloadeffects" || cmd == "/particlereload") {
+    } else if (cmd == "/reloadeffects" || cmd == "/particlereload" || cmd == "/reloadfx" || cmd == "/reloadparticles") {
         if (auto* pm = getParticleManager()) {
             pm->reloadSettings();
             chat("Environment effects settings reloaded");
         } else {
             chat("Particle system not available");
         }
-    } else if (cmd == "/reloadweather" || cmd == "/weatherreload") {
+    } else if (cmd == "/reloadweather" || cmd == "/weatherreload" || cmd == "/weather_reload") {
         if (auto* we = getWeatherEffects()) {
             if (we->reloadConfig()) {
                 chat("Weather effects settings reloaded");
@@ -1279,7 +1296,9 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
     }
     // --- Detail ---
-    else if (cmd == "/detail") {
+    // T139: detaildensity/grass were game-registry aliases (eq_commands_
+    // spells.cpp, deleted) resolved only there.
+    else if (cmd == "/detail" || cmd == "/detaildensity" || cmd == "/grass") {
         if (auto* dm = getDetailManager()) {
             if (!args.empty()) {
                 float density = std::atof(args.c_str()) / 100.0f;
@@ -1333,7 +1352,9 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
     }
     // --- Governor ---
-    else if (cmd == "/governor") {
+    // T139: gov/budget were game-registry aliases (eq_commands_movement.cpp,
+    // deleted) resolved only there.
+    else if (cmd == "/governor" || cmd == "/gov" || cmd == "/budget") {
         auto* gov = getGovernor();
         if (!gov) { chat("Governor not available"); return; }
         if (args.empty() || args == "status") {
