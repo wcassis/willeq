@@ -382,6 +382,7 @@ private:
     ActionResult cmdVendorList(const std::string& args);
     ActionResult cmdBuy(const std::string& args);
     ActionResult cmdSell(const std::string& args);
+    ActionResult cmdEquip(const std::string& args);  // T141
 
     // T140: final 16 of the game-registry migration programme (equip
     // deliberately excluded -- see refactor/T140_migrate_final_seventeen.md).

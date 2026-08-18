@@ -2302,6 +2302,51 @@ TEST_F(CommandProcessorTest, Sell_NotConnectedToZone_FailsCleanlyWithoutDispatch
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== Equip (T141) ==========
+// The last row of the game-registry migration programme -- see
+// refactor/T141_equip_extraction.md. Raw arg string passed straight through
+// (same idiom as warp() above): all three input-form parsing (slot-pair/
+// item-name/list) and all legality/execution now live in InventoryManager,
+// reached via EverQuest::RequestEquip() -- covered directly (real
+// EverQuest, real InventoryManager) in test_eq_commands_equip.cpp. What
+// belongs at THIS layer: registration/category and dispatch reaching the
+// right ActionDispatcher method with the args forwarded verbatim.
+
+TEST_F(CommandProcessorTest, T141_EquipRegisteredWithInventoryCategory) {
+    auto info = processor->getCommandInfo("equip");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->category, "Inventory");
+}
+
+TEST_F(CommandProcessorTest, Equip_RawArgsPassedThrough) {
+    auto result = processor->processCommand("/equip 22 13");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("equip(\"22 13\")"));
+}
+
+TEST_F(CommandProcessorTest, Equip_ItemNameFormPassedThroughVerbatim) {
+    auto result = processor->processCommand("/equip Rusty Mace");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("equip(\"Rusty Mace\")"));
+}
+
+TEST_F(CommandProcessorTest, Equip_NoArgs_StillDispatches_GuardLivesInEverQuest) {
+    // No requiresArgs guard here -- /equip with no args is the "print
+    // usage" form, which RequestEquip() itself handles (matching warp's
+    // convention: the "what does an empty args string mean" decision is
+    // command-specific and lives with the command, not the dispatcher).
+    auto result = processor->processCommand("/equip");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("equip(\"\")"));
+}
+
+TEST_F(CommandProcessorTest, Equip_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/equip 22 13");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 // ========== Movement / Utility / Skills (T140) ==========
 // Final 16 of the game-registry migration programme (equip excluded --
 // see refactor/T140_migrate_final_seventeen.md). Stateful guards

@@ -1,16 +1,29 @@
-// T66 -- coverage for /equip (eq_commands.cpp RegisterEquipmentCommands()),
-// instance 8 of refactor/deferred.md's "PATTERN: real features reachable
-// only through a UI gesture, invisible to automation". Prior to this unit,
-// EverQuest::SendMoveItem(fromSlot, toSlot, quantity) (eq_merchant.cpp,
-// opcode HC_OP_MoveItem=0x420f) was fully implemented but no command or
-// intent producer ever invoked it -- T63 had to write inventory.item_id
-// directly into the database and restart the client to get a character
-// holding a weapon at all.
+// T66 -- coverage for /equip, instance 8 of refactor/deferred.md's
+// "PATTERN: real features reachable only through a UI gesture, invisible to
+// automation". Prior to T66, EverQuest::SendMoveItem(fromSlot, toSlot,
+// quantity) (eq_merchant.cpp, opcode HC_OP_MoveItem=0x420f) was fully
+// implemented but no command or intent producer ever invoked it -- T63 had
+// to write inventory.item_id directly into the database and restart the
+// client to get a character holding a weapon at all.
 //
-// Modelled on test_eq_commands_vendor.cpp's (T48) and
-// test_eq_commands_bank_train.cpp's (T50) MakeEq()/TestBridge/
-// ProcessChatInput seam -- /equip lives in the SAME registry
-// (EverQuest::m_command_registry) those commands do.
+// T141 RETARGETED this file (T140's precedent, not T136's -- the seam
+// survives, so the test is retargeted rather than deleted): /equip's logic
+// moved from eq_commands.cpp into InventoryManager, and /equip itself
+// MIGRATED out of the game registry into action::CommandProcessor (see
+// refactor/T141_equip_extraction.md). EverQuest::m_command_registry no
+// longer has an "equip" entry at all, so the old ProcessChatInput("/equip
+// ...") entry point this file used (modelled on test_eq_commands_vendor.cpp/
+// test_eq_commands_bank_train.cpp's game-registry seam) is GONE. These tests
+// now call EverQuest::RequestEquip(args) directly -- the same thin
+// orchestration method both the (removed) game-registry handler and the new
+// action::EqActionHandler::equip() call, so this file still exercises the
+// exact form-dispatch/InventoryManager code path a live "/equip" command
+// reaches, just below the registry-selection layer. The action-registry
+// wiring itself (registration/category, CommandProcessor -> ActionDispatcher
+// -> EqActionHandler::equip() -> RequestEquip()) is covered separately in
+// test_command_processor.cpp (T136's precedent for vendor/buy/sell) and
+// test_eq_action_handler_vendor.cpp-style real-EverQuest action tests --
+// see refactor/T141_equip_extraction.md's Review for the split.
 //
 // These tests assert what the command pushed onto the bridge's intent queue
 // directly (bridge.drainIntents()) -- the SAME MoveItemIntent the inventory
@@ -19,8 +32,8 @@
 // QueuePacket(): this unit's territory is the command's reachability into
 // the intent system, not re-verifying SendMoveItem/ZoneProcessMoveItem
 // themselves (out of scope per the plan's fence). That hop, and whether a
-// real server actually equips a real item, is explicitly OUTSTANDING --
-// sibling T65 holds the eqemu lock this round; see the plan's Review.
+// real server actually equips a real item, is covered by this unit's live
+// leg -- see refactor/T141_equip_extraction.md's Review.
 
 #include <gtest/gtest.h>
 
@@ -92,7 +105,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsEquipTest, NoArgs_PrintsUsage_PushesNoIntent) {
-    eq.ProcessChatInput("/equip");
+    eq.RequestEquip("");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -101,7 +114,7 @@ TEST_F(EqCommandsEquipTest, NoArgs_PrintsUsage_PushesNoIntent) {
 }
 
 TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
-    eq.ProcessChatInput("/equip 22");
+    eq.RequestEquip("22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -116,7 +129,7 @@ TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
 // longer a slot-usage error -- it's an item-name search for the literal
 // text "general 13", which finds nothing in an empty inventory.
 TEST_F(EqCommandsEquipTest, NonNumericFirstToken_TreatedAsItemNameSearch_NotFound) {
-    eq.ProcessChatInput("/equip general 13");
+    eq.RequestEquip("general 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -130,7 +143,7 @@ TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
     // consumed-length discipline as T48's ParseVendorSlot: it must be
     // rejected outright, not silently truncated to 22, and not reinterpreted
     // as an item-name search.
-    eq.ProcessChatInput("/equip 22abc 13");
+    eq.RequestEquip("22abc 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -145,7 +158,7 @@ TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
 
 TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesNoIntent) {
     // 9999 is not equipment/general/bag/cursor/bank/shared-bank/trade.
-    eq.ProcessChatInput("/equip 9999 13");
+    eq.RequestEquip("9999 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -155,7 +168,7 @@ TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesN
 }
 
 TEST_F(EqCommandsEquipTest, OutOfRangeDestinationSlot_PrintsInvalidDestinationSlot_PushesNoIntent) {
-    eq.ProcessChatInput("/equip 22 9999");
+    eq.RequestEquip("22 9999");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -167,7 +180,7 @@ TEST_F(EqCommandsEquipTest, OutOfRangeDestinationSlot_PrintsInvalidDestinationSl
 TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
     // -1 is SLOT_INVALID's own sentinel value -- must not be forwarded as a
     // "valid" slot just because it parses as an integer.
-    eq.ProcessChatInput("/equip -1 13");
+    eq.RequestEquip("-1 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -183,7 +196,7 @@ TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots) {
     // The plan's own worked example: "e.g. equip a weapon: /equip 22 13".
     SeedItem(eq, 22, 6011);  // Rusty Mace (T63/T65/T71's shared test item)
-    eq.ProcessChatInput("/equip 22 13");
+    eq.RequestEquip("22 13");
 
     // The confirmation message is asserted separately below
     // (GeneralToPrimary_PrintsSlotNamesInConfirmation) -- just drain it here.
@@ -202,7 +215,7 @@ TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots)
 
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PrintsSlotNamesInConfirmation) {
     SeedItem(eq, 22, 6011);
-    eq.ProcessChatInput("/equip 22 13");
+    eq.RequestEquip("22 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -218,7 +231,7 @@ TEST_F(EqCommandsEquipTest, UnequipPrimaryToGeneral_PushesMoveItemIntent) {
     // way moving into one does. Scope discipline: this is not a special
     // "unequip" command with its own semantics, just the same wrapper.
     SeedItem(eq, 13, 6011);
-    eq.ProcessChatInput("/equip 13 22");
+    eq.RequestEquip("13 22");
 
     auto intents = bridge.drainIntents();
     // fromSlot 13 (Primary) is an equipment slot -- same EquipmentChangedIntent
@@ -234,7 +247,7 @@ TEST_F(EqCommandsEquipTest, CursorToSecondary_PushesMoveItemIntent) {
     // CURSOR_SLOT (30) -> SLOT_SECONDARY (14): the other common real
     // sequence (pick an item up, then equip it).
     SeedItem(eq, CURSOR_SLOT, 9997);  // Dagger (T63/T65/T71's shared test item)
-    eq.ProcessChatInput("/equip 30 14");
+    eq.RequestEquip("30 14");
 
     auto intents = bridge.drainIntents();
     // toSlot 14 (Secondary) is an equipment slot; this path goes through
@@ -251,7 +264,7 @@ TEST_F(EqCommandsEquipTest, BankSlotToGeneral_RecognizedAsValid_PushesMoveItemIn
     // Bank slots (2000-2015) are a recognized category too -- /equip is a
     // generic slot-to-slot wrapper over SendMoveItem, not equip-only.
     SeedItem(eq, BANK_BEGIN, 9990);  // arbitrary stackable test item
-    eq.ProcessChatInput("/equip 2000 22");
+    eq.RequestEquip("2000 22");
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -275,7 +288,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
     // swap here; the local model must match it.
     SeedItem(eq, SLOT_PRIMARY, 6011);    // Rusty Mace
     SeedItem(eq, SLOT_SECONDARY, 9997);  // Dagger
-    eq.ProcessChatInput("/equip 13 14");
+    eq.RequestEquip("13 14");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -287,7 +300,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
 
 TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
     SeedItem(eq, 22, 6011);
-    eq.ProcessChatInput("/equip 22 13");
+    eq.RequestEquip("22 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -299,7 +312,7 @@ TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
 TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
     // No item was ever seeded at 13 -- /equip must refuse rather than send
     // a request for a move that cannot mean anything.
-    eq.ProcessChatInput("/equip 13 14");
+    eq.RequestEquip("13 14");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -310,7 +323,7 @@ TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
 TEST_F(EqCommandsEquipTest, CursorToSecondary_UpdatesLocalInventoryModel) {
     SeedItem(eq, SLOT_SECONDARY, 9990);  // pre-existing occupant, displaced to cursor
     SeedItem(eq, CURSOR_SLOT, 9997);     // Dagger, picked up
-    eq.ProcessChatInput("/equip 30 14");
+    eq.RequestEquip("30 14");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -349,7 +362,7 @@ TEST_F(EqCommandsEquipTest, WrongSlotType_RejectedLocally_NamesItemAndSlot_Pushe
     // A Primary-only weapon aimed at Head (slot 2): canEquipInSlot() fails
     // first (wrong bitmask), not the restrictions check.
     SeedNamedItem(eq, 22, 7001, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip 22 2");
+    eq.RequestEquip("22 2");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -367,7 +380,7 @@ TEST_F(EqCommandsEquipTest, RestrictionFailure_RejectedLocally_PushesNoIntent) {
     // player (level 1, from InventoryManager's own playerLevel_ default) --
     // canEquipInSlot() passes, meetsRestrictions() fails.
     SeedNamedItem(eq, 22, 7002, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
-    eq.ProcessChatInput("/equip 22 13");
+    eq.RequestEquip("22 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -380,7 +393,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
     // Confirms the pre-flight check is not overly strict -- a legal
     // destination still goes through exactly as before.
     SeedNamedItem(eq, 22, 7003, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip 22 13");
+    eq.RequestEquip("22 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
@@ -391,7 +404,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
 
 TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
     SeedItem(eq, 22, 6011);
-    eq.ProcessChatInput("/equip 22 22");
+    eq.RequestEquip("22 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -405,7 +418,7 @@ TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
 
 TEST_F(EqCommandsEquipTest, NameForm_ResolvesSlotFromItemBitmask_MovesAndReports) {
     SeedNamedItem(eq, 22, 7010, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip Rusty Mace");
+    eq.RequestEquip("Rusty Mace");
 
     auto msgs = DrainSystemMessages(bridge);
     // "Resolved '<name>' to ..." followed by the usual "Moving item: ..."
@@ -422,7 +435,7 @@ TEST_F(EqCommandsEquipTest, NameForm_ResolvesSlotFromItemBitmask_MovesAndReports
 
 TEST_F(EqCommandsEquipTest, NameForm_SubstringMatch_CaseInsensitive) {
     SeedNamedItem(eq, 22, 7011, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip rusty");
+    eq.RequestEquip("rusty");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
@@ -430,7 +443,7 @@ TEST_F(EqCommandsEquipTest, NameForm_SubstringMatch_CaseInsensitive) {
 }
 
 TEST_F(EqCommandsEquipTest, NameForm_NotFound_PushesNoIntent) {
-    eq.ProcessChatInput("/equip nonexistent item");
+    eq.RequestEquip("nonexistent item");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -441,7 +454,7 @@ TEST_F(EqCommandsEquipTest, NameForm_NotFound_PushesNoIntent) {
 TEST_F(EqCommandsEquipTest, NameForm_AmbiguousAcrossDistinctItems_RejectedWithBothNamed) {
     SeedNamedItem(eq, 22, 7020, "Rusty Sword", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7021, "Broad Sword", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip sword");
+    eq.RequestEquip("sword");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -456,7 +469,7 @@ TEST_F(EqCommandsEquipTest, NameForm_DuplicateStacksOfSameItem_NotAmbiguous_Take
     // equip purposes, so this must NOT be treated as ambiguous.
     SeedNamedItem(eq, 22, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
-    eq.ProcessChatInput("/equip Throwing Dagger");
+    eq.RequestEquip("Throwing Dagger");
 
     auto msgs = DrainSystemMessages(bridge);
     for (const auto& m : msgs) {
@@ -473,7 +486,7 @@ TEST_F(EqCommandsEquipTest, NameForm_PairedSlot_PrefersEmptyEar) {
     // occupied -- resolution must prefer the empty EAR2, not clobber EAR1.
     SeedNamedItem(eq, SLOT_EAR1, 8000, "Old Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, 22, 8001, "Jade Earring", EQUIPSLOT_EAR);
-    eq.ProcessChatInput("/equip Jade Earring");
+    eq.RequestEquip("Jade Earring");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_EAR2), nullptr);
@@ -487,7 +500,7 @@ TEST_F(EqCommandsEquipTest, NameForm_BothPairedSlotsFull_ReportsWouldReplace_Sti
     SeedNamedItem(eq, SLOT_EAR1, 8010, "Old Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, SLOT_EAR2, 8011, "Older Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, 22, 8012, "New Earring", EQUIPSLOT_EAR);
-    eq.ProcessChatInput("/equip New Earring");
+    eq.RequestEquip("New Earring");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_GE(msgs.size(), 1u);
@@ -502,7 +515,7 @@ TEST_F(EqCommandsEquipTest, NameForm_BothPairedSlotsFull_ReportsWouldReplace_Sti
 
 TEST_F(EqCommandsEquipTest, NameForm_ItemFitsNoEquipSlot_RejectedWithReason) {
     SeedNamedItem(eq, 22, 8020, "A Rock", /*slotsBitmask=*/0);
-    eq.ProcessChatInput("/equip Rock");
+    eq.RequestEquip("Rock");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -516,7 +529,7 @@ TEST_F(EqCommandsEquipTest, NameForm_ItemFitsNoEquipSlot_RejectedWithReason) {
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsEquipTest, ListForm_EmptyInventory_ReportsNothing) {
-    eq.ProcessChatInput("/equip list");
+    eq.RequestEquip("list");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 2u);
@@ -527,7 +540,7 @@ TEST_F(EqCommandsEquipTest, ListForm_EmptyInventory_ReportsNothing) {
 TEST_F(EqCommandsEquipTest, ListForm_ShowsEquippedAndCarriedWithResolution) {
     SeedNamedItem(eq, SLOT_PRIMARY, 9100, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 9101, "Dagger", EQUIPSLOT_SECONDARY);
-    eq.ProcessChatInput("/equip list");
+    eq.RequestEquip("list");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_GE(msgs.size(), 4u);

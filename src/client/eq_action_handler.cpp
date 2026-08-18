@@ -720,6 +720,15 @@ void EqActionHandler::useItem(int16_t slot) {
     LOG_DEBUG(MOD_INVENTORY, "Use item not yet implemented");
 }
 
+// T141: /equip's three input forms all arrive as one free-text string --
+// same shape as warp()/debugLevel()/timeOfDay() (T140). All parsing/
+// legality/execution happens in EverQuest::RequestEquip() ->
+// InventoryManager; nothing is duplicated here. See
+// refactor/T141_equip_extraction.md.
+void EqActionHandler::equip(const std::string& args) {
+    m_eq.RequestEquip(args);
+}
+
 // ========== Spellbook ==========
 
 void EqActionHandler::memorizeSpell(uint8_t gemSlot, uint32_t spellId) {

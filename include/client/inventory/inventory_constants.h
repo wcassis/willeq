@@ -764,6 +764,20 @@ inline const char* getSlotName(int16_t slotId) {
     }
 }
 
+// T141 -- friendlier reply text: names the slot when it's a canonical
+// equipment slot (getSlotName() above), otherwise just the number --
+// getSlotName() itself returns "Unknown" for anything outside 0-21, which
+// would be a worse message than just showing the slot id. Moved here
+// (from eq_commands.cpp's file-local DescribeEquipSlot()) so both
+// InventoryManager's own messages and EverQuest's command-layer messages
+// share one formatter instead of two copies.
+inline std::string describeSlot(int16_t slotId) {
+    if (isEquipmentSlot(slotId)) {
+        return std::string(getSlotName(slotId)) + " (" + std::to_string(slotId) + ")";
+    }
+    return "slot " + std::to_string(slotId);
+}
+
 // Get size name
 inline const char* getSizeName(uint8_t size) {
     switch (size) {

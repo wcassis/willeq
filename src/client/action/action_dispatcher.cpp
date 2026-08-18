@@ -1547,6 +1547,25 @@ ActionResult ActionDispatcher::sellToVendor(uint32_t slot, uint8_t quantity) {
     return ActionResult::Success();
 }
 
+// ========== Equip (T141) ==========
+// No usage-string guard here either, same precedent as vendorToggle()/
+// vendorList() above -- /equip's own "Usage: ..." message is a stateful
+// (args-shape-dependent) reply that lives inside EverQuest::RequestEquip(),
+// not duplicated at the dispatcher level. checkZoneConnection() is added
+// here (equip had no equivalent guard in the pre-migration game registry)
+// because every other migrated inventory/vendor action in this file gates
+// on it, and a disconnected EverQuest has no meaningful inventory state to
+// move items through -- see refactor/T141_equip_extraction.md's Review for
+// the full argument.
+
+ActionResult ActionDispatcher::equip(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->equip(args);
+    return ActionResult::Success();
+}
+
 // ========== Movement / Utility / Skills Actions (T140) ==========
 
 ActionResult ActionDispatcher::showLocation() {

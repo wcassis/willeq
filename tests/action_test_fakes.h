@@ -209,6 +209,8 @@ public:
     }
     void deleteItem(int16_t slot) override { record("deleteItem", slot); }
     void useItem(int16_t slot) override { record("useItem", slot); }
+    // T141
+    void equip(const std::string& args) override { record("equip", args); }
 
     // ========== Spellbook ==========
     void memorizeSpell(uint8_t gemSlot, uint32_t spellId) override {

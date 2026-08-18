@@ -8613,3 +8613,34 @@ still does (naming the feature as unavailable) without fixing the `queued`
 lie. If `application.cpp`'s catch-all is ever revisited (see the headless
 entry above — same file, same territory boundary), whether to special-case
 confirmed-dead names there too would be worth deciding at the same time.
+
+## T141 — general-slot client/server numbering gap (live-leg finding, not fixed)
+
+Live-tested `/equip 13 22` (Primary -> general slot 22, the client's own
+`GENERAL_BEGIN=22` numbering, `inventory_constants.h`). The server rejected
+it ("The selected slot was invalid."), and the client's pre-existing
+desync-recovery logic correctly resynced local state back to the server's
+truth (unaffected by this unit -- that recovery path predates T141 and was
+not touched). DB inspection (`review/T141/db_state.txt`) shows every
+pre-existing general-slot item on the test character sits at `slot_id`
+23-30, never 22 -- i.e. this eqemu server's real general-slot numbering is
+offset by +1 from what the client sends. `inventory_constants.h` already
+documents an analogous, acknowledged offset for the cursor slot
+(`SERVER_CURSOR_SLOT = 33` vs the client's `CURSOR_SLOT = 30`, a +3 gap) but
+`SendMoveItem`/`MoveItemIntent` apparently never applies an equivalent
+translation for the general range.
+
+Not a T141 regression: this unit did not touch `SendMoveItem`, the wire
+opcode, or any slot-numbering translation -- `/equip`'s pre-extraction
+handler would have hit the identical rejection sending the identical
+packet; slot 22 specifically had just never been live-tested before (T63/
+T71/T75's live sessions used equipment <-> cursor <-> occupied-general
+pairs, never an EMPTY general slot at the client's low end of the range).
+Re-tested with the known-good `13 <-> 30` (Primary <-> cursor) pair, proven
+live by T71, which worked both directions -- see `review/T141/README.md`.
+
+Not fixed here: out of this unit's declared territory (no wire-protocol/
+opcode files in T141's territory list), and the right fix -- either a
+general-slot translation table alongside the existing cursor one, or
+confirming this eqemu server's config is itself nonstandard -- deserves its
+own small investigation rather than a guess bolted onto this unit's diff.

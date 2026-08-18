@@ -186,6 +186,16 @@ public:
     virtual void deleteItem(int16_t slot) = 0;
     virtual void useItem(int16_t slot) = 0;
 
+    // T141: /equip's three input forms (slot-pair / item-name / list) all
+    // arrive as one free-text string, same shape as chat's sendChatMessage
+    // family -- the form dispatch is command-layer text parsing, not a
+    // guard, so it stays bundled here rather than being pre-split into a
+    // separate virtual per form. Delegates straight to
+    // EverQuest::RequestEquip() (eq_commands.cpp), which does the dispatch
+    // and calls InventoryManager for everything else -- see
+    // refactor/T141_equip_extraction.md.
+    virtual void equip(const std::string& args) = 0;
+
     // ========== Spellbook ==========
 
     virtual void memorizeSpell(uint8_t gemSlot, uint32_t spellId) = 0;
@@ -780,6 +790,13 @@ public:
      * Use an item (right-click).
      */
     ActionResult useItem(int16_t slot);
+
+    /**
+     * T141: /equip -- move/equip an item by slot numbers, by name, or
+     * report state (`list`). See EqActionHandler::equip() ->
+     * EverQuest::RequestEquip() for the form dispatch.
+     */
+    ActionResult equip(const std::string& args);
 
     // ========== Spellbook Actions ==========
 

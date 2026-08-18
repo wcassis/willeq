@@ -7,6 +7,7 @@
 #include <sstream>
 #include <charconv>
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 
 namespace eqt {
@@ -1227,6 +1228,194 @@ bool InventoryManager::canEquipItem(const ItemInstance* item, int16_t equipSlot)
     }
 
     return true;
+}
+
+// ============================================================================
+// T141 -- equip orchestration, extracted verbatim (behavior-preserving) from
+// eq_commands.cpp's RegisterEquipmentCommands() handler and its file-local
+// helpers (CheckEquipDestination/ResolveEquipDestination/
+// FindItemsByNameSubstring/the doMove lambda). See
+// refactor/T141_equip_extraction.md's Review for the full argument for this
+// home. No legality logic is duplicated: checkEquipDestination() reuses
+// ItemInstance::canEquipInSlot() and this->canEquipItem(); moveItem() reuses
+// this->isValidSlot() (previously mirrored by a second, file-local copy in
+// eq_commands.cpp -- that duplication is gone now that the caller is a
+// member function).
+// ============================================================================
+
+std::string InventoryManager::checkEquipDestination(const ItemInstance* item, int16_t toSlot) const {
+    if (!item || !isEquipmentSlot(toSlot)) {
+        return {};
+    }
+    if (!item->canEquipInSlot(toSlot)) {
+        return item->name + " cannot go in " + describeSlot(toSlot) + " -- wrong slot type for this item.";
+    }
+    if (!canEquipItem(item, toSlot)) {
+        return item->name + " cannot go in " + describeSlot(toSlot) +
+               " -- your character does not meet its class/race/level requirements.";
+    }
+    return {};
+}
+
+InventoryManager::EquipDestinationResult
+InventoryManager::resolveEquipDestination(const ItemInstance* item) const {
+    EquipDestinationResult result;
+    if (!item) {
+        return result;
+    }
+    std::vector<int16_t> candidates;
+    for (int16_t slot = EQUIPMENT_BEGIN; slot <= EQUIPMENT_END; ++slot) {
+        if (item->canEquipInSlot(slot)) {
+            candidates.push_back(slot);
+        }
+    }
+    if (candidates.empty()) {
+        return result;
+    }
+    for (int16_t slot : candidates) {
+        if (!getItem(slot)) {
+            result.slot = slot;
+            return result;
+        }
+    }
+    result.slot = candidates.front();
+    result.allCandidatesOccupied = true;
+    return result;
+}
+
+std::vector<std::pair<int16_t, const ItemInstance*>>
+InventoryManager::findItemsByNameSubstring(const std::string& needle) const {
+    std::vector<std::pair<int16_t, const ItemInstance*>> matches;
+    if (needle.empty()) {
+        return matches;
+    }
+    std::string lowerNeedle = needle;
+    std::transform(lowerNeedle.begin(), lowerNeedle.end(), lowerNeedle.begin(), ::tolower);
+
+    auto tryMatch = [&](int16_t slot, const ItemInstance* item) {
+        if (!item) return;
+        std::string lowerName = item->name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+        if (lowerName.find(lowerNeedle) != std::string::npos) {
+            matches.emplace_back(slot, item);
+        }
+    };
+
+    for (const auto& [slot, item] : getEquipmentItems()) {
+        tryMatch(slot, item);
+    }
+    for (const auto& [slot, item] : getGeneralItems()) {
+        tryMatch(slot, item);
+        if (item && item->isContainer()) {
+            for (int16_t bagSlot : getBagContentsSlots(slot)) {
+                tryMatch(bagSlot, getItem(bagSlot));
+            }
+        }
+    }
+    if (hasCursorItem()) {
+        tryMatch(CURSOR_SLOT, getCursorItem());
+    }
+    return matches;
+}
+
+InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, int16_t toSlot) {
+    MoveItemOutcome outcome;
+
+    if (!isValidSlot(fromSlot)) {
+        outcome.message = "Invalid source slot: " + std::to_string(fromSlot);
+        return outcome;
+    }
+    if (!isValidSlot(toSlot)) {
+        outcome.message = "Invalid destination slot: " + std::to_string(toSlot);
+        return outcome;
+    }
+    if (fromSlot == toSlot) {
+        outcome.message = "Source and destination are the same slot (" + describeSlot(fromSlot) +
+                           ") -- nothing to do.";
+        return outcome;
+    }
+    // Preserved verbatim from the pre-extraction handler: refuse the WHOLE
+    // move (no mutation, no intent) if there is nowhere to send it, rather
+    // than mutating the local model and silently dropping the wire
+    // request -- pickupItem()/placeItem()/setItem() below tolerate
+    // bridge_==nullptr on their own (push-if-possible), but moveItem()'s
+    // caller-facing contract is stricter than theirs, per the original
+    // handler this was extracted from.
+    if (!bridge_) {
+        outcome.message = "Cannot move item - no bridge attached.";
+        return outcome;
+    }
+
+    // T77 -- pre-flight. Determine the source item first (same cursor-vs-
+    // slot distinction the execution branches below make), so both "is
+    // there anything to move" and "can it legally go there" are checked --
+    // and reported specifically -- before any state is mutated or any
+    // packet queued.
+    const ItemInstance* sourceItem = isCursorSlot(fromSlot)
+        ? (hasCursorItem() ? getCursorItem() : nullptr)
+        : getItem(fromSlot);
+    if (!sourceItem) {
+        outcome.message = "Nothing to move: " + describeSlot(fromSlot) + " is empty.";
+        return outcome;
+    }
+    std::string legalityError = checkEquipDestination(sourceItem, toSlot);
+    if (!legalityError.empty()) {
+        outcome.message = legalityError;
+        return outcome;
+    }
+
+    // T71 -- Stage 1 fix (see refactor/T71_equip_fix_and_first_person.md
+    // Review for the full characterisation of why each branch below is
+    // shaped this way; unchanged by T77's pre-flight above, which only
+    // decides whether execution reaches here at all).
+    if (isCursorSlot(fromSlot) && !isCursorSlot(toSlot)) {
+        // e.g. /equip 30 14 -- cursor -> a real slot.
+        if (!placeItem(toSlot)) {
+            outcome.message = "Could not place cursor item in " + describeSlot(toSlot) + ".";
+            return outcome;
+        }
+    } else if (!isCursorSlot(fromSlot) && isCursorSlot(toSlot)) {
+        // e.g. /equip 13 30 -- a real slot -> cursor.
+        if (!pickupItem(fromSlot)) {
+            outcome.message = "Could not pick up item from " + describeSlot(fromSlot) + ".";
+            return outcome;
+        }
+    } else if (!isCursorSlot(fromSlot) && !isCursorSlot(toSlot)) {
+        // e.g. /equip 13 14 -- direct slot<->slot swap, no cursor staging
+        // (matches the server's own atomic SwapItem(), proven live in
+        // T71). Pre-flight above already confirmed sourceItem exists and
+        // (if applicable) the destination is legal.
+        ItemInstance movedFromItem = *sourceItem;  // copy: setItem() below invalidates sourceItem
+        const ItemInstance* toItemPtr = getItem(toSlot);
+        if (toItemPtr) {
+            ItemInstance movedToItem = *toItemPtr;
+            setItem(toSlot, movedFromItem);
+            setItem(fromSlot, movedToItem);
+        } else {
+            setItem(toSlot, movedFromItem);
+            removeItem(fromSlot);
+        }
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+            if (isEquipmentSlot(fromSlot)) {
+                bridge_->pushIntent(eqt::events::EquipmentChangedIntent{fromSlot});
+            }
+            if (isEquipmentSlot(toSlot)) {
+                bridge_->pushIntent(eqt::events::EquipmentChangedIntent{toSlot});
+            }
+        }
+    } else {
+        // Both endpoints are cursor slots (e.g. /equip 30 33) -- nothing
+        // meaningful to do locally; fall through to the same wire request
+        // as before for parity with pre-T71 behaviour.
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
+        }
+    }
+
+    outcome.success = true;
+    outcome.message = "Moving item: " + describeSlot(fromSlot) + " -> " + describeSlot(toSlot);
+    return outcome;
 }
 
 bool InventoryManager::canPlaceInBag(const ItemInstance* item, int16_t bagSlot) const {

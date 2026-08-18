@@ -1934,7 +1934,8 @@ private:
 	// T136: RegisterVendorCommands() (T48: /vendorlist, /buy, /sell) removed
 	// -- migrated to action::CommandProcessor. See RequestVendorToggle()/
 	// RequestVendorBuy()/RequestVendorSell() below.
-	void RegisterEquipmentCommands(); // T66: /equip (eq_commands.cpp)
+	// T141: RegisterEquipmentCommands() (T66: /equip) removed -- migrated to
+	// action::CommandProcessor. See RequestEquip() below.
 
 	// Manual zone load diagnostics helpers
 	void runPmemDiagnostics(const std::string& label);
@@ -2074,6 +2075,13 @@ public:
 	void RequestVendorToggle();
 	void RequestVendorBuy(uint32_t slot, uint8_t quantity);
 	void RequestVendorSell(uint32_t slot, uint8_t quantity);
+
+	// T141: /equip's thin orchestration entry point -- form dispatch +
+	// read-only report formatting only; all legality/mutation/bridge-push
+	// logic lives in InventoryManager::moveItem() and friends
+	// (include/client/inventory/inventory_manager.h). Defined in
+	// eq_commands.cpp. See refactor/T141_equip_extraction.md.
+	void RequestEquip(const std::string& args);
 
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
