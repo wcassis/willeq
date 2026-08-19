@@ -539,6 +539,28 @@ void CommandProcessor::registerBuiltinCommands() {
         "Click a world object (forge, oven, ground spawn) by its drop id", "Utility", false
     }, [this](const std::string& args) { return cmdClickObject(args); });
 
+    // T149: tradeskill recipes. object_type is never an argument -- see
+    // EqActionHandler::resolveOpenContainerObjectType().
+    registerCommand({
+        "recipesearch", {"recipes"}, "/recipesearch [--min N] [--max N] [name]",
+        "Search the open tradeskill container's recipes", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdRecipeSearch(args); });
+
+    registerCommand({
+        "recipedetails", {"recipeinfo"}, "/recipedetails <recipe_id>",
+        "Show the components of a recipe from a search result", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdRecipeDetails(args); });
+
+    registerCommand({
+        "recipecombine", {"autocombine"}, "/recipecombine <recipe_id>",
+        "Auto-combine a recipe in the open tradeskill container", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdRecipeAutoCombine(args); });
+
+    registerCommand({
+        "recipefavorites", {"recipefav"}, "/recipefavorites <recipe_id> [recipe_id ...]",
+        "Request details for favorite recipes in the open container", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdRecipesFavorite(args); });
+
     // T135: Utility (6) -- categories ported verbatim from eq_commands.cpp's
     // per-command category, not unified, since the plan explicitly treats
     // these as six independent migrations that happen to share a unit.
@@ -1455,6 +1477,143 @@ ActionResult CommandProcessor::cmdClickObject(const std::string& args) {
         return ActionResult::Failure("Usage: /clickobject <drop_id>");
     }
     return m_dispatcher.clickWorldObject(dropId);
+}
+
+// T149 -----------------------------------------------------------------
+//
+// Deliberately absent from all four: an object_type argument. The container
+// type is resolved from the open container inside EqActionHandler. What the
+// user types here is only what the user can actually know -- a recipe name
+// to search for, or a recipe id that a prior search reply printed.
+
+namespace {
+
+// Parse a decimal uint32 with no trailing junk. Returns false on any
+// malformed input (empty, negative, non-numeric, overflow, trailing chars).
+bool parseU32Strict(const std::string& text, uint32_t& out) {
+    if (text.empty() || text[0] == '-') {
+        return false;
+    }
+    size_t consumed = 0;
+    unsigned long parsed = 0;
+    try {
+        parsed = std::stoul(text, &consumed);
+    } catch (const std::exception&) {
+        return false;
+    }
+    if (consumed != text.size()) {
+        return false;
+    }
+    if (parsed > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
+    out = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+std::vector<std::string> splitWhitespace(const std::string& text) {
+    std::vector<std::string> parts;
+    size_t i = 0;
+    while (i < text.size()) {
+        size_t start = text.find_first_not_of(" \t", i);
+        if (start == std::string::npos) break;
+        size_t end = text.find_first_of(" \t", start);
+        if (end == std::string::npos) end = text.size();
+        parts.push_back(text.substr(start, end - start));
+        i = end;
+    }
+    return parts;
+}
+
+// eqemu's search SQL filters `tr.trivial >= mintrivial AND tr.trivial <=
+// maxtrivial` (client_packet.cpp Handle_OP_RecipesSearch). A maxtrivial of 0
+// therefore matches NOTHING -- the naive "pass 0 for both" call silently
+// returns an empty result set. Titanium's own tradeskill window ships a
+// trivial slider; this is the equivalent default, wide enough to cover every
+// live recipe.
+constexpr uint32_t kDefaultMinTrivial = 0;
+constexpr uint32_t kDefaultMaxTrivial = 1000;
+
+} // namespace
+
+ActionResult CommandProcessor::cmdRecipeSearch(const std::string& args) {
+    uint32_t minTrivial = kDefaultMinTrivial;
+    uint32_t maxTrivial = kDefaultMaxTrivial;
+
+    // Leading --min/--max flags; everything after them is the name query,
+    // which may legitimately be empty (the server then omits the name clause
+    // and lists everything makeable in the container).
+    std::string rest = args;
+    for (;;) {
+        size_t start = rest.find_first_not_of(" \t");
+        if (start == std::string::npos) { rest.clear(); break; }
+        rest = rest.substr(start);
+        if (rest.rfind("--min", 0) != 0 && rest.rfind("--max", 0) != 0) {
+            break;
+        }
+        bool isMin = (rest.rfind("--min", 0) == 0);
+        std::string tail = rest.substr(5);
+        size_t vstart = tail.find_first_not_of(" \t");
+        if (vstart == std::string::npos) {
+            return ActionResult::Failure("Usage: /recipesearch [--min N] [--max N] [name]");
+        }
+        tail = tail.substr(vstart);
+        size_t vend = tail.find_first_of(" \t");
+        std::string value = (vend == std::string::npos) ? tail : tail.substr(0, vend);
+        uint32_t parsed = 0;
+        if (!parseU32Strict(value, parsed)) {
+            return ActionResult::Failure("Usage: /recipesearch [--min N] [--max N] [name]");
+        }
+        if (isMin) minTrivial = parsed; else maxTrivial = parsed;
+        rest = (vend == std::string::npos) ? std::string() : tail.substr(vend);
+    }
+
+    // Trim trailing whitespace off the query.
+    size_t last = rest.find_last_not_of(" \t");
+    rest = (last == std::string::npos) ? std::string() : rest.substr(0, last + 1);
+
+    // RecipesSearch_Struct::query is char[56] and eqemu forces query[55]=0,
+    // so anything longer is silently truncated on the wire. Reject instead.
+    if (rest.size() > 55) {
+        return ActionResult::Failure("Search text must be 55 characters or fewer");
+    }
+
+    return m_dispatcher.recipeSearch(rest, minTrivial, maxTrivial);
+}
+
+ActionResult CommandProcessor::cmdRecipeDetails(const std::string& args) {
+    uint32_t recipeId = 0;
+    auto parts = splitWhitespace(args);
+    if (parts.size() != 1 || !parseU32Strict(parts[0], recipeId)) {
+        return ActionResult::Failure("Usage: /recipedetails <recipe_id>");
+    }
+    return m_dispatcher.recipeDetails(recipeId);
+}
+
+ActionResult CommandProcessor::cmdRecipeAutoCombine(const std::string& args) {
+    uint32_t recipeId = 0;
+    auto parts = splitWhitespace(args);
+    if (parts.size() != 1 || !parseU32Strict(parts[0], recipeId)) {
+        return ActionResult::Failure("Usage: /recipecombine <recipe_id>");
+    }
+    return m_dispatcher.recipeAutoCombine(recipeId);
+}
+
+ActionResult CommandProcessor::cmdRecipesFavorite(const std::string& args) {
+    auto parts = splitWhitespace(args);
+    if (parts.empty()) {
+        return ActionResult::Failure("Usage: /recipefavorites <recipe_id> [recipe_id ...]");
+    }
+    std::vector<uint32_t> ids;
+    ids.reserve(parts.size());
+    for (const auto& part : parts) {
+        uint32_t id = 0;
+        if (!parseU32Strict(part, id)) {
+            return ActionResult::Failure("Usage: /recipefavorites <recipe_id> [recipe_id ...]");
+        }
+        ids.push_back(id);
+    }
+    return m_dispatcher.recipesFavorite(ids);
 }
 
 ActionResult CommandProcessor::cmdConsentDeny(const std::string& args) {

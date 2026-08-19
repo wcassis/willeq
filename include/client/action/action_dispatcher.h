@@ -4,6 +4,7 @@
 #include <string>
 #include <functional>
 #include <optional>
+#include <vector>  // T149: recipesFavorite() takes a recipe-id list
 #include <glm/glm.hpp>
 
 namespace eqt {
@@ -240,6 +241,20 @@ public:
 
     virtual void clickWorldObject(uint32_t dropId) = 0;
     virtual void tradeskillCombine() = 0;
+
+    // T149: the four recipe requests. NONE of them takes an object_type --
+    // that is the container's type, and it is sourced inside the handler from
+    // the container the server told us is open (T144 made
+    // WorldObject::object_type correct, and ZoneProcessClickObjectAction
+    // records the drop_id in EverQuest::m_active_tradeskill_object_id). A
+    // user-typed numeric object_type would be technically wired and
+    // practically unreachable -- the exact defect class this arc removes.
+    // See refactor/T149_tradeskill_recipes.md.
+    virtual void recipeSearch(const std::string& query, uint32_t minTrivial,
+                              uint32_t maxTrivial) = 0;
+    virtual void recipeDetails(uint32_t recipeId) = 0;
+    virtual void recipeAutoCombine(uint32_t recipeId) = 0;
+    virtual void recipesFavorite(const std::vector<uint32_t>& recipeIds) = 0;
 
     // ========== Extended Movement ==========
 
@@ -966,6 +981,33 @@ public:
      * Combine items in the current tradeskill container.
      */
     ActionResult tradeskillCombine();
+
+    /**
+     * T149: search the OPEN tradeskill container's recipes. `query` may be
+     * empty (the server then omits the name clause and returns everything
+     * makeable in that container). The trivial range is a real filter on the
+     * server -- `tr.trivial <= maxTrivial` -- so a maxTrivial of 0 returns
+     * nothing; CommandProcessor supplies a sane default rather than 0.
+     */
+    ActionResult recipeSearch(const std::string& query, uint32_t minTrivial,
+                              uint32_t maxTrivial);
+
+    /**
+     * T149: request the component list for one recipe id (as printed by a
+     * prior search). Carries no object_type on the wire.
+     */
+    ActionResult recipeDetails(uint32_t recipeId);
+
+    /**
+     * T149: ask the server to auto-combine a recipe in the open container.
+     */
+    ActionResult recipeAutoCombine(uint32_t recipeId);
+
+    /**
+     * T149: request details for a set of favorite recipe ids in the open
+     * container.
+     */
+    ActionResult recipesFavorite(const std::vector<uint32_t>& recipeIds);
 
     // ========== Extended Movement Actions ==========
 

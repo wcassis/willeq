@@ -363,6 +363,21 @@ private:
     // bar reachable at all -- and it retires a dead dispatcher method.
     ActionResult cmdClickObject(const std::string& args);
 
+    // T149: tradeskill recipes. All four recipe senders
+    // (SendRecipesSearch/SendRecipeDetails/SendRecipeAutoCombine/
+    // SendRecipesFavorite, src/client/eq_merchant.cpp) had ZERO production
+    // callers while BOTH recipe reply parsers were already wired into the
+    // zone dispatcher -- the feature was exactly half-built. T144 fixed
+    // Object_Struct so containers can be opened at all; these four commands
+    // are the other half. object_type is deliberately NOT an argument: it is
+    // sourced from the open container in
+    // EqActionHandler::resolveOpenContainerObjectType(). See
+    // refactor/T149_tradeskill_recipes.md.
+    ActionResult cmdRecipeSearch(const std::string& args);
+    ActionResult cmdRecipeDetails(const std::string& args);
+    ActionResult cmdRecipeAutoCombine(const std::string& args);
+    ActionResult cmdRecipesFavorite(const std::string& args);
+
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not
     // share a scenario, unlike Guild/Corpse-Rez; grouped here only because

@@ -251,6 +251,29 @@ public:
     }
     void tradeskillCombine() override { record("tradeskillCombine"); }
 
+    // T149: no object_type in any of these -- it is resolved from the open
+    // container inside EqActionHandler, below this interface.
+    void recipeSearch(const std::string& query, uint32_t minTrivial,
+                      uint32_t maxTrivial) override {
+        record("recipeSearch", query, minTrivial, maxTrivial);
+    }
+    void recipeDetails(uint32_t recipeId) override {
+        record("recipeDetails", recipeId);
+    }
+    void recipeAutoCombine(uint32_t recipeId) override {
+        record("recipeAutoCombine", recipeId);
+    }
+    void recipesFavorite(const std::vector<uint32_t>& recipeIds) override {
+        std::ostringstream oss;
+        oss << "[";
+        for (size_t i = 0; i < recipeIds.size(); ++i) {
+            if (i) oss << ",";
+            oss << recipeIds[i];
+        }
+        oss << "]";
+        record("recipesFavorite", Sym{oss.str()});
+    }
+
     // ========== Extended Movement ==========
     void setMovementMode(int mode) override { record("setMovementMode", mode); }
     void setPositionState(int state) override { record("setPositionState", state); }
