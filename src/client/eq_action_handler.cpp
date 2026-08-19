@@ -4,6 +4,7 @@
 #include "client/pet_constants.h"
 #include "client/spell/spell_manager.h"
 #include "client/trade_manager.h"
+#include "client/world_object.h"  // T149: open-container object_type lookup
 #include "client/state/game_state.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
@@ -1040,6 +1041,85 @@ void EqActionHandler::clickWorldObject(uint32_t dropId) {
 void EqActionHandler::tradeskillCombine() {
     // Combine is typically triggered through the tradeskill window combine button
     LOG_DEBUG(MOD_UI, "Tradeskill combine would need to be routed through tradeskill window");
+}
+
+// T149 -- THE design point of this unit.
+//
+// object_type is the tradeskill container's type (17 = forge, 15 = oven, ...).
+// It is NOT typed by the user: it is read off the container the server has
+// told us is open. EverQuest::ZoneProcessClickObjectAction() records the
+// container's drop_id in m_active_tradeskill_object_id when the server sends
+// OP_ClickObjectAction with open==1, and T144 made
+// WorldObject::object_type carry the real Titanium value (before T144 it was
+// read past the end of an 8-byte-wrong struct and was 0 for every object in
+// the world). Both accessors already existed on EverQuest --
+// GetActiveTradeskillObjectId() and GetWorldObject() -- so no new cross-layer
+// state was needed and none was invented.
+//
+// Scope note: m_active_tradeskill_object_id tracks WORLD containers only
+// (forges, ovens, looms). Tradeskill containers carried in inventory
+// (mixing bowls, sewing kits) open through a different path and would need
+// the wire's `some_id` set to the container's item id; every sender here
+// leaves some_id at 0, which is exactly what eqemu requires for a world
+// combiner and wrong for an inventory one. Inventory containers are out of
+// scope for this unit and are named as owed in the plan's Review.
+bool EqActionHandler::resolveOpenContainerObjectType(uint32_t& objectTypeOut) {
+    uint32_t dropId = m_eq.GetActiveTradeskillObjectId();
+    if (dropId == 0) {
+        m_eq.AddChatSystemMessage("You must have a tradeskill container open.");
+        return false;
+    }
+
+    const eqt::WorldObject* obj = m_eq.GetWorldObject(dropId);
+    if (obj == nullptr) {
+        // The container is open per the server but we have no ground-spawn
+        // record for it -- report rather than guessing a type.
+        LOG_WARN(MOD_UI, "Open tradeskill container {} has no world object record", dropId);
+        m_eq.AddChatSystemMessage("The open container is not recognized.");
+        return false;
+    }
+
+    objectTypeOut = obj->object_type;
+    return true;
+}
+
+void EqActionHandler::recipeSearch(const std::string& query, uint32_t minTrivial,
+                                   uint32_t maxTrivial) {
+    uint32_t objectType = 0;
+    if (!resolveOpenContainerObjectType(objectType)) {
+        return;
+    }
+    LOG_DEBUG(MOD_UI, "Recipe search in container type {} query='{}' trivial {}..{}",
+              objectType, query, minTrivial, maxTrivial);
+    m_eq.SendRecipesSearch(objectType, query, minTrivial, maxTrivial);
+}
+
+void EqActionHandler::recipeDetails(uint32_t recipeId) {
+    // OP_RecipeDetails carries only the recipe id -- no object_type on the
+    // wire (eqemu Handle_OP_RecipeDetails reads a bare uint32). Still gated
+    // on an open container, because a details lookup outside one is
+    // meaningless to the player and the ids come from a search reply.
+    uint32_t objectType = 0;
+    if (!resolveOpenContainerObjectType(objectType)) {
+        return;
+    }
+    m_eq.SendRecipeDetails(recipeId);
+}
+
+void EqActionHandler::recipeAutoCombine(uint32_t recipeId) {
+    uint32_t objectType = 0;
+    if (!resolveOpenContainerObjectType(objectType)) {
+        return;
+    }
+    m_eq.SendRecipeAutoCombine(objectType, recipeId);
+}
+
+void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
+    uint32_t objectType = 0;
+    if (!resolveOpenContainerObjectType(objectType)) {
+        return;
+    }
+    m_eq.SendRecipesFavorite(objectType, recipeIds);
 }
 
 // ========== Extended Movement ==========

@@ -1691,3 +1691,19 @@ ENDIF()
 ADD_EXECUTABLE(test_captured_packets test_captured_packets.cpp)
 TARGET_LINK_LIBRARIES(test_captured_packets GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_captured_packets)
+
+# T149: real-EverQuest/EqActionHandler coverage for the four tradeskill recipe
+# commands -- specifically that object_type is resolved from the OPEN
+# container (T144's WorldObject::object_type + the drop_id
+# ZoneProcessClickObjectAction records) and never supplied by the caller.
+# Drives T144's real captured OP_GroundSpawn bytes through the production
+# replay seam. Same headless EverQuest + EqActionHandler idiom as
+# test_eq_action_handler_trade above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_tradeskill
+    test_eq_action_handler_tradeskill.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_tradeskill GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_tradeskill PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill DISCOVERY_TIMEOUT 60)

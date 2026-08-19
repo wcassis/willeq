@@ -152,6 +152,15 @@ public:
     void clickWorldObject(uint32_t dropId) override;
     void tradeskillCombine() override;
 
+    // T149: recipe requests. object_type is NOT a parameter -- it is
+    // resolved here from the open container via
+    // resolveOpenContainerObjectType(), see the .cpp.
+    void recipeSearch(const std::string& query, uint32_t minTrivial,
+                      uint32_t maxTrivial) override;
+    void recipeDetails(uint32_t recipeId) override;
+    void recipeAutoCombine(uint32_t recipeId) override;
+    void recipesFavorite(const std::vector<uint32_t>& recipeIds) override;
+
     // ========== Extended Movement ==========
 
     void setMovementMode(int mode) override;
@@ -262,6 +271,13 @@ private:
     static bool isValidMovementMode(int mode);
     static bool isValidPositionState(int state);
     static bool isValidPetCommand(uint8_t command);
+
+    // T149: resolve the currently-open tradeskill container's object_type.
+    // Returns false (and tells the player why) when no world container is
+    // open. The value comes from the WorldObject T144 made correct, keyed by
+    // the drop_id ZoneProcessClickObjectAction recorded when the server
+    // acknowledged the open -- there is no parallel state store here.
+    bool resolveOpenContainerObjectType(uint32_t& objectTypeOut);
 };
 
 } // namespace eqt

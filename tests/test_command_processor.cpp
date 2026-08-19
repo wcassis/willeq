@@ -2717,6 +2717,84 @@ TEST_F(CommandProcessorTest, T150_GroupAssist_NoNameNoTarget_FailsCleanlyWithout
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== Tradeskill recipes (T149) ==========
+// All four recipe senders in eq_merchant.cpp had ZERO production callers
+// while both recipe reply parsers were already wired into the zone
+// dispatcher. T144 made tradeskill containers openable; these commands are
+// the other half of the feature.
+//
+// The assertion that matters most in this block is a NEGATIVE one: no
+// recipe command takes an object_type. The container's type is resolved from
+// the open container inside EqActionHandler, below IActionHandler, so it
+// cannot appear in any recorded call here. A /recipesearch that made the
+// player type "17" would be technically wired and practically unreachable.
+
+TEST_F(CommandProcessorTest, T149_RecipeCommandsRegisteredUnderTradeskill) {
+    for (const char* name : {"recipesearch", "recipedetails", "recipecombine",
+                             "recipefavorites"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << name;
+        EXPECT_EQ(info->category, "Tradeskill") << name;
+    }
+    EXPECT_TRUE(processor->hasCommand("recipes"));
+    EXPECT_TRUE(processor->hasCommand("recipeinfo"));
+    EXPECT_TRUE(processor->hasCommand("autocombine"));
+    EXPECT_TRUE(processor->hasCommand("recipefav"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_DefaultTrivialRangeIsNotZeroToZero) {
+    // eqemu's search SQL filters `tr.trivial <= maxtrivial`, so a maxtrivial
+    // of 0 matches nothing -- the naive default would make every search come
+    // back empty. Pin the real default.
+    auto result = processor->processCommand("/recipesearch");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"\", 0, 1000)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_PassesQueryVerbatim) {
+    auto result = processor->processCommand("/recipesearch iron ration");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"iron ration\", 0, 1000)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_TrivialFlagsOverrideDefaults) {
+    EXPECT_TRUE(processor->processCommand("/recipesearch --min 20 --max 120 blade").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"blade\", 20, 120)"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/recipesearch --max 50").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"\", 0, 50)"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/recipesearch --min 5").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"\", 5, 1000)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_AliasWorks) {
+    EXPECT_TRUE(processor->processCommand("/recipes bandage").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"bandage\", 0, 1000)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_RejectsBadFlagsAndOverlongQuery) {
+    const std::string tooLong(56, 'a');
+    for (const std::string& bad : {std::string("/recipesearch --min"),
+                                   std::string("/recipesearch --min abc"),
+                                   std::string("/recipesearch --max -1"),
+                                   std::string("/recipesearch --max 4294967296"),
+                                   std::string("/recipesearch ") + tooLong}) {
+        handler.clear();
+        auto result = processor->processCommand(bad);
+        EXPECT_FALSE(result.success) << "should have failed: " << bad;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << bad;
+    }
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_RejectsMaxBelowMin) {
+    auto result = processor->processCommand("/recipesearch --min 100 --max 10");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 TEST_F(CommandProcessorTest, T150_GroupAssist_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
     state.combat().setTarget(555, "a rat", 100, 10);
     state.world().setZoneConnected(false);
@@ -2803,6 +2881,94 @@ TEST_F(CommandProcessorTest, T150_FriendsWho_DoesNotShadowWho) {
     auto whoAllInfo = processor->getCommandInfo("whoall");
     ASSERT_TRUE(whoAllInfo.has_value());
     EXPECT_EQ(whoAllInfo->name, "who");
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeSearch_QueryAtExactlyTheWireLimitIsAccepted) {
+    // RecipesSearch_Struct::query is char[56] and eqemu forces query[55]=0.
+    const std::string atLimit(55, 'a');
+    auto result = processor->processCommand("/recipesearch " + atLimit);
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeSearch(\"" + atLimit + "\", 0, 1000)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeDetails_DispatchesRecipeId) {
+    EXPECT_TRUE(processor->processCommand("/recipedetails 4321").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeDetails(4321)"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/recipeinfo 1").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeDetails(1)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeDetails_RejectsMissingOrJunkArgs) {
+    for (const char* bad : {"/recipedetails", "/recipedetails abc", "/recipedetails 12abc",
+                            "/recipedetails 4294967296", "/recipedetails 1 2",
+                            "/recipedetails 0"}) {
+        handler.clear();
+        auto result = processor->processCommand(bad);
+        EXPECT_FALSE(result.success) << "should have failed: " << bad;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << bad;
+    }
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeAutoCombine_DispatchesRecipeId) {
+    EXPECT_TRUE(processor->processCommand("/recipecombine 4321").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeAutoCombine(4321)"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/autocombine 7").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipeAutoCombine(7)"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeAutoCombine_RejectsMissingOrJunkArgs) {
+    for (const char* bad : {"/recipecombine", "/recipecombine abc", "/recipecombine 0",
+                            "/recipecombine 1 2"}) {
+        handler.clear();
+        auto result = processor->processCommand(bad);
+        EXPECT_FALSE(result.success) << "should have failed: " << bad;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << bad;
+    }
+}
+
+TEST_F(CommandProcessorTest, T149_RecipesFavorite_DispatchesIdList) {
+    EXPECT_TRUE(processor->processCommand("/recipefavorites 10 20 30").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipesFavorite([10,20,30])"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/recipefav 99").success);
+    ASSERT_TRUE(handler.calledOnceWith("recipesFavorite([99])"));
+}
+
+TEST_F(CommandProcessorTest, T149_RecipesFavorite_RejectsEmptyZeroAndJunk) {
+    for (const char* bad : {"/recipefavorites", "/recipefavorites abc",
+                            "/recipefavorites 10 abc", "/recipefavorites 0",
+                            "/recipefavorites 10 0"}) {
+        handler.clear();
+        auto result = processor->processCommand(bad);
+        EXPECT_FALSE(result.success) << "should have failed: " << bad;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << bad;
+    }
+}
+
+TEST_F(CommandProcessorTest, T149_RecipesFavorite_RejectsMoreThan500Ids) {
+    std::string cmd = "/recipefavorites";
+    for (int i = 1; i <= 501; ++i) {
+        cmd += " " + std::to_string(i);
+    }
+    auto result = processor->processCommand(cmd);
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T149_RecipeCommands_NotConnectedToZone_FailCleanly) {
+    state.world().setZoneConnected(false);
+    for (const char* cmd : {"/recipesearch iron", "/recipedetails 1",
+                            "/recipecombine 1", "/recipefavorites 1"}) {
+        handler.clear();
+        auto result = processor->processCommand(cmd);
+        EXPECT_FALSE(result.success) << cmd;
+        EXPECT_EQ(handler.count(), 0u) << cmd;
+    }
 }
 
 } // namespace

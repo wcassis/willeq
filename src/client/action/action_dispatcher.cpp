@@ -1126,6 +1126,72 @@ ActionResult ActionDispatcher::tradeskillCombine() {
     return ActionResult::Success();
 }
 
+// T149: the four recipe requests. Note what is NOT in these signatures: an
+// object_type. The container's type is resolved in EqActionHandler from the
+// container the server has told us is open, so these commands compose with
+// T144's fix instead of asking the user to type a numeric id.
+
+ActionResult ActionDispatcher::recipeSearch(const std::string& query,
+                                            uint32_t minTrivial,
+                                            uint32_t maxTrivial) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (maxTrivial < minTrivial) {
+        return ActionResult::Failure("Max trivial must be >= min trivial");
+    }
+
+    m_handler->recipeSearch(query, minTrivial, maxTrivial);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::recipeDetails(uint32_t recipeId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (recipeId == 0) {
+        return ActionResult::Failure("Recipe id must be non-zero");
+    }
+
+    m_handler->recipeDetails(recipeId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::recipeAutoCombine(uint32_t recipeId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (recipeId == 0) {
+        return ActionResult::Failure("Recipe id must be non-zero");
+    }
+
+    m_handler->recipeAutoCombine(recipeId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (recipeIds.empty()) {
+        return ActionResult::Failure("No favorite recipe ids given");
+    }
+    // eqemu skips zero entries when building the id list (client_packet.cpp
+    // Handle_OP_RecipesFavorite), and an all-zero list makes it return without
+    // a reply -- so a 0 in the list is silently useless, not harmless.
+    for (uint32_t id : recipeIds) {
+        if (id == 0) {
+            return ActionResult::Failure("Recipe ids must be non-zero");
+        }
+    }
+    if (recipeIds.size() > 500) {
+        return ActionResult::Failure("At most 500 favorite recipes");
+    }
+
+    m_handler->recipesFavorite(recipeIds);
+    return ActionResult::Success();
+}
+
 // ========== Extended Movement Actions ==========
 
 ActionResult ActionDispatcher::setMovementMode(int mode) {

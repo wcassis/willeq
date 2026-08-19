@@ -27,6 +27,8 @@
 #endif
 
 #include <cstring>
+#include <algorithm>
+#include <vector>
 
 void EverQuest::ZoneProcessCharInventory(const EQ::Net::Packet &p)
 {
@@ -1544,21 +1546,49 @@ void EverQuest::CloseTrainerWindow()
 // Phase 4: Tradeskill Recipes
 // ============================================================================
 
+// T149 FINDING (source-verified against eqemu, not yet on the wire): this
+// sender used to write a VARIABLE-length body of 8 + 4*favorites.size()
+// bytes. eqemu's Handle_OP_RecipesFavorite (zone/client_packet.cpp) begins
+// with a hard equality gate --
+//     if (app->size != sizeof(TradeskillFavorites_Struct)) { LogError(...); return; }
+// -- and TradeskillFavorites_Struct is { uint32 object_type; uint32 some_id;
+// uint32 favorite_recipes[500]; } == 2008 bytes, fixed. So every packet this
+// function has ever been capable of producing would have been dropped by the
+// server with a log line and no reply. It had zero production callers, so
+// nothing ever noticed. The body is now always the full 2008 bytes, zero-
+// padded; eqemu skips the zero entries when building its id list.
+//
+// The other three recipe senders were checked the same way and are correct:
+// OP_RecipesSearch is gated on == sizeof(RecipesSearch_Struct) (80, matches),
+// OP_RecipeAutoCombine on == sizeof(RecipeAutoCombine_Struct) (20, matches),
+// OP_RecipeDetails only on >= sizeof(uint32) (we send 4).
+static constexpr size_t kTradeskillFavoritesMaxRecipes = 500;
+static constexpr size_t kTradeskillFavoritesBodySize =
+	sizeof(uint32_t) * 2 + sizeof(uint32_t) * kTradeskillFavoritesMaxRecipes;  // 2008
+
 void EverQuest::SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites)
 {
+	// Fixed-size, zero-padded body -- see the note above.
+	std::vector<uint8_t> body(kTradeskillFavoritesBodySize, 0);
+	auto put32 = [&body](size_t offset, uint32_t value) {
+		memcpy(body.data() + offset, &value, sizeof(value));
+	};
+	put32(0, object_type);
+	put32(4, 0);  // some_id: 0 == world combiner (an inventory container
+	              // would carry its item id here; see T149's Review)
+
+	size_t count = std::min(favorites.size(), kTradeskillFavoritesMaxRecipes);
+	for (size_t i = 0; i < count; i++) {
+		put32(8 + i * 4, favorites[i]);
+	}
+
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_RecipesFavorite);
-	packet.PutUInt32(2, object_type);
-	packet.PutUInt32(6, 0);  // some_id
-
-	// Pack up to 500 favorites
-	for (size_t i = 0; i < 500 && i < favorites.size(); i++) {
-		packet.PutUInt32(10 + i * 4, favorites[i]);
-	}
+	packet.PutData(2, body.data(), body.size());
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
-		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes", favorites.size());
+		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes (object_type={})", count, object_type);
 	}
 }
 
