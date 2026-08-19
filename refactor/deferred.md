@@ -8931,3 +8931,50 @@ better than wiring it. **Check every remaining candidate against
 
 Also note `useSkill` being command-unreachable is its own gap: the entire skill
 system is hotbar-only. That is a candidate unit in its own right.
+
+---
+
+## T148 (2026-08-19) — four defects surfaced by making the GM senders reachable
+
+T148 wired the nine `src/client/eq_gm.cpp` senders, which had zero production
+callers. **Making them reachable surfaced four defects in nine senders — one per
+two.** Filed by the orchestrator at merge; T148 could not append here because
+T149 and T150 both edited this file on `fable` mid-unit.
+
+**The generalisable lesson, and it revises this arc's framing: a zero-caller
+sender is not "correct but unreached". It is UNVERIFIED.** Nothing has ever
+exercised it, so nothing has ever contradicted it. Expect roughly one defect per
+two senders in the remaining families, and budget wiring units accordingly —
+they are not the mechanical plumbing exercises T132's ~50-minute measurement
+suggests.
+
+### FIXED in T148
+
+- **`SendGMEmoteZone` sent 32 bytes where the server demands 512.** Rejected
+  outright; nobody ever saw the emote. Fixed in `eq_gm.cpp` (in territory),
+  re-verified live. Built inline rather than adding a struct to the shared
+  `packet_structs.h`, to stay out of the parallel units' way.
+
+### OPEN — not fixed, each needs its own unit
+
+- **`SendGMHideMe` is misrouted.** It reaches the server as
+  `OP_SpawnAppearance` type 20 and is dropped with
+  `Unknown SpawnAppearance type: 0x0014` — it never reaches
+  `Handle_OP_GMHideMe`. `eq_gm.cpp:126` calls `SendSpawnAppearance(AT_GM, ...)`
+  where it should send `OP_GMHideMe`. **This is why `/hideme` is the one command
+  of the nine that T148 could not exercise.**
+- **`ZoneProcessGMFind` decodes the reply's floats as ints** — the live session
+  printed `at (-998490112, ...)`. A receive-side struct defect, same family as
+  the T144-T147 arc; belongs with the remaining captured-bytes work.
+- **`SendGMSummon` sends zeroed coordinates.** The summon still worked live
+  (the server relocated the target), so the coordinates are evidently ignored or
+  defaulted server-side — but sending zeros is not intentional and should be
+  either populated or documented as deliberately unused.
+
+### Also recorded
+
+The negative-control session proved the **naming distinction is real**: with the
+`gm` byte at 0, `#set time` and `#set gm` still worked, because the server gates
+on `Client::Admin()` (account status 200) — which **never reaches the client**.
+`m_gm_mode` gates our commands; it is not and cannot be a mirror of server-side
+GM authority. Do not "upgrade" it into one.
