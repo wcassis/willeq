@@ -1163,6 +1163,20 @@ enum MerchantAction : uint32_t {
 };
 
 // Merchant buy/sell request (client <-> server)
+//
+// !! DO NOT "FIX" THE NAMES OF THIS STRUCT AND `Merchant_Sell_Struct` BELOW !!
+//
+// Our two names are INVERTED relative to eqemu's, and that is deliberate --
+// both of our wire paths are correct, because eqemu's own naming is
+// counterintuitive:
+//   * `Handle_OP_ShopPlayerBuy`  (zone/client_packet.cpp:14026) expects
+//     eqemu's `Merchant_Sell_Struct`     -- 24 bytes  -> our `Merchant_Purchase_Struct`
+//   * `Handle_OP_ShopPlayerSell` (zone/client_packet.cpp:14274) expects
+//     eqemu's `Merchant_Purchase_Struct` -- 16 bytes  -> our `Merchant_Sell_Struct`
+// Verified T145: `eq_merchant.cpp` sends our 24-byte struct on
+// HC_OP_ShopPlayerBuy and our 16-byte struct on HC_OP_ShopPlayerSell, which
+// is what the server expects on each. Renaming these to "agree with eqemu"
+// breaks BOTH merchant directions at once.
 struct Merchant_Purchase_Struct {
 /*0000*/ uint32_t npc_id;      // NPC spawn ID
 /*0004*/ uint32_t player_id;   // Player entity ID
@@ -1536,18 +1550,27 @@ static_assert(sizeof(ConsentResponse_Struct) == 161, "ConsentResponse_Struct mus
 
 /**
  * Control Boat Struct
- * Used for controlling boat direction
- * Size: 20 bytes (Titanium format)
+ * Used for TAKING or RELEASING control of a boat -- not for steering it.
+ * Size: 8 bytes (Titanium format)
  * Used in: OP_ControlBoat (C->S)
+ *
+ * Ground truth: eqemu ControlBoat_Struct (common/eq_packet_structs.h:5327);
+ * titanium.cpp has no ENCODE/DECODE for OP_ControlBoat, so this goes on the
+ * wire raw and `Handle_OP_ControlBoat` (zone/client_packet.cpp:5421) rejects
+ * a mismatch with a visible "Wrong size: OP_ControlBoat" log line.
+ *
+ * T145: our previous 20-byte version had a `heading` float and a `type`
+ * control byte. NEITHER FIELD EXISTS ON THE WIRE -- the packet carries only
+ * a boat entity id and a single take/release boolean. Boat heading is not
+ * sent through this opcode.
  */
 struct ControlBoat_Struct {
 /*0000*/ uint32_t boatid;             // Boat entity ID
-/*0004*/ float    heading;            // Target heading
-/*0008*/ uint8_t  type;               // Control type (0=no input, 1=left, 2=right)
-/*0009*/ uint8_t  unknown[11];        // Padding
-/*0020*/
+/*0004*/ uint8_t  take_control;       // 1 = taking control, 0 = releasing it
+/*0005*/ uint8_t  unknown[3];         // Unknown
+/*0008*/
 };
-static_assert(sizeof(ControlBoat_Struct) == 20, "ControlBoat_Struct must be 20 bytes");
+static_assert(sizeof(ControlBoat_Struct) == 8, "ControlBoat_Struct must be 8 bytes");
 
 // ============================================================================
 // Phase 3: Group Split Structures
@@ -1603,20 +1626,57 @@ static_assert(sizeof(Shielding_Struct) == 4, "Shielding_Struct must be 4 bytes")
 
 /**
  * Environmental Damage Struct
- * Used for damage from environment (falling, lava, etc.)
- * Size: 32 bytes (Titanium format)
- * Used in: OP_EnvDamage (S->C)
+ * Used for damage from environment (falling, lava, drowning, traps)
+ * Size: 31 bytes (Titanium format)
+ * Used in: OP_EnvDamage
+ *
+ * Ground truth: eqemu EnvDamage2_Struct -- base
+ * common/eq_packet_structs.h:3020 and Titanium
+ * common/patches/titanium_structs.h:2251 are byte-identical, and titanium.cpp
+ * has no ENCODE/DECODE for OP_EnvDamage, so this struct goes on the wire raw
+ * and `Client::Handle_OP_EnvDamage`'s exact-size check
+ * (zone/client_packet.cpp:6301) is the gate.
+ *
+ * DIRECTION (T145): despite the old comment above, OP_EnvDamage is C->S in
+ * eqemu -- it is registered in ConnectedOpcodes (zone/client_packet.cpp:198)
+ * and the server NEVER sends it. `ZoneProcessEnvDamage` is therefore an
+ * unreachable receive path regardless of the struct size; there is no
+ * corresponding sender in this client at all. See refactor/T145 Review.
+ *
+ * dmgtype values: eqemu EQ::constants::EnvironmentalDamage
+ * (common/emu_constants.h:308) -- 250=Lava, 251=Drowning, 252=Falling,
+ * 253=Trap.
  */
+// !! LOCAL pack(1) -- THIS STRUCT SITS OUTSIDE THE FILE'S PACKED REGION !!
+//
+// T145 found that this header's `#pragma pack(push, 1)` (line 34) is popped
+// at line ~1375, roughly 700 lines before EOF. Everything below that point --
+// including every struct in this batch and all the Guild structs -- is
+// compiled with NATURAL ALIGNMENT, not packed. Most of those structs happen
+// to be alignment-neutral (all-uint8, all-uint32, or char arrays), so their
+// size asserts pass and the bug is invisible. EnvDamage2_Struct is not: with
+// natural alignment its correct field list measures 36 bytes, not the 31
+// eqemu puts on the wire.
+//
+// Fixed here with a LOCAL push/pop rather than by moving the file's pop to
+// EOF: moving it changes the layout of every struct in that 700-line region
+// at once and is a file-wide audit, which is refactor/T147's job. See the
+// T145 Review -- this is the likeliest root cause of the whole wire-rot class
+// and T147 should treat it as its headline item.
+#pragma pack(push, 1)
 struct EnvDamage2_Struct {
 /*0000*/ uint32_t id;                 // Entity ID
-/*0004*/ uint16_t damage;             // Amount of damage
-/*0006*/ uint8_t  unknown06[10];      // Unknown
-/*0016*/ uint8_t  dmgtype;            // Damage type (250=fall, 251=drown, 252=burn, 253=lava)
-/*0017*/ uint8_t  unknown17[14];      // Unknown
-/*0031*/ uint8_t  constant;           // Usually 0xFE
-/*0032*/
+/*0004*/ uint16_t unknown4;           // Unknown
+/*0006*/ uint32_t damage;             // Amount of damage
+/*0010*/ uint8_t  unknown10[12];      // Unknown
+/*0022*/ uint8_t  dmgtype;            // 250=lava, 251=drowning, 252=falling, 253=trap
+/*0023*/ uint8_t  unknown2[4];        // Unknown
+/*0027*/ uint16_t constant;           // Always 0xFFFF
+/*0029*/ uint16_t unknown29;          // Unknown
+/*0031*/
 };
-static_assert(sizeof(EnvDamage2_Struct) == 32, "EnvDamage2_Struct must be 32 bytes");
+#pragma pack(pop)
+static_assert(sizeof(EnvDamage2_Struct) == 31, "EnvDamage2_Struct must be 31 bytes");
 
 // ============================================================================
 // Phase 3: Discipline System Structures
@@ -1626,15 +1686,23 @@ static_assert(sizeof(EnvDamage2_Struct) == 32, "EnvDamage2_Struct must be 32 byt
 /**
  * Discipline Timer Struct
  * Used for discipline reuse timers
- * Size: 8 bytes (Titanium format)
+ * Size: 12 bytes (Titanium format)
  * Used in: OP_DisciplineTimer (S->C)
+ *
+ * Ground truth: eqemu DisciplineTimer_Struct
+ * (common/eq_packet_structs.h:5418) -- TimerID, Duration, Unknown08.
+ * T145: we were missing the trailing `unknown08`. Nothing was broken by this
+ * today (the only consumer is a read whose guard is `<`, and both consumed
+ * fields are at correct offsets), but it would have been a live bug the
+ * moment this struct was used to SEND.
  */
 struct DisciplineTimer_Struct {
-/*0000*/ uint32_t timer_id;           // Timer slot ID
-/*0004*/ uint32_t timer_value;        // Remaining time in seconds
-/*0008*/
+/*0000*/ uint32_t timer_id;           // Timer slot ID (eqemu: TimerID)
+/*0004*/ uint32_t timer_value;        // Remaining time in seconds (eqemu: Duration)
+/*0008*/ uint32_t unknown08;          // Unknown
+/*0012*/
 };
-static_assert(sizeof(DisciplineTimer_Struct) == 8, "DisciplineTimer_Struct must be 8 bytes");
+static_assert(sizeof(DisciplineTimer_Struct) == 12, "DisciplineTimer_Struct must be 12 bytes");
 
 // ============================================================================
 // Phase 3: Banking Structures
@@ -1666,16 +1734,24 @@ static_assert(sizeof(BankerChange_Struct) == 32, "BankerChange_Struct must be 32
 /**
  * Popup Response Struct
  * Used for responding to popup dialogs
- * Size: 12 bytes (Titanium format)
+ * Size: 8 bytes (Titanium format)
  * Used in: OP_PopupResponse (C->S)
+ *
+ * Ground truth: eqemu PopupResponse_Struct (common/eq_packet_structs.h:1903);
+ * titanium.cpp has no ENCODE/DECODE for OP_PopupResponse, so this goes on the
+ * wire raw and `Handle_OP_PopupResponse` (zone/client_packet.cpp:11976)
+ * rejects a mismatch.
+ *
+ * T145: our previous 12-byte version had a third `response` field carrying
+ * "which button was clicked". THAT FIELD IS FICTIONAL -- the wire format
+ * carries only the popup id, and eqemu's handler dispatches on the id alone.
  */
 struct PopupResponse_Struct {
-/*0000*/ uint32_t sender;             // NPC/entity that sent popup
+/*0000*/ uint32_t sender;             // eqemu: unknown0000
 /*0004*/ uint32_t popup_id;           // Popup ID from PopupText
-/*0008*/ uint32_t response;           // Button clicked (1=yes, 2=no)
-/*0012*/
+/*0008*/
 };
-static_assert(sizeof(PopupResponse_Struct) == 12, "PopupResponse_Struct must be 12 bytes");
+static_assert(sizeof(PopupResponse_Struct) == 8, "PopupResponse_Struct must be 8 bytes");
 
 // ============================================================================
 // Phase 4: Dueling Structures
@@ -1803,8 +1879,17 @@ static_assert(sizeof(Surname_Struct) == 100, "Surname_Struct must be 100 bytes")
 /**
  * Face Change Struct
  * Used for changing face appearance
- * Size: 8 bytes (Titanium format, padded)
+ * Size: 7 bytes (Titanium format -- NOT padded to 8)
  * Used in: OP_FaceChange (C->S)
+ *
+ * Ground truth: eqemu Titanium::structs::FaceChange_Struct
+ * (common/patches/titanium_structs.h:1860) -- seven uint8 fields, no padding.
+ * titanium.cpp has DECODE(OP_FaceChange) (:2779) using DECODE_LENGTH_EXACT,
+ * so the Titanium struct (7) is the wire format, NOT the 24-byte base
+ * eq_packet_structs.h version (which carries Drakkin/entity_id fields that
+ * Titanium never sends). A mismatch makes DECODE_LENGTH_EXACT rewrite the
+ * opcode to OP_Unknown, so the packet is discarded before any handler runs.
+ * (T145: we previously invented an 8th `unused` padding byte.)
  */
 struct FaceChange_Struct {
 /*0000*/ uint8_t haircolor;           // Hair color
@@ -1814,10 +1899,9 @@ struct FaceChange_Struct {
 /*0004*/ uint8_t hairstyle;           // Hair style
 /*0005*/ uint8_t beard;               // Beard style
 /*0006*/ uint8_t face;                // Face type
-/*0007*/ uint8_t unused;              // Padding
-/*0008*/
+/*0007*/
 };
-static_assert(sizeof(FaceChange_Struct) == 8, "FaceChange_Struct must be 8 bytes");
+static_assert(sizeof(FaceChange_Struct) == 7, "FaceChange_Struct must be 7 bytes");
 
 // ============================================================================
 // Phase 4: Misc Structures
@@ -1930,17 +2014,26 @@ static_assert(sizeof(GMSummon_Struct) == 152, "GMSummon_Struct must be 152 bytes
 
 /**
  * GM Kick/Kill Struct
- * Size: 132 bytes (Titanium format)
+ * Size: 129 bytes (Titanium format -- NOT padded to 132)
  * Used in: OP_GMKick, OP_GMKill (Bidirectional)
+ *
+ * Ground truth: eqemu GMKick_Struct -- base common/eq_packet_structs.h:2766
+ * and Titanium common/patches/titanium_structs.h:2042 are byte-identical, and
+ * titanium.cpp has no ENCODE/DECODE for either opcode, so this goes on the
+ * wire raw. eqemu's GMKill_Struct is the same three fields, so one struct
+ * serves both opcodes here.
+ *
+ * `Handle_OP_GMKick` (zone/client_packet.cpp:6729) does a BARE `return` on a
+ * size mismatch with no log line at all, so an over-sized packet leaves zero
+ * server-side trace. (T145: we previously invented a `padding[3]`.)
  */
 struct GMKick_Struct {
 /*0000*/ char     name[64];           // Target name
 /*0064*/ char     gmname[64];         // GM name
 /*0128*/ uint8_t  unknown;            // Unknown
-/*0129*/ uint8_t  padding[3];         // Padding
-/*0132*/
+/*0129*/
 };
-static_assert(sizeof(GMKick_Struct) == 132, "GMKick_Struct must be 132 bytes");
+static_assert(sizeof(GMKick_Struct) == 129, "GMKick_Struct must be 129 bytes");
 
 /**
  * GM Toggle Struct

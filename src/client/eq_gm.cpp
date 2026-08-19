@@ -78,6 +78,14 @@ void EverQuest::SendGMFind(const std::string& charname)
 	}
 }
 
+// GMKick_Struct is 129 bytes and serves both OP_GMKick and OP_GMKill (eqemu's
+// GMKill_Struct has the identical three fields). Until T145 ours was 132 --
+// an invented `padding[3]` -- and `Handle_OP_GMKick`
+// (zone/client_packet.cpp:6729) does a BARE `return` on a size mismatch with
+// no log line, so /kick left zero server-side trace while logging local
+// success here. These two senders use the correct 1-arg
+// `m_zone_connection->QueuePacket(packet)` convention (the packet carries its
+// own opcode); they needed no change beyond the struct fix.
 void EverQuest::SendGMKick(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
