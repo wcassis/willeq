@@ -127,11 +127,34 @@ void EverQuest::SendGMHideMe(bool hide)
 	LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
 }
 
+// T148: this sender wrote a bare variable-length string where the server
+// demands a FIXED 512-byte body. `Handle_OP_GMEmoteZone`
+// (zone/client_packet.cpp:6605) checks `app->size != sizeof(GMEmoteZone_Struct)`
+// -- and GMEmoteZone_Struct is a single `char text[512]`
+// (common/eq_packet_structs.h:2779) -- so every /emotezone was rejected
+// outright. Measured, not inferred: T148's first live run produced
+//   Zone | Error | Handle_OP_GMEmoteZone Wrong size: OP_GMEmoteZone,
+//                  [size=32,] expected [512]
+// in the zone server's own log, and no client in the zone (including the
+// sender) saw the emote. This was invisible before T148 because the sender
+// had zero callers -- exactly the shape T146 warned about, where a local
+// "sent OK" log certifies a dead path.
+//
+// The 512-byte body is built inline rather than by adding a struct to
+// packet_structs.h: it is one fixed-size char array with no field layout to
+// get wrong, and keeping it local avoids touching a header the parallel
+// struct-audit units share.
 void EverQuest::SendGMEmoteZone(const std::string& text)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMEmoteZone);
-	packet.PutString(2, text);
+
+	char body[512];
+	memset(body, 0, sizeof(body));
+	// 511 + the NUL the memset already guarantees. eqemu strtok()s and
+	// entity_list.Message()es this buffer, so it must be NUL-terminated.
+	strncpy(body, text.c_str(), sizeof(body) - 1);
+	packet.PutData(2, body, sizeof(body));
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);

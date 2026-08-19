@@ -2140,6 +2140,16 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		memcpy(last_name, static_cast<const char*>(p.Data()) + base + 13004, 32); // offset 13004
 	}
 	uint32_t guild_id = p.GetUInt32(base + 13036); // offset 13036
+	// T148: PlayerProfile.gm, offset 13054 -- 18 bytes past guild_id, with
+	// pvp@13052 and anon@13053 in between. eqemu's own header comments this
+	// field `// 0=no, 1=yes (guessing!)`, so it was CAPTURED off the wire
+	// before being trusted: three logins with `#set gm on|off` toggled
+	// between them read 0 -> 1 -> 0 here, while anon@13053 tracked its own
+	// independent toggle and pvp@13052 stayed constant, and birthday@13040
+	// matched character_data exactly (region alignment proven against an
+	// authority outside the client). See
+	// review/T148/playerprofile_gm_offset_annotated.txt.
+	uint8_t gm_mode = p.GetUInt8(base + 13054);    // offset 13054
 	
 	// Position data is stored differently - it's in bind points at offset 24
 	// But the current position is at offset 13116-13128
@@ -2240,6 +2250,14 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// applies. See refactor/T133_guild_id_population.md Review for the
 	// live-log evidence this is the correct, and only necessary, hook.
 	m_guild_id = guild_id;
+	// T148: the login-time GM-mode gate. Same shape as m_guild_id above --
+	// parsed from the player's own profile packet, assigned once, no spawn-id
+	// matching. This is the ONLY place m_gm_mode is written: the check is
+	// deliberately performed once at login and never refreshed mid-session
+	// (Will's decision, 2026-08-19; the AT_GM SpawnAppearance live-update
+	// path was considered and declined). It means "GM mode was on at login",
+	// not "this account has GM privileges" -- see EverQuest::GetGMMode().
+	m_gm_mode = (gm_mode != 0);
 	m_cur_hp = cur_hp;
 	m_max_hp = cur_hp;  // Will be updated when we get buffs/equipment
 	m_mana = mana;

@@ -1138,6 +1138,35 @@ public:
 	// SendGuild*() sender in eq_guild.cpp guards on that, correctly.
 	uint32_t GetGuildID() const { return m_guild_id; }
 
+	// T148: "GM mode was ON at login", NOT "this account has GM privileges".
+	//
+	// Populated once, from PlayerProfile.gm at offset 13054, in
+	// ZoneProcessPlayerProfile (eq.cpp) -- the SAME parse site and the same
+	// once-per-login shape as m_guild_id above. Its only server-side writer
+	// is Client::SetGM(bool) (eqemu zone/client.cpp:2659), i.e. the `#gm
+	// on|off` toggle, which Save()s so the value persists in the character
+	// profile.
+	//
+	// Account status -- what actually authorises GM commands SERVER-side, via
+	// Client::Admin() -- never reaches the client. There is no account-status
+	// field anywhere in the Titanium protocol. So this flag is the only
+	// GM-shaped signal a Titanium client can have, and it is a mode, not a
+	// permission. Name any user-facing string accordingly.
+	//
+	// DELIBERATELY STALE, by Will's decision of 2026-08-19: the check happens
+	// ONCE AT LOGIN. A GM who toggles `#gm` mid-session must log out and back
+	// in for the client to notice. The AT_GM live-update path (an AT_GM case
+	// in ZoneProcessSpawnAppearance, mirroring what T133 did for AT_GUILD_ID)
+	// was considered and EXPLICITLY DECLINED -- do not "fix" this by adding
+	// one. See refactor/T148_gm_status_gate.md.
+	//
+	// Offset 13054 is not taken on faith: eqemu's own header comments it
+	// `// 0=no, 1=yes (guessing!)`. It was captured off the wire across three
+	// logins with the flag toggled between them, with the neighbouring
+	// pvp@13052/anon@13053 bytes and birthday@13040 used as controls --
+	// review/T148/playerprofile_gm_offset_annotated.txt.
+	bool GetGMMode() const { return m_gm_mode; }
+
 	// Game state access (new state management system)
 	eqt::state::GameState& GetGameState() { return m_game_state; }
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }
@@ -1862,6 +1891,11 @@ private:
 	uint32_t m_duel_target_id = 0;
 	uint32_t m_duel_initiator_id = 0;
 	EQT::Resurrect_Struct m_pending_rezz;
+
+	// T148: PlayerProfile.gm @13054 -- "GM mode was on at login". See
+	// GetGMMode() for the full contract (login-time only, deliberately
+	// stale, NOT an account-privilege flag).
+	bool m_gm_mode = false;
 
 	// Guild state
 	uint32_t m_guild_id = 0;

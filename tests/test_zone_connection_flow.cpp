@@ -1071,3 +1071,120 @@ TEST(GuildIdPopulation, MidSessionSpawnAppearance_OtherEntity_DoesNotAffectOwnGu
     Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kOtherSpawnId, AT_GUILD_ID, 7));
     EXPECT_EQ(eq.GetGuildID(), 0u);
 }
+
+
+// ============================================================================
+// 5. T148: m_gm_mode population from the player's own PlayerProfile.
+//
+// PlayerProfile.gm sits at offset 13054 -- 18 bytes past the guild_id at
+// 13036 that suite 4 above covers, with pvp@13052 and anon@13053 in between.
+// eqemu's own header comments the field `// 0=no, 1=yes (guessing!)`, so it
+// was captured off the wire across three logins with `#set gm on|off`
+// toggled between them BEFORE any of this was written --
+// review/T148/playerprofile_gm_offset_annotated.txt has the annotated bytes.
+//
+// What the flag means matters as much as where it lives: its only
+// server-side writer is Client::SetGM(bool), so it is "GM MODE WAS ON AT
+// LOGIN", not "this account has GM privileges". Account status never
+// reaches a Titanium client at all. The read is deliberately once-per-login;
+// the AT_GM live-update path was explicitly declined (Will, 2026-08-19), and
+// GMModeIsLoginTimeOnly_NoMidSessionRefresh below PINS that decision so a
+// future reader does not "fix" it by accident.
+// ============================================================================
+
+TEST(GMModeGate, OwnPlayerProfile_GMFlagSet_PopulatesGMMode) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_FALSE(eq.GetGMMode()) << "GM mode must start false before any PlayerProfile arrives";
+
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt8(2 + 13054, 1);       // gm -- the field this unit wires up
+        p.PutUInt32(2 + 14384, 5005);
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+
+    EXPECT_TRUE(eq.GetGMMode())
+        << "PlayerProfile.gm (offset 13054) must reach m_gm_mode";
+}
+
+TEST(GMModeGate, OwnPlayerProfile_GMFlagClear_LeavesGMModeFalse) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, 5005);
+        // gm at offset 13054 left at the packet's default zero fill.
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+    EXPECT_FALSE(eq.GetGMMode());
+}
+
+TEST(GMModeGate, NeighbouringPvpAndAnonBytesDoNotBleedIntoGMMode) {
+    // The captured region is pvp@13052, anon@13053, gm@13054, guildrank@13055.
+    // An off-by-one in either direction would make one of these look like the
+    // GM flag. Set every neighbour and leave gm itself clear.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 13036, 42);     // guild_id
+        p.PutUInt8(2 + 13052, 1);       // pvp
+        p.PutUInt8(2 + 13053, 2);       // anon (2 = roleplay)
+        p.PutUInt8(2 + 13055, 2);       // guildrank
+        p.PutUInt32(2 + 14384, 5005);
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+
+    EXPECT_FALSE(eq.GetGMMode())
+        << "an off-by-one at the parse site would read pvp, anon or guildrank as the GM flag";
+    EXPECT_EQ(eq.GetGuildID(), 42u) << "guild_id must still parse from the same region";
+}
+
+TEST(GMModeGate, GMModeIsLoginTimeOnly_NoMidSessionRefresh) {
+    // PINS Will's decision of 2026-08-19. An AT_GM SpawnAppearance for our
+    // OWN spawn -- exactly the packet an AT_GM live-update path would have
+    // consumed, and exactly what T133 DID wire up for AT_GUILD_ID -- must
+    // NOT change GetGMMode(). A GM who toggles mid-session relogs. If this
+    // test ever fails because someone "fixed" the staleness, read
+    // refactor/T148_gm_status_gate.md before changing the test.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    const uint16_t kMySpawnId = 5005;
+    auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, kMySpawnId);
+        // gm left clear -- logged in with GM mode OFF.
+    });
+    Replay(eq, HC_OP_PlayerProfile, payload);
+    ASSERT_FALSE(eq.GetGMMode());
+
+    Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kMySpawnId, AT_GM, 1));
+    EXPECT_FALSE(eq.GetGMMode())
+        << "GM mode is checked ONCE AT LOGIN by design; AT_GM must not refresh it mid-session";
+}
+
+TEST(GMModeGate, SecondPlayerProfileRefreshesGMMode) {
+    // The flip side of the staleness decision: a relog (or any subsequent
+    // PlayerProfile) DOES pick up the new value. That is the sanctioned way
+    // for a GM to refresh, so it has to actually work.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    auto off = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt32(2 + 14384, 5005);
+    });
+    Replay(eq, HC_OP_PlayerProfile, off);
+    ASSERT_FALSE(eq.GetGMMode());
+
+    auto on = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt8(2 + 20, 10);
+        p.PutCString(2 + 12940, "Testchar");
+        p.PutUInt8(2 + 13054, 1);
+        p.PutUInt32(2 + 14384, 5005);
+    });
+    Replay(eq, HC_OP_PlayerProfile, on);
+    EXPECT_TRUE(eq.GetGMMode());
+}

@@ -1550,4 +1550,54 @@ void EqActionHandler::friendsWho(const std::string& friendsList) {
     m_eq.SendFriendsWho(friendsList);
 }
 
+// ========== GM (T148) ==========
+//
+// Pure routing to the pre-existing senders (src/client/eq_gm.cpp), the same
+// shape as the Guild family (T132): the senders own their own zone-
+// connection guard and their own logging, so nothing is duplicated here.
+//
+// The GM-mode gate is NOT here -- it lives in ActionDispatcher::checkGMMode()
+// so a single place owns the refusal string and the tests can drive it
+// through RecordingActionHandler without an EverQuest instance.
+
+bool EqActionHandler::isGMMode() const {
+    return m_eq.GetGMMode();
+}
+
+void EqActionHandler::gmZoneRequest(const std::string& charName, uint16_t zoneId) {
+    m_eq.SendGMZoneRequest(charName, zoneId);
+}
+
+void EqActionHandler::gmSummon(const std::string& charName) {
+    m_eq.SendGMSummon(charName);
+}
+
+void EqActionHandler::gmGoto(const std::string& charName) {
+    m_eq.SendGMGoto(charName);
+}
+
+void EqActionHandler::gmFind(const std::string& charName) {
+    m_eq.SendGMFind(charName);
+}
+
+void EqActionHandler::gmKick(const std::string& charName) {
+    m_eq.SendGMKick(charName);
+}
+
+void EqActionHandler::gmKill(const std::string& charName) {
+    m_eq.SendGMKill(charName);
+}
+
+void EqActionHandler::gmHideMe(bool hide) {
+    m_eq.SendGMHideMe(hide);
+}
+
+void EqActionHandler::gmEmoteZone(const std::string& text) {
+    m_eq.SendGMEmoteZone(text);
+}
+
+void EqActionHandler::gmLastName(const std::string& charName, const std::string& lastName) {
+    m_eq.SendGMLastName(charName, lastName);
+}
+
 } // namespace eqt

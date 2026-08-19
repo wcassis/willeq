@@ -890,4 +890,97 @@ TEST_F(ActionDispatcherTest, OpenReplyToTell_SucceedsWithoutTouchingHandler) {
     EXPECT_TRUE(handler.empty());
 }
 
+// ===================================================================
+// T148: the GM gate at the dispatcher layer.
+//
+// checkGMMode() is the single point that consults the login-time
+// PlayerProfile.gm @13054 flag. These tests drive it directly, without a
+// CommandProcessor, so a regression that moved or weakened the gate cannot
+// hide behind command-name plumbing.
+// ===================================================================
+
+TEST_F(ActionDispatcherTest, T148_NoHandler_GMCommandFailsWithoutCrashing) {
+    // checkGMMode() calls checkHandler() first, so a null handler must not
+    // be dereferenced by isGMMode().
+    auto result = dispatcher->gmKick("Bob");
+    EXPECT_FALSE(result.success);
+}
+
+TEST_F(ActionDispatcherTest, T148_NotGMMode_AllNineRefusedWithoutTouchingHandler) {
+    connectHandler();
+    connectZone();
+    handler.gmMode = false;
+
+    EXPECT_FALSE(dispatcher->gmZoneRequest("Bob", 36).success);
+    EXPECT_FALSE(dispatcher->gmSummon("Bob").success);
+    EXPECT_FALSE(dispatcher->gmGoto("Bob").success);
+    EXPECT_FALSE(dispatcher->gmFind("Bob").success);
+    EXPECT_FALSE(dispatcher->gmKick("Bob").success);
+    EXPECT_FALSE(dispatcher->gmKill("Bob").success);
+    EXPECT_FALSE(dispatcher->gmHideMe(true).success);
+    EXPECT_FALSE(dispatcher->gmEmoteZone("hi").success);
+    EXPECT_FALSE(dispatcher->gmLastName("Bob", "Smith").success);
+
+    EXPECT_TRUE(handler.empty()) << "no GM sender may be reached when GM mode was off at login";
+}
+
+TEST_F(ActionDispatcherTest, T148_GMMode_AllNineRouteToMatchingHandlerMethods) {
+    connectHandler();
+    connectZone();
+    handler.gmMode = true;
+
+    EXPECT_TRUE(dispatcher->gmZoneRequest("Bob", 36).success);
+    EXPECT_TRUE(dispatcher->gmSummon("Bob").success);
+    EXPECT_TRUE(dispatcher->gmGoto("Bob").success);
+    EXPECT_TRUE(dispatcher->gmFind("Bob").success);
+    EXPECT_TRUE(dispatcher->gmKick("Bob").success);
+    EXPECT_TRUE(dispatcher->gmKill("Bob").success);
+    EXPECT_TRUE(dispatcher->gmHideMe(true).success);
+    EXPECT_TRUE(dispatcher->gmEmoteZone("hi").success);
+    EXPECT_TRUE(dispatcher->gmLastName("Bob", "Smith").success);
+
+    EXPECT_TRUE(handler.calledOnceWith("gmZoneRequest(\"Bob\", 36)"));
+    EXPECT_TRUE(handler.calledOnceWith("gmSummon(\"Bob\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmGoto(\"Bob\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmFind(\"Bob\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmKick(\"Bob\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmKill(\"Bob\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmHideMe(true)"));
+    EXPECT_TRUE(handler.calledOnceWith("gmEmoteZone(\"hi\")"));
+    EXPECT_TRUE(handler.calledOnceWith("gmLastName(\"Bob\", \"Smith\")"));
+    EXPECT_EQ(handler.count(), 9u);
+}
+
+TEST_F(ActionDispatcherTest, T148_RefusalMessageNamesGMModeAndTheRelogFix) {
+    connectHandler();
+    connectZone();
+    handler.gmMode = false;
+
+    auto result = dispatcher->gmKick("Bob");
+    ASSERT_FALSE(result.success);
+    EXPECT_NE(result.message.find("GM"), std::string::npos)
+        << "refusal must say this is a GM command: " << result.message;
+    EXPECT_NE(result.message.find("log out"), std::string::npos)
+        << "refusal must tell the GM how to refresh (relog): " << result.message;
+    EXPECT_NE(result.message, "Not connected to zone")
+        << "the GM refusal must not be confused with the zone-connection failure";
+}
+
+TEST_F(ActionDispatcherTest, T148_GMMode_EmptyArgumentsRejectedBeforeDispatch) {
+    connectHandler();
+    connectZone();
+    handler.gmMode = true;
+
+    EXPECT_FALSE(dispatcher->gmZoneRequest("", 36).success);
+    EXPECT_FALSE(dispatcher->gmSummon("").success);
+    EXPECT_FALSE(dispatcher->gmGoto("").success);
+    EXPECT_FALSE(dispatcher->gmFind("").success);
+    EXPECT_FALSE(dispatcher->gmKick("").success);
+    EXPECT_FALSE(dispatcher->gmKill("").success);
+    EXPECT_FALSE(dispatcher->gmEmoteZone("").success);
+    EXPECT_FALSE(dispatcher->gmLastName("Bob", "").success);
+    EXPECT_FALSE(dispatcher->gmLastName("", "Smith").success);
+    EXPECT_TRUE(handler.empty());
+}
+
 } // namespace

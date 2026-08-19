@@ -887,6 +887,59 @@ void CommandProcessor::registerBuiltinCommands() {
     }, [this](const std::string& args) { return cmdFriendsWho(args); });
 }
 
+    // T148: GM (9), APPENDED (T149/T150 append their own blocks below this
+    // one; nothing above was reordered or reflowed).
+    //
+    // Net-new, Guild's shape (T132): all nine EverQuest::SendGM*() senders
+    // (src/client/eq_gm.cpp) had ZERO production callers and were registered
+    // in NEITHER registry before this unit -- so atomicity, the concern every
+    // migration unit since T97 has had to address, simply does not arise
+    // here: there is no legacy `game` registration to remove in the same
+    // change, and no shadowing risk, because there was never a second copy.
+    // Registered in action::CommandProcessor ONLY, never in the legacy
+    // registry (T97's shadowing bug).
+    //
+    // Registration is UNCONDITIONAL. The GM-mode gate lives one layer down,
+    // in ActionDispatcher::checkGMMode(), precisely so a non-GM who types
+    // /kick gets a refusal that says the command exists and why it is
+    // unavailable -- not "Unknown command", which would be a lie.
+    registerCommand({
+        "gmzone", {}, "/gmzone <name> <zone_id>", "GM: send a character to a zone", "GM", true
+    }, [this](const std::string& args) { return cmdGMZone(args); });
+
+    registerCommand({
+        "summon", {}, "/summon <name>", "GM: summon a character to you", "GM", true
+    }, [this](const std::string& args) { return cmdGMSummon(args); });
+
+    registerCommand({
+        "goto", {}, "/goto <name>", "GM: teleport yourself to a character", "GM", true
+    }, [this](const std::string& args) { return cmdGMGoto(args); });
+
+    registerCommand({
+        "gmfind", {}, "/gmfind <name>", "GM: locate a character", "GM", true
+    }, [this](const std::string& args) { return cmdGMFind(args); });
+
+    registerCommand({
+        "kick", {}, "/kick <name>", "GM: disconnect a character", "GM", true
+    }, [this](const std::string& args) { return cmdGMKick(args); });
+
+    registerCommand({
+        "kill", {}, "/kill <name>", "GM: kill a character", "GM", true
+    }, [this](const std::string& args) { return cmdGMKill(args); });
+
+    registerCommand({
+        "hideme", {}, "/hideme [on|off]", "GM: hide yourself from other players", "GM", false
+    }, [this](const std::string& args) { return cmdGMHideMe(args); });
+
+    registerCommand({
+        "emotezone", {}, "/emotezone <message>", "GM: broadcast an emote to the zone", "GM", true
+    }, [this](const std::string& args) { return cmdGMEmoteZone(args); });
+
+    registerCommand({
+        "gmlastname", {}, "/gmlastname <name> <lastname>", "GM: set a character's last name", "GM", true
+    }, [this](const std::string& args) { return cmdGMLastName(args); });
+}
+
 // ========== Command Implementations ==========
 
 ActionResult CommandProcessor::cmdShout(const std::string& args) {
@@ -2446,6 +2499,109 @@ ActionResult CommandProcessor::cmdLogClear(const std::string& args) {
     displayMessage("All module filters cleared (using global level)");
     displayMessage(GetModuleFilterStatus());
     return ActionResult::Success();
+}
+
+// ========== GM Commands (T148) ==========
+//
+// Thin parsing + dispatch, the Guild family's shape (T132). Nothing here is
+// a guard: the login-time GM-mode gate is ActionDispatcher::checkGMMode()
+// and the zone-connection guard lives in the senders, exactly as they did
+// for Guild. What IS owned here is argument shape -- splitting the two-token
+// commands and rejecting a non-numeric zone id -- which is a formatting
+// concern, the same precedent cmdSplit and cmdClickObject set.
+
+ActionResult CommandProcessor::cmdGMZone(const std::string& args) {
+    std::istringstream iss(args);
+    std::string name;
+    std::string zoneToken;
+    if (!(iss >> name) || !(iss >> zoneToken)) {
+        return ActionResult::Failure("Usage: /gmzone <name> <zone_id>");
+    }
+
+    unsigned long zoneId = 0;
+    size_t consumed = 0;
+    try {
+        zoneId = std::stoul(zoneToken, &consumed);
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Usage: /gmzone <name> <zone_id>");
+    }
+    if (consumed != zoneToken.size() || zoneId > std::numeric_limits<uint16_t>::max()) {
+        return ActionResult::Failure("Usage: /gmzone <name> <zone_id>");
+    }
+
+    return m_dispatcher.gmZoneRequest(name, static_cast<uint16_t>(zoneId));
+}
+
+ActionResult CommandProcessor::cmdGMSummon(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /summon <name>");
+    }
+    return m_dispatcher.gmSummon(args);
+}
+
+ActionResult CommandProcessor::cmdGMGoto(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /goto <name>");
+    }
+    return m_dispatcher.gmGoto(args);
+}
+
+ActionResult CommandProcessor::cmdGMFind(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /gmfind <name>");
+    }
+    return m_dispatcher.gmFind(args);
+}
+
+ActionResult CommandProcessor::cmdGMKick(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /kick <name>");
+    }
+    return m_dispatcher.gmKick(args);
+}
+
+ActionResult CommandProcessor::cmdGMKill(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /kill <name>");
+    }
+    return m_dispatcher.gmKill(args);
+}
+
+ActionResult CommandProcessor::cmdGMHideMe(const std::string& args) {
+    // Explicit on|off only -- deliberately NOT a toggle. SendGMHideMe(bool)
+    // sends AT_GM via SpawnAppearance and the client keeps no hidden-state of
+    // its own, so a toggle would have to guess at the current value and would
+    // desync the moment the server disagreed. Say what you mean.
+    std::string mode = toLower(args);
+    // trim
+    size_t b = mode.find_first_not_of(" \t");
+    size_t e = mode.find_last_not_of(" \t");
+    mode = (b == std::string::npos) ? std::string() : mode.substr(b, e - b + 1);
+
+    if (mode == "on" || mode == "1" || mode == "true") {
+        return m_dispatcher.gmHideMe(true);
+    }
+    if (mode == "off" || mode == "0" || mode == "false") {
+        return m_dispatcher.gmHideMe(false);
+    }
+    return ActionResult::Failure("Usage: /hideme <on|off>");
+}
+
+ActionResult CommandProcessor::cmdGMEmoteZone(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /emotezone <message>");
+    }
+    return m_dispatcher.gmEmoteZone(args);
+}
+
+ActionResult CommandProcessor::cmdGMLastName(const std::string& args) {
+    std::istringstream iss(args);
+    std::string name;
+    std::string lastName;
+    if (!(iss >> name) || !(iss >> lastName)) {
+        return ActionResult::Failure("Usage: /gmlastname <name> <lastname>");
+    }
+    return m_dispatcher.gmLastName(name, lastName);
 }
 
 } // namespace action

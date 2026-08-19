@@ -247,6 +247,21 @@ public:
     void findPerson(uint16_t targetId) override;
     void friendsWho(const std::string& friendsList) override;
 
+    // ========== GM (T148) ==========
+    // Pure routing to the pre-existing EverQuest::SendGM*() senders
+    // (src/client/eq_gm.cpp); isGMMode() is a pure read of
+    // EverQuest::GetGMMode() (PlayerProfile.gm @13054, login-time only).
+    bool isGMMode() const override;
+    void gmZoneRequest(const std::string& charName, uint16_t zoneId) override;
+    void gmSummon(const std::string& charName) override;
+    void gmGoto(const std::string& charName) override;
+    void gmFind(const std::string& charName) override;
+    void gmKick(const std::string& charName) override;
+    void gmKill(const std::string& charName) override;
+    void gmHideMe(bool hide) override;
+    void gmEmoteZone(const std::string& text) override;
+    void gmLastName(const std::string& charName, const std::string& lastName) override;
+
 private:
     EverQuest& m_eq;
 
