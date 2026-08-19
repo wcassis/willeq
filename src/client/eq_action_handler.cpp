@@ -1429,4 +1429,45 @@ void EqActionHandler::trainWithTarget() {
     m_eq.RequestTraining();
 }
 
+// ========== Social / Find (T150) ==========
+// resolveTargetOrCurrent() repeats the targetId==0 fallback assist()/
+// shieldTarget()/duel() established at the top of the Combat section: the
+// live CombatManager target is read HERE, not from GameState::combat()
+// (T28: that copy is never populated in production). Returns 0 and prints
+// the same "You don't have a target." message when there is nothing to use.
+
+uint16_t EqActionHandler::resolveTargetOrCurrent(uint16_t targetId) {
+    if (targetId != 0) {
+        return targetId;
+    }
+    auto* combat = getCombatManager();
+    if (!combat || !combat->HasTarget()) {
+        m_eq.AddChatSystemMessage("You don't have a target.");
+        return 0;
+    }
+    return combat->GetTargetId();
+}
+
+void EqActionHandler::assistGroup(uint16_t targetId) {
+    uint16_t resolved = resolveTargetOrCurrent(targetId);
+    if (resolved == 0) return;
+    m_eq.SendAssistGroup(resolved);
+}
+
+void EqActionHandler::trackTarget(uint16_t targetId) {
+    uint16_t resolved = resolveTargetOrCurrent(targetId);
+    if (resolved == 0) return;
+    m_eq.SendTrackTarget(resolved);
+}
+
+void EqActionHandler::findPerson(uint16_t targetId) {
+    uint16_t resolved = resolveTargetOrCurrent(targetId);
+    if (resolved == 0) return;
+    m_eq.SendFindPerson(resolved);
+}
+
+void EqActionHandler::friendsWho(const std::string& friendsList) {
+    m_eq.SendFriendsWho(friendsList);
+}
+
 } // namespace eqt

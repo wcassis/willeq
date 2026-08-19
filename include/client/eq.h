@@ -1099,7 +1099,14 @@ public:
 	void SendRewind();
 	void SendYellForHelp();
 	void SendReport(const std::string& report_text);
-	void SendFriendsWho();
+	// T150: takes the comma-delimited friends list the server expects.
+	// eqemu's Handle_OP_FriendsWho (zone/client_packet.cpp) casts the WHOLE
+	// application payload to `char*` and passes it to Client::FriendsWho(),
+	// which strchr()s it for ','; there is no encoder/struct for this opcode
+	// (common/patches has none), so any binary prefix corrupts the first
+	// name. The former zero-argument form wrote a uint32 spawn id ahead of
+	// the string and could never match a character.
+	void SendFriendsWho(const std::string& friends_list);
 	// Phase 4: GM Commands
 	void SendGMZoneRequest(const std::string& charname, uint16_t zone_id);
 	void SendGMSummon(const std::string& charname);

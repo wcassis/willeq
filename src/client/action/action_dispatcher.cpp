@@ -1650,5 +1650,48 @@ ActionResult ActionDispatcher::trainWithTarget() {
     return ActionResult::Success();
 }
 
+// ===== T150: Social / Find family =====
+// Same shape as assist()/shieldTarget() above: guard the zone connection,
+// route, return a generic Success(). All user-visible reporting (the
+// no-target message, and the eventual server reply) happens elsewhere --
+// EqActionHandler for the target fallback, the ZoneProcess* parsers for
+// the replies. See refactor/T150_social_find_family.md.
+
+ActionResult ActionDispatcher::assistGroup(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->assistGroup(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::trackTarget(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->trackTarget(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::findPerson(uint16_t targetId) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->findPerson(targetId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::friendsWho(const std::string& friendsList) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (friendsList.empty()) {
+        return ActionResult::Failure("Usage: /friendswho <name>[,<name>...]");
+    }
+
+    m_handler->friendsWho(friendsList);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

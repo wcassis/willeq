@@ -493,6 +493,15 @@ private:
     ActionResult cmdCheer(const std::string& args);
     ActionResult cmdLaugh(const std::string& args);
 
+    // T150: Social / Find family -- four commands over four previously
+    // zero-caller senders. groupassist/track/find take a name or the current
+    // target via resolveCombatTarget(); friendswho takes a comma-delimited
+    // NAME list, because that is literally what the server parses.
+    ActionResult cmdGroupAssist(const std::string& args);
+    ActionResult cmdTrack(const std::string& args);
+    ActionResult cmdFind(const std::string& args);
+    ActionResult cmdFriendsWho(const std::string& args);
+
     // Helper methods
     static std::string toLower(const std::string& str);
     static std::pair<std::string, std::string> parseCommandLine(const std::string& input);

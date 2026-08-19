@@ -338,6 +338,20 @@ public:
     void bankToggle() override { record("bankToggle"); }
     void trainWithTarget() override { record("trainWithTarget"); }
 
+    // ========== Social / Find (T150) ==========
+    void assistGroup(uint16_t targetId) override {
+        record("assistGroup", static_cast<uint32_t>(targetId));
+    }
+    void trackTarget(uint16_t targetId) override {
+        record("trackTarget", static_cast<uint32_t>(targetId));
+    }
+    void findPerson(uint16_t targetId) override {
+        record("findPerson", static_cast<uint32_t>(targetId));
+    }
+    void friendsWho(const std::string& friendsList) override {
+        record("friendsWho", friendsList);
+    }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

@@ -2646,4 +2646,163 @@ TEST_F(CommandProcessorTest, Train_NotConnectedToZone_FailsCleanlyWithoutDispatc
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ===================================================================
+// T150: Social / Find family -- four commands over four senders that had
+// ZERO production callers before this unit. See
+// refactor/T150_social_find_family.md.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T150_CommandsRegisteredWithExpectedCategories) {
+    struct Row { const char* name; const char* category; };
+    for (const Row& row : {Row{"groupassist", "Group"}, Row{"track", "Skills"},
+                           Row{"find", "Social"}, Row{"friendswho", "Social"}}) {
+        auto info = processor->getCommandInfo(row.name);
+        ASSERT_TRUE(info.has_value()) << row.name;
+        EXPECT_EQ(info->category, row.category) << row.name;
+    }
+}
+
+// The collision guard, asserted rather than merely commented: /assist must
+// still be the SINGLE-target assist (HC_OP_Assist), and must not have been
+// repurposed for the group assist (HC_OP_AssistGroup). T146 lost a leg to
+// exactly this kind of same-name-different-opcode confusion (/face).
+TEST_F(CommandProcessorTest, T150_AssistIsUntouchedAndDistinctFromGroupAssist) {
+    auto assistInfo = processor->getCommandInfo("assist");
+    ASSERT_TRUE(assistInfo.has_value());
+    EXPECT_EQ(assistInfo->name, "assist");
+    EXPECT_EQ(assistInfo->category, "Combat");
+
+    auto aliasInfo = processor->getCommandInfo("a");
+    ASSERT_TRUE(aliasInfo.has_value());
+    EXPECT_EQ(aliasInfo->name, "assist");
+
+    auto groupInfo = processor->getCommandInfo("ga");
+    ASSERT_TRUE(groupInfo.has_value());
+    EXPECT_EQ(groupInfo->name, "groupassist");
+
+    state.combat().setTarget(555, "a rat", 100, 10);
+    auto r1 = processor->processCommand("/assist");
+    auto r2 = processor->processCommand("/groupassist");
+    EXPECT_TRUE(r1.success);
+    EXPECT_TRUE(r2.success);
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "assist(555)");
+    EXPECT_EQ(handler.calls[1], "assistGroup(555)");
+}
+
+// ---------- groupassist / track / find: name-or-current-target ----------
+// The interface point of the unit: none of these requires a numeric spawn id.
+
+TEST_F(CommandProcessorTest, T150_GroupAssist_ExplicitName_ResolvesEntityAndDispatches) {
+    eqt::state::Entity e;
+    e.spawnId = 1234;
+    e.name = "a decrepit skeleton";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/groupassist skeleton");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("assistGroup(1234)"));
+}
+
+TEST_F(CommandProcessorTest, T150_GroupAssist_Alias_NoNameFallsBackToCombatTarget) {
+    state.combat().setTarget(555, "a rat", 100, 10);
+    auto result = processor->processCommand("/ga");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("assistGroup(555)"));
+}
+
+TEST_F(CommandProcessorTest, T150_GroupAssist_NoNameNoTarget_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/groupassist");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T150_GroupAssist_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.combat().setTarget(555, "a rat", 100, 10);
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/groupassist");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T150_Track_ExplicitName_ResolvesEntityAndDispatches) {
+    eqt::state::Entity e;
+    e.spawnId = 4242;
+    e.name = "a gnoll pup";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/track gnoll");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("trackTarget(4242)"));
+}
+
+TEST_F(CommandProcessorTest, T150_Track_NoNameFallsBackToCombatTarget) {
+    state.combat().setTarget(77, "a bat", 100, 5);
+    auto result = processor->processCommand("/track");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("trackTarget(77)"));
+}
+
+TEST_F(CommandProcessorTest, T150_Track_ExplicitNameNotFound_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/track nosuchmob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T150_Find_ExplicitName_ResolvesEntityAndDispatches) {
+    eqt::state::Entity e;
+    e.spawnId = 909;
+    e.name = "Guard Gehnus";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/find gehnus");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("findPerson(909)"));
+}
+
+TEST_F(CommandProcessorTest, T150_Find_FindpersonAlias_DispatchesSameAsPrimary) {
+    state.combat().setTarget(31, "a merchant", 100, 20);
+    auto result = processor->processCommand("/findperson");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("findPerson(31)"));
+}
+
+TEST_F(CommandProcessorTest, T150_Find_NoNameNoTarget_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/find");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- friendswho: a NAME LIST, not an entity id ----------
+// eqemu parses this payload as a comma-delimited character-name string and
+// resolves it in WORLD, across zones -- so an entity-list lookup would be
+// wrong here, not merely redundant. Args are passed through verbatim.
+
+TEST_F(CommandProcessorTest, T150_FriendsWho_PassesNameListThroughVerbatim) {
+    auto result = processor->processCommand("/friendswho Testmelee,Testbuddy");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("friendsWho(\"Testmelee,Testbuddy\")"));
+}
+
+TEST_F(CommandProcessorTest, T150_FriendsWho_FriendsAlias_DispatchesSameAsPrimary) {
+    auto result = processor->processCommand("/friends Testbuddy");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("friendsWho(\"Testbuddy\")"));
+}
+
+TEST_F(CommandProcessorTest, T150_FriendsWho_NoArgs_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/friendswho");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T150_FriendsWho_DoesNotShadowWho) {
+    auto whoInfo = processor->getCommandInfo("who");
+    ASSERT_TRUE(whoInfo.has_value());
+    EXPECT_EQ(whoInfo->name, "who");
+    auto whoAllInfo = processor->getCommandInfo("whoall");
+    ASSERT_TRUE(whoAllInfo.has_value());
+    EXPECT_EQ(whoAllInfo->name, "who");
+}
+
 } // namespace

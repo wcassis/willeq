@@ -1967,16 +1967,30 @@ void EverQuest::SendReport(const std::string& report_text)
 	}
 }
 
-void EverQuest::SendFriendsWho()
+// T150: payload corrected against eqemu source while wiring the first caller.
+// zone/client_packet.cpp's Handle_OP_FriendsWho does:
+//     char *FriendsString = (char*)app->pBuffer;  FriendsWho(FriendsString);
+// i.e. the ENTIRE application payload is one NUL-terminated, comma-delimited
+// list of character names -- there is no struct and no Titanium encoder for
+// this opcode (grep FriendsWho over common/patches finds only the opcode name).
+// world/clientlist.cpp's ClientList::SendFriendsWho() then strchr()s that
+// string for ',' and FindCharacter()s each name; the requester's spawn id and
+// name are taken server-side from ServerFriendsWho_Struct::FromID/FromName
+// (filled by the ZONE from GetID()/GetName()), never from the client payload.
+// The previous form wrote a uint32 spawn id at offset 2 and the string at 6,
+// so the first "name" the server parsed began with four raw binary bytes and
+// could never match a character. It had zero callers, so nothing regressed.
+void EverQuest::SendFriendsWho(const std::string& friends_list)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_FriendsWho);
-	packet.PutUInt32(2, m_my_spawn_id);
-	packet.PutString(6, m_character);
+	// PutCString, not PutString: the server strchr()s this buffer, so the
+	// NUL terminator is load-bearing (Packet::PutString does not write one).
+	packet.PutCString(2, friends_list.c_str());
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
-		LOG_DEBUG(MOD_MAIN, "Friends who requested");
+		LOG_DEBUG(MOD_MAIN, "Friends who requested for: {}", friends_list);
 	}
 }
 
