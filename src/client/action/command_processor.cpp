@@ -822,6 +822,47 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "logclear", {}, "/logclear", "Clear all module log filters", "Utility", false
     }, [this](const std::string& args) { return cmdLogClear(args); });
+
+    // ===== T150: Social / Find family =====
+    // Four net-new registrations over four senders that had zero production
+    // callers (refactor/T150_social_find_family.md). APPENDED, per the
+    // parallel-unit boundary in that plan -- nothing above is reordered.
+    //
+    // Name-collision check run against BOTH registries and the renderer's
+    // literal-string fallback before choosing these names:
+    //   - "assist" (alias "a") is ALREADY TAKEN here, by cmdAssist -> a
+    //     DIFFERENT opcode (HC_OP_Assist, single-target assist). This
+    //     command is the GROUP assist (HC_OP_AssistGroup), so it is
+    //     registered as "groupassist"/"ga" and does not touch /assist.
+    //     (T146 lost a leg by conflating two same-named-but-different
+    //     commands; this is the same trap, caught this time.)
+    //   - "track", "find", "findperson", "friendswho", "groupassist",
+    //     "ga", "friends" are all free: absent from CommandProcessor's
+    //     table, from EverQuest::m_command_registry (whose only survivors
+    //     are eq_commands_spells.cpp's hotkeys/pmem/music/sound/volume/
+    //     musicvolume/effectsvolume), and from
+    //     IrrlichtRenderer::processSlashCommand()'s literal arms.
+    //   - "who"/"whoall" (cmdWho) is deliberately NOT reused: /friendswho
+    //     is a different opcode with a different argument shape, even
+    //     though its REPLY is the same OP_WhoAllResponse packet.
+    registerCommand({
+        "groupassist", {"ga"}, "/groupassist [name]",
+        "Group assist: acquire your target's (or the named player's) target", "Group", false
+    }, [this](const std::string& args) { return cmdGroupAssist(args); });
+
+    registerCommand({
+        "track", {}, "/track [name]", "Set your tracking target (Ranger/Druid/Bard)", "Skills", false
+    }, [this](const std::string& args) { return cmdTrack(args); });
+
+    registerCommand({
+        "find", {"findperson"}, "/find [name]",
+        "Ask the server to path you to your target or a named entity", "Social", false
+    }, [this](const std::string& args) { return cmdFind(args); });
+
+    registerCommand({
+        "friendswho", {"friends"}, "/friendswho <name>[,<name>...]",
+        "Ask who from a comma-delimited name list is online", "Social", true
+    }, [this](const std::string& args) { return cmdFriendsWho(args); });
 }
 
 // ========== Command Implementations ==========
@@ -2191,6 +2232,54 @@ ActionResult CommandProcessor::cmdLogModule(const std::string& args) {
 
     displayMessage("Module " + modStr + " set to " + GetLevelName(level));
     return ActionResult::Success();
+}
+
+// ========== Social / Find (T150) ==========
+//
+// Interface note, and the point of the unit: three of the four underlying
+// senders take a numeric entity id, and a command that makes the user type a
+// spawn id is unreachable in practice. All three therefore take a NAME or
+// fall back to the current target, resolved through the SAME
+// resolveCombatTarget() path /assist, /shield and /duel already use --
+// EntityManager::findEntityByName() (case-insensitive substring) plus
+// CombatManager's live target. No second resolution path was built and no
+// new cross-layer state was needed.
+
+ActionResult CommandProcessor::cmdGroupAssist(const std::string& args) {
+    std::string error;
+    uint16_t targetId = resolveCombatTarget(args, &error);
+    if (targetId == 0) {
+        return ActionResult::Failure(error.empty() ? ("Could not find '" + args + "'") : error);
+    }
+    return m_dispatcher.assistGroup(targetId);
+}
+
+ActionResult CommandProcessor::cmdTrack(const std::string& args) {
+    std::string error;
+    uint16_t targetId = resolveCombatTarget(args, &error);
+    if (targetId == 0) {
+        return ActionResult::Failure(error.empty() ? ("Could not find '" + args + "'") : error);
+    }
+    return m_dispatcher.trackTarget(targetId);
+}
+
+ActionResult CommandProcessor::cmdFind(const std::string& args) {
+    std::string error;
+    uint16_t targetId = resolveCombatTarget(args, &error);
+    if (targetId == 0) {
+        return ActionResult::Failure(error.empty() ? ("Could not find '" + args + "'") : error);
+    }
+    return m_dispatcher.findPerson(targetId);
+}
+
+ActionResult CommandProcessor::cmdFriendsWho(const std::string& args) {
+    // No name resolution here: the server takes NAMES, not ids, for this
+    // opcode, and deliberately reports on characters who may be in other
+    // zones -- so an entity-list lookup would be wrong, not just redundant.
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /friendswho <name>[,<name>...]");
+    }
+    return m_dispatcher.friendsWho(args);
 }
 
 ActionResult CommandProcessor::cmdLogClear(const std::string& args) {

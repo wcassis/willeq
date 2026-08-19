@@ -376,6 +376,19 @@ public:
     virtual void timeOfDay(const std::string& args) = 0;
     virtual void bankToggle() = 0;
     virtual void trainWithTarget() = 0;
+
+    // ========== Social / Find (T150) ==========
+    // Four senders that had zero production callers until this unit
+    // (refactor/T150_social_find_family.md). Each is a thin route to the
+    // matching EverQuest::Send*(); the "no explicit name given" convention
+    // is the SAME as assist()/shieldTarget() above -- CommandProcessor
+    // resolves an explicit name to a spawn id via GameState::entities()
+    // and passes 0 to mean "use the live CombatManager target", which
+    // EqActionHandler reads.
+    virtual void assistGroup(uint16_t targetId) = 0;
+    virtual void trackTarget(uint16_t targetId) = 0;
+    virtual void findPerson(uint16_t targetId) = 0;
+    virtual void friendsWho(const std::string& friendsList) = 0;
 };
 
 /**
@@ -1267,6 +1280,37 @@ public:
      * EverQuest::RequestTraining(), not duplicated here.
      */
     ActionResult trainWithTarget();
+
+    /**
+     * T150: group assist -- ask the server to give you your group main
+     * assist's target. targetId 0 means "use the current target"; the
+     * fallback and its "You don't have a target." message live in
+     * EqActionHandler, matching assist().
+     */
+    ActionResult assistGroup(uint16_t targetId);
+
+    /**
+     * T150: set the server-side tracking target (OP_TrackTarget).
+     * targetId 0 means "use the current target". NOTE: eqemu's
+     * Handle_OP_TrackTarget only calls SetTrackingID() -- it sends NO
+     * reply. The track LIST (OP_Track -> ZoneProcessTrack) is a separate
+     * request this client still has no sender for.
+     */
+    ActionResult trackTarget(uint16_t targetId);
+
+    /**
+     * T150: ask the server to path you to an entity (OP_FindPersonRequest);
+     * the reply is OP_FindPersonReply -> ZoneProcessFindPersonReply.
+     * targetId 0 means "use the current target".
+     */
+    ActionResult findPerson(uint16_t targetId);
+
+    /**
+     * T150: ask world who from a comma-delimited name list is online
+     * (OP_FriendsWho). The reply is an OP_WhoAllResponse, the same packet
+     * /who all produces -- ZoneProcessWhoAllResponse already handles it.
+     */
+    ActionResult friendsWho(const std::string& friendsList);
 
 private:
     state::GameState& m_state;

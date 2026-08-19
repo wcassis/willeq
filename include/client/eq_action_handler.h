@@ -232,11 +232,22 @@ public:
     void bankToggle() override;
     void trainWithTarget() override;
 
+    // ========== Social / Find (T150) ==========
+    void assistGroup(uint16_t targetId) override;
+    void trackTarget(uint16_t targetId) override;
+    void findPerson(uint16_t targetId) override;
+    void friendsWho(const std::string& friendsList) override;
+
 private:
     EverQuest& m_eq;
 
     // Helper to get the combat manager
     CombatManager* getCombatManager();
+
+    // T150: shared targetId==0 -> live CombatManager target fallback for
+    // assistGroup/trackTarget/findPerson (same rule assist()/shieldTarget()
+    // implement inline). Returns 0 after printing "You don't have a target."
+    uint16_t resolveTargetOrCurrent(uint16_t targetId);
 
     // Update renderer's target display after targeting via bridge
     void updateRendererTargetInfo(uint16_t spawnId);
