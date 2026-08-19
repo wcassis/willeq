@@ -885,7 +885,6 @@ void CommandProcessor::registerBuiltinCommands() {
         "friendswho", {"friends"}, "/friendswho <name>[,<name>...]",
         "Ask who from a comma-delimited name list is online", "Social", true
     }, [this](const std::string& args) { return cmdFriendsWho(args); });
-}
 
     // T148: GM (9), APPENDED (T149/T150 append their own blocks below this
     // one; nothing above was reordered or reflowed).
