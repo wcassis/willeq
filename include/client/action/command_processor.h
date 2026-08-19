@@ -424,6 +424,27 @@ private:
     ActionResult cmdBank(const std::string& args);
     ActionResult cmdTrain(const std::string& args);
 
+    // T148: GM (9). Net-new, Guild's shape (T132) -- action::CommandProcessor
+    // had ZERO GM registrations, and neither did the legacy `game` registry:
+    // all nine EverQuest::SendGM*() senders (src/client/eq_gm.cpp) had zero
+    // production callers, which is why T146 could not exercise /kick or /kill
+    // at all. Registered here ONLY (never in the legacy registry -- T97's
+    // shadowing bug).
+    //
+    // Every one is gated by ActionDispatcher::checkGMMode(), the login-time
+    // PlayerProfile.gm @13054 check. Registration itself is UNCONDITIONAL on
+    // purpose: a non-GM typing /kick must learn the command exists and is
+    // refused, not that it does not exist.
+    ActionResult cmdGMZone(const std::string& args);
+    ActionResult cmdGMSummon(const std::string& args);
+    ActionResult cmdGMGoto(const std::string& args);
+    ActionResult cmdGMFind(const std::string& args);
+    ActionResult cmdGMKick(const std::string& args);
+    ActionResult cmdGMKill(const std::string& args);
+    ActionResult cmdGMHideMe(const std::string& args);
+    ActionResult cmdGMEmoteZone(const std::string& args);
+    ActionResult cmdGMLastName(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by

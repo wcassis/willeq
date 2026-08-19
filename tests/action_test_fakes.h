@@ -338,6 +338,27 @@ public:
     void bankToggle() override { record("bankToggle"); }
     void trainWithTarget() override { record("trainWithTarget"); }
 
+    // ========== GM (T148) ==========
+    // gmMode is the login-time PlayerProfile.gm @13054 flag as
+    // ActionDispatcher sees it. Default FALSE so every pre-existing test
+    // keeps its meaning and so a test that wants the GM path has to say so.
+    bool gmMode = false;
+    bool isGMMode() const override { return gmMode; }
+
+    void gmZoneRequest(const std::string& charName, uint16_t zoneId) override {
+        record("gmZoneRequest", charName, zoneId);
+    }
+    void gmSummon(const std::string& charName) override { record("gmSummon", charName); }
+    void gmGoto(const std::string& charName) override { record("gmGoto", charName); }
+    void gmFind(const std::string& charName) override { record("gmFind", charName); }
+    void gmKick(const std::string& charName) override { record("gmKick", charName); }
+    void gmKill(const std::string& charName) override { record("gmKill", charName); }
+    void gmHideMe(bool hide) override { record("gmHideMe", hide); }
+    void gmEmoteZone(const std::string& text) override { record("gmEmoteZone", text); }
+    void gmLastName(const std::string& charName, const std::string& lastName) override {
+        record("gmLastName", charName, lastName);
+    }
+
 private:
     template <typename... Args>
     void record(const char* name, Args&&... args) {

@@ -376,6 +376,33 @@ public:
     virtual void timeOfDay(const std::string& args) = 0;
     virtual void bankToggle() = 0;
     virtual void trainWithTarget() = 0;
+
+    // ========== GM (T148) ==========
+    // Net-new, T132's shape: thin wrappers over the pre-existing
+    // EverQuest::SendGM*() senders in src/client/eq_gm.cpp, all NINE of
+    // which had ZERO production callers and no registration in either
+    // registry until this unit (T146's finding -- reachability pattern
+    // #11-#13). T145's GMKick_Struct 132 -> 129 fix was correct and
+    // unreachable; gmKick/gmKill are the first thing that can put it on the
+    // wire.
+    //
+    // isGMMode() is the ONLY non-void method on this interface, and it is
+    // the login-time gate: it reports EverQuest::GetGMMode(), i.e.
+    // PlayerProfile.gm @13054 -- "GM mode was ON at login", NOT "this
+    // account has GM privileges" (account status never reaches a Titanium
+    // client at all). ActionDispatcher::checkGMMode() is the single point
+    // that consults it; see there for the refusal contract.
+    virtual bool isGMMode() const = 0;
+
+    virtual void gmZoneRequest(const std::string& charName, uint16_t zoneId) = 0;
+    virtual void gmSummon(const std::string& charName) = 0;
+    virtual void gmGoto(const std::string& charName) = 0;
+    virtual void gmFind(const std::string& charName) = 0;
+    virtual void gmKick(const std::string& charName) = 0;
+    virtual void gmKill(const std::string& charName) = 0;
+    virtual void gmHideMe(bool hide) = 0;
+    virtual void gmEmoteZone(const std::string& text) = 0;
+    virtual void gmLastName(const std::string& charName, const std::string& lastName) = 0;
 };
 
 /**
@@ -1268,6 +1295,39 @@ public:
      */
     ActionResult trainWithTarget();
 
+    // ========== GM Actions (T148) ==========
+    //
+    // Every one of these is gated by checkGMMode() BEFORE checkZoneConnection()
+    // -- see checkGMMode() below for why the order matters and what the
+    // refusal has to look like.
+
+    /** Ask the server to move a character to a zone. */
+    ActionResult gmZoneRequest(const std::string& charName, uint16_t zoneId);
+
+    /** Summon a character to your location. */
+    ActionResult gmSummon(const std::string& charName);
+
+    /** Teleport yourself to a character. */
+    ActionResult gmGoto(const std::string& charName);
+
+    /** Ask the server where a character is. */
+    ActionResult gmFind(const std::string& charName);
+
+    /** Disconnect a character from the server. */
+    ActionResult gmKick(const std::string& charName);
+
+    /** Kill a character outright. */
+    ActionResult gmKill(const std::string& charName);
+
+    /** Hide (or unhide) yourself from other players. */
+    ActionResult gmHideMe(bool hide);
+
+    /** Broadcast an emote to everyone in the zone. */
+    ActionResult gmEmoteZone(const std::string& text);
+
+    /** Set a character's last name. */
+    ActionResult gmLastName(const std::string& charName, const std::string& lastName);
+
 private:
     state::GameState& m_state;
     IActionHandler* m_handler = nullptr;
@@ -1277,6 +1337,27 @@ private:
 
     // Helper to validate zone connection
     ActionResult checkZoneConnection() const;
+
+    // T148: the login-time GM-mode gate, the single point every gm*() method
+    // above consults.
+    //
+    // Reports IActionHandler::isGMMode(), which is EverQuest::GetGMMode(),
+    // which is PlayerProfile.gm @13054 read ONCE in
+    // ZoneProcessPlayerProfile. It means "GM mode was ON at login". A GM who
+    // toggles `#gm` mid-session must relog; that staleness is Will's
+    // accepted design (2026-08-19), not a defect, and the AT_GM live-update
+    // path was explicitly declined.
+    //
+    // The refusal string MUST stay distinguishable from "no such command":
+    // the commands are registered unconditionally, so a non-GM typing /kick
+    // learns the command EXISTS and is unavailable to them, rather than
+    // being told it does not exist. Do not "fix" this by registering the GM
+    // commands conditionally.
+    //
+    // Checked BEFORE checkZoneConnection() on purpose: an ordinary player
+    // who is not zoned in should still be told the honest reason (not a GM),
+    // not the incidental one (not connected).
+    ActionResult checkGMMode() const;
 
     // Calculate heading to face a position
     float calculateHeadingTo(float x, float y) const;

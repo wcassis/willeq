@@ -1650,5 +1650,153 @@ ActionResult ActionDispatcher::trainWithTarget() {
     return ActionResult::Success();
 }
 
+// ========== GM Actions (T148) ==========
+//
+// Net-new plumbing over the pre-existing EverQuest::SendGM*() senders
+// (src/client/eq_gm.cpp), all nine of which had zero production callers
+// until this unit. The senders already own their own zone-connection guard
+// (`if (m_zone_connection && m_zone_connected)`), exactly like the Guild
+// family's did (T132); the wrappers below are the gate plus routing.
+
+ActionResult ActionDispatcher::checkGMMode() const {
+    auto result = checkHandler();
+    if (!result.success) return result;
+
+    if (!m_handler->isGMMode()) {
+        // Deliberately specific. "Unknown command" is what a player gets for
+        // a command that does not exist; this one exists and is refused, and
+        // the message says both why and what to do about it. The relog
+        // instruction is not a workaround for a bug -- the check is
+        // login-time BY DESIGN (Will, 2026-08-19), and the AT_GM live-update
+        // path was explicitly declined.
+        return ActionResult::Failure(
+            "That command is a GM command and you were not in GM mode when you "
+            "logged in. Use #gm on, then log out and back in.");
+    }
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmZoneRequest(const std::string& charName, uint16_t zoneId) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /gmzone <name> <zone_id>");
+    }
+
+    m_handler->gmZoneRequest(charName, zoneId);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmSummon(const std::string& charName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /summon <name>");
+    }
+
+    m_handler->gmSummon(charName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmGoto(const std::string& charName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /goto <name>");
+    }
+
+    m_handler->gmGoto(charName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmFind(const std::string& charName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /gmfind <name>");
+    }
+
+    m_handler->gmFind(charName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmKick(const std::string& charName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /kick <name>");
+    }
+
+    m_handler->gmKick(charName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmKill(const std::string& charName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty()) {
+        return ActionResult::Failure("Usage: /kill <name>");
+    }
+
+    m_handler->gmKill(charName);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmHideMe(bool hide) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->gmHideMe(hide);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmEmoteZone(const std::string& text) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (text.empty()) {
+        return ActionResult::Failure("Usage: /emotezone <message>");
+    }
+
+    m_handler->gmEmoteZone(text);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::gmLastName(const std::string& charName, const std::string& lastName) {
+    auto result = checkGMMode();
+    if (!result.success) return result;
+    result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (charName.empty() || lastName.empty()) {
+        return ActionResult::Failure("Usage: /gmlastname <name> <lastname>");
+    }
+
+    m_handler->gmLastName(charName, lastName);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

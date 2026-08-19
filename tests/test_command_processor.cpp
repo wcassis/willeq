@@ -2646,4 +2646,199 @@ TEST_F(CommandProcessorTest, Train_NotConnectedToZone_FailsCleanlyWithoutDispatc
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ===================================================================
+// GM commands (T148)
+//
+// Net-new family, Guild's shape: all nine EverQuest::SendGM*() senders had
+// ZERO production callers and no registration in EITHER registry before
+// this unit (T146's finding). What is different here is the gate: every one
+// of the nine is refused unless PlayerProfile.gm @13054 was set at login.
+//
+// RecordingActionHandler::gmMode defaults to FALSE, so the not-a-GM path is
+// the default in this fixture and the GM path has to be asked for
+// explicitly -- which is also why the "refused" tests below come first.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T148_GMCommandsRegisteredWithGMCategory) {
+    for (const char* name : {"gmzone", "summon", "goto", "gmfind", "kick",
+                              "kill", "hideme", "emotezone", "gmlastname"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << "missing built-in: " << name;
+        EXPECT_EQ(info->category, "GM") << "wrong category for: " << name;
+    }
+}
+
+// ---------- the gate: refused when GM mode was off at login ----------
+
+TEST_F(CommandProcessorTest, T148_GMCommand_NotGMMode_IsRefusedWithoutDispatching) {
+    handler.gmMode = false;
+    auto result = processor->processCommand("/kick Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u) << "a refused GM command must not reach the sender";
+}
+
+TEST_F(CommandProcessorTest, T148_GMCommand_NotGMMode_RefusalIsNotUnknownCommand) {
+    // The whole point of registering these unconditionally: a player who
+    // types /kick must learn the command EXISTS and is unavailable, not
+    // that it does not exist. Contrast with a genuinely unknown command.
+    handler.gmMode = false;
+    auto refused = processor->processCommand("/kick Bob");
+    auto unknown = processor->processCommand("/definitelynotacommand Bob");
+
+    EXPECT_FALSE(refused.success);
+    EXPECT_FALSE(unknown.success);
+    EXPECT_NE(refused.message, unknown.message)
+        << "the GM refusal must be distinguishable from 'no such command'";
+    EXPECT_TRUE(processor->hasCommand("kick"));
+    EXPECT_FALSE(processor->hasCommand("definitelynotacommand"));
+}
+
+TEST_F(CommandProcessorTest, T148_AllNineGMCommands_NotGMMode_AreRefused) {
+    handler.gmMode = false;
+    for (const char* line : {"/gmzone Bob 36", "/summon Bob", "/goto Bob",
+                              "/gmfind Bob", "/kick Bob", "/kill Bob",
+                              "/hideme on", "/emotezone hello",
+                              "/gmlastname Bob Smith"}) {
+        handler.clear();
+        auto result = processor->processCommand(line);
+        EXPECT_FALSE(result.success) << "should have been refused: " << line;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << line;
+    }
+}
+
+TEST_F(CommandProcessorTest, T148_GateIsCheckedBeforeZoneConnection) {
+    // An ordinary player who is not zoned in should get the honest reason
+    // (not a GM), not the incidental one (not connected).
+    handler.gmMode = false;
+    state.world().setZoneConnected(false);
+    auto notGm = processor->processCommand("/kick Bob");
+
+    handler.gmMode = true;
+    auto notConnected = processor->processCommand("/kick Bob");
+
+    EXPECT_FALSE(notGm.success);
+    EXPECT_FALSE(notConnected.success);
+    EXPECT_NE(notGm.message, notConnected.message);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// ---------- the nine, with GM mode on ----------
+
+TEST_F(CommandProcessorTest, T148_GMZone_DispatchesGMZoneRequest) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmzone Bob 36");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmZoneRequest(\"Bob\", 36)"));
+}
+
+TEST_F(CommandProcessorTest, T148_GMZone_NonNumericZoneId_FailsCleanlyWithoutDispatching) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmzone Bob arena");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T148_GMZone_ZoneIdOutOfUint16Range_FailsCleanlyWithoutDispatching) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmzone Bob 70000");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T148_GMZone_MissingZoneId_FailsCleanlyWithoutDispatching) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmzone Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T148_Summon_DispatchesGMSummon) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/summon Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmSummon(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_Goto_DispatchesGMGoto) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/goto Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmGoto(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_GMFind_DispatchesGMFind) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmfind Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmFind(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_Kick_DispatchesGMKick) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/kick Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmKick(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_Kill_DispatchesGMKill) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/kill Bob");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmKill(\"Bob\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_HideMe_OnAndOff_DispatchExplicitBool) {
+    handler.gmMode = true;
+    EXPECT_TRUE(processor->processCommand("/hideme on").success);
+    ASSERT_TRUE(handler.calledOnceWith("gmHideMe(true)"));
+
+    handler.clear();
+    EXPECT_TRUE(processor->processCommand("/hideme off").success);
+    ASSERT_TRUE(handler.calledOnceWith("gmHideMe(false)"));
+}
+
+TEST_F(CommandProcessorTest, T148_HideMe_NoArgs_FailsRatherThanGuessing) {
+    // Deliberately NOT a toggle -- the client keeps no hidden-state, so a
+    // toggle would have to guess. See cmdGMHideMe.
+    handler.gmMode = true;
+    auto result = processor->processCommand("/hideme");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T148_EmoteZone_DispatchesGMEmoteZone) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/emotezone the sky darkens");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmEmoteZone(\"the sky darkens\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_GMLastName_DispatchesGMLastName) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmlastname Bob Smith");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("gmLastName(\"Bob\", \"Smith\")"));
+}
+
+TEST_F(CommandProcessorTest, T148_GMLastName_MissingLastName_FailsCleanlyWithoutDispatching) {
+    handler.gmMode = true;
+    auto result = processor->processCommand("/gmlastname Bob");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, T148_GMCommands_NotConnectedToZone_FailCleanlyWithoutDispatching) {
+    handler.gmMode = true;
+    state.world().setZoneConnected(false);
+    for (const char* line : {"/gmzone Bob 36", "/summon Bob", "/goto Bob",
+                              "/gmfind Bob", "/kick Bob", "/kill Bob",
+                              "/hideme on", "/emotezone hello",
+                              "/gmlastname Bob Smith"}) {
+        handler.clear();
+        auto result = processor->processCommand(line);
+        EXPECT_FALSE(result.success) << "should have failed: " << line;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << line;
+    }
+}
+
 } // namespace
