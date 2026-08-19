@@ -7,6 +7,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <limits>
+#include <stdexcept>
 
 namespace eqt {
 namespace action {
@@ -530,6 +532,12 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "rezdecline", {"declinerez"}, "/rezdecline", "Decline pending resurrection offer", "Utility", false
     }, [this](const std::string& args) { return cmdRezDecline(args); });
+
+    // T144
+    registerCommand({
+        "clickobject", {"clickobj"}, "/clickobject <drop_id>",
+        "Click a world object (forge, oven, ground spawn) by its drop id", "Utility", false
+    }, [this](const std::string& args) { return cmdClickObject(args); });
 
     // T135: Utility (6) -- categories ported verbatim from eq_commands.cpp's
     // per-command category, not unified, since the plan explicitly treats
@@ -1425,6 +1433,28 @@ ActionResult CommandProcessor::cmdConsent(const std::string& args) {
         return ActionResult::Failure("Usage: /consent <player_name>");
     }
     return m_dispatcher.consent(args);
+}
+
+ActionResult CommandProcessor::cmdClickObject(const std::string& args) {
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /clickobject <drop_id>");
+    }
+    uint32_t dropId = 0;
+    size_t consumed = 0;
+    try {
+        unsigned long parsed = std::stoul(args, &consumed);
+        if (parsed > std::numeric_limits<uint32_t>::max()) {
+            return ActionResult::Failure("Usage: /clickobject <drop_id>");
+        }
+        dropId = static_cast<uint32_t>(parsed);
+    } catch (const std::exception&) {
+        return ActionResult::Failure("Usage: /clickobject <drop_id>");
+    }
+    // Reject trailing junk ("12abc"), but allow trailing whitespace.
+    if (args.find_first_not_of(" \t", consumed) != std::string::npos) {
+        return ActionResult::Failure("Usage: /clickobject <drop_id>");
+    }
+    return m_dispatcher.clickWorldObject(dropId);
 }
 
 ActionResult CommandProcessor::cmdConsentDeny(const std::string& args) {

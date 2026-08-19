@@ -2017,6 +2017,49 @@ TEST_F(CommandProcessorTest, RezAccept_NotConnectedToZone_FailsCleanlyWithoutDis
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== /clickobject (T144) ==========
+// The dispatcher/handler chain for clickWorldObject already existed and was
+// fully plumbed; it had no production caller at all, because the only trigger
+// was a renderer keypress. T144 registers the command so the tradeskill
+// container path is reachable from any command channel (and so the unit's
+// "a forge actually opens" acceptance leg could be driven at all).
+
+TEST_F(CommandProcessorTest, T144_ClickObject_Registered) {
+    auto info = processor->getCommandInfo("clickobject");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->category, "Utility");
+    EXPECT_TRUE(processor->hasCommand("clickobj"));
+}
+
+TEST_F(CommandProcessorTest, T144_ClickObject_DispatchesWithDropId) {
+    auto result = processor->processCommand("/clickobject 190");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("clickWorldObject(190)"));
+}
+
+TEST_F(CommandProcessorTest, T144_ClickObject_Alias_DispatchesWithDropId) {
+    auto result = processor->processCommand("/clickobj 4294967295");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("clickWorldObject(4294967295)"));
+}
+
+TEST_F(CommandProcessorTest, T144_ClickObject_RejectsMissingOrJunkArgsWithoutDispatching) {
+    for (const char* bad : {"/clickobject", "/clickobject abc", "/clickobject 12abc",
+                            "/clickobject 4294967296"}) {
+        handler.calls.clear();
+        auto result = processor->processCommand(bad);
+        EXPECT_FALSE(result.success) << "should have failed: " << bad;
+        EXPECT_EQ(handler.count(), 0u) << "should not have dispatched: " << bad;
+    }
+}
+
+TEST_F(CommandProcessorTest, T144_ClickObject_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
+    state.world().setZoneConnected(false);
+    auto result = processor->processCommand("/clickobject 190");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 // ========== Utility (T135) ==========
 // split/save/bandage/rewind/bug/petition do not share a scenario (unlike
 // Guild or Corpse-Rez) -- six independent groups of assertions, per the

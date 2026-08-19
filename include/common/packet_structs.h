@@ -840,32 +840,47 @@ static_assert(sizeof(ClickDoor_Struct) == 16, "ClickDoor_Struct must be 16 bytes
 /**
  * Object Struct
  * Used for forges, ovens, ground spawns, items dropped to ground, etc.
- * Size: 100 bytes (Titanium)
+ * Size: 92 bytes (Titanium wire format)
  * Used in: OP_GroundSpawn packet (server->client)
+ *
+ * T144: this was 100 bytes and wrong from offset 8 onwards. It had been
+ * derived from eqemu's SERVER-INTERNAL Object_Struct
+ * (common/eq_packet_structs.h), which carries size/solid_type/incline/
+ * tilt_x/tilt_y -- fields that do not exist in the Titanium wire format at
+ * all -- plus an invented padding014. The authority is
+ * Titanium::structs::Object_Struct (common/patches/titanium_structs.h) as
+ * populated field-by-field by ENCODE(OP_GroundSpawn) in
+ * common/patches/titanium.cpp. Confirmed against captured bytes from a live
+ * qeynos session; see review/T144/ and tests/test_packet_structs.cpp's
+ * GroundSpawn captured-bytes cases.
+ *
+ * NOTE: OP_GroundSpawn is a VARIABLE-LENGTH packet. ENCODE sizes it
+ * `strlen(object_name) + sizeof(Object_Struct) - 1`, i.e. strlen + 91, and
+ * only strcpy's the name -- the rest of the 32-byte object_name field is
+ * whatever was in the freshly-allocated (uninitialised) buffer. Never
+ * length-check an OP_GroundSpawn against sizeof(Object_Struct); check only
+ * that it reaches the field you are about to read.
  */
 struct Object_Struct {
 /*0000*/ uint32_t linked_list_addr[2];  // Prev and next pointers (client-side linked list)
-/*0008*/ float    size;                  // Object scale
-/*0012*/ uint16_t solid_type;            // Collision type
-/*0014*/ uint16_t padding014;            // Padding
-/*0016*/ uint32_t drop_id;               // Unique object id for zone
-/*0020*/ uint16_t zone_id;               // Zone the object appears in
-/*0022*/ uint16_t zone_instance;         // Zone instance
-/*0024*/ uint32_t incline;               // Rotation/incline
-/*0028*/ uint32_t unknown024;            // Unknown
-/*0032*/ float    tilt_x;                // X-axis tilt
-/*0036*/ float    tilt_y;                // Y-axis tilt
-/*0040*/ float    heading;               // Heading/rotation (0-360)
-/*0044*/ float    z;                     // Z coordinate
-/*0048*/ float    x;                     // X coordinate
-/*0052*/ float    y;                     // Y coordinate
-/*0056*/ char     object_name[32];       // Object name (e.g., "IT63_ACTORDEF")
-/*0088*/ uint32_t unknown076;            // Unknown
-/*0092*/ uint32_t object_type;           // Type of object (tradeskill type, etc.)
-/*0096*/ uint32_t unknown084;            // Set to 0xFF for tradeskill containers
-/*0100*/
+/*0008*/ uint16_t unknown008[2];        // Unknown (zeroed by the server)
+/*0012*/ uint32_t drop_id;              // Unique object id for zone (an ENTITY id, not the DB object id)
+/*0016*/ uint16_t zone_id;              // Zone the object appears in
+/*0018*/ uint16_t zone_instance;        // Zone instance
+/*0020*/ uint32_t unknown020;           // Unknown (zeroed by the server)
+/*0024*/ uint32_t unknown024;           // Unknown (zeroed by the server)
+/*0028*/ float    heading;              // Heading/rotation (EQ 512 format)
+/*0032*/ float    z;                    // Z coordinate
+/*0036*/ float    x;                    // X coordinate
+/*0040*/ float    y;                    // Y coordinate
+/*0044*/ char     object_name[32];      // Object name (e.g., "IT63_ACTORDEF"); only strlen+1 bytes are meaningful
+/*0076*/ uint32_t unknown076;           // Unknown (zeroed by the server)
+/*0080*/ uint32_t object_type;          // Type of object (tradeskill container type, etc.)
+/*0084*/ uint32_t unknown084;           // Set to 0xFFFFFFFF by the server
+/*0088*/ uint32_t spawn_id;             // Spawn id of client interacting with object (0 from the server)
+/*0092*/
 };
-static_assert(sizeof(Object_Struct) == 100, "Object_Struct must be 100 bytes");
+static_assert(sizeof(Object_Struct) == 92, "Object_Struct must be 92 bytes");
 
 /**
  * Click Object Struct

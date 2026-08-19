@@ -137,4 +137,242 @@ Suite baseline 2433, sole expected failure the documented ALSA
 
 ## Review
 
-(executor fills)
+Executed in `/mnt/projects/fable/wt/slot1`, task branch
+`task/T144-object-struct`, off `fable` tip `857ddc46`. eqemu lock held for
+the whole live phase and deleted after clean shutdown. Full evidence:
+`/mnt/projects/fable/review/T144/` (README + annotated hex dump + raw dump +
+three filtered live-session logs + one context screenshot).
+
+### CAPTURE FIRST — result: analysis CONFIRMED, no STOP
+
+`object_name` starts at **wire offset 44**, not 56. Captured before a single
+line of the fix was written, by logging `EQ::Net::Packet::ToString()` at the
+top of `ZoneProcessGroundSpawn` (temporary instrumentation, removed before
+commit — the committed tree contains no capture hook).
+
+11 real `OP_GroundSpawn` packets from a live qeynos zone-in. Every one has
+`'I','T'` at dump offset `0x2E` == wire 44. Decoding all 11 at the Titanium
+offsets and cross-checking against the **server's own `object` DB table** for
+`zoneid=1` — an authority completely outside the client — gives 10/10 exact
+matches on name, type, x, y and heading (the 11th packet is a genuine dropped
+item with no DB row).
+
+Zone choice: **qeynos**, not the default `arena`, because its `object` table
+holds 10 tradeskill containers of 7 distinct types in one zone
+(`SELECT ... FROM object WHERE zoneid=1`), giving a wide sample from a single
+zone-in. `Testchar` was temporarily moved there and restored afterwards.
+
+| field | wire offset | packet 1 decoded | qeynos `object` row 228452 |
+|---|---|---|---|
+| drop_id | 12 | 199 | (runtime entity id, no DB equivalent) |
+| zone_id | 16 | 1 | zoneid 1 |
+| zone_instance | 18 | 0 | — |
+| heading | 28 | 117.0 | 117 |
+| z | 32 | 0.0 | 0.002 |
+| x | 36 | -177.0 | -177 |
+| y | 40 | 484.0 | 484 |
+| object_name | **44** | `"IT10804_ACTORDEF"` | IT10804_ACTORDEF |
+| object_type | 80 | 17 (blacksmithing) | 17 |
+| unknown084 | 84 | 0xFFFFFFFF | (server sets 0xFF) |
+| spawn_id | 88 | 0 | (server sets 0) |
+
+### The variable length is the format, not jitter
+
+Every captured packet satisfies `body_len == strlen(object_name) + 91`,
+exactly as `ENCODE(OP_GroundSpawn)` writes it
+(`strlen(name) + sizeof(structs::Object_Struct) - 1`). Observed bodies: 95,
+104, 105, 107. **The 95-byte one is a 97-byte packet — literally the "97
+bytes instead of 102" the old comment in `eq_entities.cpp:957` dismissed as
+server jitter.** It is a dropped `IT63` item. The in-plain-sight tell the plan
+predicted was there, and it is now a named test case
+(`GroundSpawn_CapturedBytes_ShortPacketGroundItem`).
+
+A second in-plain-sight tell the capture surfaced that the plan did not
+predict: the bytes after the name's NUL are **uninitialised server heap**
+(`ENCODE` only `strcpy`s into a fresh `new unsigned char[]`). One forge packet
+carries a leftover `"_ACTORDEF"` there from a previous allocation. Any reader
+treating `object_name` as a fixed 32-byte field produces
+`"IT66_ACTORDEF\0_ACTORDEF"`. Pinned by
+`GroundSpawn_NameIsNulTerminatedNotFixedWidth`.
+
+### What the old struct actually did — worse than "objects render wrong"
+
+`drop_id` was read at wire offset 16, **which is `zone_id`**. So every object
+in the zone decoded to `drop_id == 1`, and `m_world_objects` (a map keyed by
+`drop_id`) collapsed all 11 into a single entry. And `object_type` was read at
+offset 92, past the end of the real 92-byte struct, and came out `0` every
+time — so `isTradeskillContainer()` was false for every object, so
+`IrrlichtBridge`'s `WorldObjectSpawned` case (which only calls
+`addWorldObject()` for tradeskill types) registered **zero** clickable world
+objects.
+
+That is stronger than the plan's estimate. The plan said forges "cannot be
+opened" because `drop_id` was wrong. In fact the feature could not even be
+*attempted*: there was no click volume to hit, the intent could never fire,
+and if it somehow had, `eq_bridge.cpp`'s `WorldObjectInteractIntent` handler
+gates on `isTradeskillContainer()` too. **The whole tradeskill-container
+feature was dead at every layer** — the reachability pattern again, this time
+caused by a wire bug rather than a missing caller.
+
+Before/after on identical runs (`review/T144/run_before_parsed.log` vs
+`run_after_live.log`):
+
+| | before | after |
+|---|---|---|
+| distinct world objects tracked | 1 (all collided on `drop_id=1`) | 11 |
+| names | `'RDEF'`, `'EF'`, `'F'`, `'66_ACTORDEF'` | `IT66_ACTORDEF`, `IT10804_ACTORDEF`, … |
+| object_type | 0 for all 11 | 17/16/40/15/19/21/22 + 0 for the item |
+| tradeskill containers detected | 0 | 10 |
+| coordinates | e.g. `(1.29e19, 3.56e9, 0.0)` | match the DB row exactly |
+| renderer click volumes registered | 0 | 10 |
+
+### Acceptance — AT THE WIRE
+
+Not accepted on "the struct is now 92 bytes". Accepted on a server round trip
+in a live session:
+
+```
+Clicking object 190 ('IT66_ACTORDEF') type=17 (Forge)
+Opening tradeskill container: drop_id=190 type=17 icon=1115 name=''
+Clicking object 199 ('IT10804_ACTORDEF') type=17 (Forge)
+Opening tradeskill container: drop_id=199 type=17 icon=1115 name='Half Elf Forge'
+Clicking object 189 ('IT63') type=0 (Small Bag)
+Publishing InventorySlotChanged ... itemId=13702 name='Wooden Fishing Tackle'
+```
+
+The client sends `OP_ClickObject` carrying the `drop_id` it parsed, and the
+**server answers `OP_ClickObjectAction` naming the same object**, including the
+container's real display name. That is the exact field whose breakage was most
+user-visible, round-tripping. Clicking the plain ground item (type 0)
+correctly opens no container — the server hands the item to inventory instead,
+which is a second, independent confirmation that `drop_id` is right (the
+server looked up the correct entity). The eqemu zone log carries no size
+complaint for either opcode.
+
+**No visual leg, and none is claimed.** `IrrlichtRenderer::addWorldObject()`
+builds an invisible click AABB and nothing else — ground-spawn objects have no
+mesh or scene node in this client, so there is no before/after screenshot that
+could show this fix. The one screenshot in `review/T144/` is labelled context
+only. It also shows the pre-load "instant scene" rather than qeynos geometry:
+that is an **unrelated observation, not investigated here** and not a T144
+regression (the headless runs in the same zone reached `[ZONE] qeynos loaded`
+normally). Daylight was forced before capture per protocol.
+
+### The regression test — the thing that was missing
+
+`tests/test_packet_structs.cpp` gains 8 cases (2 layout, 6 behavioural), built
+on the **real captured bytes** as `static const uint8_t[]` arrays — three
+packets spanning the length range (95 / 104 / 107 body bytes). Expected values
+are the DB's, so the assertions are anchored outside the client. The parse
+under test is the production one: `ZoneProcessGroundSpawn`'s field reads were
+extracted into `eqt::ParseGroundSpawn(body, body_len, out)` in
+`src/client/world_object.cpp` precisely so a test could drive them without an
+`EverQuest` instance, and `tests/CMakeLists.txt` now links that TU into
+`test_packet_structs`.
+
+This is the template T147 was asked to generalise. Note what it does that a
+`sizeof` assert cannot: `Object_Struct_Size` would have passed at 100 bytes
+too, with a different literal. `GroundSpawn_CapturedBytes_TradeskillForge`
+could not.
+
+### The minimum-length guard — what was chosen and why
+
+The plan flagged that "a short object name legitimately produces a packet that
+cannot reach `object_type`" and asked for a decision. **Measured against the
+format, that case does not exist**, and the guard is written as pure defence
+rather than as a normal path:
+
+- body length is `strlen(name) + 91`, so the shortest possible body is 91
+  bytes (empty name), and `object_type` at 80..83 is always present.
+- only `spawn_id` (88..91) could be truncated, by one byte, in the empty-name
+  case — and we do not read `spawn_id`.
+- the `object_name` field is likewise never truncated: at least 84 body bytes
+  means at least 40 remain from offset 44, more than the 32-byte field.
+
+So `ParseGroundSpawn` requires 84 body bytes (through `object_type`) and
+returns `false` below that, leaving the out-param untouched; the `std::min`
+bound on the name scan is belt-and-braces against a malformed packet, and the
+comments say so rather than implying a case that cannot occur. The old code's
+`2 + 96` demand is gone, as is the `object_type = 0` fallback it needed — that
+fallback was itself a symptom, silently defaulting the field the feature turns
+on. Covered by `GroundSpawn_RejectsBodyTooShortForObjectType`.
+
+### `WorldObject` field removal — no renderer blast radius
+
+`size`, `solid_type`, `incline`, `tilt_x`, `tilt_y` **deleted**, not corrected:
+they do not exist in the Titanium wire format at all (they come from eqemu's
+server-internal struct), so every one of them was noise. A repo-wide search
+found **zero consumers** outside the parse itself — the `incline`/`size` hits
+elsewhere are `DoorState`/`Door_Struct`, an unrelated struct. The plan's STOP
+condition ("removing them reaches into renderer code") did not trigger; the
+removal is mechanical. A comment in `world_object.h` records why they must not
+come back.
+
+### Verification
+
+| step | result |
+|---|---|
+| 1. `cmake --build build -j24` | PASS |
+| 2. `ctest --test-dir build --output-on-failure` | **2445/2446**, sole failure the documented ALSA `AudioManagerTest.PreloadCommonSounds` |
+| 3. `scripts/build-gles2-x86.sh` | PASS |
+| 4. visual gate | **PASS**, goldens untouched (`git status` clean of any golden) |
+| 5. `scripts/build-arm-noble.sh` | PASS |
+| 6. `check_file_sizes.sh fable` (from slot1, on task branch) | 8 files checked, **0 FAIL**, 4 pre-existing WARNs (`packet_structs.h`, `command_processor.cpp`, `eq_entities.cpp`, `test_command_processor.cpp` — all already >1500 before this unit; `eq_entities.cpp` got *shorter*) |
+
+Suite total 2446 vs the plan's 2433 baseline = exactly the 13 tests added
+(8 packet-struct + 5 command-processor).
+
+### Parallel-unit boundary (T145)
+
+Held. `git diff include/common/packet_structs.h` is three hunks, all inside the
+`Object_Struct` block and its `static_assert` (lines ~840–890). No reformat, no
+reflow, nothing touched elsewhere in that file. `FaceChange_Struct`,
+`EnvDamage2_Struct`, `GMKick_Struct`, `GMKill_Struct`, `ControlBoat_Struct`,
+`PopupResponse_Struct`, `DisciplineTimer_Struct`, `src/client/eq_player_info.cpp`
+and `src/client/eq_gm.cpp` are untouched.
+
+### Deviations
+
+1. **Added `/clickobject <drop_id>` (alias `/clickobj`) to
+   `action::CommandProcessor`** — `include/client/action/command_processor.h`,
+   `src/client/action/command_processor.cpp`, `tests/test_command_processor.cpp`.
+   These three files are outside the plan's stated territory. Flagged, not
+   absorbed.
+
+   *Why it was necessary, not convenient:* the plan's acceptance bar is "a
+   tradeskill container **actually opens** when clicked", and the plan's
+   standing lesson is that dispatch-layer acceptance certifies dead features.
+   But the **only** production trigger for `SendClickObject` was a renderer
+   keypress — `HotkeyAction::Interact` → `RA::WorldObjectInteract` →
+   `getNearestWorldObject()` → `WorldObjectInteractIntent` → `eq_bridge.cpp`.
+   No headless, scripted, stdin or piped channel can reach it; `--script` only
+   dispatches slash commands, and no registry had one. Without this
+   registration the unit could have been accepted *only* at the dispatch layer
+   — precisely what the plan forbids.
+
+   *It also retires dead code.* `ActionDispatcher::clickWorldObject()` →
+   `EqActionHandler::clickWorldObject()` → `EverQuest::SendClickObject()` was
+   fully plumbed with **zero production callers** (tests only) — the
+   reachability pattern again. The command is a thin wrapper over that existing
+   chain; no new dispatcher method, no new handler virtual, no state-domain
+   work. `ActionDispatcher::interactNearestWorldObject()` is still the stub it
+   was (`"Use clickWorldObject with drop ID"`, TODO: needs an ObjectState in
+   GameState) — deliberately left alone, as implementing it is a state-domain
+   job, not this unit's.
+
+   *No collision risk with T145*, which owns `eq_player_info.cpp` and
+   `eq_gm.cpp`. 5 tests cover registration, alias, dispatch, argument
+   rejection (empty / non-numeric / trailing junk / >u32) and the
+   not-zone-connected path.
+
+2. **`ParseGroundSpawn` extracted into `world_object.{h,cpp}`** rather than the
+   field reads staying inline in `ZoneProcessGroundSpawn`. Both files are in
+   the plan's territory; the move is what makes the plan's own required
+   captured-bytes test possible (`test_packet_structs` cannot construct an
+   `EverQuest`). `tests/CMakeLists.txt` gains one source line for it.
+
+3. **Zone changed from the default `arena` to `qeynos`**, and `Testchar`'s
+   position temporarily written to (1, -290, 172, 0) and restored to the
+   protocol's canonical (36, -77.9232, 21.9086, 3, h=190) afterwards — a
+   documented, sanctioned character-position write. `arena` has no `object`
+   rows at all, so it could not have produced a single `OP_GroundSpawn`.
