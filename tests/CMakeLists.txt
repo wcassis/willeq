@@ -650,6 +650,14 @@ ADD_EXECUTABLE(test_packet_structs
 TARGET_LINK_LIBRARIES(test_packet_structs GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_packet_structs)
 
+# T145: wire-layout (offsetof) + sender wire-shape tests
+ADD_EXECUTABLE(test_wire_layout_t145
+    test_wire_layout_t145.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
+)
+TARGET_LINK_LIBRARIES(test_wire_layout_t145 GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_wire_layout_t145)
+
 # Test SessionRecorder (R01: session log writer for replay)
 ADD_EXECUTABLE(test_session_recorder
     test_session_recorder.cpp

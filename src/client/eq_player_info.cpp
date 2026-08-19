@@ -894,9 +894,10 @@ void EverQuest::UpdateCampTimer()
 
 void EverQuest::SendCamp()
 {
-	// OP_Camp is an empty packet - just the opcode
+	// OP_Camp is an empty packet -- body-only convention: QueuePacket(opcode,
+	// pkt) prepends the opcode itself (eq.cpp), so writing it into the body
+	// here too made this a 4-byte packet where the server expects 2.
 	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_Camp);
 	QueuePacket(HC_OP_Camp, &packet);
 
 	if (s_debug_level >= 2) {
@@ -906,9 +907,8 @@ void EverQuest::SendCamp()
 
 void EverQuest::SendLogout()
 {
-	// OP_Logout is an empty packet - just the opcode
+	// OP_Logout is an empty packet -- body-only convention, see SendCamp().
 	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_Logout);
 	QueuePacket(HC_OP_Logout, &packet);
 
 	if (s_debug_level >= 2) {
@@ -1037,10 +1037,10 @@ void EverQuest::SendWhoAllRequest(const std::string& name, int lvllow, int lvlhi
 	who.gmlookup = gm ? 1 : 0xFFFFFFFF;
 
 	// Build and send the packet
+	// Body-only: QueuePacket(opcode, pkt) prepends the opcode itself.
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::Who_All_Struct));
-	packet.PutUInt16(0, HC_OP_WhoAllRequest);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &who, sizeof(EQT::Who_All_Struct));
+	packet.Resize(sizeof(EQT::Who_All_Struct));
+	packet.PutData(0, &who, sizeof(EQT::Who_All_Struct));
 	QueuePacket(HC_OP_WhoAllRequest, &packet);
 
 	if (s_debug_level >= 2) {
@@ -1120,10 +1120,10 @@ void EverQuest::SendInspectRequest(uint32_t target_id)
 	inspect.PlayerID = m_my_spawn_id;
 
 	// Build and send the packet
+	// Body-only: QueuePacket(opcode, pkt) prepends the opcode itself.
 	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::Inspect_Struct));
-	packet.PutUInt16(0, HC_OP_InspectRequest);
-	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &inspect, sizeof(EQT::Inspect_Struct));
+	packet.Resize(sizeof(EQT::Inspect_Struct));
+	packet.PutData(0, &inspect, sizeof(EQT::Inspect_Struct));
 	QueuePacket(HC_OP_InspectRequest, &packet);
 
 	if (s_debug_level >= 2) {
@@ -1395,7 +1395,15 @@ void EverQuest::SendLeaveBoat()
 	}
 }
 
-void EverQuest::SendControlBoat(float heading, uint8_t type)
+// Take or release control of the boat we are currently on.
+//
+// T145: this used to take (float heading, uint8_t type) and write them into
+// invented ControlBoat_Struct fields. OP_ControlBoat carries no heading and no
+// control type -- only a boat entity id and a take/release flag (see
+// packet_structs.h). The old 20-byte packet was rejected outright by
+// `Handle_OP_ControlBoat` with "Wrong size: OP_ControlBoat, size=[20],
+// expected [8]".
+void EverQuest::SendControlBoat(bool take_control)
 {
 	if (!m_is_on_boat) {
 		return;
@@ -1407,8 +1415,7 @@ void EverQuest::SendControlBoat(float heading, uint8_t type)
 	EQT::ControlBoat_Struct control;
 	memset(&control, 0, sizeof(control));
 	control.boatid = m_boat_id;
-	control.heading = heading;
-	control.type = type;
+	control.take_control = take_control ? 1 : 0;
 	packet.PutData(2, &control, sizeof(control));
 
 	if (m_zone_connection && m_zone_connected) {
@@ -1515,6 +1522,13 @@ void EverQuest::SendShielding(uint32_t target_id)
 	}
 }
 
+// NOTE (T145): OP_ENVDAMAGE IS CLIENT->SERVER IN EQEMU. It is registered in
+// `ConnectedOpcodes` (zone/client_packet.cpp:198) and the server never sends
+// it, so this receive path cannot fire against an eqemu server no matter what
+// size the struct is. The struct and this guard are now correct against
+// eqemu's 31-byte EnvDamage2_Struct (the guard previously demanded 34 bytes
+// for a 33-byte packet), but that only means the path would parse correctly
+// IF something sent it. This client has no OP_EnvDamage sender at all.
 void EverQuest::ZoneProcessEnvDamage(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::EnvDamage2_Struct)) {
@@ -1524,12 +1538,13 @@ void EverQuest::ZoneProcessEnvDamage(const EQ::Net::Packet &p)
 	const EQT::EnvDamage2_Struct* env = reinterpret_cast<const EQT::EnvDamage2_Struct*>(
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
+	// eqemu EQ::constants::EnvironmentalDamage (common/emu_constants.h:308)
 	std::string damage_type;
 	switch (env->dmgtype) {
-		case 250: damage_type = "falling"; break;
+		case 250: damage_type = "lava"; break;
 		case 251: damage_type = "drowning"; break;
-		case 252: damage_type = "burning"; break;
-		case 253: damage_type = "lava"; break;
+		case 252: damage_type = "falling"; break;
+		case 253: damage_type = "trap"; break;
 		default: damage_type = "environmental"; break;
 	}
 
@@ -1639,20 +1654,26 @@ void EverQuest::SendSaveOnZoneReq()
 	}
 }
 
+// T145: the `button` parameter is retained for source compatibility but is
+// NOT sent -- OP_PopupResponse's wire format carries only the popup id
+// (eqemu PopupResponse_Struct, 8 bytes). eqemu's handler dispatches on the id
+// alone; our old third `response` field was fictional and made the packet 12
+// bytes, which the handler rejected.
 void EverQuest::SendPopupResponse(uint32_t popup_id, uint32_t button)
 {
+	(void)button;
+
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_PopupResponse);
 
 	EQT::PopupResponse_Struct response;
-	response.sender = 0;  // Usually filled in by context
+	memset(&response, 0, sizeof(response));
 	response.popup_id = popup_id;
-	response.response = button;
 	packet.PutData(2, &response, sizeof(response));
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
-		LOG_DEBUG(MOD_MAIN, "Popup response: id={} button={}", popup_id, button);
+		LOG_DEBUG(MOD_MAIN, "Popup response: id={}", popup_id);
 	}
 }
 
@@ -1832,7 +1853,6 @@ void EverQuest::SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t ey
 	fc.hairstyle = hairstyle;
 	fc.beard = beard;
 	fc.face = face;
-	fc.unused = 0;
 	packet.PutData(2, &fc, sizeof(fc));
 
 	if (m_zone_connection && m_zone_connected) {

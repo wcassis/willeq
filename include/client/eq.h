@@ -1055,7 +1055,9 @@ public:
 	// Phase 3: Travel System
 	void SendBoardBoat(uint32_t boat_id);
 	void SendLeaveBoat();
-	void SendControlBoat(float heading, uint8_t type);
+	// Take (true) or release (false) control of the boat we are on.
+	// OP_ControlBoat carries no heading and no control type -- see T145.
+	void SendControlBoat(bool take_control);
 	bool IsOnBoat() const { return m_is_on_boat; }
 	// Phase 3: Group Split
 	void SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
