@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "common/packet_structs.h"
+#include "client/world_object.h"
 #include <cstring>
+#include <string>
 
 // Test that all structures are properly packed and sized
 class PacketStructsTest : public ::testing::Test {
@@ -259,4 +261,182 @@ TEST_F(PacketStructsTest, ChannelMessage_FixedSize) {
 // Test ZoneChange_Struct size
 TEST_F(PacketStructsTest, ZoneChange_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::ZoneChange_Struct), 88);
+}
+
+// ============================================================================
+// T144: captured-bytes regression tests for OP_GroundSpawn / Object_Struct.
+//
+// These are REAL BYTES off the wire, captured from a live eqemu session in
+// qeynos on 2026-08-19 (annotated dump: review/T144/). They exist because
+// Object_Struct carried a passing `static_assert(sizeof(...) == 100)` while
+// being wrong from offset 8 onward: it had been derived from eqemu's
+// server-internal struct, not the Titanium wire struct. A sizeof assert
+// cannot catch that. Bytes can.
+//
+// The expected values below are independently corroborated by the server's
+// own `object` DB table for zone 1 (qeynos) -- xpos/ypos/heading/type -- so
+// these assertions are anchored to something outside the client entirely.
+//
+// If one of these fails, the struct layout changed. Do not "fix" the test.
+// ============================================================================
+
+// object.id=228452: IT10804_ACTORDEF, type 17 (blacksmithing), x=-177 y=484 h=117.
+// 109 bytes on the wire INCLUDING the 2-byte opcode (0x0f47) => 107-byte body
+// == strlen("IT10804_ACTORDEF") + 91.
+static const uint8_t kT144GroundSpawnKiln[] = {
+    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xc7, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xea, 0x42, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x31, 0xc3, 0x00, 0x00, 0xf2, 0x43, 0x49, 0x54,
+    0x31, 0x30, 0x38, 0x30, 0x34, 0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44,
+    0x45, 0x46, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xfe, 0xff, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00,
+    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xbd, 0x01, 0x00, 0x00,
+    0x01,
+};
+
+// object.id=201: IT66_ACTORDEF, type 17 (blacksmithing), x=-296 y=179 h=369.
+// 106 bytes => 104-byte body == strlen("IT66_ACTORDEF") + 91. Note the bytes
+// immediately after the name's NUL are "_ACTORDEF" left over in the server's
+// uninitialised send buffer -- proof the name must be read as NUL-terminated,
+// never as a fixed 32-byte field.
+static const uint8_t kT144GroundSpawnForge[] = {
+    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xbe, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xb8, 0x43, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x94, 0xc3, 0x00, 0x00, 0x33, 0x43, 0x49, 0x54,
+    0x36, 0x36, 0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00,
+    0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00,
+    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// A real dropped ground item (not a container): IT63, type 0, at
+// x=155 y=-144.7 z=-36.9. 97 bytes => 95-byte body == strlen("IT63") + 91.
+// THIS is the packet the old code's comment called "97 bytes instead of 102"
+// and dismissed as server jitter. It is not jitter; it is the format.
+static const uint8_t kT144GroundSpawnItem[] = {
+    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xbd, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0x99,
+    0x13, 0xc2, 0x00, 0x00, 0x1b, 0x43, 0x33, 0xb3, 0x10, 0xc3, 0x49, 0x54,
+    0x36, 0x33, 0x00, 0xc3, 0x00, 0x00, 0x33, 0x43, 0x49, 0x54, 0x36, 0x36,
+    0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00,
+};
+
+TEST_F(PacketStructsTest, Object_Struct_Size) {
+    // The Titanium wire struct is 92 bytes. It was 100 for as long as this
+    // repo existed, and the static_assert passed the whole time.
+    EXPECT_EQ(sizeof(EQT::Object_Struct), 92u);
+}
+
+TEST_F(PacketStructsTest, Object_Struct_FieldOffsets) {
+    EXPECT_EQ(offsetof(EQT::Object_Struct, linked_list_addr), 0u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, unknown008), 8u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, drop_id), 12u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, zone_id), 16u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, zone_instance), 18u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, unknown020), 20u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, unknown024), 24u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, heading), 28u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, z), 32u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, x), 36u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, y), 40u);
+    // The single most load-bearing number in this file: the live capture shows
+    // the object name starting here, not at 56.
+    EXPECT_EQ(offsetof(EQT::Object_Struct, object_name), 44u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, unknown076), 76u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, object_type), 80u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, unknown084), 84u);
+    EXPECT_EQ(offsetof(EQT::Object_Struct, spawn_id), 88u);
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_TradeskillForge) {
+    eqt::WorldObject obj;
+    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2,
+                                      sizeof(kT144GroundSpawnForge) - 2, obj));
+    EXPECT_EQ(obj.drop_id, 190u);
+    EXPECT_EQ(obj.zone_id, 1u);          // qeynos
+    EXPECT_EQ(obj.zone_instance, 0u);
+    EXPECT_EQ(obj.name, "IT66_ACTORDEF");
+    EXPECT_FLOAT_EQ(obj.heading, 369.0f);
+    EXPECT_FLOAT_EQ(obj.z, 0.0f);
+    EXPECT_FLOAT_EQ(obj.x, -296.0f);     // object.xpos for qeynos object 201
+    EXPECT_FLOAT_EQ(obj.y, 179.0f);      // object.ypos for qeynos object 201
+    EXPECT_EQ(obj.object_type, 17u);     // CONTAINER_BLACKSMITHING
+    EXPECT_TRUE(obj.isTradeskillContainer());
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_LongName) {
+    eqt::WorldObject obj;
+    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnKiln + 2,
+                                      sizeof(kT144GroundSpawnKiln) - 2, obj));
+    EXPECT_EQ(obj.drop_id, 199u);
+    EXPECT_EQ(obj.zone_id, 1u);
+    EXPECT_EQ(obj.name, "IT10804_ACTORDEF");
+    EXPECT_FLOAT_EQ(obj.heading, 117.0f);
+    EXPECT_FLOAT_EQ(obj.x, -177.0f);
+    EXPECT_FLOAT_EQ(obj.y, 484.0f);
+    EXPECT_EQ(obj.object_type, 17u);
+    EXPECT_TRUE(obj.isTradeskillContainer());
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_ShortPacketGroundItem) {
+    // 95-byte body -- well under the 102 bytes the old code demanded before it
+    // would read object_type, and under the 100-byte struct it declared.
+    eqt::WorldObject obj;
+    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnItem + 2,
+                                      sizeof(kT144GroundSpawnItem) - 2, obj));
+    EXPECT_EQ(obj.drop_id, 189u);
+    EXPECT_EQ(obj.name, "IT63");
+    EXPECT_FLOAT_EQ(obj.x, 155.0f);
+    EXPECT_FLOAT_EQ(obj.y, -144.7f);
+    EXPECT_FLOAT_EQ(obj.z, -36.9f);
+    EXPECT_EQ(obj.object_type, 0u);      // a plain dropped item, not a container
+    EXPECT_FALSE(obj.isTradeskillContainer());
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_NameIsNulTerminatedNotFixedWidth) {
+    // The forge capture has "_ACTORDEF" sitting in the object_name field after
+    // the terminating NUL -- uninitialised heap in the server's send buffer,
+    // because ENCODE only strcpy's the name. A reader taking 32 fixed bytes
+    // would produce "IT66_ACTORDEF\0_ACTORDEF".
+    const char* raw = reinterpret_cast<const char*>(kT144GroundSpawnForge + 2 + 44);
+    EXPECT_EQ(std::string(raw + 14, 9), "_ACTORDEF");   // the garbage really is there
+    eqt::WorldObject obj;
+    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2,
+                                      sizeof(kT144GroundSpawnForge) - 2, obj));
+    EXPECT_EQ(obj.name.size(), 13u);
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_BodyLengthIsStrlenPlus91) {
+    // eqemu ENCODE(OP_GroundSpawn):
+    //   in->size = strlen(emu->object_name) + sizeof(structs::Object_Struct) - 1
+    // Held for all 11 packets captured in the live qeynos session; the three
+    // kept here span the range (95 / 104 / 107 body bytes).
+    struct { const uint8_t* pkt; size_t len; const char* name; } cases[] = {
+        { kT144GroundSpawnKiln,  sizeof(kT144GroundSpawnKiln),  "IT10804_ACTORDEF" },
+        { kT144GroundSpawnForge, sizeof(kT144GroundSpawnForge), "IT66_ACTORDEF" },
+        { kT144GroundSpawnItem,  sizeof(kT144GroundSpawnItem),  "IT63" },
+    };
+    for (const auto& c : cases) {
+        EXPECT_EQ(c.len - 2, std::strlen(c.name) + 91) << "for " << c.name;
+    }
+}
+
+TEST_F(PacketStructsTest, GroundSpawn_RejectsBodyTooShortForObjectType) {
+    // 84 body bytes are needed to reach the end of object_type (offset 80).
+    EXPECT_EQ(eqt::GroundSpawnMinBodyBytes(), 84u);
+    eqt::WorldObject obj;
+    obj.name = "untouched";
+    EXPECT_FALSE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2, 83, obj));
+    EXPECT_EQ(obj.name, "untouched");   // out param left alone on failure
+    EXPECT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2, 84, obj));
+    EXPECT_EQ(obj.object_type, 17u);
+    EXPECT_FALSE(eqt::ParseGroundSpawn(nullptr, 200, obj));
 }

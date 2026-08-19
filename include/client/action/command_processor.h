@@ -353,6 +353,16 @@ private:
     ActionResult cmdRezAccept(const std::string& args);
     ActionResult cmdRezDecline(const std::string& args);
 
+    // T144: /clickobject <dropId>. ActionDispatcher::clickWorldObject() ->
+    // EqActionHandler::clickWorldObject() -> EverQuest::SendClickObject() was
+    // fully plumbed but had ZERO production callers: the only way to open a
+    // tradeskill container was a renderer keypress (HotkeyAction::Interact ->
+    // RA::WorldObjectInteract -> WorldObjectInteractIntent), which no headless
+    // or scripted session can reach. T144's acceptance bar is "a forge
+    // actually opens at the wire", so this registration is what makes that
+    // bar reachable at all -- and it retires a dead dispatcher method.
+    ActionResult cmdClickObject(const std::string& args);
+
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not
     // share a scenario, unlike Guild/Corpse-Rez; grouped here only because

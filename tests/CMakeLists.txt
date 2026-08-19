@@ -644,8 +644,11 @@ TARGET_LINK_LIBRARIES(test_pathfinder ${TEST_PATHFINDER_LIBS})
 GTEST_DISCOVER_TESTS(test_pathfinder)
 
 # Test packet structures (Titanium-specific)
+# T144: also links world_object.cpp so the OP_GroundSpawn captured-bytes tests
+# can drive the real parse (eqt::ParseGroundSpawn), not just sizeof().
 ADD_EXECUTABLE(test_packet_structs
     test_packet_structs.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/world_object.cpp
 )
 TARGET_LINK_LIBRARIES(test_packet_structs GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_packet_structs)

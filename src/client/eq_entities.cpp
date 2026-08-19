@@ -65,6 +65,7 @@
 
 #include "client/animation_constants.h"
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <cmath>
 
@@ -954,52 +955,29 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 
 void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
 {
-	// Parse Object_Struct from packet (skip 2-byte opcode)
-	// Note: Server may send shorter packets (e.g., 97 bytes instead of 102)
-	// Minimum needed: up to y coordinate at offset 52 + 4 bytes = 56 bytes
-	// We need object_type at offset 92 for tradeskill detection, so minimum 96 bytes of data
-	constexpr size_t MIN_REQUIRED = 2 + 56;  // opcode + up to y coordinate
-	constexpr size_t FULL_SIZE = 2 + sizeof(EQT::Object_Struct);  // 102 bytes
-
-	if (p.Length() < MIN_REQUIRED) {
-		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need at least {})",
-			p.Length(), MIN_REQUIRED);
-		return;
-	}
-
-	const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;  // Skip opcode
-	size_t data_len = p.Length() - 2;
-
-	// Create WorldObject from parsed data
-	// Read fields manually to handle variable-length packets
+	// T144: OP_GroundSpawn is genuinely VARIABLE LENGTH. eqemu's
+	// ENCODE(OP_GroundSpawn) sizes the body
+	// `strlen(object_name) + sizeof(structs::Object_Struct) - 1` == strlen + 91
+	// and only strcpy's the name into an otherwise uninitialised buffer, so:
+	//   * the body is 91 bytes for an empty name and strlen+91 otherwise
+	//     (observed live: 104 for "IT66_ACTORDEF", 107 for "IT10804_ACTORDEF"),
+	//   * the tail of the 32-byte object_name field is heap garbage past the
+	//     terminating NUL and must never be treated as part of the name,
+	//   * a length check against sizeof(Object_Struct) is meaningless.
+	// The old "Server may send shorter packets (e.g., 97 bytes instead of 102)"
+	// comment that used to sit here was reading that as jitter. It is not
+	// jitter; it is the format. That misreading is what let a struct which was
+	// wrong from offset 8 onward survive.
+	//
+	// The layout and the field reads live in eqt::ParseGroundSpawn
+	// (src/client/world_object.cpp) so a captured-bytes regression test can
+	// exercise exactly this decode without an EverQuest instance.
 	eqt::WorldObject worldObj;
-
-	// These fields are always present (offsets 0-55)
-	worldObj.size = *reinterpret_cast<const float*>(data + 8);
-	worldObj.solid_type = *reinterpret_cast<const uint16_t*>(data + 12);
-	worldObj.drop_id = *reinterpret_cast<const uint32_t*>(data + 16);
-	worldObj.zone_id = *reinterpret_cast<const uint16_t*>(data + 20);
-	worldObj.zone_instance = *reinterpret_cast<const uint16_t*>(data + 22);
-	worldObj.incline = *reinterpret_cast<const uint32_t*>(data + 24);
-	worldObj.tilt_x = *reinterpret_cast<const float*>(data + 32);
-	worldObj.tilt_y = *reinterpret_cast<const float*>(data + 36);
-	worldObj.heading = *reinterpret_cast<const float*>(data + 40);
-	worldObj.z = *reinterpret_cast<const float*>(data + 44);
-	worldObj.x = *reinterpret_cast<const float*>(data + 48);
-	worldObj.y = *reinterpret_cast<const float*>(data + 52);
-
-	// Object name at offset 56, 32 bytes
-	if (data_len >= 88) {
-		worldObj.name = std::string(reinterpret_cast<const char*>(data + 56),
-			strnlen(reinterpret_cast<const char*>(data + 56), 32));
-	}
-
-	// Object type at offset 92, 4 bytes (needed for tradeskill detection)
-	if (data_len >= 96) {
-		worldObj.object_type = *reinterpret_cast<const uint32_t*>(data + 92);
-	} else {
-		worldObj.object_type = 0;  // Default if not present
-		LOG_TRACE(MOD_ENTITY, "GroundSpawn packet short ({} bytes), defaulting object_type to 0", p.Length());
+	if (p.Length() < 2 ||
+	    !eqt::ParseGroundSpawn(static_cast<const uint8_t*>(p.Data()) + 2, p.Length() - 2, worldObj)) {
+		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need at least {})",
+			p.Length(), 2 + eqt::GroundSpawnMinBodyBytes());
+		return;
 	}
 
 	// Store the world object
