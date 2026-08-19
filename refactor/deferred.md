@@ -8741,3 +8741,65 @@ the more durable fix, since a hand-maintained parallel metadata list will
 drift the same way registries 1/2 already nearly did — T97's whole
 finding). Not started here — out of this unit's scope per the plan's
 explicit scope boundary.
+
+## T146 (2026-08-19) — thirteen zero-caller senders: the entire GM opcode family, `SendFaceChange`, `SendControlBoat`, `SendPopupResponse`, and the missing `OP_InspectAnswer` reply. **No live session can reach any of them; a caller must be written first.**
+
+T146 was dispatched to close T145's nine struct/sender fixes at the wire.
+Four of its six named legs turned out to be **unexercisable, not merely
+unexercised**: the senders they depend on have **zero production callers**,
+so no script, keypress, or command can reach them. Verified by exhaustive
+grep across `src/`, `include/`, `tests/`, `tools/` — each name appears only
+at its declaration in `include/client/eq.h` and its definition.
+
+**A. The whole `src/client/eq_gm.cpp` family — 9 senders, 0 callers.**
+
+| sender | eq_gm.cpp | callers |
+|---|---|---|
+| `SendGMZoneRequest` | :13 | 0 |
+| `SendGMSummon` | :30 | 0 |
+| `SendGMGoto` | :47 | 0 |
+| `SendGMFind` | :64 | 0 |
+| `SendGMKick` | :89 | 0 |
+| `SendGMKill` | :106 | 0 |
+| `SendGMHideMe` | :123 | 0 |
+| `SendGMEmoteZone` | :130 | 0 |
+| `SendGMLastName` | :142 | 0 |
+
+There is **no `/kick`, `/kill`, `/summon`, `/goto` or any other GM command
+in either command registry** (`grep '"kick"'` / `'"kill"'` over
+`command_processor.cpp` and `eq_commands*.cpp` returns nothing but
+`guildremove`'s `gkick` alias and a combat-message string). T145's
+`GMKick_Struct` 132→129 fix is therefore correct-and-unreachable: the fix
+is right, and nothing can send it. **The unit that wires GM commands is the
+unit that can first claim `/kick` or `/kill` works.**
+
+**B. `SendFaceChange` (`eq_player_info.cpp:1842`) — 0 callers.** The
+`/face` command that *does* exist (`command_processor.cpp:324`) is the
+**movement** face — "Face entity or location", routing to
+`EqActionHandler::setHeading()`. It has nothing to do with
+`FaceChange_Struct` or `OP_FaceChange`. The T146 plan's `/face` leg
+conflated the two. Appearance change (hair/beard/eye/face values) has no
+command, no UI trigger, and no caller of any kind.
+
+**C. `SendControlBoat` (`eq_player_info.cpp:1406`) and
+`SendPopupResponse` (`:1662`) — 0 callers**, as T145 already recorded
+(reachability pattern #10). Confirmed independently here. **Structurally
+fixed by T145, unexercised, and unexercisable without a caller.**
+
+**D. `OP_InspectAnswer` has no sender at all.** `ZoneProcessInspectAnswer`
+(`eq_player_info.cpp:1179`) parses a response this client never causes to
+exist: the EQ inspect flow is request → server relays to the target's
+client → **the target's client replies `OP_InspectAnswer`**, and we have no
+such reply path (`grep InspectAnswer src/client/*.cpp` finds only the
+opcode name, the dispatch case, and the parser). T146 proved the *request*
+half round-trips on the wire (the second client logged "Testmelee is
+inspecting you"), but between two WillEQ clients the response window can
+**never** populate. Half a feature.
+
+**Standing instruction, per the T146 plan: do NOT write callers merely to
+make a leg verifiable.** Wiring any of these is real feature work with its
+own acceptance bar, and each one should be scoped as such.
+
+**This is the reachability pattern at #11 through #13** (A, B, and D are
+each new; C was #10). The pattern's count is now dominated by whole
+families rather than single functions.
