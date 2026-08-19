@@ -23,7 +23,7 @@
 //
 // Vendor-open state is set up via the exact same production path the real
 // server does: ReplayZone() with HC_OP_ShopRequest (opens the vendor,
-// mirrors ZoneProcessShopRequest's Merchant_Open_Struct) and HC_OP_ItemPacket
+// mirrors ZoneProcessShopRequest's shop-request layout) and HC_OP_ItemPacket
 // with item_packet_type=ITEM_PACKET_MERCHANT (populates m_vendor_items via
 // ZoneProcessVendorItemToUI -> TitaniumItemParser::parseItem) -- unchanged
 // from the T48 original.
@@ -74,7 +74,7 @@ std::string BuildVendorItemString(int16_t slot, uint32_t itemId, const std::stri
     return instance + "\"" + staticData + "\"";
 }
 
-// Merchant_Open_Struct: npc_id(4)@2, unknown04(4)@6, action(4)@10, sell_rate(4)@14.
+// OP_ShopRequest body: npc_id(4)@2, player_id(4)@6, action(4)@10, sell_rate(4)@14.
 std::vector<uint8_t> ShopOpenPayload(uint32_t npcId, uint32_t action = 1, float sellRate = 1.0f) {
     return BuildPayload(18, [&](EQ::Net::DynamicPacket& p) {
         p.PutUInt32(2, npcId);

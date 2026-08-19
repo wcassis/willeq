@@ -1057,7 +1057,9 @@ void EverQuest::SendPositionUpdate()
 			m_heading, server_heading, heading_scaled);
 	}
 	
-	// Build PlayerPositionUpdateClient_Struct
+	// Build the client position update body. The wire layout is 36 bytes of
+	// bitfields -- eqemu common/patches/titanium_structs.h:1226. T147 deleted
+	// the 4-byte EQT::PlayerPositionUpdateClient_Struct that pretended to be it.
 	// NOTE: Field order must match server's expected binary layout exactly
 	// Server struct has: spawn_id, sequence, y_pos, delta_z, delta_x, delta_y, ...
 	struct {

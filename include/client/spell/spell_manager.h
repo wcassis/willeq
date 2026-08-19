@@ -21,6 +21,43 @@
 class EverQuest;
 namespace eqt { namespace bridge { class GameStateBridge; } }
 
+namespace EQT {
+
+/*
+ * SpellActionInfo -- IN-MEMORY DTO, NOT A WIRE STRUCT.
+ *
+ * This was `EQT::Action_Struct` in include/common/packet_structs.h until
+ * T147 (2026-08-19). It never was a wire layout: the Titanium OP_Action
+ * packet is 31 bytes (eqemu common/patches/titanium_structs.h:1120 ==
+ * common/eq_packet_structs.h:1310, uint16 target/source/level/spell), while
+ * this struct is 44 bytes of uint32s plus an invented `unknown_action`. It
+ * carried authoritative-looking byte-offset comments the whole time, sitting
+ * in a header whose banner says every struct in it matches the network
+ * protocol -- a reinterpret_cast waiting to happen.
+ *
+ * The real wire parse lives in EverQuest::ZoneProcessAction
+ * (src/client/eq_combat_actions.cpp), which declares a private, correct,
+ * 31-byte `ActionPacket_Struct` and hand-copies the fields into this DTO.
+ * Keep it that way: if you need the wire layout, use the one at the parse
+ * site; do not make this struct "wire-accurate", because that recreates the
+ * duplicated-then-drifted defect this arc exists to remove.
+ */
+struct SpellActionInfo {
+    uint32_t target;
+    uint32_t source;
+    uint32_t level;
+    uint32_t instrument_mod;
+    float    force;
+    float    hit_heading;
+    float    hit_pitch;
+    uint32_t type;
+    uint32_t spell;
+    uint8_t  level2;         // caster level as reported in the action packet
+    uint8_t  effect_flag;    // 4 == a buff icon is made
+};
+
+} // namespace EQT
+
 namespace EQ {
 
 // Callback types for spell events
@@ -132,7 +169,7 @@ public:
     void handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms);
 
     // Spell effect/action (HC_OP_Action) - spell landing
-    void handleAction(const EQT::Action_Struct& action);
+    void handleAction(const EQT::SpellActionInfo& action);
 
     // Cast interrupted (HC_OP_InterruptCast or damage during cast)
     void handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_t message_type);

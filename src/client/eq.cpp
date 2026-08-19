@@ -1280,17 +1280,16 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_FinishTrade:
-		// Trade completed - server may send with or without struct data
-		{
-			EQT::FinishTrade_Struct finish = {};
-			if (p.Length() >= 2 + sizeof(EQT::FinishTrade_Struct)) {
-				finish = *reinterpret_cast<const EQT::FinishTrade_Struct*>(p.Data() + 2);
-			}
-			if (m_trade_manager) {
-				m_trade_manager->handleFinishTrade(finish);
-			}
-			LOG_INFO(MOD_MAIN, "Trade finished");
+		// Trade completed. OP_FinishTrade has a ZERO-LENGTH payload -- eqemu
+		// sends `new EQApplicationPacket(OP_FinishTrade, 0)`
+		// (zone/client_packet.cpp:15358). The 2 "unknown" bytes the old
+		// EQT::FinishTrade_Struct declared were fictional; T147 deleted it.
+		// Nothing changes behaviourally: the old code already fell back to a
+		// zeroed struct when the length guard failed, which it always did.
+		if (m_trade_manager) {
+			m_trade_manager->handleFinishTrade();
 		}
+		LOG_INFO(MOD_MAIN, "Trade finished");
 		break;
 	case HC_OP_PreLogoutReply:
 		// Pre-logout confirmation (server acknowledges camp request)

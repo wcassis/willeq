@@ -118,7 +118,7 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 {
 	// Combat action (attack, spell cast, etc)
-	if (p.Length() < 33) { // 2 opcode + 31 Action_Struct
+	if (p.Length() < 33) { // 2 opcode + the 31-byte wire Action struct below
 		return;
 	}
 
@@ -145,8 +145,9 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_MAIN, "Action: source={} -> target={}, type={}, spell={}", action->source, action->target, action->type, action->spell);
 	}
 
-	// Convert to EQT::Action_Struct for spell manager
-	EQT::Action_Struct spellAction;
+	// Convert to the spell manager's in-memory DTO (NOT a wire struct -- the
+	// wire layout is the 31-byte ActionPacket_Struct above)
+	EQT::SpellActionInfo spellAction;
 	spellAction.target = action->target;
 	spellAction.source = action->source;
 	spellAction.level = action->level;

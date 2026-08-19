@@ -402,7 +402,7 @@ TEST(SpellManagerHandlers, HandleBeginCastOtherCasterTracksAsTargetCastWhenTarge
 TEST(SpellManagerHandlers, HandleActionNonSpellTypeIsNoOp) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EQT::Action_Struct action{};
+    EQT::SpellActionInfo action{};
     action.type = 1;  // not 231
     EXPECT_NO_THROW(mgr->handleAction(action));
 }
@@ -419,7 +419,7 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketCompletesOwnCastAndFiresCall
     bool landed = false;
     mgr->setOnSpellLand([&](uint32_t, uint16_t, uint16_t) { landed = true; });
 
-    EQT::Action_Struct action{};
+    EQT::SpellActionInfo action{};
     action.type = 231;
     action.effect_flag = 4;  // success packet
     action.source = eq.GetEntityID();
@@ -439,7 +439,7 @@ TEST(SpellManagerHandlers, HandleActionClearsTargetCastTracking) {
     mgr->m_target_caster_id = 200;
     mgr->m_target_spell_id = 88;
 
-    EQT::Action_Struct action{};
+    EQT::SpellActionInfo action{};
     action.type = 231;
     action.effect_flag = 4;
     action.source = 200;
@@ -541,7 +541,7 @@ TEST(SpellManagerCallbacks, OnSpellLandReceivesSpellCasterTarget) {
         EXPECT_EQ(target_id, 202u);
     });
 
-    EQT::Action_Struct action{};
+    EQT::SpellActionInfo action{};
     action.type = 231;
     action.effect_flag = 4;
     action.source = 201;

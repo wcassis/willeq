@@ -324,10 +324,8 @@ void TradeManager::handleTradeAcceptClick(const EQT::TradeAcceptClick_Struct& ac
              m_partner_accepted ? "accepted" : "unaccepted");
 }
 
-void TradeManager::handleFinishTrade(const EQT::FinishTrade_Struct& finish)
+void TradeManager::handleFinishTrade()
 {
-    (void)finish;  // Unused parameter
-
     if (m_state != TradeState::Active) {
         return;
     }
