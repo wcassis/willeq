@@ -4,6 +4,49 @@
 
 **DISPATCH AFTER T144 RELEASES THE EQEMU LOCK AND T145 IS MERGED.**
 
+## AMENDED 2026-08-19 after T144/T145 merged (`797d93e4`) — READ THIS FIRST
+
+T145's execution corrected the orchestrator's scoping on four points. **The leg
+list below is amended accordingly; where this section and the original list
+disagree, THIS SECTION WINS.**
+
+1. **Leg 3 (environmental damage) is CANCELLED — do not attempt it.**
+   `OP_EnvDamage` is **client→server** (`ConnectedOpcodes[OP_EnvDamage]`,
+   `zone/client_packet.cpp:198`); the server never sends it. Our receive path is
+   unreachable dead code regardless of struct size, and T145 did **not** restore
+   fall-damage messages. The real gap is a sender we do not have. Record it as
+   out of scope; do not manufacture a scenario.
+2. **Leg 5 (`/camp`) is downgraded to observation only.** `Handle_OP_Camp` has
+   **no size check at all**, so `/camp` has been working the whole time and the
+   malformed packet was silently tolerated. The question the original plan asked
+   is already settled. Confirm `/camp` still works post-fix (a regression check,
+   not a repair proof) and move on.
+3. **Leg 7 (popup response) and leg 8 (boat control) CANNOT BE VERIFIED and are
+   removed from the acceptance set.** `SendControlBoat` and `SendPopupResponse`
+   have **zero production callers** — reachability pattern #10. There is no way
+   to trigger either from a live session without first writing a caller, which
+   is not this unit's job. Record both as **structurally fixed, unexercised**,
+   and add them to `refactor/deferred.md` as needing a caller before any wire
+   claim is possible. **Do not write callers to make a leg verifiable.**
+4. **The real acceptance set is therefore four legs: `/face`, `/kick`, `/kill`,
+   `/who`**, plus the `/camp` regression check and the inspect leg. These are
+   the ones where a fixed struct meets an existing, reachable call path.
+
+**You hold the eqemu lock; T147 runs in parallel and does not.** T147 has
+unsettled structs (`Death_Struct`, `Animation_Struct`, `Consider_Struct`,
+`MobHealth_Struct`) that only a capture can settle. **If you have spare session
+budget after the four legs above, capture `OP_Death`** — die once, dump the
+bytes, and record whether `bindzoneid`/`spell_id`/`attack_skill` appear in our
+order or the reverse. That single capture closes T147's largest open question.
+Put it in `review/T146/` even if you cannot fully decode it; raw annotated bytes
+are worth more than a reasoned guess.
+
+**Method precedent:** T144 produced the repo's first captured-bytes evidence and
+its approach is the standard now — dump at the parse site, decode field-by-field,
+and cross-check against an authority outside the client (T144 used the server's
+own `object` DB table). See `review/T144/groundspawn_hexdump_annotated.txt`.
+
+
 **Territory: `tests/`, `refactor/`, `/mnt/projects/fable/review/T146/`. This is
 a verification unit — it should need no production-code changes. If it does,
 that is a finding: report it, and fix only what the evidence forces.**
