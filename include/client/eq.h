@@ -49,7 +49,6 @@ namespace EQT {
     struct TradeRequestAck_Struct;
     struct TradeCoins_Struct;
     struct TradeAcceptClick_Struct;
-    struct FinishTrade_Struct;
     struct CancelTrade_Struct;
 }
 
@@ -777,7 +776,7 @@ public:
 	// Test-only; not called from any production path.
 	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_my_spawn_id = spawn_id; }
 
-	// T88 test seam: the last outbound PlayerPositionUpdateClient_Struct
+	// T88 test seam: the last outbound client position update body
 	// fields SendPositionUpdate() computed, captured unconditionally right
 	// before the (possibly-suppressed) send -- this is the actual
 	// production encoder output, not a re-derivation of the formula in the

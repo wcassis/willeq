@@ -1685,3 +1685,9 @@ IF(TARGET gles2_zone_benchmark)
                 $<TARGET_FILE:gles2_zone_benchmark>)
     SET_TESTS_PROPERTIES(test_eqe1_totalestimate_accounting PROPERTIES SKIP_RETURN_CODE 125)
 ENDIF()
+
+# T147: captured-bytes harness (tests/captured_packets.h) -- pins packet structs
+# to real observed wire bytes rather than to sizeof(). See the header's docstring.
+ADD_EXECUTABLE(test_captured_packets test_captured_packets.cpp)
+TARGET_LINK_LIBRARIES(test_captured_packets GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_captured_packets)

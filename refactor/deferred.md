@@ -8803,3 +8803,93 @@ own acceptance bar, and each one should be scoped as such.
 **This is the reachability pattern at #11 through #13** (A, B, and D are
 each new; C was #10). The pattern's count is now dominated by whole
 families rather than single functions.
+---
+
+## T147 (2026-08-19) — packet structs that only a live capture can settle
+
+`refactor/T147_packet_structs_trap_removal.md` deleted 13 structs from
+`include/common/packet_structs.h` that were both dead in production and
+provably wrong against eqemu's source. The five items below are **not** in
+that set: each is one where eqemu's own source is ambiguous or
+self-contradictory, so asserting a value would be a guess dressed as a fact.
+They are recorded here rather than papered over. **T147 held no eqemu lock
+(T146 did), so nothing below was observed on the wire.**
+
+### CLOSED 2026-08-19 by T146's capture — `Death_Struct` field order
+
+> **RESOLVED. Do not re-open, and do not take the capture again.** T147 wrote
+> this as OPEN because T146's `OP_Death` capture had not landed when it
+> finished; the two units ran in parallel. It has since landed and it
+> **confirms our order**: wire offset 12 read **189**, matching the server's
+> own `character_bind` row for Testbuddy (bind zone 189, `tutorialb`) and the
+> zone server's subsequent `ZoneToBindPoint` log to 189 — an authority outside
+> the client, per T144's method. A second NPC-death capture confirms
+> `damage@24 = 58`. So the arbiter rule (T145) held: **`bindzoneid@12`,
+> `spell_id@16`, `attack_skill@20`, `damage@24`** is correct and the
+> `titanium_structs.h` variant is the stale one.
+>
+> **Still open, narrowly:** `is_PC@28` read 0 in *both* captures, so that one
+> field is unconfirmed. Evidence: `/mnt/projects/fable/review/T146/`.
+> The header comment spelling out both candidate orders should now be reduced
+> to a statement of the confirmed order plus the `is_PC` caveat.
+
+The original entry, kept for the reasoning it records:
+
+### (was) OPEN — `Death_Struct` field order (highest value of the five)
+
+Size is certain: 8 x uint32 = 32, in every eqemu variant. The *order* is not:
+
+| offset | `common/eq_packet_structs.h:1367` (== ours) | `common/patches/titanium_structs.h:1176` |
+|---|---|---|
+| 12 | `bindzoneid` | `attack_skill` |
+| 16 | `spell_id` | `spell_id` |
+| 20 | `attack_skill` | `bindzoneid` |
+
+Exactly reversed either side of `spell_id`. `titanium.cpp` has no
+`ENCODE(OP_Death)`, so the arbiter rule (T145) says the base struct is the
+wire format and ours is right — but that is reasoning from an absence, not an
+observation. **Settled by one capture: die once, dump the bytes, read offsets
+12 and 20.** T146 was asked to take this opportunistically; if it did not, the
+capture is still owed. A `static_assert` was added at 32 with a header comment
+spelling out both candidate orders; do not "harmonise" the fields without the
+capture.
+
+### OPEN — `Consider_Struct` (28) not wire-observed
+
+T147 corrected this from 24 to 28 (appending `pvpcon` + `unknown3[3]`) on the
+strength of eqemu's base and Titanium structs *agreeing* — and of
+`src/client/eq_combat_actions.cpp:40`'s hand-rolled parser already guarding on
+`2 + 28`. Strong, but still source-reading. A capture would close it.
+
+### OPEN — `Animation_Struct` and `MobHealth_Struct` were DELETED, not settled
+
+Both were dead in production and wrong by size against eqemu (ours 8 vs 4, and
+6 vs 3), so T147 removed them as traps. That is not the same as knowing the
+true layout: if either opcode is ever consumed, **capture first, then write the
+struct** — do not restore the deleted versions from git history.
+
+### OPEN — `PetitionUpdate_Struct` DELETED as unresolvable
+
+eqemu's counterpart (`titanium_structs.h:1905`, `eq_packet_structs.h:2618`)
+contains a `time_t`, which is not wire-credible as written (its width is
+platform-dependent), and it carries `quetotal` + `charname[64]` that ours
+dropped entirely. So we cannot tell whether ours was truncated or eqemu's is
+unmaintained. Ours was dead, so T147 deleted it rather than asserting 112.
+Low priority; needs a capture if petitions are ever implemented.
+
+### OPEN — `TradeAcceptClick_Struct` byte 4
+
+Size 8 is certain and the struct is genuinely live (11 production references),
+so it was kept as-is. Whether byte 4 (`accepted`) is a meaningful flag or
+eqemu's `unknown4` garbage is unknown; `src/client/eq.cpp` logs it as
+`accepted`. A capture of a real accept/unaccept toggle settles it. Noted in a
+header comment above the struct.
+
+### Method note for whoever closes these
+
+`tests/captured_packets.h` (T147) is the harness: paste the bytes as a
+`CapturedPacket` with a `provenance` string, write a field table against
+`offsetof()`, done. See `tests/test_captured_packets.cpp` for the worked
+example on `OP_GroundSpawn`. The point of pinning against `offsetof()` rather
+than literals is that the test then fails when the *struct* drifts, which is
+the failure a `sizeof` assert cannot see.

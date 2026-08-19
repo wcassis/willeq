@@ -1337,7 +1337,9 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 {
 	// ClientUpdate packets contain position updates from other players
-	// Format based on PlayerPositionUpdateServer_Struct (bit-packed):
+	// Format: eqemu's 22-byte bit-packed PlayerPositionUpdateServer_Struct
+	// (common/patches/titanium_structs.h:1201). T147 deleted the 30-byte
+	// EQT::PlayerPositionUpdateServer_Struct that claimed to be this:
 	// spawn_id (2 bytes) + 20 bytes of bit-packed data
 
 	if (p.Length() < 24) { // 2 (opcode) + 2 (spawn_id) + 20 (bit-packed data)

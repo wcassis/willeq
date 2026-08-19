@@ -911,7 +911,10 @@ void EverQuest::SetupTradeskillCallbacks()
 void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 {
 	// Server response to our shop request
-	// Merchant_Open_Struct: npc_id(4), unknown04(4), action(4), sell_rate(4)
+	// Wire layout: npc_id(4), player_id(4), action(4), sell_rate(4) -- eqemu's
+	// Merchant_Click_Struct (npcid/playerid/command/rate), used for OP_ShopRequest
+	// in both directions. T147 deleted the dead EQT::Merchant_Open_Struct that
+	// duplicated this; EQT::Merchant_Click_Struct is the one to use.
 	if (p.Length() < 18) {
 		LOG_WARN(MOD_INVENTORY, "ShopRequest packet too short: {} bytes", p.Length());
 		return;

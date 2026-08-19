@@ -997,7 +997,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
     }
 }
 
-void SpellManager::handleAction(const EQT::Action_Struct& action)
+void SpellManager::handleAction(const EQT::SpellActionInfo& action)
 {
     // Type 231 (0xE7) indicates spell effect
     if (action.type != 231) {

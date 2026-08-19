@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "common/packet_structs.h"
 #include "client/world_object.h"
+#include "captured_packets.h"
 #include <cstring>
 #include <string>
 
@@ -53,28 +54,12 @@ TEST_F(PacketStructsTest, SpellBuff_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::SpellBuff_Struct), 20);
 }
 
-TEST_F(PacketStructsTest, Consider_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::Consider_Struct), 24);
-}
-
-TEST_F(PacketStructsTest, Action_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::Action_Struct), 44);
-}
-
-TEST_F(PacketStructsTest, CombatDamage_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::CombatDamage_Struct), 32);
-}
-
 TEST_F(PacketStructsTest, MoneyOnCorpse_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::MoneyOnCorpse_Struct), 20);
 }
 
 TEST_F(PacketStructsTest, Death_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::Death_Struct), 32);
-}
-
-TEST_F(PacketStructsTest, HPUpdate_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::HPUpdate_Struct), 8);
 }
 
 TEST_F(PacketStructsTest, DeleteSpawn_Struct_Size) {
@@ -97,24 +82,12 @@ TEST_F(PacketStructsTest, ManaChange_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::ManaChange_Struct), 16);
 }
 
-TEST_F(PacketStructsTest, Animation_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::Animation_Struct), 8);
-}
-
 TEST_F(PacketStructsTest, Target_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::Target_Struct), 4);
 }
 
-TEST_F(PacketStructsTest, Attack_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::Attack_Struct), 4);
-}
-
 TEST_F(PacketStructsTest, LootRequest_Struct_Size) {
     EXPECT_EQ(sizeof(EQT::LootRequest_Struct), 4);
-}
-
-TEST_F(PacketStructsTest, LootItem_Struct_Size) {
-    EXPECT_EQ(sizeof(EQT::LootItem_Struct), 12);
 }
 
 // Field offset tests for Spawn_Struct
@@ -252,10 +225,29 @@ TEST_F(PacketStructsTest, SpawnStruct_Serialization) {
     EXPECT_EQ(spawn.curHp, 100);
 }
 
+// T147: the structs deleted from this block were dead in production AND wrong
+// against eqemu -- Action_Struct (44 vs a 31-byte wire packet; it is now the
+// in-memory DTO EQT::SpellActionInfo in include/client/spell/spell_manager.h),
+// CombatDamage_Struct (32 vs 23), HPUpdate_Struct (8, and the field order of
+// eqemu's SpawnHPUpdate_Struct is cur_hp/max_hp/spawn_id at 10 bytes),
+// Animation_Struct (8 vs 4), Attack_Struct (no eqemu counterpart; a duplicate
+// of Target_Struct) and LootItem_Struct (12 vs LootingItem_Struct's 16).
+// See refactor/T147_packet_structs_trap_removal.md.
+
+// T147: Consider_Struct is 28, not 24 -- it was missing pvpcon + unknown3[3]
+// (eqemu eq_packet_structs.h:1351 == titanium_structs.h:1160). The hand-rolled
+// parser in eq_combat_actions.cpp:40 already guarded on the correct 28.
+TEST_F(PacketStructsTest, Consider_Struct_Size) {
+    EXPECT_EQ(sizeof(EQT::Consider_Struct), 28);
+}
+
 // Test ChannelMessage_Struct has correct fixed portion size
 TEST_F(PacketStructsTest, ChannelMessage_FixedSize) {
-    // Fixed portion is 144 bytes (before variable-length message)
-    EXPECT_EQ(offsetof(EQT::ChannelMessage_Struct, message), 144);
+    // T147: 148, not 144. cm_unknown4 is uint32[2] (eqemu
+    // titanium_structs.h:1020), which eq_chat.cpp:31-32 already documented
+    // correctly while this struct declared a single uint32.
+    EXPECT_EQ(offsetof(EQT::ChannelMessage_Struct, message), 148);
+    EXPECT_EQ(sizeof(EQT::ChannelMessage_Struct), 148);
 }
 
 // Test ZoneChange_Struct size
@@ -283,51 +275,17 @@ TEST_F(PacketStructsTest, ZoneChange_Struct_Size) {
 // object.id=228452: IT10804_ACTORDEF, type 17 (blacksmithing), x=-177 y=484 h=117.
 // 109 bytes on the wire INCLUDING the 2-byte opcode (0x0f47) => 107-byte body
 // == strlen("IT10804_ACTORDEF") + 91.
-static const uint8_t kT144GroundSpawnKiln[] = {
-    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0xc7, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xea, 0x42, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x31, 0xc3, 0x00, 0x00, 0xf2, 0x43, 0x49, 0x54,
-    0x31, 0x30, 0x38, 0x30, 0x34, 0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44,
-    0x45, 0x46, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0xfe, 0xff, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00,
-    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xbd, 0x01, 0x00, 0x00,
-    0x01,
-};
 
 // object.id=201: IT66_ACTORDEF, type 17 (blacksmithing), x=-296 y=179 h=369.
 // 106 bytes => 104-byte body == strlen("IT66_ACTORDEF") + 91. Note the bytes
 // immediately after the name's NUL are "_ACTORDEF" left over in the server's
 // uninitialised send buffer -- proof the name must be read as NUL-terminated,
 // never as a fixed 32-byte field.
-static const uint8_t kT144GroundSpawnForge[] = {
-    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0xbe, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xb8, 0x43, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x94, 0xc3, 0x00, 0x00, 0x33, 0x43, 0x49, 0x54,
-    0x36, 0x36, 0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00,
-    0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00,
-    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
 
 // A real dropped ground item (not a container): IT63, type 0, at
 // x=155 y=-144.7 z=-36.9. 97 bytes => 95-byte body == strlen("IT63") + 91.
 // THIS is the packet the old code's comment called "97 bytes instead of 102"
 // and dismissed as server jitter. It is not jitter; it is the format.
-static const uint8_t kT144GroundSpawnItem[] = {
-    0x47, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0xbd, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0x99,
-    0x13, 0xc2, 0x00, 0x00, 0x1b, 0x43, 0x33, 0xb3, 0x10, 0xc3, 0x49, 0x54,
-    0x36, 0x33, 0x00, 0xc3, 0x00, 0x00, 0x33, 0x43, 0x49, 0x54, 0x36, 0x36,
-    0x5f, 0x41, 0x43, 0x54, 0x4f, 0x52, 0x44, 0x45, 0x46, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00,
-};
 
 TEST_F(PacketStructsTest, Object_Struct_Size) {
     // The Titanium wire struct is 92 bytes. It was 100 for as long as this
@@ -358,8 +316,8 @@ TEST_F(PacketStructsTest, Object_Struct_FieldOffsets) {
 
 TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_TradeskillForge) {
     eqt::WorldObject obj;
-    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2,
-                                      sizeof(kT144GroundSpawnForge) - 2, obj));
+    ASSERT_TRUE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnForgeBytes + 2,
+                                      sizeof(eqt_test::kGroundSpawnForgeBytes) - 2, obj));
     EXPECT_EQ(obj.drop_id, 190u);
     EXPECT_EQ(obj.zone_id, 1u);          // qeynos
     EXPECT_EQ(obj.zone_instance, 0u);
@@ -374,8 +332,8 @@ TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_TradeskillForge) {
 
 TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_LongName) {
     eqt::WorldObject obj;
-    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnKiln + 2,
-                                      sizeof(kT144GroundSpawnKiln) - 2, obj));
+    ASSERT_TRUE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnKilnBytes + 2,
+                                      sizeof(eqt_test::kGroundSpawnKilnBytes) - 2, obj));
     EXPECT_EQ(obj.drop_id, 199u);
     EXPECT_EQ(obj.zone_id, 1u);
     EXPECT_EQ(obj.name, "IT10804_ACTORDEF");
@@ -390,8 +348,8 @@ TEST_F(PacketStructsTest, GroundSpawn_CapturedBytes_ShortPacketGroundItem) {
     // 95-byte body -- well under the 102 bytes the old code demanded before it
     // would read object_type, and under the 100-byte struct it declared.
     eqt::WorldObject obj;
-    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnItem + 2,
-                                      sizeof(kT144GroundSpawnItem) - 2, obj));
+    ASSERT_TRUE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnItemBytes + 2,
+                                      sizeof(eqt_test::kGroundSpawnItemBytes) - 2, obj));
     EXPECT_EQ(obj.drop_id, 189u);
     EXPECT_EQ(obj.name, "IT63");
     EXPECT_FLOAT_EQ(obj.x, 155.0f);
@@ -406,11 +364,11 @@ TEST_F(PacketStructsTest, GroundSpawn_NameIsNulTerminatedNotFixedWidth) {
     // the terminating NUL -- uninitialised heap in the server's send buffer,
     // because ENCODE only strcpy's the name. A reader taking 32 fixed bytes
     // would produce "IT66_ACTORDEF\0_ACTORDEF".
-    const char* raw = reinterpret_cast<const char*>(kT144GroundSpawnForge + 2 + 44);
+    const char* raw = reinterpret_cast<const char*>(eqt_test::kGroundSpawnForgeBytes + 2 + 44);
     EXPECT_EQ(std::string(raw + 14, 9), "_ACTORDEF");   // the garbage really is there
     eqt::WorldObject obj;
-    ASSERT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2,
-                                      sizeof(kT144GroundSpawnForge) - 2, obj));
+    ASSERT_TRUE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnForgeBytes + 2,
+                                      sizeof(eqt_test::kGroundSpawnForgeBytes) - 2, obj));
     EXPECT_EQ(obj.name.size(), 13u);
 }
 
@@ -420,9 +378,9 @@ TEST_F(PacketStructsTest, GroundSpawn_BodyLengthIsStrlenPlus91) {
     // Held for all 11 packets captured in the live qeynos session; the three
     // kept here span the range (95 / 104 / 107 body bytes).
     struct { const uint8_t* pkt; size_t len; const char* name; } cases[] = {
-        { kT144GroundSpawnKiln,  sizeof(kT144GroundSpawnKiln),  "IT10804_ACTORDEF" },
-        { kT144GroundSpawnForge, sizeof(kT144GroundSpawnForge), "IT66_ACTORDEF" },
-        { kT144GroundSpawnItem,  sizeof(kT144GroundSpawnItem),  "IT63" },
+        { eqt_test::kGroundSpawnKilnBytes,  sizeof(eqt_test::kGroundSpawnKilnBytes),  "IT10804_ACTORDEF" },
+        { eqt_test::kGroundSpawnForgeBytes, sizeof(eqt_test::kGroundSpawnForgeBytes), "IT66_ACTORDEF" },
+        { eqt_test::kGroundSpawnItemBytes,  sizeof(eqt_test::kGroundSpawnItemBytes),  "IT63" },
     };
     for (const auto& c : cases) {
         EXPECT_EQ(c.len - 2, std::strlen(c.name) + 91) << "for " << c.name;
@@ -434,9 +392,9 @@ TEST_F(PacketStructsTest, GroundSpawn_RejectsBodyTooShortForObjectType) {
     EXPECT_EQ(eqt::GroundSpawnMinBodyBytes(), 84u);
     eqt::WorldObject obj;
     obj.name = "untouched";
-    EXPECT_FALSE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2, 83, obj));
+    EXPECT_FALSE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnForgeBytes + 2, 83, obj));
     EXPECT_EQ(obj.name, "untouched");   // out param left alone on failure
-    EXPECT_TRUE(eqt::ParseGroundSpawn(kT144GroundSpawnForge + 2, 84, obj));
+    EXPECT_TRUE(eqt::ParseGroundSpawn(eqt_test::kGroundSpawnForgeBytes + 2, 84, obj));
     EXPECT_EQ(obj.object_type, 17u);
     EXPECT_FALSE(eqt::ParseGroundSpawn(nullptr, 200, obj));
 }

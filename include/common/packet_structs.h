@@ -5,11 +5,41 @@
  * All structures are packed (1-byte aligned) to match network protocol.
  *
  * Based on EQEmu titanium_structs.h but standalone for the headless client.
+ *
+ * ---------------------------------------------------------------------------
+ * RULES FOR THIS FILE (T147, 2026-08-19)
+ *
+ * 1. The `#pragma pack(push, 1)` at the top is popped at the very BOTTOM of
+ *    the file. It used to be popped ~700 lines early, which left roughly 40
+ *    structs compiling at natural alignment. That is the mechanism behind
+ *    this file's whole wire-rot class: a struct written correctly against
+ *    eqemu silently gains padding, someone "fixes" the static_assert to the
+ *    padded value, and the result is a permanently-passing assert on a wrong
+ *    wire layout (T145 hit exactly this with EnvDamage2_Struct: 36 instead of
+ *    31). Do not add another pop.
+ *
+ * 2. Every struct here must be a WIRE layout. In-memory DTOs do not belong in
+ *    this file -- see EQT::SpellActionInfo in include/client/spell/
+ *    spell_manager.h, which used to live here as `Action_Struct` complete
+ *    with authoritative-looking byte-offset comments while being 44 bytes
+ *    against a 31-byte wire packet.
+ *
+ * 3. A struct that is wrong AND has no production consumer is a trap, not
+ *    documentation: the next person to reinterpret_cast it gets the T134
+ *    failure mode. Delete it rather than repairing it. T147 deleted 11 on
+ *    that basis, plus FinishTrade_Struct -- which did have consumers, but
+ *    described a payload eqemu sends with ZERO length.
+ *
+ * 4. `static_assert` values here are derived from eqemu's field lists, not
+ *    from what the compiler happens to produce. If an assert fails, find out
+ *    which side is wrong before touching the number.
+ * ---------------------------------------------------------------------------
  */
 
 #ifndef EQT_PACKET_STRUCTS_H
 #define EQT_PACKET_STRUCTS_H
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -48,6 +78,7 @@ struct Tint_Struct {
         uint32_t Color;
     };
 };
+static_assert(sizeof(Tint_Struct) == 4, "Tint_Struct must be 4 bytes");  // eqemu titanium_structs.h:141
 
 /*
  * Equipment tint profile
@@ -69,6 +100,7 @@ struct TintProfile {
         Tint_Struct Slot[TEXTURE_COUNT];
     };
 };
+static_assert(sizeof(TintProfile) == 36, "TintProfile must be 36 bytes");  // eqemu titanium_structs.h:154
 
 /*
  * Texture/Material structure
@@ -77,6 +109,7 @@ struct TintProfile {
 struct Texture_Struct {
     uint32_t Material;
 };
+static_assert(sizeof(Texture_Struct) == 4, "Texture_Struct must be 4 bytes");  // eqemu titanium_structs.h:171
 
 /*
  * Equipment texture profile
@@ -98,6 +131,7 @@ struct TextureProfile {
         Texture_Struct Slot[TEXTURE_COUNT];
     };
 };
+static_assert(sizeof(TextureProfile) == 36, "TextureProfile must be 36 bytes");  // eqemu titanium_structs.h:176
 
 /*
  * Login Info structure
@@ -110,6 +144,7 @@ struct LoginInfo_Struct {
 /*189*/ uint8_t unknown189[275];
 /*464*/
 };
+static_assert(sizeof(LoginInfo_Struct) == 464, "LoginInfo_Struct must be 464 bytes");  // eqemu titanium_structs.h:40 (its trailing /*488*/ comment is stale; the fields sum to 464)
 
 /*
  * Enter World structure
@@ -120,6 +155,7 @@ struct EnterWorld_Struct {
 /*064*/ uint32_t tutorial;       // 01 on "Enter Tutorial", 00 if not
 /*068*/ uint32_t return_home;    // 01 on "Return Home", 00 if not
 };
+static_assert(sizeof(EnterWorld_Struct) == 72, "EnterWorld_Struct must be 72 bytes");  // eqemu titanium_structs.h:48
 
 /*
  * Entity ID structure
@@ -129,6 +165,7 @@ struct EntityId_Struct {
 /*00*/ uint32_t entity_id;
 /*04*/
 };
+static_assert(sizeof(EntityId_Struct) == 4, "EntityId_Struct must be 4 bytes");  // eqemu titanium_structs.h:87
 
 /*
  * Spawn Structure (Titanium)
@@ -213,6 +250,7 @@ static_assert(sizeof(Spawn_Struct) == 385, "Spawn_Struct must be 385 bytes");
 struct NewSpawn_Struct {
     Spawn_Struct spawn;
 };
+static_assert(sizeof(NewSpawn_Struct) == 385, "NewSpawn_Struct must be 385 bytes");  // eqemu titanium_structs.h:345
 
 /*
  * Client Zone Entry
@@ -222,6 +260,7 @@ struct ClientZoneEntry_Struct {
 /*0000*/ uint32_t unknown00;
 /*0004*/ char     char_name[64];
 };
+static_assert(sizeof(ClientZoneEntry_Struct) == 68, "ClientZoneEntry_Struct must be 68 bytes");  // eqemu titanium_structs.h:350
 
 /*
  * Server Zone Entry
@@ -229,6 +268,7 @@ struct ClientZoneEntry_Struct {
 struct ServerZoneEntry_Struct {
     NewSpawn_Struct player;
 };
+static_assert(sizeof(ServerZoneEntry_Struct) == 385, "ServerZoneEntry_Struct must be 385 bytes");  // eqemu titanium_structs.h:361
 
 /*
  * New Zone structure
@@ -271,6 +311,7 @@ struct NewZone_Struct {
 /*0692*/ uint8_t  unknown692[8];
 /*0700*/
 };
+static_assert(sizeof(NewZone_Struct) == 700, "NewZone_Struct must be 700 bytes");  // eqemu titanium_structs.h:366
 
 /*
  * Spawn Appearance structure
@@ -282,6 +323,7 @@ struct SpawnAppearance_Struct {
 /*0004*/ uint32_t parameter;
 /*0008*/
 };
+static_assert(sizeof(SpawnAppearance_Struct) == 8, "SpawnAppearance_Struct must be 8 bytes");  // eqemu titanium_structs.h:484
 
 // Appearance types
 enum AppearanceType : uint16_t {
@@ -368,8 +410,19 @@ struct PetBuff_Struct {
 };
 
 /*
- * Consider structure
- * Size: 24 bytes
+ * Consider structure (OP_Consider)
+ * Size: 28 bytes
+ *
+ * Verified against eqemu 2026-08-19 (T147): titanium.cpp has no
+ * ENCODE/DECODE for OP_Consider, so the base struct is the wire format --
+ * common/eq_packet_structs.h:1351, which is byte-identical to
+ * common/patches/titanium_structs.h:1160. Both carry `pvpcon` + a 3-byte
+ * tail that this struct was missing (24 instead of 28).
+ *
+ * NOT wire-observed. eq_combat_actions.cpp:40 parses OP_Consider with a
+ * private local copy of this layout and a `p.Length() < 30` guard (2 opcode
+ * + 28), which is the correct size -- so the hand-rolled parser was right and
+ * this shared struct was the one that had rotted.
  */
 struct Consider_Struct {
 /*000*/ uint32_t playerid;
@@ -378,48 +431,11 @@ struct Consider_Struct {
 /*012*/ uint32_t level;
 /*016*/ int32_t  cur_hp;
 /*020*/ int32_t  max_hp;
-/*024*/
+/*024*/ uint8_t  pvpcon;        // Pvp con flag 0/1
+/*025*/ uint8_t  unknown3[3];
+/*028*/
 };
-
-/*
- * Action structure (combat)
- * Size: 44 bytes
- */
-struct Action_Struct {
-/*00*/ uint32_t target;
-/*04*/ uint32_t source;
-/*08*/ uint32_t level;
-/*12*/ uint32_t instrument_mod;
-/*16*/ float    force;
-/*20*/ float    hit_heading;
-/*24*/ float    hit_pitch;
-/*28*/ uint32_t type;
-/*32*/ uint32_t spell;
-/*36*/ uint8_t  level2;
-/*37*/ uint8_t  effect_flag;
-/*38*/ uint8_t  padding[2];
-/*40*/ uint32_t unknown_action;
-/*44*/
-};
-
-/*
- * Combat Damage structure
- * Size: 32 bytes
- */
-struct CombatDamage_Struct {
-/*00*/ uint16_t target;
-/*02*/ uint16_t source;
-/*04*/ uint8_t  type;
-/*05*/ uint8_t  unknown05;
-/*06*/ uint16_t spellid;
-/*08*/ uint32_t damage;
-/*12*/ float    force;
-/*16*/ float    meleepush_xy;
-/*20*/ float    meleepush_z;
-/*24*/ uint32_t unknown24;
-/*28*/ uint32_t unknown28;
-/*32*/
-};
+static_assert(sizeof(Consider_Struct) == 28, "Consider_Struct must be 28 bytes");
 
 /*
  * Combat Ability structure (kick, bash, taunt, etc.)
@@ -431,6 +447,7 @@ struct CombatAbility_Struct {
 /*08*/ uint32_t skill;       // Skill ID (e.g., SKILL_KICK, SKILL_BASH)
 /*12*/
 };
+static_assert(sizeof(CombatAbility_Struct) == 12, "CombatAbility_Struct must be 12 bytes");  // eqemu titanium_structs.h:1572
 
 /*
  * Money on Corpse structure
@@ -445,24 +462,54 @@ struct MoneyOnCorpse_Struct {
 /*16*/ uint32_t copper;
 /*20*/
 };
+static_assert(sizeof(MoneyOnCorpse_Struct) == 20, "MoneyOnCorpse_Struct must be 20 bytes");  // eqemu moneyOnCorpseStruct, titanium_structs.h:1451
 
 /*
- * Channel Message structure
- * Variable size
+ * Channel Message structure (OP_ChannelMessage)
+ * Variable size; fixed header is 148 bytes.
+ *
+ * Verified against eqemu 2026-08-19 (T147):
+ * common/patches/titanium_structs.h:1020 (titanium.cpp has ENCODE and DECODE
+ * for OP_ChannelMessage, so the Titanium struct is the arbiter; the base
+ * struct at common/eq_packet_structs.h:1189 is byte-identical anyway).
+ * `cm_unknown4` is uint32[2], not uint32 -- the message body starts at 148,
+ * not 144.
+ *
+ * NOT wire-observed. src/client/eq_chat.cpp:31-32 already documents the
+ * correct `unknown(8)` layout and parses at the right offsets by hand; this
+ * shared struct was the copy that drifted, and it contradicted the correct
+ * code sitting next to it.
  */
 struct ChannelMessage_Struct {
 /*000*/ char     targetname[64];
 /*064*/ char     sender[64];
 /*128*/ uint32_t language;
 /*132*/ uint32_t chan_num;
-/*136*/ uint32_t cm_unknown4;
-/*140*/ uint32_t skill_in_language;
-/*144*/ char     message[0];
+/*136*/ uint32_t cm_unknown4[2];
+/*144*/ uint32_t skill_in_language;
+/*148*/ char     message[0];
 };
+static_assert(sizeof(ChannelMessage_Struct) == 148,
+              "ChannelMessage_Struct fixed header must be 148 bytes");
+static_assert(offsetof(ChannelMessage_Struct, message) == 148,
+              "ChannelMessage_Struct message must start at offset 148");
 
 /*
- * Death structure
+ * Death structure (OP_Death)
  * Size: 32 bytes
+ *
+ * !! FIELD ORDER UNSETTLED -- DO NOT "HARMONISE" THIS WITHOUT A CAPTURE !!
+ * (T147, 2026-08-19)
+ *
+ * The size is certain (8 x uint32 in every eqemu variant). The order of
+ * bindzoneid / spell_id / attack_skill is NOT:
+ *   - common/eq_packet_structs.h:1367 has bindzoneid@12, spell_id@16,
+ *     attack_skill@20 -- which is what this struct has;
+ *   - common/patches/titanium_structs.h:1176 has attack_skill@12,
+ *     spell_id@16, bindzoneid@20 -- exactly reversed.
+ * titanium.cpp has no ENCODE(OP_Death), so the arbiter rule says the base
+ * struct wins and our order is right. That is reasoning, not observation.
+ * Only a live capture settles it; recorded in refactor/deferred.md.
  */
 struct Death_Struct {
 /*000*/ uint32_t spawn_id;
@@ -475,27 +522,7 @@ struct Death_Struct {
 /*028*/ uint32_t is_PC;
 /*032*/
 };
-
-/*
- * HP Update structure
- * Size: 8 bytes
- */
-struct HPUpdate_Struct {
-/*00*/ uint32_t spawn_id;
-/*04*/ int32_t  cur_hp;
-/*08*/
-};
-
-/*
- * Mob Health structure (percentage)
- * Size: 6 bytes
- */
-struct MobHealth_Struct {
-/*00*/ uint16_t spawn_id;
-/*02*/ uint8_t  hp;
-/*03*/ uint8_t  unknown03[3];
-/*06*/
-};
+static_assert(sizeof(Death_Struct) == 32, "Death_Struct must be 32 bytes");  // eqemu eq_packet_structs.h:1367 -- FIELD ORDER UNSETTLED, see comment
 
 /*
  * Delete Spawn structure
@@ -505,38 +532,7 @@ struct DeleteSpawn_Struct {
 /*00*/ uint32_t spawn_id;
 /*04*/
 };
-
-/*
- * Client Position Update (sent by client)
- * Variable size based on animation field
- */
-struct PlayerPositionUpdateClient_Struct {
-/*0000*/ uint16_t spawn_id;
-/*0002*/ uint16_t sequence;
-/*0004*/ // Position bitfield follows (same format as Spawn_Struct)
-};
-
-/*
- * Server Position Update
- */
-struct PlayerPositionUpdateServer_Struct {
-/*0000*/ uint16_t spawn_id;
-/*0002*/ int8_t   delta_heading;
-/*0003*/ int8_t   padding003;
-/*0004*/ int8_t   delta_y;
-/*0005*/ int8_t   padding005;
-/*0006*/ int8_t   delta_z;
-/*0007*/ int8_t   padding007;
-/*0008*/ int8_t   delta_x;
-/*0009*/ int8_t   padding009;
-/*0010*/ int32_t  y;
-/*0014*/ int32_t  x;
-/*0018*/ int16_t  heading;
-/*0020*/ int16_t  padding020;
-/*0022*/ int32_t  z;
-/*0026*/ uint32_t animation;
-/*0030*/
-};
+static_assert(sizeof(DeleteSpawn_Struct) == 4, "DeleteSpawn_Struct must be 4 bytes");  // eqemu titanium_structs.h:1008 (DECODE(OP_DeleteSpawn) exists, so Titanium wins over the 5-byte base struct)
 
 /*
  * Bind structure
@@ -550,6 +546,7 @@ struct BindStruct {
 /*016*/ float    heading;
 /*020*/
 };
+static_assert(sizeof(BindStruct) == 20, "BindStruct must be 20 bytes");  // eqemu titanium_structs.h:743
 
 /*
  * AA Array entry
@@ -559,6 +556,7 @@ struct AA_Array {
     uint32_t AA;
     uint32_t value;
 };
+static_assert(sizeof(AA_Array) == 8, "AA_Array must be 8 bytes");  // eqemu titanium_structs.h:620
 
 /*
  * Disciplines structure
@@ -576,6 +574,7 @@ struct Tribute_Struct {
     uint32_t tribute;
     uint32_t tier;
 };
+static_assert(sizeof(Tribute_Struct) == 8, "Tribute_Struct must be 8 bytes");  // eqemu titanium_structs.h:635
 
 /*
  * Bandolier item
@@ -586,6 +585,7 @@ struct BandolierItem_Struct {
     uint32_t Icon;
     char     Name[64];
 };
+static_assert(sizeof(BandolierItem_Struct) == 72, "BandolierItem_Struct must be 72 bytes");  // eqemu titanium_structs.h:650
 
 /*
  * Bandolier set
@@ -595,6 +595,7 @@ struct Bandolier_Struct {
     char     Name[32];
     BandolierItem_Struct Items[BANDOLIER_ITEM_COUNT];
 };
+static_assert(sizeof(Bandolier_Struct) == 320, "Bandolier_Struct must be 320 bytes");  // eqemu titanium_structs.h:658
 
 /*
  * Potion belt item
@@ -605,6 +606,7 @@ struct PotionBeltItem_Struct {
     uint32_t Icon;
     char     Name[64];
 };
+static_assert(sizeof(PotionBeltItem_Struct) == 72, "PotionBeltItem_Struct must be 72 bytes");  // eqemu titanium_structs.h:665
 
 /*
  * Potion belt
@@ -613,15 +615,7 @@ struct PotionBeltItem_Struct {
 struct PotionBelt_Struct {
     PotionBeltItem_Struct Items[POTION_BELT_SIZE];
 };
-
-/*
- * Auto Attack structure
- * Size: 4 bytes
- */
-struct Attack_Struct {
-/*00*/ uint32_t target_id;
-/*04*/
-};
+static_assert(sizeof(PotionBelt_Struct) == 288, "PotionBelt_Struct must be 288 bytes");  // eqemu titanium_structs.h:673
 
 /*
  * Target structure (OP_TargetMouse)
@@ -631,6 +625,7 @@ struct Target_Struct {
 /*00*/ uint32_t target_id;
 /*04*/
 };
+static_assert(sizeof(Target_Struct) == 4, "Target_Struct must be 4 bytes");  // eqemu ClientTarget_Struct, titanium_structs.h:985
 
 /*
  * Begin Cast structure
@@ -642,6 +637,7 @@ struct BeginCast_Struct {
 /*004*/ uint32_t cast_time;  // in milliseconds
 /*008*/
 };
+static_assert(sizeof(BeginCast_Struct) == 8, "BeginCast_Struct must be 8 bytes");  // eqemu titanium_structs.h:460
 
 /*
  * Cast Spell structure
@@ -681,27 +677,7 @@ struct ManaChange_Struct {
 /*13*/ uint8_t  padding[3];
 /*16*/
 };
-
-/*
- * Emote structure
- * Variable size
- */
-struct Emote_Struct {
-/*000*/ uint32_t type;
-/*004*/ char     message[0];
-};
-
-/*
- * Animation structure
- * Size: 8 bytes
- */
-struct Animation_Struct {
-/*00*/ uint16_t spawn_id;
-/*02*/ uint16_t action;
-/*04*/ uint8_t  speed;
-/*05*/ uint8_t  padding[3];
-/*08*/
-};
+static_assert(sizeof(ManaChange_Struct) == 16, "ManaChange_Struct must be 16 bytes");  // eqemu titanium_structs.h:443 (ENCODE(OP_ManaChange) exists, so Titanium wins over the 20-byte base struct)
 
 /*
  * Zone Change structure
@@ -718,6 +694,7 @@ struct ZoneChange_Struct {
 /*084*/ int32_t  success;      // 0 = client->server request, 1 = server->client response, -X = error
 /*088*/
 };
+static_assert(sizeof(ZoneChange_Struct) == 88, "ZoneChange_Struct must be 88 bytes");  // eqemu titanium_structs.h:1088
 
 /*
  * RequestClientZoneChange_Struct
@@ -734,6 +711,7 @@ struct RequestClientZoneChange_Struct {
 /*20*/ uint32_t type;  // Usually 0x01, exact meaning unknown
 /*24*/
 };
+static_assert(sizeof(RequestClientZoneChange_Struct) == 24, "RequestClientZoneChange_Struct must be 24 bytes");  // eqemu titanium_structs.h:1100
 
 /*
  * Loot Request structure
@@ -743,17 +721,7 @@ struct LootRequest_Struct {
 /*00*/ uint32_t corpse_id;
 /*04*/
 };
-
-/*
- * Loot Item structure
- * Size: 12 bytes
- */
-struct LootItem_Struct {
-/*00*/ uint32_t corpse_id;
-/*04*/ uint32_t slot_id;
-/*08*/ uint32_t auto_loot;
-/*12*/
-};
+static_assert(sizeof(LootRequest_Struct) == 4, "LootRequest_Struct must be 4 bytes");  // eqemu zone/client_packet.cpp:10303 demands exactly sizeof(uint32)
 
 /*
  * Zone Point Entry structure (Titanium)
@@ -770,6 +738,7 @@ struct ZonePoint_Entry {
 /*0022*/ uint16_t zoneinstance;  // Instance ID (LDoN)
 /*0024*/
 };
+static_assert(sizeof(ZonePoint_Entry) == 24, "ZonePoint_Entry must be 24 bytes");  // eqemu titanium_structs.h:1799
 
 /*
  * Zone Points header structure
@@ -1146,16 +1115,6 @@ struct Merchant_Click_Struct {
 };
 static_assert(sizeof(Merchant_Click_Struct) == 16, "Merchant_Click_Struct must be 16 bytes");
 
-// Merchant open response (server -> client)
-struct Merchant_Open_Struct {
-/*0000*/ uint32_t npc_id;      // NPC spawn ID
-/*0004*/ uint32_t unknown04;   // Always 0
-/*0008*/ uint32_t action;      // 1 = success
-/*0012*/ float    sell_rate;   // Price multiplier (e.g., 1.0191)
-/*0016*/
-};
-static_assert(sizeof(Merchant_Open_Struct) == 16, "Merchant_Open_Struct must be 16 bytes");
-
 // Merchant purchase action
 enum MerchantAction : uint32_t {
     MERCHANT_BUY = 2,
@@ -1288,16 +1247,13 @@ struct TradeCoins_Struct {
 
 // OP_TradeAcceptClick - Click accept button in trade
 // Size: 8 bytes
+// Byte 4 (`accepted`) is UNSETTLED: the 8-byte size is certain, but whether
+// that byte is a meaningful accept flag or eqemu's `unknown4` garbage has not
+// been observed on the wire. Recorded in refactor/deferred.md (T147).
 struct TradeAcceptClick_Struct {
     uint32_t spawn_id;         // Player clicking accept
     uint8_t  accepted;         // 1 = accepted, 0 = not accepted
     uint8_t  unknown[3];       // Possibly trade ID or padding
-};
-
-// OP_FinishTrade - Trade completed signal
-// Size: 2 bytes
-struct FinishTrade_Struct {
-    uint8_t  unknown[2];       // Signal only, no meaningful data
 };
 
 // OP_CancelTrade - Cancel or reject a trade
@@ -1314,6 +1270,7 @@ struct BookRequest_Struct {
     uint8_t type;              // 0=scroll, 1=book, 2=item info
     char txtfile[1];           // Variable length - text file name from items table
 };
+static_assert(sizeof(BookRequest_Struct) == 3, "BookRequest_Struct must be 3 bytes");  // eqemu titanium_structs.h:2071 (fixed header; txtfile is variable-length)
 
 // OP_ReadBook - Book/note text response (S->C)
 // Variable length - booktext is null-terminated string
@@ -1322,6 +1279,7 @@ struct BookText_Struct {
     uint8_t type;              // 0=scroll, 1=book, 2=item info
     char booktext[1];          // Variable length - text content (use '^' for newlines)
 };
+static_assert(sizeof(BookText_Struct) == 3, "BookText_Struct must be 3 bytes");  // eqemu titanium_structs.h:2063 (fixed header; booktext is variable-length)
 
 /*
  * Skill Training packet structures
@@ -1387,7 +1345,10 @@ struct PetCommandState_Struct {
 };
 static_assert(sizeof(PetCommandState_Struct) == 8, "PetCommandState_Struct must be 8 bytes");
 
-#pragma pack(pop)
+// (T147: the file-level `#pragma pack(pop)` used to sit here, ~700 lines
+// before EOF, leaving everything below it at natural alignment. It now sits
+// at the bottom of the file so that every struct in this header is packed.
+// See the banner comment at the top of the file.)
 
 // ============================================================================
 // Guild Structures (from titanium_structs.h)
@@ -1528,6 +1489,7 @@ static_assert(sizeof(CorpseDrag_Struct) == 152, "CorpseDrag_Struct must be 152 b
 struct Consent_Struct {
 /*0000*/ char     name[1];            // Variable length player name
 };
+static_assert(sizeof(Consent_Struct) == 1, "Consent_Struct must be 1 bytes");  // eqemu titanium_structs.h:3196 (variable-length name)
 
 /**
  * Consent Response Struct
@@ -1647,23 +1609,11 @@ static_assert(sizeof(Shielding_Struct) == 4, "Shielding_Struct must be 4 bytes")
  * (common/emu_constants.h:308) -- 250=Lava, 251=Drowning, 252=Falling,
  * 253=Trap.
  */
-// !! LOCAL pack(1) -- THIS STRUCT SITS OUTSIDE THE FILE'S PACKED REGION !!
-//
-// T145 found that this header's `#pragma pack(push, 1)` (line 34) is popped
-// at line ~1375, roughly 700 lines before EOF. Everything below that point --
-// including every struct in this batch and all the Guild structs -- is
-// compiled with NATURAL ALIGNMENT, not packed. Most of those structs happen
-// to be alignment-neutral (all-uint8, all-uint32, or char arrays), so their
-// size asserts pass and the bug is invisible. EnvDamage2_Struct is not: with
-// natural alignment its correct field list measures 36 bytes, not the 31
-// eqemu puts on the wire.
-//
-// Fixed here with a LOCAL push/pop rather than by moving the file's pop to
-// EOF: moving it changes the layout of every struct in that 700-line region
-// at once and is a file-wide audit, which is refactor/T147's job. See the
-// T145 Review -- this is the likeliest root cause of the whole wire-rot class
-// and T147 should treat it as its headline item.
-#pragma pack(push, 1)
+// T145 needed a LOCAL pack(1) here because this struct used to sit below the
+// file's `#pragma pack(pop)`; at natural alignment its correct field list
+// measured 36 bytes instead of 31. T147 moved that pop to EOF, so the local
+// pragmas are gone and this struct is covered by the file-level pack(1) like
+// every other struct in the header.
 struct EnvDamage2_Struct {
 /*0000*/ uint32_t id;                 // Entity ID
 /*0004*/ uint16_t unknown4;           // Unknown
@@ -1675,7 +1625,6 @@ struct EnvDamage2_Struct {
 /*0029*/ uint16_t unknown29;          // Unknown
 /*0031*/
 };
-#pragma pack(pop)
 static_assert(sizeof(EnvDamage2_Struct) == 31, "EnvDamage2_Struct must be 31 bytes");
 
 // ============================================================================
@@ -2077,22 +2026,6 @@ static_assert(sizeof(GMLastName_Struct) == 200, "GMLastName_Struct must be 200 b
 // Phase 4: Petition Structures
 // ============================================================================
 
-/**
- * Petition Update Struct
- * Size: 112 bytes (Titanium format)
- * Used in: OP_PetitionUpdate (S->C), OP_PetitionDelete (C->S)
- */
-struct PetitionUpdate_Struct {
-/*0000*/ uint32_t petnumber;          // Petition number
-/*0004*/ uint32_t color;              // Status color (0=green, 1=yellow, 2=red)
-/*0008*/ uint32_t status;             // Status code
-/*0012*/ uint32_t senttime;           // Timestamp
-/*0016*/ char     accountid[32];      // Account name
-/*0048*/ char     gmsenttoo[64];      // GM assigned to
-/*0112*/
-};
-static_assert(sizeof(PetitionUpdate_Struct) == 112, "PetitionUpdate_Struct must be 112 bytes");
-
 // Helper functions for position bitfield extraction
 namespace Position {
     // Extract signed 19-bit value from bitfield
@@ -2114,5 +2047,7 @@ namespace Position {
 }
 
 } // namespace EQT
+
+#pragma pack(pop)
 
 #endif // EQT_PACKET_STRUCTS_H

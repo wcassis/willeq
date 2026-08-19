@@ -105,7 +105,11 @@ public:
     void handleTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);
     void handleTradeCoins(const EQT::TradeCoins_Struct& coins);
     void handleTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
-    void handleFinishTrade(const EQT::FinishTrade_Struct& finish);
+    // OP_FinishTrade carries a ZERO-LENGTH payload (eqemu
+    // zone/client_packet.cpp:15358 sends `new EQApplicationPacket(OP_FinishTrade, 0)`).
+    // It is a signal, not a struct -- T147 deleted the fictional 2-byte
+    // EQT::FinishTrade_Struct this used to take.
+    void handleFinishTrade();
     void handleCancelTrade(const EQT::CancelTrade_Struct& cancel);
     void handlePartnerItemPacket(int slot, std::unique_ptr<eqt::inventory::ItemInstance> item);
     void handlePartnerItemRemoved(int slot);
