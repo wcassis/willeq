@@ -8893,3 +8893,41 @@ header comment above the struct.
 example on `OP_GroundSpawn`. The point of pinning against `offsetof()` rather
 than literals is that the test then fails when the *struct* drifts, which is
 the failure a `sizeof` assert cannot see.
+
+---
+
+## T150 correction (2026-08-19, orchestrator) — `OP_Track` DOES have a sender; do NOT write `SendTrackRequest()`
+
+T150's Review records that `ZoneProcessTrack` is unreachable because "the track
+list comes from `OP_Track`, a separate opcode this client has **no sender
+for**", and names a new `SendTrackRequest()` as the owed follow-up.
+
+**The premise is wrong and the recommendation would duplicate wire surface.**
+`SkillManager::getSkillOpcode()` maps **skill 53 (Tracking) → `HC_OP_Track`**
+(`src/client/skill/skill_manager.cpp:458`), and `sendSkillUsePacket()` (`:432`)
+sends it as a zero-length body via the generic skill path. eqemu's
+`Handle_OP_Track` (`zone/client_packet.cpp:15266`) is exactly the list
+generator — it calls `entity_list.MakeTrackPacket(this)`.
+
+So a sender exists. What does **not** exist is a *command-reachable* one:
+`activateSkill()` is called only from the hotbar/bridge
+(`src/client/eq_bridge.cpp:1052` and `:1360`), and `useSkill` has **no
+registration in any command registry** — `grep useskill` over
+`command_processor.cpp` returns nothing.
+
+**Correct follow-up: route `/track` with no arguments to the existing
+`activateSkill(53)` path.** Writing a second sender for an opcode that already
+has one is duplicated-then-drifted, the defect this programme has hit
+repeatedly — and T147 spent a whole unit deleting the last generation of it.
+
+**Wider point for the triage unit (the remaining 11):** the skill system is a
+second, generic route to the wire that the zero-caller sweep does not see. Skill
+ids 6, 9, 16, 17, 25, 27, 29, 32, 40, 42, 48, 53, 55, 62, 67, 71, 73 all reach
+`QueuePacket` through `sendSkillUsePacket`. **`SendApplyPoison` is on the
+zero-caller list while skill 6 already routes to `HC_OP_ApplyPoison`** — so at
+least one "dead sender" is a duplicate of a live path, and deleting it may be
+better than wiring it. **Check every remaining candidate against
+`getSkillOpcode()` before scoping it as dead.**
+
+Also note `useSkill` being command-unreachable is its own gap: the entire skill
+system is hotbar-only. That is a candidate unit in its own right.
