@@ -274,6 +274,28 @@ public:
         record("recipesFavorite", Sym{oss.str()});
     }
 
+    // T153: record only the fields the user actually named, in wire order.
+    // The merge with the character's current appearance is EqActionHandler's
+    // job, so it is deliberately invisible here.
+    void setAppearance(const AppearanceChange& change) override {
+        std::ostringstream oss;
+        bool first = true;
+        auto add = [&](const char* name, const std::optional<uint8_t>& v) {
+            if (!v) return;
+            if (!first) oss << " ";
+            first = false;
+            oss << name << "=" << static_cast<int>(*v);
+        };
+        add("haircolor", change.haircolor);
+        add("beardcolor", change.beardcolor);
+        add("eyecolor1", change.eyecolor1);
+        add("eyecolor2", change.eyecolor2);
+        add("hairstyle", change.hairstyle);
+        add("beard", change.beard);
+        add("face", change.face);
+        record("setAppearance", Sym{oss.str()});
+    }
+
     // ========== Extended Movement ==========
     void setMovementMode(int mode) override { record("setMovementMode", mode); }
     void setPositionState(int state) override { record("setPositionState", state); }

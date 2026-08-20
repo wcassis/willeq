@@ -959,4 +959,67 @@ TEST(CombatManagerLoot, AwaitingItemsHardDeadlineClosesWhenAutoLootDisabled) {
         << "hard deadline must close the session even with auto-loot off";
 }
 
+// ===================================================================
+// Consider opcode selection (T153)
+// ===================================================================
+//
+// EverQuest::SendConsiderCorpse() had zero production callers before T153 and
+// sent a 4-byte body where eqemu's Handle_OP_ConsiderCorpse
+// (zone/client_packet.cpp:5245) gates on sizeof(Consider_Struct) == 28 -- so
+// it was silently dropped, and nothing had ever noticed. T153 fixed the body
+// and folded the corpse case into the existing /consider rather than adding a
+// second command.
+//
+// Per the T23 note at the top of this file, a CombatManager-initiated send is
+// not observable from a test (the generic EverQuest::QueuePacket overload
+// no-ops with no side effect when there is no zone connection). So the assert
+// is on the routing decision itself, which ConsiderTarget() consults.
+
+TEST(CombatManagerConsiderOpcode, NoTarget_SelectsNothing) {
+    EverQuest eq = MakeEq();
+    auto* cm = eq.GetCombatManager();
+    EXPECT_FALSE(cm->HasTarget());
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), 0);
+}
+
+TEST(CombatManagerConsiderOpcode, LivingTarget_SelectsPlainConsider) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    ASSERT_TRUE(cm->SetTarget(100));
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_Consider);
+    // The pre-T153 behaviour must be untouched for the living case.
+    ASSERT_NO_THROW(cm->ConsiderTarget());
+}
+
+TEST(CombatManagerConsiderOpcode, CorpseTarget_SelectsConsiderCorpse) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(200, "a_test_rat's_corpse0", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    ASSERT_TRUE(cm->SetTarget(200));
+    // Routes through the same CombatManager::IsCorpse() the loot path uses --
+    // there is deliberately no second corpse test.
+    ASSERT_TRUE(cm->IsCorpse(eq.GetEntities().at(200)));
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_ConsiderCorpse);
+    ASSERT_NO_THROW(cm->ConsiderTarget());
+}
+
+TEST(CombatManagerConsiderOpcode, TargetNotInEntityList_FallsBackToPlainConsider) {
+    // SetTarget() only accepts known entities, so this is reached by a corpse
+    // despawning between targeting and /consider. Plain OP_Consider is the
+    // safe fallback: the server just fails to resolve the id and says nothing.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(300, "a_test_rat", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+    ASSERT_TRUE(cm->SetTarget(300));
+
+    cm->m_current_target_id = 999;  // not in m_entities
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_Consider);
+}
+
 }  // namespace

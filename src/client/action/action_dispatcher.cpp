@@ -1907,5 +1907,21 @@ ActionResult ActionDispatcher::gmLastName(const std::string& charName, const std
     return ActionResult::Success();
 }
 
+// T153: /appearance -> EverQuest::SendFaceChange(). Zone-gated like every
+// other zone-scoped send; the empty-change guard is here rather than in
+// CommandProcessor so a programmatic caller cannot send a no-op packet either.
+ActionResult ActionDispatcher::setAppearance(const AppearanceChange& change) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (change.empty()) {
+        return ActionResult::Failure(
+            "Usage: /appearance <field> <0-255> [<field> <0-255> ...]");
+    }
+
+    m_handler->setAppearance(change);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

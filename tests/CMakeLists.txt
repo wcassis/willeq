@@ -321,6 +321,20 @@ ADD_EXECUTABLE(test_command_processor
 TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_command_processor)
 
+# T153: /appearance parse + validation. Same dependency set as
+# test_command_processor (real ActionDispatcher + CommandProcessor driven
+# through the recording IActionHandler fake), in its own target because
+# test_command_processor.cpp is already past check_file_sizes.sh's 3000-line
+# FAIL ceiling. See refactor/T153_consider_corpse_and_face.md.
+ADD_EXECUTABLE(test_appearance_command
+    test_appearance_command.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${ACTION_LAYER_STATE_SOURCES}
+)
+TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
+GTEST_DISCOVER_TESTS(test_appearance_command)
+
 # T143: registry-aware /help. Merges registry 1's CommandRegistry (game,
 # graphics/ui) and registry 2's CommandProcessor (action) catalogs -- needs
 # both, plus the same ACTION_LAYER_STATE_SOURCES dependency set as

@@ -1242,7 +1242,24 @@ void EverQuest::SendConsiderCorpse(uint32_t corpse_id)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_ConsiderCorpse);
-	packet.PutUInt32(2, corpse_id);
+
+	// T153: this used to write a bare 4-byte corpse id, so the packet was
+	// dropped before the handler ever ran. eqemu's Handle_OP_ConsiderCorpse
+	// (zone/client_packet.cpp:5245) gates on
+	// `app->size != sizeof(Consider_Struct)` -- 28 bytes -- and returns via a
+	// LogDebug with no error path, so the failure was silent on both ends.
+	// titanium.cpp has no ENCODE/DECODE for OP_Consider, and
+	// Titanium::structs::Consider_Struct (common/patches/titanium_structs.h:1160)
+	// is byte-identical to the base common/eq_packet_structs.h:1351 layout, so
+	// the 28-byte body goes raw. The handler reads only `targetid`; every other
+	// field is server-filled on the reply, which is why the live
+	// CombatManager::ConsiderTarget() path sends them zeroed too -- this is the
+	// same body, not an invented one.
+	EQT::Consider_Struct con;
+	memset(&con, 0, sizeof(con));
+	con.playerid = GetEntityID();
+	con.targetid = corpse_id;
+	packet.PutData(2, &con, sizeof(con));
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
