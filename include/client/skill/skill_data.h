@@ -25,8 +25,22 @@ struct SkillData {
 
     // Skill values
     uint32_t current_value = 0;         // Current skill level (0-252 typically)
-    uint32_t max_value = 0;             // Maximum skill at current level
+    // T159: this is the LIFETIME cap for the player's class, taken from
+    // config/skill_caps.json -- NOT the cap at the current level. The
+    // per-level curve was collapsed out of that export (see skill_cap_table.h)
+    // and there is no client-side source for it today.
+    uint32_t max_value = 0;             // Class lifetime skill cap (0 if the class cannot have it)
     uint32_t base_value = 0;            // Base skill without modifiers
+
+    // T159: does the player's class appear in config/skill_caps.json for this
+    // skill at ANY level? This is the possession predicate, set by
+    // SkillManager::loadClassSkillCaps(). Defaults true so a SkillData that
+    // has never been through a cap load behaves the way it did before T159.
+    bool class_can_have = true;
+    // MIN(level) with cap>0 for this class, from the same file. INFORMATIONAL:
+    // nothing gates on it -- T158 proved eqemu does not either (a level-10
+    // Rogue applies poison at first_level 18).
+    uint8_t class_first_level = 1;
 
     // Requirements
     uint8_t min_level = 1;              // Minimum level to use
@@ -97,10 +111,33 @@ struct SkillData {
         last_used = std::chrono::steady_clock::now();
     }
 
-    // Check if this is a valid skill that should be displayed
-    bool hasSkill() const {
+    // ------------------------------------------------------------------
+    // T159: the two predicates that used to be one.
+    //
+    // Before T159 this struct had a single `hasSkill()` -- the DISPLAY test
+    // below -- and SkillManager::canUseSkill()/getSkillUseError() used it as
+    // a POSSESSION test. That is why activateSkill had no possession gate at
+    // all: T158 watched a Rogue with Taunt 0 send OP_Taunt, print "You use
+    // Taunt!", and have the server bin the packet in silence.
+    //
+    // They answer different questions and must stay separate:
+    //   isDisplayableSkill()  -- "should the skills window list this row?"
+    //   canClassHaveSkill()   -- "can my CLASS ever have this skill at all?"
+    // ------------------------------------------------------------------
+
+    // Display test: every valid skill id with a real name, whatever its value
+    // and whatever the class. This is what the skills window wants.
+    bool isDisplayableSkill() const {
         // Show all valid skills (0-74) regardless of current value
         return skill_id < 75 && name != "Unknown";
+    }
+
+    // Possession test: set from config/skill_caps.json at load time (see
+    // SkillCapTable). This is PRESENCE of a (class, skill) row at any level,
+    // NOT "cap at my current level > 0" -- see skill_cap_table.h for the
+    // Apply Poison counter-example that rules the level form out.
+    bool canClassHaveSkill() const {
+        return class_can_have;
     }
 
     // Get formatted value string "current / max"

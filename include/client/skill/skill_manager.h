@@ -36,7 +36,10 @@ public:
     // Initialize skills for a character
     void initialize(uint8_t player_class, uint8_t player_race, uint8_t player_level);
 
-    // Load skill caps for a specific class
+    // Load skill caps for a specific class from config/skill_caps.json
+    // (SkillCapTable). Sets each skill's class_can_have possession flag and
+    // its class lifetime max_value. Falls back to permissive (every skill
+    // allowed) if the data file is missing or unparseable. T159.
     void loadClassSkillCaps(uint8_t player_class, uint8_t player_level);
 
     // Update player level (recalculates skill caps)
@@ -62,7 +65,9 @@ public:
     // Skill Queries
     // ========================================================================
 
-    // Check if player has a specific skill
+    // Check if player has a specific skill -- POSSESSION, i.e. "can my class
+    // ever have this skill" (T159). NOT the display test; the skills window
+    // wants SkillData::isDisplayableSkill(), which getAllSkills() uses.
     bool hasSkill(uint8_t skill_id) const;
 
     // Check if a skill can currently be used
