@@ -1043,7 +1043,6 @@ public:
 	void SendCorpseDrag(const std::string& corpse_name);
 	void SendCorpseDrop();
 	void SendConsiderCorpse(uint32_t corpse_id);
-	void SendConfirmDelete(uint32_t corpse_id);
 	bool IsDraggingCorpse() const { return m_is_dragging_corpse; }
 	// Phase 3: Consent System
 	void SendConsent(const std::string& player_name);
@@ -1067,8 +1066,6 @@ public:
 	void SendShielding(uint32_t target_id);
 	// Phase 3: Misc
 	void SendSave();
-	void SendSaveOnZoneReq();
-	void SendPopupResponse(uint32_t popup_id, uint32_t button);
 	// Phase 4: Dueling
 	void SendDuelRequest(uint32_t target_id);
 	void SendDuelAccept(uint32_t target_id);
@@ -1119,7 +1116,6 @@ public:
 	void SendGMLastName(const std::string& charname, const std::string& lastname);
 	// Phase 4: Petitions
 	void SendPetition(const std::string& text);
-	void SendPetitionDelete(uint32_t petition_id);
 	void SetSneak(bool sneak);
 	float GetMovementSpeed() const;
 

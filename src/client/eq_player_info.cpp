@@ -1250,19 +1250,6 @@ void EverQuest::SendConsiderCorpse(uint32_t corpse_id)
 	}
 }
 
-void EverQuest::SendConfirmDelete(uint32_t corpse_id)
-{
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_ConfirmDelete);
-	packet.PutUInt32(2, corpse_id);
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "Confirmed deletion of corpse ID: {}", corpse_id);
-		AddChatSystemMessage("Your corpse has been summoned to your bind point.");
-	}
-}
-
 // ============================================================================
 // Phase 3: Consent System
 // ============================================================================
@@ -1403,6 +1390,18 @@ void EverQuest::SendLeaveBoat()
 // packet_structs.h). The old 20-byte packet was rejected outright by
 // `Handle_OP_ControlBoat` with "Wrong size: OP_ControlBoat, size=[20],
 // expected [8]".
+//
+// T151/T154 HAZARD -- DO NOT WIRE THIS UP. Calling it with a wrong boat id
+// files a hacking report against our own account. eqemu's
+// `Handle_OP_ControlBoat` (zone/client_packet.cpp:5421) resolves `boatId`
+// through `entity_list.GetMob()`; any hit that is not a controllable boat does
+// not bail quietly, it writes
+// `RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, ... "OP_Control Boat was
+// sent against {} which is of race {}")` to the server's player-event log.
+// `m_boat_id` is set only by `SendBoardBoat`, which is itself broken (T151
+// finding 2), so the id this sender carries is whatever a caller guessed.
+// Boats are deferred indefinitely; this sender must stay unreachable until a
+// real boat entity model exists to supply a verified id.
 void EverQuest::SendControlBoat(bool take_control)
 {
 	if (!m_is_on_boat) {
@@ -1640,40 +1639,6 @@ void EverQuest::SendSave()
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Character save requested");
 		AddChatSystemMessage("Saving character...");
-	}
-}
-
-void EverQuest::SendSaveOnZoneReq()
-{
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_SaveOnZoneReq);
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_DEBUG(MOD_MAIN, "Pre-zone save requested");
-	}
-}
-
-// T145: the `button` parameter is retained for source compatibility but is
-// NOT sent -- OP_PopupResponse's wire format carries only the popup id
-// (eqemu PopupResponse_Struct, 8 bytes). eqemu's handler dispatches on the id
-// alone; our old third `response` field was fictional and made the packet 12
-// bytes, which the handler rejected.
-void EverQuest::SendPopupResponse(uint32_t popup_id, uint32_t button)
-{
-	(void)button;
-
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_PopupResponse);
-
-	EQT::PopupResponse_Struct response;
-	memset(&response, 0, sizeof(response));
-	response.popup_id = popup_id;
-	packet.PutData(2, &response, sizeof(response));
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_DEBUG(MOD_MAIN, "Popup response: id={}", popup_id);
 	}
 }
 
