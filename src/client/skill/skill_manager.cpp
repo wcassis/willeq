@@ -5,6 +5,7 @@
 #include "client/skill/skill_manager.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/skill/skill_cap_table.h"
 #include "client/skill/skill_packet_bodies.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
@@ -45,30 +46,51 @@ void SkillManager::initialize(uint8_t player_class, uint8_t player_race, uint8_t
               player_class, player_race, player_level);
 }
 
+// T159: this used to be a stub that zeroed every cap and then invented eight of
+// them (player_level * 5 for Defense/Dodge/Offense/BindWound, flat 200 for
+// Swimming/SenseHeading/AlcoholTolerance/Begging) FOR EVERY CLASS ALIKE. It now
+// loads the real per-class table exported from the server's peq.skill_caps.
+//
+// `player_level` is deliberately unused for the possession flag: presence of a
+// (class, skill) row at ANY level is what decides, never the level threshold.
+// See skill_cap_table.h for the Apply Poison evidence behind that.
 void SkillManager::loadClassSkillCaps(uint8_t player_class, uint8_t player_level) {
-    // TODO: Load actual class skill caps from data
-    // For now, set reasonable defaults - skills with max_value > 0 are available
-    // This would normally be loaded from a database or data file
+    auto& table = SkillCapTable::instance();
+    table.ensureLoaded();
 
-    // Set default max values for common skills based on level
-    // In real EQ, skill caps vary by class/level combination
-    for (auto& skill : m_skills) {
-        // By default, assume skill is not available
-        skill.max_value = 0;
+    if (!table.isLoaded()) {
+        // Permissive fallback. SkillCapTable::load() has already logged loudly
+        // why; do NOT block every skill on a data-file regression.
+        for (auto& skill : m_skills) {
+            skill.class_can_have = true;
+            skill.class_first_level = 1;
+            // Leave max_value alone: without a table the only cap information
+            // this client has is the echo updateSkill()/updateAllSkills() keep.
+        }
+        LOG_WARN(MOD_MAIN,
+                 "Skill caps unavailable ('{}') -- class {} runs WITHOUT a skill "
+                 "possession gate (pre-T159 behaviour)",
+                 table.getPath(), player_class);
+        return;
     }
 
-    // Common skills available to most classes (simplified)
-    // Actual implementation would check class-specific skill tables
-    m_skills[15].max_value = player_level * 5;  // Defense
-    m_skills[19].max_value = player_level * 5;  // Dodge
-    m_skills[33].max_value = player_level * 5;  // Offense
-    m_skills[50].max_value = 200;               // Swimming
-    m_skills[40].max_value = 200;               // Sense Heading
-    m_skills[9].max_value = player_level * 5;   // Bind Wound
-    m_skills[66].max_value = 200;               // Alcohol Tolerance
-    m_skills[67].max_value = 200;               // Begging
+    size_t owned = 0;
+    for (uint8_t i = 0; i < EQT::MAX_PP_SKILL; ++i) {
+        const auto* entry = table.getEntry(player_class, i);
+        if (entry) {
+            m_skills[i].class_can_have = true;
+            m_skills[i].class_first_level = entry->first_level;
+            m_skills[i].max_value = entry->max_cap;
+            ++owned;
+        } else {
+            m_skills[i].class_can_have = false;
+            m_skills[i].class_first_level = 0;
+            m_skills[i].max_value = 0;
+        }
+    }
 
-    LOG_DEBUG(MOD_MAIN, "Loaded skill caps for class {} level {}", player_class, player_level);
+    LOG_DEBUG(MOD_MAIN, "Loaded skill caps for class {} level {}: {} skills this class can ever have",
+              player_class, player_level, owned);
 }
 
 void SkillManager::setPlayerLevel(uint8_t level) {
@@ -91,8 +113,13 @@ void SkillManager::updateSkill(uint8_t skill_id, uint32_t value) {
     uint32_t old_value = m_skills[skill_id].current_value;
     m_skills[skill_id].current_value = value;
 
-    // If we got a skill update, assume the skill is available
-    if (value > 0 && m_skills[skill_id].max_value == 0) {
+    // T159: the old unconditional `max_value = current_value` patch-up is gone
+    // when a real cap table is loaded -- it made the cap part invention (the
+    // stub's eight guesses) and part echo of whatever the server last sent,
+    // which is not a cap at all. It survives ONLY as the permissive fallback
+    // for a missing/unparseable config/skill_caps.json.
+    if (value > 0 && m_skills[skill_id].max_value == 0 &&
+        !SkillCapTable::instance().isLoaded()) {
         m_skills[skill_id].max_value = value;  // At minimum, max is current
     }
 
@@ -111,8 +138,10 @@ void SkillManager::updateAllSkills(const uint32_t* skills, size_t count) {
     for (size_t i = 0; i < max_count; ++i) {
         m_skills[i].current_value = skills[i];
 
-        // If we got a value, assume skill is available
-        if (skills[i] > 0 && m_skills[i].max_value == 0) {
+        // T159: same patch-up, same reason, same fallback-only condition as
+        // updateSkill() above.
+        if (skills[i] > 0 && m_skills[i].max_value == 0 &&
+            !SkillCapTable::instance().isLoaded()) {
             m_skills[i].max_value = skills[i];
         }
         // Note: Don't trigger callback here - this is bulk initial loading,
@@ -140,11 +169,16 @@ uint32_t SkillManager::getSkillMax(uint8_t skill_id) const {
 // Skill Queries
 // ============================================================================
 
+// T159: this is the POSSESSION query its declaration always claimed to be
+// ("Check if player has a specific skill"). Before T159 it forwarded to the
+// display predicate and was therefore true for every skill 0-74 on every
+// class. Display listings use SkillData::isDisplayableSkill() instead.
 bool SkillManager::hasSkill(uint8_t skill_id) const {
     if (skill_id >= EQT::MAX_PP_SKILL) {
         return false;
     }
-    return m_skills[skill_id].hasSkill();
+    return m_skills[skill_id].isDisplayableSkill() &&
+           m_skills[skill_id].canClassHaveSkill();
 }
 
 bool SkillManager::canUseSkill(uint8_t skill_id) const {
@@ -154,8 +188,16 @@ bool SkillManager::canUseSkill(uint8_t skill_id) const {
 
     const SkillData& skill = m_skills[skill_id];
 
-    // Must have the skill
-    if (!skill.hasSkill()) {
+    // Must be a real skill at all
+    if (!skill.isDisplayableSkill()) {
+        return false;
+    }
+
+    // T159: THE POSSESSION GATE. Can this class ever have this skill? Presence
+    // in config/skill_caps.json, not the cap at the current level -- see
+    // skill_cap_table.h. Without this, activateSkill had no possession gate
+    // whatsoever and happily sent packets the server binned in silence.
+    if (!skill.canClassHaveSkill()) {
         return false;
     }
 
@@ -198,8 +240,15 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
 
     const SkillData& skill = m_skills[skill_id];
 
-    if (!skill.hasSkill()) {
+    if (!skill.isDisplayableSkill()) {
         return "You do not have this skill";
+    }
+
+    // T159: previously unreachable, because the predicate above was the display
+    // test. Say why, not just that -- "Rogues cannot use Taunt" is true, and
+    // "you have not trained it yet" would not be.
+    if (!skill.canClassHaveSkill()) {
+        return "Your class cannot use " + skill.name;
     }
 
     if (!skill.is_activatable) {
@@ -224,9 +273,15 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
         // TODO: Check if in combat
     }
 
+    // T159 (T158 defect 3): this used to `return "You must be behind your
+    // target"` for ANY requires_behind skill, unconditionally, ahead of the
+    // resource check -- so a Backstab that failed for lack of endurance blamed
+    // the player's facing. checkPositionRequirement() always returns true, so
+    // canUseSkill() can never fail for this reason and reporting it is always a
+    // lie. Only Backstab sets the flag, so it was latent. When facing is
+    // actually implemented, both sides go back in together.
     if (skill.requires_behind) {
-        // TODO: Check if behind target
-        return "You must be behind your target";
+        // TODO: check facing here AND in checkPositionRequirement(), together.
     }
 
     if (!checkResourceRequirement(skill_id)) {
@@ -285,7 +340,7 @@ std::vector<const SkillData*> SkillManager::getAllSkills() const {
     result.reserve(EQT::MAX_PP_SKILL);
 
     for (const auto& skill : m_skills) {
-        if (skill.hasSkill()) {
+        if (skill.isDisplayableSkill()) {
             result.push_back(&skill);
         }
     }
@@ -297,7 +352,7 @@ std::vector<const SkillData*> SkillManager::getSkillsByCategory(SkillCategory ca
     std::vector<const SkillData*> result;
 
     for (const auto& skill : m_skills) {
-        if (skill.hasSkill() && skill.category == category) {
+        if (skill.isDisplayableSkill() && skill.category == category) {
             result.push_back(&skill);
         }
     }
@@ -309,7 +364,7 @@ std::vector<const SkillData*> SkillManager::getActivatableSkills() const {
     std::vector<const SkillData*> result;
 
     for (const auto& skill : m_skills) {
-        if (skill.hasSkill() && skill.is_activatable) {
+        if (skill.isDisplayableSkill() && skill.is_activatable) {
             result.push_back(&skill);
         }
     }
@@ -320,7 +375,7 @@ std::vector<const SkillData*> SkillManager::getActivatableSkills() const {
 size_t SkillManager::getSkillCount() const {
     size_t count = 0;
     for (const auto& skill : m_skills) {
-        if (skill.hasSkill()) {
+        if (skill.isDisplayableSkill()) {
             ++count;
         }
     }

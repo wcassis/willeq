@@ -1744,3 +1744,18 @@ ADD_EXECUTABLE(test_skill_packet_bodies test_skill_packet_bodies.cpp)
 TARGET_LINK_LIBRARIES(test_skill_packet_bodies GTest::gtest_main)
 TARGET_INCLUDE_DIRECTORIES(test_skill_packet_bodies PRIVATE ${CMAKE_SOURCE_DIR}/include)
 GTEST_DISCOVER_TESTS(test_skill_packet_bodies)
+
+# T159: the skill possession gate and the real per-class cap table behind it.
+# Loads the SHIPPED config/skill_caps.json by path (WILLEQ_REPO_ROOT) -- the
+# gate's data must be the file the client ships, not a fixture. Same headless
+# EverQuest seam as test_combat_manager.cpp (MakeEq() + live CombatManager /
+# SkillManager + TestBridge); no network, no graphics device, no eqemu.
+# New file: test_command_processor.cpp is past the 3000-line FAIL ceiling.
+ADD_EXECUTABLE(test_skill_possession_gate
+    test_skill_possession_gate.cpp
+)
+TARGET_LINK_LIBRARIES(test_skill_possession_gate GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_skill_possession_gate PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_skill_possession_gate DISCOVERY_TIMEOUT 60)
