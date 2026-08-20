@@ -428,8 +428,11 @@ void CombatManager::CycleTargets(bool forward) {
 			// Skip self
 			if (id == my_id) continue;
 
-			// Skip corpses
-			if (entity.is_corpse) continue;
+			// Skip corpses. T160: the shared predicate, not the raw flag --
+			// before T160 a player corpse (or any corpse that predated our
+			// zone-in) was tab-targetable because nothing had ever set its
+			// is_corpse flag.
+			if (IsCorpse(entity)) continue;
 
 			// Calculate distance
 			glm::vec3 entity_pos(entity.x, entity.y, entity.z);
@@ -1671,14 +1674,87 @@ void CombatManager::FleeToGuard() {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// T160: shared corpse recognition (declared in combat.h).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The three name forms eqemu can put on the wire. Order does not matter --
+// they are mutually exclusive -- but the backtick form is the one a corpse
+// that already existed when we zoned in arrives with, because the
+// client-side rename in NPC::Death is only broadcast at the moment of death.
+constexpr const char* kCorpseNameSeparators[] = {
+	"'s corpse",   // Corpse::CalcCorpseName, player corpse (apostrophe+space)
+	"'s_corpse",   // NPC corpse after NPC::Death's OP_MobRename
+	"`s_corpse",   // Corpse::CalcCorpseName, NPC corpse (backtick+underscore)
+};
+
+// Entity ids are 16-bit on the wire; eqemu formats them with %d, so at most
+// five digits. Cap generously and reject anything longer rather than letting
+// std::stoul throw.
+constexpr size_t kMaxCorpseIdDigits = 10;
+
+}  // namespace
+
+bool ParseCorpseName(const std::string& name, std::string* base_name, uint32_t* corpse_id) {
+	for (const char* separator : kCorpseNameSeparators) {
+		const std::string sep(separator);
+		// rfind: the suffix is appended last, so if a mob's own name somehow
+		// contained the separator the trailing occurrence is the real one.
+		const size_t pos = name.rfind(sep);
+		if (pos == std::string::npos) {
+			continue;
+		}
+		const std::string digits = name.substr(pos + sep.size());
+		// The id is mandatory. This is the false-positive guard: without it
+		// any living mob whose name merely ended in the separator would be
+		// buried on sight.
+		if (digits.empty() || digits.size() > kMaxCorpseIdDigits) {
+			continue;
+		}
+		if (digits.find_first_not_of("0123456789") != std::string::npos) {
+			continue;
+		}
+		if (base_name) {
+			*base_name = name.substr(0, pos);
+		}
+		if (corpse_id) {
+			*corpse_id = static_cast<uint32_t>(std::stoul(digits));
+		}
+		return true;
+	}
+	return false;
+}
+
+bool IsCorpseEntity(const Entity& entity) {
+	// 1. The flag, set by the HC_OP_Death and HC_OP_MobRename handlers. Only
+	//    ever true for a death we personally witnessed this session.
+	if (entity.is_corpse) {
+		return true;
+	}
+	// 2. Spawn_Struct NPC field (offset 83). eqemu's Corpse::FillSpawnStruct
+	//    (zone/corpse.cpp:1792) sets it to 2 for every corpse it spawns,
+	//    player or NPC; 3 is the documented npc-corpse value other servers
+	//    may send. This is the authoritative bit, and it is the one that
+	//    covers corpses that were already lying there when we zoned in.
+	if (entity.npc_type == 2 || entity.npc_type == 3) {
+		return true;
+	}
+	// 3. The name, for entities whose npc_type we never saw (e.g. an entity
+	//    only ever named by OP_MobRename).
+	return ParseCorpseName(entity.name);
+}
+
 bool CombatManager::IsGuard(const Entity& entity) const {
 	return entity.name.find("Guard") != std::string::npos ||
 		   entity.name.find("Sentinel") != std::string::npos;
 }
 
 bool CombatManager::IsCorpse(const Entity& entity) const {
-	// Check both the is_corpse flag and name pattern
-	return entity.is_corpse || entity.name.find("'s_corpse") != std::string::npos;
+	// T160: one shared predicate (combat.h) -- flag, Spawn_Struct NPC field,
+	// or any of eqemu's three corpse name forms.
+	return IsCorpseEntity(entity);
 }
 
 Entity* CombatManager::FindNearbyCorpse() const {
@@ -2055,7 +2131,10 @@ void CombatManager::TickAwaitingCorpse(std::chrono::steady_clock::time_point now
 	// not a scan.
 	const auto& entities = m_eq->GetEntities();
 	auto it = entities.find(m_pending_corpse_id);
-	if (it != entities.end() && it->second.is_corpse) {
+	// T160: IsCorpse(), not the raw flag -- the id match is what T33 requires
+	// and is unchanged; this only stops us timing out when the corpse arrives
+	// as a fresh spawn rather than via the death path we watched.
+	if (it != entities.end() && IsCorpse(it->second)) {
 		LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
 			it->second.name, m_pending_corpse_id);
 		m_eq->MoveToEntityWithinRange(it->second.name, 10.0f);

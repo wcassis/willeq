@@ -1022,4 +1022,146 @@ TEST(CombatManagerConsiderOpcode, TargetNotInEntityList_FallsBackToPlainConsider
     EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_Consider);
 }
 
+
+// ===================================================================
+// Corpse recognition (T160)
+// ===================================================================
+//
+// T155's live probe 2 FAILED: /consider on a player corpse cons'd it as a
+// living mob. eqemu names corpses in two shapes -- Corpse::CalcCorpseName
+// (zone/corpse.cpp:612) writes "'s corpse<id>" (apostrophe + SPACE) for a
+// player corpse and "`s_corpse<id>" (BACKTICK) for an NPC corpse, and
+// NPC::Death (zone/attack.cpp:2853) renames the latter to "'s_corpse<id>"
+// over OP_MobRename. The client only ever matched the third form, and the
+// is_corpse flag is only set by handlers that require having WITNESSED the
+// death. So a player corpse, or any corpse older than our zone-in, was live.
+
+TEST(CorpseNaming, PlayerCorpseSpaceFormIsParsed) {
+    std::string base;
+    uint32_t id = 0;
+    EXPECT_TRUE(ParseCorpseName("Testmelee's corpse456", &base, &id));
+    EXPECT_EQ(base, "Testmelee");
+    EXPECT_EQ(id, 456u);
+}
+
+TEST(CorpseNaming, NpcCorpseBothFormsAreParsed) {
+    std::string base;
+    uint32_t id = 0;
+    // Post-rename form -- the only one recognised before T160.
+    EXPECT_TRUE(ParseCorpseName("Probemob's_corpse123", &base, &id));
+    EXPECT_EQ(base, "Probemob");
+    EXPECT_EQ(id, 123u);
+    // Server-side backtick form: what a corpse that predates our zone-in
+    // arrives with, because the rename is only broadcast at death.
+    EXPECT_TRUE(ParseCorpseName("Probemob`s_corpse123", &base, &id));
+    EXPECT_EQ(base, "Probemob");
+    EXPECT_EQ(id, 123u);
+}
+
+TEST(CorpseNaming, LivingNamesWithCorpseInThemAreNotCorpses) {
+    // The false-positive guard. None of these has a separator followed by a
+    // run of digits.
+    EXPECT_FALSE(ParseCorpseName("a_corpse_beetle"));
+    EXPECT_FALSE(ParseCorpseName("a_corpse_beetle001"));
+    EXPECT_FALSE(ParseCorpseName("Corpsemaker"));
+    EXPECT_FALSE(ParseCorpseName("corpse"));
+    EXPECT_FALSE(ParseCorpseName(""));
+    // Separator present but no id: not a name eqemu can produce.
+    EXPECT_FALSE(ParseCorpseName("Bob's corpse"));
+    EXPECT_FALSE(ParseCorpseName("Bob's_corpse"));
+    EXPECT_FALSE(ParseCorpseName("Bob's corpse12x"));
+    // Absurdly long digit run must be rejected, not thrown out of stoul.
+    EXPECT_FALSE(ParseCorpseName("Bob's corpse123456789012345678901234567890"));
+}
+
+TEST(CombatManagerCorpseRecognition, PlayerCorpseSpawnedAtZoneInIsACorpse) {
+    // The zone-in path, not the death path: a bulk HC_OP_ZoneSpawns batch,
+    // no HC_OP_Death and no HC_OP_MobRename anywhere. This is the case
+    // T155 probed and the one that FAILED.
+    EverQuest eq = MakeEq();
+    auto payload = BuildPayload(2 + 2 * 385, [&](EQ::Net::DynamicPacket& p) {
+        // npc_type 2 is what eqemu's Corpse::FillSpawnStruct sends for every
+        // corpse (zone/corpse.cpp:1792), player or NPC.
+        WriteSpawnStruct(p, 2, 30, "Testmelee's corpse30", 20, 54, 1, 0, 2, 100,
+                         EncodePos(10, 10, 0, 0));
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ZoneSpawns, payload));
+
+    const auto& entities = eq.GetEntities();
+    ASSERT_EQ(entities.count(30), 1u);
+    EXPECT_FALSE(entities.at(30).is_corpse)
+        << "spawn parsing still does not write the flag -- recognition is the "
+           "predicate's job, so no consumer of the raw field moved";
+
+    auto* cm = eq.GetCombatManager();
+    EXPECT_TRUE(cm->IsCorpse(entities.at(30)));
+    ASSERT_TRUE(cm->SetTarget(30));
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_ConsiderCorpse)
+        << "T153's corpse-consider route must now fire for a player corpse";
+}
+
+TEST(CombatManagerCorpseRecognition, NpcCorpseNameAloneIsACorpse) {
+    // Regression: the pre-T160 form, and with npc_type=1 so the NAME is the
+    // only thing carrying the verdict.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(31, "Probemob's_corpse31", 0, 10, 0, 5, /*npc_type=*/1)));
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(32, "Probemob`s_corpse32", 0, 12, 0, 5, /*npc_type=*/1)));
+    auto* cm = eq.GetCombatManager();
+
+    EXPECT_TRUE(cm->IsCorpse(eq.GetEntities().at(31)));
+    EXPECT_TRUE(cm->IsCorpse(eq.GetEntities().at(32)));
+    ASSERT_TRUE(cm->SetTarget(31));
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_ConsiderCorpse);
+}
+
+TEST(CombatManagerCorpseRecognition, LivingCorpseBeetleIsNotACorpse) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(33, "a_corpse_beetle001", 0, 10, 0, 5, /*npc_type=*/1)));
+    auto* cm = eq.GetCombatManager();
+
+    EXPECT_FALSE(cm->IsCorpse(eq.GetEntities().at(33)));
+    ASSERT_TRUE(cm->SetTarget(33));
+    EXPECT_EQ(cm->GetConsiderOpcodeForTarget(), HC_OP_Consider)
+        << "a living mob with 'corpse' in its name must still con normally";
+}
+
+TEST(CombatManagerCorpseRecognition, PlayerCorpseIsExcludedFromTargetCycling) {
+    // The one deliberate targeting change: CycleTargets' "skip corpses" test
+    // moved from the raw is_corpse flag to IsCorpse(), so a corpse we never
+    // watched die is no longer tab-targetable.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(34, "Testmelee's corpse34", 0, 10, 0, 5, /*npc_type=*/2)));
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(35, "a_live_rat", 0, 40, 0, 5, /*npc_type=*/1)));
+    auto* cm = eq.GetCombatManager();
+
+    cm->CycleTargets(true);
+    EXPECT_EQ(cm->GetTargetId(), 35)
+        << "the player corpse (id 34) must be skipped even though nothing "
+           "ever set its is_corpse flag";
+}
+
+TEST(CombatManagerCorpseRecognition, MobRenameToPlayerCorpseFormSetsTheFlag) {
+    // The HC_OP_MobRename handler carried the second copy of the literal.
+    // MobRename_Struct: old_name[64], old_name_again[64], new_name[64] --
+    // the handler reads the FIRST 64-byte field (eq.cpp:1389).
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(36, "Testmelee", 0, 10, 0, 5, /*npc_type=*/0)));
+
+    auto renamePayload = BuildPayload(2 + 64 * 3 + 8, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2, "Testmelee's corpse36");
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_MobRename, renamePayload));
+
+    const auto& e = eq.GetEntities().at(36);
+    EXPECT_TRUE(e.is_corpse) << "the space form must be recognised by the "
+                                "rename handler too, not just the underscore one";
+    EXPECT_EQ(e.name, "Testmelee's corpse36");
+}
+
 }  // namespace
