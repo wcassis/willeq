@@ -44,6 +44,38 @@ enum class ChatChannel {
 };
 
 /**
+ * AppearanceChange - T153: the seven fields of a Titanium OP_FaceChange, each
+ * optional.
+ *
+ * `/appearance` sets fields by name, but the wire struct is all-or-nothing:
+ * eqemu's Handle_OP_FaceChange (zone/client_packet.cpp:6387) copies all seven
+ * into the PlayerProfile and Save()s. So the unset fields have to be filled in
+ * from the character's current appearance, and only the handler can see that
+ * state -- the merge deliberately happens there, not here, and this type
+ * carries "what the user asked to change" rather than "what goes on the wire".
+ *
+ * Note for the merge site: this client parses eyecolor1/eyecolor2 nowhere it
+ * keeps them (EverQuest's PlayerProfile read drops them into unused locals at
+ * eq.cpp:2097-2098, and Entity has no eyecolor fields at all), so they cannot
+ * be preserved and default to 0. The handler prints the full seven-field body
+ * it is about to send so nothing is changed silently.
+ */
+struct AppearanceChange {
+    std::optional<uint8_t> haircolor;
+    std::optional<uint8_t> beardcolor;
+    std::optional<uint8_t> eyecolor1;
+    std::optional<uint8_t> eyecolor2;
+    std::optional<uint8_t> hairstyle;
+    std::optional<uint8_t> beard;
+    std::optional<uint8_t> face;
+
+    bool empty() const {
+        return !haircolor && !beardcolor && !eyecolor1 && !eyecolor2 &&
+               !hairstyle && !beard && !face;
+    }
+};
+
+/**
  * ActionResult - Result of an action attempt.
  */
 struct ActionResult {
@@ -255,6 +287,11 @@ public:
     virtual void recipeDetails(uint32_t recipeId) = 0;
     virtual void recipeAutoCombine(uint32_t recipeId) = 0;
     virtual void recipesFavorite(const std::vector<uint32_t>& recipeIds) = 0;
+
+    // T153: request an appearance (face/hair/beard) change. Only the fields
+    // the user named are set; the handler merges the rest from the
+    // character's current appearance before calling SendFaceChange().
+    virtual void setAppearance(const AppearanceChange& change) = 0;
 
     // ========== Extended Movement ==========
 
@@ -1413,6 +1450,13 @@ public:
 
     /** Set a character's last name. */
     ActionResult gmLastName(const std::string& charName, const std::string& lastName);
+
+    /**
+     * T153: change the character's face/hair/beard appearance (`/appearance`).
+     * Only the named fields are changed; the handler fills the rest in from
+     * the character's current appearance.
+     */
+    ActionResult setAppearance(const AppearanceChange& change);
 
 private:
     state::GameState& m_state;

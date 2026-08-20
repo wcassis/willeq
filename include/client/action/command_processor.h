@@ -460,6 +460,11 @@ private:
     ActionResult cmdGMEmoteZone(const std::string& args);
     ActionResult cmdGMLastName(const std::string& args);
 
+    // T153: /appearance <field> <0-255> [...] -- parses and range-checks the
+    // named face/hair/beard fields. The merge with the character's current
+    // appearance happens in EqActionHandler, not here.
+    ActionResult cmdAppearance(const std::string& args);
+
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall
     // back to the current combat target (m_state.combat(), kept live by

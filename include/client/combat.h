@@ -154,6 +154,15 @@ public:
 	uint16_t GetTargetId() const { return m_current_target_id; }
 	bool HasTarget() const { return m_current_target_id != 0; }
 	void ConsiderTarget();
+
+	// T153: which consider opcode the current target takes --
+	// HC_OP_ConsiderCorpse for a corpse, HC_OP_Consider otherwise, 0 with no
+	// target. Public so the selection is directly assertable: CombatManager's
+	// sends go through the generic EverQuest::QueuePacket overload, which
+	// no-ops with no observable side effect when there is no zone connection
+	// (see tests/test_combat_manager.cpp's T23 note), so the packet itself
+	// cannot be inspected from a test.
+	uint16_t GetConsiderOpcodeForTarget() const;
 	void CycleTargets(bool forward = true);
 
 	// Auto attack

@@ -161,6 +161,10 @@ public:
     void recipeAutoCombine(uint32_t recipeId) override;
     void recipesFavorite(const std::vector<uint32_t>& recipeIds) override;
 
+    // T153: /appearance -- merges the named fields over the character's
+    // current appearance and calls EverQuest::SendFaceChange().
+    void setAppearance(const action::AppearanceChange& change) override;
+
     // ========== Extended Movement ==========
 
     void setMovementMode(int mode) override;

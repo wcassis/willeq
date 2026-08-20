@@ -340,6 +340,15 @@ void CommandProcessor::registerBuiltinCommands() {
         "consider", {"con"}, "/consider", "Consider current target", "Combat", false
     }, [this](const std::string& args) { return cmdConsider(args); });
 
+    // T153: the appearance change is /appearance, NOT /face -- /face above is
+    // the *movement* face (turn to face an entity or a location) and has been
+    // since T98. Registered here in the action registry only, never the legacy
+    // game registry (T97).
+    registerCommand({
+        "appearance", {}, "/appearance <field> <0-255> [<field> <0-255> ...]",
+        "Change face/hair/beard appearance", "Character", false
+    }, [this](const std::string& args) { return cmdAppearance(args); });
+
     registerCommand({
         "hail", {}, "/hail", "Hail target or say Hail", "Combat", false
     }, [this](const std::string& args) { return cmdHail(args); });
@@ -2601,6 +2610,64 @@ ActionResult CommandProcessor::cmdGMLastName(const std::string& args) {
         return ActionResult::Failure("Usage: /gmlastname <name> <lastname>");
     }
     return m_dispatcher.gmLastName(name, lastName);
+}
+
+// T153: /appearance <field> <value> [<field> <value> ...]
+//
+// Named fields, not seven positional numbers: a bare "/appearance 1 0 0 0 2 0 3"
+// is unreadable and unverifiable by the person typing it. Values are parsed
+// strictly and range-checked against the wire type (each field is a uint8 in
+// Titanium::structs::FaceChange_Struct) rather than cast -- unvalidated
+// int-to-uint8 casts are a tracked defect class (T95).
+//
+// Fields the user does not name keep their current value; that merge needs the
+// character's live appearance and therefore happens in EqActionHandler.
+ActionResult CommandProcessor::cmdAppearance(const std::string& args) {
+    static const char* kUsage =
+        "Usage: /appearance <field> <0-255> [<field> <0-255> ...]  "
+        "(fields: haircolor, beardcolor, eyecolor1, eyecolor2, hairstyle, "
+        "beard, face)";
+
+    std::vector<std::string> parts = splitWhitespace(args);
+    if (parts.empty() || (parts.size() % 2) != 0) {
+        return ActionResult::Failure(kUsage);
+    }
+
+    AppearanceChange change;
+    for (size_t i = 0; i < parts.size(); i += 2) {
+        const std::string field = toLower(parts[i]);
+        uint32_t value = 0;
+        if (!parseU32Strict(parts[i + 1], value)) {
+            return ActionResult::Failure(
+                "Appearance value must be a number 0-255, got: " + parts[i + 1]);
+        }
+        if (value > 255) {
+            return ActionResult::Failure(
+                "Appearance value out of range (0-255): " + parts[i + 1]);
+        }
+        const uint8_t v = static_cast<uint8_t>(value);
+
+        if (field == "haircolor") {
+            change.haircolor = v;
+        } else if (field == "beardcolor") {
+            change.beardcolor = v;
+        } else if (field == "eyecolor1") {
+            change.eyecolor1 = v;
+        } else if (field == "eyecolor2") {
+            change.eyecolor2 = v;
+        } else if (field == "hairstyle") {
+            change.hairstyle = v;
+        } else if (field == "beard") {
+            change.beard = v;
+        } else if (field == "face") {
+            change.face = v;
+        } else {
+            return ActionResult::Failure("Unknown appearance field: " + parts[i] +
+                                         ". " + kUsage);
+        }
+    }
+
+    return m_dispatcher.setAppearance(change);
 }
 
 } // namespace action

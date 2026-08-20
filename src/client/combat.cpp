@@ -353,8 +353,36 @@ void CombatManager::PublishAutoAttackChanged(bool enabled) {
 		eqt::state::GameEventType::AutoAttackChanged, std::move(data)));
 }
 
+uint16_t CombatManager::GetConsiderOpcodeForTarget() const {
+	if (!HasTarget()) {
+		return 0;
+	}
+
+	// T153: corpses take a different opcode. eqemu resolves
+	// OP_ConsiderCorpse's target through entity_list.GetCorpseByID()
+	// (zone/client_packet.cpp:5253) and OP_Consider's through the mob list,
+	// so considering a corpse on OP_Consider never resolves a target and the
+	// handler returns without a reply.
+	const auto& entities = m_eq->GetEntities();
+	auto it = entities.find(m_current_target_id);
+	if (it != entities.end() && IsCorpse(it->second)) {
+		return HC_OP_ConsiderCorpse;
+	}
+	return HC_OP_Consider;
+}
+
 void CombatManager::ConsiderTarget() {
 	if (!HasTarget()) {
+		return;
+	}
+
+	// T153: /consider (and its "con" alias) is the only entry point; there is
+	// deliberately no separate /considercorpse command, which would be wired
+	// but practically unreachable.
+	if (GetConsiderOpcodeForTarget() == HC_OP_ConsiderCorpse) {
+		m_eq->SendConsiderCorpse(m_current_target_id);
+		LOG_DEBUG(MOD_COMBAT, "Sent corpse consider request for target ID: {}",
+			m_current_target_id);
 		return;
 	}
 

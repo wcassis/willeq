@@ -1122,6 +1122,61 @@ void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
     m_eq.SendRecipesFavorite(objectType, recipeIds);
 }
 
+// T153: /appearance. SendFaceChange() had zero production callers, so nothing
+// had ever exercised it; this is the wiring, and the merge below is the reason
+// it needs a handler rather than going straight from CommandProcessor.
+//
+// The wire struct is all-or-nothing -- eqemu's Handle_OP_FaceChange
+// (zone/client_packet.cpp:6387) copies all seven fields into the PlayerProfile
+// and Save()s -- so any field the user did not name must be re-sent at its
+// current value or it is silently reset.
+//
+// What this client actually knows about its own appearance:
+//   * face / haircolor / hairstyle / beardcolor / beard come from the player's
+//     own Entity, filled by the spawn parse (eq_entities.cpp:333-...).
+//   * eyecolor1 / eyecolor2 are NOT tracked anywhere. The PlayerProfile read
+//     parses them into locals that are never stored (eq.cpp:2097-2098) and
+//     Entity has no eyecolor fields. Fixing that is outside this unit's
+//     territory, so they default to 0 unless the user names them.
+// Because of that last point the full seven-field body is echoed back to the
+// player before it is sent -- nothing here changes an appearance field
+// silently.
+void EqActionHandler::setAppearance(const action::AppearanceChange& change) {
+    uint8_t haircolor = 0;
+    uint8_t beardcolor = 0;
+    uint8_t eyecolor1 = 0;
+    uint8_t eyecolor2 = 0;
+    uint8_t hairstyle = 0;
+    uint8_t beard = 0;
+    uint8_t face = 0;
+
+    const auto& entities = m_eq.GetEntities();
+    auto self = entities.find(m_eq.GetEntityID());
+    if (self != entities.end()) {
+        haircolor = self->second.haircolor;
+        beardcolor = self->second.beardcolor;
+        hairstyle = self->second.hairstyle;
+        beard = self->second.beard;
+        face = self->second.face;
+    }
+
+    if (change.haircolor) haircolor = *change.haircolor;
+    if (change.beardcolor) beardcolor = *change.beardcolor;
+    if (change.eyecolor1) eyecolor1 = *change.eyecolor1;
+    if (change.eyecolor2) eyecolor2 = *change.eyecolor2;
+    if (change.hairstyle) hairstyle = *change.hairstyle;
+    if (change.beard) beard = *change.beard;
+    if (change.face) face = *change.face;
+
+    m_eq.AddChatSystemMessage(fmt::format(
+        "Requesting appearance: haircolor={} beardcolor={} eyecolor1={} "
+        "eyecolor2={} hairstyle={} beard={} face={}",
+        haircolor, beardcolor, eyecolor1, eyecolor2, hairstyle, beard, face));
+
+    m_eq.SendFaceChange(haircolor, beardcolor, eyecolor1, eyecolor2,
+                        hairstyle, beard, face);
+}
+
 // ========== Extended Movement ==========
 
 void EqActionHandler::setMovementMode(int mode) {
