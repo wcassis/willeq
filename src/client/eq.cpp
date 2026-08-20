@@ -1402,43 +1402,39 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 				new_name[64] = '\0';
 			}
 			
-			// The mob ID isn't directly in the packet, but we can find the entity by matching the base name
-			// Extract base name without "'s_corpse" suffix
+			// The mob ID isn't directly in the packet, but the corpse name ends
+			// in the corpse's own entity id, and failing that we can match the
+			// base name. T160: ParseCorpseName (combat.h) is the single shared
+			// test -- this used to carry its own copy of the "'s_corpse"
+			// literal, which meant the space form eqemu uses for PLAYER corpses
+			// was never recognised here either.
 			std::string name_str(new_name);
-			bool is_corpse = name_str.find("'s_corpse") != std::string::npos;
-			
-			if (is_corpse) {
-				// Extract the base name and corpse ID from name like "a_gopher_snake's_corpse126"
-				size_t corpse_pos = name_str.find("'s_corpse");
-				if (corpse_pos != std::string::npos) {
-					std::string base_name = name_str.substr(0, corpse_pos);
-					std::string corpse_suffix = name_str.substr(corpse_pos + 9);  // Skip "'s_corpse"
-					
-					// The number at the end is the entity ID
-					uint16_t entity_id = 0;
-					try {
-						entity_id = std::stoi(corpse_suffix);
-					} catch (...) {
-						// If we can't parse the ID, try to find by matching base name
-						for (auto& [id, entity] : m_entities) {
-							if (entity.name == base_name + "001" || entity.name == base_name) {
-								entity_id = id;
-								break;
-							}
+			std::string base_name;
+			uint32_t parsed_corpse_id = 0;
+			if (ParseCorpseName(name_str, &base_name, &parsed_corpse_id)) {
+				uint16_t entity_id = static_cast<uint16_t>(parsed_corpse_id);
+				if (m_entities.find(entity_id) == m_entities.end()) {
+					// Id in the name doesn't resolve (truncated name, or a
+					// server that numbers corpses differently) -- fall back to
+					// matching the base name.
+					for (auto& [id, entity] : m_entities) {
+						if (entity.name == base_name + "001" || entity.name == base_name) {
+							entity_id = id;
+							break;
 						}
 					}
-					
-					if (entity_id > 0) {
-						auto it = m_entities.find(entity_id);
-						if (it != m_entities.end()) {
-							std::string old_name = it->second.name;
-							it->second.name = new_name;
-							it->second.is_corpse = true;
-							if (s_debug_level >= 1) {
-								LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
-									entity_id, old_name, new_name);
-							}
-						}
+				}
+
+				// Entity id 0 is never a real spawn here (it is the
+				// unset/self sentinel); unchanged from the pre-T160 guard.
+				auto it = entity_id > 0 ? m_entities.find(entity_id) : m_entities.end();
+				if (it != m_entities.end()) {
+					std::string old_name = it->second.name;
+					it->second.name = new_name;
+					it->second.is_corpse = true;
+					if (s_debug_level >= 1) {
+						LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
+							entity_id, old_name, new_name);
 					}
 				}
 			}
