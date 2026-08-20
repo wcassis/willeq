@@ -1707,3 +1707,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_tradeskill PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill DISCOVERY_TIMEOUT 60)
+
+# T152: the two skill-opcode bodies this client had to build from scratch
+# (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
+# eqemu's Disarm_Struct / PickPocket_Struct. Header-only -- no willeq_core, no
+# network, no graphics. NOTE the authority is eqemu SOURCE, not captured wire
+# bytes; see the file's docstring and T152's Review.
+ADD_EXECUTABLE(test_skill_packet_bodies test_skill_packet_bodies.cpp)
+TARGET_LINK_LIBRARIES(test_skill_packet_bodies GTest::gtest_main)
+TARGET_INCLUDE_DIRECTORIES(test_skill_packet_bodies PRIVATE ${CMAKE_SOURCE_DIR}/include)
+GTEST_DISCOVER_TESTS(test_skill_packet_bodies)

@@ -152,6 +152,14 @@ private:
     // Send skill use packet to server
     void sendSkillUsePacket(uint8_t skill_id, uint16_t target_id);
 
+    // T152: handle the five dedicated skill opcodes that eqemu rejects (or
+    // mis-reads) with an empty body. Returns true if the skill was handled
+    // here; false means the zero-length send is the correct wire form.
+    bool sendBodiedSkillPacket(uint8_t skill_id, uint16_t target_id);
+
+    // Locate a poison item for OP_ApplyPoison. Returns -1 if none is carried.
+    int16_t findPoisonInventorySlot() const;
+
     // Get the opcode for a specific skill
     uint16_t getSkillOpcode(uint8_t skill_id) const;
 
