@@ -3841,18 +3841,6 @@ void EverQuest::SendPetition(const std::string& text)
 	}
 }
 
-void EverQuest::SendPetitionDelete(uint32_t petition_id)
-{
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_PetitionDelete);
-	packet.PutUInt32(2, petition_id);
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "Petition {} deleted", petition_id);
-	}
-}
-
 void EverQuest::SetSneak(bool sneak)
 {
 	if (m_is_sneaking == sneak) {
