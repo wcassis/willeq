@@ -686,13 +686,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     case state::GameEventType::HotbarSlotAssigned:
         if (renderer_) {
-            auto& d = std::get<state::HotbarSlotAssignedData>(event.data);
-            if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
-                auto& slot = renderer_->hotbarState_.slots[d.index];
-                slot.type = d.type;
-                slot.name = d.name;
-                slot.iconId = d.iconId;
-            }
+            // T156: one shared transform (static_panels.cpp), so the tests
+            // that drive HotbarModel -> StaticUIInput exercise this exact hop.
+            EQT::Graphics::applyHotbarSlotAssigned(
+                renderer_->hotbarState_,
+                std::get<state::HotbarSlotAssignedData>(event.data));
         }
         break;
     case state::GameEventType::HotbarCooldownStarted:

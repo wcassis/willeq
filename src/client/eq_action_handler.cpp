@@ -3,6 +3,8 @@
 #include "client/combat.h"
 #include "client/pet_constants.h"
 #include "client/spell/spell_manager.h"
+#include "client/skill/skill_manager.h"      // T156: useSkill() reaches SkillManager
+#include "client/skill/skill_constants.h"
 #include "client/trade_manager.h"
 #include "client/world_object.h"  // T149: open-container object_type lookup
 #include "client/state/game_state.h"
@@ -559,8 +561,37 @@ void EqActionHandler::useAbility(uint32_t abilityId) {
 }
 
 void EqActionHandler::useSkill(uint32_t skillId) {
-    // Skills would need dedicated implementation
-    LOG_DEBUG(MOD_COMBAT, "Use skill {} not yet implemented", skillId);
+    // T156: was a "not yet implemented" stub, and the reason T155 found all
+    // five of T152's skill senders unreachable. SkillManager::activateSkill()
+    // does the real work (cap/cooldown/activatable checks, packet, animation);
+    // this method's job is to reach it with a validated id and a real target.
+    auto* skills = m_eq.GetSkillManager();
+    if (!skills) {
+        m_eq.AddChatSystemMessage("Skill system not available");
+        return;
+    }
+    if (skillId >= EQ::MAX_SKILL_ID) {
+        // T95: never cast an unvalidated int into the skill table.
+        m_eq.AddChatSystemMessage(fmt::format("Unknown skill id {}", skillId));
+        return;
+    }
+    const uint8_t id = static_cast<uint8_t>(skillId);
+
+    // The plan's explicit ask: pass the CURRENT target. activateSkill() would
+    // fall back to CombatManager itself for requires_target skills, but only
+    // for those — resolving here keeps the caller's intent visible and
+    // testable, and matches taunt()/shieldTarget()'s established shape.
+    auto* combat = getCombatManager();
+    const uint16_t targetId = (combat && combat->HasTarget()) ? combat->GetTargetId() : 0;
+
+    if (!skills->activateSkill(id, targetId)) {
+        std::string error = skills->getSkillUseError(id);
+        m_eq.AddChatSystemMessage(error.empty()
+            ? fmt::format("You cannot use {} right now.", EQ::getSkillName(id))
+            : error);
+        return;
+    }
+    LOG_DEBUG(MOD_COMBAT, "useSkill {} ({}) on target {}", id, EQ::getSkillName(id), targetId);
 }
 
 // ========== Interaction ==========

@@ -4,6 +4,10 @@
 #include <string>
 #include <variant>
 
+// T156: the hotbar numbering, shared by value so HotbarActivateIntent cannot
+// carry a raw uint8_t in some other scheme. Dependency-free header.
+#include "client/hotbar/hotbar_slot_type.h"
+
 namespace eqt {
 namespace events {
 
@@ -237,9 +241,12 @@ struct GroupAcceptIntent {};
 // --- Hotbar ---
 
 struct HotbarActivateIntent {
-    int index;           // Hotbar slot index (for cooldown feedback)
-    uint8_t buttonType;  // HotbarButtonType value
-    uint32_t id;         // spell_id, item_id, or skill_id
+    int index = -1;      // Hotbar slot index (for cooldown feedback)
+    // T156: was `uint8_t buttonType`, always value-initialised to 0 by the
+    // only producer, so the Skill arm was unreachable. Now the model's own
+    // enum, filled from the cached slot state.
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;     // spell_id, item_id, or skill_id
     std::string emoteText;  // For emote buttons
 };
 

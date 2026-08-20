@@ -55,8 +55,16 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
         for (Json::ArrayIndex i = 0; i < buttons.size() && i < SLOT_COUNT; ++i) {
             const auto& btn = buttons[i];
             int type = btn.get("type", 0).asInt();
-            if (type != 0) {
-                auto slotType = static_cast<HotbarSlotType>(type);
+            HotbarSlotType slotType = HotbarSlotType::Empty;
+            // T156/T95: validated conversion. A config written by an older
+            // build (or by hand) can hold anything; an out-of-range value
+            // clears the slot rather than becoming a bogus enumerator.
+            if (type < 0 || !hotbarSlotTypeFromRaw(static_cast<uint32_t>(type), slotType)) {
+                LOG_WARN(MOD_CONFIG, "HotbarModel: slot {} has unknown type {}; clearing", i, type);
+                slots_[i] = {};
+                continue;
+            }
+            if (slotType != HotbarSlotType::Empty) {
                 uint32_t id = btn.get("id", 0).asUInt();
                 std::string emoteText = btn.get("emoteText", "").asString();
                 uint32_t iconId = btn.get("iconId", 0).asUInt();
@@ -110,10 +118,11 @@ void HotbarModel::publishSlot(int index) {
     const auto& slot = slots_[index];
     state::HotbarSlotAssignedData data;
     data.index = index;
-    data.type = static_cast<uint8_t>(slot.type);
+    data.type = slot.type;
     data.id = slot.id;
     data.name = slot.name;
     data.iconId = slot.iconId;
+    data.emoteText = slot.emoteText;
     bridge_->pushEvent(state::GameEvent(
         state::GameEventType::HotbarSlotAssigned, std::move(data)));
 }

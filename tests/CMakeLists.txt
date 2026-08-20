@@ -1290,6 +1290,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
+# T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
+# gate as test_static_ui_panels above (it drives StaticUIInput), and no device
+# is created — see refactor/T156_skill_reachability.md. Deliberately a NEW
+# file: test_command_processor.cpp is already past the 3000-line FAIL ceiling.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_skill_reachability
+        test_skill_reachability.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_skill_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_skill_reachability GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_skill_reachability)
+ENDIF()
+
 # T60: the shared bone-lookup fallback chain (bone_attachment.h) — pure
 # string logic over a synthetic skeleton, no device/Irrlicht driver needed
 # (just the irr::core math types, header-only via willeq_core's include

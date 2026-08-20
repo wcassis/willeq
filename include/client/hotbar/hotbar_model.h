@@ -12,21 +12,14 @@
 #include <array>
 #include <functional>
 #include <json/json.h>
+#include "client/hotbar/hotbar_slot_type.h"
 
 namespace eqt { namespace bridge { class GameStateBridge; } }
 
 namespace eqt {
 
-// Hotbar button types (matches old HotbarButtonType)
-enum class HotbarSlotType : uint8_t {
-    Empty = 0,
-    Spell = 1,
-    Skill = 2,
-    Item = 3,
-    Emote = 4,
-    Macro = 5,
-    Combat = 6
-};
+// T156: HotbarSlotType moved to client/hotbar/hotbar_slot_type.h so the
+// renderer intents and the event bus can share the type, not a raw uint8_t.
 
 struct HotbarSlot {
     HotbarSlotType type = HotbarSlotType::Empty;

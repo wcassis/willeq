@@ -19,6 +19,7 @@
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
+#include "client/hotbar/hotbar_slot_type.h"  // T156
 
 #include <irrlicht.h>
 #include <vector>
@@ -117,6 +118,13 @@ TEST_F(StaticUIInputTest, HotbarClickPushesActivateIntentWithSlotIndex) {
     TestBridge bridge;
     input.init(&bridge);
 
+    // T156: an EMPTY slot no longer pushes anything (it used to push
+    // HotbarActivateIntent{0} — "cast spell 0" — for every click on every
+    // slot, assigned or not). Give the slot real content first; the full
+    // producer-to-consumer chain lives in tests/test_skill_reachability.cpp.
+    hotbar.slots[0].type = eqt::HotbarSlotType::Spell;
+    hotbar.slots[0].id = 278;
+
     bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills);
     EXPECT_TRUE(consumed);
@@ -124,7 +132,23 @@ TEST_F(StaticUIInputTest, HotbarClickPushesActivateIntentWithSlotIndex) {
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<eqt::events::HotbarActivateIntent>(intents[0]));
-    EXPECT_EQ(std::get<eqt::events::HotbarActivateIntent>(intents[0]).index, 0);
+    const auto& hb = std::get<eqt::events::HotbarActivateIntent>(intents[0]);
+    EXPECT_EQ(hb.index, 0);
+    EXPECT_EQ(hb.type, eqt::HotbarSlotType::Spell);
+    EXPECT_EQ(hb.id, 278u);
+}
+
+TEST_F(StaticUIInputTest, HotbarClickOnEmptySlotPushesNothing) {
+    // T156: hoveredSlot/consumed still report the hit; only the intent is
+    // suppressed. Before T156 this pushed a bogus "Spell 0" activation.
+    TestBridge bridge;
+    input.init(&bridge);
+
+    bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills);
+    EXPECT_TRUE(consumed);
+    EXPECT_EQ(hotbar.hoveredSlot, 0);
+    EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {

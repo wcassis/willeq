@@ -299,6 +299,8 @@ private:
     ActionResult cmdAA(const std::string& args);
     ActionResult cmdCombat(const std::string& args);
     ActionResult cmdTaunt(const std::string& args);
+    // T156: /useskill — the ONLY scriptable route to SkillManager::activateSkill.
+    ActionResult cmdUseSkill(const std::string& args);
     ActionResult cmdAutofire(const std::string& args);
     ActionResult cmdAssist(const std::string& args);
     ActionResult cmdShield(const std::string& args);
