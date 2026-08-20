@@ -5,6 +5,9 @@
 #include "client/skill/skill_manager.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/skill/skill_packet_bodies.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "common/logging.h"
@@ -428,15 +431,163 @@ void SkillManager::sendSkillUsePacket(uint8_t skill_id, uint16_t target_id) {
         if (m_eq->GetCombatManager()) {
             m_eq->GetCombatManager()->UseAbility(skill_id, target_id);
         }
-    } else {
-        // Other skills send empty/minimal packets - server uses its own target state
-        EQ::Net::DynamicPacket packet;
-        packet.Resize(0);
-        m_eq->QueuePacket(opcode, &packet);
-        LOG_DEBUG(MOD_MAIN, "Sent skill packet: opcode=0x{:04x} skill={}", opcode, skill_id);
+        LOG_DEBUG(MOD_MAIN, "Sent skill use packet: skill={} target={}", skill_id, target_id);
+        return;
     }
 
+    // T152: five of the seventeen dedicated skill opcodes REQUIRE a body. The
+    // audit (refactor/T152_skill_opcode_audit.md) checked all seventeen against
+    // /mnt/projects/claude/EQEmu/zone/client_packet.cpp; the other twelve are
+    // genuine empty-packet activations where a zero-length body is correct.
+    // Three of the five already had a correct sender in this client, so they
+    // route through it rather than growing a second copy.
+    if (sendBodiedSkillPacket(skill_id, target_id)) {
+        LOG_DEBUG(MOD_MAIN, "Sent skill use packet: skill={} target={}", skill_id, target_id);
+        return;
+    }
+
+    // Remaining twelve: the handler reads nothing off the buffer, so an empty
+    // body is the correct wire form. Verified per opcode in T152's Review.
+    EQ::Net::DynamicPacket packet;
+    packet.Resize(0);
+    m_eq->QueuePacket(opcode, &packet);
+    LOG_DEBUG(MOD_MAIN, "Sent skill packet: opcode=0x{:04x} skill={}", opcode, skill_id);
+
     LOG_DEBUG(MOD_MAIN, "Sent skill use packet: skill={} target={}", skill_id, target_id);
+}
+
+// ----------------------------------------------------------------------------
+// T152: the five skill opcodes eqemu will not accept with an empty body.
+//
+// Returns true if this skill was handled here (sent, or deliberately not sent
+// because a precondition failed); false means "no body required, fall through
+// to the zero-length send".
+// ----------------------------------------------------------------------------
+bool SkillManager::sendBodiedSkillPacket(uint8_t skill_id, uint16_t target_id) {
+    switch (skill_id) {
+
+    // --- Apply Poison (6) -------------------------------------------------
+    // eqemu DECODE(OP_ApplyPoison) is DECODE_LENGTH_EXACT(8) and the handler
+    // needs the poison's inventory slot. A zero-length body was rewritten to
+    // OP_Unknown before Handle_OP_ApplyPoison ever ran (T151). EverQuest::
+    // SendApplyPoison already builds those 8 bytes correctly; it just had no
+    // caller. Route through it.
+    case 6: {
+        const int16_t slot = findPoisonInventorySlot();
+        if (slot < 0) {
+            m_eq->AddChatSystemMessage("You do not have any poison to apply.");
+            LOG_DEBUG(MOD_MAIN, "ApplyPoison: no poison item in inventory");
+            return true;
+        }
+        m_eq->SendApplyPoison(static_cast<uint32_t>(slot));
+        return true;
+    }
+
+    // --- Bind Wound (9) ---------------------------------------------------
+    // Handle_OP_Bind_Wound logs a size mismatch but does NOT return, then
+    // dereferences app->pBuffer -- which is nullptr for a zero-length packet
+    // (common/base_packet.cpp:30). EverQuest::SendBindWound is the correct,
+    // already-live sender; targeting mirrors EqActionHandler::bandage().
+    case 9: {
+        uint16_t resolved = target_id;
+        if (resolved == 0) {
+            auto* combat = m_eq->GetCombatManager();
+            resolved = (combat && combat->HasTarget()) ? combat->GetTargetId()
+                                                       : m_eq->GetMySpawnID();
+        }
+        m_eq->SendBindWound(resolved);
+        return true;
+    }
+
+    // --- Disarm (16) ------------------------------------------------------
+    // Gated on sizeof(Disarm_Struct) == 16 with a return, so an empty body was
+    // dropped in silence. No existing sender; body built from the eqemu struct.
+    // `source` must be our own entity id (mismatch files a POSSIBLE_HACK
+    // player-event) and `skill` must equal the server's Disarm skill value.
+    case 16: {
+        if (target_id == 0) {
+            LOG_DEBUG(MOD_MAIN, "Disarm: no target");
+            return true;
+        }
+        auto body = EQ::skill::MakeDisarmBody(
+            m_eq->GetMySpawnID(), target_id, m_skills[16].current_value);
+        EQ::Net::DynamicPacket packet;
+        packet.PutData(0, body.data(), body.size());
+        m_eq->QueuePacket(HC_OP_Disarm, &packet);
+        LOG_DEBUG(MOD_MAIN, "Sent Disarm: source={} target={} skill={}",
+                  m_eq->GetMySpawnID(), target_id, m_skills[16].current_value);
+        return true;
+    }
+
+    // --- Pick Pocket (48) -------------------------------------------------
+    // Same shape as Bind Wound: the size check logs and falls through, then
+    // reads pick_in->to off a null buffer. No existing sender.
+    case 48: {
+        if (target_id == 0) {
+            LOG_DEBUG(MOD_MAIN, "PickPocket: no target");
+            return true;
+        }
+        auto body = EQ::skill::MakePickPocketBody(
+            target_id, m_eq->GetMySpawnID(),
+            static_cast<uint16_t>(m_skills[48].current_value));
+        EQ::Net::DynamicPacket packet;
+        packet.PutData(0, body.data(), body.size());
+        m_eq->QueuePacket(HC_OP_PickPocket, &packet);
+        LOG_DEBUG(MOD_MAIN, "Sent PickPocket: to={} from={}", target_id,
+                  m_eq->GetMySpawnID());
+        return true;
+    }
+
+    // --- Taunt (73) -------------------------------------------------------
+    // Gated on sizeof(ClientTarget_Struct) == 4. CombatManager::Taunt() already
+    // sends exactly that and is live from /taunt; the skill path was the broken
+    // twin. Route through it -- do NOT add a second Taunt sender.
+    case 73: {
+        auto* combat = m_eq->GetCombatManager();
+        if (!combat) {
+            LOG_DEBUG(MOD_MAIN, "Taunt: no combat manager");
+            return true;
+        }
+        combat->Taunt(target_id);
+        return true;
+    }
+
+    default:
+        return false;
+    }
+}
+
+// Find a poison item to hand OP_ApplyPoison. eqemu's handler resolves the slot
+// through GetInv().GetItem() after TitaniumToServerSlot() translation
+// (titanium.cpp:2475), so the Titanium-native slot ids this client already uses
+// are exactly what goes on the wire.
+//
+// ItemInstance::skillType carries eqemu's ItemType (see skill_packet_bodies.h);
+// ItemTypePoison is 42.
+int16_t SkillManager::findPoisonInventorySlot() const {
+    auto* inv = m_eq ? m_eq->GetInventoryManager() : nullptr;
+    if (!inv) {
+        return -1;
+    }
+
+    using namespace eqt::inventory;
+
+    auto isPoison = [](const ItemInstance* item) {
+        return item && item->itemId != 0 &&
+               item->skillType == EQ::skill::kItemTypePoison;
+    };
+
+    for (int16_t slot = GENERAL_BEGIN; slot <= GENERAL_END; ++slot) {
+        if (isPoison(inv->getItem(slot))) {
+            return slot;
+        }
+    }
+    for (int16_t slot = GENERAL_BAGS_BEGIN; slot <= GENERAL_BAGS_END; ++slot) {
+        if (isPoison(inv->getItem(slot))) {
+            return slot;
+        }
+    }
+    return -1;
 }
 
 uint16_t SkillManager::getSkillOpcode(uint8_t skill_id) const {
