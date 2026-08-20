@@ -39,7 +39,16 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
             hotbar.hoveredSlot = slot;
             consumed = true;
             if (leftClicked && bridge_) {
-                bridge_->pushIntent(eqt::events::HotbarActivateIntent{slot});
+                // T156: was `HotbarActivateIntent{slot}` — a brace-init with
+                // the index alone, which value-initialised buttonType/id/
+                // emoteText and made every click look like "Spell 0". Fill all
+                // four fields from the cached slot state, carrying the model's
+                // own HotbarSlotType so the consumer switches on enumerators.
+                const auto& cached = hotbar.slots[slot];
+                if (cached.type != eqt::HotbarSlotType::Empty) {
+                    bridge_->pushIntent(eqt::events::HotbarActivateIntent{
+                        slot, cached.type, cached.id, cached.emoteText});
+                }
             }
         }
     }
@@ -137,6 +146,18 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 int ry = startY + i * (LINE_H + PAD);
                 if (mouseY >= ry && mouseY < ry + LINE_H) {
                     skills.hoveredRow = i;
+                    // T156: SkillActivateIntent had a consumer in eq_bridge.cpp
+                    // and no producer anywhere (T147's trap class). This is it:
+                    // clicking a row in the skills popup activates that skill.
+                    // Row index is relative to the scroll window, exactly as
+                    // renderSkillsPopup() draws it.
+                    if (leftClicked && bridge_) {
+                        int idx = skills.scrollOffset + i;
+                        if (idx >= 0 && idx < static_cast<int>(skills.skills.size())) {
+                            bridge_->pushIntent(eqt::events::SkillActivateIntent{
+                                skills.skills[idx].skillId});
+                        }
+                    }
                     break;
                 }
             }

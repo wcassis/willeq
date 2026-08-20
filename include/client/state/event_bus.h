@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 #include "client/state/entity_manager.h"  // T81: EntityStateSnapshotData carries state::Entity by value
+#include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
 
 class HCMap;
 class PathfinderNavmesh;
@@ -818,11 +819,15 @@ struct RendererCommandData {
 
 // U00: Hotbar slot content assigned (from client-side config or user action)
 struct HotbarSlotAssignedData {
-    int index;              // Slot index (0-9)
-    uint8_t type;           // HotbarButtonType value (0=Empty, 1=Spell, 2=Skill, etc.)
-    uint32_t id;            // Spell/skill/item ID
-    std::string name;       // Display name
-    uint32_t iconId;        // Icon ID for display
+    int index = 0;                      // Slot index (0-9)
+    // T156: THE hotbar numbering (Empty=0, Spell=1, Skill=2, Item=3,
+    // Emote=4, Macro=5, Combat=6) — see client/hotbar/hotbar_slot_type.h.
+    // Typed, so a producer cannot quietly feed it a different numbering.
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;                    // Spell/skill/item ID
+    std::string name;                   // Display name
+    uint32_t iconId = 0;                // Icon ID for display
+    std::string emoteText;              // T156: for Emote slots (was dropped here)
 };
 
 struct SkillActivationFeedbackData {

@@ -241,37 +241,9 @@ void EverQuest::AddChatMissMessage(const std::string &text)
 	LOG_DEBUG(MOD_COMBAT, "{}", text);
 }
 
-// ============================================================================
-// Hotbar Button Management (Stub for future implementation)
-// ============================================================================
-
-void EverQuest::AddPendingHotbarButton(uint8_t skill_id)
-{
-	const char* skill_name = EQ::getSkillName(skill_id);
-	m_pending_hotbar_buttons.emplace_back(
-		eqt::ui::HotbarButtonType::Skill,
-		static_cast<uint32_t>(skill_id),
-		skill_name ? skill_name : "Unknown Skill"
-	);
-	LOG_INFO(MOD_MAIN, "Queued skill {} ({}) for hotbar (total pending: {})",
-		skill_id, skill_name ? skill_name : "Unknown", m_pending_hotbar_buttons.size());
-}
-
-const std::vector<eqt::ui::PendingHotbarButton>& EverQuest::GetPendingHotbarButtons() const
-{
-	return m_pending_hotbar_buttons;
-}
-
-void EverQuest::ClearPendingHotbarButtons()
-{
-	m_pending_hotbar_buttons.clear();
-	LOG_DEBUG(MOD_MAIN, "Cleared pending hotbar buttons");
-}
-
-size_t EverQuest::GetPendingHotbarButtonCount() const
-{
-	return m_pending_hotbar_buttons.size();
-}
+// T156: the "Hotbar Button Management" block (AddPendingHotbarButton and
+// friends) lived here and had zero callers in the whole tree. Deleted with
+// eqt::ui::HotbarButtonType/PendingHotbarButton — see include/client/eq.h.
 
 bool EverQuest::DispatchSlashCommand(const std::string &cmd_line)
 {

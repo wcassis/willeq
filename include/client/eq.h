@@ -101,22 +101,13 @@ namespace inventory {
 namespace ui {
     class CommandRegistry;
 
-    // Hotbar button type enum (was in deleted WindowManager header)
-    enum class HotbarButtonType : uint8_t {
-        Spell = 0,
-        Skill = 1,
-        Item = 2,
-        Command = 3
-    };
-
-    // Pending hotbar button (was in deleted WindowManager header)
-    struct PendingHotbarButton {
-        HotbarButtonType type;
-        uint32_t id;
-        std::string name;
-        PendingHotbarButton(HotbarButtonType t, uint32_t i, std::string n)
-            : type(t), id(i), name(std::move(n)) {}
-    };
+    // T156: eqt::ui::HotbarButtonType (Spell=0, Skill=1, Item=2, Command=3)
+    // and PendingHotbarButton were deleted here. HotbarButtonType was the
+    // second of three disagreeing hotbar numberings; its only remaining user
+    // was PendingHotbarButton, whose four EverQuest accessors had zero callers
+    // anywhere in src/, include/ or tests/ (the reachability pattern again).
+    // The one surviving numbering is eqt::HotbarSlotType, in
+    // include/client/hotbar/hotbar_slot_type.h.
 }
 }
 
@@ -897,15 +888,6 @@ public:
 	// live server (getItem()/hasCursorItem() must see seeded test items) --
 	// same accessor-getter pattern as the managers above, not a new seam.
 	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
-
-	// Hotbar button management (stub for future implementation).
-	// P28: eqt::ui::PendingHotbarButton is now unconditionally declared
-	// (moved out of the graphics guard above), so these accessors no longer
-	// need to be graphics-only either.
-	void AddPendingHotbarButton(uint8_t skill_id);
-	const std::vector<eqt::ui::PendingHotbarButton>& GetPendingHotbarButtons() const;
-	void ClearPendingHotbarButtons();
-	size_t GetPendingHotbarButtonCount() const;
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
 	uint16_t GetEntityID() const { return m_my_spawn_id; }
@@ -1808,10 +1790,6 @@ private:
 
 	// Skill manager
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
-
-	// Pending hotbar buttons (stub for future hotbar implementation)
-	// P28: eqt::ui::PendingHotbarButton is unconditional now (see above).
-	std::vector<eqt::ui::PendingHotbarButton> m_pending_hotbar_buttons;
 
 	// Group state
 	bool m_in_group = false;

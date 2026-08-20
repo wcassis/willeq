@@ -1,6 +1,7 @@
 #include "client/action/command_processor.h"
 #include "client/state/game_state.h"
 #include "client/output/output_renderer.h"
+#include "client/skill/skill_constants.h"  // T156: /useskill id/name resolution
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <cctype>
 
 namespace eqt {
 namespace action {
@@ -411,6 +413,15 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "taunt", {}, "/taunt", "Taunt current target (warrior/paladin/shadowknight ability)", "Combat", false
     }, [this](const std::string& args) { return cmdTaunt(args); });
+
+    // T156: /useskill is the only scriptable path to SkillManager::activateSkill
+    // — a hotbar click cannot be driven by --script, which is what left T152's
+    // five skill senders unprobeable. See refactor/T156_skill_reachability.md.
+    registerCommand({
+        "useskill", {"skill"}, "/useskill <id|name>",
+        "Use an activatable skill on your current target (e.g. /useskill taunt, /useskill 9)",
+        "Combat", false
+    }, [this](const std::string& args) { return cmdUseSkill(args); });
 
     registerCommand({
         "autofire", {"af"}, "/autofire", "Toggle ranged auto-attack (archery/throwing)", "Combat", false
@@ -1310,6 +1321,82 @@ ActionResult CommandProcessor::cmdTaunt(const std::string& args) {
         return ActionResult::Failure("No target to taunt");
     }
     return m_dispatcher.taunt();
+}
+
+namespace {
+
+// T156: normalise a skill name for comparison — lowercase, and drop every
+// character that is not a letter or digit, so "Bind Wound", "bindwound" and
+// "bind-wound" all collapse to "bindwound". EQ::getSkillName()'s table is the
+// only name source; there is no separate skill DB to consult.
+std::string normalizeSkillName(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (unsigned char c : in) {
+        if (std::isalnum(c)) out.push_back(static_cast<char>(std::tolower(c)));
+    }
+    return out;
+}
+
+// Resolve a skill NAME to its id. Returns false if no entry matches.
+bool findSkillIdByName(const std::string& name, uint8_t& outId) {
+    const std::string wanted = normalizeSkillName(name);
+    if (wanted.empty()) return false;
+    for (uint32_t id = 0; id < EQ::MAX_SKILL_ID; ++id) {
+        const char* skillName = EQ::getSkillName(static_cast<uint8_t>(id));
+        if (normalizeSkillName(skillName) == wanted) {
+            outId = static_cast<uint8_t>(id);
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+ActionResult CommandProcessor::cmdUseSkill(const std::string& args) {
+    // T156. Accepts an id or a name; a bare numeric id alone is the
+    // "technically wired, practically unreachable" interface this arc keeps
+    // deleting, so the name form is the one a human will actually type.
+    std::string arg = args;
+    while (!arg.empty() && std::isspace(static_cast<unsigned char>(arg.back()))) arg.pop_back();
+    if (arg.empty()) {
+        return ActionResult::Failure("Usage: /useskill <id|name>  (e.g. /useskill taunt)");
+    }
+
+    uint8_t skillId = 0;
+    const bool numeric = std::all_of(arg.begin(), arg.end(),
+        [](unsigned char c) { return std::isdigit(c) != 0; });
+
+    if (numeric) {
+        // T95: validate against the skill table before it becomes a skill id.
+        // No unchecked int-to-enum / int-to-index cast.
+        unsigned long parsed = 0;
+        try {
+            parsed = std::stoul(arg);
+        } catch (const std::exception&) {
+            return ActionResult::Failure("Unknown skill '" + arg + "'");
+        }
+        if (parsed >= EQ::MAX_SKILL_ID) {
+            return ActionResult::Failure(fmt::format(
+                "Unknown skill id {} (valid ids are 0-{})", parsed, EQ::MAX_SKILL_ID - 1));
+        }
+        skillId = static_cast<uint8_t>(parsed);
+        if (std::string(EQ::getSkillName(skillId)) == "Unknown") {
+            return ActionResult::Failure(fmt::format("Unknown skill id {}", parsed));
+        }
+    } else if (!findSkillIdByName(arg, skillId)) {
+        return ActionResult::Failure("Unknown skill '" + arg + "'");
+    }
+
+    if (!EQ::isActivatableSkill(skillId)) {
+        return ActionResult::Failure(fmt::format(
+            "{} is not a skill you can activate", EQ::getSkillName(skillId)));
+    }
+
+    // Target resolution itself lives in EqActionHandler::useSkill(), which has
+    // the live CombatManager; the dispatcher signature stays id-only.
+    return m_dispatcher.useSkill(skillId);
 }
 
 ActionResult CommandProcessor::cmdAutofire(const std::string& args) {

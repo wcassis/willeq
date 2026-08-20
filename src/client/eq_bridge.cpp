@@ -1048,8 +1048,12 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
-				if (m_skill_manager) {
-					m_skill_manager->activateSkill(static_cast<uint8_t>(i.skillId));
+				// T156: gained a real producer this unit (a click on a row of
+				// the skills popup, static_ui_input.cpp). Pass the current
+				// target — Taunt/Disarm/PickPocket all need a real target id.
+				if (m_skill_manager && i.skillId <= 0xFF) {
+					uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+					m_skill_manager->activateSkill(static_cast<uint8_t>(i.skillId), targetId);
 				}
 			}
 			// Loot intents
@@ -1291,8 +1295,12 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			// Hotbar activate intent (D20b2)
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarActivateIntent>) {
-				switch (i.buttonType) {
-				case 0: { // Spell
+				// T156: switch on the model's enumerators, not on raw ints.
+				// The old numbering here (0=Spell, 1=Item, 2=Emote, 3=Skill)
+				// matched NEITHER enum in the tree; nothing ever produced it.
+				// -Wswitch now catches the next drift, so there is no default.
+				switch (i.type) {
+				case eqt::HotbarSlotType::Spell: { // Spell
 					if (m_spell_manager) {
 						for (uint8_t gem = 0; gem < EQ::MAX_SPELL_GEMS; gem++) {
 							if (m_spell_manager->getMemorizedSpell(gem) == i.id) {
@@ -1314,7 +1322,7 @@ void EverQuest::ProcessBridgeIntents() {
 					}
 					break;
 				}
-				case 1: { // Item
+				case eqt::HotbarSlotType::Item: {
 					if (m_inventory_manager) {
 						int16_t slot = m_inventory_manager->findItemSlotByItemId(i.id);
 						if (slot == eqt::inventory::SLOT_INVALID) {
@@ -1352,15 +1360,23 @@ void EverQuest::ProcessBridgeIntents() {
 					}
 					break;
 				}
-				case 2: { // Emote
+				case eqt::HotbarSlotType::Emote: {
 					if (!i.emoteText.empty()) ProcessChatInput(i.emoteText);
 					break;
 				}
-				case 3: { // Skill
-					if (m_skill_manager) m_skill_manager->activateSkill(static_cast<uint8_t>(i.id));
+				case eqt::HotbarSlotType::Skill: {
+					// T156: reachable at last — see refactor/T156_skill_reachability.md.
+					if (m_skill_manager && i.id <= 0xFF) {
+						uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+						m_skill_manager->activateSkill(static_cast<uint8_t>(i.id), targetId);
+					}
 					break;
 				}
-				default: break;
+				case eqt::HotbarSlotType::Empty:
+				case eqt::HotbarSlotType::Macro:
+				case eqt::HotbarSlotType::Combat:
+					// Not wired to anything yet; no producer assigns them either.
+					break;
 				}
 			}
 			// Chat link click intent (D20b2)

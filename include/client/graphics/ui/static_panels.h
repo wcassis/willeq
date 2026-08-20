@@ -13,7 +13,13 @@
 #include <cstdint>
 #include <chrono>
 
+#include "client/hotbar/hotbar_slot_type.h"  // T156
+
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
+// T156: applyHotbarSlotAssigned() below takes this by const reference; the
+// definition lives in static_panels.cpp, which includes client/state/event_bus.h.
+// Forward-declared here so every graphics TU does not pay for that header.
+namespace eqt { namespace state { struct HotbarSlotAssignedData; } }
 
 namespace EQT {
 namespace Graphics {
@@ -107,7 +113,12 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
 
 // Cached hotbar slot state
 struct HotbarSlotState {
-    uint8_t type = 0;         // HotbarButtonType value (0=Empty)
+    // T156: THE hotbar numbering — client/hotbar/hotbar_slot_type.h.
+    eqt::HotbarSlotType type = eqt::HotbarSlotType::Empty;
+    uint32_t id = 0;          // T156: spell/skill/item id — was dropped here,
+                              // which is why HotbarActivateIntent had nothing
+                              // to carry and the Skill arm was unreachable.
+    std::string emoteText;    // T156: for Emote slots
     std::string name;         // Spell/skill/item name (abbreviated for display)
     uint32_t iconId = 0;      // Icon ID (for future icon atlas)
     // Cooldown tracking
@@ -135,6 +146,20 @@ struct HotbarPanelState {
 /** Render hotbar (10 slots, bottom-center). */
 void renderHotbar(UIRenderer& ui, const UILayout& layout,
                   const HotbarPanelState& state);
+
+/**
+ * T156: apply a HotbarSlotAssigned bridge event to the cached panel state.
+ *
+ * This is the single hop between HotbarModel's published event and the state
+ * StaticUIInput reads when building a HotbarActivateIntent. It lives here, as a
+ * free function, rather than inline in IrrlichtBridge's event switch, so tests
+ * can drive the REAL producer (HotbarModel) all the way through to the REAL
+ * consumer input path without an Irrlicht device and without hand-building the
+ * intermediate state — the fake-substitution trap T93 catalogued.
+ * Out-of-range indices are ignored.
+ */
+void applyHotbarSlotAssigned(HotbarPanelState& state,
+                             const eqt::state::HotbarSlotAssignedData& data);
 
 // Cached spell gem state
 struct SpellGemState {

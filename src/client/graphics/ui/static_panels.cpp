@@ -11,6 +11,7 @@
 #include "client/inventory/inventory_constants.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/text_batch.h"
+#include "client/state/event_bus.h"  // T156: applyHotbarSlotAssigned
 #include <fmt/format.h>
 #include <chrono>
 
@@ -402,7 +403,7 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
         }
 
         // Slot content: abbreviated name (placeholder for icon)
-        if (slot.type != 0 && tb) {
+        if (slot.type != eqt::HotbarSlotType::Empty && tb) {
             std::string abbrev = slot.name.substr(0, 4);
             irr::s32 tw = tb->getTextWidth(abbrev);
             tb->addText(abbrev, x + (SLOT - tw) / 2, y + SLOT / 2 - 6,
@@ -837,6 +838,20 @@ void renderXPBar(UIRenderer& ui, const UILayout& layout,
             layout.xpBar.LowerRightCorner.Y);
         ui.drawSprite(fillRect, static_cast<uint8_t>(UISprite::BarXP));
     }
+}
+
+
+// T156: the single HotbarSlotAssigned -> panel-state hop. See the declaration
+// in static_panels.h for why it is a free function.
+void applyHotbarSlotAssigned(HotbarPanelState& state,
+                             const eqt::state::HotbarSlotAssignedData& data) {
+    if (data.index < 0 || data.index >= HotbarPanelState::SLOT_COUNT) return;
+    auto& slot = state.slots[data.index];
+    slot.type = data.type;
+    slot.id = data.id;
+    slot.emoteText = data.emoteText;
+    slot.name = data.name;
+    slot.iconId = data.iconId;
 }
 
 } // namespace Graphics
