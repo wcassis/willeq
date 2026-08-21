@@ -101,4 +101,213 @@ failure the documented ALSA `AudioManagerTest.PreloadCommonSounds`.
 
 ## Review
 
-(executor fills this in)
+Executed in `/mnt/projects/fable/wt/slot1`, branch `task/T163-gtest-discovery-race`
+off `fable` tip **`d72162a4`**. No eqemu, no lock, no Pi build. `main` and the
+sibling slots were never touched.
+
+### The mechanism, confirmed — it is T79's diagnosis
+
+**Confirmed: a discovery-time timeout under parallel build load, not a race.**
+The decisive evidence is a verbatim capture that already existed in the repo and
+that this unit's brief said to go find: `refactor/T162_skill_gate_bypasses.md`
+records the failure text as
+
+> `Error running test executable … test_login_world_seam … Process terminated due to timeout`
+
+`GoogleTestAddTests.cmake` prints that string in exactly one place —
+`execute_process(COMMAND <exe> --gtest_list_tests … TIMEOUT ${_TEST_DISCOVERY_TIMEOUT})`
+followed by `if(NOT result EQUAL 0)` printing `Result: ${result}`. `"Process
+terminated due to timeout"` is CMake's own `execute_process` timeout message, so
+the `Result:` line discriminates a timeout from a crash (signal name) or a bad
+exit (number). It was a timeout. No stale `build/` log survived, but this
+capture is unambiguous and is a direct observation, not an inference.
+
+**Why it is intermittent — measured here, and the answer is I/O, not CPU.**
+Two things were measured on this host:
+
+- `--gtest_list_tests` on all **118** built test binaries, host idle, one at a
+  time: slowest is **0.21s** (`test_zoning_graphics_integration`), median far
+  below that. The default discovery timeout is **5s** — a ~25x margin.
+- The same three heavy binaries sampled continuously (525 samples) *through* a
+  full from-scratch `-j24` build: peak **1.07s**, still 5x under the limit.
+
+So CPU contention alone does not explain a 5s timeout, and that is exactly why
+the failure hits roughly one build in three rather than every build. The
+aggravating factor is that **this checkout lives on an NFS mount**
+(`10.0.30.10:/volume2/projects`, per `df`) and each test binary is **70–80 MB**.
+POST_BUILD discovery exec's the binary the instant the linker finished writing
+it, while up to 24 other links are saturating the same mount — a cold read-back
+of 80 MB through a loaded NFS path is what pushes an 0.2s operation past 5s. My
+probe re-read the *same* binaries repeatedly and so was always page-cache warm,
+which is why it could not reproduce the tail; the mechanism and the margin are
+nevertheless established.
+
+Note the failures hit a different, arbitrary target each time (`test_spell_manager`,
+`test_eq_action_handler_enum_guards`, `test_login_world_seam`) and none of them
+is among the slowest binaries — consistent with I/O timing, and inconsistent
+with "some targets are inherently too slow to discover".
+
+### The CMake floor — T79's premise was factually wrong
+
+**`DISCOVERY_MODE` and `CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE` were added in
+CMake 3.18, not 3.20.** `/usr/share/cmake-3.28/Modules/GoogleTest.cmake` marks
+the `DISCOVERY_MODE` option `.. versionadded:: 3.18`. T79 rejected the real fix
+on a version requirement that does not exist.
+
+Per build path, the oldest CMake that actually has to configure this project:
+
+| Build path | Base image / host | CMake | Builds tests? |
+|---|---|---|---|
+| Dev host (primary tree) | this host | **3.28.3** | yes (`EQT_BUILD_TESTS=ON`) |
+| `docker/Dockerfile.arm-cross` (`scripts/build-arm-jessie.sh`) | `debian:bullseye` | **3.18.4** | **no** — `-DEQT_BUILD_TESTS=OFF` (line 482) |
+| `docker/Dockerfile.arm-noble` (`scripts/build-arm-noble.sh`) | `ubuntu:24.04` | 3.28 | no — `OFF` (line 370) |
+| `docker/Dockerfile.arm64-noble` (`scripts/build-arm64-noble.sh`) | `ubuntu:24.04` | 3.28 | no — `OFF` (line 324) |
+| `docker/Dockerfile` (x86 runtime image) | `ubuntu:24.04` | 3.28 | no — `OFF` (line 105) |
+| `scripts/build-gles2-x86.sh` | this host | 3.28.3 | no — `OFF` (line 204) |
+
+**Floor = 3.18.4**, and it was verified empirically, not assumed:
+`docker run --rm debian:bullseye` → `apt-cache policy cmake` reports candidate
+`3.18.4-2+deb11u1`, and installing it shows
+`/usr/share/cmake-3.18/Modules/GoogleTest.cmake` contains
+`CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE` (4 occurrences). Every build path is
+therefore at or above the requirement, and separately, **every path except the
+dev host passes `-DEQT_BUILD_TESTS=OFF`**, so `tests/CMakeLists.txt` is not even
+configured there. That also answers the plan's ARM worry outright: **no ARM
+build path enables tests**, so no cross-compiled ARM test binary can be handed
+to ctest on the x86 host under either discovery mode.
+
+**Choice: neither raise `CMAKE_MINIMUM_REQUIRED` nor add a hard guard.** The
+setting is left unconditional, `CMAKE_MINIMUM_REQUIRED(VERSION 3.14)` is
+unchanged, and a `MESSAGE(WARNING)` fires if someone configures with a CMake
+older than 3.18. Reasoning:
+
+- Raising the minimum to 3.18 would flip ~15 CMake policies (CMP0088–CMP0102) to
+  NEW across a 1700-line `CMakeLists.txt` — an unrelated behavioural change
+  smuggled into a flakiness fix, with no build path needing it.
+- A `IF(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)` guard buys nothing: an
+  unknown variable is silently ignored by older CMake, so pre-3.18 already
+  degrades to today's POST_BUILD behaviour on its own. The failure mode is
+  *degraded, never broken*.
+- The warning converts that silent degradation into a visible one, which is the
+  part a bare guard would not give.
+
+### What changed
+
+One file, `tests/CMakeLists.txt`:
+
+1. **`SET(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)`** immediately
+   after `INCLUDE(GoogleTest)`, with the full mechanism, the measurements, the
+   version floor and the reason the minimum was not raised recorded in comment
+   above it — one line covering all **112** `GTEST_DISCOVER_TESTS()` calls.
+   (The plan said 121; the actual count on `fable` is **112**, verified against
+   `git show fable:tests/CMakeLists.txt` and against the 112
+   `*_include.cmake` files the build generates. 118 `test_*` binaries exist, so
+   six are built but not gtest-discovered — noted, not investigated, out of
+   territory.)
+2. **A `MESSAGE(WARNING)` for CMake < 3.18** explaining the POST_BUILD fallback.
+3. **All six `DISCOVERY_TIMEOUT 60` overrides removed** (`test_spell_manager`,
+   `test_graphics`, `test_eq_action_handler_spell_pet`,
+   `test_eq_action_handler_tradeskill`, `test_skill_possession_gate`,
+   `test_skill_gate_bypasses`), together with T79's three now-obsolete comment
+   blocks, replaced by one comment at `test_spell_manager` saying why they went.
+   They are removed rather than kept because their stated purpose — slack for
+   contention with `-j24` compilation — no longer has a contention to give slack
+   to, and because the set was chosen by *which target failed that day*, not by
+   measurement: `test_spell_manager` discovers in 0.05s idle, while the two
+   genuinely slowest binaries were never in the set. All 112 calls are now
+   uniform.
+
+No production source, no test source, no `CMakeLists.txt`, no `cmake/`, no
+`scripts/` change was needed.
+
+### Why this is not merely probabilistic
+
+The acceptance asked for three from-scratch builds, and they are below. But the
+stronger evidence is structural: after the change, **`GoogleTestAddTests.cmake`
+appears zero times anywhere under `build/tests/CMakeFiles/`** (it appeared once
+per target before, as a POST_BUILD command). The build no longer invokes the
+discovery script at all — it now runs from
+`build/tests/<target>[1]_include.cmake` at ctest startup. The build cannot fail
+in that file any more because the build never enters it. The three trials
+confirm nothing else regressed; they are not what proves the fix.
+
+### Trials and numbers
+
+| | wall-clock | result |
+|---|---|---|
+| Baseline (fable tip) from-scratch #1 | **406s** | clean |
+| Baseline from-scratch #2 (with the latency probe running) | 402s | clean |
+| **After** from-scratch #1 | **402s** | clean, 0 `GoogleTestAddTests` mentions |
+| **After** from-scratch #2 | **402s** | clean, 0 mentions |
+| **After** from-scratch #3 | **403s** | clean, 0 mentions |
+
+**Three consecutive from-scratch `-j24` builds, zero discovery failures.** Both
+baseline builds also passed — the failure is intermittent (three sightings in
+three days across many builds), so three trials is not proof and is not claimed
+as proof; the structural argument above is.
+
+**Wall-clock before/after: 406s → 402s, i.e. unchanged within noise.** Removing
+112 binary launches from the build is *not* visible, and that is worth the
+sentence the plan asked for: discovery costs ~0.2s per target and Make overlaps
+those post-build commands across 24 jobs, so the aggregate ~25s of discovery
+hides entirely inside a 400s critical path. The launches were never a
+throughput problem — they were a *timeout* problem. Discovery time did not
+vanish either, it moved: it now runs at ctest startup, and the full suite
+wall-clock (405s and 391s across two runs) is likewise unchanged within noise.
+
+### Acceptance
+
+- **Suite total: `2595/2596`**, run twice (after trial #1 and again on the
+  trial #3 tree), sole failure the documented ALSA
+  `AudioManagerTest.PreloadCommonSounds`. **The total is 2596, identical to the
+  baseline** — nothing was silently dropped, which was the named hazard. Cross-
+  checked a third way: `ctest --show-only=json-v1` enumerates exactly 2596
+  tests.
+- **`ctest -R <name>` still selects individual tests.** `ctest -R
+  SpellManagerGems.MemorizeSpellSuccessStartsMemorizationAndPublishesEvent`
+  → "1 test", and `ctest -R SkillPossessionGate -N` → "Total Tests: 7". Note
+  `-R` now pays for discovery of the matching targets at startup; measured at
+  0.63s total for the single-test run, so it is not user-visible.
+- **`WORKING_DIRECTORY` (the `tests/CMakeLists.txt:9` / T36 note) survives.**
+  `ctest --show-only=json-v1` reports `WORKING_DIRECTORY =
+  <build>/tests` for **all 2596 of 2596** tests — the same value POST_BUILD
+  produced, since `gtest_discover_tests()` defaults it to
+  `CMAKE_CURRENT_BINARY_DIR` in both modes. The `WILLEQ_REPO_ROOT` compile
+  definition that compensates for it is untouched.
+
+### Residual risk
+
+1. **Discovery still has a 5s timeout, it just runs somewhere quieter.** If a
+   ctest run ever starts against a completely cold page cache (fresh boot, or
+   a tree not built on this host), 112 sequential 80 MB cold NFS reads happen at
+   ctest startup. At the measured idle cost (0.21s worst case, warm) there is
+   ~25x margin, and NFS throughput would have to collapse below ~16 MB/s to
+   threaten it — but the margin is smaller in that scenario than in the normal
+   build-then-test flow. There is **no global timeout variable** in the
+   GoogleTest module (only the per-call `DISCOVERY_TIMEOUT`), so buying slack
+   globally would mean annotating all 112 call sites; that is why the answer
+   here was to remove the contention rather than raise timeouts. If this ever
+   bites, the fix is a wrapper macro around `GTEST_DISCOVER_TESTS`, not 112
+   edits.
+2. **The failure mode moved rather than disappearing.** A test binary that
+   cannot be exec'd now fails at ctest startup instead of at build time. That is
+   strictly better for diagnosis (a build error naming a CMake file is what sent
+   four units hunting for a nonexistent code defect) but it is a change in where
+   the error surfaces, and anyone who builds without running ctest will no
+   longer learn that a binary is unrunnable.
+3. **The reproduction was not observed first-hand in this unit.** Both baseline
+   builds passed. The mechanism rests on T162's verbatim capture plus the
+   measurements above, not on a failure induced here.
+
+### Findings outside scope (not acted on)
+
+- **T79's 3.20 claim was wrong and it cost four units.** The keyword is 3.18+.
+  Worth remembering as a pattern: a version floor asserted in a comment, never
+  checked, that blocked the correct fix for eight days.
+- **118 `test_*` binaries but only 112 discovery calls** — six built test
+  executables are never registered with ctest. Not investigated; outside
+  territory. A likely instance of the project's recurring
+  implemented-but-unreached pattern, and cheap for a future unit to check.
+- The plan's "121 `GTEST_DISCOVER_TESTS` calls" is off by nine; the real count
+  is 112.
+
