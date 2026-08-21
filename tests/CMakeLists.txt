@@ -3,6 +3,60 @@
 # Include Google Test
 INCLUDE(GoogleTest)
 
+# T163 (2026-08-21): move gtest test discovery OUT of the parallel build.
+#
+# The default DISCOVERY_MODE is POST_BUILD: CMake attaches a post-build
+# command to every test target that runs the freshly linked binary with
+# --gtest_list_tests *as part of the build*. With the 112
+# GTEST_DISCOVER_TESTS() calls below and `cmake --build build -j24`, that is
+# up to 112 process launches competing with 24 compile/link jobs -- and the
+# GoogleTest module's discovery timeout defaults to 5 SECONDS. Three units in
+# three days (T159, T161, T162) plus T79's 3x before them saw the first
+# from-scratch -j24 build die inside GoogleTestAddTests.cmake with no compiler
+# error; T162 captured the verbatim reason: "Error running test executable ...
+# test_login_world_seam ... Process terminated due to timeout". An immediate
+# rebuild was always clean, because by then nothing else was competing.
+#
+# The aggravating factor is that this checkout lives on an NFS mount: each
+# test binary is 70-80 MB, and discovery exec's it immediately after the
+# linker wrote it, while up to 24 other links are saturating the same mount.
+# Measured on an idle host, the slowest --gtest_list_tests of all 118 test
+# binaries is 0.21s; sampled continuously through a full from-scratch -j24
+# build it peaked at 1.07s. Neither is near 5s, which is why the failure is
+# intermittent rather than constant -- it needs a cold read-back of a
+# just-linked binary through a loaded NFS mount on top of the CPU contention.
+#
+# PRE_TEST moves discovery to ctest time, where it runs serially and with no
+# compile/link load at all, so the contention is removed rather than merely
+# given more slack (which is all T79's per-target raised timeouts did -- see
+# the removal note further down for why those never covered the right targets
+# anyway). One variable applies to every GTEST_DISCOVER_TESTS() call in this
+# directory, so there is nothing to remember at the 112 call sites.
+#
+# Version floor: DISCOVERY_MODE and this variable were both added in CMake
+# 3.18, NOT 3.20 as T79's comment stated -- that mistake is what made T79
+# reject this fix. The oldest CMake that has to configure this project is
+# 3.18.4 (debian:bullseye, docker/Dockerfile.arm-cross; every other path is
+# ubuntu:24.04 / 3.28). So no build path is left behind and no version guard
+# is needed. CMAKE_MINIMUM_REQUIRED stays at 3.14 deliberately: raising it
+# would flip ~15 CMake policies to NEW across a 1700-line CMakeLists for no
+# reason connected to this fix. On a hypothetical pre-3.18 CMake this
+# variable is simply ignored and discovery falls back to POST_BUILD, which is
+# today's behaviour -- degraded, never broken. The warning below makes that
+# visible instead of silent.
+#
+# What PRE_TEST does NOT change: gtest_discover_tests() still sets each
+# test's WORKING_DIRECTORY to CMAKE_CURRENT_BINARY_DIR (<build>/tests) in
+# both modes, so the T36 note directly below still holds, and `ctest -R
+# <name>` still selects individual tests.
+IF(CMAKE_VERSION VERSION_LESS 3.18)
+    MESSAGE(WARNING
+        "CMake ${CMAKE_VERSION} predates DISCOVERY_MODE (3.18+); gtest test "
+        "discovery falls back to POST_BUILD and the -j24 discovery-timeout "
+        "failure T163 fixed can recur. Use CMake 3.18 or newer.")
+ENDIF()
+SET(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
+
 # T36: repo root as a compile-time define, for EVERY test target in this
 # directory and below.
 #
@@ -549,18 +603,18 @@ TARGET_LINK_LIBRARIES(test_spell_manager GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-# T79 (2026-08-12): raised from the GoogleTest module's 5s default.
-# `test_spell_manager` links willeq_core (a heavy TU set); its --gtest_list_tests
-# discovery run failed 3x today under `-j24` parallel build load with
-# "GoogleTestAddTests.cmake: Error running test executable" -- a
-# discovery-time timeout, not a compile error, and each time clean on
-# retry. Raising the timeout (vs. moving to PRE_TEST discovery mode) keeps
-# discovery at build/post-build time and is compatible with this project's
-# CMAKE_MINIMUM_REQUIRED(3.14) -- DISCOVERY_MODE PRE_TEST is a 3.20+
-# keyword. Trade-off: this doesn't remove the contention (discovery still
-# runs concurrently with -j24 compilation), it just gives it more slack;
-# a sufficiently loaded host could still exceed 60s.
-GTEST_DISCOVER_TESTS(test_spell_manager DISCOVERY_TIMEOUT 60)
+# T163: T79's raised discovery timeout (60s) removed here and on five other
+# targets (test_graphics, test_eq_action_handler_spell_pet,
+# test_eq_action_handler_tradeskill, test_skill_possession_gate,
+# test_skill_gate_bypasses). Its own comment said the raised timeout "doesn't
+# remove the contention, it just gives it more slack" -- the PRE_TEST mode set
+# at the top of this file removes the contention, so the slack is moot. The six
+# were also picked by which target happened to fail on the day, not by
+# measurement: test_spell_manager lists its tests in 0.05s on an idle host,
+# while the two genuinely slowest binaries (test_zoning_graphics_integration
+# and test_beneficial_spell_casting, 0.21s) were never in the set. All 112
+# discovery calls in this file now behave identically.
+GTEST_DISCOVER_TESTS(test_spell_manager)
 
 ADD_EXECUTABLE(test_spell_manager_timing
     test_spell_manager_timing.cpp
@@ -888,12 +942,7 @@ IF(EQT_GRAPHICS)
     # mandatory-Irrlicht gate in the top-level CMakeLists.txt guarantees
     # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
     # (refactor/desktop_gl_elimination_plan.md §6 Phase 3).
-    # T79 (2026-08-12): same discovery-time timeout under -j24 parallel
-    # build load as test_spell_manager above (test_graphics links Irrlicht +
-    # willeq_core, another heavy binary) -- see the comment on
-    # GTEST_DISCOVER_TESTS(test_spell_manager ...) for the mechanism and
-    # trade-off.
-    GTEST_DISCOVER_TESTS(test_graphics DISCOVERY_TIMEOUT 60)
+    GTEST_DISCOVER_TESTS(test_graphics)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
     ADD_EXECUTABLE(test_hotkey_manager
@@ -1182,10 +1231,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_spell_pet GTest::gtest_main willeq_
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_spell_pet PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-# T79 precedent (test_spell_manager, above): links willeq_core (a heavy TU
-# set); its --gtest_list_tests discovery run can exceed the GoogleTest
-# module's 5s default under -j24 parallel build load.
-GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet DISCOVERY_TIMEOUT 60)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet)
 
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
@@ -1733,7 +1779,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_tradeskill GTest::gtest_main willeq
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_tradeskill PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill DISCOVERY_TIMEOUT 60)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill)
 
 # T152: the two skill-opcode bodies this client had to build from scratch
 # (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
@@ -1758,7 +1804,7 @@ TARGET_LINK_LIBRARIES(test_skill_possession_gate GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_possession_gate PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_skill_possession_gate DISCOVERY_TIMEOUT 60)
+GTEST_DISCOVER_TESTS(test_skill_possession_gate)
 
 # T162: the commands that emitted a skill opcode without passing T159's gate
 ADD_EXECUTABLE(test_skill_gate_bypasses
@@ -1768,4 +1814,4 @@ TARGET_LINK_LIBRARIES(test_skill_gate_bypasses GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_gate_bypasses PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_skill_gate_bypasses DISCOVERY_TIMEOUT 60)
+GTEST_DISCOVER_TESTS(test_skill_gate_bypasses)
