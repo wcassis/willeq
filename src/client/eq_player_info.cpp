@@ -1364,80 +1364,31 @@ void EverQuest::SendAssistGroup(uint32_t target_id)
 // Phase 3: Travel System
 // ============================================================================
 
-void EverQuest::SendBoardBoat(uint32_t boat_id)
-{
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_BoardBoat);
-	packet.PutUInt32(2, boat_id);
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		m_is_on_boat = true;
-		m_boat_id = boat_id;
-		LOG_INFO(MOD_MAIN, "Boarding boat ID: {}", boat_id);
-		AddChatSystemMessage("You board the boat.");
-	}
-}
-
-void EverQuest::SendLeaveBoat()
-{
-	if (!m_is_on_boat) {
-		AddChatSystemMessage("You are not on a boat.");
-		return;
-	}
-
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_LeaveBoat);
-	packet.PutUInt32(2, m_boat_id);
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "Leaving boat ID: {}", m_boat_id);
-		AddChatSystemMessage("You leave the boat.");
-		m_is_on_boat = false;
-		m_boat_id = 0;
-	}
-}
-
-// Take or release control of the boat we are currently on.
+// T168: SendBoardBoat / SendLeaveBoat / SendControlBoat were DELETED here.
 //
-// T145: this used to take (float heading, uint8_t type) and write them into
-// invented ControlBoat_Struct fields. OP_ControlBoat carries no heading and no
-// control type -- only a boat entity id and a take/release flag (see
-// packet_structs.h). The old 20-byte packet was rejected outright by
-// `Handle_OP_ControlBoat` with "Wrong size: OP_ControlBoat, size=[20],
-// expected [8]".
+// All three were zero-caller senders, and all three were dead on arrival, not
+// merely unwired -- the arc's standing lesson is that a sender nothing ever
+// called is UNVERIFIED, not "correct but unreached":
 //
-// T151/T154 HAZARD -- DO NOT WIRE THIS UP. Calling it with a wrong boat id
-// files a hacking report against our own account. eqemu's
-// `Handle_OP_ControlBoat` (zone/client_packet.cpp:5421) resolves `boatId`
-// through `entity_list.GetMob()`; any hit that is not a controllable boat does
-// not bail quietly, it writes
-// `RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, ... "OP_Control Boat was
-// sent against {} which is of race {}")` to the server's player-event log.
-// `m_boat_id` is set only by `SendBoardBoat`, which is itself broken (T151
-// finding 2), so the id this sender carries is whatever a caller guessed.
-// Boats are deferred indefinitely; this sender must stay unreachable until a
-// real boat entity model exists to supply a verified id.
-void EverQuest::SendControlBoat(bool take_control)
-{
-	if (!m_is_on_boat) {
-		return;
-	}
-
-	EQ::Net::DynamicPacket packet;
-	packet.PutUInt16(0, HC_OP_ControlBoat);
-
-	EQT::ControlBoat_Struct control;
-	memset(&control, 0, sizeof(control));
-	control.boatid = m_boat_id;
-	control.take_control = take_control ? 1 : 0;
-	packet.PutData(2, &control, sizeof(control));
-
-	if (m_zone_connection && m_zone_connected) {
-		m_zone_connection->QueuePacket(packet);
-	}
-}
+//   * SendBoardBoat sent a 4-byte entity id. eqemu's Handle_OP_BoardBoat
+//     (zone/client_packet.cpp:4133) requires `5 < size <= 64` and resolves the
+//     body as a NAME via entity_list.GetMob(boatname). A 4-byte body is
+//     rejected before anything else happens, so boarding could never succeed.
+//   * SendLeaveBoat guarded on m_is_on_boat, which only SendBoardBoat ever
+//     set, so it could never be reached -- and eqemu's Handle_OP_LeaveBoat
+//     ignores the body entirely, so the id it carried was meaningless.
+//   * SendControlBoat is the T151/T154 HAZARD: Handle_OP_ControlBoat
+//     (:5421) resolves the id through entity_list.GetMob() and any hit that is
+//     not a controllable boat writes RecordPlayerEventLog(POSSIBLE_HACK)
+//     AGAINST OUR OWN ACCOUNT. Its only id source was the broken boarder.
+//
+// Keeping them was the trap T147 names: three functions that look like a
+// half-built feature but cannot work, with a comment block warning the reader
+// off the only one with a body worth reading. The opcodes, ControlBoat_Struct
+// and the findings above are kept -- see the HC_OP_BoardBoat annotation in
+// eq.h and refactor/T168_sender_triage.md. Boats need a ride/entity model
+// first; steering is OP_ClientUpdate with a foreign spawn_id, not a boat
+// opcode at all.
 
 // ============================================================================
 // Phase 3: Group Split

@@ -1236,14 +1236,29 @@ struct MoveCoin_Struct {
     int32_t amount;       // Amount of coins to move
 };
 
-// OP_TradeCoins - Set coin amounts in trade window (Server->Client notification)
+// OP_TradeCoins - coins were added to a trade (Server->Client notification)
 // Size: 12 bytes
+//
+// INBOUND ONLY. eqemu has no handler for this opcode; it BUILDS it inside
+// Handle_OP_MoveCoin (zone/client_process.cpp:1598) and sends it to the other
+// trader. To put coins into a trade, send OP_MoveCoin. T168 deleted the
+// SendTradeCoins() that sent on this opcode -- nothing could ever have
+// received it.
+//
+// Ground truth: eqemu TradeCoin_Struct (common/eq_packet_structs.h:1691) --
+// trader(4), slot(1), unknown5(2), unknown7(1), amount(4).
 struct TradeCoins_Struct {
-    uint32_t spawn_id;         // Player modifying coins
+    uint32_t spawn_id;         // eqemu `trader`: whose coins these are
     uint8_t  slot;             // Coin type: 0=copper, 1=silver, 2=gold, 3=platinum
-    uint8_t  unknown[3];       // Magic bytes: must be {0xD2, 0x4F, 0x00} for server to accept
+    uint8_t  unknown[3];       // eqemu writes unknown5=0x4fD2, unknown7=0 here.
+                               // NOT a client-side magic value: an older
+                               // comment called these "magic bytes ... for
+                               // server to accept", which described this
+                               // server-built constant as something we had to
+                               // send. There is no server accept path at all.
     uint32_t amount;           // Amount of this coin type
 };
+static_assert(sizeof(TradeCoins_Struct) == 12, "TradeCoins_Struct must be 12 bytes");
 
 // OP_TradeAcceptClick - Click accept button in trade
 // Size: 8 bytes

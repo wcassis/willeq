@@ -274,25 +274,15 @@ void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
 	m_zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::SendTradeCoins(const EQT::TradeCoins_Struct& coins)
-{
-	LOG_DEBUG(MOD_MAIN, "SendTradeCoins called: spawn_id={} slot={} amount={} (m_my_spawn_id={})",
-		coins.spawn_id, coins.slot, coins.amount, m_my_spawn_id);
-
-	if (!m_zone_connection) {
-		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeCoins");
-		return;
-	}
-
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(2 + sizeof(EQT::TradeCoins_Struct));
-	packet.PutUInt16(0, HC_OP_TradeCoins);
-	memcpy(packet.Data() + 2, &coins, sizeof(EQT::TradeCoins_Struct));
-
-	LOG_DEBUG(MOD_MAIN, "Queueing TradeCoins packet, size={}", packet.Length());
-	DumpPacket("C->S", HC_OP_TradeCoins, packet);
-	m_zone_connection->QueuePacket(packet);
-}
+// T168: SendTradeCoins was DELETED here. It sent on an opcode eqemu never
+// accepts: there is no ConnectedOpcodes[OP_TradeCoins] entry anywhere in the
+// server. OP_TradeCoins is SERVER->CLIENT -- eqemu builds it inside
+// Handle_OP_MoveCoin (zone/client_process.cpp:1598) to tell the OTHER trader
+// that coins were added. The client->server route for putting coins into a
+// trade is OP_MoveCoin, i.e. SendMoveCoin() below, which is wired and used.
+//
+// The struct and the inbound parse (eq.cpp's HC_OP_TradeCoins arm ->
+// TradeManager::handleTradeCoins) are correct and are kept.
 
 void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
 {

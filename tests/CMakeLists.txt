@@ -1805,6 +1805,16 @@ ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
 ADD_TEST(NAME visual_gate COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/visual_gate.sh)
 SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125)
 
+# T168: the zero-caller-sender gate. Fails if any EverQuest::Send*/Request*
+# method has no production call site -- the condition that held for 28 of 97
+# senders when the arc opened, and that roughly one in two turned out to be
+# broken on the wire. Pure source scan: no build artefact, no server, no
+# display, so it runs in every configuration. See
+# refactor/T168_sender_triage.md and the script's own docstring for what it
+# deliberately does NOT catch.
+ADD_TEST(NAME check_sender_reachability
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/check_sender_reachability.py)
+
 # T108: regression test -- totalEstimate must not credit eqe1MappedBytes
 # (address-space/mapped size, not RSS) as if it were resident. Drives the
 # already-built gles2_zone_benchmark (same tool + same computeMemorySnapshot()

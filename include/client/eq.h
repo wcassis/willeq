@@ -183,6 +183,13 @@ enum TitaniumZoneOpcodes {
 	HC_OP_WorldObjectsSent = 0x0000,
 	HC_OP_ExpUpdate = 0x5ecd,
 	HC_OP_RaidUpdate = 0x1f21,
+	// T168: C->S. Body is RaidGeneral_Struct (140 bytes: action@0,
+	// player_name@4[64], unknown1@68, leader_name@72[64], parameter@136),
+	// action = 3 (RaidCommandInvite) or 0 (RaidCommandInviteIntoExisting).
+	// eqemu routes it to Handle_OP_RaidCommand, which rejects anything
+	// smaller. Our old sender put a bare 64-byte name here and could never
+	// have worked; it was deleted rather than fixed because the raid RESPONSE
+	// parser is also wrong -- see refactor/T168_sender_triage.md.
 	HC_OP_RaidInvite = 0x5891,   // Invite player to raid
 	HC_OP_GuildMOTD = 0x475a,
 	HC_OP_ChannelMessage = 0x1004,
@@ -236,6 +243,11 @@ enum TitaniumZoneOpcodes {
 	// Trade opcodes
 	HC_OP_TradeRequest = 0x372f,      // Initiate trade request
 	HC_OP_TradeRequestAck = 0x4048,   // Accept trade request
+	// T168: SERVER->CLIENT ONLY. eqemu has no ConnectedOpcodes entry for
+	// this opcode at all -- it EMITS it from inside Handle_OP_MoveCoin to
+	// tell the other trader coins were added. To put coins into a trade,
+	// send OP_MoveCoin (SendMoveCoin). Anything sent on this opcode is
+	// discarded unhandled.
 	HC_OP_TradeCoins = 0x34c1,        // Server->Client: coin amounts in trade
 	HC_OP_MoveCoin = 0x7657,          // Client->Server: move coins to/from trade
 	HC_OP_TradeAcceptClick = 0x0065,  // Click accept button in trade
@@ -352,6 +364,14 @@ enum TitaniumZoneOpcodes {
 	HC_OP_Assist = 0x7709,               // C->S: Assist target (acquire their target)
 	HC_OP_AssistGroup = 0x5104,          // C->S: Group assist
 	// Phase 3: Travel System
+	// T168: the three boat opcodes have NO senders any more, deliberately.
+	// BoardBoat's body is the boat's NAME (eqemu requires 5 < size <= 64 and
+	// resolves it with entity_list.GetMob(boatname)), not an entity id;
+	// ControlBoat files a POSSIBLE_HACK player-event against our own account
+	// for any id that is not a controllable boat; and steering is not this
+	// opcode at all, it is OP_ClientUpdate with a foreign spawn_id. Boats
+	// need a ride/entity model before any of this can be written correctly --
+	// refactor/T168_sender_triage.md.
 	HC_OP_BoardBoat = 0x4298,            // C->S: Board boat
 	HC_OP_LeaveBoat = 0x67c9,            // C->S: Leave boat
 	HC_OP_ControlBoat = 0x2c81,          // C->S: Control boat direction
@@ -968,7 +988,6 @@ public:
 	void DeclineGroupInvite();
 
 	// Raid actions
-	void SendRaidInvite(const std::string& target_name);
 
 	// Pet queries
 	// T40: GetPetHpPercent()/GetPetButtonState() removed -- their only
@@ -1046,12 +1065,8 @@ public:
 	void SendAssist(uint32_t target_id);
 	void SendAssistGroup(uint32_t target_id);
 	// Phase 3: Travel System
-	void SendBoardBoat(uint32_t boat_id);
-	void SendLeaveBoat();
 	// Take (true) or release (false) control of the boat we are on.
 	// OP_ControlBoat carries no heading and no control type -- see T145.
-	void SendControlBoat(bool take_control);
-	bool IsOnBoat() const { return m_is_on_boat; }
 	// Phase 3: Group Split
 	void SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 	// Phase 3: LFG System
@@ -1879,8 +1894,6 @@ private:
 	bool m_is_dragging_corpse = false;
 	std::string m_dragged_corpse_name;
 	// Phase 3: Boat state
-	bool m_is_on_boat = false;
-	uint32_t m_boat_id = 0;
 	// Phase 3: LFG state
 	bool m_is_lfg = false;
 	// Phase 4: Duel state
@@ -2076,7 +2089,6 @@ private:
 	bool ZoneProcessTradePartnerItem(const EQ::Net::Packet& p);
 	void SendTradeRequest(const EQT::TradeRequest_Struct& req);
 	void SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);
-	void SendTradeCoins(const EQT::TradeCoins_Struct& coins);
 	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);

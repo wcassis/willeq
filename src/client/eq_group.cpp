@@ -126,33 +126,19 @@ void EverQuest::SendLeaveGroup()
 	SendGroupDisband();
 }
 
-void EverQuest::SendRaidInvite(const std::string& target_name)
-{
-	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
-		LOG_WARN(MOD_MAIN, "Cannot send raid invite - not connected to zone");
-		return;
-	}
-
-	if (target_name.empty()) {
-		LOG_WARN(MOD_MAIN, "Cannot send raid invite - no target name specified");
-		return;
-	}
-
-	LOG_INFO(MOD_MAIN, "Sending raid invite to {}", target_name);
-
-	// RaidInvite packet uses a name string (64 bytes max)
-	EQ::Net::DynamicPacket p;
-	p.Resize(2 + 64);  // opcode + name
-	p.PutUInt16(0, HC_OP_RaidInvite);
-
-	// Copy name with null termination
-	std::string padded_name = target_name;
-	padded_name.resize(64, '\0');
-	p.PutData(2, padded_name.data(), 64);
-
-	m_zone_connection->QueuePacket(p, 0, true);
-	AddChatSystemMessage(fmt::format("Inviting {} to raid.", target_name));
-}
+// T168: SendRaidInvite was DELETED here. It sent a bare 64-byte name.
+// eqemu routes OP_RaidInvite to Handle_OP_RaidCommand
+// (zone/client_packet.cpp:12298), which requires at least
+// sizeof(RaidGeneral_Struct) == 140 bytes and reads an `action` field at
+// offset 0 that our body did not have at all -- so it was rejected with
+// "Wrong size" every time and could never have invited anyone.
+//
+// Deleted rather than fixed because the raid RESPONSE side is also wrong:
+// ZoneProcessRaidUpdate decodes 4 of 6 raid actions incorrectly and action 20
+// -- what an invite actually produces -- falls through to "Unknown". A
+// correct invite whose result the client cannot read is not a feature. The
+// exact body a future raid unit needs is recorded on HC_OP_RaidInvite in
+// eq.h and in refactor/T168_sender_triage.md.
 
 void EverQuest::AcceptGroupInvite()
 {
