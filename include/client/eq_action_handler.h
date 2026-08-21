@@ -277,6 +277,18 @@ private:
     // implement inline). Returns 0 after printing "You don't have a target."
     uint16_t resolveTargetOrCurrent(uint16_t targetId);
 
+    // T162: the ONE skill-possession check in this file that does not go
+    // through SkillManager::activateSkill(), and it exists for exactly one
+    // command. /track sends HC_OP_TrackTarget, which is NOT skill 53's
+    // opcode (that is HC_OP_Track, the "give me the track list" request), so
+    // routing /track through activateSkill would change what the command
+    // does. eqemu still class-gates it -- Handle_OP_TrackTarget returns early
+    // on !CanThisClassTrack() -- so it is gated here by CALLING T159's own
+    // predicate, SkillManager::hasSkill(), never by copying it. Returns true
+    // (allow) when the skill system is absent or the class can have the
+    // skill; on refusal it prints T159's wording and returns false.
+    bool skillGateAllows(uint8_t skillId);
+
     // Update renderer's target display after targeting via bridge
     void updateRendererTargetInfo(uint16_t spawnId);
 

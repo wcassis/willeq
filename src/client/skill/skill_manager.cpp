@@ -428,6 +428,13 @@ bool SkillManager::activateSkill(uint8_t skill_id, uint16_t target_id) {
     return true;
 }
 
+// T162 inventory note: this is the ONLY other caller of
+// sendSkillUsePacket(), and it does NOT go through canUseSkill() -- so it is
+// an ungated skill-opcode emitter. It is left as-is because it has ZERO
+// callers anywhere in the client (the reachability class this board tracks):
+// nothing can reach it, so nothing can bypass the gate through it. Whoever
+// wires a toggle UI to it must route through activateSkill() or answer for
+// the bypass; see refactor/T162_skill_gate_bypasses.md.
 bool SkillManager::toggleSkill(uint8_t skill_id) {
     if (skill_id >= EQT::MAX_PP_SKILL) {
         return false;
@@ -542,7 +549,9 @@ bool SkillManager::sendBodiedSkillPacket(uint8_t skill_id, uint16_t target_id) {
     // Handle_OP_Bind_Wound logs a size mismatch but does NOT return, then
     // dereferences app->pBuffer -- which is nullptr for a zero-length packet
     // (common/base_packet.cpp:30). EverQuest::SendBindWound is the correct,
-    // already-live sender; targeting mirrors EqActionHandler::bandage().
+    // already-live sender. T162: this "current target, else self" fallback is
+    // now the ONLY copy -- EqActionHandler::bandage() used to carry the same
+    // three lines and now routes here through activateSkill() instead.
     case 9: {
         uint16_t resolved = target_id;
         if (resolved == 0) {

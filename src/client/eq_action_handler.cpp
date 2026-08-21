@@ -391,12 +391,30 @@ void EqActionHandler::shieldTarget(uint16_t targetId) {
 
 void EqActionHandler::taunt() {
     auto* combat = getCombatManager();
-    if (combat && combat->HasTarget()) {
-        combat->Taunt();
-        m_eq.AddChatSystemMessage("Taunting target");
-    } else {
+    if (!combat || !combat->HasTarget()) {
         m_eq.AddChatSystemMessage("No target to taunt");
+        return;
     }
+    // T162: this used to call CombatManager::Taunt() directly. That put
+    // HC_OP_Taunt on the wire for ANY class and printed "Taunting target" --
+    // T161 watched a Rogue do exactly that 45s after the same character had
+    // been correctly refused /useskill taunt, and watched the server bin the
+    // packet in silence. T159's possession gate lives inside
+    // SkillManager::activateSkill(), so the fix is to reach it, NOT to grow a
+    // second copy of its predicate here (the duplicated-then-drifted class
+    // this codebase keeps paying for).
+    //
+    // useSkill() IS that entry point: it resolves the current target and
+    // reports activateSkill()'s own refusal. Skill 73 still ends at
+    // CombatManager::Taunt() inside sendBodiedSkillPacket(), which T152 left
+    // as the ONLY Taunt sender -- so this is one send, not two. What is new
+    // for /taunt is what /useskill taunt already did and T161 verified live
+    // for a Warrior: the kick gesture animation, and Taunt's 5s recast, now
+    // shared between the two commands instead of one of them dodging it.
+    //
+    // The success line is now activateSkill()'s own "You use Taunt!" via the
+    // bridge; "Taunting target" is deleted rather than printed alongside it.
+    useSkill(EQ::kSkillTaunt);
 }
 
 void EqActionHandler::toggleAutoFire() {
@@ -1428,12 +1446,33 @@ void EqActionHandler::save() {
 // Reuses the same getCombatManager() helper T102 built for the Combat
 // family rather than introducing any new targeting concept.
 void EqActionHandler::bandage(uint16_t targetId) {
-    auto* combat = getCombatManager();
-    uint16_t resolved = targetId;
-    if (resolved == 0) {
-        resolved = (combat && combat->HasTarget()) ? combat->GetTargetId() : m_eq.GetMySpawnID();
+    // T162: this used to call EverQuest::SendBindWound() directly, which put
+    // HC_OP_BindWound on the wire with no possession check at all -- the same
+    // bypass shape T161 caught on /taunt, one function away. It now goes
+    // through the gated entry point.
+    //
+    // The target rule is UNCHANGED and is now stated once instead of twice:
+    // SkillManager::sendBindWound's case 9 already carries this exact
+    // "current target, else self" fallback (skill_manager.cpp), copied from
+    // this function when T152 wrote it. activateSkill() zeroes the target for
+    // skills with requires_target == false (Bind Wound is one, because it may
+    // be cast on yourself), so case 9's copy is the one that runs and the
+    // duplicate here is deleted rather than left to drift.
+    //
+    // Bind Wound has NO animation (getSkillAnimationId(9) == 0 and no
+    // animation code), so routing through activateSkill() adds no packet. It
+    // does add Bind Wound's 1s recast, which /bandage did not have before;
+    // that matches /useskill bind wound and is the shorter of the two rules.
+    //
+    // Cap data: config/skill_caps.json has a Bind Wound row for ALL SIXTEEN
+    // classes, so this gate can refuse no class that could bandage before.
+    if (targetId != 0) {
+        LOG_DEBUG(MOD_COMBAT,
+                  "bandage: explicit target {} is resolved inside the skill "
+                  "path (current target, else self); no caller passes one",
+                  targetId);
     }
-    m_eq.SendBindWound(resolved);
+    useSkill(EQ::kSkillBindWound);
 }
 
 void EqActionHandler::rewind() {
@@ -1602,6 +1641,33 @@ void EqActionHandler::trainWithTarget() {
 // (T28: that copy is never populated in production). Returns 0 and prints
 // the same "You don't have a target." message when there is nothing to use.
 
+// T162: see the declaration in eq_action_handler.h for why this exists and
+// why it is not a second copy of T159's predicate. SkillManager::hasSkill()
+// IS that predicate (isDisplayableSkill() && canClassHaveSkill()), and
+// getSkillUseError() supplies the same wording activateSkill() would have
+// produced, so a player refused by /track reads the same sentence as a player
+// refused by /taunt or /useskill.
+//
+// Fails OPEN, exactly as T159's gate does: with no SkillManager, or with an
+// unloaded cap table (canClassHaveSkill() defaults true), everything is
+// permitted and behaviour is what it was before the gate existed. A data
+// regression degrades the client to "no gate", never to "no skills".
+bool EqActionHandler::skillGateAllows(uint8_t skillId) {
+    auto* skills = m_eq.GetSkillManager();
+    if (!skills) {
+        return true;
+    }
+    if (skills->hasSkill(skillId)) {
+        return true;
+    }
+    m_eq.AddChatSystemMessage(fmt::format(
+        "Cannot use {}: {}", EQ::getSkillName(skillId),
+        skills->getSkillUseError(skillId)));
+    LOG_DEBUG(MOD_COMBAT, "Skill gate refused skill {} ({})", skillId,
+              EQ::getSkillName(skillId));
+    return false;
+}
+
 uint16_t EqActionHandler::resolveTargetOrCurrent(uint16_t targetId) {
     if (targetId != 0) {
         return targetId;
@@ -1621,6 +1687,19 @@ void EqActionHandler::assistGroup(uint16_t targetId) {
 }
 
 void EqActionHandler::trackTarget(uint16_t targetId) {
+    // T162: /track is the one bypass that CANNOT be routed through
+    // activateSkill(). It sends HC_OP_TrackTarget ("make this entity my
+    // tracking target"), while skill 53 maps to HC_OP_Track ("send me the
+    // track list") -- two different opcodes and two different actions, so
+    // activateSkill(53) would not be this command. eqemu class-gates it all
+    // the same: Handle_OP_TrackTarget returns immediately on
+    // !CanThisClassTrack(), so before this fix a Rogue's /track was
+    // discarded in silence exactly like the Rogue's /taunt.
+    //
+    // Cap data: config/skill_caps.json has a Tracking row for classes 4
+    // (Ranger), 6 (Druid) and 8 (Bard) only -- which is precisely eqemu's
+    // CanThisClassTrack(). Gating on it refuses nobody who could track.
+    if (!skillGateAllows(EQ::kSkillTracking)) return;
     uint16_t resolved = resolveTargetOrCurrent(targetId);
     if (resolved == 0) return;
     m_eq.SendTrackTarget(resolved);

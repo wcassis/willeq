@@ -16,6 +16,15 @@ namespace EQ {
 // Maximum number of skills in the player profile
 static constexpr uint32_t MAX_SKILL_ID = 75;
 
+// T162: skill ids that a NAMED command routes to, spelled out so no command
+// handler carries a bare magic number. /bandage -> Bind Wound, /taunt ->
+// Taunt (both through SkillManager::activateSkill), /track -> Tracking (the
+// possession check only; /track's opcode is HC_OP_TrackTarget, not skill 53's
+// HC_OP_Track -- see EqActionHandler::skillGateAllows()).
+static constexpr uint8_t kSkillBindWound = 9;
+static constexpr uint8_t kSkillTracking  = 53;
+static constexpr uint8_t kSkillTaunt     = 73;
+
 // ============================================================================
 // Skill Categories
 // ============================================================================
