@@ -405,7 +405,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/irrlicht_renderer.cpp
+        # T166: the loadZoneSequential() step sequence, split out of one
+        # 2996-line TU. Driver + geometry steps here, the rest alongside.
         src/client/graphics/renderer_zone_load.cpp
+        src/client/graphics/renderer_zone_load_objects.cpp
+        src/client/graphics/renderer_zone_load_entities.cpp
+        src/client/graphics/renderer_zone_load_env.cpp
         src/client/graphics/renderer_entity_load_gate.cpp
         src/client/graphics/renderer_zone_lifecycle.cpp
         src/client/graphics/renderer_diagnostics.cpp

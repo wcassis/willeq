@@ -672,8 +672,11 @@ RegisterCommands split into 3 domain TUs each under 1,500; StartCombatMovement
 overloads co-located.
 
 Files still over the 1,500-line warn ceiling (all under the 3,000 hard
-ceiling; accepted): renderer_zone_load.cpp (2,795 — now structured as step
-methods), eq_entities.cpp (2,438), eq_player_info.cpp (2,006),
+ceiling; accepted): ~~renderer_zone_load.cpp (2,795 — now structured as step
+methods)~~ **SPLIT by T166 (2026-08-21): it had grown to 2,996, i.e. onto the
+hard ceiling, and was distorting the code inside it. Now four TUs —
+renderer_zone_load{,_objects,_entities,_env}.cpp, largest 1,139 — plus
+include/client/graphics/zone_load_context.h.**, eq_entities.cpp (2,438), eq_player_info.cpp (2,006),
 eq_movement.cpp (~1,975), eq_bridge.cpp (1,837), renderer_frame.cpp (1,583),
 renderer_player_physics.cpp (1,570), eq_merchant.cpp (1,558), plus the
 accepted cores eq.cpp (~3,600) and entity_renderer.cpp (3,201).
