@@ -4,6 +4,7 @@
 #include "common/net/daybreak_connection.h"
 #include "common/net/session_recorder.h"
 #include "common/packet_structs.h"
+#include "client/eq_profile_appearance.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
 #include "client/string_database.h"
@@ -780,6 +781,18 @@ public:
 	};
 	TestSentPositionUpdate Test_GetLastComputedPositionUpdate() const { return m_test_last_sent_update; }
 
+	// T167 test seam, same shape as the T88 one above: the body
+	// SendFaceChange() actually built, captured unconditionally right before
+	// the connection-gated send. Without this, the merge in
+	// EqActionHandler::setAppearance() can only be tested by re-implementing
+	// it in the test -- which proves nothing. `sent` starts false so a test
+	// can assert that NOTHING was sent. Read-only; test-only.
+	struct TestSentFaceChange {
+		bool sent = false;
+		EQT::ProfileAppearance body;
+	};
+	TestSentFaceChange Test_GetLastFaceChange() const { return m_test_last_face_change; }
+
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
 	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
@@ -1144,6 +1157,17 @@ public:
 	// pvp@13052/anon@13053 bytes and birthday@13040 used as controls --
 	// review/T148/playerprofile_gm_offset_annotated.txt.
 	bool GetGMMode() const { return m_gm_mode; }
+
+	// T167: the player's own appearance, from the SAME parse site as
+	// m_guild_id and m_gm_mode above. CHECK .valid BEFORE USE -- zero is a
+	// legal value for every field, so it is the only thing separating an
+	// unknown appearance from a real all-zero one.
+	//
+	// Unlike GetGMMode() this is NOT deliberately stale: it is re-set after a
+	// /appearance send, because eqemu applies the whole body and Save()s, so
+	// what we sent IS what the profile holds. See eq_profile_appearance.h.
+	const EQT::ProfileAppearance& GetProfileAppearance() const { return m_profile_appearance; }
+	void SetProfileAppearance(const EQT::ProfileAppearance& appearance) { m_profile_appearance = appearance; }
 
 	// Game state access (new state management system)
 	eqt::state::GameState& GetGameState() { return m_game_state; }
@@ -1870,6 +1894,13 @@ private:
 	// GetGMMode() for the full contract (login-time only, deliberately
 	// stale, NOT an account-privilege flag).
 	bool m_gm_mode = false;
+
+	// T167: the seven PlayerProfile appearance fields. See
+	// GetProfileAppearance().
+	EQT::ProfileAppearance m_profile_appearance;
+
+	// T167 test seam -- see Test_GetLastFaceChange().
+	TestSentFaceChange m_test_last_face_change;
 
 	// Guild state
 	uint32_t m_guild_id = 0;

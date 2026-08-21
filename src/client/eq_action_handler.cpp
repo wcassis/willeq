@@ -1180,50 +1180,74 @@ void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
 // and Save()s -- so any field the user did not name must be re-sent at its
 // current value or it is silently reset.
 //
-// What this client actually knows about its own appearance:
-//   * face / haircolor / hairstyle / beardcolor / beard come from the player's
-//     own Entity, filled by the spawn parse (eq_entities.cpp:333-...).
-//   * eyecolor1 / eyecolor2 are NOT tracked anywhere. The PlayerProfile read
-//     parses them into locals that are never stored (eq.cpp:2097-2098) and
-//     Entity has no eyecolor fields. Fixing that is outside this unit's
-//     territory, so they default to 0 unless the user names them.
-// Because of that last point the full seven-field body is echoed back to the
-// player before it is sent -- nothing here changes an appearance field
-// silently.
+// T167: the base is now the PLAYER PROFILE, which is the same storage eqemu
+// is about to overwrite, rather than the player's Entity.
+//   * It is the only source for eyecolor1/eyecolor2 at all. Entity has no
+//     eyecolor fields, so before T167 both eyes were reset to 0 by every
+//     /appearance -- the bug that motivated this unit.
+//   * It is also the CORRECT source for the other five. Entity's copies are
+//     the current VISUAL, which an illusion overwrites
+//     (eq_entities.cpp:2131-2134). Merging from Entity while illusioned would
+//     persist the illusion's hair and beard into the character's saved
+//     profile; merging from the profile cannot.
+// Entity remains the fallback for its five fields when no profile has been
+// parsed, which preserves T153's behaviour on that path.
+//
+// If NEITHER source is available the request is REFUSED rather than sent as a
+// fabricated all-zero body. Zero is a legal value for every field, so an
+// unknown appearance and a real all-zero one are indistinguishable, and
+// guessing wrong here permanently rewrites the character on the server.
 void EqActionHandler::setAppearance(const action::AppearanceChange& change) {
-    uint8_t haircolor = 0;
-    uint8_t beardcolor = 0;
-    uint8_t eyecolor1 = 0;
-    uint8_t eyecolor2 = 0;
-    uint8_t hairstyle = 0;
-    uint8_t beard = 0;
-    uint8_t face = 0;
+    EQT::ProfileAppearance base = m_eq.GetProfileAppearance();
 
-    const auto& entities = m_eq.GetEntities();
-    auto self = entities.find(m_eq.GetEntityID());
-    if (self != entities.end()) {
-        haircolor = self->second.haircolor;
-        beardcolor = self->second.beardcolor;
-        hairstyle = self->second.hairstyle;
-        beard = self->second.beard;
-        face = self->second.face;
+    if (!base.valid) {
+        const auto& entities = m_eq.GetEntities();
+        auto self = entities.find(m_eq.GetEntityID());
+        if (self == entities.end()) {
+            LOG_WARN(MOD_MAIN,
+                     "setAppearance: no PlayerProfile parsed and no self "
+                     "entity -- refusing to send a fabricated appearance");
+            m_eq.AddChatSystemMessage(
+                "Your appearance is not known yet -- try again after you have "
+                "fully zoned in.");
+            return;
+        }
+        base.haircolor = self->second.haircolor;
+        base.beardcolor = self->second.beardcolor;
+        base.hairstyle = self->second.hairstyle;
+        base.beard = self->second.beard;
+        base.face = self->second.face;
+        // eyecolor1/eyecolor2 stay 0: nothing on this path knows them.
+        LOG_WARN(MOD_MAIN,
+                 "setAppearance: no PlayerProfile parsed; merging from the "
+                 "self entity, so eye colors will be sent as 0");
     }
 
-    if (change.haircolor) haircolor = *change.haircolor;
-    if (change.beardcolor) beardcolor = *change.beardcolor;
-    if (change.eyecolor1) eyecolor1 = *change.eyecolor1;
-    if (change.eyecolor2) eyecolor2 = *change.eyecolor2;
-    if (change.hairstyle) hairstyle = *change.hairstyle;
-    if (change.beard) beard = *change.beard;
-    if (change.face) face = *change.face;
+    if (change.haircolor) base.haircolor = *change.haircolor;
+    if (change.beardcolor) base.beardcolor = *change.beardcolor;
+    if (change.eyecolor1) base.eyecolor1 = *change.eyecolor1;
+    if (change.eyecolor2) base.eyecolor2 = *change.eyecolor2;
+    if (change.hairstyle) base.hairstyle = *change.hairstyle;
+    if (change.beard) base.beard = *change.beard;
+    if (change.face) base.face = *change.face;
 
     m_eq.AddChatSystemMessage(fmt::format(
         "Requesting appearance: haircolor={} beardcolor={} eyecolor1={} "
         "eyecolor2={} hairstyle={} beard={} face={}",
-        haircolor, beardcolor, eyecolor1, eyecolor2, hairstyle, beard, face));
+        base.haircolor, base.beardcolor, base.eyecolor1, base.eyecolor2,
+        base.hairstyle, base.beard, base.face));
 
-    m_eq.SendFaceChange(haircolor, beardcolor, eyecolor1, eyecolor2,
-                        hairstyle, beard, face);
+    m_eq.SendFaceChange(base.haircolor, base.beardcolor, base.eyecolor1,
+                        base.eyecolor2, base.hairstyle, base.beard, base.face);
+
+    // Handle_OP_FaceChange applies all seven fields and Save()s with no
+    // rejection path for a correctly-sized body (verified in eqemu source;
+    // T155 confirmed the DB write live), so what we just sent IS the profile
+    // now. Recording it keeps a SECOND /appearance from reverting the first
+    // -- without this, the eyecolors this unit exists to preserve would only
+    // survive one command per zone-in.
+    base.valid = true;
+    m_eq.SetProfileAppearance(base);
 }
 
 // ========== Extended Movement ==========

@@ -1209,6 +1209,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms)
 
+# T167: PlayerProfile appearance parse + the /appearance merge. Pins the seven
+# PlayerProfile offsets (verified against eqemu's titanium_structs.h) and the
+# merge that keeps an unnamed field from being reset to zero on the server.
+# Same headless EverQuest + EqActionHandler idiom as the transforms tests
+# above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_profile_appearance
+    test_profile_appearance.cpp
+)
+TARGET_LINK_LIBRARIES(test_profile_appearance GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_profile_appearance PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_profile_appearance)
+
 # T95: regression tests for the previously-unvalidated int->enum casts in
 # EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
 # T93's deferred finding. MovementMode/PositionState are plain enums with no

@@ -1837,6 +1837,19 @@ void EverQuest::SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t ey
 	fc.face = face;
 	packet.PutData(2, &fc, sizeof(fc));
 
+	// T167 test seam, mirroring SendPositionUpdate()'s: capture the body we
+	// built BEFORE the connection gate, so a test can assert on the real
+	// encoder output without a live connection. See Test_GetLastFaceChange().
+	m_test_last_face_change.sent = true;
+	m_test_last_face_change.body.haircolor = haircolor;
+	m_test_last_face_change.body.beardcolor = beardcolor;
+	m_test_last_face_change.body.eyecolor1 = eyecolor1;
+	m_test_last_face_change.body.eyecolor2 = eyecolor2;
+	m_test_last_face_change.body.hairstyle = hairstyle;
+	m_test_last_face_change.body.beard = beard;
+	m_test_last_face_change.body.face = face;
+	m_test_last_face_change.body.valid = true;
+
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Face change requested");

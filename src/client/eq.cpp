@@ -2087,15 +2087,12 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	float bind_z = p.GetFloat(base + 36);                  // offset 36
 	float bind_heading = p.GetFloat(base + 40);            // offset 40
 
-	// Appearance
-	uint8_t haircolor = p.GetUInt8(base + 172);  // offset 172
-	uint8_t beardcolor = p.GetUInt8(base + 173); // offset 173
-	uint8_t eyecolor1 = p.GetUInt8(base + 174);  // offset 174
-	uint8_t eyecolor2 = p.GetUInt8(base + 175);  // offset 175
-	uint8_t hairstyle = p.GetUInt8(base + 176);  // offset 176
-	uint8_t beard = p.GetUInt8(base + 177);      // offset 177
-	uint8_t face = p.GetUInt8(base + 2264);      // offset 2264
-	
+	// Appearance. T167: these seven fields were parsed into locals here and
+	// read by nothing; the result is now STORED, same once-per-profile shape
+	// as m_guild_id (T133) and m_gm_mode (T148) below. Offsets and the full
+	// rationale live in eq_profile_appearance.h, where a test pins them.
+	m_profile_appearance = EQT::ParseProfileAppearance(p, base);
+
 	// Experience points
 	uint32_t exp = p.GetUInt32(base + 2268);     // offset 2268
 	uint32_t exp_aa = p.GetUInt32(base + 2288);  // offset 2288 (AA exp)

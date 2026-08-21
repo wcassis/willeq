@@ -275,6 +275,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_gm.cpp
     src/client/eq_merchant.cpp
     src/client/eq_player_info.cpp
+    src/client/eq_profile_appearance.cpp
     src/client/eq_group.cpp
     src/client/eq_zone.cpp
     src/client/eq_movement.cpp
