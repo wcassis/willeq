@@ -1223,6 +1223,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_profile_appearance)
 
+# T169: OP_RaidUpdate decoding -- the action codes against eqemu's
+# common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
+# NOT have `parameter` where the general body does). Links willeq_core for
+# EQT::DecodeRaidUpdate + EQ::Net::Packet; no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_raid_update_decode
+    test_raid_update_decode.cpp
+)
+TARGET_LINK_LIBRARIES(test_raid_update_decode GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_raid_update_decode PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_raid_update_decode)
+
 # T95: regression tests for the previously-unvalidated int->enum casts in
 # EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
 # T93's deferred finding. MovementMode/PositionState are plain enums with no

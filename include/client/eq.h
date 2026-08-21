@@ -182,6 +182,14 @@ enum TitaniumZoneOpcodes {
 	HC_OP_SendExpZonein = 0x0587,
 	HC_OP_WorldObjectsSent = 0x0000,
 	HC_OP_ExpUpdate = 0x5ecd,
+	// T169: OP_RaidJoin and OP_RaidUpdate are the SAME Titanium wire value,
+	// 0x1f21 (patch_Titanium.conf:441 and :443). Everything raid-related
+	// that the server sends arrives here, including raidCreate (action 8),
+	// which carries a DIFFERENT body -- see raid_update.h's shape table.
+	// A separate HC_OP_RaidJoin = 0x3c24 used to sit further down this
+	// enum; 0x3c24 is not a Titanium opcode at all (it maps to nothing in
+	// patch_Titanium.conf), it had no sender and no dispatch arm, and it
+	// cannot be given its real value without colliding with this one.
 	HC_OP_RaidUpdate = 0x1f21,
 	// T168: C->S. Body is RaidGeneral_Struct (140 bytes: action@0,
 	// player_name@4[64], unknown1@68, leader_name@72[64], parameter@136),
@@ -380,7 +388,9 @@ enum TitaniumZoneOpcodes {
 	// Phase 3: LFG System
 	HC_OP_LFGCommand = 0x68ac,           // C->S: LFG toggle command
 	// Phase 3: Raid additions
-	HC_OP_RaidJoin = 0x3c24,             // C->S: Join raid
+	// T169 (found, not fixed -- outside this unit's scope): 0x5191 does not
+	// appear in patch_Titanium.conf. eqemu's OP_MarkNPC is 0x5483 (:528).
+	// No sender, no dispatch arm, referenced only by eq_strings.cpp.
 	HC_OP_MarkRaidNPC = 0x5191,          // C->S: Mark NPC for raid
 	// Phase 3: Combat Abilities
 	HC_OP_Shielding = 0x3fe6,            // C->S: Shield another player

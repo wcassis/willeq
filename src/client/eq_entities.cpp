@@ -43,6 +43,7 @@
 #include "client/world_object.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
+#include "client/raid_update.h"
 #include "client/spell/buff_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
@@ -1285,51 +1286,132 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 	}
 }
 
+// T169: every raid membership event arrives here, and until now this
+// function read one uint32 and switched on six guessed values -- four of
+// which disagreed with eqemu's own enum (common/raid.h). What that cost:
+//   * action 2 was reported as "member joined"; it is raidMemberNameChange.
+//   * action 3 was reported as "the raid leader has changed"; it is
+//     raidRemove1, a member LEAVING.
+//   * action 6 was reported as "the raid has disbanded"; it is raidMembers,
+//     the full member list. The real disband is action 5, which was unhandled.
+//   * action 10 was reported as a lock-state update; it is raidNoRaid, the
+//     server telling us we are not in a raid. Lock/unlock are 17 and 18.
+//   * action 20 -- what a raid INVITE actually produces -- fell through to
+//     "Unknown raid action", so an invited player was told NOTHING AT ALL.
+// The body was never parsed, so no message could name anyone.
+//
+// Decoding now lives in DecodeRaidUpdate() (raid_update.cpp), where the
+// per-action body shapes are documented and pinned by test. This function is
+// only the rendering.
+//
+// SCOPE: this is the decode, not a raid feature. There is no raid roster, no
+// accept path, and no /raid commands -- those need the member-list parse
+// (action 6) and a sender, and belong to the raid unit proper. What the user
+// gets here is a truthful account of what the server said, in place of four
+// wrong messages and one silence.
 void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 {
-	// Raid update packets contain information about raid membership changes
-	// The format varies based on the action type in the packet
-	// For now, log the packet details for debugging
+	const EQT::RaidUpdate u = EQT::DecodeRaidUpdate(p, 2);
 
-	if (p.Length() < 6) {
-		LOG_DEBUG(MOD_ZONE, "Received short raid update: {} bytes", p.Length());
+	if (!u.valid) {
+		LOG_WARN(MOD_ZONE, "RaidUpdate too short for action {} ({}): {} bytes",
+		         u.raw_action, EQT::RaidActionName(u.raw_action), p.Length());
 		return;
 	}
 
-	uint32_t action = p.GetUInt32(2);
-	LOG_DEBUG(MOD_ZONE, "Received raid update: action={}, {} bytes", action, p.Length());
+	LOG_DEBUG(MOD_ZONE, "RaidUpdate action={} ({}) player='{}' leader='{}' parameter={}",
+	          u.raw_action, EQT::RaidActionName(u.raw_action),
+	          u.player_name, u.leader_name, u.parameter);
 
-	// Common raid actions:
-	// 0 = raid formed/joined
-	// 1 = member left
-	// 2 = member joined
-	// 3 = leader changed
-	// 6 = raid disbanded
+	// Every event names a member, and several of them are about US. eqemu
+	// sends the same packet to the whole raid, so without this comparison the
+	// client would announce "You have joined the raid" for every member.
+	const bool about_me = !u.player_name.empty() && u.player_name == m_character;
 
-	switch (action) {
-	case 0:
-		AddChatSystemMessage("You have joined the raid.");
+	switch (u.action) {
+	case EQT::RaidAction::Add:
+		if (about_me) {
+			AddChatSystemMessage("You have joined the raid.");
+		} else {
+			AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
+		}
 		break;
-	case 1:
-		// Member left - could parse name from packet
-		LOG_DEBUG(MOD_ZONE, "Raid member left");
+
+	case EQT::RaidAction::Remove1:
+	case EQT::RaidAction::Remove2:
+		if (about_me) {
+			AddChatSystemMessage("You have left the raid.");
+		} else {
+			AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
+		}
 		break;
-	case 2:
-		// Member joined - could parse name from packet
-		LOG_DEBUG(MOD_ZONE, "Raid member joined");
-		break;
-	case 3:
-		AddChatSystemMessage("The raid leader has changed.");
-		break;
-	case 6:
+
+	case EQT::RaidAction::Disband:
 		AddChatSystemMessage("The raid has disbanded.");
 		break;
-	case 10:
-		// Raid lock state update - ignore silently
-		LOG_TRACE(MOD_ZONE, "Raid lock state update");
+
+	case EQT::RaidAction::Create:
+		AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
 		break;
+
+	case EQT::RaidAction::NoRaid:
+		AddChatSystemMessage("You are not in a raid.");
+		break;
+
+	case EQT::RaidAction::SetLeader:
+		// The invite. eqemu builds this in Handle_OP_RaidCommand's
+		// RaidCommandInvite arm (client_packet.cpp:12356): leader_name is the
+		// player inviting, player_name is us.
+		//
+		// There is deliberately no accept here. Accepting means sending
+		// OP_RaidCommand with action 1 (RaidCommandAcceptInvite),
+		// player_name = the inviter, leader_name = us -- a sender this client
+		// does not have (T168 deleted the broken raid sender rather than
+		// leave it parked). Saying so out loud beats the previous behaviour,
+		// which was to say nothing and log "Unknown raid action: 20".
+		AddChatSystemMessage(fmt::format(
+			"{} invites you to join a raid. This client cannot accept raid "
+			"invites yet.", u.leader_name));
+		break;
+
+	case EQT::RaidAction::MakeLeader:
+		AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
+		break;
+
+	case EQT::RaidAction::NoLongerLeader:
+		AddChatSystemMessage("You are no longer the raid leader.");
+		break;
+
+	case EQT::RaidAction::Lock:
+		AddChatSystemMessage("The raid is now locked.");
+		break;
+
+	case EQT::RaidAction::Unlock:
+		AddChatSystemMessage("The raid is now unlocked.");
+		break;
+
+	case EQT::RaidAction::SetMotd:
+		if (!u.text.empty()) {
+			AddChatSystemMessage(fmt::format("Raid MOTD: {}", u.text));
+		}
+		break;
+
+	case EQT::RaidAction::SetNote:
+		LOG_DEBUG(MOD_ZONE, "Raid note for {}: '{}'", u.player_name, u.text);
+		break;
+
+	case EQT::RaidAction::Members:
+		// The roster (details + member list, 395+ bytes). Parsing it is the
+		// raid unit's job; announcing something we have not parsed would be
+		// the same class of guess this unit is removing.
+		LOG_DEBUG(MOD_ZONE, "Raid member list received ({} bytes) -- not parsed", p.Length());
+		break;
+
 	default:
-		LOG_DEBUG(MOD_ZONE, "Unknown raid action: {}", action);
+		// Named, not guessed: known-but-unhandled and genuinely unknown are
+		// different facts and now read differently in the log.
+		LOG_DEBUG(MOD_ZONE, "Raid action {} ({}) not handled by this client",
+		          u.raw_action, EQT::RaidActionName(u.raw_action));
 		break;
 	}
 }
