@@ -363,8 +363,18 @@ GTEST_DISCOVER_TESTS(test_action_dispatcher)
 # state-module set. IOutputRenderer is a pure interface satisfied entirely
 # by a local test fake -- output_renderer.cpp / console_renderer.cpp /
 # graphical_renderer.cpp (which pulls in Irrlicht) are NOT linked.
+#
+# T165: the cases are split across five .cpp files (core mechanics, then one
+# per command family) sharing command_processor_test_fixture.h. They are all
+# sources of THIS ONE target on purpose -- the 3000-line ceiling is a
+# per-file rule, so splitting the file satisfies it without adding four more
+# 80MB binaries and four more ctest discovery passes (T163's NFS cost).
 ADD_EXECUTABLE(test_command_processor
     test_command_processor.cpp
+    test_command_processor_migration.cpp
+    test_command_processor_combat_guild.cpp
+    test_command_processor_world.cpp
+    test_command_processor_senders.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${ACTION_LAYER_STATE_SOURCES}
@@ -378,8 +388,10 @@ GTEST_DISCOVER_TESTS(test_command_processor)
 # T153: /appearance parse + validation. Same dependency set as
 # test_command_processor (real ActionDispatcher + CommandProcessor driven
 # through the recording IActionHandler fake), in its own target because
-# test_command_processor.cpp is already past check_file_sizes.sh's 3000-line
-# FAIL ceiling. See refactor/T153_consider_corpse_and_face.md.
+# test_command_processor.cpp was past check_file_sizes.sh's 3000-line FAIL
+# ceiling when T153 landed. See refactor/T153_consider_corpse_and_face.md.
+# T165 split that file, so the ceiling is no longer the reason this target
+# exists -- it stays separate only because nothing is gained by merging it.
 ADD_EXECUTABLE(test_appearance_command
     test_appearance_command.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
@@ -1361,7 +1373,8 @@ ENDIF()
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
 # gate as test_static_ui_panels above (it drives StaticUIInput), and no device
 # is created — see refactor/T156_skill_reachability.md. Deliberately a NEW
-# file: test_command_processor.cpp is already past the 3000-line FAIL ceiling.
+# file: test_command_processor.cpp was past the 3000-line FAIL ceiling when
+# T156 landed (T165 has since split it).
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_skill_reachability
         test_skill_reachability.cpp
