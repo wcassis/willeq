@@ -1100,7 +1100,18 @@ TARGET_LINK_LIBRARIES(test_zoning_integration GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zoning_integration PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-# Note: Not using GTEST_DISCOVER_TESTS because this requires a running server
+# T164 (2026-08-21): registered with ctest ONLY under -DEQT_LIVE_TESTS=ON, and
+# labelled "live" so it can never join the default suite. Discovery is safe --
+# each main() only parses args and prints before RUN_ALL_TESTS(), so
+# --gtest_list_tests returns without touching a server (verified: 4 / 7 / 8
+# tests listed in <1s with no eqemu running). These binaries are still BUILT
+# unconditionally; before T164 they were built on every unit and run by
+# nothing.
+#   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+#   ctest --test-dir build -L live
+IF(EQT_LIVE_TESTS)
+    GTEST_DISCOVER_TESTS(test_zoning_integration PROPERTIES LABELS "live")
+ENDIF()
 
 # Batch R (R02): headless session replay harness / game-state regression
 # oracle. Synthetic mode always runs (no network, no EQ client files); golden
@@ -1293,7 +1304,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zoning_graphics_integration PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zoning_graphics_integration GTest::gtest_main willeq_core)
-    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+    # T164 (2026-08-21): registered with ctest ONLY under -DEQT_LIVE_TESTS=ON, and
+    # labelled "live" so it can never join the default suite. Discovery is safe --
+    # each main() only parses args and prints before RUN_ALL_TESTS(), so
+    # --gtest_list_tests returns without touching a server (verified: 4 / 7 / 8
+    # tests listed in <1s with no eqemu running). These binaries are still BUILT
+    # unconditionally; before T164 they were built on every unit and run by
+    # nothing.
+    #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+    #   ctest --test-dir build -L live
+    IF(EQT_LIVE_TESTS)
+        GTEST_DISCOVER_TESTS(test_zoning_graphics_integration PROPERTIES LABELS "live")
+    ENDIF()
 ENDIF()
 
 # Headless character-model loading/animation suite (RaceModelLoader +
@@ -1478,7 +1500,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_beneficial_spell_casting PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_beneficial_spell_casting GTest::gtest_main willeq_core)
-    # Note: Not using GTEST_DISCOVER_TESTS because this requires a running server and display
+    # T164 (2026-08-21): registered with ctest ONLY under -DEQT_LIVE_TESTS=ON, and
+    # labelled "live" so it can never join the default suite. Discovery is safe --
+    # each main() only parses args and prints before RUN_ALL_TESTS(), so
+    # --gtest_list_tests returns without touching a server (verified: 4 / 7 / 8
+    # tests listed in <1s with no eqemu running). These binaries are still BUILT
+    # unconditionally; before T164 they were built on every unit and run by
+    # nothing.
+    #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+    #   ctest --test-dir build -L live
+    IF(EQT_LIVE_TESTS)
+        GTEST_DISCOVER_TESTS(test_beneficial_spell_casting PROPERTIES LABELS "live")
+    ENDIF()
 ENDIF()
 
 # Common audio source files used by audio tests that need AudioManager

@@ -60,6 +60,12 @@ cmake --build build
 # Run tests
 cd build && ctest --output-on-failure
 
+# Live/integration tests (need a running eqemu server + display + EQ client
+# files) are NOT in the default suite. Register them, then select by label:
+#   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+#   ctest --test-dir build -L live
+# The binaries build either way; only ctest registration is gated (T164).
+
 # Run a single test
 cd build && ctest -R TestName --output-on-failure
 # Or directly:

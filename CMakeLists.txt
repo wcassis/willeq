@@ -12,6 +12,15 @@ OPTION(EQT_BUILD_TESTS "Build tests" ON)
 OPTION(EQT_GRAPHICS "Enable Irrlicht graphics rendering" ON)
 OPTION(EQT_DRM "Use DRM/KMS/GBM/EGL instead of X11 (for ARM boards without X11)" OFF)
 OPTION(EQT_GLES2 "Use OpenGL ES 2.0 backend instead of desktop GL (for DRM+Mali/Lima)" OFF)
+# T164 (2026-08-21): register the live-only integration tests with ctest under
+# the "live" label. OFF by default ON PURPOSE -- these need a running eqemu
+# server, a display and EQ client files, so they must never join the default
+# suite (whose total every unit compares against as its baseline). The three
+# binaries are still BUILT unconditionally, which is what keeps them compiling;
+# this option only controls whether ctest knows about them.
+#   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+#   ctest --test-dir build -L live
+OPTION(EQT_LIVE_TESTS "Register the live/integration tests (need a server + display) with ctest" OFF)
 # H01: path to a locally-built patched Irrlicht (headers/ + lib/libIrrlicht.a),
 # e.g. third_party/irrlicht-gles2-x86/ produced by scripts/build-gles2-x86.sh.
 # When set, this overrides the system Irrlicht FIND_PATH/FIND_LIBRARY below.
