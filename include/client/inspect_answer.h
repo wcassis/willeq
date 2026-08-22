@@ -21,6 +21,12 @@
 
 namespace EQT {
 
+// The longest inspect message that survives a round trip. The server copies
+// sizeof(InspectMessage_Struct) == 256 bytes out of the 288-byte wire field
+// into a 256-byte struct, so 255 characters plus a terminator is the real
+// limit -- NOT the 288 the field appears to offer.
+inline constexpr size_t INSPECT_MESSAGE_MAX_LEN = 255;
+
 // Builds the answer to an inspect request.
 //
 // `requester_id` is the inspecting player -- Inspect_Struct::PlayerID from the

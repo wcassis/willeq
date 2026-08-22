@@ -296,6 +296,15 @@ public:
         record("setAppearance", Sym{oss.str()});
     }
 
+    // T171
+    void setInspectMessage(const std::optional<std::string>& message) override {
+        if (!message) {
+            record("setInspectMessage", Sym{"<show>"});
+        } else {
+            record("setInspectMessage", Sym{"\"" + *message + "\""});
+        }
+    }
+
     // ========== Extended Movement ==========
     void setMovementMode(int mode) override { record("setMovementMode", mode); }
     void setPositionState(int state) override { record("setPositionState", state); }

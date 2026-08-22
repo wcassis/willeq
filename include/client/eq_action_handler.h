@@ -164,6 +164,8 @@ public:
     // T153: /appearance -- merges the named fields over the character's
     // current appearance and calls EverQuest::SendFaceChange().
     void setAppearance(const action::AppearanceChange& change) override;
+    // T171: set/clear/show the local inspect message. nullopt = show.
+    void setInspectMessage(const std::optional<std::string>& message) override;
 
     // ========== Extended Movement ==========
 

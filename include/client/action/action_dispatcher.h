@@ -293,6 +293,12 @@ public:
     // character's current appearance before calling SendFaceChange().
     virtual void setAppearance(const AppearanceChange& change) = 0;
 
+    // T171: set (or clear) the inspect message this client answers inspects
+    // with. No packet is sent -- there is no Titanium opcode for pushing it --
+    // so unlike almost everything else on this interface it is local state
+    // plus a config write. std::nullopt means SHOW the current value.
+    virtual void setInspectMessage(const std::optional<std::string>& message) = 0;
+
     // ========== Extended Movement ==========
 
     virtual void setMovementMode(int mode) = 0;
@@ -1457,6 +1463,7 @@ public:
      * the character's current appearance.
      */
     ActionResult setAppearance(const AppearanceChange& change);
+    ActionResult setInspectMessage(const std::optional<std::string>& message);
 
 private:
     state::GameState& m_state;

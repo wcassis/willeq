@@ -466,6 +466,7 @@ private:
     // named face/hair/beard fields. The merge with the character's current
     // appearance happens in EqActionHandler, not here.
     ActionResult cmdAppearance(const std::string& args);
+    ActionResult cmdInspectMessage(const std::string& args);  // T171
 
     // Shared helper: resolve a target spawn id for the Combat/Social
     // commands above that take an optional player name and otherwise fall

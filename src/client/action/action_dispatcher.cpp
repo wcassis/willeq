@@ -1923,5 +1923,18 @@ ActionResult ActionDispatcher::setAppearance(const AppearanceChange& change) {
     return ActionResult::Success();
 }
 
+// T171: /inspectmessage. Deliberately NOT zone-gated, unlike every sender
+// above it: this changes local state and writes the config file, and a player
+// should be able to set it at a character-select or loading screen. The value
+// reaches the server on its own schedule -- the next time somebody inspects
+// us -- so there is nothing here that needs a zone connection.
+ActionResult ActionDispatcher::setInspectMessage(const std::optional<std::string>& message) {
+    if (!m_handler) {
+        return ActionResult::Failure("No action handler");
+    }
+    m_handler->setInspectMessage(message);
+    return ActionResult::Success();
+}
+
 } // namespace action
 } // namespace eqt

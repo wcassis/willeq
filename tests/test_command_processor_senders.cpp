@@ -544,4 +544,60 @@ TEST_F(CommandProcessorTest, T148_GMCommands_NotConnectedToZone_FailCleanlyWitho
     }
 }
 
+// ===================================================================
+// /inspectmessage (T171) -- the local inspect message. No sender of its own:
+// it is the payload SendInspectAnswer (T170) carries, and the reason this
+// client can answer an inspect without wiping the character's stored message.
+// Lives in this file because it exists to feed the wire, like everything else
+// here.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, InspectMessage_NoArgsShowsRatherThanClears) {
+    auto result = processor->processCommand("/inspectmessage");
+    EXPECT_TRUE(result.success);
+    // The destructive reading of a bare command would be "clear". It must be
+    // the harmless one: the server never sends the message back, so a
+    // wrongly-cleared message is unrecoverable.
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(<show>)"));
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_ClearRequiresTheExplicitFlag) {
+    auto result = processor->processCommand("/inspectmessage -clear");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(\"\")"));
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_TextIsTakenRawWithInternalSpaces) {
+    auto result = processor->processCommand("/inspectmessage Bard for hire");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(\"Bard for hire\")"))
+        << "the message is prose -- splitting and rejoining it would eat the "
+           "user's own spacing";
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_LeadingSeparatorSpaceIsDropped) {
+    auto result = processor->processCommand("/inspectmessage    Hail");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(\"Hail\")"));
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_WhitespaceOnlyArgumentShows) {
+    auto result = processor->processCommand("/inspectmessage    ");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(<show>)"))
+        << "a stray trailing space must not be read as a message";
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_AliasWorks) {
+    auto result = processor->processCommand("/inspectmsg -clear");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("setInspectMessage(\"\")"));
+}
+
+TEST_F(CommandProcessorTest, InspectMessage_IsRegisteredUnderSocial) {
+    auto info = processor->getCommandInfo("inspectmessage");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->category, "Social");
+}
+
 }  // namespace

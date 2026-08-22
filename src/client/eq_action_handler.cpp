@@ -1250,6 +1250,39 @@ void EqActionHandler::setAppearance(const action::AppearanceChange& change) {
     m_eq.SetProfileAppearance(base);
 }
 
+// T171: /inspectmessage. Three shapes, one entry point: show (nullopt), clear
+// (empty string), set (anything else).
+//
+// The showing is done here rather than in CommandProcessor because only the
+// handler can see EverQuest's copy -- the same reason setAppearance() needs a
+// handler at all.
+void EqActionHandler::setInspectMessage(const std::optional<std::string>& message) {
+    if (!message) {
+        const std::string& current = m_eq.GetInspectMessage();
+        if (current.empty()) {
+            m_eq.AddChatSystemMessage(
+                "Your inspect message is empty. Set one with "
+                "/inspectmessage <text>.");
+        } else {
+            m_eq.AddChatSystemMessage(
+                fmt::format("Your inspect message: {}", current));
+        }
+        return;
+    }
+
+    m_eq.SetInspectMessage(*message);
+    m_eq.SaveInspectMessage();
+
+    // Report what was actually stored, not what was asked for: SetInspectMessage
+    // truncates at the server's 255-byte limit and the user should see that.
+    const std::string& stored = m_eq.GetInspectMessage();
+    if (stored.empty()) {
+        m_eq.AddChatSystemMessage("Inspect message cleared.");
+    } else {
+        m_eq.AddChatSystemMessage(fmt::format("Inspect message set: {}", stored));
+    }
+}
+
 // ========== Extended Movement ==========
 
 void EqActionHandler::setMovementMode(int mode) {

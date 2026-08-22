@@ -12,6 +12,7 @@
 // moved/left mapping.
 
 #include "client/eq.h"
+#include "client/inspect_answer.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -1697,11 +1698,23 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	}
 }
 
-void EverQuest::SaveHotbarConfig() {
-	if (m_config_path.empty() || !m_hotbar_model) return;
-
-	auto config = EQ::JsonConfigFile::Load(m_config_path);
-	Json::Value& root = config.RawHandle();
+// T171: the per-client config node, resolved for WRITING. Extracted verbatim
+// from SaveHotbarConfig() so the inspect-message pair below cannot drift from
+// the hotbar pair -- duplicated-then-drifted is this codebase's second most
+// common defect class, and two more hand-rolled copies of this shape is
+// exactly how it starts. Migrates the legacy top-level-array layout on the
+// way. Returns nullptr when the config has a shape we should not rewrite.
+Json::Value* EverQuest::ResolveClientConfigForWrite(Json::Value& root) {
+	// A missing or unparseable config file leaves a NULL root
+	// (JsonConfigFile::Load returns a default-constructed Json::Value for
+	// both). Initialise it rather than bail: bailing is what the hotbar code
+	// did before this extraction, and it meant a first save against a
+	// not-yet-existing config silently wrote nothing at all. Creating the
+	// structure is a deliberate behaviour change, and the only case it
+	// touches is the one that previously did nothing.
+	if (root.isNull()) {
+		root = Json::Value(Json::objectValue);
+	}
 
 	// Migrate old config format to new format if needed
 	if (root.isArray()) {
@@ -1710,19 +1723,47 @@ void EverQuest::SaveHotbarConfig() {
 		root = newRoot;
 	}
 
-	Json::Value* clientConfig = nullptr;
+	if (!root.isObject()) {
+		return nullptr;
+	}
+	if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
+		return &root["clients"][0];
+	}
+	if (!root.isMember("clients")) {
+		Json::Value clientsCopy = root;
+		root = Json::Value(Json::objectValue);
+		root["clients"] = Json::Value(Json::arrayValue);
+		root["clients"].append(clientsCopy);
+		return &root["clients"][0];
+	}
+	return nullptr;
+}
+
+// The same node resolved for READING. Deliberately NOT the same function: the
+// read side accepts a bare top-level object as the client config (the last
+// branch below) and never rewrites the file, and collapsing the two would
+// change one of the two behaviours. Extracted verbatim from
+// LoadHotbarConfig().
+const Json::Value* EverQuest::ResolveClientConfigForRead(const Json::Value& root) {
+	if (root.isArray() && root.size() > 0) {
+		return &root[0];
+	}
 	if (root.isObject()) {
 		if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
-			clientConfig = &root["clients"][0];
-		} else if (!root.isMember("clients")) {
-			Json::Value clientsCopy = root;
-			root = Json::Value(Json::objectValue);
-			root["clients"] = Json::Value(Json::arrayValue);
-			root["clients"].append(clientsCopy);
-			clientConfig = &root["clients"][0];
+			return &root["clients"][0];
 		}
+		return &root;
 	}
+	return nullptr;
+}
 
+void EverQuest::SaveHotbarConfig() {
+	if (m_config_path.empty() || !m_hotbar_model) return;
+
+	auto config = EQ::JsonConfigFile::Load(m_config_path);
+	Json::Value& root = config.RawHandle();
+
+	Json::Value* clientConfig = ResolveClientConfigForWrite(root);
 	if (clientConfig && clientConfig->isObject()) {
 		(*clientConfig)["hotbar"] = m_hotbar_model->saveToJson();
 		config.Save(m_config_path);
@@ -1734,24 +1775,64 @@ void EverQuest::LoadHotbarConfig() {
 	if (m_config_path.empty() || !m_hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
-	Json::Value& root = config.RawHandle();
+	const Json::Value& root = config.RawHandle();
 
-	const Json::Value* clientConfig = nullptr;
-	if (root.isArray() && root.size() > 0) {
-		clientConfig = &root[0];
-	} else if (root.isObject()) {
-		if (root.isMember("clients") && root["clients"].isArray() && root["clients"].size() > 0) {
-			clientConfig = &root["clients"][0];
-		} else {
-			clientConfig = &root;
-		}
-	}
-
+	const Json::Value* clientConfig = ResolveClientConfigForRead(root);
 	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
 		m_hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
 		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
 	} else {
 		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
+	}
+}
+
+// T171: the inspect message, persisted per character alongside the hotbar.
+//
+// This client has to store it locally because the SERVER never tells a
+// Titanium client its own: eqemu loads it at zone-in and only ever emits it
+// inside an inspect answer about somebody ELSE. Meanwhile every answer we send
+// overwrites the server's copy (SendInspectAnswer's hazard note). Holding the
+// text locally is therefore not a convenience -- it is the only way this
+// client can participate in the inspect protocol without destroying data, and
+// it is exactly what a real Titanium client does with its inspect window.
+void EverQuest::SetInspectMessage(const std::string& message) {
+	// Truncate here rather than at send time so what the user is shown after
+	// setting it is what will actually reach the server.
+	if (message.size() > EQT::INSPECT_MESSAGE_MAX_LEN) {
+		m_inspect_message = message.substr(0, EQT::INSPECT_MESSAGE_MAX_LEN);
+		LOG_WARN(MOD_MAIN, "Inspect message truncated to {} characters (was {})",
+		         EQT::INSPECT_MESSAGE_MAX_LEN, message.size());
+	} else {
+		m_inspect_message = message;
+	}
+}
+
+void EverQuest::SaveInspectMessage() {
+	if (m_config_path.empty()) return;
+
+	auto config = EQ::JsonConfigFile::Load(m_config_path);
+	Json::Value& root = config.RawHandle();
+
+	Json::Value* clientConfig = ResolveClientConfigForWrite(root);
+	if (clientConfig && clientConfig->isObject()) {
+		(*clientConfig)["inspectMessage"] = m_inspect_message;
+		config.Save(m_config_path);
+		LOG_DEBUG(MOD_CONFIG, "Saved inspect message to {}", m_config_path);
+	}
+}
+
+void EverQuest::LoadInspectMessage() {
+	if (m_config_path.empty()) return;
+
+	auto config = EQ::JsonConfigFile::Load(m_config_path);
+	const Json::Value& root = config.RawHandle();
+
+	const Json::Value* clientConfig = ResolveClientConfigForRead(root);
+	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("inspectMessage") &&
+	    (*clientConfig)["inspectMessage"].isString()) {
+		SetInspectMessage((*clientConfig)["inspectMessage"].asString());
+		LOG_DEBUG(MOD_CONFIG, "Loaded inspect message from {} ({} chars)",
+		          m_config_path, m_inspect_message.size());
 	}
 }
 

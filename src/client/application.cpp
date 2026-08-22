@@ -769,6 +769,10 @@ void Application::gameThreadLoop() {
                 // eq.h declaration.
                 if (m_eqClient) {
                     m_eqClient->LoadHotbarConfig();
+                    // T171: same config file, same moment. It must be loaded
+                    // before anyone can inspect us, and being in the zone is
+                    // the first point at which that is possible.
+                    m_eqClient->LoadInspectMessage();
                     // U07b: HotbarModel publishes its own events
                     if (m_eqClient->GetHotbarModel()) {
                         m_eqClient->GetHotbarModel()->publishAllSlots();

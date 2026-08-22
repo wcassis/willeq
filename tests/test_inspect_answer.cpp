@@ -20,9 +20,13 @@
 #include <gtest/gtest.h>
 
 #include "client/eq.h"
+#include "client/eq_action_handler.h"
 #include "client/inspect_answer.h"
 
 #include <cstring>
+#include <optional>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace {
@@ -72,12 +76,28 @@ TEST(InspectAnswer, MessageIsCopiedAndNulTerminated) {
     EXPECT_EQ(std::string(a.text), msg);
 }
 
-TEST(InspectAnswer, AnOverlongMessageIsTruncatedNotOverflowed) {
+// T171: the bound that matters is the SERVER's 256-byte copy, not our
+// 288-byte field. At 288 the stored message would carry NO terminator inside
+// the 256 bytes eqemu keeps, and eqemu later strcpy()s that stored text
+// (client.cpp:6628) -- an overread on their side. 255 + NUL is the limit.
+TEST(InspectAnswer, AnOverlongMessageIsTruncatedToTheServersLimitNotTheFields) {
     const std::string msg(1000, 'x');
     auto a = EQT::MakeInspectAnswer(kRequester, kMe, msg);
 
-    EXPECT_EQ(std::strlen(a.text), sizeof(a.text) - 1);
-    EXPECT_EQ(a.text[sizeof(a.text) - 1], '\0');
+    EXPECT_EQ(std::strlen(a.text), EQT::INSPECT_MESSAGE_MAX_LEN);
+    EXPECT_LT(EQT::INSPECT_MESSAGE_MAX_LEN, sizeof(a.text) - 1)
+        << "if this ever equals the field size the terminator is outside the "
+           "256 bytes the server keeps";
+    EXPECT_EQ(a.text[EQT::INSPECT_MESSAGE_MAX_LEN], '\0');
+}
+
+// A message exactly at the limit must survive whole -- an off-by-one in the
+// bound would eat its last character and nothing else would notice.
+TEST(InspectAnswer, AMessageExactlyAtTheLimitIsNotTruncated) {
+    const std::string msg(EQT::INSPECT_MESSAGE_MAX_LEN, 'y');
+    auto a = EQT::MakeInspectAnswer(kRequester, kMe, msg);
+
+    EXPECT_EQ(std::string(a.text), msg);
 }
 
 TEST(InspectAnswer, EmptyMessageProducesAnEmptyField) {
@@ -106,6 +126,132 @@ TEST(InspectAnswer, SendInspectAnswerBuildsTheBodyFromOurOwnSpawnId) {
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.target_id, kRequester);
     EXPECT_EQ(sent.playerid, kMe);
+}
+
+
+// ---------------------------------------------------------------------
+// T171 -- the local inspect message: truncation, and the config round trip.
+//
+// This client has to hold the message itself because eqemu NEVER tells a
+// Titanium client its own: it is loaded server-side at zone-in and only ever
+// emitted inside an answer about somebody else. Without a local copy the only
+// honest thing to send was empty, which overwrote whatever the server held.
+// ---------------------------------------------------------------------
+
+TEST(InspectMessageStore, SetTruncatesToTheServersLimit) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+
+    eq.SetInspectMessage(std::string(1000, 'z'));
+    EXPECT_EQ(eq.GetInspectMessage().size(), EQT::INSPECT_MESSAGE_MAX_LEN)
+        << "truncation happens on SET so the user is shown what will actually "
+           "reach the server";
+}
+
+TEST(InspectMessageStore, StartsEmpty) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    EXPECT_TRUE(eq.GetInspectMessage().empty());
+}
+
+TEST(InspectMessageStore, SurvivesAConfigRoundTrip) {
+    const std::string path =
+        std::filesystem::temp_directory_path() / "willeq_t171_roundtrip.json";
+    std::filesystem::remove(path);
+
+    const std::string msg = "Bard for hire, tips appreciated";
+    {
+        EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+        eq.SetConfigPath(path);
+        eq.SetInspectMessage(msg);
+        eq.SaveInspectMessage();
+    }
+    {
+        EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+        eq.SetConfigPath(path);
+        ASSERT_TRUE(eq.GetInspectMessage().empty());
+        eq.LoadInspectMessage();
+        EXPECT_EQ(eq.GetInspectMessage(), msg);
+    }
+    std::filesystem::remove(path);
+}
+
+// The message and the hotbar share one config file and one pair of
+// resolution helpers (T171 extracted them so they cannot drift). Writing one
+// must not destroy the other.
+TEST(InspectMessageStore, SavingDoesNotDiscardOtherKeysInTheConfig) {
+    const std::string path =
+        std::filesystem::temp_directory_path() / "willeq_t171_coexist.json";
+    std::filesystem::remove(path);
+    {
+        std::ofstream f(path);
+        f << R"({"clients":[{"host":"example","inspectMessage":"old"}]})";
+    }
+
+    {
+        EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+        eq.SetConfigPath(path);
+        eq.SetInspectMessage("new");
+        eq.SaveInspectMessage();
+    }
+
+    std::ifstream in(path);
+    const std::string written((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    EXPECT_NE(written.find("\"new\""), std::string::npos);
+    EXPECT_NE(written.find("example"), std::string::npos)
+        << "the unrelated key must survive the write";
+    std::filesystem::remove(path);
+}
+
+TEST(InspectMessageStore, LoadingFromAConfigWithoutTheKeyLeavesItEmpty) {
+    const std::string path =
+        std::filesystem::temp_directory_path() / "willeq_t171_missing.json";
+    std::filesystem::remove(path);
+    {
+        std::ofstream f(path);
+        f << R"({"clients":[{"host":"example"}]})";
+    }
+
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetConfigPath(path);
+    eq.SetInspectMessage("set before load");
+    eq.LoadInspectMessage();
+    EXPECT_EQ(eq.GetInspectMessage(), "set before load")
+        << "a config with no inspectMessage must not clear what is already set";
+    std::filesystem::remove(path);
+}
+
+// The handler layer: show / set / clear, through a real EqActionHandler.
+TEST(InspectMessageStore, HandlerSetsAndClearsTheStoredMessage) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eqt::EqActionHandler handler(eq);
+
+    handler.setInspectMessage(std::string("Selling spells"));
+    EXPECT_EQ(eq.GetInspectMessage(), "Selling spells");
+
+    handler.setInspectMessage(std::string());
+    EXPECT_TRUE(eq.GetInspectMessage().empty()) << "empty string clears";
+}
+
+TEST(InspectMessageStore, HandlerShowDoesNotModify) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eqt::EqActionHandler handler(eq);
+    eq.SetInspectMessage("unchanged");
+
+    handler.setInspectMessage(std::nullopt);
+    EXPECT_EQ(eq.GetInspectMessage(), "unchanged")
+        << "the show path must never write -- it is the no-argument form of "
+           "the command, i.e. the one typed by accident";
+}
+
+// The whole point: what we set is what we answer with.
+TEST(InspectMessageStore, TheAnswerCarriesTheStoredMessage) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetMySpawnIdForSeam(kMe);
+    eq.SetInspectMessage("Hail");
+
+    auto a = EQT::MakeInspectAnswer(kRequester, kMe, eq.GetInspectMessage());
+    EXPECT_EQ(std::string(a.text), "Hail");
 }
 
 }  // namespace

@@ -351,6 +351,14 @@ void CommandProcessor::registerBuiltinCommands() {
         "Change face/hair/beard appearance", "Character", false
     }, [this](const std::string& args) { return cmdAppearance(args); });
 
+    // T171: /inspectmessage -- the text other players see when they inspect
+    // us. Local state, no packet; it reaches the server the next time we
+    // answer an inspect. See refactor/T171_inspect_message.md.
+    registerCommand({
+        "inspectmessage", {"inspectmsg"}, "/inspectmessage [text|-clear]",
+        "Show or set the message shown when others inspect you", "Social", false
+    }, [this](const std::string& args) { return cmdInspectMessage(args); });
+
     registerCommand({
         "hail", {}, "/hail", "Hail target or say Hail", "Combat", false
     }, [this](const std::string& args) { return cmdHail(args); });
@@ -2709,6 +2717,29 @@ ActionResult CommandProcessor::cmdGMLastName(const std::string& args) {
 //
 // Fields the user does not name keep their current value; that merge needs the
 // character's live appearance and therefore happens in EqActionHandler.
+// T171: /inspectmessage [text|-clear]
+//
+// No argument SHOWS the current message rather than clearing it. Clearing
+// needs the explicit -clear, so the destructive form is never the accidental
+// one -- a bare /inspectmessage after a typo would otherwise silently wipe
+// text the user cannot recover from anywhere (the server never sends it back).
+//
+// The text is taken RAW, not split into tokens: it is prose, and internal
+// whitespace is the user's. Only the leading separator space is dropped.
+ActionResult CommandProcessor::cmdInspectMessage(const std::string& args) {
+    const size_t first = args.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+        return m_dispatcher.setInspectMessage(std::nullopt);  // show
+    }
+
+    std::string text = args.substr(first);
+    if (text == "-clear") {
+        return m_dispatcher.setInspectMessage(std::string());
+    }
+
+    return m_dispatcher.setInspectMessage(text);
+}
+
 ActionResult CommandProcessor::cmdAppearance(const std::string& args) {
     static const char* kUsage =
         "Usage: /appearance <field> <0-255> [<field> <0-255> ...]  "

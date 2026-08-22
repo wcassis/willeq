@@ -5,6 +5,11 @@
 #include "common/net/session_recorder.h"
 #include "common/packet_structs.h"
 #include "client/eq_profile_appearance.h"
+
+// T171: SaveInspectMessage()/LoadInspectMessage() and the shared config-node
+// helpers take Json::Value by pointer/reference only, so a forward
+// declaration keeps jsoncpp out of this header (it is included by ~everything).
+namespace Json { class Value; }
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
 #include "client/string_database.h"
@@ -1070,6 +1075,18 @@ public:
 	// answer's text field overwrites the character's stored inspect
 	// message on the server.
 	void SendInspectAnswer(uint32_t requester_id);
+
+	// T171: the inspect message this client sends when answering an inspect.
+	// Truncated to EQT::INSPECT_MESSAGE_MAX_LEN on set -- the server stores
+	// only 256 bytes and a longer value would be stored unterminated.
+	//
+	// Setting it does NOT push anything to the server: there is no opcode for
+	// that on Titanium (OP_InspectMessageUpdate is SoF+ and is not even mapped
+	// in patch_Titanium.conf). It reaches the server the next time somebody
+	// inspects us, which is also the moment it replaces whatever the server
+	// held -- the same last-writer-wins the real client has.
+	const std::string& GetInspectMessage() const { return m_inspect_message; }
+	void SetInspectMessage(const std::string& message);
 	// Guild functions
 	void SendGuildInvite(const std::string& player_name);
 	void SendGuildInviteAccept(bool accept);
@@ -1305,6 +1322,8 @@ public:
 	const std::string& GetConfigPath() const { return m_config_path; }
 	void SaveHotbarConfig();  // Save hotbar assignments to config file
 	void LoadHotbarConfig();  // Load hotbar assignments from config file
+	void SaveInspectMessage();  // T171: persist the inspect message
+	void LoadInspectMessage();  // T171: restore it at startup
 	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
 	// U07b: Standalone hotbar model
 	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
@@ -1565,6 +1584,10 @@ private:
 	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
 	void ZoneProcessWhoAllResponse(const EQ::Net::Packet &p);
 	void ZoneProcessInspectRequest(const EQ::Net::Packet &p);
+	// T171: shared resolution of the per-client config node. See the
+	// definitions in eq_bridge.cpp for why read and write are separate.
+	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
+	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
 	void ZoneProcessInspectAnswer(const EQ::Net::Packet &p);
 	// Guild packet handlers
 	void ZoneProcessGuildInvite(const EQ::Net::Packet &p);
@@ -1944,9 +1967,9 @@ private:
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;
 
-	// T170: what we send as our inspect message. Always empty today -- eqemu
-	// never tells a Titanium client its own stored message, so this client has
-	// no honest source for it. See SendInspectAnswer().
+	// T170/T171: what we send as our inspect message. eqemu never tells a
+	// Titanium client its own stored message, so this client keeps its own --
+	// see SendInspectAnswer() and SaveInspectMessage().
 	std::string m_inspect_message;
 
 	// Guild state
