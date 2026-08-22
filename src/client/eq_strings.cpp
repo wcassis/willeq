@@ -176,7 +176,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_ControlBoat: return "HC_OP_ControlBoat";
 		case HC_OP_Split: return "HC_OP_Split";
 		case HC_OP_LFGCommand: return "HC_OP_LFGCommand";
-		case HC_OP_MarkRaidNPC: return "HC_OP_MarkRaidNPC";
+		case HC_OP_MarkNPC: return "HC_OP_MarkNPC";
 		case HC_OP_Shielding: return "HC_OP_Shielding";
 		case HC_OP_EnvDamage: return "HC_OP_EnvDamage";
 		case HC_OP_DisciplineUpdate: return "HC_OP_DisciplineUpdate";

@@ -89,6 +89,14 @@ TEST_F(TitaniumOpcodesTest, ChatOpcodes) {
     EXPECT_EQ(HC_OP_ChannelMessage, 0x1004);
 }
 
+// T176: pin OP_MarkNPC to the eqemu Titanium value. The old HC_OP_MarkRaidNPC
+// = 0x5191 mapped to no opcode in patch_Titanium.conf; the correct value is
+// OP_MarkNPC = 0x5483 (patch_Titanium.conf:528). This assertion is the guard
+// against re-introducing the wrong value.
+TEST_F(TitaniumOpcodesTest, MarkNpcOpcode) {
+    EXPECT_EQ(HC_OP_MarkNPC, 0x5483);
+}
+
 // Test that opcodes don't collide (important for packet handling)
 TEST_F(TitaniumOpcodesTest, OpcodeUniqueness) {
     // Login opcodes should be distinct from world opcodes

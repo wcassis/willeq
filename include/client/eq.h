@@ -393,10 +393,13 @@ enum TitaniumZoneOpcodes {
 	// Phase 3: LFG System
 	HC_OP_LFGCommand = 0x68ac,           // C->S: LFG toggle command
 	// Phase 3: Raid additions
-	// T169 (found, not fixed -- outside this unit's scope): 0x5191 does not
-	// appear in patch_Titanium.conf. eqemu's OP_MarkNPC is 0x5483 (:528).
-	// No sender, no dispatch arm, referenced only by eq_strings.cpp.
-	HC_OP_MarkRaidNPC = 0x5191,          // C->S: Mark NPC for raid
+	// T176: corrected from the wrong 0x5191 (which maps to no opcode in
+	// patch_Titanium.conf) to eqemu's OP_MarkNPC = 0x5483 (patch_Titanium.conf
+	// :528, the source of truth). Renamed from HC_OP_MarkRaidNPC: Titanium has
+	// exactly one mark opcode (OP_MarkNPC); there is no distinct raid-mark
+	// opcode, so the "Raid" in the old name was a misnomer. Still no sender and
+	// no dispatch arm -- referenced only by eq_strings.cpp.
+	HC_OP_MarkNPC = 0x5483,              // C->S: Mark NPC (raid/group target marking)
 	// Phase 3: Combat Abilities
 	HC_OP_Shielding = 0x3fe6,            // C->S: Shield another player
 	HC_OP_EnvDamage = 0x31b3,            // S->C: Environmental damage
