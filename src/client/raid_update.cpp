@@ -174,12 +174,16 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
                                        const std::string& player_name,
                                        const std::string& leader_name,
                                        uint32_t parameter) {
-    // 140-byte internal RaidGeneral_Struct: the handler length-checks against
-    // this, not Titanium's 136-byte layout. See the header for field roles.
-    constexpr size_t kSize = 140;
+    // Titanium wire RaidGeneral_Struct, 136 bytes: action@0, player_name@4[64],
+    // leader_name@68[64], parameter@132. eqemu's DECODE(OP_RaidInvite)
+    // (titanium.cpp) reads THIS layout and converts to the 140-byte internal
+    // struct before Handle_OP_RaidCommand -- so sending the internal layout puts
+    // leader_name 4 bytes too late and the handler reads it as empty. (T168's
+    // "140-byte internal" note predated checking the DECODE; corrected here.)
+    constexpr size_t kSize = 136;
     constexpr size_t kPlayerName = 4;
-    constexpr size_t kLeaderName = 72;
-    constexpr size_t kParameter = 136;
+    constexpr size_t kLeaderName = 68;
+    constexpr size_t kParameter = 132;
     constexpr size_t kNameLen = 64;  // 63 chars + NUL
 
     std::vector<uint8_t> body(kSize, 0);
@@ -201,7 +205,6 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
 
     putU32(0, action);
     putName(kPlayerName, player_name);
-    // unknown1@68 stays 0
     putName(kLeaderName, leader_name);
     putU32(kParameter, parameter);
     return body;

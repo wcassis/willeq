@@ -196,13 +196,13 @@ enum TitaniumZoneOpcodes {
 	// patch_Titanium.conf), it had no sender and no dispatch arm, and it
 	// cannot be given its real value without colliding with this one.
 	HC_OP_RaidUpdate = 0x1f21,
-	// T168: C->S. Body is RaidGeneral_Struct (140 bytes: action@0,
-	// player_name@4[64], unknown1@68, leader_name@72[64], parameter@136),
-	// action = 3 (RaidCommandInvite) or 0 (RaidCommandInviteIntoExisting).
-	// eqemu routes it to Handle_OP_RaidCommand, which rejects anything
-	// smaller. Our old sender put a bare 64-byte name here and could never
-	// have worked; it was deleted rather than fixed because the raid RESPONSE
-	// parser is also wrong -- see refactor/T168_sender_triage.md.
+	// C->S OP_RaidCommand. T179 wired a real sender (EQT::encodeRaidCommand):
+	// the body is the TITANIUM 136-byte RaidGeneral_Struct (action@0,
+	// player_name@4[64], leader_name@68[64], parameter@132) -- eqemu's
+	// DECODE(OP_RaidInvite) converts it to the 140-byte internal struct before
+	// Handle_OP_RaidCommand. (T168's note here said 140-byte internal; that was
+	// wrong -- it predated checking the DECODE, and sending it made the handler
+	// read leader_name as empty and drop the command. Corrected live in T179.)
 	HC_OP_RaidInvite = 0x5891,   // Invite player to raid
 	HC_OP_GuildMOTD = 0x475a,
 	HC_OP_ChannelMessage = 0x1004,

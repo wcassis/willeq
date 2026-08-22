@@ -304,23 +304,24 @@ std::string readName(const std::vector<uint8_t>& b, size_t off) {
 }
 }  // namespace
 
-TEST(EncodeRaidCommand, SizeIsExactly140) {
-    EXPECT_EQ(EQT::encodeRaidCommand(3, "A", "B").size(), 140u);
+TEST(EncodeRaidCommand, SizeIsExactly136) {
+    // Titanium wire layout; eqemu's DECODE(OP_RaidInvite) expands it to the
+    // 140-byte internal struct. See raid_update.h.
+    EXPECT_EQ(EQT::encodeRaidCommand(3, "A", "B").size(), 136u);
 }
 
-TEST(EncodeRaidCommand, FieldsLandAtInternalOffsets) {
-    // AcceptInvite: player_name = inviter, leader_name = us.
+TEST(EncodeRaidCommand, FieldsLandAtTitaniumOffsets) {
+    // AcceptInvite: player_name = inviter, leader_name = us. Titanium offsets.
     auto b = EQT::encodeRaidCommand(1, "Testbuddy", "Testmelee", 0);
     EXPECT_EQ(readU32(b, 0), 1u);            // action@0
     EXPECT_EQ(readName(b, 4), "Testbuddy");  // player_name@4 (inviter)
-    EXPECT_EQ(readU32(b, 68), 0u);           // unknown1@68
-    EXPECT_EQ(readName(b, 72), "Testmelee"); // leader_name@72 (us)
-    EXPECT_EQ(readU32(b, 136), 0u);          // parameter@136
+    EXPECT_EQ(readName(b, 68), "Testmelee"); // leader_name@68 (us)
+    EXPECT_EQ(readU32(b, 132), 0u);          // parameter@132
 }
 
-TEST(EncodeRaidCommand, ParameterIsWrittenAt136) {
+TEST(EncodeRaidCommand, ParameterIsWrittenAt132) {
     auto b = EQT::encodeRaidCommand(20, "X", "Y", 0xDEADBEEF);
-    EXPECT_EQ(readU32(b, 136), 0xDEADBEEFu);
+    EXPECT_EQ(readU32(b, 132), 0xDEADBEEFu);
 }
 
 TEST(EncodeRaidCommand, NamesAreNulTerminatedAndTruncatedToField) {
@@ -329,13 +330,13 @@ TEST(EncodeRaidCommand, NamesAreNulTerminatedAndTruncatedToField) {
     auto b = EQT::encodeRaidCommand(3, longName, "us");
     EXPECT_EQ(b[4 + 63], 0) << "player_name field must keep its terminator";
     EXPECT_EQ(readName(b, 4).size(), 63u);
-    // leader_name field is untouched by the overrun.
-    EXPECT_EQ(readName(b, 72), "us");
+    // leader_name field (offset 68) is untouched by the overrun.
+    EXPECT_EQ(readName(b, 68), "us");
 }
 
 TEST(EncodeRaidCommand, EmptyNamesLeaveZeroedFields) {
     auto b = EQT::encodeRaidCommand(5, "", "");
     EXPECT_EQ(readU32(b, 0), 5u);
     EXPECT_EQ(b[4], 0);
-    EXPECT_EQ(b[72], 0);
+    EXPECT_EQ(b[68], 0);
 }

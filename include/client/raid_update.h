@@ -109,11 +109,14 @@ RaidUpdate DecodeRaidUpdate(const EQ::Net::Packet& p, size_t base);
 std::string RaidActionName(uint32_t raw_action);
 
 // Encode an outbound OP_RaidCommand body (Titanium wire opcode OP_RaidInvite
-// 0x5891, routed by eqemu to Handle_OP_RaidCommand). The handler length-checks
-// against its INTERNAL RaidGeneral_Struct, so the body is the 140-byte internal
-// layout, NOT Titanium's 136-byte one:
-//   action@0, player_name@4[64], unknown1@68 (0), leader_name@72[64], parameter@136
-// Names are NUL-padded and truncated to 63 chars + terminator. See eqemu
+// 0x5891, routed by eqemu to Handle_OP_RaidCommand). eqemu's
+// DECODE(OP_RaidInvite) (titanium.cpp) reads the TITANIUM 136-byte wire layout
+// and converts it to the 140-byte internal struct, so this is the 136-byte one:
+//   action@0, player_name@4[64], leader_name@68[64], parameter@132
+// Sending the internal 140-byte layout instead puts leader_name 4 bytes too
+// late; the DECODE then reads it as empty and the handler silently drops the
+// command (found live, T179). Names are NUL-padded and truncated to 63 chars +
+// terminator. See eqemu
 // common/raid.h for the RaidCommand* action codes; the C->S ones we use are
 // 1 (AcceptInvite), 3 (Invite), 5 (Disband). For AcceptInvite the field roles
 // are: player_name = the INVITER, leader_name = US (the invitee) --
