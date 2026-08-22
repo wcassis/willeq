@@ -1236,6 +1236,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_raid_update_decode)
 
+# T170: OP_InspectAnswer generation -- the field inversion between the request
+# and the answer (TargetID is the requester in an answer, the inspected player
+# in a request) and the sender itself through a real headless EverQuest.
+ADD_EXECUTABLE(test_inspect_answer
+    test_inspect_answer.cpp
+)
+TARGET_LINK_LIBRARIES(test_inspect_answer GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_inspect_answer PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_inspect_answer)
+
 # T95: regression tests for the previously-unvalidated int->enum casts in
 # EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
 # T93's deferred finding. MovementMode/PositionState are plain enums with no

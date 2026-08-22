@@ -823,6 +823,15 @@ public:
 	};
 	TestSentFaceChange Test_GetLastFaceChange() const { return m_test_last_face_change; }
 
+	// T170 test seam: the two id fields of the last inspect answer built. They
+	// are the whole point -- they mean the OPPOSITE of the request struct's.
+	struct TestSentInspectAnswer {
+		bool sent = false;
+		uint32_t target_id = 0;   // the requester (routing)
+		uint32_t playerid = 0;    // the inspected player (us)
+	};
+	TestSentInspectAnswer Test_GetLastInspectAnswer() const { return m_test_last_inspect_answer; }
+
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
 	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
@@ -1054,6 +1063,13 @@ public:
 	void SendWhoAllRequest(const std::string& name = "", int lvllow = -1, int lvlhigh = -1,
 		int race = -1, int class_ = -1, bool gm = false);  // Send /who request
 	void SendInspectRequest(uint32_t target_id);  // Send /inspect request
+	// T170: answers an inspect request aimed at us. A Titanium client MUST
+	// do this -- eqemu only builds the answer itself for SoF+ clients and
+	// bots. Called from ZoneProcessInspectRequest, never by a command.
+	// Read the hazard note on the definition before touching it: the
+	// answer's text field overwrites the character's stored inspect
+	// message on the server.
+	void SendInspectAnswer(uint32_t requester_id);
 	// Guild functions
 	void SendGuildInvite(const std::string& player_name);
 	void SendGuildInviteAccept(bool accept);
@@ -1924,6 +1940,14 @@ private:
 
 	// T167 test seam -- see Test_GetLastFaceChange().
 	TestSentFaceChange m_test_last_face_change;
+
+	// T170 test seam -- see Test_GetLastInspectAnswer().
+	TestSentInspectAnswer m_test_last_inspect_answer;
+
+	// T170: what we send as our inspect message. Always empty today -- eqemu
+	// never tells a Titanium client its own stored message, so this client has
+	// no honest source for it. See SendInspectAnswer().
+	std::string m_inspect_message;
 
 	// Guild state
 	uint32_t m_guild_id = 0;

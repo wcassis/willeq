@@ -9,6 +9,7 @@
 // refactor/F07_player_info.md.
 
 #include "client/eq.h"
+#include "client/inspect_answer.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -1131,6 +1132,46 @@ void EverQuest::SendInspectRequest(uint32_t target_id)
 	}
 }
 
+// Answers an inspect request aimed at us.
+//
+// ⚠ THIS WRITES TO THE CHARACTER'S SERVER-SIDE INSPECT MESSAGE, and there is
+// no way to avoid it. Handle_OP_InspectAnswer (zone/client_packet.cpp:9045-
+// 9049) memcpy()s our `text` field over the character's inspect message and
+// calls SaveCharacterInspectMessage() unconditionally, on every answer. The
+// packet is length-checked EXACT, so the field cannot be omitted.
+//
+// We send it EMPTY, because this client genuinely does not know the value:
+// eqemu loads the inspect message at zone-in (client_packet.cpp:1367) and
+// NEVER sends it to a Titanium client -- the real client owns the text, in its
+// own inspect window. So a character who set an inspect message elsewhere will
+// have it cleared the first time a WillEQ session is inspected.
+//
+// That is a real, if small, loss, and it is accepted deliberately: the
+// alternative is not answering at all, which leaves inspect completely broken
+// between two WillEQ clients. The fix is a client-side inspect message the
+// user can set and this sender can echo -- recorded as the follow-up in
+// refactor/T170_inspect_answer.md, NOT done here, because a setter with no way
+// to reach it is the trap T168 just finished removing.
+void EverQuest::SendInspectAnswer(uint32_t requester_id)
+{
+	EQT::InspectResponse_Struct answer =  // non-const: PutData takes void*
+		EQT::MakeInspectAnswer(requester_id, m_my_spawn_id, m_inspect_message);
+
+	// T170 test seam, same shape as T88's and T167's: capture the body before
+	// the connection gate so a test can assert on the real encoder output.
+	m_test_last_inspect_answer.sent = true;
+	m_test_last_inspect_answer.target_id = answer.TargetID;
+	m_test_last_inspect_answer.playerid = answer.playerid;
+
+	// Body-only: QueuePacket(opcode, pkt) prepends the opcode itself.
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(sizeof(EQT::InspectResponse_Struct));
+	packet.PutData(0, &answer, sizeof(EQT::InspectResponse_Struct));
+	QueuePacket(HC_OP_InspectAnswer, &packet);
+
+	LOG_DEBUG(MOD_MAIN, "Answered inspect request from entity {}", requester_id);
+}
+
 void EverQuest::ZoneProcessInspectRequest(const EQ::Net::Packet &p)
 {
 	// Someone is inspecting us
@@ -1151,6 +1192,15 @@ void EverQuest::ZoneProcessInspectRequest(const EQ::Net::Packet &p)
 
 	LOG_INFO(MOD_MAIN, "{} is inspecting you", inspector_name);
 	AddChatSystemMessage(fmt::format("{} is inspecting you.", inspector_name));
+
+	// T170: ANSWER IT. This is the half that was missing. eqemu forwards the
+	// request to us precisely because a Titanium client is expected to reply
+	// (Handle_OP_InspectRequest, client_packet.cpp:9084-9087 -- only SoF+
+	// clients and bots get a server-built answer). Without this reply the
+	// inspector's window stays empty forever, and no single-client test could
+	// ever have shown it: the request and the empty window are on two
+	// different machines.
+	SendInspectAnswer(inspect->PlayerID);
 }
 
 void EverQuest::ZoneProcessInspectAnswer(const EQ::Net::Packet &p)
@@ -1164,9 +1214,13 @@ void EverQuest::ZoneProcessInspectAnswer(const EQ::Net::Packet &p)
 	const EQT::InspectResponse_Struct* response = reinterpret_cast<const EQT::InspectResponse_Struct*>(
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
-	// Find the target's name
+	// T170: the inspected player is `playerid`, NOT TargetID. In an ANSWER,
+	// TargetID is the ROUTING field -- the requester, i.e. US, since we only
+	// receive answers we asked for. Reading it here named the inspecting
+	// player (ourselves) as the inspected one. eqemu's own builder settles it:
+	// Client::ProcessInspectRequest, zone/client.cpp:6590-6591.
 	std::string target_name = "Unknown";
-	auto it = m_entities.find(static_cast<uint16_t>(response->TargetID));
+	auto it = m_entities.find(static_cast<uint16_t>(response->playerid));
 	if (it != m_entities.end()) {
 		target_name = it->second.name;
 	}

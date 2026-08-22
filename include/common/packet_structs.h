@@ -998,29 +998,53 @@ static_assert(sizeof(WhoAllReturnHeader) == 64, "WhoAllReturnHeader must be 64 b
 
 /**
  * Inspect Request Struct
- * Used to request inspect or notify being inspected
  * Size: 8 bytes (Titanium format)
- * Used in: OP_InspectRequest (C->S and S->C)
+ * Used in: OP_InspectRequest (C->S when we inspect, S->C when we are inspected)
+ *
+ * Ground truth: titanium_structs.h:1969. NOTE that eqemu's INTERNAL
+ * Inspect_Struct (eq_packet_structs.h:2687) is two uint16s, i.e. 4 bytes, and
+ * Handle_OP_InspectRequest length-checks against THAT. It is not a
+ * contradiction and this struct is not wrong: titanium.cpp's
+ * DECODE(OP_InspectRequest) converts 8 -> 4 on the way in and
+ * ENCODE(OP_InspectRequest) converts 4 -> 8 on the way out. Do not "fix" this
+ * to 4 bytes -- that would break the wire.
  */
 struct Inspect_Struct {
-/*0000*/ uint32_t TargetID;    // Entity ID of target being inspected
-/*0004*/ uint32_t PlayerID;    // Entity ID of player doing the inspect
+/*0000*/ uint32_t TargetID;    // Entity ID of the player being inspected
+/*0004*/ uint32_t PlayerID;    // Entity ID of the player doing the inspecting
 /*0008*/
 };
 static_assert(sizeof(Inspect_Struct) == 8, "Inspect_Struct must be 8 bytes");
 
 /**
  * Inspect Response Struct
- * Contains equipment info and inspect message
  * Size: 1792 bytes (Titanium format)
- * Used in: OP_InspectAnswer (C->S and S->C)
+ * Used in: OP_InspectAnswer (C->S when we answer, S->C when we receive one)
+ *
+ * ⚠ THE TWO ID FIELDS MEAN THE OPPOSITE OF Inspect_Struct'S. T170 found the
+ * receive path reading them the request's way, which named the wrong player.
+ * Ground truth is eqemu's own construction of this packet,
+ * Client::ProcessInspectRequest (zone/client.cpp:6590):
+ *
+ *     insr->TargetID = requester->GetID();   // who ASKED -- the recipient
+ *     insr->playerid = requestee->GetID();   // who is being INSPECTED
+ *
+ * TargetID is a ROUTING field: Handle_OP_InspectAnswer
+ * (zone/client_packet.cpp:9020) looks it up to decide whom to forward the
+ * answer to. The inspected player is `playerid`. Named as eqemu names them,
+ * lower-case `playerid` included, so the asymmetry stays visible.
+ *
+ * ⚠ `text` IS PERSISTED BY THE SERVER. Handle_OP_InspectAnswer memcpy()s it
+ * over the character's inspect message and calls SaveCharacterInspectMessage()
+ * -- unconditionally, on every answer. Whatever a client puts here BECOMES the
+ * character's stored inspect message. See EverQuest::SendInspectAnswer().
  */
 struct InspectResponse_Struct {
-/*0000*/ uint32_t TargetID;           // Entity ID being inspected
-/*0004*/ uint32_t PlayerID;           // Entity ID doing the inspect
+/*0000*/ uint32_t TargetID;           // ANSWER: the requester (routing target)
+/*0004*/ uint32_t playerid;           // ANSWER: the player being inspected
 /*0008*/ char     itemnames[22][64];  // Equipment slot names (22 slots * 64 chars)
 /*1416*/ uint32_t itemicons[22];      // Equipment slot icon IDs
-/*1504*/ char     text[288];          // Inspect message
+/*1504*/ char     text[288];          // Inspect message -- SERVER PERSISTS THIS
 /*1792*/
 };
 static_assert(sizeof(InspectResponse_Struct) == 1792, "InspectResponse_Struct must be 1792 bytes");
