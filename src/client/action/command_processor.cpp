@@ -2427,15 +2427,27 @@ ActionResult CommandProcessor::cmdLoot(const std::string& args) {
         return ActionResult::Failure("Usage: /loot <corpseId> - use '/list' to find corpse IDs");
     }
 
+    // T178: every refusal echoes the offending id. The server's own failure
+    // ("Error: OP_LootRequest: Corpse not found (ent = 0)") hardcodes "0" and
+    // never names the id we asked for, so a decayed corpse and a bad id look
+    // identical. The client cannot change that string, but it can (a) name the
+    // id in its OWN validation refusals and (b) echo the id it is requesting,
+    // so the server's generic error is at least attributable.
     try {
         size_t consumed = 0;
         long corpseId = std::stol(args, &consumed);
         if (corpseId < 0 || corpseId > 0xFFFF || consumed != args.size()) {
-            return ActionResult::Failure("Invalid corpse id - use '/list' to find corpse IDs");
+            return ActionResult::Failure(
+                "Invalid corpse id '" + args + "' - use '/list' to find corpse IDs");
         }
-        return m_dispatcher.lootCorpse(static_cast<uint16_t>(corpseId));
+        auto result = m_dispatcher.lootCorpse(static_cast<uint16_t>(corpseId));
+        if (result.success) {
+            displayMessage("Requesting loot from corpse " + std::to_string(corpseId) + "...");
+        }
+        return result;
     } catch (const std::exception&) {
-        return ActionResult::Failure("Invalid corpse id - use '/list' to find corpse IDs");
+        return ActionResult::Failure(
+            "Invalid corpse id '" + args + "' - use '/list' to find corpse IDs");
     }
 }
 

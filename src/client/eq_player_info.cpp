@@ -11,6 +11,7 @@
 #include "client/eq.h"
 #include "client/inspect_answer.h"
 #include "client/bind_wound_outcome.h"
+#include "client/who_format.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -1115,9 +1116,18 @@ void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
 		return;
 	}
 
-	// Display header with player count
+	// Display header with player count. T178: eqemu's header carries a `%1`
+	// placeholder for the count ("There is %1 player in EverQuest."); fill it
+	// rather than appending a raw ": N" (which rendered "...EverQuest.: 1").
 	if (!header_text.empty()) {
-		AddChatSystemMessage(fmt::format("{}: {}", header_text, player_count));
+		bool substituted = false;
+		std::string filled = EQT::substituteWhoCount(header_text, player_count, substituted);
+		if (substituted) {
+			AddChatSystemMessage(filled);
+		} else {
+			// No placeholder in this string -- keep the count visible.
+			AddChatSystemMessage(fmt::format("{}: {}", filled, player_count));
+		}
 	} else {
 		AddChatSystemMessage(fmt::format("Players found: {}", player_count));
 	}

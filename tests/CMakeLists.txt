@@ -1258,6 +1258,14 @@ ADD_EXECUTABLE(test_bind_wound_outcome
 TARGET_LINK_LIBRARIES(test_bind_wound_outcome GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_bind_wound_outcome)
 
+# T178: OP_WhoAllResponse %1 count substitution. Pure function, no deps.
+ADD_EXECUTABLE(test_who_format
+    test_who_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/who_format.cpp
+)
+TARGET_LINK_LIBRARIES(test_who_format GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_who_format)
+
 # T170: OP_InspectAnswer generation -- the field inversion between the request
 # and the answer (TargetID is the requester in an answer, the inspected player
 # in a request) and the sender itself through a real headless EverQuest.

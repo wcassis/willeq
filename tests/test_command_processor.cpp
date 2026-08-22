@@ -450,6 +450,23 @@ TEST_F(CommandProcessorTest, Loot_MalformedId_FailsCleanlyWithoutDispatching) {
     EXPECT_TRUE(handler.empty());
 }
 
+// T178: the client-side refusal must NAME the offending id -- the server's own
+// "Corpse not found (ent = 0)" hardcodes 0 and never says which id failed, so a
+// decayed corpse and a bad request are otherwise indistinguishable.
+TEST_F(CommandProcessorTest, Loot_MalformedId_RefusalEchoesOffendingToken) {
+    auto result = processor->processCommand("/loot notanumber");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("notanumber"), std::string::npos)
+        << "refusal should quote the bad id, got: " << result.message;
+}
+
+TEST_F(CommandProcessorTest, Loot_OutOfRangeId_RefusalEchoesOffendingToken) {
+    auto result = processor->processCommand("/loot 70000");  // overflows uint16
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("70000"), std::string::npos)
+        << "refusal should quote the out-of-range id, got: " << result.message;
+}
+
 TEST_F(CommandProcessorTest, Loot_TrailingGarbageAfterNumber_FailsCleanly) {
     // "176abc" must not silently truncate-parse to 176 -- either the whole
     // token is a valid id or the command fails, matching the id-only
