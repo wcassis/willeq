@@ -1,5 +1,6 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
+#include "client/hotbar/hotbar_model.h"  // T174: read slot content type
 #include "client/state/game_state.h"
 #include "common/logging.h"
 
@@ -386,9 +387,64 @@ void InputActionBridge::processHotbarRequests() {
     if (!m_input) return;
 
     while (auto hotbarReq = m_input->consumeHotbarRequest()) {
-        // Hotbar can contain spells, abilities, items, etc.
-        // For now, we treat all hotbar slots as spell gems (1-indexed)
-        reportAction("CastSpell", m_dispatcher.castSpell(hotbarReq->slot + 1));
+        // HotbarRequest.slot is the 0-based hotbar position (0-9), which is
+        // also the index into HotbarModel.
+        const int slotIndex = hotbarReq->slot;
+
+        // T174: without a model wired we cannot know a slot's content type, so
+        // fall back to the pre-T174 behavior: treat every hotbar button as a
+        // spell gem (0-based position -> 1-based gem). This also keeps the
+        // bridge safe if it is ever constructed without a hotbar model.
+        if (!m_hotbarModel) {
+            reportAction("CastSpell",
+                m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
+            continue;
+        }
+
+        // T174: route by the slot's ACTUAL content type, read from the one
+        // HotbarModel the rest of the client uses (the mouse path in
+        // eq_bridge.cpp switches on this same enum). No default: -Wswitch then
+        // catches the next enumerator that grows a keyboard route.
+        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot(slotIndex);
+        switch (slot.type) {
+            case eqt::HotbarSlotType::Spell:
+                // Preserve the legacy position->gem mapping for spells: the
+                // hotbar position (0-based) selects the memorized gem
+                // (1-based), matching the dispatcher's 1-based castSpell
+                // contract. NOTE this diverges from the mouse path, which
+                // resolves the memorized gem from slot.id (a spell id); see
+                // refactor/T174_keyboard_hotbar.md.
+                reportAction("CastSpell",
+                    m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
+                break;
+            case eqt::HotbarSlotType::Skill:
+                // slot.id is a skill id; passed straight through, no offset.
+                reportAction("UseSkill", m_dispatcher.useSkill(slot.id));
+                break;
+            case eqt::HotbarSlotType::Item:
+                // slot.id is an item id (see HotbarModel). Forwarded directly
+                // to useItem; the action layer here has no InventoryManager to
+                // resolve item-id -> inventory-slot the way the mouse path does
+                // (eq_bridge.cpp's findItemSlotByItemId). Documented in the
+                // T174 doc as a known limitation/follow-up.
+                reportAction("UseItem",
+                    m_dispatcher.useItem(static_cast<int16_t>(slot.id)));
+                break;
+            case eqt::HotbarSlotType::Empty:
+            case eqt::HotbarSlotType::Emote:
+            case eqt::HotbarSlotType::Macro:
+            case eqt::HotbarSlotType::Combat:
+                // No safe ActionDispatcher route: Emote/Macro carry command
+                // text that needs the command processor (ProcessChatInput on
+                // the mouse path), Combat is unwired everywhere, and Empty is
+                // nothing. Log and skip rather than invent a packet -- mirrors
+                // the defensive no-op arms of eq_bridge.cpp's hotbar switch.
+                LOG_DEBUG(MOD_INPUT,
+                    "[INPUT-TRACE] processHotbarRequests: hotbar slot {} type {} "
+                    "has no keyboard dispatch route; skipping",
+                    slotIndex, eqt::hotbarSlotTypeName(slot.type));
+                break;
+        }
     }
 }
 

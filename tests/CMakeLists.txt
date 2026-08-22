@@ -435,9 +435,13 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
+    # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
+    # by slot content type. hotbar_model.cpp is dependency-light (event_bus +
+    # an inline GameStateBridge::pushEvent, both already in the state set).
+    ${CMAKE_SOURCE_DIR}/src/client/hotbar/hotbar_model.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
-TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB})
+TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})  # T174: hotbar_model.cpp reads/writes jsoncpp
 GTEST_DISCOVER_TESTS(test_input_action_bridge)
 
 # T40: GameStateSyncBridge tests -- the decorator that feeds

@@ -340,6 +340,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_TRACE(MOD_MAIN, "Allocating InputActionBridge...");
     m_inputBridge = std::make_unique<action::InputActionBridge>(*m_gameState, *m_dispatcher);
     m_inputBridge->setCommandProcessor(m_commandProcessor.get());
+    // T174: let keyboard hotbar presses route by slot content type. This is
+    // the one hotbar model the mouse path also reads (owned by EverQuest,
+    // created in its constructor, so non-null here).
+    m_inputBridge->setHotbarModel(m_eqClient->GetHotbarModel());
     LOG_DEBUG(MOD_MAIN, "Input action bridge created");
 
     // Connect input handler if available
