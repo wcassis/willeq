@@ -70,3 +70,42 @@ join/leave/disband/no-raid.
 - A full raid roster model (member list from the action-0 stream) + `/raid list`.
 - `/raid` leader-only operations (disband-all, make-leader, loot type) — more
   action codes on the same sender.
+
+## Review addendum — live two-client acceptance (and the wire-truth it caught)
+
+Run 2026-08-22 (`review/T179/`). Official Titanium client `Testbuddy` (Wine) in
+tutorialb invited WillEQ `Testmelee` (headless, T179 binary); WillEQ answered
+with `/raid accept`.
+
+**First run FAILED and that is the point of the probe.** `/raid accept` sent
+`OP_RaidCommand action=1 player='Testbuddy' leader='Testmelee'`, WillEQ printed
+"You accept...", but **no raid was created** — the final `/raid status` said "not
+in a raid", `raid_members` was empty, and the zone log showed nothing. Cause:
+eqemu's `DECODE(OP_RaidInvite)` (titanium.cpp) reads the **Titanium 136-byte**
+`RaidGeneral_Struct` (`leader_name@68, parameter@132`), not the 140-byte internal
+one T168's note described. The 140-byte body put `leader_name` at 72, so the
+DECODE read offset 68 (our zeroed `unknown1`) as `leader_name` → empty →
+`GetClientByName("")` → null → the accept arm silently returned. Fixed the
+encoder to the 136-byte layout.
+
+**Second run VERIFIED end to end** (`t179_a.log`):
+
+```
+/raid status            -> You are not in a raid.
+(invite arrives)        -> Testbuddy invites you to join a raid. Type /raid accept to join.
+/raid accept            -> Sent OP_RaidCommand action=1 player='Testbuddy' leader='Testmelee'
+                           You accept Testbuddy's raid invitation.
+(+48 ms, server built the raid and sent it back:)
+   action=8  raidCreate  leader='Testbuddy'   -> Testbuddy has formed a raid.
+   action=0  raidAdd     Testbuddy / Testmelee -> You have joined the raid.
+   action=30 raidMakeLeader Testbuddy          -> Testbuddy is now the raid leader.
+/raid status            -> You are in a raid led by Testbuddy.
+```
+
+`raid_members` afterwards held both rows (Testbuddy `israidleader=1`, Testmelee
+member) — `raid_members_after.txt`. Server state restored (raid deleted), eqemu
+down, lock released.
+
+**The lesson, again:** a new sender is unverified until the wire says otherwise.
+The encoder passed 5 unit tests against the layout T168 documented, and that
+layout was wrong; only the live server's DECODE settled it.
