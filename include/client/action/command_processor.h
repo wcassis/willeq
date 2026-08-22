@@ -282,6 +282,7 @@ private:
     // live producer). See refactor/T99_action_layer_unification_pilot.md.
     ActionResult cmdInvite(const std::string& args);
     ActionResult cmdDisband(const std::string& args);
+    ActionResult cmdRaid(const std::string& args);  // T179
     ActionResult cmdDecline(const std::string& args);
     ActionResult cmdGroupAccept(const std::string& args);
 

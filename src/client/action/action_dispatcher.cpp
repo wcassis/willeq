@@ -334,6 +334,38 @@ ActionResult ActionDispatcher::taunt() {
     return ActionResult::Success();
 }
 
+// ========== Raid (T179) ==========
+// Guard the connection, then delegate to the handler which does its own
+// reporting (invite/accept/leave reach EverQuest::SendRaidCommand; status is a
+// read). Same shape as vendorList()/T140 utility commands.
+ActionResult ActionDispatcher::raidInvite(const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidInvite(name);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidAccept() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidAccept();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidLeave() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidLeave();
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidStatus() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidStatus();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::toggleAutoFire() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

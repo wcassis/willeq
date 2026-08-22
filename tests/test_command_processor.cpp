@@ -432,6 +432,51 @@ TEST_F(CommandProcessorTest, ArgumentCase_PreservedThroughDispatch) {
 // See refactor/T34_shiftclick_loot_verification.md.
 // ===================================================================
 
+// ===================================================================
+// /raid (T179) -- subcommand routing to the ActionDispatcher raid family.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, Raid_Accept_RoutesToRaidAccept) {
+    auto result = processor->processCommand("/raid accept");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidAccept()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_Leave_RoutesToRaidLeave) {
+    auto result = processor->processCommand("/raid leave");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLeave()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_InviteWithName_RoutesWithName) {
+    auto result = processor->processCommand("/raid invite Testmelee");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidInvite(\"Testmelee\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_InviteWithoutName_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/raid invite");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+    EXPECT_NE(result.message.find("invite"), std::string::npos);
+}
+
+TEST_F(CommandProcessorTest, Raid_BareAndStatus_RouteToRaidStatus) {
+    auto r1 = processor->processCommand("/raid");
+    EXPECT_TRUE(r1.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidStatus()"));
+    handler.clear();
+    auto r2 = processor->processCommand("/raid status");
+    EXPECT_TRUE(r2.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidStatus()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_UnknownSubcommand_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/raid frobnicate");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
 TEST_F(CommandProcessorTest, Loot_ValidId_DispatchesLootCorpseWithExactId) {
     auto result = processor->processCommand("/loot 176");
     EXPECT_TRUE(result.success);

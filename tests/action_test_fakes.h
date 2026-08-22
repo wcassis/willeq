@@ -370,6 +370,12 @@ public:
     void bug(const std::string& description) override { record("bug", description); }
     void petition(const std::string& text) override { record("petition", text); }
 
+    // ========== Raid (T179) ==========
+    void raidInvite(const std::string& name) override { record("raidInvite", name); }
+    void raidAccept() override { record("raidAccept"); }
+    void raidLeave() override { record("raidLeave"); }
+    void raidStatus() override { record("raidStatus"); }
+
     // ========== Merchant (T136) ==========
     void vendorToggle() override { record("vendorToggle"); }
     void vendorList() override { record("vendorList"); }

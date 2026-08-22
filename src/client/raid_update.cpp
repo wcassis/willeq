@@ -2,6 +2,8 @@
 
 #include "common/net/packet.h"
 
+#include <algorithm>
+
 namespace EQT {
 
 namespace {
@@ -165,6 +167,44 @@ RaidUpdate DecodeRaidUpdate(const EQ::Net::Packet& p, size_t base) {
     }
 
     return u;
+}
+
+
+std::vector<uint8_t> encodeRaidCommand(uint32_t action,
+                                       const std::string& player_name,
+                                       const std::string& leader_name,
+                                       uint32_t parameter) {
+    // 140-byte internal RaidGeneral_Struct: the handler length-checks against
+    // this, not Titanium's 136-byte layout. See the header for field roles.
+    constexpr size_t kSize = 140;
+    constexpr size_t kPlayerName = 4;
+    constexpr size_t kLeaderName = 72;
+    constexpr size_t kParameter = 136;
+    constexpr size_t kNameLen = 64;  // 63 chars + NUL
+
+    std::vector<uint8_t> body(kSize, 0);
+
+    auto putU32 = [&](size_t off, uint32_t v) {
+        body[off + 0] = static_cast<uint8_t>(v & 0xff);
+        body[off + 1] = static_cast<uint8_t>((v >> 8) & 0xff);
+        body[off + 2] = static_cast<uint8_t>((v >> 16) & 0xff);
+        body[off + 3] = static_cast<uint8_t>((v >> 24) & 0xff);
+    };
+    auto putName = [&](size_t off, const std::string& name) {
+        // NUL-padded, truncated to 63 chars so byte 63 is always the terminator.
+        const size_t n = std::min(name.size(), kNameLen - 1);
+        for (size_t i = 0; i < n; ++i) {
+            body[off + i] = static_cast<uint8_t>(name[i]);
+        }
+        // remaining bytes already 0
+    };
+
+    putU32(0, action);
+    putName(kPlayerName, player_name);
+    // unknown1@68 stays 0
+    putName(kLeaderName, leader_name);
+    putU32(kParameter, parameter);
+    return body;
 }
 
 }  // namespace EQT

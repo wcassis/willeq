@@ -229,6 +229,12 @@ public:
     void bug(const std::string& description) override;
     void petition(const std::string& text) override;
 
+    // ========== Raid (T179) ==========
+    void raidInvite(const std::string& name) override;
+    void raidAccept() override;
+    void raidLeave() override;
+    void raidStatus() override;
+
     // ========== Merchant (T136) ==========
     void vendorToggle() override;
     void vendorList() override;

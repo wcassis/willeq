@@ -1544,6 +1544,60 @@ void EqActionHandler::petition(const std::string& text) {
     m_eq.SendPetition(text);
 }
 
+
+// ========== Raid (T179) ==========
+// Raid command action codes (eqemu common/raid.h): 1=AcceptInvite, 3=Invite,
+// 5=Disband. The vendorList() shape -- read EverQuest raid state, report here.
+void EqActionHandler::raidInvite(const std::string& name) {
+    if (name.empty()) {
+        m_eq.AddChatSystemMessage("Usage: /raid invite <name>");
+        return;
+    }
+    // RaidCommandInvite (3): player_name = invitee, leader_name = us.
+    m_eq.SendRaidCommand(3, name, m_eq.GetMyName());
+    m_eq.AddChatSystemMessage(fmt::format("You invite {} to join your raid.", name));
+}
+
+void EqActionHandler::raidAccept() {
+    const std::string inviter = m_eq.GetPendingRaidInviter();
+    if (inviter.empty()) {
+        m_eq.AddChatSystemMessage("You have no pending raid invitation.");
+        return;
+    }
+    // RaidCommandAcceptInvite (1): player_name = the INVITER, leader_name = us.
+    m_eq.SendRaidCommand(1, inviter, m_eq.GetMyName());
+    m_eq.ClearPendingRaidInvite();
+    m_eq.AddChatSystemMessage(fmt::format("You accept {}'s raid invitation.", inviter));
+}
+
+void EqActionHandler::raidLeave() {
+    if (!m_eq.IsInRaid()) {
+        m_eq.AddChatSystemMessage("You are not in a raid.");
+        return;
+    }
+    // RaidCommandDisband (5) removing yourself: both names = us.
+    const std::string me = m_eq.GetMyName();
+    m_eq.SendRaidCommand(5, me, me);
+    m_eq.AddChatSystemMessage("You leave the raid.");
+}
+
+void EqActionHandler::raidStatus() {
+    if (m_eq.IsInRaid()) {
+        const std::string& leader = m_eq.GetRaidLeader();
+        if (!leader.empty()) {
+            m_eq.AddChatSystemMessage(fmt::format("You are in a raid led by {}.", leader));
+        } else {
+            m_eq.AddChatSystemMessage("You are in a raid.");
+        }
+    } else {
+        m_eq.AddChatSystemMessage("You are not in a raid.");
+    }
+    const std::string pending = m_eq.GetPendingRaidInviter();
+    if (!pending.empty()) {
+        m_eq.AddChatSystemMessage(fmt::format(
+            "Pending raid invitation from {} -- type /raid accept to join.", pending));
+    }
+}
 // ========== Merchant (T136) ==========
 // vendorToggle()/buyFromVendor()/sellToVendor() are thin wrappers over the
 // three new EverQuest methods (eq_commands.cpp) that push the same

@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace EQ {
 namespace Net {
@@ -106,5 +107,21 @@ RaidUpdate DecodeRaidUpdate(const EQ::Net::Packet& p, size_t base);
 
 // eqemu's own name for an action code, or "Unknown(N)". Log-facing.
 std::string RaidActionName(uint32_t raw_action);
+
+// Encode an outbound OP_RaidCommand body (Titanium wire opcode OP_RaidInvite
+// 0x5891, routed by eqemu to Handle_OP_RaidCommand). The handler length-checks
+// against its INTERNAL RaidGeneral_Struct, so the body is the 140-byte internal
+// layout, NOT Titanium's 136-byte one:
+//   action@0, player_name@4[64], unknown1@68 (0), leader_name@72[64], parameter@136
+// Names are NUL-padded and truncated to 63 chars + terminator. See eqemu
+// common/raid.h for the RaidCommand* action codes; the C->S ones we use are
+// 1 (AcceptInvite), 3 (Invite), 5 (Disband). For AcceptInvite the field roles
+// are: player_name = the INVITER, leader_name = US (the invitee) --
+// Handle_OP_RaidCommand's RaidCommandAcceptInvite arm resolves them that way
+// (zone/client_packet.cpp).
+std::vector<uint8_t> encodeRaidCommand(uint32_t action,
+                                       const std::string& player_name,
+                                       const std::string& leader_name,
+                                       uint32_t parameter = 0);
 
 }  // namespace EQT

@@ -1331,6 +1331,8 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 	switch (u.action) {
 	case EQT::RaidAction::Add:
 		if (about_me) {
+			m_in_raid = true;
+			m_pending_raid_inviter.clear();  // accepted / already in
 			AddChatSystemMessage("You have joined the raid.");
 		} else {
 			AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
@@ -1340,6 +1342,8 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 	case EQT::RaidAction::Remove1:
 	case EQT::RaidAction::Remove2:
 		if (about_me) {
+			m_in_raid = false;
+			m_raid_leader.clear();
 			AddChatSystemMessage("You have left the raid.");
 		} else {
 			AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
@@ -1347,14 +1351,22 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		break;
 
 	case EQT::RaidAction::Disband:
+		m_in_raid = false;
+		m_raid_leader.clear();
+		m_pending_raid_inviter.clear();
 		AddChatSystemMessage("The raid has disbanded.");
 		break;
 
 	case EQT::RaidAction::Create:
+		m_in_raid = true;
+		m_raid_leader = u.leader_name;
 		AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
 		break;
 
 	case EQT::RaidAction::NoRaid:
+		m_in_raid = false;
+		m_raid_leader.clear();
+		m_pending_raid_inviter.clear();
 		AddChatSystemMessage("You are not in a raid.");
 		break;
 
@@ -1369,12 +1381,16 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		// does not have (T168 deleted the broken raid sender rather than
 		// leave it parked). Saying so out loud beats the previous behaviour,
 		// which was to say nothing and log "Unknown raid action: 20".
+		// T179: leader_name is the inviter (see the decode header). Remember it
+		// so /raid accept can answer, and tell the player how.
+		m_pending_raid_inviter = u.leader_name;
 		AddChatSystemMessage(fmt::format(
-			"{} invites you to join a raid. This client cannot accept raid "
-			"invites yet.", u.leader_name));
+			"{} invites you to join a raid. Type /raid accept to join.",
+			u.leader_name));
 		break;
 
 	case EQT::RaidAction::MakeLeader:
+		m_raid_leader = u.player_name;
 		AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
 		break;
 
@@ -2558,4 +2574,28 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 				eqt::state::GameEventType::TradeskillContainerClosed, std::move(data)));
 		}
 	}
+}
+
+// T179: send an OP_RaidCommand (Titanium wire opcode OP_RaidInvite, 0x5891,
+// routed by eqemu to Handle_OP_RaidCommand). The body is the 140-byte internal
+// RaidGeneral_Struct built by EQT::encodeRaidCommand -- the handler rejects
+// anything shorter. Called only from the action layer (/raid commands).
+void EverQuest::SendRaidCommand(uint32_t action, const std::string& player_name,
+                               const std::string& leader_name, uint32_t parameter)
+{
+	if (!m_zone_connection || !m_zone_connected) {
+		LOG_WARN(MOD_ZONE, "SendRaidCommand: not connected");
+		return;
+	}
+
+	const std::vector<uint8_t> body =
+		EQT::encodeRaidCommand(action, player_name, leader_name, parameter);
+
+	EQ::Net::DynamicPacket p;
+	p.PutUInt16(0, HC_OP_RaidInvite);
+	p.PutData(2, const_cast<uint8_t*>(body.data()), body.size());
+	m_zone_connection->QueuePacket(p, 0, true);
+
+	LOG_INFO(MOD_ZONE, "Sent OP_RaidCommand action={} player='{}' leader='{}'",
+	         action, player_name, leader_name);
 }

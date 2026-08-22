@@ -1137,6 +1137,15 @@ public:
 	// Phase 4: Skills
 	void SendBindWound(uint32_t target_id);
 	void SendTrackTarget(uint32_t target_id);
+
+	// T179: raid commands. Sends OP_RaidCommand (Titanium OP_RaidInvite, 0x5891).
+	void SendRaidCommand(uint32_t action, const std::string& player_name,
+	                     const std::string& leader_name, uint32_t parameter = 0);
+	// Raid state, maintained from the decoded OP_RaidUpdate stream.
+	bool IsInRaid() const { return m_in_raid; }
+	const std::string& GetRaidLeader() const { return m_raid_leader; }
+	const std::string& GetPendingRaidInviter() const { return m_pending_raid_inviter; }
+	void ClearPendingRaidInvite() { m_pending_raid_inviter.clear(); }
 	// Phase 4: Tradeskills
 	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
 	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
@@ -1484,6 +1493,12 @@ private:
 	std::string m_server;
 	std::string m_character;
 	std::string m_last_name;
+
+	// T179: raid state, derived from ZoneProcessRaidUpdate. Not a full roster --
+	// enough for /raid accept/leave/status. A member list is a follow-up.
+	bool m_in_raid = false;
+	std::string m_raid_leader;
+	std::string m_pending_raid_inviter;
 
 	std::string m_key;
 	uint32_t m_dbid;

@@ -387,6 +387,12 @@ void CommandProcessor::registerBuiltinCommands() {
         "groupaccept", {"gaccept"}, "/groupaccept", "Accept pending group invite", "Group", false
     }, [this](const std::string& args) { return cmdGroupAccept(args); });
 
+    // T179: /raid [status|invite <name>|accept|leave]
+    registerCommand({
+        "raid", {}, "/raid [status|invite <name>|accept|leave]",
+        "Raid status and commands", "Group", false
+    }, [this](const std::string& args) { return cmdRaid(args); });
+
     // T98: who/help/quit/q/debug/timestamp registrations removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp; "q" was shadowed via
     // game's alias table, not a game primary name -- see T97's Review).
@@ -1190,6 +1196,45 @@ ActionResult CommandProcessor::cmdDisband(const std::string& args) {
         displayMessage(wasLeader ? "Group disbanded" : "You have left the group");
     }
     return result;
+}
+
+// T179: /raid <subcommand>. A dispatcher family, not a single sender -- accept
+// answers the pending invite T172 could only watch arrive. Subcommands route
+// to ActionDispatcher::raid*, which reach EverQuest::SendRaidCommand (invite/
+// accept/leave) or read raid state (status). Bare /raid or /raid status prints
+// the current state. NOTE: raid membership lives on EverQuest (from the decoded
+// OP_RaidUpdate stream), NOT in the m_state projection, so these route through
+// the handler rather than reading m_state like the group commands above.
+ActionResult CommandProcessor::cmdRaid(const std::string& args) {
+    // First token = subcommand, remainder = argument. Parsed inline rather than
+    // via splitWhitespace() (an anonymous-namespace helper defined later in this
+    // TU, not visible here).
+    const size_t tokEnd = args.find_first_of(" \t");
+    const std::string sub = toLower(
+        tokEnd == std::string::npos ? args : args.substr(0, tokEnd));
+    std::string rest;
+    if (tokEnd != std::string::npos) {
+        const size_t restStart = args.find_first_not_of(" \t", tokEnd);
+        if (restStart != std::string::npos) rest = args.substr(restStart);
+    }
+
+    if (sub.empty() || sub == "status") {
+        return m_dispatcher.raidStatus();
+    }
+    if (sub == "accept") {
+        return m_dispatcher.raidAccept();
+    }
+    if (sub == "leave") {
+        return m_dispatcher.raidLeave();
+    }
+    if (sub == "invite") {
+        if (rest.empty()) {
+            return ActionResult::Failure("Usage: /raid invite <name>");
+        }
+        return m_dispatcher.raidInvite(rest);
+    }
+    return ActionResult::Failure(
+        "Usage: /raid [status|invite <name>|accept|leave]");
 }
 
 ActionResult CommandProcessor::cmdDecline(const std::string& args) {

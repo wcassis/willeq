@@ -1,0 +1,72 @@
+# T179 — Raid commands: /raid accept (and invite/leave/status)
+
+**Slot: orchestrator-direct on `fable`. x86.** The feature T169 unblocked and
+T172 exposed as missing: T172 watched a raid invite arrive on the wire with the
+client able only to print "this client cannot accept raid invites yet." T179 is
+the sender + the `/raid` command family that answers it.
+
+## Scope
+
+The full T132 stack for one new sender:
+- `EQT::encodeRaidCommand` — pure encoder for the outbound body.
+- `EverQuest::SendRaidCommand` — queues it on the wire.
+- Raid state on `EverQuest`, maintained from the decoded `OP_RaidUpdate` stream.
+- `/raid [status|invite <name>|accept|leave]` through
+  CommandProcessor → ActionDispatcher → EqActionHandler → the sender.
+
+**Deliberately NOT in scope: a full member-list roster.** Titanium receives the
+roster as individual action-0 `raidAdd` packets (eqemu's `SendBulkRaid` →
+`SendRaidAdd` per member; `GetRaidDetails` only loads the DB and queues nothing),
+which T169 already decodes per member. Maintaining a full member vector + a
+`/raid list` is a clean follow-up; T179 tracks only what accept/leave/status
+need (in-raid, leader, pending inviter). The board's "action-6 roster parse" was
+based on eqemu's internal comment — for Titanium there is no action-6 packet to
+parse.
+
+## Protocol (verified against eqemu ba2ca5ead)
+
+- **Opcode:** Titanium `OP_RaidInvite = 0x5891` (`patch_Titanium.conf`), routed
+  by eqemu to `Handle_OP_RaidCommand` — our `HC_OP_RaidInvite`.
+- **Body:** the 140-byte INTERNAL `RaidGeneral_Struct` (the handler length-checks
+  against it, rejecting anything shorter): `action@0, player_name@4[64],
+  unknown1@68, leader_name@72[64], parameter@136`. NOT Titanium's 136-byte one.
+- **Action codes** (`common/raid.h`): 1 = AcceptInvite, 3 = Invite, 5 = Disband.
+- **Accept field roles are inverted from intuition** and pinned by test:
+  `RaidCommandAcceptInvite` resolves `player_name` as the **inviter** and
+  `leader_name` as **us** (the invitee) — `zone/client_packet.cpp`. The invite we
+  receive (action 20) carries the inviter in `leader_name`, so `/raid accept`
+  sends `player_name = received.leader_name`, `leader_name = our own name`.
+
+## What each command does
+
+| command | action | player_name | leader_name |
+|---|---|---|---|
+| `/raid invite <name>` | 3 | `<name>` (invitee) | us |
+| `/raid accept` | 1 | pending inviter | us |
+| `/raid leave` | 5 | us | us |
+| `/raid` / `/raid status` | — | (reads raid state) | |
+
+`/raid accept` refuses with "You have no pending raid invitation." when none is
+stored. The pending inviter is captured in `ZoneProcessRaidUpdate`'s action-20
+arm, and the message there now reads "... Type /raid accept to join." instead of
+"this client cannot accept raid invites yet." State is cleared on
+join/leave/disband/no-raid.
+
+## Acceptance
+
+- `encodeRaidCommand`: **5 tests** — exact 140-byte size, fields at the internal
+  offsets, parameter@136, name NUL-termination/truncation to the 64-byte field,
+  empty names.
+- `/raid` routing: **6 tests** — accept/leave/invite(name)/bare+status route to
+  the right dispatcher method; invite-without-name and unknown-subcommand fail
+  without dispatching.
+- **Gates:** `check_sender_reachability` PASS (SendRaidCommand has its three
+  production callers — 91 senders, 0 unreached); `check_build_tree_orphans` PASS.
+- Full build clean; full ctest **2680/2681** (only the standing ALSA failure).
+- **Live two-client acceptance:** see the Review addendum / `review/T179/`.
+
+## Follow-ups
+
+- A full raid roster model (member list from the action-0 stream) + `/raid list`.
+- `/raid` leader-only operations (disband-all, make-leader, loot type) — more
+  action codes on the same sender.

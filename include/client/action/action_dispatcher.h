@@ -387,6 +387,15 @@ public:
     virtual void bug(const std::string& description) = 0;
     virtual void petition(const std::string& text) = 0;
 
+    // ========== Raid (T179) ==========
+    // The vendorList() shape: the handler does its own AddChatSystemMessage and
+    // reads EverQuest raid state directly; the dispatcher just guards. raidInvite
+    // /Accept/Leave reach EverQuest::SendRaidCommand; raidStatus is a pure read.
+    virtual void raidInvite(const std::string& name) = 0;
+    virtual void raidAccept() = 0;
+    virtual void raidLeave() = 0;
+    virtual void raidStatus() = 0;
+
     // ========== Merchant (T136) ==========
     // Unlike every prior family, NOT thin wrappers over a pre-existing
     // EverQuest::Send*() -- there were no senders. vendorToggle()/
@@ -1281,6 +1290,12 @@ public:
      * target, falling back to self.
      */
     ActionResult bandage(uint16_t targetId);
+
+    // Raid (T179)
+    ActionResult raidInvite(const std::string& name);
+    ActionResult raidAccept();
+    ActionResult raidLeave();
+    ActionResult raidStatus();
 
     /**
      * Attempt to return to a safe position.
