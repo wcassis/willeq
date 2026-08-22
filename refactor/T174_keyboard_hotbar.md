@@ -37,7 +37,7 @@ dispatcher call:
 |---|---|---|
 | Spell | `castSpell` | `slot + 1` (position → 1-based gem, **preserved**) |
 | Skill | `useSkill` | `slot.id` (skill id, no offset) |
-| Item | `useItem` | `static_cast<int16_t>(slot.id)` (item id) |
+| Item | — (skipped) | DEBUG-log and skip — see the limitation below |
 | Empty / Emote / Macro / Combat | — | DEBUG-log and skip |
 
 The `switch` on `HotbarSlotType` lists every enumerator with **no `default:`**,
@@ -56,7 +56,7 @@ keyboard route — the same defensive shape T156 gave the mouse switch in
   a keyboard spell press still means "cast the gem at this hotbar position".
 - **Skill** passes `slot.id` straight through, matching the mouse path's
   `activateSkill(i.id, …)`. No off-by-one — skill ids are not indices.
-- **Item** passes `slot.id`. See the limitation below.
+- **Item** is **skipped**, not routed. `slot.id` is an item id, but `useItem` takes an inventory slot; with no resolver here, firing `useItem(item_id)` would use the wrong slot — a mis-fire is worse than a no-op. See the limitation below.
 
 ## Design decision — how the model is injected
 
@@ -96,8 +96,8 @@ is safe if ever constructed without a model, and the existing bridge tests
   `ActionDispatcher`. **Reverting only `input_action_bridge.cpp` to `fable` and
   rebuilding fails 3 of them** —
   `HotbarSkillSlot_ReachesUseSkillNotCastSpell` (old code calls `castSpell(1)`,
-  not `useSkill(73)`), `HotbarItemSlot_ReachesUseItemNotCastSpell` (old calls
-  `castSpell(4)`, not `useItem(1234)`), and
+  not `useSkill(73)`), `HotbarItemSlot_IsSkippedNotMisfired` (old calls `castSpell(4)`; the
+  fix skips, firing neither `castSpell` nor `useItem`), and
   `HotbarEmoteAndEmptySlots_AreSkippedNotCast` (old casts both instead of
   skipping) — and passes the two that assert preserved behaviour
   (`HotbarSpellSlot_StillReachesCastSpellByPosition`,
@@ -113,16 +113,16 @@ is safe if ever constructed without a model, and the existing bridge tests
 
 ## Known limitation / follow-ups
 
-1. **Item route passes an item id where `useItem` wants an inventory slot.**
-   `HotbarModel` stores an *item id* in `slot.id` (the mouse path resolves it
-   with `InventoryManager::findItemSlotByItemId`). `ActionDispatcher::useItem`
-   takes an inventory slot and the action layer here has no `InventoryManager`
-   to do that resolution, so the bridge forwards `slot.id` directly. This makes
-   the Item route *reach* `useItem` (the point of this unit) but the handler
-   below still needs the item-id → inventory-slot hop to click the right item.
-   Owed: either give the action layer an id→slot resolver, or teach `useItem`'s
-   handler to accept an item id. Item ids can also exceed `int16_t`; the cast is
-   part of the same debt.
+1. **Item slots are skipped, not fired** (integrator's correction to the
+   executor's first draft, which routed `useItem(static_cast<int16_t>(slot.id))`).
+   `HotbarModel` stores an *item id* in `slot.id`; `ActionDispatcher::useItem`
+   takes an *inventory slot*, and the mouse path resolves the hop first with
+   `InventoryManager::findItemSlotByItemId` (`eq_bridge.cpp:1328`). The action
+   layer here has no `InventoryManager`, so `useItem(item_id)` would fire
+   whatever sits in inventory slot #item_id (and truncate past `int16_t`) — a
+   silent mis-fire, the "implemented-but-wrong" trap. Skipping is correct until
+   an id→slot resolver is reachable from here. **Owed:** give the action layer
+   that resolver (or a `useItemById`), then route Item through it.
 2. **Emote/Macro on the keyboard path are skipped, not fired.** The mouse path
    runs `ProcessChatInput(emoteText)` through the command processor; the
    dispatcher has no equivalent route that takes a hotbar emote's command text

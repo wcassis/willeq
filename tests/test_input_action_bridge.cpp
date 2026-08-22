@@ -493,7 +493,13 @@ TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
     EXPECT_TRUE(reportedOnce("UseSkill", true));
 }
 
-TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemNotCastSpell) {
+TEST_F(InputActionBridgeTest, HotbarItemSlot_IsSkippedNotMisfired) {
+    // An Item slot carries an ITEM id, but useItem() takes an INVENTORY SLOT,
+    // and the action layer here cannot resolve the id->slot hop the mouse path
+    // does. So the Item slot must NOT reach the dispatcher at all -- firing
+    // useItem(item_id) would use the wrong inventory slot. It is skipped (like
+    // Emote) until an id->slot resolver exists here. The important negative:
+    // it does NOT fall through to castSpell either.
     eqt::HotbarModel model;
     model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
     bridge->setHotbarModel(&model);
@@ -501,11 +507,8 @@ TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemNotCastSpell) {
     input.hotbarRequests.push({3});
     update();
 
-    // slot.id (1234) is forwarded straight to useItem; see T174 doc for the
-    // item-id vs inventory-slot limitation of this path.
-    EXPECT_TRUE(handler.calledOnceWith("useItem(1234)"));
-    EXPECT_EQ(handler.count(), 1u);
-    EXPECT_TRUE(reportedOnce("UseItem", true));
+    EXPECT_TRUE(handler.empty());   // no useItem, and crucially no castSpell
+    EXPECT_TRUE(reported.empty());
 }
 
 TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {
