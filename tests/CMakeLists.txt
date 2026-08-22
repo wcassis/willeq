@@ -1849,6 +1849,20 @@ SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125)
 ADD_TEST(NAME check_sender_reachability
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/check_sender_reachability.py)
 
+# T175: the stale-binary gate. Fails if any executable in build/bin is produced
+# by no current CMake target -- the condition four deleted-source test binaries
+# held on 2026-08-14, still running and still passing a week after their targets
+# and sources were removed (cmake never prunes bin/). Asks the CMake file API
+# (codemodel-v2) which artifacts the configured targets claim under bin/, and
+# flags any file that is not one. Pure: no server, no display, no network. It
+# inspects the build tree it is run against, so it SKIPs (125) when there is no
+# configured tree -- the CMAKE_BINARY_DIR here IS such a tree at ctest time. See
+# refactor/T175_build_tree_hygiene.md and the script's docstring.
+ADD_TEST(NAME check_build_tree_orphans
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/check_build_tree_orphans.py
+            ${CMAKE_BINARY_DIR})
+SET_TESTS_PROPERTIES(check_build_tree_orphans PROPERTIES SKIP_RETURN_CODE 125)
+
 # T108: regression test -- totalEstimate must not credit eqe1MappedBytes
 # (address-space/mapped size, not RSS) as if it were resident. Drives the
 # already-built gles2_zone_benchmark (same tool + same computeMemorySnapshot()
