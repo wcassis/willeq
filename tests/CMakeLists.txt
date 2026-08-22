@@ -297,6 +297,9 @@ ADD_EXECUTABLE(test_state_modules
     test_state_modules.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/event_bus.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/entity_manager.cpp
+    # T173: EntityManager ranks a living entity above its own corpse and
+    # asks the ONE shared predicate; the TU is dependency-free by design.
+    ${CMAKE_SOURCE_DIR}/src/client/corpse_predicate.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/player_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/spell_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
@@ -314,6 +317,9 @@ ADD_EXECUTABLE(test_state_modules_secondary
     test_state_modules_secondary.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/event_bus.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/entity_manager.cpp
+    # T173: EntityManager ranks a living entity above its own corpse and
+    # asks the ONE shared predicate; the TU is dependency-free by design.
+    ${CMAKE_SOURCE_DIR}/src/client/corpse_predicate.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/player_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/spell_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
@@ -336,6 +342,9 @@ GTEST_DISCOVER_TESTS(test_state_modules_secondary)
 SET(ACTION_LAYER_STATE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/state/event_bus.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/entity_manager.cpp
+    # T173: EntityManager ranks a living entity above its own corpse and
+    # asks the ONE shared predicate; the TU is dependency-free by design.
+    ${CMAKE_SOURCE_DIR}/src/client/corpse_predicate.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/player_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/spell_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp

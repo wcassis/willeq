@@ -1,4 +1,5 @@
 #include "client/state/entity_manager.h"
+#include "client/corpse_predicate.h"
 #include "client/state/event_bus.h"
 #include <algorithm>
 #include <cmath>
@@ -116,26 +117,73 @@ Entity* EntityManager::getEntityMutable(uint16_t spawnId) {
     return &it->second;
 }
 
+// T173: rank the candidates instead of taking the first substring hit.
+//
+// Every corpse of X is named "X's corpse<id>", so every corpse of X CONTAINS
+// X. The old loop returned the first entity whose lowercased name contained
+// the search string, in map order -- so `/target Testmelee` handed back
+// `Testmelee's corpse237` whenever the corpse happened to sit at a lower spawn
+// id than the living player standing next to it. That is not theoretical: it
+// cost three probes in one session (T172), and T161 lost a `#kill` to the same
+// shape a day earlier.
+//
+// Four tiers, lowest wins; a corpse always loses to a non-corpse at the same
+// quality of match, and an exact match always beats a substring:
+//
+//   0  exact name, not a corpse   -- "/target Testmelee", Testmelee alive
+//   1  exact name, a corpse       -- "/target Testmelee's corpse237"
+//   2  substring, not a corpse    -- "/target Testme"
+//   3  substring, a corpse        -- the only tier the old code had
+//
+// Tier 1 above tier 2 is deliberate: naming a corpse exactly must still reach
+// it, or /consider and /loot lose their subject.
+//
+// m_entities is a std::map keyed by spawn id, so iteration is ascending and
+// "first seen in a tier" means "lowest spawn id in that tier" -- the result
+// does not depend on hash order and does not move between runs.
 const Entity* EntityManager::findEntityByName(const std::string& name) const {
     if (name.empty()) {
         return nullptr;
     }
 
-    // Convert search name to lowercase
     std::string searchLower = name;
     std::transform(searchLower.begin(), searchLower.end(), searchLower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
+    const Entity* best = nullptr;
+    int bestTier = 4;
+
     for (const auto& pair : m_entities) {
-        std::string entityNameLower = pair.second.name;
+        const Entity& entity = pair.second;
+
+        std::string entityNameLower = entity.name;
         std::transform(entityNameLower.begin(), entityNameLower.end(), entityNameLower.begin(),
                        [](unsigned char c) { return std::tolower(c); });
 
-        if (entityNameLower.find(searchLower) != std::string::npos) {
-            return &pair.second;
+        int tier;
+        if (entityNameLower == searchLower) {
+            tier = 0;
+        } else if (entityNameLower.find(searchLower) != std::string::npos) {
+            tier = 2;
+        } else {
+            continue;
+        }
+        // One shared predicate, never a local re-derivation -- see
+        // corpse_predicate.h.
+        if (IsCorpseByFields(entity.isCorpse, entity.npcType, entity.name)) {
+            tier += 1;
+        }
+
+        if (tier < bestTier) {
+            bestTier = tier;
+            best = &entity;
+            if (tier == 0) {
+                break;  // nothing can beat an exact living match
+            }
         }
     }
-    return nullptr;
+
+    return best;
 }
 
 const Entity* EntityManager::findEntityByExactName(const std::string& name) const {

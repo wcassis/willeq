@@ -259,6 +259,23 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 	return false;
 }
 
+// T173 — READ BEFORE USING THIS. This is the SECOND name resolver, and it is
+// NOT the one /target uses: cmdTarget resolves through
+// EntityManager::findEntityByName (state layer), which T173 taught to rank a
+// living entity above its own corpse. This one still does exact-then-substring
+// with no corpse ranking, and it is case-SENSITIVE where the other is not
+// (T97 flagged that divergence and it is still here).
+//
+// It was left alone deliberately, because it is UNREACHED:
+// EqActionHandler::targetEntityByName is its only caller, and that has ZERO
+// production callers of its own -- the reachability pattern again. Fixing dead
+// code proves nothing and would have meant a second copy of the ranking on a
+// different Entity type; deleting the whole targetEntityByName path crosses
+// three layers and is a disposition call, not a bug fix.
+//
+// **Disposition owed: wire it through a shared ranking, or delete it.** Do not
+// simply start calling it -- it carries the trap T173 removed from the live
+// path.
 bool CombatManager::SetTarget(const std::string& name) {
 	// Find entity by name
 	const auto& entities = m_eq->GetEntities();
@@ -1678,72 +1695,12 @@ void CombatManager::FleeToGuard() {
 // T160: shared corpse recognition (declared in combat.h).
 // ---------------------------------------------------------------------------
 
-namespace {
-
-// The three name forms eqemu can put on the wire. Order does not matter --
-// they are mutually exclusive -- but the backtick form is the one a corpse
-// that already existed when we zoned in arrives with, because the
-// client-side rename in NPC::Death is only broadcast at the moment of death.
-constexpr const char* kCorpseNameSeparators[] = {
-	"'s corpse",   // Corpse::CalcCorpseName, player corpse (apostrophe+space)
-	"'s_corpse",   // NPC corpse after NPC::Death's OP_MobRename
-	"`s_corpse",   // Corpse::CalcCorpseName, NPC corpse (backtick+underscore)
-};
-
-// Entity ids are 16-bit on the wire; eqemu formats them with %d, so at most
-// five digits. Cap generously and reject anything longer rather than letting
-// std::stoul throw.
-constexpr size_t kMaxCorpseIdDigits = 10;
-
-}  // namespace
-
-bool ParseCorpseName(const std::string& name, std::string* base_name, uint32_t* corpse_id) {
-	for (const char* separator : kCorpseNameSeparators) {
-		const std::string sep(separator);
-		// rfind: the suffix is appended last, so if a mob's own name somehow
-		// contained the separator the trailing occurrence is the real one.
-		const size_t pos = name.rfind(sep);
-		if (pos == std::string::npos) {
-			continue;
-		}
-		const std::string digits = name.substr(pos + sep.size());
-		// The id is mandatory. This is the false-positive guard: without it
-		// any living mob whose name merely ended in the separator would be
-		// buried on sight.
-		if (digits.empty() || digits.size() > kMaxCorpseIdDigits) {
-			continue;
-		}
-		if (digits.find_first_not_of("0123456789") != std::string::npos) {
-			continue;
-		}
-		if (base_name) {
-			*base_name = name.substr(0, pos);
-		}
-		if (corpse_id) {
-			*corpse_id = static_cast<uint32_t>(std::stoul(digits));
-		}
-		return true;
-	}
-	return false;
-}
-
+// T173: ParseCorpseName and the predicate itself moved to
+// corpse_predicate.{h,cpp} -- the state layer's EntityManager needs the same
+// question answered about a different Entity type. This overload is the only
+// thing that stayed, because it is the only part that knows this struct.
 bool IsCorpseEntity(const Entity& entity) {
-	// 1. The flag, set by the HC_OP_Death and HC_OP_MobRename handlers. Only
-	//    ever true for a death we personally witnessed this session.
-	if (entity.is_corpse) {
-		return true;
-	}
-	// 2. Spawn_Struct NPC field (offset 83). eqemu's Corpse::FillSpawnStruct
-	//    (zone/corpse.cpp:1792) sets it to 2 for every corpse it spawns,
-	//    player or NPC; 3 is the documented npc-corpse value other servers
-	//    may send. This is the authoritative bit, and it is the one that
-	//    covers corpses that were already lying there when we zoned in.
-	if (entity.npc_type == 2 || entity.npc_type == 3) {
-		return true;
-	}
-	// 3. The name, for entities whose npc_type we never saw (e.g. an entity
-	//    only ever named by OP_MobRename).
-	return ParseCorpseName(entity.name);
+	return IsCorpseByFields(entity.is_corpse, entity.npc_type, entity.name);
 }
 
 bool CombatManager::IsGuard(const Entity& entity) const {

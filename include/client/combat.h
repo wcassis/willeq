@@ -13,32 +13,12 @@ class EverQuest;
 struct Entity;
 
 // T160: corpse recognition, shared so the two copies of the old
-// `name.find("'s_corpse")` literal (CombatManager::IsCorpse and
-// EverQuest's HC_OP_MobRename handler) cannot drift apart again.
-//
-// eqemu builds corpse names in exactly two places:
-//   * Corpse::CalcCorpseName (zone/corpse.cpp:612) appends "'s corpse<id>"
-//     (apostrophe + SPACE) for a player corpse and "`s_corpse<id>"
-//     (BACKTICK + underscore) for an NPC corpse;
-//   * NPC::Death (zone/attack.cpp:2853) then renames the NPC corpse
-//     client-side to "'s_corpse<id>" via OP_MobRename.
-// All three forms are matched. <id> is the corpse's entity id and is always
-// present, which is the false-positive guard: a living NPC named
-// "a_corpse_beetle" has no "<sep>" and no trailing digits, and neither does
-// a player literally named "Bobs corpse".
-//
-// ParseCorpseName also hands back the pieces so the rename handler does not
-// need its own copy of the separator: base_name/corpse_id are only written
-// on a match, and either may be null.
-bool ParseCorpseName(const std::string& name,
-                     std::string* base_name = nullptr,
-                     uint32_t* corpse_id = nullptr);
+// `name.find("'s_corpse")` literal (CombatManager::IsCorpse and EverQuest's
+// HC_OP_MobRename handler) cannot drift apart again. T173 moved the predicate
+// and ParseCorpseName to corpse_predicate.h (included below) so the state
+// layer can use them too; only this struct overload stayed here.
+#include "client/corpse_predicate.h"
 
-// True when the entity is a corpse by any route: the is_corpse flag (set by
-// the death and rename handlers), the Spawn_Struct NPC field (offset 83;
-// eqemu's Corpse::FillSpawnStruct sends 2 for EVERY corpse, and 3 is the
-// documented NPC-corpse value), or the name. The last two are what make a
-// corpse that already existed when we zoned in recognisable at all.
 bool IsCorpseEntity(const Entity& entity);
 
 // Combat-related enums

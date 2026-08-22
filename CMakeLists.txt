@@ -284,6 +284,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_chat.cpp
     src/client/eq_combat_actions.cpp
     src/client/combat.cpp
+    src/client/corpse_predicate.cpp
     src/client/trade_manager.cpp
     src/client/door_state_manager.cpp
     src/client/ucs.cpp

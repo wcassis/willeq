@@ -226,6 +226,105 @@ TEST(EntityManagerTest, FindEntityByNamePartialCaseInsensitiveMatch) {
     EXPECT_EQ(mgr.findEntityByName(""), nullptr);
 }
 
+// =============================================================================
+// T173: findEntityByName ranks candidates -- a living entity beats its own
+// corpse. Every corpse of X is named "X's corpse<id>", so a plain substring
+// scan returns whichever of the two sits earlier in the map. Each of these
+// puts the CORPSE at the lower spawn id, which is the order that used to fail.
+// =============================================================================
+
+namespace {
+Entity makeCorpse(uint16_t spawnId, const std::string& name) {
+    Entity e = makeEntity(spawnId, name);
+    e.npcType = 2;  // Corpse::FillSpawnStruct sends 2 for every corpse
+    return e;
+}
+} // namespace
+
+TEST(EntityManagerTest, FindEntityByNamePrefersLivingOverOwnCorpse) {
+    EntityManager mgr;
+    mgr.addEntity(makeCorpse(10, "Testmelee's corpse237"));  // lower id, matches first
+    mgr.addEntity(makeEntity(20, "Testmelee"));
+
+    const Entity* found = mgr.findEntityByName("Testmelee");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->name, "Testmelee");
+    EXPECT_EQ(found->spawnId, 20);
+}
+
+TEST(EntityManagerTest, FindEntityByNameExactCorpseNameStillReachesCorpse) {
+    // Tier 1 (exact corpse) must beat tier 2 (substring non-corpse), or
+    // /consider and /loot lose their subject.
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(10, "Testmelee"));
+    mgr.addEntity(makeCorpse(20, "Testmelee's corpse237"));
+
+    const Entity* found = mgr.findEntityByName("Testmelee's corpse237");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20);
+}
+
+TEST(EntityManagerTest, FindEntityByNameCorpseStillFoundWhenAlone) {
+    // No regression: with no living match, the corpse is still the answer.
+    EntityManager mgr;
+    mgr.addEntity(makeCorpse(10, "Testmelee's corpse237"));
+
+    const Entity* found = mgr.findEntityByName("Testmelee");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 10);
+}
+
+TEST(EntityManagerTest, FindEntityByNameCorpseRecognisedByNpcTypeAlone) {
+    // A corpse whose NAME is not corpse-shaped (already lying there at
+    // zone-in, never renamed) is still outranked -- npcType is the
+    // authoritative bit, and this is the case a local name-only re-derivation
+    // in the state layer would have missed.
+    EntityManager mgr;
+    Entity oddCorpse = makeEntity(10, "Testmelee");
+    oddCorpse.npcType = 2;
+    mgr.addEntity(oddCorpse);
+    mgr.addEntity(makeEntity(20, "Testmelee"));
+
+    const Entity* found = mgr.findEntityByName("Testmelee");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20);
+}
+
+TEST(EntityManagerTest, FindEntityByNameCorpseRecognisedByFlagAlone) {
+    EntityManager mgr;
+    Entity flagged = makeEntity(10, "Testmelee");
+    flagged.npcType = 1;
+    flagged.isCorpse = true;  // death we witnessed; name not yet rewritten
+    mgr.addEntity(flagged);
+    mgr.addEntity(makeEntity(20, "Testmelee"));
+
+    const Entity* found = mgr.findEntityByName("Testmelee");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20);
+}
+
+TEST(EntityManagerTest, FindEntityByNameExactBeatsSubstring) {
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(10, "Testmeleeson"));  // substring hit, lower id
+    mgr.addEntity(makeEntity(20, "Testmelee"));     // exact
+
+    const Entity* found = mgr.findEntityByName("Testmelee");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20);
+}
+
+TEST(EntityManagerTest, FindEntityByNameTiesResolveToLowestSpawnId) {
+    // Determinism: within a tier the result must not depend on iteration
+    // order, so the lowest spawn id wins.
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(30, "Guard Maddoc"));
+    mgr.addEntity(makeEntity(15, "Guard Hobart"));
+
+    const Entity* found = mgr.findEntityByName("Guard");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 15);
+}
+
 TEST(EntityManagerTest, FindEntityByExactNameRequiresFullMatch) {
     EntityManager mgr;
     mgr.addEntity(makeEntity(1, "Sir Lucan"));
