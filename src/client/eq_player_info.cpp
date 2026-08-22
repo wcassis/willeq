@@ -10,6 +10,7 @@
 
 #include "client/eq.h"
 #include "client/inspect_answer.h"
+#include "client/bind_wound_outcome.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -721,6 +722,26 @@ void EverQuest::ZoneProcessApplyPoison(const EQ::Net::Packet &p)
 		AddChatSystemMessage("You apply the poison to your weapon.");
 	} else {
 		AddChatSystemMessage("You failed to apply the poison.");
+	}
+}
+
+void EverQuest::ZoneProcessBindWound(const EQ::Net::Packet &p)
+{
+	// Server reply to our OP_Bind_Wound. BindWound_Struct: to@0, unknown2@2,
+	// type@4, unknown6@6 -- +2 for the opcode = 10 bytes. `type` is the outcome;
+	// see EQT::bindWoundOutcomeMessage (bind_wound_outcome.h) for the mapping and
+	// the eqemu authority. type 0/3 are control ticks with no message to show.
+	if (p.Length() < 10) {
+		LOG_WARN(MOD_ENTITY, "BindWound response too short: {} bytes", p.Length());
+		return;
+	}
+
+	const uint16_t type = p.GetUInt16(6);
+	const std::string message = EQT::bindWoundOutcomeMessage(type);
+	LOG_DEBUG(MOD_ENTITY, "BindWound response: type={} -> '{}'", type, message);
+
+	if (!message.empty()) {
+		AddChatSystemMessage(message);
 	}
 }
 

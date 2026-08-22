@@ -1546,6 +1546,7 @@ private:
 	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
 	void ZoneProcessApplyPoison(const EQ::Net::Packet &p);
 	void ZoneProcessTrack(const EQ::Net::Packet &p);
+	void ZoneProcessBindWound(const EQ::Net::Packet &p);
 	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
 	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);

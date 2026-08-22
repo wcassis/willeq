@@ -1623,6 +1623,12 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		// Pick Pocket response
 		LOG_DEBUG(MOD_MAIN, "PickPocket response received: {} bytes", p.Length());
 		break;
+	case HC_OP_BindWound:
+		// Bind Wound reply: `type` carries the outcome (done / no target /
+		// target gone / no bandage). T177 -- before this the player saw
+		// nothing 10s after starting a bandage.
+		ZoneProcessBindWound(p);
+		break;
 	case HC_OP_SenseTraps:
 		// Sense Traps response
 		LOG_DEBUG(MOD_MAIN, "SenseTraps response received: {} bytes", p.Length());
