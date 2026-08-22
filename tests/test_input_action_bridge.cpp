@@ -27,6 +27,7 @@
 #include "action_test_fakes.h"
 #include "client/action/command_processor.h"
 #include "client/action/input_action_bridge.h"
+#include "client/hotbar/hotbar_model.h"  // T174: content-typed hotbar routing
 #include "client/state/game_state.h"
 #include <gtest/gtest.h>
 
@@ -454,18 +455,86 @@ TEST_F(InputActionBridgeTest, SpellCastRequest_MidAndTopGemsMapExactly) {
 // Hotbar, targeting, loot requests
 // ===================================================================
 
-TEST_F(InputActionBridgeTest, HotbarRequests_SlotMapsToGemSlotPlusOne) {
+TEST_F(InputActionBridgeTest, HotbarRequests_NoModelFallsBackToSpellGem) {
+    // T174: with no HotbarModel wired the bridge cannot know a slot's content
+    // type, so it degrades to the pre-T174 behavior: every hotbar button is a
+    // spell gem, 0-based slot -> 1-based gem. (SetUp() wires no model.)
     input.hotbarRequests.push({0});
     input.hotbarRequests.push({7});
 
     update();
 
-    // Documented "for now" behavior: every hotbar button is a spell gem,
-    // 0-based slot -> 1-based gem. Consistent with the dispatcher's 1-based
-    // contract (unlike the SpellCastRequest path above).
     ASSERT_EQ(handler.count(), 2u);
     EXPECT_EQ(handler.calls[0], "castSpell(1)");
     EXPECT_EQ(handler.calls[1], "castSpell(8)");
+}
+
+// ===================================================================
+// Hotbar content-type routing (T174)
+//
+// Before T174 processHotbarRequests() forwarded EVERY keyboard hotbar press
+// to castSpell(slot + 1), so a Skill/Item/Emote slot could never fire from
+// the keyboard. These tests wire a real HotbarModel (the same one the mouse
+// path reads) and assert each slot type reaches its matching dispatcher call.
+// They FAIL against the old single-castSpell body (measured: see
+// refactor/T174_keyboard_hotbar.md).
+// ===================================================================
+
+TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
+    eqt::HotbarModel model;
+    model.assignSlot(0, eqt::HotbarSlotType::Skill, /*id=*/73);  // Taunt
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({0});
+    update();
+
+    EXPECT_TRUE(handler.calledOnceWith("useSkill(73)"));
+    EXPECT_EQ(handler.count(), 1u);  // and NOT castSpell
+    EXPECT_TRUE(reportedOnce("UseSkill", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemNotCastSpell) {
+    eqt::HotbarModel model;
+    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({3});
+    update();
+
+    // slot.id (1234) is forwarded straight to useItem; see T174 doc for the
+    // item-id vs inventory-slot limitation of this path.
+    EXPECT_TRUE(handler.calledOnceWith("useItem(1234)"));
+    EXPECT_EQ(handler.count(), 1u);
+    EXPECT_TRUE(reportedOnce("UseItem", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {
+    eqt::HotbarModel model;
+    model.assignSlot(2, eqt::HotbarSlotType::Spell, /*id=*/999);
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({2});
+    update();
+
+    // Preserved behavior: spell slots map hotbar position (0-based) to gem
+    // (1-based), so slot 2 -> castSpell(3).
+    EXPECT_TRUE(handler.calledOnceWith("castSpell(3)"));
+    EXPECT_EQ(handler.count(), 1u);
+}
+
+TEST_F(InputActionBridgeTest, HotbarEmoteAndEmptySlots_AreSkippedNotCast) {
+    eqt::HotbarModel model;
+    model.assignSlot(1, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
+    // slot 5 left Empty (default).
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({1});  // Emote
+    input.hotbarRequests.push({5});  // Empty
+    update();
+
+    // No dispatcher call and no reportAction for either -- log-and-skip.
+    EXPECT_TRUE(handler.empty());
+    EXPECT_TRUE(reported.empty());
 }
 
 TEST_F(InputActionBridgeTest, TargetRequests_RouteSpawnIdAndDropZero) {

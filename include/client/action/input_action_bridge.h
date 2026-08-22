@@ -12,6 +12,12 @@ namespace state {
 class GameState;
 }
 
+// T174: the standalone hotbar data model (client/hotbar/hotbar_model.h). The
+// bridge only reads it, so a forward declaration and a pointer member keep the
+// json/json.h weight that header pulls in out of every translation unit that
+// includes this one.
+class HotbarModel;
+
 namespace action {
 
 // Forward declaration
@@ -70,6 +76,18 @@ public:
      * @param source Console command source (may be nullptr to disable)
      */
     void setConsoleCommandSource(input::IInputHandler* source) { m_consoleCommandSource = source; }
+
+    /**
+     * T174: give the bridge read access to the one hotbar model the rest of
+     * the client uses (owned by EverQuest, see EverQuest::GetHotbarModel()).
+     * Without it, processHotbarRequests() cannot tell a keyboard hotbar press
+     * apart by content type and falls back to the legacy "every slot is a
+     * spell gem" behavior. Injected by setter to match the other collaborators
+     * (input handler, command processor, console source) rather than the
+     * constructor, since the model is created after the bridge.
+     * @param model Hotbar model (may be nullptr; the bridge only reads it)
+     */
+    void setHotbarModel(const HotbarModel* model) { m_hotbarModel = model; }
 
     /**
      * T29: unified slash-command dispatcher, used for raw commands from
@@ -134,6 +152,7 @@ private:
     CommandProcessor* m_commandProcessor = nullptr;
     input::IInputHandler* m_consoleCommandSource = nullptr;  // T29
     UnifiedCommandDispatcher m_unifiedDispatcher;             // T29
+    const HotbarModel* m_hotbarModel = nullptr;              // T174
 
     bool m_enabled = true;
 
