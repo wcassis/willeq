@@ -235,6 +235,21 @@ public:
     void raidLeave() override;
     void raidStatus() override;
     void raidList() override;
+    // T181: leader-only ops.
+    void raidRemove(const std::string& name) override;
+    void raidMakeLeader(const std::string& name) override;
+    void raidLootType(const std::string& mode) override;
+    void raidLooter(bool add, const std::string& name) override;
+
+private:
+    // T181 guards. The server answers a non-leader's MakeLeader with silence
+    // and never validates a loot type at all -- see the comment block at the
+    // implementations.
+    bool raidRequireMembership();
+    bool raidRequireLeader(const std::string& what);
+    bool raidMemberKnown(const std::string& name) const;
+
+public:
 
     // ========== Merchant (T136) ==========
     void vendorToggle() override;

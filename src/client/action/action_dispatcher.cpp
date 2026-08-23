@@ -373,6 +373,37 @@ ActionResult ActionDispatcher::raidList() {
     return ActionResult::Success();
 }
 
+// T181 leader-only ops. Same shape: guard the connection, delegate, let the
+// handler do its own reporting (it is where the leadership and membership
+// pre-checks live).
+ActionResult ActionDispatcher::raidRemove(const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidRemove(name);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidMakeLeader(const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidMakeLeader(name);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidLootType(const std::string& mode) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidLootType(mode);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::raidLooter(bool add, const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidLooter(add, name);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::toggleAutoFire() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

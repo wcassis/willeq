@@ -387,9 +387,9 @@ void CommandProcessor::registerBuiltinCommands() {
         "groupaccept", {"gaccept"}, "/groupaccept", "Accept pending group invite", "Group", false
     }, [this](const std::string& args) { return cmdGroupAccept(args); });
 
-    // T179/T180: /raid [status|list|invite <name>|accept|leave]
+    // T179/T180/T181: /raid subcommand family.
     registerCommand({
-        "raid", {}, "/raid [status|list|invite <name>|accept|leave]",
+        "raid", {}, "/raid [status|list|invite|accept|leave|remove|leader|loot|looter]",
         "Raid status and commands", "Group", false
     }, [this](const std::string& args) { return cmdRaid(args); });
 
@@ -1230,6 +1230,44 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
     if (sub == "list" || sub == "members") {
         return m_dispatcher.raidList();
     }
+    // T181 leader-only ops. The argument checks that would need a message to
+    // the player (not in a raid, not the leader, not a member, bad loot type)
+    // live in the handler, which can reach raid state; only the arity errors
+    // are caught here, matching how /raid invite already splits it.
+    if (sub == "remove" || sub == "kick") {
+        if (rest.empty()) {
+            return ActionResult::Failure("Usage: /raid remove <name>");
+        }
+        return m_dispatcher.raidRemove(rest);
+    }
+    if (sub == "leader" || sub == "makeleader") {
+        if (rest.empty()) {
+            return ActionResult::Failure("Usage: /raid leader <name>");
+        }
+        return m_dispatcher.raidMakeLeader(rest);
+    }
+    if (sub == "loot" || sub == "loottype") {
+        if (rest.empty()) {
+            return ActionResult::Failure(
+                "Usage: /raid loot <leader|groupleader|selected|all>");
+        }
+        return m_dispatcher.raidLootType(rest);
+    }
+    if (sub == "looter") {
+        // Two words: add|remove, then the name.
+        const size_t sp = rest.find_first_of(" \t");
+        const std::string verb = toLower(
+            sp == std::string::npos ? rest : rest.substr(0, sp));
+        std::string who;
+        if (sp != std::string::npos) {
+            const size_t start = rest.find_first_not_of(" \t", sp);
+            if (start != std::string::npos) who = rest.substr(start);
+        }
+        if ((verb != "add" && verb != "remove") || who.empty()) {
+            return ActionResult::Failure("Usage: /raid looter <add|remove> <name>");
+        }
+        return m_dispatcher.raidLooter(verb == "add", who);
+    }
     if (sub == "invite") {
         if (rest.empty()) {
             return ActionResult::Failure("Usage: /raid invite <name>");
@@ -1237,7 +1275,7 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
         return m_dispatcher.raidInvite(rest);
     }
     return ActionResult::Failure(
-        "Usage: /raid [status|list|invite <name>|accept|leave]");
+        "Usage: /raid [status|list|invite <name>|accept|leave|remove <name>|leader <name>|loot <mode>|looter add|remove <name>]");
 }
 
 ActionResult CommandProcessor::cmdDecline(const std::string& args) {

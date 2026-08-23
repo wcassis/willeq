@@ -607,3 +607,88 @@ TEST(RaidRoster, InvalidUpdatesAreIgnored) {
     r.Apply(u, kMe);
     EXPECT_EQ(r.Size(), 3u) << "a packet we could not decode must change nothing";
 }
+
+// =====================================================================
+// Loot rules (T181)
+//
+// eqemu's Handle_OP_RaidCommand LootType arm does NO validation: `parameter`
+// goes straight into Raid::ChangeLootType. A value outside 1..4 matches no arm
+// of the switch in zone/attack.cpp:2887, so a typo would be stored and would
+// silently disable looting for the whole raid. The parse IS the guard, which
+// is why it is pinned here rather than left to the command layer.
+// =====================================================================
+
+TEST(RaidLootType, EnumMatchesEqemuRaidLootTypes) {
+    // eqemu zone/zonedb.h:381 -- RaidLeader = 1, then GroupLeader, Selected, All.
+    EXPECT_EQ(static_cast<uint32_t>(EQT::RaidLootType::RaidLeader), 1u);
+    EXPECT_EQ(static_cast<uint32_t>(EQT::RaidLootType::GroupLeader), 2u);
+    EXPECT_EQ(static_cast<uint32_t>(EQT::RaidLootType::Selected), 3u);
+    EXPECT_EQ(static_cast<uint32_t>(EQT::RaidLootType::All), 4u);
+}
+
+TEST(RaidLootType, ParsesWordsAndDigits) {
+    const struct { const char* text; uint32_t want; } cases[] = {
+        {"1", 1}, {"leader", 1}, {"raidleader", 1}, {"RaidLeader", 1},
+        {"2", 2}, {"groupleader", 2}, {"group leader", 2}, {"group-leader", 2},
+        {"3", 3}, {"selected", 3}, {"looters", 3},
+        {"4", 4}, {"all", 4}, {"ALL", 4}, {"everyone", 4},
+    };
+    for (const auto& c : cases) {
+        uint32_t out = 0;
+        EXPECT_TRUE(EQT::ParseRaidLootType(c.text, out)) << c.text;
+        EXPECT_EQ(out, c.want) << c.text;
+    }
+}
+
+TEST(RaidLootType, RejectsAnythingElseAndLeavesTheOutputAlone) {
+    // 0 and 5 matter especially: they are the near-misses a user would type,
+    // and the server would accept either without complaint.
+    // "-1" and "+1" matter: separators are stripped inside WORDS so that
+    // "group-leader" works, and an earlier cut of the parser stripped them
+    // first and read "-1" as loot type 1. Digits are matched on the trimmed
+    // text before any stripping for exactly that reason.
+    for (const char* bad : {"", "0", "5", "99", "lead", "none", "-1", "+1", "1-", "1 2", "x"}) {
+        uint32_t out = 0xABCDu;
+        EXPECT_FALSE(EQT::ParseRaidLootType(bad, out)) << "'" << bad << "'";
+        EXPECT_EQ(out, 0xABCDu) << "'" << bad << "' must not write through";
+    }
+}
+
+// Spaces are stripped before matching, which is what lets "group leader" work.
+// The same rule makes surrounding whitespace harmless -- worth pinning, since
+// a command line is exactly where a stray trailing space comes from.
+TEST(RaidLootType, ToleratesSurroundingWhitespace) {
+    for (const char* text : {"leader ", " leader", "  group leader  "}) {
+        uint32_t out = 0;
+        EXPECT_TRUE(EQT::ParseRaidLootType(text, out)) << "'" << text << "'";
+    }
+}
+
+TEST(RaidLootType, NamesEveryValidTypeAndFlagsTheRest) {
+    EXPECT_EQ(EQT::RaidLootTypeName(1), "raid leader only");
+    EXPECT_EQ(EQT::RaidLootTypeName(2), "raid leader and group leaders");
+    EXPECT_EQ(EQT::RaidLootTypeName(3), "raid leader and selected looters");
+    EXPECT_EQ(EQT::RaidLootTypeName(4), "everyone");
+    EXPECT_EQ(EQT::RaidLootTypeName(0), "Unknown(0)");
+    EXPECT_EQ(EQT::RaidLootTypeName(7), "Unknown(7)");
+}
+
+// The command codes these ops send, kept next to the decode-side action codes
+// so the two directions cannot drift apart. eqemu common/raid.h.
+TEST(EncodeRaidCommand, LeaderOnlyOpCodesRoundTripThroughTheBody) {
+    struct { uint32_t action; const char* what; } ops[] = {
+        {5,  "RaidCommandDisband"},
+        {20, "RaidCommandLootType"},
+        {21, "RaidCommandAddLooter"},
+        {22, "RaidCommandRemoveLooter"},
+        {30, "RaidCommandMakeLeader"},
+    };
+    for (const auto& op : ops) {
+        auto b = EQT::encodeRaidCommand(op.action, "Testmelee", "Oraclerogue", 3);
+        ASSERT_EQ(b.size(), 136u) << op.what;
+        EXPECT_EQ(readU32(b, 0), op.action) << op.what;
+        EXPECT_EQ(readName(b, 4), "Testmelee") << op.what;    // player_name = us
+        EXPECT_EQ(readName(b, 68), "Oraclerogue") << op.what;  // leader_name = target
+        EXPECT_EQ(readU32(b, 132), 3u) << op.what;
+    }
+}

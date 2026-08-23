@@ -3,6 +3,7 @@
 #include "common/net/packet.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace EQT {
 
@@ -323,6 +324,65 @@ void RaidRoster::Apply(const RaidUpdate& u, const std::string& my_name) {
         // Every other action is about leadership, loot rules, motd or lock
         // state -- none of them changes who is in the raid.
         return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Loot rules (T181)
+
+bool ParseRaidLootType(const std::string& text, uint32_t& out) {
+    // Trim surrounding whitespace first -- a command line is where a stray
+    // trailing space comes from.
+    const size_t b = text.find_first_not_of(" \t");
+    if (b == std::string::npos) {
+        return false;
+    }
+    const size_t e = text.find_last_not_of(" \t");
+    const std::string trimmed = text.substr(b, e - b + 1);
+
+    // Digits are matched on the TRIMMED text, before any separator stripping.
+    // Stripping first would turn "-1" into "1" -- which is how the first cut of
+    // this function accepted a negative as loot type 1.
+    if (trimmed.size() == 1 && trimmed[0] >= '1' && trimmed[0] <= '4') {
+        out = static_cast<uint32_t>(trimmed[0] - '0');
+        return true;
+    }
+
+    // Words: case-insensitive, and separators inside them are ignored so that
+    // "group leader" and "group-leader" both work.
+    std::string t;
+    t.reserve(trimmed.size());
+    for (char c : trimmed) {
+        if (c == ' ' || c == '\t' || c == '-' || c == '_') continue;
+        t.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+
+    if (t == "leader" || t == "raidleader") {
+        out = static_cast<uint32_t>(RaidLootType::RaidLeader);
+        return true;
+    }
+    if (t == "groupleader" || t == "groupleaders") {
+        out = static_cast<uint32_t>(RaidLootType::GroupLeader);
+        return true;
+    }
+    if (t == "selected" || t == "looters") {
+        out = static_cast<uint32_t>(RaidLootType::Selected);
+        return true;
+    }
+    if (t == "all" || t == "everyone") {
+        out = static_cast<uint32_t>(RaidLootType::All);
+        return true;
+    }
+    return false;
+}
+
+std::string RaidLootTypeName(uint32_t loot_type) {
+    switch (loot_type) {
+    case 1: return "raid leader only";
+    case 2: return "raid leader and group leaders";
+    case 3: return "raid leader and selected looters";
+    case 4: return "everyone";
+    default: return "Unknown(" + std::to_string(loot_type) + ")";
     }
 }
 

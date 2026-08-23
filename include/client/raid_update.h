@@ -200,4 +200,28 @@ private:
     std::vector<RaidMemberInfo> m_members;  // insertion order = arrival order
 };
 
+// ---------------------------------------------------------------------------
+// Loot rules (T181)
+//
+// eqemu zone/zonedb.h:381, `namespace RaidLootTypes`. The raid's loot type is
+// consulted in zone/attack.cpp:2887 when a corpse is looted; 4 (All) is the
+// default a new raid is created with (zone/raids.cpp:49).
+enum class RaidLootType : uint32_t {
+    RaidLeader  = 1,  // only the raid leader may loot
+    GroupLeader = 2,  // raid leader + group leaders
+    Selected    = 3,  // raid leader + the named looters (AddLooter/RemoveLooter)
+    All         = 4,  // anyone (the default)
+};
+
+// Accepts either a digit ("1".."4") or a word ("leader", "groupleader",
+// "selected", "all"). Returns false and leaves `out` untouched on anything
+// else -- the server has no validation of its own here (Handle_OP_RaidCommand's
+// LootType arm passes `parameter` straight to Raid::ChangeLootType), so a
+// typo'd loot type would otherwise be stored verbatim and silently disable
+// looting for everyone.
+bool ParseRaidLootType(const std::string& text, uint32_t& out);
+
+// Human-readable name for a loot type, or "Unknown(N)".
+std::string RaidLootTypeName(uint32_t loot_type);
+
 }  // namespace EQT

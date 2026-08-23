@@ -396,6 +396,10 @@ public:
     virtual void raidLeave() = 0;
     virtual void raidStatus() = 0;
     virtual void raidList() = 0;
+    virtual void raidRemove(const std::string& name) = 0;
+    virtual void raidMakeLeader(const std::string& name) = 0;
+    virtual void raidLootType(const std::string& mode) = 0;
+    virtual void raidLooter(bool add, const std::string& name) = 0;
 
     // ========== Merchant (T136) ==========
     // Unlike every prior family, NOT thin wrappers over a pre-existing
@@ -1298,6 +1302,10 @@ public:
     ActionResult raidLeave();
     ActionResult raidStatus();
     ActionResult raidList();
+    ActionResult raidRemove(const std::string& name);
+    ActionResult raidMakeLeader(const std::string& name);
+    ActionResult raidLootType(const std::string& mode);
+    ActionResult raidLooter(bool add, const std::string& name);
 
     /**
      * Attempt to return to a safe position.

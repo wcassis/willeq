@@ -376,6 +376,12 @@ public:
     void raidLeave() override { record("raidLeave"); }
     void raidStatus() override { record("raidStatus"); }
     void raidList() override { record("raidList"); }
+    void raidRemove(const std::string& name) override { record("raidRemove", name); }
+    void raidMakeLeader(const std::string& name) override { record("raidMakeLeader", name); }
+    void raidLootType(const std::string& mode) override { record("raidLootType", mode); }
+    void raidLooter(bool add, const std::string& name) override {
+        record(add ? "raidLooterAdd" : "raidLooterRemove", name);
+    }
 
     // ========== Merchant (T136) ==========
     void vendorToggle() override { record("vendorToggle"); }

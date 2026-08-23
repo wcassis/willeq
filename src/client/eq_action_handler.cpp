@@ -1656,6 +1656,155 @@ void EqActionHandler::raidList() {
         m_eq.AddChatSystemMessage(fmt::format("    {}{}{}", m.name, detail, tags));
     }
 }
+// ========== Raid leader-only ops (T181) ==========
+// Command codes (eqemu common/raid.h): 5 = Disband, 20 = LootType,
+// 21 = AddLooter, 22 = RemoveLooter, 30 = MakeLeader.
+//
+// WHAT THE SERVER DOES AND DOES NOT CHECK -- this is the whole reason these
+// commands need client-side guards (Handle_OP_RaidCommand, client_packet.cpp):
+//   * MakeLeader IS gated: `if (strcmp(raid->leadername, GetName()) == 0)`,
+//     and a non-leader's command falls out of the arm with NO reply at all.
+//     Silence is the failure mode, so we pre-check and say why.
+//   * Disband is NOT gated. Any raid member can remove any other member. We
+//     do not pretend otherwise -- there is nothing to enforce client-side that
+//     the server would honour -- but we do confirm what was sent.
+//   * LootType is NOT gated and is NOT validated: `parameter` goes straight
+//     into Raid::ChangeLootType. A typo'd value would be stored verbatim and
+//     match no arm of the switch in attack.cpp, silently disabling looting.
+//     So the PARSE is the guard (EQT::ParseRaidLootType).
+//
+// Membership checks use the T180 roster: naming somebody who is not in the
+// raid produces a server no-op, so catching it here turns silence into a
+// sentence.
+
+bool EqActionHandler::raidRequireMembership() {
+    if (!m_eq.IsInRaid()) {
+        m_eq.AddChatSystemMessage("You are not in a raid.");
+        return false;
+    }
+    return true;
+}
+
+bool EqActionHandler::raidRequireLeader(const std::string& what) {
+    if (!raidRequireMembership()) {
+        return false;
+    }
+    const std::string& leader = m_eq.GetRaidLeader();
+    if (leader.empty() || leader != m_eq.GetMyName()) {
+        // The server would simply drop this on the floor.
+        m_eq.AddChatSystemMessage(fmt::format(
+            "Only the raid leader can {}.", what));
+        return false;
+    }
+    return true;
+}
+
+// Returns true when `name` is in the roster. The roster is assembled from the
+// action-0 stream (T180), so an empty roster means "we have not been told yet",
+// which is not the same as "not a member" -- treat it as unknown and let the
+// command through rather than refusing on missing information.
+bool EqActionHandler::raidMemberKnown(const std::string& name) const {
+    const auto& members = m_eq.GetRaidMembers();
+    if (members.empty()) {
+        return true;
+    }
+    for (const auto& m : members) {
+        if (m.name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void EqActionHandler::raidRemove(const std::string& name) {
+    if (name.empty()) {
+        m_eq.AddChatSystemMessage("Usage: /raid remove <name>");
+        return;
+    }
+    if (!raidRequireMembership()) {
+        return;
+    }
+    if (name == m_eq.GetMyName()) {
+        // Identical on the wire to /raid leave; say which command they meant
+        // rather than quietly doing something they did not ask for.
+        m_eq.AddChatSystemMessage("To leave the raid yourself, use /raid leave.");
+        return;
+    }
+    if (!raidMemberKnown(name)) {
+        m_eq.AddChatSystemMessage(fmt::format("{} is not in your raid.", name));
+        return;
+    }
+    // RaidCommandDisband (5): leader_name = the member being removed,
+    // player_name = whoever is doing the removing. Same shape as /raid leave,
+    // which sends our own name in both.
+    m_eq.SendRaidCommand(5, m_eq.GetMyName(), name);
+    m_eq.AddChatSystemMessage(fmt::format("You remove {} from the raid.", name));
+}
+
+void EqActionHandler::raidMakeLeader(const std::string& name) {
+    if (name.empty()) {
+        m_eq.AddChatSystemMessage("Usage: /raid leader <name>");
+        return;
+    }
+    if (!raidRequireLeader("pass raid leadership")) {
+        return;
+    }
+    if (name == m_eq.GetMyName()) {
+        m_eq.AddChatSystemMessage("You are already the raid leader.");
+        return;
+    }
+    if (!raidMemberKnown(name)) {
+        m_eq.AddChatSystemMessage(fmt::format("{} is not in your raid.", name));
+        return;
+    }
+    // RaidCommandMakeLeader (30): leader_name = the NEW leader.
+    m_eq.SendRaidCommand(30, m_eq.GetMyName(), name);
+    m_eq.AddChatSystemMessage(fmt::format("You make {} the raid leader.", name));
+}
+
+void EqActionHandler::raidLootType(const std::string& mode) {
+    if (mode.empty()) {
+        m_eq.AddChatSystemMessage(
+            "Usage: /raid loot <leader|groupleader|selected|all>");
+        return;
+    }
+    uint32_t loot_type = 0;
+    if (!EQT::ParseRaidLootType(mode, loot_type)) {
+        // The server would store the bad value verbatim; refuse here instead.
+        m_eq.AddChatSystemMessage(fmt::format(
+            "'{}' is not a raid loot type. Use leader, groupleader, selected or all.",
+            mode));
+        return;
+    }
+    if (!raidRequireLeader("change the raid loot type")) {
+        return;
+    }
+    // RaidCommandLootType (20): parameter = the loot type.
+    m_eq.SendRaidCommand(20, m_eq.GetMyName(), m_eq.GetMyName(), loot_type);
+    m_eq.AddChatSystemMessage(fmt::format(
+        "You set raid looting to {}.", EQT::RaidLootTypeName(loot_type)));
+}
+
+void EqActionHandler::raidLooter(bool add, const std::string& name) {
+    if (name.empty()) {
+        m_eq.AddChatSystemMessage("Usage: /raid looter <add|remove> <name>");
+        return;
+    }
+    if (!raidRequireLeader(add ? "add a raid looter" : "remove a raid looter")) {
+        return;
+    }
+    if (!raidMemberKnown(name)) {
+        m_eq.AddChatSystemMessage(fmt::format("{} is not in your raid.", name));
+        return;
+    }
+    // RaidCommandAddLooter (21) / RaidCommandRemoveLooter (22):
+    // leader_name = the looter. Only meaningful under loot type 3 (Selected).
+    m_eq.SendRaidCommand(add ? 21 : 22, m_eq.GetMyName(), name);
+    m_eq.AddChatSystemMessage(add
+        ? fmt::format("You add {} as a raid looter.", name)
+        : fmt::format("You remove {} as a raid looter.", name));
+}
+
 // ========== Merchant (T136) ==========
 // vendorToggle()/buyFromVendor()/sellToVendor() are thin wrappers over the
 // three new EverQuest methods (eq_commands.cpp) that push the same

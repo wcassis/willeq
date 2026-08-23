@@ -490,13 +490,81 @@ TEST_F(CommandProcessorTest, Raid_ListIsCaseInsensitiveLikeTheOtherSubcommands) 
     EXPECT_TRUE(handler.calledOnceWith("raidList()"));
 }
 
+// T181: the leader-only ops. The processor's job is routing and arity only --
+// "not in a raid" / "not the leader" / "not a member" / bad loot type all need
+// raid state, so they live in the handler and are not asserted here.
+TEST_F(CommandProcessorTest, Raid_Remove_RoutesWithName) {
+    auto result = processor->processCommand("/raid remove Oraclerogue");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidRemove(\"Oraclerogue\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_Kick_IsAnAliasForRemove) {
+    auto result = processor->processCommand("/raid kick Oraclerogue");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidRemove(\"Oraclerogue\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_RemoveWithoutName_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/raid remove");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Raid_Leader_RoutesWithName) {
+    auto result = processor->processCommand("/raid leader Oraclerogue");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidMakeLeader(\"Oraclerogue\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_LeaderWithoutName_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/raid leader");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Raid_Loot_RoutesModeVerbatim) {
+    // The MODE string is passed through untouched -- parsing it is the
+    // handler's job (it is the guard against the server storing a bad value).
+    auto result = processor->processCommand("/raid loot groupleader");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLootType(\"groupleader\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_LootWithoutMode_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/raid loot");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Raid_Looter_SplitsVerbAndName) {
+    auto add = processor->processCommand("/raid looter add Oraclerogue");
+    EXPECT_TRUE(add.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLooterAdd(\"Oraclerogue\")"));
+    handler.clear();
+    auto rem = processor->processCommand("/raid looter remove Oraclerogue");
+    EXPECT_TRUE(rem.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLooterRemove(\"Oraclerogue\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_LooterBadVerbOrMissingName_FailsWithoutDispatch) {
+    for (const char* cmd : {"/raid looter", "/raid looter add", "/raid looter frob Oraclerogue"}) {
+        handler.clear();
+        auto result = processor->processCommand(cmd);
+        EXPECT_FALSE(result.success) << cmd;
+        EXPECT_TRUE(handler.empty()) << cmd;
+    }
+}
+
 TEST_F(CommandProcessorTest, Raid_UnknownSubcommand_FailsWithoutDispatch) {
     auto result = processor->processCommand("/raid frobnicate");
     EXPECT_FALSE(result.success);
     EXPECT_TRUE(handler.empty());
     // The usage line has to advertise every subcommand that exists, or the
     // one nobody can discover is the one nobody uses.
-    EXPECT_NE(result.message.find("list"), std::string::npos);
+    for (const char* sub : {"list", "remove", "leader", "loot", "looter"}) {
+        EXPECT_NE(result.message.find(sub), std::string::npos) << sub;
+    }
 }
 
 TEST_F(CommandProcessorTest, Loot_ValidId_DispatchesLootCorpseWithExactId) {
