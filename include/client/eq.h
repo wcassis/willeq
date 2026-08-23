@@ -15,6 +15,7 @@ namespace Json { class Value; }
 #include "client/string_database.h"
 #include "client/door_state_manager.h"
 #include "client/zone_load_snapshot.h"
+#include "client/raid_update.h"
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -1146,6 +1147,11 @@ public:
 	const std::string& GetRaidLeader() const { return m_raid_leader; }
 	const std::string& GetPendingRaidInviter() const { return m_pending_raid_inviter; }
 	void ClearPendingRaidInvite() { m_pending_raid_inviter.clear(); }
+	// T180: the member list, assembled from the action-0 stream -- Titanium's
+	// ENCODE drops eqemu's roster packet, so this is the only roster there is.
+	const std::vector<EQT::RaidMemberInfo>& GetRaidMembers() const {
+		return m_raid_roster.Members();
+	}
 	// Phase 4: Tradeskills
 	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
 	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
@@ -1417,7 +1423,14 @@ private:
 	std::string GetStringMessage(uint32_t string_id);
 	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
 	static std::string GetChatTypeName(uint32_t chat_type);
+public:
+	// T180: public because /raid list renders class names from EqActionHandler,
+	// which is not a friend. A pure lookup table over a wire enum -- no state,
+	// nothing to encapsulate. The alternative was pulling the graphics-side
+	// EQT::Graphics::getClassName into a non-graphics TU, i.e. a new dependency
+	// direction for a switch statement.
 	static std::string GetClassName(uint32_t class_id);
+private:
 	static std::string GetRaceName(uint32_t race_id);
 	static std::string GetDeityName(uint32_t deity_id);
 	static std::string GetBodyTypeName(uint8_t bodytype);
@@ -1494,11 +1507,11 @@ private:
 	std::string m_character;
 	std::string m_last_name;
 
-	// T179: raid state, derived from ZoneProcessRaidUpdate. Not a full roster --
-	// enough for /raid accept/leave/status. A member list is a follow-up.
+	// T179/T180: raid state, derived from ZoneProcessRaidUpdate.
 	bool m_in_raid = false;
 	std::string m_raid_leader;
 	std::string m_pending_raid_inviter;
+	EQT::RaidRoster m_raid_roster;
 
 	std::string m_key;
 	uint32_t m_dbid;

@@ -38,7 +38,10 @@ enum class RaidAction : uint32_t {
     Remove1            = 3,   // a member left. parameter = 0xFFFFFFFF.
     NoLongerLeader     = 4,
     Disband            = 5,   // the raid disbanded (this IS the disband code)
-    Members            = 6,   // full details + member list, len 395+
+    Members            = 6,   // full details + member list (len 395+) on
+                              // later clients -- NOT on Titanium, whose
+                              // ENCODE has no case for it and ships a
+                              // bare general with the list stripped.
     NoAssignLeadership = 7,
     Create             = 8,   // raid formed. Body is RaidCreate_Struct (72 B).
     NoRaid             = 10,  // "you are not in a raid". See the raw-body note.
@@ -82,6 +85,12 @@ struct RaidUpdate {
     bool has_leader_id = false;
     uint32_t leader_id = 0;
 
+    // Action 10 only. TRUE means this is not a raid message at all: it is
+    // Client::CompleteConnect's zone-in name handshake (zone/client.cpp:859),
+    // which reuses OP_RaidUpdate to carry a ZoneInSendName_Struct whose
+    // `unknown0` happens to be 0x0A. See the shape table below.
+    bool zone_in_name = false;
+
     bool valid = false;              // false => the packet was too short for
                                      // the shape its action implies
 };
@@ -93,10 +102,22 @@ struct RaidUpdate {
 //   * action 0  -> Titanium RaidAddMember_Struct (140 B)
 //   * action 8  -> emu RaidCreate_Struct (72 B), sent RAW: titanium.cpp has no
 //                  ENCODE for OP_RaidJoin, which is the SAME wire opcode
-//   * action 10 -> emu RaidGeneral_Struct (140 B), sent RAW by ENCODE's
-//                  `case raidNoRaid: dest->QueuePacket(inapp)`, so its
-//                  leader_name/parameter sit 4 bytes later than every other
-//                  action's. Only `action` is at a common offset.
+//   * action 10 -> TWO DIFFERENT PACKETS, told apart by LENGTH (T180):
+//                  136 B = ZoneInSendName_Struct, the zone-in name handshake.
+//                    Client::CompleteConnect (zone/client.cpp:859) sends
+//                    OP_RaidUpdate carrying {unknown0=0x0A, name[64],
+//                    name2[64], unknown132} -- both names our own. This is
+//                    what every zone entry produces, raid or no raid, and it
+//                    is NOT a raid event: `zone_in_name` is set and the
+//                    caller must not touch raid state on it.
+//                  140 B = emu RaidGeneral_Struct, sent RAW by ENCODE's
+//                    `case raidNoRaid: dest->QueuePacket(inapp)`, so its
+//                    leader_name/parameter sit 4 bytes later than every other
+//                    action's. Only `action` is at a common offset. NOTE:
+//                    nothing in eqemu's zone/ actually sends this -- only the
+//                    six patch encoders name raidNoRaid -- so the 140-byte
+//                    shape is decoded for completeness, not because it has
+//                    ever been observed.
 //   * 14 / 30   -> RaidLeadershipUpdate_Struct: general-compatible for the two
 //                  names, but offset 132 is leadership AA data, NOT parameter
 //   * 35 / 36   -> RaidGeneral_Struct + a trailing motd/note string
@@ -126,5 +147,57 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
                                        const std::string& player_name,
                                        const std::string& leader_name,
                                        uint32_t parameter = 0);
+
+// ---------------------------------------------------------------------------
+// Roster (T180)
+//
+// TITANIUM NEVER DELIVERS A ROSTER PACKET. eqemu's action 6 (raidMembers) --
+// the one that carries the whole member list -- has no `case` in
+// common/patches/titanium.cpp's ENCODE(OP_RaidUpdate), so it falls through the
+// `default` arm and arrives as a bare 136-byte general with the list gone.
+//
+// The roster a Titanium client can have is therefore one it ASSEMBLES from the
+// action-0 (raidAdd) stream. eqemu emits exactly that: Raid::SendBulkRaid
+// (zone/raids.cpp:1317) walks the members and sends one raidAdd per member to
+// a client that joins or zones in, and SendRaidAddAll broadcasts one to the
+// whole raid when somebody new joins. A group change is a Remove followed by
+// an Add (Raid::SendRaidMove), so it needs no separate handling here.
+
+// eqemu zone/raids.h:72 -- a member who is in the raid but in no group.
+constexpr uint32_t kRaidGroupless = 0xFFFFFFFFu;
+
+struct RaidMemberInfo {
+    std::string name;
+    uint8_t class_id = 0;
+    uint8_t level = 0;
+    uint32_t group = kRaidGroupless;  // raidAdd's `parameter`
+    bool is_group_leader = false;
+};
+
+// Membership assembled from the decoded update stream. Deliberately separate
+// from EverQuest so the policy below is testable without a live client; the
+// same object is the client's only source of truth for who is in the raid.
+class RaidRoster {
+public:
+    // Applies one decoded update. `my_name` is this character's name: a Remove
+    // that names US, a Disband, or a real NoRaid means we are out of the raid
+    // entirely and the whole roster goes, not one row.
+    //
+    // A `zone_in_name` update is NOT a raid event and is ignored here.
+    void Apply(const RaidUpdate& u, const std::string& my_name);
+
+    void Clear() { m_members.clear(); }
+
+    const std::vector<RaidMemberInfo>& Members() const { return m_members; }
+    size_t Size() const { return m_members.size(); }
+    bool Empty() const { return m_members.empty(); }
+
+    // nullptr if `name` is not in the roster. Case-sensitive: eqemu's own
+    // member lookups (GetClientByName, the strcmp walks in raids.cpp) are too.
+    const RaidMemberInfo* Find(const std::string& name) const;
+
+private:
+    std::vector<RaidMemberInfo> m_members;  // insertion order = arrival order
+};
 
 }  // namespace EQT

@@ -471,10 +471,32 @@ TEST_F(CommandProcessorTest, Raid_BareAndStatus_RouteToRaidStatus) {
     EXPECT_TRUE(handler.calledOnceWith("raidStatus()"));
 }
 
+// T180: the roster subcommand, and its /raid members alias.
+TEST_F(CommandProcessorTest, Raid_List_RoutesToRaidList) {
+    auto result = processor->processCommand("/raid list");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidList()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_Members_IsAnAliasForList) {
+    auto result = processor->processCommand("/raid members");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidList()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_ListIsCaseInsensitiveLikeTheOtherSubcommands) {
+    auto result = processor->processCommand("/raid LIST");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidList()"));
+}
+
 TEST_F(CommandProcessorTest, Raid_UnknownSubcommand_FailsWithoutDispatch) {
     auto result = processor->processCommand("/raid frobnicate");
     EXPECT_FALSE(result.success);
     EXPECT_TRUE(handler.empty());
+    // The usage line has to advertise every subcommand that exists, or the
+    // one nobody can discover is the one nobody uses.
+    EXPECT_NE(result.message.find("list"), std::string::npos);
 }
 
 TEST_F(CommandProcessorTest, Loot_ValidId_DispatchesLootCorpseWithExactId) {

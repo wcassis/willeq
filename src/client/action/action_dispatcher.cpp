@@ -366,6 +366,13 @@ ActionResult ActionDispatcher::raidStatus() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::raidList() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidList();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::toggleAutoFire() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

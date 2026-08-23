@@ -395,6 +395,7 @@ public:
     virtual void raidAccept() = 0;
     virtual void raidLeave() = 0;
     virtual void raidStatus() = 0;
+    virtual void raidList() = 0;
 
     // ========== Merchant (T136) ==========
     // Unlike every prior family, NOT thin wrappers over a pre-existing
@@ -1296,6 +1297,7 @@ public:
     ActionResult raidAccept();
     ActionResult raidLeave();
     ActionResult raidStatus();
+    ActionResult raidList();
 
     /**
      * Attempt to return to a safe position.

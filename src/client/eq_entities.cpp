@@ -1304,11 +1304,12 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 // per-action body shapes are documented and pinned by test. This function is
 // only the rendering.
 //
-// SCOPE: this is the decode, not a raid feature. There is no raid roster, no
-// accept path, and no /raid commands -- those need the member-list parse
-// (action 6) and a sender, and belong to the raid unit proper. What the user
-// gets here is a truthful account of what the server said, in place of four
-// wrong messages and one silence.
+// T179 added the accept path and the /raid commands; T180 added the roster
+// below and split the zone-in handshake back out of action 10. The member-list
+// parse T169 expected (action 6) turned out to be unavailable on Titanium --
+// its ENCODE has no case for raidMembers and ships the general with the list
+// stripped -- so the roster is assembled from the action-0 stream instead.
+// See raid_update.h.
 void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 {
 	const EQT::RaidUpdate u = EQT::DecodeRaidUpdate(p, 2);
@@ -1319,9 +1320,27 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		return;
 	}
 
+	// T180: not every OP_RaidUpdate is a raid event. Client::CompleteConnect
+	// reuses this opcode for the zone-in name handshake, whose first uint32
+	// happens to be 0x0A -- the raidNoRaid code. It arrives on EVERY zone
+	// entry, with or without a raid. Until T180 this produced a WARN per
+	// zone-in ("too short for action 10"); reporting it as "You are not in a
+	// raid" instead would have been worse, since it would have cleared real
+	// raid membership every time the player zoned.
+	if (u.zone_in_name) {
+		LOG_DEBUG(MOD_ZONE, "RaidUpdate: zone-in name handshake for '{}' (not a raid event)",
+		          u.player_name);
+		return;
+	}
+
 	LOG_DEBUG(MOD_ZONE, "RaidUpdate action={} ({}) player='{}' leader='{}' parameter={}",
 	          u.raw_action, EQT::RaidActionName(u.raw_action),
 	          u.player_name, u.leader_name, u.parameter);
+
+	// Membership first, then the message: /raid list must be right the instant
+	// the player is told something changed. The policy lives in RaidRoster so
+	// it is testable without a live client.
+	m_raid_roster.Apply(u, m_character);
 
 	// Every event names a member, and several of them are about US. eqemu
 	// sends the same packet to the whole raid, so without this comparison the
@@ -1364,6 +1383,8 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		break;
 
 	case EQT::RaidAction::NoRaid:
+		// Only a genuine 140-byte raidNoRaid reaches here; the 136-byte zone-in
+		// handshake that also presents 10 returned above (T180).
 		m_in_raid = false;
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();

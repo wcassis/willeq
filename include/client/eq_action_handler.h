@@ -234,6 +234,7 @@ public:
     void raidAccept() override;
     void raidLeave() override;
     void raidStatus() override;
+    void raidList() override;
 
     // ========== Merchant (T136) ==========
     void vendorToggle() override;

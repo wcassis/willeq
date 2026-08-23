@@ -375,6 +375,7 @@ public:
     void raidAccept() override { record("raidAccept"); }
     void raidLeave() override { record("raidLeave"); }
     void raidStatus() override { record("raidStatus"); }
+    void raidList() override { record("raidList"); }
 
     // ========== Merchant (T136) ==========
     void vendorToggle() override { record("vendorToggle"); }

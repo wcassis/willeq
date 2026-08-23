@@ -13,6 +13,8 @@
 #include "common/performance_metrics.h"
 #include <fmt/format.h>
 #include <cmath>
+#include <algorithm>  // T180: /raid list sorts the roster
+#include <vector>
 
 namespace eqt {
 
@@ -1596,6 +1598,62 @@ void EqActionHandler::raidStatus() {
     if (!pending.empty()) {
         m_eq.AddChatSystemMessage(fmt::format(
             "Pending raid invitation from {} -- type /raid accept to join.", pending));
+    }
+}
+
+// T180. The roster is assembled from the action-0 stream, not read out of a
+// roster packet -- Titanium's ENCODE drops eqemu's member list (see
+// raid_update.h). Ordered by raid group, then by name, so the printout matches
+// how the raid is actually organised rather than the order members happened to
+// arrive in. Members in the raid but in no group (kRaidGroupless) sort last,
+// under their own heading.
+void EqActionHandler::raidList() {
+    if (!m_eq.IsInRaid()) {
+        m_eq.AddChatSystemMessage("You are not in a raid.");
+        return;
+    }
+
+    std::vector<EQT::RaidMemberInfo> members = m_eq.GetRaidMembers();
+    if (members.empty()) {
+        // In a raid but holding no members: either the adds have not arrived
+        // yet, or something dropped them. Say which, rather than printing an
+        // empty list that reads like an empty raid.
+        m_eq.AddChatSystemMessage("Raid member list not received yet.");
+        return;
+    }
+
+    std::sort(members.begin(), members.end(),
+              [](const EQT::RaidMemberInfo& a, const EQT::RaidMemberInfo& b) {
+                  if (a.group != b.group) return a.group < b.group;
+                  return a.name < b.name;
+              });
+
+    const std::string& leader = m_eq.GetRaidLeader();
+    m_eq.AddChatSystemMessage(fmt::format("Raid members ({}):", members.size()));
+
+    uint32_t current_group = 0;
+    bool have_group = false;
+    for (const auto& m : members) {
+        if (!have_group || m.group != current_group) {
+            current_group = m.group;
+            have_group = true;
+            m_eq.AddChatSystemMessage(
+                m.group == EQT::kRaidGroupless
+                    ? std::string("  Not in a group:")
+                    : fmt::format("  Group {}:", m.group + 1));  // 0-based on the wire
+        }
+        // Class/level are absent when the add arrived without the
+        // RaidAddMember tail (a 136-byte general); print the name alone rather
+        // than "Level 0 Unknown".
+        std::string detail;
+        if (m.level != 0 || m.class_id != 0) {
+            detail = fmt::format(" (Level {} {})", m.level,
+                                 EverQuest::GetClassName(m.class_id));
+        }
+        std::string tags;
+        if (!leader.empty() && m.name == leader) tags += " [raid leader]";
+        if (m.is_group_leader) tags += " [group leader]";
+        m_eq.AddChatSystemMessage(fmt::format("    {}{}{}", m.name, detail, tags));
     }
 }
 // ========== Merchant (T136) ==========

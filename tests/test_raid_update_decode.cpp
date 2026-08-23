@@ -9,8 +9,10 @@
 //   * action 8 (raidCreate) is a different struct entirely, arriving on the
 //     same wire opcode because Titanium maps OP_RaidJoin and OP_RaidUpdate to
 //     the same value (0x1f21).
-//   * action 10 (raidNoRaid) is sent RAW in eqemu's INTERNAL 140-byte layout
-//     -- its names sit 4 bytes later than every other action's.
+//   * action 10 is TWO packets wearing one number (T180): 136 bytes is the
+//     zone-in name handshake, 140 bytes a real raidNoRaid sent RAW in eqemu's
+//     INTERNAL layout, whose names sit 4 bytes later than every other
+//     action's.
 //   * actions 14/30 put leadership AA data where every other action has
 //     `parameter`.
 //
@@ -215,6 +217,70 @@ TEST(RaidUpdateDecode, NoRaidIsRecognisedAndReportsNoMisalignedNames) {
     EXPECT_FALSE(u.has_parameter);
 }
 
+// ---------------------------------------------------------------------
+// T180: the OTHER action 10. Client::CompleteConnect (zone/client.cpp:859)
+// sends OP_RaidUpdate carrying a ZoneInSendName_Struct -- {unknown0 = 0x0A,
+// name[64], name2[64], unknown132}, 136 bytes -- on EVERY zone entry, with or
+// without a raid in existence. We read `unknown0` as the action and see 10.
+//
+// Before T180 the decoder demanded 140 bytes for action 10, so this rejected
+// as "too short" and logged a WARN per zone-in (found live, T172). Accepting
+// it as a raidNoRaid instead would be strictly worse: it would clear real raid
+// membership every time the player zoned.
+// ---------------------------------------------------------------------
+
+// A ZoneInSendName_Struct as CompleteConnect builds it: both names are ours.
+EQ::Net::DynamicPacket makeZoneInName(const std::string& me) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + kGenSize);
+    p.PutUInt32(kBase + 0, 0x0A);
+    putName(p, kBase + 4, me);
+    putName(p, kBase + 68, me);
+    p.PutUInt32(kBase + 132, 0);
+    return p;
+}
+
+TEST(RaidUpdateDecode, Action10At136BytesIsTheZoneInHandshakeNotARaidEvent) {
+    auto p = makeZoneInName("Testmelee");
+    auto u = EQT::DecodeRaidUpdate(p, kBase);
+
+    ASSERT_TRUE(u.valid) << "a complete 138-byte packet must not read as truncated";
+    EXPECT_TRUE(u.zone_in_name);
+    EXPECT_EQ(u.raw_action, 10u);
+    // Its name fields DO sit at the Titanium general offsets, so they decode --
+    // and both being our own name is what makes the log self-evident.
+    EXPECT_EQ(u.player_name, "Testmelee");
+    EXPECT_EQ(u.leader_name, "Testmelee");
+}
+
+TEST(RaidUpdateDecode, Action10At140BytesIsStillARealNoRaid) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + kEmuGenSize);
+    p.PutUInt32(kBase + 0, 10);
+
+    auto u = EQT::DecodeRaidUpdate(p, kBase);
+    ASSERT_TRUE(u.valid);
+    EXPECT_FALSE(u.zone_in_name) << "the 140-byte layout is the genuine raidNoRaid";
+}
+
+TEST(RaidUpdateDecode, ShortAction10IsStillRejected) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + 100);
+    p.PutUInt32(kBase + 0, 10);
+
+    auto u = EQT::DecodeRaidUpdate(p, kBase);
+    EXPECT_FALSE(u.valid);
+    EXPECT_FALSE(u.zone_in_name);
+}
+
+TEST(RaidUpdateDecode, OnlyAction10EverSetsZoneInName) {
+    for (uint32_t action : {0u, 1u, 3u, 5u, 8u, 14u, 20u, 30u, 35u}) {
+        auto p = makeGeneral(action, "Testmelee", "Raidleader", 0);
+        auto u = EQT::DecodeRaidUpdate(p, kBase);
+        EXPECT_FALSE(u.zone_in_name) << "action " << action;
+    }
+}
+
 // Actions 14 and 30 are RaidLeadershipUpdate_Struct: offset 132 is the start
 // of the leadership AA block, not `parameter`. Reporting it as a parameter
 // would surface AA data as a group number.
@@ -339,4 +405,198 @@ TEST(EncodeRaidCommand, EmptyNamesLeaveZeroedFields) {
     EXPECT_EQ(readU32(b, 0), 5u);
     EXPECT_EQ(b[4], 0);
     EXPECT_EQ(b[68], 0);
+}
+
+// =====================================================================
+// RaidRoster (T180)
+//
+// Titanium NEVER delivers a roster packet: eqemu's action 6 (raidMembers), the
+// one carrying the member list, has no `case` in common/patches/titanium.cpp's
+// ENCODE(OP_RaidUpdate) and falls through the `default` arm as a bare 136-byte
+// general with the list stripped. So the roster is ASSEMBLED from the action-0
+// stream that Raid::SendBulkRaid / SendRaidAddAll emit one-per-member.
+//
+// These tests pin that assembly against what the server actually sends:
+//   * SendRaidAdd puts the member in BOTH names and the group in `parameter`
+//   * a group change is Remove+Add (SendRaidMove), never an in-place edit
+//   * SendBulkRaid REPLAYS every member on each zone-in -- duplicates here
+//     would grow the roster without bound across zoning
+//   * RAID_GROUPLESS (0xFFFFFFFF) means in the raid, in no group
+// =====================================================================
+
+namespace {
+
+constexpr const char* kMe = "Testmelee";
+
+// Titanium RaidAddMember_Struct as Raid::SendRaidAdd builds it (raids.cpp:1142).
+EQT::RaidUpdate decodedAdd(const std::string& who, uint32_t group,
+                           uint8_t class_id, uint8_t level, bool group_leader) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + kAddSize);
+    p.PutUInt32(kBase + 0, 0);
+    putName(p, kBase + 4, who);   // player_name
+    putName(p, kBase + 68, who);  // leader_name -- eqemu sets both to the member
+    p.PutUInt32(kBase + 132, group);
+    p.PutUInt8(kBase + 136, class_id);
+    p.PutUInt8(kBase + 137, level);
+    p.PutUInt8(kBase + 138, group_leader ? 1 : 0);
+    return EQT::DecodeRaidUpdate(p, kBase);
+}
+
+EQT::RaidUpdate decodedGeneral(uint32_t action, const std::string& who) {
+    auto p = makeGeneral(action, who, who, 0);
+    return EQT::DecodeRaidUpdate(p, kBase);
+}
+
+// A roster holding three members in two groups, as a zone-in would build it.
+EQT::RaidRoster threeMemberRaid() {
+    EQT::RaidRoster r;
+    r.Apply(decodedAdd("Raidleader", 0, 1, 60, true), kMe);
+    r.Apply(decodedAdd(kMe, 0, 7, 52, false), kMe);
+    r.Apply(decodedAdd("Oraclerogue", 1, 9, 45, true), kMe);
+    return r;
+}
+
+}  // namespace
+
+TEST(RaidRoster, AddCarriesGroupClassLevelAndGroupLeader) {
+    EQT::RaidRoster r;
+    r.Apply(decodedAdd("Oraclerogue", 1, 9, 45, true), kMe);
+
+    ASSERT_EQ(r.Size(), 1u);
+    const auto* m = r.Find("Oraclerogue");
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->name, "Oraclerogue");
+    EXPECT_EQ(m->group, 1u);
+    EXPECT_EQ(m->class_id, 9);
+    EXPECT_EQ(m->level, 45);
+    EXPECT_TRUE(m->is_group_leader);
+}
+
+TEST(RaidRoster, GrouplessMemberKeepsEqemuSentinel) {
+    EQT::RaidRoster r;
+    r.Apply(decodedAdd("Loner", EQT::kRaidGroupless, 1, 10, false), kMe);
+
+    const auto* m = r.Find("Loner");
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->group, EQT::kRaidGroupless)
+        << "RAID_GROUPLESS (zone/raids.h:72) means in the raid, in no group";
+}
+
+// SendBulkRaid replays the WHOLE roster to a client on every zone-in. An Add
+// that appends unconditionally would double the roster each time the player
+// zoned -- invisible until somebody counted.
+TEST(RaidRoster, ReplayedAddsUpsertRatherThanDuplicate) {
+    auto r = threeMemberRaid();
+    ASSERT_EQ(r.Size(), 3u);
+
+    r.Apply(decodedAdd("Raidleader", 0, 1, 60, true), kMe);
+    r.Apply(decodedAdd(kMe, 0, 7, 52, false), kMe);
+    r.Apply(decodedAdd("Oraclerogue", 1, 9, 45, true), kMe);
+
+    EXPECT_EQ(r.Size(), 3u) << "a re-zone must not grow the roster";
+}
+
+// Raid::SendRaidMove is Remove-then-Add, so a group change arrives as two
+// packets and the second must overwrite the first member's row.
+TEST(RaidRoster, ReAddAfterAGroupChangeOverwritesTheGroup) {
+    auto r = threeMemberRaid();
+    r.Apply(decodedGeneral(1, "Oraclerogue"), kMe);   // raidRemove2
+    r.Apply(decodedAdd("Oraclerogue", 0, 9, 45, false), kMe);
+
+    ASSERT_EQ(r.Size(), 3u);
+    const auto* m = r.Find("Oraclerogue");
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->group, 0u);
+    EXPECT_FALSE(m->is_group_leader);
+}
+
+TEST(RaidRoster, RemoveOfAnotherMemberDropsOnlyThatRow) {
+    auto r = threeMemberRaid();
+    r.Apply(decodedGeneral(1, "Oraclerogue"), kMe);
+
+    EXPECT_EQ(r.Size(), 2u);
+    EXPECT_EQ(r.Find("Oraclerogue"), nullptr);
+    EXPECT_NE(r.Find(kMe), nullptr);
+}
+
+TEST(RaidRoster, BothRemoveCodesAreHandled) {
+    // eqemu declares raidRemove2 = 1 and raidRemove1 = 3 and uses both.
+    for (uint32_t action : {1u, 3u}) {
+        auto r = threeMemberRaid();
+        r.Apply(decodedGeneral(action, "Oraclerogue"), kMe);
+        EXPECT_EQ(r.Size(), 2u) << "action " << action;
+    }
+}
+
+TEST(RaidRoster, RemoveOfOurselfEmptiesTheWholeRoster) {
+    auto r = threeMemberRaid();
+    r.Apply(decodedGeneral(1, kMe), kMe);
+
+    EXPECT_TRUE(r.Empty())
+        << "we left the raid: the other members are no longer ours to list";
+}
+
+TEST(RaidRoster, DisbandEmptiesTheRoster) {
+    auto r = threeMemberRaid();
+    r.Apply(decodedGeneral(5, "Raidleader"), kMe);
+    EXPECT_TRUE(r.Empty());
+}
+
+TEST(RaidRoster, RealNoRaidEmptiesTheRoster) {
+    auto r = threeMemberRaid();
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + kEmuGenSize);
+    p.PutUInt32(kBase + 0, 10);
+    r.Apply(EQT::DecodeRaidUpdate(p, kBase), kMe);
+    EXPECT_TRUE(r.Empty());
+}
+
+// The regression this whole action-10 split exists to prevent: the zone-in
+// handshake also presents 10, and it arrives on EVERY zone entry. Clearing on
+// it would empty the roster of anyone who zoned while raided.
+TEST(RaidRoster, ZoneInHandshakeLeavesTheRosterAlone) {
+    auto r = threeMemberRaid();
+    auto p = makeZoneInName(kMe);
+    auto u = EQT::DecodeRaidUpdate(p, kBase);
+    ASSERT_TRUE(u.zone_in_name);
+
+    r.Apply(u, kMe);
+    EXPECT_EQ(r.Size(), 3u);
+}
+
+// eqemu sends raidCreate to a joining client immediately BEFORE SendBulkRaid
+// replays the members, so it marks the start of a fresh roster stream.
+TEST(RaidRoster, CreateResetsTheRosterForTheStreamThatFollows) {
+    auto r = threeMemberRaid();
+    EQ::Net::DynamicPacket p;
+    p.Resize(kBase + kCreateSize);
+    p.PutUInt32(kBase + 0, 8);
+    putName(p, kBase + 4, "Newleader");
+    p.PutUInt32(kBase + 68, 1234);
+
+    r.Apply(EQT::DecodeRaidUpdate(p, kBase), kMe);
+    EXPECT_TRUE(r.Empty());
+}
+
+// Leadership, loot-rule, motd, lock and invite actions say nothing about who
+// is in the raid. An over-eager switch here would drop members on a motd.
+TEST(RaidRoster, NonMembershipActionsLeaveTheRosterUntouched) {
+    for (uint32_t action : {4u, 11u, 13u, 14u, 16u, 17u, 18u, 20u, 30u, 35u, 36u}) {
+        auto r = threeMemberRaid();
+        r.Apply(decodedGeneral(action, "Raidleader"), kMe);
+        EXPECT_EQ(r.Size(), 3u) << "action " << action;
+    }
+}
+
+TEST(RaidRoster, InvalidUpdatesAreIgnored) {
+    auto r = threeMemberRaid();
+    EQ::Net::DynamicPacket truncated;
+    truncated.Resize(kBase + 8);
+    truncated.PutUInt32(kBase + 0, 5);  // a disband too short to be one
+
+    auto u = EQT::DecodeRaidUpdate(truncated, kBase);
+    ASSERT_FALSE(u.valid);
+    r.Apply(u, kMe);
+    EXPECT_EQ(r.Size(), 3u) << "a packet we could not decode must change nothing";
 }

@@ -34,7 +34,8 @@ constexpr size_t CREATE_LEADER_NAME = 4;
 constexpr size_t CREATE_LEADER_ID = 68;
 constexpr size_t CREATE_SIZE = 72;
 
-// emu RaidGeneral_Struct, the raw layout action 10 arrives in.
+// emu RaidGeneral_Struct, the raw layout a real raidNoRaid would arrive in.
+// A 136-byte action-10 body is something else entirely -- see the header.
 constexpr size_t EMU_GEN_SIZE = 140;
 
 // Trailing text for actions 35/36 begins where the general body ends.
@@ -123,12 +124,38 @@ RaidUpdate DecodeRaidUpdate(const EQ::Net::Packet& p, size_t base) {
         return u;
     }
 
-    // Action 10 arrives in eqemu's INTERNAL layout, unencoded. Its names and
-    // parameter are shifted 4 bytes; nothing but the action is where the
-    // Titanium layout puts it. The action alone is the whole message, so read
-    // no further rather than reading a shifted field as if it were aligned.
+    // Action 10 is TWO packets wearing one number, and only the length tells
+    // them apart (T180 -- T172 caught the client logging a WARN on every zone
+    // entry because of the confusion):
+    //
+    //   136 bytes -> ZoneInSendName_Struct. Client::CompleteConnect
+    //     (zone/client.cpp:859) sends OP_RaidUpdate carrying
+    //     {unknown0 = 0x0A, name[64], name2[64], unknown132}; we read
+    //     `unknown0` as an action and see 10. Both names are OUR name. This
+    //     arrives on EVERY zone entry with no raid in existence anywhere, so
+    //     treating it as "you are not in a raid" would be a raid event
+    //     manufactured out of a login handshake. Its name fields sit at the
+    //     Titanium general offsets, so read them -- they make the log
+    //     self-evidently the handshake -- and flag it.
+    //
+    //   140 bytes -> a genuine raidNoRaid, in eqemu's INTERNAL layout,
+    //     unencoded (ENCODE's `case raidNoRaid: dest->QueuePacket(inapp)`).
+    //     Its names and parameter are shifted 4 bytes; nothing but the action
+    //     is where the Titanium layout puts it, so read no further rather than
+    //     read a shifted field as if it were aligned. NOTE this has never been
+    //     observed: no zone/ code path sends raidNoRaid at all, only the six
+    //     patch encoders name it.
     if (u.raw_action == static_cast<uint32_t>(RaidAction::NoRaid)) {
-        u.valid = (body >= EMU_GEN_SIZE);
+        if (body >= EMU_GEN_SIZE) {
+            u.valid = true;
+            return u;
+        }
+        if (body >= GEN_SIZE) {
+            u.zone_in_name = true;
+            u.player_name = readName(p, base + GEN_PLAYER_NAME);
+            u.leader_name = readName(p, base + GEN_LEADER_NAME);
+            u.valid = true;
+        }
         return u;
     }
 
@@ -208,6 +235,92 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
     putName(kLeaderName, leader_name);
     putU32(kParameter, parameter);
     return body;
+}
+
+// ---------------------------------------------------------------------------
+// RaidRoster (T180)
+
+const RaidMemberInfo* RaidRoster::Find(const std::string& name) const {
+    for (const auto& m : m_members) {
+        if (m.name == name) {
+            return &m;
+        }
+    }
+    return nullptr;
+}
+
+void RaidRoster::Apply(const RaidUpdate& u, const std::string& my_name) {
+    if (!u.valid) {
+        return;
+    }
+    // The zone-in name handshake wears action 10 but is not a raid event at
+    // all (see DecodeRaidUpdate). Emptying the roster on it would wipe the
+    // membership of anyone who zones while raided -- and eqemu re-sends the
+    // whole roster right after, so the damage would be invisible in testing
+    // and real in the window between.
+    if (u.zone_in_name) {
+        return;
+    }
+
+    switch (u.action) {
+    case RaidAction::Add: {
+        // eqemu's raidAdd puts the member in BOTH names (Raid::SendRaidAdd),
+        // and parameter is the group number -- kRaidGroupless when the member
+        // is in the raid but in no group.
+        if (u.player_name.empty()) {
+            return;
+        }
+        RaidMemberInfo info;
+        info.name = u.player_name;
+        info.group = u.has_parameter ? u.parameter : kRaidGroupless;
+        if (u.has_member_info) {
+            info.class_id = u.member_class;
+            info.level = u.member_level;
+            info.is_group_leader = u.is_group_leader;
+        }
+        // Upsert: a group change reaches us as Remove+Add (Raid::SendRaidMove),
+        // but SendBulkRaid on a re-zone replays every member, so an Add for a
+        // name already present must overwrite rather than duplicate.
+        for (auto& existing : m_members) {
+            if (existing.name == info.name) {
+                existing = info;
+                return;
+            }
+        }
+        m_members.push_back(std::move(info));
+        return;
+    }
+
+    case RaidAction::Remove1:
+    case RaidAction::Remove2:
+        if (!u.player_name.empty() && u.player_name == my_name) {
+            Clear();  // we left: the whole roster goes, not one row
+            return;
+        }
+        m_members.erase(
+            std::remove_if(m_members.begin(), m_members.end(),
+                           [&](const RaidMemberInfo& m) { return m.name == u.player_name; }),
+            m_members.end());
+        return;
+
+    case RaidAction::Create:
+        // eqemu sends raidCreate to a joining client immediately BEFORE
+        // SendBulkRaid replays the members (Raid::SendRaidMove /
+        // Handle_OP_RaidCommand), so this is the start of a fresh roster
+        // stream, not an addition to whatever we held before.
+        Clear();
+        return;
+
+    case RaidAction::Disband:
+    case RaidAction::NoRaid:
+        Clear();
+        return;
+
+    default:
+        // Every other action is about leadership, loot rules, motd or lock
+        // state -- none of them changes who is in the raid.
+        return;
+    }
 }
 
 }  // namespace EQT

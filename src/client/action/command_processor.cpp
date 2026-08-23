@@ -387,9 +387,9 @@ void CommandProcessor::registerBuiltinCommands() {
         "groupaccept", {"gaccept"}, "/groupaccept", "Accept pending group invite", "Group", false
     }, [this](const std::string& args) { return cmdGroupAccept(args); });
 
-    // T179: /raid [status|invite <name>|accept|leave]
+    // T179/T180: /raid [status|list|invite <name>|accept|leave]
     registerCommand({
-        "raid", {}, "/raid [status|invite <name>|accept|leave]",
+        "raid", {}, "/raid [status|list|invite <name>|accept|leave]",
         "Raid status and commands", "Group", false
     }, [this](const std::string& args) { return cmdRaid(args); });
 
@@ -1227,6 +1227,9 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
     if (sub == "leave") {
         return m_dispatcher.raidLeave();
     }
+    if (sub == "list" || sub == "members") {
+        return m_dispatcher.raidList();
+    }
     if (sub == "invite") {
         if (rest.empty()) {
             return ActionResult::Failure("Usage: /raid invite <name>");
@@ -1234,7 +1237,7 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
         return m_dispatcher.raidInvite(rest);
     }
     return ActionResult::Failure(
-        "Usage: /raid [status|invite <name>|accept|leave]");
+        "Usage: /raid [status|list|invite <name>|accept|leave]");
 }
 
 ActionResult CommandProcessor::cmdDecline(const std::string& args) {
