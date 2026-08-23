@@ -53,6 +53,25 @@ bool ParseCorpseName(const std::string& name, std::string* base_name, uint32_t* 
 	return false;
 }
 
+std::string MakeCorpseName(const std::string& living_name, uint32_t entity_id,
+                           bool is_player) {
+	// EntityList::RemoveNumbers strips EVERY digit, not just a trailing spawn
+	// suffix -- "Guard_Rahtiz000" and "a_cave_rat2" both lose all of them.
+	// Reproduced rather than approximated: a base name that disagrees with the
+	// server's produces a corpse the player cannot reach by typing its name,
+	// which is the whole defect this exists to fix.
+	std::string base;
+	base.reserve(living_name.size());
+	for (char c : living_name) {
+		if (c < '0' || c > '9') {
+			base.push_back(c);
+		}
+	}
+	base += is_player ? "'s corpse" : "`s_corpse";
+	base += std::to_string(entity_id);
+	return base;
+}
+
 bool IsCorpseByFields(bool is_corpse_flag, uint8_t npc_type, const std::string& name) {
 	// 1. The flag, set by the HC_OP_Death and HC_OP_MobRename handlers. Only
 	//    ever true for a death we personally witnessed this session.

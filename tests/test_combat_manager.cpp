@@ -1058,6 +1058,46 @@ TEST(CorpseNaming, NpcCorpseBothFormsAreParsed) {
     EXPECT_EQ(id, 123u);
 }
 
+// T185 -- MakeCorpseName, the inverse of ParseCorpseName.
+//
+// eqemu does not broadcast a rename for player corpses, so the client has to
+// derive the name; Corpse::CalcCorpseName's own comment says "the client does
+// this too, so it's unchangable". These pin the derivation against
+// CalcCorpseName + EntityList::RemoveNumbers rather than against our own idea
+// of what the name should look like.
+
+TEST(CorpseNaming, MakeCorpseNameMatchesTheServerFormsExactly) {
+    // Player: apostrophe + SPACE + "corpse". NPC: BACKTICK + "s_corpse".
+    // The two are not interchangeable -- ParseCorpseName treats them as
+    // distinct forms, and a mismatch is a corpse nobody can name.
+    EXPECT_EQ(MakeCorpseName("Testmelee", 275, true), "Testmelee's corpse275");
+    EXPECT_EQ(MakeCorpseName("a_cave_rat", 9, false), "a_cave_rat`s_corpse9");
+}
+
+TEST(CorpseNaming, MakeCorpseNameStripsEveryDigitLikeRemoveNumbers) {
+    // EntityList::RemoveNumbers (zone/entity.cpp:3259) drops EVERY digit, not
+    // just a trailing spawn suffix -- it walks the whole string. Spawn names
+    // routinely carry one ("Guard_Rahtiz000").
+    EXPECT_EQ(MakeCorpseName("Guard_Rahtiz000", 172, false),
+              "Guard_Rahtiz`s_corpse172");
+    EXPECT_EQ(MakeCorpseName("a_cave_rat2", 26, false), "a_cave_rat`s_corpse26");
+    // Interior digits go too. This is faithful, not tidy.
+    EXPECT_EQ(MakeCorpseName("Guard2Bob", 5, false), "GuardBob`s_corpse5");
+}
+
+// The two functions have to agree, or a corpse we name is a corpse we cannot
+// find again.
+TEST(CorpseNaming, MakeCorpseNameRoundTripsThroughParseCorpseName) {
+    for (bool player : {true, false}) {
+        const std::string made = MakeCorpseName("Testmelee", 4242, player);
+        std::string base;
+        uint32_t id = 0;
+        ASSERT_TRUE(ParseCorpseName(made, &base, &id)) << made;
+        EXPECT_EQ(base, "Testmelee") << made;
+        EXPECT_EQ(id, 4242u) << made;
+    }
+}
+
 TEST(CorpseNaming, LivingNamesWithCorpseInThemAreNotCorpses) {
     // The false-positive guard. None of these has a separator followed by a
     // run of digits.

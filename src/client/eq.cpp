@@ -6,6 +6,7 @@
 #endif
 #include "client/hc_map.h"
 #include "client/combat.h"
+#include "client/corpse_predicate.h"  // T185: player-corpse rename on the death path
 #include "client/trade_manager.h"
 #include "client/world_object.h"
 #include "client/spell/spell_manager.h"
@@ -3308,6 +3309,32 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// Mark entity as dead (0 HP)
 		victim_it->second.hp_percent = 0;
 		victim_it->second.is_corpse = true;  // Mark as corpse
+
+		// T185: rename a PLAYER corpse ourselves. eqemu broadcasts
+		// OP_MobRename for NPC corpses only (NPC::Death, attack.cpp), so
+		// without this the entity keeps its living name for the rest of the
+		// session while the server calls it "<name>'s corpse<id>" -- and
+		// anything reaching for it BY NAME (/target, /consider, /loot, the
+		// target window) misses it until the player re-zones. This is not a
+		// workaround for a missing packet: Corpse::CalcCorpseName's own
+		// comment says "the client does this too, so it's unchangable".
+		//
+		// The corpse inherits the victim's entity id -- every corpse-creation
+		// site is `entity_list.AddCorpse(corpse, GetID())` followed by
+		// `SetID(0)` on the dying client -- so victim_id IS the corpse id.
+		//
+		// NPCs are deliberately left alone: their rename is coming, and it
+		// uses a DIFFERENT form ("'s_corpse", apostrophe) than the one
+		// CalcCorpseName would give ("`s_corpse", backtick), so synthesizing
+		// here would briefly disagree with the server.
+		if (victim_it->second.npc_type == 0 &&
+		    !ParseCorpseName(victim_it->second.name)) {
+			const std::string corpse_name =
+				MakeCorpseName(victim_it->second.name, victim_id, /*is_player=*/true);
+			LOG_DEBUG(MOD_ENTITY, "Death: renaming player corpse '{}' -> '{}' (entity {})",
+			          victim_it->second.name, corpse_name, victim_id);
+			victim_it->second.name = corpse_name;
+		}
 
 #ifdef WITH_AUDIO
 		// Play death sound at victim's position

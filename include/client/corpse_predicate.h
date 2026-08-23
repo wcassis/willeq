@@ -25,6 +25,27 @@ bool ParseCorpseName(const std::string& name,
                      std::string* base_name = nullptr,
                      uint32_t* corpse_id = nullptr);
 
+// T185: build the name eqemu will be using for a corpse, WITHOUT being told.
+//
+// eqemu does not broadcast a rename for PLAYER corpses -- `NPC::Death` sends
+// OP_MobRename for NPC corpses only -- and `Corpse::CalcCorpseName`
+// (zone/corpse.cpp:629) carries the reason in a comment: "the client does this
+// too, so it's unchangable". Deriving the name locally is the client's job,
+// not a workaround for a missing packet.
+//
+// Mirrors CalcCorpseName exactly:
+//   * digits are stripped from the base name first (EntityList::RemoveNumbers,
+//     zone/entity.cpp:3259 -- ALL digits, not just trailing ones);
+//   * player  -> "<base>'s corpse<id>"   (apostrophe, space)
+//   * NPC     -> "<base>`s_corpse<id>"   (backtick, underscore)
+// `id` is the ENTITY id, which a player corpse inherits from the player:
+// every corpse-creation site does `entity_list.AddCorpse(corpse, GetID())`
+// followed by `SetID(0)` on the dying client.
+//
+// ParseCorpseName is its inverse for the two forms produced here.
+std::string MakeCorpseName(const std::string& living_name, uint32_t entity_id,
+                           bool is_player);
+
 // The predicate, on the three fields any entity representation carries:
 //   * the flag, set by the death and rename handlers (a death we witnessed);
 //   * the Spawn_Struct NPC field (2 for EVERY corpse eqemu spawns, 3 the
