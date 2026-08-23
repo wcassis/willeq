@@ -387,9 +387,9 @@ void CommandProcessor::registerBuiltinCommands() {
         "groupaccept", {"gaccept"}, "/groupaccept", "Accept pending group invite", "Group", false
     }, [this](const std::string& args) { return cmdGroupAccept(args); });
 
-    // T179/T180/T181: /raid subcommand family.
+    // T179/T180/T181/T182: /raid subcommand family.
     registerCommand({
-        "raid", {}, "/raid [status|list|invite|accept|leave|remove|leader|loot|looter]",
+        "raid", {}, "/raid [status|list|invite|accept|leave|remove|leader|loot|looter|lock|unlock]",
         "Raid status and commands", "Group", false
     }, [this](const std::string& args) { return cmdRaid(args); });
 
@@ -1253,6 +1253,12 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
         }
         return m_dispatcher.raidLootType(rest);
     }
+    if (sub == "lock") {
+        return m_dispatcher.raidLock(true);
+    }
+    if (sub == "unlock") {
+        return m_dispatcher.raidLock(false);
+    }
     if (sub == "looter") {
         // Two words: add|remove, then the name.
         const size_t sp = rest.find_first_of(" \t");
@@ -1275,7 +1281,7 @@ ActionResult CommandProcessor::cmdRaid(const std::string& args) {
         return m_dispatcher.raidInvite(rest);
     }
     return ActionResult::Failure(
-        "Usage: /raid [status|list|invite <name>|accept|leave|remove <name>|leader <name>|loot <mode>|looter add|remove <name>]");
+        "Usage: /raid [status|list|invite <name>|accept|leave|remove <name>|leader <name>|loot <mode>|looter add|remove <name>|lock|unlock]");
 }
 
 ActionResult CommandProcessor::cmdDecline(const std::string& args) {

@@ -1363,6 +1363,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		if (about_me) {
 			m_in_raid = false;
 			m_raid_leader.clear();
+			m_raid_locked = false;
 			AddChatSystemMessage("You have left the raid.");
 		} else {
 			AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
@@ -1373,12 +1374,15 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_in_raid = false;
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
+		m_raid_locked = false;
 		AddChatSystemMessage("The raid has disbanded.");
 		break;
 
 	case EQT::RaidAction::Create:
 		m_in_raid = true;
 		m_raid_leader = u.leader_name;
+		// A fresh raid is unlocked; Create also starts a fresh roster stream.
+		m_raid_locked = false;
 		AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
 		break;
 
@@ -1388,6 +1392,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_in_raid = false;
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
+		m_raid_locked = false;
 		AddChatSystemMessage("You are not in a raid.");
 		break;
 
@@ -1420,12 +1425,26 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		break;
 
 	case EQT::RaidAction::Lock:
-		AddChatSystemMessage("The raid is now locked.");
+	case EQT::RaidAction::Unlock: {
+		// T182. eqemu sends the SAME action whether the state just CHANGED
+		// (LockRaid -> SendRaidLock, broadcast to the raid) or was ALREADY
+		// what you asked for (Handle_OP_RaidCommand -> SendRaidLockTo, to you
+		// alone). The packets are identical, so "now locked" vs "already
+		// locked" can only come from the state we track -- which is also why
+		// we track it. It is re-established on zone-in: the rejoin path sends
+		// SendRaidLockTo only when the raid is locked.
+		const bool locking = (u.action == EQT::RaidAction::Lock);
+		const bool changed = (m_raid_locked != locking);
+		m_raid_locked = locking;
+		if (changed) {
+			AddChatSystemMessage(locking ? "The raid is now locked."
+			                             : "The raid is now unlocked.");
+		} else {
+			AddChatSystemMessage(locking ? "The raid is already locked."
+			                             : "The raid is not locked.");
+		}
 		break;
-
-	case EQT::RaidAction::Unlock:
-		AddChatSystemMessage("The raid is now unlocked.");
-		break;
+	}
 
 	case EQT::RaidAction::SetMotd:
 		if (!u.text.empty()) {

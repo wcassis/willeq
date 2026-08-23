@@ -556,13 +556,35 @@ TEST_F(CommandProcessorTest, Raid_LooterBadVerbOrMissingName_FailsWithoutDispatc
     }
 }
 
+// T182: lock / unlock. No argument, so nothing to get wrong but the routing --
+// and that the two spellings do not collapse into one.
+TEST_F(CommandProcessorTest, Raid_Lock_RoutesToRaidLock) {
+    auto result = processor->processCommand("/raid lock");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLock()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_Unlock_RoutesToRaidUnlock) {
+    auto result = processor->processCommand("/raid unlock");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidUnlock()"));
+}
+
+TEST_F(CommandProcessorTest, Raid_LockIgnoresTrailingArgumentsRatherThanFailing) {
+    // "lock" takes no argument; a stray word should not turn into an error the
+    // player has to decode -- the command is unambiguous.
+    auto result = processor->processCommand("/raid lock please");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidLock()"));
+}
+
 TEST_F(CommandProcessorTest, Raid_UnknownSubcommand_FailsWithoutDispatch) {
     auto result = processor->processCommand("/raid frobnicate");
     EXPECT_FALSE(result.success);
     EXPECT_TRUE(handler.empty());
     // The usage line has to advertise every subcommand that exists, or the
     // one nobody can discover is the one nobody uses.
-    for (const char* sub : {"list", "remove", "leader", "loot", "looter"}) {
+    for (const char* sub : {"list", "remove", "leader", "loot", "looter", "lock", "unlock"}) {
         EXPECT_NE(result.message.find(sub), std::string::npos) << sub;
     }
 }

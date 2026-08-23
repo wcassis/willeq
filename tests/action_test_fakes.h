@@ -382,6 +382,7 @@ public:
     void raidLooter(bool add, const std::string& name) override {
         record(add ? "raidLooterAdd" : "raidLooterRemove", name);
     }
+    void raidLock(bool lock) override { record(lock ? "raidLock" : "raidUnlock"); }
 
     // ========== Merchant (T136) ==========
     void vendorToggle() override { record("vendorToggle"); }

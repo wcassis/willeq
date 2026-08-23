@@ -404,6 +404,13 @@ ActionResult ActionDispatcher::raidLooter(bool add, const std::string& name) {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::raidLock(bool lock) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidLock(lock);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::toggleAutoFire() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

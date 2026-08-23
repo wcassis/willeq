@@ -240,6 +240,7 @@ public:
     void raidMakeLeader(const std::string& name) override;
     void raidLootType(const std::string& mode) override;
     void raidLooter(bool add, const std::string& name) override;
+    void raidLock(bool lock) override;  // T182
 
 private:
     // T181 guards. The server answers a non-leader's MakeLeader with silence

@@ -1152,6 +1152,9 @@ public:
 	const std::vector<EQT::RaidMemberInfo>& GetRaidMembers() const {
 		return m_raid_roster.Members();
 	}
+	// T182: raid lock state, from actions 17/18. Re-established on zone-in --
+	// eqemu's rejoin path sends SendRaidLockTo only when the raid is locked.
+	bool IsRaidLocked() const { return m_raid_locked; }
 	// Phase 4: Tradeskills
 	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
 	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
@@ -1512,6 +1515,7 @@ private:
 	std::string m_raid_leader;
 	std::string m_pending_raid_inviter;
 	EQT::RaidRoster m_raid_roster;
+	bool m_raid_locked = false;
 
 	std::string m_key;
 	uint32_t m_dbid;

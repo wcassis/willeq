@@ -400,6 +400,7 @@ public:
     virtual void raidMakeLeader(const std::string& name) = 0;
     virtual void raidLootType(const std::string& mode) = 0;
     virtual void raidLooter(bool add, const std::string& name) = 0;
+    virtual void raidLock(bool lock) = 0;
 
     // ========== Merchant (T136) ==========
     // Unlike every prior family, NOT thin wrappers over a pre-existing
@@ -1306,6 +1307,7 @@ public:
     ActionResult raidMakeLeader(const std::string& name);
     ActionResult raidLootType(const std::string& mode);
     ActionResult raidLooter(bool add, const std::string& name);
+    ActionResult raidLock(bool lock);
 
     /**
      * Attempt to return to a safe position.

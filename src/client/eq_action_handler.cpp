@@ -1591,6 +1591,11 @@ void EqActionHandler::raidStatus() {
         } else {
             m_eq.AddChatSystemMessage("You are in a raid.");
         }
+        // T182: only worth saying when it is true -- an unlocked raid is the
+        // default and saying so every time is noise.
+        if (m_eq.IsRaidLocked()) {
+            m_eq.AddChatSystemMessage("The raid is locked.");
+        }
     } else {
         m_eq.AddChatSystemMessage("You are not in a raid.");
     }
@@ -1803,6 +1808,26 @@ void EqActionHandler::raidLooter(bool add, const std::string& name) {
     m_eq.AddChatSystemMessage(add
         ? fmt::format("You add {} as a raid looter.", name)
         : fmt::format("You remove {} as a raid looter.", name));
+}
+
+// T182: raid lock / unlock. RaidCommandRaidLock (8) / RaidCommandRaidUnlock
+// (9) -- the handler uses no fields from the body at all, it looks the raid up
+// from the sender, so the names are ours by convention.
+//
+// The server does NOT gate these on leadership; the gate here is the same
+// judgement as /raid loot, which the real Titanium client also offers only to
+// the leader. See the doc for the one remaining asymmetry (/raid remove).
+//
+// Asking for the state it is already in is NOT an error server-side: eqemu
+// answers with the same action code, sent to you alone instead of broadcast.
+// We still send it -- the tracked state could be stale, and refusing on stale
+// state would block a legitimate command -- and let the reply be the truth.
+void EqActionHandler::raidLock(bool lock) {
+    if (!raidRequireLeader(lock ? "lock the raid" : "unlock the raid")) {
+        return;
+    }
+    m_eq.SendRaidCommand(lock ? 8 : 9, m_eq.GetMyName(), m_eq.GetMyName());
+    m_eq.AddChatSystemMessage(lock ? "You lock the raid." : "You unlock the raid.");
 }
 
 // ========== Merchant (T136) ==========
