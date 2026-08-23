@@ -92,11 +92,39 @@ an asked-for feature needs. The decoder already handles the resulting actions
 - Routing and arity for every new subcommand and alias, plus the usage line
   having to name all of them.
 
-## NOT wire-verified
+## Live probe — DONE, all five ops and BOTH refusals VERIFIED (2026-08-23)
 
-Written after the T180 probe with eqemu already down. The sender is the one
-T179 and T180 verified live, and the field roles come from the handler arms
-quoted above, but **none of these five commands has been seen on the wire.**
-The probe is a two-account raid: `/raid loot leader` then `/raid looter add`,
-`/raid remove` the other member, and — from the NON-leader — `/raid leader`,
-which must be refused client-side rather than vanish.
+Two WillEQ clients, eqemu up. Evidence in `review/T181/`.
+
+| Command | Sent | Server's own reply |
+|---|---|---|
+| `/raid loot leader` | `action=20` | `Loot type changed to: 1.` |
+| `/raid loot selected` | `action=20` | `Loot type changed to: 3.` |
+| `/raid looter add Oraclerogue` | `action=21 leader='Oraclerogue'` | `Adding Oraclerogue as a raid looter.` |
+| `/raid leader Oraclerogue` | `action=30 leader='Oraclerogue'` | broadcast `raidMakeLeader` |
+| `/raid remove Testmelee` (from B) | `action=5 player='Oraclerogue' leader='Testmelee'` | A saw `You have left the raid.` |
+
+The DB agrees independently: `raid_details.loottype = 3`,
+`raid_members.Oraclerogue.israidleader = 1` and `islooter = 1`, Testmelee's row
+gone. B's roster shrank to 1 with the leader tag moved.
+
+**The refusals — the part that matters, since these are the cases where the
+server gives the player nothing:**
+
+- **Non-leader MakeLeader:** B ran `/raid leader Testmelee` and got `Only the
+  raid leader can pass raid leadership.` **No packet sent.** The server would
+  have answered with silence.
+- **Leadership tracked as it MOVES:** after handing leadership to B, A's
+  `/raid loot all` was refused. A learned it from the action-30 broadcast —
+  the guard is not a login-time snapshot.
+- **Bad loot type:** `/raid loot frobnicate` refused, **no packet sent**. The
+  server would have stored it verbatim.
+
+**Rig note:** the invite handler is zone-local (`entity_list.GetClientByName`),
+and T180's leg 3 had left Oraclerogue in qeynos2 while Testmelee logs into
+tutorialb — the first two runs failed on exactly that. The script now sends B
+to A's zone with `/say #zone tutorialb` first.
+
+**Still not exercised live:** `/raid loot groupleader` (type 2) and
+`/raid looter remove` (22) — same sender, same shape as the two beside them,
+but neither has been on the wire.
