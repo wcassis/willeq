@@ -1670,9 +1670,11 @@ void EqActionHandler::raidList() {
 //   * MakeLeader IS gated: `if (strcmp(raid->leadername, GetName()) == 0)`,
 //     and a non-leader's command falls out of the arm with NO reply at all.
 //     Silence is the failure mode, so we pre-check and say why.
-//   * Disband is NOT gated. Any raid member can remove any other member. We
-//     do not pretend otherwise -- there is nothing to enforce client-side that
-//     the server would honour -- but we do confirm what was sent.
+//   * Disband is NOT gated server-side: any raid member can remove any other.
+//     T181 left it ungated here for that reason; T183 gates it, because the
+//     real Titanium client offers kicking only to the leader and that is the
+//     standard already applied to /raid loot and /raid lock. The gate is our
+//     policy, not the server's -- said plainly rather than implied.
 //   * LootType is NOT gated and is NOT validated: `parameter` goes straight
 //     into Raid::ChangeLootType. A typo'd value would be stored verbatim and
 //     match no arm of the switch in attack.cpp, silently disabling looting.
@@ -1730,9 +1732,20 @@ void EqActionHandler::raidRemove(const std::string& name) {
         return;
     }
     if (name == m_eq.GetMyName()) {
+        // Checked BEFORE the leadership gate: a non-leader typing their own
+        // name wants /raid leave, and telling them "only the leader can do
+        // that" would send them the wrong way.
         // Identical on the wire to /raid leave; say which command they meant
         // rather than quietly doing something they did not ask for.
         m_eq.AddChatSystemMessage("To leave the raid yourself, use /raid leave.");
+        return;
+    }
+    // T183: gated on leadership, resolving the asymmetry T182 flagged. The
+    // SERVER does not gate this -- RaidCommandDisband lets any raid member
+    // remove any other -- but the real Titanium client offers kicking only to
+    // the leader, and that is the standard already applied to /raid loot and
+    // /raid lock. Being permissive here and strict there was the inconsistency.
+    if (!raidRequireLeader("remove a raid member")) {
         return;
     }
     if (!raidMemberKnown(name)) {

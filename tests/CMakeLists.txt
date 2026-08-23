@@ -518,6 +518,21 @@ GTEST_DISCOVER_TESTS(test_combat_manager)
 # RegisterVendorCommands() no longer exists. Argument-parsing cases moved to
 # test_command_processor.cpp's T136 section (RecordingActionHandler, no wire
 # replay needed). See refactor/T136_migrate_merchant_family.md.
+# test_eq_action_handler_raid_guards.cpp (T183): the raid command guards --
+# not-in-a-raid, not-the-leader, not-a-member, bad loot type -- against a real
+# EverQuest whose raid state is established through the production packet path
+# (ReplayZone + HC_OP_RaidUpdate), never by poking a setter. Argument arity
+# lives in action::CommandProcessor and is covered in test_command_processor.
+# See refactor/T183_gate_raid_remove.md.
+ADD_EXECUTABLE(test_eq_action_handler_raid_guards
+    test_eq_action_handler_raid_guards.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_raid_guards GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_raid_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_raid_guards)
+
 ADD_EXECUTABLE(test_eq_action_handler_vendor
     test_eq_action_handler_vendor.cpp
 )

@@ -43,13 +43,14 @@ The server does **not** gate lock/unlock on leadership; the gate is
 client-side, the same judgement as `/raid loot`, and matches what the real
 Titanium client exposes (only the leader gets these controls).
 
-**That leaves one inconsistency, and it is worth a decision rather than a
-quiet choice:** `/raid remove` is *not* gated, on the grounds that the server
+**RESOLVED BY T183 — Will's call was to gate remove**, so the client is now
+consistently on the "match the real client's policy" side. The asymmetry as it
+stood: `/raid remove` is *not* gated, on the grounds that the server
 does not gate it either (T181) — but real EQ makes kicking leader-only too, so
 by the standard applied to loot and lock, remove should be gated as well.
-Currently the client refuses a non-leader's `/raid loot` and `/raid lock` while
-letting their `/raid remove` through. Both positions are defensible; being on
-both at once is not. **Flagged for Will, not settled here.**
+The client refused a non-leader's `/raid loot` and `/raid lock` while letting
+their `/raid remove` through. Both positions are defensible; being on both at
+once is not. See `refactor/T183_gate_raid_remove.md`.
 
 ## Tests
 

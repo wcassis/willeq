@@ -12,7 +12,7 @@ This is the whole reason these commands need client-side guards. From
 
 | Command | Code | Server-side leader check? | Failure mode |
 |---|---|---|---|
-| Disband (remove) | 5 | **NO** | any member can remove any member |
+| Disband (remove) | 5 | **NO** (client gates it anyway, T183) | any member can remove any member |
 | LootType | 20 | **NO**, and no validation either | bad value stored verbatim |
 | AddLooter / RemoveLooter | 21 / 22 | **NO** | — |
 | MakeLeader | 30 | **YES** (`strcmp(raid->leadername, GetName())`) | **silence** |
@@ -32,6 +32,11 @@ Three consequences the implementation is shaped by:
 3. **Remove is not gated at all.** Any raid member can remove any other. There
    is nothing to enforce client-side that the server would honour, so this is
    recorded rather than papered over: no fake "only the leader can do that".
+   **SUPERSEDED BY T183:** `/raid remove` IS now gated client-side. The
+   observation above still holds — the server would have honoured a
+   non-leader's remove — but the client applies the real Titanium client's
+   policy, consistently with `/raid loot` and `/raid lock`. See
+   `refactor/T183_gate_raid_remove.md`.
 
 ## There is no "disband the whole raid" command
 
