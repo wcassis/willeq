@@ -692,3 +692,100 @@ TEST(EncodeRaidCommand, LeaderOnlyOpCodesRoundTripThroughTheBody) {
         EXPECT_EQ(readU32(b, 132), 3u) << op.what;
     }
 }
+
+// =====================================================================
+// Raid groups (T184)
+//
+// The user-facing group number is 1-based, matching what /raid list prints;
+// the wire is 0-based. eqemu does not validate `parameter` -- anything outside
+// 0..11 is read as "ungrouped" (zone/client_packet.cpp:12804) -- so a user
+// typing 0 while thinking in wire numbers would silently be moved OUT of their
+// group. That is what makes the parse a guard rather than a convenience.
+// =====================================================================
+
+TEST(RaidGroup, LimitsMatchEqemuRaidsHeader) {
+    // eqemu zone/raids.h:70-71.
+    EXPECT_EQ(EQT::kMaxRaidGroups, 12u);
+    EXPECT_EQ(EQT::kMaxRaidGroupSize, 6u);
+}
+
+TEST(RaidGroup, ParsesOneBasedInputToZeroBasedWire) {
+    const struct { const char* text; uint32_t wire; } cases[] = {
+        {"1", 0}, {"2", 1}, {"6", 5}, {"11", 10}, {"12", 11}, {" 3 ", 2},
+    };
+    for (const auto& c : cases) {
+        uint32_t out = 0xDEADu;
+        EXPECT_TRUE(EQT::ParseRaidGroup(c.text, out)) << c.text;
+        EXPECT_EQ(out, c.wire) << c.text << " -- /raid list prints 1-based, the wire is 0-based";
+    }
+}
+
+TEST(RaidGroup, ParsesTheUngroupedBankByName) {
+    for (const char* text : {"none", "out", "ungrouped", "NONE", " Out "}) {
+        uint32_t out = 0;
+        EXPECT_TRUE(EQT::ParseRaidGroup(text, out)) << text;
+        EXPECT_EQ(out, EQT::kRaidGroupless) << text;
+    }
+}
+
+TEST(RaidGroup, RejectsZeroAndOutOfRangeAndJunk) {
+    // "0" is the one that matters: eqemu would have read it as group 1, and a
+    // user thinking in wire numbers types it expecting the first group.
+    // "13" matters for the mirror reason -- eqemu reads anything >= 12 as
+    // "ungrouped", so an unchecked 13 would move somebody OUT of their group
+    // when they asked for a group.
+    for (const char* bad : {"", "0", "13", "99", "-1", "+1", "1.5", "one", "1 2", "x"}) {
+        uint32_t out = 0xBEEFu;
+        EXPECT_FALSE(EQT::ParseRaidGroup(bad, out)) << "'" << bad << "'";
+        EXPECT_EQ(out, 0xBEEFu) << "'" << bad << "' must not write through";
+    }
+}
+
+TEST(RaidGroup, NamesGroupsOneBasedAndTheBankByWord) {
+    EXPECT_EQ(EQT::RaidGroupName(0), "Group 1");
+    EXPECT_EQ(EQT::RaidGroupName(11), "Group 12");
+    EXPECT_EQ(EQT::RaidGroupName(EQT::kRaidGroupless), "no group");
+    // Anything else out of range is the bank as far as eqemu is concerned.
+    EXPECT_EQ(EQT::RaidGroupName(12), "no group");
+}
+
+// The roster is what lets the client answer the two cases eqemu handles with
+// silence: a full group, and a move to the group somebody is already in.
+TEST(RaidRoster, CountsMembersPerGroup) {
+    EQT::RaidRoster r;
+    r.Apply(decodedAdd("Alpha", 0, 1, 60, true), kMe);
+    r.Apply(decodedAdd("Bravo", 0, 2, 55, false), kMe);
+    r.Apply(decodedAdd("Charlie", 1, 3, 50, true), kMe);
+    r.Apply(decodedAdd("Delta", EQT::kRaidGroupless, 4, 45, false), kMe);
+
+    EXPECT_EQ(r.CountInGroup(0), 2u);
+    EXPECT_EQ(r.CountInGroup(1), 1u);
+    EXPECT_EQ(r.CountInGroup(2), 0u);
+    EXPECT_EQ(r.CountInGroup(EQT::kRaidGroupless), 1u);
+}
+
+// A group change reaches every client as Remove + Add (Raid::MoveMember ->
+// SendRaidMoveAll), so the counts have to follow it without any group-specific
+// handling at all. This is the path that makes raid groups work on Titanium.
+TEST(RaidRoster, GroupCountsFollowAMoveDeliveredAsRemoveThenAdd) {
+    EQT::RaidRoster r;
+    r.Apply(decodedAdd("Alpha", 0, 1, 60, true), kMe);
+    r.Apply(decodedAdd("Bravo", 0, 2, 55, false), kMe);
+    ASSERT_EQ(r.CountInGroup(0), 2u);
+
+    r.Apply(decodedGeneral(1, "Bravo"), kMe);          // raidRemove2
+    r.Apply(decodedAdd("Bravo", 1, 2, 55, false), kMe); // re-added in group 2
+
+    EXPECT_EQ(r.CountInGroup(0), 1u);
+    EXPECT_EQ(r.CountInGroup(1), 1u);
+    EXPECT_EQ(r.Size(), 2u);
+    EXPECT_EQ(r.Find("Bravo")->group, 1u);
+}
+
+TEST(EncodeRaidCommand, MoveGroupCarriesTheWireGroupInParameter) {
+    // RaidCommandMoveGroup (6): leader_name = the member, parameter = target.
+    auto b = EQT::encodeRaidCommand(6, "Testmelee", "Oraclerogue", 2);
+    EXPECT_EQ(readU32(b, 0), 6u);
+    EXPECT_EQ(readName(b, 68), "Oraclerogue");
+    EXPECT_EQ(readU32(b, 132), 2u) << "wire group 2 == the roster's \"Group 3\"";
+}

@@ -411,6 +411,13 @@ ActionResult ActionDispatcher::raidLock(bool lock) {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::raidGroup(const std::string& name, const std::string& group_text) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    m_handler->raidGroup(name, group_text);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::toggleAutoFire() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

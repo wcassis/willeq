@@ -401,6 +401,7 @@ public:
     virtual void raidLootType(const std::string& mode) = 0;
     virtual void raidLooter(bool add, const std::string& name) = 0;
     virtual void raidLock(bool lock) = 0;
+    virtual void raidGroup(const std::string& name, const std::string& group_text) = 0;
 
     // ========== Merchant (T136) ==========
     // Unlike every prior family, NOT thin wrappers over a pre-existing
@@ -1308,6 +1309,7 @@ public:
     ActionResult raidLootType(const std::string& mode);
     ActionResult raidLooter(bool add, const std::string& name);
     ActionResult raidLock(bool lock);
+    ActionResult raidGroup(const std::string& name, const std::string& group_text);
 
     /**
      * Attempt to return to a safe position.

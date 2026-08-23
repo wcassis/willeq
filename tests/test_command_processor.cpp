@@ -578,13 +578,38 @@ TEST_F(CommandProcessorTest, Raid_LockIgnoresTrailingArgumentsRatherThanFailing)
     EXPECT_TRUE(handler.calledOnceWith("raidLock()"));
 }
 
+// T184: /raid group <name> <group>. The GROUP token is passed through
+// untouched -- parsing it is the handler's job, because rejecting a bad value
+// is a guard against eqemu reading it as "ungrouped" rather than a parse
+// convenience.
+TEST_F(CommandProcessorTest, Raid_Group_SplitsNameAndGroup) {
+    auto result = processor->processCommand("/raid group Oraclerogue 3");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidGroup(\"Oraclerogue,3\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_Group_PassesWordArgumentsThrough) {
+    auto result = processor->processCommand("/raid group Oraclerogue none");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("raidGroup(\"Oraclerogue,none\")"));
+}
+
+TEST_F(CommandProcessorTest, Raid_GroupMissingEitherArgument_FailsWithoutDispatch) {
+    for (const char* cmd : {"/raid group", "/raid group Oraclerogue"}) {
+        handler.clear();
+        auto result = processor->processCommand(cmd);
+        EXPECT_FALSE(result.success) << cmd;
+        EXPECT_TRUE(handler.empty()) << cmd;
+    }
+}
+
 TEST_F(CommandProcessorTest, Raid_UnknownSubcommand_FailsWithoutDispatch) {
     auto result = processor->processCommand("/raid frobnicate");
     EXPECT_FALSE(result.success);
     EXPECT_TRUE(handler.empty());
     // The usage line has to advertise every subcommand that exists, or the
     // one nobody can discover is the one nobody uses.
-    for (const char* sub : {"list", "remove", "leader", "loot", "looter", "lock", "unlock"}) {
+    for (const char* sub : {"list", "remove", "leader", "loot", "looter", "lock", "unlock", "group"}) {
         EXPECT_NE(result.message.find(sub), std::string::npos) << sub;
     }
 }

@@ -223,6 +223,85 @@ TEST_F(EqActionHandlerRaidGuardTest, LosingLeadershipMidSessionStartsRefusing) {
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "Only the raid leader"));
 }
 
+// ---------------------------------------------------------------------------
+// T184 -- raid groups. Both failure cases below are ones eqemu answers with
+// SILENCE, and the roster is the only reason the client can say anything.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqActionHandlerRaidGuardTest, GroupMoveIntoAFullGroupIsRefusedWithTheCount) {
+    FormRaid(kMe);
+    // Fill wire group 0 to its limit of six. eqemu's arm falls out of
+    // `if (group_count < 6)` without a word.
+    for (int i = 0; i < 6; ++i) {
+        ReplayZone(eq, HC_OP_RaidUpdate,
+                   RaidAddPayload("Filler" + std::to_string(i), 0, 1, 10));
+    }
+    bridge.drainEvents();
+
+    handler.raidGroup(kOther, "1");  // user-facing 1 == wire group 0
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, "Group 1 is full"));
+    EXPECT_TRUE(AnyContains(msgs, "6 of 6"));
+    EXPECT_FALSE(AnyContains(msgs, "You move"));
+}
+
+TEST_F(EqActionHandlerRaidGuardTest, GroupMoveToTheGroupTheyAreAlreadyInIsRefused) {
+    FormRaid(kMe);
+    // Put kOther in wire group 2 the way the server would: Remove then Add.
+    ReplayZone(eq, HC_OP_RaidUpdate, RaidGeneralPayload(1, kOther, kOther));
+    ReplayZone(eq, HC_OP_RaidUpdate, RaidAddPayload(kOther, 2, 9, 10));
+    bridge.drainEvents();
+
+    handler.raidGroup(kOther, "3");  // user-facing 3 == wire group 2
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, "already in Group 3"));
+    EXPECT_FALSE(AnyContains(msgs, "You move"));
+}
+
+TEST_F(EqActionHandlerRaidGuardTest, GroupMoveToARoomyGroupGoesThroughAndNamesItOneBased) {
+    FormRaid(kMe);
+
+    handler.raidGroup(kOther, "4");
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, "You move Raidmate to Group 4"));
+}
+
+TEST_F(EqActionHandlerRaidGuardTest, GroupMoveOutOfAGroupIsNotSubjectToTheFullCheck) {
+    FormRaid(kMe);
+    // The ungrouped bank has no limit; every member starts there, so a naive
+    // "is the target full" check that did not exempt it would refuse this.
+    for (int i = 0; i < 8; ++i) {
+        ReplayZone(eq, HC_OP_RaidUpdate,
+                   RaidAddPayload("Filler" + std::to_string(i), 0xFFFFFFFFu, 1, 10));
+    }
+    ReplayZone(eq, HC_OP_RaidUpdate, RaidGeneralPayload(1, kOther, kOther));
+    ReplayZone(eq, HC_OP_RaidUpdate, RaidAddPayload(kOther, 1, 9, 10));
+    bridge.drainEvents();
+
+    handler.raidGroup(kOther, "none");
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, "out of their group"));
+    EXPECT_FALSE(AnyContains(msgs, "full"));
+}
+
+TEST_F(EqActionHandlerRaidGuardTest, GroupMoveIsLeaderGatedAndRejectsBadGroupsFirst) {
+    FormRaid(kOther);  // we are NOT the leader
+
+    // A bad group is answered on its own terms even for a non-leader: the
+    // specific complaint is the more useful one.
+    handler.raidGroup(kMe, "0");
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, "is not a raid group"));
+    EXPECT_FALSE(AnyContains(msgs, "Only the raid leader"));
+
+    handler.raidGroup(kMe, "2");
+    EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "Only the raid leader"));
+}
+
 // A bad loot type is refused for everyone, leader or not, and BEFORE the
 // leadership gate -- the specific complaint is the more useful one, and the
 // server would have stored the bad value verbatim.

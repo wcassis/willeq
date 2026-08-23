@@ -166,6 +166,11 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
 // eqemu zone/raids.h:72 -- a member who is in the raid but in no group.
 constexpr uint32_t kRaidGroupless = 0xFFFFFFFFu;
 
+// eqemu zone/raids.h:70-71. A raid is 12 groups of 6, plus an unlimited
+// "ungrouped bank" that members sit in until somebody assigns them.
+constexpr uint32_t kMaxRaidGroups = 12;
+constexpr size_t kMaxRaidGroupSize = 6;
+
 struct RaidMemberInfo {
     std::string name;
     uint8_t class_id = 0;
@@ -196,6 +201,13 @@ public:
     // member lookups (GetClientByName, the strcmp walks in raids.cpp) are too.
     const RaidMemberInfo* Find(const std::string& name) const;
 
+    // T184: how many members are currently in `group` (a WIRE group number,
+    // 0-based, or kRaidGroupless). eqemu refuses a move into a group that
+    // already holds kMaxRaidGroupSize -- silently, by falling out of the
+    // `if (group_count < 6)` in Handle_OP_RaidCommand -- so the client counts
+    // for itself in order to say something instead.
+    size_t CountInGroup(uint32_t group) const;
+
 private:
     std::vector<RaidMemberInfo> m_members;  // insertion order = arrival order
 };
@@ -223,5 +235,24 @@ bool ParseRaidLootType(const std::string& text, uint32_t& out);
 
 // Human-readable name for a loot type, or "Unknown(N)".
 std::string RaidLootTypeName(uint32_t loot_type);
+
+// Parses the group argument of `/raid group <name> <group>`.
+//
+// NUMBERING: the user-facing number is **1-based**, matching what `/raid list`
+// prints ("Group 1".."Group 12"); the wire is **0-based**. A user who reads
+// "Group 2" off the roster and types `2` must land in that same group, so the
+// conversion happens here, once. `none` / `out` / `ungrouped` select the
+// ungrouped bank (any wire value >= kMaxRaidGroups takes eqemu's else branch;
+// we send kRaidGroupless because it says what it means).
+//
+// Returns false on anything else -- including `0`, which is the near-miss a
+// user thinking in wire numbers would type. eqemu does not validate either:
+// `parameter` outside 0..11 is simply treated as "ungrouped", so an
+// unchecked `0` would silently move somebody OUT of their group.
+bool ParseRaidGroup(const std::string& text, uint32_t& out_wire_group);
+
+// "Group 3", or "no group" for kRaidGroupless. Takes a WIRE group number and
+// prints it 1-based, the same convention /raid list uses.
+std::string RaidGroupName(uint32_t wire_group);
 
 }  // namespace EQT

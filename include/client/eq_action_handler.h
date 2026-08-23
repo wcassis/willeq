@@ -241,6 +241,7 @@ public:
     void raidLootType(const std::string& mode) override;
     void raidLooter(bool add, const std::string& name) override;
     void raidLock(bool lock) override;  // T182
+    void raidGroup(const std::string& name, const std::string& group_text) override;  // T184
 
 private:
     // T181 guards. The server answers a non-leader's MakeLeader with silence
@@ -249,6 +250,7 @@ private:
     bool raidRequireMembership();
     bool raidRequireLeader(const std::string& what);
     bool raidMemberKnown(const std::string& name) const;
+    size_t countRaidGroup(uint32_t wire_group) const;  // T184
 
 public:
 

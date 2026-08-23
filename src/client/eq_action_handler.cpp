@@ -1823,6 +1823,87 @@ void EqActionHandler::raidLooter(bool add, const std::string& name) {
         : fmt::format("You remove {} as a raid looter.", name));
 }
 
+// T184: raid groups. RaidCommandMoveGroup (6) -- leader_name = the member
+// being moved, parameter = the target WIRE group (0..11), or anything >= 12
+// for the ungrouped bank.
+//
+// THE SERVER ANSWERS BOTH FAILURE CASES WITH SILENCE, and the roster is what
+// lets us do better (Handle_OP_RaidCommand, zone/client_packet.cpp:12804):
+//   * `if (group_count < 6)` -- moving into a group that already holds six
+//     falls out of the arm with no reply at all.
+//   * `if (parameter == old_group) break;` -- an explicit no-op, also silent.
+// Both are cheap to detect here because T180's roster carries every member's
+// group, so the client says which it was instead of appearing to hang.
+//
+// eqemu does not validate `parameter` either: anything outside 0..11 is read
+// as "ungrouped", so a user typing 0 while thinking in wire numbers would
+// silently be moved OUT of their group. ParseRaidGroup rejects it.
+void EqActionHandler::raidGroup(const std::string& name, const std::string& group_text) {
+    if (name.empty() || group_text.empty()) {
+        m_eq.AddChatSystemMessage("Usage: /raid group <name> <1-12|none>");
+        return;
+    }
+    uint32_t wire_group = 0;
+    if (!EQT::ParseRaidGroup(group_text, wire_group)) {
+        m_eq.AddChatSystemMessage(fmt::format(
+            "'{}' is not a raid group. Use 1-{} or none.", group_text, EQT::kMaxRaidGroups));
+        return;
+    }
+    if (!raidRequireLeader("assign raid groups")) {
+        return;
+    }
+
+    const auto& members = m_eq.GetRaidMembers();
+    const EQT::RaidMemberInfo* target = nullptr;
+    for (const auto& m : members) {
+        if (m.name == name) {
+            target = &m;
+            break;
+        }
+    }
+    if (!members.empty() && !target) {
+        m_eq.AddChatSystemMessage(fmt::format("{} is not in your raid.", name));
+        return;
+    }
+
+    if (target && target->group == wire_group) {
+        // eqemu breaks out of the arm without a word.
+        m_eq.AddChatSystemMessage(fmt::format(
+            "{} is already in {}.", name, EQT::RaidGroupName(wire_group)));
+        return;
+    }
+    if (wire_group != EQT::kRaidGroupless) {
+        // Counted from the roster, which is only as current as the last
+        // update we received -- so this can be wrong in the safe direction
+        // (we refuse something that would have worked). It cannot be wrong in
+        // the dangerous direction: if the roster says there is room and there
+        // is not, the server does exactly what it did before, nothing.
+        const size_t occupied = countRaidGroup(wire_group);
+        if (occupied >= EQT::kMaxRaidGroupSize) {
+            m_eq.AddChatSystemMessage(fmt::format(
+                "{} is full ({} of {}).", EQT::RaidGroupName(wire_group),
+                occupied, EQT::kMaxRaidGroupSize));
+            return;
+        }
+    }
+
+    m_eq.SendRaidCommand(6, m_eq.GetMyName(), name, wire_group);
+    m_eq.AddChatSystemMessage(
+        wire_group == EQT::kRaidGroupless
+            ? fmt::format("You move {} out of their group.", name)
+            : fmt::format("You move {} to {}.", name, EQT::RaidGroupName(wire_group)));
+}
+
+size_t EqActionHandler::countRaidGroup(uint32_t wire_group) const {
+    size_t n = 0;
+    for (const auto& m : m_eq.GetRaidMembers()) {
+        if (m.group == wire_group) {
+            ++n;
+        }
+    }
+    return n;
+}
+
 // T182: raid lock / unlock. RaidCommandRaidLock (8) / RaidCommandRaidUnlock
 // (9) -- the handler uses no fields from the body at all, it looks the raid up
 // from the sender, so the names are ours by convention.

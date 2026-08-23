@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string>
 
 namespace EQT {
 
@@ -241,6 +242,16 @@ std::vector<uint8_t> encodeRaidCommand(uint32_t action,
 // ---------------------------------------------------------------------------
 // RaidRoster (T180)
 
+size_t RaidRoster::CountInGroup(uint32_t group) const {
+    size_t n = 0;
+    for (const auto& m : m_members) {
+        if (m.group == group) {
+            ++n;
+        }
+    }
+    return n;
+}
+
 const RaidMemberInfo* RaidRoster::Find(const std::string& name) const {
     for (const auto& m : m_members) {
         if (m.name == name) {
@@ -384,6 +395,56 @@ std::string RaidLootTypeName(uint32_t loot_type) {
     case 4: return "everyone";
     default: return "Unknown(" + std::to_string(loot_type) + ")";
     }
+}
+
+// ---------------------------------------------------------------------------
+// Group assignment (T184)
+
+bool ParseRaidGroup(const std::string& text, uint32_t& out_wire_group) {
+    const size_t b = text.find_first_not_of(" \t");
+    if (b == std::string::npos) {
+        return false;
+    }
+    const size_t e = text.find_last_not_of(" \t");
+    const std::string trimmed = text.substr(b, e - b + 1);
+
+    std::string lowered;
+    lowered.reserve(trimmed.size());
+    for (char c : trimmed) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (lowered == "none" || lowered == "out" || lowered == "ungrouped") {
+        out_wire_group = kRaidGroupless;
+        return true;
+    }
+
+    // Digits only, and no sign: "-1" and "+1" must not sneak through. Checked
+    // on the trimmed text before anything else touches it, the same lesson
+    // ParseRaidLootType learned the hard way.
+    if (trimmed.empty() || trimmed.size() > 2) {
+        return false;
+    }
+    for (char c : trimmed) {
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    const uint32_t one_based = static_cast<uint32_t>(std::stoul(trimmed));
+    // 1..12 user-facing. 0 is rejected rather than quietly meaning group 1 or
+    // "ungrouped" -- it is exactly the value a user thinking in wire numbers
+    // would type, and eqemu would have read it as group 1.
+    if (one_based < 1 || one_based > kMaxRaidGroups) {
+        return false;
+    }
+    out_wire_group = one_based - 1;
+    return true;
+}
+
+std::string RaidGroupName(uint32_t wire_group) {
+    if (wire_group >= kMaxRaidGroups) {
+        return "no group";
+    }
+    return "Group " + std::to_string(wire_group + 1);
 }
 
 }  // namespace EQT
