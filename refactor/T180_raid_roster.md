@@ -35,10 +35,17 @@ The roster is therefore ASSEMBLED, not received. `EQT::RaidRoster`
 (`raid_update.{h,cpp}`) does that, kept out of `EverQuest` so the policy is
 testable without a live client.
 
-**The trap the tests exist to catch:** `SendBulkRaid` replays the *entire*
-roster on *every* zone-in. An `Apply` that appended on Add — the obvious
-implementation — would double the roster each time the player zoned, and
-nothing would look wrong until somebody counted. Add upserts by name.
+`SendBulkRaid` replays the *entire* roster on *every* zone-in, so Add upserts
+by name rather than appending.
+
+**CORRECTED BY THE LIVE PROBE (see below):** this was first written as "an
+appending Apply would double the roster each time the player zoned". It would
+not. eqemu sends `SendRaidCreate` immediately before `SendBulkRaid` on every
+zone entry (`zone/client_packet.cpp:598`), and `Apply` clears on Create, so the
+replayed Adds land in an empty roster. The upsert is **defence in depth, not
+the load-bearing guard** — it is what keeps the roster right if an Add ever
+arrives without a preceding Create, and no live packet sequence currently does
+that.
 
 ## Finding 2 — action 10 is two packets wearing one number
 
@@ -109,12 +116,41 @@ a static pure lookup over a wire enum — no state, nothing to encapsulate.
 - 3 on `/raid list` routing (subcommand, alias, case-insensitivity) plus the
   usage line now advertising `list`.
 
-## NOT wire-verified
+## Live probe — DONE, three legs, all VERIFIED (2026-08-23)
 
-eqemu is down. The roster is built from packets this codebase already decodes
-correctly (T169 verified action 0 live, with names, in T172's leg A), and the
-zone-in handshake was observed live by T172 — so both findings rest on live
-evidence, but the **assembled roster and the `/raid list` output have not been
-seen on a live server.** A two-account raid (`Testmelee` + `Oraclerogue`) with
-a zone-in in the middle is the probe: it exercises the upsert path and the
-handshake path in one run, and the WARN should be gone from the log.
+Two WillEQ clients (`Testmelee`, `Oraclerogue`), eqemu up, one zone process.
+Evidence in `review/T180/`.
+
+- **Leg 1** — A invites, B accepts, both print the roster:
+
+  ```
+  Raid members (2):
+    Not in a group:
+      Oraclerogue (Level 10 Rogue)
+      Testmelee (Level 1 Warrior) [raid leader]
+  ```
+
+  matching `raid_members` exactly (raidid 1, both `groupid = 4294967295`,
+  `Testmelee.israidleader = 1`). The groupless sentinel was READ live, not
+  inferred. **`/raid invite` is now wire-verified too** — T179 only ever
+  verified accept.
+- **Leg 2** — both re-log with the raid already in the DB. The zone-entry
+  rejoin replays handshake → `raidCreate` → one `raidAdd` per member, and the
+  printout is correct on a client that never witnessed the invite.
+- **Leg 3** — B zones mid-session (`/say #zone qeynos2`), taking a SECOND bulk
+  replay inside one process: 4 `raidAdd` packets in one session. Roster still 2.
+
+**The action-10 split is verified.** Every zone entry logs `RaidUpdate: zone-in
+name handshake for '<name>' (not a raid event)`, and
+`grep -c "too short for action 10"` is **0** across all five logins. B, in a
+raid, zoned twice and kept its membership — the exact failure the split exists
+to prevent.
+
+**Environment finding: two WillEQ instances cannot share `data/willeq.db`** —
+the second dies instantly with "missing metadata table". T179 never hit it
+because its second client was the official one under Wine. The probe scripts
+run B from its own cwd with its own copy of the db.
+
+**One deliberate non-finding:** leg 3 did NOT reach the upsert path, because the
+Create that precedes every replay clears the roster first. See the correction
+under Finding 1 and `review/T180/README.md`.

@@ -278,9 +278,12 @@ void RaidRoster::Apply(const RaidUpdate& u, const std::string& my_name) {
             info.level = u.member_level;
             info.is_group_leader = u.is_group_leader;
         }
-        // Upsert: a group change reaches us as Remove+Add (Raid::SendRaidMove),
-        // but SendBulkRaid on a re-zone replays every member, so an Add for a
-        // name already present must overwrite rather than duplicate.
+        // Upsert rather than append. A group change reaches us as Remove+Add
+        // (Raid::SendRaidMove), and SendBulkRaid on a re-zone replays every
+        // member -- though that replay is preceded by a raidCreate, which
+        // Clear()s the roster, so today nothing actually delivers a duplicate
+        // Add (verified live, T180). This is defence in depth: it keeps the
+        // roster right if an Add ever arrives without a preceding Create.
         for (auto& existing : m_members) {
             if (existing.name == info.name) {
                 existing = info;

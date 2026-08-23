@@ -483,9 +483,16 @@ TEST(RaidRoster, GrouplessMemberKeepsEqemuSentinel) {
         << "RAID_GROUPLESS (zone/raids.h:72) means in the raid, in no group";
 }
 
-// SendBulkRaid replays the WHOLE roster to a client on every zone-in. An Add
-// that appends unconditionally would double the roster each time the player
-// zoned -- invisible until somebody counted.
+// SendBulkRaid replays the WHOLE roster to a client on every zone-in.
+//
+// HONESTY NOTE (T180 live probe): this sequence -- repeated Adds with NO
+// intervening Create -- is one the server does not currently produce. eqemu
+// sends SendRaidCreate immediately before SendBulkRaid on every zone entry
+// (zone/client_packet.cpp:598), and Apply clears on Create, so the replay
+// lands in an empty roster and an appending implementation would pass the
+// live case too. The upsert is defence in depth: it keeps the roster right if
+// an Add ever arrives without a preceding Create. Kept deliberately, and
+// labelled rather than dressed up as a live regression.
 TEST(RaidRoster, ReplayedAddsUpsertRatherThanDuplicate) {
     auto r = threeMemberRaid();
     ASSERT_EQ(r.Size(), 3u);
