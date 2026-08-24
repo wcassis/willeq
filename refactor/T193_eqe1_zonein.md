@@ -62,3 +62,54 @@ Pi ran the T186-era binary (`/tmp/willeq_t186`, fable `4b6d63be`), unchanged in
 this area since, so the only variable is `--eqe1-path`. Both machines re-zone
 with `#zone` first (T190). x86 numbers from `t193_x86.log`, Pi from
 `t193_pi.log`; both in `review/T193/`.
+
+---
+
+## Attempt at the fix (T194) — reverted; the naming assumption was wrong
+
+**Design tried:** stop opening the composite directory eagerly. Index it by
+filename at zone load (no `open()`, no mmap), and open one archive on demand
+when a texture lookup misses — targeted, because a composite sheet's name looked
+like its filename (`ske_hs_def_0_0` → `ske_hs_def_0_0.eqe1`). This mirrored what
+P04 already did for global archives.
+
+**On x86 it did exactly what it was designed to do:**
+
+| | before | after |
+|---|---|---|
+| archives opened at zone load | 664 | **10** (on demand) |
+| composite meshes built | 2 | **2** (unchanged) |
+| archives indexed (filenames only) | — | 1506 |
+
+**And it broke the zone load anyway:**
+
+```
+[FATAL] Texture 'fishe0101.bmp' not found in any EQE1 flat pack.
+```
+
+**A composite archive is not named after the textures it contains.**
+`fis_hs_def_0_0.eqe1` holds `fishe0101.bmp` and others — the T193 log said so in
+passing and I read past it:
+
+```
+EQE1Loader: mmap'd '.../fis_hs_def_0_0.eqe1' (2 textures, 1 alpha, 0 raw, ...)
+```
+
+So texture-name → filename is **not 1:1**, and a targeted open can never find
+per-part textures. The eager load was doing double duty: it was also the only
+thing that made every packed texture findable. Reverted; `fable` is unchanged.
+
+## The correct shape of the fix
+
+The index has to be built from each archive's **table of contents**, not its
+filename: for every `.eqe1`, read its TOC and record `texture name → archive
+path`, then open the archive on first reference. If `EQE1Loader::open()` can be
+made to read a TOC without retaining the payload (or if the mapping can be
+dropped after indexing), this costs one pass over 1506 files at zone load and
+keeps only referenced archives resident.
+
+**Open question that decides the design:** what does `EQE1Loader::open()`
+actually retain? If it only mmaps, the resident cost should be page-cache and
+not heap — in which case the Pi's `std::bad_alloc` comes from something else in
+that step and this whole approach is aimed at the wrong thing. **Measure the
+Pi's RSS across "[48%] Opening EQE1 textures" before designing further.**
