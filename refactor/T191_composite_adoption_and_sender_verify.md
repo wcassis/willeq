@@ -137,3 +137,42 @@ should be capped, or the "not yet uploaded" state distinguished from "no sheet".
 
 **Verification is a single log line:** `Composite entity adoption: E/T entities
 eligible, H sheet hits, M sheet misses` must show H > 0 in befallen.
+
+---
+
+## RETRACTION (T192, 2026-08-24) — the 0% adoption finding is void
+
+**The composite sheets are EQE1-only, and every run behind this document had
+`eqe1Path=''`.** The client config used `/mnt/projects/EverQuestP1999` (plain
+S3D). The log said so and I read past it:
+
+```
+Constrained cache: empty input data for 'ske_hs_def_0_0' — no bytes were
+supplied to decode (not a decoder failure; check the caller: AN EQE1-ONLY
+LOOKUP WITH NO EQE1 ARCHIVE CONFIGURED, ...)
+```
+
+Re-run with `--eqe1-path /mnt/projects/EverQuest_ETC1`:
+
+| | composite builds | "not yet uploaded" failures |
+|---|---|---|
+| without EQE1 | 0 | 104 |
+| with EQE1 | **2** | **0** |
+
+**The composite path works.** There is no upload-timing race, and in a correctly
+configured client there is nothing to poison the cache with.
+
+**What falls:** "0% adoption"; "the largest piece of unrealised work found so
+far"; the two-compounding-faults framing; the claim that the optimisation pays
+its setup cost and is never used.
+
+**What stands:** the cache-poisoning mechanism is real code (a fallback mesh is
+stored in the composite cache and blocks retries) — but its trigger does not
+occur in a correct configuration. The fix is on `task/T192-composite-cache`,
+measured and **unmerged**.
+
+**Also note:** no shipped preset sets `eqe1Path`; it is CLI-only
+(`--eqe1-path`). `scripts/pi/env.sh` defines `PI_EQE1_PATH`, so the Pi bench
+harness uses EQE1 — but the Pi client runs in T186/T187/T191 were mine and did
+not pass the flag. T186's zone-in totals and T187's per-step split are
+unaffected; any composite or texture conclusion drawn from them is not.
