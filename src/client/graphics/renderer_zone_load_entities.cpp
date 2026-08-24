@@ -122,11 +122,24 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                                            distFromPlayer, ctx.deferredCount, ctx.deferredRaceGenderPairs)) {
                     ++ctx.prepCount; continue;  // still "processed" for the progress bar
                 }
-                ctx.preppedRaceGenderPairs.insert({ctx.vis->raceId, ctx.vis->gender});
+                // T209: was this race/gender already fully prepared by an earlier
+                // entity in this same loop? If so every prep sub-step below should
+                // be a cache hit, and whatever time they still take is redundant.
+                const bool t209repeat =
+                    !ctx.preppedRaceGenderPairs.insert({ctx.vis->raceId, ctx.vis->gender}).second;
+                if (t209repeat) ++ctx.repeatPairEntities;
+                auto t209 = std::chrono::steady_clock::now();
+                auto t209lap = [&t209]() {
+                    auto now = std::chrono::steady_clock::now();
+                    double ms = std::chrono::duration<double, std::milli>(now - t209).count();
+                    t209 = now;
+                    return ms;
+                };
 
                 // ── Inline entity prep (EntityPrepWorker::processRequest logic) ──
 
                 if (!loadZoneStep8a_BaseModelPrep(ctx)) return false;
+                { const double d = t209lap(); ctx.ms8a += d; if (t209repeat) ctx.rp8a += d; }
 
                 // T38: a missing base model (ctx.entitySuccess == false) means
                 // there is no model data for 8b (variant model)/8c (variant
@@ -139,29 +152,56 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                 // and counted.
                 if (ctx.entitySuccess) {
                     loadZoneStep8b_VariantModelPrep(ctx);
+                    { const double d = t209lap(); ctx.ms8b += d; if (t209repeat) ctx.rp8b += d; }
 
                     loadZoneStep8c_VariantTextures(ctx);
+                    { const double d = t209lap(); ctx.ms8c += d; if (t209repeat) ctx.rp8c += d; }
 
                     if (!loadZoneStep8d_EquipmentPrep(ctx)) return false;
+                    { const double d = t209lap(); ctx.ms8d += d; if (t209repeat) ctx.rp8d += d; }
 
                     loadZoneStep8e_DistributePrepResults(ctx);
+                    { const double d = t209lap(); ctx.ms8e += d; if (t209repeat) ctx.rp8e += d; }
                 }
 
                 // T04: processUploadQueue removed. Textures uploaded via uploadTexture() in T09.
 
                 // Promote prepared models so buildEntityMesh finds them
                 ctx.modelLoader->promotePreparedModels();
+                ctx.msPromote += t209lap();
 
                 // Upload all pending textures (including composite EQE1 entries queued in Step 8a)
                 // so they're available as GPU textures when buildEntityMesh builds composite meshes.
                 if (constrainedTextureCache_) {
                     constrainedTextureCache_->uploadAllPending();
                 }
+                ctx.msUpload += t209lap();
 
                 loadZoneStep8f_BuildEntityMesh(ctx);
+                { const double d = t209lap(); ctx.ms8f += d; if (t209repeat) ctx.rp8f += d; }
 
                 ++ctx.prepCount;
             }
+
+            // T209: where Step 8's time actually goes, and how much of it is spent
+            // on entities whose race/gender was already prepared by an earlier one.
+            LOG_INFO(MOD_GRAPHICS,
+                     "T209 Step8 split (ms): 8a_base={:.1f} 8b_variant={:.1f} "
+                     "8c_vtex={:.1f} 8d_equip={:.1f} 8e_distribute={:.1f} "
+                     "8f_mesh={:.1f} promote={:.1f} upload={:.1f} | {} of {} entities "
+                     "were a repeat race/gender ({} distinct pairs)",
+                     ctx.ms8a, ctx.ms8b, ctx.ms8c, ctx.ms8d, ctx.ms8e, ctx.ms8f,
+                     ctx.msPromote, ctx.msUpload, ctx.repeatPairEntities,
+                     ctx.prepCount - ctx.deferredCount, ctx.preppedRaceGenderPairs.size());
+            const double t209rpTotal = ctx.rp8a + ctx.rp8b + ctx.rp8c + ctx.rp8d + ctx.rp8e + ctx.rp8f;
+            const double t209total  = ctx.ms8a + ctx.ms8b + ctx.ms8c + ctx.ms8d + ctx.ms8e + ctx.ms8f;
+            LOG_INFO(MOD_GRAPHICS,
+                     "T209 Step8 REPEAT-ONLY (ms): 8a={:.1f} 8b={:.1f} 8c={:.1f} 8d={:.1f} "
+                     "8e={:.1f} 8f={:.1f} | {:.1f} of {:.1f}ms ({}%) spent on entities whose "
+                     "race/gender was already fully prepared",
+                     ctx.rp8a, ctx.rp8b, ctx.rp8c, ctx.rp8d, ctx.rp8e, ctx.rp8f,
+                     t209rpTotal, t209total,
+                     t209total > 0 ? (int)(t209rpTotal * 100 / t209total) : 0);
 
             bool hasBoats = entityRenderer_->hasBoatsInZone();
             LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes (model cache hits={}, disk loads={}, hasBoats={})",

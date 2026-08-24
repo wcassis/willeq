@@ -62,6 +62,18 @@ struct IrrlichtRenderer::ZoneLoadContext {
     size_t entitiesSkipped = 0;
     std::set<std::pair<uint16_t, uint8_t>> skippedRaceGenderPairs;  // {raceId, gender}
 
+    // T209: per-sub-step wall time inside the Step 8 entity loop, plus how many
+    // entities reached each sub-step with everything already prepared for their
+    // race/gender. Step 8 is ~70% of zone-in on BOTH platforms (x86 2793ms, Pi
+    // 24842ms) for 226 entities drawn from only 14 distinct race/gender pairs --
+    // so the question this answers is how much of that is work redone for an
+    // entity whose model was already fully prepared.
+    double ms8a = 0, ms8b = 0, ms8c = 0, ms8d = 0, ms8e = 0, ms8f = 0, msPromote = 0, msUpload = 0;
+    // Same totals but only for entities whose race/gender a previous entity in
+    // this loop already prepared -- i.e. the portion that is repeat work.
+    double rp8a = 0, rp8b = 0, rp8c = 0, rp8d = 0, rp8e = 0, rp8f = 0;
+    size_t repeatPairEntities = 0;   // entity whose race/gender was already prepped
+
     size_t deferredCount = 0;  // T109 distance-gate deferrals (vs. entitiesSkipped's prepped-but-no-model)
     std::set<std::pair<uint16_t, uint8_t>> deferredRaceGenderPairs, preppedRaceGenderPairs;
 
