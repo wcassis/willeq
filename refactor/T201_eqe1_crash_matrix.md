@@ -59,3 +59,45 @@ is now much stronger, since `willeq.eqe1` is known to hold the UI atlas (T198).
 Classify by process exit status, not by log contents. `timeout N cmd` returns
 139 on SIGSEGV and 124 on timeout; a log missing both `Ready` and `FATAL` means
 nothing on its own.
+
+---
+
+## Where the load actually stops (T202 follow-up)
+
+Asked which sequential step fails. **None of them — the load completes in full.**
+
+All eleven `seq_*` steps ran and logged, and `loadZoneSequential: complete for
+zone 'qeynos2' in 5903ms` fired:
+
+| step | ms |
+|---|---|
+| s3d_parse / bsp_compute / bsp_install | 574 / 764 / 11 |
+| regions (#1898) / assets / objects (#478) | 199 / 815 / 81 |
+| **entities** | **2926** |
+| collision / sky / env / simulation | 13 / 55 / 32 / 422 |
+
+(`seq_doors` is absent only because it finished under `logAssetBuildTime`'s
+10ms WARN threshold and the run was at INFO.)
+
+After that, a scene dump lists 195 entities, the SimulationWorker registers its
+vertex-animated meshes, and then:
+
+```
+[mergedraws] built 126 texture buckets (126 generations, 1269654 bytes),
+  0 nodes skipped, 0 non-EVT_STANDARD buffers skipped,
+  0 invalid-texture buffers skipped
+<core dumped>
+```
+
+**That `[mergedraws]` line is the last line in EVERY crashing run** — T196,
+T199, T200, T201 and T202 all stop there. And its three skip counters are all
+**zero**, so the merge build itself is clean: it is not skipping an invalid
+texture and then tripping over it.
+
+**So the failing step is the first render frame after the merge buffers are
+built**, which matches T196's backtrace (`draw2DImage` ← `UIRenderer::endFrame`
+← `processFrameRender`). The zone-load pipeline is entirely innocent.
+
+That narrows the next investigation sharply: everything up to and including
+merge-buffer construction succeeds, and the fault is in drawing — with the one
+EQE1-specific object in that path being the ETC1-backed UI atlas texture.
