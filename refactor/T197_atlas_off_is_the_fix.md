@@ -68,3 +68,53 @@ valid Pi EQE1 zone-in number becomes measurable.
 
 **Also worth deciding once the above is done:** whether `enableCompositeEntities`
 should stay in the `orangepi` preset at all.
+
+---
+
+## T198 — atlas removed from the preset; assets regenerated; ONE GAP REMAINS
+
+**Done:** `enableCompositeEntities` and `compositeEntityPath` removed from the
+`orangepi` preset (`28a59bf4`). The struct default is already false, so this
+restores the default rather than adding a state.
+
+**Regenerated** into `/mnt/projects/EverQuest_ETC1_regen` (staging; live tree
+untouched). `eqe1_builder` is single-threaded and archive-independent, so it was
+driven 20-way with `xargs -P 20` — ~25 minutes for 1006 archives against an
+estimated 12h sequential. **999 of 1006 produced output**; four did not
+(`vexthal`, `westwastes_chr`, `yxtta_obj`, `yxtta`).
+
+**What an S3D-only regen cannot produce.** The live tree's 1506 archives are
+1006 S3D-derived plus 500 others: **489 `*_hs_def_*` and 9 `*_actordef_*`
+composite sheets** (obsolete with the atlas off) and exactly **two still
+needed — `willeq.eqe1` and `textures.eqe1`**, built from BMP directories via
+the builder's `--bmp-dir` mode. Copied across from the live tree.
+
+**This explains T196's segfault.** `willeq.eqe1` holds the **UI atlas**, so UI
+textures are EQE1-backed — and `draw2DImage` faulting inside
+`UIRenderer::endFrame` was the UI atlas failing to resolve under T196's lazy
+opener. Closed; the fix stays unwanted, since T197 supersedes it.
+
+**THE REMAINING GAP.** With the atlas off and the regenerated flat-packs in
+place, the client still fails loudly:
+
+```
+[FATAL] Texture 'fishe0301.bmp' not found in any EQE1 flat pack.
+```
+
+`fishe0301.bmp` is a per-part character texture that **only the composite sheets
+were providing**. Removing the atlas removes its only source.
+
+**The question that decides the approach:** does `fishe0301.bmp` exist in the
+source client's `.s3d` set at all?
+
+- **If yes**, `eqe1_builder` is skipping it — a builder bug, and the fix is in
+  the builder.
+- **If no**, those per-part textures are *derived* by
+  `entity_composite_builder`, and the atlas cannot simply be switched off: the
+  flat-pack path would need whatever step produces them.
+
+Either way this is an **asset-pipeline** question, not client code.
+
+Until it is answered, **EQE1 is unusable with the atlas off**, and the Pi's
+usable configuration remains S3D (no `--eqe1-path`) — which is exactly what
+T186's ~37.7s baseline measured.
