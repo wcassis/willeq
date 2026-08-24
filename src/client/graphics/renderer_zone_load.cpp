@@ -83,6 +83,59 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
             getOrOpenEQE1(name);
         }
         pendingGlobalEQE1Archives_ = archiveList.globalArchives;
+
+        // T199: ADD THE ARCHIVES THE ZONE'S ACTUAL SPAWNS NEED.
+        //
+        // eqe1_archives.json's global list is static, and a static list cannot
+        // be right: what spawns is decided server-side and varies per zone.
+        // It was simultaneously too wide (every global*_chr and gequip*) and
+        // too narrow — a race whose model lives in ANOTHER zone's _chr pack was
+        // unreachable. Befallen spawns race 24 (Fish), whose model is in
+        // akanon_chr (race_models.json's s3d_file); the client opened
+        // befallen*/global* only, so `fishe0301.bmp` was not found and the
+        // all-or-nothing rule turned that into a fatal exit (T198).
+        //
+        // The spawn list is already available here: Application registered
+        // every snapshot entity into entityRenderer_ (application.cpp:1647)
+        // before calling loadZoneSequential, so the distinct race set is known
+        // before a single archive is opened.
+        //
+        // These are APPENDED TO THE LAZY LIST, not opened. Entries are mmap'd
+        // one at a time only when ConstrainedTextureCache actually misses, so
+        // a race whose textures are already served by an open archive costs
+        // nothing — which is the "prefer what is already open" rule, obtained
+        // for free from the existing lazy mechanism rather than by consulting
+        // race_models.json's `also_in` (73 entries for race 24 alone; opening
+        // them would be exactly the over-loading this exists to prevent).
+        if (entityRenderer_) {
+            std::set<uint16_t> spawnedRaces;
+            for (const auto& [spawnId, vis] : entityRenderer_->getEntities()) {
+                spawnedRaces.insert(vis.raceId);
+            }
+            size_t added = 0;
+            for (uint16_t raceId : spawnedRaces) {
+                std::string s3d = EQT::Graphics::getRaceS3DFile(raceId);
+                if (s3d.empty()) continue;
+                // race_models.json stores "akanon_chr.s3d"; archives are keyed
+                // by stem.
+                const size_t dot = s3d.rfind(".s3d");
+                if (dot != std::string::npos) s3d.resize(dot);
+                std::transform(s3d.begin(), s3d.end(), s3d.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (s3d.empty()) continue;
+                // Already opened as a zone archive, or already queued.
+                if (std::find(pendingGlobalEQE1Archives_.begin(),
+                              pendingGlobalEQE1Archives_.end(), s3d)
+                    != pendingGlobalEQE1Archives_.end()) {
+                    continue;
+                }
+                pendingGlobalEQE1Archives_.push_back(s3d);
+                ++added;
+            }
+            LOG_INFO(MOD_GRAPHICS, "EQE1: {} distinct spawned races -> {} archive(s) queued "
+                     "beyond the static list", spawnedRaces.size(), added);
+        }
+
         nextGlobalEQE1Idx_ = 0;
         if (constrainedTextureCache_) {
             constrainedTextureCache_->setEQE1LazyOpener(
