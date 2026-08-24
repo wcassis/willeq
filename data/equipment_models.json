@@ -1564,7 +1564,7 @@
       "archive": "gequip.s3d",
       "wld": "gequip.wld",
       "actor": "IT1036",
-      "textures": [""]
+      "textures": ["sword2hndblade.bmp", "sword2hndhilt.bmp", "sword2hndhilt2.bmp", "sword2hndhandle2.bmp"]
     },
     "1060": {
       "archive": "lgequip.s3d",
