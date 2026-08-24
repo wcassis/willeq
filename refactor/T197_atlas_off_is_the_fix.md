@@ -118,3 +118,44 @@ Either way this is an **asset-pipeline** question, not client code.
 Until it is answered, **EQE1 is unusable with the atlas off**, and the Pi's
 usable configuration remains S3D (no `--eqe1-path`) — which is exactly what
 T186's ~37.7s baseline measured.
+
+## T198 addendum — ANSWERED: the texture exists; the archive LIST is the gap
+
+The question was whether `fishe0301.bmp` exists in the source. **It does, and
+`eqe1_builder` produced it correctly.** `verify_eqe1 --verbose` finds it in the
+regenerated `akanon_chr.eqe1`, `cabeast_chr.eqe1`, `cazicthule_chr.eqe1` and
+other zones' `_chr` packs.
+
+It is **not** in the archives the client actually opens for befallen:
+
+| archive | has `fishe0301` |
+|---|---|
+| `befallen`, `befallen_obj`, `befallen_chr` | no |
+| `global_chr` | no |
+| `akanon_chr`, `cabeast_chr`, `cazicthule_chr`, … | **yes** |
+
+`config/eqe1_archives.json` opens `{zone}`, `{zone}_obj`, `{zone}_chr` plus a
+fixed global list (`global_chr`..`global7_chr`, `gequip*`, …). Other zones'
+`_chr` packs are never in that set, so the texture is unreachable — while the
+atlas was on, all 664 composite sheets were open and one of them carried it.
+
+**So neither hypothesis was right.** It is not a builder bug and the texture is
+not derived: it is an **archive-coverage gap in `eqe1_archives.json`**, exposed
+the moment the atlas stopped hiding it.
+
+Also confirmed benign: `gequip7` is listed in `globalArchives` but
+`gequip7.s3d` does not exist in the client (gequip, 2-6, 8 do), which is why
+`cannot open '.../gequip7.eqe1'` appears. Harmless, and worth removing from the
+list to stop the noise.
+
+**The real question this raises** is why befallen spawns an entity whose texture
+is in no archive befallen loads. In S3D mode the same lookup misses, but S3D
+mode does not FATAL — it falls back to a placeholder, which is very likely one
+source of the **magenta/checkerboard textures** already on the open list. The
+EQE1 all-or-nothing rule turned a silent placeholder into a loud failure, which
+is exactly what that rule is for.
+
+**Options, for a decision:** add the character `_chr` archives to
+`globalArchives` (simple, costs address space on the Pi — measure it), or
+establish which archives a zone's spawned races actually need and derive the
+list per zone.
