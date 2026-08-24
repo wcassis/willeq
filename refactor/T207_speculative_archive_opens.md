@@ -75,23 +75,58 @@ problem — which is the right order to fix them in anyway.
 Note this means T206's Pi number should NOT be treated as EQE1's verdict. It is
 the verdict on EQE1-plus-a-33-archive-probe.
 
-## Recommended fix: a generation-time manifest
+## Correction: the index machinery already exists
 
-The EQE1 assets are produced by our own tool, so the index can be built where
-the truth already is. Emit one manifest alongside the archives mapping every
-contained name -> owning archive. Then a lookup either:
+An earlier draft of this doc proposed inventing a manifest format. That
+overstates the work. Three points, checked:
 
-  - resolves to exactly one archive and opens exactly that one, or
-  - is absent from the manifest and fails immediately, with no opens at all.
+1. **Every .eqe1 already has a TOC.** `EQE1Loader::open()` builds
+   `textureLookup_` / `rawDataLookup_`, exposed via `getTextureNames()` and
+   `getRawDataNames()`. But it is *inside* the archive, so it answers "what is
+   in here" only after the open we are trying to avoid. It cannot answer "which
+   archive holds this name" — the question the probe is guessing at.
+
+2. **Nothing is emitted alongside the archives.** The regen tree is 1008 `.eqe1`
+   and 0 `.json`. `eqe1_builder.cpp`'s sole "json" mention (line 644) treats
+   `.json` as a passthrough input extension. `convert_all_to_eqe1.sh` emits none.
+
+3. **But the manifest pattern exists and works, three times over:**
+
+       data/equipment_models.json   414KB   tools/equipment_index_builder.cpp
+       data/item_models.json         51KB
+       config/race_models.json      107KB   <- T199 already uses this
+
+   And `equipment_models.json` is already nearly the right shape:
+
+       "1": { "archive": "gequip.s3d", "wld": "gequip.wld",
+              "actor": "IT1", "textures": ["flat.bmp","sword.bmp",...] }
+
+   Name -> archive, plus the per-model texture list. It is built by walking the
+   `*equip.s3d` archives — the same walk `convert_all_to_eqe1.sh` performs. EQE1
+   base names match the S3D ones, so `archive` needs an extension swap, not a
+   rebuild.
+
+## Recommended fix
+
+The real gap is narrower than "build a manifest": **nothing in the texture
+lookup path consults any index.** `race_models.json` is consulted for models
+(that is how T199 picks archives correctly) and `equipment_models.json` for
+equipment, but a texture miss falls straight into `tryOpenNextGlobalEQE1()` and
+begins guessing.
+
+So: extend the existing index-builder pattern to cover texture names across the
+EQE1 tree, and make the cache's lazy opener resolve through it instead of
+probing. A lookup then either resolves to exactly one archive and opens exactly
+that one, or is absent from the index and fails immediately with no opens at
+all.
 
 Speculative opens go to zero by construction, races 415/457 fail in O(1) and can
-be reported as the asset gaps they are rather than as a 33-open scan, and the
-Pi's open count for befallen drops from 38 to roughly 5. `globalArchives` stops
-being a probe order and becomes what it should have been: a set of candidates
-the manifest arbitrates.
+be reported as the asset gaps they are rather than as a 33-open scan, and
+befallen's open count drops from 38 to roughly 5. `globalArchives` stops being a
+probe order and becomes a candidate set the index arbitrates.
 
-T199's spawn-derived selection stays as-is — it is the same principle applied to
-models, and it already works (15 races -> 3 archives, correctly).
+T199's spawn-derived selection stays as-is — the same principle applied to
+models, already working (15 races -> 3 archives, correctly).
 
 ## Not yet answered
 Which of entries 5-37 served at least one texture before the list was exhausted.
