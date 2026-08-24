@@ -414,6 +414,42 @@ const EQE1Loader* IrrlichtRenderer::tryOpenNextGlobalEQE1() {
     return nullptr;
 }
 
+void IrrlichtRenderer::logEQE1ArchiveUsage() const {
+    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+
+    std::vector<std::pair<std::string, const EQE1Loader*>> open;
+    for (const auto& [name, loader] : eqe1Loaders_) {
+        if (loader && loader->isOpen()) open.emplace_back(name, loader.get());
+    }
+    if (open.empty()) return;
+
+    // Unused first, then by ascending hits -- the waste is what we came to see.
+    std::sort(open.begin(), open.end(), [](const auto& a, const auto& b) {
+        if (a.second->getLookupHits() != b.second->getLookupHits())
+            return a.second->getLookupHits() < b.second->getLookupHits();
+        return a.first < b.first;
+    });
+
+    size_t unused = 0, unusedBytes = 0, totalBytes = 0, totalHits = 0;
+    for (const auto& [name, loader] : open) {
+        const size_t bytes = loader->getMappedBytes();
+        totalBytes += bytes;
+        totalHits  += loader->getLookupHits();
+        if (loader->getLookupHits() == 0) { ++unused; unusedBytes += bytes; }
+        LOG_INFO(MOD_GRAPHICS, "EQE1-USAGE:   {:<20} hits={:<6} entries={:<5} mapped={}KB{}",
+                 name, loader->getLookupHits(), loader->getEntryCount(),
+                 bytes / 1024, loader->getLookupHits() == 0 ? "   <-- UNUSED" : "");
+    }
+
+    LOG_INFO(MOD_GRAPHICS,
+             "EQE1-USAGE: zone '{}': {} archive(s) open, {} served no lookup at all "
+             "({} of {} = {}% wasted opens, {}KB of {}KB mapped for nothing), "
+             "{} lookups served total",
+             currentZoneName_, open.size(), unused, unused, open.size(),
+             open.empty() ? 0 : (unused * 100 / open.size()),
+             unusedBytes / 1024, totalBytes / 1024, totalHits);
+}
+
 size_t IrrlichtRenderer::getEQE1MappedBytesTotal() const {
     std::lock_guard<std::mutex> lock(eqe1Mutex_);
     size_t total = 0;

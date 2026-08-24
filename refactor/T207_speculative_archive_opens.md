@@ -128,8 +128,35 @@ probe order and becomes a candidate set the index arbitrates.
 T199's spawn-derived selection stays as-is — the same principle applied to
 models, already working (15 races -> 3 archives, correctly).
 
-## Not yet answered
-Which of entries 5-37 served at least one texture before the list was exhausted.
-A per-loader hit counter logged at zone-complete would turn "cannot know it
-needs" into a precise count of proven-unneeded opens. Cheap, and worth having as
-the regression guard for the manifest fix.
+## MEASURED: 64% of opens serve nothing
+
+`EQE1Loader` now counts the lookups it actually serves (`getLookupHits()`,
+incremented on successful `lookup()` / `getRawData()`), and
+`IrrlichtRenderer::logEQE1ArchiveUsage()` reports every open archive at
+zone-in-complete. Always on -- a handful of INFO lines once per zone-in, and the
+whole point is that the waste was invisible until counted.
+
+Cold befallen zone-in, x86, regen tree, orangepi preset (`review/T207/`):
+
+    zone 'befallen': 37 archive(s) open, 24 served no lookup at all
+    (24 of 37 = 64% wasted opens, 103115KB of 149385KB mapped for nothing),
+    293 lookups served total
+
+**24 of 37 archives served zero lookups. 103MB of the 149MB mapped was mapped
+for nothing** -- 69% of the bytes. The single worst offender is `lgequip` at
+24MB, never touched once.
+
+The 13 that did serve something, and by how much:
+
+    global_chr    138      befallen_obj   59      befallen_chr   56
+    global6_chr     9      befallen        9      akanon_chr      5
+    sky             4      gequip3         4      gequip          3
+    textures        2      gequip5         2      loyequip        1
+    gequip4         1
+
+Note the shape: three archives (`global_chr`, `befallen_obj`, `befallen_chr`)
+serve 253 of 293 lookups -- 86%. The long tail of equipment and armor archives
+either serves a handful or, in 24 cases, nothing at all. `akanon_chr`, the one
+T199 derived from spawns, correctly serves 5.
+
+This is the before number. The index fix has to drive "served no lookup" to 0.

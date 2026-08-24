@@ -956,6 +956,11 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         std::chrono::steady_clock::now() - ctx.totalStart).count();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: complete for zone '{}' in {}ms", currentZoneName_, totalMs);
 
+    // T207: report which EQE1 archives actually served a lookup. Always on --
+    // it is a handful of INFO lines once per zone-in, and the whole point is
+    // that the waste was invisible until it was counted.
+    logEQE1ArchiveUsage();
+
     // P13: dump the texture upload/eviction ledger at the zone-in-complete
     // marker (no-op unless --texture-ledger was passed — see
     // ConstrainedRendererConfig::textureUploadLedgerPath).

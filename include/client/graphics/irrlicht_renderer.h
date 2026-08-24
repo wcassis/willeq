@@ -1468,6 +1468,12 @@ private:
     // list is exhausted. Returns the opened loader or nullptr when exhausted.
     // Registered with ConstrainedTextureCache via setEQE1LazyOpener().
     const EQE1Loader* tryOpenNextGlobalEQE1();
+
+    // T207: at zone-in-complete, report every opened EQE1 archive with the
+    // number of lookups it actually served. Archives with zero hits were opened
+    // by the linear probe in tryOpenNextGlobalEQE1() and were never needed --
+    // this is the before/after metric for the name->archive index fix.
+    void logEQE1ArchiveUsage() const;
     // Sum of getMappedBytes() across every currently-open EQE1Loader (opened
     // zone archives + whatever global archives lazy-open has pulled in so
     // far). Used by --load-mem-audit and /pmem's accounted-vs-RSS breakdown.

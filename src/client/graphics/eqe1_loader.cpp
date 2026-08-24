@@ -32,11 +32,13 @@ EQE1Loader::EQE1Loader(EQE1Loader&& other) noexcept
     , textureLookup_(std::move(other.textureLookup_))
     , rawDataLookup_(std::move(other.rawDataLookup_))
     , entryCount_(other.entryCount_)
+    , lookupHits_(other.lookupHits_)
     , isOpen_(other.isOpen_)
 {
     other.mapping_ = nullptr;
     other.mappingSize_ = 0;
     other.entryCount_ = 0;
+    other.lookupHits_ = 0;
     other.isOpen_ = false;
 }
 
@@ -49,10 +51,12 @@ EQE1Loader& EQE1Loader::operator=(EQE1Loader&& other) noexcept {
         textureLookup_ = std::move(other.textureLookup_);
         rawDataLookup_ = std::move(other.rawDataLookup_);
         entryCount_ = other.entryCount_;
+        lookupHits_ = other.lookupHits_;
         isOpen_ = other.isOpen_;
         other.mapping_ = nullptr;
         other.mappingSize_ = 0;
         other.entryCount_ = 0;
+        other.lookupHits_ = 0;
         other.isOpen_ = false;
     }
     return *this;
@@ -209,12 +213,14 @@ void EQE1Loader::close() {
     }
     filepath_.clear();
     entryCount_ = 0;
+    lookupHits_ = 0;
     isOpen_ = false;
 }
 
 const EQE1Loader::TextureEntry* EQE1Loader::lookup(const std::string& name) const {
     auto it = textureLookup_.find(name);
     if (it != textureLookup_.end()) {
+        ++lookupHits_;  // T207
         return &it->second;
     }
     return nullptr;
@@ -226,6 +232,7 @@ bool EQE1Loader::getRawData(const std::string& name,
     if (it != rawDataLookup_.end()) {
         data = it->second.first;
         size = it->second.second;
+        ++lookupHits_;  // T207
         return true;
     }
     return false;

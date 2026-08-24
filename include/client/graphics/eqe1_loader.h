@@ -41,6 +41,13 @@ public:
     std::vector<std::string> getRawDataNames() const;
 
     uint16_t getEntryCount() const { return entryCount_; }
+
+    // T207: how many lookups this archive actually SERVED since it was opened.
+    // The EQE1 lazy opener is a linear probe over globalArchives, so an archive
+    // being open proves nothing about it being needed. A zero here is a proven
+    // unnecessary open+mmap -- the metric the manifest/index fix has to drive
+    // to zero. Counts successful lookup() and getRawData() calls only.
+    uint32_t getLookupHits() const { return lookupHits_; }
     const std::string& getFilePath() const { return filepath_; }
     bool isOpen() const { return isOpen_; }
 
@@ -60,6 +67,7 @@ private:
     std::unordered_map<std::string, TextureEntry> textureLookup_;
     std::unordered_map<std::string, std::pair<const uint8_t*, uint32_t>> rawDataLookup_;
     uint16_t entryCount_ = 0;
+    mutable uint32_t lookupHits_ = 0;  // T207, see getLookupHits()
     bool isOpen_ = false;
 };
 
