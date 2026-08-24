@@ -607,6 +607,7 @@ void WldLoader::parseFragment31(const char* fragBuffer, uint32_t fragLength, uin
 
     LOG_TRACE(MOD_GRAPHICS, "Frag31[{}]: stored {} brushRefs (of {} entries)", fragIndex, brushSet.brushRefs.size(), header.count);
     brushSets_[fragIndex] = brushSet;
+    lastBrushSetFragIndex_ = fragIndex;  // T211: see the header's comment
 }
 
 std::string WldLoader::resolveTextureName(uint32_t texIndex) const {
@@ -1419,7 +1420,20 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
             geom->materialData = cacheIt->second;
             LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': materialList cache HIT for texBrushSetRef={}", fragIndex, geom->name, texBrushSetRef);
         } else {
+            bool usedFallbackMaterialList = false;
             auto it31 = brushSets_.find(texBrushSetRef);
+            if (it31 == brushSets_.end() && lastBrushSetFragIndex_ != 0) {
+                // T211: fall back to the nearest preceding 0x31 material list.
+                auto fallback = brushSets_.find(lastBrushSetFragIndex_);
+                if (fallback != brushSets_.end()) {
+                    LOG_DEBUG(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef={} unresolvable "
+                              "(flags=0x{:x}); using nearest preceding materialList frag {}",
+                              fragIndex, geom->name, texBrushSetRef, header.flags,
+                              lastBrushSetFragIndex_);
+                    it31 = fallback;
+                    usedFallbackMaterialList = true;
+                }
+            }
             if (it31 != brushSets_.end()) {
                 LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': found brushSet for texBrushSetRef={} with {} brushRefs",
                           fragIndex, geom->name, texBrushSetRef, it31->second.brushRefs.size());
@@ -1483,9 +1497,30 @@ void WldLoader::parseFragment2C(const char* fragBuffer, uint32_t fragLength, uin
                 geom->materialData = matList;
                 LOG_TRACE(MOD_GRAPHICS, "Frag2C[{}] '{}': resolved materialList with {} textureNames",
                           fragIndex, geom->name, matList->textureNames.size());
+                if (usedFallbackMaterialList) {
+                    // T211: report what the fallback actually produced, not just
+                    // that the lookup stopped failing. Empty names here would
+                    // mean the mesh still renders as the magenta placeholder.
+                    size_t named = 0;
+                    for (const auto& n : matList->textureNames) if (!n.empty()) ++named;
+                    LOG_INFO(MOD_GRAPHICS, "Frag2C[{}] '{}': fallback materialList frag {} -> "
+                             "{} textureNames ({} non-empty, first='{}')",
+                             fragIndex, geom->name, lastBrushSetFragIndex_,
+                             matList->textureNames.size(), named,
+                             matList->textureNames.empty() ? "" : matList->textureNames[0]);
+                }
             } else {
-                LOG_WARN(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef={} NOT FOUND in brushSets_ (size={})",
-                         fragIndex, geom->name, texBrushSetRef, brushSets_.size());
+                // T211: is this a near-miss (ref inside the key range, one entry
+                // absent) or the wrong field entirely (ref nowhere near any key)?
+                // The 0x2C header has no material-list reference field, so
+                // texBrushSetRef is `flags & 0xFFFF` -- a heuristic, not a spec
+                // field. Print the key range so the answer is in the log.
+                uint32_t kmin = UINT32_MAX, kmax = 0;
+                for (const auto& [k, v] : brushSets_) { if (k < kmin) kmin = k; if (k > kmax) kmax = k; }
+                LOG_WARN(MOD_GRAPHICS, "Frag2C[{}] '{}': texBrushSetRef={} NOT FOUND in brushSets_ "
+                         "(size={}, keys {}..{}, flags=0x{:x})",
+                         fragIndex, geom->name, texBrushSetRef, brushSets_.size(),
+                         brushSets_.empty() ? 0 : kmin, kmax, header.flags);
             }
         }
     } else {

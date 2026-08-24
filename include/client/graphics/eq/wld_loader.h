@@ -676,6 +676,16 @@ private:
     std::map<uint32_t, uint32_t> textureRefs_;
     std::map<uint32_t, WldTextureBrush> materials_;
     std::map<uint32_t, WldTextureBrushSet> brushSets_;
+    // T211: fragment index of the most recently parsed 0x31 material list.
+    // Fragment 0x2C (legacy mesh) has NO material-list reference field -- the
+    // code derives one as `flags & 0xFFFF`, which is a flags word, not a
+    // reference (measured: flags=0x1803 identically across three unrelated
+    // models in three archives, giving ref 6147, outside every file's key
+    // range). WLD emits the material list immediately before the mesh that
+    // uses it, so the nearest preceding 0x31 is the correct owner -- verified
+    // on all four failing meshes. Used only as a fallback so meshes that do
+    // resolve today are untouched.
+    uint32_t lastBrushSetFragIndex_ = 0;
     // Cache of resolved material lists keyed by 0x31 fragment index
     std::map<uint32_t, std::shared_ptr<ResolvedMaterialList>> resolvedMaterialListCache_;
     std::vector<std::string> textureNames_;
