@@ -6362,6 +6362,22 @@ Review, `/mnt/projects/fable/review/T107/`.
    Audio's own reachability (T106 finding #3) is fixed as a side effect,
    since it depends on the same `ext.audioAvailable` populated by the same
    real path.
+## T109 (entity load distance gate) — **CLOSED 2026-08-24 by T210. Fixed by T111; gate is ACTIVE and pickup is live-verified. The text below is HISTORICAL — do not treat it as open.**
+
+> **CLOSED — read this first.** T111 (`d21086be`) fixed the pickup path and
+> enabled the gate; `config/constrained_presets.json` ships `entityLoadRadius:
+> 400.0` for `orangepi`, not the "unbounded" sentinel this entry describes.
+> T210 then verified the pickup live with the movement reproduction this entry
+> asks for: befallen, 140 entities deferred at zone-load, `/moveto` a deferred
+> entity (`a_greater_skeleton026`, dist 404.9). That entity went
+> `inGraph=false placeholder=true` -> `inGraph=true placeholder=false`, scene
+> placeholders fell 176 -> 168 and real models rose 191 -> 199, with
+> `EntityBuild: Placeholder -> NodeSetup -> MeshFinalize -> Built` transitions
+> firing after Step 8. Evidence: `review/T210/`. The "permanently-invisible
+> NPCs" consequence described below did NOT survive T111 and is not current.
+
+### (historical — the state before T111)
+
 ## T109 (entity load distance gate) — built and measured, SHIPS INERT — the deferred-entity streaming pickup path is confirmed broken
 
 **Priority follow-up, blocking**: T109 built a distance gate for
