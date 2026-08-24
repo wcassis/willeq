@@ -77,3 +77,63 @@ fix-then-verify, not verify.
 All runs re-zone with `#zone` first (T190's lesson): the character's saved
 position is whatever the client last sent, and a bad one puts the player
 outside all BSP regions, which invalidates anything measured afterwards.
+
+---
+
+## Addendum — the per-race cache hypothesis is CONFIRMED, and two faults compound
+
+Checked in code and against the same run.
+
+**In code** (`animated_mesh_creation.cpp`):
+
+```cpp
+auto& cache = compositeAllowed ? compositeAnimatedMeshCache_ : animatedMeshCache_;
+auto cacheIt = cache.find(key);
+if (cacheIt != cache.end()) return cacheIt->second;   // line ~28
+...
+if (!rawMesh) rawMesh = buildMeshFromGeometry(...);   // multi-buffer FALLBACK
+...
+cache[key] = animMesh;                                // line ~253 — SAME cache
+```
+
+The final store runs **regardless of which path produced the mesh**. So when an
+eligible entity's composite attempt fails, the resulting *multi-buffer* mesh is
+written into the **composite** cache. Every later eligible entity of that
+race/gender hits that entry and is handed the multi-buffer mesh — the composite
+path is never retried for that race for the rest of the zone session.
+
+**In the data:**
+
+| | |
+|---|---|
+| eligible entities | 119 |
+| composite build attempts (`calling getOrLoadTexture`) | **4** |
+| successes | **0** |
+| races with a sheet available at preload | 12 |
+| races ever attempted | **2** (36, 367) |
+
+115 of 119 eligible entities never attempted the composite path at all. All 4
+attempts that did happen failed with "composite texture not yet uploaded".
+
+**Two faults, compounding:**
+
+1. **Timing** — the composite texture is not uploaded yet when the first
+   eligible entity of a race is built. This is T187's original story, and it is
+   the cause of every attempt that actually happened (4/4).
+2. **Cache poisoning** — the failure is then stored in the composite cache, so
+   the path is never retried after the texture uploads. This converts a
+   *transient* timing miss into a *permanent* 0%.
+
+Fault 2 is why adoption is exactly zero rather than merely low, and it is the
+cheaper of the two to fix.
+
+**Proposed fix (not implemented here):** on the fallback path, do not write the
+multi-buffer mesh into the composite cache — either store it in
+`animatedMeshCache_` (where a multi-buffer mesh belongs) or skip caching, so the
+next eligible entity of that race re-attempts the composite build once the
+texture has uploaded. Bounded downside: if a sheet never uploads, eligible
+entities rebuild a multi-buffer mesh per entity instead of once — so the retry
+should be capped, or the "not yet uploaded" state distinguished from "no sheet".
+
+**Verification is a single log line:** `Composite entity adoption: E/T entities
+eligible, H sheet hits, M sheet misses` must show H > 0 in befallen.
