@@ -62,3 +62,55 @@ is now accounted for.
 
 `build/` is now `RelWithDebInfo` (it previously had no `CMAKE_BUILD_TYPE`).
 Keep while chasing this; reset if timings matter.
+
+---
+
+## T204 — Rebuilt Irrlicht with `-g`: the texture is DANGLING
+
+`scripts/build-gles2-x86.sh` only passes `-g` under `--t122-texprobe` (which
+also injects a behaviour-changing define), so the library was rebuilt directly:
+
+```
+make -C third_party/irrlicht-gles2-x86/source/Irrlicht NDEBUG=1 -j20 \
+  CXX=g++ CC=gcc AR=ar CXXFLAGS="-g -fno-omit-frame-pointer" \
+  CXXINCS="-I../../include -Izlib -Ijpeglib -Ilibpng -I/usr/include/libdrm" staticlib
+cp ../../lib/Linux/libIrrlicht.a ../../lib/libIrrlicht.a
+```
+
+then relinked `willeq`.
+
+**`p *texture` at the fault:**
+
+```
+$1 = {<irr::IReferenceCounted> = <invalid address>,
+      _vptr.ITexture = 0x50,
+      NamedPath = {Path = {array = 0x61 <error: Cannot access memory...>
+```
+
+**The texture is dangling.** The pointer *looks* plausible
+(`tex = 0x55555876d920`, which is why T203 read it as sane) but dereferences to
+garbage — a vtable of `0x50`. The driver frame's `vertices`/`indices` locals are
+likewise uninitialised, consistent with faulting on first use of the object.
+
+## What this settles, and what it re-opens
+
+- **Not bad quad data** (T203 — destRect/srcRect are correct).
+- **Not a type error** (the `static_cast` is valid).
+- **Not LRU eviction** (T202 — never runs; confirmed by zero eviction lines).
+- **It IS a use-after-free of the UI atlas `ITexture`.**
+
+So T202's instinct — "UIAtlas holds a raw pointer to something the cache can
+destroy" — was the right *shape* and the wrong *mechanism*. Something frees this
+texture that is not `evictUntilAvailable`, which is why pinning against eviction
+changed nothing.
+
+**Next: find who destroys it.** Candidates in order:
+`ConstrainedTextureCache`'s own teardown/clear paths; `unloadZone`'s
+`clearEQE1Loaders()` + cache clear; and anything reached from
+`releaseTextureDataAfterUpload` (`renderer_zone_stream.cpp:951`) — though that
+one releases model-loader *raw bytes*, not `ITexture` objects, so it is the
+weakest of the three. A watchpoint on the texture address, or a breakpoint on
+the cache's destroy path, should name it in one run.
+
+**`protectTexture()` from T202 is probably still wanted** — but it must be
+consulted by whichever path actually frees this, not only by the LRU scan.
