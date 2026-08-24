@@ -136,10 +136,22 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
                      "beyond the static list", spawnedRaces.size(), added);
         }
 
-        nextGlobalEQE1Idx_ = 0;
+        // T207: the name -> archive index turns a lookup miss into at most one
+        // open (and a genuinely absent name into zero), replacing the probe that
+        // walked this whole list. Loaded once; the candidate set above is what
+        // varies per zone.
+        if (!eqe1Index_.isLoaded()) {
+            if (!eqe1Index_.load("data/eqe1_texture_index.json")) {
+                LOG_ERROR(MOD_GRAPHICS,
+                          "EQE1: no data/eqe1_texture_index.json -- EQE1 lookups "
+                          "will resolve nothing. Rebuild it with "
+                          "eqe1_texture_index_builder --eqe1-path {}",
+                          config_.constrainedConfig.eqe1Path);
+            }
+        }
         if (constrainedTextureCache_) {
-            constrainedTextureCache_->setEQE1LazyOpener(
-                [this]() { return tryOpenNextGlobalEQE1(); });
+            constrainedTextureCache_->setEQE1ArchiveResolver(
+                [this](const std::string& n) { return openArchiveContaining(n); });
         }
 
         // Load composite entity EQE1 files (from entity_composite_builder --eqe1 output)

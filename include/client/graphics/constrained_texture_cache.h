@@ -265,8 +265,13 @@ public:
     // global archive on a lookup miss and registers it via addEQE1Loader()
     // internally; returns nullptr once the list is exhausted. Only archives a
     // zone actually references end up mmap'd.
-    void setEQE1LazyOpener(std::function<const EQE1Loader*()> opener) {
-        eqe1LazyOpener_ = std::move(opener);
+    // T207: resolve a lookup name to the ONE archive that holds it and open
+    // that archive (registering it via addEQE1Loader), or return nullptr having
+    // opened nothing. Replaces the old argless lazy opener, which walked the
+    // configured global list one archive at a time on every miss -- so a name
+    // present in no archive opened all of them.
+    void setEQE1ArchiveResolver(std::function<const EQE1Loader*(const std::string&)> resolver) {
+        eqe1ArchiveResolver_ = std::move(resolver);
     }
 
     // Look up raw (non-texture) data from registered EQE1 loaders.
@@ -510,8 +515,8 @@ private:
     // Compressed entries pending GPU upload (from EQE1 lookup)
     std::map<std::string, CompressedEntry> compressedEntries_;
 
-    // P04: lazy-open callback for global EQE1 archives (see setEQE1LazyOpener).
-    std::function<const EQE1Loader*()> eqe1LazyOpener_;
+    // P04/T207: archive resolver for EQE1 lookups (see setEQE1ArchiveResolver).
+    std::function<const EQE1Loader*(const std::string&)> eqe1ArchiveResolver_;
 
     // T202: names exempt from LRU eviction. See protectTexture().
     std::set<std::string> protectedTextures_;

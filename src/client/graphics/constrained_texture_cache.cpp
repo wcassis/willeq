@@ -1716,30 +1716,27 @@ std::vector<const EQE1Loader*> ConstrainedTextureCache::snapshotEQE1Loaders() co
 
 bool ConstrainedTextureCache::getEQE1RawData(const std::string& name,
                                                const uint8_t*& data, uint32_t& size) const {
-    // P04: search already-open archives first; on a miss, open the next
-    // not-yet-tried global archive (lazily, one at a time) and retry until
-    // found or the global archive list is exhausted. The loader-pointer
-    // vector is copied under eqe1LoadersMutex_ each round so the lazy opener
-    // (which appends via addEQE1Loader) never mutates a vector we're
-    // iterating; loader objects themselves live until zone teardown.
+    // P04/T207: search already-open archives first -- that keeps the current
+    // zone's archives preferred, since they are opened up front. On a miss ask
+    // the resolver for the ONE archive that holds this name; if it opens one,
+    // retry against it. At most one open per lookup, and zero when the name is
+    // in no archive at all. The loader-pointer vector is copied under
+    // eqe1LoadersMutex_ so the resolver (which appends via addEQE1Loader) never
+    // mutates a vector we are iterating; loaders live until zone teardown.
     size_t searched = 0;
-    for (;;) {
-        auto loaders = snapshotEQE1Loaders();
-        for (; searched < loaders.size(); ++searched) {
-            if (loaders[searched]->getRawData(name, data, size)) {
-                return true;
-            }
-        }
-        if (!eqe1LazyOpener_) return false;
-        if (!eqe1LazyOpener_()) return false;  // global archive list exhausted
-        // eqe1LazyOpener_ appended a newly opened loader via addEQE1Loader();
-        // loop re-snapshots and picks it up at `searched`.
+    auto loaders = snapshotEQE1Loaders();
+    for (; searched < loaders.size(); ++searched) {
+        if (loaders[searched]->getRawData(name, data, size)) return true;
     }
+    if (!eqe1ArchiveResolver_) return false;
+    const EQE1Loader* opened = eqe1ArchiveResolver_(name);
+    if (!opened) return false;
+    return opened->getRawData(name, data, size);
 }
 
 const ConstrainedTextureCache::CompressedEntry*
 ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
-    if (snapshotEQE1Loaders().empty() && !eqe1LazyOpener_) return nullptr;
+    if (snapshotEQE1Loaders().empty() && !eqe1ArchiveResolver_) return nullptr;
 
     // Strip .bmp extension — EQE1 stores names without extension
     std::string lookupName = name;
@@ -1754,33 +1751,33 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
     std::transform(lookupName.begin(), lookupName.end(), lookupName.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    // P04: as above — search open archives, then lazily open global archives
-    // one at a time on a miss until found or the list is exhausted. Vector
-    // snapshotted under eqe1LoadersMutex_ per round (see getEQE1RawData).
-    size_t searched = 0;
-    for (;;) {
+    // P04/T207: as above — search open archives, then resolve the miss to at
+    // most one archive via the index. Vector snapshotted under
+    // eqe1LoadersMutex_ (see getEQE1RawData).
+    auto emit = [](const EQE1Loader::TextureEntry* entry) -> const CompressedEntry* {
+        // Build a static CompressedEntry to return pointer to
+        static thread_local CompressedEntry result;
+        result.etc1Data = entry->data;
+        result.dataSize = entry->dataSize;
+        result.width = entry->width;
+        result.height = entry->height;
+        result.mipLevels = entry->mipLevels;
+        result.hasAlpha = entry->hasAlpha;
+        result.alphaData = entry->alphaData;
+        result.alphaDataSize = entry->alphaDataSize;
+        result.payloadFormat = entry->payloadFormat;
+        return &result;
+    };
+
     auto loaders = snapshotEQE1Loaders();
-    for (; searched < loaders.size(); ++searched) {
-        const auto* loader = loaders[searched];
-        auto* entry = loader->lookup(lookupName);
-        if (entry) {
-            // Build a static CompressedEntry to return pointer to
-            static thread_local CompressedEntry result;
-            result.etc1Data = entry->data;
-            result.dataSize = entry->dataSize;
-            result.width = entry->width;
-            result.height = entry->height;
-            result.mipLevels = entry->mipLevels;
-            result.hasAlpha = entry->hasAlpha;
-            result.alphaData = entry->alphaData;
-            result.alphaDataSize = entry->alphaDataSize;
-            result.payloadFormat = entry->payloadFormat;
-            return &result;
-        }
+    for (const auto* loader : loaders) {
+        if (const auto* entry = loader->lookup(lookupName)) return emit(entry);
     }
-        if (!eqe1LazyOpener_) return nullptr;
-        if (!eqe1LazyOpener_()) return nullptr;  // global archive list exhausted
-    }
+    if (!eqe1ArchiveResolver_) return nullptr;
+    const EQE1Loader* opened = eqe1ArchiveResolver_(lookupName);
+    if (!opened) return nullptr;
+    if (const auto* entry = opened->lookup(lookupName)) return emit(entry);
+    return nullptr;
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(

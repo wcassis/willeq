@@ -35,6 +35,7 @@
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/texture_atlas.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/portal_system.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/boids_manager.h"
@@ -1454,20 +1455,25 @@ private:
     mutable std::mutex eqe1Mutex_;
     // Try to open an EQE1 file and register with cache. Returns loader pointer or nullptr.
     // Thread-safe — called from entity prep worker and equipment loader threads.
+    // T207: name -> owning-archive index (data/eqe1_texture_index.json). Loaded
+    // once and reused across zones; the candidate set is per-zone, not this.
+    EQE1TextureIndex eqe1Index_;
+
     const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
 
     // P04: global archives resolved for the current zone but not yet opened.
     // loadZoneStep0_EQE1 populates this (instead of eagerly opening every
-    // global archive); tryOpenNextGlobalEQE1() opens them one at a time, only
+    // global archive); openArchiveContaining() opens the single owning one, only
     // as ConstrainedTextureCache's lookup actually misses on what's open so
     // far. Reset alongside eqe1Loaders_ on zone teardown.
+    // T207: this is now a candidate SET, not a probe order -- the index decides
+    // which one holds a given name, this decides which are eligible at all.
     std::vector<std::string> pendingGlobalEQE1Archives_;
-    size_t nextGlobalEQE1Idx_ = 0;
-    // Opens pendingGlobalEQE1Archives_[nextGlobalEQE1Idx_++] (skipping any that
-    // fail to open, e.g. missing files) until one opens successfully or the
-    // list is exhausted. Returns the opened loader or nullptr when exhausted.
-    // Registered with ConstrainedTextureCache via setEQE1LazyOpener().
-    const EQE1Loader* tryOpenNextGlobalEQE1();
+
+    // T207: resolve `name` to the one candidate archive that holds it and open
+    // exactly that archive, or return nullptr having opened nothing. Replaces
+    // tryOpenNextGlobalEQE1(), which probed the whole configured list.
+    const EQE1Loader* openArchiveContaining(const std::string& name);
 
     // T207: at zone-in-complete, report every opened EQE1 archive with the
     // number of lookups it actually served. Archives with zero hits were opened

@@ -401,16 +401,33 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
     return nullptr;
 }
 
-const EQE1Loader* IrrlichtRenderer::tryOpenNextGlobalEQE1() {
-    while (nextGlobalEQE1Idx_ < pendingGlobalEQE1Archives_.size()) {
-        const std::string name = pendingGlobalEQE1Archives_[nextGlobalEQE1Idx_++];
-        const EQE1Loader* loader = getOrOpenEQE1(name);
-        if (loader) {
-            return loader;
+const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& name) {
+    // T207. Two rules, in order:
+    //   1. A name absent from the whole tree opens NOTHING. That is the case
+    //      the old probe handled worst -- races 415/457 resolve to no archive,
+    //      and each one used to drain the entire configured list.
+    //   2. Among the archives that do hold the name, only ones in this zone's
+    //      candidate set are eligible, taken in configured order. A name can
+    //      live in hundreds of archives (one lives in 691); opening an
+    //      unrelated zone's file just because it also happens to contain the
+    //      name would trade the old waste for a stranger kind.
+    if (!eqe1Index_.isLoaded()) return nullptr;
+
+    const std::vector<uint16_t>* owners = eqe1Index_.owners(name);
+    if (!owners) return nullptr;
+
+    for (const std::string& candidate : pendingGlobalEQE1Archives_) {
+        for (uint16_t idx : *owners) {
+            if (eqe1Index_.archiveName(idx) == candidate) {
+                return getOrOpenEQE1(candidate);
+            }
         }
-        // getOrOpenEQE1 returned nullptr (file missing/bad) — try the next
-        // global archive rather than giving up the whole lazy-open chain.
     }
+
+    // In the tree but not in this zone's candidate set. Nothing opened -- an
+    // asset the zone was never configured to reach, which is worth seeing.
+    LOG_DEBUG(MOD_GRAPHICS, "EQE1: '{}' exists in {} archive(s), none a candidate "
+              "for zone '{}'", name, owners->size(), currentZoneName_);
     return nullptr;
 }
 

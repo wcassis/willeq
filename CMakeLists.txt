@@ -459,6 +459,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame_budget_governor.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/eqe1_loader.cpp
+    src/client/graphics/eqe1_texture_index.cpp
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
@@ -1183,6 +1184,24 @@ IF(EQT_GRAPHICS)
     )
 
     # Equipment Index Builder tool (offline equipment model index from *equip.s3d)
+    # T207: name -> owning-archive index for an EQE1 tree. Separate target from
+    # equipment_index_builder on purpose -- different question, different output,
+    # different consumer (see the tool's header comment).
+    ADD_EXECUTABLE(eqe1_texture_index_builder
+        tools/eqe1_texture_index_builder.cpp
+        src/client/graphics/eqe1_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(eqe1_texture_index_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(eqe1_texture_index_builder ${ZLIB_LIBRARIES} fmt::fmt)
+    ELSE()
+        TARGET_LINK_LIBRARIES(eqe1_texture_index_builder ${ZLIB_LIBRARIES} ${FMT_LIBRARY})
+    ENDIF()
+
     ADD_EXECUTABLE(equipment_index_builder
         tools/equipment_index_builder.cpp
         src/client/graphics/eq/pfs.cpp

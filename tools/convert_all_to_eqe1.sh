@@ -75,3 +75,19 @@ OUTPUT_SIZE=$(du -sb "$OUTPUT"/*.eqe1 2>/dev/null | awk '{sum+=$1} END {print su
 echo ""
 echo "  Input:  $((INPUT_SIZE / 1024 / 1024)) MB (S3D)"
 echo "  Output: $((OUTPUT_SIZE / 1024 / 1024)) MB (EQE1)"
+
+# T207: rebuild the name -> archive index for the tree we just wrote. The
+# runtime resolves every EQE1 lookup through this file, so a stale index means
+# textures that exist go unfound. Regenerating it here keeps the two in step --
+# never ship a regenerated asset tree without it.
+INDEX_BUILDER="$(dirname "$0")/../build/bin/eqe1_texture_index_builder"
+INDEX_OUT="$(dirname "$0")/../data/eqe1_texture_index.json"
+echo ""
+if [ -x "$INDEX_BUILDER" ]; then
+    echo "  Rebuilding texture index -> $INDEX_OUT"
+    "$INDEX_BUILDER" --eqe1-path "$OUTPUT" --output "$INDEX_OUT" 2>/dev/null | grep '^Wrote'
+else
+    echo "  WARNING: eqe1_texture_index_builder not built -- data/eqe1_texture_index.json"
+    echo "           is now STALE for this tree. Build it and run:"
+    echo "             ./build/bin/eqe1_texture_index_builder --eqe1-path $OUTPUT"
+fi
