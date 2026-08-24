@@ -160,3 +160,54 @@ either serves a handful or, in 24 cases, nothing at all. `akanon_chr`, the one
 T199 derived from spawns, correctly serves 5.
 
 This is the before number. The index fix has to drive "served no lookup" to 0.
+
+## FIXED: 37 archives -> 13, zero unused
+
+`tools/eqe1_texture_index_builder` (new target) walks an EQE1 tree, reads each
+archive's TOC once, and writes `data/eqe1_texture_index.json`. Kept separate from
+`equipment_index_builder` on purpose: that one maps equipment *model IDs* for the
+equipment path and has its own consumer; widening it would have made its name a
+lie and entangled two things with different lifetimes.
+
+The index records **every** archive holding a name, not one. 21356 of 50447 names
+live in more than one archive and one lives in 691 -- a single-winner index would
+have resolved a name to whichever archive sorts first alphabetically and opened
+an unrelated zone's file, trading the old waste for a stranger kind.
+
+Runtime: `EQE1TextureIndex` loads it once; `IrrlichtRenderer::
+openArchiveContaining(name)` resolves a miss to the one archive that both holds
+the name and is in this zone's candidate set, in configured order.
+`ConstrainedTextureCache`'s argless lazy opener became a name-taking resolver, so
+both lookup paths are now search-open-archives then resolve-at-most-one.
+`tryOpenNextGlobalEQE1()` and its cursor are deleted.
+
+Cold befallen zone-in, x86, regen tree, orangepi preset (`review/T207/`):
+
+    |                | archives open | served nothing | mapped |
+    |----------------|---------------|----------------|--------|
+    | before         |      37       |       24       | 149MB  |
+    | after          |      13       |        0       |  46MB  |
+
+Every archive still open serves at least one lookup:
+
+    global_chr 138  befallen_obj 59  befallen_chr 56  global6_chr 9
+    befallen     9  gequip5       5  akanon_chr    5  sky         4
+    gequip       3  textures      2  gequip3       2  loyequip    1
+    gatesequip   1
+
+Same 294 lookups served, same 6 skipped entities, no new errors. Suite 2745/2746
+(sole failure the known ALSA host quirk).
+
+One honest note on the shifted counts: `gequip4` dropped out and `gatesequip`
+came in, because a name present in several archives now resolves by configured
+candidate order rather than by whichever archive the probe happened to reach
+first. The content behind a given name is the same either way.
+
+`convert_all_to_eqe1.sh` now rebuilds the index at the end of a conversion. The
+runtime resolves every lookup through this file, so a stale index means textures
+that exist go unfound -- the two must never ship out of step.
+
+## Still open
+Races 415 and 457 resolve to no archive at all and still render as placeholder
+cubes. That is now a clean O(1) answer instead of a 33-open scan, but the assets
+are genuinely missing -- a real gap, tracked separately from this fix.
