@@ -596,6 +596,12 @@ void ConstrainedTextureCache::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     // Notify listeners for each texture being cleared
     for (auto& pair : cache_) {
+        // T205: a protected texture has an owner outside this cache holding a
+        // raw pointer to it; destroying it here is exactly the use-after-free
+        // this guard exists to prevent.
+        if (protectedTextures_.find(pair.first) != protectedTextures_.end()) {
+            continue;
+        }
         for (auto* listener : evictionListeners_) {
             listener->onTextureEvicted(pair.first, pair.second.texture);
         }
@@ -623,9 +629,46 @@ void ConstrainedTextureCache::clear() {
             driver_->removeTexture(pair.second.texture);
         }
     }
+    // T205: preserve protected entries across the zone-unload wipe.
+    //
+    // clear() is the zone-unload hook and destroyed EVERY cached texture,
+    // including the UI atlas -- which is not a zone asset: UIAtlas::load()
+    // fetches it once from willeq.eqe1 and UIRenderer keeps a RAW pointer to
+    // it for the life of the process. On the next zone load, unloadZone() ->
+    // clear() -> removeTexture() deleted it, and the following frame drew
+    // freed memory: SIGSEGV in COpenGLES2Driver::draw2DImage, with the
+    // texture's vtable reading 0x50. Found by watchpoint (T205); the
+    // destroying stack was
+    //   ITexture::~ITexture <- COGLES2Texture::~COGLES2Texture <- drop()
+    //   <- CNullDriver::removeTexture <- ConstrainedTextureCache::clear
+    //   <- IrrlichtRenderer::unloadZone <- loadZoneGraphicsOnThread.
+    //
+    // This is the same hazard T119 documents above for scene nodes that
+    // survive clear(); the UI atlas is another owner that survives it, and
+    // protectTexture() is how an owner says so. Note the LRU path
+    // (evictUntilAvailable) consults protectedTextures_ too -- guarding only
+    // that one was T202's mistake, and why pinning appeared to do nothing.
+    std::map<std::string, CachedTexture> preserved;
+    for (const auto& name : protectedTextures_) {
+        auto it = cache_.find(name);
+        if (it != cache_.end()) {
+            preserved.emplace(it->first, it->second);
+        }
+    }
+
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
+
+    for (auto& [name, entry] : preserved) {
+        currentUsage_ += entry.sizeBytes;
+        lruOrder_.push_back(name);
+        cache_.emplace(name, entry);
+    }
+    if (!preserved.empty()) {
+        LOG_INFO(MOD_GRAPHICS, "Constrained cache: preserved {} protected texture(s) "
+                 "across zone unload", preserved.size());
+    }
 
     // P17: clear() is the sole zone-unload hook (called once from
     // IrrlichtRenderer::unloadZone(), plus harmlessly from the destructor) --
