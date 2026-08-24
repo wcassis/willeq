@@ -24,6 +24,14 @@ bool UIAtlas::load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* ca
         return false;
     }
 
+    // T202: the atlas is drawn every frame for the life of the process and we
+    // keep a RAW pointer to it, but it lives in the zone-scoped LRU cache like
+    // any other EQE1 texture. Without this, memory pressure evicted it and
+    // UIRenderer::endFrame drew a freed COGLES2Texture -- a SIGSEGV that
+    // reproduced in 7 of 8 zone/tree/preset combinations and blocked EQE1
+    // entirely (T201).
+    cache->protectTexture("ui_atlas");
+
     // Load sprite rects from JSON raw data entry in EQE1
     const uint8_t* jsonData = nullptr;
     uint32_t jsonSize = 0;

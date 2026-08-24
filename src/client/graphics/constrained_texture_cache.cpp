@@ -1109,7 +1109,29 @@ bool ConstrainedTextureCache::evictUntilAvailable(size_t bytesNeeded) {
     // Evict LRU textures until we have enough space
     // Safe eviction: clearTextureReferences() removes texture from mesh materials before deletion
     while (currentUsage_ + bytesNeeded > config_.textureMemoryBytes && !lruOrder_.empty()) {
-        std::string oldest = lruOrder_.front();
+        // T202: skip protected entries. The UI atlas lives in this cache (it is
+        // loaded from willeq.eqe1 like any other EQE1 texture) but is NOT a zone
+        // asset -- it is drawn every frame for the lifetime of the process, and
+        // UIAtlas holds a RAW pointer to it. Evicting it destroyed the
+        // COGLES2Texture out from under UIRenderer::endFrame, and the next
+        // draw2DImage ran on freed memory: SIGSEGV in 7 of 8 configurations
+        // (T201), on every zone and both asset trees, but ONLY with --eqe1-path
+        // -- because that is the only path that puts ui_atlas in this cache.
+        std::string oldest;
+        size_t scanned = 0;
+        for (const auto& candidate : lruOrder_) {
+            ++scanned;
+            if (protectedTextures_.find(candidate) == protectedTextures_.end()) {
+                oldest = candidate;
+                break;
+            }
+        }
+        if (oldest.empty()) {
+            // Everything resident is protected — nothing left to give back.
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: cannot free {} bytes, all {} "
+                     "resident textures are protected", bytesNeeded, scanned);
+            break;
+        }
         evictTexture(oldest);
     }
 

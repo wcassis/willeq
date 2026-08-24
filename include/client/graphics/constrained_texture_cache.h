@@ -6,6 +6,7 @@
 #include "client/graphics/texture_upload_ledger.h"
 #include <irrlicht.h>
 #include <map>
+#include <set>
 #include <list>
 #include <mutex>
 #include <vector>
@@ -250,6 +251,12 @@ public:
     void removeEvictionListener(TextureEvictionListener* listener);
 
     // EQE1 flat pack loader management (GLES2 ETC1 compressed textures)
+    // T202: mark a texture as never-evictable. Needed for anything the
+    // renderer holds a RAW pointer to across frames -- the UI atlas is loaded
+    // from willeq.eqe1 into this cache but is drawn every frame forever, so
+    // LRU eviction left UIRenderer::endFrame drawing a freed texture (T201).
+    void protectTexture(const std::string& name) { protectedTextures_.insert(name); }
+
     void addEQE1Loader(const EQE1Loader* loader);
     void clearEQE1Loaders();
 
@@ -505,6 +512,9 @@ private:
 
     // P04: lazy-open callback for global EQE1 archives (see setEQE1LazyOpener).
     std::function<const EQE1Loader*()> eqe1LazyOpener_;
+
+    // T202: names exempt from LRU eviction. See protectTexture().
+    std::set<std::string> protectedTextures_;
 
     // P13: texture-upload audit ledger (see setLedgerEnabled/dumpLedger).
     // Disabled by default; when disabled, none of the record*() calls below
