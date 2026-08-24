@@ -65,6 +65,40 @@ spawned) and **too narrow** (no other-zone `_chr` pack, which is the bug).
   is a fatal error, so the set must be right *before* the first lookup, not
   discovered by failing (T196/T197).
 
+## Resolution order — prefer what is already open (Will)
+
+`also_in` is not a fallback list to walk in file order; it is a set of places a
+race can be found, and **an archive already open costs nothing to reuse**. So
+per spawned race:
+
+1. **Is the race present in any archive already in the set?** That includes the
+   zone's own archives (`{zone}`, `{zone}_obj`, `{zone}_chr`) and anything
+   already added for an earlier race. **If yes, add nothing.**
+2. **Otherwise add exactly ONE archive**, preferring one that is already
+   scheduled for another race in this zone (maximise sharing) and falling back
+   to `s3d_file`.
+
+This is a small greedy set-cover over the zone's distinct races, and it makes
+the common case free.
+
+**How effective this is, measured on race 24 (Fish):** it is packed in **74
+archives** — `s3d_file: akanon_chr.s3d` plus **73** `also_in` entries including
+`qeynos2_chr`, `crushbone_chr`, `oggok_chr`, `mistmoore_chr` and most starter
+zones. A player standing in any of those zones already has the model open and
+step 1 short-circuits. The duplication across the client's asset set is what
+makes the rule pay.
+
+**Befallen is the case where it does not:** `befallen*` is **not** among race
+24's 74 archives, so a fish spawned in befallen genuinely requires one extra
+open (`akanon_chr`). That is the correct outcome — one open, not the 664 the
+atlas was doing, and not the zero that produced T198's FATAL.
+
+Worth noting what that implies: the **original S3D client has the same gap** —
+it opens `befallen*` + globals and would not find the fish model either, then
+render a placeholder rather than fail. That is a plausible source of the
+**magenta/checkerboard textures** already on the open list, and it means this
+work may fix that item as a side effect.
+
 ## Sequencing note
 
 Race 24's entry lists `s3d_file` **and** eleven `also_in` archives. Only one is
