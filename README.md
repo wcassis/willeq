@@ -189,7 +189,7 @@ Legend: Done | Partial | Not Implemented
 | Inspect | Done | /inspect; /inspectmessage sets your own text |
 | LFG / anon / roleplay / AFK | Done | Toggles |
 | Surname / random | Done | |
-| Bug / petition | Done | Sent to server |
+| Bug / petition | Partial | /petition works; /bug body does not match the eqemu report format (T135) |
 
 ### NPC Interaction
 | Feature | Status | Notes |
