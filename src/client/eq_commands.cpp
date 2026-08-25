@@ -229,8 +229,8 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 
 	d.entityCount = m_entities.size();
 	d.entityEstimateBytes = m_entities.size() * sizeof(Entity);
-	d.doorCount = m_door_state_manager.getDoorCount();
-	d.doorEstimateBytes = m_door_state_manager.getDoorCount() * sizeof(EQT::DoorState);
+	d.doorCount = m_game_state.doors().getDoorCount();
+	d.doorEstimateBytes = m_game_state.doors().getDoorCount() * sizeof(EQT::DoorState);
 	if (m_spell_manager) {
 		d.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
 		d.spellDbEstimateBytes = d.spellDbCount * 512;

@@ -42,3 +42,71 @@ add yours at the END of the switch to keep the rebase trivial),
 ## STOP
 If `DoorStateManager` semantics differ between the renderer's needs and the
 action layer's (e.g. coordinate frame), report rather than fork a fourth copy.
+
+## Review (2026-08-25, slot2, branch task/T219-door-projection off fable 3f5eaf30)
+
+### What changed
+- `EverQuest::m_door_state_manager` (and its `GetDoorStateManager()` accessor)
+  DELETED. Every reader now uses `m_game_state.doors()` (the write model):
+  `eq_entities.cpp` (spawn add, MoveDoor get/set, SendClickDoor get),
+  `eq_bridge.cpp` (renderer `ZoneLoadSnapshot.doors` copy -- unchanged
+  semantics, same `getAllDoors()` iteration), `eq_zone.cpp` (`CleanupZone`
+  clear), `eq_commands.cpp` (diagnostics door count). `grep m_door_state_manager
+  src include tests` = 0 hits.
+- `DoorSpawnedData` gained `invertState` + `doorParam` (additive) so the
+  projection holds the FULL `DoorState`, not a partial; the publisher in
+  `ZoneProcessSpawnDoor` fills them.
+- `GameStateSyncBridge`: `DoorSpawned` -> `doors().addDoor()`,
+  `DoorStateChanged` -> `doors().setDoorState()` (both at the END of the
+  switch per dispatch), and `ZoneUnloading` now also `doors().clear()`
+  (one line inside the existing case -- same reasoning as T81's entity clear).
+- No existing door event was missing: `DoorSpawned`/`DoorStateChanged` already
+  existed in `event_bus.h` and were already published end-to-end for
+  `IrrlichtBridge`; the gap was only that nothing fed them into the projection.
+
+### Coordinate-frame STOP check
+No STOP. Door x/y are server-swapped at parse time "same as entity spawns"
+(`eq_entities.cpp`), the renderer consumes them via the snapshot unchanged,
+and `ZoneProcessMoveDoor`'s audio distance already compares `door->x/y/z`
+directly against `m_x/m_y/m_z` -- the same frame `PlayerState::x()/y()/z()`
+and `DoorStateManager::getNearestDoor()` use. Renderer and action layer agree.
+
+### Tests: measured red/green (`review/T219/projection_test_{red,green}.txt`)
+6 new cases in `tests/test_game_state_sync_bridge.cpp`. Red = bridge TU
+reverted to fable's copy (no door cases), test file kept:
+
+| case | red (no cases) | green |
+|---|---|---|
+| DoorSpawnedAddsCompleteDoorToProjection | FAIL (count 0) | OK |
+| DoorSpawnedMakesNearestDoorQueryFindIt | FAIL (nearest null) | OK |
+| DoorStateChangedUpdatesOpenFlag | FAIL (door null) | OK |
+| ZoneUnloadingClearsAllDoors | FAIL (count 0 != 2) | OK |
+| DoorStateChangedForUnknownDoorIsANoOp | OK (by design: no-op either way) | OK |
+| DoorEventsStillDelegateToWrappedBridge | OK (by design: delegation is unconditional) | OK |
+
+Red = 4 FAIL / 2 OK, exit 1; green = 6/6, exit 0. First red attempt
+SEGFAULTED (test derefed `getDoor()` without a null check) -- the test was
+hardened to `ASSERT_NE(nullptr)` first so an absent case fails cleanly
+instead of crashing; the table is from the hardened run.
+Existing door tests (`test_action_dispatcher` door cases, `test_door_*`) pass.
+
+### Verification bar
+1. `cmake --build build -j24`: PASS.
+2. Full ctest: **2760/2761** (`review/T219/ctest_full.txt` + `ctest_orphans_rerun.txt`).
+   Only failure: documented ALSA `AudioManagerTest.PreloadCommonSounds`.
+   `check_build_tree_orphans` failed on the first run -- 9 stale binaries in
+   slot2's `build/bin` from its T161-era tree (`analyze_hum_model`,
+   `test_eq_commands_{assist,attack,vendor}`, ...), pinned to since-deleted
+   sources; deleted per the script's own instruction, re-run PASS. Not
+   related to this unit.
+3. `build-gles2-x86.sh`: PASS.
+4. Visual gate: PASS on second run, goldens untouched. First run FAILED on a
+   timing metric only (`befallen p95 CPU ms 45.8 > ceiling 40.1`) immediately
+   after the ARM docker build finished; no image/memory assertion failed;
+   rerun on an idle host PASS (`review/T219/visual_gate{,_rerun}.txt`).
+5. `build-arm-noble.sh`: PASS.
+6. `check_file_sizes.sh fable`: 5 ok / 3 WARN (pre-existing oversized eq.h,
+   eq_bridge.cpp, eq_entities.cpp) / 0 FAIL.
+
+### Live leg
+See "Live leg" subsection below (filled when the eqemu lock was available).

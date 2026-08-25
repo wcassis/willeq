@@ -366,7 +366,7 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		snap.entities.push_back(entity);
 	}
 	// Copy doors
-	for (const auto& [id, door] : m_door_state_manager.getAllDoors()) {
+	for (const auto& [id, door] : m_game_state.doors().getAllDoors()) {
 		snap.doors.push_back(door);
 	}
 	// Zone lines (expand geometry + extract bounding boxes)

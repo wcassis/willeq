@@ -356,6 +356,8 @@ struct DoorSpawnedData {
     uint16_t size = 0;
     uint8_t opentype = 0;
     bool isOpen = false;
+    bool invertState = false;   // T219: carried so the projection holds the full DoorState
+    uint32_t doorParam = 0;     // T219: lock type / key item id
 };
 
 struct DoorStateChangedData {

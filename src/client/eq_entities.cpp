@@ -572,8 +572,8 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		// Compute initial open state: XOR of spawn state and invert flag
 		door.isOpen = (door_data->state_at_spawn != 0) != door.invertState;
 
-		// Store in door state manager
-		m_door_state_manager.addDoor(door);
+		// Store in the write-model GameState (T219: was a separate third copy)
+		m_game_state.doors().addDoor(door);
 
 		// Debug: dump raw bytes at critical offsets (60-68)
 		LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
@@ -596,6 +596,8 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 			data.size = door.size;
 			data.opentype = door.opentype;
 			data.isOpen = door.isOpen;
+			data.invertState = door.invertState;
+			data.doorParam = door.doorParam;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::DoorSpawned, std::move(data)));
 		}
@@ -2353,10 +2355,10 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 	uint8_t action = p.GetUInt8(3);
 
 	// Update door state in game state manager
-	const EQT::DoorState* door = m_door_state_manager.getDoor(door_id);
+	const EQT::DoorState* door = m_game_state.doors().getDoor(door_id);
 	if (door) {
 		bool is_open = (action == 0x03);
-		m_door_state_manager.setDoorState(door_id, is_open);
+		m_game_state.doors().setDoorState(door_id, is_open);
 
 		// Check if this was a user-initiated door click
 		bool user_initiated = (m_pending_door_clicks.erase(door_id) > 0);
@@ -2454,7 +2456,7 @@ void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
 	}
 
 	// Check if door exists
-	const EQT::DoorState* door = m_door_state_manager.getDoor(door_id);
+	const EQT::DoorState* door = m_game_state.doors().getDoor(door_id);
 	if (!door) {
 		LOG_WARN(MOD_ENTITY, "Attempted to click unknown door {}", door_id);
 		return;

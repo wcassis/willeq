@@ -269,8 +269,8 @@ void EverQuest::CleanupZone()
 	m_entities.clear();
 	m_game_state.entities().clear();
 
-	// Clear door data
-	m_door_state_manager.clear();
+	// Clear door data (T219: doors live in the write-model GameState)
+	m_game_state.doors().clear();
 
 	// Clear pet state (pet won't exist in new zone)
 	if (m_pet_spawn_id != 0) {

@@ -208,6 +208,9 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             // about to change; without this the projection would keep every
             // entity from the old zone forever.
             m_state.entities().clear();
+            // T219: same reasoning for doors -- EverQuest::CleanupZone() clears
+            // its own m_game_state.doors() right after, with no per-door event.
+            m_state.doors().clear();
             break;
         }
         case state::GameEventType::GroupChanged: {
@@ -390,6 +393,40 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
             } else if (eqt::inventory::isBankSlot(d.slotId)) {
                 m_state.inventory().setBankOccupied(d.slotId - eqt::inventory::BANK_BEGIN, d.hasItem);
             }
+            break;
+        }
+        case state::GameEventType::DoorSpawned: {
+            // T219: nothing ever populated Application::m_gameState->doors()
+            // (nor EverQuest::m_game_state.doors() -- the live data was a
+            // THIRD DoorStateManager on EverQuest, now deleted). Without
+            // this case /door, the Interact hotkey and
+            // ActionDispatcher::clickDoor/clickNearestDoor/interactNearest
+            // always fail "No door nearby". The event carries the complete
+            // DoorState (invertState/doorParam added additively this unit),
+            // so addDoor() here is a full copy, not a partial.
+            const auto& d = std::get<state::DoorSpawnedData>(event.data);
+            EQT::DoorState door;
+            door.doorId = d.doorId;
+            door.name = d.name;
+            door.x = d.x;
+            door.y = d.y;
+            door.z = d.z;
+            door.heading = d.heading;
+            door.incline = d.incline;
+            door.size = d.size;
+            door.opentype = d.opentype;
+            door.isOpen = d.isOpen;
+            door.invertState = d.invertState;
+            door.doorParam = d.doorParam;
+            m_state.doors().addDoor(door);
+            break;
+        }
+        case state::GameEventType::DoorStateChanged: {
+            // T219: mirrors EverQuest::ZoneProcessMoveDoor()'s
+            // setDoorState() on the write model. No-op for an unknown door
+            // (setDoorState() ignores it), matching the source.
+            const auto& d = std::get<state::DoorStateChangedData>(event.data);
+            m_state.doors().setDoorState(d.doorId, d.isOpen);
             break;
         }
         default:

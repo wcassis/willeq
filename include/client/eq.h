@@ -971,7 +971,6 @@ public:
 
 	// Door interaction
 	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
-	const EQT::DoorStateManager& GetDoorStateManager() const { return m_door_state_manager; }
 
 	// World object / Tradeskill interaction
 	void SendClickObject(uint32_t drop_id);
@@ -1740,8 +1739,9 @@ private:
 	// String database for EQ message lookups (works in all modes)
 	EQT::StringDatabase m_string_db;
 
-	// S06: Door game state (replaces std::map<uint8_t, Door> m_doors)
-	EQT::DoorStateManager m_door_state_manager;
+	// T219: door state lives in m_game_state.doors() (the write model) --
+	// the former separate EQT::DoorStateManager member was a third copy that
+	// neither GameState instance ever saw (refactor/T78_two_gamestate_analysis.md item 3).
 	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
 
 	// World object tracking (forges, looms, groundspawns, etc.)

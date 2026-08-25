@@ -228,7 +228,8 @@ TEST_F(GameStateSyncBridgeTest, InventorySlotChangedStillDelegatesToWrappedBridg
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
 }
 
-// ============================================================================
+// =====================================================================}
+
 // T44: SpellGemChanged / SpellCastStarted / SpellCastComplete, replacing
 // Application::syncSpellState(). SpellCastStarted/SpellCastComplete carry a
 // casterId that can be any entity (self, NPC, other player), so these cases
@@ -1231,4 +1232,127 @@ TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedStillDelegatesToWrappedBridge)
 
     ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::PlayerFlagsChanged);
+=======
+// ========== T219: door projection ==========
+//
+// Before T219 nothing populated state::GameState::doors() on EITHER
+// instance -- the live door data was a third DoorStateManager on EverQuest
+// (deleted in T219). These cases are the regression net the 2026-08-25
+// projection decision (docs/decisions.md) requires: each one fails when
+// its GameStateSyncBridge case is removed (measured in the unit's Review).
+
+namespace {
+
+DoorSpawnedData makeDoorSpawned(uint8_t id, const char* name, float x, float y, float z) {
+    DoorSpawnedData d;
+    d.doorId = id;
+    d.name = name;
+    d.x = x;
+    d.y = y;
+    d.z = z;
+    d.heading = 90.0f;
+    d.incline = 7;
+    d.size = 110;
+    d.opentype = 58;
+    d.isOpen = false;
+    d.invertState = true;
+    d.doorParam = 12345;
+    return d;
+}
+
+} // namespace
+
+TEST_F(GameStateSyncBridgeTest, DoorSpawnedAddsCompleteDoorToProjection) {
+    ASSERT_EQ(state->doors().getDoorCount(), 0u);
+
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(7, "QEYDOOR1", 10.0f, 20.0f, 3.0f)));
+
+    ASSERT_EQ(state->doors().getDoorCount(), 1u);
+    const EQT::DoorState* door = state->doors().getDoor(7);
+    ASSERT_NE(door, nullptr);
+    EXPECT_EQ(door->doorId, 7);
+    EXPECT_EQ(door->name, "QEYDOOR1");
+    EXPECT_FLOAT_EQ(door->x, 10.0f);
+    EXPECT_FLOAT_EQ(door->y, 20.0f);
+    EXPECT_FLOAT_EQ(door->z, 3.0f);
+    EXPECT_FLOAT_EQ(door->heading, 90.0f);
+    EXPECT_EQ(door->incline, 7u);
+    EXPECT_EQ(door->size, 110);
+    EXPECT_EQ(door->opentype, 58);
+    EXPECT_FALSE(door->isOpen);
+    // The two fields DoorSpawnedData did not carry before T219 -- the
+    // projection must hold the FULL DoorState, not a partial.
+    EXPECT_TRUE(door->invertState);
+    EXPECT_EQ(door->doorParam, 12345u);
+}
+
+TEST_F(GameStateSyncBridgeTest, DoorSpawnedMakesNearestDoorQueryFindIt) {
+    // The exact query ActionDispatcher::clickNearestDoor()/interactNearest()
+    // run -- the one that always returned null before T219.
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(1, "FAR", 500.0f, 500.0f, 0.0f)));
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(2, "NEAR", 12.0f, 8.0f, 0.0f)));
+
+    const EQT::DoorState* nearest = state->doors().getNearestDoor(10.0f, 10.0f, 0.0f);
+    ASSERT_NE(nearest, nullptr);
+    EXPECT_EQ(nearest->doorId, 2);
+    EXPECT_EQ(nearest->name, "NEAR");
+}
+
+TEST_F(GameStateSyncBridgeTest, DoorStateChangedUpdatesOpenFlag) {
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(3, "D", 0.0f, 0.0f, 0.0f)));
+    const EQT::DoorState* door = state->doors().getDoor(3);
+    ASSERT_NE(door, nullptr);  // fails cleanly (no deref) when the case is absent
+    ASSERT_FALSE(door->isOpen);
+
+    DoorStateChangedData open;
+    open.doorId = 3;
+    open.isOpen = true;
+    open.userInitiated = true;
+    bridge->applyEvent(GameEvent(GameEventType::DoorStateChanged, open));
+    EXPECT_TRUE(door->isOpen);
+
+    DoorStateChangedData close;
+    close.doorId = 3;
+    close.isOpen = false;
+    bridge->applyEvent(GameEvent(GameEventType::DoorStateChanged, close));
+    EXPECT_FALSE(door->isOpen);
+}
+
+TEST_F(GameStateSyncBridgeTest, DoorStateChangedForUnknownDoorIsANoOp) {
+    DoorStateChangedData open;
+    open.doorId = 99;
+    open.isOpen = true;
+    bridge->applyEvent(GameEvent(GameEventType::DoorStateChanged, open));
+    EXPECT_EQ(state->doors().getDoorCount(), 0u);
+    EXPECT_EQ(state->doors().getDoor(99), nullptr);
+}
+
+TEST_F(GameStateSyncBridgeTest, ZoneUnloadingClearsAllDoors) {
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(1, "A", 0.0f, 0.0f, 0.0f)));
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(2, "B", 1.0f, 1.0f, 0.0f)));
+    ASSERT_EQ(state->doors().getDoorCount(), 2u);
+
+    bridge->applyEvent(GameEvent(GameEventType::ZoneUnloading, ZoneUnloadingData{}));
+
+    EXPECT_EQ(state->doors().getDoorCount(), 0u);
+    EXPECT_EQ(state->doors().getNearestDoor(0.0f, 0.0f, 0.0f), nullptr);
+}
+
+TEST_F(GameStateSyncBridgeTest, DoorEventsStillDelegateToWrappedBridge) {
+    bridge->applyEvent(GameEvent(GameEventType::DoorSpawned,
+                                 makeDoorSpawned(1, "A", 0.0f, 0.0f, 0.0f)));
+    DoorStateChangedData open;
+    open.doorId = 1;
+    open.isOpen = true;
+    bridge->applyEvent(GameEvent(GameEventType::DoorStateChanged, open));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 2u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::DoorSpawned);
+    EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::DoorStateChanged);
 }
