@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 140+ event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 101 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -16,10 +16,21 @@ Additional context is in subdirectory CLAUDE.md files:
 
 - `docs/decisions.md` — standing architecture decisions. Settled; do not re-litigate.
 - `docs/module_map.md` — functional map of the oversized files (eq.cpp, irrlicht_renderer.cpp). Consult it instead of scanning those files.
-- `refactor/deferred.md` — known-open items. `refactor/F_file_split.md` — active file-splitting batch.
+- `refactor/deferred.md` — known-open items; read its `## STATUS` block (dated, top of file) first — it carries the current tip, suite count and the open items by class. `refactor/F_file_split.md` is COMPLETE (historical); the active unit plans are `refactor/T<nn>_*.md`.
 - `refactor/testing_progress.md` — the testing session's tracker; its "Handoffs to the perf session" section is the inbound channel for cross-session handbacks. Check it (and strike items you close) when orchestrating.
 - `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current.
-- Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3`. Task branches: `task/F##-<name>`. The `renderer` branch is reference-only — never merge it.
+- Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3` plus `t1`, `t2` (testing-session slots). Task branches: `task/T<nn>-<name>` (older: `task/F##-<name>`). The `renderer` branch is reference-only — never merge it.
+
+## Process requirement
+
+- Every unit of work is PLANNED by the orchestrator (a `refactor/T<nn>_*.md`
+  plan with scope, file territory, STOP conditions and a verification bar)
+  and EXECUTED by executor agents in worktree slots under
+  `refactor/EXECUTOR_PROTOCOL.md`. Independent legs are dispatched in
+  parallel slots whenever their file territories do not overlap; the
+  orchestrator serializes merges onto `fable` (`docs/decisions.md`,
+  2026-07-22 workspace layout). Do not execute unplanned work inline in
+  `main`.
 
 ## Project Overview
 
@@ -45,8 +56,8 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 
 ```bash
 # Configure (from project root) — the GLES2-config tree is now the primary
-# dev/test tree (tests on, full ctest suite, ~1234/1235 passing — the sole
-# known exception is the documented ALSA host quirk below)
+# dev/test tree (tests on, full ctest suite, 2745/2746 passing at e70e3347 —
+# the sole known exception is the documented ALSA host quirk below)
 mkdir -p build && cmake -S . -B build \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
@@ -99,12 +110,13 @@ targets; keep using it for the visual gate, it is unaffected by the above.
 
 # With VNC (for headless servers)
 ./scripts/start-with-vnc.sh -c willeq.json
-# Connect via: vnc://localhost:5999
+# Connect via: vnc://localhost:5950 (VNC_PORT in the script; its header comment
+# still says 5999 — the variable is authoritative, T215)
 
 # With VNC + Audio streaming (for headless servers with sound)
 ./scripts/start-with-vnc-audio.sh -c willeq.json
-# Connect VNC: vnc://localhost:5999
-# Connect Audio: vlc http://localhost:8080
+# Connect VNC: vnc://localhost:5910 (VNC_PORT=5910 in start-with-vnc-audio.sh)
+# Connect Audio: vlc http://localhost:8085 (AUDIO_PORT=8085)
 
 # With native RDP (alternative to VNC)
 ./build/bin/willeq -c willeq.json --rdp
@@ -248,10 +260,10 @@ Audio updates                       Zone load completion detection
 ```
 
 - **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
-- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (99-case switch, one per GameEventType, kept at 100% coverage)
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (99-case switch over the 101 `GameEventType` enumerators; `AutoAttackChanged` and `EntityStateSnapshot` have no case there — counted T215 at `e70e3347`)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
-- **Event types** (`include/client/state/event_bus.h`) — 99 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 56 intent types for user actions
+- **Event types** (`include/client/state/event_bus.h`) — 101 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 51 intent structs in the `RendererIntent` variant for user actions
 
 **Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/deferred.md` — do not "fix" coupling ad hoc.
 
@@ -270,8 +282,8 @@ The client connects through three stages, each with its own connection manager:
 - Main thread runs render loop (or sleeps in headless mode)
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
-**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 14 `eq_*.cpp` domain TUs)
-- Game state and network logic. eq.cpp itself (~3,600 lines) holds only the core: lifecycle, packet dispatcher, zone connection. Everything else (movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
+**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 18 `eq_*.cpp` domain TUs)
+- Game state and network logic. eq.cpp itself (3,934 lines at `e70e3347`) holds only the core: lifecycle, packet dispatcher, zone connection. Everything else (movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`

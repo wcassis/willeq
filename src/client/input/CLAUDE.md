@@ -50,6 +50,28 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Configurable: mouse sensitivity, Y-axis inversion, turn speed
 - Optional `ActionCallback` for logging/UI feedback
 
+## Action-layer migration (T97–T143) and hotbar dispatch (T174)
+
+Every slash command that reaches the game now goes through
+`action::CommandProcessor` → `ActionDispatcher` → `IActionHandler`
+(`EqActionHandler`, `src/client/eq_action_handler.cpp`). T97 audited
+reachability (34/65 `CommandProcessor` commands unreachable, shadowed by the
+game registry); T98 deleted the shadowed copies; T99 (Group, the pilot) through
+T140 migrated every family (Chat, Spells/Pet, Combat/Social, Trade, Guild,
+Corpse/Resurrection, Utility, Merchant, the final sixteen); T141 migrated
+`/equip` after extracting its logic into `InventoryManager`; T139 deleted the
+34 game-registry commands that had become redundant; T142 routed the two
+renderer singletons through the bridge; T143 made `/help` registry-aware. The
+recipe for a command whose mechanism is a bridge intent rather than a packet
+is a thin `EverQuest::Request*` wrapper (T136/T138) — `EqActionHandler` has no
+bridge pointer by design.
+
+`InputActionBridge` dispatches keyboard hotbar presses by the slot's content
+type (T174, `input_action_bridge.cpp:~400-440`): Spell → `castSpell`, Skill →
+`useSkill`; Item and Emote slots are DEBUG-logged and skipped (an Item slot
+carries an item id, `useItem()` takes an inventory slot, and no resolver exists
+at this layer — recorded open in `refactor/deferred.md`).
+
 ## Data Flow
 
 ```

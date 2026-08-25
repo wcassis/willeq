@@ -3,7 +3,7 @@
 ## Components
 
 **IrrlichtRenderer** (`include/client/graphics/`, `src/client/graphics/`)
-- `IrrlichtRenderer` - Main renderer (~7000 lines), manages scene, visibility, lighting, UI
+- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (3,054 lines at `e70e3347`) + 19 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` at the 3,000-line ceiling. Manages scene, visibility, lighting, UI
 - `CameraController` - FPS-style camera with free/follow/first-person modes
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
@@ -117,6 +117,13 @@ On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses 
 
 **Constrained texture cache** (`ConstrainedTextureCache`): LRU-evicting texture cache with a configurable memory budget (default 64 MB). Textures are created via `driver_->addTexture()` and tracked by byte size. On cache miss, textures are loaded from zone source data or re-decoded from S3D archives.
 
+**EQE1 flat-pack archives — the ALL-OR-NOTHING rule and the T205–T214 fixes** (`docs/decisions.md` 2026-08-25):
+- EQE1 has no S3D fallback: a missing EQE1 texture is a build/coverage defect and the cache's `exit(1)` on it is correct behaviour (Will).
+- T205 (`3b456a1b`): `ConstrainedTextureCache::clear()` destroyed the UI atlas texture (`ui_atlas`, loaded from `willeq.eqe1`) on every zone unload; the first render frame after a zone load then dereferenced it — the SIGSEGV that T201–T204 chased. Process-lifetime textures are no longer destroyed by `clear()`.
+- T207 (`ed14c4de`): EQE1 lookups resolve through a name→archive index (`eqe1_texture_index_builder`, `openArchiveContaining()`) instead of linear-probing every archive; 37 opens/24 unused/149MB → 13/0/46MB on the Pi (T208 `604ef722`), zone-in time unchanged (load time is not a work item — see decisions).
+- T214 (`3e4e8a95`): `unloadZone()` retains archives named by `isPersistentEQE1Archive()` (`willeq.eqe1`, the client's own pack opened once at init) instead of destroying every loader; `EQT_EQE1_REQUEST_LOG_DIR` dumps every distinct EQE1 name requested and the archive that served it (`6f2f22f6`). An archive is legitimately open iff it is the zone's own (`{zone}`/`{zone}_obj`/`{zone}_chr`) or a lookup needed it — zero lookups on a zone-own archive is normal, not waste (`e70e3347`).
+- T198 (`28a59bf4`): the composite entity atlas (`enableCompositeEntities`) is OFF on the `orangepi` preset — the Pi's failure with `--eqe1-path` was address-space exhaustion from mapping all 664 composite sheets (T195/T197), not heap. Not a knob to revisit for load-time reasons.
+
 **Region meshes are always built eagerly at zone load** (`loadZoneStep4_Regions()`), not lazily/progressively. A `ConstrainedMeshCache` class existed for lazy/progressive region-mesh loading with LRU eviction under a memory budget (24 MB on the `orangepi` preset) but was **removed T67 (2026-08-11): it was never constructed in any shipped build.** The only statement that ever touched its owning `unique_ptr` as an lvalue was a `.reset()` sitting behind a null check on that same pointer, so it was always null for the entire process lifetime, and every one of its ~40 call sites was a read behind a guard that never passed. There was also no way to turn it on: the derived budget field (`meshMemoryBytes`) was computed per preset and consumed by nothing. If Pi memory pressure is ever measured to need this (P10b's single "71 evictions" observation was never reproduced — P13/P13b measured zero evictions across four later configurations), the implementation is fully recoverable, not reimplemented from scratch: last shipped at commit `49844c72` (2026-03-08, "PVS direct index lookup, SimWorker copy elimination, DRM page flip fix, stderr buffering"), `include/client/graphics/constrained_mesh_cache.h` + `src/client/graphics/constrained_mesh_cache.cpp` — `git show 49844c72:src/client/graphics/constrained_mesh_cache.cpp` retrieves it in one command. Its one genuinely-live piece, the mesh-size estimator, was relocated verbatim to `estimateMeshSizeBytes()` in `include/client/graphics/eq/zone_geometry.h` / `src/client/graphics/eq/zone_geometry.cpp` rather than deleted.
 
 **Zone source data lifecycle**: After zone loading completes:
@@ -157,7 +164,7 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 2. Zone-specific `_chr.s3d` file (e.g., `qeynos2_chr.s3d`)
 3. Main `global_chr.s3d`
 4. Numbered `global2-7_chr.s3d` files
-5. Fallback: colored placeholder cubes
+5. Fallback: colored placeholder cubes (a race with no `race_models.json` entry — T213 `b6d0576f` aliased post-Titanium races 415 → RAT and 457 → CLM/CLF; the runtime reads races from `data/willeq.db`, so `race_models.json` edits need a `willeq_db_builder` rebuild)
 
 ## Graphics Tools
 

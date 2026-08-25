@@ -6,6 +6,77 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-08-25 — Loading time is SECONDARY to correctness; there is no maximum load time
+
+**Decision (Will):** the only bar for zone loading is that it **completes
+successfully with the appropriate models loaded**. Pi zone-in duration
+(~37–40s, T186/T208) is not a problem, a target, or a work item on its own.
+
+**Implications:** do not raise load time in status reports or plans;
+investigate it only if Will asks, or if slowness is evidence of a
+correctness defect (redundant work indicating a caching bug — T209
+`d6a96103` checked exactly that for `seq_entities` and refuted it: ~80% is
+irreducible first-time construction of distinct models).
+
+## 2026-08-25 — EQE1 is ALL-OR-NOTHING: no S3D fallback, no partial load
+
+**Decision (Will):** every file used to build the EQE1 archives is on disk,
+so the EQE1 set MUST contain every required asset. A missing texture is a
+defect in the asset build (or in `config/eqe1_archives.json` coverage —
+T198 `09d6ef03`), not a case to degrade around. The `exit(1)` at
+`constrained_texture_cache.cpp` on a missing EQE1 texture is **correct
+behaviour**.
+
+**Implications:** lazy/partial opening is incompatible by construction —
+the archive set must be right BEFORE the first lookup, which is why the
+whole-directory table-of-contents index (T196 → T199 `3edeb0dd`, T207
+`ed14c4de`) is the shape that works and the per-filename lazy open (T194,
+reverted `edbbb90c`) could not. Do not propose S3D fallback again.
+
+## 2026-08-25 — `enableCompositeEntities` is OFF on the orangepi preset
+
+**Decision (Will, T198 `28a59bf4`):** the composite atlas is removed from
+the `orangepi` preset because the Pi cannot handle the memory/address-space
+pressure (T195 `0157fdc7`, T197 `09483f60`). The struct default is already
+false. Not a knob to revisit for load-time reasons (see above). EQE1's two
+real wins are flat-pack file I/O and ETC1 compression; the composite atlas
+is not sold — most textures are UV-wrapped and cannot benefit.
+
+## 2026-08-25 — The skills window is settled by SCREENSHOT, not by opinion
+
+**Decision (Will):** run the official Titanium client under Wine on the
+eq-oracle rig, open the skills window, screenshot it, and display whatever
+it shows. The screenshot is authoritative over both the invented `9 / 50`
+and T159's lifetime cap `9 / 525`. This is an OWED TASK, not an open
+question — never ask Will to pick a cap number.
+
+## 2026-08-25 — EQE1 archive rule: when an open archive is legitimate (T214)
+
+**Decision (Will, T214 `e70e3347`):** an archive is legitimately open iff
+- **R1** it is the CURRENT ZONE'S OWN archive (`{zone}`, `{zone}_obj`,
+  `{zone}_chr`), or
+- **R2** a lookup needed it and nothing already open could serve it.
+
+Only R2 archives can be waste, and only by serving nothing. Zero lookups on
+an R1 archive is NORMAL (a zone whose NPCs all use `global_chr` models
+never touches `{zone}_chr`) — do not read the EQE1-USAGE report's idle
+zone-own archives as waste. The reporter now classifies before counting.
+Persistent client packs (`willeq.eqe1`, opened once at init) are retained
+across `unloadZone()` (`3e4e8a95`).
+
+## 2026-08-25 — Recorded rulings from the T150–T214 arcs (so they are not re-litigated)
+
+- **Raid leadership gate (T183 `9ee03a23`):** `/raid remove` is GATED
+  client-side on leadership, matching the real Titanium client rather than
+  the server's absent policy. The gate is OUR policy and the code says so.
+- **T152 live crash reproduction — SKIPPED at Will's call (2026-08-22);**
+  written up for upstream instead.
+- **GM decision (2026-08-19):** `m_gm_mode` gates our GM commands; it is not
+  and cannot mirror server-side `Client::Admin()` (account status never
+  reaches the client). Do not "upgrade" it into one (T148).
+- **Blessing rule:** Will blesses in chat, never by running commands.
+  Numbers being "ready" is not the same as being blessed.
+
 ## 2026-07-22 — Workspace layout: namespaced root with executor slots
 
 **Decision:** The canonical `fable` checkout lives at `/mnt/projects/fable/main`
@@ -21,7 +92,7 @@ directory (no ccache on this host — warm incremental builds are the cache).
 - Executors never merge, never touch `main/`, never reach into sibling slots.
 - The orchestrator serializes merges: rebase task branch on `fable`,
   fast-forward merge in `/mnt/projects/fable/main`, delete task branch, release slot.
-- Slot assignments are recorded in the active batch plan (`refactor/F_file_split.md`).
+- Slot assignments are recorded in each unit's plan (`refactor/T<nn>_*.md`); `refactor/F_file_split.md` was the Batch F plan and is complete (T215 correction).
 
 ## 2026-07-22 — `fable` is the active integration branch
 

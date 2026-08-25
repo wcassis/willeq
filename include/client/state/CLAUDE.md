@@ -30,7 +30,7 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
-**140+ event types** organized by domain:
+**101 event types** (`GameEventType`, counted at fable `e70e3347`, T215) organized by domain; `IrrlichtBridge` handles 99 of them in its switch, `ConsoleBridge` logs a subset headless:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged
@@ -48,7 +48,7 @@ Thread-safe publish/subscribe system for game state changes.
 - **UI**: HotbarChanged, VisionChanged
 - **Diagnostic**: MemoryReport, SceneDump
 
-**EventData** is a `std::variant` holding 100+ typed data structs. Each `GameEvent` pairs a `GameEventType` enum with its data.
+**EventData** is a `std::variant` of typed data structs (one per event that carries payload). Each `GameEvent` pairs a `GameEventType` enum with its data.
 
 **Usage:**
 ```cpp

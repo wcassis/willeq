@@ -16,259 +16,251 @@ below. Full verdict table, before/after open-item counts, and everything that
 could not be settled cheaply are in `refactor/T53_deferred_board_hygiene.md`'s
 Review — read that before scoping the next unit off this file.
 
-## Index — genuinely open items (T53, 2026-08-05)
+## STATUS 2026-08-25 (T215 tracker refresh)
 
-**Each item below is anchored by its exact `## ` section heading text, not a
-line number** — `grep -n '<the quoted text>' refactor/deferred.md` finds it
-regardless of how much the file has grown since. This file only ever grows
-by append (never-delete rule), so any line number written down today is
-guaranteed to drift as later units insert content above it; heading text
-does not. Grouped by kind; ungrouped placement in the body is unchanged
-(additive only).
+- **fable tip:** `e70e3347` (T214). **Suite:** 2746 registered, 2745 pass —
+  sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host
+  quirk). eqemu DOWN, lock RELEASED, no unit in flight.
+- **Arcs closed since the T53 index:** action-layer migration (T97–T143),
+  packet/wire verification (T144–T158), crash/memory tour (T105–T131), skill
+  gate + corpse naming (T159–T162, T173, T185), raid (T169–T184), EQE1 /
+  zone-load correctness (T186–T214).
+- **Open items by class** (each anchored by a heading in the rebuilt Index
+  below; every closure cites its commit):
+  - **A — client correctness defects, unowned:** `SendGMHideMe` misrouted /
+    `ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148);
+    `/reply` silent success with no pending sender (T100);
+    `rejectTradeRequest()` never fires `m_on_cancelled` (T103);
+    `CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
+    keyboard hotbar Item/Emote slots skipped, not routed (T174);
+    `EqActionHandler` TRANSFORMS methods still untested (T93); blackburrow /
+    crushbone blank benchmark render (Batch H); "BSP region is SIZE_MAX"
+    race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
+    `ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
+    latent by causality); race 330 placeholder cube unverified.
+  - **B — in progress / owed:** `AcceptGroupInvite()` reads
+    `m_pending_inviter_name` after `SendGroupFollow()` cleared it (T99) —
+    **IN PROGRESS T217**; skills-window cap screenshot from the official
+    client (owed task, Will's decision #4 — never ask him for a number);
+    T149/T150 senders still wire-unverified.
+  - **C — architecture / tooling residue, needs a ruling or a design pass:**
+    TWO `state::GameState` instances (T78 census done); `InitGraphics`
+    renderer parameter + asset-loader namespace + `GetDebugLevel()` static
+    (S2 residue); registry 3 (renderer if-chain, ~36 names incl. `/newskills`)
+    invisible to `/help` (T143); headless `outcome=queued` for renderer
+    commands (T139/T142); phantom `gequip7` in `config/eqe1_archives.json`
+    (T198); `protectedRegions_` all-false (T79 census); memory categories
+    without budgets (T69); UI-gesture-only reachability pattern (not
+    retired); Z5.3 / P52 / `waitForFlipComplete()` perf residuals;
+    **doc debt:** `docker/CLAUDE.md` still documents
+    `build-arm-noble.sh --no-gles2` (retired P32) and describes the Pi
+    target as Lima/Mesa desktop GL — out of T215's territory, see the
+    cross-reference entry at the end of this file.
+
+## Index — open and recently-closed items (rebuilt T215, 2026-08-25; supersedes the T53 index)
+
+**Each item is anchored by its `## ` section heading text (or a unit ID),
+not a line number** — `grep -n '<quoted text>' refactor/deferred.md` finds
+it. Items T53 listed that a later commit closed are kept here, struck, with
+the closing hash, so the index and the body agree. The T53 snapshot this
+replaces is preserved verbatim in git (`e6a8c4e9`) and in
+`refactor/T53_deferred_board_hygiene.md`.
 
 **Architecture / needs a ruling**
-- TWO `state::GameState` instances exist, unconnected — needs a decision, not
-  a drive-by. **T78 (2026-08-12) did the census the decision needs — see
-  `refactor/T78_two_gamestate_analysis.md`'s Review, or this section's own
-  T78 addendum, before restating the problem.** Heading: `## TWO
-  \`state::GameState\` instances exist, unconnected`.
-- Command-registry overlap (~34 names span two registries; T51 closed 3, most
-  still open). Heading: `## Command-registry overlap and the bare
-  \`/target\` precedence gap`.
+- TWO `state::GameState` instances exist, unconnected — needs a decision;
+  T78 (`b02228eb`) did the census. Heading: `## TWO \`state::GameState\`
+  instances exist, unconnected`.
+- ~~Command-registry overlap (~34 names span two registries).~~ **CLOSED**:
+  T98 `7cce0792` deleted the 34 shadowed `CommandProcessor` copies, T99–T140
+  migrated every surviving family to `action::CommandProcessor`, T139
+  `bb0ac689` deleted the 34 redundant game-registry copies, T143 `e979a821`
+  made `/help` registry-1+2 aware. What remains is registry 3 (renderer
+  if-chain) having no catalog — see T143 below. Heading: `## Command-registry
+  overlap and the bare \`/target\` precedence gap`.
 - `InitGraphics` keeps its `IrrlichtRenderer*` parameter; asset-loader
-  namespace relocation (`WldLoader`/`PfsArchive`/`BspTree` out of
-  `EQT::Graphics`); `EverQuest::GetDebugLevel()` static call from
-  `door_manager.cpp` — all three confirmed still true, T53. Heading:
-  `## Decoupling residue — CLOSED by S2` (see its "Still open from that
-  audit" list).
-- `action::EqActionHandler` cannot push a `GameStateBridge` intent directly
-  (no bridge access, only `EverQuest&`) — any future action-layer migration
-  whose mechanism is a bridge intent (not a `Send*()` packet) will hit this.
-  Heading: `## T136 (2026-08-18): \`EqActionHandler\` cannot push bridge
-  intents — a real, load-bearing architectural gap`.
-- `/equip` migration to `action::CommandProcessor` — scoped out of T136 on
-  purpose (different mechanism, own design questions), not yet claimed by
-  any unit. Heading: `## T136 (2026-08-18): \`/equip\` migration —
-  genuinely deferred, not dropped`.
+  namespace relocation; `EverQuest::GetDebugLevel()` static call from
+  `door_manager.cpp` — still true at `e70e3347`. Heading: `## Decoupling
+  residue — CLOSED by S2` ("Still open from that audit" list).
+- ~~`action::EqActionHandler` cannot push a `GameStateBridge` intent
+  directly.~~ **CLOSED as a class by T138 `13799cb7`** (finding 4: the
+  per-command `EverQuest::Request*` wrapper recipe absorbs it; no standalone
+  unit needed). Heading: `## T136 (2026-08-18): \`EqActionHandler\` cannot
+  push bridge intents`.
+- ~~`/equip` migration to `action::CommandProcessor` — deferred by T136 and
+  T140.~~ **CLOSED by T141** (`e45c7f99` extraction into `InventoryManager`,
+  `b71c885b` migration, merged `fe290cb0`). Headings: `## T136 (2026-08-18):
+  \`/equip\` migration` and `## T140 (2026-08-18): \`/equip\` migration`.
+- Registry 3 (`IrrlichtRenderer::processSlashCommand()`'s ~36-branch
+  if-chain) has no query interface, so `/help` cannot list it and
+  `/newskills` — the only working skills-window toggle — is registered in
+  NO registry (T138 finding 2, T143). Headings: `## T143 (2026-08-18)` and
+  `## T138 (2026-08-18): The 61-command triage`.
+- Headless builds report `outcome=queued` for every renderer-routed name
+  (`application.cpp:1243`) — the `#ifdef EQT_HAS_GRAPHICS` refusal was lost
+  when T139 deleted the game-registry copies; T142 widened it by two names.
+  Headings: `## T139 — headless \`#ifdef EQT_HAS_GRAPHICS\` guard not
+  preserved` and `## T142 — headless regression widened by 2 more names`.
+- `protectedRegions_` bitvector permanently all-false — census by T79,
+  decision deferred. Heading: `## \`protectedRegions_\` bitvector is
+  permanently all-false`.
+- Memory categories with no configured budget / Pi per-device budgets /
+  untracked-RSS gating (T69) — follow-ups, not started. Headings: `## Memory
+  categories with no configured budget`, `## Pi per-device memory budgets`,
+  `## Untracked-RSS gating recommendation`.
 
-**Client correctness bugs**
-- T93's fake-substitution sweep found the T90 double-conversion pattern
-  (a test fake hiding a real transform bug) recurs at
-  `EqActionHandler::castSpell()`/`castSpellOnTarget()`/`memorizeSpell()`'s
-  gemSlot-1 conversion — FIXED WITH TESTS by T93 itself, but the sweep only
-  covered 3 of ~11 identified TRANSFORMS/VALIDATES/MUTATES methods on
-  `EqActionHandler` before stopping; the rest (`setMovementMode`,
-  `setPositionState`, `sendPetCommand`'s unchecked int-to-enum casts,
-  `targetSelf`'s self/pet toggle, `targetGroupMember`'s validation,
-  `hailTarget`'s fallback branch) remain untested against the real
-  implementation. Heading: `## T93 fake-substitution sweep —
-  EqActionHandler TRANSFORMS inventory and what remains untested`.
-- ~~`willeq.db` schema version bumped but never validated at open.~~ **FIXED
-  by T56 (2026-08-10).** Heading: `## willeq.db schema version is bumped but
-  never validated`.
-- ~~`--log-level=` is clobbered by `SetDebugLevel(0)` in `main.cpp`.~~
-  **FIXED by T56 (2026-08-10).** Heading: `` ## `--log-level=` is clobbered
-  by `SetDebugLevel(0)` in main.cpp ``.
-- ~~`ConstrainedMeshCache` is never constructed anywhere in `src/` — confirmed
-  still true, T53.~~ **RESOLVED BY REMOVAL, T67 (2026-08-11)**: the class
-  was deleted from production rather than wired (Will's decision — never
-  reproduced eviction pressure, no way to turn it on). Reference pointer to
-  the removed implementation (commit `49844c72` + paths) is in the entry
-  body and in `src/client/graphics/CLAUDE.md`. Heading: `` ## ConstrainedMeshCache
-  is never constructed — RESOLVED BY REMOVAL (T67, 2026-08-11) ``.
-- ~~`SpellData::effects` is never populated (`EQT::SpellInfo` has no effects
-  field) — confirmed still true, T53.~~ **RESOLVED BY POPULATION, T68
-  (2026-08-11).** `EQT::SpellInfo` now carries the 12-slot effect_id/base/
-  base2/max/formula columns plus `spell_affect_index`, and
-  `SpellDatabase::queryAndCache()` populates `SpellData::effects` from them,
-  interpreting the file's markers (effect id 254 / formula 100 = unused) at
-  that consumer boundary. This unblocked buff stat totals (verified: a real
-  STR buff now applies its real base_value instead of always 0),
-  `hasEffect(UltraVision/InfraVision)`, and `isDamageSpell()`/`isHealSpell()`
-  discrimination (verified against real damage/heal spells) —
-  `spell_effects.cpp:73` and `buff_manager.cpp:500` are no longer dead code.
-  This is **step 1 of the spell-effects rewrite** Will scoped (T68 plan): the
-  correct `spells.eff` reader (256 records x 2792 bytes = 8-byte header + 3 x
-  928-byte blocks, indexed by the now-carried `spell_affect_index`/
-  `SpellData::spell_affect_index`) and the data-driven visual layer are still
-  ahead. No era filtering is required by decision: `spells.eff` carries only
-  the pre-Luclin sprite vocabulary, so a post-Velious spell referencing a
-  valid index renders with a classic-era visual, which Will has ruled
-  correct. Heading: `## From F00 test repair`.
-- Auto-loot on kill never wired to the authoritative death event; shift+click
-  loot path unverified. Heading: `## Auto-loot on kill has NEVER worked
-  against a real server`.
-- ~~`race=415` missing model data still crashes graphics mode — confirmed
-  still reproducing, T53.~~ **STALE: actually FIXED by T38 (2026-08-04), one
-  day before T53's pass ran; T53 missed it, corrected by T56 (2026-08-10).**
-  The crash itself is closed; a genuine data/content remainder (placeholder
-  cubes past `config/race_models.json`'s race_id 367 ceiling) is now tracked
-  as its own item, see the next bullet. Heading: `` ## `race=415` missing
-  model data still crashes graphics mode ``.
-- NEW (T56, 2026-08-10): `race=415`/`race=330` render as placeholder cubes,
-  a data/content gap (not a crash, not a code bug) — needs asset
-  verification and a visual acceptance only Will can give. Heading:
-  `` ## `race=415`/`race=330` render as placeholder cubes ``.
+**Client correctness bugs — open**
+- `EqActionHandler` TRANSFORMS inventory: T93 tested 3 of ~11 methods; T95
+  `02361953` validated the three int→enum casts; `targetSelf`,
+  `targetGroupMember`, `hailTarget` remain untested against the real
+  implementation. Heading: `## T93 fake-substitution sweep`.
+- **T148 GM senders (eq_gm.cpp), three open:** `SendGMHideMe` reaches the
+  server as `OP_SpawnAppearance` type 20 and is dropped (`eq_gm.cpp:123`
+  should send `OP_GMHideMe`); `ZoneProcessGMFind` (`eq_gm.cpp:200`) decodes
+  the reply's floats as ints; `SendGMSummon` (`eq_gm.cpp:30`) sends zeroed
+  coordinates. Heading: `## T148 (2026-08-19) — four defects surfaced by
+  making the GM senders reachable`.
+- **T99 `AcceptGroupInvite()` — IN PROGRESS T217.** `eq_group.cpp:143`
+  builds the "You have joined X's group" message from
+  `m_pending_inviter_name` after `SendGroupFollow()` (`eq_group.cpp:72`)
+  has already cleared it (verified at `e70e3347`). Heading: `## T99: Group
+  family migrated`.
+- **T100 `/reply` silent success:** `CommandProcessor::cmdReply` →
+  `ActionDispatcher::replyToLastTell()` returns `Success()` even when no
+  tell sender exists (`command_processor.cpp:1040-1058`); game's "No one to
+  reply to" cannot be reproduced at that layer. Heading: `## T100: Chat
+  family migrated`.
+- **T103 `TradeManager::rejectTradeRequest()` never fires `m_on_cancelled`**
+  (`trade_manager.cpp:54-63`; `cancelTrade()` at :65 does). Heading: `## T102
+  (Combat + Social migration) — findings deferred` (finding 7).
+- **T04 `ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete`**
+  (`eq.cpp:1918`; the only callers are `eq_player_info.cpp:57,65,74,83`).
+  Latent, not a demonstrated hang — request/response causality covers it;
+  a one-line defensive call is still owed. Source:
+  `refactor/testing_progress.md` "T04 findings" §2.
+- **T174 keyboard hotbar — Item and Emote slots are skipped, not routed**
+  (`input_action_bridge.cpp:424-437`): `slot.id` is an item id but
+  `useItem()` takes an inventory slot; no resolver exists at that layer.
+  Source: `refactor/T174_keyboard_hotbar.md` limitation 1. See also the
+  T174 cross-ref entry at the end of this file.
+- **T173 second name resolver:** `CombatManager::SetTarget(const
+  std::string&)` (`combat.cpp:279`) does exact-then-substring match with no
+  living-over-corpse ranking — divergent from the resolver T173 `eef57da0`
+  fixed. `refactor/T173_corpse_targeting.md` line 99: "wire or delete".
+- **T198 phantom `gequip7`:** `config/eqe1_archives.json:8` lists `gequip7`
+  in `globalArchives` but `/mnt/projects/EverQuestP1999/gequip7.s3d` does not
+  exist (gequip, 2–6, 8 do) — every zone load logs "cannot open
+  gequip7.eqe1". Benign noise; remove it. Source: `09d6ef03` body.
+- ~~Auto-loot on kill never wired to the authoritative death event; shift+click
+  loot path unverified.~~ **CLOSED**: T33 `b3f6cda9` wired the loot machine
+  to `ZoneProcessDeath()`; T34 `5a52cc4f` implemented `/loot` and verified
+  the action-layer loot path live. Heading: `## Auto-loot on kill has NEVER
+  worked against a real server`.
+- ~~`race=415`/`race=330` render as placeholder cubes.~~ **415 CLOSED by
+  T213 `b6d0576f`** (aliased to race 36 `RAT`; 457 `Gnomework` aliased to 88
+  `CLM/CLF` in the same commit; `willeq.db` rebuilt 185→187 rows; verified
+  placeholder=false, 904-vert mesh). **330 is NOT settled**: it has had a
+  `race_models.json` entry since `35c51be2` (2026-01-13), so T56's "past the
+  367 ceiling" framing was wrong for 330; whether gfaydark's race=330 still
+  cubes is unverified. Heading: `` ## `race=415`/`race=330` render as
+  placeholder cubes ``.
 - blackburrow/crushbone render entirely blank in the benchmark — not
-  root-caused, needs a live render to settle. Heading: `## From Batch H`.
-- No unattended character creation on a fresh eqemu DB — confirmed still
-  true, T53. Heading: `## From Batch H` (same section as above).
+  root-caused. Heading: `## From Batch H`.
+- ~~No unattended character creation on a fresh eqemu DB.~~ **CLOSED in
+  practice by T157 `42eeb84d`**: account + character creation is automated
+  by driving the official Titanium client under Wine/Xvfb on the eq-oracle
+  rig (provisioned a Rogue). The client-side `OP_CharacterCreate` handshake
+  is still unimplemented — that is now a feature gap, not a test blocker.
+  Heading: `## From Batch H`.
 - "Player BSP region is SIZE_MAX" stale-zone-name race — not chased.
   Heading: `## "Player BSP region is SIZE_MAX" with stale zone name`.
 - Pale fog-colored flat shapes in gfaydark/qeynos2 goldens — not chased.
   Heading: `## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens`.
-- gfaydark zone-in FATAL, missing race=330 model data — open, possibly same
-  class as race=415. Heading: `## Eviction hygiene LANDED (P17` (see its
-  "NEW (unfixed, pre-existing, graceful)" bullet).
-- RaceModelLoader/equipment_model_loader ignore `textureMasked()` for
-  non-composite meshes — needs its own unit with live visual evidence.
-  Heading: `## P20 live-visual pair` (see its "NEW (P21 audit)" bullet).
-- Magenta/black checkerboard missing-texture placeholder on some qeynos2
-  rooftops/awnings — not chased. Heading: `## P20 live-visual pair` (same
-  section, "New unrelated bug spotted" bullet).
-- `ConstrainedTextureCache`'s public query API (`hasAlpha`/`getTexture`/etc.)
-  doesn't account for the masked-variant mangled cache key — found by P50,
-  not fixed. Heading: `## P50 (2026-07-31): ConstrainedTextureCache's
-  public query API doesn't` (heading text wraps onto a second `##` line
-  in the file — search for `P50` if the exact string doesn't match).
-- Two `applyPaletteMask` plumbing gaps: `mesh_building.cpp`'s on-demand
-  `loadTextureFromBMP()` fallback, and `animated_mesh_creation.cpp`'s
-  equipment texture-variant swap path. Heading: `## P37 follow-ups` (near
-  the end, in the P46d sub-entry's "Open follow-up items" bullet).
-- Succor/evacuate/death-bind-respawn zone-position convention — **CLEARED by
-  T55 (2026-08-10)**: all three are convention-clean (death/bind is producer
-  C, now documented and tested). The real, now-fixed defect was a different
-  one: forced-relocation position propagation to the state layer (T39
-  pattern surviving the sweep that declared it closed). T55 deliberately
-  left the `PlayerProfile` zone-in handler's own copy of this same gap open;
-  **CLOSED by T58 (2026-08-11)** — see its "T58 addendum" in the same
-  section. Only the per-frame movement writes remain unconverged, by
-  decision, needing their own event-storm/perf investigation. Heading:
-  `` ## `#goto` same-zone teleport lands at the DB position `` (see the "T55
-  addendum" and "T58 addendum" at the end of that section).
-- The broader "UI-gesture-only reachability" pattern — narrowed to 6
-  confirmed instances by T48/T51/T52, not retired; more producer-less
-  intents likely remain. Heading: `## PATTERN: real features reachable
-  only through a UI gesture`.
-- NEW (T84, 2026-08-12): `EqActionHandler::setHeading()`
-  (`src/client/eq_action_handler.cpp:86-92`) double-converts degrees to EQ's
-  0-512 heading range and stores the converted value into `m_heading`, a
-  field every other site treats as plain degrees — `/turn <deg>` and (by
-  shared code path) `/face` send a heading ~1.4222x the intended value.
-  Found live via the two-client harness, not touched (heading/rotation code
-  was off-limits for that unit). Heading: `` ## `EqActionHandler::setHeading()`
-  double-converts degrees to EQ units (T84, 2026-08-12) ``.
-- NEW (T87, 2026-08-13): WillEQ's outbound `OP_ClientUpdate` heading (Pass
-  A, the correct/non-buggy `/move`-driven path) disagrees with the
-  official client's wire heading for the same real-world facing by a
-  **measured, systematic ~252° (mod 360)**, not a round 90/180/270 —
-  characterized against the baseline oracle capture, not touched (this
-  unit's own blanket prohibition on heading/rotation code). Heading: `##
-  WillEQ's outbound heading disagrees with the official client's by ~252°
-  (T87, 2026-08-13)`.
+- ~~RaceModelLoader/equipment_model_loader ignore `textureMasked()`.~~
+  **CLOSED by P37 `018bcdcb`** ("WLD-masked entity/equipment textures
+  actually render masked"; `equipment_model_loader.cpp:637` consults
+  `textureMasked()` at `e70e3347`). Heading: `## P20 live-visual pair`
+  ("NEW (P21 audit)" bullet).
+- ~~Magenta/black checkerboard missing-texture placeholder (qeynos2
+  rooftops; T85 North Qeynos).~~ **ROOT-CAUSED AND FIXED by T211
+  `9588c07e`** (fragment 0x2C has no material-list ref field; the code
+  guessed `flags & 0xFFFF`, a flags word; fallback to the nearest preceding
+  0x31 → NOT FOUND 26→0), **confirmed at data and pixel level by T212
+  `54b9bc72`** (corrected `equipment_models.json`; forced NPC with model
+  1036 renders a textured blade, 0 magenta pixels of 480000). Headings:
+  `## P20 live-visual pair` ("New unrelated bug spotted") and `## Texture-
+  fallback (magenta/checkerboard) defect reproduces reliably (T85`.
+- ~~`ConstrainedTextureCache` public query API vs masked-variant key.~~
+  **FIXED by T92 `ddf08b27`.** Heading: `## P50 (2026-07-31)`.
+- Two `applyPaletteMask` plumbing gaps (`loadTextureFromBMP()` fallback;
+  equipment texture-variant swap) — still open. Heading: `## P37
+  follow-ups` (P46d "Open follow-up items").
+- `#goto` / forced-relocation convention — CLEARED T55/T58; per-frame
+  movement writes unconverged by decision. Heading: `` ## `#goto` same-zone
+  teleport lands at the DB position ``.
+- UI-gesture-only reachability pattern — narrowed (T48/T51/T52, T66 #7–8,
+  T145/T146 #10–13), not retired. T148/T150/T153/T156 wired the GM, social,
+  face and skill families; `SendControlBoat` remains caller-less (T151
+  deferred boats). Heading: `## PATTERN: real features reachable only
+  through a UI gesture`.
+- ~~T84 `EqActionHandler::setHeading()` double-conversion.~~ **FIXED by T90
+  `59b1dbce`.** ~~T87 ~252° outbound heading disagreement.~~ **SUPERSEDED
+  by T89 `a9e1fc0c` — confirmed measurement artifact, no code defect**
+  (headings say so). Headings: `` ## `EqActionHandler::setHeading()`
+  double-converts `` and `## WillEQ's outbound heading disagrees`.
+- ~~`SkillManager::activateSkill()` had zero callers.~~ **CLOSED by T156
+  `5fee68ed`** (`/useskill`), re-probed by T158 `57167d94`; ~~`/taunt` and
+  its class bypassed the skill gate~~ **CLOSED by T162 `91378195`**.
+- ~~T109 entity load distance gate ships INERT.~~ **CLOSED**: T111
+  `d21086be` fixed pickup and enabled the gate, T112 `59d85d52` measured its
+  Pi cost, T210 `5505c8a0` re-verified deferred pickup on approach. Heading:
+  `## T109 (entity load distance gate) — CLOSED`.
+- ~~T188 "the gate is losing entities".~~ **WITHDRAWN by T190 `8bad78d4`**
+  (the drain was never broken; the test position was — `/move` teleport
+  artifact). ~~T191 "composite atlas has 0% adoption".~~ **RETRACTED by T192**
+  (annotated `5f875227`: every T191 run had `eqe1Path=''`).
+- ~~T193–T196 Pi `std::bad_alloc` / address-space exhaustion with
+  `--eqe1-path`.~~ **CLOSED**: T195 `0157fdc7` named it address space, T197
+  `09483f60` showed atlas-off removes it, T198 `28a59bf4` dropped the
+  composite atlas from the `orangepi` preset; the x86 SIGSEGV in the same
+  matrix (T201 `c1ac05c0`) was the UI-atlas use-after-free fixed by T205
+  `3b456a1b`, after which T199 `3edeb0dd` verified spawn-driven archive
+  selection end to end.
 
-**FIXED but the board still said open — corrected by this pass** (plus one
-later correction: `race=415` missing model data — T38 fixed it 2026-08-04,
-T53 missed the re-title on 2026-08-05, T56 corrected it 2026-08-10; see
-that heading above, now itself in the "Client correctness bugs" list with
-a strikethrough, and the meta-finding inside the entry)
-- `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel` bridge
-  wiring headless — the entry (filed as a T45 finding, "NOT FIXED") was
-  stale: T46 (`b5f5c1d6`) fixed exactly this via
-  `EverQuest::wireBridgeToSubsystems()`. Re-titled in place. Heading:
-  `` ## `InventoryManager`/`SpellManager`/`SkillManager`/`HotbarModel`
-  never get their own bridge wired headless ``.
-- RDP `stop()` use-after-free — entry said "fix still open"; T35 (`a835969`)
-  landed the join-then-close reorder. Re-titled. Heading: `## RDP
-  frame-update race — ROOT-CAUSED (T03b)`.
-- Headless client aborts/never-exits on piped shutdown with no server —
-  T30 (`fa31ca97`) fixed it. Re-titled. Heading: `## Headless client aborts
-  on shutdown and never exits`.
-- Non-FATAL log output never reaching stdout — T31 (`c167acdc`) fixed it
-  (periodic `drainLoop()` no longer depends on `FlushThreadLog()`).
-  Re-titled. Heading: `## Non-FATAL log output never reaches stdout during
-  normal operation`.
-- Item links losing 11 characters — fixed within the same T34 unit
-  (`7a1e48b9`, after the board entry was written); pinned by
-  `tests/test_formatted_message.cpp` (Scaled Curskin case). Re-titled.
-  Heading: `## Item links in chat lose 11 characters of the item name`.
-- `OnPetCreated()` `#ifdef EQT_HAS_GRAPHICS` residual (noted "not yet fixed"
-  inside T43's own PATTERN entry) — fixed in the same T43 commit
-  (`fabf0246`); the entry's residual note was simply never updated.
-  Re-titled inline. Heading: `` ## PATTERN: `EQT_HAS_GRAPHICS` gates around
-  non-graphics code `` (see its "Plus one known residual" bullet, near the
-  end of that entry).
+**Test coverage gaps** (unchanged from T53 except as noted)
+- 8 `DoorManagerGraphicsTest.*` skips (DISPLAY-gated); `PfsArchiveContentTest.DdsFileValid`
+  and `SoundBufferTest.LoadSwingWav` (asset-gated); 2 `SpellManagerGems.*`
+  skips (no Warrior-usable spell in scanned range). `InventoryModelViewTest`
+  skips RESOLVED by T54 `4fe0ad95`.
+- `src/client/bridge/irrlicht_bridge.cpp` is compiled into `willeq_core`
+  (`CMakeLists.txt:395`) and therefore linked by every `willeq_core` test
+  target; six test sources reference `IrrlichtBridge` directly
+  (`test_game_state_sync_bridge.cpp`, `test_zone_connection_flow.cpp`, …).
+  The testing tracker's "in no test binary" handoff is struck (T215).
+- `irrlicht_bridge.cpp`'s switch handles 99 of the 101 `GameEventType`
+  enumerators; `AutoAttackChanged` and `EntityStateSnapshot` have no case
+  there (consumed elsewhere). Root `CLAUDE.md`'s "100% coverage" wording is
+  corrected by T215; whether those two SHOULD reach the renderer is not
+  examined here.
 
-**Test coverage gaps (NEW, found answering a status question, T53 2026-08-05)**
-- 8 `DoorManagerGraphicsTest.*` skips — gated on `DISPLAY`/Irrlicht-device
-  creation in `SetUp()` (`tests/test_door_loading.cpp`); environment-gated by
-  design, not re-examined for coverage loss.
-- 6 `InventoryModelViewTest.*` skips — **RESOLVED by T54 (2026-08-10),
-  `tests/test_inventory_model_view.cpp`.** The fixture itself (its six
-  unconditionally-skipped `TEST_F`s plus ~150 lines of now-unreachable
-  live-EQEmu-server/DISPLAY helper machinery) was deleted — the subject,
-  the paperdoll UI (`WindowManager`/`InventoryWindow`/`CharacterModelView`,
-  deleted in `0f25cb57`), was gone, not merely environment-gated. Three of
-  the six assertions had live production code behind them at a lower layer
-  (`RaceModelLoader`/`EQAnimatedMeshSceneNode`, still alive and unchanged)
-  and were ported headless (`EDT_NULL` device, no server/DISPLAY) into
-  `RaceModelAnimationHeadlessTest`: `ModelHasTexturesApplied_Headless`,
-  `LoadsForRaceAndGender_Headless`, and
-  `CreateAnimatedNodeWithEquipment_Headless` (the last one found and
-  documented, not silently dropped, that
-  `createAnimatedNodeWithEquipment()` does NOT attach weapon geometry —
-  see that test's comment for the full trace). The other three
-  (render-to-texture, survives-zoning, and the original
-  `ModelAnimatesProperly` — already superseded pre-T54 by
-  `ModelAnimatesProperly_Headless`) were pure view predicates with no
-  production code left to assert on; deleted, not weakened. See the new
-  "inventory character preview" entry below for the feature-loss record,
-  and T54's own plan/Review (`refactor/T54_inventory_view_test_reckoning.md`)
-  for the full port-vs-delete accounting.
-- `PfsArchiveContentTest.DdsFileValid` — gated on EQ client files / archive
-  DDS-content availability (`tests/test_pfs_archive.cpp`); asset-presence
-  gated, not re-examined.
-- `SoundBufferTest.LoadSwingWav` — gated on `Swing.WAV` presence
-  (`tests/test_sound_assets.cpp`); asset-presence gated, not re-examined.
-- **"2 SpellManagerGems skips" reconciled**: no note by that name exists in
-  *this* file (searched exhaustively) — but a live `ctest --test-dir build`
-  run confirms the number itself is accurate on the current tip: exactly 2
-  of 25 `SpellManagerGems.*` tests skip —
-  `MemorizeSpellSuccessStartsMemorizationAndPublishesEvent` and
-  `MemorizeSpellBlockedWhileAlreadyCastingOrMemorizing`
-  (`tests/test_spell_manager.cpp:326-356,473-...`). The other 23 have their
-  own `if (!hasDb())` guards too, but `willeq.db` is a tracked binary and is
-  present, so those pass; these 2 specifically skip on `if (id == 0)
-  GTEST_SKIP() << "no Warrior-usable spell found in scanned range"`
-  (lines 337, 482) — a scanned-spell-not-found condition, not a
-  missing-DB one. So "they still skip on the current tip" is confirmed
-  true, and the gating condition is now on record. If a fuller note lives
-  in `refactor/testing_progress.md`, that reconciliation is out of this
-  unit's territory (deferred.md only).
+**Perf / tooling residuals** (all narrowly scoped, unchanged)
+- Z5.3 empty-draw measurement — Heading: `## From Batch Z`.
+- Batch E table empty commit columns — Heading: `## Tracker hygiene`.
+- P52 `B_e205` magnitude ~21-24% high — Heading: `## P52 (2026-08-01)`.
+- `waitForFlipComplete()` swap-floor question — Heading: `## P41 landed`.
+- Pi zone-in duration (~37–40s) is **NOT a work item**: Will ruled load
+  time secondary to correctness with no maximum (`docs/decisions.md`
+  2026-08-25). T209 `d6a96103` checked the one correctness angle (redundant
+  `seq_entities` work) and refuted it.
 
-**Perf / tooling residuals (lower priority, all narrowly scoped)**
-- Z5.3 empty-draw measurement (1-triangle buffer isolation) — TODO, Batch Z.
-  Heading: `## From Batch Z`.
-- Batch E table in `progress.md` has empty commit columns — cosmetic tracker
-  hygiene. Heading: `## Tracker hygiene`.
-- P52's `B_e205` absolute magnitude reads ~21-24% high even on the corrected
-  path — flagged as directionally-trustworthy-not-KPI-clean, not
-  re-diagnosed for budget. Heading: `## P52 (2026-08-01): GPU-sync
-  characterization` (heading wraps onto a second `##` line; search `P52` if
-  the exact string doesn't match — see the "CLOSED by P52b" paragraph near
-  the end of that entry for this specific caveat).
-- `docker/irrlicht-drm/CIrrDeviceFB.cpp`'s `waitForFlipComplete()` swap-floor
-  question — refined by P52b (real near-e0 effect, negligible at load), not
-  independently re-measured beyond that. Heading: `## P41 landed (2026-07-30,
-  merged \`edcd72a\`): lighting lever characterized, report-only`.
+**Units with no body entry in this file** (findings live in their plan doc
+or commit; one-line cross-refs are appended at the end of this file, T215):
+T149–T184 (plan docs `refactor/T1xx_*.md`), T185, T189, T192, T194, T196,
+T198, T202, T204, T212, T214.
 
-**A note on staleness**: this Index is a snapshot as of commit `607a19c3`
-(T53). As of *this* commit, every heading text above was verified present
-verbatim via `grep -n` against the file (see the T53 Review in
-`refactor/T53_deferred_board_hygiene.md` for the sample-check log). If a
-future reader can't find one, the section was likely re-titled again by a
-later unit — search for distinctive words from the description instead
-(e.g. the unit ID in parentheses, or a quoted symbol name).
+**A note on staleness**: this Index is a snapshot as of `e70e3347` (T215).
+Heading texts were verified with `grep -n` at that commit. If a later unit
+re-titles a section, search for the unit ID or a quoted symbol instead.
+
 
 ## FIXED: ParticleManager::renderUnified use-after-free (P34, 2026-07-29)
 
@@ -2179,7 +2171,7 @@ ever failing loudly** — asset paths resolving should be checked at the
 start of any live leg, not inferred from the absence of complaints.
 Consider a startup validation that names missing configured paths.
 
-## Auto-loot on kill has NEVER worked against a real server — pre-existing dead path, found by T32 (2026-08-03)
+## Auto-loot on kill has NEVER worked against a real server — pre-existing dead path, found by T32 (2026-08-03) — **FIXED by T33 (`b3f6cda9`) + T34 (`5a52cc4f`, `/loot` live-verified); heading annotated T215**
 
 **T32 completed the first real end-to-end kill→loot check** (live eqemu,
 GM-spawned lootable `a_scaled_wolf_pup`, driven entirely by piped
@@ -2305,7 +2297,7 @@ it blocks graphical live sessions, which is what Will's "the same
 commands in a real session" ruling ultimately wants. Same family as the
 recorded gfaydark `race=330` FATAL.
 
-## `race=415`/`race=330` render as placeholder cubes — data/content gap past `config/race_models.json`'s race_id 367 ceiling (T56, 2026-08-10)
+## `race=415`/`race=330` render as placeholder cubes — data/content gap past `config/race_models.json`'s race_id 367 ceiling (T56, 2026-08-10) — **415 FIXED by T213 (`b6d0576f`, aliased to race 36 RAT; 457 aliased to 88 CLM/CLF); 330 has had an entry since `35c51be2` and is UNVERIFIED — annotated T215**
 
 **New entry, NOT the same claim as the one above** (that one — the crash —
 is fixed; this is the genuine remainder T38 left explicitly out of scope
@@ -5062,7 +5054,7 @@ addresses what cost T85 a capture session. Full evidence:
 `refactor/T88_position_frame_determination.md`'s Review,
 `/mnt/projects/fable/review/T88/`.
 
-## Texture-fallback (magenta/checkerboard) defect reproduces reliably (T85, 2026-08-13) — not root-caused
+## Texture-fallback (magenta/checkerboard) defect reproduces reliably (T85, 2026-08-13) — ~~not root-caused~~ **ROOT-CAUSED + FIXED by T211 (`9588c07e`, fragment 0x2C material-list resolution), pixel-confirmed by T212 (`54b9bc72`) — annotated T215**
 
 Observed repeatedly and independently across multiple screenshots at
 multiple times in North Qeynos (large flat magenta or dark-blue/red
@@ -8377,7 +8369,7 @@ wrong field semantics is a distinct failure mode from a malformed packet
 live leg should budget a DB-level check (actual inventory/currency changes)
 for `buy`/`sell`, not just packet-size correctness.
 
-## T136 (2026-08-18): `/equip` migration — genuinely deferred, not dropped
+## T136 (2026-08-18): `/equip` migration — genuinely deferred, not dropped — **CLOSED by T141 (`e45c7f99` + `b71c885b`, merged `fe290cb0`) — annotated T215**
 
 `T136_migrate_merchant_family.md` scoped five commands
 (`vendor`/`vendorlist`/`buy`/`sell`/`equip`) but migrated only four.
@@ -8395,7 +8387,7 @@ move up?) rather than be bent to fit the Merchant family's shape. `equip`
 is untouched — still registered in `EverQuest::m_command_registry`, still
 covered by `tests/test_eq_commands_equip.cpp`.
 
-## T140 (2026-08-18): `/equip` migration — third confirmation, still deferred
+## T140 (2026-08-18): `/equip` migration — third confirmation, still deferred — **CLOSED by T141 (`b71c885b`) — annotated T215**
 
 T140 (the "final seventeen" migration unit) named `equip` as its 17th row,
 sequenced last with an explicit instruction to STOP the moment it needed
@@ -8430,7 +8422,7 @@ domain. Recording this as CLOSED (not open) in case merchant state grows
 later and someone re-raises the question — the reasoning here is why it
 wasn't needed *at this scope*, not a blanket "never build one."
 
-## T136 (2026-08-18): `EqActionHandler` cannot push bridge intents — a real, load-bearing architectural gap
+## T136 (2026-08-18): `EqActionHandler` cannot push bridge intents — a real, load-bearing architectural gap — **CLOSED as a class by T138 (`13799cb7`, finding 4: the per-command `EverQuest::Request*` wrapper recipe absorbs it) — annotated T215**
 
 `action::EqActionHandler` (the `IActionHandler` implementation wrapping
 `EverQuest`) has **no access to `EverQuest::m_bridge`** (private) and is
@@ -8997,3 +8989,99 @@ The negative-control session proved the **naming distinction is real**: with the
 on `Client::Admin()` (account status 200) — which **never reaches the client**.
 `m_gm_mode` gates our commands; it is not and cannot be a mirror of server-side
 GM authority. Do not "upgrade" it into one.
+
+## T185 (2026-08-23) — player corpses now take the server's name on the death path (`c75914f5`, live-verified `a2508b71`)
+
+Closes the open half of the corpse-naming defect T161 reported and T173
+partly mitigated (T173 fixed target RANKING; this fixes the NAME). eqemu
+broadcasts `OP_MobRename` for NPC corpses only; for a player corpse
+`Corpse::CalcCorpseName` says the client derives it itself. New
+`EQT::MakeCorpseName()` (inverse of T160's `ParseCorpseName`) mirrors
+`CalcCorpseName`: digits stripped from the base, player →
+`<base>'s corpse<id>`, NPC → `<base>\`s_corpse<id>`, id = the victim's
+entity id (every `AddCorpse(corpse, GetID())` site). Without it `/target`,
+`/consider`, `/loot` by name missed the corpse until re-zone.
+
+## T212 (2026-08-24) — the 0x2C fix confirmed at data and pixel level; corrected `equipment_models.json` shipped (`54b9bc72`)
+
+`equipment_index_builder` uses the same WLD parser T211 fixed, so the shipped
+index carried the bug: model 1036 (`IT1036_O_DMSPRITEDEF`) was `['']` — the
+ONLY one of 1000 models with no usable texture — and is now four real sword
+textures. Pixel level: model 1036 is referenced by zero items/NPCs in the
+eqemu DB, so it was forced via a temporary npc_type; the NPC builds
+(placeholder=false) and renders a textured two-handed blade, 0 magenta-ish
+pixels of 480000 (`review/T211/`). **Traps recorded:** a DB `zone_id` edit
+leaves coordinates stale (use `/say #zone <zone>` or player and spawned NPC
+land out of bounds and never build); `#npctypespawn` spawns at the invoker's
+position and `#zone`'s coord args are ignored.
+
+## T214 (2026-08-25) — EQE1 request log; `unloadZone()` was destroying `willeq.eqe1`; the usage reporter manufactured a false finding (`6f2f22f6`, `3e4e8a95`, `e70e3347`)
+
+1. **Instrument** (`6f2f22f6`): `ConstrainedTextureCache` records every
+   distinct EQE1 name looked up and which archive served it (or
+   `<NOT-FOUND>`), dumped as TSV when `EQT_EQE1_REQUEST_LOG_DIR` is set —
+   once per zone load and again at teardown (the teardown dump is the
+   load-bearing one: the T210 distance gate defers entities, so the
+   zone-load snapshot misses what they request on approach — 89 names, 40%
+   of the befallen session). NOT-FOUND = 0 in all audited runs. Also
+   corrected a misread: "qeynos2_chr served 0 lookups" came from a RE-ZONE's
+   usage line (cache already warm); cold it serves 89. Read EQE1-USAGE per
+   zone load, not per log file.
+2. **Correctness fix** (`3e4e8a95`): `unloadZone()` destroyed EVERY EQE1
+   loader including `willeq.eqe1` — the client's own pack, opened once at
+   init and never reopened — so after the first zone unload `detail_atlas`
+   missed every open archive and the T207 resolver opened `textures.eqe1`
+   (2.6MB, 64 entries) to serve that single name, every zone. `unloadZone`
+   now retains `isPersistentEQE1Archive()` names and re-registers them.
+   Verified befallen + qeynos2 `--constrained orangepi`: `textures.eqe1` no
+   longer mapped; +87KB net mapped — a correctness fix, not a saving.
+3. **Reporter fix** (`e70e3347`) and **WILL'S ARCHIVE RULE**: an archive is
+   legitimately open iff (R1) it is the current zone's own
+   (`{zone}`/`{zone}_obj`/`{zone}_chr`) or (R2) a lookup needed it and
+   nothing already open could serve it. Only R2 archives can be waste.
+   `befallen_chr` (4065KB, 0 lookups) was R1 — NOT a defect; the report had
+   labelled any zero-hit archive "wasted", which manufactured the finding.
+   Now classified before counted ("idle (expected)"). All 9 qeynos2 + 6
+   befallen archives audited: zero violations. Recorded in
+   `docs/decisions.md` (2026-08-25).
+
+## Cross-references for units with no entry above (T215, 2026-08-25)
+
+- **T174** `d66ac19e` + `d79cb560`: keyboard hotbar fires by slot content
+  type (Spell → `castSpell`, Skill → `useSkill`) instead of always
+  `castSpell`; Item and Emote slots are DEBUG-logged and skipped (open, see
+  Index). `refactor/T174_keyboard_hotbar.md`.
+- **T189** (no commit): root-caused the T188 "gate losing entities" claim
+  to `inSceneGraph` — a wrong conclusion; **corrected by T190 `8bad78d4`**
+  (the drain was never broken; the `/move` teleport test position was).
+  `refactor/T190_entity_drain_correction.md`.
+- **T192** (no commit of its own): retracted T191's "composite atlas 0%
+  adoption" — every T191 run had `eqe1Path=''`; annotated on T191 at
+  `5f875227`. `refactor/T191_composite_adoption_and_sender_verify.md`.
+- **T194** (reverted, no fable commit): lazy per-filename composite opening
+  broke the zone load (`fishe0101.bmp` FATAL) — a composite archive is NOT
+  named after the textures it contains; recorded at `edbbb90c` (T193
+  addendum). Led to T196's table-of-contents index shape.
+- **T196** (no commit of its own): whole-directory TOC index
+  (`texture name → archive path`) — the shape T199 `bc54e527`/`3edeb0dd`
+  and T207 `ed14c4de` built on; its gdb backtrace of the x86 crash was the
+  first correct read of what T205 later fixed. See
+  `refactor/T199_spawn_driven_archive_set.md`, `refactor/T201_eqe1_crash_matrix.md`.
+- **T198** `28a59bf4` (composite atlas dropped from the `orangepi` preset —
+  Will's decision, memory pressure), `4b78f682` (EQE1 assets regenerated
+  999/1006), `09d6ef03` (the remaining gap is archive coverage in
+  `config/eqe1_archives.json`, not the builder; phantom `gequip7` noted).
+- **T202** `950862dd` (NOT MERGED): UI-atlas LRU-eviction hypothesis
+  DISPROVEN (eviction never ran); established the exit-status repro
+  (139 = SIGSEGV, never classify by log contents). Follow-up `d4ae429c`:
+  the load completes, the first render frame crashes.
+- **T204** `f524af3d`: Irrlicht rebuilt with `-g`; `p *texture` at the fault
+  shows a dangling `ITexture` (vtable 0x50) — settled it as a use-after-free
+  of the UI atlas texture, which T205 `3b456a1b` then fixed
+  (`ConstrainedTextureCache::clear()` destroyed the UI atlas).
+- **Doc debt outside T215's territory (2026-08-25):** `docker/CLAUDE.md:19`
+  still shows `./scripts/build-arm-noble.sh --no-gles2  # Desktop GL instead
+  of GLES2` — that flag was retired by P32 (`docs/decisions.md` 2026-07-28
+  addendum; GLES2 is the only ARM renderer) — and its target table calls the
+  Pi build "Lima/Mesa GL 2.1"-era desktop GL. Owned by whichever unit next
+  touches `docker/`; recorded so it is not re-discovered.

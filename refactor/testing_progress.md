@@ -4,8 +4,16 @@ Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).
 The perf session reads this file; findings that belong to it are under
 "Handoffs".
 
-Last updated: 2026-08-01 (T24 merged — two open needs-Will items: the
-auto-loot game-thread stall and the dead class/level spell gate).
+Last updated: 2026-08-25 (T215 tracker refresh; fable `e70e3347`, T214).
+Suite: 2746 registered, 2745 pass (sole failure
+`AudioManagerTest.PreloadCommonSounds`, the ALSA host quirk). The two
+"needs-Will" items below are CLOSED: the auto-loot game-thread stall was
+ruled and fixed by T26 (blocking sleeps removed), then the dead kill→loot
+path was wired by T33 `b3f6cda9`/T34 `5a52cc4f`; the class/level spell gate
+was populated by T27 (`willeq.db` class levels) and validated at open by T56
+`d5190579`, with `SpellData::effects` populated by T68 `73f27dad`. The
+detailed per-unit table below stops at T24; the compact log that follows it
+covers T28→T214.
 
 ## Unit log
 
@@ -36,6 +44,29 @@ auto-loot game-thread stall and the dead class/level spell gate).
 | T04 | Zone connection-flow sequencing | DONE (merged `2042490`) | 16 tests via the existing public `ReplayZonePacket` seam; all four gating prerequisites isolated. Found 2 real robustness bugs + 1 latent gating gap (below). Login/world still uncovered — needs a seam decision from Will. |
 | T03b | Suite hygiene | DONE (merged `41fe719`) | Part A: Hotkey fixtures made parallel-safe (unique per-PID/per-test temp dirs) — verified 10/10 green under `-j8`, no `/tmp` residue. Part B: RDP segfault diagnosed as a real use-after-free in `RDPServer::stop()` and handed to the perf session, correctly NOT fixed. See `refactor/TESTING_HANDBACK.md` Round 3. |
 | T03a | Unhardcode pcap zone port | DONE (merged `02d591d`) | 4 FAILs + 8 SKIPs → 12 PASS. Handshake-based port/IP discovery in `pcap_test_utils.h` + `WILLEQ_ZONE_PORT`/`WILLEQ_ZONE_IP` overrides. Compression assertions NOT weakened — 1017/1682 S→C packets genuinely carry the 0x5a marker once direction classification is fixed. |
+
+## Compact unit log T28→T214 (T215, one line per merged unit, from `git log --oneline`)
+
+Grouped by arc; hashes are the unit's main commit. Plan/Review docs live in
+`refactor/T<nn>_*.md`; cross-unit findings in `refactor/deferred.md`.
+
+**Command channel + state-layer sweep (T28–T58)**
+- T28 `1facebce` live ZoneChanged position bug + dead-state readers; T29 `739a5e11` one slash-command channel over stdin/stdout; T30 `fa31ca97` headless abort/non-exit fixed (`87bd4cc1` /q alias); T31 `c167acdc` non-FATAL log output reaches stdout; T32 `b0715279` kill→loot defect found; T33 `b3f6cda9` loot machine wired to the death event; T34 `5a52cc4f` /loot (+ `7a1e48b9` item-link 11-char fix); T35 RDP stop UAF; T36 `08c4c128` capture paths vs repo root; T37 `9ffae0ec` check_file_sizes vacuous pass; T38 `3e4f6bcd` missing base model skips one entity.
+- T39 `8d820392` → T49 `36940c85` state-layer migration (pet `5f46507e`, snapshot `5799b847`, inventory `1ee44575`, EQT_HAS_GRAPHICS sweep `fabf0246`, spell `edbea089`, GameTick headless `eab766a1`, bridge wiring `b5f5c1d6`, teardown `efc47cfc`, vendor reachability `c099a98d`); T50 `7f2bfdf5` /bank + /train; T51 `f75d1d7a` attack-path consolidation; T52 `99482d45` zone-position double-swap; T53 `e90eac72` deferred.md hygiene; T54 `4fe0ad95` inventory view tests; T55 `c62a095b` forced-relocation writes; T56 `d5190579` log-level clobber + DB version; T57 `df6b0d0c` inventory popup layout; T58 `e915143f` PlayerProfile landing position.
+**Equipment / first-person / spells (T60–T81)**
+- T60 `ed5eeaec` paperdoll restored; T61 `b56cbe13` GLES2 2D rectangles; T62 `836074e5` held-item was tooling; T63 `29c5d7de` live equipment verification; T64 `974de0ea` frame-dump capture; T65 `989a0410` secondary weapon rotation; T66 `40bd74af` /camera + /equip reachability; T67 `30e04d3b` ConstrainedMeshCache removed; T68 `73f27dad` spell effect slots; T69 `44e27cf8` memory gate; T70 `8ded4dde` spells.eff reader; T71 `0cb5d87e`/`3ae35c58` /equip local sync; T72 `a023d07f` spell visuals; T73 `96de1e17` spells.eff table refuted; T74 `319a47b1` first-person arms; T75 `9b043323` camera height; T76 `eaa96953` near-plane standoff; T77 `aa55adb8` /equip pre-flight; T78 `b02228eb` two-GameState census; T79 `d461077c` tooling defects; T80 `df6a783b` memory-gate run; T81 `21fb6c3f` entity state projection.
+**Two-client harness + heading (T82–T96)**
+- T82 `e4bba1b3` live verification; T83 `271d691b` NewSpawn /8 scale; T84 `16ae2d5f` two-client harness; T86 `86f5ca8b` ClientUpdate broadcast; T87 `0f2ddb0a` heading disagreement (artifact); T88 `cb31a38d` round-trip identity; T89 `a9e1fc0c` +90° finding (retracted same day, artifact); T90 `59b1dbce` setHeading fix; T91 `4616e252` otherChrCaches_ LRU; T92 `ddf08b27` masked-variant query; T93 `00f5ed45` fake-substitution sweep; T94 `7f782222` negative model cache; T95 `02361953` enum-cast validation; T96 `16a2820a` /pet literals.
+**Action-layer migration (T97–T143)**
+- T97 `4f56fce9` reachability audit; T98 `7cce0792` 34 shadowed commands deleted; T99 `01ccc1fc` Group (pilot); T100 `50534d30` Chat; T101 `6a4ce028` Spells + Pet; T102 Combat + Social; T103 Trade domain; T104 `6cbcaa24` combat sync via events; T132 `86c240d8` Guild; T133 `5b8c2b0d` m_guild_id; T134 `770ca383` Corpse + Resurrection; T135 `904cc58f` Utility; T136 `9aa79f0f` Merchant; T138 `13799cb7` 61-command triage; T139 `bb0ac689` 34 redundant deleted; T140 `bd05c858` final 16; T141 `b71c885b` /equip; T142 `28b969b0` spellreload/weatherquality via bridge; T143 `e979a821` registry-aware /help.
+**Crash / memory tour (T105–T131)**
+- T105 `a9bec8c1` working set; T106 `d115b900` untracked RSS; T107 `54b8b82e` Pi/x86 baseline; T108 `25b2f886` mapped≠resident; T109 `a033c569` distance gate (inert); T111 `d21086be` gate enabled + pickup; T112 `59d85d52` gate cost; T113 `91c1d702` RaceModelLoader race; T114 `331870f5` TSAN audit; T115 `95dd2611` portalVisibleRegions_; T116 `c6edff90` SimulationOutput class closed; T117 `84031383` Pi re-baseline; T118 `f9313ae6` corruptor hunt; T119 `d005f4df` clear() dangling ref; T120 `d0495b97` ASAN quarantine; T121 `dfccf8c1` TSAN clean; T122 `2354f9b0` texture-lifecycle probe; T123 `2112d6f1` ObjectNodeTextureGuard; T124 `3bfc3e0c` doors + boids; T125 `b1b8eb60` Tour A 10/10; T126 `663abe62` UAF holder named; T127 `4ee36abd` arena + node leak; T128 `d7a56bc1` Tour B 10/10; T129 `dceae3d5` wait_for.sh; T130 `c9134a7d` TSF OOB; T131 `df63e40b` allocation-free audio callback; T137 `e97af572` ARM texture probe.
+**Packet / wire verification (T144–T168)**
+- T144 `52c36400` Object_Struct 92 bytes; T145 `b941792a` seven wire-rotted structs; T146 `e03101af` GM family zero callers; T147 `d9a90566` packet_structs traps; T148 `958eba81` GM gate; T149 `def290dc` tradeskill senders; T150 `a2bdbd30` social/find senders; T151 `b1110b5a` zero-caller triage; T152 `157d8664` seventeen skill opcodes; T153 `92c84284` consider-corpse + face; T154 `44d857a3` four dead senders; T155 `40bf602f` probe debt; T156 `5fee68ed` /useskill; T157 `42eeb84d` Rogue provisioning; T158 `57167d94` skill re-probe; T159 `9f46cd2d` class skill caps; T160 `613f1e6a` player corpses; T161 `1924e424` live gate acceptance; T162 `91378195` skill-emitting commands gated; T163 `e2b70ffc` gtest discovery; T164 `2f4f2c28` 'live' ctest label; T165 `26c474ac` test split; T166 `719f0e61` renderer_zone_load split; T167 `0361d715` profile appearance; T168 `3bf39e23` last five senders.
+**Raid + inspect + hotbar (T169–T185)**
+- T169 `5430f8d9` OP_RaidUpdate decode; T170 `0fe292a8` OP_InspectAnswer; T171 `ed021892` local inspect message; T172 `84666f02` owed live probes; T173 `eef57da0` living-over-corpse targeting; T174 `d66ac19e` hotbar by slot type; T175 `6a344206` stale bin/ gate; T176 `b779c023` MarkNPC opcode; T177 `c781c474` Bind_Wound reply; T178 `bb99a6b2` display defects; T179 `5f59dd98`/`07fa5a46` raid commands; T180 `165ee837` roster; T181 `7c1fef14` leader ops; T182 `43095e9b` lock/unlock; T183 `9ee03a23` /raid remove gate; T184 `4b6d63be` raid groups; T185 `c75914f5` corpse rename.
+**EQE1 / zone-load correctness (T186–T214)**
+- T186 `5a0e19d5` Pi zone-in re-measure; T187 `3c41c0b2` seq_entities 64%; T188 `896a9b42` gate findings (withdrawn); T190 `8bad78d4` correction; T191 `46741dec` (retracted by T192, `5f875227`); T193 `41670ea4` Pi bad_alloc (T194 reverted, `edbbb90c`); T195 `0157fdc7` address space; T197 `09483f60` atlas off; T198 `28a59bf4`/`4b78f682`/`09d6ef03`; T199 `1f81b76c`/`bc54e527`/`3edeb0dd` spawn-driven archives; T200 `aced1c2a` baseline hangs; T201 `c1ac05c0` crash matrix; T202 `950862dd` (not merged); T203 `4d8a378e` backtrace; T204 `f524af3d` dangling atlas; T205 `3b456a1b` clear() UI-atlas fix; T206 `64ce7abf` Pi EQE1 measured; T207 `ed14c4de` name→archive index; T208 `604ef722` Pi under T207; T209 `d6a96103` seq_entities attribution; T210 `5505c8a0` deferred pickup verified; T211 `9588c07e` fragment 0x2C; T212 `54b9bc72` pixel confirmation; T213 `b6d0576f` races 415/457; T214 `6f2f22f6`/`3e4e8a95`/`e70e3347` request log, willeq.eqe1 retention, reporter.
 
 ## T01 — how the numbers were produced
 
@@ -761,7 +792,7 @@ BUG_ pin and the synthetic 5-field contrast case were re-pointed as
 prescribed; real-capture tests now assert 'B'/`OP_SetChatServer` and
 'b'/`OP_SetChatServer2` both populate correctly.
 
-## T24 finding — the spell class/level gate is dead (needs Will)
+## T24 finding — the spell class/level gate is dead (~~needs Will~~ RULED 2026-08-02, populated by T27; DB version validated by T56 `d5190579`)
 
 `SpellData::class_levels` (`spell_data.h:122`) is declared
 `std::array<uint8_t, NUM_CLASSES> class_levels = {}` and
@@ -811,7 +842,7 @@ regenerated and committed with a proven-otherwise-no-op content diff, the
 104-119 must be confirmed against `canClassUse()`'s index derivation
 (a silent off-by-one would be worse than today's no-op).
 
-## T23 finding — auto-loot stalls the GAME THREAD (needs Will)
+## T23 finding — auto-loot stalls the GAME THREAD (~~needs Will~~ RULED 2026-08-01, fixed by T26; kill→loot path wired by T33 `b3f6cda9`)
 
 Blocking `std::this_thread::sleep_for` calls sit on a game-thread path.
 Verified chain (orchestrator re-traced it against source, not taken on
@@ -1057,8 +1088,14 @@ Full detail: **`refactor/TESTING_HANDBACK.md`**.
 
 - ~~Finding 1 (`EQT_GRAPHICS=OFF`)~~ — **CLOSED, fixed by P28**.
 - ~~Finding 2 (no capture fixtures)~~ — **CLOSED, fixed by P29**.
-- `src/client/bridge/irrlicht_bridge.cpp` (876 lines) is in no test
-  binary; perf territory, noted not touched.
+- ~~`src/client/bridge/irrlicht_bridge.cpp` (876 lines) is in no test
+  binary; perf territory, noted not touched.~~ — **CLOSED (T215,
+  2026-08-25):** it is compiled into `willeq_core` (`CMakeLists.txt:395`,
+  `GRAPHICS_SOURCES`) and so linked by every `willeq_core` test target; six
+  test sources reference `IrrlichtBridge` directly
+  (`test_game_state_sync_bridge.cpp`, `test_zone_connection_flow.cpp`,
+  `test_skill_reachability.cpp`, `test_state_modules_secondary.cpp`,
+  `test_beneficial_spell_casting.cpp`, `test_zoning_graphics_integration.cpp`).
 - ~~**T02 finding**: GLES2-x86 tree X11 link failures~~ — **CLOSED.**
   The executor reported `test_graphics`, `test_asset_loading`,
   `test_door_loading` and five tools failing to link with undefined

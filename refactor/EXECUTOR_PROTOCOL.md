@@ -5,8 +5,12 @@ references this file; plans carry only unit-specific content.
 
 ## Setup
 - Work ONLY in the assigned worktree slot (/mnt/projects/fable/wt/slotN).
-- CHECKOUT FIRST: `git -C <slot> checkout -b task/<name> fable` — the
-  plan file exists only on the fable tip; verify with `git log -1`.
+- CHECKOUT FIRST: `git -C <slot> checkout -B task/<name> fable` — the
+  plan file exists only on the fable tip; verify with `git log -1` that
+  the tip hash matches the one named in your dispatch. STOP if not.
+- Never rely on the harness `isolation: worktree` — it forks from `main`,
+  not `fable`. Always `checkout -B task/... fable` in your slot and verify
+  the tip.
 - Read the unit plan in refactor/ as the contract, plus the
   prior-unit reviews it names.
 
@@ -89,7 +93,8 @@ references this file; plans carry only unit-specific content.
    [parallel `ctest -j` processes racing on a fixed RDP listener port] was
    found and fixed in the same unit. A future RDP segfault is a real bug,
    not a flake — do not re-waive without root-causing it.) Baseline:
-   1234/1235 (P27 certification; pre-T35 count, RDP suite grew since).
+   2745/2746 at fable `e70e3347` (T214, 2026-08-25; the one failure is the
+   ALSA quirk above). Earlier: 1234/1235 (P27 certification).
 3. `bash <slot>/scripts/build-gles2-x86.sh`
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)
@@ -158,7 +163,9 @@ references this file; plans carry only unit-specific content.
 - Fill the plan's Review section (evidence, tables, deviations —
   deviations flagged, never silently absorbed).
 - Commit on the task branch with the plan's message + trailer
-  "Co-Authored-By: Claude Sonnet <noreply@anthropic.com>". Do NOT
+  "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>". Never put
+  backticks in a heredoc'd commit message — bash expands them and
+  silently mangles the commit. Do NOT
   merge, push, or delete branches. Orchestrator reviews and merges.
 - Final report: pass/fail per verification step, headline findings,
   commit hashes, deviations; if blocked/STOPped, exactly where and why.

@@ -65,8 +65,8 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | Ctrl+Q | Attack (initiate combat) |
 | ` / NumLock / Numpad+ | Toggle autorun |
 | Space | Jump |
-| 1-8 | Hotbar slots 1-8 |
-| 9-0 | Hotbar slots 9-10 |
+| 1-8 | Hotbar slots 1-8 (routed by slot content type since T174: Spell → cast, Skill → useSkill; Item and Emote slots are logged and skipped) |
+| 9-0 | Hotbar slots 9-10 (same routing) |
 | Alt+1-8 | Cast spell from gem 1-8 |
 | F1 | Target self |
 | F2-F6 | Target group member 1-5 |
@@ -96,61 +96,99 @@ Key bindings are configurable via `config/hotkeys.json` and managed by `HotkeyMa
 
 ## Slash Commands
 
-**Chat:**
-- `/say`, `/shout`, `/ooc`, `/auction`, `/gsay`, `/gu` - Channel messages
-- `/tell <name> <msg>` - Private messages
-- `/emote <text>` - Emotes
-- `/filter [channel]` - Toggle channel display (say, tell, group, guild, shout, auction, ooc, emote, combat, exp, loot, npc, all)
+Three vocabularies exist (`docs/decisions.md` 2026-08-03 ruling; T97–T143
+migration); `Application::DispatchSlashCommand` tries them in order:
 
-**Movement:**
-- `/loc` - Show current location
-- `/sit`, `/stand` - Sit/stand
-- `/camp` - Sit down and logout after 30 seconds (stand to cancel)
-- `/move <x> <y> <z>` - Move to coordinates
-- `/moveto <name>` - Move to entity
-- `/follow <name>`, `/stopfollow` - Follow entity
+1. **Registry 1 — game registry** (`EverQuest::m_command_registry`,
+   `src/client/eq_commands*.cpp`): after T139 deleted 34 redundant copies
+   and T141 migrated `/equip`, only seven remain: `/hotkeys`, `/pmem`
+   (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
+   (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
+2. **Registry 2 — `action::CommandProcessor`**
+   (`src/client/action/command_processor.cpp`, 134 registrations at
+   `e70e3347`): the real slash vocabulary, listed below by its own category
+   strings. Derived from the `registerCommand({...})` calls — regenerate
+   from the source, do not hand-edit.
+3. **Registry 3 — renderer if-chain** (`IrrlichtRenderer::processSlashCommand()`,
+   reached via the `RendererCommand` bridge queue): ~70 debug/graphics
+   toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
+   `/dumpscene`, `/newskills`, `/newinv`, `/newbook`, `/weatherpreset`, …)
+   — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
 
-**Combat:**
-- `/target <name>` - Target entity
-- `/attack`, `/stopattack` - Toggle attack
-- `/aa` - Toggle auto-attack
+`/help [command]` (registry-aware since T143 `e979a821`) lists registries
+1+2 deduplicated.
 
-**Group:**
-- `/invite [name]` - Invite target or named player to group
-- `/follow [name]` - Accept group invite from player
-- `/disband` - Leave current group
-- `/decline` - Decline pending group invite
+**Chat:** `/say` (`/s`), `/shout` (`/sh`, `/sho`), `/ooc` (`/o`), `/auction`
+(`/auc`), `/gsay` (`/g`), `/gu` (`/guildsay`), `/tell <player> <msg>` (`/t`,
+`/msg`), `/reply <msg>` (`/r`), `/emote <action>` (`/em`, `/me`), `/wave`,
+`/dance`, `/cheer`, `/laugh`.
 
-**Spells:**
-- `/cast <gem#>` - Cast spell from gem slot (1-8)
-- `/mem <gem#> <spell_name>` - Memorize spell to gem slot
-- `/forget <gem#>` - Forget spell from gem slot
-- `/gems` - Show memorized spells
-- `/interrupt` - Interrupt current cast
-- `/spellbook` - Open spellbook window
+**Movement:** `/loc` (`/location`), `/sit`, `/stand`, `/move <x> <y> <z>`
+(CLIENT frame — swap x/y if reading a server-frame `/loc`), `/moveto <name>`,
+`/warp [x y z | name]`, `/zoning [on|off]`, `/follow <name>`, `/stopfollow`
+(`/stop`), `/face <name|x y z>`, `/turn <degrees>`, `/rewind`, `/walk`, `/run`,
+`/sneak`, `/crouch` (`/duck`), `/feign` (`/fd`), `/jump`.
 
-**Skills:**
-- `/skills` - Toggle skills window
+**Combat:** `/target <name>` (`/tar`), `/attack` (`/att`), `/stopattack`,
+`/aa` (`/~`), `/combat [on|off]`, `/consider` (`/con`), `/hail`, `/assist
+[target]` (`/a`), `/taunt`, `/useskill <id|name>` (`/skill`; class-cap gate
+T156/T159/T162), `/autofire` (`/af`), `/shield`, `/duel`, `/duelaccept`,
+`/dueldecline`, `/hunt [on|off]`, `/autoloot [on|off]`, `/listtargets`,
+`/loot <corpseId>`.
 
-**Pet:**
-- `/pet <command>` - Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)
+**Group:** `/invite [name]` (`/inv`), `/groupaccept` (`/gaccept`), `/decline`,
+`/disband`, `/split <pp> [gp] [sp] [cp]`, `/groupassist [name]` (`/ga`),
+`/raid status|list|invite|accept|leave|remove|leader|loot|looter|lock|unlock|group`
+(T179–T184; `remove` gated client-side on leadership — Will's ruling, T183).
 
-**Trading:**
-- `/trade` - Request trade with target
-- Trade window opens when accepting trade requests
+**Guild:** `/guildinvite` (`/ginvite`), `/guildaccept` (`/acceptguild`),
+`/guilddecline` (`/declineguild`), `/guildremove` (`/gremove`, `/gkick`),
+`/guilddemote` (`/gdemote`), `/guildleader` (`/gleader`), `/guildmotd [msg]`
+(`/gmotd`).
 
-**Audio:**
-- `/music [on|off]` - Toggle or set music playback
-- `/sound [on|off]` - Toggle or set sound effects
-- `/volume [0-100]` - Show or set master volume (alias: `/vol`)
-- `/musicvolume [0-100]` - Show or set music volume (alias: `/mvol`)
-- `/effectsvolume [0-100]` - Show or set effects volume (aliases: `/evol`, `/sfxvol`)
+**Social:** `/who [name] [level range]` (`/whoall`), `/inspect [name]`
+(the client also answers inbound inspects with `OP_InspectAnswer`, T170),
+`/inspectmessage [text|-clear]` (`/inspectmsg`, T171), `/trade [name]`,
+`/accept`, `/tradedecline` (`/rejecttrade`), `/canceltrade` (`/stoptrade`),
+`/lfg`, `/surname <name>`, `/random [low] [high]` (`/roll`), `/yell`, `/find
+[name]` (`/findperson`), `/friendswho <names>` (`/friends`).
 
-**Utility:**
-- `/help [command]` - Show help
-- `/who` - List nearby entities
-- `/quit` - Show exit options
-- `/q` - Exit client immediately
-- `/debug <level>` - Set debug level (0-6)
-- `/timestamp` - Toggle chat timestamps
-- `/pmem` - Show memory usage breakdown across all subsystems (aliases: `/memory`, `/mem_report`)
+**Character:** `/appearance <field> <0-255> ...` (T153/T167).
+
+**Spells:** `/cast <gem#>`, `/mem <gem#> <spell>` (`/memspell`, `/memorize`),
+`/forget <gem#>`, `/gems`, `/interrupt` (`/ducking`), `/spellbook` (`/book`).
+
+**Skills:** `/bandage` (`/bindwound`; inbound reply parsed since T177),
+`/train`, `/track [name]`. The skills window toggle is `/newskills`
+(registry 3); the old `/skills` was a dead stub and was deleted (T138/T139).
+
+**Pet:** `/pet <command> [target]` (attack, back, follow, guard, sit, taunt,
+hold, focus, health, dismiss).
+
+**Corpse:** `/corpsedrag <name>` (`/drag`), `/corpsedrop` (`/drop`),
+`/consent <player>`, `/deny <player>`.
+
+**Tradeskill (T149):** `/recipesearch` (`/recipes`), `/recipedetails`
+(`/recipeinfo`), `/recipecombine` (`/autocombine`), `/recipefavorites`
+(`/recipefav`), `/clickobject <drop_id>` (`/clickobj`).
+
+**Commerce / Inventory:** `/vendor`, `/vendorlist`, `/buy <slot> [qty]`,
+`/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`.
+
+**Utility:** `/help [command]`, `/quit` (`/exit`, `/q`), `/camp`, `/save`,
+`/afk`, `/anon`, `/roleplay [on|off]` (`/rp`), `/list [search]`, `/dump
+<name>`, `/npcstate`, `/door` (`/u`), `/rezaccept` (`/acceptrez`),
+`/rezdecline` (`/declinerez`), `/bug <text>` (`/report`), `/petition <text>`,
+`/time [hour]` (`/settime`), `/pathfinding [on|off]`, `/debug <0-6>`, `/perf`
+(`/performance`, `/metrics`), `/logonly`, `/logexclude`, `/logmodule
+<MOD:LEVEL>`, `/logclear`.
+
+**GM (T148; needs `m_gm_mode`, which is NOT a mirror of server-side
+`Client::Admin()`):** `/gmzone <name> <zone_id>`, `/summon <name>`, `/goto
+<name>`, `/gmfind <name>`, `/kick <name>`, `/kill <name>`, `/hideme [on|off]`
+(misrouted — open defect), `/emotezone <msg>`, `/gmlastname <name> <last>`.
+
+**Audio (registry 1):** `/music [on|off]`, `/sound [on|off]`, `/volume
+[0-100]` (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`,
+`/sfxvol`). **Diagnostics (registry 1):** `/pmem` (`/memory`,
+`/mem_report`), `/hotkeys`.
