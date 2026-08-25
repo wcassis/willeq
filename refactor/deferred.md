@@ -18,6 +18,9 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+- **NEW LEAD (T220 live screenshot, 2026-08-25): a magenta patch in qeynos2 CEILING geometry** (`review/T220/`). T211 fixed the 0x2C material-list guess for equipment; this is zone geometry — different loader path. Class B: reproduce with `--dump-frames-dir` at the same spot, then find which texture name misses (EQT_EQE1_REQUEST_LOG_DIR shows NOT-FOUND). Untriaged.
+- **T220 residual: 17 TSAN warnings, all T114 inventory #10 (`RendererEventReceiver` read-and-reset key/mouse flags on game vs render thread).** Class A, own unit: make them atomics or route through the intent queue. `review/T220/tsan_after_*.txt`.
+
 - **fable tip:** `e70e3347` (T214). **Suite:** 2746 registered, 2745 pass —
   sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host
   quirk). eqemu DOWN, lock RELEASED, no unit in flight.
