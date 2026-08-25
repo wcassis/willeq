@@ -32,7 +32,7 @@ Review — read that before scoping the next unit off this file.
   below; every closure cites its commit):
   - **A — client correctness defects, unowned:** ~~`SendGMHideMe` misrouted~~ (CLOSED T217 `175c97ca`) /
     `ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148);
-    ~~`/reply` silent success with no pending sender (T100)~~ CLOSED T222 (branch, pending live leg);
+    ~~`/reply` silent success with no pending sender (T100)~~ CLOSED T222 (live-verified two-client);
     ~~`rejectTradeRequest()` never fires `m_on_cancelled` (T103)~~ CLOSED T222;
     `CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
     keyboard hotbar Item/Emote slots skipped, not routed (T174);
