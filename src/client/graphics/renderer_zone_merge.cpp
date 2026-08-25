@@ -334,7 +334,7 @@ RegionMeshTextureGuard::RegionMeshTextureGuard(
     irr::video::ITexture* placeholder)
     : regionMeshNodes_(regionMeshNodes), placeholder_(placeholder) {}
 
-void RegionMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
+void RegionMeshTextureGuard::onTextureEvicted(const std::string& name,
                                                irr::video::ITexture* texture) {
     if (!texture) return;
 
@@ -355,10 +355,19 @@ void RegionMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
     }
 
     if (swapped > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "[mergedraws] RegionMeshTextureGuard: swapped {} region-mesh material "
-                  "reference(s) to evicted texture -> placeholder (covers nodes detached from the "
-                  "scene graph for front-to-back manual draw, which clearTextureReferences() cannot "
-                  "reach)", swapped);
+        // T226: this is the user-visible magenta/dark-grey checkerboard in
+        // ZONE geometry (T220's qeynos2 "ceiling patch"). A region mesh of
+        // the CURRENT zone still references the texture, so the constrained
+        // texture budget was exceeded by the zone's own working set and the
+        // LRU gave back something that is still on screen. It used to be
+        // whispered at DEBUG, under a "[mergedraws]" tag that says nothing
+        // about a rendering defect; name the texture and say what it looks
+        // like, at WARN, so a normal-log-level run reports it.
+        LOG_WARN(MOD_GRAPHICS, "RegionMeshTextureGuard: evicted texture '{}' was still referenced by {} "
+                 "live region-mesh material(s) of the current zone -> replaced with the placeholder "
+                 "checkerboard (magenta/dark-grey). The constrained texture budget is smaller than "
+                 "this zone's working set; the geometry using '{}' now renders the placeholder "
+                 "until the texture is re-uploaded.", name, swapped, name);
     }
 }
 
