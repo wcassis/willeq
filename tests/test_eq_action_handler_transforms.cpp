@@ -108,6 +108,9 @@ TEST(EqActionHandlerTransforms, CastSpellOnTarget_SharesSameGemSlotConversion) {
 // genuinely-unavoidable bar this was left for the next unit rather than
 // added here. See refactor/T93_fake_substitution_sweep.md's Review and
 // refactor/deferred.md for this as an explicit open item.
+// T234: now covered in test_eq_action_handler_transforms_real.cpp, which
+// populates m_entities through the real NewSpawn packet path instead of a
+// new seam.
 // ---------------------------------------------------------------------
 
 }  // namespace

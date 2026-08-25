@@ -1267,6 +1267,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms)
 
+# T234: the five transforms T93 listed but could not reach (targetSelf,
+# targetGroupMember, hailTarget, setMovementMode, setPositionState) pinned
+# against the real EverQuest: entities/pet/group via replayed NewSpawn +
+# GroupUpdate packets, and a real DaybreakConnection over FakeUdpTransport
+# installed as m_zone_connection so the outbound TargetMouse/ChannelMessage
+# bytes can be asserted. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_transforms_real
+    test_eq_action_handler_transforms_real.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_transforms_real GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_transforms_real PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms_real)
+
 # T167: PlayerProfile appearance parse + the /appearance merge. Pins the seven
 # PlayerProfile offsets (verified against eqemu's titanium_structs.h) and the
 # merge that keeps an unnamed field from being reset to zero on the server.
