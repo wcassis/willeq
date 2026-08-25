@@ -126,3 +126,55 @@ atomic — take the lock with `set -o noclobber` (`> file` fails if it
 exists) so the check and the take are one operation. Live `/who` + `/who all`
 capture is owed; script/config are staged in the scratchpad (see
 `review/T224/README.md`).
+
+## Live leg (follow-up commit, slot3, 2026-08-25 19:00-19:19 UTC)
+
+Lock taken with `set -o noclobber` (exit 0), `up.sh befallen`, headless
+Testchar (`--no-graphics --log-level=INFO --script`: wait 55, /who, /who all,
+/quit), then Testchar restored (zone 36, -77.9232/21.9086/3, h190), `down.sh`,
+lock deleted. Logs: `review/T224/live_who_{before,after}_followup.log`.
+
+**What the server actually sent** (this eqemu routes every Titanium /who to
+world: `titanium.cpp DECODE(OP_WhoAllRequest)` forces `type=3`, so
+`world/clientlist.cpp ClientList::SendWhoAll` is the sender, not the zone's
+`ZoneWho`). The parser decoded it field-for-field on the first run -- the
+47-byte packed layout is confirmed live. Two things the first commit got
+wrong, both found by the run:
+
+1. **`%9` is the user/PID trailer, not a bare account.** For a GM viewer
+   world sends `pidstring=5003` "(USER %1: PID %2)" with the account name
+   and `unknown100`(=207) as its arguments. First run printed
+   `... ZONE: befallen willeq_test`; now `... ZONE: befallen (USER willeq_test: PID 207)`.
+   Also learned from the world sender: `rankstring` is 5007..5021 (GM rank
+   strings) or **0**; `formatstring` 5022 "%T1[ANON (%2 %3)] %4 (%5) %6 %7 %8"
+   for anon players as seen by a GM; `unknown80[0]` is the **numeric admin
+   level** for GM viewers (never looked up as a string -- and never was);
+   `playersinzonestring` 5033 when the list is cut at 20. Defaults for
+   5003/5007-5022/5033 added to `whoDefaultString`. `%1..%8` order
+   (rank, level, class, name, race, guild, zone, linkdead) is CONSISTENT with
+   the live line; the linkdead slot could not be exercised (no LD player).
+2. **`/who all` sent whom="all" as a name filter** -- server replied
+   "There are no players in EverQuest that match those who filters." (an
+   OP_FormattedMessage, `[CHAT]` in the log, not a who response).
+   `cmdWho` now drops a leading case-insensitive `all` token. Second run:
+   `/who all` returns the same 4 lines as `/who`.
+
+Red/green: `Who_All_*` 2/2 red → green (`red/green_live_followup_command_processor.txt`);
+`test_who_response` 2/21 red → 21/21 green (`*_followup_who_response.txt`).
+One expectation was corrected during green: eqstr 5015 "* GM-Admin *" has
+no trailing blank so the faithful render is `* GM-Admin *[ANON (...` -- the
+strings are rendered as shipped, not prettified.
+
+Final live output (`/who` and `/who all` identical):
+
+    Players in EverQuest:
+    ---------------------------
+    [2 Warrior] Testchar (Human) ZONE: befallen (USER willeq_test: PID 207)
+    There is 1 player in EverQuest.
+
+Verification after the follow-up: ctest **2799/2800** (ALSA only), visual gate
+PASS, goldens untouched, gles2 + ARM builds clean. `check_file_sizes.sh fable`
+reports 1 FAIL `irrlicht_renderer.cpp` 3054 lines -- **not this branch**
+(`git diff b9e38936 HEAD` on that file is empty; it grew on fable at
+f3502cb3/T225 after this branch's base). Single-player only: a second
+character to exercise anon/LD/guild lines live is still owed.

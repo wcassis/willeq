@@ -1615,6 +1615,19 @@ ActionResult CommandProcessor::cmdWho(const std::string& args) {
         tokens.push_back(token);
     }
 
+    // T224 live leg: "/who all" was sending whom="all" as a NAME filter and
+    // the server answered "no players ... match those who filters". On
+    // Titanium the request is the same packet either way (eqemu's
+    // DECODE(OP_WhoAllRequest) forces type=3, world-wide), so "all" is a
+    // keyword to drop, not a name.
+    if (!tokens.empty()) {
+        std::string lowered = tokens[0];
+        for (auto& ch : lowered) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (lowered == "all") {
+            tokens.erase(tokens.begin());
+        }
+    }
+
     if (!tokens.empty()) {
         bool firstIsLevel = false;
         try {

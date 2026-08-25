@@ -106,6 +106,24 @@ std::string whoDefaultString(uint32_t id) {
         case kWhoStrFormatRoleplay: return "%T1[ANONYMOUS] %2 %3 %4";
         case kWhoStrFormatAnon:     return "%T1[ANONYMOUS] %2 %3";
         case kWhoStrFormatNormal:   return "%T1[%2 %3] %4 (%5) %6 %7 %8 %9";
+        case kWhoStrFormatAnonGmView: return "%T1[ANON (%2 %3)] %4 (%5) %6 %7 %8";
+        case kWhoStrUserPid:        return "(USER %1: PID %2)";
+        case kWhoStrCutShort:       return "Your who request was cut short..too many players.";
+        case 5007: return "* Steward *";
+        case 5008: return "* Apprentice Guide *";
+        case 5009: return "* Guide *";
+        case 5010: return "* QuestTroupe *";
+        case 5011: return "* Senior Guide *";
+        case 5012: return "* GM-Tester *";
+        case 5013: return "* EQ Support *";
+        case 5014: return "* GM-Staff *";
+        case 5015: return "* GM-Admin *";
+        case 5016: return "* GM-Lead Admin *";
+        case 5017: return "* QuestMaster *";
+        case 5018: return "* GM-Areas *";
+        case 5019: return "* GM-Coder *";
+        case 5020: return "* GM-Mgmt *";
+        case 5021: return "* GM-Impossible *";
         case kWhoStrOnePlayer:      return "There is %1 player in EverQuest.";
         case kWhoStrNoPlayers:
             return "There are no players in EverQuest that match those who filters.";
@@ -190,6 +208,20 @@ std::string formatWhoAllEntry(const WhoAllEntry& e, const WhoFormatContext& ctx)
         linkdead = lookup(ctx, e.unknown80[1]);
     }
 
+    // T224 live leg: world's SendWhoAll gives GM viewers pidstring=5003
+    // "(USER %1: PID %2)" whose arguments are the account name and
+    // unknown100 (eqemu's stand-in PID, 207). Everyone else gets 0xFFFFFFFF
+    // and an empty account, so this collapses to "".
+    std::string userPid;
+    if (e.pidString != kWhoStringNone && e.pidString != 0) {
+        std::string pidTmpl = lookup(ctx, e.pidString);
+        if (!pidTmpl.empty()) {
+            userPid = formatWhoTemplate(pidTmpl, {e.account, std::to_string(e.unknown100)}, ctx);
+        }
+    } else if (!e.account.empty()) {
+        userPid = e.account;
+    }
+
     std::vector<std::string> args;
     switch (e.formatString) {
         case kWhoStrFormatAnon:
@@ -199,13 +231,15 @@ std::string formatWhoAllEntry(const WhoAllEntry& e, const WhoFormatContext& ctx)
             args = {rank, e.name, e.guild, zone};
             break;
         default: {
-            // 5025 and anything unrecognised: the full layout.
+            // 5025 / 5022 and anything unrecognised: the full layout. 5022
+            // has only eight placeholders, so the user/pid trailer is
+            // simply not referenced there.
             std::string cls = ctx.className ? ctx.className(e.classId)
                                             : std::to_string(e.classId);
             std::string race = ctx.raceName ? ctx.raceName(e.race)
                                             : std::to_string(e.race);
             args = {rank, std::to_string(e.level), cls, e.name, race,
-                    e.guild, zone, linkdead, e.account};
+                    e.guild, zone, linkdead, userPid};
             break;
         }
     }

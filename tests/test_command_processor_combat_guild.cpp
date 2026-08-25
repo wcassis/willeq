@@ -319,6 +319,23 @@ TEST_F(CommandProcessorTest, Who_Alias_DispatchesRequestWho) {
     ASSERT_TRUE(handler.calledOnceWith("requestWho(\"\", -1, -1)"));
 }
 
+// T224 live leg: "/who all" was sending whom="all" as a NAME filter, so the
+// server answered "There are no players in EverQuest that match those who
+// filters." On Titanium the request is the same packet either way
+// (titanium.cpp DECODE(OP_WhoAllRequest) forces type=3, i.e. world-wide),
+// so "all" is a keyword to strip, never a name.
+TEST_F(CommandProcessorTest, Who_All_StripsTheKeywordAndSendsNoNameFilter) {
+    auto result = processor->processCommand("/who all");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("requestWho(\"\", -1, -1)"));
+}
+
+TEST_F(CommandProcessorTest, Who_All_KeywordIsCaseInsensitiveAndKeepsTheRest) {
+    auto result = processor->processCommand("/who ALL Testbuddy 20 30");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("requestWho(\"Testbuddy\", 20, 30)"));
+}
+
 TEST_F(CommandProcessorTest, Who_Name_DispatchesRequestWhoWithName) {
     auto result = processor->processCommand("/who Testbuddy");
     EXPECT_TRUE(result.success);

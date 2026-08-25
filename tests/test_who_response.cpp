@@ -261,6 +261,58 @@ TEST(WhoResponseFormat, UnknownZoneIdFallsBackToTheNumber) {
     EXPECT_EQ(formatWhoAllEntry(e, DefaultCtx()), "[1 Warrior] Bob (Human) ZONE: 9999");
 }
 
+// T224 live leg (world ClientList::SendWhoAll, GM viewer): pidstring=5003
+// "(USER %1: PID %2)" with the account name and unknown100 (207) as its two
+// arguments, appended as %9. Before this the bare account name was glued
+// onto the line ("ZONE: befallen willeq_test").
+TEST(WhoResponseFormat, GmViewerSeesUserAndPidTrailer) {
+    WhoAllEntry e;
+    e.formatString = kWhoStrFormatNormal;
+    e.pidString = kWhoStrUserPid;
+    e.name = "Testchar";
+    e.zoneString = kWhoStrZone;
+    e.zone = 36;
+    e.classId = 1;
+    e.level = 2;
+    e.race = 1;
+    e.account = "willeq_test";
+    e.unknown100 = 207;
+    e.unknown80[0] = 250;   // world sends the numeric admin level here -- not a string id
+    WhoFormatContext ctx = DefaultCtx();
+    ctx.zoneName = [](uint32_t z) { return z == 36 ? "befallen" : ""; };
+    EXPECT_EQ(formatWhoAllEntry(e, ctx),
+              "[2 Warrior] Testchar (Human) ZONE: befallen (USER willeq_test: PID 207)");
+}
+
+// eqstr 5015 "* GM-Admin *" carries no trailing blank (12312 "* GM * " does)
+// and the template starts "%T1[", so the faithful render has no gap
+// before the bracket -- the strings are rendered as shipped, not prettified.
+TEST(WhoResponseFormat, GmRankStringsFromWorldAndAnonSeenByGm) {
+    WhoAllEntry e;
+    e.formatString = kWhoStrFormatAnonGmView;   // 5022 "%T1[ANON (%2 %3)] %4 (%5) %6 %7 %8"
+    e.rankString = 5015;                         // "* GM-Admin *"
+    e.name = "Alice";
+    e.guild = "<Guildy>";
+    e.zoneString = kWhoStrZone;
+    e.zone = 2;
+    e.classId = 2;
+    e.level = 40;
+    e.race = 8;
+    EXPECT_EQ(formatWhoAllEntry(e, DefaultCtx()),
+              "* GM-Admin *[ANON (40 Cleric)] Alice (Dwarf) <Guildy> ZONE: qeynos2");
+}
+
+TEST(WhoResponseFormat, RankStringZeroMeansNoRank) {
+    WhoAllEntry e;
+    e.formatString = kWhoStrFormatNormal;
+    e.rankString = 0;   // world sends 0, zone sends 0xFFFFFFFF
+    e.name = "Bob";
+    e.classId = 1;
+    e.level = 1;
+    e.race = 1;
+    EXPECT_EQ(formatWhoAllEntry(e, DefaultCtx()), "[1 Warrior] Bob (Human)");
+}
+
 TEST(WhoResponseFormat, StringDatabaseTemplateWinsOverBuiltIn) {
     WhoFormatContext ctx = DefaultCtx();
     ctx.eqstr = [](uint32_t id) {

@@ -15,12 +15,15 @@
 // 64 + 47*entries + strlen(name) + strlen(guild)):
 //
 //   u32 formatstring   5025 normal / 5024 anon / 5023 roleplay
-//   u32 pidstring      0xFFFFFFFF
+//   u32 pidstring      0xFFFFFFFF, or 5003 "(USER %1: PID %2)" for GM viewers
+//                      (world SendWhoAll; args = account, unknown100)
 //   cstr name
-//   u32 rankstring     12312 "* GM * " / 12315 " TRADER" / 6056 "BUYER" /
-//                      0xFFFFFFFF none
+//   u32 rankstring     zone: 12312 "* GM * " / 12315 " TRADER" / 6056 "BUYER" /
+//                      0xFFFFFFFF none; world: 5007..5021 GM rank / 0 none
 //   cstr guild         "<Name>" or ""
-//   u32 unknown80[2]   [0]=0xFFFFFFFF, [1]=12313 " <LINKDEAD>" or 0xFFFFFFFF
+//   u32 unknown80[2]   [0]=0xFFFFFFFF (zone) or the NUMERIC admin level for GM
+//                      viewers (world) -- never a string id; [1]=12313
+//                      " <LINKDEAD>" (zone) or 0xFFFFFFFF
 //   u32 zonestring     5006 "ZONE: %1" (world /who all) or 0xFFFFFFFF (zone /who)
 //   u32 zone           zone id (0 when zonestring is 0xFFFFFFFF)
 //   u32 class
@@ -49,6 +52,9 @@ constexpr uint32_t kWhoStrZone             = 5006;   // "ZONE: %1"
 constexpr uint32_t kWhoStrFormatRoleplay   = 5023;   // "%T1[ANONYMOUS] %2 %3 %4"
 constexpr uint32_t kWhoStrFormatAnon       = 5024;   // "%T1[ANONYMOUS] %2 %3"
 constexpr uint32_t kWhoStrFormatNormal     = 5025;   // "%T1[%2 %3] %4 (%5) %6 %7 %8 %9"
+constexpr uint32_t kWhoStrFormatAnonGmView = 5022;   // "%T1[ANON (%2 %3)] %4 (%5) %6 %7 %8"
+constexpr uint32_t kWhoStrUserPid          = 5003;   // "(USER %1: PID %2)"
+constexpr uint32_t kWhoStrCutShort         = 5033;   // "Your who request was cut short..too many players."
 constexpr uint32_t kWhoStrOnePlayer        = 5028;   // "There is %1 player in EverQuest."
 constexpr uint32_t kWhoStrNoPlayers        = 5029;
 constexpr uint32_t kWhoStrManyPlayers      = 5036;   // "There are %1 players in EverQuest."
@@ -105,7 +111,9 @@ std::string whoDefaultString(uint32_t id);
 // Argument positions per format id (inferred from the templates' shapes and
 // eqemu's field comments; there is no client source to cite):
 //   5025: %T1 rank, %2 level, %3 class, %4 name, %5 race, %6 guild,
-//         %7 zone ("ZONE: x" via 5006), %8 linkdead, %9 account
+//         %7 zone ("ZONE: x" via 5006), %8 linkdead,
+//         %9 "(USER account: PID unknown100)" via pidstring 5003 (GM viewers)
+//   5022 (anon as seen by a GM): same first eight
 //   5024: %T1 rank, %2 name, %3 guild
 //   5023: %T1 rank, %2 name, %3 guild, %4 zone
 // Runs of blanks left by empty arguments are collapsed and the line trimmed.
