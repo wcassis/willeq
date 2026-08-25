@@ -58,14 +58,16 @@ void TradeManager::rejectTradeRequest()
         return;
     }
 
-    sendCancelTrade();
-    resetTradeState();
-
     // T222: a local decline is a cancellation like any other -- fire the
     // callback so the owner publishes TradeCancelled and resets its
     // projection (T103 finding: this was the one transition that never did).
+    // Name captured before reset clears it.
+    std::string requester = m_pending_request_name;
+    sendCancelTrade();
+    resetTradeState();
+
     if (m_on_cancelled) {
-        m_on_cancelled();
+        m_on_cancelled(TradeEndReason::DeclinedLocal, requester);
     }
 }
 
@@ -79,7 +81,7 @@ void TradeManager::cancelTrade()
     resetTradeState();
 
     if (m_on_cancelled) {
-        m_on_cancelled();
+        m_on_cancelled(TradeEndReason::CancelledLocal, std::string());
     }
 }
 
@@ -358,7 +360,7 @@ void TradeManager::handleCancelTrade(const EQT::CancelTrade_Struct& cancel)
     LOG_INFO(MOD_MAIN, "Trade cancelled");
 
     if (m_on_cancelled) {
-        m_on_cancelled();
+        m_on_cancelled(TradeEndReason::CancelledByPartner, std::string());
     }
 
     resetTradeState();

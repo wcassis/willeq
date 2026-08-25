@@ -151,7 +151,7 @@ TEST(EqActionHandlerTrade, DeclineTrade_PendingRequest_MessageNamesThePartner) {
     handler.declineTrade();
 
     auto events = bridge.drainEvents();
-    EXPECT_EQ(lastSystemMessage(events), "Declined trade request from Buddy");
+    EXPECT_EQ(lastSystemMessage(events), "Declined trade request from Buddy.");
 }
 
 TEST(EqActionHandlerTrade, DeclineTrade_ClearsProjectionViaCancelledCallback) {
@@ -185,12 +185,10 @@ TEST(EqActionHandlerTrade, DeclineTrade_ClearsProjectionViaCancelledCallback) {
         }
     }
     EXPECT_TRUE(sawCancelled);
-    // Documented side effect (T222 Review): the shared setOnCancelled lambda
-    // in eq_merchant.cpp also prints "Trade cancelled." before declineTrade's
-    // own line. Two lines for one decline; flagged, not hidden.
-    ASSERT_EQ(messages.size(), 2u);
-    EXPECT_EQ(messages[0], "Trade cancelled.");
-    EXPECT_EQ(messages[1], "Declined trade request from Buddy");
+    // T222 follow-up: exactly ONE chat line per decline, printed by the
+    // shared setOnCancelled lambda from TradeEndReason::DeclinedLocal.
+    ASSERT_EQ(messages.size(), 1u);
+    EXPECT_EQ(messages[0], "Declined trade request from Buddy.");
 }
 
 TEST(EqActionHandlerTrade, TradeManager_RejectTradeRequest_FiresOnCancelled) {
@@ -200,13 +198,19 @@ TEST(EqActionHandlerTrade, TradeManager_RejectTradeRequest_FiresOnCancelled) {
     eq.setBridge(&bridge);
 
     int fired = 0;
-    eq.GetTradeManager()->setOnCancelled([&]() { ++fired; });
+    TradeEndReason lastReason = TradeEndReason::CancelledLocal;
+    std::string lastName;
+    eq.GetTradeManager()->setOnCancelled([&](TradeEndReason r, const std::string& n) {
+        ++fired; lastReason = r; lastName = n;
+    });
 
     simulateIncomingRequest(eq, 555, "Buddy");
     ASSERT_EQ(eq.GetTradeManager()->getState(), TradeState::PendingAccept);
 
     eq.GetTradeManager()->rejectTradeRequest();
     EXPECT_EQ(fired, 1);
+    EXPECT_EQ(lastReason, TradeEndReason::DeclinedLocal);
+    EXPECT_EQ(lastName, "Buddy");
     EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
 
     // Not in PendingAccept: no-op, no callback.

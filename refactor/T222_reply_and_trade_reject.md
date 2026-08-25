@@ -65,13 +65,20 @@ evidence review/T222/. Commit: `T222: /reply refuses with no pending tell; trade
   (review/T222/red_test_eq_action_handler_trade.txt); GREEN after the
   one-line fix. The decline test now also asserts a `TradeCancelled` bridge
   event is published (it never was before for a local decline).
-- **Deviation / side effect, flagged:** the shared `setOnCancelled` lambda
-  (`eq_merchant.cpp:691`) prints "Trade cancelled." unconditionally, so a
-  local decline now shows TWO chat lines: "Trade cancelled." then
-  "Declined trade request from Buddy". Asserted explicitly in the decline
-  test so it is visible, not hidden. Changing the lambda's message would
-  also change the partner-initiated cancel path (out of scope, and
-  `eq_merchant.cpp` is shared); left for the orchestrator to rule on.
+- **Double chat line — RESOLVED in the follow-up commit (orchestrator
+  ruling):** the shared `setOnCancelled` lambda printed "Trade cancelled."
+  unconditionally, so the first commit's decline showed two lines.
+  `TradeCancelledCallback` is now `void(TradeEndReason, const std::string&
+  requesterName)` with `enum class TradeEndReason { CancelledLocal,
+  CancelledByPartner, DeclinedLocal }` (`trade_manager.h`). The lambda at
+  `eq_merchant.cpp:691` prints exactly one line per reason: "Trade
+  cancelled." for both cancel cases, "Declined trade request from <Name>."
+  for DeclinedLocal (name captured from `m_pending_request_name` before
+  `resetTradeState()` clears it). `EqActionHandler::declineTrade()`'s own
+  print and its `pendingPartnerName()` read are removed. Callers audited:
+  the lambda is the only production `setOnCancelled`; the one test caller
+  updated. Decline test now asserts exactly ONE line; the
+  TradeManager-level test asserts reason + name.
 - **TradeState own-offered-items field: NOT added.** Re-verified at this
   tip: `addItemToTrade()`/`removeItemFromTrade()` still have zero
   production callers (grep over src/ + include/; only comments reference
@@ -81,7 +88,8 @@ evidence review/T222/. Commit: `T222: /reply refuses with no pending tell; trade
 
 ### Verification
 1. `cmake --build build -j24` — pass.
-2. `ctest` (GLES2-config tree): **2769/2770**, the one failure is the
+2. `ctest` (GLES2-config tree): **2769/2770** (first commit) and **2769/2770**
+   again after the follow-up (review/T222/ctest_full_followup.txt), the one failure is the
    documented ALSA `AudioManagerTest.PreloadCommonSounds`
    (review/T222/ctest_full.txt). +5 tests from this unit.
 3. `scripts/build-gles2-x86.sh` — pass.

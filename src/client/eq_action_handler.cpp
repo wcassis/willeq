@@ -1023,24 +1023,14 @@ void EqActionHandler::declineTrade() {
         m_eq.AddChatSystemMessage("No pending trade request");
         return;
     }
-    // T103: the partner name CAN now be included. TradeManager itself still
-    // exposes no accessor for it on the decline path (only m_partner_name,
-    // which rejectTradeRequest() never populates -- only
-    // acceptTradeRequest() does; see T102's Review) -- but
-    // state::TradeState::pendingPartnerName() is populated from the
-    // TradeRequestReceived event fired when the request first arrived
-    // (eq_merchant.cpp), independent of that gap. Read before rejecting,
-    // since the reject call below clears it.
-    std::string partnerName = EQT::toDisplayName(tradeState.pendingPartnerName());
     // T222: TradeManager::rejectTradeRequest() now fires m_on_cancelled()
-    // like cancelTrade()/handleCancelTrade() do, so the projection reset
-    // and the TradeCancelled bridge event happen inside that call (the
-    // setOnCancelled lambda in eq_merchant.cpp). T103's in-territory
-    // workaround (an explicit trade().reset() here) is gone -- the
-    // regression test DeclineTrade_ClearsProjectionViaCancelledCallback
+    // with TradeEndReason::DeclinedLocal; the setOnCancelled lambda in
+    // eq_merchant.cpp prints the single "Declined trade request from X."
+    // line, resets the projection and publishes TradeCancelled. T103's
+    // in-territory workaround (an explicit trade().reset() here) and the
+    // duplicate print are gone -- DeclineTrade_ClearsProjectionViaCancelledCallback
     // fails without the TradeManager fix.
     trade->rejectTradeRequest();
-    m_eq.AddChatSystemMessage(fmt::format("Declined trade request from {}", partnerName));
 }
 
 // ========== Zone ==========

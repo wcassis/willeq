@@ -688,8 +688,15 @@ void EverQuest::SetupTradeManagerCallbacks()
 		}
 	});
 
-	m_trade_manager->setOnCancelled([this]() {
-		AddChatSystemMessage("Trade cancelled.");
+	m_trade_manager->setOnCancelled([this](TradeEndReason reason, const std::string& requesterName) {
+		// T222: exactly one chat line per end reason -- declineTrade()
+		// no longer prints its own.
+		if (reason == TradeEndReason::DeclinedLocal) {
+			AddChatSystemMessage(fmt::format("Declined trade request from {}.",
+				EQT::toDisplayName(requesterName)));
+		} else {
+			AddChatSystemMessage("Trade cancelled.");
+		}
 
 		// Publish TradeCancelled event to bridge
 		m_game_state.trade().reset();

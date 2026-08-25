@@ -52,7 +52,11 @@ using TradeItemUpdatedCallback = std::function<void(bool isOwnItem, int slot)>;
 using TradeMoneyUpdatedCallback = std::function<void(bool isOwnMoney)>;
 using TradeAcceptStateChangedCallback = std::function<void(bool ownAccepted, bool partnerAccepted)>;
 using TradeCompletedCallback = std::function<void()>;
-using TradeCancelledCallback = std::function<void()>;
+// T222: why a trade ended without completing. requesterName is the pending
+// requester's name for DeclinedLocal (the only case where the owner needs a
+// name it does not otherwise hold), empty otherwise.
+enum class TradeEndReason { CancelledLocal, CancelledByPartner, DeclinedLocal };
+using TradeCancelledCallback = std::function<void(TradeEndReason reason, const std::string& requesterName)>;
 
 // Network callbacks (for sending packets to server)
 using SendTradeRequestCallback = std::function<void(const EQT::TradeRequest_Struct&)>;
