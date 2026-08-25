@@ -27,7 +27,7 @@ Review — read that before scoping the next unit off this file.
   zone-load correctness (T186–T214).
 - **Open items by class** (each anchored by a heading in the rebuilt Index
   below; every closure cites its commit):
-  - **A — client correctness defects, unowned:** `SendGMHideMe` misrouted /
+  - **A — client correctness defects, unowned:** ~~`SendGMHideMe` misrouted~~ (CLOSED T217 `175c97ca`) /
     `ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148);
     `/reply` silent success with no pending sender (T100);
     `rejectTradeRequest()` never fires `m_on_cancelled` (T103);
@@ -38,9 +38,9 @@ Review — read that before scoping the next unit off this file.
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
     `ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
     latent by causality); race 330 placeholder cube unverified.
-  - **B — in progress / owed:** `AcceptGroupInvite()` reads
-    `m_pending_inviter_name` after `SendGroupFollow()` cleared it (T99) —
-    **IN PROGRESS T217**; skills-window cap screenshot from the official
+  - **B — in progress / owed:** ~~`AcceptGroupInvite()` reads
+    `m_pending_inviter_name` after `SendGroupFollow()` cleared it (T99)~~ —
+    **CLOSED T217 `175c97ca`, live-verified two-client (review/T217/)**; skills-window cap screenshot from the official
     client (owed task, Will's decision #4 — never ask him for a number);
     T149/T150 senders still wire-unverified.
   - **C — architecture / tooling residue, needs a ruling or a design pass:**
@@ -113,13 +113,14 @@ replaces is preserved verbatim in git (`e6a8c4e9`) and in
   `02361953` validated the three int→enum casts; `targetSelf`,
   `targetGroupMember`, `hailTarget` remain untested against the real
   implementation. Heading: `## T93 fake-substitution sweep`.
-- **T148 GM senders (eq_gm.cpp), three open:** `SendGMHideMe` reaches the
-  server as `OP_SpawnAppearance` type 20 and is dropped (`eq_gm.cpp:123`
-  should send `OP_GMHideMe`); `ZoneProcessGMFind` (`eq_gm.cpp:200`) decodes
+- **T148 GM senders (eq_gm.cpp), two open (was three):** ~~`SendGMHideMe` reaches the
+  server as `OP_SpawnAppearance` type 20 and is dropped~~ — CLOSED T217
+  `175c97ca` (real `OP_GMHideMe`, parameter is a VISIBILITY flag; DB
+  `account.hideme` toggled live); `ZoneProcessGMFind` (`eq_gm.cpp:200`) decodes
   the reply's floats as ints; `SendGMSummon` (`eq_gm.cpp:30`) sends zeroed
   coordinates. Heading: `## T148 (2026-08-19) — four defects surfaced by
   making the GM senders reachable`.
-- **T99 `AcceptGroupInvite()` — IN PROGRESS T217.** `eq_group.cpp:143`
+- **T99 `AcceptGroupInvite()` — CLOSED T217 `175c97ca`** (was:) `eq_group.cpp:143`
   builds the "You have joined X's group" message from
   `m_pending_inviter_name` after `SendGroupFollow()` (`eq_group.cpp:72`)
   has already cleared it (verified at `e70e3347`). Heading: `## T99: Group
