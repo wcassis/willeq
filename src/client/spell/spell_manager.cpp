@@ -1256,6 +1256,11 @@ void SpellManager::startGemCooldown(uint8_t gem_slot, uint32_t duration_ms)
 // SpellCastStarted, for any caster including NPCs/other players; that one is
 // unrelated to this, driven by the packet, not local intent).
 void SpellManager::publishCastStarted(uint32_t spell_id, uint16_t target_id, uint32_t cast_time_ms) {
+    // T221: source-side write on EverQuest's own GameState, ahead of the
+    // bridge guard -- the SpellCastStarted projection is redundant with this.
+    if (m_eq) {
+        m_eq->GetGameState().spells().setCasting(true, spell_id, target_id, cast_time_ms);
+    }
     if (!m_bridge) return;
     eqt::state::SpellCastStartedData data;
     data.casterId = m_eq->GetEntityID();
@@ -1272,6 +1277,10 @@ void SpellManager::publishCastStarted(uint32_t spell_id, uint16_t target_id, uin
 // casting state from bridge events (SpellGemChanged/SpellCastStarted already
 // covered start and gem lifecycle).
 void SpellManager::publishCastComplete(uint32_t spell_id, CastResult result) {
+    // T221: source-side write; SpellCastComplete projection redundant.
+    if (m_eq) {
+        m_eq->GetGameState().spells().clearCasting();
+    }
     if (!m_bridge) return;
     eqt::state::SpellCastCompleteData data;
     data.casterId = m_eq->GetEntityID();
@@ -1283,7 +1292,20 @@ void SpellManager::publishCastComplete(uint32_t spell_id, CastResult result) {
 
 // U06b: Push SpellGemChanged to bridge for new UI
 void SpellManager::publishGemChanged(uint8_t gem_slot) {
-    if (!m_bridge || gem_slot >= MAX_SPELL_GEMS) return;
+    if (gem_slot >= MAX_SPELL_GEMS) return;
+    // T221: source-side write; SpellGemChanged projection redundant. The two
+    // gem-state enums are value-identical (spell_constants.h GemState vs
+    // spell_state.h SpellGemState) -- same cast the projection makes.
+    if (m_eq) {
+        auto& spells = m_eq->GetGameState().spells();
+        auto gemState = static_cast<eqt::state::SpellGemState>(m_gem_states[gem_slot]);
+        spells.setGem(gem_slot, m_spell_gems[gem_slot], gemState);
+        if (gemState == eqt::state::SpellGemState::Refresh) {
+            spells.setGemCooldown(gem_slot, getGemCooldownRemaining(gem_slot),
+                                  m_gem_cooldown_duration[gem_slot]);
+        }
+    }
+    if (!m_bridge) return;
     uint32_t spellId = m_spell_gems[gem_slot];
     eqt::state::SpellGemChangedData data;
     data.gemSlot = gem_slot;

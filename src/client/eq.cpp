@@ -625,6 +625,7 @@ void EverQuest::PublishFullStateSnapshot() {
 			eqt::state::InventorySlotChangedData data;
 			data.slotId = slot;
 			data.hasItem = (item != nullptr);
+			SyncInventorySlotToGameState(slot, data.hasItem);  // T221: zone-in parity
 			data.itemId = item ? item->itemId : 0;
 			data.itemName = item ? item->name : "";
 			data.iconId = item ? item->icon : 0;
@@ -1080,6 +1081,11 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 					// so both get the UI update, not just the game-side model.
 					if (m_inventory_manager) {
 						int16_t changedSlot = m_inventory_manager->processItemPacket(p);
+						if (changedSlot != eqt::inventory::SLOT_INVALID) {
+							const auto* item = m_inventory_manager->getItem(changedSlot);
+							SyncInventorySlotToGameState(changedSlot,
+								item != nullptr && item->itemId != 0);  // T221
+						}
 						if (m_bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
 							eqt::state::InventorySlotChangedData data;
 							data.slotId = changedSlot;

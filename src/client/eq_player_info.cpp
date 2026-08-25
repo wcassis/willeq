@@ -472,6 +472,14 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	// beginCastFromGem()/beginCastById() time -- carry it so the bridge
 	// doesn't need a second source of truth. targetId is meaningless for
 	// non-self casters and left at its default (0).
+	//
+	// T221: source-side twin of the projection's self-filter -- re-applies
+	// the echo for our own cast (castTimeMs may now be the server's, as the
+	// projection allowed); the SpellCastStarted projection is redundant.
+	if (spawn_id == GetEntityID()) {
+		uint16_t self_target = m_spell_manager ? m_spell_manager->getCurrentTargetId() : 0;
+		m_game_state.spells().setCasting(true, spell_id, self_target, cast_time);
+	}
 	if (m_bridge) {
 		eqt::state::SpellCastStartedData data;
 		data.casterId = spawn_id;

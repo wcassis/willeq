@@ -65,7 +65,8 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 	UpdateInventoryStats();
 
 	// Publish InventorySlotChanged for both slots involved in the move (D18a: bridge-only)
-	if (m_bridge && p.Length() >= 14) {
+	// T221: the source-side occupancy write precedes the bridge guard.
+	if (p.Length() >= 14) {
 		int16_t fromSlot = static_cast<int16_t>(p.GetUInt32(2));
 		int16_t toSlot = static_cast<int16_t>(p.GetUInt32(6));
 
@@ -74,6 +75,10 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 			data.slotId = slot;
 			const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
 			data.hasItem = (item != nullptr && item->itemId != 0);
+			SyncInventorySlotToGameState(slot, data.hasItem);
+			if (!m_bridge) {
+				return;
+			}
 			data.itemId = data.hasItem ? item->itemId : 0;
 			data.itemName = data.hasItem ? item->name : "";
 			data.iconId = data.hasItem ? item->icon : 0;
@@ -97,14 +102,35 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 	}
 
 	// Publish InventorySlotChanged for the deleted slot (D18a: bridge-only)
-	if (m_bridge && p.Length() >= 6) {
+	// T221: the source-side occupancy write precedes the bridge guard.
+	if (p.Length() >= 6) {
 		int16_t slot = static_cast<int16_t>(p.GetUInt32(2));
+		SyncInventorySlotToGameState(slot, false);
+		if (!m_bridge) {
+			return;
+		}
 		eqt::state::InventorySlotChangedData data;
 		data.slotId = slot;
 		data.hasItem = false;
 		data.itemId = 0;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+	}
+}
+
+// T221: source-side twin of GameStateSyncBridge's InventorySlotChanged
+// occupancy projection (T42) -- same slot classification, same header
+// (inventory_constants.h). Not inside InventoryManager (D18a: it has no
+// GameState access). Called at every InventorySlotChanged publish site with
+// the event's (slot, hasItem), before each bridge guard.
+void EverQuest::SyncInventorySlotToGameState(int16_t slot, bool hasItem)
+{
+	if (eqt::inventory::isEquipmentSlot(slot)) {
+		m_game_state.inventory().setEquipmentOccupied(slot, hasItem);
+	} else if (eqt::inventory::isGeneralSlot(slot)) {
+		m_game_state.inventory().setGeneralOccupied(slot - eqt::inventory::GENERAL_BEGIN, hasItem);
+	} else if (eqt::inventory::isBankSlot(slot)) {
+		m_game_state.inventory().setBankOccupied(slot - eqt::inventory::BANK_BEGIN, hasItem);
 	}
 }
 
@@ -816,13 +842,17 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	// the same gap -- a looted item landing in inventory never told the UI
 	// either) using its returned slot rather than duplicating parse logic.
 	auto publishLootedSlot = [this](int16_t slot) {
-		if (!m_bridge || slot == eqt::inventory::SLOT_INVALID) {
+		if (slot == eqt::inventory::SLOT_INVALID) {
 			return;
 		}
 		eqt::state::InventorySlotChangedData data;
 		data.slotId = slot;
 		const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
 		data.hasItem = (item != nullptr && item->itemId != 0);
+		SyncInventorySlotToGameState(slot, data.hasItem);  // T221
+		if (!m_bridge) {
+			return;
+		}
 		data.itemId = data.hasItem ? item->itemId : 0;
 		data.itemName = data.hasItem ? item->name : "";
 		data.iconId = data.hasItem ? item->icon : 0;
@@ -1066,19 +1096,22 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 				// changed). Re-read the slot post-mutation so a partial-stack
 				// sell reports the remaining quantity and a full sell reports
 				// empty, in one place regardless of which branch ran above.
-				if (m_bridge) {
+				{
 					eqt::state::InventorySlotChangedData data;
 					data.slotId = invSlot;
 					const auto* postItem = m_inventory_manager->getItem(invSlot);
 					data.hasItem = (postItem != nullptr && postItem->itemId != 0);
-					data.itemId = data.hasItem ? postItem->itemId : 0;
-					data.itemName = data.hasItem ? postItem->name : "";
-					data.iconId = data.hasItem ? postItem->icon : 0;
-					data.quantity = data.hasItem ? postItem->quantity : 0;
-					LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (vendor sell): slot={} hasItem={} itemId={} name='{}' qty={}",
-						data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+					SyncInventorySlotToGameState(invSlot, data.hasItem);  // T221
+					if (m_bridge) {
+						data.itemId = data.hasItem ? postItem->itemId : 0;
+						data.itemName = data.hasItem ? postItem->name : "";
+						data.iconId = data.hasItem ? postItem->icon : 0;
+						data.quantity = data.hasItem ? postItem->quantity : 0;
+						LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (vendor sell): slot={} hasItem={} itemId={} name='{}' qty={}",
+							data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
+						m_bridge->pushEvent(eqt::state::GameEvent(
+							eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+					}
 				}
 			}
 		}

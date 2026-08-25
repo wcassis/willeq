@@ -1384,6 +1384,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet)
 
+# T221 (Option A stage 2): every READ-model domain the GameStateSyncBridge
+# projection was the sole writer of (pet, spells, entity position/appearance,
+# combat target/auto-attack, inventory occupancy) is now written at the source
+# (EverQuest::m_game_state) by the owning handler. Each case runs with and
+# without a bridge attached (the no-bridge leg proves the writes precede the
+# bridge guards). Headless EverQuest + ReplayZonePacket seam, same idiom as
+# test_combat_manager / test_eq_action_handler_spell_pet (DB-dependent cast
+# case follows the hasDb() + GTEST_SKIP precedent). Own main() registers the
+# global willeq.db, so gtest_main is NOT linked.
+ADD_EXECUTABLE(test_game_state_source_writes
+    test_game_state_source_writes.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_game_state_source_writes PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_game_state_source_writes GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_game_state_source_writes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_game_state_source_writes)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

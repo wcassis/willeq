@@ -1720,6 +1720,13 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			it->second.delta_heading = dh;
 			it->second.last_update_time = std::time(nullptr);
 
+			// T221: source-side write; the EntityMoved projection becomes
+			// redundant (D24 coalesced it per spawn -- last write wins on
+			// both sides, so applying every packet here is state-identical).
+			m_game_state.entities().updateEntityPosition(
+				m_my_spawn_id, x, y, z, h_player, dx, dy, dz,
+				static_cast<uint8_t>(animation));
+
 #ifdef EQT_HAS_GRAPHICS
 			OnSpawnMovedGraphics(m_my_spawn_id, x, y, z, h_player, dx, dy, dz, animation);
 #endif
@@ -1744,6 +1751,11 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		it->second.delta_z = dz;
 		it->second.delta_heading = dh;
 		it->second.last_update_time = std::time(nullptr);
+
+		// T221: source-side write (see the self branch above).
+		m_game_state.entities().updateEntityPosition(
+			spawn_id, x, y, z, entity_heading, dx, dy, dz,
+			static_cast<uint8_t>(animation));
 
 #ifdef EQT_HAS_GRAPHICS
 		OnSpawnMovedGraphics(spawn_id, x, y, z, entity_heading, dx, dy, dz, animation);
@@ -1825,9 +1837,11 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 			if (m_buff_manager) {
 				m_buff_manager->clearPetBuffs();
 			}
-#ifdef EQT_HAS_GRAPHICS
+			// T221: was #ifdef EQT_HAS_GRAPHICS -- same T43 reasoning as
+			// OnPetCreated() above: a pure bridge publish (now also the
+			// source-side pet().clearPet()); gating it left the headless
+			// build's pet state set forever after a despawn.
 			OnPetRemoved();
-#endif
 		}
 
 		// Check if our combat target despawned - disable auto-attack
@@ -1869,6 +1883,20 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		it->second.hp_percent = hp_percent;
 		if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
+		}
+		// T221: source-side writes, hoisted out of the bridge guard below.
+		// Target HP: the TargetChanged re-publish's projection (T104) is
+		// redundant with this. Pet HP: the PetStatsChanged projection (T40)
+		// is redundant with this. manaPercent keeps T40's honest derivation
+		// (reads 0 for every pet until something populates cur/max_mana).
+		if (m_current_target_id == spawn_id) {
+			m_game_state.combat().setTarget(spawn_id, it->second.name, hp_percent, it->second.level);
+		}
+		if (m_pet_spawn_id == spawn_id) {
+			uint8_t manaPercent = (it->second.max_mana > 0)
+				? static_cast<uint8_t>((it->second.cur_mana * 100) / it->second.max_mana)
+				: 0;
+			m_game_state.pet().updatePetStats(hp_percent, manaPercent);
 		}
 		// Update target HP via bridge if this is our current target (D17b)
 		// Note: EntityStatsChanged event published below covers this
@@ -2124,33 +2152,66 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 			entity.equipment_tint[wear_slot] = color;
 		}
 
-		// Publish EntityAppearanceChanged event (D17b: bridge is sole path to renderer)
+		// Build EntityAppearanceChanged; written to the source GameState
+		// unconditionally (T221), published to the bridge when present
+		// (D17b: bridge is sole path to renderer).
+		eqt::state::EntityAppearanceChangedData data;
+		data.spawnId = spawn_id;
+		data.raceId = entity.race_id;
+		data.gender = entity.gender;
+		data.isPlayer = (spawn_id == m_my_spawn_id);
+		data.face = entity.face;
+		data.haircolor = entity.haircolor;
+		data.hairstyle = entity.hairstyle;
+		data.beardcolor = entity.beardcolor;
+		data.beard = entity.beard;
+		data.texture = entity.equip_chest2;
+		data.helm = entity.helm;
+		for (int j = 0; j < 9; j++) {
+			data.equipment[j] = entity.equipment[j];
+			data.equipmentTint[j] = entity.equipment_tint[j];
+		}
+		ApplyAppearanceToGameState(data);
 		if (m_bridge) {
-			eqt::state::EntityAppearanceChangedData data;
-			data.spawnId = spawn_id;
-			data.raceId = entity.race_id;
-			data.gender = entity.gender;
-			data.isPlayer = (spawn_id == m_my_spawn_id);
-			data.face = entity.face;
-			data.haircolor = entity.haircolor;
-			data.hairstyle = entity.hairstyle;
-			data.beardcolor = entity.beardcolor;
-			data.beard = entity.beard;
-			data.texture = entity.equip_chest2;
-			data.helm = entity.helm;
-			for (int j = 0; j < 9; j++) {
-				data.equipment[j] = entity.equipment[j];
-				data.equipmentTint[j] = entity.equipment_tint[j];
-			}
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 		}
 	}
 }
 
+// T221: the source-side twin of GameStateSyncBridge's EntityAppearanceChanged
+// projection (T81) -- the same partial merge (NOT size; that field is not on
+// the event). Applied to the built event payload rather than to m_entities,
+// because UpdatePlayerAppearanceFromInventory() derives equipment from
+// INVENTORY items and never writes them back to m_entities -- merging the
+// payload is the only way the source matches what the projection held.
+// No-op for an unknown spawn, as the projection was.
+void EverQuest::ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& d)
+{
+	auto* existing = m_game_state.entities().getEntityMutable(d.spawnId);
+	if (!existing) {
+		return;
+	}
+	existing->raceId = d.raceId;
+	existing->gender = d.gender;
+	existing->face = d.face;
+	existing->haircolor = d.haircolor;
+	existing->hairstyle = d.hairstyle;
+	existing->beardcolor = d.beardcolor;
+	existing->beard = d.beard;
+	existing->equipChest2 = d.texture;
+	existing->helm = d.helm;
+	for (int i = 0; i < 9; ++i) {
+		existing->equipment[i] = d.equipment[i];
+		existing->equipmentTint[i] = d.equipmentTint[i];
+	}
+}
+
 void EverQuest::UpdatePlayerAppearanceFromInventory()
 {
-	if (!m_bridge || !m_inventory_manager) {
+	// T221: was `!m_bridge || !m_inventory_manager` -- the source write below
+	// must not depend on a bridge being attached; only the publish does.
+	if (!m_inventory_manager) {
 		return;
 	}
 
@@ -2220,8 +2281,11 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 		}
 	}
 
-	m_bridge->pushEvent(eqt::state::GameEvent(
-		eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+	ApplyAppearanceToGameState(data);  // T221
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+	}
 
 	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
 }
@@ -2273,24 +2337,26 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	entity.beard = illusion->beard;
 	entity.beardcolor = illusion->beardcolor;
 
-	// Publish EntityAppearanceChanged event (D17b: bridge is sole path to renderer)
+	// Build EntityAppearanceChanged; source write unconditional (T221),
+	// bridge publish when present (D17b: bridge is sole path to renderer).
+	eqt::state::EntityAppearanceChangedData data;
+	data.spawnId = static_cast<uint16_t>(spawn_id);
+	data.raceId = entity.race_id;
+	data.gender = entity.gender;
+	data.isPlayer = (spawn_id == m_my_spawn_id);
+	data.face = entity.face;
+	data.haircolor = entity.haircolor;
+	data.hairstyle = entity.hairstyle;
+	data.beardcolor = entity.beardcolor;
+	data.beard = entity.beard;
+	data.texture = entity.equip_chest2;
+	data.helm = entity.helm;
+	for (int j = 0; j < 9; j++) {
+		data.equipment[j] = entity.equipment[j];
+		data.equipmentTint[j] = entity.equipment_tint[j];
+	}
+	ApplyAppearanceToGameState(data);
 	if (m_bridge) {
-		eqt::state::EntityAppearanceChangedData data;
-		data.spawnId = static_cast<uint16_t>(spawn_id);
-		data.raceId = entity.race_id;
-		data.gender = entity.gender;
-		data.isPlayer = (spawn_id == m_my_spawn_id);
-		data.face = entity.face;
-		data.haircolor = entity.haircolor;
-		data.hairstyle = entity.hairstyle;
-		data.beardcolor = entity.beardcolor;
-		data.beard = entity.beard;
-		data.texture = entity.equip_chest2;
-		data.helm = entity.helm;
-		for (int j = 0; j < 9; j++) {
-			data.equipment[j] = entity.equipment[j];
-			data.equipmentTint[j] = entity.equipment_tint[j];
-		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 	}

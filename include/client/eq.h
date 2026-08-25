@@ -807,6 +807,11 @@ public:
 	// Test-only; not called from any production path.
 	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_my_spawn_id = spawn_id; }
 
+	// T221 test seam: m_pet_spawn_id is normally set only by pet detection
+	// in ZoneSpawns/NewSpawn/ClientUpdate; lets a test drive the MobHealth
+	// pet branch directly. Test-only; not called from any production path.
+	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_pet_spawn_id = spawn_id; }
+
 	// T88 test seam: the last outbound client position update body
 	// fields SendPositionUpdate() computed, captured unconditionally right
 	// before the (possibly-suppressed) send -- this is the actual
@@ -1456,6 +1461,11 @@ private:
 
 	// Phase 7.5: Group sync helper
 	void SyncGroupMemberToGameState(int index, const GroupMember& member);
+
+	// T221: source-side twins of the two transforming READ-model projections
+	// (EntityAppearanceChanged partial merge; InventorySlotChanged occupancy).
+	void ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& data);
+	void SyncInventorySlotToGameState(int16_t slot, bool hasItem);
 
 	// Login
 	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);

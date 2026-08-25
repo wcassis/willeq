@@ -538,6 +538,10 @@ void EverQuest::OnPetCreated(const Entity& pet) {
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet created - {} (ID: {}) Level {}",
 	          pet.name, pet.spawn_id, pet.level);
 
+	// T221: source-side write (stage 2 of Option A) -- the READ model's
+	// PetCreated projection (GameStateSyncBridge) becomes redundant with this.
+	m_game_state.pet().setPet(pet.spawn_id, pet.name, pet.level);
+
 	// Publish PetCreated event to bridge (bridge handler opens pet window)
 	if (m_bridge) {
 		eqt::state::PetCreatedData data;
@@ -552,6 +556,9 @@ void EverQuest::OnPetCreated(const Entity& pet) {
 void EverQuest::OnPetRemoved() {
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet removed");
 
+	// T221: source-side write; PetRemoved projection redundant.
+	m_game_state.pet().clearPet();
+
 	// PetRemoved bridge event drives closePetWindow() via bridge handler
 	if (m_bridge) {
 		eqt::state::PetRemovedData data;
@@ -565,6 +572,9 @@ void EverQuest::OnPetRemoved() {
 void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
 	LOG_DEBUG(MOD_MAIN, "Pet button state changed: {} = {}",
 	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
+
+	// T221: source-side write; PetButtonStateChanged projection redundant.
+	m_game_state.pet().setButtonState(static_cast<uint8_t>(button), state);
 
 	// Publish PetButtonStateChanged event to bridge
 	if (m_bridge) {

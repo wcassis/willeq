@@ -327,6 +327,10 @@ void CombatManager::ClearTarget() {
 // that never call EverQuest::setBridge()) -- mirrors every other
 // m_bridge-gated publish in this codebase (eq_bridge.cpp).
 void CombatManager::PublishTargetChanged(const Entity& entity) {
+	// T221: source-side write (friend access to m_game_state, same grant the
+	// m_bridge read below already uses); TargetChanged projection redundant.
+	m_eq->m_game_state.combat().setTarget(entity.spawn_id, entity.name,
+	                                      entity.hp_percent, entity.level);
 	if (!m_eq->m_bridge) {
 		return;
 	}
@@ -352,6 +356,7 @@ void CombatManager::PublishTargetChanged(const Entity& entity) {
 }
 
 void CombatManager::PublishTargetCleared() {
+	m_eq->m_game_state.combat().clearTarget();  // T221
 	if (!m_eq->m_bridge) {
 		return;
 	}
@@ -361,6 +366,7 @@ void CombatManager::PublishTargetCleared() {
 }
 
 void CombatManager::PublishAutoAttackChanged(bool enabled) {
+	m_eq->m_game_state.combat().setAutoAttacking(enabled);  // T221
 	if (!m_eq->m_bridge) {
 		return;
 	}

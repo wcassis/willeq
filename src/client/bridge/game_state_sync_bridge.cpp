@@ -55,20 +55,24 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
     // untouched -- do not pre-build for later syncs here.
     switch (event.type) {
         case state::GameEventType::PetCreated: {
+            // T221: source write at eq_bridge.cpp:OnPetCreated; delete in stage 3
             const auto& d = std::get<state::PetCreatedData>(event.data);
             m_state.pet().setPet(d.spawnId, d.name, d.level);
             break;
         }
         case state::GameEventType::PetRemoved: {
+            // T221: source write at eq_bridge.cpp:OnPetRemoved; delete in stage 3
             m_state.pet().clearPet();
             break;
         }
         case state::GameEventType::PetStatsChanged: {
+            // T221: source write at eq_entities.cpp:ZoneProcessMobHealth; delete in stage 3
             const auto& d = std::get<state::PetStatsChangedData>(event.data);
             m_state.pet().updatePetStats(d.hpPercent, d.manaPercent);
             break;
         }
         case state::GameEventType::PetButtonStateChanged: {
+            // T221: source write at eq_bridge.cpp:OnPetButtonStateChanged; delete in stage 3
             const auto& d = std::get<state::PetButtonStateChangedData>(event.data);
             m_state.pet().setButtonState(d.button, d.state);
             break;
@@ -93,6 +97,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // into Refresh; SpellState computes remaining/progress on read
             // from there (see spell_state.h's T44 comments), so this does not
             // need to fire again while the cooldown ticks down.
+            // T221: source write at spell_manager.cpp:publishGemChanged; delete in stage 3
             const auto& d = std::get<state::SpellGemChangedData>(event.data);
             auto gemState = static_cast<state::SpellGemState>(d.gemState);
             m_state.spells().setGem(d.gemSlot, d.spellId, gemState);
@@ -107,6 +112,8 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // instant the cast begins locally -- no network round-trip lag)
             // and, generically, for any caster via eq_player_info.cpp's
             // ZoneProcessBeginCast -- filter to ours.
+            // T221: source write at spell_manager.cpp:publishCastStarted and
+            // eq_player_info.cpp:ZoneProcessBeginCast (self echo); delete in stage 3
             const auto& d = std::get<state::SpellCastStartedData>(event.data);
             if (d.casterId == m_state.player().spawnId()) {
                 m_state.spells().setCasting(true, d.spellId, d.targetId, d.castTimeMs);
@@ -120,6 +127,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // sites: cast success, player-initiated interrupt, server-driven
             // interrupt/fizzle -- every place m_is_casting flips back to
             // false for our own cast).
+            // T221: source write at spell_manager.cpp:publishCastComplete; delete in stage 3
             const auto& d = std::get<state::SpellCastCompleteData>(event.data);
             if (d.casterId == m_state.player().spawnId()) {
                 m_state.spells().clearCasting();
@@ -205,6 +213,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // move. No-op if the entity hasn't been seen yet (a movement
             // packet arriving before/without a spawn is not expected, and
             // if it happens the next full snapshot recovers).
+            // T221: source write at eq_entities.cpp:ZoneProcessClientUpdate (both branches); delete in stage 3
             const auto& d = std::get<state::EntityMovedData>(event.data);
             m_state.entities().updateEntityPosition(
                 d.spawnId, d.x, d.y, d.z, d.heading, d.dx, d.dy, d.dz,
@@ -221,6 +230,9 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // EverQuest::m_game_state itself also has for this path -- see
             // this unit's Review). Partial field update, not a full
             // replace; no-op if the entity hasn't been seen yet.
+            // T221: source write at eq_entities.cpp:ApplyAppearanceToGameState (called from
+            // ZoneProcessWearChange / UpdatePlayerAppearanceFromInventory / ZoneProcessIllusion);
+            // delete in stage 3
             const auto& d = std::get<state::EntityAppearanceChangedData>(event.data);
             auto* existing = m_state.entities().getEntityMutable(d.spawnId);
             if (existing) {
@@ -295,6 +307,8 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             break;
         }
         case state::GameEventType::GroupMemberUpdated: {
+            // T221: source already complete (eq_player_info.cpp:SyncGroupMemberToGameState,
+            // isLeader from member.is_leader set in the same handler); delete in stage 3
             const auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
             state::GroupMember member;
             member.name = d.name;
@@ -337,6 +351,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // partner side (who==1) is handled; an own-side event, if one
             // ever appeared, would be silently ignored here rather than
             // guessed at.
+            // T221: source already complete (eq_merchant.cpp setPartnerItem, T103); delete in stage 3
             const auto& d = std::get<state::TradeItemUpdatedData>(event.data);
             if (d.who == 1) {
                 m_state.trade().setPartnerItem(d.slot, d.itemId, d.itemName);
@@ -344,6 +359,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             break;
         }
         case state::GameEventType::TradeMoneyUpdated: {
+            // T221: source already complete (eq_merchant.cpp setMoney(isOwn,..), T103); delete in stage 3
             const auto& d = std::get<state::TradeMoneyUpdatedData>(event.data);
             state::TradeMoney money;
             money.platinum = d.platinum;
@@ -383,6 +399,8 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // (event_bus/combat_state.cpp), so re-applying the same id with
             // a new hpPercent is exactly the "republish the full struct"
             // pattern T81 established -- no separate HP-update path needed.
+            // T221: source write at combat.cpp:PublishTargetChanged/PublishTargetCleared and
+            // eq_entities.cpp:ZoneProcessMobHealth (target HP); delete in stage 3
             const auto& d = std::get<state::TargetChangedData>(event.data);
             if (d.spawnId != 0) {
                 m_state.combat().setTarget(d.spawnId, d.name, d.hpPercent, d.level);
@@ -401,6 +419,7 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // CombatManager::EnableAutoAttack()/DisableAutoAttack()
             // (combat.cpp), the sole choke points that mutate
             // m_auto_attack_enabled.
+            // T221: source write at combat.cpp:PublishAutoAttackChanged; delete in stage 3
             const auto& d = std::get<state::AutoAttackChangedData>(event.data);
             m_state.combat().setAutoAttacking(d.enabled);
             LOG_DEBUG(MOD_COMBAT, "[T104] GameStateSyncBridge: AutoAttackChanged -> projection enabled={}",
@@ -428,6 +447,8 @@ void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
             // mutation paths (vendor buy, vendor sell, bank-window population)
             // that used to mutate slots without publishing this event, so the
             // event stream is now a complete substitute for the poll.
+            // T221: source write at eq_merchant.cpp:SyncInventorySlotToGameState (called at all
+            // six publish sites); delete in stage 3
             const auto& d = std::get<state::InventorySlotChangedData>(event.data);
             if (eqt::inventory::isEquipmentSlot(d.slotId)) {
                 m_state.inventory().setEquipmentOccupied(d.slotId, d.hasItem);
