@@ -253,7 +253,7 @@ void EverQuest::setBridge(eqt::bridge::GameStateBridge* bridge) {
 	wireBridgeToSubsystems(bridge);
 }
 
-// P28: GameTick/PreRenderTick/PostRenderTick and everything below through the
+// P28: GameTick/PostRenderTick and everything below through the
 // end of this file (spawn/pet bridge callbacks, ProcessBridgeIntents/Events,
 // inventory stats, loot/vendor/bank/trainer window methods, hotbar config
 // persistence) are plain game-thread/bridge logic called unconditionally by
@@ -291,15 +291,12 @@ void EverQuest::GameTick(float deltaTime) {
 	ProcessBridgeIntents();
 }
 
-// D21a: Render-side tick — runs on render thread (applies events to renderer)
-void EverQuest::PreRenderTick(float /*deltaTime*/) {
-#ifdef EQT_HAS_GRAPHICS
-	if (!m_graphics_initialized) return;
-#endif
-
-	// Drain bridge events and apply to renderer
-	ProcessBridgeEvents();
-}
+// T220: PreRenderTick() (D21a's render-thread event drain) is DELETED. In a
+// graphics run the bridge drain is now two-stage and owned by Application:
+// updateGameState() -> GameStateSyncBridge::projectPendingEvents() on the
+// game thread, render() -> GameStateSyncBridge::forwardProjectedEvents() on
+// the render thread. ProcessBridgeEvents() below remains the single-stage
+// drain for headless runs (and single-threaded test harnesses).
 
 // D20c1: Post-render tick — audio sync, progressive loading check
 void EverQuest::PostRenderTick(float deltaTime) {
@@ -1434,6 +1431,10 @@ void EverQuest::ProcessBridgeIntents() {
 	}
 }
 
+// Single-stage drain: drain + applyEvent() on the CALLING thread. Production
+// caller is Application::updateGameState() in headless mode only (game
+// thread, ConsoleBridge). Graphics runs must not call this -- their drain is
+// split across threads (T220, see the note above and game_state_sync_bridge.h).
 void EverQuest::ProcessBridgeEvents() {
 	if (!m_bridge) return;
 

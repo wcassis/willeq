@@ -8,6 +8,49 @@ namespace eqt {
 namespace bridge {
 
 void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
+    // Single-stage path (headless + unit tests): project and forward on the
+    // calling thread. Graphics runs use projectPendingEvents() /
+    // forwardProjectedEvents() instead -- see the header (T220).
+    projectEvent(event);
+    m_wrapped.applyEvent(event);
+}
+
+void GameStateSyncBridge::projectPendingEvents() {
+    // T220 stage 1, GAME thread. drainEvents() is the base class's
+    // D24-coalescing swap-drain of the queue EverQuest (and the loading
+    // thread, and the renderer's own SystemMessage pushes) push onto.
+    auto events = drainEvents();
+    if (events.empty()) return;
+    for (const auto& event : events) {
+        projectEvent(event);
+    }
+    std::lock_guard<std::mutex> lock(m_forwardMutex);
+    if (m_forwardQueue.empty()) {
+        m_forwardQueue = std::move(events);
+    } else {
+        m_forwardQueue.insert(m_forwardQueue.end(),
+                              std::make_move_iterator(events.begin()),
+                              std::make_move_iterator(events.end()));
+    }
+}
+
+void GameStateSyncBridge::forwardProjectedEvents() {
+    // T220 stage 2, RENDER thread. Never touches m_state.
+    std::vector<state::GameEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(m_forwardMutex);
+        events.swap(m_forwardQueue);
+    }
+    // Re-coalesce: the queue may hold several game-thread batches, and the
+    // renderer's contract is at most one EntityMoved per entity per drain
+    // (D24) -- the projection above already saw every batch's latest.
+    coalesceEvents(events);
+    for (const auto& event : events) {
+        m_wrapped.applyEvent(event);
+    }
+}
+
+void GameStateSyncBridge::projectEvent(const state::GameEvent& event) {
     // T40: narrow switch, pet events only. Every other event delegates
     // untouched -- do not pre-build for later syncs here.
     switch (event.type) {
@@ -432,8 +475,6 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
         default:
             break;
     }
-
-    m_wrapped.applyEvent(event);
 }
 
 } // namespace bridge

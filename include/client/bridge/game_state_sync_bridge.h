@@ -136,11 +136,68 @@ public:
         : m_wrapped(wrapped), m_state(state) {}
     ~GameStateSyncBridge() override = default;
 
+    /**
+     * Single-stage apply: project into GameState, then forward to the
+     * wrapped bridge -- both on the CALLING thread. This is the headless
+     * path (Application::updateGameState() -> EverQuest::ProcessBridgeEvents()
+     * on the game thread, ConsoleBridge wrapped) and what the unit tests
+     * drive directly. Graphics runs must NOT use it: see the two-stage
+     * entry points below.
+     */
     void applyEvent(const state::GameEvent& event) override;
 
+    // ---- T220: two-stage delivery for graphics runs ----------------------
+    //
+    // Before T220, graphics builds drained this bridge from the RENDER
+    // thread (Application::render() -> EverQuest::PreRenderTick() ->
+    // ProcessBridgeEvents() -> applyEvent()), so the projection into
+    // Application::m_gameState -- the READ model the action/command layer
+    // consults from the GAME thread (InputActionBridge / ActionDispatcher /
+    // CommandProcessor: /afk reads player().isAFK(), /door reads doors(),
+    // /target reads entities()) -- was a cross-thread write with no lock on
+    // any state:: object. TSAN-confirmed (refactor/T220_state_projection_on_
+    // game_thread.md). The wrapped IrrlichtBridge, however, MUST keep running
+    // on the render thread (it calls the renderer). So the single drain is
+    // split in two, joined by a second FIFO owned by this decorator:
+    //
+    //   GAME thread   projectPendingEvents(): drainEvents() [base queue,
+    //                 D24-coalesced] -> projectEvent() each -> append the
+    //                 whole batch, in order, to m_forwardQueue.
+    //   RENDER thread forwardProjectedEvents(): swap out m_forwardQueue,
+    //                 re-run the D24 coalesce (several game-thread batches
+    //                 may have accumulated), m_wrapped.applyEvent() each.
+    //
+    // Renderer-visible ORDER is unchanged: both queues are single-producer
+    // FIFOs and the game thread is the only writer of m_forwardQueue, so the
+    // renderer sees events in exactly the sequence they were pushed. What
+    // changes is only WHEN the projection lands (as soon as the game thread
+    // ticks, instead of at the next rendered frame) -- strictly earlier, on
+    // the thread that reads it. Zone-load ordering (application.cpp's P17
+    // comment at loadZoneGraphicsOnThread) is untouched: while
+    // Application::render() is on one of its early-return branches nothing
+    // forwards, exactly as nothing drained before, and the old zone's
+    // renderer state is still torn down synchronously on the loading thread.
+    //
+    // Headless runs keep the single-stage applyEvent() path -- ConsoleBridge
+    // is game-thread already, so there is nothing to split.
+
+    /** GAME thread (graphics runs): stage 1 -- project, then hand off. */
+    void projectPendingEvents();
+
+    /** RENDER thread (graphics runs): stage 2 -- forward to the wrapped bridge. */
+    void forwardProjectedEvents();
+
 private:
+    /** The projection switch (T40..T219 cases). Mutates m_state only. */
+    void projectEvent(const state::GameEvent& event);
+
     GameStateBridge& m_wrapped;
     state::GameState& m_state;
+
+    // T220: projected-but-not-yet-forwarded events, game thread -> render
+    // thread. Same swap-vector pattern as the base class's queues.
+    std::mutex m_forwardMutex;
+    std::vector<state::GameEvent> m_forwardQueue;
 };
 
 } // namespace bridge

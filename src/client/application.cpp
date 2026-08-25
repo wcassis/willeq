@@ -1414,9 +1414,26 @@ void Application::updateGameState(float deltaTime) {
     }
 
     // D25: In headless mode, drain and apply events to the console bridge
+    // (single stage: GameStateSyncBridge::applyEvent() projects into
+    // m_gameState AND forwards to ConsoleBridge, both right here on the
+    // game thread).
     if (m_eqClient && m_consoleBridge && !m_graphicsInitialized) {
         m_eqClient->ProcessBridgeEvents();
     }
+#ifdef EQT_HAS_GRAPHICS
+    // T220: graphics runs -- stage 1 of the split drain, on the GAME thread.
+    // Drains the EverQuest->bridge event queue, applies the GameState
+    // projection (the READ model this same thread's InputActionBridge /
+    // ActionDispatcher / CommandProcessor consult), and stages the events
+    // for the render thread. Before T220 the whole drain, projection
+    // included, ran on the render thread (render() -> PreRenderTick()),
+    // racing every game-thread read of m_gameState with no lock (TSAN-
+    // confirmed; refactor/T220_state_projection_on_game_thread.md). Stage 2
+    // is render()'s forwardProjectedEvents().
+    else if (m_eqClient && m_stateSyncBridge && m_graphicsInitialized) {
+        m_stateSyncBridge->projectPendingEvents();
+    }
+#endif
 }
 
 void Application::render(float deltaTime) {
@@ -1454,8 +1471,12 @@ void Application::render(float deltaTime) {
                 return;
             }
 
-            // Normal gameplay: drain bridge events, render frame
-            m_eqClient->PreRenderTick(gfxDeltaTime);
+            // Normal gameplay: forward the game thread's already-projected
+            // bridge events to IrrlichtBridge (T220 stage 2 -- render-thread
+            // only, never touches m_gameState), then render the frame.
+            if (m_stateSyncBridge) {
+                m_stateSyncBridge->forwardProjectedEvents();
+            }
 
             bool result = m_renderer->processFrame(gfxDeltaTime);
 
@@ -1607,9 +1628,10 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     // constrained texture cache, etc.) synchronously, right here, before this
     // (new) zone touches any of it. This replaces relying on EverQuest's
     // queued "/unloadzone_internal" RendererCommand (pushed from
-    // CleanupZone(), applied only by PreRenderTick -> ProcessBridgeEvents()),
-    // which is a real bug: PreRenderTick is only reached from the "normal
-    // gameplay" branch of Application::render() -- during the entire
+    // CleanupZone(), applied only by the render thread's bridge drain --
+    // PreRenderTick -> ProcessBridgeEvents() then, forwardProjectedEvents()
+    // since T220), which is a real bug: that drain is only reached from the
+    // "normal gameplay" branch of Application::render() -- during the entire
     // network-handshake phase and the whole loading-thread-active phase of a
     // zone transition, render() takes early-return branches that never call
     // it. That queued event therefore sits unapplied until AFTER this new

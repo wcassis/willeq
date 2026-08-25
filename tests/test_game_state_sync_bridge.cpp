@@ -1357,3 +1357,190 @@ TEST_F(GameStateSyncBridgeTest, DoorEventsStillDelegateToWrappedBridge) {
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::DoorSpawned);
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::DoorStateChanged);
 }
+
+// ===========================================================================
+// T220: two-stage drain (graphics runs). projectPendingEvents() runs on the
+// game thread and mutates GameState; forwardProjectedEvents() runs on the
+// render thread and only forwards to the wrapped bridge. These tests pin the
+// contract the split relies on: every event is projected exactly once and
+// forwarded exactly once, in push order, with D24's per-entity EntityMoved
+// coalescing still holding on the renderer side across several game-thread
+// batches. Both entry points are driven from the test thread -- the
+// property under test is once-and-in-order, not thread scheduling (the
+// thread half of this unit is the TSAN before/after evidence in
+// refactor/T220_state_projection_on_game_thread.md).
+// ===========================================================================
+
+namespace {
+
+// Records the full event so order AND payload can be asserted.
+class FullRecordingBridge : public GameStateBridge {
+public:
+    void applyEvent(const GameEvent& event) override {
+        applied.push_back(event);
+    }
+    std::vector<GameEvent> applied;
+};
+
+class GameStateSyncBridgeSplitDrainTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        state = std::make_unique<GameState>();
+        wrapped = std::make_unique<FullRecordingBridge>();
+        bridge = std::make_unique<GameStateSyncBridge>(*wrapped, *state);
+    }
+
+    static GameEvent moved(uint16_t spawnId, float x) {
+        EntityMovedData d{};
+        d.spawnId = spawnId;
+        d.x = x;
+        d.y = 0.0f;
+        d.z = 0.0f;
+        d.heading = 0.0f;
+        d.dx = d.dy = d.dz = 0.0f;
+        d.animation = 0;
+        return GameEvent(GameEventType::EntityMoved, d);
+    }
+
+    static GameEvent snapshot(uint16_t spawnId, const std::string& name) {
+        EntityStateSnapshotData d;
+        d.entity.spawnId = spawnId;
+        d.entity.name = name;
+        return GameEvent(GameEventType::EntityStateSnapshot, d);
+    }
+
+    static GameEvent pet(uint16_t spawnId) {
+        PetCreatedData d;
+        d.spawnId = spawnId;
+        d.name = "Fido";
+        d.level = 1;
+        return GameEvent(GameEventType::PetCreated, d);
+    }
+
+    std::unique_ptr<GameState> state;
+    std::unique_ptr<FullRecordingBridge> wrapped;
+    std::unique_ptr<GameStateSyncBridge> bridge;
+};
+
+} // namespace
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, ProjectStageMutatesStateButForwardsNothing) {
+    bridge->pushEvent(pet(7));
+    bridge->pushEvent(GameEvent(GameEventType::SystemMessage, ChatMessageData{}));
+
+    bridge->projectPendingEvents();
+
+    // Stage 1 projected...
+    EXPECT_TRUE(state->pet().hasPet());
+    EXPECT_EQ(state->pet().petSpawnId(), 7);
+    // ...and handed NOTHING to the wrapped (render-side) bridge yet.
+    EXPECT_TRUE(wrapped->applied.empty());
+}
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, ForwardStageDeliversEachEventOnceInPushOrder) {
+    bridge->pushEvent(pet(7));
+    bridge->pushEvent(GameEvent(GameEventType::SystemMessage, ChatMessageData{}));
+    bridge->pushEvent(snapshot(9, "Guard_Test"));
+
+    bridge->projectPendingEvents();
+    bridge->forwardProjectedEvents();
+
+    ASSERT_EQ(wrapped->applied.size(), 3u);
+    EXPECT_EQ(wrapped->applied[0].type, GameEventType::PetCreated);
+    EXPECT_EQ(wrapped->applied[1].type, GameEventType::SystemMessage);
+    EXPECT_EQ(wrapped->applied[2].type, GameEventType::EntityStateSnapshot);
+
+    // Forwarding is destructive: a second render drain delivers nothing
+    // more, and a second projection pass finds nothing to project.
+    bridge->forwardProjectedEvents();
+    bridge->projectPendingEvents();
+    bridge->forwardProjectedEvents();
+    EXPECT_EQ(wrapped->applied.size(), 3u);
+}
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, ForwardStageNeverTouchesState) {
+    bridge->pushEvent(pet(7));
+    bridge->projectPendingEvents();
+    ASSERT_TRUE(state->pet().hasPet());
+
+    // Mutate the read model between the stages, the way a game-thread
+    // command could; the render-side forward must not re-project.
+    state->pet().clearPet();
+    bridge->forwardProjectedEvents();
+
+    EXPECT_FALSE(state->pet().hasPet());
+    ASSERT_EQ(wrapped->applied.size(), 1u);
+    EXPECT_EQ(wrapped->applied[0].type, GameEventType::PetCreated);
+}
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, OrderPreservedAcrossSeveralProjectBatchesBeforeOneForward) {
+    // Several game ticks may elapse between two rendered frames (loading,
+    // slow llvmpipe frame). The render thread must still see push order.
+    bridge->pushEvent(snapshot(1, "A"));
+    bridge->projectPendingEvents();
+    bridge->pushEvent(snapshot(2, "B"));
+    bridge->pushEvent(GameEvent(GameEventType::SystemMessage, ChatMessageData{}));
+    bridge->projectPendingEvents();
+    bridge->pushEvent(snapshot(3, "C"));
+    bridge->projectPendingEvents();
+
+    EXPECT_TRUE(state->entities().hasEntity(1));
+    EXPECT_TRUE(state->entities().hasEntity(2));
+    EXPECT_TRUE(state->entities().hasEntity(3));
+    EXPECT_TRUE(wrapped->applied.empty());
+
+    bridge->forwardProjectedEvents();
+
+    ASSERT_EQ(wrapped->applied.size(), 4u);
+    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[0].data).entity.name, "A");
+    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[1].data).entity.name, "B");
+    EXPECT_EQ(wrapped->applied[2].type, GameEventType::SystemMessage);
+    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[3].data).entity.name, "C");
+}
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, D24CoalescingHoldsOnRendererSideAcrossBatches) {
+    bridge->pushEvent(snapshot(5, "Mover"));
+    bridge->pushEvent(snapshot(6, "Still"));
+    bridge->projectPendingEvents();
+
+    // Batch 1: two moves for 5, one for 6.
+    bridge->pushEvent(moved(5, 10.0f));
+    bridge->pushEvent(moved(6, 1.0f));
+    bridge->pushEvent(moved(5, 20.0f));
+    bridge->projectPendingEvents();
+    // The projection saw batch 1's latest.
+    ASSERT_NE(state->entities().getEntity(5), nullptr);
+    EXPECT_FLOAT_EQ(state->entities().getEntity(5)->x, 20.0f);
+
+    // Batch 2: another move for 5 before the renderer drains.
+    bridge->pushEvent(moved(5, 30.0f));
+    bridge->projectPendingEvents();
+    EXPECT_FLOAT_EQ(state->entities().getEntity(5)->x, 30.0f);
+
+    bridge->forwardProjectedEvents();
+
+    // Renderer side: 2 snapshots + exactly ONE EntityMoved per entity, the
+    // latest (30 for 5, 1 for 6), in order -- the same contract the
+    // renderer had when it drained eventQueue_ directly.
+    ASSERT_EQ(wrapped->applied.size(), 4u);
+    EXPECT_EQ(wrapped->applied[0].type, GameEventType::EntityStateSnapshot);
+    EXPECT_EQ(wrapped->applied[1].type, GameEventType::EntityStateSnapshot);
+    EXPECT_EQ(wrapped->applied[2].type, GameEventType::EntityMoved);
+    EXPECT_EQ(std::get<EntityMovedData>(wrapped->applied[2].data).spawnId, 6);
+    EXPECT_FLOAT_EQ(std::get<EntityMovedData>(wrapped->applied[2].data).x, 1.0f);
+    EXPECT_EQ(wrapped->applied[3].type, GameEventType::EntityMoved);
+    EXPECT_EQ(std::get<EntityMovedData>(wrapped->applied[3].data).spawnId, 5);
+    EXPECT_FLOAT_EQ(std::get<EntityMovedData>(wrapped->applied[3].data).x, 30.0f);
+}
+
+TEST_F(GameStateSyncBridgeSplitDrainTest, SingleStageApplyEventStillProjectsAndForwardsTogether) {
+    // Headless path (ConsoleBridge, one game-thread drain) is unchanged:
+    // applyEvent() does both halves on the calling thread, and nothing is
+    // left behind in the render-side queue.
+    bridge->applyEvent(pet(7));
+    EXPECT_TRUE(state->pet().hasPet());
+    ASSERT_EQ(wrapped->applied.size(), 1u);
+
+    bridge->forwardProjectedEvents();
+    EXPECT_EQ(wrapped->applied.size(), 1u);
+}

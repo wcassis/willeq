@@ -199,9 +199,11 @@ protected:
             if (eq_) {
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
-                // D20c1: Process frame via split API
+                // D20c1: Process frame via split API. T220: PreRenderTick()
+                // is gone; this single-threaded harness uses the single-
+                // stage drain directly.
                 float deltaTime = getDeltaTime();
-                eq_->PreRenderTick(deltaTime);
+                eq_->ProcessBridgeEvents();
                 if (!renderer_->processFrame(deltaTime)) {
                     // Window was closed
                     std::cerr << "Graphics window closed unexpectedly" << std::endl;
@@ -227,7 +229,7 @@ protected:
                 eq_->UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
                 float deltaTime = getDeltaTime();
-                eq_->PreRenderTick(deltaTime);
+                eq_->ProcessBridgeEvents();
                 renderer_->processFrame(deltaTime);
 #endif
             }

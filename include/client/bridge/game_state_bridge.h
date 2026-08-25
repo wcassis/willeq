@@ -66,7 +66,13 @@ public:
 
     /**
      * Drain all pending events from the game thread.
-     * Thread-safe. Called from the renderer thread.
+     * Thread-safe. Called from the consumer thread -- which thread that is
+     * depends on the bridge: for the plain single-stage bridges
+     * (ConsoleBridge, test bridges) it is whoever drains and applies;
+     * for GameStateSyncBridge in a graphics run it is the GAME thread
+     * (GameStateSyncBridge::projectPendingEvents(), T220), never the
+     * render thread -- the render thread drains the projected queue via
+     * GameStateSyncBridge::forwardProjectedEvents() instead.
      * Returns the events and clears the queue atomically.
      * D24: Coalesces consecutive EntityMoved events per spawnId (keeps latest).
      */
@@ -87,15 +93,14 @@ public:
      */
     virtual void applyEvent(const state::GameEvent& event) = 0;
 
-private:
-    std::mutex eventMutex_;
-    std::vector<state::GameEvent> eventQueue_;
-
-    std::mutex intentMutex_;
-    std::vector<events::RendererIntent> intentQueue_;
-
+protected:
     // D24: Coalesce EntityMoved events — keep only the latest per spawnId.
     // Preserves ordering of non-EntityMoved events and the final EntityMoved per entity.
+    // T220: protected (was private) so GameStateSyncBridge can re-apply it
+    // to its render-side queue -- that queue accumulates several game-thread
+    // batches between render drains, and the renderer must keep seeing at
+    // most one EntityMoved per entity per drain, exactly as it did when it
+    // drained eventQueue_ directly.
     static void coalesceEvents(std::vector<state::GameEvent>& events) {
         if (events.size() < 2) return;
 
@@ -122,6 +127,13 @@ private:
         }
         events = std::move(filtered);
     }
+
+private:
+    std::mutex eventMutex_;
+    std::vector<state::GameEvent> eventQueue_;
+
+    std::mutex intentMutex_;
+    std::vector<events::RendererIntent> intentQueue_;
 
     // D24: Coalesce PlayerPositionChanged intents — keep only the latest.
     static void coalesceIntents(std::vector<events::RendererIntent>& intents) {

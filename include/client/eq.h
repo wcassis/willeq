@@ -1343,7 +1343,8 @@ public:
 	// graphics block along with the genuinely renderer-only methods below).
 	// D21a: Split tick — game thread vs render thread
 	void GameTick(float deltaTime);        // Game thread: spell/buff updates + intent processing
-	void PreRenderTick(float deltaTime);   // Render thread: drain events, apply to renderer
+	// (PreRenderTick -- the render-thread event drain -- was deleted in T220;
+	// Application drives GameStateSyncBridge's two-stage drain directly.)
 	void PostRenderTick(float deltaTime);  // Game thread: audio sync
 	void SetEQClientPath(const std::string& path);
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
