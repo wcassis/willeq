@@ -832,6 +832,16 @@ public:
 	};
 	TestSentFaceChange Test_GetLastFaceChange() const { return m_test_last_face_change; }
 
+	// T217 test seam: the complete OP_GMHideMe packet (opcode + body) the
+	// last SendGMHideMe() call built, captured before the connection gate.
+	// Raw bytes rather than decoded fields so the test pins the wire layout
+	// eqemu's Handle_OP_GMHideMe size-checks, not a re-derivation of it.
+	struct TestSentGMHideMe {
+		bool sent = false;
+		std::vector<uint8_t> bytes;
+	};
+	const TestSentGMHideMe& Test_GetLastGMHideMe() const { return m_test_last_gm_hideme; }
+
 	// T170 test seam: the two id fields of the last inspect answer built. They
 	// are the whole point -- they mean the OPPOSITE of the request struct's.
 	struct TestSentInspectAnswer {
@@ -1999,6 +2009,9 @@ private:
 
 	// T167 test seam -- see Test_GetLastFaceChange().
 	TestSentFaceChange m_test_last_face_change;
+
+	// T217 test seam -- see Test_GetLastGMHideMe().
+	TestSentGMHideMe m_test_last_gm_hideme;
 
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;

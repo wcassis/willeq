@@ -120,11 +120,42 @@ void EverQuest::SendGMKill(const std::string& charname)
 	}
 }
 
+// T217: this used to call SendSpawnAppearance(AT_GM, ...), i.e. it went out
+// as OP_SpawnAppearance type 20. eqemu has no case for that type and dropped
+// it -- `Unknown SpawnAppearance type: 0x0014` in the zone log (T148 live
+// evidence, review/T148/) -- so /hideme could never reach the server's
+// handler. The handler, Client::Handle_OP_GMHideMe (zone/client_packet.cpp),
+// listens on OP_GMHideMe = 0x15b2 (patch_Titanium.conf:132) and demands an
+// 8-byte SpawnAppearance_Struct body, of which it reads ONLY `parameter`:
+//
+//     SetHideMe(!sa->parameter);
+//
+// So parameter is a VISIBILITY flag, not a hide flag: 0 = hide me, 1 = show
+// me. spawn_id/type are filled the way the SpawnAppearance path fills them
+// (ours, AT_GM) for the reader's benefit; the server ignores both.
 void EverQuest::SendGMHideMe(bool hide)
 {
-	// Uses SpawnAppearance
-	SendSpawnAppearance(AT_GM, hide ? 1 : 0);
-	LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
+	EQ::Net::DynamicPacket packet;
+	packet.PutUInt16(0, HC_OP_GMHideMe);
+
+	EQT::SpawnAppearance_Struct sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.spawn_id = m_my_spawn_id;
+	sa.type = AT_GM;
+	sa.parameter = hide ? 0 : 1;
+	packet.PutData(2, &sa, sizeof(sa));
+
+	// T217 test seam (same shape as T167's face-change one): the bytes we
+	// actually built, captured before the connection gate.
+	m_test_last_gm_hideme.sent = true;
+	m_test_last_gm_hideme.bytes.assign(
+		static_cast<const uint8_t*>(packet.Data()),
+		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
+
+	if (m_zone_connection && m_zone_connected) {
+		m_zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
+	}
 }
 
 // T148: this sender wrote a bare variable-length string where the server

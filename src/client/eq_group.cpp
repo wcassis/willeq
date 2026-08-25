@@ -51,15 +51,25 @@ void EverQuest::SendGroupInvite(const std::string& target_name)
 	LOG_INFO(MOD_MAIN, "Sent group invite to {}", target_name);
 }
 
+// T217: `inviter_name` is, in practice, a reference to our own
+// m_pending_inviter_name (AcceptGroupInvite() passes the member straight
+// in), and this function clears that member before its final log line -- so
+// the log printed "Accepted group invite from " with nothing after it (T99
+// live evidence, review/T99/). Copy the name up front so the parameter can
+// alias the member safely. The T88 send-guard bypass lets a headless test
+// run the clear-then-read sequence that only a live zone connection used to
+// reach; with the seam unset the guard is exactly what it was.
 void EverQuest::SendGroupFollow(const std::string& inviter_name)
 {
-	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+	if (!m_test_bypass_send_guard && (!m_zone_connection_manager || !IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot accept group invite - not connected to zone");
 		return;
 	}
 
+	const std::string inviter = inviter_name;
+
 	EQT::GroupFollow_Struct packet = {};
-	strncpy(packet.name1, inviter_name.c_str(), 63);
+	strncpy(packet.name1, inviter.c_str(), 63);
 	strncpy(packet.name2, m_character.c_str(), 63);
 
 	EQ::Net::DynamicPacket p;
@@ -67,23 +77,28 @@ void EverQuest::SendGroupFollow(const std::string& inviter_name)
 	p.PutUInt16(0, HC_OP_GroupFollow);
 	p.PutData(2, &packet, sizeof(packet));
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	if (m_zone_connection) {
+		m_zone_connection->QueuePacket(p, 0, true);
+	}
 
 	m_has_pending_invite = false;
 	m_pending_inviter_name.clear();
 
-	LOG_INFO(MOD_MAIN, "Accepted group invite from {}", inviter_name);
+	LOG_INFO(MOD_MAIN, "Accepted group invite from {}", inviter);
 }
 
+// T217: same aliasing hazard as SendGroupFollow() above -- copy first.
 void EverQuest::SendGroupDecline(const std::string& inviter_name)
 {
-	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+	if (!m_test_bypass_send_guard && (!m_zone_connection_manager || !IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot decline group invite - not connected to zone");
 		return;
 	}
 
+	const std::string inviter = inviter_name;
+
 	EQT::GroupCancel_Struct packet = {};
-	strncpy(packet.name1, inviter_name.c_str(), 63);
+	strncpy(packet.name1, inviter.c_str(), 63);
 	strncpy(packet.name2, m_character.c_str(), 63);
 	packet.toggle = 0;
 
@@ -92,12 +107,14 @@ void EverQuest::SendGroupDecline(const std::string& inviter_name)
 	p.PutUInt16(0, HC_OP_GroupCancelInvite);
 	p.PutData(2, &packet, sizeof(packet));
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	if (m_zone_connection) {
+		m_zone_connection->QueuePacket(p, 0, true);
+	}
 
 	m_has_pending_invite = false;
 	m_pending_inviter_name.clear();
 
-	LOG_INFO(MOD_MAIN, "Declined group invite from {}", inviter_name);
+	LOG_INFO(MOD_MAIN, "Declined group invite from {}", inviter);
 }
 
 void EverQuest::SendGroupDisband()
@@ -140,11 +157,15 @@ void EverQuest::SendLeaveGroup()
 // exact body a future raid unit needs is recorded on HC_OP_RaidInvite in
 // eq.h and in refactor/T168_sender_triage.md.
 
+// T217: capture the inviter BEFORE SendGroupFollow(), which clears
+// m_pending_inviter_name as its last act. Reading the member afterwards
+// printed "You have joined 's group" (T99 live evidence, review/T99/).
 void EverQuest::AcceptGroupInvite()
 {
 	if (m_has_pending_invite) {
-		SendGroupFollow(m_pending_inviter_name);
-		AddChatSystemMessage("You have joined " + m_pending_inviter_name + "'s group");
+		const std::string inviter = m_pending_inviter_name;
+		SendGroupFollow(inviter);
+		AddChatSystemMessage("You have joined " + inviter + "'s group");
 	}
 }
 

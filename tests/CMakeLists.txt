@@ -1251,6 +1251,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_profile_appearance)
 
+# T217: group-accept inviter name (the T99 aliasing bug) and the OP_GMHideMe
+# sender body (the T148 misroute). Headless EverQuest + TestBridge + the T88
+# send-guard bypass; the hideme body is read through a T167-style seam.
+ADD_EXECUTABLE(test_group_accept_gm_hideme
+    test_group_accept_gm_hideme.cpp
+)
+TARGET_LINK_LIBRARIES(test_group_accept_gm_hideme GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_group_accept_gm_hideme PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_group_accept_gm_hideme)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for

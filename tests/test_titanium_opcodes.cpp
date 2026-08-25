@@ -97,6 +97,14 @@ TEST_F(TitaniumOpcodesTest, MarkNpcOpcode) {
     EXPECT_EQ(HC_OP_MarkNPC, 0x5483);
 }
 
+// T217: pin OP_GMHideMe to the eqemu Titanium value (patch_Titanium.conf:132,
+// "OP_GMHideMe=0x15b2 #/hideme"). SendGMHideMe used to bypass this opcode
+// entirely and go out as OP_SpawnAppearance type 20, which the server drops.
+TEST_F(TitaniumOpcodesTest, GMHideMeOpcode) {
+    EXPECT_EQ(HC_OP_GMHideMe, 0x15b2);
+    EXPECT_NE(HC_OP_GMHideMe, HC_OP_SpawnAppearance);
+}
+
 // Test that opcodes don't collide (important for packet handling)
 TEST_F(TitaniumOpcodesTest, OpcodeUniqueness) {
     // Login opcodes should be distinct from world opcodes
