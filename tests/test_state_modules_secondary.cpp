@@ -1,5 +1,6 @@
 // Unit tests for the eqt::state state modules, part 2 (GroupState, PetState,
-// WorldState, CombatState, TradeskillState, GameState). Split from
+// WorldState, CombatState, GameState -- TradeskillState was deleted in T232,
+// it had no production reader). Split from
 // test_state_modules.cpp (which covers EntityManager, PlayerState,
 // SpellState, InventoryState) purely to stay under the project's
 // file-size check (scripts/refactor/check_file_sizes.sh) -- no other
@@ -15,7 +16,6 @@
 #include "client/state/pet_state.h"
 #include "client/state/world_state.h"
 #include "client/state/combat_state.h"
-#include "client/state/tradeskill_state.h"
 #include "client/state/game_state.h"
 #include "client/state/event_bus.h"
 
@@ -539,89 +539,6 @@ TEST(CombatStateTest, SetAutoAttackingStillDoesNotPublish_NoMatchingEventType) {
     cs.setAutoAttacking(false);
 
     EXPECT_EQ(eventCount, 0);
-}
-
-// =============================================================================
-// TradeskillState -- priority 3 (small, last per plan's ordering).
-// =============================================================================
-
-TEST(TradeskillStateTest, DefaultConstructedNoContainerOpen) {
-    TradeskillState ts;
-    EXPECT_FALSE(ts.isContainerOpen());
-    EXPECT_FALSE(ts.isWorldContainer());
-    EXPECT_FALSE(ts.isInventoryContainer());
-    EXPECT_EQ(ts.activeInventorySlot(), -1);
-}
-
-TEST(TradeskillStateTest, OpenWorldContainerFiresOpenedEvent) {
-    TradeskillState ts;
-    EventBus bus;
-    ts.setEventBus(&bus);
-    int opened = 0;
-    bus.subscribe(GameEventType::TradeskillContainerOpened, [&](const GameEvent&) { ++opened; });
-
-    ts.openWorldContainer(123, "Forge", 1, 4);
-    EXPECT_TRUE(ts.isContainerOpen());
-    EXPECT_TRUE(ts.isWorldContainer());
-    EXPECT_FALSE(ts.isInventoryContainer());
-    EXPECT_EQ(ts.activeObjectId(), 123u);
-    EXPECT_EQ(opened, 1);
-}
-
-TEST(TradeskillStateTest, OpenInventoryContainerFiresOpenedEvent) {
-    TradeskillState ts;
-    EventBus bus;
-    ts.setEventBus(&bus);
-    int opened = 0;
-    bus.subscribe(GameEventType::TradeskillContainerOpened, [&](const GameEvent&) { ++opened; });
-
-    ts.openInventoryContainer(30, "Tradeskill Bag", 2, 8);
-    EXPECT_TRUE(ts.isInventoryContainer());
-    EXPECT_FALSE(ts.isWorldContainer());
-    EXPECT_EQ(ts.activeInventorySlot(), 30);
-    EXPECT_EQ(opened, 1);
-}
-
-TEST(TradeskillStateTest, OpeningSecondContainerClosesFirst) {
-    TradeskillState ts;
-    EventBus bus;
-    ts.setEventBus(&bus);
-    int opened = 0, closed = 0;
-    bus.subscribe(GameEventType::TradeskillContainerOpened, [&](const GameEvent&) { ++opened; });
-    bus.subscribe(GameEventType::TradeskillContainerClosed, [&](const GameEvent&) { ++closed; });
-
-    ts.openWorldContainer(1, "Forge", 1, 4);
-    ts.openInventoryContainer(2, "Bag", 2, 8);
-
-    EXPECT_EQ(opened, 2);
-    EXPECT_EQ(closed, 1); // the forge was auto-closed
-    EXPECT_TRUE(ts.isInventoryContainer());
-    EXPECT_FALSE(ts.isWorldContainer());
-}
-
-TEST(TradeskillStateTest, CloseContainerWhenNoneOpenIsNoOp) {
-    TradeskillState ts;
-    EventBus bus;
-    ts.setEventBus(&bus);
-    int closed = 0;
-    bus.subscribe(GameEventType::TradeskillContainerClosed, [&](const GameEvent&) { ++closed; });
-
-    ts.closeContainer();
-    EXPECT_EQ(closed, 0);
-}
-
-TEST(TradeskillStateTest, ResetDoesNotFireEvents) {
-    TradeskillState ts;
-    EventBus bus;
-    ts.setEventBus(&bus);
-    int events = 0;
-    bus.subscribe([&](const GameEvent&) { ++events; });
-
-    ts.openWorldContainer(1, "Forge", 1, 4);
-    events = 0; // ignore the open event
-    ts.reset();
-    EXPECT_EQ(events, 0);
-    EXPECT_FALSE(ts.isContainerOpen());
 }
 
 // =============================================================================

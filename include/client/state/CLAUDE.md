@@ -19,7 +19,6 @@ Central owner of all state modules:
 | `SpellState` | `spell_state.h` | Spellbook, memorized gems (8), buffs, cooldowns |
 | `PetState` | `pet_state.h` | Pet name/level/HP, command state |
 | `DoorStateManager` | (in game state layer) | Door positions and open/closed state |
-| `TradeskillState` | `tradeskill_state.h` | Tradeskill container contents and combines |
 
 **Lifecycle:**
 - `resetForZoneChange()` — clears entities/doors for zone transitions

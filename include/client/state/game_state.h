@@ -9,7 +9,6 @@
 #include "client/door_state_manager.h"
 #include "client/state/pet_state.h"
 #include "client/state/trade_state.h"
-#include "client/state/tradeskill_state.h"
 #include "client/state/inventory_state.h"
 #include "client/state/spell_state.h"
 
@@ -104,12 +103,6 @@ public:
     const PetState& pet() const { return m_petState; }
 
     /**
-     * Get the tradeskill state.
-     */
-    TradeskillState& tradeskill() { return m_tradeskillState; }
-    const TradeskillState& tradeskill() const { return m_tradeskillState; }
-
-    /**
      * Get the (player-to-player) trade state.
      */
     TradeState& trade() { return m_tradeState; }
@@ -176,7 +169,6 @@ private:
     EQT::DoorStateManager m_doorManager;
     PetState m_petState;
     TradeState m_tradeState;
-    TradeskillState m_tradeskillState;
     InventoryState m_inventoryState;
     SpellState m_spellState;
 };

@@ -1,7 +1,7 @@
 // Unit tests for the eqt::state state modules, part 1: EntityManager,
 // PlayerState, SpellState, InventoryState (the priority-1 modules per the
 // plan -- largest and highest-risk). GroupState, PetState, WorldState,
-// CombatState, TradeskillState, and GameState are covered in
+// CombatState, and GameState are covered in
 // test_state_modules_secondary.cpp (split purely to stay under the
 // project's file-size check, scripts/refactor/check_file_sizes.sh).
 //

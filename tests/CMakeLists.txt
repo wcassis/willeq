@@ -308,7 +308,7 @@ TARGET_LINK_LIBRARIES(test_state_modules GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_state_modules)
 
 # T02: state module unit tests, part 2 (GroupState, PetState, WorldState,
-# CombatState, TradeskillState, GameState). Split from test_state_modules
+# CombatState, GameState; TradeskillState deleted T232). Split from test_state_modules
 # purely to stay under the project's file-size check
 # (scripts/refactor/check_file_sizes.sh warns above 1500 lines).
 # game_state.cpp also pulls in door_state_manager.cpp (client/state/game_state.h
@@ -328,7 +328,6 @@ ADD_EXECUTABLE(test_state_modules_secondary
     ${CMAKE_SOURCE_DIR}/src/client/state/trade_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/world_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/state/tradeskill_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/game_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/door_state_manager.cpp
 )
@@ -353,7 +352,6 @@ SET(ACTION_LAYER_STATE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/state/trade_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/world_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/state/tradeskill_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/game_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/door_state_manager.cpp
 )
