@@ -20,6 +20,7 @@ Review — read that before scoping the next unit off this file.
 
 - **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.
 - **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. Emote/Macro still skipped.**
+- **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.**
 - **NEW (T230): same two-consumer race for spell-gem keys — `processChatInput()` still consumes `getSpellGemCastRequest()` while `GraphicsInputHandler::consumeSpellCastRequest()` also polls it. Class A, one-line delete + live keypress proof (T230's Xvfb+xdotool driver in `review/T230/`).**
 - **NEW (T230): `/equip 30 22` (swap with CURSOR) reports a client-side swap the server never applied — client/server inventory drift on swap-with-cursor moves. Same class as T82's "doMove swap branch never validates the displaced item". Class A/B: reproduce with the DB, then fix the swap validation.**
 - **NEW (T233): a `--script` command HELD pre-connection emits no `CMD outcome=held` line (T30's held intercept covers piped stdin only). Class A, small.**
@@ -46,7 +47,7 @@ Review — read that before scoping the next unit off this file.
     ~~`rejectTradeRequest()` never fires `m_on_cancelled` (T103)~~ CLOSED T222;
     ~~`CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
     keyboard hotbar Item/Emote slots skipped, not routed (T174)~~ CLOSED T230 (Emote/Macro still skipped);
-    `EqActionHandler` TRANSFORMS methods still untested (T93); blackburrow /
+    ~~`EqActionHandler` TRANSFORMS methods still untested (T93)~~ CLOSED T234; blackburrow /
     crushbone blank benchmark render (Batch H); "BSP region is SIZE_MAX"
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
     ~~`ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
