@@ -262,11 +262,9 @@ public:
 
     // ========== Component Access ==========
 
-    /**
-     * Get the game state.
-     */
-    state::GameState* getGameState() { return m_gameState.get(); }
-    const state::GameState* getGameState() const { return m_gameState.get(); }
+    // T227: Application no longer owns a state::GameState. The one instance
+    // is EverQuest::m_game_state (m_eqClient->GetGameState()); every holder
+    // below takes a reference to it.
 
     /**
      * Get the current game mode.
@@ -356,26 +354,24 @@ private:
     // deleted too there was nothing left to sync from this hook. This
     // closes the state-layer poll sweep started at T39: pet (T40),
     // inventory (T42), spells (T44), NPC interaction (T49), and now
-    // combat (T104) are all event-fed via GameStateSyncBridge.
+    // combat (T104) were all event-fed via GameStateSyncBridge's projection
+    // -- until T227, when the projected copy itself was deleted: the action
+    // layer now reads EverQuest::m_game_state, which the packet handlers
+    // (and the same choke points that publish the events) write directly.
 
-    // syncNPCInteractionState() was deleted (T49) -- vendor/banker/trainer
-    // state is now fed from GameStateSyncBridge via bridge events
-    // (VendorWindowOpened/Closed, BankWindowOpened/Closed,
-    // TrainerWindowOpened/Closed), constructed in initialize() alongside the
-    // T40/T42/T44 pet/inventory/spell cases.
+    // syncNPCInteractionState() was deleted (T49); vendor/banker/trainer
+    // state is written at the source in eq_merchant.cpp (T227).
 
-    // syncSpellState() was deleted (T44) -- spell state (casting, gem
-    // occupancy/state, gem cooldown) is now fed from GameStateSyncBridge via
-    // bridge events (SpellCastStarted, SpellCastComplete, SpellGemChanged),
-    // constructed in initialize() alongside the T40/T42 pet/inventory cases.
+    // syncSpellState() was deleted (T44); spell state (casting, gem
+    // occupancy/state, gem cooldown) is written at the source by
+    // SpellManager (T221).
 
     // syncCombatState() was deleted (T104) -- CombatManager remains
-    // authoritative; its target id/auto-attack flag now publish
+    // authoritative; its target id/auto-attack flag publish
     // TargetChanged/AutoAttackChanged bridge events at their sole choke
     // points (CombatManager::SetTarget/ClearTarget/EnableAutoAttack/
-    // DisableAutoAttack, combat.cpp), fed into GameState::combat() by
-    // GameStateSyncBridge -- the same pattern as every case above. Target
-    // HP-while-still-targeted is covered by the pre-existing
+    // DisableAutoAttack, combat.cpp) and write GameState::combat() there
+    // (T221). Target HP-while-still-targeted is covered by the pre-existing
     // ZoneProcessMobHealth() re-publish of TargetChanged when the updated
     // entity is the current target (eq_entities.cpp) -- see
     // refactor/T104_combat_poll_to_bridge.md's Review for the
@@ -462,7 +458,6 @@ private:
 
     // ========== Components ==========
 
-    std::unique_ptr<state::GameState> m_gameState;
     std::unique_ptr<mode::IGameMode> m_gameMode;
     std::unique_ptr<action::ActionDispatcher> m_dispatcher;
     std::unique_ptr<action::InputActionBridge> m_inputBridge;
@@ -502,11 +497,12 @@ private:
     std::unique_ptr<eqt::bridge::IrrlichtBridge> m_irrlichtBridge;
 #endif
     std::unique_ptr<eqt::bridge::ConsoleBridge> m_consoleBridge;  // D25: headless mode
-    // T40: decorator wrapping whichever mode bridge above is active. Feeds
-    // pet state into m_gameState from bridge events, then delegates to the
-    // wrapped bridge unchanged. This -- not m_irrlichtBridge/m_consoleBridge
-    // directly -- is what m_bridge points at, and what both EverQuest and
-    // the renderer are wired to, so events/intents flow through one queue.
+    // T40/T227: decorator wrapping whichever mode bridge above is active.
+    // Stages events for the render thread (T220) and delegates to the
+    // wrapped bridge unchanged; since T227 it projects nothing. This -- not
+    // m_irrlichtBridge/m_consoleBridge directly -- is what m_bridge points
+    // at, and what both EverQuest and the renderer are wired to, so
+    // events/intents flow through one queue.
     std::unique_ptr<eqt::bridge::GameStateSyncBridge> m_stateSyncBridge;
     eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
@@ -547,8 +543,8 @@ private:
     // ========== Sync State Tracking ==========
     // Used to detect changes and fire events only when state actually changes
 
-    // Pet state tracking removed (T40): pet state is now fed by
-    // GameStateSyncBridge from bridge events, not polled here.
+    // Pet state tracking removed (T40): pet state is written at the source
+    // (eq_bridge.cpp OnPet*, T221), not polled here.
 
     // NPC interaction tracking members (m_lastVendorNpcId/m_lastBankerNpcId/
     // m_lastTrainerNpcId) were deleted (T49) along with

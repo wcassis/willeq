@@ -253,10 +253,12 @@ The application runs two threads, decoupled via a thread-safe event/intent bridg
 ```
 Game Thread                         Render Thread (main)
 ───────────                         ────────────────────
-Network events (TickNetwork)        forwardProjectedEvents() → IrrlichtBridge
+Network events (TickNetwork)        forwardStagedEvents() → IrrlichtBridge
 Game state updates (GameTick)       processFrame() (Irrlicht render)
-projectPendingEvents() → GameState  (T220: state projection is GAME-thread)
-Intent processing (bridge intents)  Loading thread management
+stagePendingEvents() (T220/T227:    Loading thread management
+  ONE GameState, EverQuest-owned,
+  written+read on this thread)
+Intent processing (bridge intents)
 Audio updates                       Zone load completion detection
 ```
 

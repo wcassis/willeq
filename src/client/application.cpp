@@ -193,10 +193,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_DEBUG(MOD_MAIN, "Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGTERM=clean shutdown, SIGHUP=hotkey reload)");
 #endif
 
-    // Create game state
-    LOG_TRACE(MOD_MAIN, "Allocating GameState...");
-    m_gameState = std::make_unique<state::GameState>();
-    LOG_DEBUG(MOD_MAIN, "Game state created");
+    // T227: there is ONE state::GameState per run -- EverQuest::m_game_state,
+    // created with the client below. Every holder after it takes
+    // m_eqClient->GetGameState(); the projected copy Application used to own
+    // here (and GameStateSyncBridge's projection switch that fed it) is gone.
 
     // Create EverQuest client
     LOG_DEBUG(MOD_MAIN, "Creating EverQuest client...");
@@ -287,13 +287,13 @@ bool Application::initialize(const ApplicationConfig& config) {
 
     // Create action dispatcher
     LOG_TRACE(MOD_MAIN, "Allocating ActionDispatcher...");
-    m_dispatcher = std::make_unique<action::ActionDispatcher>(*m_gameState);
+    m_dispatcher = std::make_unique<action::ActionDispatcher>(m_eqClient->GetGameState());
     m_dispatcher->setActionHandler(m_actionHandler.get());
     LOG_DEBUG(MOD_MAIN, "Action dispatcher created");
 
     // Create command processor
     LOG_TRACE(MOD_MAIN, "Allocating CommandProcessor...");
-    m_commandProcessor = std::make_unique<action::CommandProcessor>(*m_gameState, *m_dispatcher);
+    m_commandProcessor = std::make_unique<action::CommandProcessor>(m_eqClient->GetGameState(), *m_dispatcher);
     LOG_DEBUG(MOD_MAIN, "Command processor created");
 
     // H03: Scripted command tour (--script <file>)
@@ -329,7 +329,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     }
 
     LOG_TRACE(MOD_MAIN, "Initializing game mode...");
-    if (!m_gameMode->initialize(*m_gameState, modeConfig)) {
+    if (!m_gameMode->initialize(m_eqClient->GetGameState(), modeConfig)) {
         LOG_FATAL(MOD_MAIN, "Failed to initialize game mode");
         return false;
     }
@@ -339,7 +339,7 @@ bool Application::initialize(const ApplicationConfig& config) {
 
     // Create input action bridge
     LOG_TRACE(MOD_MAIN, "Allocating InputActionBridge...");
-    m_inputBridge = std::make_unique<action::InputActionBridge>(*m_gameState, *m_dispatcher);
+    m_inputBridge = std::make_unique<action::InputActionBridge>(m_eqClient->GetGameState(), *m_dispatcher);
     m_inputBridge->setCommandProcessor(m_commandProcessor.get());
     // T174: let keyboard hotbar presses route by slot content type. This is
     // the one hotbar model the mouse path also reads (owned by EverQuest,
@@ -555,10 +555,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         // decorator -- not m_irrlichtBridge directly -- is what the renderer
         // and EverQuest are both wired to below, so events pushed by
         // EverQuest and intents pushed by the renderer flow through the same
-        // single queue (the decorator's), which the decorator then applies
-        // to state and forwards to m_irrlichtBridge unchanged.
+        // single queue (the decorator's), which the decorator then stages
+        // for the render thread and forwards to m_irrlichtBridge unchanged.
         m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
-            *m_irrlichtBridge, *m_gameState);
+            *m_irrlichtBridge);
         m_renderer->setBridge(m_stateSyncBridge.get());
         m_bridge = m_stateSyncBridge.get();
         LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
@@ -635,7 +635,7 @@ bool Application::initialize(const ApplicationConfig& config) {
         m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
         // T40: same decorator wrapping as the graphics path above.
         m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
-            *m_consoleBridge, *m_gameState);
+            *m_consoleBridge);
         m_bridge = m_stateSyncBridge.get();
         m_eqClient->setBridge(m_bridge);
         LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
@@ -733,8 +733,10 @@ void Application::shutdown() {
     m_commandProcessor.reset();
     m_dispatcher.reset();
     m_actionHandler.reset();
+    // T227: m_eqClient owns the one GameState; it is the LAST reset, after
+    // every holder of a reference to it (mode, input bridge, command
+    // processor, dispatcher) above.
     m_eqClient.reset();
-    m_gameState.reset();
 
     LOG_INFO(MOD_MAIN, "Application shutdown complete");
 }
@@ -762,7 +764,9 @@ void Application::gameThreadLoop() {
             if (isConnected && !m_fullyConnected) {
                 LOG_INFO(MOD_MAIN, "Fully connected to zone!");
                 m_fullyConnected = true;
-                if (m_gameState) m_gameState->world().setZoneConnected(true);
+                // T227: world().setZoneConnected(true) is written at the
+                // source (eq_entities.cpp, first ClientUpdate, the same
+                // instant IsFullyZonedIn() flips) -- nothing to mirror here.
 
                 // T43: was #ifdef EQT_HAS_GRAPHICS && m_graphicsInitialized.
                 // LoadHotbarConfig()/GetHotbarModel() are both plain game-state
@@ -787,7 +791,6 @@ void Application::gameThreadLoop() {
 
             if (!isConnected && m_fullyConnected) {
                 m_fullyConnected = false;
-                if (m_gameState) m_gameState->world().setZoneConnected(false);
                 // T30: fresh disconnect -- allow the next held command (even
                 // if it's textually the same one as before, e.g. after a
                 // reconnect cycle) to be announced again.
@@ -1414,24 +1417,22 @@ void Application::updateGameState(float deltaTime) {
     }
 
     // D25: In headless mode, drain and apply events to the console bridge
-    // (single stage: GameStateSyncBridge::applyEvent() projects into
-    // m_gameState AND forwards to ConsoleBridge, both right here on the
-    // game thread).
+    // (single stage: GameStateSyncBridge::applyEvent() forwards to
+    // ConsoleBridge right here on the game thread).
     if (m_eqClient && m_consoleBridge && !m_graphicsInitialized) {
         m_eqClient->ProcessBridgeEvents();
     }
 #ifdef EQT_HAS_GRAPHICS
     // T220: graphics runs -- stage 1 of the split drain, on the GAME thread.
-    // Drains the EverQuest->bridge event queue, applies the GameState
-    // projection (the READ model this same thread's InputActionBridge /
-    // ActionDispatcher / CommandProcessor consult), and stages the events
-    // for the render thread. Before T220 the whole drain, projection
-    // included, ran on the render thread (render() -> PreRenderTick()),
-    // racing every game-thread read of m_gameState with no lock (TSAN-
-    // confirmed; refactor/T220_state_projection_on_game_thread.md). Stage 2
-    // is render()'s forwardProjectedEvents().
+    // Drains the EverQuest->bridge event queue and stages the events for
+    // the render thread. Before T220 the whole drain ran on the render
+    // thread (render() -> PreRenderTick()) and carried a GameState
+    // projection that raced every game-thread read (TSAN-confirmed;
+    // refactor/T220_state_projection_on_game_thread.md); T227 deleted the
+    // projection itself (one GameState, EverQuest::m_game_state, written and
+    // read on this thread). Stage 2 is render()'s forwardStagedEvents().
     else if (m_eqClient && m_stateSyncBridge && m_graphicsInitialized) {
-        m_stateSyncBridge->projectPendingEvents();
+        m_stateSyncBridge->stagePendingEvents();
     }
 #endif
 }
@@ -1471,11 +1472,11 @@ void Application::render(float deltaTime) {
                 return;
             }
 
-            // Normal gameplay: forward the game thread's already-projected
-            // bridge events to IrrlichtBridge (T220 stage 2 -- render-thread
-            // only, never touches m_gameState), then render the frame.
+            // Normal gameplay: forward the game thread's staged bridge
+            // events to IrrlichtBridge (T220 stage 2 -- render-thread only,
+            // never touches GameState), then render the frame.
             if (m_stateSyncBridge) {
-                m_stateSyncBridge->forwardProjectedEvents();
+                m_stateSyncBridge->forwardStagedEvents();
             }
 
             bool result = m_renderer->processFrame(gfxDeltaTime);
@@ -1629,8 +1630,8 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     // (new) zone touches any of it. This replaces relying on EverQuest's
     // queued "/unloadzone_internal" RendererCommand (pushed from
     // CleanupZone(), applied only by the render thread's bridge drain --
-    // PreRenderTick -> ProcessBridgeEvents() then, forwardProjectedEvents()
-    // since T220), which is a real bug: that drain is only reached from the
+    // PreRenderTick -> ProcessBridgeEvents() then, forwardStagedEvents()
+    // since T220/T227), which is a real bug: that drain is only reached from the
     // "normal gameplay" branch of Application::render() -- during the entire
     // network-handshake phase and the whole loading-thread-active phase of a
     // zone transition, render() takes early-return branches that never call
@@ -1909,21 +1910,17 @@ void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
 // authoritative; its target id/auto-attack flag now publish
 // TargetChanged/AutoAttackChanged bridge events from their sole choke points
 // (CombatManager::SetTarget/ClearTarget/EnableAutoAttack/DisableAutoAttack,
-// combat.cpp), picked up by GameStateSyncBridge into GameState::combat() --
-// see game_state_sync_bridge.cpp's TargetChanged/AutoAttackChanged cases and
-// refactor/T104_combat_poll_to_bridge.md's Review for the reconstructibility
-// argument (including how target-HP-while-still-targeted is covered without
-// a new event, via the pre-existing ZoneProcessMobHealth() re-publish in
-// eq_entities.cpp).
+// combat.cpp) and, since T221/T227, write EverQuest::m_game_state.combat()
+// directly at those same choke points -- the one GameState the action layer
+// reads. See refactor/T104_combat_poll_to_bridge.md and
+// refactor/T227_single_gamestate.md.
 
 // Application::syncNPCInteractionState() was deleted (T49) -- vendor,
 // banker, and trainer window state (m_vendor_npc_id/m_banker_npc_id/
-// m_trainer_npc_id and their names/sell rate) are now fed into
-// m_gameState->player() by GameStateSyncBridge::applyEvent() from the six
-// window-open/close bridge events (VendorWindowOpened/Closed,
-// BankWindowOpened/Closed, TrainerWindowOpened/Closed), all of which are
-// published from eq_merchant.cpp at exactly the same six mutation sites this
-// poll used to read from -- see game_state_sync_bridge.cpp for the mapping.
+// m_trainer_npc_id and their names/sell rate) are written into
+// EverQuest::m_game_state.player() by eq_merchant.cpp at exactly the same
+// mutation sites that publish the six window-open/close bridge events
+// (T227 folded the writes to the source; the projection is gone).
 
 void Application::updateLoadingProgress() {
     // Loading progress is updated by EverQuest client callbacks directly

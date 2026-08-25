@@ -8,7 +8,7 @@ The bridge is the sole communication channel between the game thread and the ren
 
 **GameStateBridge** (`game_state_bridge.h`) — Abstract base with dual swap-vector queues:
 - `pushEvent(GameEvent)` — game thread enqueues state change
-- `drainEvents()` → calls `applyEvent()` for each — the consumer thread drains (render thread for plain bridges; GAME thread via `GameStateSyncBridge::projectPendingEvents()` in graphics runs since T220, see below)
+- `drainEvents()` → calls `applyEvent()` for each — the consumer thread drains (render thread for plain bridges; GAME thread via `GameStateSyncBridge::stagePendingEvents()` in graphics runs since T220, see below)
 - `pushIntent(RendererIntent)` — renderer thread enqueues user action
 - `drainIntents()` → returns vector — game thread consumes
 - Two independent mutexes (events and intents never contend)
@@ -61,28 +61,28 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Diagnostics**: `RequestMemoryReport`, `RequestSceneDump`, `SlashCommandIntent`
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 
-## Two-stage drain in graphics runs (T220)
+## Two-stage drain in graphics runs (T220, T227)
 
 `GameStateSyncBridge` (`game_state_sync_bridge.h`) decorates the mode bridge
-and projects events into `Application::m_gameState` -- the READ model the
-game-thread action/command layer consults. Before T220 that projection ran
-on the render thread (`Application::render()` -> `EverQuest::PreRenderTick()`
--> `ProcessBridgeEvents()`), racing every game-thread read of that state with
-no lock (TSAN-confirmed: `CombatState::setTarget()` on the render thread vs
-`CombatState::hasTarget()` under `/hail` on the game thread). The drain is
-now split, and `PreRenderTick()` is gone:
+and is the ONE bridge instance a run has. Since T227 there is also ONE
+`state::GameState` -- `EverQuest::m_game_state`, written by the packet
+handlers and read by the action/command layer, both on the GAME thread --
+so the decorator projects nothing; it only stages and forwards. (Before
+T227 it projected events into a second, Application-owned copy; before T220
+that projection ran on the render thread and raced the game thread --
+TSAN-confirmed. `PreRenderTick()` is gone.)
 
 - GAME thread, `Application::updateGameState()` ->
-  `GameStateSyncBridge::projectPendingEvents()`: `drainEvents()` (D24-coalesced),
-  apply the projection switch, append the batch to a second FIFO.
+  `GameStateSyncBridge::stagePendingEvents()`: `drainEvents()` (D24-coalesced),
+  append the batch to a second FIFO.
 - RENDER thread, `Application::render()` ->
-  `GameStateSyncBridge::forwardProjectedEvents()`: swap out that FIFO,
+  `GameStateSyncBridge::forwardStagedEvents()`: swap out that FIFO,
   re-coalesce, `IrrlichtBridge::applyEvent()` each. Never touches GameState.
 
 Renderer-visible order is unchanged (single-producer FIFOs both hops).
 Headless runs keep the single-stage `EverQuest::ProcessBridgeEvents()` ->
-`applyEvent()` (project + forward) on the game thread; so do single-threaded
-test harnesses. Do not call `ProcessBridgeEvents()` from a graphics run.
+`applyEvent()` (forward) on the game thread; so do single-threaded test
+harnesses. Do not call `ProcessBridgeEvents()` from a graphics run.
 
 ## Coalescing (D24)
 

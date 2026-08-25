@@ -973,6 +973,11 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 			m_vendor_name = "Merchant";
 		}
 
+		// T227: source write, ABOVE the bridge guard. Until stage 3 only the
+		// GameStateSyncBridge projection wrote player().vendor; the projection
+		// is gone, so the handler that owns the data writes it.
+		m_game_state.player().setVendor(m_vendor_npc_id, m_vendor_sell_rate, m_vendor_name);
+
 		// Publish VendorWindowOpened (D18a: bridge is sole path to renderer)
 		if (m_bridge) {
 			eqt::state::WindowOpenedData data;
@@ -1157,6 +1162,9 @@ void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
 	// Server confirms vendor session ended
 	LOG_DEBUG(MOD_INVENTORY, "ShopEndConfirm received, closing vendor window");
 
+	// T227: source write (see ZoneProcessShopRequest).
+	m_game_state.player().clearVendor();
+
 	// Publish VendorWindowClosed (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::WindowClosedData data;
@@ -1323,6 +1331,9 @@ void EverQuest::CloseVendorWindow()
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_ShopEnd, &pkt);
 
+	// T227: source write (see ZoneProcessShopRequest).
+	m_game_state.player().clearVendor();
+
 	// Publish VendorWindowClosed
 	if (m_bridge) {
 		eqt::state::WindowClosedData data;
@@ -1358,6 +1369,9 @@ void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
 
 	LOG_DEBUG(MOD_INVENTORY, "Opening bank window (banker NPC: {})", m_banker_npc_id);
 
+	// T227: source write, ABOVE the bridge guard (see ZoneProcessShopRequest).
+	m_game_state.player().setBanker(m_banker_npc_id);
+
 	// Publish BankWindowOpened
 	if (m_bridge) {
 		eqt::state::WindowOpenedData data;
@@ -1386,6 +1400,9 @@ void EverQuest::CloseBankWindow()
 	}
 
 	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", m_banker_npc_id);
+
+	// T227: source write (see ZoneProcessShopRequest).
+	m_game_state.player().clearBanker();
 
 	// Publish BankWindowClosed (before clearing m_banker_npc_id)
 	if (m_bridge) {
@@ -1443,6 +1460,9 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 	} else {
 		m_trainer_name = "Trainer";
 	}
+
+	// T227: source write, ABOVE the bridge guard (see ZoneProcessShopRequest).
+	m_game_state.player().setTrainer(m_trainer_npc_id, m_trainer_name);
 
 	// Build list of trainable skills and publish to bridge
 	eqt::state::TrainerWindowOpenedData trainerData;
@@ -1559,6 +1579,9 @@ void EverQuest::CloseTrainerWindow()
 	end.playerid = m_my_spawn_id;
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_GMEndTraining, &pkt);
+
+	// T227: source write (see ZoneProcessShopRequest).
+	m_game_state.player().clearTrainer();
 
 	// Publish TrainerWindowClosed event to bridge (before clearing state)
 	if (m_bridge) {

@@ -1,5 +1,5 @@
 // T221 (Option A stage 2): every domain the READ-model projection
-// (GameStateSyncBridge::projectEvent) used to be the ONLY writer of is now
+// (GameStateSyncBridge's projection switch, deleted in T227) used to be the ONLY writer of is now
 // written at the SOURCE -- EverQuest::m_game_state -- by the handler that
 // owns the data. These tests drive the real handler paths (packet replay via
 // the ReplayZonePacket seam, CombatManager/SpellManager public entry points)
@@ -10,8 +10,10 @@
 // `if (!m_bridge) return;` guard it was placed next to -- the stage-3
 // contract is that the source is correct whether or not anything is
 // listening. The bridge-attached leg proves nothing regressed for the event
-// stream (the READ model is still fed by tests/test_game_state_sync_bridge.cpp,
-// UNEDITED by T221).
+// stream. T227 (stage 3) deleted the projection and Application's copy of
+// GameState, folded the last three projection-only domains (vendor/bank/
+// trainer windows) to the source here, and left test_game_state_sync_bridge.cpp
+// covering only the forwarding hop -- this file is now THE state net.
 //
 // Same headless EverQuest idiom as test_combat_manager.cpp / test_spell_
 // manager.cpp: no network, no graphics, no eqemu. Private access (T17
@@ -38,6 +40,7 @@
 #include "zone_stream_test_utils.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <string>
@@ -580,6 +583,119 @@ TEST_P(SourceWrites, Inventory_DeleteItem_ClearsSourceOccupancy) {
 
     ReplayZone(eq, HC_OP_DeleteItem, DeleteItemPayload(eqt::inventory::GENERAL_BEGIN + 3));
     EXPECT_FALSE(inv.hasGeneralItem(3));
+}
+
+// ---------------------------------------------------------------------
+// Vendor / Bank / Trainer windows (T227 FOLD: the three domains T221's
+// census found with NO source write at all -- only the projection ever
+// wrote player().vendor/banker/trainer, so with the projection deleted
+// CommandProcessor's /bank, /vendor, /train gates would read a permanently
+// empty state).
+// ---------------------------------------------------------------------
+
+// ShopRequest (server ack): npc_id (4) + player_id (4) + action (4) +
+// sell_rate as float bits (4) after the opcode -- eqemu Merchant_Click_Struct.
+std::vector<uint8_t> ShopRequestPayload(uint32_t npc_id, uint32_t action, float sell_rate) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &sell_rate, sizeof(bits));
+    return BuildPayload(18, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, npc_id);
+        p.PutUInt32(6, kSelfId);
+        p.PutUInt32(10, action);
+        p.PutUInt32(14, bits);
+    });
+}
+
+// GMTraining (server ack): the 448-byte GMTrainee_Struct; one trainable skill
+// so the handler's skill loop has something to build.
+std::vector<uint8_t> GMTrainingPayload(uint32_t npc_id) {
+    return BuildPayload(2 + sizeof(EQT::GMTrainee_Struct), [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2 + 0, npc_id);
+        p.PutUInt32(2 + 4, kSelfId);
+        p.PutUInt32(2 + 8 + 4 * 1, 50);  // skill 1 trainable to 50
+    });
+}
+
+TEST_P(SourceWrites, Npc_ShopRequestAck_WritesSourceVendor) {
+    spawnRat();
+    ASSERT_FALSE(eq.GetGameState().player().isWithVendor());
+
+    ReplayZone(eq, HC_OP_ShopRequest, ShopRequestPayload(kRatId, 1, 1.25f));
+
+    const auto& player = eq.GetGameState().player();
+    EXPECT_TRUE(player.isWithVendor());
+    EXPECT_EQ(player.vendorNpcId(), kRatId);
+    EXPECT_FLOAT_EQ(player.vendorSellRate(), 1.25f);
+    EXPECT_FALSE(player.vendorName().empty());
+}
+
+TEST_P(SourceWrites, Npc_ShopRequestAckFailure_DoesNotWriteSourceVendor) {
+    spawnRat();
+    ReplayZone(eq, HC_OP_ShopRequest, ShopRequestPayload(kRatId, 0, 1.0f));
+    EXPECT_FALSE(eq.GetGameState().player().isWithVendor());
+}
+
+TEST_P(SourceWrites, Npc_ShopEndConfirm_ClearsSourceVendor) {
+    spawnRat();
+    ReplayZone(eq, HC_OP_ShopRequest, ShopRequestPayload(kRatId, 1, 1.0f));
+    ASSERT_TRUE(eq.GetGameState().player().isWithVendor());
+
+    ReplayZone(eq, HC_OP_ShopEndConfirm, BuildPayload(10, nullptr));
+
+    EXPECT_FALSE(eq.GetGameState().player().isWithVendor());
+    EXPECT_EQ(eq.GetGameState().player().vendorNpcId(), 0);
+}
+
+TEST_P(SourceWrites, Npc_CloseVendorWindow_ClearsSourceVendor) {
+    spawnRat();
+    ReplayZone(eq, HC_OP_ShopRequest, ShopRequestPayload(kRatId, 1, 1.0f));
+    ASSERT_TRUE(eq.GetGameState().player().isWithVendor());
+
+    eq.CloseVendorWindow();
+
+    EXPECT_FALSE(eq.GetGameState().player().isWithVendor());
+}
+
+TEST_P(SourceWrites, Npc_OpenBankWindow_WritesSourceBanker) {
+    ASSERT_FALSE(eq.GetGameState().player().isAtBank());
+
+    eq.OpenBankWindow(kRatId);
+
+    EXPECT_TRUE(eq.GetGameState().player().isAtBank());
+    EXPECT_EQ(eq.GetGameState().player().bankerNpcId(), kRatId);
+}
+
+TEST_P(SourceWrites, Npc_CloseBankWindow_ClearsSourceBanker) {
+    eq.OpenBankWindow(kRatId);
+    ASSERT_TRUE(eq.GetGameState().player().isAtBank());
+
+    eq.CloseBankWindow();
+
+    EXPECT_FALSE(eq.GetGameState().player().isAtBank());
+    EXPECT_EQ(eq.GetGameState().player().bankerNpcId(), 0);
+}
+
+TEST_P(SourceWrites, Npc_GMTrainingAck_WritesSourceTrainer) {
+    spawnRat();
+    ASSERT_FALSE(eq.GetGameState().player().isWithTrainer());
+
+    ReplayZone(eq, HC_OP_GMTraining, GMTrainingPayload(kRatId));
+
+    const auto& player = eq.GetGameState().player();
+    EXPECT_TRUE(player.isWithTrainer());
+    EXPECT_EQ(player.trainerNpcId(), kRatId);
+    EXPECT_FALSE(player.trainerName().empty());
+}
+
+TEST_P(SourceWrites, Npc_CloseTrainerWindow_ClearsSourceTrainer) {
+    spawnRat();
+    ReplayZone(eq, HC_OP_GMTraining, GMTrainingPayload(kRatId));
+    ASSERT_TRUE(eq.GetGameState().player().isWithTrainer());
+
+    eq.CloseTrainerWindow();
+
+    EXPECT_FALSE(eq.GetGameState().player().isWithTrainer());
+    EXPECT_EQ(eq.GetGameState().player().trainerNpcId(), 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(WithAndWithoutBridge, SourceWrites, ::testing::Values(true, false),

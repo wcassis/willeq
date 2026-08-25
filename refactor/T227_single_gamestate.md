@@ -192,3 +192,200 @@ Production ≈ -480 / +60: game_state_sync_bridge.cpp -440 (switch + includes),
 .h -120 (history comment) +15, application.cpp/.h -12 +8, eq_merchant.cpp +7.
 Tests: sync_bridge -1300 (+~40 forwarding/staging), source_writes +120,
 CMake -1. Net ≈ -1650 lines. One executor, one slot, eqemu for step 6 only.
+
+## Review
+
+Executed in `/mnt/projects/fable/wt/slot1`, branch `task/T227-single-gamestate`,
+base fable tip `a191426f` (verified at checkout; `fable` advanced to `cd0e1075`
+(T229/T231) during the unit -- none of those commits touch this unit's files).
+eqemu owned for steps 6-7 (lock taken with the noclobber form AFTER every
+offline step was green, deleted after `down.sh`; Testchar and Oraclerogue rows
+restored, `db_restored.txt` == `db_before.txt`). Evidence:
+`/mnt/projects/fable/review/T227/` (README indexes every file).
+
+### Headline
+
+There is ONE `state::GameState`: `grep -rn "state::GameState" src include`
+finds exactly one instance, `include/client/eq.h:1410`
+`eqt::state::GameState m_game_state;` (every other hit is a reference type,
+a forward declaration or a comment). `Application::m_gameState`, its
+`getGameState()` pair and the two `setZoneConnected` mirrors are gone;
+ActionDispatcher / CommandProcessor / the mode / InputActionBridge take
+`m_eqClient->GetGameState()`. `GameStateSyncBridge::projectEvent()` and its
+40-case switch are deleted (476 lines); what remains is the T220 forwarding
+hop (`applyEvent` = forward; `stagePendingEvents` / `forwardStagedEvents`),
+46 lines. The three domains T221's census found with NO source write --
+vendor / bank / trainer windows -- were folded first (7 sites in
+`eq_merchant.cpp`, each ABOVE its `if (m_bridge)` guard) with 8 new
+source-write cases x {WithBridge, NoBridge} = 16, RED 14/16 before the fold
+(the two negative-path cases pass by construction), 64/64 after.
+
+### Step 1 -- FOLD, red/green measured
+
+| measurement | file | result |
+|---|---|---|
+| tests added, eq_merchant.cpp unfolded | `red_run_npc_before_fold.log` | 14 FAILED / 2 passed of the 16 `Npc_*` cases |
+| after the fold | `green_source_writes_after_fold.log` | 64/64 |
+| RED table: eq_merchant.cpp reverted to `a191426f`, full binary rebuilt | `red_run_revert_eq_merchant.log` | **14 RED** of 64 (all 7 positive `Npc_*` cases x 2 legs); 50 pass |
+| restored, full rebuild | `green_source_writes_final.log` | 64/64 |
+
+Sites (eq_merchant.cpp at this commit): `ZoneProcessShopRequest` :976
+`setVendor(m_vendor_npc_id, m_vendor_sell_rate, m_vendor_name)`;
+`ZoneProcessShopEndConfirm` :1165 `clearVendor()`; `CloseVendorWindow` :1334
+`clearVendor()`; `OpenBankWindow` :1372 `setBanker(m_banker_npc_id)`;
+`CloseBankWindow` :1404 `clearBanker()`; `ZoneProcessGMTraining` :1464
+`setTrainer(m_trainer_npc_id, m_trainer_name)`; `CloseTrainerWindow` :1583
+`clearTrainer()`. Data was in hand at every site (no STOP).
+
+### Step 2 -- "Not on the list" re-verification (grep at `a191426f`, all found)
+
+| case | source write found at | verdict applied |
+|---|---|---|
+| PlayerSpawnIdSet | eq_entities.cpp:374, :807, :1181, :1595 `player().setSpawnId` | DELETED |
+| Vendor/Bank/Trainer* | none before this unit -> the 7 folds above | FOLDED then deleted |
+| EntityStateSnapshot | eq_player_info.cpp:314 `addEntity` / :317 `getEntityMutable` (add-or-replace) | DELETED |
+| EntityDespawned | eq_player_info.cpp:339 `removeEntity` (RemoveEntityFromGameState) | DELETED |
+| ZoneUnloading | eq_zone.cpp:270 `entities().clear()`, :273 `doors().clear()` | DELETED |
+| GroupChanged | eq_group.cpp:304 clearGroup, :402-404 setInGroup/LeaderName/IsLeader, :409 clearPendingInvite, :547-548 make-leader, :601 cancel-invite clearPendingInvite | DELETED |
+| GroupInviteReceived | eq_group.cpp:362 `setPendingInvite` | DELETED |
+| Trade* | eq_merchant.cpp:557 setPendingRequest, :579 startTrade, :593/:710/:728 reset, :611 setPartnerItem, :631 setMoney, :645 setAcceptState | DELETED |
+| PlayerFlagsChanged | eq_player_info.cpp:851/:867/:883 setAFK/setAnonymous/setRoleplay | DELETED |
+| DoorSpawned/DoorStateChanged | eq_entities.cpp:576 `doors().addDoor`, :2427 `setDoorState` | DELETED |
+| (T221 list) Pet/Spells/Entity/Combat/Inventory/GroupMemberUpdated/TradeItem/Money | as T221's stage-3 table; eq_entities.cpp:2191 appearance merge re-confirmed | DELETED |
+
+Plus `world().setZoneConnected`: true at eq_entities.cpp:1694 (first
+ClientUpdate), false at eq.cpp:740, :3741, :3749 and eq_zone.cpp:337 -- the
+Application mirrors were redundant and are deleted; `m_fullyConnected`
+bookkeeping kept.
+
+### Step 2b -- `m_update_thread` STOP-check: REACHED, reported, not fixed
+
+`CombatManager::Update()` (called only from `m_update_thread`, eq.cpp:3798,
+500 ms loop) DOES reach `combat()` writes: `Update()` -> `CheckForAggro()`
+(combat.cpp:1360-1366) -> `SetTarget(uint16_t)` -> `PublishTargetChanged`
+-> `m_game_state.combat().setTarget` (T221); `Update()` ->
+`ProcessCombatRound()` :1345 -> `ClearTarget()` -> `clearTarget`;
+`Update()` -> `UpdateAutoHunting()` -> `FindNextHuntTarget()` :1560/:1571/:1585
+-> `SetTarget`/`ClearTarget`. All are gated on `m_enabled` (combat.cpp:139),
+set ONLY by `/combat on|toggle` (eq_action_handler.cpp:445/:465
+`enableCombatManager`/`toggleCombatManager`) -- off by default, off in every
+tour here. This is a PRE-EXISTING race (present since T221 on
+`combat()`, and since forever on `m_current_target_id` itself, which the
+same thread pair already shared): an off-thread write of
+`CombatState::m_targetId` against the game thread's `hasTarget()` reads
+whenever the combat manager is enabled. Not introduced by this unit (the
+projection never covered `/combat on` either), no lock added per the STOP
+text. The TSAN dense tour cannot show it (combat manager disabled) -- it is
+listed for the board, not cleared.
+
+### Step 3/4 -- what `GameStateSyncBridge` is now, thread audit
+
+Header 63 lines (15-line "why two hops" note replaces the T40-T104 history),
+.cpp 46 lines: `explicit GameStateSyncBridge(GameStateBridge& wrapped)`,
+`applyEvent` forwards, `stagePendingEvents()` drains the base queue into the
+staging FIFO (game thread), `forwardStagedEvents()` re-coalesces and forwards
+(render thread). No `game_state.h` / `inventory_constants.h` / `logging.h`
+include. Readers and writers of the one GameState are all game-thread
+(packet handlers, EqActionHandler, the action layer, ConsoleRenderer /
+AutomatedMode subscribers on the source's bus -- cosmetic deltas only, e.g.
+the T81 duplicate console spawn line is gone); no render-thread reader
+(`grep GetGameState|state::GameState src/client/graphics include/client/graphics`
+= 0); loading thread reads `m_zoneLoadSnapshot` only. Shutdown order:
+`m_eqClient.reset()` is the LAST reset, after mode shutdown and every
+holder of the reference (application.cpp `shutdown()`).
+
+### Step 5 -- tests
+
+- `tests/test_game_state_sync_bridge.cpp` 1546 -> 244 lines: the 68
+  projection cases are gone; 7 cases remain (one "every event type forwards
+  once, unchanged" over all 33 formerly-intercepted types + PlayerMoved,
+  plus the 6 T220 split-drain cases with `state` removed and the stage names
+  updated, incl. "StageStepStagesButForwardsNothing"). CMake target no
+  longer links `${ACTION_LAYER_STATE_SOURCES}`.
+- `tests/test_game_state_source_writes.cpp`: +8 `Npc_*` cases (x2 legs).
+  ShopRequest / GMTraining are driven through real packets via
+  `ReplayZonePacket`; bank via the public `OpenBankWindow/CloseBankWindow`;
+  vendor/trainer close via the public `CloseVendorWindow/CloseTrainerWindow`.
+- The 13-file ctor-contract list: all green (`step5_thirteen_files.txt`:
+  test_action_dispatcher 48, test_appearance_command 7, test_command_processor
+  367 [the `_combat_guild/_migration/_world/_senders` sources are compiled
+  into that binary], test_eq_action_handler_trade 10, test_input_action_bridge
+  37, test_merged_help 24, test_setheading_conversion 8, test_skill_reachability
+  27, test_headless_command_refusal 3). No STOP.
+
+### Verification bar
+
+| Step | Result |
+|---|---|
+| 1. `cmake --build slot1/build -j24` | exit 0 (`build_full.log`, `build_full_restored.log`) |
+| 2. ctest | **2807/2808**; sole failure `AudioManagerTest.PreloadCommonSounds` (ALSA, documented) (`ctest_full.txt`). (Plan's "≈2775" estimate predates T222-T226's additions.) |
+| RED table | 14/64 with eq_merchant.cpp reverted (`red_run_revert_eq_merchant.log`) |
+| 3. `build-gles2-x86.sh` | exit 0 (`build_gles2_x86.log`) |
+| 4. Visual gate | **PASS**, goldens untouched (`visual_gate.txt`; `git status` shows only this unit's 12 files) |
+| 5. `build-arm-noble.sh` | exit 0 (`build_arm_noble.log`) |
+| 6. `check_file_sizes.sh` | `--files` on this unit's files: 8 ok, 3 WARN (pre-existing oversize application.cpp / eq_merchant.cpp / tests CMakeLists), 0 FAIL (`check_file_sizes_files.txt`). The `fable`-relative run (`check_file_sizes.txt`) also lists T229/T231's files because `fable` moved; its one FAIL (eq.cpp 3940 > 3000) is pre-existing and untouched here. |
+| Census | `state::GameState` instances in src+include: **1** (eq.h:1410) |
+
+### Step 6 -- live acceptance (two clients, qeynos2, headless x86; `run2_*`)
+
+A = Testchar (GM, actor), B = Oraclerogue (observer/counterpart), staged
+8 units apart at T220's door-20 spot. Both exit 0. `run1_*` is the first
+attempt: identical outcomes for every domain except three sequencing
+misses of the script (A's `/disband` fired 100 ms before B's accept
+landed -> correctly refused "You are not in a group"; A's own `/accept`
+before B had accepted; `/target Guard` picked a guard 351 units away so
+`/bank` was refused on distance; and B's `/moveto Testchar` was a no-op at
+8 units) -- fixed in run2's script (longer waits, banker spawned with
+`#npctypespawn 1107` next to A, B walks 35 units to Rendallen first).
+
+| domain | READ-path gate exercised (source-fed since T227) | A (actor) | B (observer) |
+|---|---|---|---|
+| zone-connected | `checkZoneConnection()` -> `world().isZoneConnected()` on EVERY command (mirror deleted) | all 63 script steps `outcome=applied`/`failed` past the gate, none held | same, 17 steps |
+| pet | `pet().hasPet()` | `/pet guard` "You do not have a pet." -> `#makepet` -> "Pet guarding"; `/pet attack` passes hasPet, fails on the NEXT check ("specify a target") | sees `Testchar`s_familiar000` spawn |
+| combat | `combat().hasTarget()` + `entities()` in hailTarget; auto-attack flag | `/target Guard` -> `/hail` says "Hail, Guard Hewet"; `/attack` "Auto-attack enabled", `/stopattack` "disabled" | sees `[CHAT] Testchar: Hail, Guard Hewet` |
+| entities / appearance | `entities().findEntityByName` (/inspect, /target, /moveto) | `/inspect Oraclerogue` -> "Received inspect data for Oraclerogue" | "Testchar is inspecting you" |
+| entity move | `entities()` position (source `updateEntityPosition`) | B at (14.5, 92.5) walked to (45.1, 86.9); A's `/moveto Oraclerogue` targets **(45.12, 86.88, 3.25)** = B's NEW position; A's `/loc` after: (40.7, 86.5) | B's own `/loc` = (45.1, 86.9, 3.4) |
+| group | `group().hasPendingInvite()` (B), in-group (A `/disband`) | `/invite` applied; `/disband` -> "Left group" | `/groupaccept` before invite: "No pending group invite"; after: "Accepted group invite"; "Your group has been disbanded" |
+| trade | `trade().hasPendingRequest()` (B), `trade().active()` (A) | `/trade` x2: second says "You are already trading"; `/canceltrade` "Trade cancelled" | `/accept` "Accepting trade with Testchar"; "Trade cancelled" |
+| vendor/bank/trainer (FOLD) | `/npcstate` reads `player().isAtBank()/bankerNpcId()` | `/target Sorn` -> `/bank` "Bank window opened" -> `/npcstate` **"Banker: id=276"** -> `/bank` "closed" -> `/npcstate` "Banker: none" | (banker spawned by A via `#npctypespawn 1107`, non-persistent) |
+| doors (T219) | `doors()` | `/door` -> "Clicking door 20 ('DOOR1')" | -- |
+| flags (T218) | `player().isAFK()` | `/afk` "AFK enabled" -> `/afk` "AFK disabled" | -- |
+| spells | NO action-layer GameState read exists (`/cast` refusal is `SpellManager::isCasting()`, eq_action_handler.cpp:536); ran `/gems` + `/cast 1` for the record ("No spell in gem 1", Testchar is a level-2 warrior) | applied | -- |
+| inventory | NO action-layer GameState read exists (`/equip` -> `RequestEquip`, InventoryManager); ran `/equip list` for the record | applied | -- |
+
+Deviation from the plan's step-6 wording, flagged: the plan's spells
+("`/cast` refusal while casting, gem Refresh") and inventory
+("occupancy-gated command accepts") legs presuppose an action-layer read of
+`spells()` / `inventory()`; a grep of src/client/action, src/client/input
+and eq_action_handler.cpp finds none (the only `spells()`/`inventory()`
+writers are the T221 source writes, covered by test_game_state_source_writes).
+Those two domains are therefore covered by the unit tests, not by a live
+gate. The "`/wearchange`" appearance leg was replaced by `/inspect` (the
+entities()-by-name read) -- Oraclerogue has no weapon to swap.
+
+### TSAN (`tsan_after_dense.log`, T220's dense tour, 111 commands)
+
+`slot1/build-tsan` rebuilt from this branch (`build_tsan.log`, instrumented:
+35 `__tsan_*` symbols), T220's driver shape (`run_tsan_x86.sh`, ASLR off,
+Mesa-only suppressions), graphics (surfaceless EGL) mode, all 111 commands
+`outcome=applied`, clean `/camp` + "Application shutdown complete", exit 0.
+**Zero ThreadSanitizer reports** -- no `tsan_after_dense_report.*` file was
+produced at all (TSAN creates the `log_path` file on the first report), so
+0 `state::` reports and 0 of anything else; consistent with T225 having
+already retired T220's 17 RendererEventReceiver reports. No STOP.
+
+### Deviations (flagged)
+
+- Two comments outside the territory still name the old stage functions:
+  `src/client/eq_bridge.cpp:296-297` (`projectPendingEvents` /
+  `forwardProjectedEvents`) and
+  `include/client/bridge/game_state_bridge.h:73-75` (same) -- both files
+  are EXCLUDED by the plan, left untouched; one-line touch at merge.
+- `include/client/eq.h` untouched (the plan's `GetGameState()` is already
+  public and non-const); no `eq.h` change was needed.
+- The full-suite count is 2807/2808, not the plan's ≈2775: the estimate was
+  made before T222-T226 added cases; the delta from this unit is
+  -68 projection cases, -6 renamed split-drain cases, +7 sync-bridge cases,
+  +16 source-write cases.
+- `run1_*` archived alongside `run2_*` (see above); no domain differs in
+  outcome between them except the four scripting fixes listed.

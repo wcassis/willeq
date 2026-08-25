@@ -255,17 +255,11 @@ private:
     ActionResult cmdConsider(const std::string& args);
     ActionResult cmdHail(const std::string& args);
 
-    // T49: reads m_state.player()'s vendor/banker/trainer fields -- the
-    // state GameStateSyncBridge now feeds from bridge events instead of
-    // Application::syncNPCInteractionState() (deleted). Lives here, not in
-    // EverQuest::m_command_registry (where T48 put /vendor, /vendorlist,
-    // /buy, /sell), because this reader must see Application::m_gameState --
-    // the instance GameStateSyncBridge populates -- and
-    // EverQuest::m_command_registry's commands read a *different*
-    // state::GameState (EverQuest::m_game_state). See
-    // refactor/T49_npc_interaction_state.md ("THE TRAP THAT DECIDES WHERE
-    // THE READER LIVES") and refactor/deferred.md's "Two GameState
-    // instances" entry.
+    // T49: reads m_state.player()'s vendor/banker/trainer fields. Since
+    // T227 m_state IS EverQuest::m_game_state (the only instance), written
+    // at the source by eq_merchant.cpp's window open/close handlers; the
+    // T49-era "which instance does this reader see" trap
+    // (refactor/T49_npc_interaction_state.md) no longer exists.
     ActionResult cmdNpcState(const std::string& args);
 
     // T99: invite/disband/decline migrated HERE from EverQuest::

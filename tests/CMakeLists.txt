@@ -476,14 +476,14 @@ ADD_EXECUTABLE(test_input_action_bridge
 TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})  # T174: hotbar_model.cpp reads/writes jsoncpp
 GTEST_DISCOVER_TESTS(test_input_action_bridge)
 
-# T40: GameStateSyncBridge tests -- the decorator that feeds
-# Application::m_gameState's PetState from bridge events instead of the
-# deleted syncPetState() poll. Driven through a local RecordingBridge fake
-# standing in for IrrlichtBridge/ConsoleBridge, so no graphics deps needed.
+# T40/T227: GameStateSyncBridge tests -- since T227 the decorator projects
+# nothing (one GameState, written at the source), so this covers only the
+# forwarding hop: single-stage applyEvent() and the T220 stage/forward pair.
+# Driven through a local recording fake standing in for
+# IrrlichtBridge/ConsoleBridge, so no graphics or state deps needed.
 ADD_EXECUTABLE(test_game_state_sync_bridge
     test_game_state_sync_bridge.cpp
     ${CMAKE_SOURCE_DIR}/src/client/bridge/game_state_sync_bridge.cpp
-    ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_game_state_sync_bridge)

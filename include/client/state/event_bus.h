@@ -27,8 +27,8 @@ enum class GameEventType {
     PlayerMovementModeChanged,
     PlayerFlagsChanged,   // T218: own AFK/anonymous/roleplay flags, published
                           // from EverQuest::SetAFK/SetAnonymous/SetRoleplay
-                          // (eq_player_info.cpp). GameStateSyncBridge is the
-                          // only consumer.
+                          // (eq_player_info.cpp), which also write the state
+                          // directly (T227: no projection consumer remains).
 
     // Entity events
     EntitySpawned,
@@ -36,8 +36,8 @@ enum class GameEventType {
     EntityMoved,
     EntityStateSnapshot,  // T81: full state::Entity snapshot, published from
                            // EverQuest::SyncEntityToGameState() (spawn/self,
-                           // never per-tick). GameStateSyncBridge is the
-                           // only consumer.
+                           // never per-tick), which also writes the state
+                           // directly (T227: no projection consumer remains).
     EntityStatsChanged,
     EntityAppearanceChanged,
     EntityLightChanged,
@@ -455,8 +455,8 @@ struct SpellCastStartedData {
     uint16_t casterId;
     uint32_t spellId;
     uint32_t castTimeMs;
-    uint16_t targetId = 0;  // T44: added so GameStateSyncBridge can reconstruct
-                             // casting state without polling SpellManager.
+    uint16_t targetId = 0;  // T44: added for the (T227-deleted) projection;
+                             // SpellManager writes SpellState directly now.
 };
 
 struct SpellCastCompleteData {
