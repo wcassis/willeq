@@ -97,7 +97,27 @@ evidence review/T222/. Commit: `T222: /reply refuses with no pending tell; trade
 5. `scripts/build-arm-noble.sh` — pass, ARM_EXIT=0 (review/T222/build_arm_noble.txt).
 6. `check_file_sizes.sh fable` — 7 ok, 4 warn (pre-existing sizes), 0 fail.
 
-### Live leg
-`/mnt/projects/fable/.eqemu-lock` was held by T220 (slot1) when code +
-tests completed — **live leg pending** (refusal with no pending tell;
-success after a tell from Oraclerogue). Not spin-waited.
+### Live leg (2026-08-25 18:00, eqemu arena, two clients, review/T222/run1_*)
+Lock taken after T220 released it; server up via `scripts/eqemu/up.sh arena`.
+Both characters staged into arena (T217's coordinates, Testchar gm=1) and
+restored afterwards — `db_before.txt` == `db_restored.txt` byte-for-byte
+(Testchar zone 36 / -77.9232, 21.9086, 3 / h190 / gm=0; Oraclerogue zone 2 /
+167, 30, -29.25 / h384). Driver + scripts + configs: `t222_*`.
+
+Order (B = Oraclerogue observer at DEBUG, A = Testchar actor at INFO):
+
+| time | client | line |
+|---|---|---|
+| 18:01:29 | A | `/reply anyone there` -> `CMD outcome=failed ... message="You have no one to reply to."` — no tell had arrived yet, nothing sent |
+| 18:01:49 | B -> A | B `/tell Testchar hello from oracle` (applied); A logs `[CHAT] Oraclerogue: hello from oracle` |
+| 18:02:09 | A | `/reply got your tell` -> `outcome=applied` |
+| 18:02:09.227 | **B** | `Last tell sender updated to: Testchar` then `[CHAT] Testchar: got your tell` — **the observer received the reply** |
+
+The refusal is proven on the actor (that is the only place it can show —
+nothing leaves the client); the success is proven on the OBSERVER's log,
+not the actor's self-echo. Both exits 0. eqemu shut down with down.sh,
+lock deleted.
+
+Incidental: the observer log is treated as binary by grep (a raw item
+packet dump at DEBUG contains non-UTF-8 bytes) — use `grep -a`. Not a
+finding about T222.
