@@ -1,12 +1,12 @@
 # WillEQ
 
-A standalone EverQuest client targeting the Titanium client version (2006) with 3D graphics rendering, spatial audio, and support for platforms ranging from x86_64 desktops to ARM single-board computers. Connects to EverQuest servers using the Titanium protocol and renders zones, characters, and UI using the Irrlicht engine with software rendering, OpenGL 2.1, or OpenGL ES 2.0.
+A standalone EverQuest client targeting the Titanium client version (2006) with 3D graphics rendering, spatial audio, and support for platforms ranging from x86_64 servers to ARM single-board computers. Connects to EverQuest servers using the Titanium protocol and renders zones, characters, and UI through a patched Irrlicht engine driving a custom native OpenGL ES 2.0 driver. GLES2 is the only 3D renderer: on x86 it runs through Mesa EGL (surfaceless llvmpipe by default, or an X11 window on request), and on ARM through DRM/KMS.
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-There's no character creation support yet so you'll have to use an existing account & character.
+There is no character creation in the client (it never sends `OP_CharacterCreate`), so you need an existing account and character. For the project's own test server, accounts and characters are provisioned by driving the official client under Wine/Xvfb (the eq-oracle rig, `refactor/T157_rogue_provisioning.md`), not by WillEQ.
 
-I'm developing this on a remote Ubuntu 24 server without a GPU. Video output goes to Xvfb and is exported via x11vnc. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
+I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
 ## Project Status
 
@@ -18,15 +18,19 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. Video output goe
 - WASD movement with collision detection and server sync
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
-- Inventory with drag-and-drop, equipment slots, bags, item tooltips
-- Full vendor buy/sell, banking, and player-to-player trading
-- Group system with HP/mana bars, invite/disband/decline
+- Inventory with drag-and-drop, equipment slots, bags, item tooltips, `/equip`
+- Vendor buy/sell, banking, and player-to-player trading (command-driven)
+- Group system with HP/mana bars, invite/accept/disband/decline
+- Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
+- Inspect (both answering and asking) with a configurable inspect message
+- Bind wound, activatable skills (`/useskill`), duels, corpse dragging, resurrection prompts
 - Pet window with all 10 commands
-- Hotbar with 10 slots
+- Hotbar with 10 slots that fires by slot content (spell, skill, item, ...)
 - Spatial audio with zone emitters, music, weather sounds, and creature sounds
 - Navmesh and waypoint pathfinding (optional)
 - Native RDP streaming and VNC support for remote access
-- GLES2 rendering on ARM (Orange Pi One with Mali 400)
+- Native GLES2 rendering on ARM (Orange Pi One with Mali 400 via Lima)
+- ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
 - No character creation (requires existing account/character)
@@ -34,8 +38,8 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. Video output goe
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
-- Most combat abilities (kick, bash, backstab, etc.) are server-side only
-- Ranged combat (bows, thrown) not implemented
+- First-person camera sits inside the player's arm geometry (`refactor/T76_first_person_camera_standoff.md`)
+- UI is a fixed static-panel HUD; merchant, bank, loot, and trade are driven by slash commands rather than windows
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
 
@@ -53,17 +57,17 @@ Legend: Done | Partial | Not Implemented
 | Login server authentication | Done | |
 | Server selection | Done | |
 | Character selection | Done | Auto-select from config |
-| Character creation | -- | |
+| Character creation | -- | Provisioned externally (eq-oracle Wine rig) |
 
 ### World & Zones
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Zone loading | Done | S3D/WLD parsing |
+| Zone loading | Done | S3D/WLD parsing, EQE1 texture packs |
 | Zone geometry | Done | With BSP regions |
-| Zone textures | Done | DDS (DXT1/DXT3/DXT5), animated textures |
-| Zone lighting | Done | Ambient, static, dynamic, per-pixel (GLSL) |
+| Zone textures | Done | ETC1 (EQE1 packs) or DDS (DXT1/DXT3/DXT5), animated textures |
+| Zone lighting | Done | Ambient, static, dynamic, per-pixel (GLSL ES) |
 | Zone fog | Done | Server-driven, distance-based |
-| Sky dome | Done | 60+ sky types, day/night cycle, celestial bodies |
+| Sky dome | Done | Sky types, day/night cycle, celestial bodies |
 | Day/night cycle | Done | Smooth color transitions |
 | Weather (rain/snow) | Done | Particle systems, storm clouds, lightning |
 | Zone transitions | Done | |
@@ -73,11 +77,11 @@ Legend: Done | Partial | Not Implemented
 ### Graphics
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Zone geometry | Done | PVS culling, frustum culling, portal occlusion |
+| Zone geometry | Done | PVS culling, frustum culling, portal occlusion, software occlusion |
 | Classic character models | Done | All original races |
 | NPC/mob models | Done | |
 | Equipment display | Done | Weapons, shields, helms with tinting |
-| Skeletal animation | Done | 100+ animation codes, interpolation |
+| Skeletal animation | Done | Animation code mapping, interpolation |
 | Animated textures | Done | Water, lava, fire, flags |
 | Environmental particles | Done | Rain, snow, dust, pollen, mist, fireflies |
 | Ambient creatures | Done | Flocking birds, fish, insects (boids system) |
@@ -100,7 +104,7 @@ Legend: Done | Partial | Not Implemented
 ### Camera
 | Feature | Status | Notes |
 |---------|--------|-------|
-| First-person | Done | |
+| First-person | Partial | Camera clips into arm geometry (T76) |
 | Third-person follow | Done | With collision, zoom +/- |
 | Free camera | Done | Debug/admin mode |
 | Mouse look | Done | LMB or RMB drag |
@@ -108,109 +112,103 @@ Legend: Done | Partial | Not Implemented
 ### Combat
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Targeting | Done | Click, Tab cycle, F-keys, /target |
+| Targeting | Done | Click, Tab cycle, F-keys, /target, /assist |
 | Auto-attack (melee) | Done | Server-calculated damage |
 | Damage messages | Done | |
 | HP tracking | Done | |
 | Consider | Done | Color-coded con system |
-| Death/corpse | Done | |
+| Death/corpse | Done | Corpse drag/consent, resurrection accept/decline |
 | Corpse looting | Done | Items and money, auto-loot option |
 | Spell casting | Done | 8 gem slots, memorize, cast, interrupt |
-| Combat abilities | -- | Kick, bash, etc. are server-validated |
-| Ranged combat | -- | |
-| Pet commands | Done | 10 commands via pet window |
-| Bind wound | -- | |
+| Combat abilities | Done | /useskill, /taunt, /shield; server validates |
+| Ranged auto-fire | Partial | /autofire toggle sent to server |
+| Duels | Done | /duel, /duelaccept, /dueldecline |
+| Pet commands | Done | 10 commands via pet window or /pet |
+| Bind wound | Done | /bandage; server reply parsed and shown |
 
 ### Spells
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spell book | Done | 400-slot book, searchable |
+| Spell book | Done | Searchable |
 | Memorize spells | Done | /mem, /forget, drag-to-gem |
 | Cast spells | Done | Gem slots, casting bar, interrupts |
 | Spell effects | Partial | Cast glow, projectile, impact, aura particles |
-| Buff window | Done | Duration timers, right-click remove |
+| Buff bar | Done | Duration timers |
 
 ### Chat
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Say | Done | |
-| Shout | Done | |
-| OOC | Done | |
-| Auction | Done | |
-| Group | Done | |
-| Guild | Done | |
-| Tell | Done | |
+| Say / Shout / OOC / Auction | Done | |
+| Group / Guild | Done | |
+| Tell / Reply | Done | R key or /reply |
+| Yell | Done | |
 | Emote | Done | /emote + shortcuts (/wave, /dance, /cheer, /laugh) |
-| Reply | Done | R key or /reply |
 | Chat filtering | Done | Per-channel with /filter |
 
-### UI Windows
+### UI
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Chat window | Done | Scrollable, filterable, clickable links |
-| Inventory | Done | Equipment slots, drag-and-drop |
-| Bags | Done | Container contents |
-| Loot window | Done | |
-| Item tooltips | Done | Full stat display |
-| Player HUD | Done | HP/mana/stamina, AC, ATK, stats, resists |
-| Target window | Done | |
-| Spell book | Done | Searchable, drag-to-gem |
+| Chat panel | Done | Scrollable, filterable |
+| Inventory popup | Done | Equipment slots, drag-and-drop, tooltips |
+| Player status | Done | HP/mana/stamina, stats |
+| Target info | Done | |
+| Spell book popup | Done | Searchable, drag-to-gem |
 | Spell gem bar | Done | 8 gems with casting bar |
-| Hotbar | Done | 10 slots, keys 1-0 |
-| Group window | Done | HP/mana bars |
-| Pet window | Done | Commands and status |
-| Buff window | Done | Duration timers |
-| Options window | Done | Display, audio, controls, game tabs |
-| Trade window | Done | Player-to-player trading |
-| Bank window | Done | 16 slots, shared bank, currency conversion |
-| Merchant window | Done | Buy/sell with sorting and pricing |
-| Tradeskill container | Partial | Container UI works, combines server-side |
-| Skill trainer | Partial | Window exists |
-| Skills window | Done | All 75 skills with values |
-| Casting bar | Done | Progress and interrupt feedback |
+| Hotbar | Done | 10 slots, keys 1-0, content-typed |
+| Group panel | Done | HP/mana bars |
+| Pet panel | Done | Commands and status |
+| Buff bar | Done | Duration timers |
+| XP bar | Done | |
+| Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
+| Merchant / bank / loot / trade | Partial | Command-driven (/vendorlist, /buy, /sell, /bank, /loot, /trade); no window |
+| Tradeskill container | Partial | /recipesearch, /recipecombine; combines server-side |
+| Skill trainer | Partial | /train opens a trainer session |
 
 ### Inventory
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Item display | Done | Icons and names |
-| Item stats | Done | Full tooltip |
-| Move items | Done | Drag and drop |
-| Container bags | Done | Up to 10-slot |
+| Item stats | Done | Tooltip |
+| Move items | Done | Drag and drop, /equip by slot or name |
+| Container bags | Done | |
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |
-| Currency | Done | All denominations |
+| Currency | Done | All denominations, /split |
 | Item linking | -- | |
 
 ### Social
 | Feature | Status | Notes |
 |---------|--------|-------|
-| /who | Done | Nearby entity listing |
-| Friends list | -- | |
+| /who | Done | Server who-all with count substitution |
+| Friends list | Partial | /friendswho query only |
 | Ignore list | -- | |
-| Group invite | Done | /invite |
-| Group management | Done | /disband, /decline |
-| Guild management | Partial | MOTD only |
-| Trading | Done | Full trade window |
-| Inspect | -- | |
+| Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
+| Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
+| Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
+| Trading | Done | /trade, /accept, /tradedecline, /canceltrade |
+| Inspect | Done | /inspect; /inspectmessage sets your own text |
+| LFG / anon / roleplay / AFK | Done | Toggles |
+| Surname / random | Done | |
+| Bug / petition | Done | Sent to server |
 
 ### NPC Interaction
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Doors | Done | Open/close sync, door sounds |
 | Hail NPC | Done | H key, /hail |
-| Merchant buy/sell | Done | Full buy/sell with pricing |
-| Banker | Done | Slots, shared bank, currency |
+| Merchant buy/sell | Done | /vendor, /vendorlist, /buy, /sell |
+| Banker | Done | /bank |
+| World objects | Done | /clickobject (forge, oven, ground spawn) |
 | Quest/NPC text | Done | Displayed in chat |
 
 ### Skills
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Skill display | Done | 75 skills with values and categories |
-| Skill activation | Partial | Framework exists, server validates |
-| Tradeskills | Partial | Container window works, combines server-side |
-| Forage | -- | |
-| Fishing | -- | |
-| Tracking | -- | |
+| Skill display | Done | Values and categories, class caps from `config/skill_caps.json` |
+| Skill activation | Done | /useskill by name or id, hotbar skill slots |
+| Tradeskills | Partial | Recipe search/combine commands; combines server-side |
+| Tracking | Partial | /track sets the target |
+| Forage / Fishing | -- | |
 
 ### Audio
 | Feature | Status | Notes |
@@ -226,13 +224,15 @@ Legend: Done | Partial | Not Implemented
 | Water sounds | Done | Entry, swimming, underwater ambient |
 | UI sounds | Done | Level up, buy/sell, notifications |
 | Combat music | Done | Stinger tracks during combat |
-| Music volume control | Done | F10/F11, /musicvolume |
-| Effects volume control | Done | Shift+F10/F11, /effectsvolume |
+| Volume control | Done | /volume, /musicvolume, /effectsvolume |
 
 ### Extras (Not in Original)
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Headless mode | Done | For automation |
+| Headless mode | Done | `--no-graphics`, `--headless`, `--automated` |
+| Scripted command tours | Done | `--script <file>` |
+| Session recording/replay | Done | `--record-session`, replayed by `test_session_replay` |
+| Video frame capture | Done | `--dump-frames-dir` + `scripts/ci/encode_capture.sh` |
 | VNC support | Done | Xvfb + x11vnc |
 | Native RDP streaming | Done | FreeRDP, with audio |
 | Screenshots | Done | F12 |
@@ -241,7 +241,9 @@ Legend: Done | Partial | Not Implemented
 | Debug overlays | Done | Map, navmesh, zone line wireframes |
 | ARM/GLES2 rendering | Done | Orange Pi One (Mali 400) |
 | DRM/KMS output | Done | No X11 required |
-| Constrained HW presets | Done | Voodoo1/2, TNT, OrangePi profiles |
+| Constrained HW presets | Done | voodoo1, voodoo2, tnt, orangepi, or `WxHxN` (renderer-independent) |
+| EQE1 ETC1 texture packs | Done | `tools/eqe1_builder`, `--eqe1-path` |
+| GM commands | Done | /gmzone, /summon, /goto, /gmfind, /kick, /kill, /hideme, ... |
 
 ## Requirements
 
@@ -252,60 +254,85 @@ Legend: Done | Partial | Not Implemented
 - fmt (libfmt-dev)
 - GLM (libglm-dev, header-only)
 - jsoncpp (libjsoncpp-dev)
+- A locally-built patched GLES2 Irrlicht (see Building). This is not an apt package: the desktop-GL `libirrlicht-dev`/`libxxf86vm-dev` route was removed and there is no fallback.
+- Mesa EGL + GLESv2 development headers for the x86 build
 
 ### Optional Dependencies
 | Dependency | Feature |
 |------------|---------|
-| libirrlicht-dev, libxxf86vm-dev | 3D graphics rendering |
 | freerdp3-dev, libwinpr3-dev | Native RDP streaming |
 | libboost-graph-dev | Waypoint pathfinding |
 | librecast-dev | Navmesh pathfinding (Recast/Detour) |
 | libdrm-dev, libgbm-dev, libegl-dev | DRM/KMS output (ARM) |
 
+Audio uses bundled header-only libraries (miniaudio, TinySoundFont, dr_wav) with no external dependencies.
+
 ### EverQuest Client Files
-Requires a copy of the EverQuest Titanium Edition client for zone geometry, textures, character models, and sound files.
+Requires a copy of the EverQuest Titanium Edition client for zone geometry, textures, character models, and sound files. For ETC1 texture packs, the client directory is converted once with `tools/convert_all_to_eqe1.sh` (see EQE1 Asset Packs).
 
 ## Building
 
 ```bash
-# Configure
-mkdir -p build && cd build && cmake ..
+# One-time bootstrap: build the patched GLES2 Irrlicht for x86
+# (output goes to the gitignored third_party/irrlicht-gles2-x86/)
+bash scripts/build-gles2-x86.sh --irrlicht-only
 
-# Build (do NOT use -j flag)
-cmake --build build
+# Configure (from project root)
+mkdir -p build && cmake -S . -B build \
+    -DEQT_GRAPHICS=ON \
+    -DEQT_GLES2=ON \
+    -DEQT_DRM=OFF \
+    -DEQT_GLES2_IRRLICHT_DIR=third_party/irrlicht-gles2-x86 \
+    -DEQT_BUILD_TESTS=ON
 
-# Run tests
-cd build && ctest --output-on-failure
+# Build
+cmake --build build -j24
+
+# Run tests (2746 registered tests)
+ctest --test-dir build --output-on-failure
 ```
 
-The executable is output to `./build/bin/willeq`.
+The executable is output to `./build/bin/willeq`. Configuring `EQT_GRAPHICS=ON` without a patched Irrlicht fails at `cmake` time with a message naming the bootstrap command.
+
+`bash scripts/build-gles2-x86.sh` with no arguments additionally produces a second, smaller tree (`build-gles2/`, tests off) containing just `willeq` and `gles2_zone_benchmark`; that tree is what the visual gate (`scripts/ci/visual_gate.sh`) targets.
+
+### Tests
+
+The default suite (`ctest`) has 2746 registered tests across 123 test executables; none need a server, a display, or EQ client files (a few skip when a packet capture is absent). Live/integration tests that need a running eqemu server, a display, and client files are built but only registered under an opt-in flag:
+
+```bash
+cmake -S . -B build -DEQT_LIVE_TESTS=ON
+ctest --test-dir build -L live      # 19 tests across 3 binaries
+```
 
 ### CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `EQT_GRAPHICS` | ON | Enable Irrlicht graphics rendering |
+| `EQT_GRAPHICS` | ON | Enable Irrlicht graphics rendering (requires the patched GLES2 Irrlicht) |
+| `EQT_GLES2` | OFF | OpenGL ES 2.0 backend (required with `EQT_GRAPHICS=ON` on x86) |
 | `EQT_DRM` | OFF | DRM/KMS/GBM/EGL output (ARM, no X11) |
-| `EQT_GLES2` | OFF | OpenGL ES 2.0 instead of desktop GL |
+| `EQT_GLES2_IRRLICHT_DIR` | (empty) | Path to the locally-built patched Irrlicht |
+| `EQT_BUILD_TESTS` | ON | Build the test suite |
+| `EQT_LIVE_TESTS` | OFF | Register the live/integration tests with ctest |
+| `EQT_DEBUG` | ON | Debug logging |
 | `WITH_AUDIO` | ON | Audio (header-only: miniaudio, TinySoundFont, dr_wav) |
-| `WITH_RDP` | auto | Native RDP streaming (requires FreeRDP) |
+| `WITH_RDP` | auto | Native RDP streaming (ON when FreeRDP is found) |
 
-Pathfinding libraries (`EQT_HAS_NAVMESH`, `EQT_HAS_WAYPOINT`) are auto-detected. Audio uses bundled header-only libraries (no external dependencies).
+Pathfinding libraries (`EQT_HAS_NAVMESH`, `EQT_HAS_WAYPOINT`) are auto-detected.
 
 ### ARM Cross-Compilation (Orange Pi One)
 
 ```bash
-# Cross-compile for Armbian Noble (Lima GPU, DRM/KMS)
-bash scripts/build-arm-noble.sh
+# Cross-compile for Armbian Noble (Lima GPU, DRM/KMS, GLES2)
+bash scripts/build-arm-noble.sh            # graphics + audio
+bash scripts/build-arm-noble.sh --headless # no graphics
+bash scripts/build-arm-noble.sh --no-audio
 
-# Output: build-arm-noble/bin/willeq
+# Output: build-arm-noble/bin/willeq (ELF 32-bit ARM)
 ```
 
-Docker-based cross-compilation using `docker/Dockerfile.arm-noble`. Targets ARMv7-A Cortex-A7 with native GLES2 via the Lima open-source driver.
-
-### macOS Cross-Compilation
-
-Docker-based osxcross toolchain targeting macOS 10.15+. See `docker/macos-cross/`.
+Docker-based cross-compilation using `docker/Dockerfile.arm-noble`, targeting ARMv7-A Cortex-A7 with the same `COpenGLES2Driver` the x86 build uses. The former `--no-gles2` desktop-GL-via-Lima build was retired; GLES2 is the only ARM renderer. `scripts/build-arm64-noble.sh` / `docker/Dockerfile.arm64-noble` is a 64-bit variant for Rock64-class boards. See `docker/CLAUDE.md` for the sysroot strategy and the DRM/KMS device.
 
 ## Configuration
 
@@ -313,15 +340,17 @@ Create a configuration file (e.g., `willeq.json`):
 
 ```json
 {
-    "login_server": "login.server.com",
-    "login_port": 5999,
-    "username": "your_username",
-    "password": "your_password",
-    "server_name": "Server Name",
-    "character_name": "CharacterName",
+    "host": "login.server.com",
+    "port": 5998,
+    "user": "your_username",
+    "pass": "your_password",
+    "server": "Server Name",
+    "character": "CharacterName",
     "eq_client_path": "/path/to/EverQuest"
 }
 ```
+
+The same keys may be wrapped in a `"clients": [ { ... } ]` array (the first entry is used). Optional keys: `maps_path`, `navmesh_path`, `region_maps_path`, `mode`, a `renderer` object (`width`, `height`, `fullscreen`), a `rendering` object (`constrained_mode`), and a `hotkeys` object of overrides applied on top of `config/hotkeys.json`.
 
 Optional audio configuration:
 
@@ -348,16 +377,32 @@ Optional RDP configuration:
 }
 ```
 
+Other user settings live in `config/`: `hotkeys.json` (key bindings), `chat_settings.json`, `display_settings.json`, `ui_settings.json`, `constrained_presets.json` (hardware presets), `eqe1_archives.json` (EQE1 archive lists), `spell_effects.json` (particle presets, hot-reloadable), `skill_caps.json`, and the weather/detail/tree-wind configs.
+
+### EQE1 Asset Packs
+
+For memory-constrained boards, textures are served from EQE1 flat packs: one mmap-able `.eqe1` file per original S3D archive holding pre-compressed ETC1 textures (with `_alpha` companions) plus raw entries such as `.wld` files (`refactor/E01_eqe1_format.md`, `include/client/graphics/eqe1_format.h`).
+
+- Build them once from the Titanium client: `tools/convert_all_to_eqe1.sh --eq-path <EQ dir> --output <pack dir>` (drives `build/bin/eqe1_builder` and `verify_eqe1`).
+- Point the client at them with `--eqe1-path <dir>` (or `eqe1Path` in a constrained preset).
+- `config/eqe1_archives.json` names the per-zone (`{zone}`, `{zone}_obj`, `{zone}_chr`) and global archives; `data/eqe1_texture_index.json` (built by `eqe1_texture_index_builder`) maps texture names to the archive that holds them, so the loader opens exactly the archive a lookup needs instead of probing every global pack.
+- Lookup is all-or-nothing: with an EQE1 path configured, a texture missing from every pack is a fatal error, not a fallback to the S3D copy.
+
+Composite entity texture sheets (`--composite-entities <dir>`, `enableCompositeEntities` in a preset) are a separate, off-by-default option; the `orangepi` preset leaves them off.
+
 ## Running
 
 ```bash
-# With graphics (requires X11 display)
+# With graphics (default: surfaceless EGL, no display required)
 ./build/bin/willeq -c willeq.json
+
+# With graphics in an X11 window (opt-in only, never auto-detected)
+./build/bin/willeq -c willeq.json --egl-x11
 
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# With VNC (for remote servers)
+# With VNC (Xvfb + x11vnc, for remote servers)
 ./scripts/start-with-vnc.sh -c willeq.json
 # Connect: vnc://localhost:5950
 
@@ -367,11 +412,14 @@ Optional RDP configuration:
 
 # With native RDP
 ./build/bin/willeq -c willeq.json --rdp
-# Connect: mstsc.exe /v:hostname:3389
+./build/bin/willeq -c willeq.json --rdp --rdp-port 13389
+# Connect: mstsc.exe /v:hostname:3389  or  xfreerdp /v:hostname:3389 /cert:ignore
 
 # On Orange Pi (DRM/KMS, GLES2)
-./willeq -c config.json --drm --gles2 --constrained orangepi -r 800 600
+./willeq -c config.json --drm --renderer gles2 --constrained orangepi -r 800 600
 ```
+
+`--renderer` accepts only `gles2`; `software` and `opengl` were removed. `--constrained` takes `voodoo1`, `voodoo2`, `tnt`, `orangepi` (the default), or a `WxHxN` memory triple. Run `willeq --help` for the full option list (`--threads`, `--zone-load`, `--frame-timing`, `--scene-profile`, `--log-level=`, `--log-module=`, and the video-capture flags).
 
 ### Audio Options
 
@@ -397,16 +445,17 @@ This allows the client to request a 1MB UDP receive buffer (via `SO_RCVBUFFORCE`
 
 | Method | Use Case | Audio | Client |
 |--------|----------|-------|--------|
-| Direct X11 | Local display | Local miniaudio | Native |
+| Surfaceless EGL (default) | No display at all; llvmpipe | Local | Native |
+| X11-windowed EGL (`--egl-x11`) | Local display | Local | Native |
 | Xvfb + VNC | Remote access | None or HTTP stream | VNC client |
 | Native RDP | Windows remote | RDP audio channel | mstsc.exe, xfreerdp |
-| DRM/KMS | ARM boards, no X11 | Local miniaudio | Direct framebuffer |
+| DRM/KMS (`--drm`) | ARM boards, no X11 | Local | Direct framebuffer |
 
 ## Controls
 
 ### Key Bindings
 
-Bindings are configurable in `config/hotkeys.json`.
+Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the main config).
 
 **Movement:**
 | Key | Action |
@@ -450,13 +499,12 @@ Bindings are configurable in `config/hotkeys.json`.
 | K | Skills |
 | G / Alt+P | Group |
 | P | Pet |
-| V | Vendor |
-| O | Options |
 | Ctrl+B | Spellbook |
-| Alt+B | Buff window |
+| Alt+B | Buff bar |
 | Enter | Open chat |
 | / | Open chat with slash |
 | R | Reply to last tell |
+| Tab (in chat) | Command autocomplete |
 
 **Camera:**
 | Key | Action |
@@ -466,17 +514,10 @@ Bindings are configurable in `config/hotkeys.json`.
 | LMB/RMB drag | Look around |
 | F12 | Screenshot |
 
-**Audio:**
-| Key | Action |
-|-----|--------|
-| F10 / F11 | Music volume down/up |
-| Shift+F10 / Shift+F11 | Effects volume down/up |
-
 **Debug:**
 | Key | Action |
 |-----|--------|
 | U | Interact with door/object |
-| L | Cycle object lights |
 | Ctrl+F4 | Toggle zone lights |
 | Ctrl+Alt+C | Toggle collision debug |
 | Ctrl+Z | Toggle zone line visualization |
@@ -485,72 +526,126 @@ Bindings are configurable in `config/hotkeys.json`.
 | Ctrl+V | Toggle frustum culling |
 | Ctrl+L | Lock/unlock UI |
 | Ctrl+S | Save UI layout |
+| Ctrl+Shift+R | Reset UI defaults |
 | Shift+Escape | Quit |
 
 ### Slash Commands
 
+Commands are dispatched through three registries in order: the game registry (audio and diagnostics), the action layer (`src/client/action/command_processor.cpp`, everything gameplay), and finally the renderer, whose commands only exist when graphics are enabled. `/help [command]` lists what is registered.
+
 **Chat:**
 ```
 /say (/s)                       Say to nearby
-/shout (/sh)                    Shout to zone
-/ooc                            Out of character
+/shout (/sh, /sho)              Shout to zone
+/ooc (/o)                       Out of character
 /auction (/auc)                 Auction message
-/tell (/t) <name> <msg>         Private message
+/tell (/t, /msg) <name> <msg>   Private message
 /reply (/r) <msg>               Reply to last tell
 /gsay (/g)                      Group chat
-/gu                             Guild chat
+/gu (/guildsay)                 Guild chat
+/yell                           Yell for help
 /emote (/em, /me) <text>        Emote action
-/filter [channel]               Toggle channel display
-/timestamp (/ts)                Toggle timestamps
+/wave, /dance, /cheer, /laugh   Animation emotes
 ```
 
 **Movement:**
 ```
-/loc                            Show coordinates
+/loc (/location)                Show coordinates
 /sit, /stand                    Sit/stand
-/camp                           Sit and logout (30s)
+/camp                           Sit and logout
 /crouch (/duck)                 Crouch
 /feign (/fd)                    Feign death
+/jump                           Jump
 /walk, /run, /sneak             Movement speed
-/move <x> <y> <z>              Move to coordinates
+/move <x> <y> <z>               Move to coordinates
 /moveto <name>                  Move to entity
+/warp <target>                  Teleport to coordinates, entity, or target
 /follow [name], /stopfollow     Follow entity
-/face <name|x y z>             Face direction
+/face <name|x y z>              Face direction
 /turn <degrees>                 Turn to heading
+/rewind                         Return to a safe position
+/zoning [on|off]                Whether zone lines trigger a zone change
 ```
 
 **Combat:**
 ```
 /target (/tar) <name>           Target entity
-/attack (/a), /stopattack       Start/stop attack
-/aa                             Toggle auto-attack
+/assist (/a) [name]             Assist target or named player
+/attack (/att), /stopattack     Start/stop attack
+/aa (/~)                        Toggle auto-attack
+/autofire (/af)                 Toggle ranged auto-attack
 /consider (/con)                Consider target
 /hail                           Hail target
-/loot                           Loot nearest corpse
+/taunt, /shield                 Class abilities on target
+/useskill (/skill) <name|id>    Use an activatable skill
+/bandage (/bindwound)           Bind wound on target
+/duel, /duelaccept, /dueldecline
+/loot <id>                      Loot a corpse (see /list)
 /autoloot [on|off]              Toggle auto-looting
+/hunt, /listtargets             Auto-hunting mode
 ```
 
 **Spells:**
 ```
 /cast <gem#>                    Cast from gem (1-8)
-/mem <gem#> <spell>             Memorize spell
+/mem (/memorize) <gem#> <spell> Memorize spell
 /forget <gem#>                  Forget spell
 /gems                           Show memorized spells
-/interrupt                      Interrupt casting
-/skills                         Toggle skills window
+/interrupt (/ducking)           Interrupt casting
+/spellbook (/book)              Open spellbook
 ```
 
-**Group:**
+**Group, raid, guild:**
 ```
 /invite (/inv) [name]           Invite to group
-/disband                        Leave group
-/decline                        Decline invite
+/groupaccept (/gaccept)         Accept group invite
+/disband, /decline              Leave group / decline invite
+/groupassist (/ga) [name]       Group assist
+/split <plat> [gold] [silver] [copper]  Split money with group
+/raid <subcommand>              invite, accept, leave, remove, leader, loot,
+                                looter, lock, unlock, group, status, list
+/guildinvite (/ginvite) <name>  Invite to guild
+/guildaccept, /guilddecline     Answer a guild invite
+/guildremove, /guilddemote, /guildleader, /guildmotd
+```
+
+**Social:**
+```
+/who (/whoall) [filters]        Who-all query
+/inspect [name]                 Inspect target or player
+/inspectmessage (/inspectmsg)   Show or set your inspect message
+/trade [name]                   Request trade
+/accept, /tradedecline, /canceltrade
+/lfg, /afk, /anon, /roleplay    Status toggles
+/surname <name>                 Request surname
+/random (/roll) [n]             Roll a random number
+/friendswho (/friends) <names>  Ask who is online
+/find (/findperson) [name]      Ask the server to path you to a target
+/consent <name>, /deny <name>   Corpse drag permission
+/corpsedrag (/drag), /corpsedrop (/drop)
+/rezaccept, /rezdecline         Answer a resurrection offer
+/appearance                     Change face/hair/beard
+/bug (/report), /petition       Send to server
+```
+
+**Commerce, banking, tradeskills:**
+```
+/vendor                         Open/close vendor with target
+/vendorlist                     List the open vendor's inventory
+/buy <slot> [qty]               Buy from the open vendor
+/sell <slot> [qty]              Sell to the open vendor
+/bank                           Open/close bank with target
+/train                          Open trainer session with target
+/equip <slot> <slot> | <name>   Move/equip an item (/equip list)
+/clickobject (/clickobj) <id>   Click a world object (forge, oven, ground spawn)
+/recipesearch (/recipes) <text> Search the open container's recipes
+/recipedetails, /recipecombine, /recipefavorites
 ```
 
 **Pet:**
 ```
-/pet <command>                  Pet command
-    attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss
+/pet <command>                  attack, back, follow, guard, sit, taunt,
+                                hold, focus, health, dismiss
 ```
 
 **Audio:**
@@ -562,25 +657,63 @@ Bindings are configurable in `config/hotkeys.json`.
 /effectsvolume (/evol) [0-100]  Effects volume
 ```
 
-**Emotes:**
-```
-/wave, /dance, /cheer, /laugh   Animation emotes
-```
-
 **Utility:**
 ```
-/who                            List nearby entities
 /help (/?) [command]            Show help
-/debug <level>                  Set debug (0-6)
+/list                           List nearby entities
+/dump <name>                    Dump entity appearance/equipment info
 /door (/u)                      Interact with nearest door
-/dump <name>                    Dump entity info
-/afk                            Toggle AFK
-/pmem (/memory)                 Show memory usage breakdown
-/quit                           Show exit options
-/q                              Exit immediately
+/time (/settime) [hour]         Show or set game time
+/save                           Request character save
+/debug <level>                  Set debug level (0-6)
+/logonly, /logexclude, /logmodule, /logclear   Module log filters
+/perf (/metrics)                Performance report
+/pmem (/memory)                 Memory usage breakdown
+/hotkeys                        Show key bindings
+/pathfinding                    Toggle pathfinding
+/quit (/exit, /q)               Exit immediately
+```
+
+**GM (server permitting):**
+```
+/gmzone, /summon, /goto, /gmfind, /kick, /kill, /hideme, /emotezone, /gmlastname
+```
+
+**Renderer-only (graphics builds):**
+```
+/screenshot                     Save a screenshot
+/filter [channel]               Toggle chat channel display
+/timestamp (/ts)                Toggle chat timestamps
+/camera                         Camera controls
+/dumpscene (/ds)                Dump the scene graph
+/sceneprofile (/sp)             Scene breakdown profiler
+/frametiming (/ft)              Frame timing profiler
+/budget, /governor (/gov)       Frame budget governor
+/clipdist, /renderdist          Clip / view distance
+/lightmode, /zlight, /olight, /plight, /stencil, /portal, /sort, /mergedraws
+/sky, /skytype, /season, /fire  Sky and environment
+/grass, /detail, /detailinfo, /togglegrass, /toggleplants, /togglerocks, /toggledebris
+/reloadfx, /reloadspellfx, /reloadweather, /weatherpreset (/wq)
+/shaderdebug (/sd), /simworker (/sw), /placeholder, /upload
+/newui, /newinv, /newbook, /newskills   Static-panel UI toggles
 ```
 
 ## Architecture
+
+### Threading Model
+
+The application runs two threads, decoupled via a thread-safe event/intent bridge:
+
+```
+Game Thread                         Render Thread (main)
+-----------                         --------------------
+Network events (TickNetwork)        Drain bridge events -> applyEvent()
+Game state updates (GameTick)       processFrame() (Irrlicht render)
+Intent processing (bridge intents)  Loading thread management
+Audio updates                       Zone load completion detection
+```
+
+`EverQuest` never touches the renderer directly: game state changes are published as typed events through `GameStateBridge`, and user actions come back as intents. `IrrlichtBridge` translates events into renderer calls; `ConsoleBridge` logs them in headless mode. Zone loading runs on its own thread that owns the GL context, working from an immutable `ZoneLoadSnapshot` while the game thread keeps processing packets. Rendering-side simulation (animation, particles, boids, weather, visibility) runs on a `SimulationWorker` off the render thread.
 
 ### Connection Flow
 
@@ -600,14 +733,13 @@ UDP-based Daybreak protocol (Titanium variant) with:
 - Exponential backoff retransmission (30ms initial, 5s max)
 - 1MB socket receive buffer for zone load packet bursts
 
+All opcodes are hard-coded for Titanium; packet layouts live in `include/common/packet_structs.h`.
+
 ### Rendering Pipeline
 
-Three rendering backends:
-- **Software (Burnings)** - CPU-based, no GPU required (default)
-- **OpenGL 2.1** - Desktop GPU with GLSL 1.20 shaders
-- **OpenGL ES 2.0** - Embedded GPU (Mali 400, etc.) with GLSL ES 1.0
+One rendering backend: a custom native OpenGL ES 2.0 driver (`COpenGLES2Driver`, under `docker/irrlicht-drm/`) built into a patched Irrlicht 1.8.5. It replaces Irrlicht's desktop drivers entirely, uses six built-in GLSL ES 1.0 shader programs (no fixed-function pipeline), and uploads ETC1 textures natively (`GL_ETC1_RGB8_OES`). The same driver runs on the Orange Pi (DRM/KMS, `--drm`) and on x86 (Mesa EGL: surfaceless llvmpipe, or `--egl-x11` for a window). Software and desktop-GL backends were removed (`docs/decisions.md`, 2026-07-28).
 
-Zone visibility uses PVS (Potentially Visible Set) culling, frustum culling, and optional stencil-based portal occlusion. Constrained hardware presets (Voodoo1, Voodoo2, TNT, OrangePi) enforce memory budgets and texture limits. On memory-limited devices, LRU-evicting texture and mesh caches provide budgeted resource management with lazy/progressive zone mesh loading.
+Zone visibility uses PVS (Potentially Visible Set) culling, frustum culling, portal occlusion, and a software occlusion culler on the simulation worker. Constrained hardware presets (voodoo1, voodoo2, tnt, orangepi) enforce memory budgets, texture limits, and render distances; on memory-limited devices an LRU-evicting `ConstrainedTextureCache` serves textures from mmap'd EQE1 packs under a byte budget.
 
 ### Audio Pipeline
 
@@ -624,85 +756,74 @@ Software-mixed spatial audio using header-only libraries (no external deps):
 
 ### Key Components
 
-- **EverQuest** (`src/client/eq.cpp`) - Main client class, protocol handling, game state
-- **IrrlichtRenderer** (`src/client/graphics/irrlicht_renderer.cpp`) - Scene management, visibility, lighting, UI
-- **EntityRenderer** - Character/NPC models with skeletal animation
-- **RaceModelLoader** - Loads models from S3D archives by race ID
-- **WindowManager** - UI window system with drag/resize/persistence
-- **CombatManager** - Auto-attack, targeting, looting
-- **SpellManager** - Casting, gems, cooldowns, memorization
-- **SkillManager** - Skill tracking, activation, cooldowns
-- **TradeManager** - Player-to-player trading state machine
-- **AudioManager** - Top-level coordinator, owns mixer/backend/sfx/midi subsystems
-- **AudioMixer** - Software stereo PCM mixer (16 SFX + 2 music channels)
-- **MidiPlayer** - TSF + TML MIDI/XMI synthesis with dual SoundFont support
-- **SfxManager** - WAV loading (dr_wav) and spatial playback with LRU cache
-- **MusicPlayer** - Streaming XMI/MIDI/MP3 playback
-- **ZoneAudioManager** - Zone emitters, day/night transitions
-- **DaybreakConnection** - UDP reliable protocol implementation
-- **HCMap** - Zone map collision and LOS raycasting
-- **PathfinderNavMesh** / **PathfinderWaypoint** - Optional pathfinding
-- **ZoneShader** - GLSL shader programs for GL 2.1 and GLES2
-- **COpenGLES2Driver** - Native GLES2 driver for embedded GPUs
+- **Application** (`src/client/application.cpp`) - Owns renderer, bridge, game thread, loading thread; CLI and config parsing
+- **EverQuest** (`src/client/eq.cpp` + 18 `eq_*.cpp` domain TUs) - Protocol handling and game state; see `docs/module_map.md`
+- **GameStateBridge / IrrlichtBridge** (`include/client/bridge/`) - Thread-safe event/intent queues between game and renderer
+- **ActionDispatcher / CommandProcessor** (`src/client/action/`) - Unified action layer behind slash commands, hotbar, and console input
+- **IrrlichtRenderer** (`src/client/graphics/irrlicht_renderer.cpp` + `renderer_*.cpp`) - Scene management, zone load steps, visibility, lighting
+- **EntityRenderer** - Character/NPC models with skeletal animation and equipment
+- **RaceModelLoader / EquipmentModelLoader** (`src/client/graphics/eq/`) - Model loading from S3D/WLD by race and item model
+- **EQE1Loader / EQE1TextureIndex** - mmap'd ETC1 flat packs and the name-to-archive index
 - **ConstrainedTextureCache** - LRU-evicting texture cache with memory budget
-- **ConstrainedMeshCache** - Lazy/progressive zone mesh loading with memory budget
+- **Static UI panels** (`src/client/graphics/ui/`) - Data-driven HUD panels and popups drawn from a UI atlas
+- **CombatManager**, **SpellManager**, **SkillManager**, **TradeManager**, **InventoryManager**, **HotbarModel** - Gameplay state
+- **AudioManager**, **AudioMixer**, **MidiPlayer**, **SfxManager**, **MusicPlayer**, **ZoneAudioManager** - Audio subsystems
+- **DaybreakConnection** - UDP reliable protocol implementation
+- **HCMap** / **ZoneBsp** - Zone map collision/LOS raycasting and BSP regions
+- **PathfinderNavMesh** / **PathfinderWaypoint** - Optional pathfinding
+- **WillEQDatabase** (`data/willeq.db`) - SQLite built by `tools/willeq_db_builder` from client text files and `data/*.json` (spells, strings, race/item models, zone points)
 
 ## File Structure
 
 ```
 src/
   client/
-    main.cpp                 # Entry point, CLI parsing
-    application.cpp          # Application lifecycle
-    eq.cpp                   # Main client logic (~9000 lines)
+    main.cpp                 # Entry point
+    application.cpp          # Application lifecycle, CLI/config parsing
+    eq.cpp, eq_*.cpp         # Client core + domain TUs (chat, combat, group, guild, merchant, ...)
+    action/                  # ActionDispatcher, CommandProcessor (slash commands)
+    bridge/                  # Game<->renderer event/intent bridge
     graphics/
-      irrlicht_renderer.cpp  # Renderer (~7000 lines)
-      entity_renderer.cpp    # Character/NPC models
-      camera_controller.cpp  # Camera modes
-      zone_shader.cpp        # GLSL shaders
-      door_manager.cpp       # Door rendering
-      sky_renderer.cpp       # Sky dome and celestial
-      eq/                    # EQ file format loaders
-        pfs.cpp              #   PFS/S3D archives
-        wld_loader.cpp       #   WLD fragments
-        s3d_loader.cpp       #   Zone/model/character loading
-        dds_decoder.cpp      #   DXT texture decompression
-        zone_geometry.cpp    #   Zone mesh building
-      environment/           # Weather, particles, ambient
-      ui/                    # UI windows and components
-    audio/
-      audio_manager.cpp      # Sound effects
-      music_player.cpp       # Music streaming
-      zone_audio_manager.cpp # Zone emitters
-    input/
-      hotkey_manager.cpp     # Key bindings
-      graphics_input_handler.cpp
-    action/
-      command_processor.cpp  # Slash commands
-    spell/                   # Spell system
-    skill/                   # Skill system
+      irrlicht_renderer.cpp  # Renderer core
+      renderer_*.cpp         # Zone load steps, frame, entities, overlays, diagnostics
+      sim_*.cpp              # SimulationWorker: animation, particles, boids, weather, visibility
+      eqe1_loader.cpp        # EQE1 flat-pack loader + texture index
+      zone_shader.cpp        # GLSL ES shaders
+      eq/                    # EQ file format loaders (PFS/S3D, WLD, DDS, models, animation)
+      detail/, environment/  # Detail objects, weather, particles
+      rdp/                   # Native RDP server
+      ui/                    # Static UI panels, UI atlas, command registry
+    audio/                   # Mixer, MIDI, SFX, music, zone audio
+    input/                   # Hotkeys, console and graphics input handlers
+    hotbar/, inventory/, chat/, spell/, skill/, state/, mode/, output/, help/
   common/
-    net/                     # Network protocol
-      daybreak_connection.cpp
-      packet.cpp
-include/
-  client/                    # Headers matching src layout
-  common/
-tests/                       # Unit and integration tests
-config/                      # User settings (hotkeys, UI layout)
+    net/                     # Daybreak protocol, packets
+include/                     # Headers matching src layout
+tests/                       # 123 test executables (gtest)
+config/                      # User settings and data-driven configs
+data/                        # willeq.db, eqe1_texture_index.json, model/zone JSON, UI atlases
 docker/
-  Dockerfile                 # Linux x86_64 build
-  Dockerfile.arm-noble       # ARM cross-compilation
-  docker-compose.yml         # Multi-service deployment
-  irrlicht-drm/              # DRM/KMS/GLES2 Irrlicht drivers
-  macos-cross/               # macOS cross-compilation
+  Dockerfile                 # Linux x86_64 build (builder/runtime/vnc stages)
+  Dockerfile.arm-noble       # Orange Pi cross-compilation
+  Dockerfile.arm64-noble     # 64-bit ARM variant
+  irrlicht-drm/              # DRM/KMS device + COpenGLES2Driver (shared ARM/x86)
+  irrlicht-drm-x86/          # x86 device fork (surfaceless/X11 EGL)
 scripts/
-  start-with-vnc.sh          # VNC display
-  start-with-vnc-audio.sh    # VNC + audio streaming
-  build-arm-noble.sh         # ARM build script
-tools/                       # Utilities (model viewer, S3D tools, zone atlas builder)
-third_party/                   # Header-only audio libs (miniaudio, TinySoundFont, dr_wav)
+  build-gles2-x86.sh         # Patched Irrlicht bootstrap + x86 GLES2 tree
+  build-arm-noble.sh         # ARM cross-build
+  start-with-vnc*.sh         # Xvfb + VNC launchers
+  ci/                        # Visual gate, capture encoder, reachability checks
+  pi/, eqemu/                # Orange Pi benchmarking, test-server control
+tools/                       # eqe1_builder, verify_eqe1, willeq_db_builder, model_viewer,
+                             # S3D/WLD dumpers, atlas builders, hwcaps/ GPU benchmarks
+third_party/                 # Header-only audio libs; irrlicht-gles2-x86/ (gitignored build output)
+docs/                        # decisions.md, module_map.md, standards/, reference/, plans/
+refactor/                    # Per-unit plans and reviews (T###_*.md), deferred.md
 ```
+
+## Project Process
+
+Work is organised as numbered units. An orchestrator session plans each unit as a document in `refactor/` (`T###_<name>.md`: territory, plan, review), and executor agents carry them out in git worktree slots (`wt/slot1..3`) on task branches named `task/T###-<name>` cut from the `fable` branch; the orchestrator reviews and merges. Standing rules for executors are in `refactor/EXECUTOR_PROTOCOL.md`, settled architecture decisions in `docs/decisions.md`, and open items in `refactor/deferred.md`. Per-directory `CLAUDE.md` files carry the working notes for each subsystem.
 
 ## Credits
 
