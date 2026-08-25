@@ -293,8 +293,8 @@ void EverQuest::GameTick(float deltaTime) {
 
 // T220: PreRenderTick() (D21a's render-thread event drain) is DELETED. In a
 // graphics run the bridge drain is now two-stage and owned by Application:
-// updateGameState() -> GameStateSyncBridge::projectPendingEvents() on the
-// game thread, render() -> GameStateSyncBridge::forwardProjectedEvents() on
+// updateGameState() -> GameStateSyncBridge::stagePendingEvents() on the
+// game thread, render() -> GameStateSyncBridge::forwardStagedEvents() on
 // the render thread. ProcessBridgeEvents() below remains the single-stage
 // drain for headless runs (and single-threaded test harnesses).
 

@@ -70,9 +70,9 @@ public:
      * depends on the bridge: for the plain single-stage bridges
      * (ConsoleBridge, test bridges) it is whoever drains and applies;
      * for GameStateSyncBridge in a graphics run it is the GAME thread
-     * (GameStateSyncBridge::projectPendingEvents(), T220), never the
+     * (GameStateSyncBridge::stagePendingEvents(), T220), never the
      * render thread -- the render thread drains the projected queue via
-     * GameStateSyncBridge::forwardProjectedEvents() instead.
+     * GameStateSyncBridge::forwardStagedEvents() instead.
      * Returns the events and clears the queue atomically.
      * D24: Coalesces consecutive EntityMoved events per spawnId (keeps latest).
      */

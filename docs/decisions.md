@@ -449,3 +449,17 @@ door instance `EverQuest::m_door_state_manager`) close the rest.
 **Follow-on, agreed in principle, NOT started:** converge on a single
 instance (T78 Option A) once T218/T219 land, with the projection tests as the
 regression net. Strategy to be discussed with Will before any refactor work.
+
+## 2026-08-25 — ONE `state::GameState` (Option A complete: T220 → T221 → T227)
+
+**Decision (Will, A1):** `EverQuest::m_game_state` is the only instance. The
+action/command layer, modes, `InputActionBridge` and `ConsoleRenderer` all
+borrow `m_eqClient->GetGameState()`. `GameStateSyncBridge` is a pure
+forwarding decorator: `stagePendingEvents()` on the game thread,
+`forwardStagedEvents()` on the render thread — it holds NO state.
+**Rule that replaces the 2026-08-25 projection rule:** every state a
+handler learns from the wire is written into `m_game_state` at the source,
+before any bridge publish, and pinned by `tests/test_game_state_source_writes.cpp`
+(run with and without a bridge). Off-thread writers are the remaining
+hazard class: `CombatManager::Update()` on `m_update_thread` can reach
+`SetTarget`/`ClearTarget` when `/combat on` (T227 STOP note, on the board).
