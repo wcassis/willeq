@@ -602,6 +602,17 @@ TEST_F(CommandProcessorTest, Reply_Alias_DispatchesReplyToLastTell) {
     ASSERT_TRUE(handler.calledOnceWith("replyToLastTell(\"ok\")"));
 }
 
+// T222: the "No one to reply to" pre-check game's reply_cmd had (and T100
+// could not port -- m_last_tell_sender was unreachable from the action
+// layer) is now reproduced via IActionHandler::hasTellToReplyTo().
+TEST_F(CommandProcessorTest, Reply_NoPendingTell_FailsWithMessageWithoutDispatching) {
+    handler.tellToReplyTo = false;
+    auto result = processor->processCommand("/reply anyone there?");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "You have no one to reply to.");
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 TEST_F(CommandProcessorTest, Reply_NoMessage_FailsCleanlyWithoutDispatching) {
     // reply.requiresArgs is false (ported verbatim from game), so this must
     // reach cmdReply's own empty-args check rather than being rejected by

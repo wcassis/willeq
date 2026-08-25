@@ -196,6 +196,13 @@ public:
     virtual void sendChatMessage(ChatChannel channel, const std::string& message) = 0;
     virtual void sendTell(const std::string& target, const std::string& message) = 0;
     virtual void replyToLastTell(const std::string& message) = 0;
+    /**
+     * T222: whether a tell has been received that /reply could answer.
+     * Queried by ActionDispatcher::replyToLastTell() so the dispatcher can
+     * refuse with a user-visible message instead of the handler silently
+     * no-oping (deferred.md T100 entry).
+     */
+    virtual bool hasTellToReplyTo() const = 0;
 
     // ========== Group ==========
 

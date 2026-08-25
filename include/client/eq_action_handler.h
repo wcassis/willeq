@@ -98,6 +98,7 @@ public:
     void sendChatMessage(action::ChatChannel channel, const std::string& message) override;
     void sendTell(const std::string& target, const std::string& message) override;
     void replyToLastTell(const std::string& message) override;
+    bool hasTellToReplyTo() const override;
 
     // ========== Group ==========
 

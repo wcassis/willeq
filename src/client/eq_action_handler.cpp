@@ -694,6 +694,10 @@ void EqActionHandler::replyToLastTell(const std::string& message) {
     m_eq.SendChatMessage(message, "tell", lastSender);
 }
 
+bool EqActionHandler::hasTellToReplyTo() const {
+    return !m_eq.GetLastTellSender().empty();
+}
+
 // ========== Group ==========
 
 void EqActionHandler::inviteToGroup(const std::string& playerName) {
@@ -1028,19 +1032,14 @@ void EqActionHandler::declineTrade() {
     // (eq_merchant.cpp), independent of that gap. Read before rejecting,
     // since the reject call below clears it.
     std::string partnerName = EQT::toDisplayName(tradeState.pendingPartnerName());
+    // T222: TradeManager::rejectTradeRequest() now fires m_on_cancelled()
+    // like cancelTrade()/handleCancelTrade() do, so the projection reset
+    // and the TradeCancelled bridge event happen inside that call (the
+    // setOnCancelled lambda in eq_merchant.cpp). T103's in-territory
+    // workaround (an explicit trade().reset() here) is gone -- the
+    // regression test DeclineTrade_ClearsProjectionViaCancelledCallback
+    // fails without the TradeManager fix.
     trade->rejectTradeRequest();
-    // T103 finding, reported not fixed (trade_manager.cpp is outside this
-    // unit's territory): TradeManager::rejectTradeRequest() is the one
-    // trade-state transition that never invokes m_on_cancelled() -- unlike
-    // cancelTrade() and the partner-initiated handleCancelTrade(), it calls
-    // resetTradeState() directly with no callback, so a LOCAL decline
-    // publishes no TradeCancelled event at all. Left as-is, this would
-    // leave hasPendingRequest() stuck true in the projection forever after
-    // a successful decline (until the next TradeRequestReceived/
-    // TradeStarted/TradeCancelled happened to overwrite it). Worked around
-    // here, in-territory: clear the projection directly rather than rely on
-    // an event that TradeManager never sends for this specific transition.
-    m_eq.GetGameState().trade().reset();
     m_eq.AddChatSystemMessage(fmt::format("Declined trade request from {}", partnerName));
 }
 

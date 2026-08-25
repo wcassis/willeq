@@ -1040,17 +1040,9 @@ ActionResult CommandProcessor::cmdEmote(const std::string& args) {
 ActionResult CommandProcessor::cmdReply(const std::string& args) {
     // Ported from game's reply_cmd's args-empty branch ("Usage: /reply
     // <message>"). game's OTHER pre-check (m_last_tell_sender.empty() ->
-    // "No one to reply to") is NOT reproduced here: that state lives only on
-    // EverQuest (m_last_tell_sender), not in state::GameState or anywhere
-    // IActionHandler exposes to the dispatcher, so ActionDispatcher::
-    // replyToLastTell() cannot make the same check game's registry could --
-    // it already silently no-ops via EqActionHandler::replyToLastTell() when
-    // there is no pending sender, returning ActionResult::Success() rather
-    // than surfacing an error. This is a pre-existing action-layer gap (the
-    // dispatcher/handler shape predates T100), not introduced by this
-    // migration, but T100 is what gives it its first live caller. Reported,
-    // not fixed -- see refactor/T100_migrate_chat_family.md's Review and
-    // refactor/deferred.md.
+    // "No one to reply to") lives in ActionDispatcher::replyToLastTell()
+    // since T222, via IActionHandler::hasTellToReplyTo() -- T100 could not
+    // port it because m_last_tell_sender was unreachable from this layer.
     if (args.empty()) {
         return ActionResult::Failure("Usage: /reply <message>");
     }

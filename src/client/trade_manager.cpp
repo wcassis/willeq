@@ -60,6 +60,13 @@ void TradeManager::rejectTradeRequest()
 
     sendCancelTrade();
     resetTradeState();
+
+    // T222: a local decline is a cancellation like any other -- fire the
+    // callback so the owner publishes TradeCancelled and resets its
+    // projection (T103 finding: this was the one transition that never did).
+    if (m_on_cancelled) {
+        m_on_cancelled();
+    }
 }
 
 void TradeManager::cancelTrade()

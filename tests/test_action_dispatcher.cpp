@@ -298,6 +298,28 @@ TEST_F(ActionDispatcherTest, ChatFamily_EachChannelRoutesDistinctlyAndValidatesE
     EXPECT_EQ(handler.calls[4], "replyToLastTell(\"reply\")");
 }
 
+// T222 (deferred.md T100 entry): with no tell to answer, replyToLastTell()
+// must FAIL with a user-visible message and never reach the handler --
+// previously it returned Success() and the handler silently no-oped.
+TEST_F(ActionDispatcherTest, ReplyToLastTell_NoPendingTell_FailsWithoutDispatching) {
+    connectHandler();
+    connectZone();
+    handler.tellToReplyTo = false;
+    auto result = dispatcher->replyToLastTell("hello?");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "You have no one to reply to.");
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(ActionDispatcherTest, ReplyToLastTell_WithPendingTell_Dispatches) {
+    connectHandler();
+    connectZone();
+    handler.tellToReplyTo = true;
+    auto result = dispatcher->replyToLastTell("hello!");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("replyToLastTell(\"hello!\")"));
+}
+
 TEST_F(ActionDispatcherTest, GroupFamily_InviteAcceptDeclineLeave) {
     connectHandler();
     connectZone();

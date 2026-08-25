@@ -154,14 +154,14 @@ TEST(EqActionHandlerTrade, DeclineTrade_PendingRequest_MessageNamesThePartner) {
     EXPECT_EQ(lastSystemMessage(events), "Declined trade request from Buddy");
 }
 
-TEST(EqActionHandlerTrade, DeclineTrade_ClearsProjectionDespiteTradeManagerNotFiringCancelledCallback) {
-    // T103 finding: TradeManager::rejectTradeRequest() (trade_manager.cpp)
-    // never invokes m_on_cancelled(), unlike cancelTrade()/
-    // handleCancelTrade() -- so no TradeCancelled bridge event is published
-    // for a local decline. Without EqActionHandler::declineTrade()'s
-    // explicit projection reset (added because trade_manager.cpp is outside
-    // this unit's territory and could not be fixed directly), this
-    // assertion would fail: hasPendingRequest() would stay stuck true.
+TEST(EqActionHandlerTrade, DeclineTrade_ClearsProjectionViaCancelledCallback) {
+    // T103 finding, fixed in T222: TradeManager::rejectTradeRequest() used
+    // to be the one trade-state transition that never invoked
+    // m_on_cancelled(), so a local decline published no TradeCancelled
+    // bridge event and EqActionHandler::declineTrade() had to reset the
+    // projection itself. That workaround is gone; the projection reset AND
+    // the TradeCancelled event now both come from the callback. Without the
+    // trade_manager.cpp fix, both assertions below fail.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -169,11 +169,49 @@ TEST(EqActionHandlerTrade, DeclineTrade_ClearsProjectionDespiteTradeManagerNotFi
 
     simulateIncomingRequest(eq, 555, "Buddy");
     ASSERT_TRUE(eq.GetGameState().trade().hasPendingRequest());
+    bridge.drainEvents();
 
     handler.declineTrade();
 
     EXPECT_FALSE(eq.GetGameState().trade().hasPendingRequest());
     EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
+
+    bool sawCancelled = false;
+    std::vector<std::string> messages;
+    for (auto& e : bridge.drainEvents()) {
+        if (e.type == eqt::state::GameEventType::TradeCancelled) sawCancelled = true;
+        if (e.type == eqt::state::GameEventType::SystemMessage) {
+            messages.push_back(std::get<eqt::state::ChatMessageData>(e.data).message);
+        }
+    }
+    EXPECT_TRUE(sawCancelled);
+    // Documented side effect (T222 Review): the shared setOnCancelled lambda
+    // in eq_merchant.cpp also prints "Trade cancelled." before declineTrade's
+    // own line. Two lines for one decline; flagged, not hidden.
+    ASSERT_EQ(messages.size(), 2u);
+    EXPECT_EQ(messages[0], "Trade cancelled.");
+    EXPECT_EQ(messages[1], "Declined trade request from Buddy");
+}
+
+TEST(EqActionHandlerTrade, TradeManager_RejectTradeRequest_FiresOnCancelled) {
+    // T222: the TradeManager-level contract, independent of EqActionHandler.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+
+    int fired = 0;
+    eq.GetTradeManager()->setOnCancelled([&]() { ++fired; });
+
+    simulateIncomingRequest(eq, 555, "Buddy");
+    ASSERT_EQ(eq.GetTradeManager()->getState(), TradeState::PendingAccept);
+
+    eq.GetTradeManager()->rejectTradeRequest();
+    EXPECT_EQ(fired, 1);
+    EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
+
+    // Not in PendingAccept: no-op, no callback.
+    eq.GetTradeManager()->rejectTradeRequest();
+    EXPECT_EQ(fired, 1);
 }
 
 // ---------------------------------------------------------------------

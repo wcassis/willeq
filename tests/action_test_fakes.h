@@ -186,6 +186,11 @@ public:
     void replyToLastTell(const std::string& message) override {
         record("replyToLastTell", message);
     }
+    // T222: a pure query, not recorded (so existing call-log assertions
+    // are unaffected). Defaults to true so pre-T222 tests keep their
+    // "reply dispatches" shape; set false to exercise the refusal.
+    bool tellToReplyTo = true;
+    bool hasTellToReplyTo() const override { return tellToReplyTo; }
 
     // ========== Group ==========
     void inviteToGroup(const std::string& playerName) override {

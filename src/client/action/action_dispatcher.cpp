@@ -718,6 +718,13 @@ ActionResult ActionDispatcher::replyToLastTell(const std::string& message) {
     if (message.empty()) {
         return ActionResult::Failure("Empty message");
     }
+    // T222: refuse visibly instead of letting the handler silently no-op
+    // (deferred.md T100 entry). Wording: no eqstr_us.txt entry exists for
+    // this case (searched "reply"/"no one"), so this is a client-authored
+    // string in the official client's register.
+    if (!m_handler->hasTellToReplyTo()) {
+        return ActionResult::Failure("You have no one to reply to.");
+    }
 
     m_handler->replyToLastTell(message);
     return ActionResult::Success();

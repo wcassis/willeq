@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/eq_action_handler.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -92,6 +93,18 @@ TEST_F(ZoneChatTest, ChannelMessage_TellFromOtherUpdatesLastTellSender) {
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
 
     EXPECT_EQ(eq.GetLastTellSender(), "Friend");
+}
+
+// T222: the real handler's hasTellToReplyTo() tracks the same state, so a
+// received tell flips the action layer's /reply gate from refuse to allow.
+TEST_F(ZoneChatTest, ActionHandler_HasTellToReplyTo_FollowsReceivedTell) {
+    eqt::EqActionHandler handler(eq);
+    EXPECT_FALSE(handler.hasTellToReplyTo());
+
+    auto payload = ChannelMessagePayload("Friend", CHAT_CHANNEL_TELL, "psst", "Testchar");
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
+
+    EXPECT_TRUE(handler.hasTellToReplyTo());
 }
 
 TEST_F(ZoneChatTest, ChannelMessage_OwnTellEchoDoesNotUpdateLastTellSender) {
