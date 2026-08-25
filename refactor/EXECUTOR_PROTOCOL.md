@@ -67,7 +67,9 @@ references this file; plans carry only unit-specific content.
   code. DB reads + documented character-position writes OK (restore
   after: Testchar → zone_id=36, x=-77.9232, y=21.9086, z=3, h=190).
   Clean shutdown (down.sh) + restore configs at end.
-- Client: build-gles2/bin/willeq (EGL surfaceless, no X needed);
+- Client: build-gles2/bin/willeq (EGL surfaceless, no X needed); ALWAYS pass
+  `--eqe1-path` on any run whose pixels will be judged — the S3D path thrashes
+  the constrained texture budget and paints placeholders (T226, not a defect);
   account willeq_test / Testchar (GM); EQ data
   /mnt/projects/EverQuestP1999; sheets /mnt/projects/EverQuest_ETC1.
   Assets are read from NFS everywhere (never copy to Pi-local).
