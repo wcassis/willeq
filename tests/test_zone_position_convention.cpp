@@ -467,3 +467,165 @@ TEST(ZonePositionConvention, PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInB
         << "expected exactly one PlayerMoved on the bridge per PlayerProfile zone-in";
     EXPECT_FLOAT_EQ(lastHeading512, 64.0f);
 }
+
+// ---------------------------------------------------------------------------
+// T231: same-zone OP_RequestClientZoneChange relocates locally, no reconnect
+// ---------------------------------------------------------------------------
+//
+// eqemu's Client::ZonePC (akk-stack zone/zoning.cpp 1055-1068) sends
+// OP_RequestClientZoneChange naming the CURRENT zone for every same-zone
+// teleport (GM summon, #goto, /rewind ...) and states the contract in its
+// own comment: "Client wont generate a zone change packet to the server in
+// this case" -- it resets zone_mode to ZoneUnsolicited and waits for the
+// client's next OP_ClientUpdate. Pre-T231 ZoneProcessRequestClientZoneChange
+// replied with OP_ZoneChange unconditionally, which the server answered with
+// SendZoneCancel (zoning.cpp 113) -> teardown -> reconnect -> landed where it
+// started (T229 Review, review/T229/).
+
+namespace {
+
+// RequestClientZoneChange_Struct (24 bytes) + 2-byte opcode = 26. Offsets
+// are the ones ZoneProcessRequestClientZoneChange reads: zone_id@2,
+// instance_id@4, wire y@6 ("server sends y first"), wire x@10, z@14,
+// heading@18 (float, eqemu 0-512 units), type@22.
+std::vector<uint8_t> BuildRequestClientZoneChange(uint16_t zone_id, uint16_t instance_id,
+                                                   float wire_y, float wire_x, float wire_z,
+                                                   float wire_heading) {
+    return BuildPayload(26, [&](EQ::Net::DynamicPacket& p) {
+        std::memset(p.Data(), 0, 26);
+        p.PutUInt16(0, 0x7834);   // HC_OP_RequestClientZoneChange
+        p.PutUInt16(2, zone_id);
+        p.PutUInt16(4, instance_id);
+        p.PutFloat(6, wire_y);
+        p.PutFloat(10, wire_x);
+        p.PutFloat(14, wire_z);
+        p.PutFloat(18, wire_heading);
+        p.PutUInt32(22, 1);       // type: the observed value the server sends
+    });
+}
+
+// NewZone_Struct: zone_short_name@66, zone_id@686 (the field that sets
+// m_current_zone_id). Same shape test_zone_connection_flow.cpp uses.
+void ReplayNewZone(EverQuest& eq, uint16_t zone_id) {
+    auto payload = BuildPayload(2 + 700, [&](EQ::Net::DynamicPacket& p) {
+        std::memset(p.Data(), 0, 2 + 700);
+        p.PutCString(66, "arena");
+        p.PutUInt16(686, zone_id);
+    });
+    ReplayZone(eq, HC_OP_NewZone, payload);
+}
+
+int CountPlayerMoved(const std::vector<eqt::state::GameEvent>& events, float* lastHeading512) {
+    int n = 0;
+    for (const auto& e : events) {
+        if (e.type == eqt::state::GameEventType::PlayerMoved) {
+            n++;
+            if (lastHeading512) {
+                *lastHeading512 = std::get<eqt::state::PlayerMovedData>(e.data).heading;
+            }
+        }
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST(SameZoneRelocation, SameZone_NoZoneChangeReply_PositionHeadingAndBridgeApplied) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+    ReplayNewZone(eq, 77);
+    (void)bridge.drainEvents();  // discard whatever NewZone published
+
+    // T229's live summon: Testchar at server (x=146, y=-1009, z=51). The
+    // wire carries y first. wire_heading=64 -> server_heading_deg=45 ->
+    // m_heading = 90 - 45 = 45 (the PlayerProfile player-heading rule).
+    auto payload = BuildRequestClientZoneChange(/*zone_id=*/77, /*instance_id=*/0,
+                                                /*wire_y=*/-1009.0f, /*wire_x=*/146.0f,
+                                                /*wire_z=*/51.0f, /*wire_heading=*/64.0f);
+    ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
+
+    // The defect: no OP_ZoneChange decision at all for a same-zone request.
+    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 0)
+        << "same-zone request must not reply with OP_ZoneChange";
+
+    // Client coords: m_x = wire y, m_y = wire x (T52 convention).
+    glm::vec3 rawPos = eq.GetPosition();
+    EXPECT_FLOAT_EQ(rawPos.x, -1009.0f);
+    EXPECT_FLOAT_EQ(rawPos.y, 146.0f);
+    EXPECT_FLOAT_EQ(rawPos.z, 51.0f);
+    glm::vec3 statePos = eq.Test_GetGameStatePlayerPosition();
+    EXPECT_FLOAT_EQ(statePos.x, -1009.0f);
+    EXPECT_FLOAT_EQ(statePos.y, 146.0f);
+    EXPECT_FLOAT_EQ(statePos.z, 51.0f);
+    EXPECT_FLOAT_EQ(eq.GetHeading(), 45.0f);
+    EXPECT_FALSE(eq.IsMoving());
+
+    // Exactly one PlayerMoved reaches the renderer-facing bridge, heading in
+    // the 512 format setPlayerPosition() expects: 45deg * 512/360 = 64.
+    float heading512 = -1.0f;
+    EXPECT_EQ(CountPlayerMoved(bridge.drainEvents(), &heading512), 1);
+    EXPECT_FLOAT_EQ(heading512, 64.0f);
+}
+
+TEST(SameZoneRelocation, SameZone_ForcedClientUpdateCarriesDestination) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.Test_SetBypassSendGuardForSeam(true);   // no live socket in a unit test
+    eq.Test_SetMySpawnIdForSeam(42);
+    ReplayNewZone(eq, 77);
+
+    auto payload = BuildRequestClientZoneChange(77, 0, /*wire_y=*/-1009.0f, /*wire_x=*/146.0f,
+                                                /*wire_z=*/51.0f, /*wire_heading=*/64.0f);
+    ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
+
+    // The OP_ClientUpdate the handler sends must put the destination back in
+    // SERVER coordinates: x_pos = m_y (server x), y_pos = m_x (server y);
+    // heading 45deg -> server 90-45=45deg -> 45*2048/360 = 256 (12-bit).
+    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    EXPECT_FLOAT_EQ(sent.x_pos, 146.0f);
+    EXPECT_FLOAT_EQ(sent.y_pos, -1009.0f);
+    EXPECT_FLOAT_EQ(sent.z_pos, 51.0f);
+    EXPECT_EQ(sent.heading_scaled, 256u);
+}
+
+TEST(SameZoneRelocation, CrossZone_StillRepliesWithZoneChange_NoLocalWrite) {
+    RecordingBridge bridge;
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.setBridge(&bridge);
+    ReplayNewZone(eq, 77);
+    (void)bridge.drainEvents();
+
+    auto payload = BuildRequestClientZoneChange(/*zone_id=*/2, 0, -1009.0f, 146.0f, 51.0f, 64.0f);
+    ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
+
+    auto req = eq.Test_GetLastZoneChangeRequest();
+    EXPECT_EQ(req.attempts, 1) << "cross-zone request must still answer with OP_ZoneChange";
+    EXPECT_EQ(req.zone_id, 2);
+    // Cross-zone: the far side's PlayerProfile sets the landing position;
+    // nothing is written locally (T55's cross-zone rule).
+    glm::vec3 rawPos = eq.GetPosition();
+    EXPECT_FLOAT_EQ(rawPos.x, 0.0f);
+    EXPECT_FLOAT_EQ(rawPos.y, 0.0f);
+    EXPECT_FLOAT_EQ(rawPos.z, 0.0f);
+    EXPECT_EQ(CountPlayerMoved(bridge.drainEvents(), nullptr), 0);
+}
+
+TEST(SameZoneRelocation, UnknownCurrentZone_KeepsHandshake) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    // No NewZone replayed: m_current_zone_id is 0 -- never guess same-zone.
+    auto payload = BuildRequestClientZoneChange(77, 0, -1009.0f, 146.0f, 51.0f, 64.0f);
+    ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
+    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 1);
+    EXPECT_FLOAT_EQ(eq.GetPosition().x, 0.0f);
+}
+
+TEST(SameZoneRelocation, NonZeroInstance_KeepsHandshake) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    ReplayNewZone(eq, 77);
+    // Same zone id but a different instance is a real move (the server's
+    // own test is zoneID && instance_id; this client always sits in 0).
+    auto payload = BuildRequestClientZoneChange(77, /*instance_id=*/3, -1009.0f, 146.0f, 51.0f, 64.0f);
+    ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
+    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 1);
+    EXPECT_FLOAT_EQ(eq.GetPosition().x, 0.0f);
+}

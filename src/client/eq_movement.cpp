@@ -1006,7 +1006,14 @@ void EverQuest::SendPositionUpdate()
 	// Allow immediate send when stopping (animation goes to 0) for responsiveness
 	bool isStoppingNow = (m_animation == 0 && lastSentAnimation != 0);
 
-	if (!m_test_bypass_send_guard && !isStoppingNow && elapsed.count() < 250) {
+	// T231: a forced update (same-zone teleport, RelocateWithinZone) skips
+	// the throttle -- the server is waiting on exactly this packet -- and
+	// restarts delta tracking from the new position so the jump is not
+	// encoded as a velocity. One-shot; consumed here.
+	const bool force_update = m_force_next_position_update;
+	m_force_next_position_update = false;
+
+	if (!m_test_bypass_send_guard && !force_update && !isStoppingNow && elapsed.count() < 250) {
 		// Throttled - skip this update
 		return;
 	}
@@ -1018,7 +1025,7 @@ void EverQuest::SendPositionUpdate()
 	static std::map<EverQuest*, std::tuple<float, float, float, float>> last_positions;
 	
 	// Initialize last position if this is the first update
-	if (last_positions.find(this) == last_positions.end()) {
+	if (force_update || last_positions.find(this) == last_positions.end()) {
 		last_positions[this] = std::make_tuple(m_x, m_y, m_z, m_heading);
 	}
 	

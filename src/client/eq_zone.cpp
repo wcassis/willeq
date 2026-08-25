@@ -63,6 +63,34 @@ void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
 	LOG_INFO(MOD_ZONE, "Server requests zone change: zone={} instance={} pos=({:.1f}, {:.1f}, {:.1f}) heading={:.1f} type={}",
 		zone_id, instance_id, target_x, target_y, target_z, heading, type);
 
+	// T231: a request naming the zone we are ALREADY in is a same-zone
+	// teleport (GM summon, #goto, /rewind, succor into the same zone, ...),
+	// not a zone change. eqemu's Client::ZonePC (akk-stack zone/zoning.cpp
+	// 1055-1068) documents the contract: "Clear zonesummon variables if
+	// we're zoning to our own zone. Client wont generate a zone change packet
+	// to the server in this case" -- it resets zone_mode to ZoneUnsolicited
+	// and waits for the client's next OP_ClientUpdate. Replying with
+	// OP_ZoneChange anyway (what this handler did before T231) made the
+	// server treat it as an unsolicited zone request with no zone point in
+	// range -> SendZoneCancel (zoning.cpp 113) -> a full teardown/reconnect
+	// that landed the client back where it started (T229's finding,
+	// review/T229/). The same-zone test mirrors the server's own
+	// (zoneID == zone->GetZoneID() && instance_id == zone->GetInstanceID());
+	// this Titanium client only ever occupies instance 0 (RequestZoneChange
+	// always sends instance_id 0), so a non-zero instance_id is a genuine
+	// cross-instance move and keeps the handshake path. An unknown current
+	// zone (m_current_zone_id == 0, no NewZone yet) also keeps the old path
+	// rather than guessing.
+	const bool same_zone = (m_current_zone_id != 0
+		&& zone_id == m_current_zone_id
+		&& instance_id == 0);
+	if (same_zone) {
+		LOG_INFO(MOD_ZONE, "Same-zone relocation (zone {}): applying locally, no OP_ZoneChange reply",
+			zone_id);
+		RelocateWithinZone(target_x, target_y, target_z, heading);
+		return;
+	}
+
 	// Respond with OP_ZoneChange to initiate the actual zone change
 	// The server will then respond with OP_ZoneChange with success=1
 	// T52 ride-along: this is a reply to a SERVER-initiated request
@@ -72,6 +100,70 @@ void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
 	// Cosmetic only: eqemu only logs zone_reason, never uses it for logic
 	// (verified against the real server source; see this unit's Review).
 	RequestZoneChange(zone_id, target_x, target_y, target_z, heading, /*solicited=*/true);
+}
+
+void EverQuest::RelocateWithinZone(float x, float y, float z, float server_heading)
+{
+	// T231: local teleport inside the current zone. x/y/z are already in
+	// client coordinates (the caller swapped the wire's y/x); server_heading
+	// is the wire float, in eqemu's 0-512 heading units -- the same field
+	// PlayerProfile carries at offset 13128 (m_pp.heading == m_Position.w).
+	//
+	// Heading conversion is a verbatim copy of ZoneProcessPlayerProfile's
+	// (eq.cpp, "LOAD-BEARING -- DO NOT HARMONIZE"): this is the PLAYER's own
+	// heading arriving from the server, exactly the case that comment
+	// covers, so it gets the same `90 - server_heading_deg` flip and the
+	// same wrap. Deliberately NOT factored into a shared helper -- see
+	// docs/CLAUDE.md, Heading/Rotation Conventions.
+	float server_heading_deg = server_heading * 360.0f / 512.0f;
+	float new_heading = 90.0f - server_heading_deg;
+	if (new_heading < 0.0f) new_heading += 360.0f;
+	if (new_heading >= 360.0f) new_heading -= 360.0f;
+
+	// Drop any in-progress scripted movement first: a MoveTo/path target
+	// left behind would march the character straight back toward the
+	// pre-teleport destination on the next UpdateMovement tick. Same fields
+	// StopMovement() clears, minus its own SendPositionUpdate() -- the
+	// forced update below is the one that must carry the new position.
+	m_current_path.clear();
+	m_current_path_index = 0;
+	m_target_x = m_target_y = m_target_z = 0.0f;
+	m_animation = ANIM_STAND;
+	SetMoving(false);
+
+	// Same write path a real zone-in uses (T55/T58): both the raw members
+	// and m_game_state.player().
+	SetPosition(x, y, z);
+	SetHeading(new_heading);
+
+	LOG_INFO(MOD_ZONE, "Relocated within zone to client=({:.2f}, {:.2f}, {:.2f}) heading={:.2f}deg (wire heading {:.2f})",
+		m_x, m_y, m_z, m_heading, server_heading);
+
+	// Move the renderer's player/camera the same way PlayerProfile does on
+	// zone-in: a hand-rolled PlayerMoved on the bridge, heading in the 512
+	// format IrrlichtRenderer::setPlayerPosition() expects. Without this, in
+	// Player mode the renderer keeps its own copy of the position and its
+	// next PlayerPositionChanged intent would drag m_x/m_y/m_z straight
+	// back. (SetPosition/SetHeading only fire on the state layer's own
+	// EventBus, which never reaches the bridge -- T58 Review trace table.)
+	if (m_bridge) {
+		eqt::state::PlayerMovedData data;
+		data.x = m_x; data.y = m_y; data.z = m_z;
+		data.heading = m_heading * 512.0f / 360.0f;
+		data.dx = 0; data.dy = 0; data.dz = 0;
+		data.isMoving = false;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(data)));
+	}
+
+	// Tell the server where we landed. For GMSummon the server already set
+	// its own m_Position (zoning.cpp 878) and broadcast it (1033); for a
+	// ZoneSolicited same-zone move (#goto and friends) it did NOT -- it
+	// relies entirely on this OP_ClientUpdate. Force it past the 250 ms
+	// throttle and with zero deltas (a teleport has no velocity; a
+	// last-position delta spanning the jump would be sent as one).
+	m_force_next_position_update = true;
+	SendPositionUpdate();
 }
 
 void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
@@ -155,6 +247,13 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 
 void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited)
 {
+	// T231 test seam: record the attempt before the connection gate, so a
+	// headless test can tell "decided to reply with OP_ZoneChange" from
+	// "decided not to" -- the send itself is unreachable without a live
+	// m_zone_connection. See Test_GetLastZoneChangeRequest.
+	m_test_last_zone_change_request.attempts++;
+	m_test_last_zone_change_request.zone_id = zone_id;
+
 	if (!IsFullyZonedIn() || !m_zone_connection) {
 		LOG_WARN(MOD_ZONE, "Cannot request zone change - not fully zoned in");
 		return;

@@ -868,6 +868,16 @@ public:
 	};
 	TestSentInspectAnswer Test_GetLastInspectAnswer() const { return m_test_last_inspect_answer; }
 
+	// T231 test seam: every RequestZoneChange() call is counted here BEFORE
+	// its live-connection gate, so a headless test can pin whether a server
+	// packet made the client decide to reply with OP_ZoneChange at all
+	// (same-zone: must not; cross-zone: must). Read-only; test-only.
+	struct TestZoneChangeRequest {
+		int attempts = 0;
+		uint16_t zone_id = 0;
+	};
+	TestZoneChangeRequest Test_GetLastZoneChangeRequest() const { return m_test_last_zone_change_request; }
+
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
 	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
@@ -1688,6 +1698,9 @@ private:
 
 	// Zone transition methods
 	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited = false);
+	// T231: same-zone OP_RequestClientZoneChange -- apply the destination
+	// locally (state + renderer + one forced OP_ClientUpdate), no zone cycle.
+	void RelocateWithinZone(float x, float y, float z, float server_heading);
 	void CleanupZone();  // Cleanup current zone state for zone transition
 	void DisconnectFromZone();  // Disconnect from current zone server
 	void ProcessDeferredZoneChange();  // Process zone change outside of callback context
@@ -2041,6 +2054,14 @@ private:
 
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;
+
+	// T231 test seam -- see Test_GetLastZoneChangeRequest().
+	TestZoneChangeRequest m_test_last_zone_change_request;
+
+	// T231: one-shot flag read by SendPositionUpdate() -- bypass the 250 ms
+	// throttle and restart delta tracking at the current position. Set only
+	// by RelocateWithinZone().
+	bool m_force_next_position_update = false;
 
 	// T170/T171: what we send as our inspect message. eqemu never tells a
 	// Titanium client its own stored message, so this client keeps its own --
