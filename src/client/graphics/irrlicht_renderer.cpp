@@ -1040,7 +1040,13 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         cmd = command;
     }
 
-    // Helper to push chat feedback via bridge
+    // Helper to push chat feedback via bridge. T233: this is registry 3's
+    // counterpart of EverQuest::AddChatSystemMessage() (eq_chat.cpp), which
+    // pushes the SystemMessage AND echoes to the console via
+    // LOG_INFO(MOD_MAIN, ...). Until T233 only the push happened here, so
+    // a --script run / log grep saw nothing for renderer commands (T142).
+    // Same module and shape as the game-registry echo so "[MAIN] <reply>"
+    // greps work identically for both registries.
     auto chat = [this](const std::string& msg) {
         if (bridge_) {
             eqt::state::ChatMessageData data;
@@ -1050,6 +1056,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             bridge_->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SystemMessage, std::move(data)));
         }
+        LOG_INFO(MOD_MAIN, "{}", msg);
     };
 
     // --- Visual rendering ---

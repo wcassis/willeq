@@ -1644,6 +1644,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
 ENDIF()
 
+# T233: registry-3 (renderer) command replies must echo to the console log
+# as well as the chat panel. Same bare-IrrlichtRenderer idiom as
+# test_irrlicht_camera_command above, plus the T31 stdout-capture idiom
+# from test_logging.cpp to observe the logging drain thread.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_renderer_command_echo
+        test_renderer_command_echo.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_renderer_command_echo PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_renderer_command_echo GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_renderer_command_echo)
+ENDIF()
+
 # T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
 # pure predicate extracted from checkProgressiveLoadingComplete() to fix the
 # deferred-entity-pickup bug T109 shipped inert around. No device needed --
