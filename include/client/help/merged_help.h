@@ -11,16 +11,11 @@
 // "stay-game" command -- only ever described registry 1's contents. This
 // module merges both catalogs into one /help response.
 //
-// SCOPE: this covers registries 1 and 2 ONLY. Registry 3 (the renderer's
-// ~36-command if/else chain reached via IrrlichtRenderer::
-// processSlashCommand(), see Application::dispatchToActionOrRenderer())
-// has NO catalog to query -- Application::printCommandResult()'s own
-// comment concedes "the renderer-side registry has no query interface
-// reachable from the game thread". Those commands remain permanently
-// invisible to /help until the renderer gets a queryable command table;
-// see refactor/deferred.md's T143 entry for the follow-up estimate. This is
-// a direct, documented consequence of T139/T140/T142's deletion of those
-// commands' game-registry duplicates, not an oversight here.
+// SCOPE (T223): registries 1 and 2 are merged from their live objects;
+// registry 3 (the renderer's if/else chain reached via IrrlichtRenderer::
+// processSlashCommand()) is described from the static catalog in
+// renderer_command_catalog.h, tagged "(graphics)". Before T223 registry 3
+// was invisible here (T143) because it had no catalog at all.
 //
 // Lives in its own TU (not folded into application.cpp, already over the
 // file-size warn threshold) so it is independently testable without
@@ -58,8 +53,9 @@ struct HelpCoverage {
     // first in the real dispatch order, so the registry-1 version is the
     // one actually reachable -- see Application::dispatchToActionOrRenderer).
     size_t dedupedCount = 0;
-    // gameCount + actionCount - dedupedCount: the number of distinct,
-    // reachable commands the merged /help can describe.
+    size_t rendererCount = 0;  // T223: registry 3's static catalog size
+    // gameCount + actionCount - dedupedCount + rendererCount: the number of
+    // distinct, reachable commands the merged /help can describe.
     size_t totalUnique = 0;
 };
 

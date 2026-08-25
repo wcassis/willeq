@@ -420,10 +420,42 @@ ADD_EXECUTABLE(test_merged_help
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
+# T223: the registry-3 drift guard parses the renderer's if/else chain source
+# text and asserts its `cmd == "/x"` literal set equals the static catalog.
+TARGET_COMPILE_DEFINITIONS(test_merged_help PRIVATE
+    RENDERER_COMMAND_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/irrlicht_renderer.cpp")
 TARGET_LINK_LIBRARIES(test_merged_help GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_merged_help)
+
+# T223: Application::dispatchToActionOrRenderer()'s registry-3 stage on a
+# bare (never initialize()d) Application -- m_graphicsInitialized is false,
+# exactly as in a --no-graphics run, so a known renderer command must be
+# REFUSED (outcome=failed with the "requires graphics mode" message), never
+# queued, and an unknown name must be unrecognized. Links willeq_core the
+# same way test_video_capture_flags does.
+ADD_EXECUTABLE(test_headless_command_refusal
+    test_headless_command_refusal.cpp
+)
+TARGET_LINK_LIBRARIES(test_headless_command_refusal GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_headless_command_refusal PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_headless_command_refusal)
+
+# T223 (T198): every configured EQE1 global archive must exist as a client
+# .s3d (asset-gated skip), and the built-in fallback copy of that list must
+# not carry the phantom gequip7.
+ADD_EXECUTABLE(test_eqe1_archive_config
+    test_eqe1_archive_config.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_eqe1_archive_config PRIVATE
+    EQE1_ARCHIVES_JSON="${CMAKE_SOURCE_DIR}/config/eqe1_archives.json"
+    RENDERER_EFFECTS_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/renderer_effects.cpp")
+TARGET_LINK_LIBRARIES(test_eqe1_archive_config GTest::gtest_main ${JSONCPP_LIBRARIES})
+GTEST_DISCOVER_TESTS(test_eqe1_archive_config)
 
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the

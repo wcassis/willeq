@@ -11,10 +11,15 @@
 #include "client/action/command_processor.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/help/merged_help.h"
+#include "client/help/renderer_command_catalog.h"
 #include "client/state/game_state.h"
 
 #include <algorithm>
+#include <fstream>
 #include <gtest/gtest.h>
+#include <regex>
+#include <set>
+#include <sstream>
 #include <string>
 
 using namespace eqt::action;
@@ -255,7 +260,12 @@ TEST_F(MergedHelpTest, CoverageCountsAndDedup) {
     // alias) against game's "shared". "actiononly" and the ~112 built-ins
     // are all distinct from {gameonly, shared, tsalias}.
     EXPECT_EQ(cov.dedupedCount, 1u);
-    EXPECT_EQ(cov.totalUnique, cov.gameCount + cov.actionCount - cov.dedupedCount);
+    // T223: registry 3's static catalog is always counted -- it does not
+    // depend on either live registry object.
+    EXPECT_EQ(cov.rendererCount, AllRendererCommands().size());
+    EXPECT_GT(cov.rendererCount, 0u);
+    EXPECT_EQ(cov.totalUnique,
+              cov.gameCount + cov.actionCount - cov.dedupedCount + cov.rendererCount);
 }
 
 TEST_F(MergedHelpTest, CoverageWithNullRegistriesIsZero) {
@@ -263,5 +273,112 @@ TEST_F(MergedHelpTest, CoverageWithNullRegistriesIsZero) {
     EXPECT_EQ(cov.gameCount, 0u);
     EXPECT_EQ(cov.actionCount, 0u);
     EXPECT_EQ(cov.dedupedCount, 0u);
-    EXPECT_EQ(cov.totalUnique, 0u);
+    // T223: only registry 3 (static) contributes with both live registries null.
+    EXPECT_EQ(cov.rendererCount, AllRendererCommands().size());
+    EXPECT_EQ(cov.totalUnique, cov.rendererCount);
+}
+
+// ===================================================================
+// T223: registry 3 (renderer if/else chain) via its static catalog
+// ===================================================================
+
+// The T143 defect: /newskills -- the only working skills-window toggle --
+// was in NO registry, so "/help newskills" said "Unknown command".
+TEST_F(MergedHelpTest, T223_NewSkillsIsFoundByHelp) {
+    HelpResponse r = BuildHelpResponse("help newskills", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_FALSE(ContainsSubstring(r.lines, "Unknown command"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== newskills ==="));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+}
+
+TEST_F(MergedHelpTest, T223_RendererAliasIsFoundByHelp) {
+    HelpResponse r = BuildHelpResponse("help ds", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== dumpscene ==="));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "/ds"));
+}
+
+TEST_F(MergedHelpTest, T223_OverviewListsGraphicsCategoryWithTag) {
+    HelpResponse r = BuildHelpResponse("help", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Graphics (graphics):"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "newskills"));
+}
+
+TEST_F(MergedHelpTest, T223_GraphicsCategoryDetailTagsEveryLine) {
+    HelpResponse r = BuildHelpResponse("help graphics", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    ASSERT_GE(r.lines.size(), 2u);
+    EXPECT_EQ(r.lines[0], "=== Graphics ===");
+    for (size_t i = 1; i < r.lines.size(); ++i) {
+        EXPECT_NE(r.lines[i].find("(graphics)"), std::string::npos) << r.lines[i];
+    }
+    EXPECT_EQ(r.lines.size() - 1, AllRendererCommands().size());
+}
+
+TEST(RendererCommandCatalogTest, LookupIsCaseInsensitiveAndSlashTolerant) {
+    ASSERT_NE(FindRendererCommand("newskills"), nullptr);
+    ASSERT_NE(FindRendererCommand("/NewSkills"), nullptr);
+    EXPECT_EQ(FindRendererCommand("/NewSkills")->name, "newskills");
+    EXPECT_EQ(FindRendererCommand("WQ")->name, "weatherquality");
+    EXPECT_EQ(FindRendererCommand("nosuchcommand"), nullptr);
+    EXPECT_EQ(FindRendererCommand(""), nullptr);
+    EXPECT_EQ(FindRendererCommand("/"), nullptr);
+}
+
+TEST(RendererCommandCatalogTest, NoDuplicateIdentifiers) {
+    std::set<std::string> seen;
+    for (const auto& info : AllRendererCommands()) {
+        EXPECT_TRUE(seen.insert(info.name).second) << "duplicate: " << info.name;
+        for (const auto& a : info.aliases) {
+            EXPECT_TRUE(seen.insert(a).second) << "duplicate alias: " << a;
+        }
+    }
+}
+
+// DRIFT GUARD (the plan's "derive from the if-chain, don't hand-duplicate"):
+// the catalog is a hand-written table, so this test derives the truth from
+// the dispatcher's own source text -- every `cmd == "/name"` literal in
+// IrrlichtRenderer::processSlashCommand() -- and requires set equality in
+// both directions. A branch added without a catalog entry, or an entry
+// whose branch was removed, fails here.
+TEST(RendererCommandCatalogTest, MatchesRendererIfChainExactly) {
+#ifndef RENDERER_COMMAND_SOURCE
+    GTEST_SKIP() << "RENDERER_COMMAND_SOURCE not defined at configure time";
+#else
+    std::ifstream in(RENDERER_COMMAND_SOURCE);
+    ASSERT_TRUE(in.is_open()) << RENDERER_COMMAND_SOURCE;
+    std::stringstream buf;
+    buf << in.rdbuf();
+    const std::string src = buf.str();
+    const size_t fnStart = src.find("IrrlichtRenderer::processSlashCommand(");
+    ASSERT_NE(fnStart, std::string::npos);
+    // The chain ends at the next member definition after the function.
+    const size_t fnEnd = src.find("\nvoid IrrlichtRenderer::", fnStart + 1);
+    ASSERT_NE(fnEnd, std::string::npos);
+    const std::string body = src.substr(fnStart, fnEnd - fnStart);
+
+    std::set<std::string> fromChain;
+    const std::regex literal(R"re(cmd == "/([A-Za-z0-9_]+)")re");
+    for (auto it = std::sregex_iterator(body.begin(), body.end(), literal);
+         it != std::sregex_iterator(); ++it) {
+        fromChain.insert((*it)[1].str());
+    }
+    ASSERT_GT(fromChain.size(), 30u) << "parser found too few literals -- pattern drift?";
+
+    std::set<std::string> fromCatalog;
+    for (const auto& info : AllRendererCommands()) {
+        fromCatalog.insert(info.name);
+        for (const auto& a : info.aliases) fromCatalog.insert(a);
+    }
+
+    for (const auto& n : fromChain) {
+        EXPECT_TRUE(fromCatalog.count(n)) << "in if-chain but NOT in catalog: /" << n;
+    }
+    for (const auto& n : fromCatalog) {
+        EXPECT_TRUE(fromChain.count(n)) << "in catalog but NOT in if-chain: /" << n;
+    }
+    EXPECT_EQ(fromChain.size(), fromCatalog.size());
+#endif
 }

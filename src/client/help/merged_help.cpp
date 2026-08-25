@@ -1,5 +1,6 @@
 #include "client/help/merged_help.h"
 
+#include "client/help/renderer_command_catalog.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/action/command_processor.h"
 
@@ -127,6 +128,18 @@ std::vector<std::string> BuildCategoryOverview(const ui::CommandRegistry* game,
         }
     }
 
+    // T223: registry 3 (renderer if/else chain) via its static catalog.
+    // Tagged so a reader knows these need graphics mode -- they are
+    // refused, not queued, in a --no-graphics run (Application::
+    // dispatchToActionOrRenderer).
+    {
+        std::vector<std::string> names;
+        for (const auto& info : AllRendererCommands()) {
+            names.push_back(info.name);
+        }
+        lines.push_back(fmt::format("{} (graphics): {}", RendererCommandCategory(), JoinNames(names)));
+    }
+
     lines.push_back("Type /help <command> for detailed help.");
     return lines;
 }
@@ -148,6 +161,11 @@ std::vector<std::string> BuildCategoryDetail(const std::string& category,
         for (const auto& info : action->getCommandsByCategory(category)) {
             if (IsShadowed(info, gameIds)) continue;
             lines.push_back(fmt::format("/{} - {} (action)", info.name, info.description));
+        }
+    }
+    if (EqualsIgnoreCase(category, RendererCommandCategory())) {
+        for (const auto& info : AllRendererCommands()) {
+            lines.push_back(fmt::format("/{} - {} (graphics)", info.name, info.description));
         }
     }
     return lines;
@@ -188,6 +206,18 @@ std::vector<std::string> BuildCommandDetail(const std::string& name,
         }
     }
 
+    // T223: registry 3, last -- matching the dispatch order (the renderer
+    // bridge is the fallback after registries 1 and 2).
+    if (const auto* info = FindRendererCommand(name)) {
+        lines.push_back(fmt::format("=== {} ===", info->name));
+        lines.push_back(info->description);
+        if (!info->aliases.empty()) {
+            lines.push_back(fmt::format("Aliases: {}", JoinAliases(info->aliases)));
+        }
+        lines.push_back("Registry: renderer (graphics)");
+        return lines;
+    }
+
     lines.push_back(fmt::format("Unknown command: {}", name));
     return lines;
 }
@@ -214,7 +244,8 @@ HelpCoverage ComputeHelpCoverage(const ui::CommandRegistry* game,
             }
         }
     }
-    cov.totalUnique = cov.gameCount + cov.actionCount - cov.dedupedCount;
+    cov.rendererCount = AllRendererCommands().size();
+    cov.totalUnique = cov.gameCount + cov.actionCount - cov.dedupedCount + cov.rendererCount;
     return cov;
 }
 
@@ -252,6 +283,10 @@ HelpResponse BuildHelpResponse(const std::string& cmdBody,
             response.lines = BuildCategoryDetail(cat, game, action);
             return response;
         }
+    }
+    if (EqualsIgnoreCase(RendererCommandCategory(), args)) {
+        response.lines = BuildCategoryDetail(RendererCommandCategory(), game, action);
+        return response;
     }
 
     response.lines = BuildCommandDetail(args, game, action);

@@ -355,6 +355,9 @@ SET(CLIENT_CORE_SOURCES
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)
     src/client/help/merged_help.cpp
+    # T223: registry 3's static catalog (graphics-independent, so headless
+    # builds can refuse renderer commands by name)
+    src/client/help/renderer_command_catalog.cpp
     # Application layer sources
     src/client/application.cpp
     src/client/eq_action_handler.cpp

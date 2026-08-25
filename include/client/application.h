@@ -187,6 +187,13 @@ struct CommandDispatchResult {
     // observable "waiting" signal on stdout instead of total silence
     // (refactor/T30_headless_shutdown_fix.md).
     bool held = false;
+
+    // T223: true iff this command was pushed onto the renderer command
+    // bridge (registry 3, fire-and-forget). printCommandResult() reports
+    // outcome=queued only for this case; a registry-3 name refused because
+    // there is no renderer (--no-graphics / EQT_GRAPHICS=OFF) is
+    // registry=renderer with queued=false and prints outcome=failed.
+    bool queued = false;
 };
 
 /**

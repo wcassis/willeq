@@ -2,6 +2,7 @@
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/help/merged_help.h"
+#include "client/help/renderer_command_catalog.h"
 #include "client/eq_action_handler.h"
 #include "client/combat.h"
 #include "client/inventory/inventory_manager.h"
@@ -1195,6 +1196,36 @@ bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, Command
     // "queued", never "applied": we cannot know here whether the renderer
     // recognized it either (the renderer-side registry has no query
     // interface reachable from the game thread).
+    //
+    // T223: registry 3 is now classified by name against its static catalog
+    // (include/client/help/renderer_command_catalog.h, drift-tested against
+    // the if/else chain) BEFORE anything is pushed. Two consequences:
+    //   - a name registry 3 does not know is reported unrecognized
+    //     (registry=none) instead of "queued" to a handler that would only
+    //     log "Unknown renderer command" on the render thread (the T139
+    //     "queued lie");
+    //   - with no renderer (a --no-graphics run, or an EQT_GRAPHICS=OFF
+    //     build -- m_graphicsInitialized is false in both), a known renderer
+    //     command is REFUSED with the message the deleted game-registry
+    //     copies used to print (T139/T142), instead of being queued onto the
+    //     ConsoleBridge where nothing listens. The refusal goes to the chat
+    //     window too, via AddChatSystemMessage(), which also echoes it to
+    //     the console log.
+    if (!eqt::help::FindRendererCommand(name)) {
+        result.registry = "none";
+        return false;
+    }
+    if (!m_graphicsInitialized) {
+        result.recognized = true;
+        result.registry = "renderer";
+        result.success = false;
+        result.message = fmt::format(
+            "/{} requires graphics mode (not available in this headless build).", name);
+        if (m_eqClient) {
+            m_eqClient->AddChatSystemMessage(result.message);
+        }
+        return true;
+    }
     if (m_bridge) {
         std::string fullCmd = "/" + cmdBody;
         m_bridge->pushEvent(eqt::state::GameEvent(
@@ -1203,6 +1234,7 @@ bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, Command
         result.recognized = true;
         result.registry = "renderer";
         result.success = false;  // "queued", not "applied" -- see comment above
+        result.queued = true;
         result.message = "queued to renderer command bridge (async, no ack)";
         return true;
     }
@@ -1222,7 +1254,9 @@ void Application::printCommandResult(const CommandDispatchResult& result) const 
     //     not a registry of its own.
     //   - "outcome=...": applied (registries 1/2, handler ran and reported
     //     success), failed (registries 1/2, handler ran and reported
-    //     failure -- see message=), queued (registry 3 -- fire-and-forget
+    //     failure -- see message=; T223: also registry 3 when there is no
+    //     renderer to queue to, i.e. a --no-graphics run refusing a
+    //     graphics command), queued (registry 3 -- fire-and-forget
     //     onto the render-thread bridge, no ack path, NOT a claim the
     //     effect landed), held (T30 -- the client isn't fully connected
     //     yet, so this command was deliberately NOT dispatched; it is
@@ -1239,7 +1273,7 @@ void Application::printCommandResult(const CommandDispatchResult& result) const 
         outcome = "held";
     } else if (!result.recognized) {
         outcome = "unrecognized";
-    } else if (result.registry == "renderer") {
+    } else if (result.queued) {
         outcome = "queued";
     } else {
         outcome = result.success ? "applied" : "failed";

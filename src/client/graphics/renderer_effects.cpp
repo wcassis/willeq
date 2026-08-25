@@ -521,7 +521,7 @@ bool IrrlichtRenderer::loadEQE1ArchiveConfig(const std::string& path) {
             "global_chr", "global2_chr", "global3_chr", "global4_chr",
             "global5_chr", "global6_chr", "global7_chr",
             "gequip", "gequip2", "gequip3", "gequip4",
-            "gequip5", "gequip6", "gequip7", "gequip8",
+            "gequip5", "gequip6", "gequip8",  // T223: no gequip7.s3d exists
             "gatesequip", "ldonequip", "lgequip", "lgequip2",
             "lgequip_amr", "lgequip_amr2",
             "loyequip", "vequip", "frogequip", "obequip_lexit",
