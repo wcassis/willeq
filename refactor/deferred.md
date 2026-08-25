@@ -42,8 +42,8 @@ Review — read that before scoping the next unit off this file.
     `EqActionHandler` TRANSFORMS methods still untested (T93); blackburrow /
     crushbone blank benchmark render (Batch H); "BSP region is SIZE_MAX"
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
-    `ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
-    latent by causality); race 330 placeholder cube unverified.
+    ~~`ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
+    latent by causality)~~ CLOSED T228 `67a131bf`; race 330 placeholder cube unverified.
   - **B — in progress / owed:** ~~`AcceptGroupInvite()` reads
     `m_pending_inviter_name` after `SendGroupFollow()` cleared it (T99)~~ —
     **CLOSED T217 `175c97ca`, live-verified two-client (review/T217/)**; skills-window cap screenshot from the official
@@ -1622,7 +1622,7 @@ repro/verification evidence. Original report follows for the record:
 
 ## TWO `state::GameState` instances exist, unconnected — the structural cause of the whole dead-state bug class (T39, 2026-08-04) — NOT FIXED, needs a ruling
 
-**2026-08-25 — DECIDED (Will): projection model is the contract; Option B COMPLETE.** `docs/decisions.md` 2026-08-25 entry. T218 `97c3d30a` (AFK/anon/roleplay projected — toggles can now turn off, live before/after) and T219 `b795a26e` (doors projected into BOTH GameStates, third `m_door_state_manager` copy DELETED, `/door` live-verified via a second client) close the last T78 breakages. **Option A (converge to one instance) is AGREED IN PRINCIPLE, strategy discussion pending** — crux: `GameStateSyncBridge::applyEvent` runs on the RENDER thread in graphics builds (`application.cpp:1424` → `PreRenderTick`) while the action layer reads on the GAME thread with no lock — a pre-existing race that convergence must resolve first (fact base: agent census 2026-08-25, see resume-state memory). Remaining gap on the Application side: player position/heading (benign; the only reader is the dead `InputActionBridge` mouse-look path, T218).
+**2026-08-25 — DECIDED (Will): projection model is the contract; Option B COMPLETE.** `docs/decisions.md` 2026-08-25 entry. T218 `97c3d30a` (AFK/anon/roleplay projected — toggles can now turn off, live before/after) and T219 `b795a26e` (doors projected into BOTH GameStates, third `m_door_state_manager` copy DELETED, `/door` live-verified via a second client) close the last T78 breakages. **Option A APPROVED (A1): stage 1 T220 `f906f697` + stage 2 T221 `eae2df68` MERGED, stage 3 T227 in flight** — crux: `GameStateSyncBridge::applyEvent` runs on the RENDER thread in graphics builds (`application.cpp:1424` → `PreRenderTick`) while the action layer reads on the GAME thread with no lock — a pre-existing race that convergence must resolve first (fact base: agent census 2026-08-25, see resume-state memory). Remaining gap on the Application side: player position/heading (benign; the only reader is the dead `InputActionBridge` mouse-look path, T218).
 
 **This is the root the entry below was a symptom of.** T39 found it while
 looking for where to wire `CombatState`, and it invalidated the wiring
@@ -9096,7 +9096,7 @@ position and `#zone`'s coord args are ignored.
   Pi build "Lima/Mesa GL 2.1"-era desktop GL. Owned by whichever unit next
   touches `docker/`; recorded so it is not re-discovered.
 
-## `InputActionBridge` heading path is dead in the graphical build — delete-unit candidate (T218, 2026-08-25)
+## `InputActionBridge` heading path is dead in the graphical build — delete-unit candidate (T218, 2026-08-25) — **CLOSED T228 `67a131bf`: processMouseInput + processContinuousInput and their state DELETED (−287 lines)**
 
 `src/client/action/input_action_bridge.cpp` reads `m_state.player().heading()`
 at two sites (T218 plan item 4). Neither is projected (no `PlayerMoved` case in
