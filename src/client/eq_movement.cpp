@@ -1455,6 +1455,9 @@ void EverQuest::SetMovementMode(MovementMode mode)
 	}
 	
 	m_movement_mode = mode;
+	// T237: write the source BEFORE the bridge publish (docs/decisions.md
+	// 2026-08-25, ONE GameState rule) -- the enums are value-identical.
+	m_game_state.player().setMovementMode(static_cast<eqt::state::MovementMode>(mode));
 
 	if (m_bridge) {
 		eqt::state::PlayerMovementModeChangedData data;
@@ -1491,6 +1494,8 @@ void EverQuest::SetPositionState(PositionState state)
 	}
 	
 	m_position_state = state;
+	// T237: source write precedes the bridge guard (see SetMovementMode).
+	m_game_state.player().setPositionState(static_cast<eqt::state::PositionState>(state));
 
 	if (m_bridge) {
 		eqt::state::PlayerPositionStateChangedData data;

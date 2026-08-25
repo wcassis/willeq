@@ -407,6 +407,42 @@ TEST_P(SourceWrites, Move_ClientUpdateForUnknownEntity_IsNoOp) {
     EXPECT_EQ(eq.GetGameState().entities().getEntity(999), nullptr);
 }
 
+// T237 (T234 finding): EverQuest::SetMovementMode()/SetPositionState() are
+// the ONLY writers of m_movement_mode/m_position_state (action handler,
+// CombatManager sit/stand, camp). Before T237 they wrote the private member
+// and the bridge event but never m_game_state.player(), so the source view
+// was permanently Run/Standing. The write must precede the `if (m_bridge)`
+// publish -- the NoBridge leg is the proof.
+TEST_P(SourceWrites, Move_SetMovementMode_WritesSourcePlayerMovementMode) {
+    ASSERT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Run);
+
+    eq.SetMovementMode(MOVE_MODE_WALK);
+    EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Walk);
+
+    eq.SetMovementMode(MOVE_MODE_SNEAK);
+    EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Sneak);
+
+    eq.SetMovementMode(MOVE_MODE_RUN);
+    EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Run);
+}
+
+TEST_P(SourceWrites, Move_SetPositionState_WritesSourcePlayerPositionState) {
+    ASSERT_EQ(eq.GetGameState().player().positionState(), eqt::state::PositionState::Standing);
+
+    const struct { PositionState in; eqt::state::PositionState want; } cases[] = {
+        {POS_SITTING, eqt::state::PositionState::Sitting},
+        {POS_CROUCHING, eqt::state::PositionState::Crouching},
+        {POS_FEIGN_DEATH, eqt::state::PositionState::FeignDeath},
+        {POS_DEAD, eqt::state::PositionState::Dead},
+        {POS_STANDING, eqt::state::PositionState::Standing},
+    };
+    for (const auto& c : cases) {
+        eq.SetPositionState(c.in);
+        EXPECT_EQ(eq.GetGameState().player().positionState(), c.want)
+            << "input " << static_cast<int>(c.in);
+    }
+}
+
 // ---------------------------------------------------------------------
 // Entity appearance
 // ---------------------------------------------------------------------

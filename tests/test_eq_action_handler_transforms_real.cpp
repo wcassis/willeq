@@ -536,23 +536,23 @@ TEST(EqActionHandlerTransformsReal, SetPositionState_Rejected_LeavesSourceUnchan
               "FeignDeath/Dead).");
 }
 
-// T234 DEFECT (not fixed here -- tests-only unit): state::PlayerState has
-// movementMode()/positionState() with setters, but PlayerState::
-// setMovementMode()/setPositionState() have ZERO production callers.
-// EverQuest::SetMovementMode()/SetPositionState() update the private
-// m_movement_mode/m_position_state and push a bridge event but never write
-// m_game_state.player(), so the GameState projection of the player's
-// movement mode / position state is permanently Run/Standing. This is the
-// T221 "written at the source" contract not being met for these two fields
-// (the reachability pattern: a setter that shipped with no caller). Enable
-// once EverQuest::SetMovementMode/SetPositionState write the projection.
-TEST(EqActionHandlerTransformsReal, DISABLED_SetMovementMode_WritesGameStatePlayerProjection) {
+// T234 found (and T237 fixed) that PlayerState::setMovementMode()/
+// setPositionState() had ZERO production callers: EverQuest::
+// SetMovementMode()/SetPositionState() updated the private members and
+// pushed the bridge event but never wrote m_game_state.player(), so the
+// GameState view of the player's movement mode / position state was
+// permanently Run/Standing (the reachability pattern: a setter that shipped
+// with no caller). T237 added the source write before the bridge guard in
+// both setters (eq_movement.cpp); these two pin it through the action
+// handler. The with/without-bridge legs live in
+// test_game_state_source_writes.cpp.
+TEST(EqActionHandlerTransformsReal, SetMovementMode_WritesGameStatePlayerProjection) {
     WireHarness h;
     h.handler.setMovementMode(2);
     EXPECT_EQ(h.eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Sneak);
 }
 
-TEST(EqActionHandlerTransformsReal, DISABLED_SetPositionState_WritesGameStatePlayerProjection) {
+TEST(EqActionHandlerTransformsReal, SetPositionState_WritesGameStatePlayerProjection) {
     WireHarness h;
     h.handler.setPositionState(1);
     EXPECT_EQ(h.eq.GetGameState().player().positionState(), eqt::state::PositionState::Sitting);
