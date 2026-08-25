@@ -1615,6 +1615,8 @@ repro/verification evidence. Original report follows for the record:
 
 ## TWO `state::GameState` instances exist, unconnected — the structural cause of the whole dead-state bug class (T39, 2026-08-04) — NOT FIXED, needs a ruling
 
+**2026-08-25 — DECIDED (Will): projection model is the contract; Option B COMPLETE.** `docs/decisions.md` 2026-08-25 entry. T218 `97c3d30a` (AFK/anon/roleplay projected — toggles can now turn off, live before/after) and T219 `b795a26e` (doors projected into BOTH GameStates, third `m_door_state_manager` copy DELETED, `/door` live-verified via a second client) close the last T78 breakages. **Option A (converge to one instance) is AGREED IN PRINCIPLE, strategy discussion pending** — crux: `GameStateSyncBridge::applyEvent` runs on the RENDER thread in graphics builds (`application.cpp:1424` → `PreRenderTick`) while the action layer reads on the GAME thread with no lock — a pre-existing race that convergence must resolve first (fact base: agent census 2026-08-25, see resume-state memory). Remaining gap on the Application side: player position/heading (benign; the only reader is the dead `InputActionBridge` mouse-look path, T218).
+
 **This is the root the entry below was a symptom of.** T39 found it while
 looking for where to wire `CombatState`, and it invalidated the wiring
 site the plan had suggested.
