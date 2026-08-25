@@ -2020,6 +2020,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill)
 
+# T230: keyboard hotbar Item route below the action layer --
+# EqActionHandler::findItemSlotByItemId (the id->slot hop) and
+# EqActionHandler::useItem -> EverQuest::UseInventoryItem (the one click-
+# effect sender, shared with the mouse path). Same headless EverQuest +
+# RecordingBridge idiom as test_eq_action_handler_tradeskill above.
+ADD_EXECUTABLE(test_eq_action_handler_hotbar_item
+    test_eq_action_handler_hotbar_item.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_item GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_item PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_item)
+
 # T152: the two skill-opcode bodies this client had to build from scratch
 # (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
 # eqemu's Disarm_Struct / PickPocket_Struct. Header-only -- no willeq_core, no

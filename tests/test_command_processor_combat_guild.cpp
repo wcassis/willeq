@@ -74,6 +74,40 @@ TEST_F(CommandProcessorTest, Target_Alias_ResolvesEntityAndDispatches) {
     ASSERT_TRUE(handler.calledOnceWith("targetEntity(1234)"));
 }
 
+// T230: with CombatManager::SetTarget(name) deleted, /target's resolver is
+// THE name resolver. Pin the two behaviours only the ranked resolver has and
+// the deleted one lacked: case-insensitive matching, and living-over-corpse
+// ranking when both match (T173). Same Entity shape T173's EntityManager
+// tests use (npcType 2 == corpse, name "<X>'s corpse<id>").
+TEST_F(CommandProcessorTest, Target_CaseInsensitive_ResolvesThroughRankedResolver) {
+    eqt::state::Entity e;
+    e.spawnId = 77;
+    e.name = "Guard_Roland";
+    state.entities().addEntity(e);
+
+    auto result = processor->processCommand("/target guard_ROLAND");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("targetEntity(77)"));
+}
+
+TEST_F(CommandProcessorTest, Target_PrefersLivingOverOwnCorpse) {
+    eqt::state::Entity corpse;
+    corpse.spawnId = 10;                      // lower id: matches FIRST in map order
+    corpse.name = "Testmelee's corpse237";
+    corpse.npcType = 2;
+    corpse.isCorpse = true;
+    state.entities().addEntity(corpse);
+
+    eqt::state::Entity living;
+    living.spawnId = 20;
+    living.name = "Testmelee";
+    state.entities().addEntity(living);
+
+    auto result = processor->processCommand("/target testmelee");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("targetEntity(20)"));
+}
+
 TEST_F(CommandProcessorTest, Target_NameNotFound_FailsCleanlyWithoutDispatching) {
     auto result = processor->processCommand("/target nosuchmob");
     EXPECT_FALSE(result.success);

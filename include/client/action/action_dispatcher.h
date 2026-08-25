@@ -122,7 +122,10 @@ public:
     // ========== Combat ==========
 
     virtual void targetEntity(uint16_t spawnId) = 0;
-    virtual void targetEntityByName(const std::string& name) = 0;
+    // T230: targetEntityByName(name) was deleted from this interface -- it
+    // was a second, divergent name resolver with no production caller. Name
+    // resolution is CommandProcessor's job (EntityManager::findEntityByName);
+    // the handler only ever receives a resolved spawn id.
     virtual void targetNearest() = 0;
     virtual void targetNearestPC() = 0;
     virtual void targetNearestNPC() = 0;
@@ -225,6 +228,13 @@ public:
     virtual void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity = 0) = 0;
     virtual void deleteItem(int16_t slot) = 0;
     virtual void useItem(int16_t slot) = 0;
+
+    // T230: the item-id -> inventory-slot hop the keyboard hotbar route needs.
+    // A hotbar Item slot stores an ITEM id; useItem() takes an INVENTORY slot.
+    // Returns eqt::inventory::SLOT_INVALID (-1) when the item is not in the
+    // player's inventory (or there is no inventory). Same lookup the mouse
+    // path performs (InventoryManager::findItemSlotByItemId, eq_bridge.cpp).
+    virtual int16_t findItemSlotByItemId(uint32_t itemId) = 0;
 
     // T141: /equip's three input forms (slot-pair / item-name / list) all
     // arrive as one free-text string, same shape as chat's sendChatMessage
@@ -617,11 +627,6 @@ public:
     ActionResult targetEntity(uint16_t spawnId);
 
     /**
-     * Target an entity by name.
-     */
-    ActionResult targetEntityByName(const std::string& name);
-
-    /**
      * Target the nearest entity.
      */
     ActionResult targetNearest();
@@ -911,6 +916,15 @@ public:
      * Use an item (right-click).
      */
     ActionResult useItem(int16_t slot);
+
+    /**
+     * T230: use an item identified by ITEM id (what a hotbar Item slot
+     * stores). Resolves the inventory slot through the handler
+     * (IActionHandler::findItemSlotByItemId) and then calls useItem(slot).
+     * Fails -- with the mouse path's exact message, "Item not found in
+     * inventory" -- and sends nothing when the item is not carried.
+     */
+    ActionResult useItemById(uint32_t itemId);
 
     /**
      * T141: /equip -- move/equip an item by slot numbers, by name, or

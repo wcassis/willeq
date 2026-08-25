@@ -205,14 +205,6 @@ ActionResult ActionDispatcher::targetEntity(uint16_t spawnId) {
     return ActionResult::Success();
 }
 
-ActionResult ActionDispatcher::targetEntityByName(const std::string& name) {
-    auto result = checkZoneConnection();
-    if (!result.success) return result;
-
-    m_handler->targetEntityByName(name);
-    return ActionResult::Success();
-}
-
 ActionResult ActionDispatcher::targetSelf() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
@@ -872,6 +864,21 @@ ActionResult ActionDispatcher::useItem(int16_t slot) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
+    m_handler->useItem(slot);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::useItemById(uint32_t itemId) {
+    // T230: keyboard hotbar Item route. The id->slot hop happens HERE, in
+    // the action layer, so the bridge never has to guess -- calling
+    // useItem(itemId) would fire whatever sits in inventory slot #itemId.
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    const int16_t slot = m_handler->findItemSlotByItemId(itemId);
+    if (slot < 0) {
+        return ActionResult::Failure("Item not found in inventory");
+    }
     m_handler->useItem(slot);
     return ActionResult::Success();
 }

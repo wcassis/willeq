@@ -259,41 +259,14 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 	return false;
 }
 
-// T173 — READ BEFORE USING THIS. This is the SECOND name resolver, and it is
-// NOT the one /target uses: cmdTarget resolves through
-// EntityManager::findEntityByName (state layer), which T173 taught to rank a
-// living entity above its own corpse. This one still does exact-then-substring
-// with no corpse ranking, and it is case-SENSITIVE where the other is not
-// (T97 flagged that divergence and it is still here).
-//
-// It was left alone deliberately, because it is UNREACHED:
-// EqActionHandler::targetEntityByName is its only caller, and that has ZERO
-// production callers of its own -- the reachability pattern again. Fixing dead
-// code proves nothing and would have meant a second copy of the ranking on a
-// different Entity type; deleting the whole targetEntityByName path crosses
-// three layers and is a disposition call, not a bug fix.
-//
-// **Disposition owed: wire it through a shared ranking, or delete it.** Do not
-// simply start calling it -- it carries the trap T173 removed from the live
-// path.
-bool CombatManager::SetTarget(const std::string& name) {
-	// Find entity by name
-	const auto& entities = m_eq->GetEntities();
-	for (const auto& [id, entity] : entities) {
-		if (entity.name == name) {
-			return SetTarget(id);
-		}
-	}
-
-	// Try partial match
-	for (const auto& [id, entity] : entities) {
-		if (entity.name.find(name) != std::string::npos) {
-			return SetTarget(id);
-		}
-	}
-
-	return false;
-}
+// T230: CombatManager::SetTarget(const std::string&) -- the SECOND,
+// case-sensitive, corpse-unaware name resolver T173 flagged -- was DELETED
+// here together with its only caller chain (IActionHandler /
+// ActionDispatcher / EqActionHandler::targetEntityByName), none of which
+// had a production caller. The ONE name resolver is
+// EntityManager::findEntityByName (state layer, case-insensitive,
+// living-over-corpse ranking), reached via CommandProcessor::cmdTarget;
+// this class only ever targets by resolved spawn id now.
 
 void CombatManager::ClearTarget() {
 	m_current_target_id = 0;
@@ -321,7 +294,7 @@ void CombatManager::ClearTarget() {
 // pushes cross-thread bridge events. Called only from SetTarget(uint16_t)/
 // ClearTarget()/EnableAutoAttack()/DisableAutoAttack() -- the choke points
 // that own m_current_target_id/m_auto_attack_enabled -- so every caller
-// (SetTarget(name), CycleTargets, auto-hunt, EqActionHandler's direct
+// (CycleTargets, auto-hunt, EqActionHandler's direct
 // calls, the TargetIntent path) is covered without touching any of them.
 // No-op if there is no bridge (headless-without-graphics runs, or tests
 // that never call EverQuest::setBridge()) -- mirrors every other

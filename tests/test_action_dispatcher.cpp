@@ -152,7 +152,7 @@ TEST_F(ActionDispatcherTest, TargetingFamily_EachMemberRoutesToItsOwnHandlerMeth
     connectZone();
 
     dispatcher->targetEntity(42);
-    dispatcher->targetEntityByName("Alice");
+    // T230: targetEntityByName was deleted (unreached second name resolver).
     dispatcher->targetNearest();
     dispatcher->targetNearestPC();
     dispatcher->targetNearestNPC();
@@ -162,17 +162,16 @@ TEST_F(ActionDispatcherTest, TargetingFamily_EachMemberRoutesToItsOwnHandlerMeth
     dispatcher->targetSelf();
     dispatcher->targetGroupMember(3);
 
-    ASSERT_EQ(handler.count(), 10u);
+    ASSERT_EQ(handler.count(), 9u);
     EXPECT_EQ(handler.calls[0], "targetEntity(42)");
-    EXPECT_EQ(handler.calls[1], "targetEntityByName(\"Alice\")");
-    EXPECT_EQ(handler.calls[2], "targetNearest()");
-    EXPECT_EQ(handler.calls[3], "targetNearestPC()");
-    EXPECT_EQ(handler.calls[4], "targetNearestNPC()");
-    EXPECT_EQ(handler.calls[5], "cycleTargets()");
-    EXPECT_EQ(handler.calls[6], "cycleTargetsReverse()");
-    EXPECT_EQ(handler.calls[7], "clearTarget()");
-    EXPECT_EQ(handler.calls[8], "targetSelf()");
-    EXPECT_EQ(handler.calls[9], "targetGroupMember(3)");
+    EXPECT_EQ(handler.calls[1], "targetNearest()");
+    EXPECT_EQ(handler.calls[2], "targetNearestPC()");
+    EXPECT_EQ(handler.calls[3], "targetNearestNPC()");
+    EXPECT_EQ(handler.calls[4], "cycleTargets()");
+    EXPECT_EQ(handler.calls[5], "cycleTargetsReverse()");
+    EXPECT_EQ(handler.calls[6], "clearTarget()");
+    EXPECT_EQ(handler.calls[7], "targetSelf()");
+    EXPECT_EQ(handler.calls[8], "targetGroupMember(3)");
 }
 
 TEST_F(ActionDispatcherTest, AutoAttackFamily_EachMemberRoutesDistinctly) {
@@ -391,6 +390,43 @@ TEST_F(ActionDispatcherTest, InventoryFamily_MoveDeleteUse) {
     EXPECT_EQ(handler.calls[0], "moveItem(1, 2, 5)");
     EXPECT_EQ(handler.calls[1], "deleteItem(3)");
     EXPECT_EQ(handler.calls[2], "useItem(4)");
+}
+
+// T230: useItemById() is the keyboard hotbar's route. It resolves the ITEM
+// id to an INVENTORY slot through the handler and only then calls
+// useItem(slot) -- never useItem(itemId).
+TEST_F(ActionDispatcherTest, UseItemById_ResolvesInventorySlotThenUsesIt) {
+    connectHandler();
+    connectZone();
+    handler.inventoryByItemId[1234] = 24;  // item 1234 sits in general slot 24
+
+    auto result = dispatcher->useItemById(1234);
+
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("useItem(24)"));
+    EXPECT_EQ(handler.count(), 1u);
+}
+
+TEST_F(ActionDispatcherTest, UseItemById_ItemNotCarried_FailsWithMousePathMessageAndNoUse) {
+    connectHandler();
+    connectZone();
+    // inventoryByItemId empty: nothing carried.
+
+    auto result = dispatcher->useItemById(1234);
+
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "Item not found in inventory");
+    EXPECT_TRUE(handler.empty());  // and crucially not useItem(1234)
+}
+
+TEST_F(ActionDispatcherTest, UseItemById_NotZoneConnected_FailsBeforeLookup) {
+    connectHandler();
+    handler.inventoryByItemId[1234] = 24;
+
+    auto result = dispatcher->useItemById(1234);
+
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
 }
 
 TEST_F(ActionDispatcherTest, SpellbookFamily_GemBoundsAndRouting) {

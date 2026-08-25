@@ -158,7 +158,6 @@ public:
 
 	// Targeting
 	bool SetTarget(uint16_t entity_id);
-	bool SetTarget(const std::string& name);
 	void ClearTarget();
 	uint16_t GetTargetId() const { return m_current_target_id; }
 	bool HasTarget() const { return m_current_target_id != 0; }

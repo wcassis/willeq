@@ -45,7 +45,6 @@ public:
     // ========== Combat ==========
 
     void targetEntity(uint16_t spawnId) override;
-    void targetEntityByName(const std::string& name) override;
     void targetNearest() override;
     void targetNearestPC() override;
     void targetNearestNPC() override;
@@ -121,6 +120,7 @@ public:
     void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity) override;
     void deleteItem(int16_t slot) override;
     void useItem(int16_t slot) override;
+    int16_t findItemSlotByItemId(uint32_t itemId) override;  // T230
     void equip(const std::string& args) override;  // T141
 
     // ========== Spellbook ==========

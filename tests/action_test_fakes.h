@@ -11,6 +11,7 @@
 
 #include "client/action/action_dispatcher.h"
 #include "client/input/input_handler.h"
+#include <map>
 #include <optional>
 #include <queue>
 #include <set>
@@ -106,9 +107,6 @@ public:
     // ========== Combat ==========
     void targetEntity(uint16_t spawnId) override {
         record("targetEntity", spawnId);
-    }
-    void targetEntityByName(const std::string& name) override {
-        record("targetEntityByName", name);
     }
     void targetNearest() override { record("targetNearest"); }
     void targetNearestPC() override { record("targetNearestPC"); }
@@ -214,6 +212,14 @@ public:
     }
     void deleteItem(int16_t slot) override { record("deleteItem", slot); }
     void useItem(int16_t slot) override { record("useItem", slot); }
+    // T230: scripted item-id -> inventory-slot table for useItemById();
+    // absent id -> SLOT_INVALID (-1), like a real empty inventory. The
+    // lookup is a query, not an action, so it is NOT recorded in `calls`.
+    std::map<uint32_t, int16_t> inventoryByItemId;
+    int16_t findItemSlotByItemId(uint32_t itemId) override {
+        auto it = inventoryByItemId.find(itemId);
+        return it == inventoryByItemId.end() ? int16_t(-1) : it->second;
+    }
     // T141
     void equip(const std::string& args) override { record("equip", args); }
 

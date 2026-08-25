@@ -1331,40 +1331,16 @@ void EverQuest::ProcessBridgeIntents() {
 					break;
 				}
 				case eqt::HotbarSlotType::Item: {
+					// T230: the id->slot hop + click-effect send now live in
+					// UseInventoryItem(), shared with the keyboard route
+					// (EqActionHandler::useItem <- ActionDispatcher::useItemById).
 					if (m_inventory_manager) {
 						int16_t slot = m_inventory_manager->findItemSlotByItemId(i.id);
 						if (slot == eqt::inventory::SLOT_INVALID) {
 							AddChatSystemMessage("Item not found in inventory");
 							break;
 						}
-						const auto* item = m_inventory_manager->getItem(slot);
-						if (!item) { AddChatSystemMessage("Item not found"); break; }
-						if (item->clickEffect.effectId == 0) {
-							AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
-							break;
-						}
-						if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
-							AddChatSystemMessage("You must equip this item to use its effect");
-							break;
-						}
-						EQ::Net::DynamicPacket packet;
-						packet.Resize(20);
-						packet.PutUInt32(0, 10);  // slot = 10 for item clicks
-						packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));
-						packet.PutUInt32(8, static_cast<uint32_t>(slot));
-						uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-						packet.PutUInt32(12, targetId);
-						packet.PutUInt32(16, 0);
-						QueuePacket(HC_OP_CastSpell, &packet);
-						AddChatSystemMessage(fmt::format("Using {}", item->name));
-						// Send cooldown feedback to renderer
-						if (item->clickEffect.recastDelay > 0 && m_bridge) {
-							eqt::state::HotbarCooldownStartedData cd;
-							cd.index = i.index;
-							cd.durationMs = item->clickEffect.recastDelay;
-							m_bridge->pushEvent(eqt::state::GameEvent(
-								eqt::state::GameEventType::HotbarCooldownStarted, std::move(cd)));
-						}
+						UseInventoryItem(slot);
 					}
 					break;
 				}
@@ -2009,4 +1985,55 @@ void EverQuest::PlayUISound(uint32_t soundId) {
 }
 
 #endif // WITH_AUDIO
- 
+
+// T230: the one item click-effect sender. Extracted verbatim from the
+// HotbarActivateIntent Item arm above (the mouse path), which now calls it
+// after its own id->slot hop; EqActionHandler::useItem() (the keyboard
+// hotbar route, via ActionDispatcher::useItemById) calls it directly with an
+// already-resolved slot. The cooldown feedback is no longer tied to the one
+// clicked hotbar index: every hotbar slot holding this item id gets the
+// HotbarCooldownStarted event, which is what the keyboard route needs (it has
+// no intent carrying an index) and is a superset of what the mouse path did.
+bool EverQuest::UseInventoryItem(int16_t slot) {
+	if (!m_inventory_manager) {
+		AddChatSystemMessage("Item not found in inventory");
+		return false;
+	}
+	const auto* item = m_inventory_manager->getItem(slot);
+	if (!item) {
+		AddChatSystemMessage("Item not found");
+		return false;
+	}
+	if (item->clickEffect.effectId == 0) {
+		AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
+		return false;
+	}
+	if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
+		AddChatSystemMessage("You must equip this item to use its effect");
+		return false;
+	}
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(20);
+	packet.PutUInt32(0, 10);  // slot = 10 for item clicks
+	packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));
+	packet.PutUInt32(8, static_cast<uint32_t>(slot));
+	uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+	packet.PutUInt32(12, targetId);
+	packet.PutUInt32(16, 0);
+	QueuePacket(HC_OP_CastSpell, &packet);
+	AddChatSystemMessage(fmt::format("Using {}", item->name));
+
+	// Cooldown feedback to the renderer for every hotbar slot holding this item.
+	if (item->clickEffect.recastDelay > 0 && m_bridge && m_hotbar_model) {
+		for (int idx = 0; idx < m_hotbar_model->getSlotCount(); ++idx) {
+			const eqt::HotbarSlot& hs = m_hotbar_model->getSlot(idx);
+			if (hs.type != eqt::HotbarSlotType::Item || hs.id != item->itemId) continue;
+			eqt::state::HotbarCooldownStartedData cd;
+			cd.index = idx;
+			cd.durationMs = static_cast<uint32_t>(item->clickEffect.recastDelay);
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::HotbarCooldownStarted, std::move(cd)));
+		}
+	}
+	return true;
+}

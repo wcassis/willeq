@@ -423,22 +423,37 @@ TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
     EXPECT_TRUE(reportedOnce("UseSkill", true));
 }
 
-TEST_F(InputActionBridgeTest, HotbarItemSlot_IsSkippedNotMisfired) {
-    // An Item slot carries an ITEM id, but useItem() takes an INVENTORY SLOT,
-    // and the action layer here cannot resolve the id->slot hop the mouse path
-    // does. So the Item slot must NOT reach the dispatcher at all -- firing
-    // useItem(item_id) would use the wrong inventory slot. It is skipped (like
-    // Emote) until an id->slot resolver exists here. The important negative:
-    // it does NOT fall through to castSpell either.
+// T230: an Item slot carries an ITEM id, but useItem() takes an INVENTORY
+// SLOT. The keyboard route now goes through ActionDispatcher::useItemById(),
+// which resolves the hop through IActionHandler::findItemSlotByItemId (the
+// same InventoryManager lookup the mouse path does) and only then calls
+// useItem(resolvedSlot). Before T230 the arm was a logged skip (measured red:
+// see refactor/T230_target_resolver_and_hotbar_items.md).
+TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemWithResolvedInventorySlot) {
     eqt::HotbarModel model;
     model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
     bridge->setHotbarModel(&model);
+    handler.inventoryByItemId[1234] = 24;  // carried in general slot 24
 
     input.hotbarRequests.push({3});
     update();
 
-    EXPECT_TRUE(handler.empty());   // no useItem, and crucially no castSpell
-    EXPECT_TRUE(reported.empty());
+    EXPECT_TRUE(handler.calledOnceWith("useItem(24)"));  // the SLOT, not the id
+    EXPECT_EQ(handler.count(), 1u);                      // and no castSpell
+    EXPECT_TRUE(reportedOnce("UseItem", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarItemSlot_ItemNotCarried_FailsWithoutUsing) {
+    eqt::HotbarModel model;
+    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);
+    bridge->setHotbarModel(&model);
+    // handler.inventoryByItemId empty: item 1234 is not in inventory.
+
+    input.hotbarRequests.push({3});
+    update();
+
+    EXPECT_TRUE(handler.empty());   // no useItem(1234) misfire, no castSpell
+    EXPECT_TRUE(reportedOnce("UseItem", false));
 }
 
 TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {

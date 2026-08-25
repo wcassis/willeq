@@ -2303,6 +2303,15 @@ public:
 	// eq_commands.cpp. See refactor/T141_equip_extraction.md.
 	void RequestEquip(const std::string& args);
 
+	// T230: fire an inventory item's click effect (OP_CastSpell, slot 10)
+	// from an INVENTORY slot. The one sender for both the mouse hotbar path
+	// (HotbarActivateIntent, Item) and the keyboard hotbar path
+	// (EqActionHandler::useItem). Every refusal is reported via
+	// AddChatSystemMessage; returns true only when the packet was queued.
+	// Pushes HotbarCooldownStarted for each hotbar slot holding the item.
+	// Defined in eq_bridge.cpp.
+	bool UseInventoryItem(int16_t slot);
+
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
 	void CloseBankWindow();

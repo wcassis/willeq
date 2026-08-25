@@ -90,36 +90,12 @@ TEST(CombatManagerTargeting, SetTargetById_MissOnUnknownIdWithNonEmptyTable) {
     EXPECT_FALSE(cm->HasTarget());
 }
 
-TEST(CombatManagerTargeting, SetTargetByName_ExactMatch) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadAt(200, "Guard_Test", 0, 10, 0)));
-    auto* cm = eq.GetCombatManager();
-
-    EXPECT_TRUE(cm->SetTarget(std::string("Guard_Test")));
-    EXPECT_EQ(cm->GetTargetId(), 200);
-}
-
-TEST(CombatManagerTargeting, SetTargetByName_PartialMatchFallback) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadAt(300, "a_swamp_snake", 0, 10, 0)));
-    auto* cm = eq.GetCombatManager();
-
-    // "snake" is not an exact name but is found as a substring.
-    EXPECT_TRUE(cm->SetTarget(std::string("snake")));
-    EXPECT_EQ(cm->GetTargetId(), 300);
-}
-
-TEST(CombatManagerTargeting, SetTargetByName_Miss) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadAt(300, "a_swamp_snake", 0, 10, 0)));
-    auto* cm = eq.GetCombatManager();
-
-    EXPECT_FALSE(cm->SetTarget(std::string("nonexistent")));
-    EXPECT_FALSE(cm->HasTarget());
-}
+// T230: the SetTargetByName_* tests were deleted with
+// CombatManager::SetTarget(const std::string&) -- the second, case-sensitive,
+// corpse-unaware name resolver (T173/T97) that no production code reached.
+// Name resolution is covered where it lives now: EntityManagerTest.
+// FindEntityByName* (test_state_modules.cpp) and CommandProcessorTest.
+// Target_* (test_command_processor_combat_guild.cpp).
 
 TEST(CombatManagerTargeting, ClearTarget) {
     EverQuest eq = MakeEq();

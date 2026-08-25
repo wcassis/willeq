@@ -5,6 +5,7 @@
 #include "client/spell/spell_manager.h"
 #include "client/skill/skill_manager.h"      // T156: useSkill() reaches SkillManager
 #include "client/skill/skill_constants.h"
+#include "client/inventory/inventory_manager.h"  // T230: item-id -> slot hop
 #include "client/trade_manager.h"
 #include "client/world_object.h"  // T149: open-container object_type lookup
 #include "client/state/game_state.h"
@@ -220,13 +221,6 @@ void EqActionHandler::targetEntity(uint16_t spawnId) {
     if (combat) {
         combat->SetTarget(spawnId);
         updateRendererTargetInfo(spawnId);
-    }
-}
-
-void EqActionHandler::targetEntityByName(const std::string& name) {
-    auto* combat = getCombatManager();
-    if (combat) {
-        combat->SetTarget(name);
     }
 }
 
@@ -772,8 +766,16 @@ void EqActionHandler::deleteItem(int16_t slot) {
 }
 
 void EqActionHandler::useItem(int16_t slot) {
-    // Right-click use would need cast item or activate
-    LOG_DEBUG(MOD_INVENTORY, "Use item not yet implemented");
+    // T230: was a stub ("Use item not yet implemented") -- the keyboard
+    // hotbar Item route now lands here, so it reaches the same click-effect
+    // sender the mouse path uses (EverQuest::UseInventoryItem, eq_bridge.cpp).
+    m_eq.UseInventoryItem(slot);
+}
+
+int16_t EqActionHandler::findItemSlotByItemId(uint32_t itemId) {
+    auto* inv = m_eq.GetInventoryManager();
+    if (!inv) return eqt::inventory::SLOT_INVALID;
+    return inv->findItemSlotByItemId(itemId);
 }
 
 // T141: /equip's three input forms all arrive as one free-text string --

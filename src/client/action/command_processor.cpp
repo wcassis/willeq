@@ -1365,10 +1365,11 @@ ActionResult CommandProcessor::cmdTarget(const std::string& args) {
     // assist/shield/duel below, target has no "use current target"
     // fallback -- it IS how you set the current target). Resolution itself
     // (case-insensitive substring match) is EntityManager::findEntityByName(),
-    // matching game's own lowercase-both-sides search semantics exactly --
-    // CombatManager::SetTarget(std::string) (T97: case-SENSITIVE, a real,
-    // if minor, divergence) is deliberately NOT used for the search; only
-    // its resolved-id overload (via ActionDispatcher::targetEntity(), unchanged) is.
+    // matching game's own lowercase-both-sides search semantics exactly.
+    // T230: this is now the ONE name resolver -- CombatManager::SetTarget(
+    // std::string) (T97: case-SENSITIVE; T173: corpse-unaware) was deleted
+    // with its unreached targetEntityByName chain; only the resolved-id
+    // path (ActionDispatcher::targetEntity()) remains.
     if (args.empty()) {
         return ActionResult::Failure("Usage: /target <name>");
     }

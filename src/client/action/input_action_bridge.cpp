@@ -322,21 +322,21 @@ void InputActionBridge::processHotbarRequests() {
                 reportAction("UseSkill", m_dispatcher.useSkill(slot.id));
                 break;
             case eqt::HotbarSlotType::Item:
-                // slot.id is an ITEM id, but ActionDispatcher::useItem() takes
-                // an INVENTORY SLOT (the mouse path resolves the hop first, via
-                // InventoryManager::findItemSlotByItemId, eq_bridge.cpp:1328).
-                // The action layer here has no InventoryManager, so there is no
-                // safe route yet: calling useItem(item_id) would fire whatever
-                // sits in inventory slot #item_id (and truncate past int16).
-                // Skip -- a mis-fire is worse than a no-op. Owed: an id->slot
-                // resolver reachable from here. See refactor/T174_keyboard_hotbar.md.
+                // T230: slot.id is an ITEM id; ActionDispatcher::useItemById()
+                // resolves it to an INVENTORY slot through the handler
+                // (IActionHandler::findItemSlotByItemId, the same
+                // InventoryManager lookup the mouse path does) and only then
+                // calls useItem(slot). Not carried -> Failure("Item not found
+                // in inventory"), nothing sent. Was a logged skip (T174).
+                reportAction("UseItem", m_dispatcher.useItemById(slot.id));
+                break;
             case eqt::HotbarSlotType::Empty:
             case eqt::HotbarSlotType::Emote:
             case eqt::HotbarSlotType::Macro:
             case eqt::HotbarSlotType::Combat:
-                // No safe ActionDispatcher route: Item needs an id->slot hop
-                // (above), Emote/Macro carry command text that needs the
-                // command processor (ProcessChatInput on the mouse path),
+                // No safe ActionDispatcher route: Emote/Macro carry command
+                // text that needs the command processor (ProcessChatInput on
+                // the mouse path) -- still owed (T174, T230 left them);
                 // Combat is unwired everywhere, and Empty is nothing. Log and
                 // skip rather than fire the wrong thing -- mirrors the
                 // defensive no-op arms of eq_bridge.cpp's hotbar switch.
