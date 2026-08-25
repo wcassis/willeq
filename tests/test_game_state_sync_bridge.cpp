@@ -228,7 +228,7 @@ TEST_F(GameStateSyncBridgeTest, InventorySlotChangedStillDelegatesToWrappedBridg
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
 }
 
-// ======================================================================
+// ============================================================================
 
 // T44: SpellGemChanged / SpellCastStarted / SpellCastComplete, replacing
 // Application::syncSpellState(). SpellCastStarted/SpellCastComplete carry a
