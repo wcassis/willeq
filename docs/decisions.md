@@ -432,3 +432,20 @@ debugging session, do not rediscover them):
 - Automation needs to know when a command has been *applied*, not just
   accepted — stdout has to carry a result, or scripts go back to sleeping
   and guessing, which is the class of bug T26 just removed.
+
+## 2026-08-25 — Two `state::GameState` instances: projection model is the contract (Will)
+
+**Decision:** `EverQuest::m_game_state` is the WRITE model (packet handlers
+mutate it directly). `Application::m_gameState` is a READ model for the
+action/command layer, populated ONLY by `GameStateSyncBridge`'s event
+projection. **Every new action-layer read of `m_state.<domain>()` must have a
+corresponding projection case in `GameStateSyncBridge`, added in the same
+unit, with a test that fails when the case is absent.** T78's analysis
+(`refactor/T78_two_gamestate_analysis.md`) found five silently-broken command
+families from missing projections; T81/T99/T103/T104 closed four this way.
+T218 (player flags, heading) and T219 (doors — which also retires the third
+door instance `EverQuest::m_door_state_manager`) close the rest.
+
+**Follow-on, agreed in principle, NOT started:** converge on a single
+instance (T78 Option A) once T218/T219 land, with the projection tests as the
+regression net. Strategy to be discussed with Will before any refactor work.
