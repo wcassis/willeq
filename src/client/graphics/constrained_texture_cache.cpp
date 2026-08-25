@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <fstream>
+#include <cstdlib>
 
 // P03: the EQE1 upload path (ETC1 + v2 payloads) is available on any GLES2
 // driver build, not just DRM/ARM — EQT_HAS_GLES2 is defined for the x86
@@ -90,6 +92,12 @@ void ConstrainedTextureCache::setDriver(irr::video::IVideoDriver* driver) {
 }
 
 ConstrainedTextureCache::~ConstrainedTextureCache() {
+    // T214: final dump, so the audit covers requests made AFTER zone-load
+    // completes -- the distance gate defers entities (T210), and a
+    // zone-load-complete snapshot cannot see what they ask for on approach.
+    if (const char* dir = std::getenv("EQT_EQE1_REQUEST_LOG_DIR")) {
+        dumpEQE1RequestLog(std::string(dir) + "/eqe1_requests_FINAL.tsv");
+    }
     clear();
 }
 
@@ -1726,12 +1734,17 @@ bool ConstrainedTextureCache::getEQE1RawData(const std::string& name,
     size_t searched = 0;
     auto loaders = snapshotEQE1Loaders();
     for (; searched < loaders.size(); ++searched) {
-        if (loaders[searched]->getRawData(name, data, size)) return true;
+        if (loaders[searched]->getRawData(name, data, size)) {
+            recordEQE1Request(name, loaders[searched], true);
+            return true;
+        }
     }
-    if (!eqe1ArchiveResolver_) return false;
+    if (!eqe1ArchiveResolver_) { recordEQE1Request(name, nullptr, true); return false; }
     const EQE1Loader* opened = eqe1ArchiveResolver_(name);
-    if (!opened) return false;
-    return opened->getRawData(name, data, size);
+    if (!opened) { recordEQE1Request(name, nullptr, true); return false; }
+    const bool got = opened->getRawData(name, data, size);
+    recordEQE1Request(name, got ? opened : nullptr, true);
+    return got;
 }
 
 const ConstrainedTextureCache::CompressedEntry*
@@ -1771,13 +1784,61 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
 
     auto loaders = snapshotEQE1Loaders();
     for (const auto* loader : loaders) {
-        if (const auto* entry = loader->lookup(lookupName)) return emit(entry);
+        if (const auto* entry = loader->lookup(lookupName)) {
+            recordEQE1Request(lookupName, loader, false);
+            return emit(entry);
+        }
     }
-    if (!eqe1ArchiveResolver_) return nullptr;
+    if (!eqe1ArchiveResolver_) { recordEQE1Request(lookupName, nullptr, false); return nullptr; }
     const EQE1Loader* opened = eqe1ArchiveResolver_(lookupName);
-    if (!opened) return nullptr;
-    if (const auto* entry = opened->lookup(lookupName)) return emit(entry);
+    if (!opened) { recordEQE1Request(lookupName, nullptr, false); return nullptr; }
+    if (const auto* entry = opened->lookup(lookupName)) {
+        recordEQE1Request(lookupName, opened, false);
+        return emit(entry);
+    }
+    recordEQE1Request(lookupName, nullptr, false);
     return nullptr;
+}
+
+// T214 AUDIT INSTRUMENT ------------------------------------------------------
+// Records every DISTINCT name looked up against the EQE1 set, with the archive
+// that served it. Exists to answer one question with data instead of
+// inference: which open archives does a zone load actually need?
+static std::string eqe1ArchiveStem(const std::string& filepath) {
+    size_t slash = filepath.find_last_of('/');
+    std::string base = (slash == std::string::npos) ? filepath : filepath.substr(slash + 1);
+    size_t dot = base.rfind(".eqe1");
+    if (dot != std::string::npos) base.resize(dot);
+    return base;
+}
+
+void ConstrainedTextureCache::recordEQE1Request(const std::string& name,
+                                                const EQE1Loader* servedBy,
+                                                bool rawData) const {
+    std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
+    auto& slot = eqe1RequestLog_[name];
+    ++slot.count;
+    slot.rawData = rawData;
+    // First resolution wins; a later miss must not erase a real owner.
+    if (slot.servedBy.empty() || slot.servedBy == "<NOT-FOUND>") {
+        slot.servedBy = servedBy ? eqe1ArchiveStem(servedBy->getFilePath()) : "<NOT-FOUND>";
+    }
+}
+
+void ConstrainedTextureCache::dumpEQE1RequestLog(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        LOG_WARN(MOD_GRAPHICS, "T214: cannot write EQE1 request log to '{}'", path);
+        return;
+    }
+    out << "name\tserved_by\tlookups\tkind\n";
+    for (const auto& [name, req] : eqe1RequestLog_) {
+        out << name << '\t' << req.servedBy << '\t' << req.count << '\t'
+            << (req.rawData ? "raw" : "texture") << '\n';
+    }
+    LOG_INFO(MOD_GRAPHICS, "T214: wrote {} distinct EQE1 request(s) to {}",
+             eqe1RequestLog_.size(), path);
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(

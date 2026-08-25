@@ -274,6 +274,18 @@ public:
         eqe1ArchiveResolver_ = std::move(resolver);
     }
 
+    // T214 AUDIT INSTRUMENT: complete per-name request log for one zone load.
+    // Every EQE1 lookup (texture and raw-data) records the name and which
+    // archive actually served it, so the open-archive set can be audited
+    // against the set the zone genuinely needs. Recording is unconditional and
+    // cheap (one map insert per DISTINCT name); dumpEQE1RequestLog() writes it.
+    struct EQE1Request {
+        std::string servedBy;   // archive stem, or "<NOT-FOUND>"
+        uint32_t    count = 0;  // times this name was looked up
+        bool        rawData = false;
+    };
+    void dumpEQE1RequestLog(const std::string& path) const;
+
     // Look up raw (non-texture) data from registered EQE1 loaders.
     // Used for JSON metadata, WLD files, etc. packed as EQE1_TYPE_RAW_DATA entries.
     // Returns true if found, with data pointer and size. Data is owned by the EQE1 loader.
@@ -517,6 +529,13 @@ private:
 
     // P04/T207: archive resolver for EQE1 lookups (see setEQE1ArchiveResolver).
     std::function<const EQE1Loader*(const std::string&)> eqe1ArchiveResolver_;
+
+    // T214: see dumpEQE1RequestLog(). Guarded by eqe1RequestLogMutex_ because
+    // findCompressedEntry/getEQE1RawData run on loader threads.
+    mutable std::mutex eqe1RequestLogMutex_;
+    mutable std::map<std::string, EQE1Request> eqe1RequestLog_;
+    void recordEQE1Request(const std::string& name, const EQE1Loader* servedBy,
+                           bool rawData) const;
 
     // T202: names exempt from LRU eviction. See protectTexture().
     std::set<std::string> protectedTextures_;

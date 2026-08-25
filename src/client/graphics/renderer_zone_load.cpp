@@ -973,6 +973,18 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     // that the waste was invisible until it was counted.
     logEQE1ArchiveUsage();
 
+    // T214: dump the COMPLETE per-name EQE1 request list for this zone load.
+    // logEQE1ArchiveUsage() above says which archives went unused; this says
+    // exactly which assets were asked for and who served each one, so the
+    // open set can be audited against the needed set rather than inferred.
+    // Env-gated so it costs nothing in normal runs.
+    if (constrainedTextureCache_) {
+        if (const char* dir = std::getenv("EQT_EQE1_REQUEST_LOG_DIR")) {
+            constrainedTextureCache_->dumpEQE1RequestLog(
+                std::string(dir) + "/eqe1_requests_" + currentZoneName_ + ".tsv");
+        }
+    }
+
     // P13: dump the texture upload/eviction ledger at the zone-in-complete
     // marker (no-op unless --texture-ledger was passed — see
     // ConstrainedRendererConfig::textureUploadLedgerPath).
