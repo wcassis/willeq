@@ -1364,6 +1364,34 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
         return outcome;
     }
 
+    // T236 -- the OTHER half of a direct slot<->slot swap: when toSlot is
+    // occupied, the displaced item lands in fromSlot, and the server
+    // validates that side too. eqemu's rule (common/inventory_profile.cpp,
+    // InventoryProfile::SwapItem, the `destination_item_instance` block):
+    // the displaced item must IsSlotAllowed(source_slot) and, when
+    // source_slot is an equipment slot, pass the race/class, deity and
+    // level checks -- the same predicate checkEquipDestination() already
+    // applies to the forward direction, so it is reused verbatim (no second
+    // legality copy). IsSlotAllowed() is unconditionally true for every
+    // non-equipment slot (item_instance.cpp: `slot_id > EQUIPMENT_END`), and
+    // checkEquipDestination() passes for those too, so this refuses exactly
+    // the swaps the server refuses and nothing else. T82 hit the gap live
+    // (`/equip 13 22`, Skin of Milk in 22 -> "The selected slot was
+    // invalid." + resync after the client had already swapped locally).
+    // Cursor-source swaps are not affected: the displaced item goes to the
+    // cursor, which IsSlotAllowed() always permits -- placeItem() handles
+    // that branch and the server applies such swaps (T236 live leg).
+    if (!isCursorSlot(fromSlot) && !isCursorSlot(toSlot)) {
+        if (const ItemInstance* displacedItem = getItem(toSlot)) {
+            std::string swapError = checkEquipDestination(displacedItem, fromSlot);
+            if (!swapError.empty()) {
+                outcome.message = "Cannot swap: " + swapError + " (it would be displaced there by " +
+                                  sourceItem->name + ").";
+                return outcome;
+            }
+        }
+    }
+
     // T71 -- Stage 1 fix (see refactor/T71_equip_fix_and_first_person.md
     // Review for the full characterisation of why each branch below is
     // shaped this way; unchanged by T77's pre-flight above, which only

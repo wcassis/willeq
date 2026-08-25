@@ -560,4 +560,127 @@ TEST_F(EqCommandsEquipTest, ListForm_ShowsEquippedAndCarriedWithResolution) {
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
+
+// ---------------------------------------------------------------------------
+// T236 -- swap pre-flight: the DISPLACED item must be legal for the slot it
+// lands in. eqemu's swap rule (common/inventory_profile.cpp,
+// InventoryProfile::SwapItem, the `destination_item_instance` block):
+// the item already in the destination must IsSlotAllowed(source_slot), and
+// when source_slot is an equipment slot it must additionally pass the
+// race/class, deity and level checks -- exactly the checks canEquipItem()
+// already runs for the forward direction. IsSlotAllowed() is always true
+// for any non-equipment slot (item_instance.cpp: `slot_id > EQUIPMENT_END`),
+// so the only swap the server can refuse on the displaced side is one whose
+// SOURCE is an equipment slot. T82 hit this live (`/equip 13 22` with a
+// Skin of Milk in 22): the client swapped locally, the server replied "The
+// selected slot was invalid." and resynced. Pre-flight it like T77 did for
+// the forward direction: refuse locally, mutate nothing, send nothing.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, Swap_DisplacedItemCannotGoInSourceEquipSlot_RejectedLocally_NoIntent_NoMutation) {
+    // T82's live case: Primary holds a weapon, general slot 22 holds a
+    // non-equippable item (slots bitmask 0). Swapping them would land the
+    // Milk in Primary -- the server refuses that (swapNotAllowed).
+    SeedNamedItem(eq, SLOT_PRIMARY, 7100, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 22, 7101, "Skin of Milk", /*slotsBitmask=*/0);
+    eq.RequestEquip("13 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Skin of Milk"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("Primary"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7100u);
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7101u);
+}
+
+TEST_F(EqCommandsEquipTest, Swap_DisplacedItemFailsRestrictionsForSourceEquipSlot_RejectedLocally) {
+    // Displaced item fits Primary by slot type but reqLevel=50 against the
+    // level-1 test player: the server's swapLevel branch ("You are not
+    // sufficient level to use this item.") on the displaced side.
+    SeedNamedItem(eq, SLOT_PRIMARY, 7110, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 22, 7111, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
+    eq.RequestEquip("13 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Ancient Blade"), std::string::npos) << msgs[0];
+    EXPECT_NE(msgs[0].find("does not meet"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    auto* inv = eq.GetInventoryManager();
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7110u);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7111u);
+}
+
+TEST_F(EqCommandsEquipTest, Swap_DisplacedItemLegalForSourceEquipSlot_StillMoves) {
+    // Both directions legal (weapon <-> weapon): the swap goes through and
+    // the packet is sent exactly as before -- the new check is not overly
+    // strict.
+    SeedNamedItem(eq, SLOT_PRIMARY, 7120, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 22, 7121, "Broad Sword", EQUIPSLOT_PRIMARY);
+    eq.RequestEquip("13 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Moving item"), std::string::npos) << msgs[0];
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, SLOT_PRIMARY);
+    EXPECT_EQ(mv->toSlot, 22);
+    auto* inv = eq.GetInventoryManager();
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7121u);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7120u);
+}
+
+TEST_F(EqCommandsEquipTest, Swap_SourceIsGeneralSlot_DisplacedItemNotEquipChecked_StillMoves) {
+    // Server rule: IsSlotAllowed() is unconditionally true for a
+    // non-equipment source slot, so a general<->general swap involving a
+    // non-equippable item is legal server-side and must stay legal here.
+    SeedNamedItem(eq, 22, 7130, "Rusty Mace", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 23, 7131, "Skin of Milk", /*slotsBitmask=*/0);
+    eq.RequestEquip("22 23");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Moving item"), std::string::npos) << msgs[0];
+    auto intents = bridge.drainIntents();
+    ASSERT_NE(FindMoveItemIntent(intents), nullptr);
+    auto* inv = eq.GetInventoryManager();
+    EXPECT_EQ(inv->getItem(22)->itemId, 7131u);
+    EXPECT_EQ(inv->getItem(23)->itemId, 7130u);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_IntoOccupiedGeneralSlot_StillMoves) {
+    // The T230 fixture shape (`/equip 30 22` with 22 occupied). Server rule
+    // for a cursor-source swap: the displaced item goes to the cursor, and
+    // IsSlotAllowed(slotCursor) is always true -- the server APPLIES this
+    // swap (T230's own run-3/run-4 zone-in inventories prove it: the item
+    // swapped in run 3 is in general slot 22 at run 4's zone-in). The
+    // client must keep applying it too.
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, 23, 7140, "Wooden Fishing Tackle", /*slotsBitmask=*/0);
+    ASSERT_TRUE(inv->pickupItem(23));  // cursor <- tackle (from a general slot)
+    (void)bridge.drainIntents();
+    (void)DrainSystemMessages(bridge);
+    SeedNamedItem(eq, 22, 7141, "Scaled Curskin", /*slotsBitmask=*/0);
+    eq.RequestEquip("30 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Moving item"), std::string::npos) << msgs[0];
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, CURSOR_SLOT);
+    EXPECT_EQ(mv->toSlot, 22);
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7140u);
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7141u);
+}
+
 }  // namespace

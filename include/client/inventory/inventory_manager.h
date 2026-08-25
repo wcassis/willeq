@@ -217,6 +217,11 @@ public:
     // ItemInstance::canEquipInSlot() and this->canEquipItem() -- no new
     // legality logic. Returns an empty string on success, else a reason
     // naming the item and the slot.
+    //
+    // T236 -- moveItem() also applies it in REVERSE for a direct
+    // slot<->slot swap: the item displaced out of toSlot must be legal for
+    // fromSlot (eqemu's InventoryProfile::SwapItem checks both directions;
+    // only an equipment-slot source can fail on the displaced side).
     std::string checkEquipDestination(const ItemInstance* item, int16_t toSlot) const;
 
     // T77 -- resolves the destination equipment slot from the item's own
