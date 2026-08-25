@@ -847,6 +847,18 @@ public:
 	};
 	const TestSentGMHideMe& Test_GetLastGMHideMe() const { return m_test_last_gm_hideme; }
 
+	// T229 test seam, same shape: the complete OP_GMSummon packet (opcode +
+	// 152-byte GMSummon_Struct) the last SendGMSummon() call built, captured
+	// before the connection gate. Pins that the body carries the GM's own
+	// position in SERVER coordinates as floats -- eqemu's OPGMSummon reads
+	// them (MovePC to gms->x/y/z), so the zeros T148 shipped sent the target
+	// to the origin.
+	struct TestSentGMSummon {
+		bool sent = false;
+		std::vector<uint8_t> bytes;
+	};
+	const TestSentGMSummon& Test_GetLastGMSummon() const { return m_test_last_gm_summon; }
+
 	// T170 test seam: the two id fields of the last inspect answer built. They
 	// are the whole point -- they mean the OPPOSITE of the request struct's.
 	struct TestSentInspectAnswer {
@@ -2023,6 +2035,9 @@ private:
 
 	// T217 test seam -- see Test_GetLastGMHideMe().
 	TestSentGMHideMe m_test_last_gm_hideme;
+
+	// T229 test seam -- see Test_GetLastGMSummon().
+	TestSentGMSummon m_test_last_gm_summon;
 
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;

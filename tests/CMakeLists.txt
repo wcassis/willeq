@@ -1295,6 +1295,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_group_accept_gm_hideme)
 
+# T229: the two remaining T148 GM-sender defects -- SendGMSummon's zeroed
+# coordinates (eqemu READS them) and ZoneProcessGMFind's int32 decode of a
+# float reply. Pins both structs against eqemu's field order/types.
+ADD_EXECUTABLE(test_gm_summon_find
+    test_gm_summon_find.cpp
+)
+TARGET_LINK_LIBRARIES(test_gm_summon_find GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_gm_summon_find PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_gm_summon_find)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for

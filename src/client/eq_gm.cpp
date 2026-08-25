@@ -27,6 +27,23 @@ void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 	}
 }
 
+// T229: eqemu READS the coordinates in this body. Client::OPGMSummon
+// (zone/client_process.cpp:1877) does
+//     MovePC(zone, inst, gms->x, gms->y, gms->z, GetHeading(), true)
+// for an in-zone player target and copies x/y/z into ServerZonePlayer_Struct
+// for a cross-zone one; only a non-client mob (GMMove to the GM's own spot)
+// and a corpse ignore them. Until T229 this sender memset the body and filled
+// only the names, so every /summon relocated the target to (0, 0, 0) -- the
+// server's own log in T148's live run reads `ZonePC Client [Testbuddy] ...
+// x [0] y [0] z [0]` (review/T148/eqemu_zone_arena_server_log.txt). The
+// official client sends the GM's current position, which is what a summon
+// means; we do the same.
+//
+// The fields are FLOATS (eqemu common/eq_packet_structs.h:1949 -- `float y;
+// float x; float z;`), and they are in SERVER coordinates. Our internal
+// m_x = server_y, m_y = server_x (the T52 convention SendPositionUpdate and
+// SendZoneChange both invert on the way out), so the wire's y-field gets our
+// m_x and the wire's x-field gets our m_y.
 void EverQuest::SendGMSummon(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
@@ -36,11 +53,21 @@ void EverQuest::SendGMSummon(const std::string& charname)
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
 	strncpy(gm.gmname, m_character.c_str(), 63);
+	gm.y = m_x;  // server's y = our x
+	gm.x = m_y;  // server's x = our y
+	gm.z = m_z;
 	packet.PutData(2, &gm, sizeof(gm));
+
+	// T229 test seam (same shape as T217's hideme one): the bytes we actually
+	// built, captured before the connection gate.
+	m_test_last_gm_summon.sent = true;
+	m_test_last_gm_summon.bytes.assign(
+		static_cast<const uint8_t*>(packet.Data()),
+		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
 	if (m_zone_connection && m_zone_connected) {
 		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "GM summon: {}", charname);
+		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, m_x, m_y, m_z);
 	}
 }
 
@@ -228,20 +255,38 @@ void EverQuest::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 	}
 }
 
+// T229: the reply is a GMFind_Struct (eqemu common/eq_packet_structs.h:1960
+// -- `float x; float y; float z;`, x FIRST), not the GMSummon_Struct this
+// used to decode it through. Handle_OP_GMFind (zone/client_packet.cpp:6640)
+// echoes charname/gmname and, when the target is in the GM's zone, sets
+// success=1, zoneID and the target's GetX()/GetY()/GetZ(); an out-of-zone or
+// unknown name comes back success=0 with zeroed coords (it does NOT ask
+// world). T148's live run printed `at (-998490112, 1125908480, 1112276992)`
+// -- 0xC47C4000 / 0x431C0000 / 0x424C0000, i.e. server y=-1009 x=156 z=51,
+// read as int32 and in the wrong slots.
+//
+// The chat line is printed in the same convention /loc uses for the GM's own
+// position (our internal x = server y, y = server x), so a GM can compare the
+// two directly.
 void EverQuest::ZoneProcessGMFind(const EQ::Net::Packet &p)
 {
-	if (p.Length() < 2 + sizeof(EQT::GMSummon_Struct)) {
+	if (p.Length() < 2 + sizeof(EQT::GMFind_Struct)) {
 		return;
 	}
 
-	const EQT::GMSummon_Struct* gm = reinterpret_cast<const EQT::GMSummon_Struct*>(
+	const EQT::GMFind_Struct* gm = reinterpret_cast<const EQT::GMFind_Struct*>(
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	std::string charname(gm->charname, strnlen(gm->charname, 64));
-	LOG_INFO(MOD_MAIN, "GM find result: {} in zone {} at ({}, {}, {})",
-		charname, gm->zoneID, gm->x, gm->y, gm->z);
-	AddChatSystemMessage(fmt::format("{} is in zone {} at ({}, {}, {})",
-		charname, gm->zoneID, gm->x, gm->y, gm->z));
+	if (!gm->success) {
+		LOG_INFO(MOD_MAIN, "GM find: {} not found in this zone", charname);
+		AddChatSystemMessage(fmt::format("{} is not in this zone.", charname));
+		return;
+	}
+	LOG_INFO(MOD_MAIN, "GM find result: {} in zone {} at ({:.1f}, {:.1f}, {:.1f}) [server x={:.1f} y={:.1f}]",
+		charname, gm->zoneID, gm->y, gm->x, gm->z, gm->x, gm->y);
+	AddChatSystemMessage(fmt::format("{} is in zone {} at {:.1f}, {:.1f}, {:.1f}",
+		charname, gm->zoneID, gm->y, gm->x, gm->z));
 }
 
 void EverQuest::ZoneProcessGMSummon(const EQ::Net::Packet &p)

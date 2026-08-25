@@ -1984,21 +1984,59 @@ static_assert(sizeof(GMZoneRequest_Struct) == 88, "GMZoneRequest_Struct must be 
 
 /**
  * GM Summon Struct
- * Size: 104 bytes (Titanium format)
- * Used in: OP_GMSummon, OP_GMGoto, OP_GMFind (Bidirectional)
+ * Size: 152 bytes (Titanium format)
+ * Used in: OP_GMSummon, OP_GMGoto (C->S; both of eqemu's handlers size-check
+ * against sizeof(GMSummon_Struct) = 152).
+ *
+ * T229: y/x/z are FLOATS, not int32 -- eqemu common/eq_packet_structs.h:1949
+ * declares `float y; float x; float z;` and Client::OPGMSummon
+ * (zone/client_process.cpp:1877) READS them: for an in-zone player target it
+ * calls MovePC(zone, inst, gms->x, gms->y, gms->z, GetHeading()), and for a
+ * cross-zone target it copies them into ServerZonePlayer_Struct. The
+ * coordinates are only ignored for a non-client mob (GMMove to the GM's own
+ * position) and for a corpse. Until T229 SendGMSummon left them zero, which is
+ * why T148's live run relocated the target to (0, 0, 0). Note the y-before-x
+ * order, which differs from GMFind_Struct below.
  */
 struct GMSummon_Struct {
 /*0000*/ char     charname[64];       // Target character name
 /*0064*/ char     gmname[64];         // GM name
 /*0128*/ uint32_t success;            // Success flag
 /*0132*/ uint32_t zoneID;             // Zone ID
-/*0136*/ int32_t  y;                  // Y coordinate
-/*0140*/ int32_t  x;                  // X coordinate
-/*0144*/ int32_t  z;                  // Z coordinate
+/*0136*/ float    y;                  // Destination, server coordinates (float, T229)
+/*0140*/ float    x;
+/*0144*/ float    z;
 /*0148*/ uint32_t unknown2;           // Unknown
 /*0152*/
 };
 static_assert(sizeof(GMSummon_Struct) == 152, "GMSummon_Struct must be 152 bytes");
+
+/**
+ * GM Find Struct (T229)
+ * Size: 152 bytes -- same size as GMSummon_Struct, DIFFERENT field order.
+ * Used in: OP_GMFind (Bidirectional).
+ *
+ * eqemu common/eq_packet_structs.h:1960 -- `float x; float y; float z;` (x
+ * FIRST, unlike GMSummon_Struct's y-first). Client::Handle_OP_GMFind
+ * (zone/client_packet.cpp:6640) echoes the request back with success=1,
+ * zoneID and the target's GetX()/GetY()/GetZ() when the target is in the
+ * GM's zone; an out-of-zone name comes back with success=0 and zeroed coords.
+ * Until T229 the client decoded the reply through GMSummon_Struct's int32
+ * fields, printing float bit patterns (`-998490112` = 0xC47C4000 = -1009.0f,
+ * review/T148/README.md).
+ */
+struct GMFind_Struct {
+/*0000*/ char     charname[64];       // Target character name
+/*0064*/ char     gmname[64];         // GM name
+/*0128*/ uint32_t success;            // 1 = found in this zone
+/*0132*/ uint32_t zoneID;             // Zone the target is in
+/*0136*/ float    x;                  // Server coordinates (x first)
+/*0140*/ float    y;
+/*0144*/ float    z;
+/*0148*/ uint32_t unknown2;
+/*0152*/
+};
+static_assert(sizeof(GMFind_Struct) == 152, "GMFind_Struct must be 152 bytes");
 
 /**
  * GM Kick/Kill Struct
