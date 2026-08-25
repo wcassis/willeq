@@ -57,10 +57,11 @@ references this file; plans carry only unit-specific content.
 
 ## eqemu (only if the plan assigns server ownership)
 - LOCK FIRST (cross-session protocol, refactor/TESTING_CHARTER.md):
-  before bringing the server up, check `/mnt/projects/fable/.eqemu-lock`
-  does not exist; if it does, STOP and report (another session owns the
-  server). Otherwise create it with your unit ID + date, and DELETE it
-  after clean shutdown. This applies to every server use, no exceptions.
+  take `/mnt/projects/fable/.eqemu-lock` ATOMICALLY — check-then-create is
+  a race (T224 clobbered T222's lock 90s after seeing it absent). Use:
+  `bash -c 'set -o noclobber; echo "T### $(date -I)" > /mnt/projects/fable/.eqemu-lock'`
+  — exit 0 means you own it; non-zero means another session does: STOP and
+  report, never overwrite. DELETE it after clean shutdown. This applies to every server use, no exceptions.
 - Sanctioned start only: scripts/eqemu/up.sh / `spire spire:launcher
   start`; NEVER `eqemu-server:launcher` direct. Never modify server
   code. DB reads + documented character-position writes OK (restore
