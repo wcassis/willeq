@@ -228,7 +228,7 @@ TEST_F(GameStateSyncBridgeTest, InventorySlotChangedStillDelegatesToWrappedBridg
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::InventorySlotChanged);
 }
 
-// =====================================================================}
+// ======================================================================
 
 // T44: SpellGemChanged / SpellCastStarted / SpellCastComplete, replacing
 // Application::syncSpellState(). SpellCastStarted/SpellCastComplete carry a
@@ -1232,7 +1232,8 @@ TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedStillDelegatesToWrappedBridge)
 
     ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
     EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::PlayerFlagsChanged);
-=======
+}
+
 // ========== T219: door projection ==========
 //
 // Before T219 nothing populated state::GameState::doors() on EITHER
