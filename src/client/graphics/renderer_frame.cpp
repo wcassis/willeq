@@ -835,9 +835,17 @@ void IrrlichtRenderer::processChatInput() {
         }
     }
 
-    // Handle hotbar shortcuts (WindowManager removed — hotbar handled by new UI)
-    int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
-    (void)hotbarRequest;
+    // T230: the hotbar-key request is NOT consumed here any more. This used
+    // to call getHotbarActivationRequest() -- an exchange(-1) -- and discard
+    // the result ("WindowManager removed"), and because the render thread
+    // reaches this before the game thread's InputActionBridge::update()
+    // polls GraphicsInputHandler::consumeHotbarRequest(), every keyboard
+    // hotbar press (Spell, Skill AND Item -- the whole T174 route) was
+    // swallowed live. Found by T230's live leg: "Key pressed: 1 ...
+    // action=HotbarSlot1" logged, nothing ever reached the bridge. The one
+    // consumer is now GraphicsInputHandler (src/client/input/
+    // graphics_input_handler.cpp). See refactor/T230_target_resolver_and_
+    // hotbar_items.md, Live leg.
 
     // Open chat input on Enter or / key
     if (!chatInputFocused_) {

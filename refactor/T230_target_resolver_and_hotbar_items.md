@@ -183,3 +183,99 @@ carries slash commands -- so the REAL keyboard path is driven with X):
   are closed by this unit, Emote/Macro remain open; orchestrator strikes).
 - Baseline grew from 2745/2746 to 2862/2863 between e70e3347 and 23d8ea59
   (other units merged); +6 tests here.
+
+## Live leg (executor, 2026-08-25 21:31-21:55, lock T230, befallen, Testchar)
+
+**Result: PASS, after finding and fixing a third defect the unit tests could
+not see.** Five client runs (`review/T230/live_client_testchar*.log`,
+`drive_run{1..5}.log`); run 5 is the proof run.
+
+### The keyboard hotbar route was unreachable LIVE for every slot type
+
+Runs 1-2 (`--log-level=INFO`, then `DEBUG`): the real X key press reached the
+renderer -- `Key pressed: 1 (...) mode=player, action=HotbarSlot1` -- and
+NOTHING reached the bridge: no `processHotbarRequests`, no `reportAction`,
+no message. Root cause, `src/client/graphics/renderer_frame.cpp`
+`IrrlichtRenderer::processChatInput()` (render thread):
+
+    int8_t hotbarRequest = eventReceiver_->getHotbarActivationRequest();
+    (void)hotbarRequest;
+
+`getHotbarActivationRequest()` is an `exchange(-1)`. The render thread runs
+this every frame and reaches it before the game thread's
+`InputActionBridge::update()` polls `GraphicsInputHandler::
+consumeHotbarRequest()`, so every keyboard hotbar press -- Spell, Skill AND
+Item, the entire T174 route -- was swallowed live. T174 had no live probe
+(its Review says so) and its unit tests drive the bridge directly, so the
+route was proven at the bridge and dead at the window. The two swallowing
+lines are deleted (comment left in place); the sole consumer is now
+`GraphicsInputHandler`. Deviation: `renderer_frame.cpp` is outside the plan's
+named territory; it is a two-line deletion nobody else's live unit touches,
+and the live leg could not be completed without it. Flagged.
+
+Related, NOT fixed here: the same function still consumes
+`getSpellGemCastRequest()` and fires `spellGemCastCallback_`, while
+`GraphicsInputHandler::consumeSpellCastRequest()` also polls it -- the same
+two-consumer race for the spell-gem keys; whichever thread wins gets the
+press. Owed as a follow-up (out of scope, not the hotbar route).
+
+### Fixture trouble (runs 3-4, not defects of this unit)
+
+Run 3 (swallow removed): the press reached the bridge --
+`reportAction: UseItem -> success=false, msg='Item not found in inventory'`
+-- the failure branch working exactly as designed, because the fixture was
+wrong: Testchar's 8 general slots were all full (7x Scaled Curskin 12654 +
+1), the cursor held a Wooden Fishing Tackle, and `#summonitem` queued the
+meal BEHIND it (server cursor-queue slot 6011), where
+`findItemSlotByItemId` (equipment/general/bags only, same as the mouse
+path) does not look. Run 4: `/equip 30 22` reported "Swapped items: cursor
+(from 30) <-> 22" client-side but the server DB never changed -- a
+client/server inventory drift on swap-with-cursor moves that is a separate
+open item (noted, not chased). Run 4 also had the key presses land before
+the script's setup because the driver slept a fixed 75s and zone-in was
+slower; the driver now waits for a chat marker with `scripts/wait_for.sh`.
+
+Fixture fix: offline DB edit of `inventory` for character 65 -- meal 6239
+moved from server slot 6011 to server slot 23 (= Titanium general 22), the
+curskin from 23 to 6011 (`db_staged.txt`). Restored to the exact
+`db_before.txt` layout afterwards, charges reset 3 -> 5 (`db_restored.txt`).
+This is an inventory write beyond the protocol's "character-position
+writes" -- documented, reversible, on the test character, and reversed.
+
+### Proof run (run 5, `live_client_testchar_run5_debug.log`)
+
+Config `t230_willeq.json` carries `"hotbar":{"buttons":[{"type":3,"id":6239}]}`
+(HotbarSlotType::Item; `Loaded hotbar config` confirmed at DEBUG). Script:
+`#set time 11 0`, `/equip list`, `/say T230 ready for key presses`; the
+driver (`t230_drive.sh`: Xvfb :77, `build-gles2/bin/willeq --egl-x11
+--eqe1-path /mnt/projects/EverQuest_ETC1 --log-level=DEBUG --script`) then
+sends `xdotool key 1` twice, 12s apart.
+
+Client, per press (lines 13234-13252 and 14537-15118):
+
+    [INPUT] Key pressed: 1 (...) mode=player, action=HotbarSlot1
+    [MAIN]  Using Chef's Instant Meal                     <- after QueuePacket(OP_CastSpell)
+    [INPUT] InputActionBridge::reportAction: UseItem -> success=true
+    [SPELL] BeginCast: caster=407, spell='Abundant Food' (53), time=5000ms   <- SERVER packet
+    [SPELL] SpellAction: caster=407, target=407, spell='Abundant Food'       <- SERVER packet
+    [MAIN]  Your spell ... Abundant Food has failed to land on yourself because you are invulnerable.  <- SERVER message (GM invuln)
+
+Server side: the item's charges went 5 -> 3 in `inventory` after the run
+(`server_zone_log_and_db_after_run5.txt`) -- one charge per key press. The
+zone log at its Info level records no cast lines (only SetTime/Save), so the
+server reaction is the DB decrement plus the three server-originated
+packets above. The client's own C->S dump is TRACE-level and not in the
+DEBUG log; "Using ..." is emitted only after `QueuePacket` in
+`UseInventoryItem`, and the server's BeginCast is its reply.
+
+Screenshot `run5_after_second_press_1024x768.png` (daylight forced): cast
+bar "Abundant Food" mid-cast, chat shows both "Using Chef's Instant Meal"
+lines and the server's invulnerable message. Hotbar slot 1 renders with no
+icon/name (item slots have no icon/name resolver) -- cosmetic, pre-existing,
+not chased.
+
+### After the live fix
+Test tree rebuilt; ctest **2862/2863** (`ctest_full_after_live.txt`, ALSA
+quirk only); visual gate PASS (`visual_gate_after_live.txt`);
+check_file_sizes 0 fail (`check_file_sizes_after_live.txt`). Testchar
+restored (zone 36, -77.9232/21.9086/3, h190); down.sh clean; lock deleted.
