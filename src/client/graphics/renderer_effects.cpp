@@ -447,24 +447,53 @@ void IrrlichtRenderer::logEQE1ArchiveUsage() const {
         return a.first < b.first;
     });
 
-    size_t unused = 0, unusedBytes = 0, totalBytes = 0, totalHits = 0;
+    // T214: an archive is legitimately open for exactly TWO reasons --
+    //   R1. it is the CURRENT ZONE'S OWN archive ({zone}, {zone}_obj, {zone}_chr)
+    //   R2. a lookup needed it and nothing already open could serve it
+    // Only an R2 archive can be WASTE, and only by serving nothing. A zone-own
+    // archive with zero hits is NORMAL -- it just means this zone's NPCs used
+    // global_chr models rather than zone-specific skins -- and lumping it into
+    // a "wasted opens" percentage manufactures a defect that does not exist.
+    // This reporter did exactly that and it cost a session: befallen was
+    // reported as "16% wasted opens, 4065KB mapped for nothing" when the true
+    // answer was zero waste. Classify before counting.
+    auto isZoneOwn = [this](const std::string& n) {
+        return n == currentZoneName_ || n == currentZoneName_ + "_obj" ||
+               n == currentZoneName_ + "_chr";
+    };
+
+    size_t wasted = 0, wastedBytes = 0, totalBytes = 0, totalHits = 0;
+    size_t zoneOwnIdle = 0;
     for (const auto& [name, loader] : open) {
         const size_t bytes = loader->getMappedBytes();
+        const uint32_t hits = loader->getLookupHits();
         totalBytes += bytes;
-        totalHits  += loader->getLookupHits();
-        if (loader->getLookupHits() == 0) { ++unused; unusedBytes += bytes; }
+        totalHits  += hits;
+
+        const char* note = "";
+        if (hits == 0) {
+            if (isZoneOwn(name)) {
+                ++zoneOwnIdle;
+                note = "   (zone-own, no lookups -- not waste)";
+            } else if (IrrlichtRenderer::isPersistentEQE1Archive(name)) {
+                note = "   (client pack, no lookups -- not waste)";
+            } else {
+                ++wasted;
+                wastedBytes += bytes;
+                note = "   <-- WASTED OPEN";
+            }
+        }
         LOG_INFO(MOD_GRAPHICS, "EQE1-USAGE:   {:<20} hits={:<6} entries={:<5} mapped={}KB{}",
-                 name, loader->getLookupHits(), loader->getEntryCount(),
-                 bytes / 1024, loader->getLookupHits() == 0 ? "   <-- UNUSED" : "");
+                 name, hits, loader->getEntryCount(), bytes / 1024, note);
     }
 
     LOG_INFO(MOD_GRAPHICS,
-             "EQE1-USAGE: zone '{}': {} archive(s) open, {} served no lookup at all "
-             "({} of {} = {}% wasted opens, {}KB of {}KB mapped for nothing), "
-             "{} lookups served total",
-             currentZoneName_, open.size(), unused, unused, open.size(),
-             open.empty() ? 0 : (unused * 100 / open.size()),
-             unusedBytes / 1024, totalBytes / 1024, totalHits);
+             "EQE1-USAGE: zone '{}': {} archive(s) open, {} wasted open(s) "
+             "({}% , {}KB of {}KB mapped for nothing), {} zone-own archive(s) "
+             "idle (expected), {} lookups served total",
+             currentZoneName_, open.size(), wasted,
+             open.empty() ? 0 : (wasted * 100 / open.size()),
+             wastedBytes / 1024, totalBytes / 1024, zoneOwnIdle, totalHits);
 }
 
 size_t IrrlichtRenderer::getEQE1MappedBytesTotal() const {
