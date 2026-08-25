@@ -19,7 +19,11 @@ Review — read that before scoping the next unit off this file.
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
 - **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.
-- **T230 (branch, pending live): `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots now fire via `useItemById` — and `EqActionHandler::useItem` was a STUB, also fixed. Emote/Macro still skipped.**
+- **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. Emote/Macro still skipped.**
+- **NEW (T230): same two-consumer race for spell-gem keys — `processChatInput()` still consumes `getSpellGemCastRequest()` while `GraphicsInputHandler::consumeSpellCastRequest()` also polls it. Class A, one-line delete + live keypress proof (T230's Xvfb+xdotool driver in `review/T230/`).**
+- **NEW (T230): `/equip 30 22` (swap with CURSOR) reports a client-side swap the server never applied — client/server inventory drift on swap-with-cursor moves. Same class as T82's "doMove swap branch never validates the displaced item". Class A/B: reproduce with the DB, then fix the swap validation.**
+- **NEW (T233): a `--script` command HELD pre-connection emits no `CMD outcome=held` line (T30's held intercept covers piped stdin only). Class A, small.**
+- **T233 MERGED `78e041ad`: all ~68 renderer replies go through ONE lambda in `processSlashCommand`; it now LOG_INFOs. T142 CLOSED.**
 - ~~**NEW (T229): same-zone summon does not move the summoned WillEQ client.**~~ CLOSED T231 `ebc7f007` (relocate locally, forced position update; live: spawn id unchanged, observer saw the move). eqemu sends `OP_RequestClientZoneChange` for the CURRENT zone and expects NO `OP_ZoneChange` back (akk-stack `zoning.cpp` ~1060); `ZoneProcessRequestClientZoneChange` (`eq_zone.cpp:39`) replies unconditionally → server `SendZoneCancel` → full teardown/reconnect, lands where it started. T148's "server relocated B" was the ZonePC log line, not an observed move. Class A: on a same-zone request, relocate locally (set position, no zone cycle). `review/T229/`.
 - **T224 `c94d2eba`: `/who` prints entries (world-sender layout verified live); `/who all` filter bug and GM `%9` formatting fixed. Owed: anon/linkdead/guild lines exercised by unit tests only (needs a second online char).**
 - ~~**NEW LEAD (T220 live screenshot, 2026-08-25): a magenta patch in qeynos2 CEILING geometry**~~ **CLOSED T226 `046b061f` — NOT a defect: T220's driver ran WITHOUT `--eqe1-path`; on the S3D/BMP path qeynos2's ~230-texture working set exceeds the 64MB constrained budget, the LRU evicts textures the live zone still references, and `RegionMeshTextureGuard` paints the placeholder (29 evictions, 12,492 px). With EQE1: 0 magenta, 0 evictions. Eviction line is now WARN with the texture name. ⚠ RULE: every live x86 pixel run passes `--eqe1-path` (decision #2: EQE1 is the shipped path; S3D is dev-only and thrashes under the orangepi budget).** Original lead: (`review/T220/`). T211 fixed the 0x2C material-list guess for equipment; this is zone geometry — different loader path. Class B: reproduce with `--dump-frames-dir` at the same spot, then find which texture name misses (EQT_EQE1_REQUEST_LOG_DIR shows NOT-FOUND). Untriaged.
@@ -40,8 +44,8 @@ Review — read that before scoping the next unit off this file.
     ~~`ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148)~~ CLOSED T229 `9a06ecbd` (eqemu READS the summon coords — zeros really sent the target to 0,0,0; GMFind_Struct is x-first float);
     ~~`/reply` silent success with no pending sender (T100)~~ CLOSED T222 (live-verified two-client);
     ~~`rejectTradeRequest()` never fires `m_on_cancelled` (T103)~~ CLOSED T222;
-    `CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
-    keyboard hotbar Item/Emote slots skipped, not routed (T174);
+    ~~`CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
+    keyboard hotbar Item/Emote slots skipped, not routed (T174)~~ CLOSED T230 (Emote/Macro still skipped);
     `EqActionHandler` TRANSFORMS methods still untested (T93); blackburrow /
     crushbone blank benchmark render (Batch H); "BSP region is SIZE_MAX"
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
@@ -59,7 +63,7 @@ Review — read that before scoping the next unit off this file.
     ~~invisible to `/help` (T143); headless `outcome=queued` for renderer
     commands (T139/T142); phantom `gequip7` in `config/eqe1_archives.json`
     (T198)~~ — all three CLOSED T223 `e6d31424` (catalog + drift-guard test;
-    headless refusal; T142 console echo NOT included, still open); `protectedRegions_` all-false (T79 census); memory categories
+    headless refusal; T142 console echo CLOSED T233 `78e041ad`); `protectedRegions_` all-false (T79 census); memory categories
     without budgets (T69); UI-gesture-only reachability pattern (not
     retired); Z5.3 / P52 / `waitForFlipComplete()` perf residuals;
     **doc debt:** `docker/CLAUDE.md` still documents
