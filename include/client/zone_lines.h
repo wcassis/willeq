@@ -61,6 +61,10 @@ public:
     ZoneLines() = default;
     ~ZoneLines() = default;
 
+    // T224: reverse of the zone-name table (used by /who to render eqemu's
+    // "ZONE: %1" whose argument is a zone ID). "" if the id is unknown.
+    static std::string zoneShortNameFromId(uint16_t zoneId);
+
     // Load zone lines from the zone's S3D/WLD file
     // Returns true if any zone lines were found
     bool loadFromZone(const std::string& zoneName, const std::string& eqClientPath);

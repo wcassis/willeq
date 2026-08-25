@@ -1325,6 +1325,18 @@ ADD_EXECUTABLE(test_who_format
 TARGET_LINK_LIBRARIES(test_who_format GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_who_format)
 
+# T224: OP_WhoAllResponse entry parsing/formatting (pure, who_response.cpp)
+# plus the handler end-to-end through the ReplayZonePacket seam, observed as
+# SystemMessage bridge events (same idiom as test_zone_chat.cpp).
+ADD_EXECUTABLE(test_who_response
+    test_who_response.cpp
+)
+TARGET_LINK_LIBRARIES(test_who_response GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_who_response PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_who_response)
+
 # T170: OP_InspectAnswer generation -- the field inversion between the request
 # and the answer (TargetID is the requester in an answer, the inspected player
 # in a request) and the sender itself through a real headless EverQuest.

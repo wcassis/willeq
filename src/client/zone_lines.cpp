@@ -99,6 +99,15 @@ static uint16_t getZoneIdFromName(const std::string& zoneName) {
     return 0;
 }
 
+std::string ZoneLines::zoneShortNameFromId(uint16_t zoneId) {
+    for (const auto& kv : ZONE_NAME_TO_ID) {
+        if (kv.second == zoneId) {
+            return kv.first;
+        }
+    }
+    return "";
+}
+
 bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqClientPath) {
     clear();
 

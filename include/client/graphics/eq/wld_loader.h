@@ -668,8 +668,6 @@ private:
     // Decode zone line info from region type string (drntp, wtntp, lantp patterns)
     static std::optional<ZoneLineInfo> decodeZoneLineString(const std::string& regionTypeString);
 
-    std::string resolveTextureName(uint32_t texIndex) const;
-
     std::vector<std::shared_ptr<ZoneGeometry>> geometries_;
     std::map<uint32_t, WldTexture> textures_;
     std::map<uint32_t, WldTextureBrush> brushes_;

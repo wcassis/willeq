@@ -287,6 +287,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/corpse_predicate.cpp
     src/client/bind_wound_outcome.cpp
     src/client/who_format.cpp
+    src/client/who_response.cpp
     src/client/trade_manager.cpp
     src/client/door_state_manager.cpp
     src/client/ucs.cpp

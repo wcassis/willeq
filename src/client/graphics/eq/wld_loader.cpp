@@ -610,10 +610,6 @@ void WldLoader::parseFragment31(const char* fragBuffer, uint32_t fragLength, uin
     lastBrushSetFragIndex_ = fragIndex;  // T211: see the header's comment
 }
 
-std::string WldLoader::resolveTextureName(uint32_t texIndex) const {
-    return "";
-}
-
 void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                 int32_t nameRef, const char* hash, bool oldFormat) {
     WldFragment36Header header = read_val<WldFragment36Header>(fragBuffer);

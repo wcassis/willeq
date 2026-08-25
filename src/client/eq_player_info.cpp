@@ -12,6 +12,8 @@
 #include "client/inspect_answer.h"
 #include "client/bind_wound_outcome.h"
 #include "client/who_format.h"
+#include "client/who_response.h"
+#include "client/zone_lines.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
@@ -1103,73 +1105,85 @@ void EverQuest::SendWhoAllRequest(const std::string& name, int lvllow, int lvlhi
 
 void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
 {
-	// Parse the who response packet
-	// This is a variable-length packet with a header followed by player entries
+	// 64-byte WhoAllReturnHeader followed by `playercount` packed
+	// variable-length entries (layout documented in client/who_response.h).
+	// T224: before this the entries were never parsed and /who printed only
+	// the count line.
 	if (p.Length() < 2 + sizeof(EQT::WhoAllReturnHeader)) {
 		LOG_WARN(MOD_MAIN, "OP_WhoAllResponse packet too small: {} bytes", p.Length());
 		return;
 	}
 
 	const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
+	const size_t data_len = p.Length() - 2;
 	const EQT::WhoAllReturnHeader* header = reinterpret_cast<const EQT::WhoAllReturnHeader*>(data);
 
-	uint32_t player_count = header->playercount;
+	const uint32_t player_count = header->playercount;
 	LOG_INFO(MOD_MAIN, "Who response: {} player(s)", player_count);
-
-	// Get localized header strings from StringDatabase
-	std::string header_text;
-
-	// Use playerineqstring for the header (e.g., "Players in EverQuest")
-	if (header->playerineqstring != 0) {
-		std::string eqstr = m_string_db.getString(header->playerineqstring);
-		if (!eqstr.empty()) {
-			header_text = eqstr;
-		}
-	}
-
-	// Fallback to playersinzonestring if playerineqstring is empty
-	if (header_text.empty() && header->playersinzonestring != 0) {
-		std::string zonestr = m_string_db.getString(header->playersinzonestring);
-		if (!zonestr.empty()) {
-			header_text = zonestr;
-		}
-	}
-
-	// Use the line field if no string ID matched
-	if (header_text.empty() && header->line[0] != '\0') {
-		header_text = std::string(header->line, strnlen(header->line, sizeof(header->line)));
-	}
-
-	if (player_count == 0) {
-		AddChatSystemMessage("No players found matching your search.");
-		return;
-	}
-
-	// Display header with player count. T178: eqemu's header carries a `%1`
-	// placeholder for the count ("There is %1 player in EverQuest."); fill it
-	// rather than appending a raw ": N" (which rendered "...EverQuest.: 1").
-	if (!header_text.empty()) {
-		bool substituted = false;
-		std::string filled = EQT::substituteWhoCount(header_text, player_count, substituted);
-		if (substituted) {
-			AddChatSystemMessage(filled);
-		} else {
-			// No placeholder in this string -- keep the count visible.
-			AddChatSystemMessage(fmt::format("{}: {}", filled, player_count));
-		}
-	} else {
-		AddChatSystemMessage(fmt::format("Players found: {}", player_count));
-	}
-
-	// The player data follows the header in a complex variable-length format
-	// Each player entry contains multiple uint32 format strings followed by variable-length strings
-	// For now, just display the count - full parsing would require understanding the string table format
-	// The actual player names and details are encoded with format string IDs that reference
-	// the client's string table
 
 	if (s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Who header: id={}, playerineqstring={}, playersinzonestring={}, playercount={}",
 			header->id, header->playerineqstring, header->playersinzonestring, header->playercount);
+	}
+
+	// String-table hooks: the client's eqstr db first, the built-in copies
+	// of the who strings when it has no entry (unloaded db, headless tests).
+	EQT::WhoFormatContext ctx;
+	ctx.eqstr = [this](uint32_t id) {
+		std::string s = m_string_db.getString(id);
+		return s.empty() ? EQT::whoDefaultString(id) : s;
+	};
+	ctx.className = [](uint32_t c) { return EverQuest::GetClassName(c); };
+	ctx.raceName = [](uint32_t r) { return EverQuest::GetRaceName(r); };
+	ctx.zoneName = [](uint32_t z) {
+		return EQT::ZoneLines::zoneShortNameFromId(static_cast<uint16_t>(z));
+	};
+
+	// Line 1: "Players in EverQuest:" (5001). World's friends-who sends
+	// 0xFFFFFFFF here and an empty rule line -- both are then skipped.
+	if (header->playerineqstring != 0 && header->playerineqstring != EQT::kWhoStringNone) {
+		std::string title = ctx.eqstr(header->playerineqstring);
+		if (!title.empty()) {
+			AddChatSystemMessage(title);
+		}
+	}
+
+	// Line 2: the rule ("---------------------------").
+	if (header->line[0] != '\0') {
+		AddChatSystemMessage(std::string(header->line, strnlen(header->line, sizeof(header->line))));
+	}
+
+	// Entries.
+	std::vector<EQT::WhoAllEntry> entries;
+	const uint8_t* body = data + sizeof(EQT::WhoAllReturnHeader);
+	const size_t body_len = data_len - sizeof(EQT::WhoAllReturnHeader);
+	if (!EQT::parseWhoAllEntries(body, body_len, player_count, entries)) {
+		LOG_WARN(MOD_MAIN, "OP_WhoAllResponse: header claims {} entries, only {} parsed from {} bytes",
+			player_count, entries.size(), body_len);
+	}
+	for (const auto& e : entries) {
+		AddChatSystemMessage(EQT::formatWhoAllEntry(e, ctx));
+	}
+
+	// Last line: the count string (5028 / 5036 / 5029). T178: eqemu's string
+	// carries a `%1` placeholder for the count; fill it rather than appending
+	// a raw ": N". Fall back to appending only when the string had no
+	// placeholder, so an unexpected string never drops the number.
+	std::string count_text;
+	if (header->playersinzonestring != 0 && header->playersinzonestring != EQT::kWhoStringNone) {
+		count_text = ctx.eqstr(header->playersinzonestring);
+	}
+	if (count_text.empty()) {
+		count_text = EQT::whoDefaultString(player_count == 0 ? EQT::kWhoStrNoPlayers
+		                                  : player_count == 1 ? EQT::kWhoStrOnePlayer
+		                                                      : EQT::kWhoStrManyPlayers);
+	}
+	bool substituted = false;
+	std::string filled = EQT::substituteWhoCount(count_text, player_count, substituted);
+	if (substituted || player_count == 0) {
+		AddChatSystemMessage(filled);
+	} else {
+		AddChatSystemMessage(fmt::format("{}: {}", filled, player_count));
 	}
 }
 
