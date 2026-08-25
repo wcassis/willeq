@@ -373,9 +373,9 @@ public:
     int getClickMouseX() const { return clickMouseX_; }
     int getClickMouseY() const { return clickMouseY_; }
 
-    // Input state queries
-    bool quitRequested() const { return quitRequested_; }
-    void setQuitRequested(bool quit) { quitRequested_ = quit; }
+    // Input state queries (render thread sets, game thread polls -- atomic)
+    bool quitRequested() const { return quitRequested_.load(std::memory_order_relaxed); }
+    void setQuitRequested(bool quit) { quitRequested_.store(quit, std::memory_order_relaxed); }
 
     // Action queue for renderer-internal actions (UI toggles, debug, camera, etc.)
     std::vector<RendererEvent> drainActions() { std::vector<RendererEvent> r; r.swap(actionQueue_); return r; }
@@ -386,9 +386,10 @@ public:
     size_t getBridgeQueueSize() const { return bridgeQueue_.size(); }
     void pushBridgeAction(RendererEvent event) { bridgeQueue_.push_back(std::move(event)); }
 
-    // Spell gem and hotbar requests (use intData in RendererEvent for new code)
-    int8_t getSpellGemCastRequest() { int8_t g = spellGemCastRequest_; spellGemCastRequest_ = -1; return g; }
-    int8_t getHotbarActivationRequest() { int8_t h = hotbarActivationRequest_; hotbarActivationRequest_ = -1; return h; }
+    // Spell gem and hotbar requests (use intData in RendererEvent for new code).
+    // Read-and-reset via exchange: see the T225 note on the fields below.
+    int8_t getSpellGemCastRequest() { return spellGemCastRequest_.exchange(-1, std::memory_order_relaxed); }
+    int8_t getHotbarActivationRequest() { return hotbarActivationRequest_.exchange(-1, std::memory_order_relaxed); }
 
     // Delta accumulators (accumulate between frames, consumed once per frame)
     float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
@@ -411,14 +412,15 @@ public:
     }
     void clearPendingKeyEvents() { pendingKeyEvents_.clear(); }
 
-    // Chat focus shortcuts
-    bool enterKeyPressed() { bool r = enterKeyPressed_; enterKeyPressed_ = false; return r; }
-    bool slashKeyPressed() { bool r = slashKeyPressed_; slashKeyPressed_ = false; return r; }
-    bool escapeKeyPressed() { bool r = escapeKeyPressed_; escapeKeyPressed_ = false; return r; }
+    // Chat focus shortcuts (read-and-reset via exchange; T225 note below)
+    bool enterKeyPressed() { return enterKeyPressed_.exchange(false, std::memory_order_relaxed); }
+    bool slashKeyPressed() { return slashKeyPressed_.exchange(false, std::memory_order_relaxed); }
+    bool escapeKeyPressed() { return escapeKeyPressed_.exchange(false, std::memory_order_relaxed); }
 
-    // Chat focus state (set by renderer, read by GraphicsInputHandler)
-    void setChatInputFocused(bool focused) { chatInputFocused_ = focused; }
-    bool isChatInputFocused() const { return chatInputFocused_; }
+    // Chat focus state (set by renderer, read by GraphicsInputHandler on the
+    // game thread -- atomic, same discipline as the flags)
+    void setChatInputFocused(bool focused) { chatInputFocused_.store(focused, std::memory_order_relaxed); }
+    bool isChatInputFocused() const { return chatInputFocused_.load(std::memory_order_relaxed); }
 
     // Current mode (for hotkey lookups)
     eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
@@ -431,20 +433,31 @@ private:
     int lastMouseX_ = 0, lastMouseY_ = 0;
     bool leftButtonDown_ = false;
     bool rightButtonDown_ = false;
-    bool leftButtonClicked_ = false;
-    bool leftButtonReleased_ = false;
+    // T225: the read-and-reset flags below are SET on the render thread
+    // (OnEvent, from Irrlicht input) and CONSUMED on BOTH threads -- the
+    // render thread in IrrlichtRenderer::processFrameInput() and the game
+    // thread in GraphicsInputHandler::updateFromEventReceiver(). Each is an
+    // independent one-shot flag with no ordering relationship to any other
+    // field, so a relaxed exchange() at the reader is sufficient: it makes
+    // the read-and-reset a single indivisible step (exactly one consumer
+    // observes a given press) without imposing a fence. Intent routing was
+    // rejected because both threads are legitimate consumers of the same
+    // flag; see refactor/T225_event_receiver_flags.md.
+    std::atomic<bool> leftButtonClicked_{false};
+    std::atomic<bool> leftButtonReleased_{false};
     int clickMouseX_ = 0, clickMouseY_ = 0;
-    bool quitRequested_ = false;
-    bool chatInputFocused_ = false;  // Set by renderer, read by GraphicsInputHandler
+    std::atomic<bool> quitRequested_{false};
+    std::atomic<bool> chatInputFocused_{false};  // Set by renderer, read by GraphicsInputHandler
 
     // Action queue (replaces ~47 boolean flags) — renderer-internal actions
     std::vector<RendererEvent> actionQueue_;
     // Bridge queue — game actions routed to GraphicsInputHandler → InputActionBridge
     std::vector<RendererEvent> bridgeQueue_;
 
-    // Spell gem and hotbar (indexed values, not simple booleans)
-    int8_t spellGemCastRequest_ = -1;
-    int8_t hotbarActivationRequest_ = -1;
+    // Spell gem and hotbar (indexed values, not simple booleans; -1 = none).
+    // Same cross-thread read-and-reset as the bools above (T225).
+    std::atomic<int8_t> spellGemCastRequest_{-1};
+    std::atomic<int8_t> hotbarActivationRequest_{-1};
 
     // Delta accumulators (accumulate between frames)
     float cameraZoomDelta_ = 0.0f;
@@ -453,9 +466,9 @@ private:
 
     // Chat input state
     std::vector<KeyEvent> pendingKeyEvents_;
-    bool enterKeyPressed_ = false;
-    bool slashKeyPressed_ = false;
-    bool escapeKeyPressed_ = false;
+    std::atomic<bool> enterKeyPressed_{false};   // T225: cross-thread read-and-reset
+    std::atomic<bool> slashKeyPressed_{false};
+    std::atomic<bool> escapeKeyPressed_{false};
 
     // Current hotkey mode for key lookups
     eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;

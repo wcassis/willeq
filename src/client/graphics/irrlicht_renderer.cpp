@@ -462,16 +462,14 @@ int RendererEventReceiver::getMouseDeltaY() {
     return delta;
 }
 
+// T225: read-and-reset as one atomic exchange -- consumed on both the render
+// thread (processFrameInput) and the game thread (GraphicsInputHandler).
 bool RendererEventReceiver::wasLeftButtonClicked() {
-    bool clicked = leftButtonClicked_;
-    leftButtonClicked_ = false;
-    return clicked;
+    return leftButtonClicked_.exchange(false, std::memory_order_relaxed);
 }
 
 bool RendererEventReceiver::wasLeftButtonReleased() {
-    bool released = leftButtonReleased_;
-    leftButtonReleased_ = false;
-    return released;
+    return leftButtonReleased_.exchange(false, std::memory_order_relaxed);
 }
 
 // --- IrrlichtRenderer Implementation ---
