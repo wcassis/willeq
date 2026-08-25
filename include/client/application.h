@@ -214,6 +214,11 @@ struct CommandDispatchResult {
  *   }
  *   app.shutdown();
  */
+// T238: test peer for the --script held/advance path (tests/
+// test_headless_command_refusal.cpp). Reaches updateScript() and the two
+// members it gates on; nothing else.
+struct ApplicationScriptTestPeer;
+
 class Application {
 public:
     Application();
@@ -338,6 +343,8 @@ public:
     static bool loadConfigFile(const std::string& configFile, ApplicationConfig& config);
 
 private:
+    friend struct ApplicationScriptTestPeer;  // T238
+
     // ========== Main Loop Stages ==========
 
     void mainLoop();          // Render thread (main) — render loop
@@ -562,6 +569,12 @@ private:
     size_t m_scriptIndex = 0;
     float m_scriptWaitRemaining = 0.0f;
     bool m_scriptWaitStarted = false;
+    // T238: true once "CMD outcome=held ..." has been printed for the
+    // command step at m_scriptIndex while !m_fullyConnected -- the
+    // --script twin of m_preConnectionHeldAnnounced, so a scripted tour
+    // with no server says "held" ONCE instead of nothing (T233) and not
+    // once per game tick. Reset when the step is dispatched.
+    bool m_scriptHeldAnnounced = false;
 
     // T64: video-capture frame-dump state (render thread only, see render()).
     uint64_t m_dumpFrameCounter = 0;   // increments every processFrame() call

@@ -1114,8 +1114,23 @@ void Application::updateScript(float deltaTime) {
     // Command step: hold here (without consuming it) until fully zoned in, so a
     // script that starts with a command line rather than "wait" doesn't drop it.
     if (!m_fullyConnected) {
+        // T238: say so ONCE per held step, with the exact line T30's
+        // piped-stdin intercept prints (processPreConnectionLifecycleCommands),
+        // so a no-server tour is distinguishable from a hang
+        // (review/T233/script_run_no_server.log logged nothing at all).
+        if (!m_scriptHeldAnnounced) {
+            CommandDispatchResult held;
+            held.command = step.commandText;
+            held.registry = "pending";
+            held.recognized = false;
+            held.held = true;
+            held.message = "waiting for connection";
+            printCommandResult(held);
+            m_scriptHeldAnnounced = true;
+        }
         return;
     }
+    m_scriptHeldAnnounced = false;
 
     LOG_INFO(MOD_MAIN, "Script: executing '{}' (step {}/{})",
         step.commandText, m_scriptIndex + 1, m_scriptSteps.size());
