@@ -110,3 +110,32 @@ Existing door tests (`test_action_dispatcher` door cases, `test_door_*`) pass.
 
 ### Live leg
 See "Live leg" subsection below (filled when the eqemu lock was available).
+
+### Live leg (eqemu lock taken after T218 released it; server up on qeynos2, DOWN + lock deleted after)
+Two-client BEFORE/AFTER pair, identical scripts/observer, only the actor
+binary differs (`review/T219/t219_drive.sh`, scripts + jsons alongside).
+Both characters DB-staged next to qeynos2 door 20 `DOOR1` (server pos
+81.95, 14.61, 0): Testchar at (84.5, 14.6, 1), Oraclerogue (observer,
+`-d 2 --log-level=DEBUG`) at (87, 17, 1). Actor runs `/door` twice, 12s
+apart, then `/camp`. DB before/staged/restored in `db_*.txt`
+(Testchar back to zone 36 / -77.9232, 21.9086, 3, h190; Oraclerogue back to
+zone 2 / 167, 30, -29.25, h384).
+
+| | actor (Testchar) | observer (Oraclerogue) |
+|---|---|---|
+| BEFORE (actor = pre-fix `main/build/bin/willeq`) | `/door` x2 -> `CMD outcome=failed ... message="No door nearby"` both times; no ClickDoor sent | no door 20 state change correlated with the clicks |
+| AFTER (actor = slot2 `build/bin/willeq`) | `/door` -> `outcome=applied`, `Clicking door 20 ('DOOR1')` (16:31:13.929) -> `Door 20 closed (user)` 49 ms later; second `/door` (16:31:25.958) -> `Door 20 opened (user)` 66 ms later | `Door 20 closed` at 16:31:13.977 and `Door 20 opened` at 16:31:26.023 -- the server's MoveDoor broadcast, i.e. OP_ClickDoor was handled server-side, not a client-local ack |
+
+Observation (not a defect of this unit, flagged for honesty): the FIRST
+click drew a MoveDoor `close` (0x02) from the server and the second an
+`open` (0x03). The server toggles off its own door state; qeynos2 emits
+periodic MoveDoor-close broadcasts for door 20 in every log (dozens per
+minute, also in the BEFORE runs), so the server evidently held the door as
+"open" at the first click. Both clicks were processed by the server and
+seen by the second client, which is the plan's acceptance criterion. The
+`(user)` tag on the actor's lines proves the pending-click correlation
+(`m_pending_door_clicks`) also works on the projected path.
+
+eqemu's zone log carried no door lines (Doors log category off by default);
+`eqemu_zone_qeynos2_log_door_lines.txt` is empty on purpose -- the observer
+client is the server-side proof.
