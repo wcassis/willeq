@@ -18,6 +18,7 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+- **NEW (T229): same-zone summon does not move the summoned WillEQ client.** eqemu sends `OP_RequestClientZoneChange` for the CURRENT zone and expects NO `OP_ZoneChange` back (akk-stack `zoning.cpp` ~1060); `ZoneProcessRequestClientZoneChange` (`eq_zone.cpp:39`) replies unconditionally → server `SendZoneCancel` → full teardown/reconnect, lands where it started. T148's "server relocated B" was the ZonePC log line, not an observed move. Class A: on a same-zone request, relocate locally (set position, no zone cycle). `review/T229/`.
 - **T224 `c94d2eba`: `/who` prints entries (world-sender layout verified live); `/who all` filter bug and GM `%9` formatting fixed. Owed: anon/linkdead/guild lines exercised by unit tests only (needs a second online char).**
 - ~~**NEW LEAD (T220 live screenshot, 2026-08-25): a magenta patch in qeynos2 CEILING geometry**~~ **CLOSED T226 `046b061f` — NOT a defect: T220's driver ran WITHOUT `--eqe1-path`; on the S3D/BMP path qeynos2's ~230-texture working set exceeds the 64MB constrained budget, the LRU evicts textures the live zone still references, and `RegionMeshTextureGuard` paints the placeholder (29 evictions, 12,492 px). With EQE1: 0 magenta, 0 evictions. Eviction line is now WARN with the texture name. ⚠ RULE: every live x86 pixel run passes `--eqe1-path` (decision #2: EQE1 is the shipped path; S3D is dev-only and thrashes under the orangepi budget).** Original lead: (`review/T220/`). T211 fixed the 0x2C material-list guess for equipment; this is zone geometry — different loader path. Class B: reproduce with `--dump-frames-dir` at the same spot, then find which texture name misses (EQT_EQE1_REQUEST_LOG_DIR shows NOT-FOUND). Untriaged.
 - **T221 (stage 2) note: `GameState::tradeskill()` has NO writer on either instance and no bridge case** — the tradeskill state domain is dead data. Class A: wire it from the recipe/combine handlers or delete the domain. Untouched by T221.
@@ -34,7 +35,7 @@ Review — read that before scoping the next unit off this file.
 - **Open items by class** (each anchored by a heading in the rebuilt Index
   below; every closure cites its commit):
   - **A — client correctness defects, unowned:** ~~`SendGMHideMe` misrouted~~ (CLOSED T217 `175c97ca`) /
-    `ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148);
+    ~~`ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148)~~ CLOSED T229 `9a06ecbd` (eqemu READS the summon coords — zeros really sent the target to 0,0,0; GMFind_Struct is x-first float);
     ~~`/reply` silent success with no pending sender (T100)~~ CLOSED T222 (live-verified two-client);
     ~~`rejectTradeRequest()` never fires `m_on_cancelled` (T103)~~ CLOSED T222;
     `CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
