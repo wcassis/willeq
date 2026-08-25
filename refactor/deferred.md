@@ -9086,3 +9086,37 @@ position and `#zone`'s coord args are ignored.
   addendum; GLES2 is the only ARM renderer) — and its target table calls the
   Pi build "Lima/Mesa GL 2.1"-era desktop GL. Owned by whichever unit next
   touches `docker/`; recorded so it is not re-discovered.
+
+## `InputActionBridge` heading path is dead in the graphical build — delete-unit candidate (T218, 2026-08-25)
+
+`src/client/action/input_action_bridge.cpp` reads `m_state.player().heading()`
+at two sites (T218 plan item 4). Neither is projected (no `PlayerMoved` case in
+`GameStateSyncBridge`, so the value is always 0) and, measured at runtime,
+neither matters:
+
+- **`processContinuousInput()` (keyboard turn, ~line 220): zero callers.**
+  Declared in the header, defined, never invoked — `update()` explicitly
+  dropped it ("redundant path that bypassed renderer collision"). Structurally
+  dead.
+- **`processMouseInput()` mouse-look branch (~line 254): called every game
+  tick, branch never taken.** Probe: `--egl-x11` under Xvfb, 6 xdotool
+  left-button drags of 400 px (120 `MotionNotify` events) after "Fully
+  connected"; the renderer's own mouse-look (`renderer_player_physics.cpp`)
+  turned the player each time (`[ROT-CAMERA] setFollowPosition: heading=80
+  -> 180 -> 280 ...`), while the `[T218]` LOG_DEBUG added inside the branch
+  fired **0 times** (`review/T218/heading_probe_A_testchar_eglx11.log`). Why:
+  both threads consume the same destructive `RendererEventReceiver::
+  getMouseDeltaX()` counter, but the render thread pumps the X events
+  (`isRunning()` -> `device_->run()`) and reads the delta in the SAME
+  `processFrame()` (`updatePlayerMovement`, `renderer_frame.cpp:542`), so the
+  non-zero window the game thread would have to hit is microseconds wide.
+  Had it ever fired it would have been harmful, not helpful: it would call
+  `setHeading(0 + delta*0.1)` -> `EverQuest::SetHeading` + `SendPositionUpdate`
+  from a heading of 0, snapping the player.
+
+Per the T218 plan: NOT fixed (no `PlayerMoved` projection added). Recommend a
+delete unit removing `processContinuousInput()`, the mouse-look block of
+`processMouseInput()`, and `m_turnSpeed`/`m_mouseSensitivity`/`m_invertMouseY`
+if nothing else reads them — leaving `processMouseInput()`'s targeting role,
+if any, intact. `refactor/T218_player_flags_projection.md` Review has the
+evidence table.

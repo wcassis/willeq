@@ -1164,3 +1164,71 @@ TEST_F(GameStateSyncBridgeTest, TradeEventsStillDelegateToWrappedBridge) {
     EXPECT_EQ(wrapped->appliedTypes[1], GameEventType::TradeStarted);
     EXPECT_EQ(wrapped->appliedTypes[2], GameEventType::TradeCancelled);
 }
+
+// ============================================================================
+// T218: PlayerFlagsChanged -> PlayerState AFK/anonymous/roleplay projection.
+// Before this unit nothing ever wrote these three flags into
+// Application::m_gameState, so ActionDispatcher::toggleAFK() and
+// CommandProcessor's /anon (which read this copy to compute !current)
+// always computed "turn ON". The toggle-off tests below are the ones that
+// encode the live symptom: without the projection case the flag stays
+// false after the ON event, so the action layer would never see it as ON.
+// ============================================================================
+
+TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedProjectsAfkOn) {
+    PlayerFlagsChangedData data;
+    data.afk = true;
+    data.anonymous = false;
+    data.roleplay = false;
+
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, data));
+
+    EXPECT_TRUE(state->player().isAFK());
+    EXPECT_FALSE(state->player().isAnonymous());
+    EXPECT_FALSE(state->player().isRoleplay());
+}
+
+TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedAfkOnThenOffRoundTrips) {
+    PlayerFlagsChangedData on;
+    on.afk = true;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, on));
+    ASSERT_TRUE(state->player().isAFK());
+
+    // What toggleAFK() computes next: !isAFK() must now be false.
+    EXPECT_FALSE(!state->player().isAFK());
+
+    PlayerFlagsChangedData off;
+    off.afk = false;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, off));
+    EXPECT_FALSE(state->player().isAFK());
+}
+
+TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedProjectsAnonymousAndRoleplayIndependently) {
+    PlayerFlagsChangedData anon;
+    anon.anonymous = true;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, anon));
+    EXPECT_TRUE(state->player().isAnonymous());
+    EXPECT_FALSE(state->player().isRoleplay());
+    EXPECT_FALSE(state->player().isAFK());
+
+    PlayerFlagsChangedData rp;
+    rp.anonymous = false;
+    rp.roleplay = true;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, rp));
+    EXPECT_FALSE(state->player().isAnonymous());
+    EXPECT_TRUE(state->player().isRoleplay());
+
+    PlayerFlagsChangedData clear;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, clear));
+    EXPECT_FALSE(state->player().isAnonymous());
+    EXPECT_FALSE(state->player().isRoleplay());
+}
+
+TEST_F(GameStateSyncBridgeTest, PlayerFlagsChangedStillDelegatesToWrappedBridge) {
+    PlayerFlagsChangedData data;
+    data.afk = true;
+    bridge->applyEvent(GameEvent(GameEventType::PlayerFlagsChanged, data));
+
+    ASSERT_EQ(wrapped->appliedTypes.size(), 1u);
+    EXPECT_EQ(wrapped->appliedTypes[0], GameEventType::PlayerFlagsChanged);
+}

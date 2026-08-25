@@ -361,6 +361,21 @@ void GameStateSyncBridge::applyEvent(const state::GameEvent& event) {
                       d.enabled);
             break;
         }
+        case state::GameEventType::PlayerFlagsChanged: {
+            // T218: Application::m_gameState's PlayerState never received
+            // setAFK/setAnonymous/setRoleplay before this unit -- only
+            // EverQuest's own m_game_state did (eq_player_info.cpp SetAFK/
+            // SetAnonymous/SetRoleplay). ActionDispatcher::toggleAFK and
+            // CommandProcessor's /anon read THIS copy to compute the next
+            // state, so they always saw false and could only ever turn the
+            // flag ON. Published from those three setters, which are the sole
+            // mutation sites of m_is_afk/m_is_anonymous/m_is_roleplay.
+            const auto& d = std::get<state::PlayerFlagsChangedData>(event.data);
+            m_state.player().setAFK(d.afk);
+            m_state.player().setAnonymous(d.anonymous);
+            m_state.player().setRoleplay(d.roleplay);
+            break;
+        }
         case state::GameEventType::InventorySlotChanged: {
             // T42: replaces Application::syncInventoryState() (a once-per-tick
             // poll of InventoryManager). Piece 1 of this unit closed the three

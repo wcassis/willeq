@@ -25,6 +25,10 @@ enum class GameEventType {
     PlayerStatsChanged,
     PlayerPositionStateChanged,
     PlayerMovementModeChanged,
+    PlayerFlagsChanged,   // T218: own AFK/anonymous/roleplay flags, published
+                          // from EverQuest::SetAFK/SetAnonymous/SetRoleplay
+                          // (eq_player_info.cpp). GameStateSyncBridge is the
+                          // only consumer.
 
     // Entity events
     EntitySpawned,
@@ -199,6 +203,15 @@ struct PlayerPositionStateChangedData {
 
 struct PlayerMovementModeChangedData {
     uint8_t mode;  // MovementMode enum value
+};
+
+// T218: the full flag set every time any one of them changes (republish-the-
+// whole-struct, same pattern as T81's EntityStateSnapshot) so the projection
+// never has to merge.
+struct PlayerFlagsChangedData {
+    bool afk = false;
+    bool anonymous = false;
+    bool roleplay = false;
 };
 
 // --- Entity events ---
@@ -969,6 +982,7 @@ using EventData = std::variant<
     PlayerStatsChangedData,
     PlayerPositionStateChangedData,
     PlayerMovementModeChangedData,
+    PlayerFlagsChangedData,
     // Entity
     EntitySpawnedData,
     EntityDespawnedData,

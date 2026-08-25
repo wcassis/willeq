@@ -252,6 +252,11 @@ void InputActionBridge::processMouseInput(float deltaTime) {
         // Apply horizontal rotation to heading
         if (deltaX != 0.0f) {
             float currentHeading = m_state.player().heading();
+            // T218: runtime probe -- is this branch reached in the graphical
+            // build (where renderer_player_physics.cpp also consumes the
+            // same RendererEventReceiver mouse delta on the render thread)?
+            LOG_DEBUG(MOD_INPUT, "[T218] InputActionBridge::processMouseInput mouse-look: deltaX={} projectedHeading={}",
+                      deltaX, currentHeading);
             currentHeading += deltaX * 0.1f;  // Sensitivity adjustment
 
             while (currentHeading < 0) currentHeading += 360.0f;
