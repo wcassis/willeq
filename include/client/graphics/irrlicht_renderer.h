@@ -820,10 +820,6 @@ public:
     void removeWorldObject(uint32_t dropId);
     void clearWorldObjects();
 
-    // Spell gem cast callback (called when player presses 1-8 keys)
-    using SpellGemCastCallback = std::function<void(uint8_t gemSlot)>;
-    void setSpellGemCastCallback(SpellGemCastCallback callback) { spellGemCastCallback_ = callback; }
-
     // Trigger death animation for an entity (plays death animation and holds at last frame)
     void playEntityDeathAnimation(uint16_t spawnId);
 
@@ -1657,6 +1653,16 @@ private:
     friend class SimulationOutputLifetimeTest_BindOnlyBindsParticleBufferWhenParticleOutputValid_Test;
     friend class SimulationOutputLifetimeTest_RepeatedApplyOutputWithFreshLocalsNeverDangles_Test;
 
+    // T235 (refactor/T235_spell_gem_key_race.md): test-only access to
+    // processChatInput() and eventReceiver_ so the real render-thread
+    // frame step can be driven against a real RendererEventReceiver with
+    // no device, asserting a spell-gem key request SURVIVES it for the
+    // game thread's GraphicsInputHandler. Same hand-expanded FRIEND_TEST
+    // idiom as T116 above (no gtest include in a production header).
+    friend class SpellGemKeyRaceTest;  // fixture installs eventReceiver_
+    friend class SpellGemKeyRaceTest_GemKeySurvivesRenderFrameForGameThread_Test;
+    friend class SpellGemKeyRaceTest_RenderFrameWithChatUnfocusedLeavesRequestUntouched_Test;
+
     // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.
     std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
@@ -1944,7 +1950,6 @@ private:
     ChatSubmitCallback chatSubmitCallback_;
     DoorInteractCallback doorInteractCallback_;
     WorldObjectInteractCallback worldObjectInteractCallback_;
-    SpellGemCastCallback spellGemCastCallback_;
     ZoningEnabledCallback zoningEnabledCallback_;
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;

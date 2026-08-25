@@ -1672,6 +1672,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_renderer_command_echo)
 ENDIF()
 
+# T235: spell-gem hotkeys reach the game thread -- drives the real
+# RendererEventReceiver + IrrlichtRenderer::processChatInput() (bare, no
+# device, friend access) and asserts GraphicsInputHandler still sees the
+# request. No device needed -- same reasoning as test_renderer_command_echo.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spell_gem_key_race
+        test_spell_gem_key_race.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_spell_gem_key_race PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spell_gem_key_race GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_spell_gem_key_race)
+ENDIF()
+
 # T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
 # pure predicate extracted from checkProgressiveLoadingComplete() to fix the
 # deferred-entity-pickup bug T109 shipped inert around. No device needed --

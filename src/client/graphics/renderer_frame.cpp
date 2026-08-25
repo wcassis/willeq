@@ -826,14 +826,20 @@ void IrrlichtRenderer::processInputDeltas(float deltaTime) {
 }
 
 void IrrlichtRenderer::processChatInput() {
-    // Handle spell gem shortcuts (1-8 keys)
-    int8_t spellGemRequest = eventReceiver_->getSpellGemCastRequest();
-    if (spellGemRequest >= 0 && !chatInputFocused_) {
-        if (spellGemCastCallback_) {
-            LOG_DEBUG(MOD_GRAPHICS, "Spell gem {} pressed", spellGemRequest + 1);
-            spellGemCastCallback_(static_cast<uint8_t>(spellGemRequest));
-        }
-    }
+    // T235: the spell-gem key request (Alt+1..8) is NOT consumed here any
+    // more either. This used to call getSpellGemCastRequest() -- an
+    // exchange(-1) -- every frame and hand the value to
+    // spellGemCastCallback_, which nothing ever set (Application::
+    // connectRendererCallbacks() only knows the abstract
+    // output::GraphicalRenderer, which IrrlichtRenderer does not derive
+    // from; the BEFORE log in review/T235/ has "action=SpellGem1" and
+    // nothing after it). Same
+    // two-consumer race as the hotbar key below: the render thread polled
+    // first and every gem key vanished before the game thread's
+    // InputActionBridge::processSpellCasts() could see it. The one
+    // consumer is now GraphicsInputHandler::consumeSpellCastRequest()
+    // (src/client/input/graphics_input_handler.cpp); the dead callback
+    // plumbing is gone. See refactor/T235_spell_gem_key_race.md.
 
     // T230: the hotbar-key request is NOT consumed here any more. This used
     // to call getHotbarActivationRequest() -- an exchange(-1) -- and discard

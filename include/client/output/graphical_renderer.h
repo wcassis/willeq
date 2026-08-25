@@ -183,18 +183,6 @@ public:
     }
 
     /**
-     * Spell gem cast callback type.
-     */
-    using SpellGemCastCallback = std::function<void(uint8_t gemSlot)>;
-
-    /**
-     * Set spell gem cast callback.
-     */
-    virtual void setSpellGemCastCallback(SpellGemCastCallback callback) {
-        m_spellGemCastCallback = callback;
-    }
-
-    /**
      * Target selection callback type.
      */
     using TargetCallback = std::function<void(uint16_t spawnId)>;
@@ -273,7 +261,6 @@ protected:
 
     // Callbacks
     DoorInteractCallback m_doorInteractCallback;
-    SpellGemCastCallback m_spellGemCastCallback;
     TargetCallback m_targetCallback;
     MovementCallback m_movementCallback;
     ChatSubmitCallback m_chatSubmitCallback;

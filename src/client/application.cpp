@@ -1945,12 +1945,15 @@ void Application::connectRendererCallbacks() {
 
     LOG_DEBUG(MOD_MAIN, "Connecting renderer callbacks to action dispatcher");
 
-    // Connect spell gem cast callback
-    graphicalRenderer->setSpellGemCastCallback([this](uint8_t gemSlot) {
-        if (m_dispatcher) {
-            m_dispatcher->castSpell(gemSlot);
-        }
-    });
+    // T235: no spell-gem cast callback any more. It was set here with a
+    // 0-based gem against ActionDispatcher::castSpell()'s 1-based contract,
+    // would have fired from the RENDER thread, and in practice was never
+    // set at all: nothing derives from output::GraphicalRenderer, so the
+    // dynamic_cast above always fails and this whole function is a no-op
+    // live (T235 BEFORE log: "Renderer callbacks connected" with no
+    // "Connecting renderer callbacks to action dispatcher" before it).
+    // Spell-gem keys travel GraphicsInputHandler ->
+    // InputActionBridge::processSpellCasts() on the game thread.
 
     // Connect target selection callback
     graphicalRenderer->setTargetCallback([this](uint16_t spawnId) {
