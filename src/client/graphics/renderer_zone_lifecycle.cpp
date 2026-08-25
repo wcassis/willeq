@@ -49,13 +49,34 @@ void IrrlichtRenderer::unloadZone() {
     // Remove zone placeholder mesh if still present
     destroyZonePlaceholder();
 
-    // Unload EQE1 flat packs (clear cache refs before destroying loaders)
+    // Unload EQE1 flat packs (clear cache refs before destroying loaders).
+    // T214: all but the PERSISTENT ones. willeq.eqe1 is the client's own pack,
+    // opened once at renderer init and never reopened -- destroying it here
+    // made every name in it unreachable for the rest of the process. The UI
+    // survived only because its textures were already uploaded, but
+    // detail_atlas is requested per zone load, so the miss resolver opened
+    // textures.eqe1 (2.6MB, 64 entries) to serve that single name in EVERY
+    // zone. Same shape as T204's UI-atlas hazard, one layer down: a
+    // process-lifetime asset torn down on a zone boundary.
     if (constrainedTextureCache_) {
         constrainedTextureCache_->clearEQE1Loaders();
     }
     {
         std::lock_guard<std::mutex> lock(eqe1Mutex_);
-        eqe1Loaders_.clear();
+        for (auto it = eqe1Loaders_.begin(); it != eqe1Loaders_.end(); ) {
+            if (isPersistentEQE1Archive(it->first) && it->second) {
+                ++it;
+            } else {
+                it = eqe1Loaders_.erase(it);
+            }
+        }
+        // Re-register the survivors: clearEQE1Loaders() emptied the cache's
+        // vector, and they must be searchable again before the next lookup.
+        if (constrainedTextureCache_) {
+            for (const auto& [name, loader] : eqe1Loaders_) {
+                constrainedTextureCache_->addEQE1Loader(loader.get());
+            }
+        }
     }
     // P04: drop the lazy-open queue too so the next zone's Step0 starts fresh.
     pendingGlobalEQE1Archives_.clear();

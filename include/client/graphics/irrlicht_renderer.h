@@ -1461,6 +1461,16 @@ private:
 
     const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
 
+    // T214: archives that are NOT zone assets and must survive unloadZone().
+    // "willeq" is the client's own pack (UI atlas + generated textures like
+    // detail_atlas); it is opened once at renderer init for the life of the
+    // process. Tearing it down with the zone's archives left detail_atlas
+    // unreachable, so the miss resolver opened textures.eqe1 (2.6MB) to serve
+    // that ONE name -- in every zone.
+    static bool isPersistentEQE1Archive(const std::string& archiveBaseName) {
+        return archiveBaseName == "willeq";
+    }
+
     // P04: global archives resolved for the current zone but not yet opened.
     // loadZoneStep0_EQE1 populates this (instead of eagerly opening every
     // global archive); openArchiveContaining() opens the single owning one, only
