@@ -29,8 +29,8 @@ Review — read that before scoping the next unit off this file.
   below; every closure cites its commit):
   - **A — client correctness defects, unowned:** ~~`SendGMHideMe` misrouted~~ (CLOSED T217 `175c97ca`) /
     `ZoneProcessGMFind` float decode / `SendGMSummon` zeroed coords (T148);
-    `/reply` silent success with no pending sender (T100);
-    `rejectTradeRequest()` never fires `m_on_cancelled` (T103);
+    ~~`/reply` silent success with no pending sender (T100)~~ CLOSED T222 (branch, pending live leg);
+    ~~`rejectTradeRequest()` never fires `m_on_cancelled` (T103)~~ CLOSED T222;
     `CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
     keyboard hotbar Item/Emote slots skipped, not routed (T174);
     `EqActionHandler` TRANSFORMS methods still untested (T93); blackburrow /
@@ -47,9 +47,10 @@ Review — read that before scoping the next unit off this file.
     TWO `state::GameState` instances (T78 census done); `InitGraphics`
     renderer parameter + asset-loader namespace + `GetDebugLevel()` static
     (S2 residue); registry 3 (renderer if-chain, ~36 names incl. `/newskills`)
-    invisible to `/help` (T143); headless `outcome=queued` for renderer
+    ~~invisible to `/help` (T143); headless `outcome=queued` for renderer
     commands (T139/T142); phantom `gequip7` in `config/eqe1_archives.json`
-    (T198); `protectedRegions_` all-false (T79 census); memory categories
+    (T198)~~ — all three CLOSED T223 `e6d31424` (catalog + drift-guard test;
+    headless refusal; T142 console echo NOT included, still open); `protectedRegions_` all-false (T79 census); memory categories
     without budgets (T69); UI-gesture-only reachability pattern (not
     retired); Z5.3 / P52 / `waitForFlipComplete()` perf residuals;
     **doc debt:** `docker/CLAUDE.md` still documents
@@ -93,10 +94,10 @@ replaces is preserved verbatim in git (`e6a8c4e9`) and in
 - Registry 3 (`IrrlichtRenderer::processSlashCommand()`'s ~36-branch
   if-chain) has no query interface, so `/help` cannot list it and
   `/newskills` — the only working skills-window toggle — is registered in
-  NO registry (T138 finding 2, T143). Headings: `## T143 (2026-08-18)` and
+  NO registry (T138 finding 2, T143). **CLOSED T223 `e6d31424`** — `renderer_command_catalog.{h,cpp}`, `/help graphics`, drift-guard test. Headings: `## T143 (2026-08-18)` and
   `## T138 (2026-08-18): The 61-command triage`.
-- Headless builds report `outcome=queued` for every renderer-routed name
-  (`application.cpp:1243`) — the `#ifdef EQT_HAS_GRAPHICS` refusal was lost
+- ~~Headless builds report `outcome=queued` for every renderer-routed name
+  (`application.cpp:1243`)~~ **CLOSED T223 `e6d31424`** (refused with a message when `!m_graphicsInitialized`; unknown names now `unrecognized` in graphics mode too) — the `#ifdef EQT_HAS_GRAPHICS` refusal was lost
   when T139 deleted the game-registry copies; T142 widened it by two names.
   Headings: `## T139 — headless \`#ifdef EQT_HAS_GRAPHICS\` guard not
   preserved` and `## T142 — headless regression widened by 2 more names`.
