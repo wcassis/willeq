@@ -253,8 +253,9 @@ The application runs two threads, decoupled via a thread-safe event/intent bridg
 ```
 Game Thread                         Render Thread (main)
 ───────────                         ────────────────────
-Network events (TickNetwork)        Drain bridge events → applyEvent()
+Network events (TickNetwork)        forwardProjectedEvents() → IrrlichtBridge
 Game state updates (GameTick)       processFrame() (Irrlicht render)
+projectPendingEvents() → GameState  (T220: state projection is GAME-thread)
 Intent processing (bridge intents)  Loading thread management
 Audio updates                       Zone load completion detection
 ```
