@@ -30,7 +30,7 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
-**101 event types** (`GameEventType`, counted at fable `e70e3347`, T215) organized by domain; `IrrlichtBridge` handles 99 of them in its switch, `ConsoleBridge` logs a subset headless:
+**102 event types** (`GameEventType`, counted at fable `e70e3347`, T215) organized by domain; `IrrlichtBridge` handles 99 of them in its switch, `ConsoleBridge` logs a subset headless:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged
