@@ -2063,6 +2063,16 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 	if (!m_guild_tributes_sent) {
 		ZoneSendRequestGuildTributes();
 	}
+
+	// T228: NewZone is one of the five inputs to the zone-request phase gate
+	// but, until now, the only handler that did not re-run the check. If the
+	// AA-table / tribute-info / guild-tribute responses have all already
+	// arrived (server causality makes that unusual, not impossible), this is
+	// the last chance to send ReqClientSpawn. Idempotent: the check is
+	// guarded by m_req_client_spawn_sent and its other inputs only ever go
+	// false -> true, so calling it here with the counters still at zero is
+	// a no-op (T04 pinned the gap, tests/test_zone_connection_flow.cpp).
+	CheckZoneRequestPhaseComplete();
 }
 
 void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)

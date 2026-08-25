@@ -154,14 +154,12 @@ std::string BuildItemString(int16_t slot, uint32_t itemId, const std::string& na
 // once, and only when m_new_zone_received && m_aa_table_count>0 &&
 // m_tribute_count>0 && m_guild_tribute_count>0 && !m_req_client_spawn_sent.
 //
-// IMPORTANT (deviation from the plan's description, confirmed by reading
-// eq.cpp/eq_player_info.cpp): the check is invoked ONLY from the four
-// handlers ZoneProcessSendAATable, ZoneProcessRespondAA,
-// ZoneProcessTributeInfo, ZoneProcessSendGuildTributes
-// (eq_player_info.cpp:54,62,71,80). ZoneProcessNewZone (eq.cpp:1849-1974)
-// sets m_new_zone_received = true but never calls
-// CheckZoneRequestPhaseComplete() itself. This has a real consequence for
-// ordering, tested below in NewZoneArrivingLast_DoesNotFireUntilAnotherGateArrives.
+// The check is invoked from all FIVE gate handlers: ZoneProcessSendAATable,
+// ZoneProcessRespondAA, ZoneProcessTributeInfo, ZoneProcessSendGuildTributes
+// (eq_player_info.cpp) and -- since T228 -- ZoneProcessNewZone (eq.cpp).
+// T04 originally found NewZone missing from that list, which meant a
+// NewZone arriving LAST never completed the phase; see
+// NewZoneArrivingLast_CompletesPhase below.
 // ============================================================================
 
 TEST(ZoneRequestPhaseGating, FreshClient_PhaseNotYetRequested) {
@@ -258,9 +256,9 @@ TEST(ZoneRequestPhaseGating, FireOnceGuard_AdditionalPacketsDoNotRefire) {
 
 TEST(ZoneRequestPhaseGating, OrderIndependent_DifferentOrderingsOfTrailingThreeConverge) {
     // The server does not promise an order for AA table / tribute info /
-    // guild tributes relative to each other, as long as NewZone precedes
-    // them (see the NewZoneArrivingLast case below for what happens when it
-    // doesn't). Try two different permutations of the trailing three.
+    // guild tributes relative to each other (NewZoneArrivingLast_CompletesPhase
+    // below covers NewZone itself arriving last). Try two different
+    // permutations of the trailing three.
     {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
         SendNewZone(eq);
@@ -281,40 +279,46 @@ TEST(ZoneRequestPhaseGating, OrderIndependent_DifferentOrderingsOfTrailingThreeC
     }
 }
 
-TEST(ZoneRequestPhaseGating, NewZoneArrivingLast_DoesNotFireUntilAnotherGateArrives) {
-    // Real finding (see file header comment): CheckZoneRequestPhaseComplete
-    // is called only from the AA-table/RespondAA/tribute-info/guild-tribute
-    // handlers, never from ZoneProcessNewZone. So if NewZone is the LAST of
-    // the four to arrive, the four prerequisites are all simultaneously true
-    // in memory, but nothing re-runs the check -- the phase never advances,
-    // and the client would hang waiting for ReqClientSpawn to be sent. This
-    // is a live risk: the plan text notes "the server does not promise an
-    // order", and this ordering is exactly the one the gating logic doesn't
-    // handle. Flagged for Will; not fixed here (tests/ territory only).
+TEST(ZoneRequestPhaseGating, NewZoneArrivingLast_CompletesPhase) {
+    // T04 found and pinned the gap: CheckZoneRequestPhaseComplete() was
+    // called only from the AA-table/RespondAA/tribute-info/guild-tribute
+    // handlers, never from ZoneProcessNewZone, so a NewZone arriving LAST
+    // left all four prerequisites true in memory with nothing re-running
+    // the check -- ReqClientSpawn was never sent unless a fifth gate packet
+    // happened to follow. T228 added the call at the end of
+    // ZoneProcessNewZone; this test is the red/green for it (red at
+    // dc494ef7: phase stays ZONE_CONNECTING, suppressed sends == 4).
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
     SendAATable(eq);
     SendTributeInfo(eq);
     SendGuildTributes(eq);
-    SendNewZone(eq); // suppressed += 4; all four prerequisites now true, but
-                      // NewZone's handler never calls the check.
+    EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
+    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
 
-    EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE)
-        << "This assertion documents the current (buggy) behavior: the "
-           "phase does NOT advance even though all four prerequisites have "
-           "arrived, because NewZone arrived last and its handler doesn't "
-           "call CheckZoneRequestPhaseComplete().";
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u)
-        << "ReqClientSpawn was never sent despite all prerequisites being met";
+    SendNewZone(eq); // suppressed += 4 (AA/UpdateAA/tributes/guild-tributes)
+                      // and, now, += 1 for ReqClientSpawn.
 
-    // Recovery path: any subsequent packet that DOES call the check (e.g. a
-    // duplicate/late AA table packet) will notice all four are now true and
-    // fire. In production this means the client only recovers if the server
-    // sends a *fifth* gate-relevant packet after the late NewZone -- not
-    // guaranteed.
+    EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE)
+        << "NewZone arriving last must complete the zone-request phase";
+    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u)
+        << "ReqClientSpawn must be sent once all four prerequisites are met";
+
+    // Idempotence: a later gate packet re-runs the check but must not send
+    // ReqClientSpawn a second time (m_req_client_spawn_sent guard).
     SendRespondAA(eq);
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
     EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+}
+
+TEST(ZoneRequestPhaseGating, NewZoneFirst_CheckFromNewZoneIsANoOp) {
+    // The check added to ZoneProcessNewZone runs while the three counters
+    // are still zero; it must neither advance the phase nor send anything
+    // beyond NewZone's own four requests.
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    SendNewZone(eq);
+    EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
+    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u);
 }
 
 // ============================================================================

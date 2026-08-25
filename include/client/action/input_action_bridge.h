@@ -26,12 +26,15 @@ class CommandProcessor;
 /**
  * InputActionBridge - Connects input handlers to the action dispatcher.
  *
- * This class translates input events (keyboard, mouse, console commands)
- * into game actions. It handles:
- * - Continuous movement from held keys
+ * This class translates input events (keyboard, console commands) into game
+ * actions. It handles:
  * - One-shot actions from key presses
- * - Mouse targeting and camera control
  * - Console command parsing and execution
+ * - Typed requests (chat, move, spell, target, loot, hotbar)
+ *
+ * Movement, keyboard turning and mouse-look are NOT bridge territory: the
+ * renderer owns them (collision, PlayerPositionChanged intents). T228
+ * deleted the dead bridge-side copies.
  *
  * The bridge runs each frame and processes all pending input, converting
  * it to appropriate action dispatcher calls.
@@ -116,26 +119,6 @@ public:
     void setEnabled(bool enabled) { m_enabled = enabled; }
     bool isEnabled() const { return m_enabled; }
 
-    // ========== Input Configuration ==========
-
-    /**
-     * Set mouse sensitivity for camera control.
-     */
-    void setMouseSensitivity(float sensitivity) { m_mouseSensitivity = sensitivity; }
-    float getMouseSensitivity() const { return m_mouseSensitivity; }
-
-    /**
-     * Set whether to invert mouse Y axis.
-     */
-    void setInvertMouseY(bool invert) { m_invertMouseY = invert; }
-    bool getInvertMouseY() const { return m_invertMouseY; }
-
-    /**
-     * Set turn speed for keyboard turning (degrees per second).
-     */
-    void setTurnSpeed(float speed) { m_turnSpeed = speed; }
-    float getTurnSpeed() const { return m_turnSpeed; }
-
     // ========== Callbacks ==========
 
     /**
@@ -146,6 +129,9 @@ public:
     void setActionCallback(ActionCallback callback) { m_actionCallback = std::move(callback); }
 
 private:
+    // T228: no longer read by any bridge path (the dead mouse-look / keyboard
+    // turn code was its only reader). Kept so the constructor signature that
+    // application.cpp uses is unchanged.
     state::GameState& m_state;
     ActionDispatcher& m_dispatcher;
     input::IInputHandler* m_input = nullptr;
@@ -156,26 +142,11 @@ private:
 
     bool m_enabled = true;
 
-    // Configuration
-    float m_mouseSensitivity = 1.0f;
-    bool m_invertMouseY = false;
-    float m_turnSpeed = 180.0f;  // Degrees per second
-
     // Callback
     ActionCallback m_actionCallback;
 
-    // Movement state tracking
-    bool m_movingForward = false;
-    bool m_movingBackward = false;
-    bool m_strafingLeft = false;
-    bool m_strafingRight = false;
-    bool m_turningLeft = false;
-    bool m_turningRight = false;
-
     // Processing methods
     void processDiscreteActions();
-    void processContinuousInput(float deltaTime);
-    void processMouseInput(float deltaTime);
     void processConsoleInput();
     void processChatMessages();
     void processMoveCommands();
@@ -186,9 +157,6 @@ private:
 
     // Helper to report action result
     void reportAction(const std::string& name, const ActionResult& result);
-
-    // Update movement state based on input
-    void updateMovementState();
 };
 
 } // namespace action

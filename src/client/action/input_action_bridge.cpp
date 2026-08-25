@@ -1,7 +1,6 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
 #include "client/hotbar/hotbar_model.h"  // T174: read slot content type
-#include "client/state/game_state.h"
 #include "common/logging.h"
 
 namespace eqt {
@@ -35,13 +34,15 @@ void InputActionBridge::update(float deltaTime) {
     // Process discrete one-shot actions
     processDiscreteActions();
 
-    // Movement is handled by the renderer (console or 3D), which applies collision
-    // and pushes PlayerPositionChanged intents via the bridge. processContinuousInput()
-    // was a redundant path that bypassed renderer collision and caused cross-thread
-    // races on keyIsDown_[] state.
-
-    // Process mouse input (camera, targeting)
-    processMouseInput(deltaTime);
+    // Movement, keyboard turning and mouse-look are handled by the renderer
+    // (console or 3D), which applies collision and pushes PlayerPositionChanged
+    // intents via the bridge. The bridge-side processContinuousInput() /
+    // processMouseInput() paths that duplicated this were deleted in T228:
+    // the first had no callers, the second's mouse-look branch never fired
+    // (the render thread consumes the same destructive mouse delta first)
+    // and would have turned the player from an unprojected heading of 0 had
+    // it ever run (T218 probe, refactor/deferred.md).
+    (void)deltaTime;
 
     // Process console input (commands, chat)
     processConsoleInput();
@@ -160,112 +161,6 @@ void InputActionBridge::processDiscreteActions() {
         // Reply to last tell - opens chat with pre-filled /tell command
         // This is handled by the chat system, not directly through dispatcher
         reportAction("ReplyToTell", m_dispatcher.openReplyToTell());
-    }
-}
-
-void InputActionBridge::processContinuousInput(float deltaTime) {
-    // Update movement state based on current input
-    updateMovementState();
-
-    // Get current movement input state
-    const auto& inputState = m_input->getState();
-
-    // Handle forward/backward movement
-    bool wantForward = inputState.moveForward;
-    bool wantBackward = inputState.moveBackward;
-
-    if (wantForward && !m_movingForward) {
-        m_dispatcher.startMoving(Direction::Forward);
-        m_movingForward = true;
-    } else if (!wantForward && m_movingForward) {
-        m_dispatcher.stopMoving(Direction::Forward);
-        m_movingForward = false;
-    }
-
-    if (wantBackward && !m_movingBackward) {
-        m_dispatcher.startMoving(Direction::Backward);
-        m_movingBackward = true;
-    } else if (!wantBackward && m_movingBackward) {
-        m_dispatcher.stopMoving(Direction::Backward);
-        m_movingBackward = false;
-    }
-
-    // Handle strafing
-    bool wantStrafeLeft = inputState.strafeLeft;
-    bool wantStrafeRight = inputState.strafeRight;
-
-    if (wantStrafeLeft && !m_strafingLeft) {
-        m_dispatcher.startMoving(Direction::Left);
-        m_strafingLeft = true;
-    } else if (!wantStrafeLeft && m_strafingLeft) {
-        m_dispatcher.stopMoving(Direction::Left);
-        m_strafingLeft = false;
-    }
-
-    if (wantStrafeRight && !m_strafingRight) {
-        m_dispatcher.startMoving(Direction::Right);
-        m_strafingRight = true;
-    } else if (!wantStrafeRight && m_strafingRight) {
-        m_dispatcher.stopMoving(Direction::Right);
-        m_strafingRight = false;
-    }
-
-    // Handle keyboard turning
-    bool wantTurnLeft = inputState.turnLeft;
-    bool wantTurnRight = inputState.turnRight;
-
-    if (wantTurnLeft || wantTurnRight) {
-        // Calculate turn amount
-        float turnAmount = m_turnSpeed * deltaTime;
-        float currentHeading = m_state.player().heading();
-
-        if (wantTurnLeft) {
-            currentHeading -= turnAmount;
-        }
-        if (wantTurnRight) {
-            currentHeading += turnAmount;
-        }
-
-        // Normalize heading
-        while (currentHeading < 0) currentHeading += 360.0f;
-        while (currentHeading >= 360.0f) currentHeading -= 360.0f;
-
-        m_dispatcher.setHeading(currentHeading);
-    }
-
-    m_turningLeft = wantTurnLeft;
-    m_turningRight = wantTurnRight;
-}
-
-void InputActionBridge::processMouseInput(float deltaTime) {
-    const auto& inputState = m_input->getState();
-
-    // Handle mouse look (camera rotation)
-    if (inputState.leftButtonDown) {
-        float deltaX = static_cast<float>(inputState.mouseDeltaX) * m_mouseSensitivity;
-        float deltaY = static_cast<float>(inputState.mouseDeltaY) * m_mouseSensitivity;
-
-        if (m_invertMouseY) {
-            deltaY = -deltaY;
-        }
-
-        // Apply horizontal rotation to heading
-        if (deltaX != 0.0f) {
-            float currentHeading = m_state.player().heading();
-            // T218: runtime probe -- is this branch reached in the graphical
-            // build (where renderer_player_physics.cpp also consumes the
-            // same RendererEventReceiver mouse delta on the render thread)?
-            LOG_DEBUG(MOD_INPUT, "[T218] InputActionBridge::processMouseInput mouse-look: deltaX={} projectedHeading={}",
-                      deltaX, currentHeading);
-            currentHeading += deltaX * 0.1f;  // Sensitivity adjustment
-
-            while (currentHeading < 0) currentHeading += 360.0f;
-            while (currentHeading >= 360.0f) currentHeading -= 360.0f;
-
-            m_dispatcher.setHeading(currentHeading);
-        }
-
-        // Vertical rotation would be handled by camera controller, not player heading
     }
 }
 
@@ -460,11 +355,6 @@ void InputActionBridge::reportAction(const std::string& name, const ActionResult
     if (m_actionCallback) {
         m_actionCallback(name, result);
     }
-}
-
-void InputActionBridge::updateMovementState() {
-    // This method can be used to sync internal state with input state
-    // Currently, the state is updated in processContinuousInput
 }
 
 } // namespace action

@@ -16,13 +16,12 @@
 //     silently becomes ChatChannel::Say (as does any unknown channel).
 //   - A tell with an empty target is dropped without any dispatch or
 //     callback.
-//   - setInvertMouseY() has no observable effect: the inverted deltaY is
-//     computed and never used (vertical look was left to the camera
-//     controller).
-//   - processContinuousInput()/updateMovementState() are uncalled private
-//     methods (movement went renderer-side in Batch D), which also makes
-//     the setTurnSpeed() knob inert. Compile-coverage only; nothing to
-//     assert through the public surface.
+//   - (T228) The bridge-side mouse-look branch, processContinuousInput()
+//     and the mouseSensitivity/invertMouseY/turnSpeed knobs were deleted:
+//     the renderer owns movement and turning, the branch never fired at
+//     runtime (T218 probe) and would have turned from an unprojected
+//     heading of 0. The MouseLook_* and ConfigAccessors tests that only
+//     exercised that code went with it.
 
 #include "action_test_fakes.h"
 #include "client/action/command_processor.h"
@@ -214,75 +213,6 @@ TEST_F(InputActionBridgeTest, UIToggleActions_AreNotBridgeTerritory) {
     EXPECT_EQ(input.pendingActions.size(), 4u);
     EXPECT_TRUE(handler.empty());
     EXPECT_TRUE(reported.empty());
-}
-
-// ===================================================================
-// Mouse look
-// ===================================================================
-
-TEST_F(InputActionBridgeTest, MouseLook_LeftDragTurnsHeadingByScaledDeltaX) {
-    state.player().setHeading(100.0f);
-    input.state.leftButtonDown = true;
-    input.state.mouseDeltaX = 50;
-
-    update();
-
-    // deltaX * sensitivity(1.0) * 0.1 = 5 degrees.
-    EXPECT_TRUE(handler.calledOnceWith("setHeading(105)"));
-}
-
-TEST_F(InputActionBridgeTest, MouseLook_SensitivityScalesTurn) {
-    bridge->setMouseSensitivity(2.0f);
-    state.player().setHeading(100.0f);
-    input.state.leftButtonDown = true;
-    input.state.mouseDeltaX = 50;
-
-    update();
-
-    EXPECT_TRUE(handler.calledOnceWith("setHeading(110)"));
-}
-
-TEST_F(InputActionBridgeTest, MouseLook_HeadingWrapsIntoRange) {
-    state.player().setHeading(359.0f);
-    input.state.leftButtonDown = true;
-    input.state.mouseDeltaX = 50;  // +5 degrees -> 364 -> 4
-
-    update();
-
-    EXPECT_TRUE(handler.calledOnceWith("setHeading(4)"));
-}
-
-TEST_F(InputActionBridgeTest, MouseLook_NoButtonOrNoDeltaMeansNoTurn) {
-    state.player().setHeading(100.0f);
-
-    input.state.leftButtonDown = false;
-    input.state.mouseDeltaX = 50;
-    update();
-
-    input.state.leftButtonDown = true;
-    input.state.mouseDeltaX = 0;
-    update();
-
-    EXPECT_TRUE(handler.empty());
-}
-
-TEST_F(InputActionBridgeTest, MouseLook_InvertMouseYHasNoObservableEffect) {
-    // Pinned finding: deltaY is inverted and then never used -- vertical
-    // look was left to the camera controller -- so the invert knob changes
-    // nothing the bridge dispatches.
-    state.player().setHeading(100.0f);
-    input.state.leftButtonDown = true;
-    input.state.mouseDeltaX = 50;
-    input.state.mouseDeltaY = 80;
-
-    bridge->setInvertMouseY(true);
-    update();
-    bridge->setInvertMouseY(false);
-    update();
-
-    ASSERT_EQ(handler.count(), 2u);
-    EXPECT_EQ(handler.calls[0], "setHeading(105)");
-    EXPECT_EQ(handler.calls[1], "setHeading(105)");
 }
 
 // ===================================================================
@@ -591,19 +521,6 @@ TEST_F(InputActionBridgeTest, Callback_ReceivesNameAndResult) {
     ASSERT_EQ(reported.size(), 1u);
     EXPECT_EQ(reported[0].first, "Jump");
     EXPECT_TRUE(reported[0].second);
-}
-
-TEST_F(InputActionBridgeTest, ConfigAccessors_RoundTrip) {
-    bridge->setMouseSensitivity(0.5f);
-    EXPECT_FLOAT_EQ(bridge->getMouseSensitivity(), 0.5f);
-
-    bridge->setInvertMouseY(true);
-    EXPECT_TRUE(bridge->getInvertMouseY());
-
-    // Note: turn speed's only consumer (processContinuousInput) is dead
-    // code -- the knob round-trips but currently steers nothing.
-    bridge->setTurnSpeed(90.0f);
-    EXPECT_FLOAT_EQ(bridge->getTurnSpeed(), 90.0f);
 }
 
 }  // namespace
