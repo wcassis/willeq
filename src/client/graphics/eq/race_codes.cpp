@@ -2,6 +2,7 @@
 #include "client/willeq_database.h"
 #include "common/logging.h"
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <mutex>
 
@@ -299,10 +300,40 @@ std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender) {
     }
 }
 
+// True for a per-race global archive name such as "globalpcfroglok_chr.s3d"
+// or "globalhum_chr.s3d" -- i.e. "global" + letters + "_chr.s3d". False for
+// the shared archives global_chr.s3d / global{N}_chr.s3d and for zone
+// archives, which the loader's own search order already covers.
+bool isRaceSpecificGlobalArchive(const std::string& s3dFile) {
+    std::string lower = s3dFile;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    static const std::string kPrefix = "global";
+    static const std::string kSuffix = "_chr.s3d";
+    if (lower.size() <= kPrefix.size() + kSuffix.size()) return false;
+    if (lower.compare(0, kPrefix.size(), kPrefix) != 0) return false;
+    if (lower.compare(lower.size() - kSuffix.size(), kSuffix.size(), kSuffix) != 0) return false;
+    std::string stem = lower.substr(kPrefix.size(), lower.size() - kPrefix.size() - kSuffix.size());
+    if (stem.empty()) return false;
+    for (unsigned char c : stem) {
+        if (!std::isalpha(c)) return false;
+    }
+    return true;
+}
+
 std::string getRaceModelFilename(uint16_t raceId, uint8_t gender) {
-    // Special case: Froglok uses different naming convention
-    if (raceId == 330) {
-        return "globalfroglok_chr.s3d";
+    // T267: the race row's s3d_file is authoritative when it names a per-race
+    // global archive (race 330, the playable Froglok, is globalpcfroglok_chr.s3d
+    // -- FRM/FRF exist nowhere else). The previous hardcode sent 330 to
+    // globalfroglok_chr.s3d, which holds only the monster frogloks FRO/FRG.
+    {
+        auto* db = WilleqDatabase::globalInstance();
+        if (db) {
+            auto info = db->getRaceModel(raceId);
+            if (info.found && isRaceSpecificGlobalArchive(info.s3dFile)) {
+                return info.s3dFile;
+            }
+        }
     }
 
     std::string code = getRaceCode(raceId);

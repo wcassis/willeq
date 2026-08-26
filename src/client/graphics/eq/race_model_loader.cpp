@@ -14,6 +14,7 @@
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <chrono>
 
@@ -302,20 +303,27 @@ std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t r
                                 modelIt = loadedModels_.find(key);
                             }
                         } else {
-                            // Try numbered global (e.g., global4_chr.s3d for Iksar)
-                            int globalNum = 0;
-                            if (zoneName.length() > 6) {
-                                try {
-                                    globalNum = std::stoi(zoneName.substr(6));
-                                } catch (...) {}
-                            }
-                            if (globalNum >= 2 && globalNum <= 7) {
-                                if (!numberedGlobalsLoaded_) {
-                                    loadNumberedGlobalModels();
+                            // Numbered global (e.g., global4_chr.s3d for Iksar) --
+                            // only when the stem is all digits. T267: names like
+                            // "globalpcfroglok" (race 330) used to hit stoi() here,
+                            // get globalNum 0 and load NOTHING; they are plain
+                            // archives and go through the cached-chr path below.
+                            std::string stem = zoneName.substr(6);
+                            bool numeric = !stem.empty() &&
+                                std::all_of(stem.begin(), stem.end(),
+                                            [](unsigned char c) { return std::isdigit(c); });
+                            int globalNum = numeric ? std::stoi(stem) : 0;
+                            if (numeric) {
+                                if (globalNum >= 2 && globalNum <= 7) {
+                                    if (!numberedGlobalsLoaded_) {
+                                        loadNumberedGlobalModels();
+                                    }
+                                    if (loadModelFromNumberedGlobal(globalNum, raceId, gender)) {
+                                        modelIt = loadedModels_.find(key);
+                                    }
                                 }
-                                if (loadModelFromNumberedGlobal(globalNum, raceId, gender)) {
-                                    modelIt = loadedModels_.find(key);
-                                }
+                            } else if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
+                                modelIt = loadedModels_.find(key);
                             }
                         }
                     } else {

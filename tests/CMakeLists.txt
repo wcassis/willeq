@@ -1588,6 +1588,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_inventory_model_view)
 ENDIF()
 
+# T267: race 330 (playable Froglok) resolves to and loads from the row's
+# globalpcfroglok_chr.s3d. Same EDT_NULL + willeq_core gate as
+# test_inventory_model_view; opens the shipped data/willeq.db as the race
+# source and skips without it or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_race_330_loader
+        test_race_330_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_race_330_loader PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_race_330_loader GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_race_330_loader)
+ENDIF()
+
 # T54: first tests for the static-panel UI (StaticUIInput hit-testing,
 # processKey popup dismissal, and an EDT_NULL renderInventoryPopup smoke
 # test). Pure hit-testing needs no device at all; the optional rendering

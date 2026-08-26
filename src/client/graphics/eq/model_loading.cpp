@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
-#include <regex>
 
 namespace EQT {
 namespace Graphics {
@@ -1268,10 +1267,6 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
 
     namespace fs = std::filesystem;
 
-    // Pattern for race-specific global files to skip (e.g., globalelf_chr.s3d, globalhum_chr.s3d)
-    // We want to skip: global[a-z]+_chr.s3d but NOT global_chr.s3d or global[0-9]_chr.s3d
-    std::regex raceSpecificGlobalPattern("global[a-z]+_chr\\.s3d", std::regex::icase);
-
     // Helper lambda to search characters for a matching race and build model data
     auto searchAndBuildModel = [&](const std::vector<std::shared_ptr<CharacterModel>>& characters,
                                    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
@@ -1442,10 +1437,9 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                 continue;
             }
 
-            // Skip race-specific global files (globalelf_chr.s3d, globalhum_chr.s3d, etc.)
-            if (std::regex_match(lowerFilename, raceSpecificGlobalPattern)) {
-                continue;
-            }
+            // T267: per-race global archives (global[a-z]+_chr.s3d) are scanned
+            // like any other -- globalpcfroglok_chr.s3d is the ONLY holder of
+            // FRM/FRF and the old skip made it unreachable from here.
 
             // Skip files we've already searched (global_chr.s3d and global[2-7]_chr.s3d)
             if (lowerFilename == "global_chr.s3d") {
