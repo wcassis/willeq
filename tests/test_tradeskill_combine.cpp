@@ -505,3 +505,375 @@ TEST(TradeskillCombine, ClearObjectDoesNotDeleteTheWorldObjectWithDropIdOne) {
     EXPECT_NE(h.eq.GetWorldObject(kForgeDropId), nullptr);
     EXPECT_EQ(h.eq.GetActiveTradeskillObjectId(), kForgeDropId);
 }
+
+// =====================================================================
+// T282 -- putting items INTO a world container (the T278 hand-back).
+//
+// T278 found that InventoryManager::isValidSlot() rejected 4000-4009, so
+// `/equip <from> 4000` never sent and the WORLD form of /combine could not
+// be driven from the client at all. Everything below is checked against
+// eqemu source rather than against a member name (T273/T277):
+//
+//   * Titanium wire. common/patches/titanium.cpp, ServerToTitaniumSlot /
+//     TitaniumToServerSlot: WORLD_BEGIN..WORLD_END (4000..4009,
+//     titanium_limits.h invtype::WORLD_SIZE = 10) map straight through in
+//     both directions. No translation, so 4000 on the wire IS slot 4000.
+//
+//   * The server accepts them. zone/inventory.cpp Client::IsValidSlot()
+//     returns true for the whole 4000-4009 range unconditionally.
+//
+//   * ...but only Step 3 of Client::SwapItem() knows what to DO with them,
+//     and Step 3 is gated on `m_tradeskill_object != nullptr`. With no
+//     world container open the move falls through to Step 5's
+//     m_inv.SwapItem(), whose _PutItem(4000, inst) finds
+//     CalcSlotId(4000) == INVALID_INDEX (common/inventory_profile.cpp:
+//     CalcSlotId has no WORLD branch), takes the "must be within a bag"
+//     else-arm, gets a null parent bag, and calls MarkDirty(inst) -- the
+//     item is DESTROYED, SwapItem still returns true, and nothing is sent
+//     back. So the client must refuse the move itself.
+//
+//   * Taking an item OUT lands via Client::PutItemInInventory(dst, inst,
+//     false), whose m_inv.PutItem() calls DeleteItem(slot_id) first. An
+//     occupied destination is silently destroyed, so that is refused too.
+//     The cursor is safe (PutItemInInventory forwards to PushItemOnCursor).
+//
+//   * NO DROP is allowed. The "No Drop Hack" block in SwapItem lists trade
+//     and shared-bank destinations only; WORLD_BEGIN..WORLD_END is not in
+//     it, which is what makes NO DROP quest combines possible.
+//
+//   * Neither direction is confirmed. Both world-container arms of Step 3
+//     `return true` without queueing a packet (the put's only client
+//     traffic is a possible SendCursorBuffer), so the client model has to
+//     apply the move locally. The server's only world-container item
+//     traffic is Object::HandleClick's open burst -- SendItemPacket(i,
+//     inst, ItemPacketWorldContainer) with i the BAG INDEX 0-9, not 4000+i.
+// =====================================================================
+
+namespace {
+
+// A Titanium serialized item (the T43/T255 builder shape) at `slot`.
+std::string T282PlainItem(int16_t slot, uint32_t itemId, const std::string& name,
+                          int32_t stackCount = 0) {
+    // Instance fields, titanium.cpp SerializeItem: 0 = stack count (the
+    // charges of a stackable, 0 otherwise), 2 = slot, 4 = count (1 for a
+    // non-merchant item).
+    std::string instance = std::to_string(stackCount) + "|0|" + std::to_string(slot) +
+                           "|0|1|0|0|0|0|0|0";
+    std::vector<std::string> fields(135, "");
+    fields[0] = "0";
+    fields[1] = name;
+    fields[2] = name;
+    fields[3] = "IT63";
+    fields[4] = std::to_string(itemId);
+    fields[5] = "10";
+    fields[6] = "1";
+    fields[7] = "1";
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+    return instance + "\"" + staticData + "\"";
+}
+
+const eqt::events::MoveItemIntent* FindMoveIntent(
+        const std::vector<eqt::events::RendererIntent>& intents) {
+    for (const auto& i : intents) {
+        if (std::holds_alternative<eqt::events::MoveItemIntent>(i)) {
+            return &std::get<eqt::events::MoveItemIntent>(i);
+        }
+    }
+    return nullptr;
+}
+
+eqt::inventory::ItemInstance T282Ore(uint32_t itemId, const char* name) {
+    eqt::inventory::ItemInstance ore;
+    ore.itemId = itemId;
+    ore.name = name;
+    ore.bagSlots = 0;
+    ore.quantity = 1;
+    return ore;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------
+// 4a. The range is recognised at all
+// ---------------------------------------------------------------------
+
+TEST(WorldContainerSlots, MoveIntoAWorldSlotSendsTheWorldSlotOnTheWire) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    ASSERT_NE(inv, nullptr);
+
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    h.clearSent();
+    h.drainIntents();
+    h.drainEvents();
+
+    auto out = inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN);
+    EXPECT_TRUE(out.success) << out.message;
+
+    auto intents = h.drainIntents();
+    const auto* mv = FindMoveIntent(intents);
+    ASSERT_NE(mv, nullptr) << "no MoveItemIntent for a move into the forge";
+    EXPECT_EQ(mv->fromSlot, kFrom);
+    EXPECT_EQ(mv->toSlot, eqt::inventory::WORLD_BEGIN);
+
+    // Neither arm of eqemu SwapItem Step 3 answers a successful put, so the
+    // client model has to carry it.
+    ASSERT_NE(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN)->itemId, 17000u);
+    EXPECT_EQ(inv->getItem(kFrom), nullptr);
+
+    // ...and it reaches the wire as 4000, untranslated.
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN + 1);
+    h.eq.ProcessBridgeIntents();
+    auto pkts = h.packetsWithOpcode(HC_OP_MoveItem);
+    ASSERT_FALSE(pkts.empty());
+    ASSERT_GE(pkts.back().body.size(), 8u);
+    EXPECT_EQ(ReadUInt32(pkts.back().body, 0), static_cast<uint32_t>(kFrom));
+    EXPECT_EQ(ReadUInt32(pkts.back().body, 4),
+              static_cast<uint32_t>(eqt::inventory::WORLD_BEGIN + 1));
+}
+
+TEST(WorldContainerSlots, MoveOutOfAWorldSlotToAnEmptySlotIsApplied) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kTo = eqt::inventory::GENERAL_BEGIN + 3;
+    inv->setItem(eqt::inventory::WORLD_BEGIN, T282Ore(17001, "Water Flask"));
+    h.drainIntents();
+
+    auto out = inv->moveItem(eqt::inventory::WORLD_BEGIN, kTo);
+    EXPECT_TRUE(out.success) << out.message;
+    auto intents = h.drainIntents();
+    const auto* mv = FindMoveIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, eqt::inventory::WORLD_BEGIN);
+    EXPECT_EQ(mv->toSlot, kTo);
+    ASSERT_NE(inv->getItem(kTo), nullptr);
+    EXPECT_EQ(inv->getItem(kTo)->itemId, 17001u);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+}
+
+TEST(WorldContainerSlots, TheCursorRoundTripsThroughAWorldSlot) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    inv->setItem(kFrom, T282Ore(17002, "Block of Ore"));
+
+    ASSERT_TRUE(inv->moveItem(kFrom, eqt::inventory::CURSOR_SLOT).success);
+    ASSERT_TRUE(inv->hasCursorItem());
+    auto out = inv->moveItem(eqt::inventory::CURSOR_SLOT, eqt::inventory::WORLD_BEGIN);
+    EXPECT_TRUE(out.success) << out.message;
+    ASSERT_NE(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN)->itemId, 17002u);
+    EXPECT_FALSE(inv->hasCursorItem());
+
+    // ...and back onto the cursor.
+    EXPECT_TRUE(inv->moveItem(eqt::inventory::WORLD_BEGIN, eqt::inventory::CURSOR_SLOT).success);
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 17002u);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+}
+
+// ---------------------------------------------------------------------
+// 4b. ...but only while the server has a world container open for us
+// ---------------------------------------------------------------------
+
+TEST(WorldContainerSlots, MoveIntoAWorldSlotIsRefusedWithNoContainerOpen) {
+    CombineHarness h;
+    ASSERT_EQ(h.eq.GetActiveTradeskillObjectId(), 0u);
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    h.drainIntents();
+
+    auto out = inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN);
+    EXPECT_FALSE(out.success);
+    EXPECT_NE(out.message.find("tradeskill container"), std::string::npos) << out.message;
+    // Nothing sent, nothing mutated: eqemu would MarkDirty() the item.
+    EXPECT_EQ(FindMoveIntent(h.drainIntents()), nullptr);
+    ASSERT_NE(inv->getItem(kFrom), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+}
+
+TEST(WorldContainerSlots, ClosingTheContainerStopsAcceptingWorldSlotMoves) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    ASSERT_TRUE(inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN).success);
+
+    // The server's close notification (open = 0).
+    h.serverClickObjectAction(kForgeDropId, /*open=*/0, /*type=*/17);
+    ASSERT_EQ(h.eq.GetActiveTradeskillObjectId(), 0u);
+
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    h.drainIntents();
+    auto out = inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN + 2);
+    EXPECT_FALSE(out.success);
+    EXPECT_EQ(FindMoveIntent(h.drainIntents()), nullptr);
+}
+
+TEST(WorldContainerSlots, LocalCloseCommandAlsoStopsAcceptingWorldSlotMoves) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+
+    // /closecontainer clears m_active_tradeskill_object_id locally --
+    // eqemu does NOT echo ClickObjectAction open=0 (T278), so the client
+    // must not keep accepting world-slot moves while it waits.
+    auto result = h.processor.processCommand("/closecontainer");
+    EXPECT_TRUE(result.success) << result.message;
+    h.eq.ProcessBridgeIntents();
+    ASSERT_EQ(h.eq.GetActiveTradeskillObjectId(), 0u);
+
+    inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
+    h.drainIntents();
+    EXPECT_FALSE(inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN).success);
+    EXPECT_EQ(FindMoveIntent(h.drainIntents()), nullptr);
+}
+
+// ---------------------------------------------------------------------
+// 4c. The destination rules the server actually applies
+// ---------------------------------------------------------------------
+
+TEST(WorldContainerSlots, MoveOutOfAWorldSlotOntoAnOccupiedSlotIsRefused) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kTo = eqt::inventory::GENERAL_BEGIN + 3;
+    inv->setItem(eqt::inventory::WORLD_BEGIN, T282Ore(17001, "Water Flask"));
+    inv->setItem(kTo, T282Ore(17009, "Bandages"));
+    h.drainIntents();
+
+    // eqemu: PutItemInInventory -> m_inv.PutItem -> DeleteItem(slot) first.
+    // The occupant would be destroyed with no packet back.
+    auto out = inv->moveItem(eqt::inventory::WORLD_BEGIN, kTo);
+    EXPECT_FALSE(out.success);
+    EXPECT_NE(out.message.find("empty"), std::string::npos) << out.message;
+    EXPECT_EQ(FindMoveIntent(h.drainIntents()), nullptr);
+    ASSERT_NE(inv->getItem(kTo), nullptr);
+    EXPECT_EQ(inv->getItem(kTo)->itemId, 17009u);
+    ASSERT_NE(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr);
+}
+
+TEST(WorldContainerSlots, ANoDropItemMayGoIntoAWorldContainer) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    auto quest = T282Ore(17500, "Sealed Quest Note");
+    quest.noDrop = true;
+    inv->setItem(kFrom, quest);
+    h.drainIntents();
+
+    // eqemu's "No Drop Hack" block covers trade and shared-bank
+    // destinations only -- NO DROP quest combines are legal.
+    EXPECT_TRUE(inv->canPlaceInWorldContainer(inv->getItem(kFrom), eqt::inventory::WORLD_BEGIN));
+    auto out = inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN);
+    EXPECT_TRUE(out.success) << out.message;
+    EXPECT_NE(FindMoveIntent(h.drainIntents()), nullptr);
+}
+
+TEST(WorldContainerSlots, ABagMayNotGoIntoAWorldContainer) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+    const int16_t kFrom = eqt::inventory::GENERAL_BEGIN;
+    auto bag = T282Ore(17909, "Forge");
+    bag.bagSlots = 10;
+    bag.bagType = 17;
+    inv->setItem(kFrom, bag);
+    h.drainIntents();
+
+    EXPECT_FALSE(inv->canPlaceInWorldContainer(inv->getItem(kFrom), eqt::inventory::WORLD_BEGIN));
+    auto out = inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN);
+    EXPECT_FALSE(out.success);
+    EXPECT_EQ(FindMoveIntent(h.drainIntents()), nullptr);
+}
+
+// ---------------------------------------------------------------------
+// 4d. Object::HandleClick's open burst populates the slots
+// ---------------------------------------------------------------------
+
+TEST(WorldContainerSlots, WorldContainerItemPacketLandsInTheWorldSlotsNotEquipment) {
+    CombineHarness h;
+    h.openForge();
+    auto* inv = h.eq.GetInventoryManager();
+
+    // Something worn, so a stray write into equipment slot 0/1 is visible.
+    inv->setItem(eqt::inventory::SLOT_CHARM, T282Ore(6000, "A Charm"));
+    inv->setItem(eqt::inventory::SLOT_EAR1, T282Ore(6001, "An Earring"));
+
+    // zone/object.cpp Object::HandleClick: SendItemPacket(i, inst,
+    // ItemPacketWorldContainer) with i the bag index, 0-9.
+    for (uint8_t idx : {uint8_t(0), uint8_t(1)}) {
+        std::string item = T282PlainItem(static_cast<int16_t>(idx), 17000u + idx, "Ore");
+        std::vector<uint8_t> body(4 + item.size() + 1, 0);
+        body[0] = static_cast<uint8_t>(EQT::ITEM_PACKET_WORLD_CONTAINER);
+        memcpy(body.data() + 4, item.data(), item.size());
+        h.eq.ReplayZonePacket(HC_OP_ItemPacket, body.data(), body.size());
+    }
+
+    ASSERT_NE(inv->getItem(eqt::inventory::WORLD_BEGIN), nullptr)
+        << "world-container item packet did not reach slot 4000";
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN)->itemId, 17000u);
+    ASSERT_NE(inv->getItem(eqt::inventory::WORLD_BEGIN + 1), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::WORLD_BEGIN + 1)->itemId, 17001u);
+
+    // The equipment slots that share the raw indices 0 and 1 are untouched.
+    ASSERT_NE(inv->getItem(eqt::inventory::SLOT_CHARM), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::SLOT_CHARM)->itemId, 6000u);
+    ASSERT_NE(inv->getItem(eqt::inventory::SLOT_EAR1), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::SLOT_EAR1)->itemId, 6001u);
+}
+
+// A plain inventory ItemPacket still lands where it says it does -- the
+// world-container remap must not touch the ordinary 103 case, and the
+// dispatcher hands processItemPacket() an OPCODE-PREFIXED packet, so the
+// serialized item starts at byte 6, not byte 4.
+TEST(WorldContainerSlots, OrdinaryItemPacketStillLandsAtItsOwnSlot) {
+    CombineHarness h;
+    auto* inv = h.eq.GetInventoryManager();
+    std::string item = T282PlainItem(eqt::inventory::GENERAL_BEGIN + 4, 7301, "Rusty Short Sword");
+    std::vector<uint8_t> body(4 + item.size() + 1, 0);
+    body[0] = static_cast<uint8_t>(EQT::ITEM_PACKET_INVENTORY);
+    memcpy(body.data() + 4, item.data(), item.size());
+    h.eq.ReplayZonePacket(HC_OP_ItemPacket, body.data(), body.size());
+
+    ASSERT_NE(inv->getItem(eqt::inventory::GENERAL_BEGIN + 4), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::GENERAL_BEGIN + 4)->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(eqt::inventory::GENERAL_BEGIN + 4)->name, "Rusty Short Sword");
+    // Field 0 (stack count) is only read correctly when the 2-byte opcode is
+    // skipped; a misaligned read leaves it at the default and the quantity
+    // silently falls back to field 4.
+    EXPECT_EQ(inv->getItem(eqt::inventory::GENERAL_BEGIN + 4)->quantity, 1);
+}
+
+// The 2-byte misalignment above is only inert because instance field 0 is
+// the FIRST field: a stray prefix corrupts it and nothing else. Field 0 is
+// the stack count, so every stacked item arriving as an OP_ItemPacket --
+// looted stacks, vendor buys, and the stacked contents of a world container
+// -- silently collapsed to a quantity of 1.
+TEST(WorldContainerSlots, StackedItemPacketKeepsItsStackCount) {
+    CombineHarness h;
+    auto* inv = h.eq.GetInventoryManager();
+    std::string item = T282PlainItem(eqt::inventory::GENERAL_BEGIN + 5, 17000, "Small Piece of Ore",
+                                     /*stackCount=*/20);
+    std::vector<uint8_t> body(4 + item.size() + 1, 0);
+    body[0] = static_cast<uint8_t>(EQT::ITEM_PACKET_INVENTORY);
+    memcpy(body.data() + 4, item.data(), item.size());
+    h.eq.ReplayZonePacket(HC_OP_ItemPacket, body.data(), body.size());
+
+    ASSERT_NE(inv->getItem(eqt::inventory::GENERAL_BEGIN + 5), nullptr);
+    EXPECT_EQ(inv->getItem(eqt::inventory::GENERAL_BEGIN + 5)->quantity, 20);
+}

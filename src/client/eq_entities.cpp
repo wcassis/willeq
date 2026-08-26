@@ -2617,8 +2617,15 @@ void EverQuest::SendCloseContainer(uint32_t drop_id)
 
 	m_zone_connection->QueuePacket(p, 0, true);
 
-	// Clear active tradeskill object
+	// Clear active tradeskill object. T278: eqemu does NOT echo
+	// ClickObjectAction open=0 (Object::Close() answers with OP_ClearObject
+	// instead), so this local clear is the only one there will be -- T282
+	// keeps the inventory model's copy in step with it here rather than
+	// waiting for a confirmation that never comes.
 	m_active_tradeskill_object_id = 0;
+	if (m_inventory_manager) {
+		m_inventory_manager->setWorldContainerOpen(false);
+	}
 }
 
 const eqt::WorldObject* EverQuest::GetWorldObject(uint32_t drop_id) const
@@ -2635,6 +2642,9 @@ void EverQuest::ClearWorldObjects()
 	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", m_world_objects.size());
 	m_world_objects.clear();
 	m_active_tradeskill_object_id = 0;
+	if (m_inventory_manager) {
+		m_inventory_manager->setWorldContainerOpen(false);
+	}
 }
 
 void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
@@ -2657,6 +2667,12 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 
 		// Store the active tradeskill object ID
 		m_active_tradeskill_object_id = action->drop_id;
+		// T282 -- the inventory model gates moves into/out of 4000-4009 on
+		// this, because eqemu's SwapItem Step 3 is gated on the same thing
+		// server-side and destroys the item when it is not.
+		if (m_inventory_manager) {
+			m_inventory_manager->setWorldContainerOpen(true);
+		}
 
 		// Open tradeskill container via bridge
 		if (m_bridge) {
@@ -2674,6 +2690,9 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 		// Server is confirming container is closed
 		LOG_DEBUG(MOD_ENTITY, "Tradeskill container closed: drop_id={}", action->drop_id);
 		m_active_tradeskill_object_id = 0;
+		if (m_inventory_manager) {
+			m_inventory_manager->setWorldContainerOpen(false);
+		}
 
 		// Close tradeskill container via bridge
 		if (m_bridge) {

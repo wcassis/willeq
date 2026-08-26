@@ -775,6 +775,12 @@ inline std::string describeSlot(int16_t slotId) {
     if (isEquipmentSlot(slotId)) {
         return std::string(getSlotName(slotId)) + " (" + std::to_string(slotId) + ")";
     }
+    // T282: 4000-4009 read as bare numbers in every refusal message about a
+    // world tradeskill container; name them by their 1-based container index.
+    if (isWorldContainerItemSlot(slotId)) {
+        return "tradeskill container slot " + std::to_string(slotId - WORLD_BEGIN + 1) +
+               " (" + std::to_string(slotId) + ")";
+    }
     return "slot " + std::to_string(slotId);
 }
 

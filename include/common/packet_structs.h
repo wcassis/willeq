@@ -1214,7 +1214,13 @@ static_assert(sizeof(MoneyUpdate_Struct) == 16, "MoneyUpdate_Struct must be 16 b
 enum ItemPacketType : uint32_t {
     ITEM_PACKET_MERCHANT = 100,     // Item from merchant inventory
     ITEM_PACKET_TRADE_VIEW = 101,   // Item in partner's trade window (slot 0-3)
-    ITEM_PACKET_INVENTORY = 103     // Item in player inventory
+    ITEM_PACKET_INVENTORY = 103,    // Item in player inventory
+    // T282: eqemu zone/object.cpp Object::HandleClick sends the contents of
+    // a WORLD tradeskill container (a forge/oven on the ground) with this
+    // type, one packet per occupied index, and the serialized item's slot
+    // field is the container's own BAG INDEX 0-9 -- not 4000+index. The
+    // client maps it into WORLD_BEGIN..WORLD_END on arrival.
+    ITEM_PACKET_WORLD_CONTAINER = 107
 };
 
 /*

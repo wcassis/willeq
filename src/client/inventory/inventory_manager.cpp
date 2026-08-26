@@ -2,6 +2,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "common/net/packet.h"
+#include "common/packet_structs.h"  // T282: EQT::ITEM_PACKET_WORLD_CONTAINER
 #include <iostream>
 #include "common/logging.h"
 #include <sstream>
@@ -770,6 +771,19 @@ void InventoryManager::clearBankSlots() {
     LOG_DEBUG(MOD_UI, "InventoryManager Cleared bank slots");
 }
 
+// T282 -- mirrors EverQuest::m_active_tradeskill_object_id, whose only
+// writer is the SERVER's OP_ClickObjectAction (plus the local
+// /closecontainer, which eqemu never echoes). The model needs it because a
+// world-slot move is only legal while the server holds a tradeskill object
+// for us -- see canPlaceInWorldContainer() for what happens otherwise.
+void InventoryManager::setWorldContainerOpen(bool open) {
+    if (worldContainerOpen_ == open) {
+        return;
+    }
+    worldContainerOpen_ = open;
+    LOG_DEBUG(MOD_UI, "InventoryManager world container {}", open ? "opened" : "closed");
+}
+
 void InventoryManager::clearWorldContainerSlots() {
     // Clear items in world container slots (4000-4009)
     for (int16_t slot = WORLD_BEGIN; slot <= WORLD_END; slot++) {
@@ -1432,6 +1446,42 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
         return outcome;
     }
 
+    // T282 -- the world tradeskill container (a forge/oven on the GROUND),
+    // slots 4000-4009. Every rule below is eqemu's, read off
+    // zone/inventory.cpp Client::SwapItem() "Step 3: Check for interaction
+    // with World Container" rather than off a member name (T273/T277).
+    if (isWorldContainerItemSlot(fromSlot) || isWorldContainerItemSlot(toSlot)) {
+        // (a) Step 3 only runs while the server holds a tradeskill object
+        // for us. Otherwise the move reaches Step 5 and the item is
+        // silently DESTROYED (see canPlaceInWorldContainer()). Refuse here.
+        if (!worldContainerOpen_) {
+            outcome.message = "You must have a tradeskill container open to use " +
+                              describeSlot(isWorldContainerItemSlot(toSlot) ? toSlot : fromSlot) +
+                              " -- /clickobject a forge or oven first.";
+            return outcome;
+        }
+        // (b) Taking an item OUT lands via Client::PutItemInInventory(dst,
+        // inst, false), whose m_inv.PutItem() calls DeleteItem(slot_id)
+        // FIRST -- an occupied destination is destroyed, with no packet
+        // back. The cursor is safe: PutItemInInventory forwards a cursor
+        // destination to PushItemOnCursor().
+        if (isWorldContainerItemSlot(fromSlot) && !isWorldContainerItemSlot(toSlot) &&
+            !isCursorSlot(toSlot) && getItem(toSlot) != nullptr) {
+            outcome.message = "Taking an item out of a tradeskill container needs an empty "
+                              "destination (or the cursor): " + describeSlot(toSlot) +
+                              " already holds " + getItem(toSlot)->name + ".";
+            return outcome;
+        }
+        // (c) The destination's own rules.
+        if (isWorldContainerItemSlot(toSlot) && !canPlaceInWorldContainer(sourceItem, toSlot)) {
+            outcome.message = sourceItem->name + " cannot go in " + describeSlot(toSlot) +
+                              (sourceItem->isContainer()
+                                   ? " -- a container cannot be placed inside a tradeskill container."
+                                   : ".");
+            return outcome;
+        }
+    }
+
     // T236 -- the OTHER half of a direct slot<->slot swap: when toSlot is
     // occupied, the displaced item lands in fromSlot, and the server
     // validates that side too. eqemu's rule (common/inventory_profile.cpp,
@@ -1553,17 +1603,35 @@ bool InventoryManager::canPlaceInWorldContainer(const ItemInstance* item, int16_
         return false;
     }
 
-    // Can't put containers in world containers (no nested containers)
+    // T282 -- only while the server has a world container open for us.
+    // eqemu zone/inventory.cpp Client::SwapItem() handles 4000-4009 in
+    // "Step 3: Check for interaction with World Container", and that whole
+    // step is gated on `m_tradeskill_object != nullptr`. Without it the move
+    // falls through to Step 5's m_inv.SwapItem(), whose _PutItem(4000, inst)
+    // finds CalcSlotId(4000) == INVALID_INDEX (common/inventory_profile.cpp
+    // CalcSlotId has no WORLD branch), takes the "must be within a bag"
+    // else-arm, gets a null parent bag and calls MarkDirty(inst): the item is
+    // DESTROYED, SwapItem still returns true, and the client is told nothing.
+    if (!worldContainerOpen_) {
+        LOG_DEBUG(MOD_UI, "No world container open -- refusing slot {}", slot);
+        return false;
+    }
+
+    // Can't put containers in world containers (no nested containers).
+    // eqemu does not check this, but Object::PutItem() stores the bag by
+    // value into the world container's own ItemInstance and
+    // ZoneDatabase::SaveWorldContainer() persists one flat level of
+    // object_contents, so a nested bag's contents would not survive; the
+    // official client does not offer the move either.
     if (item->isContainer()) {
         LOG_DEBUG(MOD_UI, "Cannot place container in world container slot {}", slot);
         return false;
     }
 
-    // Can't put no-drop items in world containers (they're shared with the world)
-    if (item->noDrop) {
-        LOG_DEBUG(MOD_UI, "Cannot place no-drop item '{}' in world container slot {}", item->name, slot);
-        return false;
-    }
+    // T282 -- NO DROP is allowed, deliberately. The old refusal here was a
+    // client-side invention: eqemu's "No Drop Hack" block in SwapItem lists
+    // trade and shared-bank destinations only, never WORLD_BEGIN..WORLD_END,
+    // which is exactly what makes NO DROP quest combines possible.
 
     // World containers don't have size restrictions like bags do
     // The server will validate if the item is appropriate for the tradeskill
@@ -2086,7 +2154,16 @@ bool InventoryManager::isValidSlot(int16_t slotId) const {
            isBankBagSlot(slotId) ||
            isSharedBankBagSlot(slotId) ||
            isTradeSlot(slotId) ||
-           isTradeBagSlot(slotId);
+           isTradeBagSlot(slotId) ||
+           // T282 -- the world tradeskill container's item slots (4000-4009).
+           // eqemu zone/inventory.cpp Client::IsValidSlot() accepts the whole
+           // range unconditionally, and common/patches/titanium.cpp maps it
+           // through both slot converters untranslated, so 4000 on the wire
+           // IS slot 4000. Rejecting it here is what stopped the client from
+           // ever driving the WORLD form of /combine (T278 hand-back).
+           // WHETHER a world-slot move may be SENT is a separate question --
+           // see moveItem(), which additionally requires an open container.
+           isWorldContainerItemSlot(slotId);
 }
 
 const ItemInstance* InventoryManager::getContainerAtSlot(int16_t bagSlot) const {
@@ -2204,20 +2281,33 @@ void InventoryManager::processCharInventory(const EQ::Net::Packet& packet) {
 }
 
 int16_t InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
-    // OP_ItemPacket has a 4-byte header (ItemPacketType) followed by serialized item
+    // The packet handed in by EverQuest::DispatchZonePacket() (and by the
+    // loot path in eq_merchant.cpp, which forwards the same one) still
+    // carries its 2-byte OPCODE, then ItemPacket_Struct: uint32 PacketType,
+    // then the serialized item.
+    //
+    // T282: this read the type at offset 0 and the item at offset 4 -- two
+    // bytes early on both, in a file where ZoneProcessVendorItemToUI() and
+    // ZoneProcessTradePartnerItem() both correctly skip 2 + 4. It survived
+    // because the stray "\0\0" prefix lands on instance field 0 and nothing
+    // else... but instance field 0 is the STACK COUNT (titanium.cpp
+    // SerializeItem), so from_chars() failed on it and every stacked item
+    // arriving this way collapsed to a quantity of 1. The packet type was
+    // likewise garbage, which is why nothing could dispatch on it.
     LOG_DEBUG(MOD_UI, "InventoryManager Received ItemPacket, size: {}", packet.Length());
 
-    if (packet.Length() < 5) {
+    constexpr size_t kOpcodeBytes = 2;
+    constexpr size_t kTypeBytes = 4;
+    if (packet.Length() < kOpcodeBytes + kTypeBytes + 1) {
         LOG_DEBUG(MOD_UI, "ItemPacket too short");
         return SLOT_INVALID;
     }
 
-    // First 4 bytes are the packet type
-    uint32_t packetType = packet.GetUInt32(0);
+    uint32_t packetType = packet.GetUInt32(kOpcodeBytes);
 
     // Rest is the serialized item (null-terminated)
-    const char* itemData = reinterpret_cast<const char*>(packet.Data()) + 4;
-    size_t itemLen = packet.Length() - 4;
+    const char* itemData = reinterpret_cast<const char*>(packet.Data()) + kOpcodeBytes + kTypeBytes;
+    size_t itemLen = packet.Length() - kOpcodeBytes - kTypeBytes;
 
     // Remove trailing null if present
     while (itemLen > 0 && itemData[itemLen - 1] == '\0') {
@@ -2232,6 +2322,21 @@ int16_t InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
     int16_t slotId = SLOT_INVALID;
     std::map<int16_t, std::unique_ptr<ItemInstance>> bagContents;
     auto item = TitaniumItemParser::parseItem(itemData, itemLen, slotId, &bagContents);
+
+    // T282 -- eqemu zone/object.cpp Object::HandleClick sends a WORLD
+    // tradeskill container's contents one packet per occupied index, and
+    // SendItemPacket() is handed the container's BAG INDEX 0-9, not
+    // 4000+index. Untranslated, index 0/1/2 IS equipment slot 0/1/2, so an
+    // open forge holding anything used to overwrite the player's charm, ears
+    // and head. Map it into the world range on arrival.
+    if (packetType == EQT::ITEM_PACKET_WORLD_CONTAINER && slotId >= 0 && slotId < WORLD_COUNT) {
+        LOG_DEBUG(MOD_UI, "InventoryManager World container index {} -> slot {}",
+                  slotId, WORLD_BEGIN + slotId);
+        slotId = static_cast<int16_t>(WORLD_BEGIN + slotId);
+        if (item) {
+            item->currentSlot = slotId;
+        }
+    }
 
     if (item && slotId != SLOT_INVALID) {
         LOG_DEBUG(MOD_UI, "InventoryManager Parsed item from ItemPacket: {} in slot {} (type: {})", item->name, slotId, packetType);

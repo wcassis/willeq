@@ -136,6 +136,13 @@ public:
     void clearBankSlots();   // Clear items in bank slots (2000-2190, 2500-2550)
     void clearWorldContainerSlots();  // Clear items in world container slots (4000-4009)
 
+    // T282 -- whether the SERVER currently holds a world tradeskill object
+    // for us (EverQuest::m_active_tradeskill_object_id != 0). Moves into or
+    // out of 4000-4009 are only legal while it does; see
+    // canPlaceInWorldContainer() for what eqemu does otherwise.
+    void setWorldContainerOpen(bool open);
+    bool isWorldContainerOpen() const { return worldContainerOpen_; }
+
     // Cursor operations
     bool pickupItem(int16_t slotId);
     bool pickupPartialStack(int16_t slotId, int32_t quantity);  // Pick up specific quantity from stack
@@ -393,6 +400,9 @@ private:
 
     // NPC trade state - when true, NO_DROP restrictions are bypassed for trade slots
     bool isNpcTrade_ = false;
+
+    // T282 -- see setWorldContainerOpen().
+    bool worldContainerOpen_ = false;
 
     // Change counter - bumped on every mutation
     uint32_t changeCounter_ = 0;

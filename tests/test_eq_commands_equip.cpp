@@ -1143,12 +1143,21 @@ EQ::Net::DynamicPacket CharInventoryPacket(const std::vector<std::string>& items
     return p;
 }
 
-EQ::Net::DynamicPacket ItemPacketPacket(const std::string& item) {
+// T282: processItemPacket() is only ever handed a packet that still carries
+// its 2-byte OPCODE -- EverQuest::DispatchZonePacket() passes the dispatched
+// packet straight through, and the loot path forwards the same one. This
+// helper used to omit it, which hid a 2-byte misalignment in the parse
+// (instance field 0, the stack count, was the only casualty).
+constexpr uint16_t kOpItemPacket = 0x3397;  // HC_OP_ItemPacket (client/eq.h)
+
+EQ::Net::DynamicPacket ItemPacketPacket(const std::string& item,
+                                        uint32_t packetType = EQT::ITEM_PACKET_INVENTORY) {
     EQ::Net::DynamicPacket p;
-    p.Resize(4 + item.size() + 1);
-    p.PutUInt32(0, 0);
-    p.PutData(4, const_cast<char*>(item.data()), item.size());
-    p.PutUInt8(4 + item.size(), 0);
+    p.Resize(2 + 4 + item.size() + 1);
+    p.PutUInt16(0, kOpItemPacket);
+    p.PutUInt32(2, packetType);
+    p.PutData(2 + 4, const_cast<char*>(item.data()), item.size());
+    p.PutUInt8(2 + 4 + item.size(), 0);
     return p;
 }
 
