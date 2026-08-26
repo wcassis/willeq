@@ -772,4 +772,71 @@ TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemDoesNotFitDestination_StillRefu
     EXPECT_EQ(inv->getCursorItem()->itemId, 7170u);
 }
 
+// ---------------------------------------------------------------------------
+// T250 -- after placeItem()'s swap branch, the DISPLACED item becomes the
+// cursor front, so cursorSourceSlot_ must name the slot it came from (the
+// destination), not the ORIGINAL pickup slot. The only consumer that cares
+// is relocateBagContents(cursorSourceSlot_, target): with the stale value it
+// would move the wrong bag's contents when the displaced item is a bag.
+// ---------------------------------------------------------------------------
+
+void SeedBag(EverQuest& eq, int16_t slot, uint32_t itemId, const std::string& name, uint8_t bagSlots) {
+    ItemInstance bag;
+    bag.itemId = itemId;
+    bag.name = name;
+    bag.slots = 0;
+    bag.bagSlots = bagSlots;
+    eq.GetInventoryManager()->setItem(slot, bag);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_SourceSlotTracksDisplacedItem) {
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, 22, 7200, "Rusty Short Sword", EQUIPSLOT_PRIMARY);
+    SeedNamedItem(eq, 23, 7201, "Skin of Milk", /*slotsBitmask=*/0);
+    ASSERT_TRUE(inv->pickupItem(22));
+    EXPECT_EQ(inv->getCursorSourceSlot(), 22);
+
+    ASSERT_TRUE(inv->placeItem(23));  // sword -> 23, Milk displaced onto cursor
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7201u);
+    // The Milk came from 23 -- that is where the cursor front is FROM now.
+    EXPECT_EQ(inv->getCursorSourceSlot(), 23);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_DisplacedBag_ContentsFollowTheBagOnNextPlace) {
+    // Bag A (empty) picked up from general 22 and dropped on general 23,
+    // which holds bag B containing Bread. B is now on the cursor; placing B
+    // into empty general 24 must carry B's contents (23's bag range) to
+    // 24's bag range. With the stale source (22), relocateBagContents(22,
+    // 24) moved nothing and the Bread stayed under bag A.
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedBag(eq, 23, 7211, "Small Bag B", 4);
+    SeedNamedItem(eq, calcBagSlotId(23, 0), 7212, "Loaf of Bread", /*slotsBitmask=*/0);
+
+    ASSERT_TRUE(inv->pickupItem(22));   // cursor <- A (source 22)
+    ASSERT_TRUE(inv->placeItem(23));    // A -> 23, cursor <- B (source 23)
+    (void)bridge.drainIntents();
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7211u);
+    EXPECT_EQ(inv->getCursorSourceSlot(), 23);
+    ASSERT_NE(inv->getItem(23), nullptr);
+    EXPECT_EQ(inv->getItem(23)->itemId, 7210u);
+
+    ASSERT_TRUE(inv->placeItem(24));    // B -> 24; B's contents must follow
+    EXPECT_FALSE(inv->hasCursorItem());
+    ASSERT_NE(inv->getItem(24), nullptr);
+    EXPECT_EQ(inv->getItem(24)->itemId, 7211u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(24, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(24, 0))->itemId, 7212u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, CURSOR_SLOT);
+    EXPECT_EQ(mv->toSlot, 24);
+}
+
 }  // namespace

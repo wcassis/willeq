@@ -144,7 +144,6 @@ public:
     bool hasCursorItem() const;
     const ItemInstance* getCursorItem() const;
     int16_t getCursorSourceSlot() const { return cursorSourceSlot_; }
-    void returnCursorItem();  // Return cursor item to original slot
     void popCursorItem();     // Pop front item from cursor queue and notify server
     size_t getCursorQueueSize() const;  // Get number of items in cursor queue
 
@@ -325,7 +324,7 @@ private:
     // Cursor queue - multiple items can be on cursor (e.g., zone-in with items on cursor)
     // Front item is the "active" cursor item shown to user
     std::deque<std::unique_ptr<ItemInstance>> cursorQueue_;
-    int16_t cursorSourceSlot_ = SLOT_INVALID;  // Source slot of the front cursor item
+    int16_t cursorSourceSlot_ = SLOT_INVALID;  // Slot the CURRENT cursor front came from (T250: updated on swap)
 
     // Cursor money - separate from cursor items
     CursorMoneyType cursorMoneyType_ = CursorMoneyType::None;

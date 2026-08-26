@@ -828,14 +828,22 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
 
         // Put target item on cursor (push to front - it becomes the new active item)
         cursorQueue_.push_front(std::move(targetItem));
-        // cursorSourceSlot_ stays the same (original pickup location)
+        // T250: cursorSourceSlot_ means "where the CURRENT cursor front came
+        // from". The front is now the displaced item, which came from
+        // targetSlot -- not the original pickup slot. Leaving the old value
+        // here made relocateBagContents(cursorSourceSlot_, ...) move the
+        // wrong bag's contents on the next placement when the displaced
+        // item is a bag (T249 finding).
+        int16_t previousSource = cursorSourceSlot_;
+        cursorSourceSlot_ = targetSlot;
 
         // Note: If target item was a bag, its contents stay in targetSlot's bag range
         // until the user places the cursor item (the bag) somewhere else
 
         // Notify server of swap - use CURSOR_SLOT as source since item is on cursor
         // quantity = 0 means move entire item/stack
-        LOG_DEBUG(MOD_UI, "InventoryManager Swapped items: cursor(from {}) <-> {}", cursorSourceSlot_, targetSlot);
+        LOG_DEBUG(MOD_UI, "InventoryManager Swapped items: cursor(from {}) <-> {} (cursor source now {})",
+                  previousSource, targetSlot, cursorSourceSlot_);
         if (bridge_) {
             bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, 0});
         }
@@ -1002,29 +1010,6 @@ bool InventoryManager::hasCursorItem() const {
 
 const ItemInstance* InventoryManager::getCursorItem() const {
     return cursorQueue_.empty() ? nullptr : cursorQueue_.front().get();
-}
-
-void InventoryManager::returnCursorItem() {
-    if (cursorQueue_.empty()) {
-        return;
-    }
-
-    // Can only return if the item was picked up locally (not from server queue)
-    if (cursorSourceSlot_ != SLOT_INVALID && cursorSourceSlot_ != CURSOR_SLOT) {
-        // Return to original slot
-        auto& cursorItem = cursorQueue_.front();
-        cursorItem->currentSlot = cursorSourceSlot_;
-        items_[cursorSourceSlot_] = std::move(cursorItem);
-        cursorQueue_.pop_front();
-
-        // Update source slot for next item (if any)
-        if (cursorQueue_.empty()) {
-            cursorSourceSlot_ = SLOT_INVALID;
-        } else {
-            cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
-        }
-    }
-    // If item is from server queue (cursorSourceSlot_ == CURSOR_SLOT), don't return it
 }
 
 void InventoryManager::popCursorItem() {
