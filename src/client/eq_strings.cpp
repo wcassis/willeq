@@ -2,6 +2,7 @@
 // Split out of eq.cpp (F02) — pure move, no behavior change.
 
 #include "client/eq.h"
+#include "client/willeq_database.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include <iostream>
@@ -506,26 +507,22 @@ std::string EverQuest::GetClassName(uint32_t class_id) {
 	}
 }
 
+// T271: the db is the only name source. The switch this replaces was
+// SHIFTED against the audited race_models rows -- 14 -> "Iksar" (row 14 is
+// WER Werewolf; Iksar is 128), 128 -> "Vah Shir" (that is 130), 130 ->
+// "Froglok" (the playable Froglok is 330), 330 -> "Drakkin" -- and this
+// string is printed to the player (/who, /consider, inspect, target info),
+// so those four were user-visible wrong text. eqstr_us.txt carries no
+// race-name table (its 3200-block is the LANGUAGE list), so race_models.name
+// is the only source in the tree; with no row the honest answer is
+// "Unknown (id)", the same wording the graphics-side twin already used.
 std::string EverQuest::GetRaceName(uint32_t race_id) {
-	switch (race_id) {
-		case 1: return "Human";
-		case 2: return "Barbarian";
-		case 3: return "Erudite";
-		case 4: return "Wood Elf";
-		case 5: return "High Elf";
-		case 6: return "Dark Elf";
-		case 7: return "Half Elf";
-		case 8: return "Dwarf";
-		case 9: return "Troll";
-		case 10: return "Ogre";
-		case 11: return "Halfling";
-		case 12: return "Gnome";
-		case 14: return "Iksar";
-		case 128: return "Vah Shir";
-		case 130: return "Froglok";
-		case 330: return "Drakkin";
-		default: return fmt::format("Race{}", race_id);
+	auto* db = EQT::WilleqDatabase::globalInstance();
+	if (db) {
+		auto info = db->getRaceModel(static_cast<uint16_t>(race_id));
+		if (info.found && !info.name.empty()) return info.name;
 	}
+	return fmt::format("Unknown ({})", race_id);
 }
 
 std::string EverQuest::GetDeityName(uint32_t deity_id) {

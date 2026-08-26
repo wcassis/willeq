@@ -1524,8 +1524,12 @@ public:
 	// EQT::Graphics::getClassName into a non-graphics TU, i.e. a new dependency
 	// direction for a switch statement.
 	static std::string GetClassName(uint32_t class_id);
-private:
+	// T271: public for the same reason as GetClassName above -- it is a pure
+	// race_models lookup with no state, and tests must be able to hold it to
+	// the audited rows (it used to carry a shifted hardcoded table that was
+	// printed to the player).
 	static std::string GetRaceName(uint32_t race_id);
+private:
 	static std::string GetDeityName(uint32_t deity_id);
 	static std::string GetBodyTypeName(uint8_t bodytype);
 	static std::string GetEquipSlotName(int slot);

@@ -189,204 +189,39 @@ std::string getRaceModelFilename(uint16_t raceId, uint8_t gender) {
     return "global" + lower + "_chr.s3d";
 }
 
+// T271: db only, the same rule T270 applied to the code functions. The
+// fallback switch this replaces was keyed on the pre-JSON numbering and so
+// answered with another race's size whenever a row was missing: 13 was 0.8
+// "Wolf" (row 13 is AVI Aviak, 1.2), 35 was 0.2 "Rat" (EEL Eel, 1.0), 36 was
+// 0.4 "Giant Rat" (RAT Rat, 0.3), 39 was 0.6 "Gnoll Pup" (GNN Gnoll, 1.0),
+// 46 was 0.8 "Goblin" (IMP Imp, 0.5), 48 was 0.3 "Spider" (KOB Kobold, 0.7),
+// 49 was 0.6 "Spider" (DRA Lava Dragon, 3.0), 91 was 0.7 "Kobold" (ALL
+// Alligator, 1.3), 94 was 1.5 "Minotaur" (KAM Kaladim Citizen, 0.7), 95 was
+// 1.5 "Drake" (CAZ Cazic Thule, 3.0). With no row there is no scale data, so
+// 1.0 -- the switch's own default -- is the only honest answer.
 float getRaceScale(uint16_t raceId) {
-    // Check SQLite race_models table
-    {
-        auto* db = WilleqDatabase::globalInstance();
-        if (db) {
-            auto info = db->getRaceModel(raceId);
-            if (info.found) return info.scale;
-        }
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found) return info.scale;
     }
-
-    // Fallback to hardcoded defaults
-    switch (raceId) {
-        // Playable races
-        case 2:   return 1.2f;   // Barbarian
-        case 8:   return 0.7f;   // Dwarf
-        case 9:   return 1.4f;   // Troll
-        case 10:  return 1.5f;   // Ogre
-        case 11:  return 0.5f;   // Halfling
-        case 12:  return 0.6f;   // Gnome
-        case 128: return 1.1f;   // Iksar
-
-        // Monsters - small
-        case 13:  return 0.8f;   // Wolf
-        case 22:  return 0.4f;   // Beetle
-        case 24:  return 0.3f;   // Fish
-        case 34:  return 0.6f;   // Giant Bat
-        case 35:  return 0.2f;   // Rat
-        case 36:  return 0.4f;   // Giant Rat
-        case 37:  return 0.5f;   // Snake
-        case 39:  return 0.6f;   // Gnoll Pup
-        case 42:  return 0.8f;   // Wolf (was incorrectly 0.3 for rat)
-        case 43:  return 1.2f;   // Bear (was incorrectly 0.4 for bat)
-        case 48:  return 0.3f;   // Spider (small)
-        case 49:  return 0.6f;   // Spider (large)
-        case 57:  return 0.2f;   // Piranha
-        case 69:  return 0.5f;   // Will-o-Wisp
-        case 76:  return 0.8f;   // Cat/Puma
-        case 78:  return 0.4f;   // Cat
-        case 88:  return 0.2f;   // Mosquito
-
-        // Monsters - medium
-        case 14:  return 1.2f;   // Bear
-        case 17:  return 1.0f;   // Orc
-        case 21:  return 1.0f;   // Skeleton
-        case 26:  return 0.7f;   // Snake
-        case 33:  return 1.0f;   // Ghoul
-        case 44:  return 1.0f;   // Gnoll
-        case 46:  return 0.8f;   // Goblin
-        case 47:  return 2.0f;   // Griffin
-        case 50:  return 1.2f;   // Lion
-        case 52:  return 1.1f;   // Lizard Man
-        case 54:  return 1.0f;   // Orc
-        case 65:  return 1.0f;   // Ghoul
-        case 67:  return 1.0f;   // Zombie
-        case 70:  return 1.0f;   // Zombie
-        case 75:  return 1.0f;   // Elemental
-        case 77:  return 1.2f;   // Werewolf
-        case 91:  return 0.7f;   // Kobold
-        case 367: return 1.0f;   // Decaying Skeleton
-
-        // Monsters - large
-        case 23:  return 1.4f;   // Kodiak Bear
-        case 25:  return 1.3f;   // Alligator
-        case 40:  return 1.3f;   // Gorilla
-        case 51:  return 1.2f;   // Lion
-        case 59:  return 1.0f;   // Puma
-        case 85:  return 3.0f;   // Dragon
-        case 90:  return 2.0f;   // Griffin
-        case 94:  return 1.5f;   // Minotaur
-        case 95:  return 1.5f;   // Drake
-
-        // Invisible / Zone entities
-        case 127: return 0.0f;   // Invisible Man
-        case 240: return 0.0f;   // Zone Controller
-
-        default:
-            return 1.0f;
-    }
+    return 1.0f;
 }
 
+// T271: db only, same rule. The deleted fallback switch carried the same
+// pre-JSON numbering (13 "Wolf" vs row AVI Aviak, 21 "Skeleton" vs BEH Evil
+// Eye, 26 "Snake" vs FRO Froglok, 35 "Rat" vs EEL Eel, 46 "Goblin" vs IMP
+// Imp, 85 "Dragon" vs SPE Spectre, ...), i.e. it answered confidently and
+// wrongly. Kept in step with EverQuest::GetRaceName(), which now returns the
+// same row and the same "Unknown (id)" for no row -- test_race_names pins
+// the two against each other over every row.
 std::string getRaceName(uint16_t raceId) {
-    // Check SQLite race_models table
-    {
-        auto* db = WilleqDatabase::globalInstance();
-        if (db) {
-            auto info = db->getRaceModel(raceId);
-            if (info.found && !info.name.empty()) return info.name;
-        }
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found && !info.name.empty()) return info.name;
     }
-
-    // Fallback to hardcoded defaults
-    switch (raceId) {
-        // Playable races
-        case 1:   return "Human";
-        case 2:   return "Barbarian";
-        case 3:   return "Erudite";
-        case 4:   return "Wood Elf";
-        case 5:   return "High Elf";
-        case 6:   return "Dark Elf";
-        case 7:   return "Half Elf";
-        case 8:   return "Dwarf";
-        case 9:   return "Troll";
-        case 10:  return "Ogre";
-        case 11:  return "Halfling";
-        case 12:  return "Gnome";
-        case 128: return "Iksar";
-
-        // Common NPCs/monsters - corrected names
-        case 13:  return "Wolf";
-        case 14:  return "Bear";
-        case 15:  return "Freeport Guard";
-        case 17:
-        case 18:
-        case 19:
-        case 54:
-        case 56:  return "Orc";
-        case 20:  return "Brownie";
-        case 21:
-        case 60:
-        case 64:
-        case 367: return "Skeleton";
-        case 22:  return "Beetle";
-        case 23:  return "Kodiak Bear";
-        case 24:  return "Fish";
-        case 25:
-        case 93:  return "Alligator";
-        case 26:
-        case 37:  return "Snake";
-        case 27:  return "Spectre";
-        case 28:
-        case 77:  return "Werewolf";
-        case 29:  return "Wolf";
-        case 30:  return "Bear";
-        case 31:
-        case 32:  return "Freeport Citizen";
-        case 33:
-        case 65:  return "Ghoul";  // Corrected - was Ghost for 33
-        case 34:  return "Giant Bat";
-        case 35:
-        case 36:  return "Rat";
-        case 38:  return "Scarecrow";
-        case 39:
-        case 44:
-        case 87:  return "Gnoll";
-        case 40:  return "Gorilla";
-        case 41:  return "Undead Pet";
-        case 42:  return "Wolf";  // Corrected - was Rat
-        case 43:  return "Bear";  // Corrected - was Bat
-        case 46:  return "Goblin";
-        case 47:
-        case 90:  return "Griffin";  // Corrected - was not set for 47
-        case 48:
-        case 49:  return "Spider";
-        case 50:
-        case 51:  return "Lion";  // Corrected - 50 was Deer
-        case 52:  return "Lizard Man";
-        case 53:
-        case 94:  return "Minotaur";
-        case 55:  return "Lava Crawler";
-        case 57:  return "Piranha";
-        case 58:
-        case 72:
-        case 73:
-        case 74:
-        case 75:  return "Elemental";
-        case 59:
-        case 76:
-        case 78:  return "Cat";  // 76 was Weapon Stand
-        case 61:  return "Neriak Citizen";
-        case 62:  return "Erudite Citizen";
-        case 63:
-        case 83:  return "Ghost";
-        case 66:  return "Hag";
-        case 67:
-        case 70:  return "Zombie";  // 70 was Clock Creature
-        case 68:  return "Sphinx";
-        case 69:  return "Will-o-Wisp";  // Was Armadillo
-        case 71:  return "Qeynos Citizen";
-        case 79:  return "Elf";
-        case 80:  return "Karana Citizen";
-        case 81:  return "Vampire";
-        case 82:  return "Highpass Citizen";
-        case 84:  return "Dwarf Citizen";
-        case 85:  return "Dragon";
-        case 86:  return "Dark Elf Citizen";
-        case 88:  return "Mosquito";
-        case 89:  return "Imp";
-        case 91:  return "Kobold";
-        case 92:
-        case 95:  return "Drake";
-        case 96:  return "Genie";
-        case 120: return "Eye of Zomm";
-        case 127:
-        case 240: return "Invisible";
-
-        default:
-            return "Unknown (" + std::to_string(raceId) + ")";
-    }
+    return "Unknown (" + std::to_string(raceId) + ")";
 }
 
 std::string getClassName(uint8_t classId) {

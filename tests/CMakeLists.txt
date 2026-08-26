@@ -1454,6 +1454,10 @@ TARGET_LINK_LIBRARIES(test_who_response GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_who_response PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
+# T271: /who renders the race name, which is served from race_models now --
+# the fixture opens the shipped db the way EverQuest::OpenDatabase() does.
+TARGET_COMPILE_DEFINITIONS(test_who_response PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 GTEST_DISCOVER_TESTS(test_who_response)
 
 # T170: OP_InspectAnswer generation -- the field inversion between the request
@@ -1649,6 +1653,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_race_330_loader)
+ENDIF()
+
+# T271: race DISPLAY NAMES come from the db (EverQuest::GetRaceName was
+# shifted -- 14 "Iksar", 128 "Vah Shir", 130 "Froglok", 330 "Drakkin" -- and
+# it is printed to the player). Opens the shipped data/willeq.db and skips
+# without it; no device, no server. Gated on graphics only because the
+# graphics-side twin EQT::Graphics::getRaceName is held to the same rows.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_race_names
+        test_race_names.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_race_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_race_names GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_race_names PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_race_names)
 ENDIF()
 
 # T54: first tests for the static-panel UI (StaticUIInput hit-testing,

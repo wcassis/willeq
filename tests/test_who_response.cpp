@@ -14,10 +14,12 @@
 #include <gtest/gtest.h>
 
 #include "client/who_response.h"
+#include "client/willeq_database.h"
 #include "common/packet_structs.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -340,11 +342,28 @@ TEST(WhoResponseFormat, TemplateHandlesTLookupMissingArgsAndLiteralPercent) {
 // End to end through the handler
 // ---------------------------------------------------------------------------
 
+// T271: the rendered line carries the race name, and race names come from
+// race_models now (they used to come from a hardcoded switch that was shifted
+// -- 14 "Iksar", 128 "Vah Shir", 130 "Froglok", 330 "Drakkin"). Open the
+// shipped db exactly as EverQuest::OpenDatabase() does, otherwise these
+// assertions would be pinning "Unknown (3)".
 class WhoResponseHandlerTest : public ::testing::Test {
 protected:
     WhoResponseHandlerTest() : eq(MakeEq()) { eq.setBridge(&bridge); }
     ~WhoResponseHandlerTest() override { eq.setBridge(nullptr); }
 
+    void SetUp() override {
+        const std::string dbPath = WILLEQ_DB_REAL_PATH;
+        std::ifstream probe(dbPath);
+        if (!probe.good()) GTEST_SKIP() << "no shipped db at " << dbPath;
+        ASSERT_TRUE(db_.open(dbPath)) << dbPath;
+        EQT::WilleqDatabase::setGlobalInstance(&db_);
+    }
+    void TearDown() override {
+        EQT::WilleqDatabase::setGlobalInstance(nullptr);
+    }
+
+    EQT::WilleqDatabase db_;
     EverQuest eq;
     TestBridge bridge;
 };
@@ -378,6 +397,21 @@ TEST_F(WhoResponseHandlerTest, SingleZoneLocalEntry) {
     ASSERT_EQ(lines.size(), 4u);
     EXPECT_EQ(lines[2], "* GM * [1 Rogue] Testchar (Erudite)");
     EXPECT_EQ(lines[3], "There is 1 player in EverQuest.");
+}
+
+// T271: the user-visible half of the shifted-race-name defect. Race 14 is WER
+// Werewolf in the audited race_models rows; the deleted switch printed
+// "Iksar" here (Iksar is 128, which the switch called "Vah Shir").
+TEST_F(WhoResponseHandlerTest, ShiftedRaceIdRendersTheRowName) {
+    auto payload = WhoPayload({
+        EntryBytes(kWhoStrFormatNormal, "Lupine", kWhoStringNone, "", kWhoStringNone,
+                   kWhoStringNone, 0, 1, 12, 14),
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_WhoAllResponse, payload));
+
+    auto lines = DrainSystemMessages(bridge);
+    ASSERT_EQ(lines.size(), 4u);
+    EXPECT_EQ(lines[2], "[12 Warrior] Lupine (Werewolf)");
 }
 
 TEST_F(WhoResponseHandlerTest, ZeroEntriesPrintsTheNoMatchString) {

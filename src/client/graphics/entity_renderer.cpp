@@ -111,7 +111,16 @@ bool EntityRenderer::loadGlobalCharacters() {
 }
 
 irr::video::SColor EntityRenderer::getColorForRace(uint16_t raceId) const {
-    // Assign colors based on race type for placeholders
+    // Placeholder-cube tint, reached only when no model could be built for
+    // the race (T213). T271 audited this against race_models and left the
+    // colours alone ON PURPOSE: there is no colour column, so re-keying it to
+    // the audited rows would mean inventing a colour per race. The case
+    // comments below are therefore NOT a name source -- several carry the
+    // pre-JSON numbering and the rows contradict them (21 is BEH Evil Eye not
+    // Skeleton, 26 FRO Froglok not Snake, 33 GHU Ghoul not Ghost, 35 EEL Eel
+    // not Rat, 42 WOL Wolf not Rat, 43 BEA Bear not Bat, 46 IMP Imp not
+    // Goblin, 48/49 KOB Kobold / DRA Lava Dragon not Spiders, 85 SPE Spectre
+    // not Dragon). For a race NAME call EQT::Graphics::getRaceName().
     switch (raceId) {
         case 1:   // Human
             return irr::video::SColor(255, 200, 180, 160);
@@ -192,24 +201,14 @@ irr::video::SColor EntityRenderer::getColorForRace(uint16_t raceId) const {
     }
 }
 
+// T271: one scale source. RaceModelLoader::getRaceScale() is a one-line
+// forward to EQT::Graphics::getRaceScale(), which is db-only now, so the
+// loader-null branch no longer needs (or is allowed) a second opinion. The
+// switch deleted here was a third copy of the pre-JSON numbering and the
+// worst of them: 42 -> 0.3 "Rat" (row 42 is WOL Wolf, 0.8) and 43 -> 0.4
+// "Bat" (row 43 is BEA Bear, 1.0).
 float EntityRenderer::getScaleForRace(uint16_t raceId) const {
-    if (raceModelLoader_) {
-        return raceModelLoader_->getRaceScale(raceId);
-    }
-
-    // Fallback scale factors
-    switch (raceId) {
-        case 2:   return 1.2f;   // Barbarian
-        case 8:   return 0.7f;   // Dwarf
-        case 9:   return 1.4f;   // Troll
-        case 10:  return 1.5f;   // Ogre
-        case 11:  return 0.5f;   // Halfling
-        case 12:  return 0.6f;   // Gnome
-        case 42:  return 0.3f;   // Rat
-        case 43:  return 0.4f;   // Bat
-        case 85:  return 3.0f;   // Dragon
-        default:  return 1.0f;
-    }
+    return EQT::Graphics::getRaceScale(raceId);
 }
 
 void EntityRenderer::applyAlphaTestMaterialType(irr::video::SMaterial& mat) const {
