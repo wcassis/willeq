@@ -28,6 +28,7 @@
 #endif
 
 #include <cstring>
+#include <cctype>
 #include <algorithm>
 #include <vector>
 
@@ -465,6 +466,53 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 		data.type = type;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NoteWindowOpened, std::move(data)));
+	}
+
+	// T273 -- SURFACE the text. NoteWindowOpened's only consumer is
+	// IrrlichtRenderer::showNoteWindow(), which LOG_INFOs and returns:
+	// there is no book/note panel in the static UI, so without this the
+	// text a player asked for never reaches them. It goes to the CHAT
+	// window (SystemMessage), which exists in both graphics and headless
+	// mode; when a book panel is built, showNoteWindow() is where it hooks
+	// in and this can become that panel's fallback.
+	//
+	// Line breaks: eqemu's own struct comment says the text uses '`' as a
+	// newline; P99-era content also uses '^'. Both are split on -- a book
+	// rendered as one 500-character line is not readable in a chat window.
+	SurfaceBookText(bookText);
+}
+
+void EverQuest::SurfaceBookText(const std::string& text)
+{
+	if (text.empty()) {
+		AddChatSystemMessage("The page is blank.");
+		return;
+	}
+
+	std::string line;
+	bool any = false;
+	auto flush = [&]() {
+		// Trim trailing whitespace so a '`'-terminated paragraph does not
+		// emit an empty chat line.
+		while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back()))) {
+			line.pop_back();
+		}
+		if (!line.empty()) {
+			AddChatSystemMessage(line);
+			any = true;
+		}
+		line.clear();
+	};
+	for (char c : text) {
+		if (c == '`' || c == '^' || c == '\n' || c == '\r') {
+			flush();
+		} else {
+			line.push_back(c);
+		}
+	}
+	flush();
+	if (!any) {
+		AddChatSystemMessage("The page is blank.");
 	}
 }
 

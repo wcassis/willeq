@@ -654,6 +654,16 @@ void CommandProcessor::registerBuiltinCommands() {
         "Inventory", false
     }, [this](const std::string& args) { return cmdEquip(args); });
 
+    // T273: /read -- ask the server for a carried book or note's text.
+    // T264 listed ReadItemIntent as a blocked intent (consumer arm, no
+    // producer); this command is the producer. See
+    // refactor/T273_read_book.md.
+    registerCommand({
+        "read", {}, "/read <slot> | /read <item name>",
+        "Read a book or note you are carrying (e.g. /read Tattered Note)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdRead(args); });
+
     // T140: final 16 of the game-registry migration programme (equip
     // excluded). Registrations removed from eq_commands_movement.cpp/
     // eq_commands_spells.cpp in the same change -- see
@@ -2079,6 +2089,14 @@ ActionResult CommandProcessor::cmdBuy(const std::string& args) {
 // InventoryManager, reached via m_dispatcher.equip().
 ActionResult CommandProcessor::cmdEquip(const std::string& args) {
     return m_dispatcher.equip(args);
+}
+
+// T273: raw arg string passed straight through, same idiom as cmdEquip
+// above. Slot/name form dispatch, item resolution and the not-a-book
+// refusal all live in EverQuest::RequestReadItem(), reached via
+// m_dispatcher.readItem().
+ActionResult CommandProcessor::cmdRead(const std::string& args) {
+    return m_dispatcher.readItem(args);
 }
 
 ActionResult CommandProcessor::cmdSell(const std::string& args) {

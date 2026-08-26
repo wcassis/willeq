@@ -236,6 +236,12 @@ public:
     // refactor/T141_equip_extraction.md.
     virtual void equip(const std::string& args) = 0;
 
+    // T273: /read's one free-text argument (slot number or item-name
+    // substring), same shape as equip() above. Delegates straight to
+    // EverQuest::RequestReadItem() (eq_commands.cpp), which resolves the
+    // item against InventoryManager and pushes the kept ReadItemIntent.
+    virtual void readItem(const std::string& args) = 0;
+
     // ========== Spellbook ==========
 
     virtual void forgetSpell(uint8_t gemSlot) = 0;
@@ -881,6 +887,14 @@ public:
      * EverQuest::RequestEquip() for the form dispatch.
      */
     ActionResult equip(const std::string& args);
+
+    /**
+     * T273: /read <slot|item name> -- ask the server for a carried book or
+     * note's text. Item resolution and the not-a-book refusal live in
+     * EverQuest::RequestReadItem(); this only gates on a zone connection
+     * (OP_ReadBook goes to the zone server) and on a non-empty argument.
+     */
+    ActionResult readItem(const std::string& args);
 
     // ========== Spellbook Actions ==========
 

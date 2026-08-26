@@ -665,6 +665,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_bank_coins)
 
+# T273: read a book / note item (T264 F2). Command -> ReadItemIntent ->
+# OP_ReadBook wire bytes (real DaybreakConnection over FakeUdpTransport,
+# same idiom as test_eq_bank_coins above) -> reply parsed and surfaced into
+# the chat window. See refactor/T273_read_book.md.
+ADD_EXECUTABLE(test_read_book
+    test_read_book.cpp
+)
+TARGET_LINK_LIBRARIES(test_read_book GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_read_book PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_read_book)
+
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/
 # showOrSetZoning/campNow/debugLevel/perfReport/timeOfDay -- the net-new

@@ -752,6 +752,14 @@ void EqActionHandler::equip(const std::string& args) {
     m_eq.RequestEquip(args);
 }
 
+// T273: /read -- one free-text argument (slot number or item-name
+// substring), same shape as equip() above. All resolution, the
+// not-a-book refusal, and the ReadItemIntent push live in
+// EverQuest::RequestReadItem(); nothing is duplicated here.
+void EqActionHandler::readItem(const std::string& args) {
+    m_eq.RequestReadItem(args);
+}
+
 // ========== Spellbook ==========
 
 void EqActionHandler::forgetSpell(uint8_t gemSlot) {

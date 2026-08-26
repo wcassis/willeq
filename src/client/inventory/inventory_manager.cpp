@@ -331,11 +331,16 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
                   std::string(fields[96]), std::string(fields[97]), std::string(fields[98]));
     }
 
-    // Book (100-102)
-    item.bookType = static_cast<uint32_t>(toInt(fields[100]));
-    // fields[101] = BookType (alternative/legacy?)
+    // Book (100-102) -- eqemu titanium.cpp SerializeItem emits, in order,
+    // ItemData::Book (0=not a book, 1=book), ItemData::BookType (0=scroll,
+    // 1=book, 2=item info) and ItemData::Filename (the `books`.`name` key
+    // OP_ReadBook asks the server for). T273: field 100 used to be read as
+    // the book TYPE and field 101 dropped, so /read would have sent the
+    // is-a-book flag as the display type.
+    item.bookFlag = static_cast<uint8_t>(toInt(fields[100]));
+    item.bookType = static_cast<uint32_t>(toInt(fields[101]));
     if (fields.size() > 102 && !fields[102].empty()) {
-        item.bookText = std::string(fields[102]);
+        item.bookFilename = std::string(fields[102]);
     }
 
     // More flags (103-108)

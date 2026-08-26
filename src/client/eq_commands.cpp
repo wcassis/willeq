@@ -791,3 +791,109 @@ void EverQuest::RequestEquip(const std::string& args)
 		args, item->name, eqt::inventory::describeSlot(fromSlot), eqt::inventory::describeSlot(dest.slot)));
 	doMove(fromSlot, dest.slot);
 }
+
+// ============================================================================
+// T273 -- /read <slot|item name>
+// ============================================================================
+//
+// eqemu has always been able to serve a book: Handle_OP_ReadBook ->
+// Client::ReadBook() -> content_db.GetBook(txtfile) -> OP_ReadBook reply.
+// The client had the whole return leg (SendReadBookRequest, the reply
+// handler, the NoteWindowOpened event, the ReadItemIntent consumer arm in
+// eq_bridge.cpp) and NO producer -- T264 listed ReadItemIntent as a blocked
+// intent for exactly that reason. This is the producer.
+//
+// Same shape as RequestEquip() above (T141/T77): the free-text argument is
+// either a numeric inventory SLOT or an item-NAME substring, resolved
+// against InventoryManager (general slots + bag contents + cursor +
+// equipment). The intent it pushes is the SAME ReadItemIntent a book-item
+// double-click gesture would push, drained by the same
+// EverQuest::ProcessBridgeIntents() -> RequestReadBook() -> OP_ReadBook.
+//
+// What identifies a book on the wire is the item's Filename field (Titanium
+// item field 102, eqemu ItemData::Filename), which is the `books`.`name`
+// key the server looks the text up by -- NOT the item name and NOT any
+// text carried in the item packet. An item with an empty Filename cannot be
+// read, and asking for one would make the server silently return nothing
+// (Client::ReadBook returns early on an empty text_file), so /read refuses
+// locally and names the item, per T178.
+void EverQuest::RequestReadItem(const std::string& args)
+{
+	if (args.empty()) {
+		AddChatSystemMessage("Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
+		return;
+	}
+
+	if (!m_inventory_manager) {
+		AddChatSystemMessage("Cannot read - inventory not available.");
+		return;
+	}
+
+	// A token that LOOKS like an attempted slot number is parsed strictly
+	// as the slot form -- same rule as /equip, so a typo'd number stays a
+	// slot error rather than becoming a search for the literal text.
+	int16_t slot = eqt::inventory::SLOT_INVALID;
+	const eqt::inventory::ItemInstance* item = nullptr;
+	bool numericForm = std::isdigit(static_cast<unsigned char>(args[0])) || args[0] == '-';
+
+	if (numericForm) {
+		int16_t parsed = 0;
+		if (!ParseEquipSlot(args, parsed)) {
+			AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /read <item name> instead.", args));
+			return;
+		}
+		slot = parsed;
+		item = m_inventory_manager->getItem(slot);
+		if (!item) {
+			AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(slot)));
+			return;
+		}
+	} else {
+		auto matches = m_inventory_manager->findItemsByNameSubstring(args);
+		if (matches.empty()) {
+			AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+			return;
+		}
+		// Ambiguous only if DISTINCT item names matched -- two copies of
+		// the same note read identically. Same rule as /equip.
+		std::string firstLowerName = matches.front().second->name;
+		std::transform(firstLowerName.begin(), firstLowerName.end(), firstLowerName.begin(), ::tolower);
+		bool ambiguous = false;
+		for (const auto& [s, i] : matches) {
+			std::string n = i->name;
+			std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+			if (n != firstLowerName) {
+				ambiguous = true;
+				break;
+			}
+		}
+		if (ambiguous) {
+			std::string names;
+			for (const auto& [s, i] : matches) {
+				if (!names.empty()) {
+					names += ", ";
+				}
+				names += fmt::format("{} ({})", i->name, eqt::inventory::describeSlot(s));
+			}
+			AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+			return;
+		}
+		slot = matches.front().first;
+		item = matches.front().second;
+	}
+
+	if (item->bookFilename.empty()) {
+		AddChatSystemMessage(fmt::format("{} ({}) is not a book or note.",
+			item->name, eqt::inventory::describeSlot(slot)));
+		return;
+	}
+
+	if (!m_bridge) {
+		AddChatSystemMessage("Cannot read - no bridge attached.");
+		return;
+	}
+
+	AddChatSystemMessage(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
+	m_bridge->pushIntent(eqt::events::ReadItemIntent{
+		item->bookFilename, static_cast<uint8_t>(item->bookType)});
+}

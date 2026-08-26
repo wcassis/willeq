@@ -113,6 +113,7 @@ public:
     int16_t findItemSlotByItemId(uint32_t itemId) override;  // T230
     void activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) override;  // T239
     void equip(const std::string& args) override;  // T141
+    void readItem(const std::string& args) override;  // T273
 
     // ========== Spellbook ==========
 

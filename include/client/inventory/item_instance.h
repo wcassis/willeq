@@ -148,9 +148,14 @@ struct ItemInstance {
     uint8_t itemType = 0;      // ItemClass (0=common, 1=container, etc.)
     uint8_t skillType = 0;     // Weapon skill type (for damage/delay display)
 
-    // Book info
-    uint32_t bookType = 0;
-    std::string bookText;
+    // Book info (Titanium item fields 100/101/102, eqemu titanium.cpp
+    // SerializeItem: Book | BookType | Filename). T273 corrected the
+    // mapping -- field 100 is the IS-A-BOOK flag, not the book type, and
+    // field 102 is the server-side text file NAME (what OP_ReadBook asks
+    // for), not the text itself.
+    uint8_t bookFlag = 0;          // eqemu ItemData::Book: 0=not a book, 1=book
+    uint32_t bookType = 0;         // eqemu ItemData::BookType: 0=scroll, 1=book, 2=item info
+    std::string bookFilename;      // eqemu ItemData::Filename -- the `books`.`name` key
 
     // Helper methods
 

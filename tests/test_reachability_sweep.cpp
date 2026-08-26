@@ -189,12 +189,13 @@ std::vector<std::string> variantMembers() {
 // class); their arms are live and pinned by tests/test_loot_window_actions.
 // DestroyAllLootIntent was DELETED: Titanium has no destroy-loot packet, so
 // its arm only closed the window -- a second name for CloseLootIntent.
+// T273 wired ReadItemIntent as the /read command (CommandProcessor ->
+// ActionDispatcher -> EqActionHandler -> EverQuest::RequestReadItem), so it
+// is no longer on this list.
 const std::set<std::string> kBlockedIntents = {
     "LootItemIntent", "LootAllIntent", "CloseLootIntent",
-    "ReadItemIntent",
-    // T272 delisted MemorizeSpellIntent: the spellbook popup's click handler
-    // (static_ui_input.cpp) now produces it, and the same unit fixed the
-    // consumer arm's swapped arguments.
+    // T272 delisted MemorizeSpellIntent (spellbook click produces it);
+    // T273 delisted ReadItemIntent (/read produces it).
     "ScribeSpellIntent", "SpellbookStateIntent",
     "BuffCancelIntent",
     "TradeskillCombineIntent", "TradeskillCloseIntent",

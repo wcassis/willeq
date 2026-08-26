@@ -70,9 +70,13 @@ struct ZoningEnabledIntent {
     bool enabled;
 };
 
+// T273: `filename` is the server-side book key (eqemu `books`.`name`, the
+// item's Filename field) -- NOT the text, which only comes back in the
+// server's OP_ReadBook reply. `type` is the item's BookType, echoed back by
+// the server on Titanium: 0=scroll, 1=book, 2=item info.
 struct ReadItemIntent {
-    std::string bookText;
-    uint8_t type;  // 0=book, 1=note
+    std::string filename;
+    uint8_t type;
 };
 
 // --- Vendor ---

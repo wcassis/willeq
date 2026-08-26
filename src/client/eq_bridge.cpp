@@ -1098,7 +1098,7 @@ void EverQuest::ProcessBridgeIntents() {
 				ProcessChatInput(i.text);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
-				RequestReadBook(i.bookText, i.type);
+				RequestReadBook(i.filename, i.type);
 			}
 			// ================================================================
 			// D16: UI intents (D20a — intent-only, callbacks removed)

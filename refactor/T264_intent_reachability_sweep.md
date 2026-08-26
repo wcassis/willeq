@@ -116,7 +116,7 @@ wires them.
 | # | feature | kept hop(s) | what is missing |
 |---|---|---|---|
 | F1 (CLOSED by T268 as COMMANDS: `/loot <slot|item name>`, `/lootall`, `/lootclose`; the three intents stay producer-less as the UI-gesture leg -- no loot popup exists -- and DestroyAllLootIntent was deleted, Titanium has no destroy-loot packet) | Loot window: take ONE item, loot all, destroy all, close the window | LootItemIntent/LootAllIntent/DestroyAllLootIntent/CloseLootIntent arms -> EverQuest::LootItemFromCorpse / LootAllFromCorpse / DestroyAllCorpseLoot / CloseLootWindow; IActionHandler::lootItem/lootAll (dispatcher methods exist, no command) | `/loot <id>` only OPENS the corpse; with `/autoloot on` CombatManager's own LootSubState machine takes everything, with it off nothing can take an item. No loot panel exists in the static UI. Note: EverQuest::LootAllFromCorpse (m_loot_all_in_progress loop) and CombatManager::LootAll (LootSubState) are two drifted loot-all implementations. |
-| F2 | Read a book / note item | ReadItemIntent arm -> RequestReadBook -> SendReadBookRequest | no command, no inventory right-click gesture |
+| F2 | Read a book / note item | ReadItemIntent arm -> RequestReadBook -> SendReadBookRequest | CLOSED by T273: `/read` (slot or item name) is the producer |
 | F3 | Bank coins: deposit / withdraw / convert | BankCurrencyMoveIntent / BankCurrencyConvertIntent arms (build MoveCoin_Struct, SendMoveCoin) | `/bank` opens the window; nothing moves coins. TradeManager's SendMoveCoin callback is the trade-window path, not the bank. |
 | F4 | Spellbook popup: click a spell to memorize; open/close pose | MemorizeSpellIntent arm -> SpellManager::memorizeSpell; SpellbookStateIntent arm -> SendSpawnAppearance(AT_ANIMATION 110/100) | the popup EXISTS (RA::ToggleSpellbook, SpellbookPopupState) and its click handler is a LOG stub that says "would need MemorizeSpellIntent" (static_ui_input.cpp:111). `/mem` covers memorize by command, so this is the UI leg only. `cmdSpellbook` still prints "Spellbook window not yet implemented in UI" -- stale, same class as T223's /newskills. |
 | F5 | Scribe a spell scroll | ScribeSpellIntent arm -> EverQuest::ScribeSpellFromScroll (level/class/already-scribed checks, sends the packets) | no command, no gesture; InventoryManager::setSpellForScribe is written by nothing that leads here |
@@ -177,7 +177,7 @@ name in the message. Runtime ~12 s.
 | `CloseLootIntent` | (none) | eq_bridge.cpp:1094 | KEPT, BLOCKED: close loot window (F1) |
 | `WorldObjectInteractIntent` | src/client/graphics/renderer_frame.cpp:613, src/client/graphics/renderer_overlays.cpp:621 | eq_bridge.cpp:1010 | LIVE |
 | `ZoningEnabledIntent` | src/client/graphics/renderer_overlays.cpp:825 | eq_bridge.cpp:1021 | LIVE |
-| `ReadItemIntent` | (none) | eq_bridge.cpp:1028 | KEPT, BLOCKED: read a book/note item (F2) |
+| `ReadItemIntent` | eq_commands.cpp (`RequestReadItem`, T273) | eq_bridge.cpp:1028 | WIRED by T273: `/read` -- off `kBlockedIntents` |
 | `VendorToggleIntent` | src/client/graphics/renderer_frame.cpp:595, src/client/eq_commands.cpp:502 | eq_bridge.cpp:898 | LIVE |
 | `VendorBuyIntent` | src/client/eq_commands.cpp:533 | eq_bridge.cpp:1098 | LIVE |
 | `VendorSellIntent` | src/client/eq_commands.cpp:554 | eq_bridge.cpp:1101 | LIVE |

@@ -2335,6 +2335,9 @@ private:
 	// Book/Note reading packet handlers
 	void ZoneProcessReadBook(const EQ::Net::Packet& p);
 	void SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename);
+	// T273: split the server's book text into chat lines. Public entry is
+	// ZoneProcessReadBook; exposed here only so the handler stays readable.
+	void SurfaceBookText(const std::string& text);
 
 public:
 	// Save entity data to JSON file for debugging
@@ -2452,6 +2455,14 @@ public:
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);
+
+	// T273: /read <slot|item name>. Resolves the carried item, refuses
+	// (message, no intent) when it is not a book/note, and otherwise pushes
+	// the kept ReadItemIntent -- the same intent a book-item double-click
+	// gesture would push -- for ProcessBridgeIntents() to turn into
+	// RequestReadBook() -> OP_ReadBook. Defined in eq_commands.cpp next to
+	// RequestEquip, whose item-name resolution it mirrors.
+	void RequestReadItem(const std::string& args);
 
 private:
 #ifdef EQT_HAS_GRAPHICS

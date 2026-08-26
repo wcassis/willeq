@@ -1616,6 +1616,25 @@ ActionResult ActionDispatcher::equip(const std::string& args) {
     return ActionResult::Success();
 }
 
+// ========== Read book/note (T273) ==========
+// Zone-connection gate for the same reason equip() has one: OP_ReadBook is
+// a zone-server packet and a disconnected client has no inventory to read
+// from. The empty-argument usage string is asserted HERE (not inside
+// RequestReadItem) so /read with no argument is refused without needing a
+// live EverQuest -- RequestReadItem keeps its own identical guard for the
+// intent-path callers that do not come through the dispatcher.
+ActionResult ActionDispatcher::readItem(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    if (args.empty()) {
+        return ActionResult::Failure(
+            "Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
+    }
+
+    m_handler->readItem(args);
+    return ActionResult::Success();
+}
+
 // ========== Movement / Utility / Skills Actions (T140) ==========
 
 ActionResult ActionDispatcher::showLocation() {
