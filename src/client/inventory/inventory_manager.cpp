@@ -797,13 +797,18 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Slot is occupied - swap items
         auto targetItem = std::move(it->second);
 
-        // Check if we can swap (target item must be able to go where cursor came from)
-        if (cursorSourceSlot_ != SLOT_INVALID && cursorSourceSlot_ != CURSOR_SLOT &&
-            !canPlaceItemInSlot(targetItem.get(), cursorSourceSlot_)) {
-            // Can't swap - restore
-            it->second = std::move(targetItem);
-            return false;
-        }
+        // T249 -- no displaced-side check here, deliberately. The server's
+        // rule (eqemu common/inventory_profile.cpp, InventoryProfile::
+        // SwapItem, the destination_item_instance block at :359-:365)
+        // validates the displaced item against the move's SOURCE slot, and
+        // for a cursor placement the source IS the cursor (30) -- which
+        // IsSlotAllowed() unconditionally permits (item_instance.cpp:892,
+        // `slot_id > EQUIPMENT_END`). The server never sees
+        // cursorSourceSlot_ (where the cursor item was picked up FROM), so
+        // the old check against it refused swaps the server applies
+        // (T236 Review, section 3; T249). The forward check above -- the
+        // cursor item must fit targetSlot -- is the one the server does
+        // enforce (inventory_profile.cpp:325) and stays.
 
         // Save info about items being swapped (before we move them)
         uint32_t placedQuantity = cursorItem->quantity;

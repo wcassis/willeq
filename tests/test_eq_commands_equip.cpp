@@ -683,4 +683,93 @@ TEST_F(EqCommandsEquipTest, CursorSwap_IntoOccupiedGeneralSlot_StillMoves) {
     EXPECT_EQ(inv->getCursorItem()->itemId, 7141u);
 }
 
+// ---------------------------------------------------------------------------
+// T249 -- placeItem()'s swap branch used to validate the DISPLACED item
+// against cursorSourceSlot_ (where the cursor item was picked up FROM). The
+// server never sees that slot: eqemu validates the displaced item against
+// the move's SOURCE slot (common/inventory_profile.cpp:359-365), and for a
+// cursor placement the source is the cursor (30), which IsSlotAllowed()
+// always permits. So a cursor item picked up from an equipment slot and
+// dropped onto an occupied general slot is a swap the server APPLIES; the
+// client must apply it too. The forward check (cursor item fits the
+// destination) is the one the server does enforce and stays.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemFromEquipSlot_DisplacedNotCheckedAgainstSource_StillMoves) {
+    // Weapon picked up FROM Primary, dropped onto general 22 holding a
+    // non-equippable item (slots bitmask 0). Old client: refused because the
+    // Milk "cannot go in Primary" -- a slot the server never considers.
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, SLOT_PRIMARY, 7150, "Rusty Short Sword", EQUIPSLOT_PRIMARY);
+    ASSERT_TRUE(inv->pickupItem(SLOT_PRIMARY));  // cursor <- sword (from an EQUIPMENT slot)
+    EXPECT_EQ(inv->getCursorSourceSlot(), SLOT_PRIMARY);
+    (void)bridge.drainIntents();
+    (void)DrainSystemMessages(bridge);
+    SeedNamedItem(eq, 22, 7151, "Skin of Milk", /*slotsBitmask=*/0);
+    eq.RequestEquip("30 22");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Moving item"), std::string::npos) << msgs[0];
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, CURSOR_SLOT);
+    EXPECT_EQ(mv->toSlot, 22);
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7150u);
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7151u);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY), nullptr);  // Primary stays empty; nothing teleported back
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_DirectPlaceItem_FromEquipSlot_OntoOccupiedGeneral_Swaps) {
+    // Same shape below the /equip layer: InventoryManager::placeItem() is
+    // what the drag-and-drop UI gesture calls.
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, SLOT_PRIMARY, 7160, "Rusty Short Sword", EQUIPSLOT_PRIMARY);
+    ASSERT_TRUE(inv->pickupItem(SLOT_PRIMARY));
+    (void)bridge.drainIntents();
+    SeedNamedItem(eq, 23, 7161, "Skin of Milk", /*slotsBitmask=*/0);
+
+    EXPECT_TRUE(inv->placeItem(23));
+
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, CURSOR_SLOT);
+    EXPECT_EQ(mv->toSlot, 23);
+    ASSERT_NE(inv->getItem(23), nullptr);
+    EXPECT_EQ(inv->getItem(23)->itemId, 7160u);
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7161u);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemDoesNotFitDestination_StillRefused_NoIntent_NoMutation) {
+    // The forward rule the server DOES enforce (source item IsSlotAllowed
+    // (destination), inventory_profile.cpp:325): Milk on the cursor cannot
+    // go into Primary even though a sword sits there to be displaced.
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, 22, 7170, "Skin of Milk", /*slotsBitmask=*/0);
+    ASSERT_TRUE(inv->pickupItem(22));
+    (void)bridge.drainIntents();
+    (void)DrainSystemMessages(bridge);
+    SeedNamedItem(eq, SLOT_PRIMARY, 7171, "Rusty Short Sword", EQUIPSLOT_PRIMARY);
+
+    // placeItem() itself refuses (the drag/drop path)...
+    EXPECT_FALSE(inv->placeItem(SLOT_PRIMARY));
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    // ...and so does /equip's pre-flight (the command path).
+    eq.RequestEquip("30 13");
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("Skin of Milk"), std::string::npos) << msgs[0];
+    EXPECT_EQ(msgs[0].find("Moving item"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 7171u);
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7170u);
+}
+
 }  // namespace
