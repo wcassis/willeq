@@ -3151,46 +3151,82 @@ void detectPortalsFromOccluders(ZoneBenchData& data, const std::string& csvFile)
     }
 }
 
-void findSurfacePosition(const ZoneBenchData& data,
-                          float& outX, float& outY, float& outZ) {
-    // Find the region with the most polygons whose center Z is in the
-    // top quartile of Z heights (surface-level, not underground).
-    float zRange = data.boundsMaxZ - data.boundsMinZ;
-    float zThreshold = data.boundsMinZ + zRange * 0.5f;  // Top half of Z range
-
-    int bestPolys = 0;
-    float bestX = (data.boundsMinX + data.boundsMaxX) * 0.5f;
-    float bestY = (data.boundsMinY + data.boundsMaxY) * 0.5f;
-    float bestZ = data.boundsMaxZ - 10.0f;  // Default: near top
-
+std::vector<SurfaceCandidate> findSurfaceCandidates(const ZoneBenchData& data,
+                                                    size_t maxCandidates) {
+    // T242: rank regions by polygon count, restricted to the upper half of
+    // the zone's *polygon-weighted* Z distribution (region-center Z, weighted
+    // by each region's polygon count). The pre-T242 finder used the upper
+    // half of the raw vertex-extent Z range instead, which is dominated by a
+    // handful of sky/far-scenery regions hundreds of units above the playable
+    // area (blackburrow Z=[-228,605], crushbone Z=[-185,629], gfaydark
+    // Z=[-99,802]): every playable region fell below that threshold, the
+    // "surface" seed landed ~300 EQ units in the sky, navmesh sampling found
+    // no polygon within its (5,100,5) search extents, and the orbit fallback
+    // circled the zone at that height looking at nothing -- the Batch H
+    // "blackburrow/crushbone render blank" finding.
+    struct Entry { float x, y, z; int polys; };
+    std::vector<Entry> entries;
+    long long totalPolys = 0;
     for (const auto& [idx, rd] : data.regions) {
         if (!rd.mesh) continue;
-
-        // Region center Z (EQ coords)
-        float regionCenterZ = (rd.eqMinZ + rd.eqMaxZ) * 0.5f;
-        if (regionCenterZ < zThreshold) continue;  // Skip underground
-
-        // Count polys in this region
         int polys = 0;
         for (irr::u32 i = 0; i < rd.mesh->getMeshBufferCount(); ++i) {
             auto* buf = rd.mesh->getMeshBuffer(i);
             if (buf) polys += buf->getIndexCount() / 3;
         }
-
-        if (polys > bestPolys) {
-            bestPolys = polys;
-            bestX = (rd.eqMinX + rd.eqMaxX) * 0.5f;
-            bestY = (rd.eqMinY + rd.eqMaxY) * 0.5f;
-            bestZ = regionCenterZ;
-        }
+        if (polys <= 0) continue;
+        entries.push_back({(rd.eqMinX + rd.eqMaxX) * 0.5f,
+                           (rd.eqMinY + rd.eqMaxY) * 0.5f,
+                           (rd.eqMinZ + rd.eqMaxZ) * 0.5f, polys});
+        totalPolys += polys;
     }
 
-    outX = bestX;
-    outY = bestY;
-    outZ = bestZ;
+    std::vector<SurfaceCandidate> out;
+    if (entries.empty()) {
+        out.push_back({(data.boundsMinX + data.boundsMaxX) * 0.5f,
+                       (data.boundsMinY + data.boundsMaxY) * 0.5f,
+                       data.boundsMaxZ - 10.0f, 0});
+        return out;
+    }
+
+    // Polygon-weighted median of region-center Z.
+    std::vector<Entry> byZ = entries;
+    std::sort(byZ.begin(), byZ.end(), [](const Entry& a, const Entry& b) { return a.z < b.z; });
+    long long acc = 0;
+    float zThreshold = byZ.front().z;
+    for (const auto& e : byZ) {
+        acc += e.polys;
+        if (acc * 2 >= totalPolys) { zThreshold = e.z; break; }
+    }
+
+    size_t above = 0;
+    for (const auto& e : entries) {
+        if (e.z >= zThreshold) {
+            ++above;
+            out.push_back({e.x, e.y, e.z, e.polys});
+        }
+    }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const SurfaceCandidate& a, const SurfaceCandidate& b) {
+                         return a.polys > b.polys;
+                     });
+    if (out.size() > maxCandidates) out.resize(maxCandidates);
+
+    printf("  Surface candidates: %zu regions at or above the poly-weighted median "
+           "Z=%.1f (bounds Z=[%.0f,%.0f]), keeping top %zu by polygon count\n",
+           above, zThreshold, data.boundsMinZ, data.boundsMaxZ, out.size());
+    return out;
+}
+
+void findSurfacePosition(const ZoneBenchData& data,
+                          float& outX, float& outY, float& outZ) {
+    auto candidates = findSurfaceCandidates(data, 1);
+    outX = candidates.front().x;
+    outY = candidates.front().y;
+    outZ = candidates.front().z;
 
     printf("  Surface position: (%.1f, %.1f, %.1f) [%d polys in region]\n",
-           outX, outY, outZ, bestPolys);
+           outX, outY, outZ, candidates.front().polys);
 }
 
 } // namespace ZoneBench

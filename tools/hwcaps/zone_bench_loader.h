@@ -458,9 +458,23 @@ void analyzePortals(ZoneBenchData& data, const std::string& csvFile = "");
 // and identify gaps (low-coverage areas) as portal openings.
 void detectPortalsFromOccluders(ZoneBenchData& data, const std::string& csvFile = "");
 
-// Find a good surface-level position in the zone for camera seeding.
-// Returns the center of the region with the most polygons in the top
-// quartile of Z heights (avoids underground regions).
+// A candidate camera-seed position: the center of a zone region (EQ coords)
+// plus that region's polygon count (ranking key).
+struct SurfaceCandidate {
+    float x, y, z;
+    int polys;
+};
+
+// T242: rank surface-level regions for camera seeding. Returns up to
+// maxCandidates region centers, most polygons first, restricted to regions
+// whose center Z is at or above the polygon-weighted median region Z (so
+// sky/far-scenery outliers hundreds of units up cannot drag the threshold
+// above the playable area, and underground regions stay excluded).
+std::vector<SurfaceCandidate> findSurfaceCandidates(const ZoneBenchData& data,
+                                                    size_t maxCandidates);
+
+// Find a good surface-level position in the zone for camera seeding:
+// the first (largest) findSurfaceCandidates() entry.
 void findSurfacePosition(const ZoneBenchData& data,
                           float& outX, float& outY, float& outZ);
 

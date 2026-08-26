@@ -13,6 +13,13 @@ namespace ZoneBench {
 bool CameraPath::generateFromNavmesh(const std::string& navmeshPath,
                                       int numWaypoints, uint32_t seed,
                                       const glm::vec3& seedPos) {
+    return generateFromNavmesh(navmeshPath, numWaypoints, seed,
+                               std::vector<glm::vec3>{seedPos});
+}
+
+bool CameraPath::generateFromNavmesh(const std::string& navmeshPath,
+                                      int numWaypoints, uint32_t seed,
+                                      const std::vector<glm::vec3>& seedCandidates) {
 #ifdef EQT_HAS_NAVMESH
     PathfinderNavmesh nav(navmeshPath);
     if (!nav.IsLoaded()) {
@@ -23,26 +30,39 @@ bool CameraPath::generateFromNavmesh(const std::string& navmeshPath,
     printf("Navmesh loaded: %s\n", navmeshPath.c_str());
     printf("Generating camera path with %d waypoints (seed=%u)...\n", numWaypoints, seed);
 
-    // Use deterministic PRNG
-    srand(seed);
-
-    // Sample random waypoints from the navmesh
-    // GetRandomLocation requires a valid non-zero start position on the navmesh
+    // Sample random waypoints from the navmesh.
+    // GetRandomLocation requires a start position within (5,100,5) EQ units
+    // of a navmesh polygon; try each candidate seed in rank order (T242).
+    // The PRNG is re-seeded per candidate so the chosen path depends only on
+    // (seed, winning candidate), not on how many candidates failed first.
     std::vector<glm::vec3> randomPoints;
-    glm::vec3 current = seedPos;
-    printf("  Navmesh seed position: (%.1f, %.1f, %.1f)\n", seedPos.x, seedPos.y, seedPos.z);
-    for (int i = 0; i < numWaypoints; ++i) {
-        glm::vec3 pt = nav.GetRandomLocation(current);
-        // Skip points at origin (failed samples)
-        if (std::abs(pt.x) > 0.1f || std::abs(pt.y) > 0.1f || std::abs(pt.z) > 0.1f) {
-            randomPoints.push_back(pt);
-            current = pt;  // Chain from successful samples
+    for (size_t c = 0; c < seedCandidates.size(); ++c) {
+        const glm::vec3& seedPos = seedCandidates[c];
+        srand(seed);
+        randomPoints.clear();
+        glm::vec3 current = seedPos;
+        for (int i = 0; i < numWaypoints; ++i) {
+            glm::vec3 pt = nav.GetRandomLocation(current);
+            // Skip points at origin (failed samples)
+            if (std::abs(pt.x) > 0.1f || std::abs(pt.y) > 0.1f || std::abs(pt.z) > 0.1f) {
+                randomPoints.push_back(pt);
+                current = pt;  // Chain from successful samples
+            }
         }
+        if (randomPoints.size() >= 2) {
+            printf("  Navmesh seed position: (%.1f, %.1f, %.1f) [candidate %zu of %zu]\n",
+                   seedPos.x, seedPos.y, seedPos.z, c + 1, seedCandidates.size());
+            break;
+        }
+        fprintf(stderr, "WARNING: seed candidate %zu of %zu (%.1f, %.1f, %.1f): only %zu valid "
+                "navmesh samples, need at least 2\n",
+                c + 1, seedCandidates.size(), seedPos.x, seedPos.y, seedPos.z,
+                randomPoints.size());
     }
 
     if (randomPoints.size() < 2) {
-        fprintf(stderr, "WARNING: Only %zu valid navmesh samples, need at least 2\n",
-                randomPoints.size());
+        fprintf(stderr, "WARNING: no seed candidate (%zu tried) produced 2 navmesh samples\n",
+                seedCandidates.size());
         return false;
     }
 

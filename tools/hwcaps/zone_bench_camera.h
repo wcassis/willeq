@@ -25,6 +25,17 @@ public:
                              int numWaypoints, uint32_t seed,
                              const glm::vec3& seedPos);
 
+    // T242: same, but with a ranked list of candidate seed positions. A
+    // region's bounding-box center is not guaranteed to lie on the navmesh
+    // (it can sit inside rock or over a chasm; the navmesh nearest-poly
+    // search only reaches 5 EQ units horizontally). Each candidate is tried
+    // in order and the first one that yields at least two navmesh samples is
+    // used. Returns false only if every candidate fails (or the navmesh
+    // cannot be loaded).
+    bool generateFromNavmesh(const std::string& navmeshPath,
+                             int numWaypoints, uint32_t seed,
+                             const std::vector<glm::vec3>& seedCandidates);
+
     // Fallback: circular orbit around a center point.
     void generateOrbit(float centerX, float centerY, float centerZ,
                        float radius, float heightOffset, int steps = 360);

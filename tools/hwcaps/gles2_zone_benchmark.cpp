@@ -2133,8 +2133,14 @@ int main(int argc, char** argv) {
     }
 
     // ── Find a good surface-level position ──
-    float surfX, surfY, surfZ;
-    ZoneBench::findSurfacePosition(*data, surfX, surfY, surfZ);
+    // T242: ranked candidates -- the first is the classic "surface position"
+    // (largest surface-level region); the rest are navmesh-seed fallbacks.
+    auto surfaceCandidates = ZoneBench::findSurfaceCandidates(*data, 16);
+    float surfX = surfaceCandidates.front().x;
+    float surfY = surfaceCandidates.front().y;
+    float surfZ = surfaceCandidates.front().z;
+    printf("  Surface position: (%.1f, %.1f, %.1f) [%d polys in region]\n",
+           surfX, surfY, surfZ, surfaceCandidates.front().polys);
 
     // ── Set up camera path ──
     ZoneBench::CameraPath camera;
@@ -2167,8 +2173,9 @@ int main(int argc, char** argv) {
             std::string navFile = opts.navmeshPath;
             if (!navFile.empty() && navFile.back() != '/') navFile += '/';
             navFile += opts.zoneName + ".nav";
-            hasNavPath = camera.generateFromNavmesh(navFile, opts.navWaypoints, opts.seed,
-                                                     glm::vec3(surfX, surfY, surfZ));
+            std::vector<glm::vec3> seeds;
+            for (const auto& c : surfaceCandidates) seeds.emplace_back(c.x, c.y, c.z);
+            hasNavPath = camera.generateFromNavmesh(navFile, opts.navWaypoints, opts.seed, seeds);
         }
 
         // Fallback to orbit at surface level
