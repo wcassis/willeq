@@ -839,4 +839,129 @@ TEST_F(EqCommandsEquipTest, CursorSwap_DisplacedBag_ContentsFollowTheBagOnNextPl
     EXPECT_EQ(mv->toSlot, 24);
 }
 
+// ---------------------------------------------------------------------------
+// T252 -- bag-on-bag swaps. eqemu's InventoryProfile::SwapItem
+// (common/inventory_profile.cpp:392-393) swaps the two ItemInstances with
+// _PutItem, and an ItemInstance CARRIES its bag contents, so both bags'
+// contents follow their bag; there is no bag-on-bag refusal anywhere in
+// SwapItem or Client::SwapItem. The client keeps contents FLAT by parent-
+// slot range, so it must move both ranges without either overwriting the
+// other -- in every gesture that moves a bag: direct /equip swap, direct
+// move to an empty slot, and the cursor pickup/place pair.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, DirectSwap_BagOnBag_BothContentsFollowTheirBags) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedBag(eq, 23, 7211, "Small Bag B", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Ay", 0);
+    SeedNamedItem(eq, calcBagSlotId(23, 0), 7401, "Bp", 0);
+    SeedNamedItem(eq, calcBagSlotId(23, 1), 7402, "Bq", 0);
+
+    eq.RequestEquip("22 23");
+
+    ASSERT_NE(inv->getItem(23), nullptr);
+    EXPECT_EQ(inv->getItem(23)->itemId, 7210u);  // A now in 23 ...
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0))->itemId, 7301u);  // ... with x
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 1))->itemId, 7302u);  // ... and y
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7211u);  // B now in 22 ...
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7401u);  // ... with p
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1))->itemId, 7402u);  // ... and q
+
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, 22);
+    EXPECT_EQ(mv->toSlot, 23);
+}
+
+TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyGeneral_ContentsFollow) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
+
+    eq.RequestEquip("22 24");
+
+    EXPECT_EQ(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    ASSERT_NE(inv->getItem(24), nullptr);
+    EXPECT_EQ(inv->getItem(24)->itemId, 7210u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(24, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(24, 0))->itemId, 7301u);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_BagOnBag_BothContentsFollowTheirBags) {
+    // The T250 scenario with BOTH bags non-empty. Server-side a bag on the
+    // cursor keeps its contents (cursor bag range 331-340 on the wire,
+    // CalcSlotId(slotCursor, idx)); the client mirrors that so the two
+    // contents ranges never collide mid-gesture.
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedBag(eq, 23, 7211, "Small Bag B", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Ay", 0);
+    SeedNamedItem(eq, calcBagSlotId(23, 0), 7401, "Bp", 0);
+    SeedNamedItem(eq, calcBagSlotId(23, 1), 7402, "Bq", 0);
+
+    // 1. cursor <- A: A's contents ride along in the cursor bag range.
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1))->itemId, 7302u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+
+    // 2. A -> 23, B displaced onto the cursor with ITS contents.
+    ASSERT_TRUE(inv->placeItem(23));
+    ASSERT_TRUE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7211u);
+    ASSERT_NE(inv->getItem(23), nullptr);
+    EXPECT_EQ(inv->getItem(23)->itemId, 7210u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 1))->itemId, 7302u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7401u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1))->itemId, 7402u);
+
+    // 3. B -> 22 (A's old slot): B's contents land in 22's range, A's stay in 23's.
+    ASSERT_TRUE(inv->placeItem(22));
+    EXPECT_FALSE(inv->hasCursorItem());
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7211u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7401u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1))->itemId, 7402u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 1))->itemId, 7302u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+
+    // Wire: exactly the three moves the server needs, in order.
+    auto intents = bridge.drainIntents();
+    std::vector<std::pair<int16_t, int16_t>> moves;
+    for (const auto& intent : intents) {
+        if (std::holds_alternative<eqt::events::MoveItemIntent>(intent)) {
+            const auto& m = std::get<eqt::events::MoveItemIntent>(intent);
+            moves.emplace_back(m.fromSlot, m.toSlot);
+        }
+    }
+    ASSERT_EQ(moves.size(), 3u);
+    EXPECT_EQ(moves[0], std::make_pair(int16_t(22), int16_t(CURSOR_SLOT)));
+    EXPECT_EQ(moves[1], std::make_pair(int16_t(CURSOR_SLOT), int16_t(23)));
+    EXPECT_EQ(moves[2], std::make_pair(int16_t(CURSOR_SLOT), int16_t(22)));
+}
+
 }  // namespace

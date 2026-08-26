@@ -256,7 +256,19 @@ public:
     int getBagSize(int16_t slotId) const;
     std::vector<int16_t> getBagContentsSlots(int16_t generalSlot) const;
     bool isBagEmpty(int16_t generalSlot) const;
-    void relocateBagContents(int16_t fromGeneralSlot, int16_t toGeneralSlot);
+    // T252 -- bag contents live FLAT in items_, keyed by the parent slot's
+    // range (general 22-29 -> 251-330, cursor 30 -> 331-340; eqemu's own
+    // CalcSlotId numbering). eqemu's SwapItem (common/inventory_profile.cpp
+    // :392-393) swaps two ItemInstances that each CARRY their contents, so
+    // whenever a bag moves, its contents range moves with it. Both parent
+    // slots may be a general slot or CURSOR_SLOT.
+    //   relocateBagContents: fromParent's range -> toParent's range (toParent's
+    //     range is expected empty; the bag moved to an empty slot / cursor).
+    //   swapBagContents: the two ranges trade places without either
+    //     overwriting the other (bag-on-bag swap, either side may be empty
+    //     or not a bag at all -- an empty range just swaps with nothing).
+    void relocateBagContents(int16_t fromParentSlot, int16_t toParentSlot);
+    void swapBagContents(int16_t parentSlotA, int16_t parentSlotB);
 
     // Bank utilities
     bool isBankBag(int16_t slotId) const;           // Check if bank/shared bank slot contains a bag
@@ -323,6 +335,14 @@ private:
 
     // Cursor queue - multiple items can be on cursor (e.g., zone-in with items on cursor)
     // Front item is the "active" cursor item shown to user
+    // T252 helpers for the bag-content range moves above: take every item
+    // out of a parent slot's BAG_SLOT_COUNT-slot range (keeping its index),
+    // and put such a set back under another parent.
+    using TakenBagContents = std::vector<std::pair<int16_t, std::unique_ptr<ItemInstance>>>;
+    static bool isBagParentSlot(int16_t slotId);
+    TakenBagContents takeBagContents(int16_t parentSlot);
+    void putBagContents(int16_t parentSlot, TakenBagContents& contents);
+
     std::deque<std::unique_ptr<ItemInstance>> cursorQueue_;
     int16_t cursorSourceSlot_ = SLOT_INVALID;  // Slot the CURRENT cursor front came from (T250: updated on swap)
 

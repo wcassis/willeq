@@ -761,9 +761,17 @@ bool InventoryManager::pickupItem(int16_t slotId) {
 
     // Move item to cursor (push to front since this becomes active)
     LOG_DEBUG(MOD_UI, "InventoryManager Picked up '{}' from slot {}", it->second->name, slotId);
+    bool pickedUpBag = it->second->isContainer();
     cursorQueue_.push_front(std::move(it->second));
     cursorSourceSlot_ = slotId;
     items_.erase(it);
+
+    // T252 -- a bag on the cursor keeps its contents (server: inside the
+    // ItemInstance, addressed as the cursor bag range 331-340). Mirror that
+    // so the contents never sit under whatever lands in the vacated slot.
+    if (pickedUpBag && isGeneralSlot(slotId)) {
+        relocateBagContents(slotId, CURSOR_SLOT);
+    }
 
     // Notify server of pickup (move from slot to cursor)
     // quantity = 0 means move entire item/stack
@@ -813,6 +821,7 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Save info about items being swapped (before we move them)
         uint32_t placedQuantity = cursorItem->quantity;
         bool cursorItemIsBag = cursorItem->isContainer();
+        bool targetItemIsBag = targetItem->isContainer();
 
         // Place cursor item in target slot
         cursorItem->currentSlot = targetSlot;
@@ -821,9 +830,13 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Pop the placed item from queue
         cursorQueue_.pop_front();
 
-        // Relocate bag contents if the cursor item was a bag
-        if (cursorItemIsBag && isGeneralSlot(cursorSourceSlot_) && isGeneralSlot(targetSlot)) {
-            relocateBagContents(cursorSourceSlot_, targetSlot);
+        // T252 -- the two contents ranges trade places: the cursor bag's
+        // contents (cursor range) go under targetSlot, the displaced bag's
+        // contents (targetSlot's range) go to the cursor range with it.
+        // Either side may be empty or not a bag. This is what eqemu's
+        // SwapItem does by swapping the two ItemInstances wholesale.
+        if ((cursorItemIsBag || targetItemIsBag) && isGeneralSlot(targetSlot)) {
+            swapBagContents(CURSOR_SLOT, targetSlot);
         }
 
         // Put target item on cursor (push to front - it becomes the new active item)
@@ -836,9 +849,6 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // item is a bag (T249 finding).
         int16_t previousSource = cursorSourceSlot_;
         cursorSourceSlot_ = targetSlot;
-
-        // Note: If target item was a bag, its contents stay in targetSlot's bag range
-        // until the user places the cursor item (the bag) somewhere else
 
         // Notify server of swap - use CURSOR_SLOT as source since item is on cursor
         // quantity = 0 means move entire item/stack
@@ -856,7 +866,6 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Slot is empty - just place
         LOG_DEBUG(MOD_UI, "InventoryManager Placed '{}' in slot {}", cursorItem->name, targetSlot);
         bool cursorItemIsBag = cursorItem->isContainer();
-        int16_t sourceSlot = cursorSourceSlot_;
 
         cursorItem->currentSlot = targetSlot;
         items_[targetSlot] = std::move(cursorItem);
@@ -864,9 +873,11 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // Pop the placed item from queue
         cursorQueue_.pop_front();
 
-        // Relocate bag contents if we moved a bag
-        if (cursorItemIsBag && isGeneralSlot(sourceSlot) && isGeneralSlot(targetSlot)) {
-            relocateBagContents(sourceSlot, targetSlot);
+        // T252 -- the bag's contents come from the cursor range (put there
+        // by pickupItem() / the displaced side of a swap), not from the
+        // slot the bag was originally picked up from.
+        if (cursorItemIsBag && isGeneralSlot(targetSlot)) {
+            relocateBagContents(CURSOR_SLOT, targetSlot);
         }
 
         // Notify server - use CURSOR_SLOT as source since item is on cursor
@@ -1405,13 +1416,22 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
         // (if applicable) the destination is legal.
         ItemInstance movedFromItem = *sourceItem;  // copy: setItem() below invalidates sourceItem
         const ItemInstance* toItemPtr = getItem(toSlot);
+        bool anyBag = movedFromItem.isContainer() || (toItemPtr && toItemPtr->isContainer());
         if (toItemPtr) {
             ItemInstance movedToItem = *toItemPtr;
             setItem(toSlot, movedFromItem);
             setItem(fromSlot, movedToItem);
+            // T252 -- bag contents follow their bags, both ways at once
+            // (eqemu SwapItem swaps whole ItemInstances, contents included).
+            if (anyBag && isGeneralSlot(fromSlot) && isGeneralSlot(toSlot)) {
+                swapBagContents(fromSlot, toSlot);
+            }
         } else {
             setItem(toSlot, movedFromItem);
             removeItem(fromSlot);
+            if (anyBag && isGeneralSlot(fromSlot) && isGeneralSlot(toSlot)) {
+                relocateBagContents(fromSlot, toSlot);
+            }
         }
         if (bridge_) {
             bridge_->pushIntent(eqt::events::MoveItemIntent{fromSlot, toSlot, /*quantity=*/0});
@@ -1589,36 +1609,86 @@ bool InventoryManager::isBagEmpty(int16_t generalSlot) const {
     return true;
 }
 
-void InventoryManager::relocateBagContents(int16_t fromGeneralSlot, int16_t toGeneralSlot) {
-    // Move bag contents from one general slot's bag range to another
-    // This is done locally only - server handles its own bag content relocation
+bool InventoryManager::isBagParentSlot(int16_t slotId) {
+    return isGeneralSlot(slotId) || slotId == CURSOR_SLOT;
+}
 
-    if (!isGeneralSlot(fromGeneralSlot) || !isGeneralSlot(toGeneralSlot)) {
-        return;
-    }
-
-    // Get the bag to determine how many slots it has
-    const ItemInstance* bag = getItem(toGeneralSlot);  // Bag is already in new slot
-    if (!bag || !bag->isContainer()) {
-        return;
-    }
-
-    int bagSize = bag->bagSlots;
-    LOG_DEBUG(MOD_UI, "InventoryManager Relocating {} bag slots from general slot {} to {}", bagSize, fromGeneralSlot, toGeneralSlot);
-
-    // Move contents from old slot range to new slot range
-    for (int i = 0; i < bagSize; i++) {
-        int16_t oldBagSlot = calcBagSlotId(fromGeneralSlot, i);
-        int16_t newBagSlot = calcBagSlotId(toGeneralSlot, i);
-
-        auto it = items_.find(oldBagSlot);
+InventoryManager::TakenBagContents InventoryManager::takeBagContents(int16_t parentSlot) {
+    TakenBagContents taken;
+    for (int16_t i = 0; i < BAG_SLOT_COUNT; i++) {
+        int16_t slot = calcContainerSlotId(parentSlot, i);
+        if (slot == SLOT_INVALID) {
+            continue;
+        }
+        auto it = items_.find(slot);
         if (it != items_.end()) {
-            LOG_DEBUG(MOD_UI, "InventoryManager Moving bag content '{}' from slot {} to {}", it->second->name, oldBagSlot, newBagSlot);
-            it->second->currentSlot = newBagSlot;
-            items_[newBagSlot] = std::move(it->second);
+            taken.emplace_back(i, std::move(it->second));
             items_.erase(it);
         }
     }
+    return taken;
+}
+
+void InventoryManager::putBagContents(int16_t parentSlot, TakenBagContents& contents) {
+    for (auto& [index, item] : contents) {
+        int16_t slot = calcContainerSlotId(parentSlot, index);
+        if (slot == SLOT_INVALID || !item) {
+            continue;
+        }
+        if (items_.count(slot)) {
+            // Cannot happen if the callers' invariants hold (a range is only
+            // written after it was emptied); say so rather than lose an item
+            // silently the way the pre-T252 code did.
+            LOG_WARN(MOD_UI, "InventoryManager putBagContents: slot {} already holds '{}' -- overwritten by '{}'",
+                     slot, items_[slot]->name, item->name);
+        }
+        LOG_DEBUG(MOD_UI, "InventoryManager Bag content '{}' -> slot {} (parent {}, index {})",
+                  item->name, slot, parentSlot, index);
+        item->currentSlot = slot;
+        items_[slot] = std::move(item);
+    }
+    contents.clear();
+}
+
+void InventoryManager::relocateBagContents(int16_t fromParentSlot, int16_t toParentSlot) {
+    // Move bag contents from one parent slot's range to another. Local
+    // bookkeeping only -- the server carries contents inside the bag's
+    // ItemInstance and needs no extra packet (eqemu InventoryProfile::
+    // SwapItem, inventory_profile.cpp:392-393).
+    if (!isBagParentSlot(fromParentSlot) || !isBagParentSlot(toParentSlot) ||
+        fromParentSlot == toParentSlot) {
+        return;
+    }
+
+    auto contents = takeBagContents(fromParentSlot);
+    if (contents.empty()) {
+        return;
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Relocating {} bag contents from parent slot {} to {}",
+              contents.size(), fromParentSlot, toParentSlot);
+    putBagContents(toParentSlot, contents);
+    ++changeCounter_;
+}
+
+void InventoryManager::swapBagContents(int16_t parentSlotA, int16_t parentSlotB) {
+    // T252 -- both ranges are lifted out BEFORE either is written, so a bag
+    // with contents dropped onto another bag with contents cannot overwrite
+    // the displaced bag's items at matching indices (the T250 finding).
+    if (!isBagParentSlot(parentSlotA) || !isBagParentSlot(parentSlotB) ||
+        parentSlotA == parentSlotB) {
+        return;
+    }
+
+    auto contentsA = takeBagContents(parentSlotA);
+    auto contentsB = takeBagContents(parentSlotB);
+    if (contentsA.empty() && contentsB.empty()) {
+        return;
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Swapping bag contents: parent {} ({} items) <-> parent {} ({} items)",
+              parentSlotA, contentsA.size(), parentSlotB, contentsB.size());
+    putBagContents(parentSlotB, contentsA);
+    putBagContents(parentSlotA, contentsB);
+    ++changeCounter_;
 }
 
 bool InventoryManager::isBankBag(int16_t slotId) const {
