@@ -33,7 +33,7 @@
 
 #include <gtest/gtest.h>
 
-// eq.h only -- m_zone_connection / m_trainer_npc_id / m_practice_points are
+// eq.h only -- m_zone_connection / m_trainer_npc_id are
 // private (test_scribe_scroll.cpp's precedent).
 #define private public
 #define protected public
@@ -108,12 +108,10 @@ public:
         eq.GetGameState().world().setZoneConnected(true);
 
         eq.m_my_spawn_id = 77;
-        // Practice points live in TWO places: EverQuest::m_practice_points
-        // (what eq.cpp's OP_SkillUpdate arm gates on) and
-        // PlayerState::m_practicePoints (what GetPracticePoints() reads).
-        // Both are written from the same PlayerProfile (eq.cpp:2323/2341);
-        // seed both, the way a real zone-in does.
-        eq.m_practice_points = 5;
+        // T283: practice points live in ONE place -- PlayerState. Seeding
+        // that single store is all a zone-in does and all a test may need;
+        // if some other copy exists, this seeding is silently incomplete
+        // and the OP_SkillUpdate arm below will not spend a point.
         eq.GetGameState().player().setPracticePoints(5);
     }
 
@@ -318,7 +316,6 @@ TEST(TrainRefusal, NoSessionRefusesAndSendsNothing) {
 TEST(TrainRefusal, NoTrainingPointsRefuses) {
     TrainHarness h;
     h.openSession();
-    h.eq.m_practice_points = 0;
     h.eq.GetGameState().player().setPracticePoints(0);
     h.systemMessages();
     h.processor.processCommand("/train 1H Slash");
@@ -464,6 +461,21 @@ TEST(TrainSkill, WritesNoSkillValueAndNoMoneyLocally) {
     // The one packet that DOES come back.
     h.replaySkillUpdate(kSkill1HSlash, 51);
     EXPECT_EQ(h.eq.m_skill_manager->getSkillValue(kSkill1HSlash), 51u);
+}
+
+// T283: the harness seeds ONLY PlayerState. If a second practice-point
+// store existed, the OP_SkillUpdate arm would gate on the unseeded copy and
+// no point would be spent -- so this test is the pin on "one store".
+TEST(TrainSkill, PracticePointsHaveASingleStore) {
+    TrainHarness h;
+    h.openSession();
+    h.eq.GetGameState().player().setPracticePoints(3);
+    EXPECT_EQ(h.eq.GetPracticePoints(), 3u)
+        << "GetPracticePoints() must read the store a zone-in writes";
+    h.replaySkillUpdate(kSkill1HSlash, 2);
+    EXPECT_EQ(h.eq.GetPracticePoints(), 2u);
+    EXPECT_EQ(h.eq.GetGameState().player().practicePoints(), 2u)
+        << "the accessor and the store must be the same object";
 }
 
 TEST(TrainSkill, SkillUpdateDuringASessionSpendsATrainingPoint) {

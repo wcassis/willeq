@@ -187,6 +187,11 @@ std::vector<std::string> variantMembers() {
 // three intents are the UI-GESTURE leg of that same feature and stay
 // producer-less until a loot popup exists to click (T48's UI-gesture-only
 // class); their arms are live and pinned by tests/test_loot_window_actions.
+// T283 looked and reported the popup as a FEATURE, not a wiring job: there
+// is no loot panel to click (PopupType::Loot is a bare enumerator with no
+// renderer, and the four loot game events only LOG_TRACE in IrrlichtBridge
+// -- no renderer-side corpse contents exist to draw). These three stay
+// listed until that feature is built.
 // DestroyAllLootIntent was DELETED: Titanium has no destroy-loot packet, so
 // its arm only closed the window -- a second name for CloseLootIntent.
 // T273 wired ReadItemIntent as the /read command (CommandProcessor ->

@@ -137,7 +137,16 @@ T156/T159/T162), `/autofire` (`/af`), `/shield`, `/duel`, `/duelaccept`,
 `/loot <corpseId|corpse name>` (opens; with a loot window open `/loot
 <slot|item name>` takes ONE item), `/lootall`, `/lootclose` (`/closeloot`)
 (T268). There is no loot popup in the static UI; the loot window is
-command-driven (its intents are the same ones a popup would push).
+command-driven (its intents are the same ones a popup would push). T283
+audited what a popup would cost and ruled it a FEATURE, not wiring:
+`PopupType::Loot` is a bare enumerator with no `renderLootPopup`, there is
+no renderer-side corpse-contents state at all (the old window went with
+U07c3's `getWindowManager()` removal), and the four loot game events
+(`LootWindowOpened/Closed`, `LootItemAdded/Removed`) reach
+`IrrlichtBridge` only to `LOG_TRACE` -- their payloads are discarded. A
+popup needs a new panel state, four real bridge arms, a renderer, layout,
+hit-testing and a golden re-bless; the T272/T277 click-wiring pattern does
+not apply because there is no drawn thing to click.
 
 **Group:** `/invite [name]` (`/inv`), `/groupaccept` (`/gaccept`), `/decline`,
 `/disband`, `/split <pp> [gp] [sp] [cp]`, `/groupassist [name]` (`/ga`),

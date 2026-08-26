@@ -1201,9 +1201,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 				m_skill_manager->updateSkill(skill_id, value);
 			}
 
-			// Decrement practice points if trainer window is open (training succeeded)
-			if (m_trainer_npc_id != 0 && m_practice_points > 0) {
-				--m_practice_points;
+			// Decrement practice points if trainer window is open (training
+			// succeeded). PlayerState is the ONE store (T283) and
+			// decrementPracticePoints() already floors at zero.
+			if (m_trainer_npc_id != 0) {
 				m_game_state.player().decrementPracticePoints();
 			}
 
@@ -2320,7 +2321,6 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_bank_gold = bank_gold;
 	m_bank_silver = bank_silver;
 	m_bank_copper = bank_copper;
-	m_practice_points = practice_points;
 	m_last_name = last_name;
 
 	// Phase 7.2: Also update GameState

@@ -1883,9 +1883,6 @@ private:
 	uint32_t m_bank_silver = 0;
 	uint32_t m_bank_copper = 0;
 
-	// Training/Practice points
-	uint32_t m_practice_points = 0;
-
 	// Weight
 	float m_weight = 0.0f;
 	float m_max_weight = 0.0f;
