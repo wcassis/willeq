@@ -1701,17 +1701,13 @@ private:
     void buildZonePlaceholder(float playerIrrX = 0, float playerIrrY = 0, float playerIrrZ = 0);
     void destroyZonePlaceholder();
 
-    // T67 (2026-08-11): protectedRegions_ was populated exclusively by the
-    // now-removed ConstrainedMeshCache's SimulationWorker-apply path (the
-    // eviction-protection bitvector). It has no writer left anywhere in the
-    // codebase, so it is permanently all-false -- the same as it already
-    // was in every shipped build, since that writer was itself dead (gated
-    // on a pointer that was never constructed). Left in place because a few
-    // live, cache-independent readers (door/PVS-object progressive-load
-    // gating) still consult it; see src/client/graphics/CLAUDE.md's
-    // "Constrained Memory Management" section for the removed cache's
-    // reference pointer.
-    std::vector<bool> protectedRegions_;
+    // T292 (2026-08-26): protectedRegions_ removed. It was the
+    // ConstrainedMeshCache's eviction-protection bitvector; T67 deleted the
+    // cache and with it the only writer, leaving the vector permanently
+    // all-false, and the progressive door/PVS-object build paths that read
+    // it were therefore permanently no-ops. See
+    // src/client/graphics/CLAUDE.md's "Constrained Memory Management"
+    // section for the removed cache's reference pointer.
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
     // Regions waiting for async fallback textures to complete GPU upload.

@@ -32,7 +32,6 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
 
     // Clear prep-layer outputs
     output.meshLoadQueue.clear();
-    output.protectedRegions.clear();
 
     float renderDistSq = input.renderDistance * input.renderDistance;
 
@@ -61,9 +60,6 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
 
         // Queue for lazy mesh loading (PVS + distance only — orientation-independent)
         output.meshLoadQueue.push_back({rb.regionIdx, distSq});
-
-        // Track for mesh cache protection (all PVS+distance regions)
-        output.protectedRegions.push_back(rb.regionIdx);
     }
 
     // Sort mesh load queue nearest-first for priority preloading

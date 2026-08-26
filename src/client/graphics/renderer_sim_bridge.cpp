@@ -659,10 +659,10 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         // Always log PVS state from worker (throttled to every 30 frames)
         static int simWorkerPvsLogCounter = 0;
         if (++simWorkerPvsLogCounter % 30 == 1 || currentPvsRegion_ != prevPvsRegion) {
-            LOG_DEBUG(MOD_GRAPHICS, "SimWorker apply: PVS={}{} meshLoadQ={} protected={} regionVis={}",
+            LOG_DEBUG(MOD_GRAPHICS, "SimWorker apply: PVS={}{} meshLoadQ={} regionVis={}",
                       currentPvsRegion_,
                       (currentPvsRegion_ != prevPvsRegion ? fmt::format(" (was {})", prevPvsRegion) : ""),
-                      results->meshLoadQueue.size(), results->protectedRegions.size(),
+                      results->meshLoadQueue.size(),
                       results->regionVisible.size());
         }
 
@@ -690,8 +690,11 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         // true (the cache was never constructed), so protectedRegions_ was
         // already permanently all-false in every shipped build (its only
         // writer lived here). meshLoadQueue_'s only readers were the same
-        // dead-gated code and were removed alongside it. See
-        // src/client/graphics/CLAUDE.md for the reference pointer.
+        // dead-gated code and were removed alongside it. T292 then removed
+        // protectedRegions_ itself, its dead progressive-load readers, and
+        // SimulationOutput::protectedRegions (this function's log line was
+        // that field's last consumer). See src/client/graphics/CLAUDE.md for
+        // the reference pointer.
 
         // Apply sorted region draw list for front-to-back zone rendering
         if (manualZoneDrawEnabled_ && !results->sortedRegions.empty()) {

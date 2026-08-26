@@ -910,15 +910,6 @@ bool DoorManager::isDoorMeshBuilt(uint8_t doorId) const {
     return it != doors_.end() && it->second.meshBuilt;
 }
 
-void DoorManager::getDoorsInRegions(const std::vector<bool>& regions, std::vector<uint8_t>& out) const {
-    out.clear();
-    for (const auto& [id, visual] : doors_) {
-        if (!visual.meshBuilt && visual.bspRegion < regions.size() && regions[visual.bspRegion]) {
-            out.push_back(id);
-        }
-    }
-}
-
 void DoorManager::getUnbuiltDoors(std::vector<uint8_t>& out) const {
     out.clear();
     for (const auto& [id, visual] : doors_) {

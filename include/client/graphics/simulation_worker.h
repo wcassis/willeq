@@ -426,8 +426,6 @@ struct SimulationOutput {
 
     // Regions needing lazy mesh loading (for constrained mesh cache)
     std::vector<SortedRegion> meshLoadQueue;
-    // Protected regions (visible + buffer ring, skip during eviction)
-    std::vector<size_t> protectedRegions;
 
     // Light selection (top 8)
     struct SelectedLight {

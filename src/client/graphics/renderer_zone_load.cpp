@@ -417,11 +417,9 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                     zoneBspTree_ = bspTree;
                     usePvsCulling_ = true;
                     currentPvsRegion_ = SIZE_MAX;
-                    // Size protectedRegions bitvector to cover all BSP regions
-                    protectedRegions_.resize(bspTree->regions.size(), false);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: BSP tree installed, usePvsCulling=true, "
-                              "regions={}, protectedRegions size={}",
-                              bspTree->regions.size(), protectedRegions_.size());
+                              "regions={}",
+                              bspTree->regions.size());
                 }
 
                 // Install pre-computed bounding boxes

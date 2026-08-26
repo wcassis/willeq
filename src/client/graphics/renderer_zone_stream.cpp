@@ -488,102 +488,17 @@ void IrrlichtRenderer::processFrameProgressiveLoad() {
     // always already built eagerly (SEQ Step4). meshLoadQueue_ itself
     // (populated only by the same dead-gated path) was removed too.
 
-    // Priority 3: Build one door in current PVS set (nearest first)
-    // T79 (2026-08-12): protectedRegions_ is permanently all-false since T67
-    // removed its only writer (see irrlicht_renderer.h), so
-    // getDoorsInRegions() always returns an empty pvsDoors and this block's
-    // body never runs. Any door not built eagerly at zone load (SEQ Step7)
-    // has no live path to be progressively built here. Rendering is
-    // unaffected only insofar as doors are otherwise built eagerly; this is
-    // a real behavior gap, not a no-op by design — left as-is pending a
-    // decision on what should drive PVS-triggered door build now that
-    // ConstrainedMeshCache is gone (out of scope for T79).
-    if (!didWork && doorManager_) {
-        std::vector<uint8_t> pvsDoors;
-        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
-        // PVS depth gate: remove doors beyond configured depth
-        pvsDoors.erase(std::remove_if(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t doorId) {
-            const auto* dv = doorManager_->getDoor(doorId);
-            if (!dv) return true;
-            return getRegionPvsDepth(dv->bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth);
-        }), pvsDoors.end());
-        std::sort(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t a, uint8_t b) {
-            const auto* da = doorManager_->getDoor(a);
-            const auto* db = doorManager_->getDoor(b);
-            if (!da || !db) return false;
-            float distA = (da->x - playerX_) * (da->x - playerX_) + (da->y - playerY_) * (da->y - playerY_);
-            float distB = (db->x - playerX_) * (db->x - playerX_) + (db->y - playerY_) * (db->y - playerY_);
-            return distA < distB;
-        });
-        size_t totalPvsDoors = pvsDoors.size();
-        size_t doorIndex = 0;
-        for (auto doorId : pvsDoors) {
-            if (doorManager_->isDoorMeshBuilt(doorId)) continue;
-            // Use rebuildSingleDoor to properly clean up placeholder nodes
-            // before building real mesh (direct buildDoorMesh leaks placeholders)
-            doorManager_->rebuildSingleDoor(doorId);
-            // Track any textures that were pending async upload
-            const auto& missingDoorTex = doorManager_->getLastMissingTextures();
-            if (!missingDoorTex.empty()) {
-                for (const auto& texName : missingDoorTex) {
-                    pendingTextureDoors_[texName].insert(doorId);
-                }
-            }
-            addDoorToCollision(doorId);
-            didWork = canMarkWork;
-            logAssetBuildTime("door", doorId, stepStart);
-            const auto* dv = doorManager_->getDoor(doorId);
-            sendLoadProgress(fmt::format("[Load] Door {} '{}' [{}/{}]",
-                doorId, dv ? dv->modelName : "?", doorIndex + 1, totalPvsDoors));
-            break;  // One door max
-        }
-    }
-
-    // Priority 4: Build one PVS object
-    // T79 (2026-08-12): same protectedRegions_ dead-signal issue as Priority
-    // 3 above — every condition below that reads protectedRegions_[...] is
-    // permanently false, so objCandidates below is always empty and this
-    // priority never progressively builds a deferred object. Any object not
-    // built eagerly has no live path here either.
-    if (!didWork) {
-        size_t totalPvsObjects = 0, builtPvsObjects = 0;
-        for (const auto& obj : deferredObjects_) {
-            if (obj.bspRegion < protectedRegions_.size() && protectedRegions_[obj.bspRegion] &&
-                getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) {
-                totalPvsObjects++;
-                if (obj.meshBuilt) builtPvsObjects++;
-            }
-        }
-        // Collect unbuilt PVS objects with distance, sort nearest-first
-        std::vector<std::pair<size_t, float>> objCandidates;
-        for (size_t i = 0; i < deferredObjects_.size(); ++i) {
-            if (deferredObjects_[i].meshBuilt) continue;
-            if (deferredObjects_[i].bspRegion >= protectedRegions_.size() || !protectedRegions_[deferredObjects_[i].bspRegion]) continue;
-            // PVS depth gate
-            if (getRegionPvsDepth(deferredObjects_[i].bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth)) continue;
-            auto center = deferredObjects_[i].worldBounds.getCenter();
-            // worldBounds is Irrlicht Y-up: (x, z_eq, y_eq)
-            float dx = center.X - playerX_;
-            float dy = center.Z - playerY_;  // Irr Z = EQ Y
-            objCandidates.push_back({i, dx*dx + dy*dy});
-        }
-        std::sort(objCandidates.begin(), objCandidates.end(),
-            [](const auto& a, const auto& b) { return a.second < b.second; });
-        if (!objCandidates.empty()) {
-            size_t i = objCandidates[0].first;
-            buildDeferredObject(i);
-            addObjectToCollision(objectNodes_.size() - 1);
-            didWork = canMarkWork;
-            logAssetBuildTime("pvs_object", i, stepStart);
-            std::string objName = "?";
-            if (currentZone_ && deferredObjects_[i].objectIndex < currentZone_->objects.size()) {
-                const auto& objInstance = currentZone_->objects[deferredObjects_[i].objectIndex];
-                if (objInstance.placeable) objName = objInstance.placeable->getName();
-            }
-            sendLoadProgress(fmt::format("[Load] Object '{}' [{}/{}]",
-                objName, builtPvsObjects + 1, totalPvsObjects));
-        }
-    }
+    // Priority 3 (progressive door build) and Priority 4 (progressive PVS
+    // object build) removed T292. Both were gated on protectedRegions_, the
+    // ConstrainedMeshCache eviction-protection bitvector whose only writer
+    // T67 deleted with the cache: the vector was permanently all-false, so
+    // getDoorsInRegions() always returned an empty candidate set and every
+    // deferredObjects_ candidate test was permanently false. Neither block's
+    // body could execute, and neither could set didWork. Doors and objects
+    // are built eagerly at zone load (SEQ Step7 / renderer_zone_load_objects)
+    // -- that is the path that has actually been running. See
+    // src/client/graphics/CLAUDE.md for the removed cache's reference
+    // pointer.
 
     // Priority 5: Lazy icon extraction (disabled — WindowManager removed)
 
@@ -799,8 +714,6 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
 
     // Count unbuilt assets
     size_t unbuiltEntities = 0;
-    size_t unbuiltDoors = 0;
-    size_t unbuiltObjects = 0;
 
     if (entityRenderer_) {
         const bool pvsValid = (currentPvsRegion_ != SIZE_MAX);
@@ -815,28 +728,11 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
         }
     }
 
-    // T79 (2026-08-12): unbuiltDoors/unbuiltObjects below both read
-    // protectedRegions_, which is permanently all-false (T67 removed its
-    // only writer). Both counters are therefore permanently pinned to 0
-    // from this source, regardless of actual pending door/object state —
-    // this progressive-load status report always says "0 pending" here,
-    // silently, where it used to be a real count.
-    if (doorManager_) {
-        std::vector<uint8_t> pvsDoors;
-        doorManager_->getDoorsInRegions(protectedRegions_, pvsDoors);
-        // PVS depth gate: only count doors within configured depth
-        pvsDoors.erase(std::remove_if(pvsDoors.begin(), pvsDoors.end(), [&](uint8_t doorId) {
-            const auto* dv = doorManager_->getDoor(doorId);
-            return dv && getRegionPvsDepth(dv->bspRegion) > static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth);
-        }), pvsDoors.end());
-        unbuiltDoors = pvsDoors.size();
-    }
-
-    for (const auto& obj : deferredObjects_) {
-        if (!obj.meshBuilt && obj.bspRegion < protectedRegions_.size() && protectedRegions_[obj.bspRegion] &&
-            getRegionPvsDepth(obj.bspRegion) <= static_cast<uint8_t>(config_.constrainedConfig.objectPrepMaxPvsDepth))
-            unbuiltObjects++;
-    }
+    // T292: the unbuiltDoors/unbuiltObjects counters that used to live here
+    // both read protectedRegions_ (permanently all-false since T67 removed
+    // the ConstrainedMeshCache) and were therefore pinned to 0 regardless of
+    // real pending state. Removed along with the bitvector; the completion
+    // test below is exactly what has been evaluated in every shipped build.
 
     // Periodic status log for progressive loading (every 5 seconds)
     static int progCheckLog = 0;
@@ -850,17 +746,17 @@ void IrrlichtRenderer::checkProgressiveLoadingComplete() {
 #ifdef EQT_HAS_GLES2
         pendingVBOs = pendingVBOUploads_.size();
 #endif
-        LOG_INFO(MOD_GRAPHICS, "Progressive status: entities={} doors={} objects={} "
+        LOG_INFO(MOD_GRAPHICS, "Progressive status: entities={} "
                  "queuedRegions={} pendingVBOs={} pendingTextures={} texRebuild={} objRebuild={} "
                  "| governor={} | progressive={}",
-                 unbuiltEntities, unbuiltDoors, unbuiltObjects, unbuiltRegions,
+                 unbuiltEntities, unbuiltRegions,
                  pendingVBOs, pendingTextures,
                  textureRebuildQueue_.size(), objectTextureRebuildQueue_.size(),
                  governor_ ? governor_->getStateName() : "N/A",
                  progressiveLoadingActive_);
     }
 
-    if (unbuiltEntities == 0 && unbuiltDoors == 0 && unbuiltObjects == 0) {
+    if (unbuiltEntities == 0) {
         // Also wait for async GPU work (texture decodes/uploads, VBOs, rebuild queues)
         // before declaring progressive loading complete. Without this, the loading
         // screen hides while textures are still in flight → garbled first frame.

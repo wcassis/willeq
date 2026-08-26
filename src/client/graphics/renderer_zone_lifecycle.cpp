@@ -197,9 +197,9 @@ void IrrlichtRenderer::unloadZone() {
     // queue, material swap queue, meshLoadQueue_, etc.) removed T67 — the
     // cache was never constructed in any shipped build; see
     // src/client/graphics/CLAUDE.md for the reference pointer.
-    // protectedRegions_ is kept (still read by cache-independent progressive
-    // load code) but has no writer left, so clearing it here is now a no-op.
-    protectedRegions_.clear();
+    // T292: protectedRegions_ removed entirely -- it was the cache's
+    // eviction-protection bitvector, had no writer left after T67, and its
+    // remaining readers were permanent no-ops.
     portalVisibleRegions_ = nullptr;
     indoorRegions_.clear();
     regionPvsDepthMap_ = nullptr;
