@@ -1131,10 +1131,18 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			// Buff/skill intents
 			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
-				if (m_buff_manager) {
-					m_buff_manager->removeBuffBySlot(0, i.slot);
-					AddChatSystemMessage(fmt::format("Buff in slot {} cancelled", i.slot + 1));
-				}
+				// T277: gained a real producer this unit (a click on the
+				// buff bar, static_ui_input.cpp; /removebuff reaches the
+				// same body through EqActionHandler). Was OPTIMISTIC AND
+				// LOCAL-ONLY: removeBuffBySlot(0, slot) erased the buff
+				// from our own BuffManager and printed "cancelled" without
+				// sending a single byte, so the server still had the buff,
+				// it kept ticking, and the next OP_Buff or zone-in put it
+				// straight back -- and it "worked" on detrimental buffs the
+				// server would have refused. Now it asks and waits: the
+				// buff leaves the model only when OP_Buff comes back with
+				// bufffade == 1.
+				SendBuffCancelRequest(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
 				// T156: gained a real producer this unit (a click on a row of

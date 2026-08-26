@@ -122,6 +122,10 @@ public:
     void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) override;
     void listMemorizedSpells() override;
 
+    // ========== Buffs ==========
+
+    void cancelBuff(const std::string& args) override;  // T277
+
     // ========== Trade ==========
 
     void requestTrade(uint16_t targetId) override;

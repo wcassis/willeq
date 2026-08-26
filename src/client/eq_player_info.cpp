@@ -17,6 +17,7 @@
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
+#include "client/spell/buff_cancel_request.h"
 #include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -34,6 +35,9 @@
 #endif
 
 #include <cstring>
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <chrono>
 
 // ============================================================================
@@ -617,31 +621,198 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 			// Buff is being applied
 			if (is_self) {
 				m_buff_manager->setPlayerBuff(static_cast<uint8_t>(slot_id), buff);
-
-				// Publish BuffUpdated event to bridge
-				if (m_bridge) {
-					eqt::state::BuffUpdatedData data;
-					data.slot = static_cast<uint8_t>(slot_id);
-					data.spellId = buff.spellid;
-					data.ticksLeft = static_cast<uint32_t>(buff.duration);
-					auto caster_it = m_entities.find(static_cast<uint16_t>(buff.player_id));
-					if (caster_it != m_entities.end()) {
-						data.casterName = EQT::toDisplayName(caster_it->second.name);
-					}
-					if (m_spell_manager) {
-						const auto* spell = m_spell_manager->getSpell(buff.spellid);
-						data.spellName = spell ? spell->name : "";
-						data.iconId = spell ? spell->spell_icon : 0;
-					}
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::BuffUpdated, std::move(data)));
-				}
+				PublishPlayerBuffUpdated(static_cast<uint8_t>(slot_id), buff);
 			} else {
 				m_buff_manager->setEntityBuff(static_cast<uint16_t>(entity_id),
 					static_cast<uint8_t>(slot_id), buff);
 			}
 		}
 	}
+}
+
+// T277: game -> renderer for ONE player buff slot. Extracted from
+// ZoneProcessBuff()'s apply branch so the PlayerProfile's zone-in buffs
+// (eq.cpp) can publish the same event through the same body -- before this
+// they went into BuffManager and stopped there, so the buff bar started
+// every session empty no matter what the player was actually holding.
+void EverQuest::PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff)
+{
+	if (!m_bridge) {
+		return;
+	}
+	eqt::state::BuffUpdatedData data;
+	data.slot = slot;
+	data.spellId = buff.spellid;
+	data.ticksLeft = static_cast<uint32_t>(buff.duration);
+	auto caster_it = m_entities.find(static_cast<uint16_t>(buff.player_id));
+	if (caster_it != m_entities.end()) {
+		data.casterName = EQT::toDisplayName(caster_it->second.name);
+	}
+	if (m_spell_manager) {
+		const auto* spell = m_spell_manager->getSpell(buff.spellid);
+		data.spellName = spell ? spell->name : "";
+		data.iconId = spell ? spell->spell_icon : 0;
+	}
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::BuffUpdated, std::move(data)));
+}
+
+// T277: publish every occupied slot of the PlayerProfile's buff array.
+//
+// eqemu only emits OP_Buff for a DURATION CHANGE or a FADE
+// (Client::SendBuffDurationPacket / MakeBuffFadePacket) -- a buff that is
+// simply still running never produces one -- so the profile is the only
+// place a session ever hears about the buffs it starts with. Before this
+// they reached BuffManager and stopped, and renderBuffBar() drew an empty
+// bar all session with nothing for the click gesture to hit.
+void EverQuest::PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count)
+{
+	if (!buffs) {
+		return;
+	}
+	for (size_t i = 0; i < count && i < EQ::BuffManager::MAX_PLAYER_BUFFS; ++i) {
+		// Same "occupied" test BuffManager::setPlayerBuffs() applies, so the
+		// bar and the model can never disagree about which slots are in use.
+		if (buffs[i].spellid == 0 || buffs[i].spellid == 0xFFFFFFFF ||
+		    buffs[i].effect_type == 0) {
+			continue;
+		}
+		PublishPlayerBuffUpdated(static_cast<uint8_t>(i), buffs[i]);
+	}
+}
+
+// T277: resolve a user-facing /removebuff argument to a buff slot.
+//
+// Accepts either a 1-based slot number as the buff bar counts them, or a
+// spell-name substring (case-insensitive), matched against the player's
+// active buffs only -- never the whole spell database, so "there is no such
+// buff" and "you are not holding that buff" are the same answer.
+void EverQuest::RequestCancelBuff(const std::string& args)
+{
+	if (!m_buff_manager) {
+		AddChatSystemMessage("Buff system not initialized.");
+		return;
+	}
+
+	std::string arg = args;
+	arg.erase(0, arg.find_first_not_of(" \t"));
+	size_t end = arg.find_last_not_of(" \t");
+	if (end != std::string::npos) arg.erase(end + 1);
+
+	if (arg.empty()) {
+		AddChatSystemMessage("Usage: /removebuff <slot# | spell name>");
+		return;
+	}
+
+	// All digits -> a slot number, 1-based on the way in.
+	if (arg.find_first_not_of("0123456789") == std::string::npos) {
+		unsigned long n = std::strtoul(arg.c_str(), nullptr, 10);
+		if (n < 1 || n > EQ::BuffManager::MAX_PLAYER_BUFFS) {
+			AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+				EQ::BuffManager::MAX_PLAYER_BUFFS));
+			return;
+		}
+		SendBuffCancelRequest(static_cast<uint8_t>(n - 1));
+		return;
+	}
+
+	if (!m_spell_manager) {
+		AddChatSystemMessage("Spell system not initialized.");
+		return;
+	}
+
+	std::string needle = arg;
+	std::transform(needle.begin(), needle.end(), needle.begin(),
+		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+	int match = -1;
+	int matchCount = 0;
+	std::string matchNames;
+	for (const EQ::ActiveBuff& b : m_buff_manager->getPlayerBuffs()) {
+		if (b.slot < 0) continue;
+		const EQ::SpellData* spell = m_spell_manager->getSpell(b.spell_id);
+		if (!spell) continue;
+		std::string name = spell->name;
+		std::string lower = name;
+		std::transform(lower.begin(), lower.end(), lower.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (lower == needle) {  // exact wins outright
+			SendBuffCancelRequest(static_cast<uint8_t>(b.slot));
+			return;
+		}
+		if (lower.find(needle) != std::string::npos) {
+			++matchCount;
+			if (match < 0) match = b.slot;
+			if (matchCount <= 5) {
+				if (!matchNames.empty()) matchNames += ", ";
+				matchNames += fmt::format("{} (slot {})", name, b.slot + 1);
+			}
+		}
+	}
+
+	if (matchCount == 0) {
+		AddChatSystemMessage(fmt::format("You do not have a buff matching '{}'.", arg));
+		return;
+	}
+	if (matchCount > 1) {
+		AddChatSystemMessage(fmt::format("Multiple buffs match '{}': {}", arg, matchNames));
+		return;
+	}
+	SendBuffCancelRequest(static_cast<uint8_t>(match));
+}
+
+// T277: ask the server to drop one of OUR buffs (the click-off gesture and
+// /removebuff both land here). See include/client/spell/buff_cancel_request.h
+// for the wire truth -- Titanium has no OP_BuffRemoveRequest, this is OP_Buff.
+//
+// Deliberately NOT optimistic: nothing is removed from BuffManager here. The
+// buff leaves the model only when the server confirms with its own OP_Buff
+// carrying bufffade == 1, which ZoneProcessBuff() above already handles. A
+// refusal (detrimental spell) echoes our own bytes back and the buff stays.
+void EverQuest::SendBuffCancelRequest(uint8_t slot)
+{
+	if (!m_buff_manager) {
+		LOG_WARN(MOD_SPELL, "No buff manager, cannot cancel buff");
+		return;
+	}
+
+	// The two things the client can know on its own: a slot that cannot
+	// exist, and a slot that holds nothing. Everything else (detrimental,
+	// server-pinned) is the server's call.
+	if (slot >= EQ::BuffManager::MAX_PLAYER_BUFFS) {
+		AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+			EQ::BuffManager::MAX_PLAYER_BUFFS));
+		return;
+	}
+
+	const EQ::ActiveBuff* buff = m_buff_manager->getPlayerBuffBySlot(slot);
+	if (!buff) {
+		AddChatSystemMessage(fmt::format("No buff in slot {}.", slot + 1));
+		return;
+	}
+
+	if (!m_zone_connection) {
+		++m_replay_suppressed_sends;
+		LOG_WARN(MOD_SPELL, "No zone connection, cannot cancel buff in slot {}", slot);
+		return;
+	}
+
+	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, m_my_spawn_id, slot, *buff);
+
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(bytes.size());
+	std::memcpy(packet.Data(), bytes.data(), bytes.size());
+
+	std::string name;
+	if (m_spell_manager) {
+		const EQ::SpellData* spell = m_spell_manager->getSpell(buff->spell_id);
+		if (spell) name = spell->name;
+	}
+	LOG_INFO(MOD_SPELL, "Requesting buff cancel: slot={} spell={} ({})",
+		slot, buff->spell_id, name.empty() ? "unknown" : name);
+
+	DumpPacket("C->S", HC_OP_Buff, packet);
+	m_zone_connection->QueuePacket(packet);
 }
 
 void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)

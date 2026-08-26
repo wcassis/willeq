@@ -219,6 +219,23 @@ struct BuffBarState {
 void renderBuffBar(UIRenderer& ui, const UILayout& layout,
                    const BuffBarState& state);
 
+/**
+ * Hit-test a point against the buff bar and return the BUFF SLOT under it,
+ * or -1 (T277).
+ *
+ * Not the visual column index: renderBuffBar() PACKS the bar, skipping empty
+ * slots, so the third icon on screen can be slot 7. This walks the slots in
+ * exactly the same order with exactly the same geometry, so the icon the
+ * cursor is over and the slot the click cancels can never disagree. Any
+ * change to the bar's ICON/PAD/overflow rule has to be made in both bodies;
+ * the test pins them against each other.
+ *
+ * A free function, like resolveMemorizeGem(), so tests drive the same body
+ * the click handler uses without an Irrlicht device.
+ */
+int hitTestBuffBar(const UILayout& layout, const BuffBarState& state,
+                   int mouseX, int mouseY);
+
 // Cached casting bar state
 struct CastingBarState {
     bool isCasting = false;

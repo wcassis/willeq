@@ -1761,6 +1761,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_spellbook_memorize)
 ENDIF()
 
+# T277: clicking a buff off the buff bar. Geometry (hitTestBuffBar), the
+# click producer (StaticUIInput), the OP_Buff request bytes, and the real
+# eq_bridge consumer arm asserting the buff is NOT removed optimistically.
+# Needs Irrlicht headers for static_panels.h and willeq.db for the consumer
+# legs (self-skips without it, test_spellbook_memorize's precedent).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_buff_click_off
+        test_buff_click_off.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_INCLUDE_DIRECTORIES(test_buff_click_off PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_buff_click_off GTest::gtest willeq_core)
+    GTEST_DISCOVER_TESTS(test_buff_click_off)
+ENDIF()
+
 # T60: the shared bone-lookup fallback chain (bone_attachment.h) — pure
 # string logic over a synthetic skeleton, no device/Irrlicht driver needed
 # (just the irr::core math types, header-only via willeq_core's include

@@ -2540,6 +2540,10 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 				buffs[i].player_id = p.GetUInt32(offset + 16);
 			}
 			m_buff_manager->setPlayerBuffs(buffs.data(), BUFF_COUNT);
+			// T277: and tell the renderer (eq_player_info.cpp). Without
+			// this the buff bar starts every session empty -- eqemu never
+			// sends OP_Buff for a buff that is merely still running.
+			PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
 
 			if (s_debug_level >= 1) {
 				size_t active_count = 0;

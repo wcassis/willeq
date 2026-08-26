@@ -20,7 +20,8 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                   SpellGemPanelState& spellGems,
                                   InventoryPanelState& inventory,
                                   SpellbookPopupState& spellbook,
-                                  SkillsPopupState& skills) {
+                                  SkillsPopupState& skills,
+                                  const BuffBarState& buffs) {
     bool consumed = false;
 
     // Reset hover states
@@ -99,6 +100,30 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                     inventory.hoveredSlot = i;
                     break;
                 }
+            }
+        }
+    }
+
+    // --- Buff bar hit test (T277: click a buff off) ---
+    // Geometry comes entirely from hitTestBuffBar(), the twin of
+    // renderBuffBar()'s own loop -- no icon arithmetic here. The bar is
+    // only clickable while it is drawn (at least one active buff), and it
+    // consumes clicks anywhere inside itself so a miss between icons does
+    // not fall through to the 3D scene.
+    if (mouseX >= layout.buffBar.UpperLeftCorner.X &&
+        mouseX < layout.buffBar.LowerRightCorner.X &&
+        mouseY >= layout.buffBar.UpperLeftCorner.Y &&
+        mouseY < layout.buffBar.LowerRightCorner.Y) {
+        int buffSlot = hitTestBuffBar(layout, buffs, mouseX, mouseY);
+        if (buffSlot >= 0) {
+            consumed = true;
+            if (leftClicked && bridge_) {
+                // Ask, never assume: the intent's consumer sends OP_Buff and
+                // waits for the server's bufffade == 1 before the buff
+                // leaves the bar. A detrimental buff will simply stay.
+                LOG_INFO(MOD_GRAPHICS, "Buff bar: requesting cancel of slot {}", buffSlot);
+                bridge_->pushIntent(eqt::events::BuffCancelIntent{
+                    static_cast<uint8_t>(buffSlot)});
             }
         }
     }

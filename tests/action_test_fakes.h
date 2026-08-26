@@ -208,6 +208,9 @@ public:
         record("memorizeSpellByName", spellName, static_cast<int>(gemSlot));
     }
     void listMemorizedSpells() override { record("listMemorizedSpells"); }
+    void cancelBuff(const std::string& args) override {  // T277
+        record("cancelBuff", args);
+    }
 
     // ========== Trade ==========
     void requestTrade(uint16_t targetId) override {

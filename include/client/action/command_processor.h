@@ -496,6 +496,7 @@ private:
     ActionResult cmdGems(const std::string& args);
     ActionResult cmdInterrupt(const std::string& args);
     ActionResult cmdSpellbook(const std::string& args);
+    ActionResult cmdRemoveBuff(const std::string& args);  // T277
 
     // T101: cmdPet migrated here -- T98's shadowed dead copy is gone;
     // game's registration removed from eq_commands_spells.cpp in the same

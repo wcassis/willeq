@@ -522,18 +522,49 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+// T277: the buff bar's geometry, shared by the renderer and the hit-test so
+// a click can never land on a different slot than the one drawn under it.
+namespace {
+constexpr irr::s32 kBuffIcon = 20;  // Small buff icons
+constexpr irr::s32 kBuffPad = 2;
+
+// True when the bar draws at all -- an empty bar has no background and no
+// icons, so nothing there is clickable.
+bool buffBarHasContent(const BuffBarState& state) {
+    for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) {
+        if (state.buffs[i].spellId != 0) return true;
+    }
+    return false;
+}
+}  // namespace
+
+int hitTestBuffBar(const UILayout& layout, const BuffBarState& state,
+                   int mouseX, int mouseY) {
+    if (!buffBarHasContent(state)) return -1;
+
+    irr::s32 x = layout.buffBar.UpperLeftCorner.X + kBuffPad;
+    irr::s32 y = layout.buffBar.UpperLeftCorner.Y + kBuffPad;
+
+    for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) {
+        if (state.buffs[i].spellId == 0) continue;
+        if (x + kBuffIcon > layout.buffBar.LowerRightCorner.X - kBuffPad) break;
+
+        if (mouseX >= x && mouseX < x + kBuffIcon &&
+            mouseY >= y && mouseY < y + kBuffIcon) {
+            return i;
+        }
+        x += kBuffIcon + kBuffPad;
+    }
+    return -1;
+}
+
 void renderBuffBar(UIRenderer& ui, const UILayout& layout,
                    const BuffBarState& state) {
     auto* tb = ui.getTextBatch();
-    constexpr irr::s32 ICON = 20;  // Small buff icons
-    constexpr irr::s32 PAD = 2;
+    constexpr irr::s32 ICON = kBuffIcon;
+    constexpr irr::s32 PAD = kBuffPad;
 
-    // Count active buffs
-    int activeCount = 0;
-    for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) {
-        if (state.buffs[i].spellId != 0) activeCount++;
-    }
-    if (activeCount == 0) return;
+    if (!buffBarHasContent(state)) return;
 
     // Background
     ui.drawSprite(layout.buffBar, static_cast<uint8_t>(UISprite::PanelBackground));

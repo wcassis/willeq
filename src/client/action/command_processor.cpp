@@ -787,6 +787,14 @@ void CommandProcessor::registerBuiltinCommands() {
         "spellbook", {"book"}, "/spellbook", "Open spellbook window", "Spells", false
     }, [this](const std::string& args) { return cmdSpellbook(args); });
 
+    // T277: /removebuff -- the scriptable form of clicking a buff off the
+    // buff bar (T156's rule: a click gesture is not scriptable, so the
+    // command comes first and the click reuses its body).
+    registerCommand({
+        "removebuff", {"cancelbuff"}, "/removebuff <slot# | spell name>",
+        "Ask the server to drop one of your buffs", "Spells", true
+    }, [this](const std::string& args) { return cmdRemoveBuff(args); });
+
     // T101: pet migrated here from EverQuest::m_command_registry's Pet
     // category (removed from eq_commands_spells.cpp in the same change).
     // game's vocabulary (attack/back/follow/guard/sit/stand/taunt/notaunt/
@@ -2324,6 +2332,18 @@ ActionResult CommandProcessor::cmdGems(const std::string& args) {
 
 ActionResult CommandProcessor::cmdInterrupt(const std::string& args) {
     return m_dispatcher.interruptCast();
+}
+
+ActionResult CommandProcessor::cmdRemoveBuff(const std::string& args) {
+    // T277: no parsing here on purpose. "slot 3" and "Minor Shielding" are
+    // both resolved against the live buff model, which lives on the game
+    // side (BuffManager); GameState has no buff list to validate against,
+    // so inventing a range check here would just be a second, weaker copy
+    // of the one EverQuest::RequestCancelBuff() has to do anyway.
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /removebuff <slot# | spell name>");
+    }
+    return m_dispatcher.cancelBuff(args);
 }
 
 ActionResult CommandProcessor::cmdSpellbook(const std::string& args) {

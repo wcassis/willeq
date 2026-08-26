@@ -2483,6 +2483,20 @@ public:
 	// resolved inventory slot to slotOut.
 	const eqt::inventory::ItemInstance* ResolveCarriedItem(
 		const std::string& args, const char* verb, int16_t& slotOut);
+	// T277: click off a buff. RequestCancelBuff() resolves a user-facing
+	// argument -- a 1-based buff slot number, or a spell-name substring --
+	// against BuffManager's player buffs. SendBuffCancelRequest() is the
+	// single wire hop it and the buff-bar click (BuffCancelIntent) share;
+	// it removes nothing locally, it only asks. Defined in eq_player_info.cpp
+	// beside ZoneProcessBuff(), which handles the server's answer.
+	void RequestCancelBuff(const std::string& args);
+	void SendBuffCancelRequest(uint8_t slot);
+
+	// T277: publish ONE player buff slot to the renderer. Shared by
+	// ZoneProcessBuff()'s apply branch and the PlayerProfile's zone-in
+	// buffs, which previously reached BuffManager and stopped there.
+	void PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff);
+	void PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count);
 
 private:
 #ifdef EQT_HAS_GRAPHICS

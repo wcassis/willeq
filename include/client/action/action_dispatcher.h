@@ -261,6 +261,14 @@ public:
     virtual void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) = 0;
     virtual void listMemorizedSpells() = 0;
 
+    // ========== Buffs ==========
+
+    // T277: click off a buff. `args` is a 1-based buff slot number or a
+    // spell-name substring; resolution happens against the player's live
+    // BuffManager buffs (EverQuest::RequestCancelBuff), which is the only
+    // place that model exists -- GameState carries no buff list.
+    virtual void cancelBuff(const std::string& args) = 0;
+
     // ========== Trade ==========
 
     virtual void requestTrade(uint16_t targetId) = 0;
@@ -924,6 +932,15 @@ public:
      * List memorized spells (all 8 gems), ported from game's /gems, T101.
      */
     ActionResult listMemorizedSpells();
+
+    // ========== Buff Actions ==========
+
+    /**
+     * Ask the server to drop one of the player's buffs (T277).
+     * `args` is a 1-based buff slot number or a spell-name substring.
+     * Requires a zone connection and a non-empty argument.
+     */
+    ActionResult cancelBuff(const std::string& args);
 
     // ========== Trade Actions ==========
 

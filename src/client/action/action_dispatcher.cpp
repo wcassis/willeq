@@ -847,6 +847,20 @@ ActionResult ActionDispatcher::forgetSpell(uint8_t gemSlot) {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::cancelBuff(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /removebuff <slot# | spell name>");
+    }
+
+    // Slot validity and "is that slot even occupied" need the buff model,
+    // which lives on the game side -- the handler answers both.
+    m_handler->cancelBuff(args);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) {
     auto result = checkZoneConnection();
     if (!result.success) return result;

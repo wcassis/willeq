@@ -1571,7 +1571,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         staticUIInput_->processInput(
             eventReceiver_->getMouseX(), eventReceiver_->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-            spellbookState_, skillsPopupState_);
+            spellbookState_, skillsPopupState_, buffBarState_);
         pendingUIClick_ = false;
     }
 

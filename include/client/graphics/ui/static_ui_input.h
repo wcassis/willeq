@@ -26,6 +26,7 @@ struct HotbarPanelState;
 struct SpellGemPanelState;
 struct SpellbookPopupState;
 struct SkillsPopupState;
+struct BuffBarState;
 
 class StaticUIInput {
 public:
@@ -45,7 +46,8 @@ public:
                       SpellGemPanelState& spellGems,
                       InventoryPanelState& inventory,
                       SpellbookPopupState& spellbook,
-                      SkillsPopupState& skills);
+                      SkillsPopupState& skills,
+                      const BuffBarState& buffs);
 
     /**
      * Handle a key press. Returns true if consumed.

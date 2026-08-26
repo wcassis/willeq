@@ -600,4 +600,40 @@ TEST_F(CommandProcessorTest, InspectMessage_IsRegisteredUnderSocial) {
     EXPECT_EQ(info->category, "Social");
 }
 
+
+// ===================================================================
+// T277: /removebuff -- the scriptable form of the buff-bar click.
+// The command must exist, must carry the argument through UNPARSED (slot
+// numbers and spell names are both resolved against the live buff model on
+// the game side), and must refuse an empty argument before the wire.
+// ===================================================================
+
+TEST_F(CommandProcessorTest, T277_RemoveBuffIsRegisteredWithItsAlias) {
+    auto info = processor->getCommandInfo("removebuff");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->category, "Spells");
+
+    auto alias = processor->getCommandInfo("cancelbuff");
+    ASSERT_TRUE(alias.has_value());
+    EXPECT_EQ(alias->name, "removebuff");
+}
+
+TEST_F(CommandProcessorTest, T277_RemoveBuffPassesTheArgumentThroughVerbatim) {
+    auto bySlot = processor->processCommand("/removebuff 3");
+    EXPECT_TRUE(bySlot.success);
+    auto byName = processor->processCommand("/removebuff Minor Shielding");
+    EXPECT_TRUE(byName.success);
+
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "cancelBuff(\"3\")");
+    EXPECT_EQ(handler.calls[1], "cancelBuff(\"Minor Shielding\")")
+        << "a multi-word spell name must not be truncated at the first space";
+}
+
+TEST_F(CommandProcessorTest, T277_RemoveBuffWithNoArgumentNeverReachesTheHandler) {
+    auto result = processor->processCommand("/removebuff");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 }  // namespace

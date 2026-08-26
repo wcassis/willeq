@@ -231,7 +231,7 @@ protected:
         const int x = 222 + slot * (EQT::Graphics::UILayout::SLOT_SIZE +
                                     EQT::Graphics::UILayout::MARGIN) + 4;
         input.processInput(x, 570, /*leftClicked=*/true, layout, hotbar, gems,
-                           inventory, spellbook, skills);
+                           inventory, spellbook, skills, buffs);
     }
 
     std::vector<eqt::events::RendererIntent> drain() { return bridge.drainIntents(); }
@@ -244,6 +244,7 @@ protected:
     EQT::Graphics::InventoryPanelState inventory;
     EQT::Graphics::SpellbookPopupState spellbook;
     EQT::Graphics::SkillsPopupState skills;
+    EQT::Graphics::BuffBarState buffs;
     EQT::Graphics::StaticUIInput input;
 };
 
@@ -391,7 +392,7 @@ protected:
     void clickRow(int row) {
         const int y = 125 + 24 + row * (18 + 2) + 4;
         input.processInput(300, y, /*leftClicked=*/true, layout, hotbar, gems,
-                           inventory, spellbook, skills);
+                           inventory, spellbook, skills, buffs);
     }
 
     CapturingBridge bridge;
@@ -401,6 +402,7 @@ protected:
     EQT::Graphics::InventoryPanelState inventory;
     EQT::Graphics::SpellbookPopupState spellbook;
     EQT::Graphics::SkillsPopupState skills;
+    EQT::Graphics::BuffBarState buffs;
     EQT::Graphics::StaticUIInput input;
 };
 
@@ -440,7 +442,7 @@ TEST_F(SkillsPopupProducerTest, ClosedPopupProducesNothing) {
 TEST_F(SkillsPopupProducerTest, HoverWithoutClickProducesNothing) {
     const int y = 125 + 24 + 4;
     input.processInput(300, y, /*leftClicked=*/false, layout, hotbar, gems,
-                       inventory, spellbook, skills);
+                       inventory, spellbook, skills, buffs);
     EXPECT_EQ(skills.hoveredRow, 0);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }

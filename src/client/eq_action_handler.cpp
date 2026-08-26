@@ -831,6 +831,14 @@ void EqActionHandler::memorizeSpellByName(const std::string& spellName, uint8_t 
     }
 }
 
+void EqActionHandler::cancelBuff(const std::string& args) {
+    // T277: one body, one resolver. EverQuest::RequestCancelBuff() owns the
+    // slot/name lookup because BuffManager is the only place the player's
+    // live buffs exist; the buff-bar click reaches the same wire hop
+    // (SendBuffCancelRequest) through BuffCancelIntent.
+    m_eq.RequestCancelBuff(args);
+}
+
 void EqActionHandler::listMemorizedSpells() {
     // T101: ported from game's /gems (eq_commands_spells.cpp) verbatim --
     // fixes the "(Spell data not available in current implementation)"
