@@ -18,6 +18,17 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+- **T264 `344e6eac` REACHABILITY SWEEP (2026-08-26): 54 intents / 102 events / 165 handler methods / 77 senders audited; 19 intents, 6 events, 18 handlers DELETED (-1125 lines); `tests/test_reachability_sweep.cpp` parses the sources every ctest and pins the sets. EIGHT features exist but cannot be reached (class A, one unit each, kept hops named in the T264 Review):**
+  - **F1 Loot window: take one item / loot all / destroy / close** (`/loot` only opens; with `/autoloot` off nothing can take an item; two drifted loot-all impls `EverQuest::LootAllFromCorpse` vs `CombatManager::LootAll`) -- IN PROGRESS T268
+  - F2 Read a book/note item
+  - F3 Bank coin deposit / withdraw / convert
+  - F4 Spellbook popup click -> memorize (click handler is a LOG stub naming MemorizeSpellIntent); `cmdSpellbook`'s "not implemented in UI" message is stale
+  - F5 Scribe a scroll
+  - F6 Click off a buff
+  - F7 Manual tradeskill combine + close container
+  - F8 Train a skill at a trainer / close trainer (`/train` only opens)
+  - Not swept: InputAction/hotkey axis; `IOutputRenderer::updateCurrentTargetHP` family is caller-less.
+
 ~~- **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.~~ **CLOSED T245: `m_update_thread` DELETED; `CombatManager::Update()` is ticked from `UpdateMovement()` on the game thread, self-paced to `kUpdateIntervalMs` (500 ms). TSAN BEFORE (`/hunt on`, three beetles) vs AFTER in `review/T245/`. Note found on the way: `CombatTarget::is_aggro` is hard-coded `false` (TODO in `GetNearbyHostiles`), so `CheckForAggro` can never fire -- the only reachable off-thread writer was the hunt path.**
 - **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. **Emote/Macro/Combat CLOSED T239 `422ce591`** (one shared `ActivateHotbarCommandSlot`, macro proven on the observer, combat toggle live).**
 - **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.**

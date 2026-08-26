@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 102 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 96 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -263,10 +263,10 @@ Audio updates                       Zone load completion detection
 ```
 
 - **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
-- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (99-case switch over the 101 `GameEventType` enumerators; `AutoAttackChanged` and `EntityStateSnapshot` have no case there — counted T215 at `e70e3347`)
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 96 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
-- **Event types** (`include/client/state/event_bus.h`) — 102 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 51 intent structs in the `RendererIntent` variant for user actions
+- **Event types** (`include/client/state/event_bus.h`) — 96 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 34 intent structs in the `RendererIntent` variant (T264 pruned; pinned by test_reachability_sweep) for user actions
 
 **Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/deferred.md` — do not "fix" coupling ad hoc.
 
