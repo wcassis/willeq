@@ -1746,6 +1746,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_atlas_pixels)
 ENDIF()
 
+# T279: pixel proof for the EQE1 ALPHA COMPANION mip filter. Builds synthetic
+# complete/truncated ETC1 packs and draws the companion minified through a real
+# headless GLES2 device -- see refactor/T279_complete_mip_chains.md.
+# Self-skips without a usable GLES2 device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_alpha_companion_mip
+        test_eqe1_alpha_companion_mip.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip)
+ENDIF()
+
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
 # gate as test_static_ui_panels above (it drives StaticUIInput), and no device
 # is created — see refactor/T156_skill_reachability.md. Deliberately a NEW

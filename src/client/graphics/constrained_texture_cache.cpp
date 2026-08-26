@@ -1963,9 +1963,27 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         // Binary alpha masks must not be linearly interpolated — trilinear
         // blending pushes binary values below the 0.5 discard threshold.
         // NEAREST_MIPMAP_NEAREST selects the closest mip level without
-        // interpolation, preserving the binary alpha mask.
+        // interpolation, preserving the binary alpha mask. That intent is
+        // unchanged; what changed (T279) is the completeness precondition.
+        //
+        // T279: `mipLevels > 1` was the WRONG guard. A mipmap MIN_FILTER is
+        // only legal against a MIPMAP-COMPLETE texture — every level present
+        // down to 1x1 — and packs built before `9189ad69` stopped the chain
+        // at 4x4 (7 levels for 256x256 where GLES2 wants 9). Such a texture
+        // has mipLevels > 1 and is still incomplete, and sampling it returns
+        // opaque black (T275): for an alpha companion that means alpha==0
+        // everywhere, i.e. every alpha-tested fragment discarded — invisible
+        // foliage/hair/capes. Unlike unit 0, the driver never rewrites unit
+        // 1's filters per material bind, so nothing masks it here.
+        //
+        // The guard is now the actual completeness predicate, checked against
+        // the entry's own dimensions rather than trusting the asset tree to
+        // be freshly built. A short chain degrades to plain GL_NEAREST (the
+        // T275 resolution) instead of sampling black.
+        const bool mipComplete =
+            entry.mipLevels == EQT::Graphics::computeMipLevels(entry.width, entry.height);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        if (entry.mipLevels > 1) {
+        if (mipComplete && entry.mipLevels > 1) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
         } else {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
