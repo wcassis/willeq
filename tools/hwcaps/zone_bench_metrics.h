@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sys/resource.h>
+
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -12,7 +14,23 @@ struct FrameMetrics {
     float posX = 0, posY = 0, posZ = 0;  // Camera position (EQ coords)
     float heading = 0;        // Camera heading in degrees (0=North, CW)
     float pitch = 0;          // Camera pitch in degrees (positive=up)
-    float cpuDrawMs = 0;      // CPU draw submit time (excluding glFinish)
+    float cpuDrawMs = 0;      // CPU draw submit time, WALL clock (excluding glFinish)
+    // T291: the SAME draw-submit span measured as process CPU time
+    // (getrusage(RUSAGE_SELF), ru_utime + ru_stime) instead of wall
+    // clock. cpuDrawMs is a steady_clock span, so it inflates when an
+    // unrelated process steals the core -- which is what defeated the
+    // visual gate's p95 ceiling eight times (T219/T220/T239/T258/T274/
+    // T282/T286/T287, every one a timing trip with zero image
+    // mismatches). cpuProcMs counts only CPU actually charged to this
+    // process, so it is load-insensitive: that is what the gate asserts
+    // on (scripts/ci/visual_gate.py, csv column cpu_proc_ms). cpuDrawMs
+    // is deliberately KEPT as wall clock -- the P08 phase decomposition
+    // below (collectCullMs/sortMs/submissionMs/otherMs) and every Pi
+    // frame-budget analysis are wall-clock numbers, and otherMs is a
+    // residual of cpuDrawMs; mixing the two clocks would make it
+    // meaningless. Will's ruling (docs/decisions.md 2026-08-26) is
+    // scoped to the gate's metric.
+    float cpuProcMs = 0;      // CPU draw submit time, PROCESS CPU time
     float gpuMs = 0;          // glFinish duration
     float totalMs = 0;        // Total frame time
     int drawCalls = 0;        // drawMeshBuffer invocations
@@ -121,6 +139,7 @@ public:
         current_.pitch = pitch;
         frameStart_ = std::chrono::steady_clock::now();
         drawStart_ = frameStart_;
+        drawCpuStartMs_ = processCpuMs();
     }
 
     void beginAnimation() {
@@ -142,6 +161,8 @@ public:
         current_.regionsDrawn = regionsDrawn;
         current_.regionsOccluded = regionsOccluded;
         current_.cpuDrawMs = msElapsed(drawStart_, drawEnd_);
+        current_.cpuProcMs =
+            static_cast<float>(processCpuMs() - drawCpuStartMs_);
     }
 
     // P08: per-phase CPU timing (call any time between beginFrame() and
@@ -247,10 +268,28 @@ private:
         return std::chrono::duration<float, std::milli>(b - a).count();
     }
 
+    // T291: process CPU time consumed so far, in ms. getrusage(RUSAGE_SELF)
+    // is process-wide (all threads); the zone benchmark draws on one thread
+    // and spawns none during a frame, so for this harness it is the draw
+    // thread's own CPU. Resolution is 1 us (struct timeval), measured on
+    // this host -- four orders of magnitude below the ~3-25 ms spans being
+    // timed. CLOCK_PROCESS_CPUTIME_ID would give ns resolution at a
+    // marginally lower call cost (0.81 us vs 1.06 us measured), but Will
+    // named getrusage and 1 us is ample; one call per frame either way.
+    static double processCpuMs() {
+        struct rusage ru;
+        if (getrusage(RUSAGE_SELF, &ru) != 0) return 0.0;
+        return (static_cast<double>(ru.ru_utime.tv_sec) +
+                static_cast<double>(ru.ru_stime.tv_sec)) * 1000.0 +
+               (static_cast<double>(ru.ru_utime.tv_usec) +
+                static_cast<double>(ru.ru_stime.tv_usec)) / 1000.0;
+    }
+
     static void dumpFrame(const FrameMetrics& m);
 
     FrameMetrics current_;
     TimePoint frameStart_, drawStart_, drawEnd_, gpuEnd_, animStart_, animEnd_;
+    double drawCpuStartMs_ = 0.0;   // T291: process CPU ms at drawStart_
     std::vector<FrameMetrics> frames_;
     bool dumpPerFrame_ = false;
     // P49: actual achieved resolution, 0/0 if setActualResolution() was

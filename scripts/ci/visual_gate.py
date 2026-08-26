@@ -12,7 +12,10 @@ checks them against three independent assertions:
      state changes / polygon counts per designated frame (deterministic on a
      fixed camera path), and a threshold assertion on p95 CPU-ms (<= 2x the
      recorded baseline -- generous, to catch a render-loop regression, not
-     to catch scheduler noise).
+     to catch scheduler noise). T291: that CPU-ms is PROCESS CPU time
+     (getrusage), csv column cpu_proc_ms -- not the wall-clock cpu_ms it
+     used to read, which made the ceiling load-sensitive and produced eight
+     false trips with zero image mismatches. See cpu_ms_series().
   3. Memory assertions (T69 extends the H02 texture-cache-only check to the
      full per-subsystem breakdown emitted by gles2_zone_benchmark.cpp's
      --memory-json, itself sourced from IrrlichtRenderer::getMemoryReportBreakdown()'s
@@ -157,6 +160,10 @@ MEMORY_COVERAGE_REPORT_ONLY_FIELDS = [
 # zone_bench_loader.cpp on a given day.
 MEMORY_COVERAGE_ENTITY_COUNT = 5
 MEMORY_COVERAGE_TEST_RACES = [1, 2, 3, 4, 5]
+# T291: how many times --bless re-runs each zone's benchmark purely to
+# measure the CPU baseline (the max per-run p95 wins). See bless().
+BLESS_CPU_REPEATS = 3
+
 MEMORY_COVERAGE_FRAMES = 5
 MEMORY_COVERAGE_WARMUP = 1
 
@@ -288,6 +295,31 @@ def p95(values):
     return values[idx]
 
 
+def cpu_ms_series(csv_rows, zone):
+    """T291: the per-frame CPU series the p95 ceiling is asserted on.
+
+    PROCESS CPU time (getrusage(RUSAGE_SELF): ru_utime + ru_stime) over the
+    benchmark's draw-submit span -- csv column `cpu_proc_ms`, added by
+    tools/hwcaps/zone_bench_metrics.{h,cpp}. NOT `cpu_ms`, which is the same
+    span measured on steady_clock and therefore inflates whenever an
+    unrelated process steals the core. That load-sensitivity is the whole
+    reason this gate tripped eight times (T219, T220, T239, T258, T274,
+    T282, T286, T287) with zero image mismatches in the record; T261's
+    RUN_SERIAL only serialised within one ctest run, never against a sibling
+    worktree compiling, so T274 and T286 tripped it anyway.
+
+    A missing column means the build-gles2/ benchmark binary predates T291 --
+    fail loudly rather than silently falling back to the wall clock and
+    re-inheriting the flakiness.
+    """
+    if not csv_rows or "cpu_proc_ms" not in csv_rows[0]:
+        raise RuntimeError(
+            f"{zone}: benchmark CSV has no `cpu_proc_ms` column -- the "
+            f"build-gles2/ binary predates T291. Rebuild it: "
+            f"bash scripts/build-gles2-x86.sh")
+    return [float(r["cpu_proc_ms"]) for r in csv_rows]
+
+
 def compare_images_exact(path_a, path_b):
     """Decoded-pixel comparison. Returns (identical: bool, diff_count: int, size).
 
@@ -371,7 +403,29 @@ def bless(manifest):
                 "polys": int(row["polys"]),
             }
         zone_cfg["metrics"] = metrics
-        zone_cfg["p95CpuMsBaseline"] = p95([float(r["cpu_ms"]) for r in csv_rows])
+        # T291: the p95 baseline is the MAX per-run p95 over BLESS_CPU_REPEATS
+        # independent benchmark invocations, not a single run's. The gate
+        # takes p95 over only three measured frames (one per --camera-pose),
+        # so p95 == max of three samples -- a statistic with no averaging in
+        # it at all. Blessing that from one run means the ceiling inherits
+        # whatever that one run happened to sample; bless low and every
+        # subsequent run is a coin flip against a 2x ceiling. Only the CPU
+        # baseline uses the repeats: the golden PNGs, the draws/state/poly
+        # metrics and the memory numbers all come from the FIRST run (they
+        # are exact-deterministic -- H02/T69 -- so repeating them would prove
+        # nothing and could only introduce ambiguity about which run's
+        # pixels were written).
+        run_p95s = [p95(cpu_ms_series(csv_rows, zone))]
+        repeat_dir = ARTIFACTS_DIR / "cpu_repeat"
+        repeat_dir.mkdir(parents=True, exist_ok=True)
+        for extra in range(1, BLESS_CPU_REPEATS):
+            _, extra_rows, _, _ = run_benchmark(
+                zone_cfg, bench_cfg, repeat_dir, production_args)
+            run_p95s.append(p95(cpu_ms_series(extra_rows, zone)))
+        zone_cfg["p95CpuMsBaseline"] = max(run_p95s)
+        print(f"  [cpu] {zone}: per-run p95 " +
+              ", ".join(f"{v:.3f}" for v in run_p95s) +
+              f" -> baseline {max(run_p95s):.3f} (max)")
         if memory:
             # T69: bless every field the benchmark now emits -- budget pairs
             # (blessed for display/debugging even though the check is
@@ -550,12 +604,14 @@ def verify(manifest):
                         f"{zone} frame {f}: {key} mismatch (expected {expected[key]}, got {actual_val})"
                     )
 
-        p95_cpu = p95([float(r["cpu_ms"]) for r in csv_rows])
+        p95_cpu = p95(cpu_ms_series(csv_rows, zone))
         baseline = zone_cfg["p95CpuMsBaseline"]
         ceiling = baseline * 2.0
+        print(f"  [cpu] {zone}: p95 process-CPU ms {p95_cpu:.3f} "
+              f"(baseline {baseline:.3f}, ceiling {ceiling:.3f})")
         if p95_cpu > ceiling:
             failures.append(
-                f"{zone}: p95 CPU ms {p95_cpu:.3f} exceeds ceiling {ceiling:.3f} (baseline {baseline:.3f} x2.0)"
+                f"{zone}: p95 process-CPU ms {p95_cpu:.3f} exceeds ceiling {ceiling:.3f} (baseline {baseline:.3f} x2.0)"
             )
 
         # 3. Memory assertions (T69).

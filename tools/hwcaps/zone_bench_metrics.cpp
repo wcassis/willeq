@@ -45,18 +45,25 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
     // trailing columns -- GPU-sync characterization, all -1/0 unless
     // --gpu-sync-probe was passed (see gpu_sync_probe.h). Same append-only
     // convention as every prior trailing-column addition.
+    // T291: cpu_proc_ms is the newest trailing column -- the same draw-submit
+    // span as cpu_ms but measured as PROCESS CPU time (getrusage(RUSAGE_SELF),
+    // ru_utime + ru_stime) rather than steady_clock wall time, so it does not
+    // inflate when an unrelated process steals the core. This is the column
+    // scripts/ci/visual_gate.py's p95 ceiling asserts on; cpu_ms stays wall
+    // clock for the P08 phase decomposition and the Pi frame budgets. Same
+    // append-only convention as every prior trailing-column addition.
     fprintf(f, "frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,"
                "draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,"
                "alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,"
                "collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible,"
                "tex_binds,tex_param_calls,actual_width,actual_height,"
                "gpu_zone_ns,gpu_entity_ns,gpu_particles_ui_ns,gpu_swap_ns,"
-               "swap_buffers_ms,flip_wait_ms,finish_readpixels_ms\n");
+               "swap_buffers_ms,flip_wait_ms,finish_readpixels_ms,cpu_proc_ms\n");
 
     for (const auto& m : frames_) {
         fprintf(f, "%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%.3f,%d,"
                    "%.3f,%.3f,%.3f,%.3f,%.3f,%d,%u,%u,%d,%d,"
-                   "%lld,%lld,%lld,%lld,%.3f,%.3f,%.3f\n",
+                   "%lld,%lld,%lld,%lld,%.3f,%.3f,%.3f,%.3f\n",
                 m.frameNum, m.posX, m.posY, m.posZ,
                 m.heading, m.pitch,
                 m.cpuDrawMs, m.gpuMs, m.totalMs,
@@ -71,7 +78,8 @@ void MetricsCollector::writeCSV(const std::string& filename) const {
                 actualWidth_, actualHeight_,
                 static_cast<long long>(m.gpuZoneNs), static_cast<long long>(m.gpuEntityNs),
                 static_cast<long long>(m.gpuParticlesUiNs), static_cast<long long>(m.gpuSwapNs),
-                m.swapBuffersMs, m.flipWaitMs, m.finishReadPixelsMs);
+                m.swapBuffersMs, m.flipWaitMs, m.finishReadPixelsMs,
+                m.cpuProcMs);
     }
 
     fclose(f);
@@ -110,10 +118,11 @@ void MetricsCollector::printSummary() const {
 
     printf("\n=== Zone Benchmark Summary (%zu frames) ===\n", frames_.size());
 
-    std::vector<float> cpuMs, gpuMs, totalMs, draws, stateChanges, polys, regVis, regDrawn, regOccl, animMs;
+    std::vector<float> cpuMs, cpuProcMs, gpuMs, totalMs, draws, stateChanges, polys, regVis, regDrawn, regOccl, animMs;
     std::vector<float> collectCullMs, sortMs, submissionMs, otherMs, swapMs, texBinds, texParams;
     for (const auto& m : frames_) {
         cpuMs.push_back(m.cpuDrawMs);
+        cpuProcMs.push_back(m.cpuProcMs);
         gpuMs.push_back(m.gpuMs);
         totalMs.push_back(m.totalMs);
         draws.push_back(static_cast<float>(m.drawCalls));
@@ -137,7 +146,8 @@ void MetricsCollector::printSummary() const {
     for (float v : animMs) { if (v > 0) { hasAnimation = true; break; } }
 
     if (hasAnimation) printStats("Animation CPU", "ms", animMs);
-    printStats("CPU draw", "ms", cpuMs);
+    printStats("CPU draw (wall)", "ms", cpuMs);
+    printStats("CPU draw (process)", "ms", cpuProcMs);
     printStats("  collect/cull", "ms", collectCullMs);
     printStats("  sort", "ms", sortMs);
     printStats("  submission", "ms", submissionMs);
@@ -167,11 +177,11 @@ void MetricsCollector::dumpFrame(const FrameMetrics& m) {
     printf("F%04d pos=(%.1f,%.1f,%.1f) hdg=%.1f pit=%.1f | "
            "polys=%d draws=%d st=%d | "
            "reg vis=%d drn=%d occ=%d | "
-           "cpu=%.2f gpu=%.2f tot=%.2f ms\n",
+           "cpu=%.2f cpuproc=%.2f gpu=%.2f tot=%.2f ms\n",
            m.frameNum, m.posX, m.posY, m.posZ, m.heading, m.pitch,
            m.polyCount, m.drawCalls, m.stateChanges,
            m.regionsVisible, m.regionsDrawn, m.regionsOccluded,
-           m.cpuDrawMs, m.gpuMs, m.totalMs);
+           m.cpuDrawMs, m.cpuProcMs, m.gpuMs, m.totalMs);
 }
 
 } // namespace ZoneBench

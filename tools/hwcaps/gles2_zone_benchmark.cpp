@@ -2477,7 +2477,20 @@ int main(int argc, char** argv) {
     // --dump-frames / manifest "designatedFrames" mechanism below with no
     // changes needed to it or to the CI gate script.
     if (!opts.cameraPoses.empty()) {
-        printf("\n=== Static pose capture: %zu poses ===\n", opts.cameraPoses.size());
+        // T291: --warmup applies here too -- it used to be silently ignored
+        // on this path (only the moving/--path-file loop below honoured it),
+        // so the first measured pose absorbed every one-time cost (shader
+        // compile/link, first texture upload, first-touch faults): 20.9-25.5
+        // ms vs 2.7-5.1 ms for the other two poses, and ALL of the CI gate's
+        // p95 variance lived in that one cold frame. Warmup renders the whole
+        // pose list opts.warmup extra times first; those passes are never
+        // measured, dumped, or written to the CSV, so the 1:1 pose->frame
+        // mapping the gate depends on is untouched (golden PNGs and the
+        // draws/state/poly metrics verified byte-identical either way).
+        // See refactor/T291_visual_gate_cpu_metric.md.
+        const int warmupPasses = (opts.warmup > 0) ? opts.warmup : 0;
+        printf("\n=== Static pose capture: %zu poses (%d warmup passes) ===\n",
+               opts.cameraPoses.size(), warmupPasses);
         metrics.reserve(static_cast<int>(opts.cameraPoses.size()));
         metrics.setDumpPerFrame(opts.dump);
 
@@ -2486,6 +2499,8 @@ int main(int argc, char** argv) {
         float fov = 60.0f * 3.14159265f / 180.0f;
         float aspect = static_cast<float>(opts.width) / static_cast<float>(opts.height);
 
+        for (int pass = 0; pass <= warmupPasses; ++pass) {
+        const bool measuring = (pass == warmupPasses);
         for (size_t i = 0; i < opts.cameraPoses.size(); ++i) {
             const auto& pose = opts.cameraPoses[i];
             float dirX, dirY, dirZ;
@@ -2496,7 +2511,10 @@ int main(int argc, char** argv) {
             data->driver->beginScene(true, true, irr::video::SColor(255, 40, 40, 60));
             if (data->zoneShader) data->zoneShader->beginFrame();
 
-            metrics.beginFrame(static_cast<int>(i), pose.x, pose.y, pose.z, pose.heading, pose.pitch);
+            if (measuring) {
+                metrics.beginFrame(static_cast<int>(i), pose.x, pose.y, pose.z,
+                                   pose.heading, pose.pitch);
+            }
 
             ZoneBench::CameraState camState{pose.x, pose.y, pose.z, dirX, dirY, dirZ, fov, aspect};
             int regionsVisible = 0, regionsDrawn = 0, regionsOccluded = 0;
@@ -2509,7 +2527,7 @@ int main(int argc, char** argv) {
                 opts.frontToBack, opts.maxDraws, opts.maxPolys,
                 drawEntries, regionsVisible, regionsDrawn, regionsOccluded,
                 &lightRadius, &regionsDemotedRadius);
-            metrics.setRadiusStats(lightRadius, regionsDemotedRadius);
+            if (measuring) metrics.setRadiusStats(lightRadius, regionsDemotedRadius);
             if (!data->objects.empty()) {
                 int objDraws = 0, objPolys = 0;
                 ZoneBench::collectObjectDrawEntries(
@@ -2522,23 +2540,27 @@ int main(int argc, char** argv) {
                                                   nullptr, opts.mergeZoneDraws, &actualDraws,
                                                   opts.bakedUnmergedZoneDraws);
             int polyCount = countPolygons(drawEntries);
-            metrics.endDraw(actualDraws, stateChanges, polyCount,
-                            regionsVisible, regionsDrawn, regionsOccluded);
-            if (opts.materialCounts) {
+            if (measuring) {
+                metrics.endDraw(actualDraws, stateChanges, polyCount,
+                                regionsVisible, regionsDrawn, regionsOccluded);
+            }
+            if (measuring && opts.materialCounts) {
                 auto counts = countMaterialFamilies(drawEntries, data->zoneShader.get());
                 metrics.setMaterialCounts(counts.first, counts.second);
             }
 
 #ifdef EQT_HAS_GLES2
-            if (opts.dumpFilters > 0 && i == 0) {
+            if (measuring && opts.dumpFilters > 0 && i == 0) {
                 dumpFilterState(*data, drawEntries, opts.dumpFilters);
             }
             glFinish();
 #endif
-            metrics.endGpuSync();
-            metrics.endFrame();
+            if (measuring) {
+                metrics.endGpuSync();
+                metrics.endFrame();
+            }
 
-            if (!opts.dumpPngPrefix.empty()) {
+            if (measuring && !opts.dumpPngPrefix.empty()) {
                 irr::video::IImage* shot = data->driver->createScreenShot();
                 std::string path = opts.dumpPngPrefix + "_f" + std::to_string(i) + ".png";
                 if (shot) {
@@ -2551,6 +2573,7 @@ int main(int argc, char** argv) {
             }
 
             data->driver->endScene();
+        }
         }
 
         metrics.printSummary();
