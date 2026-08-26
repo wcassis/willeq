@@ -93,7 +93,7 @@ Review — read that before scoping the next unit off this file.
     ~~invisible to `/help` (T143); headless `outcome=queued` for renderer
     commands (T139/T142); phantom `gequip7` in `config/eqe1_archives.json`
     (T198)~~ — all three CLOSED T223 `e6d31424` (catalog + drift-guard test;
-    headless refusal; T142 console echo CLOSED T233 `78e041ad`); `protectedRegions_` all-false (T79 census); memory categories
+    headless refusal; T142 console echo CLOSED T233 `78e041ad`); ~~`protectedRegions_` all-false (T79 census)~~ **REMOVED T292 `8d07e768` on Will's conditional ruling -- and the condition was VERIFIED three ways** (the producer's own loop in `sim_visibility.cpp` fills it under the same PVS+distance test as `meshLoadQueue`, commented as mesh-cache protection; T67's `30e04d3b` shows the ONLY writer was inside `if (constrainedMeshCache_)`, a pointer never constructed in any shipped build; and a consumer census confirmed PVS culling, door behaviour and the eager door/object build all use separate signals). -124 lines across 9 files: the member, Priority 3 (progressive door build) and Priority 4 (progressive PVS-object build), the two dead counters and their terms in the completion test (which reduces to what it has actually evaluated to since T67), `SimulationOutput::protectedRegions`, and `DoorManager::getDoorsInRegions()`. **Goldens did NOT move**; no re-bless. Note: the vector WAS correctly sized, so this was never a size-0 short circuit -- every element was simply false. memory categories
     without budgets (T69); UI-gesture-only reachability pattern (not
     retired); Z5.3 / P52 / `waitForFlipComplete()` perf residuals;
     **doc debt:** `docker/CLAUDE.md` still documents
