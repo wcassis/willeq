@@ -58,7 +58,7 @@ Review — read that before scoping the next unit off this file.
     crushbone blank benchmark render (Batch H)~~ CLOSED T242 `f32744c1` (benchmark camera seed 300 units in the air from sky-region Z; NO rendering bug; gfaydark/befallen were silently on the same fallback); "BSP region is SIZE_MAX" (T242: a client `CreateZoneLoadSnapshot` race, unrelated to the benchmark)
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
     ~~`ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
-    latent by causality)~~ CLOSED T228 `67a131bf`; race 330 placeholder cube unverified.
+    latent by causality)~~ CLOSED T228 `67a131bf`; race 330: T265 `0ab18c9e` audited all 187 race rows against the archives (4 wrong fixed: 17 Golem, 72 Ship, 330 Froglok s3d_file, 240 aliased; 3 classic ids added; 32 Ghost has no mesh anywhere). **330 STILL BLOCKED in src**: `race_codes.cpp getRaceModelFilename()` hardcodes 330->globalfroglok_chr (monster FRG) and `race_model_loader.cpp` does `stoi()` on non-numeric `global*` s3d_file names + the dir scan regex skips `global[a-z]+_chr` -- two-line fix + pixel check (class A, IN PROGRESS T267 after T264 lands). Also: `invisible` column has no reader; 166 eqemu ids 199-366 have Titanium models but no row (never spawn on P1999-era servers).
   - **B — in progress / owed:** ~~`AcceptGroupInvite()` reads
     `m_pending_inviter_name` after `SendGroupFollow()` cleared it (T99)~~ —
     **CLOSED T217 `175c97ca`, live-verified two-client (review/T217/)**; skills-window cap screenshot from the official
