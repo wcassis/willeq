@@ -125,6 +125,18 @@ std::string WilleqDatabase::colText(sqlite3_stmt* stmt, int col) {
     return text ? std::string(text) : "";
 }
 
+// T256: the string tables were built from CRLF text files and every row
+// (5901 eqstrings, 8305 dbstrings, 470 login_strings at db version 4) ends
+// in '\r'. The legacy text-file loader in StringDatabase strips it; this
+// path did not, so every SQLite-served message rendered "...^M" in chat.
+std::string WilleqDatabase::colTextNoCR(sqlite3_stmt* stmt, int col) {
+    std::string s = colText(stmt, col);
+    while (!s.empty() && s.back() == '\r') {
+        s.pop_back();
+    }
+    return s;
+}
+
 size_t WilleqDatabase::getMemoryUsage() const {
     std::lock_guard<std::mutex> lock(dbMutex_);
     if (!db_) return 0;
@@ -352,7 +364,7 @@ std::string WilleqDatabase::getString(uint32_t stringId) {
     sqlite3_bind_int(stmt, 1, stringId);
 
     if (sqlite3_step(stmt) == SQLITE_ROW)
-        return colText(stmt, 0);
+        return colTextNoCR(stmt, 0);
     return "";
 }
 
@@ -371,7 +383,7 @@ std::string WilleqDatabase::getDbString(uint32_t category, uint32_t subId) {
     sqlite3_bind_int(stmt, 2, subId);
 
     if (sqlite3_step(stmt) == SQLITE_ROW)
-        return colText(stmt, 0);
+        return colTextNoCR(stmt, 0);
     return "";
 }
 
@@ -637,7 +649,7 @@ std::string WilleqDatabase::getLoginString(uint32_t stringId) {
     sqlite3_bind_int(stmt, 1, stringId);
 
     if (sqlite3_step(stmt) == SQLITE_ROW)
-        return colText(stmt, 0);
+        return colTextNoCR(stmt, 0);
     return "";
 }
 

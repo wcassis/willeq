@@ -1162,6 +1162,15 @@ void EverQuest::ZoneProcessWhoAllResponse(const EQ::Net::Packet &p)
 			player_count, entries.size(), body_len);
 	}
 	for (const auto& e : entries) {
+		// T256 live leg: world's SendWhoAll counts an anon player whose admin
+		// level equals the viewer's (a GM /who-ing itself while /anon) but
+		// then skips writing that entry, so the count says N and the packet
+		// carries 49 zeroed bytes in its place. A zero format string is never
+		// a real entry (5022..5025 on the wire); rendering it produced a
+		// phantom "[0 Class0] (Race0)" line.
+		if (e.formatString == 0) {
+			continue;
+		}
 		AddChatSystemMessage(EQT::formatWhoAllEntry(e, ctx));
 	}
 

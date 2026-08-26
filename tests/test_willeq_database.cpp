@@ -117,3 +117,34 @@ TEST(WilleqDatabaseVersionTest, MissingVersionRowStillOpens) {
     db.close();
     std::remove(path.c_str());
 }
+
+// T256 live leg: every eqstrings/dbstrings/login_strings row in the built
+// data/willeq.db ends in '\r' (eqstr_us.txt is CRLF and the builder keeps
+// the CR), so every SQLite-served string rendered "...^M" in chat -- the
+// legacy text-file loader strips it, the SQLite path did not.
+TEST(WilleqDatabaseStringTest, TrailingCarriageReturnIsStripped) {
+    std::string path = BuildDb("cr", true, true, EQT::kWilleqDbExpectedVersion);
+    {
+        sqlite3* raw = nullptr;
+        ASSERT_EQ(sqlite3_open(path.c_str(), &raw), SQLITE_OK);
+        const char* sql =
+            "CREATE TABLE eqstrings (id INTEGER PRIMARY KEY, text TEXT NOT NULL);"
+            "INSERT INTO eqstrings VALUES (5006, 'ZONE: %1' || char(13));"
+            "CREATE TABLE dbstrings (category INTEGER, sub_id INTEGER, text TEXT NOT NULL);"
+            "INSERT INTO dbstrings VALUES (1, 2, 'Bind Wound' || char(13));"
+            "CREATE TABLE login_strings (id INTEGER PRIMARY KEY, text TEXT NOT NULL);"
+            "INSERT INTO login_strings VALUES (7, 'Welcome' || char(13));";
+        char* err = nullptr;
+        ASSERT_EQ(sqlite3_exec(raw, sql, nullptr, nullptr, &err), SQLITE_OK) << (err ? err : "");
+        sqlite3_close(raw);
+    }
+
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(path));
+    EXPECT_EQ(db.getString(5006), "ZONE: %1");
+    EXPECT_EQ(db.getDbString(1, 2), "Bind Wound");
+    EXPECT_EQ(db.getLoginString(7), "Welcome");
+
+    db.close();
+    std::remove(path.c_str());
+}

@@ -411,3 +411,22 @@ TEST_F(WhoResponseHandlerTest, HeaderOnlyPacketStillRejectedWhenTooShort) {
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_WhoAllResponse, tooShort));
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
 }
+
+// T256 live leg: world's SendWhoAll COUNTS an anon player whose admin level
+// equals the viewer's (a GM looking at itself while /anon) but then SKIPS
+// writing that entry, so the packet says "2 players" and carries 49 zeroed
+// bytes where the second entry would be. Before T256 that padding rendered
+// as a phantom "[0 Class0] (Race0)" line.
+TEST_F(WhoResponseHandlerTest, ZeroPaddedEntryFromSkippedPlayerIsNotPrinted) {
+    auto payload = WhoPayload({
+        EntryBytes(kWhoStrFormatAnonGmView, "Testbuddy", kWhoStringNone, "<TestGuild133>",
+                   kWhoStringNone, kWhoStrZone, 36, 13, 1, 6, 207),
+        std::vector<uint8_t>(49, 0),
+    });
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_WhoAllResponse, payload));
+
+    auto lines = DrainSystemMessages(bridge);
+    ASSERT_EQ(lines.size(), 4u) << "header, rule, ONE entry, count (server's count kept)";
+    EXPECT_EQ(lines[2], "[ANON (1 Magician)] Testbuddy (Dark Elf) <TestGuild133> ZONE: befallen");
+    EXPECT_EQ(lines[3], "There are 2 players in EverQuest.");
+}

@@ -209,6 +209,7 @@ private:
 
     // Helper: extract a string column, returns "" if null
     static std::string colText(sqlite3_stmt* stmt, int col);
+    static std::string colTextNoCR(sqlite3_stmt* stmt, int col);  // T256: strips trailing CR
 
     // T114: every public query method reuses ONE cached sqlite3_stmt* per
     // query type (see the members below) across a non-atomic
