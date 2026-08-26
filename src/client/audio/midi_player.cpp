@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <atomic>
 
 // TinySoundFont + TinyMidiLoader implementations — only in this .cpp
 #define TSF_IMPLEMENTATION
@@ -23,7 +24,10 @@ struct MidiPlayer::Impl {
     tsf* customSoundFont = nullptr;        // Custom SoundFont (synthus2)
     tml_message* midiMessages = nullptr;   // Loaded MIDI
     tml_message* currentMessage = nullptr;  // Playback cursor
-    double midiTimeMs = 0.0;               // Current playback position in ms
+    // T248: atomic because the game thread reads it (getPlaybackTimeMs, the
+    // zone-music resume position) while render() advances it. Relaxed on
+    // both sides -- it is a progress indicator, not a synchroniser.
+    std::atomic<double> midiTimeMs{0.0};   // Current playback position in ms
 };
 
 namespace {
@@ -188,6 +192,13 @@ void MidiPlayer::selectSoundFont(SoundFontType type) {
 // has been made safe. See this unit's Review for the STOP-condition
 // analysis. Do not add a runtime-reachable caller of this method without
 // adding synchronization first.
+// T248 addendum: the stop() below now waits on the render barrier, so a
+// render pass cannot be inside the synth when the pointer is swapped and
+// the old instance closed; a later pass sees playing_==false and does not
+// dereference impl_->soundFont. The swap itself is still a plain pointer
+// write (published by play()'s seq_cst playing_=true), so the T131 caveat
+// about raw-pointer visibility stands for any caller that does not go
+// through play() afterwards.
 bool MidiPlayer::loadSoundFont(const std::string& path) {
     if (!initialized_) return false;
 
@@ -237,7 +248,7 @@ bool MidiPlayer::play(const uint8_t* midiData, size_t size, bool loop, double st
     }
 
     impl_->currentMessage = impl_->midiMessages;
-    impl_->midiTimeMs = 0.0;
+    impl_->midiTimeMs.store(0.0, std::memory_order_relaxed);
     looping_ = loop;
 
     // Reset synth state
@@ -259,18 +270,26 @@ bool MidiPlayer::play(const std::vector<uint8_t>& midiData, bool loop, double st
 }
 
 void MidiPlayer::render(float* buffer, int frame_count) {
+    // T248: the whole body runs between renderBarrier_.enter()/exit(); stop()
+    // waits on that barrier after flipping playing_. The playing_ check MUST
+    // come after enter() -- the fence in enter() pairs with the fence in
+    // waitQuiescent() so that a render pass either observes playing_==false
+    // here and never touches the synth, or is one stop() will wait for.
+    RenderBarrier::Scope inRender(renderBarrier_);
+
     if (!playing_.load() || !impl_->soundFont || !impl_->currentMessage) {
         std::memset(buffer, 0, frame_count * 2 * sizeof(float));
         return;
     }
 
     float vol = volume_.load();
+    double timeMs = impl_->midiTimeMs.load(std::memory_order_relaxed);
     int samplesRemaining = frame_count;
     float* outPtr = buffer;
 
     while (samplesRemaining > 0) {
         // Process MIDI events up to current time
-        while (impl_->currentMessage && impl_->currentMessage->time <= impl_->midiTimeMs) {
+        while (impl_->currentMessage && impl_->currentMessage->time <= timeMs) {
             tml_message* msg = impl_->currentMessage;
 
             switch (msg->type) {
@@ -314,7 +333,8 @@ void MidiPlayer::render(float* buffer, int frame_count) {
             if (looping_) {
                 // Loop: reset to beginning
                 impl_->currentMessage = impl_->midiMessages;
-                impl_->midiTimeMs = 0.0;
+                timeMs = 0.0;
+                impl_->midiTimeMs.store(timeMs, std::memory_order_relaxed);
                 tsf_reset(impl_->soundFont);
                 continue;
             }
@@ -323,7 +343,7 @@ void MidiPlayer::render(float* buffer, int frame_count) {
         // Calculate how many samples to render before next event
         int samplesToRender = samplesRemaining;
         if (impl_->currentMessage) {
-            double msToNext = impl_->currentMessage->time - impl_->midiTimeMs;
+            double msToNext = impl_->currentMessage->time - timeMs;
             int framesToNext = static_cast<int>((msToNext * sampleRate_) / 1000.0);
             if (framesToNext < samplesToRender && framesToNext > 0) {
                 samplesToRender = framesToNext;
@@ -343,7 +363,8 @@ void MidiPlayer::render(float* buffer, int frame_count) {
         }
 
         // Advance time
-        impl_->midiTimeMs += (samplesToRender * 1000.0) / sampleRate_;
+        timeMs += (samplesToRender * 1000.0) / sampleRate_;
+        impl_->midiTimeMs.store(timeMs, std::memory_order_relaxed);
         outPtr += samplesToRender * 2;
         samplesRemaining -= samplesToRender;
 
@@ -362,21 +383,52 @@ void MidiPlayer::render(float* buffer, int frame_count) {
     }
 }
 
+// T248: the teardown side of the handshake (see render_barrier.h). Before
+// this unit stop() flipped playing_ and immediately called tsf_reset() --
+// while the audio thread could still be inside render() above, past its
+// playing_ check, in tsf_render_float()/tsf_channel_note_*() on the same
+// voice array (TSAN: 139 reports incl. heap-use-after-free from the
+// tml_free() in play() and a SEGV, in this unit's driver;
+// review/T248/tsan_before_*). Now: publish the stop, wait for any in-flight
+// render pass to leave (bounded by the remainder of ONE pass), then reset.
+// A render pass that starts after waitQuiescent() returns sees
+// playing_==false and never dereferences the synth or the message list,
+// so play()/seekTo()/selectSoundFont()/loadSoundFont()/~MidiPlayer may
+// mutate freely after calling this. No lock is taken on the render side.
 void MidiPlayer::stop() {
-    playing_ = false;
+    playing_.store(false);
+    if (!renderBarrier_.waitQuiescent()) {
+        LOG_WARN(MOD_AUDIO,
+                 "MidiPlayer::stop: a render pass was still in flight after the "
+                 "barrier timeout -- audio thread wedged? Resetting the synth anyway.");
+    }
     if (impl_->soundFont) {
         tsf_reset(impl_->soundFont);
     }
     impl_->currentMessage = nullptr;
-    impl_->midiTimeMs = 0.0;
+    impl_->midiTimeMs.store(0.0, std::memory_order_relaxed);
 }
 
 double MidiPlayer::getPlaybackTimeMs() const {
-    return impl_->midiTimeMs;
+    return impl_->midiTimeMs.load(std::memory_order_relaxed);
 }
 
+// T248: seekTo() resets the synth and walks the message list, so it must
+// not overlap a render pass. Its one production caller is play() (between
+// stop()'s barrier and playing_=true, so `wasPlaying` is false there and
+// the handshake below is skipped). A direct caller while playing gets the
+// same handshake stop() uses -- pause, wait for the in-flight pass to
+// leave, seek, resume -- rather than a documented "don't"; the driver in
+// tests/test_midi_stop_race.cpp seeks mid-play on purpose.
 void MidiPlayer::seekTo(double timeMs) {
     if (!initialized_ || !impl_->soundFont || !impl_->midiMessages) return;
+
+    const bool wasPlaying = playing_.exchange(false);
+    if (wasPlaying && !renderBarrier_.waitQuiescent()) {
+        LOG_WARN(MOD_AUDIO,
+                 "MidiPlayer::seekTo: a render pass was still in flight after the "
+                 "barrier timeout -- audio thread wedged? Seeking anyway.");
+    }
 
     // Handle looping: wrap seek position to MIDI duration
     if (looping_) {
@@ -398,7 +450,7 @@ void MidiPlayer::seekTo(double timeMs) {
     // to avoid a burst of accumulated voices on the first rendered frame.
     tsf_reset(impl_->soundFont);
     impl_->currentMessage = impl_->midiMessages;
-    impl_->midiTimeMs = 0.0;
+    impl_->midiTimeMs.store(0.0, std::memory_order_relaxed);
 
     while (impl_->currentMessage && impl_->currentMessage->time <= timeMs) {
         tml_message* msg = impl_->currentMessage;
@@ -418,7 +470,10 @@ void MidiPlayer::seekTo(double timeMs) {
         impl_->currentMessage = impl_->currentMessage->next;
     }
 
-    impl_->midiTimeMs = timeMs;
+    impl_->midiTimeMs.store(timeMs, std::memory_order_relaxed);
+    if (wasPlaying) {
+        playing_.store(true);  // seq_cst: publishes the seek to the next render pass
+    }
     LOG_DEBUG(MOD_AUDIO, "MidiPlayer: seeked to {:.0f}ms", timeMs);
 }
 

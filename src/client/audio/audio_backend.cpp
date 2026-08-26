@@ -6,6 +6,7 @@
 #include "common/logging.h"
 
 #include <vector>
+#include <string>
 #include <cstring>
 #include <chrono>
 #include <ctime>
@@ -67,6 +68,26 @@ static inline int64_t t130MonotonicNs() {
     return static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
 }
 
+// T248 (T128 board item): route miniaudio's own diagnostics into the willeq
+// log. Before this nothing was registered on the device's ma_log, so its
+// ALSA underrun-recovery messages ("[ALSA] Failed to recover device after
+// underrun" etc.) had no path into the log file and an underrun was
+// undetectable after the fact. miniaudio posts from whichever thread hit
+// the condition -- on the underrun path that is the worker thread, already
+// off the real-time path (it is inside snd_pcm_recover), so the LOG_* here
+// is accepted for those error paths only; nothing in the steady-state
+// callback posts a log.
+static void miniaudioLogCallback(void* /*pUserData*/, ma_uint32 level, const char* pMessage) {
+    std::string msg = pMessage ? pMessage : "";
+    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) msg.pop_back();
+    switch (level) {
+        case MA_LOG_LEVEL_ERROR:   LOG_ERROR(MOD_AUDIO, "miniaudio: {}", msg); break;
+        case MA_LOG_LEVEL_WARNING: LOG_WARN(MOD_AUDIO, "miniaudio: {}", msg); break;
+        case MA_LOG_LEVEL_INFO:    LOG_INFO(MOD_AUDIO, "miniaudio: {}", msg); break;
+        default:                   LOG_DEBUG(MOD_AUDIO, "miniaudio: {}", msg); break;
+    }
+}
+
 static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void* /*pInput*/, ma_uint32 frameCount) {
 #ifdef WILLEQ_T130_AUDIO_TID_PROBE
     t130WriteAudioTidOnce();
@@ -112,6 +133,10 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
                             static_cast<int64_t>(sampleRate);
         AudioCallbackProbe::configure(periodNs);
     }
+
+    // T248: see miniaudioLogCallback above.
+    ma_log_register_callback(ma_device_get_log(&impl_->device),
+                             ma_log_callback_init(miniaudioLogCallback, nullptr));
 
     impl_->deviceInitialized = true;
     LOG_INFO(MOD_AUDIO, "Miniaudio backend initialized ({}Hz, stereo)", sampleRate);

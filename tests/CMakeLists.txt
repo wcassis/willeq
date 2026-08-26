@@ -281,6 +281,22 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_midi_player_prealloc)
 ENDIF()
 
+# T248: MidiPlayer::stop() vs the audio render callback. Links MidiPlayer +
+# AudioMixer only (the test owns the render thread -- no device, no
+# miniaudio). This binary is also the ThreadSanitizer driver for the unit:
+# build it in a -fsanitize=thread tree and run it directly.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_midi_stop_race
+        test_midi_stop_race.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/audio_mixer.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_midi_stop_race PRIVATE WITH_AUDIO
+        WILLEQ_TEST_SF2_PATH="${CMAKE_SOURCE_DIR}/data/1mgm.sf2")
+    TARGET_LINK_LIBRARIES(test_midi_stop_race GTest::gtest_main ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_midi_stop_race)
+ENDIF()
+
 # T02: EventBus unit tests (src/client/state/event_bus.cpp). No graphics,
 # no Irrlicht -- links only the EventBus TU itself.
 ADD_EXECUTABLE(test_event_bus

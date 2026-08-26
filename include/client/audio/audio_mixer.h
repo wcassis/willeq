@@ -7,6 +7,8 @@
 #include <mutex>
 #include <vector>
 
+#include "client/audio/render_barrier.h"
+
 namespace EQT {
 namespace Audio {
 
@@ -56,7 +58,18 @@ public:
     // Channel allocation (called from main thread, mutex-protected)
     int allocSfxChannel();
     int allocMusicChannel();  // Returns one of the 2 music channels
+    // Deactivates the channel and then waits (T248, RenderBarrier) until no
+    // render() pass can still be reading it: on return the callback will
+    // not call this channel's renderCallback or touch its fields again, so
+    // the caller may free/reset what they point at. Bounded wait; a timeout
+    // is logged. Callable from the render thread (returns at once).
     void freeChannel(int handle);
+
+    // T248: the teardown side of the render handshake, exposed for callers
+    // that mutate channel state without freeing the channel. Publish the
+    // change (an atomic store) first, then call this; returns false only if
+    // a render pass stayed in flight past the barrier timeout.
+    bool waitForRenderQuiescent();
 
     // Get channel for direct manipulation (must check active flag)
     MixChannel* getChannel(int handle);
@@ -84,6 +97,10 @@ private:
 
     // Temp buffer for render callbacks (pre-allocated to avoid alloc on audio thread)
     std::vector<float> renderBuf_;
+
+    // T248: render() holds this for its whole body; freeChannel() and
+    // waitForRenderQuiescent() wait on it.
+    RenderBarrier renderBarrier_;
 };
 
 } // namespace Audio

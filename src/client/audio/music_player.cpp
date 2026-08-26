@@ -162,12 +162,17 @@ void MusicPlayer::stop(float fadeSeconds) {
     playing_ = false;
     paused_ = false;
 
-    // Free mixer channel FIRST to prevent further render callbacks.
-    // Do NOT call midiPlayer_->stop() here — the audio thread may still be
-    // inside midiPlayer_->render() accessing TSF state. Resetting TSF from
-    // the main thread while the audio thread reads it causes garbled audio.
-    // The midi player will be safely reset when midiPlayer_->play() is called
-    // next (from loadXMI), or from the fade-out completion in the render callback.
+    // Free the mixer channel first. Since T248 freeChannel() also waits for
+    // any in-flight render pass to leave (RenderBarrier), so on return the
+    // audio thread is no longer inside mixerRenderCallback -> MidiPlayer::
+    // render for this channel. MidiPlayer::stop() itself now synchronises
+    // the same way, so calling it here would be SAFE -- it is deliberately
+    // still not called: it zeroes the playback position that
+    // AudioManager's zone-music resume (savedZoneMusicTimeMs_) reads via
+    // getPlaybackTimeMs(), and the next play() (loadXMI -> MidiPlayer::play)
+    // stops the synth under the barrier anyway. The pre-T248 comment here
+    // said the reset was unsafe from this thread; that was the defect, not
+    // a rule.
     if (mixer_ && musicChannelHandle_ >= 0) {
         mixer_->freeChannel(musicChannelHandle_);
         musicChannelHandle_ = -1;

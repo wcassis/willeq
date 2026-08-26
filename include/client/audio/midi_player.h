@@ -8,6 +8,8 @@
 #include <memory>
 #include <atomic>
 
+#include "client/audio/render_barrier.h"
+
 namespace EQT {
 namespace Audio {
 
@@ -49,7 +51,14 @@ public:
     // buffer: interleaved stereo float, frame_count * 2 floats
     void render(float* buffer, int frame_count);
 
-    // Controls
+    // Controls.
+    // stop() may be called from any thread while render() is live on the
+    // audio thread: it flips playing_, then waits on renderBarrier_ until no
+    // render pass can still be reading the synth (T248 -- the one-frame
+    // barrier; see render_barrier.h). Only after that does it touch TSF.
+    // Every other mutating path (play, seekTo-from-play, selectSoundFont,
+    // loadSoundFont, the destructor) goes through stop() first and inherits
+    // that guarantee.
     void stop();
     void setVolume(float vol);
     float getVolume() const { return volume_.load(); }
@@ -85,6 +94,9 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+
+    // T248: render() holds this for its whole body; stop() waits on it.
+    RenderBarrier renderBarrier_;
 
     bool initialized_ = false;
     std::atomic<bool> playing_{false};

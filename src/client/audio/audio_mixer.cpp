@@ -1,6 +1,7 @@
 #ifdef WITH_AUDIO
 
 #include "client/audio/audio_mixer.h"
+#include "common/logging.h"
 #include <cstring>
 #include <algorithm>
 
@@ -19,6 +20,11 @@ AudioMixer::AudioMixer() {
 AudioMixer::~AudioMixer() = default;
 
 void AudioMixer::render(float* output, int frame_count) {
+    // T248: the whole pass runs between renderBarrier_.enter()/exit() so
+    // freeChannel()/waitForRenderQuiescent() can wait for it. The per-channel
+    // active loads below MUST come after enter() (see render_barrier.h).
+    RenderBarrier::Scope inRender(renderBarrier_);
+
     // Zero the output buffer
     std::memset(output, 0, frame_count * 2 * sizeof(float));
 
@@ -27,7 +33,9 @@ void AudioMixer::render(float* output, int frame_count) {
     float sfxVol = sfxVolume_.load();
 
     for (auto& ch : channels_) {
-        if (!ch.active.load(std::memory_order_relaxed)) {
+        // acquire (T248): pairs with the producer's active.store(true) after
+        // it filled in the channel's fields, so those writes are visible here.
+        if (!ch.active.load(std::memory_order_acquire)) {
             continue;
         }
 
@@ -74,7 +82,10 @@ void AudioMixer::render(float* output, int frame_count) {
                 if (ch.looping) {
                     ch.position = 0;
                 } else {
-                    ch.active.store(false, std::memory_order_relaxed);
+                    // release (T248): the allocator's seq_cst load of active
+                    // then orders our reads of this channel before its
+                    // resetChannel() writes.
+                    ch.active.store(false, std::memory_order_release);
                     break;
                 }
             }
@@ -144,6 +155,21 @@ void AudioMixer::freeChannel(int handle) {
         return;
     }
     channels_[handle].active.store(false);
+    // T248: before this, freeChannel() returned while render() could still
+    // be inside this channel's renderCallback (e.g. MusicPlayer ->
+    // MidiPlayer::render), and the caller went on to reuse the channel /
+    // reset the synth behind it. Wait for any in-flight pass to leave.
+    waitForRenderQuiescent();
+}
+
+bool AudioMixer::waitForRenderQuiescent() {
+    if (renderBarrier_.waitQuiescent()) {
+        return true;
+    }
+    LOG_WARN(MOD_AUDIO,
+             "AudioMixer: a render pass was still in flight after the barrier "
+             "timeout -- audio thread wedged? Proceeding without it.");
+    return false;
 }
 
 MixChannel* AudioMixer::getChannel(int handle) {
