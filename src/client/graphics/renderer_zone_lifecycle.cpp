@@ -79,7 +79,12 @@ void IrrlichtRenderer::unloadZone() {
         }
     }
     // P04: drop the lazy-open queue too so the next zone's Step0 starts fresh.
-    pendingGlobalEQE1Archives_.clear();
+    {
+        std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+        pendingGlobalEQE1Archives_.clear();
+        eqe1CandidateRaces_.clear();
+        eqe1LoadTimeCandidateCount_ = 0;
+    }
 
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
     // Release retained GLES2 textures and EGL images after atlas GL textures are deleted.

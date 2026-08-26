@@ -82,7 +82,12 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         for (const auto& name : archiveList.zoneArchives) {
             getOrOpenEQE1(name);
         }
-        pendingGlobalEQE1Archives_ = archiveList.globalArchives;
+        {
+            std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+            pendingGlobalEQE1Archives_ = archiveList.globalArchives;
+            eqe1CandidateRaces_.clear();
+            eqe1LoadTimeCandidateCount_ = 0;
+        }
 
         // T199: ADD THE ARCHIVES THE ZONE'S ACTUAL SPAWNS NEED.
         //
@@ -107,6 +112,12 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // for free from the existing lazy mechanism rather than by consulting
         // race_models.json's `also_in` (73 entries for race 24 alone; opening
         // them would be exactly the over-loading this exists to prevent).
+        //
+        // T266: the same extension now also runs for every race that reaches
+        // the entity prep queue AFTER load (queueEntityPrepRequests), and a
+        // name no candidate holds opens its owner (openArchiveContaining).
+        // Both are tagged late-open in the request log; this block is the
+        // load-time set.
         if (entityRenderer_) {
             std::set<uint16_t> spawnedRaces;
             for (const auto& [spawnId, vis] : entityRenderer_->getEntities()) {
@@ -114,26 +125,14 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
             }
             size_t added = 0;
             for (uint16_t raceId : spawnedRaces) {
-                std::string s3d = EQT::Graphics::getRaceS3DFile(raceId);
-                if (s3d.empty()) continue;
-                // race_models.json stores "akanon_chr.s3d"; archives are keyed
-                // by stem.
-                const size_t dot = s3d.rfind(".s3d");
-                if (dot != std::string::npos) s3d.resize(dot);
-                std::transform(s3d.begin(), s3d.end(), s3d.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-                if (s3d.empty()) continue;
-                // Already opened as a zone archive, or already queued.
-                if (std::find(pendingGlobalEQE1Archives_.begin(),
-                              pendingGlobalEQE1Archives_.end(), s3d)
-                    != pendingGlobalEQE1Archives_.end()) {
-                    continue;
-                }
-                pendingGlobalEQE1Archives_.push_back(s3d);
-                ++added;
+                if (addSpawnedRaceEQE1Candidate(raceId)) ++added;
             }
             LOG_INFO(MOD_GRAPHICS, "EQE1: {} distinct spawned races -> {} archive(s) queued "
                      "beyond the static list", spawnedRaces.size(), added);
+        }
+        {
+            std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+            eqe1LoadTimeCandidateCount_ = pendingGlobalEQE1Archives_.size();
         }
 
         // T207: the name -> archive index turns a lookup miss into at most one

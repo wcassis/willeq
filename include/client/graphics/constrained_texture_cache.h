@@ -285,6 +285,12 @@ public:
         bool        rawData = false;
     };
     void dumpEQE1RequestLog(const std::string& path) const;
+    // T266: mark an archive as opened OUTSIDE the zone's load-time candidate
+    // set (rule R2 -- a lookup needed it and nothing open could serve it).
+    // Every name that archive serves is written with `late-open` in the
+    // request log's `how` column, so a post-load spawn's archive is
+    // distinguishable from the load-time set in the audit.
+    void noteEQE1LateOpen(const std::string& archiveStem);
 
     // Look up raw (non-texture) data from registered EQE1 loaders.
     // Used for JSON metadata, WLD files, etc. packed as EQE1_TYPE_RAW_DATA entries.
@@ -534,6 +540,7 @@ private:
     // findCompressedEntry/getEQE1RawData run on loader threads.
     mutable std::mutex eqe1RequestLogMutex_;
     mutable std::map<std::string, EQE1Request> eqe1RequestLog_;
+    std::set<std::string> eqe1LateOpened_;  // T266; guarded by eqe1RequestLogMutex_
     void recordEQE1Request(const std::string& name, const EQE1Loader* servedBy,
                            bool rawData) const;
 

@@ -1825,6 +1825,11 @@ void ConstrainedTextureCache::recordEQE1Request(const std::string& name,
     }
 }
 
+void ConstrainedTextureCache::noteEQE1LateOpen(const std::string& archiveStem) {
+    std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
+    eqe1LateOpened_.insert(archiveStem);
+}
+
 void ConstrainedTextureCache::dumpEQE1RequestLog(const std::string& path) const {
     std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
     std::ofstream out(path);
@@ -1832,10 +1837,12 @@ void ConstrainedTextureCache::dumpEQE1RequestLog(const std::string& path) const 
         LOG_WARN(MOD_GRAPHICS, "T214: cannot write EQE1 request log to '{}'", path);
         return;
     }
-    out << "name\tserved_by\tlookups\tkind\n";
+    out << "name\tserved_by\tlookups\tkind\thow\n";
     for (const auto& [name, req] : eqe1RequestLog_) {
+        const bool late = eqe1LateOpened_.count(req.servedBy) != 0;
         out << name << '\t' << req.servedBy << '\t' << req.count << '\t'
-            << (req.rawData ? "raw" : "texture") << '\n';
+            << (req.rawData ? "raw" : "texture") << '\t'
+            << (late ? "late-open" : "-") << '\n';
     }
     LOG_INFO(MOD_GRAPHICS, "T214: wrote {} distinct EQE1 request(s) to {}",
              eqe1RequestLog_.size(), path);

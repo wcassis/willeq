@@ -1459,11 +1459,38 @@ private:
     // far. Reset alongside eqe1Loaders_ on zone teardown.
     // T207: this is now a candidate SET, not a probe order -- the index decides
     // which one holds a given name, this decides which are eligible at all.
+    // T266: no longer frozen at zone load. queueEntityPrepRequests() extends it
+    // for every race that spawns AFTER load (addSpawnedRaceEQE1Candidate), and
+    // openArchiveContaining() extends it with a late-open when a name is in no
+    // candidate at all (rule R2). Written on the loading thread (Step0) and the
+    // render thread (late spawns), read from whichever thread the cache's
+    // lookup runs on -- so it is guarded by eqe1CandidatesMutex_ (never held
+    // across getOrOpenEQE1, which takes eqe1Mutex_).
     std::vector<std::string> pendingGlobalEQE1Archives_;
+    mutable std::mutex eqe1CandidatesMutex_;
+    // Races whose archive has already been queued (dedups the per-frame call
+    // from queueEntityPrepRequests()); reset with the candidate set.
+    std::set<uint16_t> eqe1CandidateRaces_;
+    // Size of the candidate set when zone-load Step0 finished. Anything
+    // opened from beyond it is a late-open (an archive the load-time set did
+    // not name) and is tagged as such in the request log.
+    size_t eqe1LoadTimeCandidateCount_ = 0;
+
+    // T199/T266: queue the archive race_models names for `raceId`
+    // (race_models.json s3d_file, keyed by stem) as an EQE1 candidate, unless
+    // it is already there. Returns true when it added one. Called for every
+    // spawned race at zone load (T199) and for every race that reaches the
+    // entity prep queue after load (T266).
+    bool addSpawnedRaceEQE1Candidate(uint16_t raceId);
 
     // T207: resolve `name` to the one candidate archive that holds it and open
     // exactly that archive, or return nullptr having opened nothing. Replaces
     // tryOpenNextGlobalEQE1(), which probed the whole configured list.
+    // T266: a name held by NO candidate but by some archive in the tree opens
+    // that archive (rule R2, tagged `late-open` in the request log) instead of
+    // returning nullptr -- which, under all-or-nothing, was a client exit for
+    // any race that spawned after zone load. Only a name in NO archive still
+    // returns nullptr (a real asset gap; decision #2 keeps that fatal).
     const EQE1Loader* openArchiveContaining(const std::string& name);
 
     // T207: at zone-in-complete, report every opened EQE1 archive with the

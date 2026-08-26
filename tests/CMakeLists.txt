@@ -481,6 +481,21 @@ ADD_EXECUTABLE(test_reachability_sweep
 TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_reachability_sweep)
 
+# T266: EQE1TextureIndex::resolve -- candidate fast path, R2 late-open for a
+# name no candidate holds (the T263 post-load spawn FATAL), nothing for a name
+# in no archive (decision #2 keeps that fatal).
+ADD_EXECUTABLE(test_eqe1_texture_index
+    test_eqe1_texture_index.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_texture_index.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_eqe1_texture_index PRIVATE
+    ${CMAKE_SOURCE_DIR}/include ${JSONCPP_INCLUDE_DIRS})
+TARGET_COMPILE_DEFINITIONS(test_eqe1_texture_index PRIVATE
+    EQE1_TEXTURE_INDEX_JSON="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
+TARGET_LINK_LIBRARIES(test_eqe1_texture_index GTest::gtest_main ${JSONCPP_LIBRARIES}
+    ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_eqe1_texture_index)
+
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the
 # ActionCallback and the recording handler behind a real ActionDispatcher.

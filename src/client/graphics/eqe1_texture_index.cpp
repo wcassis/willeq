@@ -69,4 +69,28 @@ const std::vector<uint16_t>* EQE1TextureIndex::owners(const std::string& name) c
     return it == entries_.end() ? nullptr : &it->second;
 }
 
+bool EQE1TextureIndex::resolve(const std::string& name,
+                               const std::vector<std::string>& candidates,
+                               Resolution& out) const {
+    out = Resolution{};
+    if (!loaded_) return false;
+    const std::vector<uint16_t>* owners = this->owners(name);
+    if (!owners || owners->empty()) return false;
+    out.ownerCount = owners->size();
+
+    for (const std::string& candidate : candidates) {
+        for (uint16_t idx : *owners) {
+            if (archives_[idx] == candidate) {
+                out.archive = candidate;
+                out.lateOpen = false;
+                return true;
+            }
+        }
+    }
+
+    out.archive = archives_[owners->front()];
+    out.lateOpen = true;
+    return true;
+}
+
 }} // namespace EQT::Graphics

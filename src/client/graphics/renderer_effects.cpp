@@ -1,6 +1,9 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
+#include <cctype>
 #include <json/json.h>
 #include <fstream>
 #include <algorithm>
@@ -402,33 +405,90 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
 }
 
 const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& name) {
-    // T207. Two rules, in order:
+    // T207 / T266. Three rules, in order (EQE1TextureIndex::resolve):
     //   1. A name absent from the whole tree opens NOTHING. That is the case
     //      the old probe handled worst -- races 415/457 resolve to no archive,
-    //      and each one used to drain the entire configured list.
-    //   2. Among the archives that do hold the name, only ones in this zone's
-    //      candidate set are eligible, taken in configured order. A name can
-    //      live in hundreds of archives (one lives in 691); opening an
-    //      unrelated zone's file just because it also happens to contain the
-    //      name would trade the old waste for a stranger kind.
+    //      and each one used to drain the entire configured list. It stays
+    //      the all-or-nothing FATAL (decision #2): a real asset gap.
+    //   2. Among the archives that hold the name, a candidate wins, in
+    //      configured order. This is the fast path and serves every name the
+    //      load-time spawn list (T199) and the post-load race extension
+    //      (queueEntityPrepRequests) already accounted for.
+    //   3. A name in the tree but in no candidate opens the first owner in
+    //      index order (rule R2, T214: a lookup needed it and nothing open
+    //      could serve it). Before T266 this case returned nullptr and the
+    //      all-or-nothing rule exited the client -- T263 hit it with a GM
+    //      spawn of race 195 in qeynos2 (bwdhe0005 in bwd_chr, 9 owners,
+    //      none queued), and the same happens for any roamer/pet/summon of a
+    //      race absent at zone load. The archive is appended to the candidate
+    //      set so its sibling names take path 2 from then on.
     if (!eqe1Index_.isLoaded()) return nullptr;
 
-    const std::vector<uint16_t>* owners = eqe1Index_.owners(name);
-    if (!owners) return nullptr;
-
-    for (const std::string& candidate : pendingGlobalEQE1Archives_) {
-        for (uint16_t idx : *owners) {
-            if (eqe1Index_.archiveName(idx) == candidate) {
-                return getOrOpenEQE1(candidate);
-            }
-        }
+    std::vector<std::string> candidates;
+    size_t loadTimeCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+        candidates = pendingGlobalEQE1Archives_;
+        loadTimeCount = eqe1LoadTimeCandidateCount_;
     }
 
-    // In the tree but not in this zone's candidate set. Nothing opened -- an
-    // asset the zone was never configured to reach, which is worth seeing.
-    LOG_DEBUG(MOD_GRAPHICS, "EQE1: '{}' exists in {} archive(s), none a candidate "
-              "for zone '{}'", name, owners->size(), currentZoneName_);
-    return nullptr;
+    EQE1TextureIndex::Resolution r;
+    if (!eqe1Index_.resolve(name, candidates, r)) return nullptr;
+
+    bool late = r.lateOpen;
+    if (!late) {
+        // A candidate appended after load (a race that spawned later) is a
+        // late-open too: the load-time set did not name it.
+        const auto pos = std::find(candidates.begin(), candidates.end(), r.archive);
+        late = pos != candidates.end() &&
+               static_cast<size_t>(pos - candidates.begin()) >= loadTimeCount;
+    }
+
+    const bool alreadyOpen = [&] {
+        std::lock_guard<std::mutex> lock(eqe1Mutex_);
+        auto it = eqe1Loaders_.find(r.archive);
+        return it != eqe1Loaders_.end() && it->second != nullptr;
+    }();
+
+    const EQE1Loader* loader = getOrOpenEQE1(r.archive);
+    if (!loader) return nullptr;
+
+    if (r.lateOpen) {
+        std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+        if (std::find(pendingGlobalEQE1Archives_.begin(), pendingGlobalEQE1Archives_.end(),
+                      r.archive) == pendingGlobalEQE1Archives_.end()) {
+            pendingGlobalEQE1Archives_.push_back(r.archive);
+        }
+    }
+    if (late && !alreadyOpen) {
+        LOG_INFO(MOD_GRAPHICS, "EQE1: late-open '{}' for '{}' ({} owner(s); {}) "
+                 "in zone '{}' (rule R2)",
+                 r.archive, name, r.ownerCount,
+                 r.lateOpen ? "none in the candidate set" : "candidate added after zone load",
+                 currentZoneName_);
+        if (constrainedTextureCache_) constrainedTextureCache_->noteEQE1LateOpen(r.archive);
+    }
+    return loader;
+}
+
+bool IrrlichtRenderer::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
+    std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
+    if (!eqe1CandidateRaces_.insert(raceId).second) return false;
+    std::string s3d = EQT::Graphics::getRaceS3DFile(raceId);
+    if (s3d.empty()) return false;
+    // race_models stores "akanon_chr.s3d"; archives are keyed by stem.
+    const size_t dot = s3d.rfind(".s3d");
+    if (dot != std::string::npos) s3d.resize(dot);
+    std::transform(s3d.begin(), s3d.end(), s3d.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (s3d.empty()) return false;
+    // Already opened as a zone archive, or already queued.
+    if (std::find(pendingGlobalEQE1Archives_.begin(), pendingGlobalEQE1Archives_.end(), s3d)
+        != pendingGlobalEQE1Archives_.end()) {
+        return false;
+    }
+    pendingGlobalEQE1Archives_.push_back(s3d);
+    return true;
 }
 
 void IrrlichtRenderer::logEQE1ArchiveUsage() const {

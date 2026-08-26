@@ -705,6 +705,15 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         }
         if (depth > static_cast<uint8_t>(config_.constrainedConfig.entityPrepMaxPvsDepth)) continue;
 
+        // T266: a race that was not in the load-time spawn list (roamer, pet,
+        // GM/summoned NPC, illusion) gets its archive queued as an EQE1
+        // candidate BEFORE its prep job can ask for a texture. Deduped per
+        // race inside; a no-op for every race zone load already queued.
+        if (addSpawnedRaceEQE1Candidate(vis.raceId)) {
+            LOG_INFO(MOD_GRAPHICS, "EQE1: race {} spawned after zone load -> its archive "
+                     "queued as a late candidate (spawn={})", vis.raceId, spawnId);
+        }
+
         // Per-entity dedup: each entity gets its own prep job (equipment/variant work differs)
         if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
             EntityPrepWorker::PrepRequest req;
