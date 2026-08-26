@@ -392,15 +392,25 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	// null-tree case just below) is always safe: the loading thread builds
 	// a fresh BSP tree from the new zone's own map data regardless of what
 	// this snapshot carries.
+	// T260: the tag is now written by LoadZoneSources() too, so this branch
+	// is the normal zone-in path again (P17..T260 it never ran: the tag was
+	// empty and every zone-in fell through to the WARN below). A SIZE_MAX
+	// result here is a legitimate outcome, not a crash: start positions can
+	// sit outside every BSP region (P44's befallen zone-in at x=-195,y=-982
+	// probes SIZE_MAX against befallen's OWN tree), nothing consumes
+	// playerBspRegion, and the renderer treats a SIZE_MAX camera region as
+	// "no PVS" everywhere. The former LOG_FATAL + std::exit(1) was the only
+	// effect the lookup ever had.
 	if (m_zone_bsp_tree && m_zone_bsp_tree_zone_name == m_current_zone_name) {
 		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(m_x, m_y, m_z);
 		if (snap.playerBspRegion == SIZE_MAX) {
-			LOG_FATAL(MOD_MAIN, "Player BSP region is SIZE_MAX! pos=({:.2f},{:.2f},{:.2f}) zone={}",
-			          m_x, m_y, m_z, m_current_zone_name);
-			std::exit(1);
+			LOG_WARN(MOD_MAIN, "Snapshot: player BSP region is SIZE_MAX (start position outside every "
+			         "BSP region) pos=({:.2f},{:.2f},{:.2f}) zone={} -- continuing, nothing consumes it (T260)",
+			         m_x, m_y, m_z, m_current_zone_name);
+		} else {
+			LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f}) zone={}",
+			         snap.playerBspRegion, m_x, m_y, m_z, m_current_zone_name);
 		}
-		LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f})",
-		         snap.playerBspRegion, m_x, m_y, m_z);
 	} else if (m_zone_bsp_tree) {
 		LOG_WARN(MOD_MAIN, "Snapshot: m_zone_bsp_tree is stale (captured for '{}', current zone '{}') -- "
 		         "skipping region lookup, falling back to no-tree-yet (P17)",
@@ -408,6 +418,19 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	}
 
 	return snap;
+}
+
+void EverQuest::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone) {
+	if (bsp && builtForZone != m_current_zone_name) {
+		// The finalization of a load for a zone we have already left. Keep
+		// whatever LoadZoneSources() built for the current zone (or nothing).
+		LOG_WARN(MOD_MAIN, "SetZoneBspTree: rejecting tree built for '{}' (current zone '{}') -- "
+		         "late finalization of a previous load, keeping the current zone's tree (T260)",
+		         builtForZone, m_current_zone_name);
+		return;
+	}
+	m_zone_bsp_tree = std::move(bsp);
+	m_zone_bsp_tree_zone_name = m_zone_bsp_tree ? builtForZone : std::string();
 }
 
 // D20e2: StartLoadingThread, JoinLoadingThread moved to Application

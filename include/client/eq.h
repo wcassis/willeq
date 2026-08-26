@@ -1433,15 +1433,17 @@ public:
 	// U07c3: SetWindowManager removed — old UI deleted
 	// D20g: SetRDPServer removed — RDP audio setup moved to Application
 	// D20f2: Typed BSP tree for water detection / zone lines
-	// P17: tags the tree with the zone name that was current when it was set,
-	// so CreateZoneLoadSnapshot() can detect a stale (previous-zone) tree
-	// left over from the graphicsCompleteReady finalization racing a
-	// same/next-iteration re-zone (see P17_eviction_hygiene.md Review --
-	// "stale-zone-name-vs-position snapshot race").
-	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp) {
-		m_zone_bsp_tree = std::move(bsp);
-		m_zone_bsp_tree_zone_name = m_zone_bsp_tree ? m_current_zone_name : std::string();
-	}
+	// P17/T260: installs the renderer's tree from a completed zone load.
+	// builtForZone is the zone that load was FOR (Application passes the
+	// consumed snapshot's zoneName). T260: a tree built for any zone other
+	// than the current one is REJECTED, not installed -- that is the
+	// graphicsCompleteReady finalization of the previous load landing after
+	// a fast re-zone's NewZone (P15's "SIZE_MAX with zone=<source>" FATAL was
+	// the previous zone's tree paired with the new zone's position). The
+	// tree LoadZoneSources() built for the current zone stays in place.
+	// P17 tagged with m_current_zone_name at call time, which is exactly
+	// the value that is wrong in that race.
+	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone);
 	// D20e2: LoadZoneGraphics moved to Application
 #endif
 
@@ -1468,9 +1470,12 @@ private:
 
 	// D20f2: Typed BSP tree for water detection, zone lines, collision
 	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
-	// P17: zone name m_zone_bsp_tree was captured for (see SetZoneBspTree).
-	// Empty whenever m_zone_bsp_tree is null. Used by CreateZoneLoadSnapshot()
-	// to detect a stale tree that outlived a CleanupZone() reset.
+	// P17: zone name m_zone_bsp_tree was built for (set by LoadZoneSources()
+	// and SetZoneBspTree()). Empty whenever m_zone_bsp_tree is null. Used by
+	// CreateZoneLoadSnapshot() to detect a stale tree that outlived a
+	// CleanupZone() reset. T260: LoadZoneSources() did not set it, so every
+	// zone-in since P17 skipped the region lookup with a spurious "stale"
+	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
 	std::string m_zone_bsp_tree_zone_name;
 
 	// Zone S3D/WLD sources — opened/parsed once at game state layer, shared with sequential loader

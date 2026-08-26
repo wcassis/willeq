@@ -828,7 +828,7 @@ void Application::gameThreadLoop() {
                 if (m_eqClient) {
                     {
                         std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                        m_eqClient->SetZoneBspTree(std::move(m_pendingBspTree));
+                        m_eqClient->SetZoneBspTree(std::move(m_pendingBspTree), m_pendingBspTreeZone);
                     }
                     m_eqClient->OnGraphicsComplete();
                 }
@@ -1616,6 +1616,7 @@ bool Application::checkLoadingComplete() {
         if (m_renderer) {
             std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
             m_pendingBspTree = m_renderer->getZoneBspTree();
+            m_pendingBspTreeZone = m_zoneLoadSnapshot.zoneName;  // T260
         }
         LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: setting graphicsCompleteReady=true");
         m_graphicsCompleteReady.store(true, std::memory_order_release);
@@ -1872,6 +1873,7 @@ void Application::loadZoneGraphics() {
         if (m_renderer) {
             std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
             m_pendingBspTree = m_renderer->getZoneBspTree();
+            m_pendingBspTreeZone = m_zoneLoadSnapshot.zoneName;  // T260
         }
         m_graphicsCompleteReady.store(true, std::memory_order_release);
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: instant scene ready");

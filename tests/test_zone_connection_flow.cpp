@@ -20,13 +20,17 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "client/eq.h"
+#include "client/graphics/eq/wld_loader.h"
+#include "client/zone_bsp.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/inventory/inventory_constants.h"
 #include "common/net/packet.h"
@@ -1191,4 +1195,170 @@ TEST(GMModeGate, SecondPlayerProfileRefreshesGMMode) {
     });
     Replay(eq, HC_OP_PlayerProfile, on);
     EXPECT_TRUE(eq.GetGMMode());
+}
+
+// ============================================================================
+// T260: the zone-load snapshot's player BSP region.
+//
+// CreateZoneLoadSnapshot() resolves the player's start position against
+// the game-side BSP tree that LoadZoneSources() built from the new zone's
+// own WLD. Real zone data (befallen.s3d / arena.s3d) is required; the
+// expected region indices below were measured with an out-of-process probe
+// that mirrors LoadZoneSources' main-WLD selection and the snapshot's
+// findRegionIndexForPoint(m_x, m_y, m_z) call (see
+// refactor/T260_bsp_region_size_max.md Review).
+// ============================================================================
+
+namespace {
+
+std::string EqClientDataPath() {
+    const char* envPath = std::getenv("EQ_CLIENT_PATH");
+    return envPath ? std::string(envPath) : std::string(EQ_CLIENT_DATA_PATH);
+}
+
+bool FileReadable(const std::string& path) {
+    std::ifstream f(path);
+    return f.good();
+}
+
+// NewZone with a real short name: ZoneProcessNewZone reads it at packet
+// offset 66 and runs the per-zone loaders, including LoadZoneSources().
+void SendNamedNewZone(EverQuest& eq, const char* zoneName, uint16_t zoneId) {
+    auto payload = BuildPayload(2 + 700, [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(66, zoneName);
+        p.PutUInt16(686, zoneId);
+    });
+    Replay(eq, HC_OP_NewZone, payload);
+}
+
+// Testchar's documented restore coordinate in befallen (zone 36) -- the
+// coordinate P15 recorded a "pre-existing BSP-FATAL" at. Probe: region 2220.
+constexpr float kBefallenStartX = -77.9232f;
+constexpr float kBefallenStartY = 21.9086f;
+constexpr float kBefallenStartZ = 3.0f;
+constexpr size_t kBefallenStartRegion = 2220;
+// arena (0,0,0): probe region 93. The same point against befallen's tree
+// is region 2216 -- distinct, so a wrong-tree lookup is detectable.
+constexpr size_t kArenaOriginRegion = 93;
+constexpr size_t kBefallenOriginRegion = 2216;
+
+} // namespace
+
+TEST(ZoneLoadSnapshot, PlayerRegionResolvedAfterZoneIn) {
+    const std::string dataPath = EqClientDataPath();
+    if (!FileReadable(dataPath + "/befallen.s3d")) {
+        GTEST_SKIP() << "befallen.s3d not found under " << dataPath;
+    }
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetEQClientPath(dataPath);
+
+    SendNamedNewZone(eq, "befallen", 36);
+    ASSERT_EQ(eq.GetCurrentZoneName(), "befallen");
+    eq.SetPosition(kBefallenStartX, kBefallenStartY, kBefallenStartZ);
+
+    const auto snap = eq.CreateZoneLoadSnapshot();
+    EXPECT_EQ(snap.zoneName, "befallen");
+    EXPECT_NE(snap.playerBspRegion, SIZE_MAX)
+        << "start position must resolve against the zone's own freshly loaded tree";
+    EXPECT_EQ(snap.playerBspRegion, kBefallenStartRegion);
+}
+
+TEST(ZoneLoadSnapshot, TwoZoneSequenceResolvesAgainstSecondZoneTree) {
+    const std::string dataPath = EqClientDataPath();
+    if (!FileReadable(dataPath + "/befallen.s3d") || !FileReadable(dataPath + "/arena.s3d")) {
+        GTEST_SKIP() << "befallen.s3d / arena.s3d not found under " << dataPath;
+    }
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetEQClientPath(dataPath);
+
+    SendNamedNewZone(eq, "befallen", 36);
+    eq.SetPosition(kBefallenStartX, kBefallenStartY, kBefallenStartZ);
+    ASSERT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kBefallenStartRegion);
+
+    // Re-zone: the next NewZone rebuilds the game-side tree for arena.
+    SendNamedNewZone(eq, "arena", 77);
+    ASSERT_EQ(eq.GetCurrentZoneName(), "arena");
+    eq.SetPosition(0.0f, 0.0f, 0.0f);
+
+    const auto snap = eq.CreateZoneLoadSnapshot();
+    EXPECT_EQ(snap.zoneName, "arena");
+    EXPECT_NE(snap.playerBspRegion, SIZE_MAX);
+    EXPECT_EQ(snap.playerBspRegion, kArenaOriginRegion)
+        << "region must come from arena's tree (befallen's tree would give "
+        << kBefallenOriginRegion << ")";
+}
+
+TEST(ZoneLoadSnapshot, LateFinalizationTreeForPreviousZoneIsRejected) {
+    // Application's graphicsCompleteReady finalization hands the renderer's
+    // tree for the JUST-COMPLETED load back to EverQuest. If a fast re-zone
+    // has already received the next zone's NewZone by then, that tree is the
+    // previous zone's and must not displace the tree LoadZoneSources built
+    // for the current zone (P15's "SIZE_MAX with zone=<source>" FATAL was
+    // exactly this pairing: qeynos2's position against befallen's tree).
+    const std::string dataPath = EqClientDataPath();
+    if (!FileReadable(dataPath + "/befallen.s3d") || !FileReadable(dataPath + "/arena.s3d")) {
+        GTEST_SKIP() << "befallen.s3d / arena.s3d not found under " << dataPath;
+    }
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetEQClientPath(dataPath);
+
+    SendNamedNewZone(eq, "arena", 77);
+    eq.SetPosition(0.0f, 0.0f, 0.0f);
+    ASSERT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
+
+    // Build befallen's tree the way the renderer would have for the previous
+    // load, and deliver it as the (late) finalization for that zone.
+    EQT::Graphics::WldLoader loader;
+    ASSERT_TRUE(loader.parseFromArchive(dataPath + "/befallen.s3d", "befallen.wld"));
+    auto befallenTree = loader.getBspTree();
+    ASSERT_TRUE(befallenTree);
+    ASSERT_EQ(befallenTree->findRegionIndexForPoint(0.0f, 0.0f, 0.0f), kBefallenOriginRegion);
+
+    eq.SetZoneBspTree(befallenTree, "befallen");
+
+    const auto snap = eq.CreateZoneLoadSnapshot();
+    EXPECT_EQ(snap.zoneName, "arena");
+    EXPECT_NE(snap.playerBspRegion, kBefallenOriginRegion)
+        << "snapshot resolved the arena position against befallen's tree";
+    EXPECT_EQ(snap.playerBspRegion, kArenaOriginRegion)
+        << "the current zone's own tree must survive a stale finalization";
+}
+
+TEST(ZoneLoadSnapshot, MatchingFinalizationTreeIsInstalled) {
+    const std::string dataPath = EqClientDataPath();
+    if (!FileReadable(dataPath + "/arena.s3d")) {
+        GTEST_SKIP() << "arena.s3d not found under " << dataPath;
+    }
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetEQClientPath(dataPath);
+    SendNamedNewZone(eq, "arena", 77);
+    eq.SetPosition(0.0f, 0.0f, 0.0f);
+
+    EQT::Graphics::WldLoader loader;
+    ASSERT_TRUE(loader.parseFromArchive(dataPath + "/arena.s3d", "arena.wld"));
+    auto arenaTree = loader.getBspTree();
+    ASSERT_TRUE(arenaTree);
+    eq.SetZoneBspTree(arenaTree, "arena");
+
+    EXPECT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
+}
+
+TEST(ZoneLoadSnapshot, OutOfTreeStartPositionIsNotFatal) {
+    // Legitimate start positions can fall outside every BSP region (P44's
+    // befallen zone-in at x=-195,y=-982 probes SIZE_MAX against befallen's
+    // own tree). Nothing consumes playerBspRegion, so SIZE_MAX is a
+    // diagnostic, never an exit.
+    const std::string dataPath = EqClientDataPath();
+    if (!FileReadable(dataPath + "/befallen.s3d")) {
+        GTEST_SKIP() << "befallen.s3d not found under " << dataPath;
+    }
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.SetEQClientPath(dataPath);
+    SendNamedNewZone(eq, "befallen", 36);
+    eq.SetPosition(-195.0f, -982.0f, 3.0f);
+
+    const auto snap = eq.CreateZoneLoadSnapshot();
+    EXPECT_EQ(snap.zoneName, "befallen");
+    EXPECT_EQ(snap.playerBspRegion, SIZE_MAX);
+    EXPECT_FALSE(eq.IsQuitRequested());
 }

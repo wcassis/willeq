@@ -678,6 +678,7 @@ void EverQuest::LoadZoneSources(const std::string& zone_name)
 	m_zone_archive.reset();
 	m_zone_wld.reset();
 	m_zone_bsp_tree.reset();
+	m_zone_bsp_tree_zone_name.clear();  // T260: tag follows the tree
 
 	// Open zone S3D archive
 	std::string archivePath = m_eq_client_path;
@@ -732,6 +733,7 @@ void EverQuest::LoadZoneSources(const std::string& zone_name)
 	if (!m_zone_bsp_tree || m_zone_bsp_tree->regions.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: BSP tree is null or has no regions for zone '{}'", zone_name);
 		m_zone_bsp_tree.reset();
+		m_zone_bsp_tree_zone_name.clear();
 		m_zone_wld.reset();
 		m_zone_archive.reset();
 		RequestQuit();
@@ -749,6 +751,12 @@ void EverQuest::LoadZoneSources(const std::string& zone_name)
 	// (see refactor/P04_loader_memory_audit.md review).
 	m_zone_archive.reset();
 	m_zone_wld.reset();
+	// T260: this tree was built from zone_name's own WLD -- tag it so
+	// CreateZoneLoadSnapshot() trusts it. P17 introduced the tag but only
+	// SetZoneBspTree() wrote it, so the tree built here always carried an
+	// empty tag and the snapshot's region lookup was skipped on every
+	// zone-in (live logs: "stale (captured for '', current zone 'befallen')").
+	m_zone_bsp_tree_zone_name = zone_name;
 
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now() - startTime).count();

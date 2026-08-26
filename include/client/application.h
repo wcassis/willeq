@@ -537,6 +537,11 @@ private:
     std::atomic<bool> m_zoneLoadReady{false};          // Set by game thread, consumed by render thread
     std::atomic<bool> m_graphicsCompleteReady{false};  // Set by render thread, consumed by game thread
     std::shared_ptr<EQT::Graphics::BspTree> m_pendingBspTree;  // Protected by m_zoneLoadMutex
+    // T260: zone the pending tree was built for (the completed load's snapshot
+    // zoneName, captured with the tree). Handed to EverQuest::SetZoneBspTree()
+    // so a finalization that lands after a fast re-zone is recognised as the
+    // PREVIOUS zone's tree and rejected instead of tagged with the new zone.
+    std::string m_pendingBspTreeZone;  // Protected by m_zoneLoadMutex
 
     // Timing
     std::chrono::steady_clock::time_point m_lastUpdate;
