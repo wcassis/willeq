@@ -205,7 +205,7 @@ TEST_F(InputActionBridgeTest, UIToggleActions_AreNotBridgeTerritory) {
     // renderer); the bridge must leave them pending, not consume-and-drop.
     input.pendingActions = {
         InputAction::ToggleInventory, InputAction::ToggleSpellbook,
-        InputAction::ToggleWireframe, InputAction::OpenChat,
+        InputAction::ToggleWireframe, InputAction::ToggleHUD,
     };
 
     update();

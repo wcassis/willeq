@@ -414,14 +414,6 @@ void IrrlichtRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId,
     }
 }
 
-void IrrlichtRenderer::setChatSubmitCallback(ChatSubmitCallback callback) {
-    chatSubmitCallback_ = callback;
-    // WindowManager removed — callback stored for future new UI
-}
-
-void IrrlichtRenderer::setReadItemCallback(ReadItemCallback callback) {
-    (void)callback;  // WindowManager removed
-}
 
 
 void IrrlichtRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill) {

@@ -592,11 +592,9 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
         }
         switch (event.action) {
             case RA::ToggleVendor:
-                if (vendorToggleCallback_) vendorToggleCallback_();
                 if (bridge_) bridge_->pushIntent(eqt::events::VendorToggleIntent{});
                 break;
             case RA::ToggleTrainer:
-                if (trainerToggleCallback_) trainerToggleCallback_();
                 if (bridge_) bridge_->pushIntent(eqt::events::TrainerToggleIntent{});
                 break;
             case RA::DoorInteract:
@@ -604,7 +602,6 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                     uint8_t doorId = doorManager_->getNearestDoor(playerX_, playerY_, playerZ_, playerHeading_);
                     if (doorId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "Door interaction: ID {}", doorId);
-                        if (doorInteractCallback_) doorInteractCallback_(doorId);
                         if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
                     }
                 }
@@ -613,7 +610,6 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                     uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
                     if (objectId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "World object interaction: dropId {}", objectId);
-                        if (worldObjectInteractCallback_) worldObjectInteractCallback_(objectId);
                         if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
                     }
                 }

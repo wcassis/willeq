@@ -412,10 +412,14 @@ public:
     }
     void clearPendingKeyEvents() { pendingKeyEvents_.clear(); }
 
-    // Chat focus shortcuts (read-and-reset via exchange; T225 note below)
-    bool enterKeyPressed() { return enterKeyPressed_.exchange(false, std::memory_order_relaxed); }
-    bool slashKeyPressed() { return slashKeyPressed_.exchange(false, std::memory_order_relaxed); }
-    bool escapeKeyPressed() { return escapeKeyPressed_.exchange(false, std::memory_order_relaxed); }
+    // Chat focus shortcuts (read-and-reset). T241: the game-thread readers in
+    // GraphicsInputHandler were deleted (their InputAction::OpenChat/
+    // OpenChatSlash/CloseChat had no consumer), so these three flags and
+    // pendingKeyEvents_ are now set (OnEvent) and consumed
+    // (IrrlichtRenderer::processChatInput) on the render thread only.
+    bool enterKeyPressed() { bool v = enterKeyPressed_; enterKeyPressed_ = false; return v; }
+    bool slashKeyPressed() { bool v = slashKeyPressed_; slashKeyPressed_ = false; return v; }
+    bool escapeKeyPressed() { bool v = escapeKeyPressed_; escapeKeyPressed_ = false; return v; }
 
     // Chat focus state (set by renderer, read by GraphicsInputHandler on the
     // game thread -- atomic, same discipline as the flags)
@@ -464,11 +468,11 @@ private:
     float musicVolumeDelta_ = 0.0f;
     float effectsVolumeDelta_ = 0.0f;
 
-    // Chat input state
+    // Chat input state -- render thread only since T241 (see the accessors)
     std::vector<KeyEvent> pendingKeyEvents_;
-    std::atomic<bool> enterKeyPressed_{false};   // T225: cross-thread read-and-reset
-    std::atomic<bool> slashKeyPressed_{false};
-    std::atomic<bool> escapeKeyPressed_{false};
+    bool enterKeyPressed_ = false;
+    bool slashKeyPressed_ = false;
+    bool escapeKeyPressed_ = false;
 
     // Current hotkey mode for key lookups
     eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;
@@ -807,13 +811,9 @@ public:
     bool hasLoadFailed() const { return loadFailed_; }
     static const char* stepToString(ZoneLoadStep step);
 
-    // Door interaction callback (called when player clicks door or presses U key)
-    using DoorInteractCallback = std::function<void(uint8_t doorId)>;
-    void setDoorInteractCallback(DoorInteractCallback callback) { doorInteractCallback_ = callback; }
-
-    // World object interaction callback (called when player clicks tradeskill container or presses O key)
-    using WorldObjectInteractCallback = std::function<void(uint32_t dropId)>;
-    void setWorldObjectInteractCallback(WorldObjectInteractCallback callback) { worldObjectInteractCallback_ = callback; }
+    // T241: door / world-object interaction callbacks deleted (no setter
+    // caller anywhere); DoorInteractIntent / WorldObjectInteractIntent are
+    // the live routes.
 
     // World object management (for click detection on tradeskill containers)
     void addWorldObject(uint32_t dropId, float x, float y, float z, uint32_t objectType, const std::string& name);
@@ -1058,38 +1058,11 @@ public:
     // Bridge for cross-thread game state ↔ renderer communication (D14+)
     void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
 
-    // Target selection callback (called when player clicks on an entity)
-    using TargetCallback = std::function<void(uint16_t spawnId)>;
-    void setTargetCallback(TargetCallback callback) { targetCallback_ = callback; }
-
-    // Loot corpse callback (called when player shift+clicks on a corpse)
-    using LootCorpseCallback = std::function<void(uint16_t corpseId)>;
-    void setLootCorpseCallback(LootCorpseCallback callback) { lootCorpseCallback_ = callback; }
-
-
-    // Vendor toggle callback (called when V key is pressed in Player Mode)
-    using VendorToggleCallback = std::function<void()>;
-    void setVendorToggleCallback(VendorToggleCallback callback) { vendorToggleCallback_ = callback; }
-
-    // Banker interact callback (called when Ctrl+click on NPC in Player Mode)
-    using BankerInteractCallback = std::function<void(uint16_t npcId)>;
-    void setBankerInteractCallback(BankerInteractCallback callback) { bankerInteractCallback_ = callback; }
-
-    // Trainer toggle callback (called when T key is pressed in Player Mode)
-    using TrainerToggleCallback = std::function<void()>;
-    void setTrainerToggleCallback(TrainerToggleCallback callback) { trainerToggleCallback_ = callback; }
-
-    // Read item callback (called when right-clicking a readable book/note item)
-    using ReadItemCallback = std::function<void(const std::string& bookText, uint8_t bookType)>;
-    void setReadItemCallback(ReadItemCallback callback);
-
-    // Chat submit callback (called when user submits chat input)
-    using ChatSubmitCallback = std::function<void(const std::string& text)>;
-    void setChatSubmitCallback(ChatSubmitCallback callback);
-
-    // Zoning enabled callback (called when zone line visualization is toggled)
-    using ZoningEnabledCallback = std::function<void(bool enabled)>;
-    void setZoningEnabledCallback(ZoningEnabledCallback callback) { zoningEnabledCallback_ = callback; }
+    // T241: the target / loot-corpse / vendor-toggle / banker-interact /
+    // trainer-toggle / read-item / chat-submit / zoning-enabled callback
+    // setters were deleted. No caller ever set one (grep, tests included);
+    // each site that invoked them already pushes the equivalent bridge
+    // intent (TargetIntent, LootCorpseIntent, VendorToggleIntent, ...).
 
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
@@ -1941,16 +1914,7 @@ private:
     // Collision detection for player mode (shared ownership — P35)
     std::shared_ptr<const HCMap> collisionMap_;
 
-    // Target selection and loot
-    TargetCallback targetCallback_;
-    LootCorpseCallback lootCorpseCallback_;
-    VendorToggleCallback vendorToggleCallback_;
-    BankerInteractCallback bankerInteractCallback_;
-    TrainerToggleCallback trainerToggleCallback_;
-    ChatSubmitCallback chatSubmitCallback_;
-    DoorInteractCallback doorInteractCallback_;
-    WorldObjectInteractCallback worldObjectInteractCallback_;
-    ZoningEnabledCallback zoningEnabledCallback_;
+    // Target selection
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
     uint8_t currentTargetHpPercent_ = 100;

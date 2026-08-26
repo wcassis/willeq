@@ -544,10 +544,6 @@ public:
         return pop(lootRequests);
     }
 
-    bool hasPendingKeyEvents() const override { return false; }
-    std::optional<input::KeyEvent> popKeyEvent() override { return std::nullopt; }
-    void clearPendingKeyEvents() override {}
-
     std::optional<input::ChatMessage> consumeChatMessage() override {
         return pop(chatMessages);
     }

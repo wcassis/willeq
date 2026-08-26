@@ -50,10 +50,6 @@ public:
     std::optional<TargetRequest> consumeTargetRequest() override;
     std::optional<LootRequest> consumeLootRequest() override;
 
-    bool hasPendingKeyEvents() const override;
-    std::optional<KeyEvent> popKeyEvent() override;
-    void clearPendingKeyEvents() override;
-
     // Console-specific methods return empty (not used in graphics mode)
     std::optional<ChatMessage> consumeChatMessage() override { return std::nullopt; }
     std::optional<MoveCommand> consumeMoveCommand() override { return std::nullopt; }

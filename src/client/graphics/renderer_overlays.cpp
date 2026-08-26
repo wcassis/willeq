@@ -587,25 +587,14 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
             if (checkEntityLOS(cameraPos, entityPos)) {
                 // Check for shift+click on corpse to loot
                 if (shiftHeld && visual.isCorpse) {
-                    if (lootCorpseCallback_) {
-                        lootCorpseCallback_(targetId);
-                    }
                     if (bridge_) bridge_->pushIntent(eqt::events::LootCorpseIntent{targetId});
                 } else if (ctrlHeld && visual.isNPC && !visual.isCorpse) {
                     // Ctrl+click on NPC - banker interaction
                     LOG_INFO(MOD_GRAPHICS, "Ctrl+click on NPC: {} (ID: {})", visual.name, targetId);
-                    if (bankerInteractCallback_) {
-                        bankerInteractCallback_(targetId);
-                    }
                     if (bridge_) bridge_->pushIntent(eqt::events::BankerInteractIntent{targetId});
                 } else {
                     // Entity is visible - set as target
                     LOG_INFO(MOD_GRAPHICS, "Target selected: {} (ID: {})", visual.name, targetId);
-
-                    // Invoke callback to notify EverQuest class
-                    if (targetCallback_) {
-                        targetCallback_(targetId);
-                    }
                     if (bridge_) bridge_->pushIntent(eqt::events::TargetIntent{targetId});
                 }
             } else {
@@ -619,7 +608,6 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
             uint8_t doorId = doorManager_->getDoorAtScreenPos(clickX, clickY, camera_, collisionManager_);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
-                if (doorInteractCallback_) doorInteractCallback_(doorId);
                 if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
                 handledClick = true;
             }
@@ -630,7 +618,6 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
             uint32_t objectId = getWorldObjectAtScreenPos(clickX, clickY);
             if (objectId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "World object clicked: dropId {}", objectId);
-                if (worldObjectInteractCallback_) worldObjectInteractCallback_(objectId);
                 if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
             }
         }
@@ -835,9 +822,6 @@ void IrrlichtRenderer::toggleZoneLineVisualization() {
     }
 
     // Notify EverQuest to enable/disable zoning when zone lines are toggled
-    if (zoningEnabledCallback_) {
-        zoningEnabledCallback_(showZoneLineBoxes_);
-    }
     if (bridge_) bridge_->pushIntent(eqt::events::ZoningEnabledIntent{showZoneLineBoxes_});
 
     LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");

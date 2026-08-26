@@ -143,16 +143,12 @@ void GraphicsInputHandler::updateFromEventReceiver() {
         }
     }
 
-    // Chat input keys
-    if (m_eventReceiver->enterKeyPressed()) {
-        m_pendingActions[static_cast<size_t>(InputAction::OpenChat)] = true;
-    }
-    if (m_eventReceiver->slashKeyPressed()) {
-        m_pendingActions[static_cast<size_t>(InputAction::OpenChatSlash)] = true;
-    }
-    if (m_eventReceiver->escapeKeyPressed()) {
-        m_pendingActions[static_cast<size_t>(InputAction::CloseChat)] = true;
-    }
+    // T241: the Enter / slash / Escape reads that used to sit here were
+    // deleted. They raced the render thread for the same one-shot flags
+    // (RendererEventReceiver::enterKeyPressed() etc.) and the actions they
+    // set (OpenChat / OpenChatSlash / CloseChat) had no consumer; chat
+    // open/close and Escape target-clear are handled entirely in
+    // IrrlichtRenderer::processChatInput() on the render thread.
 
     // Check for jump (space key) — skip when chat input is focused
     if (!m_eventReceiver->isChatInputFocused() && m_eventReceiver->wasKeyPressed(irr::KEY_SPACE)) {
@@ -223,40 +219,6 @@ std::optional<LootRequest> GraphicsInputHandler::consumeLootRequest() {
     auto request = m_lootRequests.front();
     m_lootRequests.pop();
     return request;
-}
-
-bool GraphicsInputHandler::hasPendingKeyEvents() const {
-#ifdef EQT_HAS_GRAPHICS
-    return m_eventReceiver && m_eventReceiver->hasPendingKeyEvents();
-#else
-    return false;
-#endif
-}
-
-std::optional<KeyEvent> GraphicsInputHandler::popKeyEvent() {
-#ifdef EQT_HAS_GRAPHICS
-    if (!m_eventReceiver || !m_eventReceiver->hasPendingKeyEvents()) {
-        return std::nullopt;
-    }
-
-    auto irrEvent = m_eventReceiver->popKeyEvent();
-    KeyEvent event;
-    event.keyCode = static_cast<uint32_t>(irrEvent.key);
-    event.character = irrEvent.character;
-    event.shift = irrEvent.shift;
-    event.ctrl = irrEvent.ctrl;
-    return event;
-#else
-    return std::nullopt;
-#endif
-}
-
-void GraphicsInputHandler::clearPendingKeyEvents() {
-#ifdef EQT_HAS_GRAPHICS
-    if (m_eventReceiver) {
-        m_eventReceiver->clearPendingKeyEvents();
-    }
-#endif
 }
 
 void GraphicsInputHandler::injectTargetRequest(uint16_t spawnId) {

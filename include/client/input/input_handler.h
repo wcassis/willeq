@@ -70,10 +70,8 @@ enum class InputAction {
     ToggleCollision,
     ToggleCollisionDebug,
 
-    // Chat input
-    OpenChat,       // Enter key pressed - open chat input
-    OpenChatSlash,  // Slash key pressed - open chat with '/'
-    CloseChat,      // Escape key pressed - close chat
+    // T241: OpenChat / OpenChatSlash / CloseChat removed -- chat focus is
+    // handled on the render thread; nothing consumed them here.
 
     Count
 };
@@ -157,16 +155,6 @@ struct InputState {
 };
 
 /**
- * KeyEvent - A keyboard event for text input.
- */
-struct KeyEvent {
-    uint32_t keyCode;   // Platform-specific key code
-    wchar_t character;  // Unicode character (0 if not a printable char)
-    bool shift;
-    bool ctrl;
-};
-
-/**
  * IInputHandler - Abstract interface for input handling.
  *
  * This interface abstracts input handling for different modes:
@@ -246,23 +234,9 @@ public:
      */
     virtual std::optional<LootRequest> consumeLootRequest() = 0;
 
-    // ========== Text Input ==========
-
-    /**
-     * Check if there are pending key events for text input.
-     */
-    virtual bool hasPendingKeyEvents() const = 0;
-
-    /**
-     * Pop a pending key event.
-     * @return Key event if one is pending, empty otherwise.
-     */
-    virtual std::optional<KeyEvent> popKeyEvent() = 0;
-
-    /**
-     * Clear all pending key events.
-     */
-    virtual void clearPendingKeyEvents() = 0;
+    // T241: the text-input trio (hasPendingKeyEvents / popKeyEvent /
+    // clearPendingKeyEvents) was deleted -- no caller through this
+    // interface; typed chat text is drained by the renderer itself.
 
     // ========== Console-specific (for headless mode) ==========
 

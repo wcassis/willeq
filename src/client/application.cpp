@@ -11,7 +11,6 @@
 #include "client/mode/graphical_mode.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/spell_constants.h"
-#include "client/output/graphical_renderer.h"
 #include "common/util/json_config.h"
 #include "common/logging.h"
 #include "common/performance_metrics.h"
@@ -386,10 +385,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         LOG_DEBUG(MOD_MAIN, "Command processor connected to renderer");
     }
 
-    // Connect renderer callbacks to action dispatcher
-    LOG_TRACE(MOD_MAIN, "Connecting renderer callbacks...");
-    connectRendererCallbacks();
-    LOG_DEBUG(MOD_MAIN, "Renderer callbacks connected");
+    // T241: connectRendererCallbacks() deleted. Nothing derives from
+    // output::GraphicalRenderer, so its dynamic_cast always failed and it
+    // never set a callback; every route it mirrored is a bridge intent
+    // (TargetIntent, DoorInteractIntent, ChatSubmitIntent, ...).
 
 #ifdef EQT_HAS_GRAPHICS
     // Initialize graphics if graphical mode
@@ -1940,82 +1939,6 @@ void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
 void Application::updateLoadingProgress() {
     // Loading progress is updated by EverQuest client callbacks directly
     // This method is a placeholder for future centralized loading state management
-}
-
-void Application::connectRendererCallbacks() {
-    if (!m_gameMode || !m_dispatcher) {
-        return;
-    }
-
-    auto* renderer = m_gameMode->getRenderer();
-    if (!renderer) {
-        return;
-    }
-
-    // Check if this is a graphical renderer with callbacks
-    auto* graphicalRenderer = dynamic_cast<output::GraphicalRenderer*>(renderer);
-    if (!graphicalRenderer) {
-        return;
-    }
-
-    LOG_DEBUG(MOD_MAIN, "Connecting renderer callbacks to action dispatcher");
-
-    // T235: no spell-gem cast callback any more. It was set here with a
-    // 0-based gem against ActionDispatcher::castSpell()'s 1-based contract,
-    // would have fired from the RENDER thread, and in practice was never
-    // set at all: nothing derives from output::GraphicalRenderer, so the
-    // dynamic_cast above always fails and this whole function is a no-op
-    // live (T235 BEFORE log: "Renderer callbacks connected" with no
-    // "Connecting renderer callbacks to action dispatcher" before it).
-    // Spell-gem keys travel GraphicsInputHandler ->
-    // InputActionBridge::processSpellCasts() on the game thread.
-
-    // Connect target selection callback
-    graphicalRenderer->setTargetCallback([this](uint16_t spawnId) {
-        if (m_dispatcher) {
-            m_dispatcher->targetEntity(spawnId);
-        }
-    });
-
-    // Connect door interaction callback
-    graphicalRenderer->setDoorInteractCallback([this](uint8_t doorId) {
-        if (m_actionHandler) {
-            m_actionHandler->clickDoor(doorId);
-        }
-    });
-
-    // Connect chat submit callback
-    graphicalRenderer->setChatSubmitCallback([this](const std::string& text) {
-        if (m_commandProcessor && !text.empty()) {
-            if (text[0] == '/') {
-                // Process as command
-                m_commandProcessor->processCommand(text);
-            } else {
-                // Send as chat
-                if (m_dispatcher) {
-                    m_dispatcher->sendChatMessage(action::ChatChannel::Say, text);
-                }
-            }
-        }
-    });
-
-    // Connect pet command callback
-    graphicalRenderer->setPetCommandCallback([this](uint8_t command, uint16_t targetId) {
-        if (m_dispatcher) {
-            m_dispatcher->sendPetCommand(command, targetId);
-        }
-    });
-
-    // Connect inventory action callback
-    graphicalRenderer->setInventoryActionCallback([this](int16_t slotId, uint8_t action) {
-        // Handle inventory actions through the action handler
-        if (m_actionHandler && action == 0) {  // 0 = use/equip
-            // For now just log - actual item use would go through EQ client
-            LOG_DEBUG(MOD_MAIN, "Inventory action: slot={}, action={}", slotId, action);
-        }
-    });
-
-    LOG_INFO(MOD_MAIN, "Renderer callbacks connected");
 }
 
 // ========== Static Helpers ==========

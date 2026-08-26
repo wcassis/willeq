@@ -389,11 +389,6 @@ private:
      */
     void updateLoadingProgress();
 
-    /**
-     * Connect renderer callbacks to action dispatcher.
-     */
-    void connectRendererCallbacks();
-
     // ========== D20e2: Zone Loading (moved from EverQuest) ==========
 
     void startLoadingThread();

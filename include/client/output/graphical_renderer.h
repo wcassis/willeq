@@ -168,104 +168,15 @@ public:
      */
     virtual void clearDoors() = 0;
 
-    // ========== Callbacks (Graphical) ==========
-
-    /**
-     * Door interaction callback type.
-     */
-    using DoorInteractCallback = std::function<void(uint8_t doorId)>;
-
-    /**
-     * Set door interaction callback.
-     */
-    virtual void setDoorInteractCallback(DoorInteractCallback callback) {
-        m_doorInteractCallback = callback;
-    }
-
-    /**
-     * Target selection callback type.
-     */
-    using TargetCallback = std::function<void(uint16_t spawnId)>;
-
-    /**
-     * Set target selection callback.
-     */
-    virtual void setTargetCallback(TargetCallback callback) {
-        m_targetCallback = callback;
-    }
-
-    /**
-     * Movement callback type for position updates.
-     */
-    struct PlayerPositionUpdate {
-        float x = 0, y = 0, z = 0;
-        float heading = 0;
-        float dx = 0, dy = 0, dz = 0;
-        bool isMoving(float threshold = 0.1f) const {
-            return (dx * dx + dy * dy + dz * dz) > (threshold * threshold);
-        }
-    };
-    using MovementCallback = std::function<void(const PlayerPositionUpdate& update)>;
-
-    /**
-     * Set movement callback for player position sync.
-     */
-    virtual void setMovementCallback(MovementCallback callback) {
-        m_movementCallback = callback;
-    }
-
-    /**
-     * Chat submit callback type.
-     */
-    using ChatSubmitCallback = std::function<void(const std::string& text)>;
-
-    /**
-     * Set chat submit callback.
-     */
-    virtual void setChatSubmitCallback(ChatSubmitCallback callback) {
-        m_chatSubmitCallback = callback;
-    }
-
-    /**
-     * Pet command callback type.
-     * @param command Pet command ID (from pet_constants.h)
-     * @param targetId Optional target for attack command
-     */
-    using PetCommandCallback = std::function<void(uint8_t command, uint16_t targetId)>;
-
-    /**
-     * Set pet command callback.
-     */
-    virtual void setPetCommandCallback(PetCommandCallback callback) {
-        m_petCommandCallback = callback;
-    }
-
-    /**
-     * Inventory action callback type.
-     * @param slotId Inventory slot ID
-     * @param action Action type (0=use, 1=equip, 2=drop, etc.)
-     */
-    using InventoryActionCallback = std::function<void(int16_t slotId, uint8_t action)>;
-
-    /**
-     * Set inventory action callback.
-     */
-    virtual void setInventoryActionCallback(InventoryActionCallback callback) {
-        m_inventoryActionCallback = callback;
-    }
+    // T241: the callback typedefs/setters/members that used to live here
+    // (door, target, movement, chat-submit, pet-command, inventory-action)
+    // were deleted. Nothing derives from this class, so no setter was ever
+    // reachable; the live routes are bridge intents.
 
 protected:
     std::unique_ptr<input::IInputHandler> m_inputHandler;
     CameraMode m_cameraMode = CameraMode::FirstPerson;
     RenderQuality m_renderQuality = RenderQuality::Medium;
-
-    // Callbacks
-    DoorInteractCallback m_doorInteractCallback;
-    TargetCallback m_targetCallback;
-    MovementCallback m_movementCallback;
-    ChatSubmitCallback m_chatSubmitCallback;
-    PetCommandCallback m_petCommandCallback;
-    InventoryActionCallback m_inventoryActionCallback;
 
     // Event bus subscription
     state::EventBus* m_eventBus = nullptr;

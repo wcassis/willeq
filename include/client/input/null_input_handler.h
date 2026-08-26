@@ -34,10 +34,6 @@ public:
     std::optional<TargetRequest> consumeTargetRequest() override;
     std::optional<LootRequest> consumeLootRequest() override;
 
-    bool hasPendingKeyEvents() const override { return false; }
-    std::optional<KeyEvent> popKeyEvent() override { return std::nullopt; }
-    void clearPendingKeyEvents() override {}
-
     std::optional<ChatMessage> consumeChatMessage() override;
     std::optional<MoveCommand> consumeMoveCommand() override;
     std::optional<std::string> consumeRawCommand() override;
