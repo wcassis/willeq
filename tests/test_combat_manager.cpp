@@ -448,6 +448,67 @@ TEST(CombatManagerCycling, CorpsesAreExcluded) {
 }
 
 // ===================================================================
+// 3b. T245: Update() is a self-paced game-thread tick
+// ===================================================================
+//
+// The 500 ms m_update_thread is gone; EverQuest::UpdateMovement() now calls
+// CombatManager::Update() every game tick (~60 Hz) and Update() itself keeps
+// the old 500 ms cadence via m_last_update / kUpdateIntervalMs. Observable
+// effect used here: ScanForTargets() populating m_potential_targets (the
+// same signal the Consider fixture below relies on). Both clocks are
+// backdated with the file's T17 private access -- no sleeps.
+
+TEST(CombatManagerTick, UpdateRunsOnFirstCallThenPacesToInterval) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(500, "a_cave_bat", 0, 15, 0, /*level=*/5, /*npc_type=*/1,
+                           /*char_class=*/0)));
+    auto* cm = eq.GetCombatManager();
+    cm->Enable();
+
+    // Fresh manager: m_last_update is the epoch, so the very first tick does
+    // work (the old thread's first iteration did too). Open the scan gate.
+    ASSERT_EQ(cm->m_last_update, std::chrono::steady_clock::time_point{});
+    cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
+    cm->Update();
+    ASSERT_NE(cm->GetHighestPriorityTarget(), nullptr)
+        << "first Update() must run the scan immediately";
+    EXPECT_NE(cm->m_last_update, std::chrono::steady_clock::time_point{})
+        << "Update() stamps its pacing clock when it does work";
+
+    // Within kUpdateIntervalMs of that call: a no-op even with the scan gate
+    // open again. This is what makes the per-tick call from UpdateMovement()
+    // equivalent to the deleted thread's sleep(500).
+    cm->m_potential_targets.clear();
+    cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
+    cm->Update();
+    EXPECT_EQ(cm->GetHighestPriorityTarget(), nullptr)
+        << "a second Update() inside the interval must not scan";
+
+    // Past the interval: works again.
+    cm->m_last_update = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kUpdateIntervalMs + 10);
+    cm->Update();
+    EXPECT_NE(cm->GetHighestPriorityTarget(), nullptr)
+        << "Update() past kUpdateIntervalMs must scan again";
+}
+
+TEST(CombatManagerTick, UpdateIsANoOpWhenDisabled) {
+    // /combat off (the default) -- the tick from UpdateMovement() must cost
+    // nothing and touch nothing, whatever the clocks say.
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(500, "a_cave_bat", 0, 15, 0, /*level=*/5, /*npc_type=*/1,
+                           /*char_class=*/0)));
+    auto* cm = eq.GetCombatManager();
+    ASSERT_FALSE(cm->IsEnabled());
+    cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
+    cm->Update();
+    EXPECT_EQ(cm->GetHighestPriorityTarget(), nullptr);
+    EXPECT_EQ(cm->m_last_update, std::chrono::steady_clock::time_point{});
+}
+
+// ===================================================================
 // 4. Consider
 // ===================================================================
 
@@ -661,7 +722,8 @@ TEST(CombatManagerConfig, AutoMovementRoundTrips) {
 //
 // T26 replaced the sleeps with LootSubState + CombatManager::UpdateLootState(),
 // ticked every game frame from Application::updateGameState (unconditional,
-// alongside UpdateMovement()) -- never from Update()/m_update_thread. These
+// alongside UpdateMovement()) -- never from Update() (T245: itself a
+// game-thread tick now, the old m_update_thread is gone). These
 // tests use the file's established T17 #define-private-public access to
 // drive and observe the sub-state machine deterministically (backdating
 // timers, matching the ProcessConsiderResponse fixture's technique) instead

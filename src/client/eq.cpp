@@ -3782,61 +3782,23 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 
 void EverQuest::StartUpdateLoop()
 {
+	// T245: no thread any more. This used to spawn a 500 ms std::thread whose
+	// only remaining job (after P36 moved UpdateMovement() off it) was
+	// CombatManager::Update() -- an off-game-thread writer of m_game_state
+	// (combat().setTarget/clearTarget via CheckForAggro / ProcessCombatRound /
+	// FindNextHuntTarget whenever /combat on; T227 STOP note, TSAN-proven in
+	// review/T245/). Update() is now ticked from UpdateMovement() on the game
+	// thread and paces itself at the same 500 ms (CombatManager::kUpdateIntervalMs).
+	// The flag stays: IsFullyZonedIn() and OnGameStateComplete()'s once-only
+	// gate read it, and the P36 self-join hazard (CleanupZone -> StopUpdateLoop
+	// -> join() from the thread being joined) is gone with the thread.
 	if (m_update_running) {
 		return;  // Already running
 	}
-	
 	m_update_running = true;
-	m_update_thread = std::thread([this]() {
-		if (s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Update loop started");
-		}
-
-		while (m_update_running && IsFullyZonedIn()) {
-
-			// Note: Network events are processed by the main thread's EventLoop
-			// We only handle game logic updates here
-
-			// P36: UpdateMovement() is NOT called here anymore. It is already
-			// driven every game tick (~60Hz) by Application::updateGameState()
-			// on the game thread (application.cpp), unconditionally (graphics
-			// or headless) -- this 500ms loop calling it too was a redundant
-			// second invocation from a second thread. That double invocation
-			// was the root cause of the long-standing post-/camp shutdown
-			// deadlock/abort: UpdateMovement() processes the deferred
-			// post-logout disconnect and deferred zone-change (see
-			// m_pending_logout_disconnect / m_zone_change_approved), both of
-			// which call CleanupZone() -> StopUpdateLoop() -> m_update_thread.join().
-			// When UpdateMovement() happened to run from *this* thread (a race
-			// with the game thread's own call, since both were invoking it
-			// concurrently with no synchronization), StopUpdateLoop() ended up
-			// joining m_update_thread from within m_update_thread itself --
-			// libstdc++ detects that self-join and throws
-			// std::system_error(EDEADLK, "Resource deadlock avoided"),
-			// terminating the process (reproduced verbatim in
-			// data/captures/p35_full_run.log's post-camp abort). Dropping the
-			// call here means CleanupZone()/StopUpdateLoop() can only ever run
-			// from the game thread (via the game thread's own UpdateMovement()
-			// call) or the destructor (main/render thread) -- never from
-			// m_update_thread -- so the self-join can no longer occur. Combat
-			// still needs its own tick (nothing else drives it), so
-			// CombatManager::Update() stays here.
-
-			// Update combat system
-			if (m_combat_manager) {
-				m_combat_manager->Update();
-			}
-
-			// Sleep to maintain ~60 FPS
-			// std::this_thread::sleep_for(std::chrono::milliseconds(16));
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));
-			FlushThreadLog();
-		}
-
-		if (s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Update loop stopped");
-		}
-	});
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Update loop started (game-thread tick)");
+	}
 }
 
 void EverQuest::StopUpdateLoop()
@@ -3844,10 +3806,9 @@ void EverQuest::StopUpdateLoop()
 	if (!m_update_running) {
 		return;
 	}
-	
 	m_update_running = false;
-	if (m_update_thread.joinable()) {
-		m_update_thread.join();
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Update loop stopped");
 	}
 }
 

@@ -37,10 +37,10 @@ enum CombatState {
 // on the game-thread packet-dispatch path (see
 // refactor/T26_loot_state_machine.md). Every state advances only from
 // CombatManager::UpdateLootState(), ticked unconditionally (graphics or
-// headless) from the game thread -- never from CombatManager::Update(),
-// which runs on m_update_thread (see the P36 comment at eq.cpp's
-// StartUpdateLoop). Every non-Idle state has both a deadline and a
-// corpse-disappeared exit; see CombatManager::CorpseStillPresent().
+// headless) from the game thread -- never from CombatManager::Update()
+// (which, since T245, is also a game-thread tick from UpdateMovement(),
+// but only while IsFullyZonedIn()). Every non-Idle state has both a
+// deadline and a corpse-disappeared exit; see CombatManager::CorpseStillPresent().
 enum class LootSubState {
 	Idle,             // not looting
 	AwaitingCorpse,   // auto-hunt only: entered on kill, polling for the
@@ -151,8 +151,16 @@ public:
 	void Disable();
 	bool IsEnabled() const { return m_enabled; }
 
-	// Core combat functions
+	// Core combat functions.
+	// Update(): the auto-combat tick (target scan, aggro check, combat round,
+	// auto-hunt, flee/rest bookkeeping). T245: called every game tick from
+	// EverQuest::UpdateMovement() on the GAME thread (it writes
+	// m_game_state.combat() via SetTarget/ClearTarget and walks m_entities,
+	// so no other thread may call it); paces itself to kUpdateIntervalMs --
+	// the cadence the deleted 500 ms m_update_thread used to provide -- and
+	// is a no-op in between. No-op unless Enable()d (/combat on).
 	void Update();
+	static constexpr int kUpdateIntervalMs = 500;
 	void SetCombatState(CombatState state);
 	CombatState GetCombatState() const { return m_combat_state; }
 
@@ -234,7 +242,8 @@ public:
 
 	// T26: event-driven loot state machine. Call once per game tick from
 	// the unconditional game-thread path (Application::updateGameState,
-	// alongside UpdateMovement() -- NOT from Update()/m_update_thread).
+	// alongside UpdateMovement() -- NOT from Update(), which only ticks
+	// while IsFullyZonedIn() and is paced to kUpdateIntervalMs).
 	// No-op when not looting.
 	void UpdateLootState();
 	LootSubState GetLootSubState() const { return m_loot_sub_state; }
@@ -279,6 +288,9 @@ private:
 	std::unique_ptr<CombatTarget> m_current_target_info;
 	std::vector<CombatTarget> m_potential_targets;
 	std::chrono::steady_clock::time_point m_last_target_scan;
+	// T245: Update() pacing clock. Starts at the epoch so the first call
+	// after Enable() runs immediately (the old thread's first iteration did).
+	std::chrono::steady_clock::time_point m_last_update{};
 	std::vector<uint16_t> m_cycle_targets;  // Sorted list of nearby targetable entities
 	int m_cycle_index = -1;  // Current position in cycle list (-1 = no cycle active)
 

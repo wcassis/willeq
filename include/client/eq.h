@@ -1902,8 +1902,12 @@ private:
 	std::vector<glm::vec3> m_current_path;
 	size_t m_current_path_index = 0;
 
-	// Update loop
-	std::thread m_update_thread;
+	// "Update loop" flag. Set at the first ClientUpdate (StartUpdateLoop),
+	// cleared by CleanupZone / the destructor (StopUpdateLoop). It is part of
+	// IsFullyZonedIn() and gates OnGameStateComplete(). T245: the 500 ms
+	// std::thread that used to run behind it is GONE -- CombatManager::Update()
+	// is now ticked from UpdateMovement() on the game thread (eq_movement.cpp),
+	// so every GameState writer is game-thread. Nothing else ran on it.
 	std::atomic<bool> m_update_running{false};
 	std::thread::id m_main_thread_id;
 	bool m_use_pathfinding = true;

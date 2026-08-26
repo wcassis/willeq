@@ -124,6 +124,13 @@ void CombatManager::Update() {
 
 	auto now = std::chrono::steady_clock::now();
 
+	// T245: called every game tick (~60 Hz) from EverQuest::UpdateMovement();
+	// keep the 500 ms cadence the deleted m_update_thread's sleep imposed.
+	if (std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_update).count() < kUpdateIntervalMs) {
+		return;
+	}
+	m_last_update = now;
+
 	// Update our situational awareness
 	if (std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_target_scan).count() >= 1000) {
 		ScanForTargets();
@@ -1228,19 +1235,20 @@ void CombatManager::ProcessCombatRound() {
 				// door into looting -- EverQuest::ZoneProcessDeath()
 				// (the real server's authoritative death packet) now
 				// calls CombatManager::NotifyTargetDied() directly, and
-				// that call happens synchronously on the game/network
-				// thread before this poll (which runs on a separate
-				// 500ms-cadence m_update_thread, see StartUpdateLoop())
-				// can next observe hp_percent<=0 -- DisableAutoAttack()
+				// that call happens synchronously on the game thread
+				// before this poll (T245: also on the game thread now,
+				// paced to kUpdateIntervalMs from UpdateMovement()) can
+				// next observe hp_percent<=0 -- DisableAutoAttack()
 				// there flips m_combat_state out of ENGAGED, and Update()
 				// only calls ProcessCombatRound() while ENGAGED, so this
 				// branch cannot fire for the same kill afterward. It is
 				// kept, not removed, because it is not *provably*
 				// unreachable: a server that sent an explicit 0%
 				// OP_MobHealth packet ahead of OP_Death (T32's transcript
-				// shows this particular fight never did) could open a
-				// narrow cross-thread window where this poll observes the
-				// death first. NotifyTargetDied() is idempotent against a
+				// shows this particular fight never did) could still let
+				// this poll observe the death first (same thread now, so
+				// a packet-ordering window, not a cross-thread one).
+				// NotifyTargetDied() is idempotent against a
 				// stale re-entry (same corpse id, same target state), so
 				// this is a harmless safety net now, not a second
 				// diverging entry point.

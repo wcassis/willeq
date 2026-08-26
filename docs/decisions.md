@@ -463,3 +463,7 @@ before any bridge publish, and pinned by `tests/test_game_state_source_writes.cp
 (run with and without a bridge). Off-thread writers are the remaining
 hazard class: `CombatManager::Update()` on `m_update_thread` can reach
 `SetTarget`/`ClearTarget` when `/combat on` (T227 STOP note, on the board).
+**Closed T245 (2026-08-26): `m_update_thread` is deleted; `Update()` is
+ticked from `UpdateMovement()` on the game thread and paces itself to
+500 ms. EverQuest now runs NO thread of its own -- every `m_game_state`
+writer is the game thread. No mutex was added.**

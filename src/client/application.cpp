@@ -1410,10 +1410,12 @@ void Application::updateGameState(float deltaTime) {
         // T26: advance the loot state machine every game tick, unconditionally
         // (graphics or headless) -- same rationale as UpdateMovement() above.
         // GameTick() (guarded by m_graphicsInitialized, just above) is NOT a
-        // valid home: the loot path fires in headless mode too, and driving
-        // it from CombatManager::Update() (m_update_thread, 2Hz) would
-        // re-create the P36 self-join deadlock class -- see the CombatManager
-        // friend-class comment and refactor/T26_loot_state_machine.md.
+        // valid home: the loot path fires in headless mode too. (T245: the
+        // 2 Hz m_update_thread this comment used to warn about is gone --
+        // CombatManager::Update() is now ticked inside UpdateMovement() on
+        // this same thread, gated on IsFullyZonedIn(); the loot machine stays
+        // here because it must run before zone-in completes too -- see
+        // refactor/T26_loot_state_machine.md.)
         if (CombatManager* cm = m_eqClient->GetCombatManager()) {
             cm->UpdateLootState();
         }

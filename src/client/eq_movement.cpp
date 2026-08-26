@@ -28,8 +28,9 @@
 // movement-used — left in eq.cpp.
 //
 // NOTE: StartUpdateLoop / StopUpdateLoop (sitting between Jump and
-// UpdateJump in eq.cpp) orchestrate both UpdateMovement() and
-// CombatManager::Update() — not movement-exclusive — left in eq.cpp.
+// UpdateJump in eq.cpp) flip the m_update_running flag that gates the
+// auto-combat tick below (T245: the thread they used to start is gone) —
+// not movement-exclusive — left in eq.cpp.
 //
 // NOTE: QueuePacket (core networking, sitting between GetMovementSpeed and
 // the keyboard-control cluster in eq.cpp) stays in eq.cpp per the plan.
@@ -546,6 +547,17 @@ void EverQuest::UpdateMovement()
 		ProcessDeferredZoneChange();
 		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		return;  // Don't process movement while zone changing
+	}
+
+	// T245: auto-combat tick, ON THE GAME THREAD. This replaces the 500 ms
+	// m_update_thread (eq.cpp StartUpdateLoop) whose only job was this call;
+	// CombatManager::Update() reaches m_game_state.combat() writes
+	// (SetTarget/ClearTarget from CheckForAggro / ProcessCombatRound /
+	// FindNextHuntTarget) and reads m_entities, both game-thread data. Same
+	// gate the old loop had (m_update_running && IsFullyZonedIn()); Update()
+	// paces itself at kUpdateIntervalMs so the per-tick call is cheap.
+	if (m_combat_manager && IsFullyZonedIn()) {
+		m_combat_manager->Update();
 	}
 
 	// Update camp timer
