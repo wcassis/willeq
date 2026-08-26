@@ -7,6 +7,32 @@
 
 namespace EQT {
 
+namespace {
+
+// T257: the open() path goes through a "file:" URI so ?immutable=1 can be
+// passed. A URI filename must percent-encode the three characters that
+// would otherwise be parsed as URI syntax; everything else (including
+// '/', spaces and UTF-8) is passed through verbatim by SQLite.
+std::string uriEscapePath(const std::string& path) {
+    std::string out;
+    out.reserve(path.size());
+    for (unsigned char c : path) {
+        if (c == '%' || c == '?' || c == '#') {
+            static const char hex[] = "0123456789ABCDEF";
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 0xF];
+        } else {
+            out += static_cast<char>(c);
+        }
+    }
+    return out;
+}
+
+constexpr int kOpenBusyTimeoutMs = 2000;
+
+}  // namespace
+
 WilleqDatabase::WilleqDatabase() = default;
 
 WilleqDatabase::~WilleqDatabase() {
@@ -33,14 +59,34 @@ bool WilleqDatabase::open(const std::string& dbPath) {
     // the connection's internal structures; cheap here since the database
     // is opened SQLITE_OPEN_READONLY with a small (1MB) page cache and
     // small per-lookup queries, not a hot per-frame path.
-    int rc = sqlite3_open_v2(dbPath.c_str(), &db_,
-                              SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
+    // T257: open as an IMMUTABLE database via a URI filename. willeq.db is
+    // read-only shipped data (nothing outside tools/willeq_db_builder ever
+    // writes it), but the builder leaves it in WAL journal mode, and a
+    // plain SQLITE_OPEN_READONLY connection to a WAL database still
+    // participates in the WAL protocol: it creates -wal/-shm, mmaps the
+    // wal-index and takes the WAL_RECOVER lock to rebuild it on first use.
+    // On the NFS mount the data lives on (local_lock=none, non-coherent
+    // shm), two clients started in the same second raced on that recovery:
+    // the loser's very first prepare failed with SQLITE_BUSY (extended
+    // SQLITE_BUSY_RECOVERY, 261) and open() misreported it as "missing
+    // metadata table" -- measured 97/200 losers with two processes,
+    // review/T257/. immutable=1 tells SQLite the file cannot change while
+    // open: no locks, no -wal/-shm, no recovery, so N concurrent readers
+    // cannot fail. Measured 0/240 with eight processes on the same mount.
+    // FULLMUTEX is kept (T111: two threads share this ONE connection).
+    std::string uri = "file:" + uriEscapePath(dbPath) + "?immutable=1";
+    int rc = sqlite3_open_v2(uri.c_str(), &db_,
+                              SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_URI,
+                              nullptr);
     if (rc != SQLITE_OK) {
-        LOG_ERROR(MOD_MAIN, "WilleqDatabase: failed to open {}: {}", dbPath,
-                  db_ ? sqlite3_errmsg(db_) : "unknown error");
+        LOG_ERROR(MOD_MAIN, "WilleqDatabase: failed to open {}: {} (sqlite rc={})", dbPath,
+                  db_ ? sqlite3_errmsg(db_) : "unknown error", rc);
         if (db_) { sqlite3_close(db_); db_ = nullptr; }
         return false;
     }
+    // Belt and braces: immutable=1 takes no locks, so this never fires for
+    // the shipped file; it covers a caller handing in a non-immutable path.
+    sqlite3_busy_timeout(db_, kOpenBusyTimeoutMs);
 
     // Performance pragmas for read-only access
     sqlite3_exec(db_, "PRAGMA mmap_size=1048576", nullptr, nullptr, nullptr);  // 1MB mmap
@@ -51,10 +97,12 @@ bool WilleqDatabase::open(const std::string& dbPath) {
     // this client was built against (T56 fix — previously only logged,
     // never compared; a stale db silently returned empty spell lookups
     // instead of a clear error, see refactor/deferred.md).
-    sqlite3_stmt* check;
-    if (sqlite3_prepare_v2(db_, "SELECT value FROM metadata WHERE key='version'",
-                            -1, &check, nullptr) == SQLITE_OK) {
-        if (sqlite3_step(check) == SQLITE_ROW) {
+    sqlite3_stmt* check = nullptr;
+    rc = sqlite3_prepare_v2(db_, "SELECT value FROM metadata WHERE key='version'",
+                            -1, &check, nullptr);
+    if (rc == SQLITE_OK) {
+        int step = sqlite3_step(check);
+        if (step == SQLITE_ROW) {
             int version = sqlite3_column_int(check, 0);
             sqlite3_finalize(check);
             if (version != kWilleqDbExpectedVersion) {
@@ -69,12 +117,35 @@ bool WilleqDatabase::open(const std::string& dbPath) {
                 return false;
             }
             LOG_INFO(MOD_MAIN, "WilleqDatabase: opened {} (version {})", dbPath, version);
-        } else {
+        } else if (step == SQLITE_DONE) {
             sqlite3_finalize(check);
             LOG_WARN(MOD_MAIN, "WilleqDatabase: no version metadata in {}", dbPath);
+        } else {
+            // T257: a step failure is not a missing table either -- say what
+            // SQLite said.
+            LOG_ERROR(MOD_MAIN, "WilleqDatabase: {} version query failed: {} (sqlite rc={})",
+                      dbPath, sqlite3_errmsg(db_), step);
+            sqlite3_finalize(check);
+            sqlite3_close(db_);
+            db_ = nullptr;
+            return false;
         }
     } else {
-        LOG_ERROR(MOD_MAIN, "WilleqDatabase: {} missing metadata table", dbPath);
+        // T257: prepare can fail for reasons other than a missing table --
+        // SQLITE_BUSY/SQLITE_LOCKED (another process holds the file) was
+        // being reported as "missing metadata table" in T256. Only a
+        // SQLITE_ERROR is a real schema problem; anything else names the
+        // sqlite error code so the message is honest.
+        if (rc == SQLITE_ERROR) {
+            LOG_ERROR(MOD_MAIN, "WilleqDatabase: {} missing metadata table ({})", dbPath,
+                      sqlite3_errmsg(db_));
+        } else {
+            LOG_ERROR(MOD_MAIN,
+                      "WilleqDatabase: {} could not read the metadata table: {} (sqlite rc={}, "
+                      "extended={}) -- the file is present but not readable right now, "
+                      "not a schema problem",
+                      dbPath, sqlite3_errmsg(db_), rc, sqlite3_extended_errcode(db_));
+        }
         sqlite3_close(db_);
         db_ = nullptr;
         return false;

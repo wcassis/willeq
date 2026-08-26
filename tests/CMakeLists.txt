@@ -932,6 +932,10 @@ ADD_EXECUTABLE(test_willeq_database
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
 TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} dl)
+# T257: the concurrent-open tests fork readers against the REAL tracked
+# file on its real filesystem (the race is NFS-specific and inter-process).
+TARGET_COMPILE_DEFINITIONS(test_willeq_database PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 GTEST_DISCOVER_TESTS(test_willeq_database)
 
 # Test PFS/S3D archive parsing

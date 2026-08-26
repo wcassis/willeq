@@ -148,3 +148,113 @@ TEST(WilleqDatabaseStringTest, TrailingCarriageReturnIsStripped) {
     db.close();
     std::remove(path.c_str());
 }
+
+// ============================================================================
+// T257: concurrent readers of the shipped data/willeq.db must never fail.
+//
+// The T256 live leg started two willeq processes in the same second and one
+// of them aborted with "missing metadata table". The builder leaves
+// willeq.db in WAL journal mode; a plain read-only connection to a WAL file
+// still runs the WAL protocol (creates -wal/-shm, takes the WAL_RECOVER lock
+// to rebuild the wal-index), and on the NFS mount the data lives on the
+// second process lost that race with SQLITE_BUSY / SQLITE_BUSY_RECOVERY on
+// its very first prepare. These tests use the REAL tracked file on its real
+// filesystem, and fork() rather than threads because the race is between
+// processes (threads in one process share SQLite's per-inode lock state and
+// never see it).
+// ============================================================================
+
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+namespace {
+
+bool FileExists(const std::string& p) {
+    struct stat sb;
+    return ::stat(p.c_str(), &sb) == 0;
+}
+
+// Opens the db in this (child) process and runs one real query. Returns 0
+// on success so the parent can count failures via the exit status.
+int OpenAndQueryOnce(const std::string& path) {
+    EQT::WilleqDatabase db;
+    if (!db.open(path)) return 1;
+    if (db.getSpellCount() == 0) return 2;
+    return 0;
+}
+
+// Forks `procs` children that all open `path` at the same instant, `rounds`
+// times. Returns the number of children that failed.
+int ConcurrentOpens(const std::string& path, int procs, int rounds) {
+    int failures = 0;
+    for (int r = 0; r < rounds; ++r) {
+        for (int i = 0; i < procs; ++i) {
+            pid_t pid = ::fork();
+            if (pid == 0) ::_exit(OpenAndQueryOnce(path));
+            EXPECT_GT(pid, 0) << "fork failed";
+        }
+        for (int i = 0; i < procs; ++i) {
+            int status = 0;
+            ::wait(&status);
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) ++failures;
+        }
+    }
+    return failures;
+}
+
+}  // namespace
+
+TEST(WilleqDatabaseConcurrentOpenTest, EightProcessesOpenTheShippedDbTogether) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+
+    // 8 x 5 = 40 concurrent opens. Before T257 two processes lost ~50% of
+    // the rounds on the project's NFS mount (97/200, review/T257/).
+    EXPECT_EQ(ConcurrentOpens(path, 8, 5), 0);
+}
+
+// A reader must leave no -wal/-shm sidecars behind: immutable=1 never
+// creates them. Guarded on the pre-state so a sidecar left by some other
+// tool (the sqlite3 CLI opens read-write) cannot fail this test.
+TEST(WilleqDatabaseConcurrentOpenTest, ReaderCreatesNoWalOrShmFiles) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    const std::string wal = path + "-wal";
+    const std::string shm = path + "-shm";
+    const bool walBefore = FileExists(wal);
+    const bool shmBefore = FileExists(shm);
+
+    ASSERT_EQ(ConcurrentOpens(path, 4, 2), 0);
+
+    if (!walBefore) EXPECT_FALSE(FileExists(wal)) << wal << " was created by a reader";
+    if (!shmBefore) EXPECT_FALSE(FileExists(shm)) << shm << " was created by a reader";
+}
+
+// The immutable open goes through a "file:" URI; the three URI-syntax
+// characters in a path must survive the round trip.
+TEST(WilleqDatabaseConcurrentOpenTest, PathWithUriSyntaxCharactersOpens) {
+    std::string path = BuildDb("uri%chars?and#more", true, true, EQT::kWilleqDbExpectedVersion);
+    ASSERT_NE(path.find('%'), std::string::npos);
+    ASSERT_NE(path.find('?'), std::string::npos);
+    ASSERT_NE(path.find('#'), std::string::npos);
+
+    EQT::WilleqDatabase db;
+    EXPECT_TRUE(db.open(path));
+    EXPECT_TRUE(db.isOpen());
+
+    db.close();
+    std::remove(path.c_str());
+}
+
+// A missing file still fails open() (EverQuest::OpenDatabase falls back to
+// legacy file loading on false) -- immutable=1 must not change that.
+TEST(WilleqDatabaseConcurrentOpenTest, MissingFileStillFailsToOpen) {
+    std::string path = TempDbPath("does_not_exist");
+    std::remove(path.c_str());
+
+    EQT::WilleqDatabase db;
+    EXPECT_FALSE(db.open(path));
+    EXPECT_FALSE(db.isOpen());
+    EXPECT_FALSE(FileExists(path)) << "open() must not create the file";
+}
