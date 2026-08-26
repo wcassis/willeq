@@ -1740,6 +1740,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_race_330_loader)
 ENDIF()
 
+# T285: pins the two applyPaletteMask plumbing sites (P46d Part B / P50) --
+# mesh_building.cpp's on-demand texture fallback and animated_mesh_creation.cpp's
+# equipment texture-variant swap. Same EDT_NULL + willeq_core gate as
+# test_race_330_loader; opens the shipped data/willeq.db and the real client
+# tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_palette_mask_plumbing
+        test_palette_mask_plumbing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_palette_mask_plumbing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_palette_mask_plumbing GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_palette_mask_plumbing PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_palette_mask_plumbing)
+ENDIF()
+
 # T271: race DISPLAY NAMES come from the db (EverQuest::GetRaceName was
 # shifted -- 14 "Iksar", 128 "Vah Shir", 130 "Froglok", 330 "Drakkin" -- and
 # it is printed to the player). Opens the shipped data/willeq.db and skips

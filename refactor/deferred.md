@@ -68,7 +68,7 @@ Review — read that before scoping the next unit off this file.
     keyboard hotbar Item/Emote slots skipped, not routed (T174)~~ CLOSED T230 (Emote/Macro still skipped);
     ~~`EqActionHandler` TRANSFORMS methods still untested (T93)~~ CLOSED T234; ~~blackburrow /
     crushbone blank benchmark render (Batch H)~~ CLOSED T242 `f32744c1` (benchmark camera seed 300 units in the air from sky-region Z; NO rendering bug; gfaydark/befallen were silently on the same fallback); "BSP region is SIZE_MAX" (T242: a client `CreateZoneLoadSnapshot` race, unrelated to the benchmark)
-    race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
+    race; pale fog shapes in goldens; ~~`applyPaletteMask` plumbing gaps (P46d)~~ CLOSED (fixed by P50, verified + pinned by T285);
     ~~`ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
     latent by causality)~~ CLOSED T228 `67a131bf`; race 330: T265 `0ab18c9e` audited all 187 race rows against the archives (4 wrong fixed: 17 Golem, 72 Ship, 330 Froglok s3d_file, 240 aliased; 3 classic ids added; 32 Ghost has no mesh anywhere). **330 STILL BLOCKED in src**: `race_codes.cpp getRaceModelFilename()` hardcodes 330->globalfroglok_chr (monster FRG) and `race_model_loader.cpp` does `stoi()` on non-numeric `global*` s3d_file names + the dir scan regex skips `global[a-z]+_chr` -- ~~two-line fix + pixel check~~ CLOSED T267 `2a75564d` (real 330 NPCs render: FRM 1169 / FRF 1159 verts, 0 magenta). NEW (T267): `getRaceCode()`'s DB-null fallback switch (and `getFallbackRaceCode`/`getZoneSpecificRaceCode`) is a wholesale PRE-JSON numbering contradicting T265's rows (17 ORC vs GOL, 35 RAT vs EEL, 72 ELE vs SHIP...) -- inert at runtime, 38 tests pin it. ~~Class A: delete-or-regenerate~~ CLOSED T270 `736f580e` -- and HALF THE SWITCH WAS NOT INERT: `getFallbackRaceCode()` fired whenever a row had no fallback_code (race 61 Shark rendered as a DARK ELF, 62 Tunare as an erudite), and `getZoneSpecificRaceCode()` ran UNCONDITIONALLY, overriding rows (a shark in a Neriak zone became a citizen) -- deleted; race codes are db-only, no row -> "" -> placeholder. Two tools (`gles2_zone_benchmark`, `model_viewer`) never opened willeq.db at all and were living off the switch -- now bootstrap it. **NEW (T270), user-visible: `EverQuest::GetRaceName()` in eq_strings.cpp is SHIFTED** -- 14 prints "Iksar" (row: Werewolf; Iksar is 128), 128 -> "Vah Shir" (130), 130 -> "Froglok" (330), 330 -> "Drakkin". ~~Class A~~ CLOSED T271 `65214239` (names + scale db-only; a THIRD copy of the pre-JSON numbering was live in `EntityRenderer::getScaleForRace()` -- rat/bat scales on wolf/bear rows; `test_who_response`'s fixture had no db so its pinned /who lines were rendering from the shifted table). Left: `getColorForRace()` (no colour column -- would be inventing data; comments annotated). NEW (T271): `Graphics::getRaceName()`/`getGenderName()` have ZERO callers (delete); race 330's row name is "Froglok (Playable)" which is what /who now PRINTS -- a data annotation leaking into display, fix in race_models.json + rebuild. Both ~~class A tiny~~ CLOSED T274 `eb4d4a33` (330 -> "Froglok", disambiguation moved to the row's `note` field; db rebuilt with row-level proof; only 1 of 190 rows was annotated; both dead getters deleted). **NEW (T274/T261): `visual_gate`'s p95 CPU-ms ceiling still trips when ANOTHER SLOT is building -- RUN_SERIAL only serialises within one ctest run, and the metric is wall-clock (`cpuDrawMs` in zone_bench_metrics.cpp). Class C for Will: switch the metric to process CPU time (getrusage) and RE-BLESS `p95CpuMsBaseline`, or accept the re-run. Every occurrence so far was a timing trip with ZERO image mismatches.** Same class, cosmetic: `getRaceScale()`, `getRaceName()` in race_codes.cpp, `entity_renderer.cpp getColorForRace()`. Also: `invisible` column has no reader; 166 eqemu ids 199-366 have Titanium models but no row (never spawn on P1999-era servers).
   - **B — in progress / owed:** ~~`AcceptGroupInvite()` reads
@@ -226,9 +226,13 @@ replaces is preserved verbatim in git (`e6a8c4e9`) and in
   fallback (magenta/checkerboard) defect reproduces reliably (T85`.
 - ~~`ConstrainedTextureCache` public query API vs masked-variant key.~~
   **FIXED by T92 `ddf08b27`.** Heading: `## P50 (2026-07-31)`.
-- Two `applyPaletteMask` plumbing gaps (`loadTextureFromBMP()` fallback;
-  equipment texture-variant swap) — still open. Heading: `## P37
-  follow-ups` (P46d "Open follow-up items").
+- ~~Two `applyPaletteMask` plumbing gaps (`loadTextureFromBMP()` fallback;
+  equipment texture-variant swap).~~ **NOT OPEN — the board was STALE. Both
+  were FIXED by P50 (`refactor/P50_mask_plumbing_gaps.md`) and are threaded
+  at the tip; T285 re-verified both at data level and PINNED them
+  (`tests/test_palette_mask_plumbing.cpp`, red/green proven per site).** No
+  production change was needed; the gaps were unpinned, not unfixed.
+  Heading: `## P37 follow-ups` (P46d "Open follow-up items").
 - `#goto` / forced-relocation convention — CLEARED T55/T58; per-frame
   movement writes unconverged by decision. Heading: `` ## `#goto` same-zone
   teleport lands at the DB position ``.
@@ -3293,6 +3297,14 @@ graphics-gate family, and T43's classification stands.
   equipment texture-variant swap path — both currently decode any masked
   texture they touch opaque, a real (if narrow) live-client exposure
   distinct from the now-fixed cache-key bug.
+  **BOTH CLOSED. P50 (`refactor/P50_mask_plumbing_gaps.md`) threaded both
+  sites and they are still threaded at the tip; T285 re-verified (SKE: 10/10
+  referenced masked per-part textures and the equipped Wrist variant all
+  carry mask alpha; 16/16 unmasked textures through the same fallback stay
+  opaque) and added the regression pin
+  `tests/test_palette_mask_plumbing.cpp` — deleting either site's
+  `isMaskedMaterial` argument turns it red. No production change was needed:
+  the item survived ~4 weeks past its own fix because nothing pinned it.**
 - **P44 live-client findings (flagged, not fixed)**: (1)
   non-deterministic SIGSEGV zoning into befallen at x=-195,y=-982
   (zone-object-mesh-build; would not reproduce under gdb, no core);
