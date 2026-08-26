@@ -457,8 +457,17 @@ TEST(EqActionHandlerCast, CastRefusalStrings_ResolveWithoutStringDb) {
     EXPECT_EQ(h.eq.GetStringMessage(236), "Spell recast time not yet met.");
     EXPECT_EQ(h.eq.GetStringMessage(251), "That spell can not affect this target NPC.");
     EXPECT_EQ(h.eq.GetStringMessage(255), "You do not have a pet.");
-    EXPECT_EQ(h.eq.GetStringMessage(272), "You are missing some required spell components.");
+    // T251: exact eqstr text (T246's row said "spell components").
+    EXPECT_EQ(h.eq.GetStringMessage(272), "You are missing some required components.");
     EXPECT_EQ(h.eq.GetStringMessage(12442), "You are already casting a spell!");
+}
+
+// T251: 433 "You are missing %1." is the named form of 272; the fallback
+// path (no string DB) must carry the row AND substitute %1.
+TEST(EqActionHandlerCast, CastRefusalStrings_MissingNamedComponent_ResolvesWithoutStringDb) {
+    WireHarness h;
+    EXPECT_EQ(h.eq.GetStringMessage(433), "You are missing %1.");
+    EXPECT_EQ(h.eq.GetFormattedStringMessage(433, {"Bone Chips"}), "You are missing Bone Chips.");
 }
 
 TEST(EqActionHandlerCast, CastSpell_TargetOutOfRange_SaysOutOfRange) {
@@ -598,10 +607,11 @@ void giveSelfBuff(EverQuest& eq, uint8_t slot, uint32_t spell_id) {
     eq.GetBuffManager()->setPlayerBuff(slot, b);
 }
 
-eqt::inventory::ItemInstance makeStack(uint32_t item_id, int32_t quantity) {
+eqt::inventory::ItemInstance makeStack(uint32_t item_id, int32_t quantity,
+                                       const char* name = "reagent") {
     eqt::inventory::ItemInstance item;
     item.itemId = item_id;
-    item.name = "reagent";
+    item.name = name;
     item.stackable = true;
     item.stackSize = 20;
     item.quantity = quantity;
@@ -721,7 +731,9 @@ TEST(EqActionHandlerCast, CastSpell_MissingReagent_SaysMissingComponentsSendsNot
 
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty()) << "no OP_CastSpell for spell " << id << " without item " << reagent;
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required spell components.");
+    // T251: an item the client has never received an ItemPacket for has no
+    // name to put in 433, so the unnamed 272 stands -- with eqstr's text.
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required components.");
 }
 
 TEST(EqActionHandlerCast, CastSpell_ReagentPresent_CastProceeds) {
@@ -761,20 +773,46 @@ TEST(EqActionHandlerCast, CastSpell_ReagentCountShort_RefusedUntilStackReachesCo
     h.spawnSelfAndGuard();
     h.eq.GetGameState().player().setMana(1000, 1000);
     h.loadGemsLikePlayerProfile({351, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
-    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN, makeStack(13073, 1));
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN, makeStack(13073, 1, "Bone Chips"));
     h.clearSent();
 
     h.handler.castSpell(1);
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required spell components.");
+    // T251: the one chip carried names the item -> 433, not 272.
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
 
     // A second single chip in another slot: counts add up across slots.
-    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN + 1, makeStack(13073, 1));
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN + 1, makeStack(13073, 1, "Bone Chips"));
     h.clearSent();
     h.handler.castSpell(1);
     EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
     EXPECT_EQ(h.sentCasts().size(), 1u);
+}
+
+// T251: the UI route (CastSpellIntent through ProcessBridgeIntents, the
+// second refusal site T244 unified) renders the same named 433.
+TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SaysMissingNamedItem) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    const EQ::SpellData* bw = h.eq.GetSpellManager()->getSpell(351);
+    if (!bw || bw->reagent_id[0] != 13073u || bw->reagent_count[0] != 2u) {
+        GTEST_SKIP() << "spell 351 is not Bone Walk with 2 x 13073 in this DB";
+    }
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({351, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN, makeStack(13073, 1, "Bone Chips"));
+    h.clearSent();
+
+    h.bridge.pushIntent(eqt::events::CastSpellIntent{0});
+    h.eq.ProcessBridgeIntents();
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
 }
 
 // A reagent sitting in the BANK does not count (eqemu checks worn +
@@ -790,13 +828,17 @@ TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillRefused) {
     h.spawnSelfAndGuard();
     h.eq.GetGameState().player().setMana(1000, 1000);
     h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
-    h.eq.GetInventoryManager()->setItem(eqt::inventory::BANK_BEGIN, makeStack(reagent, static_cast<int32_t>(needed)));
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::BANK_BEGIN,
+                                        makeStack(reagent, static_cast<int32_t>(needed), "Banked Reagent"));
     h.clearSent();
 
     h.handler.castSpell(1);
 
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());
+    // T251: the banked stack's ItemPacket taught the client the name, so
+    // the refusal is the named 433 even though the bank does not count.
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing Banked Reagent.");
 }
 
 // Wall between caster and target -> 108 and nothing sent; the same wall

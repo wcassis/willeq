@@ -561,8 +561,10 @@ CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id
         }
     }
 
-    // Check reagents
-    if (spell.requiresReagents() && !checkReagents(spell)) {
+    // Check reagents. T251: remember WHICH component was short so the
+    // refusal message can name it (castRefusalMessage(), cast_refusal.h).
+    m_last_missing_reagent_id = 0;
+    if (spell.requiresReagents() && !checkReagents(spell, &m_last_missing_reagent_id)) {
         return CastResult::ComponentMissing;
     }
 

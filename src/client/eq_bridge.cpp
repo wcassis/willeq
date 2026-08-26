@@ -1017,10 +1017,11 @@ void EverQuest::ProcessBridgeIntents() {
 					uint32_t spellId = m_spell_manager->getMemorizedSpell(i.gemSlot);
 					const EQ::SpellData* spell = m_spell_manager->getSpell(spellId);
 					if (spell) AddChatSystemMessage(fmt::format("Casting {}", spell->name));
-				} else if (const uint32_t stringId = EQ::castRefusalStringId(result)) {
+				} else if (std::string refusal = EQ::castRefusalMessage(*this, result); !refusal.empty()) {
 					// T244: same official-string table as EqActionHandler::
-					// beginCastFromGem() -- the two sites had drifted.
-					AddChatSystemMessage(GetStringMessage(stringId));
+					// beginCastFromGem() -- the two sites had drifted. T251:
+					// same renderer too (names a missing component).
+					AddChatSystemMessage(refusal);
 				} else if (result == EQ::CastResult::NotMemorized) {
 					AddChatSystemMessage(fmt::format("No spell in gem {}", i.gemSlot + 1));
 				} else if (result == EQ::CastResult::SpellNotReady) {

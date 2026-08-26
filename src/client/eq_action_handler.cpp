@@ -558,9 +558,10 @@ void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
     // T244: refusals that have an official string say WHY (eqstr ids via
     // cast_refusal.h -- "Your target is out of range, get closer!" etc.);
     // before this every result the switch below did not name fell to a
-    // bare "Cannot cast spell" (T240 finding 1).
-    if (const uint32_t stringId = EQ::castRefusalStringId(result)) {
-        m_eq.AddChatSystemMessage(m_eq.GetStringMessage(stringId));
+    // bare "Cannot cast spell" (T240 finding 1). T251: rendered by
+    // castRefusalMessage() so a missing component is named.
+    if (std::string refusal = EQ::castRefusalMessage(m_eq, result); !refusal.empty()) {
+        m_eq.AddChatSystemMessage(refusal);
         return;
     }
     switch (result) {

@@ -1485,8 +1485,10 @@ public:
 	// T244: public because EqActionHandler (not a friend) renders cast
 	// refusals from official eqstr ids -- see client/spell/cast_refusal.h.
 	std::string GetStringMessage(uint32_t string_id);
-private:
+	// T251: public for the same reason -- castRefusalMessage() substitutes
+	// the missing component's name into 433 "You are missing %1.".
 	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
+private:
 	static std::string GetChatTypeName(uint32_t chat_type);
 public:
 	// T180: public because /raid list renders class names from EqActionHandler,

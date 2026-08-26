@@ -88,8 +88,15 @@ uint32_t SpellManager::countCarriedItem(uint32_t item_id) const
 // focus; carried in SpellData as plumbing only) and a reagent whose count
 // is 0 in the data -- both left to the server rather than risk refusing a
 // cast it would accept.
-bool SpellManager::checkReagents(const SpellData& spell) const
+//
+// T251: the first component found short is reported through
+// `missing_item_id` (when the caller passes one) so the refusal can name
+// it -- eqstr 433 "You are missing %1." -- instead of the generic 272.
+bool SpellManager::checkReagents(const SpellData& spell, uint32_t* missing_item_id) const
 {
+    if (missing_item_id) {
+        *missing_item_id = 0;
+    }
     for (size_t i = 0; i < MAX_SPELL_REAGENTS; ++i) {
         uint32_t id = spell.reagent_id[i];
         uint32_t needed = spell.reagent_count[i];
@@ -100,6 +107,9 @@ bool SpellManager::checkReagents(const SpellData& spell) const
         if (have < needed) {
             LOG_DEBUG(MOD_SPELL, "checkReagents: spell '{}' needs {} x item {}, carrying {}",
                 spell.name, needed, id, have);
+            if (missing_item_id) {
+                *missing_item_id = id;
+            }
             return false;
         }
     }

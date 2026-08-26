@@ -375,7 +375,8 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 269: return "Stick to singing until you learn to play this instrument.";
 		case 270: return "You regain your concentration and continue your casting.";
 		case 271: return "Your spell would not have taken hold on your target.";
-		case 272: return "You are missing some required spell components.";
+		case 272: return "You are missing some required components.";
+		case 433: return "You are missing %1.";
 		case 275: return "You feel yourself starting to appear.";
 		case 12442: return "You are already casting a spell!";
 		case 303: return "You have slain %1!";

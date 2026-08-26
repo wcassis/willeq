@@ -11,12 +11,20 @@
  * Returns 0 for results that have no official refusal string (Success,
  * Interrupted, NotMemorized, SpellNotReady, InvalidSpell, Feared); callers
  * keep their own wording for those.
+ *
+ * T251: castRefusalMessage() is what both sites now call -- it renders the
+ * id through the string DB and, for ComponentMissing, names the short
+ * component with 433 "You are missing %1." (the official client's form)
+ * whenever the item's name is known, falling back to the unnamed 272.
  */
 #pragma once
 
 #include "client/spell/spell_constants.h"
 
 #include <cstdint>
+#include <string>
+
+class EverQuest;
 
 namespace EQ {
 
@@ -32,9 +40,19 @@ enum CastRefusalStringId : uint32_t {
     STR_SPELL_RECAST_NOT_MET    = 236,    // Spell recast time not yet met.
     STR_CANNOT_AFFECT_NPC       = 251,    // That spell can not affect this target NPC.
     STR_NO_PET                  = 255,    // You do not have a pet.
-    STR_MISSING_COMPONENTS      = 272,    // You are missing some required spell components.
+    STR_MISSING_COMPONENTS      = 272,    // You are missing some required components.
+    STR_MISSING_NAMED_COMPONENT = 433,    // You are missing %1.   (T251)
     STR_ALREADY_CASTING         = 12442,  // You are already casting a spell!
 };
+
+// T251: the chat line for a refusal, or "" when the result has no official
+// string (see castRefusalStringId()). ComponentMissing reads the short
+// component from SpellManager::getLastMissingReagentId() and names it via
+// 433 when the InventoryManager's by-id item cache (every ItemPacket the
+// client has received: inventory, bank, merchant, loot, links) knows the
+// item; an item the client has never been sent has no local name source,
+// so 272 stands for it. Defined in src/client/spell/cast_refusal.cpp.
+std::string castRefusalMessage(EverQuest& eq, CastResult result);
 
 inline uint32_t castRefusalStringId(CastResult result) {
     switch (result) {
