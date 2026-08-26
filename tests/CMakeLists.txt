@@ -401,6 +401,7 @@ ADD_EXECUTABLE(test_command_processor
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
@@ -422,6 +423,7 @@ ADD_EXECUTABLE(test_appearance_command
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
@@ -437,6 +439,7 @@ ADD_EXECUTABLE(test_merged_help
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
@@ -525,6 +528,7 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
     # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
@@ -707,6 +711,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_tradeskill_combine PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_tradeskill_combine)
+
+# T280: train a skill at a trainer / close the trainer window (T264 F8).
+# Real EverQuest, real DaybreakConnection over FakeUdpTransport (T234 idiom):
+# the OP_GMTraining reply opens a session and its CAPS are kept, /train and
+# /trainclose produce the two intents T264 listed as blocked, and the
+# OP_GMTrainSkill / OP_GMEndTraining bytes are asserted field by field
+# against eqemu's own struct layout (GMSkillChange_Struct's npcid is a
+# uint16, and its per-field offset comments in eqemu are all wrong).
+ADD_EXECUTABLE(test_train_skill
+    test_train_skill.cpp
+)
+TARGET_LINK_LIBRARIES(test_train_skill GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_train_skill PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_train_skill)
 
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/

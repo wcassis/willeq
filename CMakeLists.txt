@@ -269,6 +269,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_commands.cpp
     src/client/eq_commands_movement.cpp
     src/client/eq_commands_spells.cpp
+    src/client/eq_commands_train.cpp
     src/client/eq_strings.cpp
     src/client/eq_login_world.cpp
     src/client/eq_guild.cpp
@@ -353,6 +354,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/input_action_bridge.cpp
     src/client/action/command_processor.cpp
     src/client/action/command_processor_bank.cpp
+    src/client/action/command_processor_train.cpp
     src/client/action/command_processor_loot.cpp  # T268
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)

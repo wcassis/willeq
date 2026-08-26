@@ -1789,6 +1789,32 @@ ActionResult ActionDispatcher::trainWithTarget() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::trainSkill(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (args.empty()) {
+        return ActionResult::Failure("Usage: /train <skill name> | /train <skill id> | /train list");
+    }
+
+    // T280: no skill lookup here on purpose. "1H Slash", "20" and "list" are
+    // all resolved against the OPEN trainer session's caps, which live on
+    // the game side (EverQuest::m_trainer_skill_caps, filled by the
+    // server's OP_GMTraining reply). GameState carries no such list, so a
+    // check here would be a second, weaker copy of the one
+    // EverQuest::RequestTrainSkill() has to do anyway -- T277's rule.
+    m_handler->trainSkill(args);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::closeTrainer() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->closeTrainer();
+    return ActionResult::Success();
+}
+
 // ===== T150: Social / Find family =====
 // Same shape as assist()/shieldTarget() above: guard the zone connection,
 // route, return a generic Success(). All user-visible reporting (the

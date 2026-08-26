@@ -263,6 +263,11 @@ public:
     void timeOfDay(const std::string& args) override;
     void bankToggle() override;
     void trainWithTarget() override;
+    // T280: thin wrappers over EverQuest::RequestTrainSkill/
+    // RequestCloseTrainer (eq_commands_train.cpp), which push the kept
+    // TrainSkillIntent / CloseTrainerIntent.
+    void trainSkill(const std::string& args) override;
+    void closeTrainer() override;
     // T269: thin wrappers over EverQuest::RequestBankCoinMove/Convert
     // (eq_merchant.cpp), which push the kept Bank* intents.
     void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) override;

@@ -2267,6 +2267,12 @@ private:
 	// Player mode trainer state
 	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
 	std::string m_trainer_name;       // Trainer NPC name
+	// T280: the per-skill CAPS the server sent in its OP_GMTraining reply
+	// (GMTrainee_Struct::skills[], one entry per skill id). They were read
+	// once to build the TrainerWindowOpened event and then thrown away, so
+	// /train had nothing to check a request against. Kept for the life of
+	// the trainer session; cleared by CloseTrainerWindow().
+	std::vector<uint32_t> m_trainer_skill_caps;
 
 	// Graphics callbacks (LoadZoneGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);  // Only creates entity if loading is complete
@@ -2436,6 +2442,29 @@ public:
 	void CloseTrainerWindow();
 	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
 	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
+
+	// T280: /train <skill|id> and /trainclose (T264 F8). RequestTrainSkill()
+	// resolves the argument against the caps the OPEN trainer session sent,
+	// refuses locally (message, no intent, nothing on the wire) for the
+	// things the client can actually know -- no session, no training
+	// points, an unknown/ambiguous skill name, a skill this trainer does
+	// not teach, a skill already at this trainer's cap -- and otherwise
+	// pushes the kept TrainSkillIntent, the intent T264 listed as BLOCKED.
+	// It writes NOTHING locally: the new skill value arrives as the
+	// server's OP_SkillUpdate. `list` in place of a skill name prints the
+	// session's trainable skills. RequestCloseTrainer() pushes the kept
+	// CloseTrainerIntent. Both are defined in eq_commands_train.cpp.
+	void RequestTrainSkill(const std::string& args);
+	void RequestCloseTrainer();
+	// T280: /train list -- the trainer session's offerings, with the price.
+	void ListTrainableSkills();
+	// T280: the trainer session's cap for one skill id (0 = this trainer
+	// does not teach it, or there is no session).
+	uint32_t GetTrainerSkillCap(uint8_t skillId) const;
+	// T280: eqemu's own training price in copper for a skill currently at
+	// `currentValue` (Client::OPGMTrainSkill). Static: it is arithmetic, and
+	// the trainer window and /train both quote it.
+	static uint32_t TrainingCost(uint32_t currentValue);
 
 	// T140: four thin wrappers, same rationale as T136's
 	// RequestVendorToggle/Buy/Sell -- action::EqActionHandler has no access

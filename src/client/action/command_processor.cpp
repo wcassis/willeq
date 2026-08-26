@@ -760,8 +760,17 @@ void CommandProcessor::registerBuiltinCommands() {
     }, [this](const std::string& args) { return cmdBank(args); });
 
     registerCommand({
-        "train", {}, "/train", "Open trainer window with current target", "Skills", false
+        "train", {}, "/train [skill|id|list]",
+        "Open the trainer window with your target, or train a skill at the open one",
+        "Skills", false   // argless /train keeps its pre-T280 meaning
     }, [this](const std::string& args) { return cmdTrain(args); });
+
+    // T280: /trainclose -- the scriptable form of a trainer-window close
+    // button (there is no trainer panel yet, so the command is the only
+    // producer; T156's rule keeps it first either way).
+    registerCommand({
+        "trainclose", {"traindone"}, "/trainclose", "Close the trainer window", "Skills", false
+    }, [this](const std::string& args) { return cmdTrainClose(args); });
 
     registerCommand({
         "door", {"u"}, "/door", "Interact with nearest door", "Utility", false
@@ -2305,9 +2314,9 @@ ActionResult CommandProcessor::cmdTime(const std::string& args) {
 // command_processor_bank.cpp -- this TU is at check_file_sizes.sh's 3000-line
 // FAIL ceiling, so substantial new code goes in a new TU.
 
-ActionResult CommandProcessor::cmdTrain(const std::string& args) {
-    return m_dispatcher.trainWithTarget();
-}
+// T280: cmdTrain/cmdTrainClose live in command_processor_train.cpp -- this
+// TU is at check_file_sizes.sh's 3000-line FAIL ceiling (see the cmdBank
+// note above).
 
 // ========== Spells Commands (T101) ==========
 //

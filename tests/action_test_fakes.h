@@ -394,6 +394,10 @@ public:
     void timeOfDay(const std::string& args) override { record("timeOfDay", args); }
     void bankToggle() override { record("bankToggle"); }
     void trainWithTarget() override { record("trainWithTarget"); }
+    void trainSkill(const std::string& args) override {  // T280
+        record("trainSkill", args);
+    }
+    void closeTrainer() override { record("closeTrainer"); }  // T280
     void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) override {
         record("bankCoinMove", static_cast<uint32_t>(coinType), amount, fromBank);
     }

@@ -443,6 +443,9 @@ private:
     ActionResult cmdTime(const std::string& args);
     ActionResult cmdBank(const std::string& args);
     ActionResult cmdTrain(const std::string& args);
+    // T280: /trainclose -- end the trainer session (OP_GMEndTraining).
+    // Body in command_processor_train.cpp beside cmdTrain's.
+    ActionResult cmdTrainClose(const std::string& args);
 
     // T148: GM (9). Net-new, Guild's shape (T132) -- action::CommandProcessor
     // had ZERO GM registrations, and neither did the legacy `game` registry:

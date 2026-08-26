@@ -2048,6 +2048,14 @@ void EqActionHandler::trainWithTarget() {
     m_eq.RequestTraining();
 }
 
+void EqActionHandler::trainSkill(const std::string& args) {
+    m_eq.RequestTrainSkill(args);
+}
+
+void EqActionHandler::closeTrainer() {
+    m_eq.RequestCloseTrainer();
+}
+
 void EqActionHandler::bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) {
     m_eq.RequestBankCoinMove(coinType, amount, fromBank);
 }

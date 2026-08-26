@@ -1598,6 +1598,28 @@ void EverQuest::SetupTrainerCallbacks()
 	/* D20b1: WindowManager pushes TrainSkillIntent/CloseTrainerIntent via bridge */
 }
 
+// T280: eqemu's training price, in copper, for raising a skill that is
+// currently at `currentValue` (Client::OPGMTrainSkill, zone/client_process.cpp).
+// Verbatim, including the integer division and the free first ten points.
+uint32_t EverQuest::TrainingCost(uint32_t currentValue)
+{
+	if (currentValue <= 10) {
+		return 0;
+	}
+	const uint32_t adjusted = currentValue - 10;
+	return (adjusted * adjusted * adjusted) / 100;
+}
+
+// T280: the open trainer session's cap for one skill (0 = not taught here,
+// or no session).
+uint32_t EverQuest::GetTrainerSkillCap(uint8_t skillId) const
+{
+	if (skillId >= m_trainer_skill_caps.size()) {
+		return 0;
+	}
+	return m_trainer_skill_caps[skillId];
+}
+
 void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 {
 	// Server response to our training request
@@ -1639,6 +1661,12 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 	trainerData.copper = GetCopper();
 	trainerData.practicePoints = GetPracticePoints();
 
+	// T280: keep the caps for the life of the session. /train has to answer
+	// "does this trainer teach that, and am I already at its cap" before it
+	// puts anything on the wire, and this reply is the only place the
+	// answer ever arrives.
+	m_trainer_skill_caps.assign(trainee->skills, trainee->skills + EQT::MAX_PP_SKILL);
+
 	for (uint8_t skill_id = 0; skill_id < EQT::MAX_PP_SKILL; ++skill_id) {
 		uint32_t max_trainable = trainee->skills[skill_id];
 
@@ -1661,9 +1689,19 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 		// Get skill name
 		const char* skill_name = EQ::getSkillName(skill_id);
 
-		// Calculate training cost
-		// EQ training cost formula: (current_value + 1) * 10 copper per point
-		uint32_t cost = (current_value + 1) * 10;
+		// Training cost, in COPPER. T280 corrected this: the old
+		// "(current_value + 1) * 10" was invented, and disagreed with the
+		// server at every skill value. eqemu's Client::OPGMTrainSkill
+		// (zone/client_process.cpp) is the authority and computes
+		//     AdjustedSkillLevel = skilllevel - 10;
+		//     if (AdjustedSkillLevel > 0)
+		//         Cost = AdjustedSkillLevel^3 / 100;
+		// off the CURRENT (pre-train) value -- so the first ten points of
+		// any skill are free, and the price then grows cubically. Cost is
+		// what the server DEDUCTS; it is not sent back on Titanium (see
+		// TrainingCost() below), so this figure is the only one the player
+		// ever sees and it had better match.
+		uint32_t cost = TrainingCost(current_value);
 
 		eqt::state::TrainerSkillEntryData skill;
 		skill.skillId = skill_id;
@@ -1759,6 +1797,7 @@ void EverQuest::CloseTrainerWindow()
 	// Clear trainer state
 	m_trainer_npc_id = 0;
 	m_trainer_name.clear();
+	m_trainer_skill_caps.clear();  // T280
 }
 // ============================================================================
 // Phase 4: Tradeskill Recipes

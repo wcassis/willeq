@@ -472,6 +472,12 @@ public:
     virtual void timeOfDay(const std::string& args) = 0;
     virtual void bankToggle() = 0;
     virtual void trainWithTarget() = 0;
+    // T280: /train <skill|id|list> and /trainclose. The skill resolver,
+    // the local refusals and the TrainSkillIntent/CloseTrainerIntent
+    // pushes all live in EverQuest (the trainer session's caps are
+    // private there); these are the routing hops.
+    virtual void trainSkill(const std::string& args) = 0;
+    virtual void closeTrainer() = 0;
 
     // ========== Bank coins (T269) ==========
     // /bank deposit|withdraw|convert. coinType scale is the wire's
@@ -1426,6 +1432,18 @@ public:
      * EverQuest::RequestTraining(), not duplicated here.
      */
     ActionResult trainWithTarget();
+
+    /**
+     * T280: train one skill at the trainer whose window is already
+     * open (/train <skill|id>, or `list` to see the offerings), and
+     * close that window (/trainclose). Every guard that needs the
+     * session -- no session, no training points, unknown/ambiguous
+     * skill, not taught here, already at this trainer's cap -- lives
+     * in EverQuest::RequestTrainSkill(); this layer only gates the
+     * zone connection and the empty argument.
+     */
+    ActionResult trainSkill(const std::string& args);
+    ActionResult closeTrainer();
 
     /**
      * T150: group assist -- ask the server to give you your group main

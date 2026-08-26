@@ -192,6 +192,11 @@ std::vector<std::string> variantMembers() {
 // T273 wired ReadItemIntent as the /read command (CommandProcessor ->
 // ActionDispatcher -> EqActionHandler -> EverQuest::RequestReadItem), so it
 // is no longer on this list.
+// T280 delisted TrainSkillIntent and CloseTrainerIntent: /train <skill|id>
+// and /trainclose produce them (CommandProcessor -> ActionDispatcher ->
+// EqActionHandler -> EverQuest::RequestTrainSkill/RequestCloseTrainer).
+// There is still no trainer PANEL to click, so the command is the only
+// producer -- said out loud rather than implied.
 const std::set<std::string> kBlockedIntents = {
     "LootItemIntent", "LootAllIntent", "CloseLootIntent",
     // T272 delisted MemorizeSpellIntent (spellbook click produces it);
@@ -200,7 +205,9 @@ const std::set<std::string> kBlockedIntents = {
     // click + /removebuff), TradeskillCombineIntent + TradeskillCloseIntent
     // (T278 /combine, /closecontainer).
     "SpellbookStateIntent",
-    "TrainSkillIntent", "CloseTrainerIntent",
+    // T278 delisted TradeskillCombineIntent/TradeskillCloseIntent (/combine,
+    // /closecontainer); T280 delisted TrainSkillIntent/CloseTrainerIntent
+    // (/train, /trainclose).
 };
 
 TEST(ReachabilitySweep, EveryIntentHasAConsumerArm) {
