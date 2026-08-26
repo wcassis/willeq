@@ -488,3 +488,29 @@ for every entry of every pack all along.
 **Consequence:** all EQE1 packs are regenerated; `data/eqe1_texture_index.json`
 is rebuilt if entry offsets move; the goldens are re-blessed once, in the
 same unit, with before/after evidence.
+
+## 2026-08-26 — Will's rulings on the standing class-C list
+
+- **Pi composite run: GO** (T289 = T287 Part 2). Measurement only; re-enabling
+  composites on the orangepi remains a separate decision after the numbers.
+- **Loot window: REQUIRED.** It existed and was ~80% working before the static-UI
+  migration. `include/client/graphics/ui/loot_window.h` (163 lines) and
+  `src/client/graphics/ui/loot_window.cpp` (867 lines) were deleted in U07c2
+  `0f25cb57`; `refactor/D06b_publish_loot_vendor.md` documents the publish path.
+  **Recover from history and port to the static-panel architecture — do not
+  design a new one.**
+- **`/bug`: DO NOT WIRE.** The command shape question is closed as won't-do.
+- **T180/T181 leftovers: KEEP** both (`EverQuest::GetClassName` public,
+  `/raid looter add|remove`).
+- **Upstream eqemu reports: DEFER to the absolute end of the project.** We are
+  not tracking upstream, so some may already be fixed there. Do not file now.
+- **`docs/plans` / `docs/future`: PARKED.** Not a source of work.
+- **visual_gate: switch the metric to process CPU time (`getrusage`)** and
+  re-bless `p95CpuMsBaseline`. The wall-clock `cpuDrawMs` is defeated by load
+  from a sibling worktree build.
+- **`protectedRegions_`: REMOVE** — if it was built for progressive terrain
+  loading, it and the dead progressive paths go. Verify that is what it was for
+  before deleting.
+- **Memory budgets: derive them.** Extrapolate sensible per-category defaults
+  from the assets actually on disk, a 1280x720 maximum resolution, and the
+  Orange Pi One's real envelope (512 MB RAM, 32-bit ARM). Do not ask for numbers.
