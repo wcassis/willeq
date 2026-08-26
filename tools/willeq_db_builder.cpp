@@ -1343,7 +1343,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Performance pragmas
+    // Performance pragmas. WAL is a BUILD-TIME setting only: the shipped
+    // file is switched back to a rollback journal before the final close
+    // (below), so nothing that opens it later runs the WAL protocol.
     execSQL(db, "PRAGMA journal_mode=WAL");
     execSQL(db, "PRAGMA synchronous=NORMAL");
     execSQL(db, "PRAGMA page_size=4096");
@@ -1485,6 +1487,21 @@ int main(int argc, char** argv) {
 
     // Final optimization
     execSQL(db, "ANALYZE");
+
+    // T258: ship a plain rollback-journal database. A WAL-mode file makes
+    // every ordinary reader (sqlite3 CLI, scripts, pre-T257 clients) run WAL
+    // recovery on open and create -wal/-shm sidecars; on the project's NFS
+    // mount two readers opening together raced on that recovery and one
+    // lost with SQLITE_BUSY_RECOVERY (T257). Switching the journal mode
+    // checkpoints the WAL into the main file and rewrites header bytes
+    // 18/19 from 2/2 (WAL) to 1/1 (legacy). VACUUM then compacts the file;
+    // it is cheap at this size (~4 MB).
+    if (!execSQL(db, "PRAGMA journal_mode=DELETE")) {
+        fprintf(stderr, "ERROR: could not leave WAL mode\n");
+        sqlite3_close(db);
+        return 1;
+    }
+    execSQL(db, "VACUUM");
 
     sqlite3_close(db);
 

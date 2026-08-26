@@ -258,3 +258,49 @@ TEST(WilleqDatabaseConcurrentOpenTest, MissingFileStillFailsToOpen) {
     EXPECT_FALSE(db.isOpen());
     EXPECT_FALSE(FileExists(path)) << "open() must not create the file";
 }
+
+// ============================================================================
+// T258: the shipped file must not be a WAL-mode database. The builder
+// switches back to a rollback journal before its final close, so header
+// bytes 18/19 (file format read/write versions) are 1/1, not 2/2, and a
+// PLAIN read-only open -- not the client's immutable URI -- reports
+// journal_mode=delete and creates no -wal/-shm sidecars. This is what any
+// other tool (sqlite3 CLI, scripts) sees.
+// ============================================================================
+
+TEST(WilleqDatabaseJournalModeTest, ShippedDbHeaderIsNotWal) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+
+    FILE* f = std::fopen(path.c_str(), "rb");
+    ASSERT_NE(f, nullptr);
+    unsigned char header[100] = {0};
+    ASSERT_EQ(std::fread(header, 1, sizeof(header), f), sizeof(header));
+    std::fclose(f);
+
+    EXPECT_EQ(std::string(reinterpret_cast<char*>(header), 15), "SQLite format 3");
+    EXPECT_EQ(header[18], 1) << "write version 2 = WAL; the shipped file must be legacy (1)";
+    EXPECT_EQ(header[19], 1) << "read version 2 = WAL; the shipped file must be legacy (1)";
+}
+
+TEST(WilleqDatabaseJournalModeTest, PlainReadOnlyOpenReportsDeleteAndLeavesNoSidecars) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    const std::string wal = path + "-wal";
+    const std::string shm = path + "-shm";
+    const bool walBefore = FileExists(wal);
+    const bool shmBefore = FileExists(shm);
+
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* stmt = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db, "PRAGMA journal_mode", -1, &stmt, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(stmt), SQLITE_ROW);
+    std::string mode = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    EXPECT_EQ(mode, "delete");
+    if (!walBefore) EXPECT_FALSE(FileExists(wal)) << wal << " was created by a plain reader";
+    if (!shmBefore) EXPECT_FALSE(FileExists(shm)) << shm << " was created by a plain reader";
+}
