@@ -760,6 +760,13 @@ void EqActionHandler::readItem(const std::string& args) {
     m_eq.RequestReadItem(args);
 }
 
+// T276: same one-line relay -- item resolution, the scroll/class/level/
+// full-book refusals and the ScribeSpellIntent push all live in
+// EverQuest::RequestScribeItem(); nothing is duplicated here.
+void EqActionHandler::scribeItem(const std::string& args) {
+    m_eq.RequestScribeItem(args);
+}
+
 // ========== Spellbook ==========
 
 void EqActionHandler::forgetSpell(uint8_t gemSlot) {

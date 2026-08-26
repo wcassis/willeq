@@ -195,8 +195,9 @@ std::vector<std::string> variantMembers() {
 const std::set<std::string> kBlockedIntents = {
     "LootItemIntent", "LootAllIntent", "CloseLootIntent",
     // T272 delisted MemorizeSpellIntent (spellbook click produces it);
-    // T273 delisted ReadItemIntent (/read produces it).
-    "ScribeSpellIntent", "SpellbookStateIntent",
+    // T273 delisted ReadItemIntent (/read produces it);
+    // T276 delisted ScribeSpellIntent (/scribe produces it).
+    "SpellbookStateIntent",
     "BuffCancelIntent",
     "TradeskillCombineIntent", "TradeskillCloseIntent",
     "TrainSkillIntent", "CloseTrainerIntent",

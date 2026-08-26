@@ -334,6 +334,9 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 179: return "You cannot use this item unless it is equipped.";
 		case 180: return "You miss a note, bringing your song to a close!";
 		case 181: return "Your race, class, or deity cannot use this item.";
+		// T276: eqemu SPELL_LEVEL_TO_LOW, sent by Client::OPMemorizeSpell
+		// for both the scribe and the memorize actions.
+		case 12048: return "You will have to achieve level %1 before you can scribe the %2.";
 		case 182: return "Item is out of charges.";
 		case 189: return "You are already on a mount.";
 		case 191: return "Your target has no mana to affect";

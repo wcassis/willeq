@@ -105,6 +105,7 @@ namespace eqt { namespace events { struct PlayerPositionChanged; } }
 namespace eqt {
 namespace inventory {
     class InventoryManager;
+    struct ItemInstance;   // T276: ResolveCarriedItem() returns one
 }
 namespace ui {
     class CommandRegistry;
@@ -2287,6 +2288,10 @@ private:
 
 	// Spell scribing from scroll
 	void ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot);
+	// T276: the one scribe-refusal string table, shared by /scribe's
+	// pre-flight and ScribeSpellFromScroll()'s guard (eq_merchant.cpp).
+	// Empty return = no refusal.
+	std::string ScribeRefusalMessage(uint32_t spellId);
 
 	// Loot packet handlers (Player mode)
 	void ZoneProcessLootItemToUI(const EQ::Net::Packet& p);
@@ -2463,6 +2468,21 @@ public:
 	// RequestReadBook() -> OP_ReadBook. Defined in eq_commands.cpp next to
 	// RequestEquip, whose item-name resolution it mirrors.
 	void RequestReadItem(const std::string& args);
+
+	// T276: /scribe <slot|item name>. Resolves the carried spell scroll,
+	// refuses locally (message, no intent, nothing on the wire) for a
+	// non-scroll / already-known spell / wrong class / too low a level /
+	// a full spellbook, and otherwise pushes the kept ScribeSpellIntent --
+	// the intent T264 listed as BLOCKED (F5). Defined in eq_commands.cpp
+	// next to RequestReadItem, whose item resolution it mirrors.
+	void RequestScribeItem(const std::string& args);
+
+	// T276: shared slot|name resolution for /read and /scribe (T273's
+	// copy of /equip's rule, now one function). Returns nullptr after
+	// having already sent the refusal chat line; on success writes the
+	// resolved inventory slot to slotOut.
+	const eqt::inventory::ItemInstance* ResolveCarriedItem(
+		const std::string& args, const char* verb, int16_t& slotOut);
 
 private:
 #ifdef EQT_HAS_GRAPHICS

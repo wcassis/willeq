@@ -119,7 +119,7 @@ wires them.
 | F2 | Read a book / note item | ReadItemIntent arm -> RequestReadBook -> SendReadBookRequest | CLOSED by T273: `/read` (slot or item name) is the producer |
 | F3 | Bank coins: deposit / withdraw / convert | BankCurrencyMoveIntent / BankCurrencyConvertIntent arms (build MoveCoin_Struct, SendMoveCoin) | `/bank` opens the window; nothing moves coins. TradeManager's SendMoveCoin callback is the trade-window path, not the bank. |
 | F4 | Spellbook popup: click a spell to memorize; open/close pose | MemorizeSpellIntent arm -> SpellManager::memorizeSpell; SpellbookStateIntent arm -> SendSpawnAppearance(AT_ANIMATION 110/100) | the popup EXISTS (RA::ToggleSpellbook, SpellbookPopupState) and its click handler is a LOG stub that says "would need MemorizeSpellIntent" (static_ui_input.cpp:111). `/mem` covers memorize by command, so this is the UI leg only. `cmdSpellbook` still prints "Spellbook window not yet implemented in UI" -- stale, same class as T223's /newskills. |
-| F5 | Scribe a spell scroll | ScribeSpellIntent arm -> EverQuest::ScribeSpellFromScroll (level/class/already-scribed checks, sends the packets) | no command, no gesture; InventoryManager::setSpellForScribe is written by nothing that leads here |
+| F5 | Scribe a spell scroll | ScribeSpellIntent arm -> EverQuest::ScribeSpellFromScroll (level/class/already-scribed checks, sends the packets) | **CLOSED by T276**: `/scribe <slot\|name>` is the producer. The arm also assumed the scroll was already on the cursor (nothing put it there) and the intent's `bookSlot` was `uint8_t` against a 400-slot book. Still no MOUSE gesture -- the inventory popup's `SlotDisplayInfo` carries no item id or scroll effect. |
 | F6 | Click off a buff | BuffCancelIntent arm -> BuffManager::removeBuffBySlot | no command, the buff window has no click handler |
 | F7 | Manual tradeskill combine + closing the container | TradeskillCombineIntent arm -> SendTradeSkillCombine; TradeskillCloseIntent arm -> SendCloseContainer (these two senders have NO other caller) | T149's recipe auto-combine is a different server mechanism; the classic combine-what-I-put-in-the-container has no route, and an opened world container is never closed |
 | F8 | Train a skill at a trainer; close the trainer window | TrainSkillIntent arm -> EverQuest::TrainSkill (sends GMTrainSkill); CloseTrainerIntent arm -> CloseTrainerWindow (sends GMEndTraining) | `/train` opens the window (RequestTraining); nothing trains or closes |
@@ -193,7 +193,7 @@ name in the message. Runtime ~12 s.
 | `CastSpellIntent` | src/client/graphics/ui/static_ui_input.cpp:67 | eq_bridge.cpp:1035 | LIVE |
 | `MemorizeSpellIntent` | (none) | eq_bridge.cpp:1431 | KEPT, BLOCKED (UI leg only): spellbook-popup click -> memorize (F4); /mem exists |
 | `ForgetSpellIntent` | (none) | eq_bridge.cpp:1054 | DELETED -- /forget -> EqActionHandler::forgetSpell |
-| `ScribeSpellIntent` | (none) | eq_bridge.cpp:1059 | KEPT, BLOCKED: scribe a scroll (F5) |
+| `ScribeSpellIntent` | src/client/eq_commands.cpp (`RequestScribeItem`, T276) | eq_bridge.cpp:1059 | LIVE -- `/scribe` (T276) |
 | `SpellbookStateIntent` | (none) | eq_bridge.cpp:1062 | KEPT, BLOCKED: spellbook open/close pose (F4) |
 | `InterruptSpellIntent` | (none) | eq_bridge.cpp:1065 | DELETED -- /stopcast -> EqActionHandler::interruptCast |
 | `BuffCancelIntent` | (none) | eq_bridge.cpp:1069 | KEPT, BLOCKED: click off a buff (F6) |

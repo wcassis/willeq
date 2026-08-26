@@ -678,6 +678,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_read_book)
 
+# T276: scribe a spell scroll (T264 F5). /scribe -> ScribeSpellIntent ->
+# OP_MoveItem-then-OP_MemorizeSpell(scribing=0) wire bytes (real
+# DaybreakConnection over FakeUdpTransport) -> the server echo adds the
+# spell and consumes the scroll. Needs willeq.db for the class/level
+# refusals and the spell ids (self-skips without it, test_spell_manager's
+# precedent). See refactor/T276_scribe_scroll.md.
+ADD_EXECUTABLE(test_scribe_scroll
+    test_scribe_scroll.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_scribe_scroll PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_scribe_scroll GTest::gtest willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_scribe_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_scribe_scroll)
+
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/
 # showOrSetZoning/campNow/debugLevel/perfReport/timeOfDay -- the net-new

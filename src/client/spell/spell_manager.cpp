@@ -865,6 +865,16 @@ uint32_t SpellManager::getSpellbookSpell(uint16_t slot) const
     return m_spellbook[slot];
 }
 
+int32_t SpellManager::findFreeSpellbookSlot() const
+{
+    for (uint16_t i = 0; i < MAX_SPELLBOOK_SLOTS; ++i) {
+        if (m_spellbook[i] == SPELL_UNKNOWN || m_spellbook[i] == 0) {
+            return static_cast<int32_t>(i);
+        }
+    }
+    return -1;
+}
+
 std::vector<uint32_t> SpellManager::getScribedSpells() const
 {
     std::vector<uint32_t> spells;

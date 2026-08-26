@@ -664,6 +664,15 @@ void CommandProcessor::registerBuiltinCommands() {
         "Inventory", false
     }, [this](const std::string& args) { return cmdRead(args); });
 
+    // T276: /scribe -- write a carried spell scroll into the spellbook.
+    // T264 listed ScribeSpellIntent as blocked (consumer arm, no producer);
+    // this command is the producer. See refactor/T276_scribe_scroll.md.
+    registerCommand({
+        "scribe", {}, "/scribe <slot> | /scribe <item name>",
+        "Scribe a spell scroll you are carrying into your spellbook (e.g. /scribe Spell: Minor Healing)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdScribe(args); });
+
     // T140: final 16 of the game-registry migration programme (equip
     // excluded). Registrations removed from eq_commands_movement.cpp/
     // eq_commands_spells.cpp in the same change -- see
@@ -2097,6 +2106,11 @@ ActionResult CommandProcessor::cmdEquip(const std::string& args) {
 // m_dispatcher.readItem().
 ActionResult CommandProcessor::cmdRead(const std::string& args) {
     return m_dispatcher.readItem(args);
+}
+
+// T276: same idiom again -- everything is in EverQuest::RequestScribeItem().
+ActionResult CommandProcessor::cmdScribe(const std::string& args) {
+    return m_dispatcher.scribeItem(args);
 }
 
 ActionResult CommandProcessor::cmdSell(const std::string& args) {

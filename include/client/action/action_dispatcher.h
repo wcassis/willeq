@@ -242,6 +242,10 @@ public:
     // item against InventoryManager and pushes the kept ReadItemIntent.
     virtual void readItem(const std::string& args) = 0;
 
+    // T276: /scribe -- EverQuest::RequestScribeItem() resolves the
+    // carried scroll, refuses locally, and pushes ScribeSpellIntent.
+    virtual void scribeItem(const std::string& args) = 0;
+
     // ========== Spellbook ==========
 
     virtual void forgetSpell(uint8_t gemSlot) = 0;
@@ -895,6 +899,13 @@ public:
      * (OP_ReadBook goes to the zone server) and on a non-empty argument.
      */
     ActionResult readItem(const std::string& args);
+
+    /**
+     * T276: /scribe <slot|item name>. Zone-connection + empty-argument
+     * gate only; every other refusal lives in
+     * EverQuest::RequestScribeItem().
+     */
+    ActionResult scribeItem(const std::string& args);
 
     // ========== Spellbook Actions ==========
 

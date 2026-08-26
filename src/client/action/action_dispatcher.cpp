@@ -1635,6 +1635,24 @@ ActionResult ActionDispatcher::readItem(const std::string& args) {
     return ActionResult::Success();
 }
 
+// ========== Scribe a spell scroll (T276) ==========
+// Same shape as readItem() above: OP_MemorizeSpell is a zone-server packet
+// and a disconnected client has no inventory to scribe from. The
+// empty-argument usage string is asserted HERE so /scribe with no argument
+// is refused without a live EverQuest; RequestScribeItem keeps its own
+// identical guard for intent-path callers.
+ActionResult ActionDispatcher::scribeItem(const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    if (args.empty()) {
+        return ActionResult::Failure(
+            "Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
+    }
+
+    m_handler->scribeItem(args);
+    return ActionResult::Success();
+}
+
 // ========== Movement / Utility / Skills Actions (T140) ==========
 
 ActionResult ActionDispatcher::showLocation() {

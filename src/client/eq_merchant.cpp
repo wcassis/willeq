@@ -192,6 +192,64 @@ void EverQuest::SendDeleteItem(int16_t slot)
 	m_zone_connection->QueuePacket(packet);
 }
 
+// T276 -- the ONE place a scribe refusal becomes a chat line, shared by the
+// pre-flight in EverQuest::RequestScribeItem() (which must refuse BEFORE the
+// scroll is moved onto the cursor) and by the last-line guard in
+// ScribeSpellFromScroll() below, so the two can never drift (the T244
+// castRefusalMessage() idiom). Empty string means "no refusal".
+//
+// The two class/level strings are the official ones eqemu itself sends from
+// Client::OPMemorizeSpell (zone/client_process.cpp): SPELL_LEVEL_TO_LOW
+// (eqstr_us.txt 12048, "You will have to achieve level %1 before you can
+// scribe the %2.") and CANNOT_USE_ITEM (181, "Your race, class, or deity
+// cannot use this item."). The already-scribed refusal has no official
+// string -- the stock client never offers the gesture for a spell you know,
+// and eqemu would happily overwrite the book slot AND eat the scroll.
+std::string EverQuest::ScribeRefusalMessage(uint32_t spellId)
+{
+	if (!m_spell_manager) {
+		return "Cannot scribe - spell system not available.";
+	}
+
+	if (m_spell_manager->hasSpellScribed(spellId)) {
+		return "You already have this spell scribed in your spellbook.";
+	}
+
+	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
+	if (!spellData) {
+		return fmt::format("Spell {} does not exist or is invalid.", spellId);
+	}
+
+	// GetClass()/GetLevel() read m_game_state.player() -- the authoritative
+	// copy. T276: this used the raw m_class/m_level members, a second copy
+	// written only by the PlayerProfile handler.
+	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(GetClass()));
+	if (reqLevel == 255) {
+		return GetStringMessage(181);
+	}
+	if (GetLevel() < reqLevel) {
+		return GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
+	}
+
+	return "";
+}
+
+// T276 -- the scribe request itself (T264 F5). Reached ONLY through
+// ScribeSpellIntent, whose producer is /scribe (EverQuest::RequestScribeItem
+// in eq_commands.cpp).
+//
+// PRECONDITION, and it is the whole reason this function used to be dead:
+// eqemu's Client::OPMemorizeSpell reads the scroll off the CURSOR
+// (m_inv[EQ::invslot::slotCursor]) and requires that item's Scroll.Effect to
+// equal spell_id. The PRODUCER puts it there --
+// InventoryManager::setSpellForScribe() -> pickupItem() pushes a
+// MoveItemIntent, which the same ProcessBridgeIntents() drain turns into
+// OP_MoveItem BEFORE it reaches this arm, because intents are drained FIFO
+// and /scribe pushes the move first. Doing the pickup HERE instead would
+// queue the MoveItemIntent for the NEXT drain and the server would see
+// OP_MemorizeSpell against an empty cursor. The comment this function
+// carried before T276 asserted the precondition was already met -- and
+// setSpellForScribe() had zero callers anywhere, so it never was.
 void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)
 {
 	if (!m_zone_connection) {
@@ -204,43 +262,41 @@ void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16
 		return;
 	}
 
-	// Check if spell is already scribed
-	if (m_spell_manager->hasSpellScribed(spellId)) {
-		AddChatSystemMessage("You already have this spell scribed in your spellbook.");
-		LOG_DEBUG(MOD_SPELL, "Spell {} already scribed, not sending packets", spellId);
+	if (std::string refusal = ScribeRefusalMessage(spellId); !refusal.empty()) {
+		AddChatSystemMessage(refusal);
+		LOG_DEBUG(MOD_SPELL, "Refusing to scribe spell {}: {}", spellId, refusal);
 		return;
 	}
 
-	// Check level/class requirements
-	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
-	if (spellData) {
-		uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(m_class));
-		if (reqLevel == 255) {
-			AddChatSystemMessage("Your class cannot use this spell.");
-			LOG_DEBUG(MOD_SPELL, "Class {} cannot use spell {}", m_class, spellId);
-			return;
-		}
-		if (m_level < reqLevel) {
-			AddChatSystemMessage(fmt::format("You must be level {} to scribe this spell.", reqLevel));
-			LOG_DEBUG(MOD_SPELL, "Level {} too low to scribe spell {} (requires {})",
-				m_level, spellId, reqLevel);
+	if (bookSlot >= EQ::MAX_SPELLBOOK_SLOTS) {
+		AddChatSystemMessage("Your spellbook is full.");
+		return;
+	}
+
+	// Last-line guard mirroring eqemu's own: the cursor must hold THIS
+	// scroll. Nothing but a producer bug can trip it, which is exactly why
+	// it is here -- the pre-T276 code sent the packet regardless.
+	if (m_inventory_manager) {
+		const eqt::inventory::ItemInstance* onCursor = m_inventory_manager->getCursorItem();
+		if (!onCursor || onCursor->getScrollSpellId() != spellId) {
+			AddChatSystemMessage("The scroll is not on your cursor - cannot scribe.");
+			LOG_WARN(MOD_SPELL, "Scribe aborted: cursor does not hold spell {}'s scroll", spellId);
 			return;
 		}
 	}
 
-	LOG_INFO(MOD_SPELL, "Scribing spell {} to spellbook slot {} (scroll already on cursor)",
-		spellId, bookSlot);
+	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
 
-	// Note: The scroll was already moved to cursor slot when Ctrl+clicked
-	// (InventoryManager::setSpellForScribe sends MoveItem to cursor)
-	// We only need to send OP_MemorizeSpell here
+	LOG_INFO(MOD_SPELL, "Scribing spell {} to spellbook slot {} (scroll from slot {})",
+		spellId, bookSlot, sourceSlot);
 
-	// Send OP_MemorizeSpell with scribing action
-	// MemorizeSpell_Struct:
-	// - slot (4 bytes): spellbook slot (0-399) when scribing
-	// - spell_id (4 bytes): spell ID
-	// - scribing (4 bytes): action type (0=scribe from scroll, 1=memorize, 2=forget, 3=spellbar)
-	// - reduction (4 bytes): reuse timer reduction
+	// eqemu MemorizeSpell_Struct (common/eq_packet_structs.h:415, and the
+	// identical titanium_structs.h:407):
+	//   uint32 slot      -- spellbook slot (0-399) when scribing
+	//   uint32 spell_id
+	//   uint32 scribing  -- Client::memSpellScribing = 0 (zone/client.h:102)
+	//   uint32 reduction
+	// Client::OPMemorizeSpell rejects any size != 16.
 	{
 		EQ::Net::DynamicPacket memPacket;
 		memPacket.Resize(18);  // opcode(2) + struct(16)
@@ -259,7 +315,8 @@ void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16
 		m_zone_connection->QueuePacket(memPacket);
 	}
 
-	// Store pending scribe state for confirmation handling
+	// Store pending scribe state for confirmation handling (eq.cpp's
+	// HC_OP_MemorizeSpell case matches on it).
 	m_pending_scribe_spell_id = spellId;
 	m_pending_scribe_book_slot = bookSlot;
 	m_pending_scribe_source_slot = sourceSlot;

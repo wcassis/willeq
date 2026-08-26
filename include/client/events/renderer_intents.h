@@ -140,7 +140,14 @@ struct MemorizeSpellIntent {
 
 struct ScribeSpellIntent {
     uint32_t spellId;
-    uint8_t bookSlot;
+    // T276: was uint8_t. The Titanium spellbook is 400 slots
+    // (EQ::MAX_SPELLBOOK_SLOTS, eqemu EQ::spells::SPELLBOOK_SIZE) and
+    // EverQuest::ScribeSpellFromScroll()/SpellManager::scribeSpell() have
+    // always taken uint16_t, so the intent was the one narrowing point on
+    // the route -- book slots 256..399 would have wrapped to 0..143 and
+    // scribed over an occupied slot. Never observed because nothing
+    // produced the intent (T264 F5).
+    uint16_t bookSlot;
     int16_t sourceSlot;
 };
 

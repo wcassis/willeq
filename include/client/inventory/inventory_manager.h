@@ -163,6 +163,15 @@ public:
     int16_t getScribeSourceSlot() const { return scribeSourceSlot_; }
     void setSpellForScribe(uint32_t spellId, int16_t sourceSlot);
     void clearSpellForScribe();
+    // T276: on a successful scribe the server consumes the scroll from the
+    // CURSOR (eqemu Client::OPMemorizeSpell -> DeleteItemInInventory(
+    // slotCursor, 1, true)) and confirms with OP_DeleteItem --
+    // processDeleteItemResponse() trusts client-side deletion and does
+    // nothing, so without this the client would keep showing the spent
+    // scroll on the cursor and the NEXT /scribe would be refused for a full
+    // cursor. Drops the cursor front locally; sends NOTHING, because the
+    // server has already deleted it. Returns false if the cursor is empty.
+    bool consumeScribedScroll();
 
     // Swap items between slots
     bool swapItems(int16_t fromSlot, int16_t toSlot);

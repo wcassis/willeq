@@ -406,6 +406,7 @@ private:
     ActionResult cmdSell(const std::string& args);
     ActionResult cmdEquip(const std::string& args);  // T141
     ActionResult cmdRead(const std::string& args);   // T273
+    ActionResult cmdScribe(const std::string& args); // T276
 
     // T140: final 16 of the game-registry migration programme (equip
     // deliberately excluded -- see refactor/T140_migrate_final_seventeen.md).

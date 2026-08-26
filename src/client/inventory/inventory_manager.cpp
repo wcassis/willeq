@@ -1129,6 +1129,24 @@ void InventoryManager::clearSpellForScribe() {
     scribeSourceSlot_ = SLOT_INVALID;
 }
 
+bool InventoryManager::consumeScribedScroll() {
+    clearSpellForScribe();
+    if (cursorQueue_.empty()) {
+        return false;
+    }
+
+    LOG_DEBUG(MOD_UI, "InventoryManager: scroll '{}' consumed by the server after scribing",
+              cursorQueue_.front()->name);
+
+    // Same local bookkeeping as destroyCursorItem(), WITHOUT the
+    // DeleteItemIntent -- the server deleted it and told us so.
+    dropCursorFrontContents();
+    cursorQueue_.pop_front();
+    promoteCursorFrontContents();
+    cursorSourceSlot_ = cursorQueue_.empty() ? SLOT_INVALID : CURSOR_SLOT;
+    return true;
+}
+
 bool InventoryManager::swapItems(int16_t fromSlot, int16_t toSlot) {
     auto fromIt = items_.find(fromSlot);
     auto toIt = items_.find(toSlot);

@@ -1539,6 +1539,16 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 						spell_id, slot);
 				}
 
+				// T276: the server ate the scroll off the cursor
+				// (Client::OPMemorizeSpell -> DeleteItemInInventory(
+				// slotCursor, 1, true)) and confirms with OP_DeleteItem,
+				// which processDeleteItemResponse() does not act on. Drop
+				// our own copy locally, or the spent scroll stays on the
+				// cursor and blocks the next /scribe.
+				if (m_inventory_manager) {
+					m_inventory_manager->consumeScribedScroll();
+				}
+
 				// Clear pending scribe state
 				m_pending_scribe_spell_id = 0;
 				m_pending_scribe_book_slot = 0;

@@ -114,6 +114,7 @@ public:
     void activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) override;  // T239
     void equip(const std::string& args) override;  // T141
     void readItem(const std::string& args) override;  // T273
+    void scribeItem(const std::string& args) override;  // T276
 
     // ========== Spellbook ==========
 

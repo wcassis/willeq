@@ -817,6 +817,75 @@ void EverQuest::RequestEquip(const std::string& args)
 // read, and asking for one would make the server silently return nothing
 // (Client::ReadBook returns early on an empty text_file), so /read refuses
 // locally and names the item, per T178.
+// T276 -- ONE slot|name resolver for the carried-item commands. T273's
+// /read copied the rule out of /equip; /scribe would have been the THIRD
+// copy, so it is a function now and /read calls it too. Returns nullptr
+// after having already sent the refusal (T178: every refusal names what was
+// asked for). `verb` appears in the messages ("read"/"scribe").
+const eqt::inventory::ItemInstance* EverQuest::ResolveCarriedItem(
+	const std::string& args, const char* verb, int16_t& slotOut)
+{
+	slotOut = eqt::inventory::SLOT_INVALID;
+
+	if (!m_inventory_manager) {
+		AddChatSystemMessage(fmt::format("Cannot {} - inventory not available.", verb));
+		return nullptr;
+	}
+
+	// A token that LOOKS like an attempted slot number is parsed strictly
+	// as the slot form -- same rule as /equip, so a typo'd number stays a
+	// slot error rather than becoming a search for the literal text.
+	const bool numericForm = std::isdigit(static_cast<unsigned char>(args[0])) || args[0] == '-';
+
+	if (numericForm) {
+		int16_t parsed = 0;
+		if (!ParseEquipSlot(args, parsed)) {
+			AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
+			return nullptr;
+		}
+		const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(parsed);
+		if (!item) {
+			AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(parsed)));
+			return nullptr;
+		}
+		slotOut = parsed;
+		return item;
+	}
+
+	auto matches = m_inventory_manager->findItemsByNameSubstring(args);
+	if (matches.empty()) {
+		AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+		return nullptr;
+	}
+	// Ambiguous only if DISTINCT item names matched -- two copies of the
+	// same note read identically, two copies of the same scroll scribe
+	// identically. Same rule as /equip.
+	std::string firstLowerName = matches.front().second->name;
+	std::transform(firstLowerName.begin(), firstLowerName.end(), firstLowerName.begin(), ::tolower);
+	bool ambiguous = false;
+	for (const auto& [s, i] : matches) {
+		std::string n = i->name;
+		std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+		if (n != firstLowerName) {
+			ambiguous = true;
+			break;
+		}
+	}
+	if (ambiguous) {
+		std::string names;
+		for (const auto& [s, i] : matches) {
+			if (!names.empty()) {
+				names += ", ";
+			}
+			names += fmt::format("{} ({})", i->name, eqt::inventory::describeSlot(s));
+		}
+		AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+		return nullptr;
+	}
+	slotOut = matches.front().first;
+	return matches.front().second;
+}
+
 void EverQuest::RequestReadItem(const std::string& args)
 {
 	if (args.empty()) {
@@ -824,62 +893,10 @@ void EverQuest::RequestReadItem(const std::string& args)
 		return;
 	}
 
-	if (!m_inventory_manager) {
-		AddChatSystemMessage("Cannot read - inventory not available.");
-		return;
-	}
-
-	// A token that LOOKS like an attempted slot number is parsed strictly
-	// as the slot form -- same rule as /equip, so a typo'd number stays a
-	// slot error rather than becoming a search for the literal text.
 	int16_t slot = eqt::inventory::SLOT_INVALID;
-	const eqt::inventory::ItemInstance* item = nullptr;
-	bool numericForm = std::isdigit(static_cast<unsigned char>(args[0])) || args[0] == '-';
-
-	if (numericForm) {
-		int16_t parsed = 0;
-		if (!ParseEquipSlot(args, parsed)) {
-			AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /read <item name> instead.", args));
-			return;
-		}
-		slot = parsed;
-		item = m_inventory_manager->getItem(slot);
-		if (!item) {
-			AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(slot)));
-			return;
-		}
-	} else {
-		auto matches = m_inventory_manager->findItemsByNameSubstring(args);
-		if (matches.empty()) {
-			AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
-			return;
-		}
-		// Ambiguous only if DISTINCT item names matched -- two copies of
-		// the same note read identically. Same rule as /equip.
-		std::string firstLowerName = matches.front().second->name;
-		std::transform(firstLowerName.begin(), firstLowerName.end(), firstLowerName.begin(), ::tolower);
-		bool ambiguous = false;
-		for (const auto& [s, i] : matches) {
-			std::string n = i->name;
-			std::transform(n.begin(), n.end(), n.begin(), ::tolower);
-			if (n != firstLowerName) {
-				ambiguous = true;
-				break;
-			}
-		}
-		if (ambiguous) {
-			std::string names;
-			for (const auto& [s, i] : matches) {
-				if (!names.empty()) {
-					names += ", ";
-				}
-				names += fmt::format("{} ({})", i->name, eqt::inventory::describeSlot(s));
-			}
-			AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
-			return;
-		}
-		slot = matches.front().first;
-		item = matches.front().second;
+	const eqt::inventory::ItemInstance* item = ResolveCarriedItem(args, "read", slot);
+	if (!item) {
+		return;
 	}
 
 	if (item->bookFilename.empty()) {
@@ -896,4 +913,103 @@ void EverQuest::RequestReadItem(const std::string& args)
 	AddChatSystemMessage(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
 	m_bridge->pushIntent(eqt::events::ReadItemIntent{
 		item->bookFilename, static_cast<uint8_t>(item->bookType)});
+}
+
+// ============================================================================
+// T276 -- /scribe <slot|item name>   (T264 F5)
+// ============================================================================
+//
+// The wire truth, read out of eqemu (zone/client_process.cpp
+// Client::OPMemorizeSpell) rather than assumed:
+//
+//   * The SAME opcode as /mem (OP_MemorizeSpell, MemorizeSpell_Struct) with
+//     `scribing` = memSpellScribing = 0 (zone/client.h:102), NOT 1. `slot`
+//     is a SPELLBOOK slot (0..399), not a gem.
+//   * The scroll must be on the CURSOR: the handler reads
+//     m_inv[EQ::invslot::slotCursor] and demands the cursor item's
+//     Scroll.Effect == spell_id. An item sitting in a general slot is
+//     rejected with "Scribing a spell without an Item Instance on your
+//     cursor?". This is why ScribeSpellFromScroll() moves it there.
+//   * Class/level are validated server-side for every non-forget action
+//     (SPELL_LEVEL_TO_LOW), and RuleB(Character, RestrictSpellScribing)
+//     adds an IsEquipable race/class check (CANNOT_USE_ITEM).
+//   * On success it calls ScribeSpell(spell_id, slot) -- which writes
+//     character_spells and echoes OP_MemorizeSpell back with scribing=0 --
+//     and then DELETES the scroll from the cursor.
+//
+// The client can know all of the class/level facts locally (SpellDatabase
+// carries class_levels), so /scribe refuses without sending, per T178.
+// What it cannot know is the server's RestrictSpellScribing rule; that one
+// stays server-side.
+//
+// The destination book slot is NOT taken from the user: the stock client
+// picks it, and a wrong slot silently overwrites a known spell. The first
+// free slot comes from SpellManager::findFreeSpellbookSlot().
+void EverQuest::RequestScribeItem(const std::string& args)
+{
+	if (args.empty()) {
+		AddChatSystemMessage("Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
+		return;
+	}
+
+	int16_t slot = eqt::inventory::SLOT_INVALID;
+	const eqt::inventory::ItemInstance* item = ResolveCarriedItem(args, "scribe", slot);
+	if (!item) {
+		return;
+	}
+
+	// Item field 154 (eqemu ItemData::Scroll.Effect, titanium.cpp
+	// SerializeItem) is the spell the scroll teaches AND the value the
+	// server compares against spell_id. An item without one cannot be
+	// scribed no matter what its name says, so the id -- not
+	// ItemInstance::isSpellScroll(), which also fires on a "Spell:" name
+	// prefix alone -- is the gate.
+	const uint32_t spellId = item->getScrollSpellId();
+	if (spellId == 0) {
+		AddChatSystemMessage(fmt::format("{} ({}) is not a spell scroll.",
+			item->name, eqt::inventory::describeSlot(slot)));
+		return;
+	}
+
+	if (!m_spell_manager) {
+		AddChatSystemMessage("Cannot scribe - spell system not available.");
+		return;
+	}
+
+	// Pre-flight the same refusals ScribeSpellFromScroll() guards with, so
+	// nothing touches the cursor for a scribe that was never going to work.
+	if (std::string refusal = ScribeRefusalMessage(spellId); !refusal.empty()) {
+		AddChatSystemMessage(refusal);
+		return;
+	}
+
+	const int32_t bookSlot = m_spell_manager->findFreeSpellbookSlot();
+	if (bookSlot < 0) {
+		AddChatSystemMessage("Your spellbook is full.");
+		return;
+	}
+
+	if (!m_bridge) {
+		AddChatSystemMessage("Cannot scribe - no bridge attached.");
+		return;
+	}
+
+	// Put the scroll on the cursor FIRST. eqemu's Client::OPMemorizeSpell
+	// reads it from there and compares its Scroll.Effect to spell_id, so the
+	// OP_MoveItem has to reach the server ahead of the OP_MemorizeSpell.
+	// setSpellForScribe() -> pickupItem() pushes MoveItemIntent, and intents
+	// drain FIFO, so pushing the move here and ScribeSpellIntent immediately
+	// after gives exactly that order in one ProcessBridgeIntents() pass.
+	// (Doing the pickup inside the ScribeSpellIntent arm instead would defer
+	// the move to the NEXT drain -- the packets would go out backwards.)
+	if (slot != eqt::inventory::CURSOR_SLOT) {
+		if (m_inventory_manager->hasCursorItem()) {
+			AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
+			return;
+		}
+		m_inventory_manager->setSpellForScribe(spellId, slot);
+	}
+
+	m_bridge->pushIntent(eqt::events::ScribeSpellIntent{
+		spellId, static_cast<uint16_t>(bookSlot), slot});
 }
