@@ -70,12 +70,6 @@ struct RaceModelInfo {
     bool found = false;
 };
 
-// Zone character model entry
-struct ZoneCharacterEntry {
-    std::string modelCode;
-    std::string sourceFile;
-};
-
 // Spell data subset for runtime queries
 struct SpellInfo {
     uint32_t id = 0;
@@ -173,9 +167,6 @@ public:
     RaceModelInfo getRaceModel(uint16_t raceId);
     RaceModelInfo getRaceModelByCode(const std::string& code);
 
-    // ── Zone character queries ──
-    std::vector<ZoneCharacterEntry> getZoneCharacters(const std::string& zoneName);
-
     // ── Sound queries ──
     std::string getSoundAsset(uint32_t soundId);
     int32_t getAnimationSound(const std::string& animationName);  // Returns -1 if not found
@@ -246,7 +237,6 @@ private:
     sqlite3_stmt* stmtGetAssetsInArchive_ = nullptr;
     sqlite3_stmt* stmtGetRaceModel_ = nullptr;
     sqlite3_stmt* stmtGetRaceModelByCode_ = nullptr;
-    sqlite3_stmt* stmtGetZoneChars_ = nullptr;
     sqlite3_stmt* stmtGetSoundAsset_ = nullptr;
     sqlite3_stmt* stmtGetAnimSound_ = nullptr;
     sqlite3_stmt* stmtGetMusicFile_ = nullptr;

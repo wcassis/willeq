@@ -304,3 +304,58 @@ TEST(WilleqDatabaseJournalModeTest, PlainReadOnlyOpenReportsDeleteAndLeavesNoSid
     if (!walBefore) EXPECT_FALSE(FileExists(wal)) << wal << " was created by a plain reader";
     if (!shmBefore) EXPECT_FALSE(FileExists(shm)) << shm << " was created by a plain reader";
 }
+
+// T262: the shipped db's content. `zone_characters` (2188 (zone, model_code,
+// source_file) hints from the client's *_chr.txt files) had exactly one
+// reader, getZoneCharacters(), with zero callers. The comparison in
+// refactor/T262_zone_characters_table.md showed the runtime resolves every
+// spawnable model without it (race_models.s3d_file -> zone _chr -> globals ->
+// directory scan for the mesh; the T207 index for textures) -- EXCEPT the
+// three dragon races whose race_models entry had no s3d_file at all, which
+// the hint would have papered over in the two zones that list them. The
+// table is gone and the three races carry their archive, so the fix holds
+// in every zone, not two.
+namespace {
+bool TableExists(sqlite3* db, const char* table) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                           -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, table, -1, SQLITE_STATIC);
+    const bool exists = sqlite3_step(stmt) == SQLITE_ROW;
+    sqlite3_finalize(stmt);
+    return exists;
+}
+}  // namespace
+
+TEST(WilleqDatabaseShippedContentTest, ZoneCharactersTableIsGone) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    EXPECT_FALSE(TableExists(db, "zone_characters"))
+        << "zone_characters has no reader; the builder must not write it (T262)";
+    EXPECT_TRUE(TableExists(db, "race_models"));
+    sqlite3_close(db);
+}
+
+TEST(WilleqDatabaseShippedContentTest, DragonRacesNameTheirChrArchive) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(path));
+    // Race id -> the dedicated archive that holds <CODE>_HS_DEF and all of its
+    // textures (bwd_chr/gdr_chr/pri_chr in both the S3D and EQE1 trees).
+    const struct { uint16_t race; const char* code; const char* s3d; } expected[] = {
+        {195, "BWD", "bwd_chr.s3d"},
+        {196, "GDR", "gdr_chr.s3d"},
+        {198, "PRI", "pri_chr.s3d"},
+    };
+    for (const auto& e : expected) {
+        auto info = db.getRaceModel(e.race);
+        ASSERT_TRUE(info.found) << "race " << e.race;
+        EXPECT_EQ(info.code, e.code) << "race " << e.race;
+        EXPECT_EQ(info.s3dFile, e.s3d)
+            << "race " << e.race << " has a mesh but race_models names no archive, so the "
+               "T199 candidate set never includes it and its textures resolve to nothing";
+    }
+}

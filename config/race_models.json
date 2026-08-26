@@ -4529,17 +4529,37 @@
     "195": {
       "code": "BWD",
       "name": "Black/White Dragon",
-      "scale": 3.0
+      "scale": 3.0,
+      "s3d_file": "bwd_chr.s3d",
+      "also_in": [
+        "hohonora_chr.s3d",
+        "necropolis2_chr.s3d",
+        "pofire_chr.s3d",
+        "skyshrine2_chr.s3d",
+        "solrotower_chr.s3d",
+        "solrotower_chr2.s3d"
+      ]
     },
     "196": {
       "code": "GDR",
       "name": "Ghost Dragon",
-      "scale": 3.0
+      "scale": 3.0,
+      "s3d_file": "gdr_chr.s3d",
+      "also_in": [
+        "necropolis2_chr.s3d"
+      ]
     },
     "198": {
       "code": "PRI",
       "name": "Prismatic Dragon",
-      "scale": 3.0
+      "scale": 3.0,
+      "s3d_file": "pri_chr.s3d",
+      "also_in": [
+        "povalor_chr.s3d",
+        "povalor_chr2.s3d",
+        "skyshrine2_chr.s3d",
+        "sleeper2_chr.s3d"
+      ]
     },
     "240": {
       "code": "TPM",

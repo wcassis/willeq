@@ -172,7 +172,6 @@ void WilleqDatabase::close() {
     fin(stmtGetAssetsInArchive_);
     fin(stmtGetRaceModel_);
     fin(stmtGetRaceModelByCode_);
-    fin(stmtGetZoneChars_);
     fin(stmtGetSoundAsset_);
     fin(stmtGetAnimSound_);
     fin(stmtGetMusicFile_);
@@ -613,34 +612,6 @@ RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
     }
 
     return info;
-}
-
-// ============================================================================
-// Zone character queries
-// ============================================================================
-
-std::vector<ZoneCharacterEntry> WilleqDatabase::getZoneCharacters(const std::string& zoneName) {
-    ScopedQueryTimer timer(stats_);
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    std::vector<ZoneCharacterEntry> results;
-    if (!db_) return results;
-
-    auto* stmt = prepare(
-        "SELECT model_code, source_file FROM zone_characters WHERE zone_name=?",
-        stmtGetZoneChars_);
-    if (!stmt) return results;
-
-    sqlite3_reset(stmt);
-    sqlite3_bind_text(stmt, 1, zoneName.c_str(), -1, SQLITE_TRANSIENT);
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        ZoneCharacterEntry entry;
-        entry.modelCode = colText(stmt, 0);
-        entry.sourceFile = colText(stmt, 1);
-        results.push_back(std::move(entry));
-    }
-
-    return results;
 }
 
 // ============================================================================
