@@ -293,7 +293,7 @@ inline bool isActivatableSkill(uint8_t skill_id) {
 // ============================================================================
 
 // Animation IDs used by the server emote system
-// These map to animation codes in ZoneProcessEmote
+// These map to animation codes in ZoneProcessAnimation
 enum SkillAnimationId : uint8_t {
     ANIM_ID_ATTACK_PRIMARY = 1,   // Primary attack (weapon-based)
     ANIM_ID_ATTACK_SECONDARY = 2, // Secondary attack (offhand)

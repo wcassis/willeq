@@ -226,7 +226,16 @@ enum TitaniumZoneOpcodes {
 	HC_OP_Death = 0x6160,
 	HC_OP_PlayerStateRemove = 0x381d,
 	HC_OP_Stamina = 0x7a83,
-	HC_OP_Emote = 0x2acf,
+	// T243: 0x2acf is OP_Animation (patch_Titanium.conf:151) -- spawn_id +
+	// speed + anim id, both directions. Until T243 it was misnamed HC_OP_Emote
+	// and the real text-emote opcode was absent, so /emote went out as
+	// OP_ChannelMessage channel 22 and inbound emotes fell through the
+	// dispatcher (T239 live: observer saw nothing, actor got no echo).
+	HC_OP_Animation = 0x2acf,
+	// OP_Emote = 0x547a (patch_Titanium.conf:189): text emote, Emote_Struct
+	// {u32 type; char message[1024]} C->S (exactly 1028 bytes or eqemu's
+	// Handle_OP_Emote drops it), u32 type + NUL-terminated text S->C.
+	HC_OP_Emote = 0x547a,
 	HC_OP_Jump = 0x0797,
 	// Combat opcodes
 	HC_OP_AutoAttack = 0x5e55,
@@ -892,6 +901,9 @@ public:
 
 	// Public chat interface
 	void SendChatMessage(const std::string &message, const std::string &channel_name, const std::string &target = "");
+	// T243: /emote wire form -- OP_Emote + Emote_Struct, plus the local echo
+	// the server deliberately does not send back to the actor.
+	void ZoneSendEmote(const std::string &message);
 	void ProcessChatInput(const std::string &input);  // Process chat window input (commands or messages)
 	// T29: the first stage of the unified slash-command dispatch order
 	// (registry 1: EverQuest::m_command_registry -- see docs/decisions.md
@@ -1631,7 +1643,8 @@ private:
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
 	void ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p);
 	void ZoneProcessSpawnAppearance(const EQ::Net::Packet &p);
-	void ZoneProcessEmote(const EQ::Net::Packet &p);
+	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
+	void ZoneProcessEmote(const EQ::Net::Packet &p);      // OP_Emote text (T243)
 	void ZoneProcessExpUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessRaidUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);

@@ -21,7 +21,7 @@
 //    GetWorldObject, ClearWorldObjects, ZoneProcessClickObjectAction.
 // Moved verbatim, no behavior change. See refactor/F11_entities.md.
 //
-// NOTE: ZoneProcessEmote (between ZoneProcessSpawnAppearance and
+// NOTE: ZoneProcessAnimation (between ZoneProcessSpawnAppearance and
 // ZoneProcessGroundSpawn in eq.cpp) is chat/emote text processing, not
 // named in this unit's scope, and stays in eq.cpp.
 //
@@ -2501,7 +2501,7 @@ void EverQuest::SendAnimation(uint8_t animation_id, uint8_t animation_speed)
 	EQ::Net::DynamicPacket p;
 	p.Resize(6);  // Animation packet size: 2 bytes opcode + 4 bytes data
 	
-	p.PutUInt16(0, HC_OP_Emote);          // opcode (OP_Animation)
+	p.PutUInt16(0, HC_OP_Animation);      // opcode (OP_Animation)
 	p.PutUInt16(2, m_my_spawn_id);        // spawn_id
 	p.PutUInt8(4, animation_speed);       // animation speed (usually 10)
 	p.PutUInt8(5, animation_id);          // animation ID

@@ -194,4 +194,42 @@ TEST_F(ZoneChatTest, RealCapture_ChannelMessagesReplayAndPublish) {
     EXPECT_EQ(published, chatRecords);
 }
 
+
+// T243: inbound OP_Emote (0x547a). eqemu's Titanium ENCODE(OP_Emote) sends
+// u32 type + NUL-terminated message where the message ALREADY carries the
+// actor's name ("Testchar waves") -- Handle_OP_Emote prepends GetName().
+// The client publishes it as an emote ChatMessage with an empty sender so
+// the chat formatter (chat_message_buffer.cpp, ChatChannel::Emote) prints
+// the text verbatim.
+std::vector<uint8_t> EmotePayload(uint32_t type, const std::string& text) {
+    return BuildPayload(2 + 4 + text.size() + 1, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt32(2, type);
+        p.PutCString(6, text.c_str());
+    });
+}
+
+TEST_F(ZoneChatTest, Emote_PublishesEmoteChatEventWithVerbatimText) {
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Emote, EmotePayload(0, "Testchar waves at Oraclerogue")));
+
+    auto chats = DrainChat(bridge);
+    ASSERT_EQ(chats.size(), 1u);
+    EXPECT_TRUE(chats[0].sender.empty());
+    EXPECT_EQ(chats[0].message, "Testchar waves at Oraclerogue");
+    EXPECT_EQ(chats[0].channelType, static_cast<uint32_t>(CHAT_CHANNEL_EMOTE));
+    EXPECT_EQ(chats[0].channelName, "emote");
+}
+
+TEST_F(ZoneChatTest, Emote_UndersizedRejectedWithoutEvent) {
+    // 2 opcode + 4 type, no message byte at all: nothing to read at offset 6.
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Emote, BuildPayload(6, nullptr)));
+    EXPECT_TRUE(DrainChat(bridge).empty());
+}
+
+TEST_F(ZoneChatTest, Emote_SmallestValidSizePublishesEmptyMessage) {
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_Emote, EmotePayload(0, "")));
+    auto chats = DrainChat(bridge);
+    ASSERT_EQ(chats.size(), 1u);
+    EXPECT_EQ(chats[0].message, "");
+}
+
 }  // namespace

@@ -121,6 +121,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_Death: return "HC_OP_Death";
 		case HC_OP_PlayerStateRemove: return "HC_OP_PlayerStateRemove";
 		case HC_OP_Stamina: return "HC_OP_Stamina";
+		case HC_OP_Animation: return "HC_OP_Animation";
 		case HC_OP_Emote: return "HC_OP_Emote";
 		case HC_OP_BecomeCorpse: return "HC_OP_BecomeCorpse";
 		case HC_OP_ZonePlayerToBind: return "HC_OP_ZonePlayerToBind";

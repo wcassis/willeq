@@ -105,6 +105,17 @@ TEST_F(TitaniumOpcodesTest, GMHideMeOpcode) {
     EXPECT_NE(HC_OP_GMHideMe, HC_OP_SpawnAppearance);
 }
 
+// T243: pin OP_Emote to the eqemu Titanium value (patch_Titanium.conf:189,
+// "OP_Emote=0x547a"). Before T243 HC_OP_Emote held 0x2acf, which is
+// OP_Animation (patch_Titanium.conf:151) -- the text-emote opcode was absent
+// from the client entirely, so /emote went out as OP_ChannelMessage channel
+// 22 and inbound OP_Emote fell through the dispatcher.
+TEST_F(TitaniumOpcodesTest, EmoteOpcode) {
+    EXPECT_EQ(HC_OP_Emote, 0x547a);
+    EXPECT_EQ(HC_OP_Animation, 0x2acf);
+    EXPECT_NE(HC_OP_Emote, HC_OP_Animation);
+}
+
 // Test that opcodes don't collide (important for packet handling)
 TEST_F(TitaniumOpcodesTest, OpcodeUniqueness) {
     // Login opcodes should be distinct from world opcodes

@@ -13,6 +13,7 @@
 #include "client/formatted_message.h"
 #include "client/skill/skill_manager.h"
 #include "common/logging.h"
+#include <algorithm>
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
@@ -191,9 +192,91 @@ void EverQuest::SendChatMessage(const std::string &message, const std::string &c
 		return;
 	}
 
+	// T243: /emote is not a ChannelMessage on Titanium -- it is OP_Emote with
+	// Emote_Struct. eqemu does accept ChannelMessage channel 22 (zone/client.cpp
+	// ChatChannel_Emotes, "Underfoot and later") and rebroadcasts it as
+	// OP_Emote, but the Titanium client never sends that form, and until T243
+	// this client could not decode the OP_Emote reply either.
+	if (channel == CHAT_CHANNEL_EMOTE) {
+		ZoneSendEmote(message);
+		return;
+	}
+
 	// Route messages based on channel type
 	// For now, route all messages through zone server since UCS implementation needs fixing
 	ZoneSendChannelMessage(message, channel, target);
+}
+
+void EverQuest::ZoneSendEmote(const std::string &message)
+{
+	// Titanium Emote_Struct: u32 type (0 = custom text) + char message[1024].
+	// eqemu's Handle_OP_Emote size-checks against sizeof(Emote_Struct) and
+	// drops anything else, so the packet is always 2 + 1028 bytes. The server
+	// truncates the text at 512 characters itself; we only guarantee the NUL.
+	//
+	// The text goes out with a LEADING SPACE: Handle_OP_Emote builds the
+	// broadcast as memcpy(GetName()) + memcpy(in->message) with no separator
+	// (zone/client_packet.cpp), so the official client's wire form is
+	// " waves" and the observer sees "Testchar waves". T243 live run 2 (no
+	// space) produced "Testcharwaves" on the observer.
+	std::string wire = " " + message;
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::Emote_Struct));
+	p.PutUInt16(0, HC_OP_Emote);
+	p.PutUInt32(2, 0);
+	size_t message_len = std::min(wire.length(), sizeof(EQT::Emote_Struct::message) - 1);
+	memcpy((char*)p.Data() + 6, wire.c_str(), message_len);
+
+	if (s_debug_level >= 1) {
+		std::cout << fmt::format("Sending emote: '{}'", message) << std::endl;
+	}
+
+	DumpPacket("C->S", HC_OP_Emote, p);
+	m_zone_connection->QueuePacket(p);
+
+	// Local echo. eqemu broadcasts the emote with ignore_sender=true
+	// (QueueCloseClients in Handle_OP_Emote), so the actor's own line comes
+	// from the client -- as the official client does ("Testchar waves").
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = m_character + wire.substr(0, message_len);
+		data.channelType = CHAT_CHANNEL_EMOTE;
+		data.channelName = "emote";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
+	}
+}
+
+void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
+{
+	// T243: inbound OP_Emote. eqemu's Titanium ENCODE(OP_Emote) writes u32
+	// type + NUL-terminated message, sized to the text (not 1028), and the
+	// message already carries the actor's name ("Testchar waves") --
+	// Handle_OP_Emote / ChatChannel_Emotes prepend GetName() server-side.
+	// Layout: opcode@0, type u32@2, message cstring@6. Guard is > 6 so the
+	// bounds-checked GetCString (T08) always has at least the NUL to read.
+	if (p.Length() <= 6) {
+		LOG_WARN(MOD_ZONE, "Emote packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	uint32_t type = p.GetUInt32(2);
+	std::string message = p.GetCString(6);
+
+	if (s_debug_level >= 1) {
+		std::cout << fmt::format("[CHAT] (emote type {}) {}", type, message) << std::endl;
+	}
+
+	// Empty sender on purpose: the text is complete as sent, and the emote
+	// formatter (chat_message_buffer.cpp) prints it verbatim in that case.
+	if (m_bridge) {
+		eqt::state::ChatMessageData data;
+		data.message = message;
+		data.channelType = CHAT_CHANNEL_EMOTE;
+		data.channelName = "emote";
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ChatMessage, std::move(data)));
+	}
 }
 
 void EverQuest::AddChatSystemMessage(const std::string &text)

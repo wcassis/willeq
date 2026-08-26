@@ -974,9 +974,14 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 	case HC_OP_Stamina:
 		ZoneProcessStamina(p);
 		break;
-	case HC_OP_Emote:
+	case HC_OP_Animation:
 		// Animation packet - applies to all entities (not just self)
-		// This is used for combat animations, emotes, and other action animations
+		// This is used for combat animations, social animations (/wave), and
+		// other action animations
+		ZoneProcessAnimation(p);
+		break;
+	case HC_OP_Emote:
+		// T243: text emote broadcast ("Testchar waves at ...")
 		ZoneProcessEmote(p);
 		break;
 	
@@ -1762,9 +1767,22 @@ void EverQuest::ZoneSendSetServerFilter()
 	
 	p.PutUInt16(0, HC_OP_SetServerFilter);
 	
-	// Set all filters to 0xFFFFFFFF (all enabled) for now
-	for (size_t i = 0; i < 29; i++) {
-		p.PutUInt32(2 + (i * 4), 0xFFFFFFFF);
+	// T243: show everything. The slot conventions are NOT uniform (see
+	// EQT::ServerFilterSlot): eleven slots are "0=hide, 1=show" and eqemu's
+	// Filter0 macro shows ONLY for the exact value 1; the rest are "0=show".
+	// The previous payload (0xFFFFFFFF in every slot, "all enabled") hid all
+	// 28 filters server-side -- FilterSocials among them, which is why the
+	// OP_Emote broadcast never reached an observing willeq (T243 live run 1).
+	static const bool kShowIsOne[EQT::FILTER_COUNT] = {
+		false,                                            // 0  none
+		true, true, true, true, true, true, true,         // 1-7  guild/socials/group/shouts/auctions/ooc/badwords
+		false, false, false, false, false, false,         // 8-13 pc spells .. spell damage
+		true, true, true, true,                           // 14-17 my misses / others miss / others hit / missed me
+		false, false, false, false, false, false,         // 18-23 damage shields .. pet spells
+		false, false, false, false, false                 // 24-28 heal over time .. bard songs on pets
+	};
+	for (size_t i = 0; i < EQT::FILTER_COUNT; i++) {
+		p.PutUInt32(2 + (i * 4), kShowIsOne[i] ? 1u : 0u);
 	}
 	
 	LOG_DEBUG(MOD_ZONE, "Sending OP_SetServerFilter");
@@ -2555,9 +2573,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 
 
 
-void EverQuest::ZoneProcessEmote(const EQ::Net::Packet &p)
+void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 {
-	// Animation/Emote packet format:
+	// OP_Animation packet format (T243: was ZoneProcessEmote):
 	// Offset 0-1: Opcode
 	// Offset 2-3: spawn_id (uint16)
 	// Offset 4: animation_speed (uint8)

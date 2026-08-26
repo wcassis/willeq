@@ -1453,6 +1453,77 @@ struct GuildDemote_Struct {
 static_assert(sizeof(GuildDemote_Struct) == 128, "GuildDemote_Struct must be 128 bytes");
 
 /**
+ * Emote Struct (T243)
+ * Used in: OP_Emote (C->S) -- the /emote text form.
+ * eqemu common/patches/titanium_structs.h Emote_Struct; the server-side
+ * Handle_OP_Emote rejects any packet whose size != sizeof(Emote_Struct), so
+ * the client must always send the full 1028 bytes. S->C the same opcode
+ * carries u32 type + a NUL-terminated variable-length string (the Titanium
+ * ENCODE trims it), with the actor's name already prepended by the server.
+ */
+struct Emote_Struct {
+/*0000*/ uint32_t type;           // 0 = custom text, 0xffffffff = command (/dance etc.)
+/*0004*/ char     message[1024];
+/*1028*/
+};
+static_assert(sizeof(Emote_Struct) == 1028, "Emote_Struct must be 1028 bytes");
+
+/**
+ * Set Server Filter Struct (T243)
+ * Used in: OP_SetServerFilter (C->S), eqemu titanium_structs.h.
+ * Slot indices are eqemu's eqFilterType (common/eq_constants.h). The
+ * per-slot convention is NOT uniform -- see ServerFilterSlot below.
+ */
+struct SetServerFilter_Struct {
+/*0000*/ uint32_t filters[29];
+/*0116*/
+};
+static_assert(sizeof(SetServerFilter_Struct) == 116, "SetServerFilter_Struct must be 116 bytes");
+
+/**
+ * eqemu eqFilterType slot indices with the value convention eqemu's
+ * Client::ServerFilter() applies to each (zone/client.cpp):
+ *   "0=hide, 1=show" slots (Filter0 macro -- ONLY the value 1 shows):
+ *     GuildChat, Socials, GroupChat, Shouts, Auctions, OOC, BadWords,
+ *     MyMisses, OthersMiss, OthersHit, MissedMe
+ *   every other slot: 0 = show; 1.. = hide / mine-only / group-only.
+ * Sending 0xFFFFFFFF everywhere (the pre-T243 payload) therefore hid ALL
+ * of them, including FilterSocials which gates the OP_Emote broadcast.
+ */
+enum ServerFilterSlot : uint32_t {
+	FILTER_NONE = 0,
+	FILTER_GUILD_CHAT = 1,      // 0=hide, 1=show
+	FILTER_SOCIALS = 2,         // 0=hide, 1=show (emotes)
+	FILTER_GROUP_CHAT = 3,      // 0=hide, 1=show
+	FILTER_SHOUTS = 4,          // 0=hide, 1=show
+	FILTER_AUCTIONS = 5,        // 0=hide, 1=show
+	FILTER_OOC = 6,             // 0=hide, 1=show
+	FILTER_BAD_WORDS = 7,       // 0=hide, 1=show
+	FILTER_PC_SPELLS = 8,       // 0=show, 1=hide, 2=group only
+	FILTER_NPC_SPELLS = 9,      // 0=show, 1=hide
+	FILTER_BARD_SONGS = 10,     // 0=show, 1=mine, 2=group, 3=hide
+	FILTER_SPELL_CRITS = 11,    // 0=show, 1=mine, 2=hide
+	FILTER_MELEE_CRITS = 12,    // 0=show, 1=hide
+	FILTER_SPELL_DAMAGE = 13,   // 0=show, 1=mine, 2=hide
+	FILTER_MY_MISSES = 14,      // 0=hide, 1=show
+	FILTER_OTHERS_MISS = 15,    // 0=hide, 1=show
+	FILTER_OTHERS_HIT = 16,     // 0=hide, 1=show
+	FILTER_MISSED_ME = 17,      // 0=hide, 1=show
+	FILTER_DAMAGE_SHIELDS = 18, // 0=show, 1=hide
+	FILTER_DOT = 19,            // 0=show, 1=hide
+	FILTER_PET_HITS = 20,       // 0=show, 1=hide
+	FILTER_PET_MISSES = 21,     // 0=show, 1=hide
+	FILTER_FOCUS_EFFECTS = 22,  // 0=show, 1=hide
+	FILTER_PET_SPELLS = 23,     // 0=show, 1=hide
+	FILTER_HEAL_OVER_TIME = 24, // 0=show, 1=mine, 2=hide
+	FILTER_ITEM_SPEECH = 25,    // 0=show, 1=hide
+	FILTER_STRIKETHROUGH = 26,  // 0=show, 1=hide
+	FILTER_STUNS = 27,          // 0=show, 1=hide
+	FILTER_BARD_SONGS_ON_PETS = 28, // 0=show, 1=hide
+	FILTER_COUNT = 29
+};
+
+/**
  * Guild Make Leader Struct
  * Used for transferring guild leadership
  * Size: 128 bytes (Titanium format)

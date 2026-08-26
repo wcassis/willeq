@@ -153,18 +153,48 @@ public:
     // bytes; DaybreakConnection::QueuePacket prepends one 0x00 when the app
     // opcode's low byte is 0 (neither opcode used here has that, but the
     // decoder honours it anyway so a future opcode cannot skew the parse).
+    //
+    // T243: app packets larger than max_packet_size (512 here) go out as
+    // OP_Fragment frames -- first [zero][OP_Fragment][seq BE][total_size BE
+    // u32] + data, then [zero][OP_Fragment][seq BE] + data until total_size
+    // bytes have been carried (InternalQueuePacket). The 1030-byte OP_Emote
+    // is the first packet this harness sees that fragments, so the decoder
+    // reassembles those before splitting off the opcode.
     std::vector<SentAppPacket> sentPackets() {
         std::vector<SentAppPacket> out;
-        for (auto& [seq, sent] : conn->m_streams[0].sent_packets) {
-            const auto* d = static_cast<const uint8_t*>(sent.packet.Data());
-            size_t n = sent.packet.Length();
-            size_t off = EQ::Net::DaybreakReliableHeader::size();
+        std::vector<uint8_t> frag;      // reassembly buffer
+        size_t fragTotal = 0;
+        auto emit = [&](const uint8_t* d, size_t n) {
+            size_t off = 0;
             if (off < n && d[off] == 0) ++off;
-            if (off + 2 > n) continue;
+            if (off + 2 > n) return;
             SentAppPacket pkt;
             pkt.opcode = static_cast<uint16_t>(d[off] | (d[off + 1] << 8));
             pkt.body.assign(d + off + 2, d + n);
             out.push_back(std::move(pkt));
+        };
+        for (auto& [seq, sent] : conn->m_streams[0].sent_packets) {
+            const auto* d = static_cast<const uint8_t*>(sent.packet.Data());
+            size_t n = sent.packet.Length();
+            size_t off = EQ::Net::DaybreakReliableHeader::size();
+            if (n < off) continue;
+            uint8_t frameOp = d[1];
+            if (frameOp >= EQ::Net::OP_Fragment && frameOp <= EQ::Net::OP_Fragment4) {
+                if (frag.empty() && fragTotal == 0) {
+                    if (off + 4 > n) continue;
+                    fragTotal = (size_t(d[off]) << 24) | (size_t(d[off + 1]) << 16) |
+                                (size_t(d[off + 2]) << 8) | size_t(d[off + 3]);
+                    off += 4;
+                }
+                frag.insert(frag.end(), d + off, d + n);
+                if (frag.size() >= fragTotal) {
+                    emit(frag.data(), fragTotal);
+                    frag.clear();
+                    fragTotal = 0;
+                }
+                continue;
+            }
+            emit(d + off, n - off);
         }
         return out;
     }
@@ -196,6 +226,33 @@ public:
             std::memcpy(&channel, p.body.data() + 132, 4);
             std::string msg(reinterpret_cast<const char*>(p.body.data() + 148));
             out.emplace_back(channel, msg);
+        }
+        return out;
+    }
+
+
+    // T243: the OP_Emote packets sent since the last clearSent(), decoded as
+    // (type, message) -- Titanium Emote_Struct: u32 type at body offset 0,
+    // message[1024] at body offset 4; the body is always 1028 bytes because
+    // eqemu's Handle_OP_Emote rejects any other size
+    // (zone/client_packet.cpp: app->size != sizeof(Emote_Struct)).
+    std::vector<std::pair<uint32_t, std::string>> sentEmotes() {
+        std::vector<std::pair<uint32_t, std::string>> out;
+        for (auto& p : sentPackets()) {
+            if (p.opcode != HC_OP_Emote || p.body.size() < 5) continue;
+            uint32_t type;
+            std::memcpy(&type, p.body.data(), 4);
+            std::string msg(reinterpret_cast<const char*>(p.body.data() + 4));
+            out.emplace_back(type, msg);
+        }
+        return out;
+    }
+
+    // Raw body sizes of every OP_Emote packet sent since clearSent().
+    std::vector<size_t> sentEmoteBodySizes() {
+        std::vector<size_t> out;
+        for (auto& p : sentPackets()) {
+            if (p.opcode == HC_OP_Emote) out.push_back(p.body.size());
         }
         return out;
     }
@@ -556,6 +613,119 @@ TEST(EqActionHandlerTransformsReal, SetPositionState_WritesGameStatePlayerProjec
     WireHarness h;
     h.handler.setPositionState(1);
     EXPECT_EQ(h.eq.GetGameState().player().positionState(), eqt::state::PositionState::Sitting);
+}
+
+
+// ---------------------------------------------------------------------
+// T243: sendChatMessage(Emote) -- /emote must go out as OP_Emote (0x547a,
+// patch_Titanium.conf:189), NOT as OP_ChannelMessage channel 22. T239's live
+// leg showed the channel-22 form produced nothing on an observing client
+// (review/T239/README.md, "Emote observation"). The say path is pinned
+// alongside so the reroute is provably scoped to the emote channel.
+// ---------------------------------------------------------------------
+
+TEST(EqActionHandlerTransformsReal, SendChatMessage_Emote_GoesOutAsOpEmote) {
+    WireHarness h;
+    h.clearSent();
+
+    h.handler.sendChatMessage(action::ChatChannel::Emote, "waves at Oraclerogue");
+
+    auto emotes = h.sentEmotes();
+    ASSERT_EQ(emotes.size(), 1u) << "exactly one OP_Emote must be queued";
+    EXPECT_EQ(emotes[0].first, 0u) << "type 0 = custom text emote";
+    EXPECT_EQ(emotes[0].second, " waves at Oraclerogue")
+        << "leading space: eqemu concatenates GetName() + message with no separator";
+    EXPECT_TRUE(h.sentChat().empty())
+        << "an emote must not ALSO go out as a ChannelMessage";
+}
+
+TEST(EqActionHandlerTransformsReal, SendChatMessage_Emote_BodyIsExactly1028Bytes) {
+    // eqemu's Handle_OP_Emote size-checks against sizeof(Emote_Struct) == 1028
+    // and drops (with an error log) anything else.
+    WireHarness h;
+    h.clearSent();
+
+    h.handler.sendChatMessage(action::ChatChannel::Emote, "waves");
+
+    auto sizes = h.sentEmoteBodySizes();
+    ASSERT_EQ(sizes.size(), 1u);
+    EXPECT_EQ(sizes[0], 1028u);
+}
+
+TEST(EqActionHandlerTransformsReal, SendChatMessage_Emote_EchoesLocallyAsEmoteChat) {
+    // eqemu broadcasts the emote with ignore_sender=true (QueueCloseClients
+    // in Handle_OP_Emote), so the client is responsible for its own echo --
+    // the official client shows "Testchar waves" to the actor.
+    WireHarness h;
+    h.bridge.drainEvents();
+
+    h.handler.sendChatMessage(action::ChatChannel::Emote, "waves");
+
+    std::vector<eqt::state::ChatMessageData> chats;
+    for (auto& e : h.bridge.drainEvents()) {
+        if (e.type == eqt::state::GameEventType::ChatMessage) {
+            chats.push_back(std::get<eqt::state::ChatMessageData>(e.data));
+        }
+    }
+    ASSERT_EQ(chats.size(), 1u);
+    EXPECT_EQ(chats[0].channelType, static_cast<uint32_t>(CHAT_CHANNEL_EMOTE));
+    EXPECT_EQ(chats[0].channelName, "emote");
+    EXPECT_TRUE(chats[0].sender.empty());
+    EXPECT_EQ(chats[0].message, "Testchar waves");
+}
+
+TEST(EqActionHandlerTransformsReal, SendChatMessage_Say_StillGoesOutAsChannelMessage) {
+    WireHarness h;
+    h.clearSent();
+
+    h.handler.sendChatMessage(action::ChatChannel::Say, "hello");
+
+    auto chat = h.sentChat();
+    ASSERT_EQ(chat.size(), 1u);
+    EXPECT_EQ(chat[0].first, static_cast<uint32_t>(CHAT_CHANNEL_SAY));
+    EXPECT_EQ(chat[0].second, "hello");
+    EXPECT_TRUE(h.sentEmotes().empty());
+}
+
+
+// ---------------------------------------------------------------------
+// T243 (found by the live leg): OP_SetServerFilter. ZoneSendSetServerFilter
+// used to write 0xFFFFFFFF into all 29 slots "(all enabled)". eqemu's
+// Client::ServerFilter (zone/client.cpp) reads each slot against the
+// per-filter convention in common/eq_constants.h eqFilterType: slots 1-7
+// and 14-17 are "0=hide, 1=show" (Filter0: == 1 shows, ANYTHING else
+// hides); every other slot is "0=show, N=hide/mine-only/group-only". So
+// 0xFFFFFFFF told the server to HIDE everything it filters -- including
+// FilterSocials, which gates the OP_Emote broadcast in Handle_OP_Emote /
+// ChatChannel_Emotes (QueueCloseClients ... FilterSocials). That is why the
+// first T243 live run's observer saw the /say and the /wave but never the
+// emote. The show-all payload is 1 in the Filter0 slots and 0 elsewhere.
+// ---------------------------------------------------------------------
+
+TEST(EqActionHandlerTransformsReal, SetServerFilter_ShowAllUsesEqemuPerSlotConvention) {
+    WireHarness h;
+    h.clearSent();
+
+    h.eq.ZoneSendSetServerFilter();
+
+    std::vector<SentAppPacket> pk;
+    for (auto& p : h.sentPackets()) {
+        if (p.opcode == HC_OP_SetServerFilter) pk.push_back(p);
+    }
+    ASSERT_EQ(pk.size(), 1u);
+    ASSERT_EQ(pk[0].body.size(), 116u) << "SetServerFilter_Struct is uint32 filters[29]";
+
+    uint32_t filters[29];
+    std::memcpy(filters, pk[0].body.data(), sizeof(filters));
+
+    // 0=hide, 1=show family (eqemu Filter0 macro: only == 1 shows).
+    for (int i : {1, 2, 3, 4, 5, 6, 7, 14, 15, 16, 17}) {
+        EXPECT_EQ(filters[i], 1u) << "slot " << i << " is a 0=hide/1=show filter";
+    }
+    // 0=show family (eqemu Filter1 and the multi-valued spell/crit filters).
+    for (int i : {0, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28}) {
+        EXPECT_EQ(filters[i], 0u) << "slot " << i << " is a 0=show filter";
+    }
 }
 
 }  // namespace
