@@ -956,6 +956,11 @@ public:
 	void UpdateMovement();
 	void SendPositionUpdate();
 	glm::vec3 GetPosition() const;
+	// T246: the zone's collision map (null until a zone's .map is loaded);
+	// game-thread readers (SpellManager::checkLineOfSight) take a copy of
+	// the shared_ptr so a zone change cannot free it mid-query (P35).
+	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
+	float GetSize() const { return m_size; }  // player model size (6 until the spawn says otherwise)
 	float GetHeading() const;
 	bool IsMoving() const;
 	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent && m_update_running; }

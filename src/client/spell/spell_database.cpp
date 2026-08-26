@@ -113,6 +113,18 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
     }
     spell.spell_affect_index = info.spellAffectIndex;
 
+    // Reagents (T246): spells_us.txt marks an empty reagent slot with -1
+    // (and still carries count 1 for it), so -1 lands as id 0 / count 0 and
+    // SpellData::requiresReagents() (id != 0 && count > 0) reads cleanly.
+    for (size_t ri = 0; ri < spell.reagent_id.size() && ri < info.reagentId.size(); ++ri) {
+        int32_t rawId = info.reagentId[ri];
+        int32_t rawCount = info.reagentCount[ri];
+        spell.reagent_id[ri] = rawId > 0 ? static_cast<uint32_t>(rawId) : 0u;
+        spell.reagent_count[ri] = (rawId > 0 && rawCount > 0) ? static_cast<uint32_t>(rawCount) : 0u;
+        int32_t rawNoexpend = info.noexpendReagentId[ri];
+        spell.noexpend_reagent_id[ri] = rawNoexpend > 0 ? static_cast<uint32_t>(rawNoexpend) : 0u;
+    }
+
     auto [it, _] = m_cache.emplace(spell_id, std::move(spell));
 
     m_lru.push_front(spell_id);

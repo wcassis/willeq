@@ -156,7 +156,7 @@ private:
 // ============================================================================
 
 // Reads the 61 effect-slot columns (12 x effect_id/base/base2/max/formula +
-// spell_affect_index), verbatim as they appear in the row — markers (254 for
+// spell_affect_index) and the 12 reagent columns (T246), verbatim as they appear in the row — markers (254 for
 // effect id, 100 for formula) are NOT interpreted here; that happens at the
 // consumer boundary (SpellDatabase::queryAndCache), per SpellInfo's contract.
 // `firstCol` is the sqlite3_column index of effect_id_1 (the first of the 61).
@@ -168,6 +168,10 @@ static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& 
     for (int i = 0; i < 12; ++i) info.maxValue[i]   = sqlite3_column_int(stmt, col++);
     for (int i = 0; i < 12; ++i) info.formula[i]    = sqlite3_column_int(stmt, col++);
     info.spellAffectIndex = sqlite3_column_int(stmt, col++);
+    // T246: 12 reagent columns follow spell_affect_index, verbatim (-1 = none).
+    for (int i = 0; i < 4; ++i) info.reagentId[i]         = sqlite3_column_int(stmt, col++);
+    for (int i = 0; i < 4; ++i) info.reagentCount[i]      = sqlite3_column_int(stmt, col++);
+    for (int i = 0; i < 4; ++i) info.noexpendReagentId[i] = sqlite3_column_int(stmt, col++);
 }
 
 SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
@@ -192,7 +196,11 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
         "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
         "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
-        "spell_affect_index FROM spells WHERE id=?",
+        "spell_affect_index, "
+        "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
+        "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4 "
+        "FROM spells WHERE id=?",
         stmtGetSpell_);
     if (!stmt) return info;
 
@@ -262,7 +270,11 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
         "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
         "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
-        "spell_affect_index FROM spells WHERE name=?",
+        "spell_affect_index, "
+        "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
+        "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4 "
+        "FROM spells WHERE name=?",
         stmtGetSpellByName_);
     if (!stmt) return info;
 

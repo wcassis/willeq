@@ -121,7 +121,10 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             formula_4 INTEGER, formula_5 INTEGER, formula_6 INTEGER,
             formula_7 INTEGER, formula_8 INTEGER, formula_9 INTEGER,
             formula_10 INTEGER, formula_11 INTEGER, formula_12 INTEGER,
-            spell_affect_index INTEGER
+            spell_affect_index INTEGER,
+            reagent_id_1 INTEGER, reagent_id_2 INTEGER, reagent_id_3 INTEGER, reagent_id_4 INTEGER,
+            reagent_count_1 INTEGER, reagent_count_2 INTEGER, reagent_count_3 INTEGER, reagent_count_4 INTEGER,
+            noexpend_reagent_1 INTEGER, noexpend_reagent_2 INTEGER, noexpend_reagent_3 INTEGER, noexpend_reagent_4 INTEGER
         )
     )");
 
@@ -144,14 +147,18 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "max_value_7, max_value_8, max_value_9, max_value_10, max_value_11, max_value_12, "
         "formula_1, formula_2, formula_3, formula_4, formula_5, formula_6, "
         "formula_7, formula_8, formula_9, formula_10, formula_11, formula_12, "
-        "spell_affect_index) "
+        "spell_affect_index, "
+        "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
+        "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
-        "?)",
+        "?,"
+        "?,?,?,?,?,?,?,?,?,?,?,?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -236,6 +243,19 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::Formula1 + slot));
         }
         sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::SpellAffectIndex));
+
+        // Reagents (T246): fields 58-61 (item id, -1 = none), 62-65 (count),
+        // 66-69 (no-expend reagent item id, -1 = none). Stored verbatim,
+        // -1 markers included; SpellDatabase::queryAndCache normalises.
+        for (int slot = 0; slot < EQ::MAX_SPELL_REAGENTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::ReagentId1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_REAGENTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::ReagentCount1 + slot));
+        }
+        for (int slot = 0; slot < EQ::MAX_SPELL_REAGENTS; ++slot) {
+            sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::NoExpendReagent1 + slot));
+        }
 
         sqlite3_step(stmt);
         count++;

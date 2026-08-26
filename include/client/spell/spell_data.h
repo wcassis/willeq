@@ -136,8 +136,14 @@ struct SpellData {
     // Reagents (up to 4)
     // ========================================================================
 
+    // Populated from willeq.db since T246 (0 = slot unused). reagent_id /
+    // reagent_count are the consumed components the client refuses on
+    // (SpellManager::checkReagents); noexpend_reagent_id is carried from the
+    // same spells_us.txt row (fields 66-69: a component that must be held
+    // but is not consumed) purely as plumbing -- nothing enforces it yet.
     std::array<uint32_t, MAX_SPELL_REAGENTS> reagent_id = {};
     std::array<uint32_t, MAX_SPELL_REAGENTS> reagent_count = {};
+    std::array<uint32_t, MAX_SPELL_REAGENTS> noexpend_reagent_id = {};
     std::array<uint32_t, MAX_SPELL_REAGENTS> no_expend_reagent = {};
 
     // ========================================================================

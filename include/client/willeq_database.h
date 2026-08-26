@@ -19,7 +19,7 @@ namespace EQT {
 // the client compares against it in WilleqDatabase::open() (T56). Bump this
 // AND the builder's setMeta() call together, in the same commit, whenever
 // the schema changes — they must never drift independently again.
-inline constexpr int kWilleqDbExpectedVersion = 3;  // T68: spells effect-slot columns added
+inline constexpr int kWilleqDbExpectedVersion = 4;  // T246: spells reagent columns added (T68 added effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -118,6 +118,16 @@ struct SpellInfo {
     // Index into spells.eff (T68 carries this for the next unit; -1 means
     // no visual-effect record — 799 spells in the Titanium data have this).
     int32_t spellAffectIndex = -1;
+
+    // Reagents (4 slots), verbatim from spells_us.txt (T246): reagentId[i]
+    // == -1 means "no reagent in this slot" (NOT item id 0xFFFFFFFF);
+    // reagentCount[i] is the required stack count (the file says 1 even
+    // for empty slots, so it is meaningless without a real reagentId);
+    // noexpendReagentId[i] == -1 means none. Interpretation happens at the
+    // consumer boundary (SpellDatabase::queryAndCache), as for effects.
+    std::array<int32_t, 4> reagentId{};
+    std::array<int32_t, 4> reagentCount{};
+    std::array<int32_t, 4> noexpendReagentId{};
 
     bool found = false;
 };

@@ -218,9 +218,18 @@ private:
     CastResult validateCast(const SpellData& spell, uint16_t target_id);
     bool checkMana(const SpellData& spell) const;
     bool checkRange(const SpellData& spell, uint16_t target_id) const;
+    // T246: these three were `return true` stubs until T246, which made
+    // T244's Stunned / Silenced / ComponentMissing / NoLineOfSight refusals
+    // unreachable. See the definitions for exactly what each one checks and
+    // what it deliberately leaves to the server.
     bool checkLineOfSight(uint16_t target_id) const;
     bool checkReagents(const SpellData& spell) const;
-    bool checkPlayerState() const;  // Not stunned, feared, etc.
+    // Success, or the first of Stunned / Silenced / Feared the player's
+    // buff list shows (a Mez buff reports as Stunned).
+    CastResult checkPlayerState() const;
+    // Units of `item_id` the player carries (worn + general + bag contents,
+    // the eqemu invWhereWorn|invWherePersonal set; not bank/trade/cursor).
+    uint32_t countCarriedItem(uint32_t item_id) const;
 
     // ========================================================================
     // Packet Sending

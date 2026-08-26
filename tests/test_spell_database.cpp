@@ -554,3 +554,74 @@ int main(int argc, char** argv) {
 
     return RUN_ALL_TESTS();
 }
+
+// =====================================================================
+// T246: reagents (spells_us.txt fields 58-69) reach SpellData. Before T246
+// willeq.db had no reagent columns, so reagent_id/reagent_count were
+// always 0 and requiresReagents() was false for every spell (RED:
+// review/T246/red_spell_database.txt). Reference rows verified directly
+// against /mnt/projects/EverQuestP1999/spells_us.txt (see
+// review/T246/db_regeneration_proof.txt).
+// =====================================================================
+
+// Bone Walk (351): one consumed component, item 13073 x2, no no-expend.
+TEST_F(SpellDatabaseTest, ReagentsRoundTripSingleComponentWithCount) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(351);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Bone Walk");
+    EXPECT_EQ(spell->reagent_id[0], 13073u);
+    EXPECT_EQ(spell->reagent_count[0], 2u);
+    for (size_t i = 1; i < spell->reagent_id.size(); ++i) {
+        EXPECT_EQ(spell->reagent_id[i], 0u) << "slot " << i;
+        EXPECT_EQ(spell->reagent_count[i], 0u) << "slot " << i << " (file says 1 for an empty slot; must not survive)";
+    }
+    for (size_t i = 0; i < spell->noexpend_reagent_id.size(); ++i) {
+        EXPECT_EQ(spell->noexpend_reagent_id[i], 0u) << "noexpend slot " << i;
+    }
+    EXPECT_TRUE(spell->requiresReagents());
+}
+
+// Thicken Mana (390): two components (10024, 16965), one each.
+TEST_F(SpellDatabaseTest, ReagentsRoundTripTwoComponents) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(390);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Thicken Mana");
+    EXPECT_EQ(spell->reagent_id[0], 10024u);
+    EXPECT_EQ(spell->reagent_count[0], 1u);
+    EXPECT_EQ(spell->reagent_id[1], 16965u);
+    EXPECT_EQ(spell->reagent_count[1], 1u);
+    EXPECT_EQ(spell->reagent_id[2], 0u);
+    EXPECT_EQ(spell->reagent_id[3], 0u);
+    EXPECT_TRUE(spell->requiresReagents());
+}
+
+// Cloak (5): no reagents at all -- the file's -1 markers must land as 0
+// and the "1" counts beside them must not make requiresReagents() true.
+TEST_F(SpellDatabaseTest, NoReagentMarkerLandsAsZero) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(5);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Cloak");
+    for (size_t i = 0; i < spell->reagent_id.size(); ++i) {
+        EXPECT_EQ(spell->reagent_id[i], 0u) << "slot " << i;
+        EXPECT_EQ(spell->reagent_count[i], 0u) << "slot " << i;
+    }
+    EXPECT_FALSE(spell->requiresReagents());
+}
+
+// Immolate (78): component 10307 listed with count 0 AND as no-expend
+// 10307. Count 0 is carried as 0 (not consumed, so requiresReagents() is
+// false and checkReagents() will not refuse on it); the no-expend id is
+// carried as plumbing.
+TEST_F(SpellDatabaseTest, ZeroCountComponentAndNoexpendCarriedVerbatim) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(78);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Immolate");
+    EXPECT_EQ(spell->reagent_id[0], 10307u);
+    EXPECT_EQ(spell->reagent_count[0], 0u);
+    EXPECT_EQ(spell->noexpend_reagent_id[0], 10307u);
+    EXPECT_FALSE(spell->requiresReagents());
+}

@@ -543,3 +543,326 @@ TEST(EqActionHandlerCast, CastSpell_PetSpellWithoutPet_SaysNoPet) {
     EXPECT_TRUE(h.sentCasts().empty());
     EXPECT_EQ(h.lastSystemMessage(), "You do not have a pet.");
 }
+
+// =====================================================================
+// T246: the three cast pre-checks stop being `return true` stubs.
+// checkPlayerState() reads the player's buff list (a Stun/Mez buff ->
+// 175, Silence -> 207), checkReagents() counts consumed components in
+// worn+general+bag slots, checkLineOfSight() rays the zone collision map.
+// On pre-T246 code every one of these casts PROCEEDS and puts an
+// OP_CastSpell on the wire (review/T246/red_cast.txt).
+// =====================================================================
+
+#include "client/hc_map.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/spell/buff_manager.h"
+
+#include <unistd.h>
+
+namespace {
+
+uint32_t findSpellWithEffect(EverQuest& eq, EQ::SpellEffect effect) {
+    auto& db = eq.GetSpellManager()->getDatabase();
+    for (uint32_t id = 1; id <= 4000; ++id) {
+        const EQ::SpellData* s = db.getSpell(id);
+        if (s && s->hasEffect(effect)) return id;
+    }
+    return 0;
+}
+
+// A self-targeted spell with at least one consumed component; returns the
+// id and copies the first component out (the LRU cache may evict the row).
+uint32_t findSelfSpellWithReagent(EverQuest& eq, uint32_t& reagent_id, uint32_t& reagent_count) {
+    auto& db = eq.GetSpellManager()->getDatabase();
+    for (uint32_t id = 1; id <= 4000; ++id) {
+        const EQ::SpellData* s = db.getSpell(id);
+        if (s && s->requiresReagents() && s->target_type == EQ::SpellTargetType::Self &&
+            s->cast_time_ms > 0 && s->mana_cost < 100) {
+            reagent_id = s->reagent_id[0];
+            reagent_count = s->reagent_count[0];
+            return id;
+        }
+    }
+    return 0;
+}
+
+// The PlayerProfile / OP_Buff path: BuffManager::setPlayerBuff() with the
+// wire struct, exactly what eq_player_info.cpp's handler calls.
+void giveSelfBuff(EverQuest& eq, uint8_t slot, uint32_t spell_id) {
+    EQT::SpellBuff_Struct b{};
+    b.effect_type = static_cast<uint8_t>(EQ::BuffEffectType::Inverse);
+    b.level = 50;
+    b.spellid = spell_id;
+    b.duration = 10;
+    b.player_id = 999;
+    eq.GetBuffManager()->setPlayerBuff(slot, b);
+}
+
+eqt::inventory::ItemInstance makeStack(uint32_t item_id, int32_t quantity) {
+    eqt::inventory::ItemInstance item;
+    item.itemId = item_id;
+    item.name = "reagent";
+    item.stackable = true;
+    item.stackSize = 20;
+    item.quantity = quantity;
+    return item;
+}
+
+// Minimal V1 collision map: a vertical wall (two triangles) in the plane
+// server_x == wall_x, spanning y,z in [-200, 200]. V1 vertices are EQ
+// server coords (Z-up), as HCMap::Load's V1 branch reads them.
+std::string writeWallMap(float wall_x) {
+    std::vector<char> buf;
+    auto u32 = [&](uint32_t v) { buf.insert(buf.end(), reinterpret_cast<char*>(&v), reinterpret_cast<char*>(&v) + 4); };
+    auto u16 = [&](uint16_t v) { buf.insert(buf.end(), reinterpret_cast<char*>(&v), reinterpret_cast<char*>(&v) + 2); };
+    auto f32 = [&](float v) { buf.insert(buf.end(), reinterpret_cast<char*>(&v), reinterpret_cast<char*>(&v) + 4); };
+    auto vert = [&](float x, float y, float z) { f32(x); f32(y); f32(z); };
+    auto tri = [&](float ay, float az, float by, float bz, float cy, float cz) {
+        vert(wall_x, ay, az); vert(wall_x, by, bz); vert(wall_x, cy, cz);
+        f32(1); f32(0); f32(0); f32(0);  // normals[4], unused by the loader
+    };
+    u32(0x01000000u);
+    u32(2);   // face_count
+    u16(0);   // node_count
+    u32(0);   // facelist_count
+    tri(-200, -200, 200, -200, 200, 200);
+    tri(-200, -200, 200, 200, -200, 200);
+    std::string path = "/tmp/t246_wall_" + std::to_string(getpid()) + ".map";
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    f.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    return path;
+}
+
+} // namespace
+
+TEST(EqActionHandlerCast, CastSpell_StunBuffOnPlayer_SaysStunned) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    uint32_t stun = findSpellWithEffect(h.eq, EQ::SpellEffect::Stun);
+    if (id == 0 || stun == 0) GTEST_SKIP() << "needed spells not in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    giveSelfBuff(h.eq, 0, stun);
+    ASSERT_TRUE(h.eq.GetBuffManager()->hasPlayerBuff(stun));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty()) << "nothing on the wire while stunned";
+    EXPECT_EQ(h.lastSystemMessage(), "You can't cast spells while stunned!");
+}
+
+TEST(EqActionHandlerCast, CastSpell_SilenceBuffOnPlayer_SaysSilenced) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    uint32_t silence = findSpellWithEffect(h.eq, EQ::SpellEffect::Silence);
+    if (id == 0 || silence == 0) GTEST_SKIP() << "needed spells not in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    giveSelfBuff(h.eq, 3, silence);
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You *CANNOT* cast spells, you have been silenced!");
+}
+
+// Control for the two above: a buff that is neither (the player's own
+// single-target spell) does not block.
+TEST(EqActionHandlerCast, CastSpell_OrdinaryBuffOnPlayer_DoesNotBlock) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    uint32_t heal = findSpellWithEffect(h.eq, EQ::SpellEffect::CurrentHP);
+    if (id == 0 || heal == 0) GTEST_SKIP() << "needed spells not in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    giveSelfBuff(h.eq, 0, heal);
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+}
+
+TEST(EqActionHandlerCast, CastSpell_MissingReagent_SaysMissingComponentsSendsNothing) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t reagent = 0, needed = 0;
+    uint32_t id = findSelfSpellWithReagent(h.eq, reagent, needed);
+    if (id == 0) GTEST_SKIP() << "no self-target reagent spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_EQ(h.eq.GetInventoryManager()->findItemSlotByItemId(reagent), eqt::inventory::SLOT_INVALID);
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty()) << "no OP_CastSpell for spell " << id << " without item " << reagent;
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required spell components.");
+}
+
+TEST(EqActionHandlerCast, CastSpell_ReagentPresent_CastProceeds) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t reagent = 0, needed = 0;
+    uint32_t id = findSelfSpellWithReagent(h.eq, reagent, needed);
+    if (id == 0) GTEST_SKIP() << "no self-target reagent spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    // In a bag, not a top-level slot: the count must reach bag contents.
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BAGS_BEGIN + 3,
+                                        makeStack(reagent, static_cast<int32_t>(needed)));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    auto casts = h.sentCasts();
+    ASSERT_EQ(casts.size(), 1u);
+    EXPECT_EQ(casts[0].spell_id, id);
+}
+
+// Bone Walk needs 2 x item 13073: one carried is a refusal, two is a cast.
+TEST(EqActionHandlerCast, CastSpell_ReagentCountShort_RefusedUntilStackReachesCount) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    const EQ::SpellData* bw = h.eq.GetSpellManager()->getSpell(351);
+    if (!bw || bw->reagent_id[0] != 13073u || bw->reagent_count[0] != 2u) {
+        GTEST_SKIP() << "spell 351 is not Bone Walk with 2 x 13073 in this DB";
+    }
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({351, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN, makeStack(13073, 1));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required spell components.");
+
+    // A second single chip in another slot: counts add up across slots.
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN + 1, makeStack(13073, 1));
+    h.clearSent();
+    h.handler.castSpell(1);
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+}
+
+// A reagent sitting in the BANK does not count (eqemu checks worn +
+// personal only).
+TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillRefused) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t reagent = 0, needed = 0;
+    uint32_t id = findSelfSpellWithReagent(h.eq, reagent, needed);
+    if (id == 0) GTEST_SKIP() << "no self-target reagent spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::BANK_BEGIN, makeStack(reagent, static_cast<int32_t>(needed)));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+}
+
+// Wall between caster and target -> 108 and nothing sent; the same wall
+// with the target on the caster's side -> cast proceeds. spawnSelfAndGuard
+// puts self at server x = 1.25 and the guard at x = 1.5 (NewSpawnPayloadAt
+// packs 1/8 units; its first coordinate lands on Entity::x / m_x), so a
+// wall in the plane x = 1.4 separates them; a second NPC at x = 1.0 is on
+// the caster's side.
+TEST(EqActionHandlerCast, CastSpell_WallBetween_SaysCannotSeeTarget) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
+
+    std::string path = writeWallMap(1.4f);
+    auto map = std::make_shared<HCMap>();
+    ASSERT_TRUE(map->Load(path));
+    std::remove(path.c_str());
+    h.eq.m_zone_map = map;
+
+    // The map itself must report the wall before the cast path is blamed.
+    EXPECT_FALSE(map->CheckLOS(glm::vec3(1.25f, 0.0f, 3.0f), glm::vec3(1.5f, 0.0f, 3.0f)));
+    EXPECT_TRUE(map->CheckLOS(glm::vec3(1.25f, 0.0f, 3.0f), glm::vec3(1.0f, 0.0f, 3.0f)));
+
+    h.spawnSelfAndGuard();
+    ASSERT_FLOAT_EQ(h.eq.GetPosition().x, 1.25f);
+    ASSERT_FLOAT_EQ(h.eq.GetEntities().at(kGuardId).x, 1.5f);
+    constexpr uint16_t kNearId = 102;
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(kNearId, "a_near_roamer", 8, 0, 0));
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    h.clearSent();
+    h.handler.castSpell(1);
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You cannot see your target.");
+
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kNearId));
+    h.clearSent();
+    h.handler.castSpell(1);
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting()) << "same map, target on the caster's side";
+    ASSERT_EQ(h.sentCasts().size(), 1u);
+    EXPECT_EQ(h.sentCasts()[0].target_id, static_cast<uint32_t>(kNearId));
+}
+
+// No collision map loaded (the state every test above this block runs in,
+// and a zone whose .map is missing): line of sight is the server's call.
+TEST(EqActionHandlerCast, CastSpell_NoMapLoaded_LineOfSightPermissive) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
+    ASSERT_EQ(h.eq.GetZoneMap(), nullptr);
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+}

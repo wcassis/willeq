@@ -516,10 +516,9 @@ CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id
         return CastResult::AlreadyCasting;
     }
 
-    // Check player state
-    if (!checkPlayerState()) {
-        // Could be stunned, feared, silenced, etc.
-        return CastResult::Stunned;  // Simplified - could be more specific
+    // Check player state (stunned / silenced / feared from the buff list)
+    if (CastResult state = checkPlayerState(); state != CastResult::Success) {
+        return state;
     }
 
     // Check mana
@@ -610,26 +609,8 @@ bool SpellManager::checkRange(const SpellData& spell, uint16_t target_id) const
     return distance <= spell.range;
 }
 
-bool SpellManager::checkLineOfSight(uint16_t target_id) const
-{
-    // For now, always return true - actual LOS checks would require map data
-    // TODO: Implement proper LOS check using raycast
-    return true;
-}
-
-bool SpellManager::checkReagents(const SpellData& spell) const
-{
-    // For now, assume reagents are available
-    // TODO: Check inventory for required reagents
-    return true;
-}
-
-bool SpellManager::checkPlayerState() const
-{
-    // TODO: Check if player is stunned, feared, silenced, etc.
-    // For now, always allow casting
-    return true;
-}
+// T246: checkLineOfSight / countCarriedItem / checkReagents / checkPlayerState
+// live in spell_cast_checks.cpp (same class, own TU).
 
 // ============================================================================
 // Spell Gems
