@@ -986,6 +986,35 @@ void EverQuest::RequestScribeItem(const std::string& args)
 	const int32_t bookSlot = m_spell_manager->findFreeSpellbookSlot();
 	if (bookSlot < 0) {
 		AddChatSystemMessage("Your spellbook is full.");
+		return;
+	}
+
+	if (!m_bridge) {
+		AddChatSystemMessage("Cannot scribe - no bridge attached.");
+		return;
+	}
+
+	// Put the scroll on the cursor FIRST. eqemu's Client::OPMemorizeSpell
+	// reads it from there and compares its Scroll.Effect to spell_id, so the
+	// OP_MoveItem has to reach the server ahead of the OP_MemorizeSpell.
+	// setSpellForScribe() -> pickupItem() pushes MoveItemIntent, and intents
+	// drain FIFO, so pushing the move here and ScribeSpellIntent immediately
+	// after gives exactly that order in one ProcessBridgeIntents() pass.
+	// (Doing the pickup inside the ScribeSpellIntent arm instead would defer
+	// the move to the NEXT drain -- the packets would go out backwards.)
+	if (slot != eqt::inventory::CURSOR_SLOT) {
+		if (m_inventory_manager->hasCursorItem()) {
+			AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
+			return;
+		}
+		m_inventory_manager->setSpellForScribe(spellId, slot);
+	}
+
+	m_bridge->pushIntent(eqt::events::ScribeSpellIntent{
+		spellId, static_cast<uint16_t>(bookSlot), slot});
+}
+
+// ============================================================================
 // T278 -- /combine and /closecontainer (T264 F7)
 // ============================================================================
 //
@@ -1073,28 +1102,6 @@ void EverQuest::RequestCloseTradeskillContainer()
 	}
 
 	if (!m_bridge) {
-		AddChatSystemMessage("Cannot scribe - no bridge attached.");
-		return;
-	}
-
-	// Put the scroll on the cursor FIRST. eqemu's Client::OPMemorizeSpell
-	// reads it from there and compares its Scroll.Effect to spell_id, so the
-	// OP_MoveItem has to reach the server ahead of the OP_MemorizeSpell.
-	// setSpellForScribe() -> pickupItem() pushes MoveItemIntent, and intents
-	// drain FIFO, so pushing the move here and ScribeSpellIntent immediately
-	// after gives exactly that order in one ProcessBridgeIntents() pass.
-	// (Doing the pickup inside the ScribeSpellIntent arm instead would defer
-	// the move to the NEXT drain -- the packets would go out backwards.)
-	if (slot != eqt::inventory::CURSOR_SLOT) {
-		if (m_inventory_manager->hasCursorItem()) {
-			AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
-			return;
-		}
-		m_inventory_manager->setSpellForScribe(spellId, slot);
-	}
-
-	m_bridge->pushIntent(eqt::events::ScribeSpellIntent{
-		spellId, static_cast<uint16_t>(bookSlot), slot});
 		AddChatSystemMessage("Cannot close the container - no bridge attached.");
 		return;
 	}
