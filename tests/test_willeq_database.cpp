@@ -496,3 +496,37 @@ TEST(WilleqDatabaseShippedContentTest, T265RaceRowFixesAreInTheDb) {
         EXPECT_EQ(info.s3dFile, e.s3d) << "race " << e.race << ": " << e.why;
     }
 }
+
+// T274: race_models.name is what /who, /consider and inspect PRINT (T271 made
+// names db-only). Row 330 shipped as "Froglok (Playable)" -- a data annotation
+// separating the playable model from row 26's monster froglok -- so players
+// were shown it. Titanium prints "Froglok" for both; the disambiguation now
+// lives in the json row's `note`. A db rebuilt from a race_models.json that
+// still carries the annotation fails here by name.
+TEST(WilleqDatabaseShippedContentTest, T274RaceDisplayNamesCarryNoAnnotation) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(path));
+    EXPECT_EQ(db.getRaceModel(330).name, "Froglok");
+    EXPECT_EQ(db.getRaceModel(26).name,  "Froglok");
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* stmt = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw, "SELECT race_id, name FROM race_models ORDER BY race_id",
+                                 -1, &stmt, nullptr), SQLITE_OK);
+    int rows = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ++rows;
+        const int race = sqlite3_column_int(stmt, 0);
+        const char* n = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        const std::string name = n ? n : "";
+        EXPECT_FALSE(name.empty()) << "race " << race << " has no display name";
+        EXPECT_EQ(name.find_first_of("()[]_0123456789"), std::string::npos)
+            << "race " << race << " display name \"" << name << "\" carries an annotation";
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(raw);
+    EXPECT_GE(rows, 190) << "race_models shrank";
+}

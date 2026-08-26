@@ -4573,12 +4573,12 @@
     },
     "330": {
       "code": "FRM",
-      "name": "Froglok (Playable)",
+      "name": "Froglok",
       "gender_variants": true,
       "female_code": "FRF",
       "scale": 0.8,
       "s3d_file": "globalpcfroglok_chr.s3d",
-      "note": "T265: FRM_HS_DEF and FRF_HS_DEF exist in exactly one archive, globalpcfroglok_chr.s3d. globalfroglok_chr.s3d holds FRG (the monster froglok) only."
+      "note": "T265: FRM_HS_DEF and FRF_HS_DEF exist in exactly one archive, globalpcfroglok_chr.s3d. globalfroglok_chr.s3d holds FRG (the monster froglok) only. T274: this is the PLAYABLE froglok model, distinct from row 26 (FRO, the monster froglok); that disambiguation lives here and NOT in name, because name is the display string /who and /consider print and Titanium prints \"Froglok\" for both."
     },
     "367": {
       "code": "SKE",

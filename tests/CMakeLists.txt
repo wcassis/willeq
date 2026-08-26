@@ -1672,7 +1672,9 @@ ENDIF()
 # shifted -- 14 "Iksar", 128 "Vah Shir", 130 "Froglok", 330 "Drakkin" -- and
 # it is printed to the player). Opens the shipped data/willeq.db and skips
 # without it; no device, no server. Gated on graphics only because the
-# graphics-side twin EQT::Graphics::getRaceName is held to the same rows.
+# T274 deleted the caller-less graphics-side twin EQT::Graphics::getRaceName;
+# the target stays graphics-gated because EQT::Graphics::getRaceScale (which
+# does have callers) is still held to the same rows here.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_race_names
         test_race_names.cpp

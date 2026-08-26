@@ -85,14 +85,13 @@ std::string getRaceModelFilename(uint16_t raceId, uint8_t gender);
 // Get race scale factor (some races are larger/smaller)
 float getRaceScale(uint16_t raceId);
 
-// Get human-readable race name
-std::string getRaceName(uint16_t raceId);
+// T274: getRaceName() and getGenderName() lived here with ZERO callers
+// (found by T271). Race names for display come from EverQuest::GetRaceName()
+// (eq_strings.cpp), which reads the same race_models row; there is no second
+// name function to drift from it. Gender was never printed anywhere.
 
 // Get human-readable class name
 std::string getClassName(uint8_t classId);
-
-// Get human-readable gender string
-std::string getGenderName(uint8_t gender);
 
 } // namespace Graphics
 } // namespace EQT

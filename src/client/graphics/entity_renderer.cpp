@@ -120,7 +120,7 @@ irr::video::SColor EntityRenderer::getColorForRace(uint16_t raceId) const {
     // Skeleton, 26 FRO Froglok not Snake, 33 GHU Ghoul not Ghost, 35 EEL Eel
     // not Rat, 42 WOL Wolf not Rat, 43 BEA Bear not Bat, 46 IMP Imp not
     // Goblin, 48/49 KOB Kobold / DRA Lava Dragon not Spiders, 85 SPE Spectre
-    // not Dragon). For a race NAME call EQT::Graphics::getRaceName().
+    // not Dragon). For a race NAME call EverQuest::GetRaceName() (T274).
     switch (raceId) {
         case 1:   // Human
             return irr::video::SColor(255, 200, 180, 160);

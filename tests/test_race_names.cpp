@@ -13,8 +13,15 @@
  *
  * eqstr_us.txt carries no race-name table (its 3200-block is the LANGUAGE
  * list -- Barbarian/Erudian/Elvish/... -- not races), so race_models.name is
- * the only name source in the tree; these tests hold both name functions and
+ * the only name source in the tree; these tests hold the name function and
  * the scale map to it.
+ *
+ * T274: race_models.name is a DISPLAY string. Row 330's was
+ * "Froglok (Playable)" -- a data annotation that, once names became db-only,
+ * was printed to players; it is now plain "Froglok" (the disambiguation moved
+ * to the row's `note`), and a sweep here forbids any annotation in any row's
+ * name. T274 also deleted EQT::Graphics::getRaceName()/getGenderName(), which
+ * had zero callers.
  *
  * Offline: opens the shipped data/willeq.db; skips if absent. No device, no
  * server, no DISPLAY.
@@ -50,7 +57,7 @@ const ShiftedId kShifted[] = {
     {14,  "Iksar",    "Werewolf"},
     {128, "Vah Shir", "Iksar"},
     {130, "Froglok",  "Vah Shir"},
-    {330, "Drakkin",  "Froglok (Playable)"},
+    {330, "Drakkin",  "Froglok"},
 };
 
 // With no db open there is no name source at all: the honest answer is
@@ -108,6 +115,60 @@ TEST_F(RaceNameFromDbTest, ShiftedIdsAnswerTheRow) {
     }
 }
 
+// T274: race_models.name is a DISPLAY name -- it is what /who, /consider,
+// inspect and target info print. Row 330 carried "Froglok (Playable)", a
+// data annotation distinguishing the playable Froglok model (FRM/FRF,
+// globalpcfroglok_chr) from the monster froglok of row 26; T271 made names
+// db-only, so that annotation started reaching players. Titanium prints
+// "Froglok" for both. The disambiguation now lives in the row's `note`
+// field, which nothing displays.
+TEST_F(RaceNameFromDbTest, PlayableFroglokPrintsAsFroglok) {
+    EXPECT_EQ(EverQuest::GetRaceName(330), "Froglok");
+    EXPECT_EQ(EverQuest::GetRaceName(26),  "Froglok");
+}
+
+// The general rule the above is one instance of: no row's display name may
+// carry a parenthetical annotation, a bracket, a race code or an id. Those
+// belong in a comment or a separate column, never in the string a player
+// reads.
+TEST_F(RaceNameFromDbTest, NoRowNameCarriesAnAnnotation) {
+    int rows = 0;
+    for (uint16_t id = 0; id <= kMaxRaceId; ++id) {
+        auto info = db_.getRaceModel(id);
+        if (!info.found) continue;
+        ++rows;
+        const std::string& n = info.name;
+        EXPECT_EQ(n.find('('), std::string::npos) << "race " << id << " name \"" << n << "\"";
+        EXPECT_EQ(n.find(')'), std::string::npos) << "race " << id << " name \"" << n << "\"";
+        EXPECT_EQ(n.find('['), std::string::npos) << "race " << id << " name \"" << n << "\"";
+        EXPECT_EQ(n.find(']'), std::string::npos) << "race " << id << " name \"" << n << "\"";
+        EXPECT_EQ(n.find('_'), std::string::npos) << "race " << id << " name \"" << n << "\"";
+        for (char c : n) {
+            EXPECT_FALSE(c >= '0' && c <= '9')
+                << "race " << id << " name \"" << n << "\" contains a digit";
+        }
+        EXPECT_FALSE(n.empty()) << "race " << id;
+        EXPECT_NE(n.front(), ' ') << "race " << id;
+        EXPECT_NE(n.back(),  ' ') << "race " << id;
+    }
+    EXPECT_EQ(rows, kExpectedRowCount);
+}
+
+// The names the deleted pre-JSON switches got wrong, pinned against the one
+// surviving name function so it can never drift back to that numbering.
+// (T271 pinned these on EQT::Graphics::getRaceName(); T274 deleted that
+// caller-less twin and moved the pins here.)
+TEST_F(RaceNameFromDbTest, NamePinsTheContradictedIds) {
+    EXPECT_EQ(EverQuest::GetRaceName(13),  "Aviak");       // switch said "Wolf"
+    EXPECT_EQ(EverQuest::GetRaceName(21),  "Evil Eye");    // switch said "Skeleton"
+    EXPECT_EQ(EverQuest::GetRaceName(26),  "Froglok");     // switch said "Snake"
+    EXPECT_EQ(EverQuest::GetRaceName(35),  "Eel");         // switch said "Rat"
+    EXPECT_EQ(EverQuest::GetRaceName(42),  "Wolf");        // switch said "Wolf" -- agreed by luck
+    EXPECT_EQ(EverQuest::GetRaceName(46),  "Imp");         // switch said "Goblin"
+    EXPECT_EQ(EverQuest::GetRaceName(85),  "Spectre");     // switch said "Dragon"
+    EXPECT_EQ(EverQuest::GetRaceName(128), "Iksar");       // switch agreed here
+}
+
 TEST_F(RaceNameFromDbTest, IdWithNoRowIsUnknownEvenWithTheDbOpen) {
     ASSERT_FALSE(db_.getRaceModel(9999).found);
     EXPECT_EQ(EverQuest::GetRaceName(9999), "Unknown (9999)");
@@ -115,15 +176,11 @@ TEST_F(RaceNameFromDbTest, IdWithNoRowIsUnknownEvenWithTheDbOpen) {
 
 #ifdef EQT_HAS_GRAPHICS
 
-// EQT::Graphics::getRaceName() is the graphics-side twin of the above. It
-// already preferred the db; T271 deletes its fallback switch so the two
-// cannot drift apart again.
-TEST_F(RaceNameNoDatabaseTest, GraphicsNameIsUnknownWithNoDb) {
-    for (uint16_t id : {1, 13, 14, 21, 33, 42, 43, 128, 130, 330}) {
-        EXPECT_EQ(EQT::Graphics::getRaceName(id), "Unknown (" + std::to_string(id) + ")")
-            << "race " << id;
-    }
-}
+// T274: EQT::Graphics::getRaceName() -- the graphics-side twin these tests
+// used to hold against EverQuest::GetRaceName() -- is DELETED. It had zero
+// callers (T271), so the only way the two could disagree was in this file.
+// EverQuest::GetRaceName() is the single name function and every assertion
+// below that used to name the twin now names it instead.
 
 // getRaceScale()'s fallback switch was shifted the same way (42 "Rat" 0.3 vs
 // row WOL Wolf 0.8; 43 "Bear" 1.2 vs row BEA Bear 1.0; 13 "Wolf" 0.8 vs row
@@ -135,16 +192,13 @@ TEST_F(RaceNameNoDatabaseTest, GraphicsScaleIsNeutralWithNoDb) {
     }
 }
 
-TEST_F(RaceNameFromDbTest, GraphicsNameAndScaleFollowEveryRow) {
+TEST_F(RaceNameFromDbTest, GraphicsScaleFollowsEveryRow) {
     int rows = 0;
     for (uint16_t id = 0; id <= kMaxRaceId; ++id) {
         auto info = db_.getRaceModel(id);
         if (!info.found) continue;
         ++rows;
-        EXPECT_EQ(EQT::Graphics::getRaceName(id), info.name) << "race " << id;
         EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(id), info.scale) << "race " << id;
-        // The two name functions must agree -- they are the same question.
-        EXPECT_EQ(EQT::Graphics::getRaceName(id), EverQuest::GetRaceName(id)) << "race " << id;
     }
     EXPECT_EQ(rows, kExpectedRowCount);
 }
@@ -164,19 +218,6 @@ TEST_F(RaceNameFromDbTest, GraphicsScalePinsTheContradictedIds) {
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(94),  0.7f);  // KAM Kaladim Citizen; switch 1.5 "Minotaur"
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(95),  3.0f);  // CAZ Cazic Thule; switch 1.5 "Drake"
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(127), 0.0f);  // IVM Invisible Man
-}
-
-// Names the switch got wrong the same way -- pinned so the graphics twin can
-// never drift back to the pre-JSON numbering either.
-TEST_F(RaceNameFromDbTest, GraphicsNamePinsTheContradictedIds) {
-    EXPECT_EQ(EQT::Graphics::getRaceName(13),  "Aviak");       // switch said "Wolf"
-    EXPECT_EQ(EQT::Graphics::getRaceName(21),  "Evil Eye");    // switch said "Skeleton"
-    EXPECT_EQ(EQT::Graphics::getRaceName(26),  "Froglok");     // switch said "Snake"
-    EXPECT_EQ(EQT::Graphics::getRaceName(35),  "Eel");         // switch said "Rat"
-    EXPECT_EQ(EQT::Graphics::getRaceName(42),  "Wolf");        // switch said "Wolf" -- agreed by luck
-    EXPECT_EQ(EQT::Graphics::getRaceName(46),  "Imp");         // switch said "Goblin"
-    EXPECT_EQ(EQT::Graphics::getRaceName(85),  "Spectre");     // switch said "Dragon"
-    EXPECT_EQ(EQT::Graphics::getRaceName(128), "Iksar");       // switch agreed here
 }
 
 #endif  // EQT_HAS_GRAPHICS

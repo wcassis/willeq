@@ -208,22 +208,6 @@ float getRaceScale(uint16_t raceId) {
     return 1.0f;
 }
 
-// T271: db only, same rule. The deleted fallback switch carried the same
-// pre-JSON numbering (13 "Wolf" vs row AVI Aviak, 21 "Skeleton" vs BEH Evil
-// Eye, 26 "Snake" vs FRO Froglok, 35 "Rat" vs EEL Eel, 46 "Goblin" vs IMP
-// Imp, 85 "Dragon" vs SPE Spectre, ...), i.e. it answered confidently and
-// wrongly. Kept in step with EverQuest::GetRaceName(), which now returns the
-// same row and the same "Unknown (id)" for no row -- test_race_names pins
-// the two against each other over every row.
-std::string getRaceName(uint16_t raceId) {
-    auto* db = WilleqDatabase::globalInstance();
-    if (db) {
-        auto info = db->getRaceModel(raceId);
-        if (info.found && !info.name.empty()) return info.name;
-    }
-    return "Unknown (" + std::to_string(raceId) + ")";
-}
-
 std::string getClassName(uint8_t classId) {
     switch (classId) {
         case 1:  return "Warrior";
@@ -254,14 +238,6 @@ std::string getClassName(uint8_t classId) {
     }
 }
 
-std::string getGenderName(uint8_t gender) {
-    switch (gender) {
-        case 0: return "Male";
-        case 1: return "Female";
-        case 2: return "Neuter";
-        default: return "Unknown";
-    }
-}
 
 } // namespace Graphics
 } // namespace EQT
