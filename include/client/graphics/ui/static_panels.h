@@ -20,6 +20,15 @@ namespace eqt { namespace ui { class ChatMessageBuffer; } }
 // definition lives in static_panels.cpp, which includes client/state/event_bus.h.
 // Forward-declared here so every graphics TU does not pay for that header.
 namespace eqt { namespace state { struct HotbarSlotAssignedData; } }
+// T290: the four loot bridge arms apply their payloads through the free
+// functions declared below; same forward-declare trick as
+// HotbarSlotAssignedData so graphics TUs do not pay for event_bus.h.
+namespace eqt { namespace state {
+struct LootWindowOpenedData;
+struct LootWindowClosedData;
+struct LootItemAddedData;
+struct LootItemRemovedData;
+} }
 
 namespace EQT {
 namespace Graphics {
@@ -335,6 +344,101 @@ struct SkillsPopupState {
 /** Render skills popup (center screen). */
 void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
                         const SkillsPopupState& state);
+
+// ---------------------------------------------------------------------------
+// T290 -- the loot window, restored.
+//
+// The pre-static-UI LootWindow (include/client/graphics/ui/loot_window.h +
+// .cpp, deleted by U07c2 0f25cb57) is the ancestor of everything below: the
+// same open/close state machine, the same "display row -> CORPSE SLOT"
+// indirection, the same Loot All / Close buttons, the same scrolled visible
+// window over a growing item list. What changed is the shell -- a
+// WindowBase subclass with callbacks became a plain state struct plus free
+// functions, the static-panel idiom (T272's spellbook, T277's buff bar).
+//
+// Two rules carried over verbatim because they were the parts that were
+// RIGHT:
+//   1. The list is PACKED. A corpse's slots are not dense (slot 0..30 with
+//      holes), so display row N is NOT corpse slot N -- exactly T277's
+//      buff-bar lesson. Every row carries its own corpse slot and that is
+//      what LootItemIntent sends.
+//   2. The UI never closes itself. close() went through a callback so the
+//      SERVER decided; here the click pushes CloseLootIntent and the panel
+//      stays up until LootWindowClosed comes back. Optimistic local closes
+//      desync the server's "this player is looting" state.
+// ---------------------------------------------------------------------------
+
+// One row of corpse contents (from a LootItemAdded bridge event).
+struct LootItemDisplay {
+    uint8_t slot = 0;        // CORPSE slot id -- what LootItemIntent carries
+    uint32_t itemId = 0;
+    std::string itemName;
+};
+
+// Renderer-side corpse contents. Fed exclusively by the four loot bridge
+// arms via the apply*() functions below; there is no cross-thread read of
+// the game-thread loot state (U05/S2's rule).
+struct LootPanelState {
+    bool isOpen = false;
+    uint16_t corpseId = 0;
+    std::string corpseName;
+    std::vector<LootItemDisplay> items;  // packed, ascending corpse slot
+    int scrollOffset = 0;                // index of the first visible row
+    int hoveredRow = -1;                 // visible row index, -1 = none
+    static constexpr int VISIBLE_ROWS = 8;
+
+    int maxScrollOffset() const {
+        int over = static_cast<int>(items.size()) - VISIBLE_ROWS;
+        return over > 0 ? over : 0;
+    }
+};
+
+// The loot popup's two buttons (the old window's DestroyAll is gone with
+// DestroyAllLootIntent -- T268 established Titanium has no destroy-loot
+// packet, so that button only ever closed the window).
+enum class LootButton : uint8_t {
+    None = 0,
+    LootAll,
+    Close
+};
+
+/** Render the loot popup (center screen). Only when state.isOpen. */
+void renderLootPopup(UIRenderer& ui, const UILayout& layout,
+                     const LootPanelState& state);
+
+/**
+ * Hit-test a point against the loot popup's item rows and return the INDEX
+ * INTO state.items (not the corpse slot, not the on-screen row), or -1.
+ *
+ * The twin of renderLootPopup()'s row loop -- same geometry, same packing,
+ * same scroll window -- so the row the cursor is over and the item the
+ * click takes can never disagree (T277's rule). Callers turn the index into
+ * a corpse slot via state.items[i].slot.
+ */
+int hitTestLootRow(const UILayout& layout, const LootPanelState& state,
+                   int mouseX, int mouseY);
+
+/** Hit-test the loot popup's buttons. Returns LootButton::None on a miss. */
+LootButton hitTestLootButton(const UILayout& layout, const LootPanelState& state,
+                             int mouseX, int mouseY);
+
+/**
+ * The four loot bridge arms, as free functions.
+ *
+ * IrrlichtBridge's arms were LOG_TRACE stubs that DISCARDED their payloads
+ * (T283's audit, irrlicht_bridge.cpp:455-467) -- which is why no corpse
+ * contents existed renderer-side at all. These are the bodies those arms
+ * now call. Free functions, like applyHotbarSlotAssigned(), so tests drive
+ * the real publisher through the real applier without an Irrlicht device.
+ */
+void applyLootWindowOpened(LootPanelState& state,
+                           const eqt::state::LootWindowOpenedData& data);
+void applyLootWindowClosed(LootPanelState& state,
+                           const eqt::state::LootWindowClosedData& data);
+void applyLootItemAdded(LootPanelState& state,
+                        const eqt::state::LootItemAddedData& data);
+void applyLootItemRemoved(LootPanelState& state,
+                          const eqt::state::LootItemRemovedData& data);
 
 // Cached XP progress
 struct XPBarState {

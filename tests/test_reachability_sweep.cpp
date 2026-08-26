@@ -183,15 +183,16 @@ std::vector<std::string> variantMembers() {
 // intent is kept as the natural target for the producer that feature needs.
 // T268 wired the loot window ACTIONS (take one, loot all, close) as the
 // /loot family of commands -- CommandProcessor -> ActionDispatcher ->
-// EqActionHandler, the same last hops the shift+click gesture uses. These
-// three intents are the UI-GESTURE leg of that same feature and stay
-// producer-less until a loot popup exists to click (T48's UI-gesture-only
-// class); their arms are live and pinned by tests/test_loot_window_actions.
-// T283 looked and reported the popup as a FEATURE, not a wiring job: there
-// is no loot panel to click (PopupType::Loot is a bare enumerator with no
-// renderer, and the four loot game events only LOG_TRACE in IrrlichtBridge
-// -- no renderer-side corpse contents exist to draw). These three stay
-// listed until that feature is built.
+// EqActionHandler, the same last hops the shift+click gesture uses; T283
+// then reported the missing UI-gesture leg as a FEATURE, not a wiring job,
+// and left LootItemIntent/LootAllIntent/CloseLootIntent listed here.
+// T290 BUILT that feature and DELISTED all three: the restored loot popup
+// (renderLootPopup + LootPanelState, ported from the LootWindow U07c2
+// deleted) produces them from StaticUIInput::processInput() -- a row click,
+// the Loot All button, the Close button -- and processKey()'s ESC arm.
+// They land on the SAME consumer bodies the commands do (eq_bridge.cpp ->
+// LootItemFromCorpse / CombatManager::LootAll / CloseLootWindow), so there
+// is one body per action, not two. Pinned by tests/test_loot_panel.
 // DestroyAllLootIntent was DELETED: Titanium has no destroy-loot packet, so
 // its arm only closed the window -- a second name for CloseLootIntent.
 // T273 wired ReadItemIntent as the /read command (CommandProcessor ->
@@ -203,7 +204,6 @@ std::vector<std::string> variantMembers() {
 // There is still no trainer PANEL to click, so the command is the only
 // producer -- said out loud rather than implied.
 const std::set<std::string> kBlockedIntents = {
-    "LootItemIntent", "LootAllIntent", "CloseLootIntent",
     // T272 delisted MemorizeSpellIntent (spellbook click produces it);
     // Delisted as each got a producer: ReadItemIntent (T273 /read),
     // ScribeSpellIntent (T276 /scribe), BuffCancelIntent (T277 buff-bar

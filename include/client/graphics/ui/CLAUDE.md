@@ -7,7 +7,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 - `UIRenderer` - Batched quad drawing API. Accumulates `SpriteQuad` structs per frame, flushes in `endFrame()`. Supports atlas-backed sprites or solid color fallback. Methods: `drawRect()`, `drawSprite()`, `drawBar()`, `drawPanel()`.
 - `UILayout` - Anchor-based screen region definitions. `computeLayout(width, height)` positions all panels for any resolution. Constants: MARGIN=4, BAR_HEIGHT=14, SLOT_SIZE=32.
 - `StaticPanels` - Free render functions (not a class hierarchy) for each panel. Each takes a `UIRenderer`, `UILayout`, and a plain data struct. No state ownership.
-- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems.
+- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target.
 - `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.png` + `ui_atlas.json`). Provides `UISprite` enum (SlotBackground, BarHP, PanelBorder, etc.) with source rects.
 - `CommandRegistry` - Slash command registration and dispatch. Case-insensitive lookup, alias support, tab completion, category-based help.
 
@@ -28,6 +28,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Inventory | Center popup | `InventoryPanelState` | `renderInventoryPopup()` |
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
+| Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
 
 Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share the same screen region and are mutually exclusive.
 
@@ -136,17 +137,20 @@ T156/T159/T162), `/autofire` (`/af`), `/shield`, `/duel`, `/duelaccept`,
 `/dueldecline`, `/hunt [on|off]`, `/autoloot [on|off]`, `/listtargets`,
 `/loot <corpseId|corpse name>` (opens; with a loot window open `/loot
 <slot|item name>` takes ONE item), `/lootall`, `/lootclose` (`/closeloot`)
-(T268). There is no loot popup in the static UI; the loot window is
-command-driven (its intents are the same ones a popup would push). T283
-audited what a popup would cost and ruled it a FEATURE, not wiring:
-`PopupType::Loot` is a bare enumerator with no `renderLootPopup`, there is
-no renderer-side corpse-contents state at all (the old window went with
-U07c3's `getWindowManager()` removal), and the four loot game events
-(`LootWindowOpened/Closed`, `LootItemAdded/Removed`) reach
-`IrrlichtBridge` only to `LOG_TRACE` -- their payloads are discarded. A
-popup needs a new panel state, four real bridge arms, a renderer, layout,
-hit-testing and a golden re-bless; the T272/T277 click-wiring pattern does
-not apply because there is no drawn thing to click.
+(T268). **T290 restored the loot POPUP** (the feature T283 scoped): the
+four loot game events (`LootWindowOpened/Closed`, `LootItemAdded/Removed`)
+now have real `IrrlichtBridge` arms instead of payload-discarding
+`LOG_TRACE`s, feeding `LootPanelState` (`src/client/graphics/ui/loot_panel.cpp`,
+ported from the `LootWindow` U07c2 `0f25cb57` deleted); `renderLootPopup()`
+draws it last of the center popups, and `hitTestLootRow()` /
+`hitTestLootButton()` turn a click into `LootItemIntent` / `LootAllIntent` /
+`CloseLootIntent` -- the SAME intents and the same consumer bodies the
+`/loot` family uses. Two rules carried over from the old window: the item
+list is PACKED so on-screen row != list index != corpse slot (the intent
+carries `items[idx].slot`), and the panel never closes itself -- a click
+pushes `CloseLootIntent` and the panel stays up until the server's
+`LootWindowClosed`. `/autoloot` is ON by default and will empty a corpse
+before you can click it (T268).
 
 **Group:** `/invite [name]` (`/inv`), `/groupaccept` (`/gaccept`), `/decline`,
 `/disband`, `/split <pp> [gp] [sp] [cp]`, `/groupassist [name]` (`/ga`),

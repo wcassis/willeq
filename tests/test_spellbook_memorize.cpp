@@ -134,6 +134,7 @@ protected:
     SpellbookPopupState spellbook;
     SkillsPopupState skills;
     BuffBarState buffs;
+    LootPanelState loot;
     StaticUIInput input;
     TestBridge bridge;
 
@@ -153,7 +154,7 @@ protected:
 
     void click(int x, int y) {
         input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
-                            inventory, spellbook, skills, buffs);
+                            inventory, spellbook, skills, buffs, loot);
     }
 };
 

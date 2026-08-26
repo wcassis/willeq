@@ -27,6 +27,7 @@ struct SpellGemPanelState;
 struct SpellbookPopupState;
 struct SkillsPopupState;
 struct BuffBarState;
+struct LootPanelState;
 
 class StaticUIInput {
 public:
@@ -47,7 +48,8 @@ public:
                       InventoryPanelState& inventory,
                       SpellbookPopupState& spellbook,
                       SkillsPopupState& skills,
-                      const BuffBarState& buffs);
+                      const BuffBarState& buffs,
+                      LootPanelState& loot);
 
     /**
      * Handle a key press. Returns true if consumed.
@@ -55,7 +57,8 @@ public:
     bool processKey(irr::EKEY_CODE key, bool pressed, bool shift, bool ctrl,
                     InventoryPanelState& inventory,
                     SpellbookPopupState& spellbook,
-                    SkillsPopupState& skills);
+                    SkillsPopupState& skills,
+                    LootPanelState& loot);
 
 private:
     eqt::bridge::GameStateBridge* bridge_ = nullptr;

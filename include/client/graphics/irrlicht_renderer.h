@@ -2132,6 +2132,10 @@ public:
     PetPanelState petPanelState_;       // U06f
     SpellbookPopupState spellbookState_; // U06g
     SkillsPopupState skillsPopupState_; // U06h
+    // T290: renderer-side corpse contents, restored. Fed only by the four
+    // loot bridge arms (applyLoot*), read by renderLootPopup() and
+    // StaticUIInput's row/button hit tests.
+    LootPanelState lootState_;          // T290
     XPBarState xpBarState_;             // U06i
     std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 

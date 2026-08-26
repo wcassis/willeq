@@ -1882,6 +1882,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_buff_click_off)
 ENDIF()
 
+# T290: the loot window, restored. The four bridge-arm bodies (applyLoot*),
+# the row/button geometry that renderLootPopup() shares with the hit tests,
+# and the real StaticUIInput producer for the three loot intents. Same
+# graphics gate as test_buff_click_off (needs Irrlicht headers for
+# static_panels.h); no device, no server, no db.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_loot_panel
+        test_loot_panel.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_loot_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_loot_panel GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_loot_panel)
+ENDIF()
+
 # T60: the shared bone-lookup fallback chain (bone_attachment.h) — pure
 # string logic over a synthetic skeleton, no device/Irrlicht driver needed
 # (just the irr::core math types, header-only via willeq_core's include

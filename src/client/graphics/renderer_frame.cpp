@@ -923,7 +923,21 @@ void IrrlichtRenderer::processChatInput() {
     // Not in chat — clear pending keys and handle escape for target clearing
     eventReceiver_->clearPendingKeyEvents();
     if (eventReceiver_->escapeKeyPressed()) {
-        if (currentTargetId_ != 0) {
+        // T290: StaticUIInput::processKey() -- the static UI's ESC handler --
+        // had NO production caller at all; it was reached only from
+        // tests/test_static_ui_panels.cpp (the T48 implemented-but-unreached
+        // class). This is that caller. It runs FIRST so ESC dismisses an open
+        // popup before it clears the target, which is what the real client
+        // does, and it is the single body for "ESC closes the loot window"
+        // (which pushes CloseLootIntent -- the panel closes when the server
+        // confirms, never optimistically).
+        bool popupConsumedEscape = false;
+        if (newUIEnabled_ && staticUIInput_) {
+            popupConsumedEscape = staticUIInput_->processKey(
+                irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
+                inventoryState_, spellbookState_, skillsPopupState_, lootState_);
+        }
+        if (!popupConsumedEscape && currentTargetId_ != 0) {
             LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
             clearCurrentTarget();
             SetTrackedTargetId(0);
@@ -1571,7 +1585,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         staticUIInput_->processInput(
             eventReceiver_->getMouseX(), eventReceiver_->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-            spellbookState_, skillsPopupState_, buffBarState_);
+            spellbookState_, skillsPopupState_, buffBarState_, lootState_);
         pendingUIClick_ = false;
     }
 
@@ -1599,6 +1613,10 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
         renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
         renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+        // T290: last of the center popups, so it is on top. It only draws
+        // while the game says a corpse is open, and opening one closes the
+        // other three (IrrlichtBridge's LootWindowOpened arm).
+        renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }

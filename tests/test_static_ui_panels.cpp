@@ -72,6 +72,7 @@ protected:
     SpellbookPopupState spellbook;
     SkillsPopupState skills;
     BuffBarState buffs;
+    LootPanelState loot;
     StaticUIInput input;
 
     void SetUp() override {
@@ -83,7 +84,7 @@ protected:
 
 TEST_F(StaticUIInputTest, HotbarFirstSlotHoverSetsIndexZero) {
     bool consumed = input.processInput(222, 570, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
@@ -91,7 +92,7 @@ TEST_F(StaticUIInputTest, HotbarFirstSlotHoverSetsIndexZero) {
 TEST_F(StaticUIInputTest, HotbarLastSlotHoverSetsIndexNine) {
     // Slot 9: sx = 222 + 9*36 = 546, occupies x in [546, 578).
     bool consumed = input.processInput(577, 570, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 9);
 }
@@ -100,7 +101,7 @@ TEST_F(StaticUIInputTest, HotbarPaddingGapClearsHoverAndDoesNotConsume) {
     // Slot 0 ends at x=254 (222+32), slot 1 starts at x=258 (222+36).
     // x=256 falls in the 4px padding gap between them.
     bool consumed = input.processInput(256, 570, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
     // Unlike the popup panels below, the hotbar/gem row only consumes the
     // point when a cell is actually hit — a gap-hover with nothing else
@@ -110,7 +111,7 @@ TEST_F(StaticUIInputTest, HotbarPaddingGapClearsHoverAndDoesNotConsume) {
 
 TEST_F(StaticUIInputTest, HotbarOutsideVerticalRangeClearsHover) {
     bool consumed = input.processInput(222, 540, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
     EXPECT_FALSE(consumed);
 }
@@ -127,7 +128,7 @@ TEST_F(StaticUIInputTest, HotbarClickPushesActivateIntentWithSlotIndex) {
     hotbar.slots[0].id = 278;
 
     bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
-                                        hotbar, gems, inventory, spellbook, skills, buffs);
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
 
     auto intents = bridge.drainIntents();
@@ -146,7 +147,7 @@ TEST_F(StaticUIInputTest, HotbarClickOnEmptySlotPushesNothing) {
     input.init(&bridge);
 
     bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
-                                        hotbar, gems, inventory, spellbook, skills, buffs);
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
     EXPECT_TRUE(bridge.drainIntents().empty());
@@ -159,7 +160,7 @@ TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {
     // with `if (leftClicked && bridge_)` — this pins that guard holds.
     EXPECT_NO_FATAL_FAILURE({
         input.processInput(222, 570, /*leftClicked=*/true, layout, hotbar, gems,
-                            inventory, spellbook, skills, buffs);
+                            inventory, spellbook, skills, buffs, loot);
     });
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
@@ -168,7 +169,7 @@ TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {
 
 TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
     bool consumed = input.processInput(770, 270, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 0);
 }
@@ -176,7 +177,7 @@ TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
 TEST_F(StaticUIInputTest, SpellGemLastHoverSetsIndexSeven) {
     // Gem 7: gy = 268 + 7*36 = 520, occupies y in [520, 552).
     bool consumed = input.processInput(770, 530, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 7);
 }
@@ -186,7 +187,7 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
     input.init(&bridge);
 
     input.processInput(770, 270, /*leftClicked=*/true, layout, hotbar, gems,
-                        inventory, spellbook, skills, buffs);
+                        inventory, spellbook, skills, buffs, loot);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -209,7 +210,7 @@ TEST_F(StaticUIInputTest, InventoryEquipLeftColumnFirstSlotHoversEar1) {
     // SLOT_EAR1 (id 1): rect {208,145,240,177} — left column, row 0.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(210, 150, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_EAR1);
 }
@@ -221,7 +222,7 @@ TEST_F(StaticUIInputTest, InventoryEquipRightColumnHoversCorrectSlotId) {
     // this pins that the right column's 3rd slot really is SLOT_RANGE.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(570, 220, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_RANGE);
 }
@@ -234,7 +235,7 @@ TEST_F(StaticUIInputTest, InventoryWeaponRowPaddingGapStillConsumesButNoHover) {
     // when no slot is hit.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(332, 415, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
@@ -244,7 +245,7 @@ TEST_F(StaticUIInputTest, InventoryGeneralRowPaddingGapStillConsumesButNoHover) 
     // falls in the 2px gap between them.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(298, 455, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
@@ -260,12 +261,12 @@ TEST_F(StaticUIInputTest, InventoryEquipSlotsWaistAndAmmoAreNowReachable) {
     inventory.activePopup = PopupType::Inventory;
 
     bool consumedWaist = input.processInput(415, 415, false, layout, hotbar, gems,
-                                             inventory, spellbook, skills, buffs);
+                                             inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedWaist);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_WAIST);
 
     bool consumedAmmo = input.processInput(450, 415, false, layout, hotbar, gems,
-                                            inventory, spellbook, skills, buffs);
+                                            inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedAmmo);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_AMMO);
 }
@@ -279,12 +280,12 @@ TEST_F(StaticUIInputTest, InventoryGeneralSlotsAreNowReachable) {
     inventory.activePopup = PopupType::Inventory;
 
     bool consumedFirst = input.processInput(280, 455, false, layout, hotbar, gems,
-                                             inventory, spellbook, skills, buffs);
+                                             inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedFirst);
     EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 0);
 
     bool consumedLast = input.processInput(518, 455, false, layout, hotbar, gems,
-                                            inventory, spellbook, skills, buffs);
+                                            inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedLast);
     EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 7);
 }
@@ -316,7 +317,7 @@ TEST_F(StaticUIInputTest, InventoryAllThirtySlotsRoundTripThroughHitTest) {
         int cx = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
         int cy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
         bool consumed = input.processInput(cx, cy, false, layout, hotbar, gems,
-                                            inventory, spellbook, skills, buffs);
+                                            inventory, spellbook, skills, buffs, loot);
         EXPECT_TRUE(consumed) << "slot " << i;
         EXPECT_EQ(inventory.hoveredSlot, i) << "slot " << i;
     }
@@ -374,7 +375,7 @@ TEST_F(StaticUIInputTest, InventoryPopupInactiveNeverHoverHits) {
     // activePopup, not just screen position.
     inventory.activePopup = PopupType::None;
     bool consumed = input.processInput(210, 150, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
@@ -382,7 +383,7 @@ TEST_F(StaticUIInputTest, InventoryPopupInactiveNeverHoverHits) {
 TEST_F(StaticUIInputTest, InventoryOutsidePopupRegionNoHover) {
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(10, 10, false, layout, hotbar, gems,
-                                        inventory, spellbook, skills, buffs);
+                                        inventory, spellbook, skills, buffs, loot);
     EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
 }
@@ -396,7 +397,7 @@ TEST_F(StaticUIInputTest, InventoryOutsidePopupRegionNoHover) {
 TEST_F(StaticUIInputTest, EscapeClosesOpenInventoryPopup) {
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills);
+                                      inventory, spellbook, skills, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.activePopup, PopupType::None);
 }
@@ -408,7 +409,7 @@ TEST_F(StaticUIInputTest, EscapeClosesOpenSpellbookBeforeInventory) {
     spellbook.isOpen = true;
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills);
+                                      inventory, spellbook, skills, loot);
     EXPECT_TRUE(consumed);
     EXPECT_FALSE(spellbook.isOpen);
     // Inventory is untouched this call — ESC only closes one popup layer
@@ -418,14 +419,14 @@ TEST_F(StaticUIInputTest, EscapeClosesOpenSpellbookBeforeInventory) {
 
 TEST_F(StaticUIInputTest, EscapeWithNothingOpenReturnsFalse) {
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills);
+                                      inventory, spellbook, skills, loot);
     EXPECT_FALSE(consumed);
 }
 
 TEST_F(StaticUIInputTest, KeyReleaseIsAlwaysIgnored) {
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/false, false, false,
-                                      inventory, spellbook, skills);
+                                      inventory, spellbook, skills, loot);
     EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.activePopup, PopupType::Inventory);
 }

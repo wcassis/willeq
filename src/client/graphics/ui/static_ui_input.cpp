@@ -10,6 +10,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include <algorithm>
 
 namespace EQT {
 namespace Graphics {
@@ -21,7 +22,8 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                   InventoryPanelState& inventory,
                                   SpellbookPopupState& spellbook,
                                   SkillsPopupState& skills,
-                                  const BuffBarState& buffs) {
+                                  const BuffBarState& buffs,
+                                  LootPanelState& loot) {
     bool consumed = false;
 
     // Reset hover states
@@ -30,6 +32,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     inventory.hoveredSlot = -1;
     spellbook.hoveredSlot = -1;
     skills.hoveredRow = -1;
+    loot.hoveredRow = -1;
 
     // --- Hotbar hit test (10 horizontal slots) ---
     {
@@ -188,6 +191,61 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
         }
     }
 
+    // --- Loot popup hit test (T290) ---
+    // Geometry comes entirely from hitTestLootRow()/hitTestLootButton(),
+    // the twins of renderLootPopup()'s own loop -- no row arithmetic here.
+    // The three intents pushed below are the UI-GESTURE leg of the same
+    // feature /loot, /lootall and /lootclose drive; they land on the very
+    // same handler bodies in eq_bridge.cpp (LootItemFromCorpse,
+    // CombatManager::LootAll, CloseLootWindow), so there is one body per
+    // action, not two (T230/T239).
+    if (loot.isOpen) {
+        if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
+            mouseX < layout.centerPopup.LowerRightCorner.X &&
+            mouseY >= layout.centerPopup.UpperLeftCorner.Y &&
+            mouseY < layout.centerPopup.LowerRightCorner.Y) {
+            consumed = true;
+
+            LootButton btn = hitTestLootButton(layout, loot, mouseX, mouseY);
+            if (btn != LootButton::None) {
+                if (leftClicked && bridge_) {
+                    if (btn == LootButton::LootAll && !loot.items.empty()) {
+                        LOG_INFO(MOD_GRAPHICS, "Loot window: Loot All on corpse {}",
+                            loot.corpseId);
+                        bridge_->pushIntent(eqt::events::LootAllIntent{loot.corpseId});
+                    } else if (btn == LootButton::Close) {
+                        // Ask, never assume: the panel stays up until the
+                        // game publishes LootWindowClosed. Closing it here
+                        // would desync the server's looting state (T277's
+                        // rule, and the old window's callback-driven close).
+                        LOG_INFO(MOD_GRAPHICS, "Loot window: closing corpse {}",
+                            loot.corpseId);
+                        bridge_->pushIntent(eqt::events::CloseLootIntent{loot.corpseId});
+                    }
+                }
+            } else {
+                int idx = hitTestLootRow(layout, loot, mouseX, mouseY);
+                if (idx >= 0 && idx < static_cast<int>(loot.items.size())) {
+                    // hoveredRow is the ON-SCREEN row; idx is the index into
+                    // the packed list. They differ whenever the list is
+                    // scrolled -- and the CORPSE SLOT differs from both,
+                    // which is why the intent carries items[idx].slot.
+                    int first = std::min(loot.scrollOffset,
+                        std::max(0, static_cast<int>(loot.items.size()) - 1));
+                    loot.hoveredRow = idx - first;
+                    if (leftClicked && bridge_) {
+                        LOG_INFO(MOD_GRAPHICS,
+                            "Loot window: taking '{}' (corpse slot {}) from corpse {}",
+                            loot.items[idx].itemName, loot.items[idx].slot,
+                            loot.corpseId);
+                        bridge_->pushIntent(eqt::events::LootItemIntent{
+                            loot.corpseId, loot.items[idx].slot});
+                    }
+                }
+            }
+        }
+    }
+
     // --- Skills popup scroll area ---
     if (skills.isOpen) {
         if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
@@ -226,11 +284,21 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
 bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/, bool /*ctrl*/,
                                 InventoryPanelState& inventory,
                                 SpellbookPopupState& spellbook,
-                                SkillsPopupState& skills) {
+                                SkillsPopupState& skills,
+                                LootPanelState& loot) {
     if (!pressed) return false;
 
     // ESC closes any open popup
     if (key == irr::KEY_ESCAPE) {
+        // T290: the loot popup goes first -- it is drawn on top, and it is
+        // the only popup whose close has to reach the server. It does NOT
+        // clear isOpen here; LootWindowClosed does.
+        if (loot.isOpen) {
+            if (bridge_) {
+                bridge_->pushIntent(eqt::events::CloseLootIntent{loot.corpseId});
+            }
+            return true;
+        }
         if (spellbook.isOpen) { spellbook.isOpen = false; return true; }
         if (skills.isOpen) { skills.isOpen = false; return true; }
         if (inventory.activePopup != PopupType::None) {

@@ -73,6 +73,7 @@ class BuffBarHitTest : public ::testing::Test {
 protected:
     UILayout layout;
     BuffBarState buffs;
+    LootPanelState loot;
 
     void SetUp() override { layout.computeLayout(800, 600); }
 
@@ -151,6 +152,7 @@ protected:
     SpellbookPopupState spellbook;
     SkillsPopupState skills;
     BuffBarState buffs;
+    LootPanelState loot;
     StaticUIInput input;
     TestUIBridge bridge;
 
@@ -161,7 +163,7 @@ protected:
 
     bool click(int x, int y) {
         return input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
-                                  inventory, spellbook, skills, buffs);
+                                  inventory, spellbook, skills, buffs, loot);
     }
     int iconX(int drawIndex) const {
         return layout.buffBar.UpperLeftCorner.X + 2 + drawIndex * 22 + 10;
@@ -194,7 +196,7 @@ TEST_F(BuffBarClickTest, ClickBetweenIconsPushesNothing) {
 TEST_F(BuffBarClickTest, HoverWithoutAClickPushesNothing) {
     buffs.buffs[0].spellId = 111;
     input.processInput(iconX(0), iconY(), /*leftClicked=*/false, layout, hotbar,
-                       gems, inventory, spellbook, skills, buffs);
+                       gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 

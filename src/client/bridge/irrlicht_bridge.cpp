@@ -452,18 +452,49 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
 
-    // Loot events (D11b)
+    // Loot events (D11b; T290 gave them bodies)
+    //
+    // These four arms were LOG_TRACE stubs that DISCARDED their payloads,
+    // which is why no renderer-side corpse contents existed at all after
+    // U07c2 deleted LootWindow (T283's audit). The bodies live in
+    // loot_panel.cpp as free functions so tests can drive the real
+    // publisher through the real applier without an Irrlicht device.
     case state::GameEventType::LootWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowOpened");
+        if (renderer_) {
+            auto& d = std::get<state::LootWindowOpenedData>(event.data);
+            LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootWindowOpened corpse={} '{}'",
+                d.corpseId, d.corpseName);
+            EQT::Graphics::applyLootWindowOpened(renderer_->lootState_, d);
+            // One center popup at a time — the same mutual exclusion
+            // /newbook and /newskills already apply.
+            renderer_->inventoryState_.activePopup =
+                EQT::Graphics::PopupType::None;
+            renderer_->spellbookState_.isOpen = false;
+            renderer_->skillsPopupState_.isOpen = false;
+        }
         break;
     case state::GameEventType::LootWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootWindowClosed");
+        if (renderer_) {
+            auto& d = std::get<state::LootWindowClosedData>(event.data);
+            LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootWindowClosed corpse={}", d.corpseId);
+            EQT::Graphics::applyLootWindowClosed(renderer_->lootState_, d);
+        }
         break;
     case state::GameEventType::LootItemAdded:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemAdded");
+        if (renderer_) {
+            auto& d = std::get<state::LootItemAddedData>(event.data);
+            LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootItemAdded corpse={} slot={} '{}'",
+                d.corpseId, d.slot, d.itemName);
+            EQT::Graphics::applyLootItemAdded(renderer_->lootState_, d);
+        }
         break;
     case state::GameEventType::LootItemRemoved:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: LootItemRemoved");
+        if (renderer_) {
+            auto& d = std::get<state::LootItemRemovedData>(event.data);
+            LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootItemRemoved corpse={} slot={}",
+                d.corpseId, d.slot);
+            EQT::Graphics::applyLootItemRemoved(renderer_->lootState_, d);
+        }
         break;
 
     // Trade events (D11c)
