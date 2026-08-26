@@ -384,20 +384,10 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
     // NOTE: We defer loading global models until we confirm zone models don't have what we need.
     // This prevents the expensive loading of ALL race skeletons when only a zone-specific race is needed.
 
-    // Build list of race codes to try for mesh/textures (zone-specific first, then base, then fallback)
+    // Build list of race codes to try for mesh/textures (row code, then the row's fallback_code)
     std::vector<std::string> codesToTry;
 
-    // 1. Try zone-specific code first (e.g., QCM for Qeynos Citizen in qeynos zones)
-    if (zoneModelsLoaded_ && !currentZoneName_.empty()) {
-        std::string zoneCode = getZoneSpecificRaceCode(raceId, gender, currentZoneName_);
-        if (!zoneCode.empty()) {
-            std::transform(zoneCode.begin(), zoneCode.end(), zoneCode.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            codesToTry.push_back(zoneCode);
-        }
-    }
-
-    // 2. Then try base race code with gender
+    // 1. The row's own code, gendered
     std::string baseRaceCode = getRaceCode(raceId);
     if (!baseRaceCode.empty()) {
         // Get gender-specific code (e.g., HUM -> HUF for female)
@@ -409,7 +399,7 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
         }
     }
 
-    // 3. Add fallback code for citizen races (e.g., QCM -> HUM)
+    // 2. The row's fallback_code, if it names one (e.g. race 71 QCM -> HUM)
     std::string fallbackCode = getFallbackRaceCode(raceId, gender);
     if (!fallbackCode.empty()) {
         std::transform(fallbackCode.begin(), fallbackCode.end(), fallbackCode.begin(),
@@ -1226,17 +1216,8 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
         if (variantModels_.count(variantKey) > 0) return true;
     }
 
-    // Build list of race codes to try (zone-specific first, then base, then fallback)
+    // Build list of race codes to try (row code, then the row's fallback_code)
     std::vector<std::string> codesToTry;
-
-    if (zoneModelsLoaded_ && !currentZoneName_.empty()) {
-        std::string zoneCode = getZoneSpecificRaceCode(raceId, gender, currentZoneName_);
-        if (!zoneCode.empty()) {
-            std::transform(zoneCode.begin(), zoneCode.end(), zoneCode.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            codesToTry.push_back(zoneCode);
-        }
-    }
 
     std::string baseRaceCode = getRaceCode(raceId);
     if (!baseRaceCode.empty()) {

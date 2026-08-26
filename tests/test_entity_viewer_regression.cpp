@@ -46,11 +46,16 @@ struct RaceSpec {
 // refactor/P37_entity_texture_masked.md's ground-truth table:
 // zomlg0001/batft0001/orclg0002/skelg0001 etc. all carry real ETC1
 // companion alpha) plus race 1 (Human) as the unmasked control.
+// T270: the race IDS here were the deleted pre-JSON switch's numbering
+// (21 -> SKE, 17 -> ORC). The audited race_models rows the client actually
+// reads say 21 is BEH (Evil Eye) and 17 is GOL (Golem); SKE is race 60 and
+// ORC is race 54. The codes under test are unchanged -- only the ids that
+// reach them are now the ones the runtime resolves.
 const RaceSpec kRaces[] = {
-    {21, "SKE", true},
+    {60, "SKE", true},
     {70, "ZOM", true},
     {34, "BAT", true},
-    {17, "ORC", true},
+    {54, "ORC", true},
     {1,  "HUM", false},
 };
 

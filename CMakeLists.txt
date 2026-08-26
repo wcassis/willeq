@@ -735,6 +735,7 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(model_viewer
         tools/model_viewer.cpp
+        tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/zone_bsp.cpp
@@ -800,6 +801,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         ${GLM_INCLUDE_DIR}
     )
     TARGET_COMPILE_DEFINITIONS(model_viewer PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
+    # T270: race lookups are db-only; give the tool the repo's db path as a
+    # fallback for runs whose CWD is not the repo root (tools/tool_race_db.cpp).
+    TARGET_COMPILE_DEFINITIONS(model_viewer PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     IF(APPLE)
         TARGET_LINK_LIBRARIES(model_viewer
             ${IRRLICHT_LIBRARY}
@@ -1503,6 +1508,7 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_histogram.cpp
         tools/hwcaps/zone_bench_merge_probe.cpp
         tools/hwcaps/zone_bench_merge.cpp
+        tools/tool_race_db.cpp
         # Zone loading pipeline (same sources as zone_line_editor + extras)
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
@@ -1559,6 +1565,11 @@ IF(EQT_GRAPHICS)
         ${GLM_INCLUDE_DIR}
     )
     TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_TEXTURE_ATLAS SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
+    # T270: race lookups are db-only; give the tool the repo's db path as a
+    # fallback for runs whose CWD is not the repo root.
+    TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/tools)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_DRM)
     ENDIF()

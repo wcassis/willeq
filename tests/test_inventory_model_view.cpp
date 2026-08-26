@@ -34,6 +34,7 @@
 #include "client/graphics/entity_renderer.h"  // EntityAppearance
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/willeq_database.h"
 #endif
 
 // ============================================================================
@@ -65,8 +66,22 @@ protected:
     irr::io::IFileSystem* fs_ = nullptr;
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache_;
     std::unique_ptr<EQT::Graphics::RaceModelLoader> loader_;
+    EQT::WilleqDatabase willeqDb_;
 
     void SetUp() override {
+        // T270: race codes come from the db and nowhere else (the pre-JSON
+        // hardcoded switch getRaceCode() used to fall back to is deleted), so
+        // this fixture has to open the shipped db exactly like
+        // Application::run() does -- without it every race is "unknown" and
+        // createAnimatedNode() returns null for all of them.
+        const std::string dbPath = WILLEQ_DB_REAL_PATH;
+        if (!fileExists(dbPath)) {
+            GTEST_SKIP() << "no shipped db at " << dbPath
+                         << " - race lookups need it";
+        }
+        ASSERT_TRUE(willeqDb_.open(dbPath)) << dbPath;
+        EQT::WilleqDatabase::setGlobalInstance(&willeqDb_);
+
         const char* envPath = std::getenv("EQ_CLIENT_PATH");
         eqClientPath_ = envPath ? envPath : EQ_CLIENT_DATA_PATH;
         if (!eqClientPath_.empty() && eqClientPath_.back() != '/') {
@@ -123,6 +138,7 @@ protected:
             device_->drop();
             device_ = nullptr;
         }
+        EQT::WilleqDatabase::setGlobalInstance(nullptr);
     }
 
     bool fileExists(const std::string& path) {
@@ -273,18 +289,20 @@ TEST_F(RaceModelAnimationHeadlessTest, LoadsForRaceAndGender_Headless) {
         {1, 1, "HUM female"},
         {2, 0, "BAM male"},
         {8, 0, "DWM male"},
-        {330, 0, "unknown/invalid race (should fail gracefully)"},
+        {9999, 0, "unknown/invalid race (should fail gracefully)"},
     };
 
     for (const auto& rc : races) {
         SCOPED_TRACE(rc.label);
         auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
                                                    smgr_->getRootSceneNode());
-        if (rc.raceId == 330) {
-            // race=330 has no model data on this asset set (deferred.md:
-            // "gfaydark zone-in FATAL, missing race=330 model data") —
-            // assert the loader degrades to nullptr rather than crashing,
-            // not that it succeeds.
+        if (rc.raceId == 9999) {
+            // T270: race 330 used to stand in for "no model data" here, but
+            // T265/T267 gave it a real row (FRM/FRF in globalpcfroglok_chr)
+            // and it loads -- this fixture only kept passing because it had
+            // no db open at all. 9999 has no race_models row, so its code is
+            // empty by construction: assert the loader degrades to nullptr
+            // rather than crashing, not that it succeeds.
             EXPECT_EQ(node, nullptr)
                 << rc.label << ": expected graceful nullptr for a race with "
                    "no model data, got a node instead";
@@ -301,24 +319,23 @@ TEST_F(RaceModelAnimationHeadlessTest, LoadsForRaceAndGender_Headless) {
 }
 
 // T94: proves the negative model-lookup cache actually memoizes a failed
-// search instead of silently doing nothing. race=330 is the same
-// known-missing race LoadsForRaceAndGender_Headless above already relies on
-// (deferred.md: "gfaydark zone-in FATAL, missing race=330 model data") — its
-// base race code resolves to empty, so preloadModelData()'s full search
-// chain (zoneCharacters_, otherChrCaches_, JSON-specified S3D, global_chr.s3d,
-// global2-7_chr.s3d) is guaranteed to fail deterministically regardless of
-// which client data set is configured.
+// search instead of silently doing nothing. T270: the race used here is 9999,
+// which has no race_models row -- so getRaceCode() is empty by construction
+// and preloadModelData()'s full search chain (zoneCharacters_, otherChrCaches_,
+// the row's S3D, global_chr.s3d, global2-7_chr.s3d) fails deterministically
+// regardless of which client data set is configured. It used to be race 330,
+// which T265/T267 turned into a race that loads.
 TEST_F(RaceModelAnimationHeadlessTest, NegativeModelCache_KnownMissingRacePersists_Headless) {
-    const uint16_t raceId = 330;
+    const uint16_t raceId = 9999;
     const uint8_t gender = 0;
     const uint32_t key = (static_cast<uint32_t>(raceId) << 8) | gender;
 
     ASSERT_FALSE(loader_->isRaceModelKnownMissing(key))
-        << "race=330 must not already be in the negative cache before it has been searched even once "
+        << "race=9999 must not already be in the negative cache before it has been searched even once "
            "(this loader instance is fresh per-test, see SetUp())";
 
     bool firstSearch = loader_->preloadModelData(raceId, gender);
-    EXPECT_FALSE(firstSearch) << "race=330 has no model in any archive on this asset set — "
+    EXPECT_FALSE(firstSearch) << "race=9999 has no race_models row, so it has no model anywhere — "
                                   "the first full search must fail";
 
     EXPECT_TRUE(loader_->isRaceModelKnownMissing(key))

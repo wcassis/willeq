@@ -26,6 +26,7 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/willeq_database.h"
 #include "common/logging.h"
 
 using namespace EQT::Graphics;
@@ -220,41 +221,29 @@ TEST_F(RaceModelLoadingTest, LoadGlobalChrFiles) {
     std::cout << "Total skeletons in global files: " << totalModels << std::endl;
 }
 
-// Test loading race codes for all pre-Luclin races
+// T270: race codes come from data/willeq.db. This used to restate a
+// pre-JSON table (13 -> WOL, 21 -> SKE, 22 -> BET ...) that contradicted the
+// audited race_models rows; it now asserts that getRaceCode() serves the row
+// for the same pre-Luclin ids, whatever the row says.
 TEST_F(RaceModelLoadingTest, VerifyRaceCodeMappings) {
-    std::map<int, std::string> expectedCodes = {
-        {1, "HUM"},   // Human
-        {2, "BAM"},   // Barbarian
-        {3, "ERM"},   // Erudite
-        {4, "ELM"},   // Wood Elf
-        {5, "HIM"},   // High Elf
-        {6, "DAM"},   // Dark Elf
-        {7, "HAM"},   // Half Elf
-        {8, "DWM"},   // Dwarf
-        {9, "TRM"},   // Troll
-        {10, "OGM"},  // Ogre
-        {11, "HOM"},  // Halfling
-        {12, "GNM"},  // Gnome
-        {13, "WOL"},  // Wolf
-        {21, "SKE"},  // Skeleton
-        {22, "BET"},  // Beetle
-        {44, "GNN"},  // Gnoll
-        {128, "IKM"}, // Iksar
-    };
+    const std::string dbPath = WILLEQ_DB_REAL_PATH;
+    if (!fileExists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(dbPath)) << dbPath;
+    EQT::WilleqDatabase::setGlobalInstance(&db);
 
-    int matched = 0;
-    for (const auto& [raceId, expectedCode] : expectedCodes) {
-        std::string actualCode = RaceModelLoader::getRaceCode(raceId);
-        if (actualCode == expectedCode) {
-            matched++;
-        } else {
-            std::cout << "Race " << raceId << ": expected " << expectedCode
-                      << ", got " << actualCode << std::endl;
-        }
+    const uint16_t preLuclinRaces[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                       13, 21, 22, 44, 128};
+    int checked = 0;
+    for (uint16_t raceId : preLuclinRaces) {
+        auto row = db.getRaceModel(raceId);
+        ASSERT_TRUE(row.found) << "race " << raceId << " has no race_models row";
+        EXPECT_EQ(RaceModelLoader::getRaceCode(raceId), row.code) << "race " << raceId;
+        ++checked;
     }
+    EXPECT_EQ(checked, 17);
 
-    EXPECT_EQ(matched, expectedCodes.size())
-        << "Some race code mappings are incorrect";
+    EQT::WilleqDatabase::setGlobalInstance(nullptr);
 }
 
 // ============================================================================

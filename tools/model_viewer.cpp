@@ -38,6 +38,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "tool_race_db.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/bone_attachment.h"
@@ -2308,6 +2309,11 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
 }
 
 int main(int argc, char* argv[]) {
+    // T270: race codes/scales/archives are served only from WilleqDatabase
+    // (race_codes.cpp's pre-JSON hardcoded switch is deleted), so the viewer
+    // has to open the shipped db like the client does -- see tools/tool_race_db.h.
+    openWilleqRaceDatabase();
+
     std::string raceCodeArg = "HUM";
     std::string entityFile = "";
     std::string entityName = "";

@@ -62,11 +62,10 @@ std::string getRaceCode(uint16_t raceId);
 // E.g., "HUM" -> "HUF", "BAM" -> "BAF"
 std::string getGenderedRaceCode(const std::string& maleCode, uint8_t gender);
 
-// Get zone-specific race code for races that have different models in zone _chr.s3d files
-// Returns the zone-specific code (e.g., "QCM" for Qeynos Citizen Male) or empty string if no zone-specific model
-std::string getZoneSpecificRaceCode(uint16_t raceId, uint8_t gender, const std::string& zoneName);
-
-// Get fallback race code for zone-specific races when zone model not found
+// Get the fallback race code from the row's fallback_code (e.g. race 71
+// Qeynos Citizen -> HUM), gendered for female. Empty when the row names none.
+// T270: there is no hardcoded fallback and no zone-specific override any more
+// -- getZoneSpecificRaceCode() is gone; the row's own code is the answer.
 std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender);
 
 // Get the animation source code for a race from JSON config

@@ -570,18 +570,11 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
     }
 
     // Build list of race codes to try:
-    // 1. Zone-specific code (e.g., QCM for Qeynos Citizen in qeynos zones)
-    // 2. Generic race code with gender (e.g., HUM/HUF for Human)
-    // 3. Fallback code for citizen races (e.g., HUM for Qeynos Citizen if QCM not found)
+    // 1. The row's own code with gender (e.g., HUM/HUF for Human)
+    // 2. The row's fallback_code, if it names one (e.g. race 71 QCM -> HUM)
     std::vector<std::string> codesToTry;
 
-    // Try zone-specific code first
-    std::string zoneCode = getZoneSpecificRaceCode(raceId, gender, zoneName);
-    if (!zoneCode.empty()) {
-        codesToTry.push_back(zoneCode);
-    }
-
-    // Then try generic race code with gender
+    // The row's own code, gendered
     std::string baseRaceCode = getRaceCode(raceId);
     if (!baseRaceCode.empty()) {
         std::string raceCode = getGenderedRaceCode(baseRaceCode, gender);
@@ -590,7 +583,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
         }
     }
 
-    // Finally try fallback code for citizen races
+    // Then the row's fallback_code
     std::string fallbackCode = getFallbackRaceCode(raceId, gender);
     if (!fallbackCode.empty() && std::find(codesToTry.begin(), codesToTry.end(), fallbackCode) == codesToTry.end()) {
         codesToTry.push_back(fallbackCode);
@@ -931,22 +924,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
     // Build list of race codes to try
     std::vector<std::string> codesToTry;
 
-    // Extract zone name from filename for zone-specific codes
-    std::string zoneName;
-    auto chrPos = chrFilename.find("_chr.s3d");
-    if (chrPos != std::string::npos) {
-        zoneName = chrFilename.substr(0, chrPos);
-    }
-
-    // Try zone-specific code first
-    if (!zoneName.empty()) {
-        std::string zoneCode = getZoneSpecificRaceCode(raceId, gender, zoneName);
-        if (!zoneCode.empty()) {
-            codesToTry.push_back(zoneCode);
-        }
-    }
-
-    // Then try generic race code with gender
+    // The row's own code, gendered
     std::string baseRaceCode = getRaceCode(raceId);
     if (!baseRaceCode.empty()) {
         std::string raceCode = getGenderedRaceCode(baseRaceCode, gender);
@@ -955,7 +933,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
         }
     }
 
-    // Finally try fallback code for citizen races
+    // Then the row's fallback_code
     std::string fallbackCode = getFallbackRaceCode(raceId, gender);
     if (!fallbackCode.empty() && std::find(codesToTry.begin(), codesToTry.end(), fallbackCode) == codesToTry.end()) {
         codesToTry.push_back(fallbackCode);

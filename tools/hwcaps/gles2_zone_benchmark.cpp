@@ -15,6 +15,7 @@
 #include "zone_bench_entity_viewer.h"
 #include "zone_bench_histogram.h"
 #include "zone_bench_merge.h"
+#include "tool_race_db.h"
 #include "zone_bench_merge_probe.h"
 #include "zone_bench_metrics.h"
 #include "common/logging.h"
@@ -1347,6 +1348,9 @@ static void runSyntheticDrawTest(ZoneBench::ZoneBenchData& data, int numFrames) 
 int main(int argc, char** argv) {
     InitLogging(argc, argv);
     Options opts = parseArgs(argc, argv);
+
+    // T270: race lookups are db-only now -- see tools/tool_race_db.h.
+    openWilleqRaceDatabase();
 
     // P02: --lighting-model is a thin convenience wrapper over the existing
     // --adaptive-lighting/--zone-pp-budget mechanism (see Options::LightingModel

@@ -213,63 +213,176 @@ TEST_F(PfsArchiveTest, ExistsNonexistentFile) {
     EXPECT_FALSE(archive.exists("nonexistent.txt"));
 }
 
-// RaceModelLoader tests (static methods only, no Irrlicht dependency)
+// ---------------------------------------------------------------------------
+// RaceModelLoader race-code tests (static methods only, no Irrlicht device).
+//
+// T270: race codes come from data/willeq.db and nowhere else. getRaceCode()
+// and getFallbackRaceCode() used to fall back to a pre-JSON hardcoded switch
+// whenever no WilleqDatabase was open. That numbering contradicted the
+// audited race_models rows wholesale (T265/T267: race 13 is AVI not WOL,
+// 17 GOL not ORC, 21 BEH not SKE, 35 EEL not RAT, 46 IMP not GOB, 72 SHIP
+// not ELE, 85 SPE not DRA, 127/240 IVM not INV, ...), so with no db every
+// one of those ids returned a confidently wrong code and every one of the 38
+// expectations pinned here asserted the wrong numbering. The fallback is
+// deleted: no row -> no code -> the caller's placeholder path (T213), and
+// the expectations below are read from the shipped db instead of restated.
+// ---------------------------------------------------------------------------
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/willeq_database.h"
+#include <sqlite3.h>
+#include <cctype>
 
-class RaceModelLoaderTest : public ::testing::Test {
-protected:
-    void SetUp() override {}
+namespace {
+
+bool RaceTestFileExists(const std::string& p) {
+    std::ifstream f(p);
+    return f.good();
+}
+
+std::string RaceTestUpper(std::string s) {
+    for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// Every race id the deleted switch answered for. With no db open, all of them
+// must now answer "unknown" rather than a pre-JSON guess.
+const uint16_t kIdsTheDeletedSwitchAnswered[] = {
+    1,   2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+    38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+    56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73,
+    74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91,
+    92, 93, 94, 95, 96, 120, 127, 128, 240, 367
 };
 
-TEST_F(RaceModelLoaderTest, GetRaceCode_Human) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(1), "HUM");
+}  // namespace
+
+// No database open: every lookup is honestly "unknown".
+class RaceCodeNoDatabaseTest : public ::testing::Test {
+protected:
+    void SetUp() override { EQT::WilleqDatabase::setGlobalInstance(nullptr); }
+};
+
+TEST_F(RaceCodeNoDatabaseTest, EveryIdTheOldSwitchAnsweredIsNowUnknown) {
+    for (uint16_t raceId : kIdsTheDeletedSwitchAnswered) {
+        EXPECT_EQ(RaceModelLoader::getRaceCode(raceId), "")
+            << "race " << raceId << " still answers from a hardcoded map";
+    }
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceCode_Barbarian) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(2), "BAM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Dwarf) {
-    // Returns male suffix - gender adjustment happens in getRaceModelFilename
-    EXPECT_EQ(RaceModelLoader::getRaceCode(8), "DWM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Iksar) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(128), "IKM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Skeleton) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(21), "SKE");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Unknown) {
-    // Unknown race IDs should return empty string
+TEST_F(RaceCodeNoDatabaseTest, UnknownIdIsUnknown) {
     EXPECT_EQ(RaceModelLoader::getRaceCode(9999), "");
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_HumanMale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(1, 0);
-    EXPECT_EQ(filename, "globalhum_chr.s3d");
+TEST_F(RaceCodeNoDatabaseTest, NoCodeMeansNoModelFilename) {
+    // The loader reads this as "no model" and takes the placeholder path.
+    for (uint16_t raceId : {uint16_t(1), uint16_t(8), uint16_t(13), uint16_t(21),
+                            uint16_t(128), uint16_t(330), uint16_t(9999)}) {
+        EXPECT_EQ(RaceModelLoader::getRaceModelFilename(raceId, 0), "") << "race " << raceId;
+        EXPECT_EQ(RaceModelLoader::getRaceModelFilename(raceId, 1), "") << "race " << raceId;
+    }
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_HumanFemale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(1, 1);
-    EXPECT_EQ(filename, "globalhuf_chr.s3d");
+TEST_F(RaceCodeNoDatabaseTest, CitizenFallbackIsAlsoDbOnly) {
+    // 15/61/62/71/80/82/84/86 were the hardcoded citizen->player-race fallbacks.
+    for (uint16_t raceId : {uint16_t(15), uint16_t(61), uint16_t(62), uint16_t(71),
+                            uint16_t(80), uint16_t(82), uint16_t(84), uint16_t(86)}) {
+        EXPECT_EQ(EQT::Graphics::getFallbackRaceCode(raceId, 0), "") << "race " << raceId;
+        EXPECT_EQ(EQT::Graphics::getFallbackRaceCode(raceId, 1), "") << "race " << raceId;
+    }
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_DwarfMale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(8, 0);
-    EXPECT_EQ(filename, "globaldwm_chr.s3d");
+// With the shipped db open, the answers are the audited rows.
+class RaceCodeFromDbTest : public ::testing::Test {
+protected:
+    EQT::WilleqDatabase db_;
+    void SetUp() override {
+        const std::string path = WILLEQ_DB_REAL_PATH;
+        if (!RaceTestFileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+        ASSERT_TRUE(db_.open(path)) << path;
+        EQT::WilleqDatabase::setGlobalInstance(&db_);
+    }
+    void TearDown() override { EQT::WilleqDatabase::setGlobalInstance(nullptr); }
+};
+
+// The table test that replaces the 38 restated expectations: every row in
+// race_models serves its own code and its own fallback_code, for both genders.
+TEST_F(RaceCodeFromDbTest, EveryRowServesItsOwnCodeAndFallback) {
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(WILLEQ_DB_REAL_PATH, &raw, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* stmt = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+                  "SELECT race_id, code, fallback_code FROM race_models ORDER BY race_id",
+                  -1, &stmt, nullptr), SQLITE_OK);
+    int rows = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ++rows;
+        const uint16_t raceId = static_cast<uint16_t>(sqlite3_column_int(stmt, 0));
+        const char* c = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        const char* fb = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        const std::string code = c ? c : "";
+        EXPECT_EQ(RaceModelLoader::getRaceCode(raceId), code) << "race " << raceId;
+
+        const std::string expectedFallback = fb ? fb : "";
+        EXPECT_EQ(EQT::Graphics::getFallbackRaceCode(raceId, 0), expectedFallback)
+            << "race " << raceId;
+        std::string female = expectedFallback;
+        if (female.size() == 3 && female.back() == 'M') female.back() = 'F';
+        EXPECT_EQ(EQT::Graphics::getFallbackRaceCode(raceId, 1), female) << "race " << raceId;
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(raw);
+    EXPECT_GE(rows, 187) << "race_models shrank";
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_DwarfFemale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(8, 1);
-    EXPECT_EQ(filename, "globaldwf_chr.s3d");
+// The ids where the deleted switch disagreed with the audited row, pinned by
+// name so a regression says which race and what it used to claim.
+TEST_F(RaceCodeFromDbTest, ContradictedIdsAnswerTheRow) {
+    const struct { uint16_t race; const char* row; const char* oldSwitchSaid; } kFixed[] = {
+        {13,  "AVI",  "WOL"},   // Aviak, not Wolf
+        {14,  "WER",  "BEA"},   // Werewolf, not Bear
+        {15,  "BRM",  "HUM"},   // Brownie, not Freeport Guard
+        {17,  "GOL",  "ORC"},   // Golem (befallen_chr), not Orc
+        {21,  "BEH",  "SKE"},   // Evil Eye, not Skeleton
+        {24,  "FIS",  "FIS"},   // agreed
+        {26,  "FRO",  "SNA"},   // Froglok, not Snake
+        {35,  "EEL",  "RAT"},   // Giant Eel, not Rat
+        {44,  "FPM",  "GNN"},   // Freeport Guard, not Gnoll
+        {46,  "IMP",  "GOB"},   // Imp, not Goblin
+        {61,  "SHA",  "NGM"},   // Shark, not Neriak Citizen
+        {72,  "SHIP", "ELE"},   // Ship, not Elemental
+        {80,  "REA",  "QCM"},   // Reanimated Hand, not Karana Citizen
+        {85,  "SPE",  "DRA"},   // Spectre, not Dragon
+        {127, "IVM",  "INV"},   // Invisible Man's real code
+        {240, "IVM",  "INV"},   // Teleport Man, aliased to 127 (T265)
+        {330, "FRM",  "" },     // playable Froglok; the switch had no entry
+    };
+    for (const auto& f : kFixed) {
+        EXPECT_EQ(RaceTestUpper(RaceModelLoader::getRaceCode(f.race)), f.row)
+            << "race " << f.race << " (the deleted switch said '" << f.oldSwitchSaid << "')";
+    }
 }
 
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_UnknownRace) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(9999, 0);
-    EXPECT_EQ(filename, "");
+// The playable-race filenames the old fixture pinned, now db-served.
+TEST_F(RaceCodeFromDbTest, PlayableRaceModelFilenames) {
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(1, 0), "globalhum_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(1, 1), "globalhuf_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(2, 0), "globalbam_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(2, 1), "globalbaf_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(3, 0), "globalerm_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(3, 1), "globalerf_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(8, 0), "globaldwm_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(8, 1), "globaldwf_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(128, 0), "globalikm_chr.s3d");
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(128, 1), "globalikf_chr.s3d");
+    // Vah Shir has a row now (KEM, global7_chr.s3d); the old switch had none.
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(130, 0), "globalkem_chr.s3d");
+    // Genderless monster rows keep their single archive name.
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(367, 0), "globalske_chr.s3d");
+    // T267: a row naming a per-race global archive wins outright.
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(330, 0), "globalpcfroglok_chr.s3d");
+    // Still unknown: no row, no filename.
+    EXPECT_EQ(RaceModelLoader::getRaceModelFilename(9999, 0), "");
 }
 
 // WLD Loader structure tests
@@ -480,139 +593,6 @@ TEST_F(DdsFormatTest, DecodeDXT1_64x64) {
     EXPECT_EQ(result.pixels.size(), 64u * 64u * 4u);  // RGBA
 }
 
-// Additional RaceModelLoader tests for more races
-// Note: getRaceCode returns male suffix; gender is adjusted in getRaceModelFilename
-TEST_F(RaceModelLoaderTest, GetRaceCode_WoodElf) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(4), "ELM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_HighElf) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(5), "HIM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_DarkElf) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(6), "DAM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Troll) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(9), "TRM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Ogre) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(10), "OGM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Gnome) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(12), "GNM");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_VahShir) {
-    // Vah Shir (race 130) is not in the fallback switch, returns empty
-    // When JSON mappings are loaded, it would return "KEM"
-    EXPECT_EQ(RaceModelLoader::getRaceCode(130), "");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Wolf) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(13), "WOL");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Goblin) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(46), "GOB");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Dragon) {
-    EXPECT_EQ(RaceModelLoader::getRaceCode(85), "DRA");
-}
-
-// Test gender-specific model filenames for additional races
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_BarbarianMale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(2, 0);
-    EXPECT_EQ(filename, "globalbam_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_BarbarianFemale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(2, 1);
-    EXPECT_EQ(filename, "globalbaf_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_EruditeMale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(3, 0);
-    EXPECT_EQ(filename, "globalerm_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_EruditeFemale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(3, 1);
-    EXPECT_EQ(filename, "globalerf_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_IksarMale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(128, 0);
-    EXPECT_EQ(filename, "globalikm_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_IksarFemale) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(128, 1);
-    EXPECT_EQ(filename, "globalikf_chr.s3d");
-}
-
-// Monster races (no gender)
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_Skeleton) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(21, 0);
-    EXPECT_EQ(filename, "globalske_chr.s3d");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceModelFilename_Wolf) {
-    std::string filename = RaceModelLoader::getRaceModelFilename(13, 0);
-    EXPECT_EQ(filename, "globalwol_chr.s3d");
-}
-
-// Tests for zone-specific monster race codes (Session 3 fixes)
-// These codes match the actual skeleton names in zone _chr.s3d files
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Beetle) {
-    // BET matches BET_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(22), "BET");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Fish) {
-    // FIS matches FIS_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(24), "FIS");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Snake) {
-    // SNA matches SNA_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(26), "SNA");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_GiantSnake) {
-    // SNA matches SNA_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(37), "SNA");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_GnollPup) {
-    // GNN matches GNN_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(39), "GNN");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Gnoll) {
-    // GNN matches GNN_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(44), "GNN");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_GnollVariant) {
-    // GNN matches GNN_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(87), "GNN");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Bat) {
-    // BAT matches BAT_HS_DEF in zone files
-    EXPECT_EQ(RaceModelLoader::getRaceCode(34), "BAT");
-}
-
-TEST_F(RaceModelLoaderTest, GetRaceCode_Rat) {
-    // RAT - note: RAT model may not exist in all zones
-    EXPECT_EQ(RaceModelLoader::getRaceCode(36), "RAT");
-}
 
 // ============================================================================
 // Object Placement Tests - Verify transforms for Irrlicht

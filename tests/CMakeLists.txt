@@ -1078,6 +1078,10 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(test_graphics PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # T270: the race-code tests read the shipped race_models rows instead of
+    # restating a hardcoded numbering (they skip if the db is absent).
+    TARGET_COMPILE_DEFINITIONS(test_graphics PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -1145,6 +1149,10 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(test_asset_loading PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(test_asset_loading PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # T270: VerifyRaceCodeMappings compares against the shipped race_models
+    # rows rather than a restated pre-JSON table.
+    TARGET_COMPILE_DEFINITIONS(test_asset_loading PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -1621,6 +1629,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_inventory_model_view PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
+    # T270: the fixture opens the shipped db as the race source (race codes
+    # are db-only now).
+    TARGET_COMPILE_DEFINITIONS(test_inventory_model_view PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_inventory_model_view)
 ENDIF()
 
