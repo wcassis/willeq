@@ -497,13 +497,13 @@ void EverQuest::PublishFullStateSnapshot() {
 	// --- Player stats ---
 	{
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_cur_hp;
-		data.maxHP = m_max_hp;
-		data.curMana = m_mana;
-		data.maxMana = m_max_mana;
-		data.curEndurance = m_endurance;
-		data.maxEndurance = m_max_endurance;
-		data.level = m_level;
+		data.curHP = m_game_state.player().curHP();
+		data.maxHP = m_game_state.player().maxHP();
+		data.curMana = m_game_state.player().curMana();
+		data.maxMana = m_game_state.player().maxMana();
+		data.curEndurance = m_game_state.player().curEndurance();
+		data.maxEndurance = m_game_state.player().maxEndurance();
+		data.level = m_game_state.player().level();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
@@ -512,9 +512,9 @@ void EverQuest::PublishFullStateSnapshot() {
 	{
 		eqt::state::CharacterInfoChangedData data;
 		data.name = m_character;
-		data.level = m_level;
-		data.className = GetClassName(m_class);
-		data.deity = GetDeityName(m_deity);
+		data.level = m_game_state.player().level();
+		data.className = GetClassName(m_game_state.player().classId());
+		data.deity = GetDeityName(m_game_state.player().deity());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
 	}
@@ -532,10 +532,10 @@ void EverQuest::PublishFullStateSnapshot() {
 	// --- Currency ---
 	{
 		eqt::state::CurrencyChangedData data;
-		data.platinum = m_platinum;
-		data.gold = m_gold;
-		data.silver = m_silver;
-		data.copper = m_copper;
+		data.platinum = m_game_state.player().platinum();
+		data.gold = m_game_state.player().gold();
+		data.silver = m_game_state.player().silver();
+		data.copper = m_game_state.player().copper();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(data)));
 	}
@@ -573,7 +573,7 @@ void EverQuest::PublishFullStateSnapshot() {
 			entry.spellId = spellId;
 			entry.name = spell ? spell->name : "";
 			entry.iconId = spell ? spell->spell_icon : 0;
-			entry.level = (spell && m_class > 0) ? spell->class_levels[m_class - 1] : 0;
+			entry.level = (spell && m_game_state.player().classId() > 0) ? spell->class_levels[m_game_state.player().classId() - 1] : 0;
 			sbdata.spells.push_back(std::move(entry));
 		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -643,36 +643,39 @@ void EverQuest::PublishFullStateSnapshot() {
 	}
 
 	// --- Group ---
-	if (m_in_group) {
+	if (m_game_state.group().inGroup()) {
+		const auto& group = m_game_state.group();
 		eqt::state::GroupChangedData data;
 		data.inGroup = true;
-		data.isLeader = m_is_group_leader;
-		data.leaderName = m_group_leader_name;
+		data.isLeader = group.isLeader();
+		data.leaderName = group.leaderName();
 		data.memberCount = 0;
 		for (int i = 0; i < 5; ++i) {
-			if (!m_group_members[i].name.empty()) data.memberCount++;
+			const GroupMember* gm = group.getMember(i);
+			if (gm && !gm->name.empty()) data.memberCount++;
 		}
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(data)));
 
 		for (int i = 0; i < 5; ++i) {
-			if (m_group_members[i].name.empty()) continue;
+			const GroupMember* gm = group.getMember(i);
+			if (!gm || gm->name.empty()) continue;
 			eqt::state::GroupMemberUpdatedData mdata;
 			mdata.memberIndex = i;
-			mdata.name = m_group_members[i].name;
-			mdata.level = m_group_members[i].level;
-			mdata.classId = m_group_members[i].class_id;
-			mdata.hpPercent = m_group_members[i].hp_percent;
-			mdata.inZone = m_group_members[i].in_zone;
+			mdata.name = gm->name;
+			mdata.level = gm->level;
+			mdata.classId = gm->classId;
+			mdata.hpPercent = gm->hpPercent;
+			mdata.inZone = gm->inZone;
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
 		}
 	}
 
 	// --- Pet ---
-	if (m_pet_spawn_id != 0) {
+	if (m_game_state.pet().petSpawnId() != 0) {
 		eqt::state::PetCreatedData data;
-		data.spawnId = m_pet_spawn_id;
+		data.spawnId = m_game_state.pet().petSpawnId();
 		data.name = GetPetName();
 		data.level = GetPetLevel();
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -731,7 +734,9 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 {
 	if (to == EQ::Net::StatusConnected) {
 		LOG_DEBUG(MOD_ZONE, "Zone connected");
-		m_zone_connected = true;
+		// T286: this write had NO WorldState counterpart, so world()
+		// .isZoneConnected() never became true on the reconnect path.
+		m_game_state.world().setZoneConnected(true);
 		// Send stream identify immediately after connection
 		ZoneSendStreamIdentify();
 		m_zone_session_established = true;
@@ -743,8 +748,7 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 
 	if (to == EQ::Net::StatusDisconnected) {
 		LOG_INFO(MOD_ZONE, "Zone connection lost, reconnecting.");
-		m_zone_connected = false;
-		m_game_state.world().setZoneConnected(false);
+		m_game_state.world().setZoneConnected(false);  // T286: only store
 		m_zone_session_established = false;
 		m_zone_entry_sent = false;
 		// m_client_spawned = false; // Deprecated
@@ -1014,7 +1018,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 
 			// Check if loot window is empty (no items to loot)
 			// If empty, auto-complete the loot session immediately
-			if (m_player_looting_corpse_id != 0 && m_loot_items.empty()) {
+			if (m_game_state.player().lootingCorpseId() != 0 && m_loot_items.empty()) {
 				LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
 				CloseLootWindow(static_cast<uint16_t>(corpse_id));
 			}
@@ -1055,13 +1059,13 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 			if (p.Length() >= 6) {
 				item_packet_type = p.GetUInt32(2);
 			}
-			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_player_looting_corpse_id={} m_vendor_npc_id={} pending_slots={}",
-				item_packet_type, m_player_looting_corpse_id, m_vendor_npc_id, m_pending_loot_slots.size());
+			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_game_state.player().lootingCorpseId()={} m_game_state.player().vendorNpcId()={} pending_slots={}",
+				item_packet_type, m_game_state.player().lootingCorpseId(), m_game_state.player().vendorNpcId(), m_pending_loot_slots.size());
 			// Check if this is a vendor item (type 100)
-			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && m_vendor_npc_id != 0) {
+			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && m_game_state.player().vendorNpcId() != 0) {
 				// Vendor item - add to vendor window via bridge
 				ZoneProcessVendorItemToUI(p);
-			} else if (m_player_looting_corpse_id != 0) {
+			} else if (m_game_state.player().lootingCorpseId() != 0) {
 				// Looting (T268: every open path sets this). A pending slot means
 				// this is the item we asked for; otherwise it populates the window.
 				if (!m_pending_loot_slots.empty()) { ZoneProcessLootedItemToInventory(p); }
@@ -1204,7 +1208,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 			// Decrement practice points if trainer window is open (training
 			// succeeded). PlayerState is the ONE store (T283) and
 			// decrementPracticePoints() already floors at zero.
-			if (m_trainer_npc_id != 0) {
+			if (m_game_state.player().trainerNpcId() != 0) {
 				m_game_state.player().decrementPracticePoints();
 			}
 
@@ -1763,7 +1767,7 @@ void EverQuest::ZoneSendClientReady()
 	} else {
 		++m_replay_suppressed_sends;
 	}
-	m_client_ready_sent = true;
+	m_game_state.world().setClientReady(true);  // T286: only store
 }
 
 void EverQuest::ZoneSendSetServerFilter()
@@ -2270,14 +2274,11 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			eqt::state::GameEventType::PlayerMoved, std::move(data)));
 	}
 
-	// Store character stats (update both local members and GameState during migration)
-	m_level = level;
+	// Store character stats (T286: the PlayerState below is the only store
+	// for everything it holds; only fields PlayerState does NOT carry --
+	// exp, AA exp, guild id, GM mode -- remain EverQuest members)
 	m_exp = exp;
 	m_exp_aa = exp_aa;
-	m_class = class_;
-	m_race = race;
-	m_gender = gender;
-	m_deity = deity;
 	// T133: this `guild_id` local (parsed just above, offset 13036) was
 	// already being written into self_entity.guild_id further down --
 	// display-only, per-entity data -- but never into m_guild_id, the field
@@ -2300,30 +2301,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// path was considered and declined). It means "GM mode was on at login",
 	// not "this account has GM privileges" -- see EverQuest::GetGMMode().
 	m_gm_mode = (gm_mode != 0);
-	m_cur_hp = cur_hp;
-	m_max_hp = cur_hp;  // Will be updated when we get buffs/equipment
-	m_mana = mana;
-	m_max_mana = mana;
-	m_endurance = endurance;
-	m_max_endurance = endurance;
-	m_STR = STR;
-	m_STA = STA;
-	m_CHA = CHA;
-	m_DEX = DEX;
-	m_INT = INT;
-	m_AGI = AGI;
-	m_WIS = WIS;
-	m_platinum = platinum;
-	m_gold = gold;
-	m_silver = silver;
-	m_copper = copper;
-	m_bank_platinum = bank_platinum;
-	m_bank_gold = bank_gold;
-	m_bank_silver = bank_silver;
-	m_bank_copper = bank_copper;
-	m_last_name = last_name;
 
-	// Phase 7.2: Also update GameState
+	// Phase 7.2 / T286: the single store for all of the above
 	auto& player = m_game_state.player();
 	player.setName(name[0] ? name : m_character);  // Use server name if available, else local
 	player.setLastName(last_name);
@@ -2382,14 +2361,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		m_inventory_manager->setPlayerInfo(race, class_, level);
 	}
 
-	// Store bind point (swap x/y like we do for position)
-	m_bind_zone_id = bind_zone_id;
-	m_bind_x = bind_y;  // Server x/y are swapped
-	m_bind_y = bind_x;
-	m_bind_z = bind_z;
-	m_bind_heading = bind_heading;
-	// Phase 7.3: Also update PlayerState bind point
-	m_game_state.player().setBindPoint(bind_zone_id, m_bind_x, m_bind_y, m_bind_z, bind_heading);
+	// Store bind point (swap x/y like we do for position -- server x/y are swapped)
+	m_game_state.player().setBindPoint(bind_zone_id, bind_y, bind_x, bind_z, bind_heading);
 
 	// The entity ID appears to be at offset 14384 based on previous debugging
 	uint32_t entity_id = 0;
@@ -2421,8 +2394,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 		LOG_DEBUG(MOD_MAIN, "=== BIND POINT ===");
 		LOG_DEBUG(MOD_MAIN, "Bind raw: zone={} x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 			bind_zone_id, bind_x, bind_y, bind_z, bind_heading);
-		LOG_DEBUG(MOD_MAIN, "Bind internal: zone={} m_bind_x={:.2f} m_bind_y={:.2f} m_bind_z={:.2f}",
-			m_bind_zone_id, m_bind_x, m_bind_y, m_bind_z);
+		LOG_DEBUG(MOD_MAIN, "Bind internal: zone={} m_game_state.player().bindX()={:.2f} m_game_state.player().bindY()={:.2f} m_game_state.player().bindZ()={:.2f}",
+			m_game_state.player().bindZoneId(), m_game_state.player().bindX(), m_game_state.player().bindY(), m_game_state.player().bindZ());
 		LOG_DEBUG(MOD_MAIN, "=== STATS ===");
 		LOG_DEBUG(MOD_MAIN, "HP: {} Mana: {} End: {}", cur_hp, mana, endurance);
 		LOG_DEBUG(MOD_MAIN, "STR:{} STA:{} CHA:{} DEX:{} INT:{} AGI:{} WIS:{}",
@@ -2460,7 +2433,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	self_entity.last_update_time = std::time(nullptr);
 	
 	// Update our own size
-	m_size = size;
+	m_game_state.player().setSize(size);
 	
 	// Store in entity list (sync to both local map and EntityManager)
 	m_entities[m_my_spawn_id] = self_entity;
@@ -2570,9 +2543,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	if (m_bridge) {
 		eqt::state::CharacterInfoChangedData data;
 		data.name = m_character;
-		data.level = m_level;
-		data.className = GetClassName(m_class);
-		data.deity = GetDeityName(m_deity);
+		data.level = m_game_state.player().level();
+		data.className = GetClassName(m_game_state.player().classId());
+		data.deity = GetDeityName(m_game_state.player().deity());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
 	}
@@ -2890,10 +2863,10 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 		m_server_filter_sent = true;
 	}
 
-	if (!m_client_ready_sent) {
+	if (!m_game_state.world().isClientReady()) {
 		SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
 		ZoneSendClientReady();
-		m_client_ready_sent = true;
+		m_game_state.world().setClientReady(true);  // T286: only store
 
 		// Note: We don't start the update loop here - we wait for our first ClientUpdate
 		// which confirms the server has our position. StartUpdateLoop() is called in
@@ -3215,9 +3188,7 @@ void EverQuest::SetHeading(float heading)
 
 void EverQuest::SetMoveSpeed(float speed)
 {
-	// Update both local and GameState (during migration)
-	m_move_speed = speed;
-	m_game_state.player().setMoveSpeed(speed);
+	m_game_state.player().setMoveSpeed(speed);  // T286: only store
 }
 
 void EverQuest::SetPosition(float x, float y, float z)
@@ -3231,9 +3202,7 @@ void EverQuest::SetPosition(float x, float y, float z)
 
 void EverQuest::SetMoving(bool moving)
 {
-	// Update both local and GameState (during migration)
-	m_is_moving = moving;
-	m_game_state.player().setMoving(moving);
+	m_game_state.player().setMoving(moving);  // T286: only store
 }
 
 // ============================================================================
@@ -3252,8 +3221,7 @@ void EverQuest::SetMoving(bool moving)
 
 void EverQuest::SetCombatStopDistance(float distance)
 {
-	m_combat_stop_distance = distance;
-	m_game_state.combat().setCombatStopDistance(distance);
+	m_game_state.combat().setCombatStopDistance(distance);  // T286: only store
 }
 
 // ============================================================================
@@ -3430,8 +3398,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// Track the last entity we killed for SimpleMessage substitution
 	// Store the display name now before it gets modified to include "'s corpse"
 	if (killer_id == m_my_spawn_id) {
-		m_last_slain_entity_name = EQT::toDisplayName(victim_name);
-		m_game_state.combat().setLastSlainEntityName(m_last_slain_entity_name);  // Phase 7.6
+		m_game_state.combat().setLastSlainEntityName(EQT::toDisplayName(victim_name));  // Phase 7.6 / T286
 	}
 
 	// Notify combat manager if this was our target
@@ -3475,7 +3442,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	}
 
 	// If the vendor NPC died, close vendor window
-	if (m_vendor_npc_id != 0 && m_vendor_npc_id == victim_id) {
+	if (m_game_state.player().vendorNpcId() != 0 && m_game_state.player().vendorNpcId() == victim_id) {
 		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
 		CloseVendorWindow();
 	}
@@ -3542,7 +3509,7 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 		LOG_WARN(MOD_MAIN, "ZonePlayerToBind packet too small: {} bytes (need at least 22)", p.Length());
 		// Fall back to stored bind point
 		LOG_DEBUG(MOD_MAIN, "Using stored bind point: zone {} at ({:.2f}, {:.2f}, {:.2f})",
-			m_bind_zone_id, m_bind_x, m_bind_y, m_bind_z);
+			m_game_state.player().bindZoneId(), m_game_state.player().bindX(), m_game_state.player().bindY(), m_game_state.player().bindZ());
 		return;
 	}
 
@@ -3572,17 +3539,12 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 		target_zone_id, instance_id, bind_x, bind_y, bind_z, bind_heading, zone_name);
 
 	// Store pending zone info
-	m_pending_zone_id = target_zone_id;
-	m_pending_zone_x = bind_x;
-	m_pending_zone_y = bind_y;
-	m_pending_zone_z = bind_z;
-	m_pending_zone_heading = bind_heading;
 
 	// T55: mirror producer B's WorldState publish (CheckZoneLine, eq_zone.cpp)
 	// so producer C's pending-zone state is visible from GameState too, not
 	// just via the raw EverQuest members -- see
 	// refactor/T55_position_state_propagation.md.
-	m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+	m_game_state.world().setPendingZone(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 
 	// Check if we're staying in the same zone or going to a different zone
 	bool is_same_zone = (target_zone_id == m_current_zone_id) || (target_zone_id == 0);
@@ -3649,19 +3611,17 @@ void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 
 	LOG_DEBUG(MOD_MAIN, "LevelUpdate: level {} -> {}, exp={}", old_level, new_level, exp);
 
-	// Update player level
-	m_level = static_cast<uint8_t>(new_level);
+	// Update player level (T286: PlayerState is the only store, so it is
+	// written here, at the source, BEFORE anything reads it back)
+	m_game_state.player().setLevel(static_cast<uint8_t>(new_level));
 
 	// Update entity level if we have a spawn ID
 	if (m_my_spawn_id != 0) {
 		auto it = m_entities.find(m_my_spawn_id);
 		if (it != m_entities.end()) {
-			it->second.level = m_level;
+			it->second.level = m_game_state.player().level();
 		}
 	}
-
-	// Update game state
-	m_game_state.player().setLevel(m_level);
 
 	if (new_level > old_level) {
 		LOG_INFO(MOD_MAIN, "LEVEL UP! You are now level {}!", new_level);
@@ -3758,7 +3718,7 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 		auto stats = m_zone_connection->GetStats();
 
 		// Additional check - if stats look corrupted, don't send
-		if (stats.recv_packets == 0 && stats.sent_packets == 0 && m_zone_connected) {
+		if (stats.recv_packets == 0 && stats.sent_packets == 0 && m_game_state.world().isZoneConnected()) {
 			LOG_WARN(MOD_ZONE, "Zone connection appears invalid (zero stats)");
 			return false;
 		}
@@ -3776,16 +3736,14 @@ bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliabl
 		LOG_ERROR(MOD_ZONE, "Exception in SafeQueueZonePacket: {} (opcode={:#06x}, len={}, reliable={})",
 			e.what(), p.GetUInt16(0), p.Length(), reliable);
 		m_zone_connection.reset();  // Clear the corrupted connection
-		m_zone_connected = false;
-		m_game_state.world().setZoneConnected(false);
+		m_game_state.world().setZoneConnected(false);  // T286: only store
 		return false;
 	}
 	catch (...) {
 		LOG_ERROR(MOD_ZONE, "Unknown exception in SafeQueueZonePacket (opcode={:#06x}, len={}, reliable={})",
 			p.GetUInt16(0), p.Length(), reliable);
 		m_zone_connection.reset();  // Clear the corrupted connection
-		m_zone_connected = false;
-		m_game_state.world().setZoneConnected(false);
+		m_game_state.world().setZoneConnected(false);  // T286: only store
 		return false;
 	}
 }
@@ -3866,7 +3824,7 @@ void EverQuest::SendPetition(const std::string& text)
 	packet.PutUInt16(0, HC_OP_Petition);
 	packet.PutCString(2, text.c_str());
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Petition submitted");
 		AddChatSystemMessage("Your petition has been submitted.");
@@ -3875,12 +3833,11 @@ void EverQuest::SendPetition(const std::string& text)
 
 void EverQuest::SetSneak(bool sneak)
 {
-	if (m_is_sneaking == sneak) {
+	if (m_game_state.player().isSneaking() == sneak) {
 		return;
 	}
 
-	m_is_sneaking = sneak;
-	m_game_state.player().setSneaking(sneak);  // Phase 7.8
+	m_game_state.player().setSneaking(sneak);  // Phase 7.8 / T286: only store
 	SendSpawnAppearance(AT_SNEAK, sneak ? 1 : 0);
 
 	if (s_debug_level >= 1) {

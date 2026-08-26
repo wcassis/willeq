@@ -709,26 +709,21 @@ struct Entity
 // S06: Door struct replaced by DoorState (include/client/door_state.h)
 // and DoorStateManager (include/client/door_state_manager.h)
 
-// Maximum group size (leader + 5 members)
-static constexpr int MAX_GROUP_MEMBERS = 6;
+// Maximum group size (leader + 5 members). T286: one definition -- the
+// state layer's -- rather than a second constant that happened to agree.
+using eqt::state::MAX_GROUP_MEMBERS;
 
 // Interaction distance for vendors, bankers, tradeskill containers, etc.
 // Player must be within this distance to interact with NPCs/objects
 static constexpr float NPC_INTERACTION_DISTANCE = 15.0f;
 static constexpr float NPC_INTERACTION_DISTANCE_SQUARED = NPC_INTERACTION_DISTANCE * NPC_INTERACTION_DISTANCE;
 
-// Group member information (tracked locally for UI display)
-struct GroupMember
-{
-	std::string name;
-	uint16_t spawn_id = 0;       // 0 if not in zone
-	uint8_t level = 0;
-	uint8_t class_id = 0;
-	uint8_t hp_percent = 100;
-	uint8_t mana_percent = 100;  // Stored as percent for display
-	bool is_leader = false;
-	bool in_zone = false;        // True if we can see them in entity list
-};
+// T286: EverQuest used to declare its OWN GroupMember (snake_case) and
+// keep an m_group_members array of it next to GroupState's, with a
+// SyncGroupMemberToGameState() converter run by hand at every write site.
+// Both the second struct and the second array are gone; this is the one
+// type, and GroupState is the one store.
+using GroupMember = eqt::state::GroupMember;
 
 class EverQuest
 {
@@ -761,7 +756,7 @@ public:
 	// reachable from S->C handlers (see ReplayZonePacket).
 	uint64_t GetReplaySuppressedSendCount() const { return m_replay_suppressed_sends; }
 
-	// T52 test seam: m_pending_zone_x/y/z/id have three producers
+	// T52 test seam: m_game_state.world().pendingZoneX()/y/z/id have three producers
 	// (ZoneProcessZoneChange, CheckZoneLine, and the bind/death path in
 	// eq.cpp) and one consumer (WorldProcessZoneServerInfo), all private.
 	// Minimal, behavior-preserving read-only accessors so tests can pin
@@ -769,10 +764,10 @@ public:
 	// combined with ReplayZonePacket (for producer A) or a direct
 	// UpdateMovement()/CheckZoneLine() drive (for producer B, via existing
 	// public entry points), and GetPosition() for the consumer's effect.
-	uint16_t GetPendingZoneId() const { return m_pending_zone_id; }
-	float GetPendingZoneX() const { return m_pending_zone_x; }
-	float GetPendingZoneY() const { return m_pending_zone_y; }
-	float GetPendingZoneZ() const { return m_pending_zone_z; }
+	uint16_t GetPendingZoneId() const { return m_game_state.world().pendingZoneId(); }
+	float GetPendingZoneX() const { return m_game_state.world().pendingZoneX(); }
+	float GetPendingZoneY() const { return m_game_state.world().pendingZoneY(); }
+	float GetPendingZoneZ() const { return m_game_state.world().pendingZoneZ(); }
 
 	// T55 test seam: narrow, read-only reader for the state layer's player
 	// position (m_game_state.player().x()/y()/z()), which otherwise has no
@@ -784,7 +779,7 @@ public:
 	glm::vec3 Test_GetGameStatePlayerPosition() const;
 
 	// T52 test seam, continued: WorldProcessZoneServerInfo's consumer
-	// branch is gated on `m_zone_connected || m_zone_connection !=
+	// branch is gated on `m_game_state.world().isZoneConnected() || m_zone_connection !=
 	// nullptr`, which in real operation is only ever set true by a live
 	// UDP connection-state callback (ZoneOnStatusChangeReconnectEnabled) --
 	// not reachable through ReplayZonePacket/ReplayWorldPacket at all, and
@@ -795,7 +790,7 @@ public:
 	// execute and pin its corrected (no second swap) behavior, rather than
 	// leaving a fixed-but-untested dead branch. Test-only; not called from
 	// any production path.
-	void Test_SetZoneConnectedForSeam(bool connected) { m_zone_connected = connected; }
+	void Test_SetZoneConnectedForSeam(bool connected) { m_game_state.world().setZoneConnected(connected); }
 
 	// T88 test seam: SendPositionUpdate()'s top guard
 	// (`!IsFullyZonedIn() || !m_zone_connection`) and MoveToWithPath()'s
@@ -818,10 +813,10 @@ public:
 	// Test-only; not called from any production path.
 	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_my_spawn_id = spawn_id; }
 
-	// T221 test seam: m_pet_spawn_id is normally set only by pet detection
+	// T221 test seam: m_game_state.pet().petSpawnId() is normally set only by pet detection
 	// in ZoneSpawns/NewSpawn/ClientUpdate; lets a test drive the MobHealth
 	// pet branch directly. Test-only; not called from any production path.
-	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_pet_spawn_id = spawn_id; }
+	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_game_state.pet().setPet(spawn_id, "", 0); }
 
 	// T88 test seam: the last outbound client position update body
 	// fields SendPositionUpdate() computed, captured unconditionally right
@@ -913,8 +908,8 @@ public:
 
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
-	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
-	// m_z = m_target_z; then StopMovement(), which sends the final
+	// arrival branch (eq_movement.cpp: m_x = m_game_state.player().targetX(); m_y = m_game_state.player().targetY();
+	// m_z = m_game_state.player().targetZ(); then StopMovement(), which sends the final
 	// position) -- without depending on wall-clock-driven incremental
 	// movement steps for targets outside that 2-unit snap radius. Test-only.
 	void Test_SnapToMovementTargetForSeam();
@@ -983,14 +978,14 @@ public:
 	// game-thread readers (SpellManager::checkLineOfSight) take a copy of
 	// the shared_ptr so a zone change cannot free it mid-query (P35).
 	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
-	float GetSize() const { return m_size; }  // player model size (6 until the spawn says otherwise)
+	float GetSize() const { return m_game_state.player().size(); }  // player model size (6 until the spawn says otherwise)
 	// T247: true while an instantaneous OP_Stun (eqemu Stun_Struct, duration
 	// in ms; 0 = UnStun) is in force. Buff-borne stuns are BuffManager's.
 	bool IsStunned() const;
 	float GetHeading() const;
 	bool IsMoving() const;
-	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent && m_update_running; }
-	bool IsZoneChangeApproved() const { return m_zone_change_approved; }
+	bool IsFullyZonedIn() const { return m_game_state.world().isZoneConnected() && m_game_state.world().isClientReady() && m_update_running; }
+	bool IsZoneChangeApproved() const { return m_game_state.world().zoneChangeApproved(); }
 	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
 	bool IsZoningEnabled() const { return m_zoning_enabled; }
 
@@ -1062,7 +1057,7 @@ public:
 	const GroupMember* GetGroupMember(int index) const;
 	const std::string& GetGroupLeaderName() const;
 	const std::string& GetMyName() const { return m_character; }
-	const std::string& GetMyLastName() const { return m_last_name; }
+	const std::string& GetMyLastName() const { return m_game_state.player().lastName(); }
 
 	// Read-only observers of login/world state (T09). Trivial inline
 	// returns of existing members -- no new storage, no logic.
@@ -1105,8 +1100,8 @@ public:
 	// eq_entities.cpp). GetPetSpawnId()/GetPetName()/GetPetLevel()/
 	// GetPetEntity() stay -- they still have live callers outside the
 	// deleted poll (eq_action_handler.cpp, spell_manager.cpp, eq.cpp).
-	bool HasPet() const { return m_pet_spawn_id != 0; }
-	uint16_t GetPetSpawnId() const { return m_pet_spawn_id; }
+	bool HasPet() const { return m_game_state.pet().petSpawnId() != 0; }
+	uint16_t GetPetSpawnId() const { return m_game_state.pet().petSpawnId(); }
 	const Entity* GetPetEntity() const;
 	std::string GetPetName() const;
 	uint8_t GetPetLevel() const;
@@ -1280,8 +1275,7 @@ public:
 
 	// Additional public methods
 	uint16_t GetMySpawnID() const { return m_my_spawn_id; }
-	uint16_t GetCurrentTargetId() const { return m_current_target_id; }
-	void SetCurrentTargetId(uint16_t id) { m_current_target_id = id; }
+	uint16_t GetCurrentTargetId() const { return m_game_state.combat().targetId(); }
 
 	// T133: populated from the player's own PlayerProfile packet
 	// (ZoneProcessPlayerProfile, eq.cpp). 0 means "not in a guild" -- every
@@ -1386,10 +1380,6 @@ public:
 	float GetMaxWeight() const;
 
 	// Keyboard state
-	bool m_move_forward = false;
-	bool m_move_backward = false;
-	bool m_turn_left = false;
-	bool m_turn_right = false;
 
 	// Friend classes for system access
 	friend class CombatManager;
@@ -1541,7 +1531,6 @@ private:
 	void RemoveEntityFromGameState(uint16_t spawnId);
 
 	// Phase 7.5: Group sync helper
-	void SyncGroupMemberToGameState(int index, const GroupMember& member);
 
 	// T221: source-side twins of the two transforming READ-model projections
 	// (EntityAppearanceChanged partial merge; InventorySlotChanged occupancy).
@@ -1609,7 +1598,6 @@ private:
 	std::string m_pass;
 	std::string m_server;
 	std::string m_character;
-	std::string m_last_name;
 
 	// T179/T180: raid state, derived from ZoneProcessRaidUpdate.
 	bool m_in_raid = false;
@@ -1791,18 +1779,12 @@ private:
 	const char* m_loading_status_text = "";
 
 	// Zone state
-	bool m_zone_connected = false;
 	bool m_zone_session_established = false;
 	bool m_zone_entry_sent = false;
 	bool m_weather_received = false;
 	bool m_req_new_zone_sent = false;
 
 	// Time of day (from server)
-	uint8_t m_time_hour = 12;
-	uint8_t m_time_minute = 0;
-	uint8_t m_time_day = 1;
-	uint8_t m_time_month = 1;
-	uint16_t m_time_year = 3100;
 	bool m_new_zone_received = false;
 	bool m_aa_table_sent = false;
 	bool m_update_aa_sent = false;
@@ -1813,7 +1795,6 @@ private:
 	bool m_exp_zonein_sent = false;
 	bool m_send_exp_zonein_received = false;
 	bool m_server_filter_sent = false;
-	bool m_client_ready_sent = false;
 	bool m_client_spawned = false;
 	uint32_t m_zone_sequence = 2;
 	int m_aa_table_count = 0;
@@ -1828,11 +1809,9 @@ private:
 	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
 
 	// Target tracking (server-authoritative — renderer is a consumer, not the source of truth)
-	uint16_t m_current_target_id = 0;
 
 	// Pet tracking
-	uint16_t m_pet_spawn_id = 0;                                      // Our pet's spawn ID (0 = no pet)
-	bool m_pet_button_states[EQT::PET_BUTTON_COUNT] = {};             // Current button states
+	// T286: pet spawn id and button states live in m_game_state.pet().
 
 	// String database for EQ message lookups (works in all modes)
 	EQT::StringDatabase m_string_db;
@@ -1849,81 +1828,28 @@ private:
 	int m_character_select_index = -1;
 	std::vector<CharacterSelectEntry> m_character_select_list;
 
-	// Character stats
-	uint8_t m_level = 1;
+	// Character stats. T286: level/class/race/gender/deity, HP/mana/
+	// endurance, the seven attributes, currency, bank currency, weight and
+	// the bind point all live in m_game_state.player() and nowhere else.
+	// Only what PlayerState does NOT carry stays here.
 	uint32_t m_exp = 0;          // Current experience points
 	uint32_t m_exp_aa = 0;       // Current AA experience points
-	uint32_t m_class = 0;
-	uint32_t m_race = 0;
-	uint32_t m_gender = 0;
-	uint32_t m_deity = 0;
-	uint32_t m_cur_hp = 0;
-	uint32_t m_max_hp = 0;
-	uint32_t m_mana = 0;
-	uint32_t m_max_mana = 0;
-	uint32_t m_endurance = 0;
-	uint32_t m_max_endurance = 0;
-	uint32_t m_STR = 0;
-	uint32_t m_STA = 0;
-	uint32_t m_CHA = 0;
-	uint32_t m_DEX = 0;
-	uint32_t m_INT = 0;
-	uint32_t m_AGI = 0;
-	uint32_t m_WIS = 0;
-
-	// Currency
-	uint32_t m_platinum = 0;
-	uint32_t m_gold = 0;
-	uint32_t m_silver = 0;
-	uint32_t m_copper = 0;
-
-	// Bank currency
-	uint32_t m_bank_platinum = 0;
-	uint32_t m_bank_gold = 0;
-	uint32_t m_bank_silver = 0;
-	uint32_t m_bank_copper = 0;
-
-	// Weight
-	float m_weight = 0.0f;
-	float m_max_weight = 0.0f;
-
-	// Bind point (respawn location on death)
-	uint32_t m_bind_zone_id = 0;
-	float m_bind_x = 0.0f;
-	float m_bind_y = 0.0f;
-	float m_bind_z = 0.0f;
-	float m_bind_heading = 0.0f;
 
 	// Movement and position tracking
 	float m_x = 0.0f;
 	float m_y = 0.0f;
 	float m_z = 0.0f;
 	float m_heading = 0.0f;
-	float m_size = 6.0f;
-	int16_t m_animation = 0;  // Signed: negative = play animation in reverse
-	uint32_t m_movement_sequence = 0;
-	bool m_is_moving = false;
 
 	// Movement target
-	float m_target_x = 0.0f;
-	float m_target_y = 0.0f;
-	float m_target_z = 0.0f;
-	float m_move_speed = 48.5f;
 	uint32_t m_last_movement_update = 0;
 	std::chrono::steady_clock::time_point m_last_position_update_time;
 
 	// Follow target
-	std::string m_follow_target;
-	float m_follow_distance = 10.0f;
 
 	// Combat movement
-	std::string m_combat_target;
-	float m_combat_stop_distance = 0.0f;
-	bool m_in_combat_movement = false;
-	std::chrono::steady_clock::time_point m_last_combat_movement_update;
 
 	// Last slain entity (for SimpleMessage "You have slain %1!" substitution)
-	std::string m_last_slain_entity_name;
 
 	// Pathfinding
 	std::unique_ptr<IPathfinder> m_pathfinder;
@@ -1975,24 +1901,12 @@ private:
 
 	// Zone line detection state
 	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
-	bool m_zone_line_triggered = false;                              // Currently in a zone line
-	std::chrono::steady_clock::time_point m_zone_line_trigger_time;  // When zone line was triggered
-	float m_last_zone_check_x = 0.0f;                                // Last position checked for zone line
-	float m_last_zone_check_y = 0.0f;
-	float m_last_zone_check_z = 0.0f;
-	uint16_t m_pending_zone_id = 0;                                  // Target zone ID for pending transition
-	float m_pending_zone_x = 0.0f;                                   // Target coordinates
-	float m_pending_zone_y = 0.0f;
-	float m_pending_zone_z = 0.0f;
-	float m_pending_zone_heading = 0.0f;
-	bool m_zone_change_requested = false;                            // Waiting for server zone change response
-	bool m_zone_change_approved = false;                             // Zone change approved, needs deferred processing
 
 	// H03: server confirmed our OP_Logout (ZoneProcessLogoutReply) — DisconnectFromZone()
 	// must not run synchronously from inside that packet handler (it resets
 	// m_zone_connection_manager, destroying the DaybreakConnectionManager whose Tick()
 	// is still on the call stack — a use-after-free). Deferred the same way as
-	// m_zone_change_approved: set here, processed at the top of UpdateMovement().
+	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
 
 	// Combat manager
@@ -2025,15 +1939,10 @@ private:
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
 
 	// Group state
-	bool m_in_group = false;
-	bool m_is_group_leader = false;
-	std::string m_group_leader_name;
-	std::array<GroupMember, MAX_GROUP_MEMBERS> m_group_members;
-	int m_group_member_count = 0;
+	// T286: group membership, leader, member array/count and the pending
+	// invite all live in m_game_state.group() and nowhere else.
 
 	// Pending group invite
-	bool m_has_pending_invite = false;
-	std::string m_pending_inviter_name;
 
 	// Chat state - for reply to tell
 	std::string m_last_tell_sender;
@@ -2061,15 +1970,6 @@ private:
 	std::string m_maps_path;
 
 	// Movement and position state
-	MovementMode m_movement_mode = MOVE_MODE_RUN;
-	PositionState m_position_state = POS_STANDING;
-	bool m_is_sneaking = false;
-	bool m_is_afk = false;
-	bool m_is_anonymous = false;
-	bool m_is_roleplay = false;
-	bool m_is_jumping = false;
-	float m_jump_start_z = 0.0f;
-	std::chrono::steady_clock::time_point m_jump_start_time;
 
 	// Swimming state
 	WaterState m_water_state = WaterState::NotInWater;
@@ -2078,8 +1978,6 @@ private:
 	bool m_swim_down = false;        // Currently pressing swim down key
 
 	// Camp timer
-	bool m_is_camping = false;
-	std::chrono::steady_clock::time_point m_camp_start_time;
 	static constexpr int CAMP_TIMER_SECONDS = 30;
 
 	// Pending resurrection offer
@@ -2234,7 +2132,6 @@ private:
 	// shift+click, auto-hunt) and read by the item-packet dispatch; the
 	// loot-all sequencing lives in CombatManager's LootSubState machine
 	// (the m_loot_all_* loop that duplicated it is gone).
-	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted (0 = not looting)
 	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
 	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
 	struct GameLootItem {
@@ -2244,9 +2141,6 @@ private:
 	std::map<int16_t, GameLootItem> m_loot_items;  // slot -> item data (game-side)
 
 	// Player mode vendor state (game-side tracking, D18a)
-	uint16_t m_vendor_npc_id = 0;     // NPC being traded with (0 = not trading)
-	float m_vendor_sell_rate = 1.0f;  // Price multiplier for this vendor
-	std::string m_vendor_name;        // Vendor NPC name
 	struct GameVendorItem {
 		uint32_t itemId = 0;
 		std::string name;
@@ -2259,11 +2153,8 @@ private:
 	static std::string FormatPrice(int32_t copperAmount);
 
 	// Player mode bank state
-	uint16_t m_banker_npc_id = 0;     // Banker NPC being interacted with (0 = bank closed)
 
 	// Player mode trainer state
-	uint16_t m_trainer_npc_id = 0;    // Trainer NPC being trained with (0 = not training)
-	std::string m_trainer_name;       // Trainer NPC name
 	// T280: the per-skill CAPS the server sent in its OP_GMTraining reply
 	// (GMTrainee_Struct::skills[], one entry per skill id). They were read
 	// once to build the TrainerWindowOpened event and then thrown away, so
@@ -2325,14 +2216,18 @@ private:
 
 	// T269 bank-coin helpers (eq_bridge.cpp, next to the Bank* intent arms).
 	// coinType is the wire scale (EQT::COINTYPE_*: 0=cp 1=sp 2=gp 3=pp).
-	// BankCoinPool returns the counter for one denomination in one pool
-	// (bank=true -> m_bank_*, false -> the on-hand m_platinum..). Members,
-	// not free functions, because the counters are private.
-	uint32_t* BankCoinPool(uint8_t coinType, bool bank);
+	// BankCoinGet/BankCoinSet read and write the counter for one
+	// denomination in one pool (bank=true -> the bank pool, false -> the
+	// on-hand pool). T286: the counters live only in
+	// m_game_state.player(), so this is a get/set pair rather than the
+	// pointer-into-a-member it used to be.
+	uint32_t BankCoinGet(uint8_t coinType, bool bank) const;
+	void BankCoinSet(uint8_t coinType, bool bank, uint32_t value);
 	static const char* BankCoinName(uint8_t coinType);
 	static int64_t BankCoinCoppers(uint8_t coinType);
-	// Mirrors the four (or eight) counters into GameState and publishes
-	// CurrencyChanged (only when the on-hand pool moved) + BankCurrencyChanged.
+	// Publishes CurrencyChanged (only when the on-hand pool moved) +
+	// BankCurrencyChanged. T286: no mirroring step -- the counters are
+	// GameState's own.
 	void PublishBankCoinProjection(bool inventoryChanged);
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
@@ -2359,8 +2254,8 @@ public:
 	// Returns false (nothing sent) when no window is open.
 	bool LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot = false);
 	void CloseLootWindow(uint16_t corpseId);
-	bool IsLootWindowOpen() const { return m_player_looting_corpse_id != 0; }
-	uint16_t GetLootWindowCorpseId() const { return m_player_looting_corpse_id; }
+	bool IsLootWindowOpen() const { return m_game_state.player().lootingCorpseId() != 0; }
+	uint16_t GetLootWindowCorpseId() const { return m_game_state.player().lootingCorpseId(); }
 	const std::map<int16_t, GameLootItem>& GetLootItems() const { return m_loot_items; }
 	// Case-insensitive match against the open window's item names: an exact
 	// match wins, else the lowest slot whose name contains `name`. Returns
@@ -2372,8 +2267,8 @@ public:
 	void BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity);
 	void SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity);
 	void CloseVendorWindow();
-	bool IsVendorWindowOpen() const { return m_vendor_npc_id != 0; }
-	uint16_t GetVendorNpcId() const { return m_vendor_npc_id; }
+	bool IsVendorWindowOpen() const { return m_game_state.player().vendorNpcId() != 0; }
+	uint16_t GetVendorNpcId() const { return m_game_state.player().vendorNpcId(); }
 
 	// T136: minimal read accessors for the migrated /vendorlist command --
 	// see refactor/T136_migrate_merchant_family.md ("the state gap") for why
@@ -2383,7 +2278,7 @@ public:
 	// GameVendorItem is private, but its members are public (default for a
 	// struct) -- callers iterate via structured bindings without ever
 	// naming the type, same idiom already used throughout eq_commands.cpp.
-	const std::string& GetVendorName() const { return m_vendor_name; }
+	const std::string& GetVendorName() const { return m_game_state.player().vendorName(); }
 	const std::map<uint32_t, GameVendorItem>& GetVendorItems() const { return m_vendor_items; }
 	static std::string FormatVendorPrice(int32_t copperAmount) { return FormatPrice(copperAmount); }
 
@@ -2430,15 +2325,15 @@ public:
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
 	void CloseBankWindow();
-	bool IsBankWindowOpen() const { return m_banker_npc_id != 0; }
-	uint16_t GetBankerNpcId() const { return m_banker_npc_id; }
+	bool IsBankWindowOpen() const { return m_game_state.player().bankerNpcId() != 0; }
+	uint16_t GetBankerNpcId() const { return m_game_state.player().bankerNpcId(); }
 
 	// Skill trainer window methods (Player mode with graphics)
 	void RequestTrainerWindow(uint16_t npcId);
 	void TrainSkill(uint8_t skillId);
 	void CloseTrainerWindow();
-	bool IsTrainerWindowOpen() const { return m_trainer_npc_id != 0; }
-	uint16_t GetTrainerNpcId() const { return m_trainer_npc_id; }
+	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
+	uint16_t GetTrainerNpcId() const { return m_game_state.player().trainerNpcId(); }
 
 	// T280: /train <skill|id> and /trainclose (T264 F8). RequestTrainSkill()
 	// resolves the argument against the caps the OPEN trainer session sent,

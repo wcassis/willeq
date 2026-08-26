@@ -187,7 +187,7 @@ void EverQuest::SendChatMessage(const std::string &message, const std::string &c
 	}
 
 	// Check if we're connected to the zone
-	if (!m_zone_connection || !m_zone_connected) {
+	if (!m_zone_connection || !m_game_state.world().isZoneConnected()) {
 		LOG_WARN(MOD_MAIN, "Not connected to zone server");
 		return;
 	}
@@ -565,8 +565,8 @@ void EverQuest::ZoneProcessSimpleMessage(const EQ::Net::Packet &p)
 		// For "slain" messages, use the last slain entity name
 		// Note: String 12113 is "You have slain %1!" in eqstr_us.txt
 		// Server may send 303 or 12113 depending on context
-		if ((string_id == 303 || string_id == 12113) && !m_last_slain_entity_name.empty()) {
-			target_name = m_last_slain_entity_name;
+		if ((string_id == 303 || string_id == 12113) && !m_game_state.combat().lastSlainEntityName().empty()) {
+			target_name = m_game_state.combat().lastSlainEntityName();
 		}
 		// Otherwise try current combat target
 		else if (m_combat_manager && m_combat_manager->GetTargetId() != 0) {

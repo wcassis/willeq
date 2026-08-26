@@ -397,11 +397,11 @@ protected:
                                       "Testchar"));
         ASSERT_TRUE(h.eq.IsInGroup());
         ASSERT_EQ(h.eq.GetGroupMemberCount(), 3);
-        ASSERT_EQ(h.eq.GetGroupMember(0)->spawn_id, kSelfId);
+        ASSERT_EQ(h.eq.GetGroupMember(0)->spawnId, kSelfId);
         ASSERT_EQ(h.eq.GetGroupMember(1)->name, "Buddy");
-        ASSERT_EQ(h.eq.GetGroupMember(1)->spawn_id, kBuddyId);
+        ASSERT_EQ(h.eq.GetGroupMember(1)->spawnId, kBuddyId);
         ASSERT_EQ(h.eq.GetGroupMember(2)->name, "Ghost");
-        ASSERT_EQ(h.eq.GetGroupMember(2)->spawn_id, 0u);
+        ASSERT_EQ(h.eq.GetGroupMember(2)->spawnId, 0u);
 
         // Start on an unrelated target so "no change" is distinguishable
         // from "targeted self".
@@ -462,7 +462,7 @@ TEST(EqActionHandlerTransformsReal, TargetGroupMember_NotInGroup_NoChangeNoPacke
     h.handler.targetGroupMember(0);
 
     EXPECT_EQ(h.eq.GetCombatManager()->GetTargetId(), kGuardId)
-        << "index 0 is only 'self' once a group exists (m_group_member_count==0 otherwise)";
+        << "index 0 is only 'self' once a group exists (the group member count is 0 otherwise)";
     EXPECT_TRUE(h.sentTargetIds().empty());
 }
 
@@ -536,9 +536,9 @@ TEST(EqActionHandlerTransformsReal, HailTarget_TargetVanishedFromGameState_Falls
 //
 // T95 (test_eq_action_handler_enum_guards.cpp) pins the range guards and
 // the bridge events. What it does not pin is the int -> enum VALUE mapping
-// at the source: EverQuest::m_movement_mode / m_position_state are private
-// with no getter, so the T95 tests read the event payload (a re-cast of the
-// same int). These read the members directly.
+// at the source. T286: the source is PlayerState (EverQuest's own
+// m_movement_mode / m_position_state duplicates are gone), so these read
+// the one store rather than the event payload's re-cast of the same int.
 // ---------------------------------------------------------------------
 
 TEST(EqActionHandlerTransformsReal, SetMovementMode_EveryValidIntMapsToItsEnumerator) {
@@ -548,7 +548,7 @@ TEST(EqActionHandlerTransformsReal, SetMovementMode_EveryValidIntMapsToItsEnumer
     };
     for (auto& c : cases) {
         h.handler.setMovementMode(c.in);
-        EXPECT_EQ(h.eq.m_movement_mode, c.want) << "input " << c.in;
+        EXPECT_EQ(static_cast<MovementMode>(h.eq.GetGameState().player().movementMode()), c.want) << "input " << c.in;
         EXPECT_EQ(h.lastSystemMessage(), "") << "valid input must not be rejected";
     }
 }
@@ -556,12 +556,12 @@ TEST(EqActionHandlerTransformsReal, SetMovementMode_EveryValidIntMapsToItsEnumer
 TEST(EqActionHandlerTransformsReal, SetMovementMode_Rejected_LeavesSourceUnchangedAndReports) {
     WireHarness h;
     h.handler.setMovementMode(1);
-    ASSERT_EQ(h.eq.m_movement_mode, MOVE_MODE_WALK);
+    ASSERT_EQ(static_cast<MovementMode>(h.eq.GetGameState().player().movementMode()), MOVE_MODE_WALK);
     h.bridge.drainEvents();
 
     h.handler.setMovementMode(3);
 
-    EXPECT_EQ(h.eq.m_movement_mode, MOVE_MODE_WALK);
+    EXPECT_EQ(static_cast<MovementMode>(h.eq.GetGameState().player().movementMode()), MOVE_MODE_WALK);
     EXPECT_EQ(h.lastSystemMessage(),
               "Movement mode 3 is not valid (must be 0=Run, 1=Walk, or 2=Sneak).");
 }
@@ -574,7 +574,7 @@ TEST(EqActionHandlerTransformsReal, SetPositionState_EveryValidIntMapsToItsEnume
     };
     for (auto& c : cases) {
         h.handler.setPositionState(c.in);
-        EXPECT_EQ(h.eq.m_position_state, c.want) << "input " << c.in;
+        EXPECT_EQ(static_cast<PositionState>(h.eq.GetGameState().player().positionState()), c.want) << "input " << c.in;
         EXPECT_EQ(h.lastSystemMessage(), "") << "valid input must not be rejected";
     }
 }
@@ -582,12 +582,12 @@ TEST(EqActionHandlerTransformsReal, SetPositionState_EveryValidIntMapsToItsEnume
 TEST(EqActionHandlerTransformsReal, SetPositionState_Rejected_LeavesSourceUnchangedAndReports) {
     WireHarness h;
     h.handler.setPositionState(1);
-    ASSERT_EQ(h.eq.m_position_state, POS_SITTING);
+    ASSERT_EQ(static_cast<PositionState>(h.eq.GetGameState().player().positionState()), POS_SITTING);
     h.bridge.drainEvents();
 
     h.handler.setPositionState(5);
 
-    EXPECT_EQ(h.eq.m_position_state, POS_SITTING);
+    EXPECT_EQ(static_cast<PositionState>(h.eq.GetGameState().player().positionState()), POS_SITTING);
     EXPECT_EQ(h.lastSystemMessage(),
               "Position state 5 is not valid (must be 0-4: Standing/Sitting/Crouching/"
               "FeignDeath/Dead).");

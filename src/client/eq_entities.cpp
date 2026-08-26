@@ -392,7 +392,7 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 						entity.x, entity.y, entity.z, entity.heading);
 					LOG_DEBUG(MOD_ENTITY, "Size: {:.2f} (THIS IS THE ACTUAL SIZE)", entity.size);
 					LOG_DEBUG(MOD_ENTITY, "Previous m_z={:.2f}, updating to entity.z={:.2f}", m_z, entity.z);
-					LOG_DEBUG(MOD_ENTITY, "Previous m_size={:.2f}, updating to entity.size={:.2f}", m_size, entity.size);
+					LOG_DEBUG(MOD_ENTITY, "Previous m_game_state.player().size()={:.2f}, updating to entity.size={:.2f}", m_game_state.player().size(), entity.size);
 					LOG_DEBUG(MOD_ENTITY, "==============================");
 				}
 #ifdef EQT_HAS_GRAPHICS
@@ -412,9 +412,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// Update our position to match server spawn position
 				m_x = entity.x;
 				m_y = entity.y;
-				m_size = entity.size;
+				m_game_state.player().setSize(entity.size);
 				// Server Z is model center. Convert to feet position for internal use.
-				// SendPositionUpdate will add m_size/2 to convert back to model center.
+				// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
 				m_z = entity.z - (entity.size / 2.0f);
 				// Don't update heading from spawn data as it may be scaled differently
 
@@ -465,13 +465,13 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	// Second pass: Check for pet after all spawns are loaded (if we know our spawn ID)
 	// This handles the case where our character is in ZoneSpawns. If not, deferred
 	// pet detection in ClientUpdate will find the pet when our spawn ID is set.
-	if (m_my_spawn_id != 0 && m_pet_spawn_id == 0) {
+	if (m_my_spawn_id != 0 && m_game_state.pet().petSpawnId() == 0) {
 		for (const auto& pair : m_entities) {
 			const Entity& ent = pair.second;
 			if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
-				m_pet_spawn_id = ent.spawn_id;
-				std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
-				m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+				// T286: PetState is the only store. setPet() (via
+				// OnPetCreated below) clears the button states, so FOLLOW
+				// is set AFTER it, not before.
 				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
 					ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
 				// T43: was #ifdef EQT_HAS_GRAPHICS. OnPetCreated() is a pure
@@ -481,6 +481,7 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// EQT_HAS_GRAPHICS pattern entry; T41's snapshot fix only
 				// covered a pet present at zone-in, not this delta path).
 				OnPetCreated(ent);
+				OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 				break;
 			}
 		}
@@ -495,23 +496,18 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 		return;
 	}
 
-	m_time_hour = p.GetUInt8(2);
-	m_time_minute = p.GetUInt8(3);
-	m_time_day = p.GetUInt8(4);
-	m_time_month = p.GetUInt8(5);
-	m_time_year = p.GetUInt16(6);
-
-	// Phase 7.3: Also update WorldState
-	m_game_state.world().setTimeOfDay(m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
+	// Phase 7.3 / T286: WorldState is the only store
+	m_game_state.world().setTimeOfDay(p.GetUInt8(2), p.GetUInt8(3), p.GetUInt8(4),
+	                                  p.GetUInt8(5), p.GetUInt16(6));
 
 	// Publish TimeOfDayChanged event to bridge
 	if (m_bridge) {
 		eqt::state::TimeOfDayChangedData data;
-		data.hour = m_time_hour;
-		data.minute = m_time_minute;
-		data.day = m_time_day;
-		data.month = m_time_month;
-		data.year = m_time_year;
+		data.hour = m_game_state.world().timeHour();
+		data.minute = m_game_state.world().timeMinute();
+		data.day = m_game_state.world().timeDay();
+		data.month = m_game_state.world().timeMonth();
+		data.year = m_game_state.world().timeYear();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
 	}
@@ -522,7 +518,7 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 #endif
 
 	LOG_DEBUG(MOD_ZONE, "Time of day: {:02d}:{:02d} {:02d}/{:02d}{}",
-		m_time_hour, m_time_minute, m_time_day, m_time_month, m_time_year);
+		m_game_state.world().timeHour(), m_game_state.world().timeMinute(), m_game_state.world().timeDay(), m_game_state.world().timeMonth(), m_game_state.world().timeYear());
 }
 
 void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
@@ -663,7 +659,7 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 	// After zone points, check if we need to send server filter
 	// This is old logic - server filter is now sent after GuildMOTD
 	// But keeping it here for compatibility if the flow is different
-	if (m_zone_entry_sent && !m_client_ready_sent) {
+	if (m_zone_entry_sent && !m_game_state.world().isClientReady()) {
 		// This path shouldn't normally be taken anymore
 		if (!m_server_filter_sent && m_send_exp_zonein_received) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendSetServerFilter (fallback)");
@@ -671,7 +667,7 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 		}
 
 		// Send client ready - This shouldn't happen here anymore
-		if (!m_client_ready_sent && m_server_filter_sent) {
+		if (!m_game_state.world().isClientReady() && m_server_filter_sent) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendClientReady");
 			ZoneSendClientReady();
 		}
@@ -1189,9 +1185,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			// Update our position to match server spawn position
 			m_x = entity.x;
 			m_y = entity.y;
-			m_size = entity.size;
+			m_game_state.player().setSize(entity.size);
 			// Server Z is model center. Convert to feet position for internal use.
-			// SendPositionUpdate will add m_size/2 to convert back to model center.
+			// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
 			m_z = entity.z - (entity.size / 2.0f);
 
 			if (s_debug_level >= 1) {
@@ -1235,18 +1231,16 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 
 		// Check if this spawn is our pet (if we already know our spawn ID)
 		if (entity.is_pet != 0 && entity.pet_owner_id == m_my_spawn_id && m_my_spawn_id != 0) {
-			m_pet_spawn_id = entity.spawn_id;
-
-			// Initialize default button states (Follow=ON, others=OFF per server behavior)
-			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
-			m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
-
+			// T286: PetState is the only store; default button states
+			// (Follow=ON, others=OFF per server behavior) are applied after
+			// OnPetCreated, whose setPet() clears them.
 			LOG_INFO(MOD_MAIN, "Pet detected: {} (ID: {}) Level {} owned by us (ID: {})",
 				entity.name, entity.spawn_id, entity.level, m_my_spawn_id);
 
 			// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note at
 			// the ZoneProcessSpawnAll second-pass call site above.
 			OnPetCreated(entity);
+			OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 		}
 
 		if (s_debug_level >= 2) {
@@ -1282,7 +1276,7 @@ void EverQuest::ZoneProcessExpUpdate(const EQ::Net::Packet &p)
 	// Publish ExpProgressChanged event
 	if (m_bridge) {
 		eqt::state::ExpProgressChangedData data;
-		data.progress = CalculateExpProgress(m_exp, m_level);
+		data.progress = CalculateExpProgress(m_exp, m_game_state.player().level());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ExpProgressChanged, std::move(data)));
 	}
@@ -1600,18 +1594,17 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 
 			// Deferred pet detection: now that we know our spawn ID, check if any
 			// existing entity is our pet (spawns arrive before we know our ID)
-			if (m_pet_spawn_id == 0) {
+			if (m_game_state.pet().petSpawnId() == 0) {
 				for (const auto& pair : m_entities) {
 					const Entity& ent = pair.second;
 					if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
-						m_pet_spawn_id = ent.spawn_id;
-						std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
-						m_pet_button_states[EQT::PET_BUTTON_FOLLOW] = true;
+						// T286: PetState is the only store (see above).
 						LOG_INFO(MOD_MAIN, "Pet detected (deferred): {} (ID: {}) Level {} owned by us (ID: {})",
 							ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
 						// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical
 						// note at the ZoneProcessSpawnAll second-pass call site.
 						OnPetCreated(ent);
+						OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 						break;
 					}
 				}
@@ -1691,7 +1684,14 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		if (!m_update_running) {
 			SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
 			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", m_my_spawn_id);
-			m_game_state.world().setZoneConnected(true);
+			// T286: this setZoneConnected(true) is GONE. With one store,
+			// keeping it here would make "zone connected" true on a
+			// ClientUpdate replayed with no socket at all -- it describes
+			// "player confirmed in world", not "the zone connection is up".
+			// The DaybreakConnection status callback
+			// (ZoneOnStatusChangeReconnectEnabled, eq.cpp) is the sole
+			// writer, and it fires strictly before this point in a live
+			// session, so production behaviour is unchanged.
 
 			// Signal renderer that network phase is complete and entities are ready (D17b: bridge-only)
 			if (m_bridge) {
@@ -1789,7 +1789,7 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 		// Handle corpse deletion - only delete corpses we've finished looting
 		if (it->second.is_corpse) {
 			// If we're actively looting this corpse, close the loot window first
-			if (m_player_looting_corpse_id == spawn_id) {
+			if (m_game_state.player().lootingCorpseId() == spawn_id) {
 				LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) being deleted while looting, closing loot window", spawn_id, it->second.name);
 				// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
 				if (m_bridge) {
@@ -1800,8 +1800,7 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 				}
 				m_loot_items.clear();
 				m_pending_loot_slots.clear();
-				m_player_looting_corpse_id = 0;
-				m_game_state.player().clearLootingCorpse();  // Phase 7.7
+				m_game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
 				// Mark as ready for deletion
 				m_loot_complete_corpse_id = spawn_id;
 				// T268: the loot policy machine leaves LOOTING with the window.
@@ -1832,10 +1831,10 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 		}
 
 		// Check if our pet despawned
-		if (spawn_id == m_pet_spawn_id) {
+		if (spawn_id == m_game_state.pet().petSpawnId()) {
 			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
-			m_pet_spawn_id = 0;
-			std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+			// T286: PetState is the only store; OnPetRemoved's clearPet()
+			// zeroes the id and the button states.
 			// Clear pet buffs
 			if (m_buff_manager) {
 				m_buff_manager->clearPetBuffs();
@@ -1892,10 +1891,10 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		// redundant with this. Pet HP: the PetStatsChanged projection (T40)
 		// is redundant with this. manaPercent keeps T40's honest derivation
 		// (reads 0 for every pet until something populates cur/max_mana).
-		if (m_current_target_id == spawn_id) {
+		if (m_game_state.combat().targetId() == spawn_id) {
 			m_game_state.combat().setTarget(spawn_id, it->second.name, hp_percent, it->second.level);
 		}
-		if (m_pet_spawn_id == spawn_id) {
+		if (m_game_state.pet().petSpawnId() == spawn_id) {
 			uint8_t manaPercent = (it->second.max_mana > 0)
 				? static_cast<uint8_t>((it->second.cur_mana * 100) / it->second.max_mana)
 				: 0;
@@ -1913,7 +1912,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityStatsChanged, std::move(data)));
 			// If this entity is the current target, push TargetChanged with updated HP
-			if (m_current_target_id == spawn_id) {
+			if (m_game_state.combat().targetId() == spawn_id) {
 				eqt::state::TargetChangedData tdata;
 				tdata.spawnId = spawn_id;
 				tdata.hpPercent = hp_percent;
@@ -1940,7 +1939,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 			// are populated only for the player's own entity (ManaChange
 			// packet is player-only), never for pets, so this will read 0
 			// for every pet until/unless something starts populating it.
-			if (m_pet_spawn_id == spawn_id) {
+			if (m_game_state.pet().petSpawnId() == spawn_id) {
 				eqt::state::PetStatsChangedData pdata;
 				pdata.spawnId = spawn_id;
 				pdata.hpPercent = hp_percent;
@@ -1974,10 +1973,8 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	bool is_self = (spawn_id == m_my_spawn_id);
 
 	if (is_self) {
-		// Update player HP tracking (both local and GameState)
-		m_cur_hp = cur_hp;
-		m_max_hp = static_cast<uint32_t>(max_hp > 0 ? max_hp : 0);
-		m_game_state.player().setHP(m_cur_hp, m_max_hp);
+		// Update player HP tracking (T286: PlayerState is the only store)
+		m_game_state.player().setHP(cur_hp, static_cast<uint32_t>(max_hp > 0 ? max_hp : 0));
 	}
 
 	if (is_self) {
@@ -1998,12 +1995,12 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 		stats.current_hp = cur_hp;
 		stats.max_hp = max_hp > 0 ? static_cast<uint32_t>(max_hp) : 0;
 		// Don't update mana here - it comes from ManaChange packet
-		stats.current_mana = m_mana;
-		stats.max_mana = m_max_mana;
+		stats.current_mana = m_game_state.player().curMana();
+		stats.max_mana = m_game_state.player().maxMana();
 		stats.current_endurance = 0;
 		stats.max_endurance = 0;
 		stats.hp_percent = (max_hp > 0) ? (static_cast<float>(cur_hp) * 100.0f / static_cast<float>(max_hp)) : 100.0f;
-		stats.mana_percent = (m_max_mana > 0) ? (static_cast<float>(m_mana) * 100.0f / static_cast<float>(m_max_mana)) : 100.0f;
+		stats.mana_percent = (m_game_state.player().maxMana() > 0) ? (static_cast<float>(m_game_state.player().curMana()) * 100.0f / static_cast<float>(m_game_state.player().maxMana())) : 100.0f;
 		stats.endurance_percent = 100.0f;
 		m_combat_manager->UpdateCombatStats(stats);
 	}
@@ -2020,13 +2017,13 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	// Publish PlayerStatsChanged when our own HP changes
 	if (is_self && m_bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_cur_hp;
-		data.maxHP = m_max_hp;
-		data.curMana = m_mana;
-		data.maxMana = m_max_mana;
-		data.curEndurance = m_endurance;
-		data.maxEndurance = m_max_endurance;
-		data.level = m_level;
+		data.curHP = m_game_state.player().curHP();
+		data.maxHP = m_game_state.player().maxHP();
+		data.curMana = m_game_state.player().curMana();
+		data.maxMana = m_game_state.player().maxMana();
+		data.curEndurance = m_game_state.player().curEndurance();
+		data.maxEndurance = m_game_state.player().maxEndurance();
+		data.level = m_game_state.player().level();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
@@ -2713,7 +2710,7 @@ void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 void EverQuest::SendRaidCommand(uint32_t action, const std::string& player_name,
                                const std::string& leader_name, uint32_t parameter)
 {
-	if (!m_zone_connection || !m_zone_connected) {
+	if (!m_zone_connection || !m_game_state.world().isZoneConnected()) {
 		LOG_WARN(MOD_ZONE, "SendRaidCommand: not connected");
 		return;
 	}

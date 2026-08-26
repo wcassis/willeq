@@ -127,8 +127,8 @@ void EverQuest::RelocateWithinZone(float x, float y, float z, float server_headi
 	// forced update below is the one that must carry the new position.
 	m_current_path.clear();
 	m_current_path_index = 0;
-	m_target_x = m_target_y = m_target_z = 0.0f;
-	m_animation = ANIM_STAND;
+	m_game_state.player().clearMovementTarget();
+	m_game_state.player().setAnimation(ANIM_STAND);
 	SetMoving(false);
 
 	// Same write path a real zone-in uses (T55/T58): both the raw members
@@ -200,9 +200,12 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// success != 1 means denied (various error codes)
 	if (success != 1) {
 		LOG_WARN(MOD_ZONE, "Zone change DENIED (success={})", success);
-		m_zone_change_requested = false;
-		m_zone_line_triggered = false;
-		m_pending_zone_id = 0;
+		// T286: WorldState is the only store. These three writes had NO
+		// WorldState counterpart before, so the denied path left the
+		// GameState copy claiming a zone change was still pending.
+		m_game_state.world().setZoneChangeRequested(false);
+		m_game_state.world().setZoneLineTriggered(false);
+		m_game_state.world().clearPendingZone();
 		return;
 	}
 
@@ -210,19 +213,16 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 		zone_id, target_x, target_y, target_z);
 
 	// Store the target coordinates for the new zone
-	m_pending_zone_id = zone_id;
-	m_pending_zone_x = target_x;
-	m_pending_zone_y = target_y;
-	m_pending_zone_z = target_z;
+
 
 	// T55: mirror producer B's WorldState publish (CheckZoneLine, further
 	// down in this file, "Phase 7.3: Also update WorldState") so the
 	// pending-zone state this producer stores is visible from GameState
 	// too, not just via the raw EverQuest members. This packet's reply
 	// (ZoneChange_Struct) carries no client heading field, so pass 0.0f --
-	// unlike producer B, this producer never populates m_pending_zone_heading
+	// unlike producer B, this producer never populates m_game_state.world().pendingZoneHeading()
 	// at all. See refactor/T55_position_state_propagation.md.
-	m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, 0.0f);
+	m_game_state.world().setPendingZone(zone_id, target_x, target_y, target_z, 0.0f);
 
 	// Zone-to-zone transition flow:
 	// 1. Disconnect from current zone server
@@ -241,7 +241,7 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// inside a packet callback. Destroying the connection manager from within its
 	// own callback causes issues with libuv handle cleanup.
 	// Instead, we set a flag and let UpdateMovement() handle the disconnect safely.
-	m_zone_change_approved = true;
+	m_game_state.world().setZoneChangeApproved(true);  // T286: only store
 	LOG_TRACE(MOD_ZONE, "Zone change approved, will process disconnect on next update");
 }
 
@@ -259,7 +259,7 @@ void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, f
 		return;
 	}
 
-	if (m_zone_change_requested) {
+	if (m_game_state.world().zoneChangeRequested()) {
 		LOG_DEBUG(MOD_ZONE, "Zone change already pending, ignoring duplicate request");
 		return;
 	}
@@ -324,7 +324,7 @@ void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, f
 	DumpPacket("C->S", HC_OP_ZoneChange, p);
 
 	if (SafeQueueZonePacket(p)) {
-		m_zone_change_requested = true;
+		m_game_state.world().setZoneChangeRequested(true);  // T286: only store
 		LOG_DEBUG(MOD_ZONE, "Zone change request sent to server");
 	} else {
 		LOG_ERROR(MOD_ZONE, "Failed to send zone change request");
@@ -352,14 +352,11 @@ void EverQuest::CleanupZone()
 
 	// Stop any movement
 	StopMovement();
-	m_is_moving = false;
+	m_game_state.player().setMoving(false);
 	m_current_path.clear();
 	m_current_path_index = 0;
-	m_follow_target.clear();
-	m_in_combat_movement = false;
-	m_combat_target.clear();
-
-	// Phase 7.6: Sync combat state reset to GameState
+	m_game_state.player().clearFollowTarget();
+	// Phase 7.6 / T286: CombatState is the only store
 	m_game_state.combat().setInCombatMovement(false);
 	m_game_state.combat().clearCombatTarget();
 
@@ -372,9 +369,9 @@ void EverQuest::CleanupZone()
 	m_game_state.doors().clear();
 
 	// Clear pet state (pet won't exist in new zone)
-	if (m_pet_spawn_id != 0) {
-		m_pet_spawn_id = 0;
-		std::fill(std::begin(m_pet_button_states), std::end(m_pet_button_states), false);
+	if (m_game_state.pet().hasPet()) {
+		// T286: PetState is the only store; OnPetRemoved's clearPet()
+		// zeroes the id and the button states.
 		// Clear pet buffs
 		if (m_buff_manager) {
 			m_buff_manager->clearPetBuffs();
@@ -408,9 +405,11 @@ void EverQuest::CleanupZone()
 	// Clear zone lines
 	m_zone_lines.reset();
 
-	// Reset zone line detection state
-	m_zone_line_triggered = false;
-	m_zone_change_requested = false;
+	// Reset zone line detection state (T286: WorldState is the only store;
+	// resetZoneState() further down clears these too, but this keeps the
+	// ordering the original had)
+	m_game_state.world().setZoneLineTriggered(false);
+	m_game_state.world().setZoneChangeRequested(false);
 
 #ifdef EQT_HAS_GRAPHICS
 	// P17: the "/unloadzone_internal" RendererCommand push that used to live
@@ -432,8 +431,7 @@ void EverQuest::CleanupZone()
 #endif
 
 	// Reset zone connection state flags
-	m_zone_connected = false;
-	m_game_state.world().setZoneConnected(false);
+	m_game_state.world().setZoneConnected(false);  // T286: only store
 	m_zone_session_established = false;
 	m_zone_entry_sent = false;
 	m_weather_received = false;
@@ -448,7 +446,7 @@ void EverQuest::CleanupZone()
 	m_exp_zonein_sent = false;
 	m_send_exp_zonein_received = false;
 	m_server_filter_sent = false;
-	m_client_ready_sent = false;
+	m_game_state.world().setClientReady(false);  // T286: only store
 	m_client_spawned = false;
 
 	// Reset AA/tribute tracking
@@ -630,13 +628,7 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	// Create new ZoneLines instance
 	m_zone_lines = std::make_unique<EQT::ZoneLines>();
 
-	// Reset zone line detection state (both local and WorldState)
-	m_zone_line_triggered = false;
-	m_zone_change_requested = false;
-	m_pending_zone_id = 0;
-	m_last_zone_check_x = m_x;
-	m_last_zone_check_y = m_y;
-	m_last_zone_check_z = m_z;
+	// Reset zone line detection state (T286: WorldState is the only store)
 	m_game_state.world().setZoneLineTriggered(false);
 	m_game_state.world().setZoneChangeRequested(false);
 	m_game_state.world().clearPendingZone();
@@ -773,7 +765,7 @@ void EverQuest::CheckZoneLine()
 	}
 
 	// Skip if a zone change is already in progress
-	if (m_zone_change_requested) {
+	if (m_game_state.world().zoneChangeRequested()) {
 		return;
 	}
 
@@ -789,22 +781,22 @@ void EverQuest::CheckZoneLine()
 
 	// Skip if we haven't moved since last check
 	constexpr float MIN_MOVE_THRESHOLD = 0.1f;
-	float dx = m_x - m_last_zone_check_x;
-	float dy = m_y - m_last_zone_check_y;
-	float dz = m_z - m_last_zone_check_z;
+	float dx = m_x - m_game_state.world().lastZoneCheckX();
+	float dy = m_y - m_game_state.world().lastZoneCheckY();
+	float dz = m_z - m_game_state.world().lastZoneCheckZ();
 	float dist_sq = dx * dx + dy * dy + dz * dz;
 
 	if (dist_sq < MIN_MOVE_THRESHOLD * MIN_MOVE_THRESHOLD) {
 		return;
 	}
 
-	// Update last checked position
-	float old_x = m_last_zone_check_x;
-	float old_y = m_last_zone_check_y;
-	float old_z = m_last_zone_check_z;
-	m_last_zone_check_x = m_x;
-	m_last_zone_check_y = m_y;
-	m_last_zone_check_z = m_z;
+	// Update last checked position. T286: this used to write only the
+	// EverQuest copy, so WorldState's lastZoneCheck* froze at whatever
+	// LoadZoneLines set and never tracked the player again.
+	float old_x = m_game_state.world().lastZoneCheckX();
+	float old_y = m_game_state.world().lastZoneCheckY();
+	float old_z = m_game_state.world().lastZoneCheckZ();
+	m_game_state.world().setLastZoneCheckPosition(m_x, m_y, m_z);
 
 	// Check if currently in a zone line region
 	// The extracted zone lines use BSP coordinates which need to be checked against player position
@@ -840,8 +832,8 @@ void EverQuest::CheckZoneLine()
 		}
 
 		// Debounce: require 500ms cooldown after a trigger before allowing another
-		if (m_zone_line_triggered) {
-			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_zone_line_trigger_time);
+		if (m_game_state.world().zoneLineTriggered()) {
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_game_state.world().zoneLineTriggerTime());
 			if (elapsed.count() < 500) {
 				// Still in cooldown period, ignore
 				return;
@@ -865,42 +857,33 @@ void EverQuest::CheckZoneLine()
 		// check_x/check_y (== m_x/m_y) a few lines above with no swap. This
 		// matches docs/CLAUDE.md's convention #3 (S3D/WLD files are Z-up,
 		// identity vs. client internal coords, no transform needed). So
-		// m_pending_zone_x/y here are in the SAME format producer A stores
+		// m_game_state.world().pendingZoneX()/y here are in the SAME format producer A stores
 		// (client format) -- both producers agree; only the consumer's
 		// comment was wrong (fixed in eq_login_world.cpp, see this unit's
 		// Review).
-		m_zone_line_triggered = true;
-		m_zone_line_trigger_time = now;
-		m_pending_zone_id = result.targetZoneId;
-		m_pending_zone_x = result.targetX;
-		m_pending_zone_y = result.targetY;
-		m_pending_zone_z = result.targetZ;
-		m_pending_zone_heading = result.heading;
-
-		// Phase 7.3: Also update WorldState
+		// Phase 7.3 / T286: WorldState is the only store
 		m_game_state.world().setZoneLineTriggered(true);
 		m_game_state.world().setZoneLineTriggerTime(now);
-		m_game_state.world().setPendingZone(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+		m_game_state.world().setPendingZone(result.targetZoneId, result.targetX,
+		                                    result.targetY, result.targetZ, result.heading);
 
 		LOG_INFO(MOD_ZONE, "Zone line triggered! Target zone: {}, coords: ({:.1f}, {:.1f}, {:.1f}), heading: {:.1f}",
-		        m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading);
+		        m_game_state.world().pendingZoneId(), m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(), m_game_state.world().pendingZoneHeading());
 
 		// Send zone change request to server. Client-initiated (we detected
 		// the zone line ourselves) -- solicited=false (ZoneUnsolicited),
 		// the existing/default behavior; stated explicitly per T52's
 		// ride-along fix at the other call site.
-		RequestZoneChange(m_pending_zone_id, m_pending_zone_x, m_pending_zone_y, m_pending_zone_z, m_pending_zone_heading, /*solicited=*/false);
+		RequestZoneChange(m_game_state.world().pendingZoneId(), m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(), m_game_state.world().pendingZoneHeading(), /*solicited=*/false);
 	} else {
 		// Not in a zone line - clear the triggered flag if we were previously in one
-		if (m_zone_line_triggered) {
+		if (m_game_state.world().zoneLineTriggered()) {
 			// Check if enough time has passed and we're no longer in a zone line
 			auto now = std::chrono::steady_clock::now();
-			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_zone_line_trigger_time);
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_game_state.world().zoneLineTriggerTime());
 			if (elapsed.count() >= 500) {
 				// Cooldown expired and we're not in a zone line, reset state
-				m_zone_line_triggered = false;
-				m_pending_zone_id = 0;
-				// Phase 7.3: Also update WorldState
+				// Phase 7.3 / T286: WorldState is the only store
 				m_game_state.world().setZoneLineTriggered(false);
 				m_game_state.world().clearPendingZone();
 			}
@@ -931,7 +914,7 @@ void EverQuest::FixZ()
 	if (!m_zone_map) {
 		// Log once when following starts
 		static bool logged_no_map = false;
-		if (!logged_no_map && !m_follow_target.empty()) {
+		if (!logged_no_map && !m_game_state.player().followTarget().empty()) {
 			LOG_DEBUG(MOD_MAIN, "FixZ: No zone map loaded - Z-height fixing disabled");
 			logged_no_map = true;
 		}
@@ -944,18 +927,18 @@ void EverQuest::FixZ()
 	float abs_diff = std::abs(z_diff);
 
 	// Always log Z-height info when following for debugging
-	if (!m_follow_target.empty() && s_debug_level >= 1) {
+	if (!m_game_state.player().followTarget().empty() && s_debug_level >= 1) {
 		// Find the entity we're following to compare Z values
 		Entity* target = nullptr;
 		for (const auto& pair : m_entities) {
-			if (pair.second.name == m_follow_target) {
+			if (pair.second.name == m_game_state.player().followTarget()) {
 				target = const_cast<Entity*>(&pair.second);
 				break;
 			}
 		}
 
 		if (target) {
-			LOG_DEBUG(MOD_MAIN, "FixZ: Following {} - My Z: {:.2f}, Target Z: {:.2f}, Map thinks Z should be: {:.2f}, Diff: {:.2f}", m_follow_target, m_z, target->z, new_z, z_diff);
+			LOG_DEBUG(MOD_MAIN, "FixZ: Following {} - My Z: {:.2f}, Target Z: {:.2f}, Map thinks Z should be: {:.2f}, Diff: {:.2f}", m_game_state.player().followTarget(), m_z, target->z, new_z, z_diff);
 		}
 	}
 

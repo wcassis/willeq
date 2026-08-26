@@ -351,7 +351,7 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	snap.playerHeading = m_heading;
 	snap.playerSpawnId = m_my_spawn_id;
 	snap.playerName = m_character;
-	snap.playerLevel = m_level;
+	snap.playerLevel = m_game_state.player().level();
 	snap.skyType = m_zone_sky_type;
 	snap.zoneType = m_zone_type;
 	for (int i = 0; i < 4; i++) {
@@ -589,7 +589,7 @@ void EverQuest::OnPetRemoved() {
 	// PetRemoved bridge event drives closePetWindow() via bridge handler
 	if (m_bridge) {
 		eqt::state::PetRemovedData data;
-		data.spawnId = m_pet_spawn_id;
+		data.spawnId = m_game_state.pet().petSpawnId();
 		data.name = "";
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PetRemoved, std::move(data)));
@@ -663,8 +663,11 @@ void EverQuest::SaveEntityDataToFile(const std::string& filename) {
 
 void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 	// Clear target if this entity was targeted (game state update)
-	if (m_current_target_id == spawn_id) {
-		m_current_target_id = 0;
+	if (m_game_state.combat().targetId() == spawn_id) {
+		// T286: CombatState is the only store. Cleared unconditionally here
+		// (CombatManager::ClearTarget below clears it again, idempotently)
+		// so a build without a CombatManager still drops the target.
+		m_game_state.combat().clearTarget();
 		if (m_combat_manager) {
 			m_combat_manager->ClearTarget();
 		}
@@ -744,7 +747,7 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 
 	// Update position from graphics input
 	// The renderer provides ground-level Z (where player's feet are)
-	// SendMovementUpdate adds m_size/2 to convert to model-center Z for the server
+	// SendMovementUpdate adds m_game_state.player().size()/2 to convert to model-center Z for the server
 	m_x = update.x;
 	m_y = update.y;
 	m_z = update.z;  // Ground-level Z from renderer
@@ -758,7 +761,7 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
 	float speed3D = std::sqrt(speed2D * speed2D + update.dz * update.dz);
 	bool isMoving = (m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
-	m_is_moving = isMoving;
+	m_game_state.player().setMoving(isMoving);
 
 	// Determine if moving backward by comparing velocity direction to heading
 	// Convert heading to radians and get unit vector in heading direction
@@ -776,25 +779,25 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 		// Swimming animations
 		// Animation code 7 = swimming/treading, 6 = swim idle
 		if (isMoving) {
-			m_animation = 7;  // Swim treading (l09)
+			m_game_state.player().setAnimation(7);  // Swim treading (l09)
 		} else {
-			m_animation = 6;  // Swim idle (p06)
+			m_game_state.player().setAnimation(6);  // Swim idle (p06)
 		}
 	} else {
 		// Normal ground animations
 		// Negative animation = play in reverse (e.g., walking backward)
 		if (!isMoving) {
-			m_animation = ANIM_STAND;
+			m_game_state.player().setAnimation(ANIM_STAND);
 		} else if (speed2D > 5.0f) {  // Running threshold
-			m_animation = isMovingBackward ? -ANIM_RUN : ANIM_RUN;
+			m_game_state.player().setAnimation(isMovingBackward ? -ANIM_RUN : ANIM_RUN);
 		} else {
-			m_animation = isMovingBackward ? -ANIM_WALK : ANIM_WALK;
+			m_game_state.player().setAnimation(isMovingBackward ? -ANIM_WALK : ANIM_WALK);
 		}
 	}
 
 	if (s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
-			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_animation,
+			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_game_state.player().animation(),
 			static_cast<int>(m_water_state));
 	}
 
@@ -809,13 +812,25 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 // T269: bank-coin helpers, shared by the two Bank* intent arms below.
 // ============================================================================
 
-uint32_t* EverQuest::BankCoinPool(uint8_t coinType, bool bank) {
+uint32_t EverQuest::BankCoinGet(uint8_t coinType, bool bank) const {
+	const auto& player = m_game_state.player();
 	switch (coinType) {
-	case EQT::COINTYPE_CP: return bank ? &m_bank_copper : &m_copper;
-	case EQT::COINTYPE_SP: return bank ? &m_bank_silver : &m_silver;
-	case EQT::COINTYPE_GP: return bank ? &m_bank_gold : &m_gold;
-	case EQT::COINTYPE_PP: return bank ? &m_bank_platinum : &m_platinum;
-	default: return nullptr;
+	case EQT::COINTYPE_CP: return bank ? player.bankCopper() : player.copper();
+	case EQT::COINTYPE_SP: return bank ? player.bankSilver() : player.silver();
+	case EQT::COINTYPE_GP: return bank ? player.bankGold() : player.gold();
+	case EQT::COINTYPE_PP: return bank ? player.bankPlatinum() : player.platinum();
+	default: return 0;
+	}
+}
+
+void EverQuest::BankCoinSet(uint8_t coinType, bool bank, uint32_t value) {
+	auto& player = m_game_state.player();
+	switch (coinType) {
+	case EQT::COINTYPE_CP: bank ? player.setBankCopper(value) : player.setCopper(value); break;
+	case EQT::COINTYPE_SP: bank ? player.setBankSilver(value) : player.setSilver(value); break;
+	case EQT::COINTYPE_GP: bank ? player.setBankGold(value) : player.setGold(value); break;
+	case EQT::COINTYPE_PP: bank ? player.setBankPlatinum(value) : player.setPlatinum(value); break;
+	default: break;
 	}
 }
 
@@ -840,29 +855,26 @@ int64_t EverQuest::BankCoinCoppers(uint8_t coinType) {
 }
 
 void EverQuest::PublishBankCoinProjection(bool inventoryChanged) {
-	if (inventoryChanged) {
-		m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
-	}
-	m_game_state.player().setBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
-
+	// T286: the counters ARE m_game_state.player()'s -- the mirror-into-
+	// GameState step this used to do here is gone with the duplicate.
 	if (!m_bridge) {
 		return;
 	}
 	if (inventoryChanged) {
 		eqt::state::CurrencyChangedData cdata;
-		cdata.platinum = static_cast<int32_t>(m_platinum);
-		cdata.gold = static_cast<int32_t>(m_gold);
-		cdata.silver = static_cast<int32_t>(m_silver);
-		cdata.copper = static_cast<int32_t>(m_copper);
+		cdata.platinum = static_cast<int32_t>(m_game_state.player().platinum());
+		cdata.gold = static_cast<int32_t>(m_game_state.player().gold());
+		cdata.silver = static_cast<int32_t>(m_game_state.player().silver());
+		cdata.copper = static_cast<int32_t>(m_game_state.player().copper());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
 	}
 
 	eqt::state::BankCurrencyChangedData bdata;
-	bdata.platinum = static_cast<int32_t>(m_bank_platinum);
-	bdata.gold = static_cast<int32_t>(m_bank_gold);
-	bdata.silver = static_cast<int32_t>(m_bank_silver);
-	bdata.copper = static_cast<int32_t>(m_bank_copper);
+	bdata.platinum = static_cast<int32_t>(m_game_state.player().bankPlatinum());
+	bdata.gold = static_cast<int32_t>(m_game_state.player().bankGold());
+	bdata.silver = static_cast<int32_t>(m_game_state.player().bankSilver());
+	bdata.copper = static_cast<int32_t>(m_game_state.player().bankCopper());
 	m_bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 }
@@ -906,7 +918,7 @@ void EverQuest::ProcessBridgeIntents() {
 				if (m_combat_manager) {
 					if (m_combat_manager->SetTarget(i.spawnId)) {
 						SetTrackedTargetId(i.spawnId);
-						m_current_target_id = i.spawnId;
+						// T286: SetTarget already wrote CombatState (the only store)
 
 						auto it = m_entities.find(i.spawnId);
 						if (it != m_entities.end()) {
@@ -1196,9 +1208,9 @@ void EverQuest::ProcessBridgeIntents() {
 					return;
 				}
 
-				uint32_t* src = BankCoinPool(i.coinType, /*bank=*/i.fromBank);
-				uint32_t* dst = BankCoinPool(i.coinType, /*bank=*/!i.fromBank);
-				if (*src < static_cast<uint32_t>(i.amount)) {
+				const uint32_t srcCoins = BankCoinGet(i.coinType, /*bank=*/i.fromBank);
+				const uint32_t dstCoins = BankCoinGet(i.coinType, /*bank=*/!i.fromBank);
+				if (srcCoins < static_cast<uint32_t>(i.amount)) {
 					// The server would silently move only what is there; refuse
 					// instead so the projection and the wire never disagree.
 					AddChatSystemMessage(fmt::format("You do not have {} {} {}.",
@@ -1214,13 +1226,13 @@ void EverQuest::ProcessBridgeIntents() {
 				move.amount = i.amount;
 				SendMoveCoin(move);
 
-				*src -= static_cast<uint32_t>(i.amount);
-				*dst += static_cast<uint32_t>(i.amount);
+				BankCoinSet(i.coinType, /*bank=*/i.fromBank, srcCoins - static_cast<uint32_t>(i.amount));
+				BankCoinSet(i.coinType, /*bank=*/!i.fromBank, dstCoins + static_cast<uint32_t>(i.amount));
 
 				LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
 					i.coinType, i.amount, i.fromBank,
-					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
-					m_platinum, m_gold, m_silver, m_copper);
+					m_game_state.player().bankPlatinum(), m_game_state.player().bankGold(), m_game_state.player().bankSilver(), m_game_state.player().bankCopper(),
+					m_game_state.player().platinum(), m_game_state.player().gold(), m_game_state.player().silver(), m_game_state.player().copper());
 
 				PublishBankCoinProjection(/*inventoryChanged=*/true);
 			}
@@ -1255,14 +1267,14 @@ void EverQuest::ProcessBridgeIntents() {
 					converted = static_cast<int64_t>(i.amount) * (fromCoppers / toCoppers);
 				}
 
-				uint32_t* src = BankCoinPool(i.fromCoinType, /*bank=*/true);
-				uint32_t* dst = BankCoinPool(i.toCoinType, /*bank=*/true);
-				if (*src < static_cast<uint32_t>(i.amount)) {
+				const uint32_t srcCoins = BankCoinGet(i.fromCoinType, /*bank=*/true);
+				const uint32_t dstCoins = BankCoinGet(i.toCoinType, /*bank=*/true);
+				if (srcCoins < static_cast<uint32_t>(i.amount)) {
 					AddChatSystemMessage(fmt::format("You do not have {} {} in the bank.",
 						i.amount, BankCoinName(i.fromCoinType)));
 					return;
 				}
-				if (converted > static_cast<int64_t>(std::numeric_limits<uint32_t>::max() - *dst)) {
+				if (converted > static_cast<int64_t>(std::numeric_limits<uint32_t>::max() - dstCoins)) {
 					AddChatSystemMessage("That conversion would overflow the destination pool.");
 					return;
 				}
@@ -1275,12 +1287,12 @@ void EverQuest::ProcessBridgeIntents() {
 				move.amount = i.amount;
 				SendMoveCoin(move);
 
-				*src -= static_cast<uint32_t>(i.amount);
-				*dst += static_cast<uint32_t>(converted);
+				BankCoinSet(i.fromCoinType, /*bank=*/true, srcCoins - static_cast<uint32_t>(i.amount));
+				BankCoinSet(i.toCoinType, /*bank=*/true, dstCoins + static_cast<uint32_t>(converted));
 
 				LOG_DEBUG(MOD_INVENTORY, "Bank currency convert: {} {} -> {} {}; bank now: {}pp {}gp {}sp {}cp",
 					i.amount, BankCoinName(i.fromCoinType), converted, BankCoinName(i.toCoinType),
-					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+					m_game_state.player().bankPlatinum(), m_game_state.player().bankGold(), m_game_state.player().bankSilver(), m_game_state.player().bankCopper());
 
 				PublishBankCoinProjection(/*inventoryChanged=*/false);
 			}
@@ -1484,32 +1496,30 @@ void EverQuest::UpdateInventoryStats() {
 	}
 
 	// Calculate total stats (base + equipment)
-	int totalStr = static_cast<int>(m_STR) + equipStats.str;
-	int totalSta = static_cast<int>(m_STA) + equipStats.sta;
-	int totalAgi = static_cast<int>(m_AGI) + equipStats.agi;
-	int totalDex = static_cast<int>(m_DEX) + equipStats.dex;
-	int totalWis = static_cast<int>(m_WIS) + equipStats.wis;
-	int totalInt = static_cast<int>(m_INT) + equipStats.int_;
-	int totalCha = static_cast<int>(m_CHA) + equipStats.cha;
+	int totalStr = static_cast<int>(m_game_state.player().STR()) + equipStats.str;
+	int totalSta = static_cast<int>(m_game_state.player().STA()) + equipStats.sta;
+	int totalAgi = static_cast<int>(m_game_state.player().AGI()) + equipStats.agi;
+	int totalDex = static_cast<int>(m_game_state.player().DEX()) + equipStats.dex;
+	int totalWis = static_cast<int>(m_game_state.player().WIS()) + equipStats.wis;
+	int totalInt = static_cast<int>(m_game_state.player().INT()) + equipStats.int_;
+	int totalCha = static_cast<int>(m_game_state.player().CHA()) + equipStats.cha;
 
 	// Max weight capacity is equal to total STR
 	float maxWeight = static_cast<float>(totalStr);
 
-	// Update weight tracking (both local and GameState)
-	m_weight = totalWeight;
-	m_max_weight = maxWeight;
-	m_game_state.player().setWeight(m_weight, m_max_weight);
+	// Update weight tracking (T286: PlayerState is the only store)
+	m_game_state.player().setWeight(totalWeight, maxWeight);
 
 	// Publish stats via bridge (D18a: bridge is sole path to renderer)
 	if (m_bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_cur_hp;
-		data.maxHP = m_max_hp;
-		data.curMana = m_mana;
-		data.maxMana = m_max_mana;
-		data.curEndurance = m_endurance;
-		data.maxEndurance = m_max_endurance;
-		data.level = m_level;
+		data.curHP = m_game_state.player().curHP();
+		data.maxHP = m_game_state.player().maxHP();
+		data.curMana = m_game_state.player().curMana();
+		data.maxMana = m_game_state.player().maxMana();
+		data.curEndurance = m_game_state.player().curEndurance();
+		data.maxEndurance = m_game_state.player().maxEndurance();
+		data.level = m_game_state.player().level();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 
@@ -1519,16 +1529,16 @@ void EverQuest::UpdateInventoryStats() {
 		edata.atk = equipStats.atk;
 		edata.hp = equipStats.hp;
 		edata.mana = equipStats.mana;
-		edata.weight = m_weight;
+		edata.weight = m_game_state.player().weight();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EquipmentStatsChanged, std::move(edata)));
 
 		// Publish CurrencyChanged (updateCharacterStats includes currency)
 		eqt::state::CurrencyChangedData cdata;
-		cdata.platinum = static_cast<int32_t>(m_platinum);
-		cdata.gold = static_cast<int32_t>(m_gold);
-		cdata.silver = static_cast<int32_t>(m_silver);
-		cdata.copper = static_cast<int32_t>(m_copper);
+		cdata.platinum = static_cast<int32_t>(m_game_state.player().platinum());
+		cdata.gold = static_cast<int32_t>(m_game_state.player().gold());
+		cdata.silver = static_cast<int32_t>(m_game_state.player().silver());
+		cdata.copper = static_cast<int32_t>(m_game_state.player().copper());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
 	}
@@ -1541,10 +1551,9 @@ void EverQuest::UpdateInventoryStats() {
 void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 	LOG_DEBUG(MOD_INVENTORY, "RequestLootCorpse: corpseId={}", corpseId);
 
-	// Store the corpse being looted
-	m_player_looting_corpse_id = corpseId;
+	// Store the corpse being looted (T286: PlayerState is the only store)
 	m_game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
-	LOG_TRACE(MOD_INVENTORY, "Set m_player_looting_corpse_id={}", m_player_looting_corpse_id);
+	LOG_TRACE(MOD_INVENTORY, "Set lootingCorpseId={}", m_game_state.player().lootingCorpseId());
 
 	// Send loot request packet - server expects only the corpse ID (4 bytes)
 	EQ::Net::DynamicPacket packet;
@@ -1571,18 +1580,18 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 }
 
 bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
-	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} m_player_looting_corpse_id={} m_my_spawn_id={}",
-		corpseId, slot, autoLoot, m_player_looting_corpse_id, m_my_spawn_id);
+	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} m_game_state.player().lootingCorpseId()={} m_my_spawn_id={}",
+		corpseId, slot, autoLoot, m_game_state.player().lootingCorpseId(), m_my_spawn_id);
 
 	// T268: no window, nothing to take -- eqemu would answer a bare
 	// OP_LootItem with an EndLoot error anyway (Corpse::LootCorpseItem's
 	// IsBeingLootedBy check).
-	if (m_player_looting_corpse_id == 0) {
+	if (m_game_state.player().lootingCorpseId() == 0) {
 		LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: no loot window open");
 		return false;
 	}
 	if (corpseId == 0) {
-		corpseId = m_player_looting_corpse_id;
+		corpseId = m_game_state.player().lootingCorpseId();
 	}
 
 	// Track this slot as pending loot (waiting for server confirmation)
@@ -1630,7 +1639,7 @@ bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 }
 
 int16_t EverQuest::FindLootSlotByName(const std::string& name) const {
-	if (m_player_looting_corpse_id == 0 || name.empty()) {
+	if (m_game_state.player().lootingCorpseId() == 0 || name.empty()) {
 		return -1;
 	}
 	auto lower = [](std::string v) {
@@ -1656,14 +1665,13 @@ int16_t EverQuest::FindLootSlotByName(const std::string& name) const {
 }
 
 void EverQuest::CloseLootWindow(uint16_t corpseId) {
-	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: corpseId={} m_player_looting_corpse_id={}",
-		corpseId, m_player_looting_corpse_id);
+	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: corpseId={} m_game_state.player().lootingCorpseId()={}",
+		corpseId, m_game_state.player().lootingCorpseId());
 
-	// Use passed corpseId, or fall back to m_player_looting_corpse_id if 0
-	uint16_t targetCorpseId = (corpseId != 0) ? corpseId : m_player_looting_corpse_id;
+	// Use passed corpseId, or fall back to the store if 0
+	uint16_t targetCorpseId = (corpseId != 0) ? corpseId : m_game_state.player().lootingCorpseId();
 
 	// Clear the looting state
-	m_player_looting_corpse_id = 0;
 	m_pending_loot_slots.clear();
 	m_game_state.player().clearLootingCorpse();  // Phase 7.7
 
@@ -1946,13 +1954,13 @@ void EverQuest::UpdateDayNightState() {
 	// Day: 6:00 AM (hour 6) to 6:59 PM (hour 18)
 	// Night: 7:00 PM (hour 19) to 5:59 AM (hour 5)
 	bool wasDay = m_is_daytime;
-	m_is_daytime = (m_time_hour >= 6 && m_time_hour < 19);
+	m_is_daytime = (m_game_state.world().timeHour() >= 6 && m_game_state.world().timeHour() < 19);
 
 	// If day/night state changed, notify zone audio manager
 	if (wasDay != m_is_daytime && m_zone_audio_manager) {
 		m_zone_audio_manager->setDayNight(m_is_daytime);
 		LOG_DEBUG(MOD_AUDIO, "Day/night changed to {} (hour {})",
-			m_is_daytime ? "day" : "night", m_time_hour);
+			m_is_daytime ? "day" : "night", m_game_state.world().timeHour());
 	}
 }
 

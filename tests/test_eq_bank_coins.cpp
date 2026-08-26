@@ -19,7 +19,7 @@
 //     FakeUdpTransport (T234 idiom). eqemu sends NOTHING back on a
 //     successful MoveCoin (OPMoveCoin ends in SaveCurrency(), a DB write --
 //     there is no OP_MoneyUpdate / OP_BankerChange echo), so the local
-//     currency projection (EverQuest::m_platinum.. + GameState player())
+//     currency projection (the single GameState player() currency store)
 //     is updated by the arm with the SAME arithmetic the server applies;
 //     these tests pin that projection and that a refused move changes
 //     nothing and sends nothing.
@@ -87,12 +87,11 @@ public:
         eq.setBridge(nullptr);
     }
 
-    // The same two writes ZoneProcessPlayerProfile ends in for currency
-    // (eq.cpp: m_platinum.. then player.setCurrency/setBankCurrency).
+    // The write ZoneProcessPlayerProfile ends in for currency. T286: there
+    // is exactly ONE store now, so the harness seeds exactly one place --
+    // seeding two was what let a reader of the wrong one look correct.
     void setPools(uint32_t pp, uint32_t gp, uint32_t sp, uint32_t cp,
                   uint32_t bpp, uint32_t bgp, uint32_t bsp, uint32_t bcp) {
-        eq.m_platinum = pp; eq.m_gold = gp; eq.m_silver = sp; eq.m_copper = cp;
-        eq.m_bank_platinum = bpp; eq.m_bank_gold = bgp; eq.m_bank_silver = bsp; eq.m_bank_copper = bcp;
         eq.m_game_state.player().setCurrency(pp, gp, sp, cp);
         eq.m_game_state.player().setBankCurrency(bpp, bgp, bsp, bcp);
     }
@@ -249,12 +248,12 @@ TEST(BankCoinIntent, Deposit_SendsInventoryToBankMoveCoin_AndProjectsBothPools) 
         1,0,0,0,  2,0,0,0,  3,0,0,0,  3,0,0,0,  5,0,0,0};
     EXPECT_EQ(pkts[0].body, expected);
 
-    // Projection: EverQuest's own counters AND the GameState the /bank
-    // pool check reads, both pools, other denominations untouched.
-    EXPECT_EQ(h.eq.m_platinum, 5u);
-    EXPECT_EQ(h.eq.m_bank_platinum, 9u);
-    EXPECT_EQ(h.eq.m_gold, 1u);
-    EXPECT_EQ(h.eq.m_bank_gold, 5u);
+    // Projection: the one GameState store the /bank pool check reads,
+    // both pools, other denominations untouched.
+    EXPECT_EQ(h.eq.GetGameState().player().platinum(), 5u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankPlatinum(), 9u);
+    EXPECT_EQ(h.eq.GetGameState().player().gold(), 1u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankGold(), 5u);
     const auto& player = h.eq.GetGameState().player();
     EXPECT_EQ(player.platinum(), 5u);
     EXPECT_EQ(player.bankPlatinum(), 9u);
@@ -283,8 +282,8 @@ TEST(BankCoinIntent, Withdraw_SendsBankToInventoryMoveCoin) {
     EXPECT_EQ(mcs[0].cointype1, 0u);
     EXPECT_EQ(mcs[0].cointype2, 0u);
     EXPECT_EQ(mcs[0].amount, 25);
-    EXPECT_EQ(h.eq.m_copper, 25u);
-    EXPECT_EQ(h.eq.m_bank_copper, 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().copper(), 25u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 0u);
     EXPECT_EQ(h.eq.GetGameState().player().copper(), 25u);
     EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 0u);
 }
@@ -301,8 +300,8 @@ TEST(BankCoinIntent, Deposit_PoolLacksCoins_SendsNothing_ProjectionUnchanged) {
     h.eq.ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
-    EXPECT_EQ(h.eq.m_platinum, 3u);
-    EXPECT_EQ(h.eq.m_bank_platinum, 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().platinum(), 3u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankPlatinum(), 0u);
     EXPECT_EQ(h.eq.GetGameState().player().platinum(), 3u);
     auto [cur, bank] = h.currencyEvents();
     EXPECT_EQ(cur, 0);
@@ -323,8 +322,8 @@ TEST(BankCoinIntent, Move_WindowClosed_SendsNothing) {
     h.eq.ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
-    EXPECT_EQ(h.eq.m_platinum, 10u);
-    EXPECT_EQ(h.eq.m_bank_platinum, 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().platinum(), 10u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankPlatinum(), 0u);
 }
 
 TEST(BankCoinIntent, ConvertUp_SendsBankToBankWithBothCoinTypes_AndProjectsRatio) {
@@ -346,8 +345,8 @@ TEST(BankCoinIntent, ConvertUp_SendsBankToBankWithBothCoinTypes_AndProjectsRatio
     EXPECT_EQ(mcs[0].cointype2, 1u);
     EXPECT_EQ(mcs[0].amount, 30);
     // 30 cp * (1/10) = 3 sp -- eqemu: amount_to_add = take * coppers(from)/coppers(to)
-    EXPECT_EQ(h.eq.m_bank_copper, 0u);
-    EXPECT_EQ(h.eq.m_bank_silver, 4u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankSilver(), 4u);
     EXPECT_EQ(h.eq.GetGameState().player().bankSilver(), 4u);
     EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 0u);
     auto [cur, bank] = h.currencyEvents();
@@ -372,8 +371,8 @@ TEST(BankCoinIntent, ConvertDown_TwoStepsIsHundredToOne) {
     EXPECT_EQ(mcs[0].cointype1, 3u);
     EXPECT_EQ(mcs[0].cointype2, 1u);
     EXPECT_EQ(mcs[0].amount, 2);
-    EXPECT_EQ(h.eq.m_bank_platinum, 0u);
-    EXPECT_EQ(h.eq.m_bank_silver, 200u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankPlatinum(), 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankSilver(), 200u);
 }
 
 TEST(BankCoinIntent, ConvertUp_NotAMultiple_SendsNothing) {
@@ -391,8 +390,8 @@ TEST(BankCoinIntent, ConvertUp_NotAMultiple_SendsNothing) {
     h.eq.ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
-    EXPECT_EQ(h.eq.m_bank_copper, 15u);
-    EXPECT_EQ(h.eq.m_bank_silver, 0u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 15u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankSilver(), 0u);
 }
 
 TEST(BankCoinIntent, Convert_PoolLacksCoins_SendsNothing) {
@@ -407,7 +406,7 @@ TEST(BankCoinIntent, Convert_PoolLacksCoins_SendsNothing) {
     h.eq.ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
-    EXPECT_EQ(h.eq.m_bank_copper, 20u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 20u);
 }
 
 TEST(BankCoinIntent, Convert_SameCoinType_SendsNothing) {
@@ -422,7 +421,7 @@ TEST(BankCoinIntent, Convert_SameCoinType_SendsNothing) {
     h.eq.ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
-    EXPECT_EQ(h.eq.m_bank_copper, 20u);
+    EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 20u);
 }
 
 }  // namespace

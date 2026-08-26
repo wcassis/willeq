@@ -205,7 +205,8 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 	for (const auto& [id, entity] : entities) {
 		if (id == entity_id) {
 			m_current_target_id = entity_id;
-			m_eq->SetCurrentTargetId(entity_id);
+			// T286: EverQuest kept a third copy of the target id; deleted.
+			// PublishTargetChanged below is the single write, into CombatState.
 
 			// Create target info
 			m_current_target_info = std::make_unique<CombatTarget>();
@@ -252,7 +253,7 @@ bool CombatManager::SetTarget(uint16_t entity_id) {
 void CombatManager::ClearTarget() {
 	m_current_target_id = 0;
 	m_current_target_info.reset();
-	m_eq->SetCurrentTargetId(0);
+	// T286: PublishTargetCleared below is the single write, into CombatState.
 
 	// Send clear target packet
 	EQ::Net::DynamicPacket packet;

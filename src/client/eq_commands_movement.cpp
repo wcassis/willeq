@@ -183,7 +183,7 @@ void EverQuest::RegisterMovementCommands()
 	// T140: time MIGRATED to action::CommandProcessor (cmdTime) -- needed a
 	// thin EverQuest wrapper (RequestTimeOfDay(), below, outside this
 	// function) carrying the show/set body verbatim, same recipe as
-	// RequestWarp(): m_time_hour/m_time_minute and m_bridge are private, so
+	// RequestWarp(): m_game_state.world().timeHour()/m_game_state.world().timeMinute() and m_bridge are private, so
 	// EqActionHandler routes through the new method rather than duplicating
 	// the read/write here.
 
@@ -283,7 +283,7 @@ void EverQuest::RequestWarp(const std::string& args)
 }
 
 // T140: time's show/set body, carried verbatim into a thin EverQuest
-// wrapper (same recipe as RequestWarp() above) -- m_time_hour/m_time_minute
+// wrapper (same recipe as RequestWarp() above) -- m_game_state.world().timeHour()/m_game_state.world().timeMinute()
 // and m_bridge are private, so EqActionHandler routes through this rather
 // than duplicating the read/write. No behavior change: same 0-23 range
 // check, same TimeOfDayChanged bridge push on set.
@@ -291,7 +291,7 @@ void EverQuest::RequestTimeOfDay(const std::string& args)
 {
 	if (args.empty()) {
 		// Show current time
-		AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", m_time_hour, m_time_minute));
+		AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", m_game_state.world().timeHour(), m_game_state.world().timeMinute()));
 	} else {
 		// Set time
 		try {
@@ -300,19 +300,21 @@ void EverQuest::RequestTimeOfDay(const std::string& args)
 				AddChatSystemMessage("Hour must be 0-23");
 				return;
 			}
-			m_time_hour = static_cast<uint8_t>(hour);
-			m_time_minute = 0;
+			// T286: WorldState is the only store. /time used to write only
+			// the EverQuest copy, so world().timeHour() kept the server's
+			// value and the two disagreed for the rest of the session.
+			m_game_state.world().setTimeOfDay(static_cast<uint8_t>(hour), 0);
 
 			// Publish TimeOfDayChanged
 			if (m_bridge) {
 				eqt::state::TimeOfDayChangedData tdata;
-				tdata.hour = m_time_hour;
-				tdata.minute = m_time_minute;
+				tdata.hour = m_game_state.world().timeHour();
+				tdata.minute = m_game_state.world().timeMinute();
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TimeOfDayChanged, std::move(tdata)));
 			}
 
-			AddChatSystemMessage(fmt::format("Time set to {:02d}:00", m_time_hour));
+			AddChatSystemMessage(fmt::format("Time set to {:02d}:00", m_game_state.world().timeHour()));
 		} catch (...) {
 			AddChatSystemMessage("Usage: /time [0-23]");
 		}

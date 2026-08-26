@@ -366,7 +366,7 @@ void EverQuest::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 		m_world_connection.reset();
 
 		// Reconnect to world if we're in a zone (needed for zone transfers)
-		if (m_zone_connected && !m_world_server_host.empty()) {
+		if (m_game_state.world().isZoneConnected() && !m_world_server_host.empty()) {
 			LOG_DEBUG(MOD_WORLD, "Reconnecting to world server for zone transfer support");
 			m_world_connection_manager->Connect(m_world_server_host, 9000);
 		}
@@ -508,7 +508,7 @@ void EverQuest::WorldSendClientAuth()
 	// Set zoning flag at offset 188 of LoginInfo
 	// If we're already in a zone (reconnecting for zone-to-zone), set zoning = 1
 	// Otherwise, set zoning = 0 (fresh login from character select)
-	uint8_t zoning_flag = (m_zone_connected || m_zone_change_requested) ? 1 : 0;
+	uint8_t zoning_flag = (m_game_state.world().isZoneConnected() || m_game_state.world().zoneChangeRequested()) ? 1 : 0;
 	p.PutUInt8(2 + 188, zoning_flag);
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
@@ -849,16 +849,16 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ZONE, "Zone server info received: {}:{}", new_zone_host, new_zone_port);
 
 	// Check if this is a zone transition (we're already connected to a zone)
-	bool is_zone_transition = m_zone_connected || m_zone_connection != nullptr;
+	bool is_zone_transition = m_game_state.world().isZoneConnected() || m_zone_connection != nullptr;
 
 	if (is_zone_transition) {
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
 
 		// Set player position to pending zone coordinates if we have them.
 		//
-		// T52 correction: this comment used to claim m_pending_zone_x/y were
+		// T52 correction: this comment used to claim m_game_state.world().pendingZoneX()/y were
 		// in SERVER format (x=server_x, y=server_y) and applied a second
-		// x/y swap here. That was wrong. Every producer of m_pending_zone_x/y
+		// x/y swap here. That was wrong. Every producer of m_game_state.world().pendingZoneX()/y
 		// -- ZoneProcessZoneChange (eq_zone.cpp, the server-approved-teleport
 		// path), CheckZoneLine (eq_zone.cpp, the zone-line path, which stores
 		// its target straight from the zone's own WLD-derived zone-line data,
@@ -873,7 +873,7 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		//
 		// Separately noted, not fixed here: `is_zone_transition` above is
 		// always false in the traced live flows (ProcessDeferredZoneChange
-		// always calls DisconnectFromZone(), clearing m_zone_connected and
+		// always calls DisconnectFromZone(), clearing m_game_state.world().isZoneConnected() and
 		// m_zone_connection, before WorldProcessZoneServerInfo ever runs),
 		// so this whole block is currently dead code in every path this
 		// unit could exercise (#goto and real zone-line crossings both
@@ -881,10 +881,10 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		// from the subsequent PlayerProfile packet instead, never from
 		// here). Fixed as a correctness hardening for whenever that
 		// reachability changes, not because it explains any live symptom.
-		if (m_pending_zone_id != 0) {
+		if (m_game_state.world().pendingZoneId() != 0) {
 			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> m_x={:.1f}, m_y={:.1f}",
-				m_pending_zone_x, m_pending_zone_y, m_pending_zone_z,
-				m_pending_zone_x, m_pending_zone_y);
+				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(),
+				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY());
 			// T55: route through SetPosition/SetHeading so the state layer's
 			// player position (m_game_state.player()) is written too, not
 			// just the raw m_x/m_y/m_z members -- the T39 pattern ("setters
@@ -894,9 +894,9 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 			// traced production flow (is_zone_transition is always false),
 			// but is fixed as hardening for whenever that reachability
 			// changes, same rationale T52 used for its own fix here.
-			SetPosition(m_pending_zone_x, m_pending_zone_y, m_pending_zone_z);
-			if (m_pending_zone_heading > 0) {
-				SetHeading(m_pending_zone_heading);
+			SetPosition(m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ());
+			if (m_game_state.world().pendingZoneHeading() > 0) {
+				SetHeading(m_game_state.world().pendingZoneHeading());
 			}
 		}
 
@@ -908,12 +908,10 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	m_zone_server_host = new_zone_host;
 	m_zone_server_port = new_zone_port;
 
-	// Clear pending zone info
-	m_pending_zone_id = 0;
-	m_pending_zone_x = 0.0f;
-	m_pending_zone_y = 0.0f;
-	m_pending_zone_z = 0.0f;
-	m_pending_zone_heading = 0.0f;
+	// Clear pending zone info (T286: WorldState is the only store; this
+	// clear had no WorldState counterpart before, so the GameState copy
+	// kept a stale pending zone across the transition)
+	m_game_state.world().clearPendingZone();
 
 	// Send WorldComplete to acknowledge
 	WorldSendWorldComplete();

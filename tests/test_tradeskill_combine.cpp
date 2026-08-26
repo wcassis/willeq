@@ -111,14 +111,15 @@ public:
         eq.setBridge(&bridge);
         eq.m_zone_connection = conn;
         // SendTradeSkillCombine gates on IsFullyZonedIn() -- all three of
-        // these, not just the connection.
-        eq.m_zone_connected = true;
-        eq.m_client_ready_sent = true;
+        // these, not just the connection. T286: zone-connected and
+        // client-ready have ONE store (WorldState), so the harness seeds
+        // one place instead of two.
+        eq.GetGameState().world().setZoneConnected(true);
+        eq.GetGameState().world().setClientReady(true);
         eq.m_update_running = true;
         eq.m_my_spawn_id = kMySpawnId;
 
         dispatcher.setActionHandler(&handler);
-        eq.GetGameState().world().setZoneConnected(true);
     }
 
     ~CombineHarness() {

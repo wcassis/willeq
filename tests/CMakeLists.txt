@@ -490,6 +490,14 @@ ADD_EXECUTABLE(test_reachability_sweep
 TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_reachability_sweep)
 
+# T286: parses eq.h and include/client/state/*.h and asserts EverQuest keeps
+# no second copy of a state module's member, except the documented list.
+ADD_EXECUTABLE(test_duplicate_state_stores
+    test_duplicate_state_stores.cpp
+)
+TARGET_LINK_LIBRARIES(test_duplicate_state_stores GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_duplicate_state_stores)
+
 # T266: EQE1TextureIndex::resolve -- candidate fast path, R2 late-open for a
 # name no candidate holds (the T263 post-load spawn FATAL), nothing for a name
 # in no archive (decision #2 keeps that fatal).

@@ -132,7 +132,7 @@ void EverQuest::RegisterSpellCommands()
 	// private) -- same recipe as T136's RequestVendorToggle. train's
 	// pre-existing sender (RequestTrainerWindow()) was already public and
 	// unchanged, but its guard body (target/npc_type/class-range/distance/
-	// trained_class checks) reads m_entities/m_class, both private, so it
+	// trained_class checks) reads m_entities/m_game_state.player().classId(), both private, so it
 	// moved into a new RequestTraining() wrapper carrying that body
 	// verbatim rather than being reimplemented against a new public
 	// entity-by-id accessor (T134's rule: stateful guards stay in the
@@ -406,7 +406,7 @@ void EverQuest::RequestBankToggle()
 // T140: train's target/npc_type/class-range/distance/trained_class guard
 // body, carried verbatim into a thin EverQuest wrapper. RequestTrainerWindow()
 // (eq_merchant.cpp) was already public and is called unchanged at the end --
-// this method exists only because the GUARD reads m_entities/m_class/
+// this method exists only because the GUARD reads m_entities/m_game_state.player().classId()/
 // m_combat_manager, all private, and T134's rule keeps stateful guards in
 // the layer owning the state rather than duplicating them against a new
 // public entity-by-id accessor. No behavior change, including the T50
@@ -485,9 +485,9 @@ void EverQuest::RequestTraining()
 	// configuration now.
 	constexpr uint8_t TRAINER_CLASS_OFFSET = CLASS_WARRIOR_GM - 1; // WarriorGM(20) trains Warrior(1)
 	uint32_t trained_class = static_cast<uint32_t>(target.class_id) - TRAINER_CLASS_OFFSET;
-	if (trained_class != m_class) {
+	if (trained_class != m_game_state.player().classId()) {
 		AddChatSystemMessage(fmt::format("{} trains {}s; you are a {}.",
-			target.name, GetClassName(trained_class), GetClassName(m_class)));
+			target.name, GetClassName(trained_class), GetClassName(m_game_state.player().classId())));
 		return;
 	}
 

@@ -395,8 +395,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		if (isMeleeDamage && targetAlive) {
 			// Calculate damage percentage for animation selection
 			float damagePercent = 0.0f;
-			if (target_id == m_my_spawn_id && m_max_hp > 0) {
-				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			if (target_id == m_my_spawn_id && m_game_state.player().maxHP() > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != m_entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
@@ -419,8 +419,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
 			// Non-melee damage (spells, DoT, environmental) - play immediately
 			float damagePercent = 0.0f;
-			if (target_id == m_my_spawn_id && m_max_hp > 0) {
-				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_max_hp)) * 100.0f;
+			if (target_id == m_my_spawn_id && m_game_state.player().maxHP() > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != m_entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;

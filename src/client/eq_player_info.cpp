@@ -367,21 +367,9 @@ const std::string& EverQuest::GetPendingInviterName() const
 	return m_game_state.group().pendingInviterName();
 }
 
-void EverQuest::SyncGroupMemberToGameState(int index, const GroupMember& member)
-{
-	// Convert from EQ::GroupMember (snake_case) to eqt::state::GroupMember (camelCase)
-	eqt::state::GroupMember stateMember;
-	stateMember.name = member.name;
-	stateMember.spawnId = member.spawn_id;
-	stateMember.level = member.level;
-	stateMember.classId = member.class_id;
-	stateMember.hpPercent = member.hp_percent;
-	stateMember.manaPercent = member.mana_percent;
-	stateMember.isLeader = member.is_leader;
-	stateMember.inZone = member.in_zone;
-
-	m_game_state.group().setMember(index, stateMember);
-}
+// T286: SyncGroupMemberToGameState() is DELETED. It existed only to copy
+// EverQuest's own GroupMember array into GroupState's after every write;
+// with one array and one struct there is nothing left to convert.
 
 // ============================================================================
 // Cluster 4: Tasks/DZ/BeginCast/ManaChange/Buff/PetBuff
@@ -508,8 +496,7 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	uint32_t spell_id = p.GetUInt32(10);   // offset 8 in struct
 	uint8_t keepcasting = p.GetUInt8(14);  // offset 12 in struct
 
-	// Update player mana tracking (both local and GameState)
-	m_mana = new_mana;
+	// Update player mana tracking (T286: PlayerState is the only store)
 	m_game_state.player().setCurMana(new_mana);
 
 	// Update our entity if we're tracking it
@@ -530,21 +517,20 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 		m_spell_manager->handleManaChange(new_mana, stamina, spell_id);
 	}
 
-	// Also update endurance tracking (both local and GameState)
-	m_endurance = stamina;
-	m_game_state.player().setEndurance(stamina, m_max_endurance);
+	// Also update endurance tracking (T286: PlayerState is the only store)
+	m_game_state.player().setEndurance(stamina, m_game_state.player().maxEndurance());
 
 	// Update combat stats with new mana value
 	if (m_combat_manager) {
 		CombatStats stats;
-		stats.current_hp = m_cur_hp;
-		stats.max_hp = m_max_hp;
+		stats.current_hp = m_game_state.player().curHP();
+		stats.max_hp = m_game_state.player().maxHP();
 		stats.current_mana = new_mana;
-		stats.max_mana = m_max_mana;
+		stats.max_mana = m_game_state.player().maxMana();
 		stats.current_endurance = stamina;
 		stats.max_endurance = 0;
-		stats.hp_percent = (m_max_hp > 0) ? (static_cast<float>(m_cur_hp) * 100.0f / static_cast<float>(m_max_hp)) : 100.0f;
-		stats.mana_percent = (m_max_mana > 0) ? (static_cast<float>(new_mana) * 100.0f / static_cast<float>(m_max_mana)) : 100.0f;
+		stats.hp_percent = (m_game_state.player().maxHP() > 0) ? (static_cast<float>(m_game_state.player().curHP()) * 100.0f / static_cast<float>(m_game_state.player().maxHP())) : 100.0f;
+		stats.mana_percent = (m_game_state.player().maxMana() > 0) ? (static_cast<float>(new_mana) * 100.0f / static_cast<float>(m_game_state.player().maxMana())) : 100.0f;
 		stats.endurance_percent = 100.0f;
 		m_combat_manager->UpdateCombatStats(stats);
 	}
@@ -556,13 +542,13 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	// Publish PlayerStatsChanged when mana/endurance changes
 	if (m_bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_cur_hp;
-		data.maxHP = m_max_hp;
+		data.curHP = m_game_state.player().curHP();
+		data.maxHP = m_game_state.player().maxHP();
 		data.curMana = new_mana;
-		data.maxMana = m_max_mana;
+		data.maxMana = m_game_state.player().maxMana();
 		data.curEndurance = stamina;
-		data.maxEndurance = m_max_endurance;
-		data.level = m_level;
+		data.maxEndurance = m_game_state.player().maxEndurance();
+		data.level = m_game_state.player().level();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
@@ -833,14 +819,14 @@ void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	// Verify this is for our pet
-	if (m_pet_spawn_id == 0) {
+	if (m_game_state.pet().petSpawnId() == 0) {
 		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow but no pet tracked, petid={}", petBuffs->petid);
 		return;
 	}
 
-	if (petBuffs->petid != m_pet_spawn_id) {
+	if (petBuffs->petid != m_game_state.pet().petSpawnId()) {
 		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow for different pet: {} (our pet: {})",
-			petBuffs->petid, m_pet_spawn_id);
+			petBuffs->petid, m_game_state.pet().petSpawnId());
 		return;
 	}
 
@@ -974,7 +960,7 @@ void EverQuest::PerformEmote(uint32_t animation)
 	
 	// Some emotes should stop movement
 	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
-		if (m_is_moving) {
+		if (m_game_state.player().isMoving()) {
 			StopMovement();
 		}
 	}
@@ -986,12 +972,11 @@ void EverQuest::PerformEmote(uint32_t animation)
 
 void EverQuest::SetAFK(bool afk)
 {
-	if (m_is_afk == afk) {
+	if (m_game_state.player().isAFK() == afk) {
 		return;
 	}
 
-	m_is_afk = afk;
-	m_game_state.player().setAFK(afk);  // Phase 7.8
+	m_game_state.player().setAFK(afk);  // Phase 7.8 / T286: only store
 	SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
 
 	if (s_debug_level >= 1) {
@@ -1001,12 +986,11 @@ void EverQuest::SetAFK(bool afk)
 
 void EverQuest::SetAnonymous(bool anon)
 {
-	if (m_is_anonymous == anon) {
+	if (m_game_state.player().isAnonymous() == anon) {
 		return;
 	}
 
-	m_is_anonymous = anon;
-	m_game_state.player().setAnonymous(anon);  // Phase 7.8
+	m_game_state.player().setAnonymous(anon);  // Phase 7.8 / T286: only store
 	SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
 
 	if (s_debug_level >= 1) {
@@ -1016,12 +1000,11 @@ void EverQuest::SetAnonymous(bool anon)
 
 void EverQuest::SetRoleplay(bool rp)
 {
-	if (m_is_roleplay == rp) {
+	if (m_game_state.player().isRoleplay() == rp) {
 		return;
 	}
 
-	m_is_roleplay = rp;
-	m_game_state.player().setRoleplay(rp);  // Phase 7.8
+	m_game_state.player().setRoleplay(rp);  // Phase 7.8 / T286: only store
 	SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
 	if (s_debug_level >= 1) {
@@ -1031,13 +1014,13 @@ void EverQuest::SetRoleplay(bool rp)
 
 void EverQuest::StartCampTimer()
 {
-	if (m_is_camping) {
+	if (m_game_state.player().isCamping()) {
 		return;  // Already camping
 	}
 
-	m_is_camping = true;
-	m_camp_start_time = std::chrono::steady_clock::now();
-	m_game_state.player().setCamping(true);  // Phase 7.8
+	// Phase 7.8 / T286: PlayerState is the only store, start time included
+	m_game_state.player().setCamping(true);
+	m_game_state.player().setCampStartTime(std::chrono::steady_clock::now());
 
 	// Send OP_Camp to server to notify we're camping
 	SendCamp();
@@ -1049,12 +1032,11 @@ void EverQuest::StartCampTimer()
 
 void EverQuest::CancelCamp()
 {
-	if (!m_is_camping) {
+	if (!m_game_state.player().isCamping()) {
 		return;
 	}
 
-	m_is_camping = false;
-	m_game_state.player().setCamping(false);  // Phase 7.8
+	m_game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
 	AddChatSystemMessage("You are no longer camping.");
 
 	if (s_debug_level >= 1) {
@@ -1064,17 +1046,16 @@ void EverQuest::CancelCamp()
 
 void EverQuest::UpdateCampTimer()
 {
-	if (!m_is_camping) {
+	if (!m_game_state.player().isCamping()) {
 		return;
 	}
 
 	auto now = std::chrono::steady_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_camp_start_time).count();
+	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_game_state.player().campStartTime()).count();
 
 	if (elapsed >= CAMP_TIMER_SECONDS) {
 		// Camp timer complete, send logout to server
-		m_is_camping = false;
-		m_game_state.player().setCamping(false);  // Phase 7.8
+		m_game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
 		AddChatSystemMessage("You have camped.");
 
 		// Send OP_Logout to server - server will respond with OP_LogoutReply
@@ -1125,7 +1106,7 @@ void EverQuest::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
 	// the call stack; the next loop iteration then dereferences a dangling m_transport
 	// (use-after-free crash — reproduced via GM fast-camp, which triggers an
 	// almost-immediate OP_LogoutReply). Defer to UpdateMovement(), which — like the
-	// existing m_zone_change_approved deferral — runs outside any callback context.
+	// existing m_game_state.world().zoneChangeApproved() deferral — runs outside any callback context.
 	m_pending_logout_disconnect = true;
 }
 
@@ -1481,7 +1462,7 @@ void EverQuest::SendCorpseDrag(const std::string& corpse_name)
 	strncpy(drag.DraggerName, m_character.c_str(), 63);
 	packet.PutData(2, &drag, sizeof(drag));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		m_is_dragging_corpse = true;
 		m_dragged_corpse_name = corpse_name;
@@ -1506,7 +1487,7 @@ void EverQuest::SendCorpseDrop()
 	strncpy(drop.DraggerName, m_character.c_str(), 63);
 	packet.PutData(2, &drop, sizeof(drop));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Dropped corpse: {}", m_dragged_corpse_name);
 		AddChatSystemMessage(fmt::format("You stop dragging {}.", m_dragged_corpse_name));
@@ -1538,7 +1519,7 @@ void EverQuest::SendConsiderCorpse(uint32_t corpse_id)
 	con.targetid = corpse_id;
 	packet.PutData(2, &con, sizeof(con));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Considering corpse ID: {}", corpse_id);
 	}
@@ -1554,7 +1535,7 @@ void EverQuest::SendConsent(const std::string& player_name)
 	packet.PutUInt16(0, HC_OP_Consent);
 	packet.PutString(2, player_name);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Granting corpse consent to: {}", player_name);
 		AddChatSystemMessage(fmt::format("You have granted {} permission to drag your corpse.", player_name));
@@ -1567,7 +1548,7 @@ void EverQuest::SendConsentDeny(const std::string& player_name)
 	packet.PutUInt16(0, HC_OP_ConsentDeny);
 	packet.PutString(2, player_name);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Denying corpse consent for: {}", player_name);
 		AddChatSystemMessage(fmt::format("You have denied {} permission to drag your corpse.", player_name));
@@ -1619,7 +1600,7 @@ void EverQuest::SendAssist(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_Assist);
 	packet.PutUInt32(2, target_id);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Assist request for target ID: {}", target_id);
 	}
@@ -1631,7 +1612,7 @@ void EverQuest::SendAssistGroup(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_AssistGroup);
 	packet.PutUInt32(2, target_id);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Group assist request for target ID: {}", target_id);
 	}
@@ -1673,14 +1654,14 @@ void EverQuest::SendAssistGroup(uint32_t target_id)
 
 void EverQuest::SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper)
 {
-	if (!m_in_group) {
+	if (!m_game_state.group().inGroup()) {
 		AddChatSystemMessage("You are not in a group.");
 		return;
 	}
 
 	// Check if we have enough money
 	uint64_t total_copper = copper + silver * 10 + gold * 100 + platinum * 1000;
-	uint64_t my_copper = m_copper + m_silver * 10 + m_gold * 100 + m_platinum * 1000;
+	uint64_t my_copper = m_game_state.player().copper() + m_game_state.player().silver() * 10 + m_game_state.player().gold() * 100 + m_game_state.player().platinum() * 1000;
 
 	if (total_copper > my_copper) {
 		AddChatSystemMessage("You don't have that much money.");
@@ -1697,7 +1678,7 @@ void EverQuest::SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uin
 	split.copper = copper;
 	packet.PutData(2, &split, sizeof(split));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Splitting {}p {}g {}s {}c with group", platinum, gold, silver, copper);
 		AddChatSystemMessage(fmt::format("You split {}p {}g {}s {}c with your group.",
@@ -1715,7 +1696,7 @@ void EverQuest::SendLFGCommand(bool lfg_on)
 	packet.PutUInt16(0, HC_OP_LFGCommand);
 	packet.PutUInt32(2, lfg_on ? 1 : 0);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		m_is_lfg = lfg_on;
 		LOG_INFO(MOD_MAIN, "LFG status: {}", lfg_on ? "ON" : "OFF");
@@ -1760,7 +1741,7 @@ void EverQuest::SendShielding(uint32_t target_id)
 	shield.target_id = target_id;
 	packet.PutData(2, &shield, sizeof(shield));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Shielding target ID: {}", target_id);
 	}
@@ -1855,20 +1836,14 @@ void EverQuest::ZoneProcessBankerChange(const EQ::Net::Packet &p)
 	const EQT::BankerChange_Struct* bank = reinterpret_cast<const EQT::BankerChange_Struct*>(
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
-	// Update bank currency
-	m_bank_platinum = bank->platinum;
-	m_bank_gold = bank->gold;
-	m_bank_silver = bank->silver;
-	m_bank_copper = bank->copper;
-
-	// Also update GameState
+	// Update bank currency (T286: PlayerState is the only store)
 	m_game_state.player().setBankPlatinum(bank->platinum);
 	m_game_state.player().setBankGold(bank->gold);
 	m_game_state.player().setBankSilver(bank->silver);
 	m_game_state.player().setBankCopper(bank->copper);
 
 	LOG_DEBUG(MOD_MAIN, "Bank updated: {}p {}g {}s {}c",
-		m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+		m_game_state.player().bankPlatinum(), m_game_state.player().bankGold(), m_game_state.player().bankSilver(), m_game_state.player().bankCopper());
 }
 
 // ============================================================================
@@ -1880,7 +1855,7 @@ void EverQuest::SendSave()
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_Save);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Character save requested");
 		AddChatSystemMessage("Saving character...");
@@ -1948,7 +1923,7 @@ void EverQuest::SendDuelRequest(uint32_t target_id)
 	duel.duel_target = target_id;
 	packet.PutData(2, &duel, sizeof(duel));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		m_has_pending_duel = true;
 		m_duel_target_id = target_id;
@@ -1967,7 +1942,7 @@ void EverQuest::SendDuelAccept(uint32_t target_id)
 	duel.duel_target = m_my_spawn_id;
 	packet.PutData(2, &duel, sizeof(duel));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		m_is_dueling = true;
 		m_has_pending_duel = false;
@@ -1988,7 +1963,7 @@ void EverQuest::SendDuelDecline(uint32_t target_id)
 	response.unknown = 0;
 	packet.PutData(2, &response, sizeof(response));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		m_has_pending_duel = false;
 		m_duel_initiator_id = 0;
@@ -2039,7 +2014,7 @@ void EverQuest::SendBindWound(uint32_t target_id)
 	bw.unknown6 = 0;
 	packet.PutData(2, &bw, sizeof(bw));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Bind wound on target: {}", target_id);
 	}
@@ -2051,7 +2026,7 @@ void EverQuest::SendTrackTarget(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_TrackTarget);
 	packet.PutUInt32(2, target_id);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Track target: {}", target_id);
 	}
@@ -2072,7 +2047,7 @@ void EverQuest::SendSurname(const std::string& surname)
 	strncpy(sn.lastname, surname.c_str(), 31);
 	packet.PutData(2, &sn, sizeof(sn));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Set surname to: {}", surname);
 		AddChatSystemMessage(fmt::format("Requesting surname: {}", surname));
@@ -2108,7 +2083,7 @@ void EverQuest::SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t ey
 	m_test_last_face_change.body.face = face;
 	m_test_last_face_change.body.valid = true;
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Face change requested");
 	}
@@ -2128,7 +2103,7 @@ void EverQuest::SendRandom(uint32_t low, uint32_t high)
 	rnd.high = high;
 	packet.PutData(2, &rnd, sizeof(rnd));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Random {} to {}", low, high);
 	}
@@ -2161,7 +2136,7 @@ void EverQuest::SendFindPerson(uint32_t npc_id)
 	fp.client_pos.z = m_z;
 	packet.PutData(2, &fp, sizeof(fp));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Find person request for NPC: {}", npc_id);
 	}
@@ -2185,7 +2160,7 @@ void EverQuest::SendRewind()
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_Rewind);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Rewind requested");
 		AddChatSystemMessage("Attempting to rewind to a safe position...");
@@ -2197,7 +2172,7 @@ void EverQuest::SendYellForHelp()
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_YellForHelp);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Yelling for help!");
 		AddChatSystemMessage("You yell for help!");
@@ -2213,7 +2188,7 @@ void EverQuest::SendReport(const std::string& report_text)
 	// For simplicity, we'll just send minimal data
 	packet.PutString(6, report_text);
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Report submitted");
 		AddChatSystemMessage("Your report has been submitted.");
@@ -2241,7 +2216,7 @@ void EverQuest::SendFriendsWho(const std::string& friends_list)
 	// NUL terminator is load-bearing (Packet::PutString does not write one).
 	packet.PutCString(2, friends_list.c_str());
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Friends who requested for: {}", friends_list);
 	}

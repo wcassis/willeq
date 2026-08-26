@@ -82,9 +82,13 @@ bool EqActionHandler::isValidPetCommand(uint8_t command) {
 
 void EqActionHandler::updateRendererTargetInfo(uint16_t spawnId) {
     // D20e1: TargetChanged event is already published by ProcessBridgeIntents
-    // handler in eq.cpp when TargetIntent is processed. This method only
-    // needs to update the game-state target ID.
-    m_eq.SetCurrentTargetId(spawnId);
+    // handler in eq.cpp when TargetIntent is processed.
+    // T286: this used to write EverQuest's own copy of the target id -- a
+    // third store next to CombatManager's and CombatState's, and one that
+    // was written even when the CombatManager::SetTarget just above it had
+    // FAILED. The copy is gone; CombatManager's SetTarget/ClearTarget/
+    // CycleTargets are the writers, into CombatState, and only on success.
+    (void)spawnId;
 }
 
 std::string EqActionHandler::channelToString(action::ChatChannel channel) {
@@ -261,11 +265,11 @@ void EqActionHandler::targetSelf() {
 
 void EqActionHandler::targetGroupMember(int index) {
     const GroupMember* member = m_eq.GetGroupMember(index);
-    if (member && member->spawn_id != 0) {
+    if (member && member->spawnId != 0) {
         auto* combat = getCombatManager();
         if (combat) {
-            combat->SetTarget(member->spawn_id);
-            updateRendererTargetInfo(member->spawn_id);
+            combat->SetTarget(member->spawnId);
+            updateRendererTargetInfo(member->spawnId);
         }
     }
 }

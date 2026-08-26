@@ -21,7 +21,7 @@ void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 	gm.zone_id = zone_id;
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM zone request: {} to zone {}", charname, zone_id);
 	}
@@ -65,7 +65,7 @@ void EverQuest::SendGMSummon(const std::string& charname)
 		static_cast<const uint8_t*>(packet.Data()),
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, m_x, m_y, m_z);
 	}
@@ -82,7 +82,7 @@ void EverQuest::SendGMGoto(const std::string& charname)
 	strncpy(gm.gmname, m_character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM goto: {}", charname);
 	}
@@ -99,7 +99,7 @@ void EverQuest::SendGMFind(const std::string& charname)
 	strncpy(gm.gmname, m_character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "GM find: {}", charname);
 	}
@@ -124,7 +124,7 @@ void EverQuest::SendGMKick(const std::string& charname)
 	strncpy(gm.gmname, m_character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM kick: {}", charname);
 	}
@@ -141,7 +141,7 @@ void EverQuest::SendGMKill(const std::string& charname)
 	strncpy(gm.gmname, m_character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM kill: {}", charname);
 	}
@@ -179,7 +179,7 @@ void EverQuest::SendGMHideMe(bool hide)
 		static_cast<const uint8_t*>(packet.Data()),
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
 	}
@@ -214,7 +214,7 @@ void EverQuest::SendGMEmoteZone(const std::string& text)
 	strncpy(body, text.c_str(), sizeof(body) - 1);
 	packet.PutData(2, body, sizeof(body));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM zone emote: {}", text);
 	}
@@ -232,7 +232,7 @@ void EverQuest::SendGMLastName(const std::string& charname, const std::string& l
 	strncpy(gm.lastname, lastname.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_zone_connected) {
+	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM set lastname for {}: {}", charname, lastname);
 	}

@@ -102,7 +102,7 @@ bool IsAllDigits(const std::string& s)
 
 void EverQuest::RequestCloseTrainer()
 {
-	if (m_trainer_npc_id == 0) {
+	if (m_game_state.player().trainerNpcId() == 0) {
 		AddChatSystemMessage("You are not interacting with a trainer.");
 		return;
 	}
@@ -121,7 +121,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 {
 	const std::string arg = Trim(args);
 
-	if (m_trainer_npc_id == 0) {
+	if (m_game_state.player().trainerNpcId() == 0) {
 		AddChatSystemMessage(
 			"You are not interacting with a trainer. Target your guildmaster and use /train.");
 		return;
@@ -196,7 +196,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 
 	const uint32_t cap = GetTrainerSkillCap(skillId);
 	if (cap == 0) {
-		AddChatSystemMessage(fmt::format("{} cannot train you in {}.", m_trainer_name, label));
+		AddChatSystemMessage(fmt::format("{} cannot train you in {}.", m_game_state.player().trainerName(), label));
 		return;
 	}
 
@@ -208,7 +208,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 		// The server's MORE_SKILLED_THAN_I branch, said up front.
 		AddChatSystemMessage(fmt::format(
 			"You are already more skilled in {} than {} can teach ({} of {}).",
-			label, m_trainer_name, current, cap));
+			label, m_game_state.player().trainerName(), current, cap));
 		return;
 	}
 
@@ -226,7 +226,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 	}
 
 	LOG_DEBUG(MOD_MAIN, "T280 /train: skill {} ({}) cur={} cap={} cost={}c trainer={}",
-		skillId, label, current, cap, cost, m_trainer_npc_id);
+		skillId, label, current, cap, cost, m_game_state.player().trainerNpcId());
 
 	// Nothing local changes here. The new value arrives as OP_SkillUpdate.
 	m_bridge->pushIntent(eqt::events::TrainSkillIntent{skillId});
@@ -234,13 +234,13 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 
 void EverQuest::ListTrainableSkills()
 {
-	if (m_trainer_npc_id == 0) {
+	if (m_game_state.player().trainerNpcId() == 0) {
 		AddChatSystemMessage("You are not interacting with a trainer.");
 		return;
 	}
 
 	AddChatSystemMessage(fmt::format("=== {} can train ({} training points) ===",
-		m_trainer_name, GetPracticePoints()));
+		m_game_state.player().trainerName(), GetPracticePoints()));
 
 	size_t shown = 0;
 	for (uint8_t id = 0; id < EQ::MAX_SKILL_ID; ++id) {
