@@ -141,7 +141,26 @@ Entity* EntityManager::getEntityMutable(uint16_t spawnId) {
 // m_entities is a std::map keyed by spawn id, so iteration is ascending and
 // "first seen in a tier" means "lowest spawn id in that tier" -- the result
 // does not depend on hash order and does not move between runs.
+//
+// T244: the tier is the PRIMARY key; when a reference position is supplied
+// (the /target form), squared distance from it is the SECONDARY key, so two
+// living substring matches resolve to the nearer one rather than the one
+// that happened to spawn first (T240 run 1: `/target excavator` picked an
+// out-of-range roamer over the one at the caster's feet). Ties -- same
+// tier, same distance, or no position given -- still fall to the lowest
+// spawn id, so the no-position overload is byte-for-byte T173's behaviour.
 const Entity* EntityManager::findEntityByName(const std::string& name) const {
+    return findEntityByNameRanked(name, nullptr);
+}
+
+const Entity* EntityManager::findEntityByName(const std::string& name,
+                                              float px, float py, float pz) const {
+    const float pos[3] = {px, py, pz};
+    return findEntityByNameRanked(name, pos);
+}
+
+const Entity* EntityManager::findEntityByNameRanked(const std::string& name,
+                                                    const float* pos) const {
     if (name.empty()) {
         return nullptr;
     }
@@ -152,6 +171,7 @@ const Entity* EntityManager::findEntityByName(const std::string& name) const {
 
     const Entity* best = nullptr;
     int bestTier = 4;
+    float bestDistSq = 0.0f;
 
     for (const auto& pair : m_entities) {
         const Entity& entity = pair.second;
@@ -174,10 +194,19 @@ const Entity* EntityManager::findEntityByName(const std::string& name) const {
             tier += 1;
         }
 
-        if (tier < bestTier) {
+        float distSq = 0.0f;
+        if (pos) {
+            const float dx = entity.x - pos[0];
+            const float dy = entity.y - pos[1];
+            const float dz = entity.z - pos[2];
+            distSq = dx * dx + dy * dy + dz * dz;
+        }
+
+        if (tier < bestTier || (pos && tier == bestTier && distSq < bestDistSq)) {
             bestTier = tier;
+            bestDistSq = distSq;
             best = &entity;
-            if (tier == 0) {
+            if (tier == 0 && !pos) {
                 break;  // nothing can beat an exact living match
             }
         }

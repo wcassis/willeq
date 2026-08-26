@@ -37,6 +37,7 @@
 #include "client/combat.h"
 #include "client/eq_action_handler.h"
 #include "client/spell/spell_manager.h"
+#include "client/spell/cast_refusal.h"
 #include "client/willeq_database.h"
 #include "common/net/daybreak_connection.h"
 #include "common/packet_structs.h"
@@ -378,4 +379,167 @@ int main(int argc, char** argv) {
     }
 
     return RUN_ALL_TESTS();
+}
+
+// =====================================================================
+// T244: cast refusals name the reason with the official client string
+// (eqstr_us.txt ids via cast_refusal.h). Before this unit every result the
+// handler's switch did not list -- OutOfRange, InvalidTarget, NoLineOfSight,
+// Stunned, ComponentMissing, ... -- fell to a bare "Cannot cast spell"
+// (T240 finding 1, review/T240 run 1). These are RED on pre-T244 code by
+// message text (review/T244/red_cast.txt).
+// =====================================================================
+
+namespace {
+
+constexpr uint16_t kFarId = 101;
+
+// A single-target spell WITH a range cap (findSingleTargetSpell() does not
+// require one; range 0 means "no limit" to SpellManager::checkRange()).
+uint32_t findRangedSingleTargetSpell(EverQuest& eq) {
+    auto& db = eq.GetSpellManager()->getDatabase();
+    for (uint32_t id = 1; id <= 4000; ++id) {
+        const EQ::SpellData* s = db.getSpell(id);
+        if (s && s->target_type == EQ::SpellTargetType::Single &&
+            s->cast_time_ms > 0 && s->range > 0 && s->range < 300 &&
+            s->mana_cost > 0 && s->mana_cost < 100) {
+            return id;
+        }
+    }
+    return 0;
+}
+
+uint32_t findSpellOfTargetType(EverQuest& eq, EQ::SpellTargetType tt) {
+    auto& db = eq.GetSpellManager()->getDatabase();
+    for (uint32_t id = 1; id <= 4000; ++id) {
+        const EQ::SpellData* s = db.getSpell(id);
+        if (s && s->target_type == tt && s->cast_time_ms > 0 && s->mana_cost < 100) {
+            return id;
+        }
+    }
+    return 0;
+}
+
+} // namespace
+
+// Pure table: every CastResult with an official refusal string maps to the
+// eqstr id verified against /mnt/projects/EverQuestP1999/eqstr_us.txt; the
+// rest map to 0 (caller keeps its own wording). No DB.
+TEST(EqActionHandlerCast, CastRefusalStringIds_MatchEqstr) {
+    using EQ::CastResult;
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::OutOfRange), 100u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::NoLineOfSight), 108u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::Fizzle), 173u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::Stunned), 175u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::NotEnoughMana), 199u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::Silenced), 207u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::GemCooldown), 236u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::InvalidTarget), 251u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::NoPet), 255u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::ComponentMissing), 272u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::AlreadyCasting), 12442u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::Success), 0u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::NotMemorized), 0u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::SpellNotReady), 0u);
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::InvalidSpell), 0u);
+}
+
+// The fallback table in EverQuest::GetStringMessage() (no string DB loaded
+// in this harness) carries every id the refusal path can emit -- a missing
+// row would print "[Unknown message #N]" in place of the reason.
+TEST(EqActionHandlerCast, CastRefusalStrings_ResolveWithoutStringDb) {
+    WireHarness h;
+    EXPECT_EQ(h.eq.GetStringMessage(100), "Your target is out of range, get closer!");
+    EXPECT_EQ(h.eq.GetStringMessage(108), "You cannot see your target.");
+    EXPECT_EQ(h.eq.GetStringMessage(175), "You can't cast spells while stunned!");
+    EXPECT_EQ(h.eq.GetStringMessage(199), "Insufficient Mana to cast this spell!");
+    EXPECT_EQ(h.eq.GetStringMessage(207), "You *CANNOT* cast spells, you have been silenced!");
+    EXPECT_EQ(h.eq.GetStringMessage(236), "Spell recast time not yet met.");
+    EXPECT_EQ(h.eq.GetStringMessage(251), "That spell can not affect this target NPC.");
+    EXPECT_EQ(h.eq.GetStringMessage(255), "You do not have a pet.");
+    EXPECT_EQ(h.eq.GetStringMessage(272), "You are missing some required spell components.");
+    EXPECT_EQ(h.eq.GetStringMessage(12442), "You are already casting a spell!");
+}
+
+TEST(EqActionHandlerCast, CastSpell_TargetOutOfRange_SaysOutOfRange) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = findRangedSingleTargetSpell(h.eq);
+    if (id == 0) GTEST_SKIP() << "no ranged single-target spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    // Far NPC: NewSpawnPayloadAt() packs positions in 1/8 units (4000 -> 500
+    // world units on entity.x), past any range < 300.
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(kFarId, "a_distant_roamer", 0, 4000, 0));
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kFarId));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "Your target is out of range, get closer!");
+}
+
+TEST(EqActionHandlerCast, CastSpell_NoMana_SaysInsufficientMana) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(0, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "Insufficient Mana to cast this spell!");
+}
+
+TEST(EqActionHandlerCast, CastSpell_AnimalSpellOnHumanoid_SaysCannotAffectTarget) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = findSpellOfTargetType(h.eq, EQ::SpellTargetType::Animal);
+    if (id == 0) GTEST_SKIP() << "no animal-only spell in scanned range";
+
+    h.spawnSelfAndGuard();  // guard: bodytype 0 (humanoid) from NewSpawnPayloadAt
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "That spell can not affect this target NPC.");
+}
+
+TEST(EqActionHandlerCast, CastSpell_PetSpellWithoutPet_SaysNoPet) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = findSpellOfTargetType(h.eq, EQ::SpellTargetType::Pet);
+    if (id == 0) GTEST_SKIP() << "no pet-only spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));  // a target, but no pet
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You do not have a pet.");
 }

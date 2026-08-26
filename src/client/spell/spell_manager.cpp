@@ -227,9 +227,11 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
         target_id = adjusted_target;
     }
 
-    // Check if target adjustment failed (e.g., pet spell without pet)
+    // Check if target adjustment failed (pet spell without pet). T244: its
+    // own result, so the refusal can say "You do not have a pet." instead
+    // of the creature-type InvalidTarget's "can not affect this target".
     if (target_id == 0 && spell->target_type == SpellTargetType::Pet) {
-        return CastResult::InvalidTarget;
+        return CastResult::NoPet;
     }
 
     // Validate the cast
@@ -298,9 +300,11 @@ CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
         target_id = adjusted_target;
     }
 
-    // Check if target adjustment failed (e.g., pet spell without pet)
+    // Check if target adjustment failed (pet spell without pet). T244: its
+    // own result, so the refusal can say "You do not have a pet." instead
+    // of the creature-type InvalidTarget's "can not affect this target".
     if (target_id == 0 && spell->target_type == SpellTargetType::Pet) {
-        return CastResult::InvalidTarget;
+        return CastResult::NoPet;
     }
 
     CastResult result = validateCast(*spell, target_id);

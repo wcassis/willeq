@@ -290,6 +290,64 @@ TEST(EntityManagerTest, FindEntityByNameCorpseRecognisedByNpcTypeAlone) {
     EXPECT_EQ(found->spawnId, 20);
 }
 
+// =============================================================================
+// T244: the positional overload ranks by tier first, then distance from the
+// given point; the no-position overload is unchanged (lowest id per tier).
+// =============================================================================
+
+TEST(EntityManagerTest, FindEntityByNameNearTo_NearestOfEqualTierWins) {
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(10, "an_excavator001", 600, 0, 0));  // lower id, farther
+    mgr.addEntity(makeEntity(20, "an_excavator002", 5, 0, 0));    // nearer
+
+    const Entity* found = mgr.findEntityByName("excavator", 0, 0, 0);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20);
+
+    // Same two entities, viewed from the far side: the answer flips.
+    found = mgr.findEntityByName("excavator", 700, 0, 0);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 10);
+}
+
+TEST(EntityManagerTest, FindEntityByNameNearTo_TierStillBeatsDistance) {
+    EntityManager mgr;
+    Entity corpse = makeCorpse(10, "an_excavator001's corpse5");
+    corpse.x = 1;  // at the player's feet
+    mgr.addEntity(corpse);
+    mgr.addEntity(makeEntity(20, "an_excavator002", 900, 0, 0));
+
+    const Entity* found = mgr.findEntityByName("excavator", 0, 0, 0);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 20) << "living beats corpse regardless of distance";
+
+    // Exact living match beats a nearer substring living match.
+    mgr.addEntity(makeEntity(30, "excavator", 950, 0, 0));
+    found = mgr.findEntityByName("excavator", 0, 0, 0);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 30);
+}
+
+TEST(EntityManagerTest, FindEntityByNameNearTo_EqualDistanceFallsToLowestId) {
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(40, "an_excavator001", 10, 0, 0));
+    mgr.addEntity(makeEntity(30, "an_excavator002", 0, 10, 0));  // same distance
+
+    const Entity* found = mgr.findEntityByName("excavator", 0, 0, 0);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 30);
+}
+
+TEST(EntityManagerTest, FindEntityByNameWithoutPosition_KeepsLowestIdOrdering) {
+    EntityManager mgr;
+    mgr.addEntity(makeEntity(10, "an_excavator001", 600, 0, 0));
+    mgr.addEntity(makeEntity(20, "an_excavator002", 5, 0, 0));
+
+    const Entity* found = mgr.findEntityByName("excavator");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->spawnId, 10) << "T173 form: id order, distance-blind";
+}
+
 TEST(EntityManagerTest, FindEntityByNameCorpseRecognisedByFlagAlone) {
     EntityManager mgr;
     Entity flagged = makeEntity(10, "Testmelee");

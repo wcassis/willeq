@@ -3,6 +3,7 @@
 #include "client/combat.h"
 #include "client/pet_constants.h"
 #include "client/spell/spell_manager.h"
+#include "client/spell/cast_refusal.h"  // T244: official refusal strings
 #include "client/skill/skill_manager.h"      // T156: useSkill() reaches SkillManager
 #include "client/skill/skill_constants.h"
 #include "client/inventory/inventory_manager.h"  // T230: item-id -> slot hop
@@ -554,6 +555,14 @@ void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
     // gemSlot arrives 1-indexed (ActionDispatcher::beginCastFromGem()
     // already validated 1-8); SpellManager's gems are 0-indexed.
     EQ::CastResult result = spellMgr->beginCastFromGem(static_cast<uint8_t>(gemSlot - 1), targetId);
+    // T244: refusals that have an official string say WHY (eqstr ids via
+    // cast_refusal.h -- "Your target is out of range, get closer!" etc.);
+    // before this every result the switch below did not name fell to a
+    // bare "Cannot cast spell" (T240 finding 1).
+    if (const uint32_t stringId = EQ::castRefusalStringId(result)) {
+        m_eq.AddChatSystemMessage(m_eq.GetStringMessage(stringId));
+        return;
+    }
     switch (result) {
         case EQ::CastResult::Success:
             m_eq.AddChatSystemMessage("Casting from gem " + std::to_string(gemSlot));
@@ -561,14 +570,11 @@ void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
         case EQ::CastResult::NotMemorized:
             m_eq.AddChatSystemMessage("No spell in gem " + std::to_string(gemSlot));
             break;
-        case EQ::CastResult::NotEnoughMana:
-            m_eq.AddChatSystemMessage("Insufficient mana");
-            break;
         case EQ::CastResult::SpellNotReady:
             m_eq.AddChatSystemMessage("Spell not ready");
             break;
-        case EQ::CastResult::AlreadyCasting:
-            m_eq.AddChatSystemMessage("Already casting");
+        case EQ::CastResult::InvalidSpell:
+            m_eq.AddChatSystemMessage("Unknown spell in gem " + std::to_string(gemSlot));
             break;
         default:
             m_eq.AddChatSystemMessage("Cannot cast spell");

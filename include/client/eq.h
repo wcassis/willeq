@@ -1461,7 +1461,11 @@ private:
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);
 	static std::string GetOpcodeName(uint16_t opcode);
+public:
+	// T244: public because EqActionHandler (not a friend) renders cast
+	// refusals from official eqstr ids -- see client/spell/cast_refusal.h.
 	std::string GetStringMessage(uint32_t string_id);
+private:
 	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
 	static std::string GetChatTypeName(uint32_t chat_type);
 public:

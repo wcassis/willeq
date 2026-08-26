@@ -108,6 +108,53 @@ TEST_F(CommandProcessorTest, Target_PrefersLivingOverOwnCorpse) {
     ASSERT_TRUE(handler.calledOnceWith("targetEntity(20)"));
 }
 
+// T244: among equal-rank matches /target picks the NEAREST to the player,
+// not the lowest spawn id (T240 run 1: "/target excavator" chose an
+// out-of-range roamer). RED on pre-T244 code: it answered 10.
+TEST_F(CommandProcessorTest, Target_TwoLivingMatches_NearestWinsOverLowerId) {
+    state.player().setPosition(100.0f, 100.0f, 0.0f);
+
+    eqt::state::Entity far;
+    far.spawnId = 10;                         // lower id: matches FIRST in map order
+    far.name = "an_excavator001";
+    far.x = 600.0f; far.y = 100.0f; far.z = 0.0f;
+    state.entities().addEntity(far);
+
+    eqt::state::Entity near;
+    near.spawnId = 20;
+    near.name = "an_excavator002";
+    near.x = 105.0f; near.y = 100.0f; near.z = 0.0f;
+    state.entities().addEntity(near);
+
+    auto result = processor->processCommand("/target excavator");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("targetEntity(20)"));
+}
+
+// Distance is only the SECONDARY key: a corpse at the player's feet still
+// loses to a living match across the zone (T173 ordering preserved).
+TEST_F(CommandProcessorTest, Target_NearerCorpseStillLosesToFartherLiving) {
+    state.player().setPosition(100.0f, 100.0f, 0.0f);
+
+    eqt::state::Entity corpse;
+    corpse.spawnId = 10;
+    corpse.name = "an_excavator001's corpse5";
+    corpse.npcType = 2;
+    corpse.isCorpse = true;
+    corpse.x = 101.0f; corpse.y = 100.0f; corpse.z = 0.0f;
+    state.entities().addEntity(corpse);
+
+    eqt::state::Entity living;
+    living.spawnId = 20;
+    living.name = "an_excavator002";
+    living.x = 900.0f; living.y = 100.0f; living.z = 0.0f;
+    state.entities().addEntity(living);
+
+    auto result = processor->processCommand("/target excavator");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("targetEntity(20)"));
+}
+
 TEST_F(CommandProcessorTest, Target_NameNotFound_FailsCleanlyWithoutDispatching) {
     auto result = processor->processCommand("/target nosuchmob");
     EXPECT_FALSE(result.success);

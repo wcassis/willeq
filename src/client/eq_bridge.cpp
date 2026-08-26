@@ -23,6 +23,7 @@
 #include "client/trade_manager.h"
 #include "client/world_object.h"
 #include "client/spell/spell_manager.h"
+#include "client/spell/cast_refusal.h"  // T244: official refusal strings
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
 #include "client/spell/spell_type_processor.h"
@@ -1016,22 +1017,14 @@ void EverQuest::ProcessBridgeIntents() {
 					uint32_t spellId = m_spell_manager->getMemorizedSpell(i.gemSlot);
 					const EQ::SpellData* spell = m_spell_manager->getSpell(spellId);
 					if (spell) AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+				} else if (const uint32_t stringId = EQ::castRefusalStringId(result)) {
+					// T244: same official-string table as EqActionHandler::
+					// beginCastFromGem() -- the two sites had drifted.
+					AddChatSystemMessage(GetStringMessage(stringId));
 				} else if (result == EQ::CastResult::NotMemorized) {
 					AddChatSystemMessage(fmt::format("No spell in gem {}", i.gemSlot + 1));
-				} else if (result == EQ::CastResult::NotEnoughMana) {
-					AddChatSystemMessage("Insufficient mana");
-				} else if (result == EQ::CastResult::GemCooldown) {
+				} else if (result == EQ::CastResult::SpellNotReady) {
 					AddChatSystemMessage("Spell not ready");
-				} else if (result == EQ::CastResult::AlreadyCasting) {
-					AddChatSystemMessage("Already casting");
-				} else if (result == EQ::CastResult::OutOfRange) {
-					AddChatSystemMessage("Target out of range");
-				} else if (result == EQ::CastResult::InvalidTarget) {
-					AddChatSystemMessage("Invalid target");
-				} else if (result == EQ::CastResult::NoLineOfSight) {
-					AddChatSystemMessage("You cannot see your target");
-				} else if (result == EQ::CastResult::Stunned) {
-					AddChatSystemMessage("You are stunned");
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ForgetSpellIntent>) {

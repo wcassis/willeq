@@ -335,6 +335,7 @@ enum class CastResult : uint8_t {
     AlreadyCasting      = 13,  // Already casting
     SpellNotReady       = 14,  // Spell not ready
     InvalidSpell        = 15,  // Spell doesn't exist
+    NoPet               = 16,  // T244: pet-only spell, no pet (was folded into InvalidTarget)
 };
 
 // ============================================================================

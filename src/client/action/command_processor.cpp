@@ -1373,7 +1373,11 @@ ActionResult CommandProcessor::cmdTarget(const std::string& args) {
     if (args.empty()) {
         return ActionResult::Failure("Usage: /target <name>");
     }
-    const auto* entity = m_state.entities().findEntityByName(args);
+    // T244: nearest-first among equal-rank matches (distance from the
+    // player is the secondary key; living-over-corpse stays primary).
+    const auto& player = m_state.player();
+    const auto* entity = m_state.entities().findEntityByName(
+        args, player.x(), player.y(), player.z());
     if (!entity) {
         return ActionResult::Failure("No target found matching '" + args + "'");
     }

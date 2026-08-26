@@ -326,6 +326,7 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 171: return "You spill your beer while bringing in your line.";
 		case 172: return "You lost your bait!";
 		case 173: return "Your spell fizzles!";
+		case 175: return "You can't cast spells while stunned!";
 		case 179: return "You cannot use this item unless it is equipped.";
 		case 180: return "You miss a note, bringing your song to a close!";
 		case 181: return "Your race, class, or deity cannot use this item.";
@@ -373,6 +374,7 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 271: return "Your spell would not have taken hold on your target.";
 		case 272: return "You are missing some required spell components.";
 		case 275: return "You feel yourself starting to appear.";
+		case 12442: return "You are already casting a spell!";
 		case 303: return "You have slain %1!";
 		case 334: return "You gained experience!";
 		case 335: return "You gained raid experience!";

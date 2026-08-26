@@ -176,6 +176,15 @@ public:
     const Entity* findEntityByName(const std::string& name) const;
 
     /**
+     * T244: same ranked resolver, with distance from (px,py,pz) -- the
+     * player's position -- as the secondary key. Living-over-corpse and
+     * exact-over-substring (T173) stay primary; among equal-tier matches
+     * the NEAREST wins instead of the lowest spawn id. /target uses this.
+     */
+    const Entity* findEntityByName(const std::string& name,
+                                   float px, float py, float pz) const;
+
+    /**
      * Find an entity by exact name.
      * @param name Exact name to search for
      * @return Pointer to entity or nullptr if not found
@@ -296,6 +305,10 @@ public:
     void forEachEntityMutable(std::function<void(Entity&)> callback);
 
 private:
+    // T244: shared body of the two findEntityByName overloads; pos is null
+    // for the id-ordered form, else {x,y,z} of the reference point.
+    const Entity* findEntityByNameRanked(const std::string& name, const float* pos) const;
+
     void fireEntitySpawnedEvent(const Entity& entity);
     void fireEntityDespawnedEvent(uint16_t spawnId, const std::string& name);
     void fireEntityMovedEvent(const Entity& entity);
