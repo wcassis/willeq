@@ -986,6 +986,89 @@ void EverQuest::RequestScribeItem(const std::string& args)
 	const int32_t bookSlot = m_spell_manager->findFreeSpellbookSlot();
 	if (bookSlot < 0) {
 		AddChatSystemMessage("Your spellbook is full.");
+// T278 -- /combine and /closecontainer (T264 F7)
+// ============================================================================
+//
+// What was actually missing. T264 listed TradeskillCombineIntent and
+// TradeskillCloseIntent as blocked (consumer arm in eq_bridge.cpp, no
+// producer), and the two senders they call -- SendTradeSkillCombine() and
+// SendCloseContainer() -- were reachable only through those dead arms.
+// /recipecombine is NOT the same thing: it is T149's AUTO-combine and sends
+// OP_RecipeAutoCombine (SendRecipeAutoCombine), where the server picks the
+// components for a recipe id. The MANUAL combine -- "I put these items in
+// the forge, hit Combine" -- is OP_TradeSkillCombine and had no producer at
+// all. Neither did the container close.
+//
+// Wire forms verified against eqemu rather than member names (T273's rule):
+//   OP_TradeSkillCombine  -> Handle_OP_TradeSkillCombine, DECODE_LENGTH_EXACT
+//     on titanium structs::NewCombine_Struct { int16 container_slot; int16
+//     guildtribute_slot; } (4 bytes). Object::HandleCombine treats
+//     container_slot == SLOT_TRADESKILL_EXPERIMENT_COMBINE (1000, identical
+//     on both sides of TitaniumToServerSlot) as "the WORLD container the
+//     server has me down as using" and reads the components out of it.
+//   OP_ClickObjectAction  -> Handle_OP_ClickObjectAction, exact
+//     ClickObjectAction_Struct (92 bytes, no Titanium translation), open==0
+//     -> Object::Close(). Any other value of `open` is a server-side error.
+//
+// Both requests are gated on a container the SERVER has told us is open
+// (m_active_tradeskill_object_id, written only by ZoneProcessClickObjectAction)
+// -- the same gate the /recipe* family uses. Sending either one without that
+// makes eqemu log an error and, for the combine, message the player that the
+// server does not know about the container.
+//
+// BOTH container kinds go through this ONE sender, because container_slot is
+// the only thing that distinguishes them on the wire:
+//   world container (forge/oven/loom on the ground): container_slot = 1000,
+//     and HandleCombine uses the object the server has us down as using.
+//   inventory container (a carried Forge/Sewing Kit): container_slot = the
+//     bag's own inventory slot, and HandleCombine reads its BagType itself.
+// T149's "some_id" caveat does NOT apply here: some_id is a LOCAL in
+// HandleCombine, computed server-side from the container it resolved. It is
+// on the wire only for the /recipe* family (OP_RecipeAutoCombine et al),
+// which is why those stay world-container-only.
+//
+// containerSlot == SLOT_INVALID selects the world form.
+void EverQuest::RequestTradeskillCombine(int16_t containerSlot)
+{
+	if (containerSlot == eqt::inventory::SLOT_INVALID) {
+		if (m_active_tradeskill_object_id == 0) {
+			AddChatSystemMessage("You must have a tradeskill container open.");
+			return;
+		}
+		containerSlot = eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE;
+	} else {
+		if (!m_inventory_manager) {
+			AddChatSystemMessage("Cannot combine - inventory not available.");
+			return;
+		}
+		const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(containerSlot);
+		if (!item) {
+			AddChatSystemMessage(fmt::format("Nothing in {}.",
+				eqt::inventory::describeSlot(containerSlot)));
+			return;
+		}
+		// Refuse locally rather than let eqemu answer "Server does not
+		// recognize specified tradeskill container" (T178: name what was
+		// asked for).
+		if (!item->isContainer()) {
+			AddChatSystemMessage(fmt::format("{} ({}) is not a container.",
+				item->name, eqt::inventory::describeSlot(containerSlot)));
+			return;
+		}
+	}
+
+	if (!m_bridge) {
+		AddChatSystemMessage("Cannot combine - no bridge attached.");
+		return;
+	}
+
+	m_bridge->pushIntent(eqt::events::TradeskillCombineIntent{containerSlot});
+}
+
+void EverQuest::RequestCloseTradeskillContainer()
+{
+	if (m_active_tradeskill_object_id == 0) {
+		AddChatSystemMessage("You do not have a tradeskill container open.");
 		return;
 	}
 
@@ -1012,4 +1095,9 @@ void EverQuest::RequestScribeItem(const std::string& args)
 
 	m_bridge->pushIntent(eqt::events::ScribeSpellIntent{
 		spellId, static_cast<uint16_t>(bookSlot), slot});
+		AddChatSystemMessage("Cannot close the container - no bridge attached.");
+		return;
+	}
+
+	m_bridge->pushIntent(eqt::events::TradeskillCloseIntent{m_active_tradeskill_object_id});
 }

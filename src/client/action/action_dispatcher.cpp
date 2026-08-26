@@ -1198,6 +1198,28 @@ ActionResult ActionDispatcher::recipesFavorite(const std::vector<uint32_t>& reci
     return ActionResult::Success();
 }
 
+// T278: the manual combine and the container close. Only the transport
+// precondition is asserted here -- both requests are zone packets. Whether a
+// container is OPEN is game state the dispatcher cannot see, so that refusal
+// (and its message) lives one layer down, in
+// EverQuest::RequestTradeskillCombine() / RequestCloseTradeskillContainer(),
+// the same place the /recipe* family's open-container gate lives.
+ActionResult ActionDispatcher::tradeskillCombine(int16_t containerSlot) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->tradeskillCombine(containerSlot);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::closeTradeskillContainer() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->closeTradeskillContainer();
+    return ActionResult::Success();
+}
+
 // ========== Extended Movement Actions ==========
 
 ActionResult ActionDispatcher::setMovementMode(int mode) {

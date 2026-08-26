@@ -254,6 +254,12 @@ public:
         oss << "]";
         record("recipesFavorite", Sym{oss.str()});
     }
+    void tradeskillCombine(int16_t containerSlot) override {
+        record("tradeskillCombine", containerSlot);
+    }
+    void closeTradeskillContainer() override {
+        record("closeTradeskillContainer");
+    }
 
     // T153: record only the fields the user actually named, in wire order.
     // The merge with the character's current appearance is EqActionHandler's

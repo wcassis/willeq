@@ -151,6 +151,8 @@ public:
     void recipeDetails(uint32_t recipeId) override;
     void recipeAutoCombine(uint32_t recipeId) override;
     void recipesFavorite(const std::vector<uint32_t>& recipeIds) override;
+    void tradeskillCombine(int16_t containerSlot) override;
+    void closeTradeskillContainer() override;
 
     // T153: /appearance -- merges the named fields over the character's
     // current appearance and calls EverQuest::SendFaceChange().

@@ -1138,6 +1138,22 @@ void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
     m_eq.SendRecipesFavorite(objectType, recipeIds);
 }
 
+// T278: unlike the four recipe requests above, neither of these carries an
+// object_type on the wire, so neither goes through
+// resolveOpenContainerObjectType() -- a combine or a close against a
+// container we have no ground-spawn record for is still a legitimate
+// request, and refusing it here would strand the player with a window they
+// cannot close. The open-container gate they DO need lives in EverQuest
+// (RequestTradeskillCombine / RequestCloseTradeskillContainer), which owns
+// m_active_tradeskill_object_id and pushes the kept intents.
+void EqActionHandler::tradeskillCombine(int16_t containerSlot) {
+    m_eq.RequestTradeskillCombine(containerSlot);
+}
+
+void EqActionHandler::closeTradeskillContainer() {
+    m_eq.RequestCloseTradeskillContainer();
+}
+
 // T153: /appearance. SendFaceChange() had zero production callers, so nothing
 // had ever exercised it; this is the wiring, and the merge below is the reason
 // it needs a handler rather than going straight from CommandProcessor.

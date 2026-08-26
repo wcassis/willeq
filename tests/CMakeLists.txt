@@ -693,6 +693,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_scribe_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_scribe_scroll)
+# T278: manual tradeskill combine + container close (T264 F7). Command ->
+# TradeskillCombineIntent/TradeskillCloseIntent -> OP_TradeSkillCombine /
+# OP_ClickObjectAction(open=0) wire bytes (real DaybreakConnection over
+# FakeUdpTransport, same idiom as test_read_book above), plus the
+# OP_ClearObject misread this unit fixed. See
+# refactor/T278_tradeskill_combine.md.
+ADD_EXECUTABLE(test_tradeskill_combine
+    test_tradeskill_combine.cpp
+)
+TARGET_LINK_LIBRARIES(test_tradeskill_combine GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_tradeskill_combine PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_tradeskill_combine)
 
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/

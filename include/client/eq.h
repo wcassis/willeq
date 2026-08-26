@@ -2497,6 +2497,16 @@ public:
 	// buffs, which previously reached BuffManager and stopped there.
 	void PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff);
 	void PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count);
+	// T278: /combine and /closecontainer. Push the kept
+	// TradeskillCombineIntent / TradeskillCloseIntent -- the same intents a
+	// forge-window Combine button and its close box would push -- for
+	// ProcessBridgeIntents() to turn into SendTradeSkillCombine() /
+	// SendCloseContainer(). containerSlot == SLOT_INVALID means the world
+	// container the server has told us is open (refused, with a message and
+	// no intent, when there is none); any other value is a carried
+	// container's own inventory slot. Defined in eq_commands.cpp.
+	void RequestTradeskillCombine(int16_t containerSlot);
+	void RequestCloseTradeskillContainer();
 
 private:
 #ifdef EQT_HAS_GRAPHICS

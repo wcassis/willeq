@@ -29,6 +29,8 @@
 #endif
 
 #include "client/world_object.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/inventory_constants.h"
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -1885,20 +1887,50 @@ void EverQuest::SendSave()
 	}
 }
 
+// T278: this used to read the first four payload bytes as a world-object
+// drop_id and erase m_world_objects[that id]. OP_ClearObject carries no such
+// field. eqemu's ClearObject_Struct is { uint8 Clear; uint8 Unknown001[7]; }
+// and every one of its three senders sets Clear = 1 -- so the "object id"
+// this read was always the literal 1, and any ground spawn that happened to
+// have drop_id 1 was silently deleted from the client's world-object map.
+//
+// What the packet actually means is "the WORLD CONTAINER's contents are
+// gone". eqemu queues it from exactly three places, all with an open world
+// container: Object::Close() (the container was closed), and the
+// world-container branches of Object::HandleCombine() and
+// Object::HandleAugmentation() after they Clear() the container and delete
+// its row. It is NOT a close notification -- after a combine the window
+// stays open with empty slots, which is why the active container id is left
+// alone here.
+//
+// So the correct response is to empty the world container slots
+// (4000-4009). InventoryManager::clearWorldContainerSlots() already existed
+// for this and had ZERO callers; this is its caller.
 void EverQuest::ZoneProcessClearObject(const EQ::Net::Packet &p)
 {
-	if (p.Length() < 2 + 4) {  // Need at least object ID
+	(void)p;  // ClearObject_Struct carries only a "did something" flag
+
+	LOG_DEBUG(MOD_MAIN, "ClearObject: emptying world container slots (active container {})",
+		m_active_tradeskill_object_id);
+
+	if (!m_inventory_manager) {
 		return;
 	}
+	m_inventory_manager->clearWorldContainerSlots();
 
-	const uint32_t* object_id = reinterpret_cast<const uint32_t*>(
-		static_cast<const uint8_t*>(p.Data()) + 2);
-
-	// Remove from world objects
-	auto it = m_world_objects.find(*object_id);
-	if (it != m_world_objects.end()) {
-		LOG_DEBUG(MOD_MAIN, "Clearing world object: {}", *object_id);
-		m_world_objects.erase(it);
+	// The UI holds its own copy of each slot, so an emptied slot has to be
+	// announced the same way a deleted item is (D18a: bridge-only).
+	for (int16_t slot = eqt::inventory::WORLD_BEGIN; slot <= eqt::inventory::WORLD_END; slot++) {
+		SyncInventorySlotToGameState(slot, false);
+		if (!m_bridge) {
+			continue;
+		}
+		eqt::state::InventorySlotChangedData data;
+		data.slotId = slot;
+		data.hasItem = false;
+		data.itemId = 0;
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	}
 }
 

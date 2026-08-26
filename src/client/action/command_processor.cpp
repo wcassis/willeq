@@ -2,6 +2,7 @@
 #include "client/state/game_state.h"
 #include "client/output/output_renderer.h"
 #include "client/skill/skill_constants.h"  // T156: /useskill id/name resolution
+#include "client/inventory/inventory_constants.h"  // T278: /combine <general slot>
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <algorithm>
@@ -594,6 +595,23 @@ void CommandProcessor::registerBuiltinCommands() {
         "recipefavorites", {"recipefav"}, "/recipefavorites <recipe_id> [recipe_id ...]",
         "Request details for favorite recipes in the open container", "Tradeskill", false
     }, [this](const std::string& args) { return cmdRecipesFavorite(args); });
+
+    // T278: the MANUAL combine and the container close. /recipecombine above
+    // is the AUTO-combine (OP_RecipeAutoCombine, server picks the
+    // components for a recipe id); /combine is the "I loaded the forge
+    // myself, hit Combine" request (OP_TradeSkillCombine). Neither takes an
+    // argument -- the container is the one the server has told us is open.
+    // See refactor/T278_tradeskill_combine.md.
+    registerCommand({
+        "combine", {"docombine"}, "/combine | /combine <general slot>",
+        "Combine the items in the open world container, or in a container you carry",
+        "Tradeskill", false
+    }, [this](const std::string& args) { return cmdCombine(args); });
+
+    registerCommand({
+        "closecontainer", {"containerclose"}, "/closecontainer",
+        "Close the open world tradeskill container", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdCloseContainer(args); });
 
     // T135: Utility (6) -- categories ported verbatim from eq_commands.cpp's
     // per-command category, not unified, since the plan explicitly treats
@@ -1966,6 +1984,36 @@ ActionResult CommandProcessor::cmdRecipesFavorite(const std::string& args) {
         ids.push_back(id);
     }
     return m_dispatcher.recipesFavorite(ids);
+}
+
+// T278: bare /combine is the OPEN WORLD container (forge on the ground);
+// /combine <slot> is a container you are CARRYING (a Forge/Sewing Kit in a
+// general slot). A stray argument that is not a general slot is refused and
+// points at /recipecombine -- a player who typed "/combine 4321" meant a
+// recipe id, and silently combining a container's real contents instead
+// would consume the wrong items.
+ActionResult CommandProcessor::cmdCombine(const std::string& args) {
+    auto parts = splitWhitespace(args);
+    if (parts.empty()) {
+        return m_dispatcher.tradeskillCombine(eqt::inventory::SLOT_INVALID);
+    }
+    uint32_t slot = 0;
+    if (parts.size() != 1 || !parseU32Strict(parts[0], slot) ||
+        !eqt::inventory::isGeneralSlot(static_cast<int16_t>(slot))) {
+        return ActionResult::Failure(
+            "Usage: /combine (the open world container) | /combine <general slot "
+            + std::to_string(eqt::inventory::GENERAL_BEGIN) + "-"
+            + std::to_string(eqt::inventory::GENERAL_END)
+            + "> (a container you are carrying) - did you mean /recipecombine <recipe_id>?");
+    }
+    return m_dispatcher.tradeskillCombine(static_cast<int16_t>(slot));
+}
+
+ActionResult CommandProcessor::cmdCloseContainer(const std::string& args) {
+    if (!splitWhitespace(args).empty()) {
+        return ActionResult::Failure("Usage: /closecontainer (no arguments)");
+    }
+    return m_dispatcher.closeTradeskillContainer();
 }
 
 ActionResult CommandProcessor::cmdConsentDeny(const std::string& args) {

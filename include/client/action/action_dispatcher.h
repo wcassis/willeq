@@ -305,6 +305,12 @@ public:
     virtual void recipeAutoCombine(uint32_t recipeId) = 0;
     virtual void recipesFavorite(const std::vector<uint32_t>& recipeIds) = 0;
 
+    // T278: the MANUAL combine (OP_TradeSkillCombine) and the container
+    // close (OP_ClickObjectAction open=0). Argument-less for the same reason
+    // the recipe requests take no object_type. Delegate to EverQuest.
+    virtual void tradeskillCombine(int16_t containerSlot) = 0;
+    virtual void closeTradeskillContainer() = 0;
+
     // T153: request an appearance (face/hair/beard) change. Only the fields
     // the user named are set; the handler merges the rest from the
     // character's current appearance before calling SendFaceChange().
@@ -1092,6 +1098,14 @@ public:
      * container.
      */
     ActionResult recipesFavorite(const std::vector<uint32_t>& recipeIds);
+
+    /**
+     * T278: /combine (manual combine of the open WORLD container's contents)
+     * and /closecontainer. Gated here only on a zone connection; the
+     * open-container refusal lives in EverQuest. See T278's plan.
+     */
+    ActionResult tradeskillCombine(int16_t containerSlot);
+    ActionResult closeTradeskillContainer();
 
     // ========== Extended Movement Actions ==========
 

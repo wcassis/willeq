@@ -375,6 +375,12 @@ private:
     ActionResult cmdRecipeAutoCombine(const std::string& args);
     ActionResult cmdRecipesFavorite(const std::string& args);
 
+    // T278: /combine (manual OP_TradeSkillCombine) and /closecontainer
+    // (OP_ClickObjectAction open=0) -- the two hops T264 F7 found had no
+    // producer. Argument-less; both refuse a stray argument.
+    ActionResult cmdCombine(const std::string& args);
+    ActionResult cmdCloseContainer(const std::string& args);
+
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not
     // share a scenario, unlike Guild/Corpse-Rez; grouped here only because
