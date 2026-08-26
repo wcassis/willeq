@@ -35,7 +35,7 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 
 - **Data-driven rendering**: All panel data is cached in plain structs, updated via bridge events, passed to stateless render functions
 - **No class hierarchy**: Free functions replace the old WindowBase inheritance tree
-- **Atlas fallback**: UIRenderer draws atlas sprites when loaded, solid color rectangles otherwise
+- **Atlas fallback**: UIRenderer draws atlas sprites when loaded, solid color rectangles otherwise. **The two paths are not interchangeable and the client only ever runs the atlas one** — every capture harness before T275 ran the fallback (`ui.init(driver, nullptr, ...)`), which is why the atlas path shipped for years with the whole UI painting opaque black (T275: an incomplete ETC1 mip chain sampled black, and `endFrame()` discarded every per-quad tint). `tests/test_ui_atlas_pixels.cpp` pins the atlas path against a real GLES2 device + the real `ui_atlas`; `ui_inventory_capture --eqe1-path <dir>` captures it
 - **Bridge-only input**: StaticUIInput sends intents to GameStateBridge, never accesses game state directly
 
 ## Key Bindings

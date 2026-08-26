@@ -1702,6 +1702,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
+# T275: pixel-level assertions on the ATLAS-backed UIRenderer path (a real
+# headless GLES2 device + the real ui_atlas out of willeq.eqe1). Every UI
+# capture harness before this ran with atlas=nullptr, so the atlas path had
+# no pixel coverage at all -- see refactor/T275_uirenderer_drawrect_invisible.md.
+# Self-skips without the EQE1 asset or a usable GLES2 device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_atlas_pixels
+        test_ui_atlas_pixels.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_atlas_pixels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_atlas_pixels GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_atlas_pixels)
+ENDIF()
+
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
 # gate as test_static_ui_panels above (it drives StaticUIInput), and no device
 # is created — see refactor/T156_skill_reachability.md. Deliberately a NEW

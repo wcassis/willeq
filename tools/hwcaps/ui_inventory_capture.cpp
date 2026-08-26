@@ -48,6 +48,8 @@
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/ui_atlas.h"
+#include "client/graphics/eqe1_loader.h"
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/entity_renderer.h"
@@ -474,15 +476,138 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
     return ok;
 }
 
+// T275: the ATLAS-backed capture. Every capture above runs the UIRenderer
+// FALLBACK path (ui.init(driver, nullptr, ...)) -- solid draw2DRectangle
+// quads, no atlas texture involved. The real client never runs that path: it
+// always loads ui_atlas out of the EQE1 packs, and the atlas path was where
+// the whole static UI painted itself opaque black (T272's "drawRect draws
+// nothing visible"). This capture renders the panels T272 photographed
+// (spell gems + player status + inventory popup) through a REAL UIAtlas so
+// the before/after is judged on the path the client actually uses.
+//
+// --eqe1-path <dir> selects the flat-pack directory (willeq.eqe1 inside it
+// carries ui_atlas + ui_atlas.json). Skipped, with a note, when absent.
+bool runAtlasPanelCapture(const std::string& outputDir, const std::string& eqe1Dir) {
+    const std::string packPath = eqe1Dir + "/willeq.eqe1";
+    {
+        FILE* probe = fopen(packPath.c_str(), "rb");
+        if (!probe) {
+            fprintf(stderr, "NOTE: %s not present, skipping atlas-backed capture\n",
+                    packPath.c_str());
+            return true;
+        }
+        fclose(probe);
+    }
+
+    irr::SIrrlichtCreationParameters params;
+    params.DriverType = irr::video::EDT_OGLES2;
+    params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
+    params.Fullscreen = true;
+    irr::IrrlichtDevice* device = irr::createDeviceEx(params);
+    if (!device) {
+        fprintf(stderr, "ERROR: failed to create Irrlicht device for atlas capture\n");
+        return false;
+    }
+    irr::video::IVideoDriver* driver = device->getVideoDriver();
+
+    bool ok = true;
+    {
+        EQE1Loader loader;
+        if (!loader.open(packPath)) {
+            fprintf(stderr, "ERROR: failed to open %s\n", packPath.c_str());
+            device->drop();
+            return false;
+        }
+
+        auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+        ConstrainedTextureCache textureCache(config);
+        textureCache.setDriver(driver);
+        textureCache.addEQE1Loader(&loader);
+
+        UIAtlas atlas;
+        if (!atlas.load(driver, &textureCache)) {
+            fprintf(stderr, "ERROR: UIAtlas::load() failed against %s\n", packPath.c_str());
+            device->drop();
+            return false;
+        }
+
+        TextBatch textBatch;
+        textBatch.init(device->getGUIEnvironment());
+
+        UIRenderer ui;
+        ui.init(driver, &atlas, &textBatch);
+
+        UILayout layout;
+        layout.computeLayout(800, 600);
+
+        // The spell-gem panel exactly as T272 captured it live: gems 1 and 2
+        // Ready (green state border), gem 6 picked as the memorize
+        // destination (gold 2px marker), the rest empty.
+        SpellGemPanelState gems;
+        gems.gems[0].spellId = 278; gems.gems[0].gemState = 1; gems.gems[0].spellName = "Frost Bolt";
+        gems.gems[1].spellId = 279; gems.gems[1].gemState = 1; gems.gems[1].spellName = "Frost Rift";
+        gems.memorizeTargetGem = 5;
+
+        PlayerStatsData stats;
+        stats.name = "Testcaster";
+        stats.level = 1;
+        stats.curHP = 20;  stats.maxHP = 20;
+        stats.curMana = 28; stats.maxMana = 28;
+        stats.curEndurance = 20; stats.maxEndurance = 20;
+
+        InventoryPanelState inv;
+        inv.activePopup = PopupType::Inventory;
+        populateFull(inv);
+
+        auto drawAll = [&]() {
+            ui.beginFrame();
+            renderSpellGemPanel(ui, layout, gems);
+            renderPlayerStatus(ui, layout, stats);
+            renderInventoryPopup(ui, layout, inv);
+            ui.endFrame();
+        };
+
+        // Prime + warm-up, per this file's existing note above.
+        driver->beginScene(true, true, irr::video::SColor(255, 40, 60, 90));
+        driver->endScene();
+        for (int f = 0; f < 2; ++f) {
+            driver->beginScene(true, true, irr::video::SColor(255, 40, 60, 90));
+            drawAll();
+            driver->endScene();
+        }
+
+        driver->beginScene(true, true, irr::video::SColor(255, 40, 60, 90));
+        drawAll();
+        driver->endScene();
+
+        irr::video::IImage* img = driver->createScreenShot();
+        if (!img) {
+            fprintf(stderr, "ERROR: createScreenShot() returned null for the atlas capture\n");
+            ok = false;
+        } else {
+            const std::string path = outputDir + "/ui_atlas_panels_800x600.png";
+            ok = driver->writeImageToFile(img, path.c_str());
+            img->drop();
+            if (ok) printf("Wrote %s\n", path.c_str());
+        }
+    }
+
+    device->drop();
+    return ok;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     std::string outputDir = "ui_capture";
     std::string eqPath = "/mnt/projects/EverQuestP1999";  // EXECUTOR_PROTOCOL.md default
+    std::string eqe1Path = "/mnt/projects/EverQuest_ETC1";  // T275: flat-pack dir for ui_atlas
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--eq-path") && i + 1 < argc) {
             eqPath = argv[++i];
+        } else if (!strcmp(argv[i], "--eqe1-path") && i + 1 < argc) {
+            eqe1Path = argv[++i];
         } else if (argv[i][0] != '-') {
             outputDir = argv[i];
         }
@@ -493,6 +618,7 @@ int main(int argc, char** argv) {
     ok &= runAtResolution(800, 600, outputDir, "800x600");
     ok &= runAtResolution(1280, 800, outputDir, "1280x800");
     ok &= runPaperdollCaptures(outputDir, eqPath);
+    ok &= runAtlasPanelCapture(outputDir, eqe1Path);
 
     return ok ? 0 : 1;
 }

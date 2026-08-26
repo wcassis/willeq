@@ -125,11 +125,23 @@ void UIRenderer::endFrame() {
     if (atlas_ && !atlasQuads_.empty()) {
         auto* tex = atlas_->getTexture();
         if (tex) {
-            // Draw each quad using draw2DImage with source rect
+            // Draw each quad using draw2DImage with source rect.
+            // T275: the per-quad colour MUST be handed to the driver here.
+            // This loop used to pass nullptr for draw2DImage's `colors`
+            // argument, which makes the driver fall back to opaque white --
+            // so every drawRect() tint and every drawSprite() tint that
+            // beginFrame..endFrame had carefully accumulated was thrown away
+            // at the last step. The spell gems' state-coloured borders, the
+            // gold memorize marker (T272), the cooldown darkening overlay and
+            // the chat scrollbar thumb all depend on it.
+            //
+            // The overload takes a POINTER TO AN ARRAY of four corner colours
+            // and this driver reads colors[0]; a single-element address is
+            // what every other caller in the tree passes.
             // Future optimization: batch into single draw2DImageBatch call
             for (const auto& q : atlasQuads_) {
                 driver_->draw2DImage(tex, q.destRect, q.srcRect, nullptr,
-                    nullptr, true);
+                    &q.color, true);
             }
         }
         atlasQuads_.clear();
