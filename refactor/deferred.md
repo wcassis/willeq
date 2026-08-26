@@ -54,7 +54,7 @@ Review — read that before scoping the next unit off this file.
     ~~`CombatManager::SetTarget(name)` bypasses T173's corpse ranking;
     keyboard hotbar Item/Emote slots skipped, not routed (T174)~~ CLOSED T230 (Emote/Macro still skipped);
     ~~`EqActionHandler` TRANSFORMS methods still untested (T93)~~ CLOSED T234; ~~blackburrow /
-    crushbone blank benchmark render (Batch H)~~ CLOSED T242 `f32744c1` (benchmark camera seed 300 units in the air from sky-region Z; NO rendering bug; gfaydark/befallen were silently on the same fallback); "BSP region is SIZE_MAX"
+    crushbone blank benchmark render (Batch H)~~ CLOSED T242 `f32744c1` (benchmark camera seed 300 units in the air from sky-region Z; NO rendering bug; gfaydark/befallen were silently on the same fallback); "BSP region is SIZE_MAX" (T242: a client `CreateZoneLoadSnapshot` race, unrelated to the benchmark)
     race; pale fog shapes in goldens; `applyPaletteMask` plumbing gaps (P46d);
     ~~`ZoneProcessNewZone` never calls `CheckZoneRequestPhaseComplete` (T04,
     latent by causality)~~ CLOSED T228 `67a131bf`; race 330 placeholder cube unverified.
