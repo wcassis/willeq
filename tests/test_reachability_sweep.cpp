@@ -192,7 +192,10 @@ std::vector<std::string> variantMembers() {
 const std::set<std::string> kBlockedIntents = {
     "LootItemIntent", "LootAllIntent", "CloseLootIntent",
     "ReadItemIntent",
-    "MemorizeSpellIntent", "ScribeSpellIntent", "SpellbookStateIntent",
+    // T272 delisted MemorizeSpellIntent: the spellbook popup's click handler
+    // (static_ui_input.cpp) now produces it, and the same unit fixed the
+    // consumer arm's swapped arguments.
+    "ScribeSpellIntent", "SpellbookStateIntent",
     "BuffCancelIntent",
     "TradeskillCombineIntent", "TradeskillCloseIntent",
     "TrainSkillIntent", "CloseTrainerIntent",

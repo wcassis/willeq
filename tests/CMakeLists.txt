@@ -1701,6 +1701,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_skill_reachability)
 ENDIF()
 
+# T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager
+# route (destination-gem policy, the real StaticUIInput producer, and the
+# eq_bridge.cpp consumer arm whose arguments were swapped). Needs Irrlicht
+# headers for static_panels.h and willeq.db for the consumer leg (self-skips
+# without it, test_spell_manager's precedent).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spellbook_memorize
+        test_spellbook_memorize.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_INCLUDE_DIRECTORIES(test_spellbook_memorize PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spellbook_memorize GTest::gtest willeq_core)
+    GTEST_DISCOVER_TESTS(test_spellbook_memorize)
+ENDIF()
+
 # T60: the shared bone-lookup fallback chain (bone_attachment.h) — pure
 # string logic over a synthetic skeleton, no device/Irrlicht driver needed
 # (just the irr::core math types, header-only via willeq_core's include

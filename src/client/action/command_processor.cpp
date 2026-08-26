@@ -2295,9 +2295,15 @@ ActionResult CommandProcessor::cmdInterrupt(const std::string& args) {
 }
 
 ActionResult CommandProcessor::cmdSpellbook(const std::string& args) {
-    // Matches game's stub exactly -- no spellbook UI window exists on
-    // either side of this migration; a pure message, no dispatcher call.
-    displayMessage("Spellbook window not yet implemented in UI");
+    // T272: the "not yet implemented in UI" text this printed went stale --
+    // the spellbook popup exists (SpellbookPopupState / renderSpellbookPopup)
+    // and, since T272, clicking a spell in it memorizes that spell. There is
+    // no game-thread channel from CommandProcessor to the renderer's popup
+    // state (no dispatcher call, no bridge here), so this stays a pure
+    // message; what it must not do any longer is claim the window is missing.
+    displayMessage("Spellbook: press Ctrl+B to open it (or /newbook).");
+    displayMessage("Click a spell to memorize it into the first empty gem;");
+    displayMessage("click a gem first to choose which gem to overwrite.");
     return ActionResult::Success();
 }
 

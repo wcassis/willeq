@@ -352,8 +352,18 @@ TEST_F(CommandProcessorTest, Spellbook_DisplaysMessageWithoutDispatching) {
     auto result = processor->processCommand("/spellbook");
     EXPECT_TRUE(result.success);
     EXPECT_TRUE(handler.empty());
-    ASSERT_EQ(renderer.systemMessages.size(), 1u);
-    EXPECT_EQ(renderer.systemMessages[0], "Spellbook window not yet implemented in UI");
+    // T272: still no dispatcher call -- CommandProcessor has no channel to
+    // the renderer's popup state -- but the text no longer claims the
+    // spellbook window is missing. It exists (Ctrl+B / /newbook) and its
+    // rows are clickable since T272.
+    ASSERT_EQ(renderer.systemMessages.size(), 3u);
+    EXPECT_EQ(renderer.systemMessages[0], "Spellbook: press Ctrl+B to open it (or /newbook).");
+    EXPECT_EQ(renderer.systemMessages[1], "Click a spell to memorize it into the first empty gem;");
+    EXPECT_EQ(renderer.systemMessages[2], "click a gem first to choose which gem to overwrite.");
+    for (const auto& m : renderer.systemMessages) {
+        EXPECT_EQ(m.find("not yet implemented"), std::string::npos)
+            << "the stale stub text is back: " << m;
+    }
 }
 
 // ---- Pet ----

@@ -418,6 +418,20 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+int resolveMemorizeGem(const SpellGemPanelState& state) {
+    if (state.memorizeTargetGem >= 0 &&
+        state.memorizeTargetGem < SpellGemPanelState::GEM_COUNT) {
+        return state.memorizeTargetGem;
+    }
+    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) {
+        // SpellGemState documents both 0 and SPELL_UNKNOWN as "empty".
+        if (state.gems[i].spellId == 0 || state.gems[i].spellId == 0xFFFFFFFFu) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
                          const SpellGemPanelState& state) {
     auto* tb = ui.getTextBatch();
@@ -466,6 +480,18 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
                 ? static_cast<uint8_t>(UISprite::SlotBorderHover)
                 : static_cast<uint8_t>(UISprite::SlotBorderNormal);
             ui.drawSprite(slotRect, borderSprite);
+        }
+
+        // T272: memorize destination marker. Drawn on top of whatever border
+        // the gem already has, so a full gem picked as the overwrite target
+        // is just as visible as an empty one. Default state
+        // (memorizeTargetGem == -1) draws nothing.
+        if (state.memorizeTargetGem == i) {
+            const irr::video::SColor targetCol(255, 255, 215, 0);  // gold
+            ui.drawRect({x, y, x + SLOT, y + 2}, targetCol);
+            ui.drawRect({x, y + SLOT - 2, x + SLOT, y + SLOT}, targetCol);
+            ui.drawRect({x, y, x + 2, y + SLOT}, targetCol);
+            ui.drawRect({x + SLOT - 2, y, x + SLOT, y + SLOT}, targetCol);
         }
 
         // Cooldown overlay for refresh state

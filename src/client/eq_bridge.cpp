@@ -1389,7 +1389,27 @@ void EverQuest::ProcessBridgeIntents() {
 				UpdatePlayerAppearanceFromInventory();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
-				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
+				// T272: this arm had its ARGUMENTS SWAPPED --
+				// memorizeSpell(uint32_t spell_id, uint8_t gem_slot) was
+				// called as memorizeSpell(i.gemSlot, i.spellId), so it asked
+				// SpellManager to memorize spell <gem number> into gem
+				// <spell id truncated to 8 bits>. Nothing ever produced this
+				// intent, so nothing ever executed the line (T264's dead-arm
+				// class). Fixed with the producer that now exists.
+				//
+				// SpellManager is the gem authority (T240) and owns the same
+				// body /mem reaches via EqActionHandler::memorizeSpellByName;
+				// the feedback below mirrors the CastSpellIntent arm above,
+				// which likewise renders its own chat text.
+				if (!m_spell_manager) {
+					AddChatSystemMessage("Spell system not initialized");
+				} else if (m_spell_manager->memorizeSpell(i.spellId, i.gemSlot)) {
+					AddChatSystemMessage(fmt::format("Memorizing spell in gem {}", i.gemSlot + 1));
+				} else {
+					AddChatSystemMessage(fmt::format(
+						"Cannot memorize into gem {} - check if scribed and level requirement",
+						i.gemSlot + 1));
+				}
 			}
 			else {
 				LOG_TRACE(MOD_MAIN, "Bridge: unhandled intent type");

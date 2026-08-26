@@ -63,8 +63,19 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 mouseY >= gy && mouseY < gy + UILayout::SLOT_SIZE) {
                 spellGems.hoveredGem = i;
                 consumed = true;
-                if (leftClicked && bridge_) {
-                    bridge_->pushIntent(eqt::events::CastSpellIntent{static_cast<uint8_t>(i)});
+                if (leftClicked) {
+                    if (spellbook.isOpen) {
+                        // T272: with the spellbook open, a gem click PICKS the
+                        // destination for the next memorize instead of casting
+                        // -- you cannot cast out of your spellbook anyway, and
+                        // this is the only way to say "overwrite THIS gem"
+                        // when all eight are full. Clicking the already-chosen
+                        // gem clears the choice.
+                        spellGems.memorizeTargetGem =
+                            (spellGems.memorizeTargetGem == i) ? -1 : i;
+                    } else if (bridge_) {
+                        bridge_->pushIntent(eqt::events::CastSpellIntent{static_cast<uint8_t>(i)});
+                    }
                 }
                 break;
             }
@@ -108,12 +119,32 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 if (mouseY >= ry && mouseY < ry + LINE_H) {
                     spellbook.hoveredSlot = i;
                     if (leftClicked) {
-                        // Memorize spell — would need MemorizeSpellIntent
-                        // For now just log
+                        // T272: this was a LOG stub naming MemorizeSpellIntent
+                        // as the missing piece (T264 kept the intent for
+                        // exactly this). Row index is relative to the current
+                        // page, exactly as renderSpellbookPopup() draws it;
+                        // the destination gem comes from the single shared
+                        // resolver so the click and the gem-panel highlight
+                        // can never disagree.
                         int idx = spellbook.currentPage * SpellbookPopupState::SPELLS_PER_PAGE + i;
-                        if (idx < static_cast<int>(spellbook.spells.size())) {
-                            LOG_INFO(MOD_GRAPHICS, "Spellbook: clicked spell '{}'",
-                                spellbook.spells[idx].name);
+                        if (idx < static_cast<int>(spellbook.spells.size()) && bridge_) {
+                            int gem = resolveMemorizeGem(spellGems);
+                            if (gem < 0) {
+                                LOG_INFO(MOD_GRAPHICS,
+                                    "Spellbook: all gems full -- click a gem to choose "
+                                    "which to overwrite, then click '{}'",
+                                    spellbook.spells[idx].name);
+                            } else {
+                                LOG_INFO(MOD_GRAPHICS, "Spellbook: memorizing '{}' into gem {}",
+                                    spellbook.spells[idx].name, gem + 1);
+                                bridge_->pushIntent(eqt::events::MemorizeSpellIntent{
+                                    static_cast<uint8_t>(gem),
+                                    spellbook.spells[idx].spellId});
+                                // The explicit pick is consumed by the click
+                                // it targeted; the next one falls back to
+                                // "first empty gem".
+                                spellGems.memorizeTargetGem = -1;
+                            }
                         }
                     }
                     break;

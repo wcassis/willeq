@@ -177,7 +177,25 @@ struct SpellGemPanelState {
     static constexpr int GEM_COUNT = 8;
     SpellGemState gems[8];
     int hoveredGem = -1;
+    // T272: destination gem for the next spellbook memorize click, chosen by
+    // clicking a gem WHILE THE SPELLBOOK IS OPEN. -1 means "no explicit
+    // choice" -- resolveMemorizeGem() then picks the first empty gem, which
+    // is what a plain click on a spell does.
+    int memorizeTargetGem = -1;
 };
+
+/**
+ * T272: resolve which gem a spellbook memorize click should target.
+ *
+ * Returns state.memorizeTargetGem when the user has explicitly picked one
+ * (a gem click while the spellbook is open), otherwise the first empty gem,
+ * otherwise -1 ("all eight gems are full and you did not say which to
+ * overwrite" -- the click is then a no-op, not a silent clobber of gem 1).
+ *
+ * A free function rather than a method so tests can drive the same body the
+ * click handler uses without an Irrlicht device.
+ */
+int resolveMemorizeGem(const SpellGemPanelState& state);
 
 /** Render spell gem panel (8 gem slots, bottom-right). */
 void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
