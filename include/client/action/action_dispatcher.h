@@ -18,18 +18,6 @@ class GameState;
 namespace action {
 
 /**
- * Direction enum for movement actions.
- */
-enum class Direction {
-    Forward,
-    Backward,
-    Left,
-    Right,
-    Up,      // For jump/levitate
-    Down     // For descend
-};
-
-/**
  * ChatChannel - Types of chat channels.
  */
 enum class ChatChannel {
@@ -104,8 +92,6 @@ public:
 
     // ========== Movement ==========
 
-    virtual void startMoving(Direction dir) = 0;
-    virtual void stopMoving(Direction dir) = 0;
     virtual void setHeading(float heading) = 0;
     virtual void jump() = 0;
     virtual void sit() = 0;
@@ -116,7 +102,6 @@ public:
     // Pathfinding movement
     virtual void moveToLocation(float x, float y, float z) = 0;
     virtual void moveToEntity(const std::string& name) = 0;
-    virtual void moveToEntityWithinRange(const std::string& name, float distance) = 0;
     virtual void followEntity(const std::string& name) = 0;
     virtual void stopFollow() = 0;
 
@@ -127,7 +112,6 @@ public:
     // was a second, divergent name resolver with no production caller. Name
     // resolution is CommandProcessor's job (EntityManager::findEntityByName);
     // the handler only ever receives a resolved spawn id.
-    virtual void targetNearest() = 0;
     virtual void targetNearestPC() = 0;
     virtual void targetNearestNPC() = 0;
     virtual void cycleTargets() = 0;
@@ -167,18 +151,16 @@ public:
     virtual void duelDecline() = 0;
 
     virtual void castSpell(uint8_t gemSlot) = 0;
-    virtual void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) = 0;
     virtual void interruptCast() = 0;
 
     // T101: the REAL casting path, ported from game's /cast (eq_commands_
     // spells.cpp) -- routes through EQ::SpellManager::beginCastFromGem(),
-    // NOT CombatManager (the subsystem castSpell()/castSpellOnTarget() above
+    // NOT CombatManager (the subsystem castSpell() above
     // use). T97 found these are two different, unconnected casting
     // subsystems; see refactor/T101_migrate_spells_pet_family.md's Review.
     // gemSlot is 1-indexed (1-8), same convention as castSpell() above.
     virtual void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) = 0;
 
-    virtual void useAbility(uint32_t abilityId) = 0;
     virtual void useSkill(uint32_t skillId) = 0;
 
     // ========== Interaction ==========
@@ -186,7 +168,6 @@ public:
     virtual void hail() = 0;
     virtual void hailTarget() = 0;
 
-    virtual void clickDoor(uint8_t doorId) = 0;
     virtual void clickNearestDoor() = 0;
 
     virtual void lootCorpse(uint16_t corpseId) = 0;
@@ -220,14 +201,9 @@ public:
 
     virtual void setAFK(bool afk) = 0;
     virtual void setAnonymous(bool anon) = 0;
-    virtual void toggleSneak() = 0;
-    virtual void startCamp() = 0;
-    virtual void cancelCamp() = 0;
 
     // ========== Inventory ==========
 
-    virtual void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity = 0) = 0;
-    virtual void deleteItem(int16_t slot) = 0;
     virtual void useItem(int16_t slot) = 0;
 
     // T239: the keyboard hotbar route for the three COMMAND slot types.
@@ -256,18 +232,14 @@ public:
 
     // ========== Spellbook ==========
 
-    virtual void memorizeSpell(uint8_t gemSlot, uint32_t spellId) = 0;
     virtual void forgetSpell(uint8_t gemSlot) = 0;
-    virtual void openSpellbook() = 0;
-    virtual void closeSpellbook() = 0;
 
     // T101: ported from game's /mem and /gems (eq_commands_spells.cpp).
     // memorizeSpellByName() does the real name lookup (exact + partial +
     // multi-match disambiguation) against EQ::SpellManager's database --
-    // memorizeSpell() above takes a spellId directly and routes through the
-    // older CombatManager path, and is left untouched (T93 tests its
-    // gem-slot conversion against real CombatManager state; see the plan's
-    // Review). listMemorizedSpells() reports all 8 gems' real spell names
+    // (T264: the by-id memorizeSpell() that used to sit beside it had no
+    // caller outside tests and was deleted.) listMemorizedSpells() reports
+    // all 8 gems' real spell names
     // and states, replacing the "(Spell data not available)" stub that used
     // to sit behind this same dispatcher.
     virtual void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) = 0;
@@ -285,9 +257,6 @@ public:
     // missing decline half.
     virtual void declineTrade() = 0;
 
-    // ========== Zone ==========
-
-    virtual void requestZone(const std::string& zoneName) = 0;
 
     // ========== Pet ==========
 
@@ -297,7 +266,6 @@ public:
     // ========== Tradeskill ==========
 
     virtual void clickWorldObject(uint32_t dropId) = 0;
-    virtual void tradeskillCombine() = 0;
 
     // T149: the four recipe requests. NONE of them takes an object_type --
     // that is the container's type, and it is sourced inside the handler from
@@ -348,7 +316,6 @@ public:
     // ========== Utility ==========
 
     virtual void sendAnimation(uint8_t animationId, uint8_t speed = 10) = 0;
-    virtual void sendPositionUpdate() = 0;
 
     // ========== Social (T102) ==========
     // Ported from game's Social-category handlers (eq_commands.cpp);
@@ -553,16 +520,6 @@ public:
     // ========== Movement Actions ==========
 
     /**
-     * Start moving in a direction.
-     */
-    ActionResult startMoving(Direction dir);
-
-    /**
-     * Stop moving in a direction.
-     */
-    ActionResult stopMoving(Direction dir);
-
-    /**
      * Stop all movement.
      */
     ActionResult stopAllMovement();
@@ -613,11 +570,6 @@ public:
     ActionResult moveToEntity(const std::string& name);
 
     /**
-     * Move to an entity and stop at specified distance.
-     */
-    ActionResult moveToEntityWithinRange(const std::string& name, float distance);
-
-    /**
      * Follow an entity.
      */
     ActionResult followEntity(const std::string& name);
@@ -633,11 +585,6 @@ public:
      * Target an entity by spawn ID.
      */
     ActionResult targetEntity(uint16_t spawnId);
-
-    /**
-     * Target the nearest entity.
-     */
-    ActionResult targetNearest();
 
     /**
      * Target the nearest player character.
@@ -747,11 +694,6 @@ public:
     ActionResult castSpell(uint8_t gemSlot);
 
     /**
-     * Cast spell on a specific target.
-     */
-    ActionResult castSpellOnTarget(uint8_t gemSlot, uint16_t targetId);
-
-    /**
      * Interrupt current spellcast.
      */
     ActionResult interruptCast();
@@ -762,11 +704,6 @@ public:
      * which routes through the older CombatManager subsystem.
      */
     ActionResult beginCastFromGem(uint8_t gemSlot, uint16_t targetId = 0);
-
-    /**
-     * Use an ability by ID.
-     */
-    ActionResult useAbility(uint32_t abilityId);
 
     /**
      * Use a skill by ID.
@@ -789,11 +726,6 @@ public:
      * Hail current target.
      */
     ActionResult hailTarget();
-
-    /**
-     * Click a door by ID.
-     */
-    ActionResult clickDoor(uint8_t doorId);
 
     /**
      * Click the nearest door.
@@ -893,32 +825,7 @@ public:
      */
     ActionResult setAnonymous(bool anon);
 
-    /**
-     * Toggle sneak.
-     */
-    ActionResult toggleSneak();
-
-    /**
-     * Start camp timer (sit and logout after 30 seconds).
-     */
-    ActionResult startCamp();
-
-    /**
-     * Cancel camp timer.
-     */
-    ActionResult cancelCamp();
-
     // ========== Inventory Actions ==========
-
-    /**
-     * Move an item between slots.
-     */
-    ActionResult moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity = 0);
-
-    /**
-     * Delete an item.
-     */
-    ActionResult deleteItem(int16_t slot);
 
     /**
      * Use an item (right-click).
@@ -952,24 +859,9 @@ public:
     // ========== Spellbook Actions ==========
 
     /**
-     * Memorize a spell to a gem slot.
-     */
-    ActionResult memorizeSpell(uint8_t gemSlot, uint32_t spellId);
-
-    /**
      * Forget a spell from a gem slot.
      */
     ActionResult forgetSpell(uint8_t gemSlot);
-
-    /**
-     * Open spellbook.
-     */
-    ActionResult openSpellbook();
-
-    /**
-     * Close spellbook.
-     */
-    ActionResult closeSpellbook();
 
     /**
      * Memorize a spell by name (exact/partial lookup + disambiguation),
@@ -1004,13 +896,6 @@ public:
      * cancelTrade(), which cancels an already-Active trade.
      */
     ActionResult declineTrade();
-
-    // ========== Zone Actions ==========
-
-    /**
-     * Request zone transition.
-     */
-    ActionResult requestZone(const std::string& zoneName);
 
     // ========== Pet Actions ==========
 
@@ -1114,11 +999,6 @@ public:
     ActionResult clickWorldObject(uint32_t dropId);
 
     /**
-     * Combine items in the current tradeskill container.
-     */
-    ActionResult tradeskillCombine();
-
-    /**
      * T149: search the OPEN tradeskill container's recipes. `query` may be
      * empty (the server then omits the name clause and returns everything
      * makeable in that container). The trivial range is a real filter on the
@@ -1204,11 +1084,6 @@ public:
      * Play an animation.
      */
     ActionResult sendAnimation(uint8_t animationId, uint8_t speed = 10);
-
-    /**
-     * Force send position update to server.
-     */
-    ActionResult sendPositionUpdate();
 
     // ========== Social Actions (T102) ==========
 

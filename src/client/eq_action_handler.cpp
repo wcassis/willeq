@@ -104,49 +104,6 @@ std::string EqActionHandler::channelToString(action::ChatChannel channel) {
 
 // ========== Movement ==========
 
-void EqActionHandler::startMoving(action::Direction dir) {
-    switch (dir) {
-        case action::Direction::Forward:
-            m_eq.StartMoveForward();
-            break;
-        case action::Direction::Backward:
-            m_eq.StartMoveBackward();
-            break;
-        case action::Direction::Left:
-            // EverQuest doesn't have native strafe - use turn for now
-            // Actual strafe could be implemented via heading + forward movement
-            m_eq.StartTurnLeft();
-            break;
-        case action::Direction::Right:
-            m_eq.StartTurnRight();
-            break;
-        case action::Direction::Up:
-        case action::Direction::Down:
-            // Not directly supported
-            break;
-    }
-}
-
-void EqActionHandler::stopMoving(action::Direction dir) {
-    switch (dir) {
-        case action::Direction::Forward:
-            m_eq.StopMoveForward();
-            break;
-        case action::Direction::Backward:
-            m_eq.StopMoveBackward();
-            break;
-        case action::Direction::Left:
-            m_eq.StopTurnLeft();
-            break;
-        case action::Direction::Right:
-            m_eq.StopTurnRight();
-            break;
-        case action::Direction::Up:
-        case action::Direction::Down:
-            break;
-    }
-}
-
 void EqActionHandler::setHeading(float heading) {
     // T90: EverQuest::SetHeading() stores its argument raw into m_heading,
     // which every other site (PlayerProfile zone-in, eq_movement.cpp's
@@ -203,10 +160,6 @@ void EqActionHandler::moveToEntity(const std::string& name) {
     m_eq.MoveToEntity(name);
 }
 
-void EqActionHandler::moveToEntityWithinRange(const std::string& name, float distance) {
-    m_eq.MoveToEntityWithinRange(name, distance);
-}
-
 void EqActionHandler::followEntity(const std::string& name) {
     m_eq.Follow(name);
 }
@@ -223,11 +176,6 @@ void EqActionHandler::targetEntity(uint16_t spawnId) {
         combat->SetTarget(spawnId);
         updateRendererTargetInfo(spawnId);
     }
-}
-
-void EqActionHandler::targetNearest() {
-    // Would need to be implemented using entity manager to find nearest NPC
-    LOG_DEBUG(MOD_COMBAT, "Target nearest not yet implemented");
 }
 
 void EqActionHandler::targetNearestPC() {
@@ -512,16 +460,6 @@ void EqActionHandler::castSpell(uint8_t gemSlot) {
     beginCastFromGem(gemSlot, 0);
 }
 
-void EqActionHandler::castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) {
-    // First set target, then cast -- same order as before T240, so the
-    // explicit target is also the current target when the cast completes.
-    auto* combat = getCombatManager();
-    if (combat) {
-        combat->SetTarget(targetId);
-    }
-    beginCastFromGem(gemSlot, targetId);
-}
-
 void EqActionHandler::interruptCast() {
     // T101: repointed from CombatManager::InterruptCast() to
     // EQ::SpellManager -- ported from game's /interrupt (eq_commands_
@@ -583,11 +521,6 @@ void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
     }
 }
 
-void EqActionHandler::useAbility(uint32_t abilityId) {
-    // Abilities use similar slot-based activation as spells
-    LOG_DEBUG(MOD_COMBAT, "Use ability {} not yet implemented", abilityId);
-}
-
 void EqActionHandler::useSkill(uint32_t skillId) {
     // T156: was a "not yet implemented" stub, and the reason T155 found all
     // five of T152's skill senders unreachable. SkillManager::activateSkill()
@@ -641,10 +574,6 @@ void EqActionHandler::hailTarget() {
     }
     // No target or target name not found — fall back to plain hail
     hail();
-}
-
-void EqActionHandler::clickDoor(uint8_t doorId) {
-    m_eq.SendClickDoor(doorId);
 }
 
 void EqActionHandler::clickNearestDoor() {
@@ -750,34 +679,7 @@ void EqActionHandler::setAnonymous(bool anon) {
     m_eq.SetAnonymous(anon);
 }
 
-void EqActionHandler::toggleSneak() {
-    // Sneak toggle would require public accessor or state tracking
-    // For now, we can't check current sneak state - just toggle
-    LOG_DEBUG(MOD_INPUT, "Sneak toggle - requires state tracking implementation");
-}
-
-void EqActionHandler::startCamp() {
-    m_eq.StartCampTimer();
-}
-
-void EqActionHandler::cancelCamp() {
-    m_eq.CancelCamp();
-}
-
 // ========== Inventory ==========
-
-void EqActionHandler::moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity) {
-    // Item move is handled internally by inventory manager
-    // The public interface would be through inventory window clicks
-    LOG_DEBUG(MOD_INVENTORY, "Move item not yet exposed publicly");
-    (void)fromSlot; (void)toSlot; (void)quantity;
-}
-
-void EqActionHandler::deleteItem(int16_t slot) {
-    // Item delete is handled internally by inventory manager
-    LOG_DEBUG(MOD_INVENTORY, "Delete item not yet exposed publicly");
-    (void)slot;
-}
 
 void EqActionHandler::useItem(int16_t slot) {
     // T230: was a stub ("Use item not yet implemented") -- the keyboard
@@ -809,28 +711,6 @@ void EqActionHandler::equip(const std::string& args) {
 
 // ========== Spellbook ==========
 
-void EqActionHandler::memorizeSpell(uint8_t gemSlot, uint32_t spellId) {
-    // T240: was CombatManager::MemorizeSpell(), which wrote the dead
-    // CombatManager::m_spell_gems map (never read by any cast path after
-    // T240; never read by the real one before it) and sent nothing. Now the
-    // same SpellManager call memorizeSpellByName() ends in, so a memorise
-    // by id reaches the real gem store and the server (OP_MemorizeSpell).
-    auto* spellMgr = m_eq.GetSpellManager();
-    if (!spellMgr) {
-        m_eq.AddChatSystemMessage("Spell system not initialized");
-        return;
-    }
-    // gemSlot arrives 1-indexed (ActionDispatcher::memorizeSpell() already
-    // validated it); SpellManager's gems are 0-indexed.
-    if (spellMgr->memorizeSpell(spellId, static_cast<uint8_t>(gemSlot - 1))) {
-        m_eq.AddChatSystemMessage("Memorizing spell " + std::to_string(spellId) +
-                                  " in gem " + std::to_string(gemSlot));
-    } else {
-        m_eq.AddChatSystemMessage("Cannot memorize spell " + std::to_string(spellId) +
-                                  " - check if scribed and level requirement");
-    }
-}
-
 void EqActionHandler::forgetSpell(uint8_t gemSlot) {
     // T101: fixed -- ported from game's /forget (eq_commands_spells.cpp).
     // Was a stub ("Would need to send forget spell packet") that always
@@ -848,15 +728,6 @@ void EqActionHandler::forgetSpell(uint8_t gemSlot) {
     } else {
         m_eq.AddChatSystemMessage("No spell in gem " + std::to_string(gemSlot));
     }
-}
-
-void EqActionHandler::openSpellbook() {
-    // UI state - would need renderer integration
-    LOG_DEBUG(MOD_UI, "Open spellbook not yet implemented");
-}
-
-void EqActionHandler::closeSpellbook() {
-    LOG_DEBUG(MOD_UI, "Close spellbook not yet implemented");
 }
 
 void EqActionHandler::memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) {
@@ -1013,7 +884,7 @@ void EqActionHandler::acceptTrade() {
     }
     // T259: during an ACTIVE trade, /accept is the trade window's Accept
     // button (TradeManager::clickAccept -> OP_TradeAcceptClick). That path
-    // was reachable only via TradeAcceptIntent, which nothing produced, so
+    // was reachable only via a bridge intent nothing produced (deleted T264), so
     // no trade could ever be completed from a headless/scripted client.
     if (m_eq.GetGameState().trade().active()) {
         if (trade->isOwnAccepted()) {
@@ -1084,13 +955,6 @@ void EqActionHandler::declineTrade() {
     trade->rejectTradeRequest();
 }
 
-// ========== Zone ==========
-
-void EqActionHandler::requestZone(const std::string& zoneName) {
-    // Zone requests typically happen through doors/zone lines, not directly
-    LOG_DEBUG(MOD_ZONE, "Zone request not yet implemented");
-}
-
 // ========== Pet ==========
 
 void EqActionHandler::sendPetCommand(uint8_t command, uint16_t targetId) {
@@ -1127,11 +991,6 @@ void EqActionHandler::dismissPet() {
 
 void EqActionHandler::clickWorldObject(uint32_t dropId) {
     m_eq.SendClickObject(dropId);
-}
-
-void EqActionHandler::tradeskillCombine() {
-    // Combine is typically triggered through the tradeskill window combine button
-    LOG_DEBUG(MOD_UI, "Tradeskill combine would need to be routed through tradeskill window");
 }
 
 // T149 -- THE design point of this unit.
@@ -1414,10 +1273,6 @@ void EqActionHandler::dumpEntityAppearance(const std::string& name) {
 
 void EqActionHandler::sendAnimation(uint8_t animationId, uint8_t speed) {
     m_eq.SendAnimation(animationId, speed);
-}
-
-void EqActionHandler::sendPositionUpdate() {
-    m_eq.SendPositionUpdate();
 }
 
 // ========== Social (T102) ==========

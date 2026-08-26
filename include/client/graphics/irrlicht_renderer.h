@@ -1067,7 +1067,6 @@ public:
     // Current target management
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
     void setCurrentTargetInfo(const TargetInfo& info);
-    void updateCurrentTargetHP(uint8_t hpPercent);
     void clearCurrentTarget();
     uint16_t getCurrentTargetId() const { return currentTargetId_; }
     const TargetInfo& getCurrentTargetInfo() const { return currentTargetInfo_; }

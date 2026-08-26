@@ -19,9 +19,10 @@
 //     EverQuest::SetUnrecognizedCommandFallback -- the exact hook Application
 //     wires to CommandProcessor -- and, with no fallback installed, the
 //     "Unknown command: /wave" system message proves the same reach;
-//   - Combat: the AutoAttackChanged bridge event (CombatManager publishes it
-//     from Enable/DisableAutoAttack), on then off, and nothing without a
-//     target.
+//   - Combat: CombatManager's auto-attack flag and the GameState it writes at
+//     the same choke point (T264: the AutoAttackChanged bridge event that
+//     used to accompany it was deleted -- nothing consumed it), on then off,
+//     and nothing without a target.
 // The live leg (refactor/T239_hotbar_emote_macro.md) covers the wire.
 
 #include <gtest/gtest.h>
@@ -45,16 +46,6 @@ std::string lastSystemMessage(const std::vector<eqt::state::GameEvent>& events) 
         }
     }
     return last;
-}
-
-std::vector<bool> autoAttackChanges(const std::vector<eqt::state::GameEvent>& events) {
-    std::vector<bool> out;
-    for (auto& e : events) {
-        if (e.type == eqt::state::GameEventType::AutoAttackChanged) {
-            out.push_back(std::get<eqt::state::AutoAttackChangedData>(e.data).enabled);
-        }
-    }
-    return out;
 }
 
 struct Harness {
@@ -128,10 +119,10 @@ TEST(EqActionHandlerHotbarCommand, Combat_TogglesAutoAttackOnThenOff) {
 
     h.handler.activateHotbarCommandSlot(eqt::HotbarSlotType::Combat, "");
     EXPECT_TRUE(h.eq.GetCombatManager()->IsAutoAttackEnabled());
+    EXPECT_TRUE(h.eq.GetGameState().combat().isAutoAttacking());
     h.handler.activateHotbarCommandSlot(eqt::HotbarSlotType::Combat, "");
     EXPECT_FALSE(h.eq.GetCombatManager()->IsAutoAttackEnabled());
-
-    EXPECT_EQ(autoAttackChanges(h.bridge.drainEvents()), (std::vector<bool>{true, false}));
+    EXPECT_FALSE(h.eq.GetGameState().combat().isAutoAttacking());
 }
 
 TEST(EqActionHandlerHotbarCommand, Combat_NoTarget_RefusesWithMessageAndNoToggle) {
@@ -142,7 +133,7 @@ TEST(EqActionHandlerHotbarCommand, Combat_NoTarget_RefusesWithMessageAndNoToggle
 
     auto events = h.bridge.drainEvents();
     EXPECT_FALSE(h.eq.GetCombatManager()->IsAutoAttackEnabled());
-    EXPECT_TRUE(autoAttackChanges(events).empty());
+    EXPECT_FALSE(h.eq.GetGameState().combat().isAutoAttacking());
     EXPECT_EQ(lastSystemMessage(events), "You must have a target to attack");
 }
 

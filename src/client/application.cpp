@@ -1925,12 +1925,12 @@ void Application::setupRDPAudio([[maybe_unused]] void* rdpServerPtr) {
 // "Synchronization" section for the full history).
 
 // Application::syncCombatState() was deleted (T104) -- CombatManager remains
-// authoritative; its target id/auto-attack flag now publish
-// TargetChanged/AutoAttackChanged bridge events from their sole choke points
-// (CombatManager::SetTarget/ClearTarget/EnableAutoAttack/DisableAutoAttack,
-// combat.cpp) and, since T221/T227, write EverQuest::m_game_state.combat()
-// directly at those same choke points -- the one GameState the action layer
-// reads. See refactor/T104_combat_poll_to_bridge.md and
+// authoritative; its target id publishes TargetChanged from its sole choke
+// points (CombatManager::SetTarget/ClearTarget, combat.cpp) and, since
+// T221/T227, both the target and the auto-attack flag are written into
+// EverQuest::m_game_state.combat() directly at those same choke points --
+// the one GameState the action layer reads. (T264: the AutoAttackChanged
+// bridge event had no consumer left and was deleted.) See refactor/T104_combat_poll_to_bridge.md and
 // refactor/T227_single_gamestate.md.
 
 // Application::syncNPCInteractionState() was deleted (T49) -- vendor,

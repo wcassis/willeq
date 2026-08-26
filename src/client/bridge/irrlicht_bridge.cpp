@@ -240,11 +240,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     // Combat events (D10)
-    case state::GameEventType::CombatEvent:
-        // CombatEvent carries combat text (hit/miss/dodge etc.) — no dedicated
-        // renderer call; combat text is routed through chat window by eq.cpp
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CombatEvent");
-        break;
     case state::GameEventType::TargetChanged:
         if (renderer_) {
             auto& d = std::get<state::TargetChangedData>(event.data);
@@ -276,14 +271,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             ct.name = d.name;
             ct.level = d.level;
             ct.hpPercent = d.hpPercent;
-        }
-        break;
-    case state::GameEventType::TargetHPUpdated:
-        if (renderer_) {
-            auto& d = std::get<state::TargetHPUpdatedData>(event.data);
-            renderer_->updateCurrentTargetHP(d.hpPercent);
-            // U03d: Cache for new static UI
-            renderer_->cachedTargetInfo_.hpPercent = d.hpPercent;
         }
         break;
     case state::GameEventType::DamageEvent:
@@ -718,9 +705,6 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->processSlashCommand(d.command);
             }
         }
-        break;
-    case state::GameEventType::ToggleSkillsWindow:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: ToggleSkillsWindow");
         break;
 
     // ========================================================================

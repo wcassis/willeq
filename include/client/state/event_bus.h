@@ -9,7 +9,6 @@
 #include <memory>
 #include <glm/glm.hpp>
 
-#include "client/state/entity_manager.h"  // T81: EntityStateSnapshotData carries state::Entity by value
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
 
 class HCMap;
@@ -25,19 +24,11 @@ enum class GameEventType {
     PlayerStatsChanged,
     PlayerPositionStateChanged,
     PlayerMovementModeChanged,
-    PlayerFlagsChanged,   // T218: own AFK/anonymous/roleplay flags, published
-                          // from EverQuest::SetAFK/SetAnonymous/SetRoleplay
-                          // (eq_player_info.cpp), which also write the state
-                          // directly (T227: no projection consumer remains).
 
     // Entity events
     EntitySpawned,
     EntityDespawned,
     EntityMoved,
-    EntityStateSnapshot,  // T81: full state::Entity snapshot, published from
-                           // EverQuest::SyncEntityToGameState() (spawn/self,
-                           // never per-tick), which also writes the state
-                           // directly (T227: no projection consumer remains).
     EntityStatsChanged,
     EntityAppearanceChanged,
     EntityLightChanged,
@@ -66,14 +57,7 @@ enum class GameEventType {
     SystemMessage,
 
     // Combat events
-    CombatEvent,
     TargetChanged,
-    TargetHPUpdated,
-    AutoAttackChanged,  // T104: replaces the auto-attack half of
-                         // Application::syncCombatState()'s poll --
-                         // published from CombatManager::EnableAutoAttack()/
-                         // DisableAutoAttack(), the sole choke points that
-                         // mutate m_auto_attack_enabled.
     DamageEvent,
     SpellCastStarted,
     SpellCastComplete,
@@ -153,7 +137,6 @@ enum class GameEventType {
     NoteWindowOpened,
     SpellScribeCompleted,
     SpellbookSnapshot,  // U06g: full spellbook sent once at zone-in
-    ToggleSkillsWindow,
     HotbarCooldownStarted,
     HotbarSlotAssigned,  // U00: hotbar slot content changed (client-side config)
     SkillActivationFeedback,
@@ -205,15 +188,6 @@ struct PlayerMovementModeChangedData {
     uint8_t mode;  // MovementMode enum value
 };
 
-// T218: the full flag set every time any one of them changes (republish-the-
-// whole-struct, same pattern as T81's EntityStateSnapshot) so the projection
-// never has to merge.
-struct PlayerFlagsChangedData {
-    bool afk = false;
-    bool anonymous = false;
-    bool roleplay = false;
-};
-
 // --- Entity events ---
 
 struct EntitySpawnedData {
@@ -244,15 +218,6 @@ struct EntitySpawnedData {
 struct EntityDespawnedData {
     uint16_t spawnId;
     std::string name;
-};
-
-// T81: full-struct snapshot, mirroring EverQuest::SyncEntityToGameState()'s
-// add-or-replace copy of the complete Entity (eq_player_info.cpp:261).
-// Published only on spawn (bulk zone-in, single new-spawn) and self-entity
-// creation -- never per-tick -- so this is deliberately NOT used for
-// position updates; EntityMoved (coalesced, D24) carries those instead.
-struct EntityStateSnapshotData {
-    Entity entity;
 };
 
 struct EntityMovedData {
@@ -398,25 +363,6 @@ struct ChatMessageData {
 
 // --- Combat events ---
 
-struct CombatEventData {
-    enum class Type {
-        Hit,
-        Miss,
-        Dodge,
-        Parry,
-        Block,
-        Riposte,
-        CriticalHit,
-        Death
-    };
-    Type type;
-    uint16_t sourceId;
-    uint16_t targetId;
-    int32_t damage;
-    std::string sourceName;
-    std::string targetName;
-};
-
 struct TargetChangedData {
     uint16_t spawnId = 0;     // 0 = target cleared
     std::string name;
@@ -432,15 +378,6 @@ struct TargetChangedData {
     uint8_t texture = 0;      // equip_chest2
     uint32_t equipment[9] = {0};
     uint32_t equipmentTint[9] = {0};
-};
-
-struct TargetHPUpdatedData {
-    uint8_t hpPercent = 100;
-};
-
-// T104: replaces the auto-attack-flag half of Application::syncCombatState().
-struct AutoAttackChangedData {
-    bool enabled = false;
 };
 
 struct DamageEventData {
@@ -821,8 +758,6 @@ struct SpellbookSnapshotData {
     std::vector<SpellbookEntry> spells;
 };
 
-struct ToggleSkillsWindowData {};
-
 struct HotbarCooldownStartedData {
     int index;
     uint32_t durationMs;
@@ -984,11 +919,9 @@ using EventData = std::variant<
     PlayerStatsChangedData,
     PlayerPositionStateChangedData,
     PlayerMovementModeChangedData,
-    PlayerFlagsChangedData,
     // Entity
     EntitySpawnedData,
     EntityDespawnedData,
-    EntityStateSnapshotData,
     EntityMovedData,
     EntityStatsChangedData,
     EntityAppearanceChangedData,
@@ -1013,10 +946,7 @@ using EventData = std::variant<
     // Chat
     ChatMessageData,
     // Combat
-    CombatEventData,
     TargetChangedData,
-    TargetHPUpdatedData,
-    AutoAttackChangedData,
     DamageEventData,
     SpellCastStartedData,
     SpellCastCompleteData,
@@ -1081,7 +1011,6 @@ using EventData = std::variant<
     NoteWindowOpenedData,
     SpellScribeCompletedData,
     SpellbookSnapshotData,
-    ToggleSkillsWindowData,
     HotbarCooldownStartedData,
     HotbarSlotAssignedData,
     SkillActivationFeedbackData,

@@ -27,8 +27,6 @@ public:
 
     // ========== Movement ==========
 
-    void startMoving(action::Direction dir) override;
-    void stopMoving(action::Direction dir) override;
     void setHeading(float heading) override;
     void jump() override;
     void sit() override;
@@ -38,14 +36,12 @@ public:
 
     void moveToLocation(float x, float y, float z) override;
     void moveToEntity(const std::string& name) override;
-    void moveToEntityWithinRange(const std::string& name, float distance) override;
     void followEntity(const std::string& name) override;
     void stopFollow() override;
 
     // ========== Combat ==========
 
     void targetEntity(uint16_t spawnId) override;
-    void targetNearest() override;
     void targetNearestPC() override;
     void targetNearestNPC() override;
     void cycleTargets() override;
@@ -71,11 +67,9 @@ public:
     void duelDecline() override;
 
     void castSpell(uint8_t gemSlot) override;
-    void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) override;
     void interruptCast() override;
     void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) override;
 
-    void useAbility(uint32_t abilityId) override;
     void useSkill(uint32_t skillId) override;
 
     // ========== Interaction ==========
@@ -83,7 +77,6 @@ public:
     void hail() override;
     void hailTarget() override;
 
-    void clickDoor(uint8_t doorId) override;
     void clickNearestDoor() override;
 
     void lootCorpse(uint16_t corpseId) override;
@@ -111,14 +104,9 @@ public:
 
     void setAFK(bool afk) override;
     void setAnonymous(bool anon) override;
-    void toggleSneak() override;
-    void startCamp() override;
-    void cancelCamp() override;
 
     // ========== Inventory ==========
 
-    void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity) override;
-    void deleteItem(int16_t slot) override;
     void useItem(int16_t slot) override;
     int16_t findItemSlotByItemId(uint32_t itemId) override;  // T230
     void activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) override;  // T239
@@ -126,10 +114,7 @@ public:
 
     // ========== Spellbook ==========
 
-    void memorizeSpell(uint8_t gemSlot, uint32_t spellId) override;
     void forgetSpell(uint8_t gemSlot) override;
-    void openSpellbook() override;
-    void closeSpellbook() override;
     void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) override;
     void listMemorizedSpells() override;
 
@@ -140,9 +125,6 @@ public:
     void cancelTrade() override;
     void declineTrade() override;
 
-    // ========== Zone ==========
-
-    void requestZone(const std::string& zoneName) override;
 
     // ========== Pet ==========
 
@@ -152,7 +134,6 @@ public:
     // ========== Tradeskill ==========
 
     void clickWorldObject(uint32_t dropId) override;
-    void tradeskillCombine() override;
 
     // T149: recipe requests. object_type is NOT a parameter -- it is
     // resolved here from the open container via
@@ -193,7 +174,6 @@ public:
     // ========== Utility ==========
 
     void sendAnimation(uint8_t animationId, uint8_t speed) override;
-    void sendPositionUpdate() override;
 
     // ========== Social (T102) ==========
 

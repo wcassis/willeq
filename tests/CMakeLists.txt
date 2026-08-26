@@ -471,6 +471,16 @@ TARGET_COMPILE_DEFINITIONS(test_eqe1_archive_config PRIVATE
 TARGET_LINK_LIBRARIES(test_eqe1_archive_config GTest::gtest_main ${JSONCPP_LIBRARIES})
 GTEST_DISCOVER_TESTS(test_eqe1_archive_config)
 
+# T264: the intent/handler reachability sweep, pinned. Parses
+# renderer_intents.h / eq_bridge.cpp / event_bus.h / action_dispatcher.{h,cpp}
+# / eq.h and the src tree (WILLEQ_REPO_ROOT) and asserts the producer-less /
+# unreachable sets equal the documented blocked lists, in both directions.
+ADD_EXECUTABLE(test_reachability_sweep
+    test_reachability_sweep.cpp
+)
+TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_reachability_sweep)
+
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the
 # ActionCallback and the recording handler behind a real ActionDispatcher.

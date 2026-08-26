@@ -29,18 +29,6 @@ struct Sym {
     std::string text;
 };
 
-inline std::string directionName(Direction dir) {
-    switch (dir) {
-        case Direction::Forward:  return "Forward";
-        case Direction::Backward: return "Backward";
-        case Direction::Left:     return "Left";
-        case Direction::Right:    return "Right";
-        case Direction::Up:       return "Up";
-        case Direction::Down:     return "Down";
-    }
-    return "?";
-}
-
 inline std::string chatChannelName(ChatChannel ch) {
     switch (ch) {
         case ChatChannel::Say:     return "Say";
@@ -75,12 +63,6 @@ public:
     void clear() { calls.clear(); }
 
     // ========== Movement ==========
-    void startMoving(Direction dir) override {
-        record("startMoving", Sym{directionName(dir)});
-    }
-    void stopMoving(Direction dir) override {
-        record("stopMoving", Sym{directionName(dir)});
-    }
     void setHeading(float heading) override {
         record("setHeading", heading);
     }
@@ -96,9 +78,6 @@ public:
     void moveToEntity(const std::string& name) override {
         record("moveToEntity", name);
     }
-    void moveToEntityWithinRange(const std::string& name, float distance) override {
-        record("moveToEntityWithinRange", name, distance);
-    }
     void followEntity(const std::string& name) override {
         record("followEntity", name);
     }
@@ -108,7 +87,6 @@ public:
     void targetEntity(uint16_t spawnId) override {
         record("targetEntity", spawnId);
     }
-    void targetNearest() override { record("targetNearest"); }
     void targetNearestPC() override { record("targetNearestPC"); }
     void targetNearestNPC() override { record("targetNearestNPC"); }
     void cycleTargets() override { record("cycleTargets"); }
@@ -138,17 +116,11 @@ public:
     void castSpell(uint8_t gemSlot) override {
         record("castSpell", static_cast<int>(gemSlot));
     }
-    void castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) override {
-        record("castSpellOnTarget", static_cast<int>(gemSlot), targetId);
-    }
     void interruptCast() override { record("interruptCast"); }
     void beginCastFromGem(uint8_t gemSlot, uint16_t targetId) override {
         record("beginCastFromGem", static_cast<int>(gemSlot), targetId);
     }
 
-    void useAbility(uint32_t abilityId) override {
-        record("useAbility", abilityId);
-    }
     void useSkill(uint32_t skillId) override {
         record("useSkill", skillId);
     }
@@ -157,9 +129,6 @@ public:
     void hail() override { record("hail"); }
     void hailTarget() override { record("hailTarget"); }
 
-    void clickDoor(uint8_t doorId) override {
-        record("clickDoor", static_cast<int>(doorId));
-    }
     void clickNearestDoor() override { record("clickNearestDoor"); }
 
     void lootCorpse(uint16_t corpseId) override {
@@ -202,15 +171,8 @@ public:
     // ========== Character State ==========
     void setAFK(bool afk) override { record("setAFK", afk); }
     void setAnonymous(bool anon) override { record("setAnonymous", anon); }
-    void toggleSneak() override { record("toggleSneak"); }
-    void startCamp() override { record("startCamp"); }
-    void cancelCamp() override { record("cancelCamp"); }
 
     // ========== Inventory ==========
-    void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity = 0) override {
-        record("moveItem", fromSlot, toSlot, quantity);
-    }
-    void deleteItem(int16_t slot) override { record("deleteItem", slot); }
     void useItem(int16_t slot) override { record("useItem", slot); }
     void activateHotbarCommandSlot(HotbarSlotType type, const std::string& text) override {
         record("activateHotbarCommandSlot", Sym{hotbarSlotTypeName(type)}, text);
@@ -227,14 +189,9 @@ public:
     void equip(const std::string& args) override { record("equip", args); }
 
     // ========== Spellbook ==========
-    void memorizeSpell(uint8_t gemSlot, uint32_t spellId) override {
-        record("memorizeSpell", static_cast<int>(gemSlot), spellId);
-    }
     void forgetSpell(uint8_t gemSlot) override {
         record("forgetSpell", static_cast<int>(gemSlot));
     }
-    void openSpellbook() override { record("openSpellbook"); }
-    void closeSpellbook() override { record("closeSpellbook"); }
     void memorizeSpellByName(const std::string& spellName, uint8_t gemSlot) override {
         record("memorizeSpellByName", spellName, static_cast<int>(gemSlot));
     }
@@ -248,10 +205,6 @@ public:
     void cancelTrade() override { record("cancelTrade"); }
     void declineTrade() override { record("declineTrade"); }
 
-    // ========== Zone ==========
-    void requestZone(const std::string& zoneName) override {
-        record("requestZone", zoneName);
-    }
 
     // ========== Pet ==========
     void sendPetCommand(uint8_t command, uint16_t targetId = 0) override {
@@ -263,7 +216,6 @@ public:
     void clickWorldObject(uint32_t dropId) override {
         record("clickWorldObject", dropId);
     }
-    void tradeskillCombine() override { record("tradeskillCombine"); }
 
     // T149: no object_type in any of these -- it is resolved from the open
     // container inside EqActionHandler, below this interface.
@@ -344,7 +296,6 @@ public:
     void sendAnimation(uint8_t animationId, uint8_t speed = 10) override {
         record("sendAnimation", static_cast<int>(animationId), static_cast<int>(speed));
     }
-    void sendPositionUpdate() override { record("sendPositionUpdate"); }
 
     // ========== Social (T102) ==========
     void inspectTarget(uint16_t targetId) override { record("inspectTarget", targetId); }

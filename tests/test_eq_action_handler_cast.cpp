@@ -1,4 +1,6 @@
-// T240: EqActionHandler::castSpell() / castSpellOnTarget() / memorizeSpell()
+// T240: EqActionHandler::castSpell() (T264: castSpellOnTarget()/memorizeSpell()
+// were deleted -- no production caller; /cast and /mem use beginCastFromGem()
+// and memorizeSpellByName())
 // against the REAL EverQuest + EQ::SpellManager + a real (never handshaken)
 // DaybreakConnection, so the outbound OP_CastSpell / OP_MemorizeSpell bytes
 // can be asserted -- the T234 WireHarness idiom (test_eq_action_handler_
@@ -255,34 +257,6 @@ TEST(EqActionHandlerCast, CastSpell_ProfileLoadedGem_CastsThroughSpellManager) {
 }
 
 // ---------------------------------------------------------------------
-// castSpellOnTarget(): the explicit target is used for the cast AND
-// becomes the current target (pre-T240 order preserved).
-// ---------------------------------------------------------------------
-TEST(EqActionHandlerCast, CastSpellOnTarget_ExplicitTargetIsCastTargetAndCurrentTarget) {
-    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
-    WireHarness h;
-    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
-    uint32_t id = h.findSingleTargetSpell();
-    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
-
-    h.spawnSelfAndGuard();
-    h.eq.GetGameState().player().setMana(1000, 1000);
-    h.loadGemsLikePlayerProfile({kEmpty, id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
-    ASSERT_FALSE(h.eq.GetCombatManager()->HasTarget());
-    h.clearSent();
-
-    h.handler.castSpellOnTarget(2, kGuardId);
-
-    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
-    auto casts = h.sentCasts();
-    ASSERT_EQ(casts.size(), 1u);
-    EXPECT_EQ(casts[0].slot, 1u) << "gem 2 (1-based) -> slot 1";
-    EXPECT_EQ(casts[0].spell_id, id);
-    EXPECT_EQ(casts[0].target_id, static_cast<uint32_t>(kGuardId));
-    EXPECT_EQ(h.eq.GetCombatManager()->GetTargetId(), kGuardId);
-}
-
-// ---------------------------------------------------------------------
 // T93's off-by-one pin, on the real store: only gem 8 loaded -> gem 7
 // refuses, gem 8 casts (far end); only gem 2 loaded -> gem 1 refuses,
 // gem 2 casts (near end).
@@ -333,34 +307,6 @@ TEST(EqActionHandlerCast, CastSpell_GemBeyondEight_RefusedNothingSent) {
     h.handler.castSpell(12);
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());
-}
-
-// ---------------------------------------------------------------------
-// memorizeSpell(gem, id): now writes SpellManager (memorisation starts,
-// OP_MemorizeSpell goes out) instead of the deleted CombatManager map.
-// RED on pre-T240 code: the gem stays Empty and nothing is sent.
-// ---------------------------------------------------------------------
-TEST(EqActionHandlerCast, MemorizeSpell_ById_WritesSpellManagerAndSendsMemorize) {
-    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
-    WireHarness h;
-    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
-    uint32_t id = h.findSingleTargetSpell();
-    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
-    auto* mgr = h.eq.GetSpellManager();
-
-    ASSERT_TRUE(mgr->scribeSpell(id, 0));
-    h.eq.GetGameState().player().setClass(static_cast<uint32_t>(EQ::PlayerClass::Wizard));
-    h.eq.GetGameState().player().setLevel(60);
-    ASSERT_EQ(mgr->getGemState(2), EQ::GemState::Empty);
-    h.clearSent();
-
-    h.handler.memorizeSpell(3, id);  // gem 3 (1-based) -> index 2
-
-    EXPECT_EQ(mgr->getGemState(2), EQ::GemState::MemorizeProgress);
-    auto mems = h.sentMemorizes();
-    ASSERT_EQ(mems.size(), 1u) << "exactly one OP_MemorizeSpell on the wire";
-    EXPECT_EQ(mems[0].slot, 2u);
-    EXPECT_EQ(mems[0].spell_id, id);
 }
 
 }  // namespace

@@ -387,7 +387,7 @@ private:
 	// decisions, only make the resulting state observable cross-thread.
 	void PublishTargetChanged(const Entity& entity);
 	void PublishTargetCleared();
-	void PublishAutoAttackChanged(bool enabled);
+	void WriteAutoAttackState(bool enabled);
 
 	// Helper methods
 	void ScanForTargets();

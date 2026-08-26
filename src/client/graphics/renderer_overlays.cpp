@@ -555,12 +555,6 @@ void IrrlichtRenderer::setCurrentTargetInfo(const TargetInfo& info) {
     }
 }
 
-void IrrlichtRenderer::updateCurrentTargetHP(uint8_t hpPercent) {
-    if (isLoading()) return;
-    currentTargetHpPercent_ = hpPercent;
-    currentTargetInfo_.hpPercent = hpPercent;
-}
-
 void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     if (!eventReceiver_ || !camera_ || !entityRenderer_) {
         return;

@@ -48,11 +48,12 @@ protected:
         return GameEvent(GameEventType::EntityMoved, d);
     }
 
+    // T264: was EntityStateSnapshot, deleted (published, never consumed).
     static GameEvent snapshot(uint16_t spawnId, const std::string& name) {
-        EntityStateSnapshotData d;
-        d.entity.spawnId = spawnId;
-        d.entity.name = name;
-        return GameEvent(GameEventType::EntityStateSnapshot, d);
+        EntitySpawnedData d{};
+        d.spawnId = spawnId;
+        d.name = name;
+        return GameEvent(GameEventType::EntitySpawned, d);
     }
 
     static GameEvent pet(uint16_t spawnId) {
@@ -105,8 +106,8 @@ TEST_F(GameStateSyncBridgeTest, EveryEventTypeForwardsOnceUnchanged) {
     in.push_back(GameEvent(GameEventType::TradeCancelled, TradeCancelledData{}));
     in.push_back(GameEvent(GameEventType::TradeCompleted, TradeCompletedData{}));
     in.push_back(GameEvent(GameEventType::TargetChanged, TargetChangedData{}));
-    in.push_back(GameEvent(GameEventType::AutoAttackChanged, AutoAttackChangedData{}));
-    in.push_back(GameEvent(GameEventType::PlayerFlagsChanged, PlayerFlagsChangedData{}));
+    in.push_back(GameEvent(GameEventType::PlayerStatsChanged, PlayerStatsChangedData{}));
+    in.push_back(GameEvent(GameEventType::PlayerMovementModeChanged, PlayerMovementModeChangedData{}));
     in.push_back(GameEvent(GameEventType::InventorySlotChanged, InventorySlotChangedData{}));
     in.push_back(GameEvent(GameEventType::DoorSpawned, DoorSpawnedData{}));
     in.push_back(GameEvent(GameEventType::DoorStateChanged, DoorStateChangedData{}));
@@ -123,7 +124,7 @@ TEST_F(GameStateSyncBridgeTest, EveryEventTypeForwardsOnceUnchanged) {
     // Payload survives untouched (spot check).
     EXPECT_EQ(std::get<PetCreatedData>(wrapped->applied[0].data).name, "Fido");
     EXPECT_EQ(std::get<PlayerSpawnIdSetData>(wrapped->applied[2].data).spawnId, 460);
-    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[12].data).entity.name, "Guard_Test");
+    EXPECT_EQ(std::get<EntitySpawnedData>(wrapped->applied[12].data).name, "Guard_Test");
 
     // Single-stage leaves nothing behind in the render-side queue.
     bridge->forwardStagedEvents();
@@ -157,7 +158,7 @@ TEST_F(GameStateSyncBridgeTest, ForwardStepDeliversEachEventOnceInPushOrder) {
     ASSERT_EQ(wrapped->applied.size(), 3u);
     EXPECT_EQ(wrapped->applied[0].type, GameEventType::PetCreated);
     EXPECT_EQ(wrapped->applied[1].type, GameEventType::SystemMessage);
-    EXPECT_EQ(wrapped->applied[2].type, GameEventType::EntityStateSnapshot);
+    EXPECT_EQ(wrapped->applied[2].type, GameEventType::EntitySpawned);
 
     // Forwarding is destructive: a second render drain delivers nothing
     // more, and a second staging pass finds nothing to stage.
@@ -194,10 +195,10 @@ TEST_F(GameStateSyncBridgeTest, OrderPreservedAcrossSeveralStageBatchesBeforeOne
     bridge->forwardStagedEvents();
 
     ASSERT_EQ(wrapped->applied.size(), 4u);
-    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[0].data).entity.name, "A");
-    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[1].data).entity.name, "B");
+    EXPECT_EQ(std::get<EntitySpawnedData>(wrapped->applied[0].data).name, "A");
+    EXPECT_EQ(std::get<EntitySpawnedData>(wrapped->applied[1].data).name, "B");
     EXPECT_EQ(wrapped->applied[2].type, GameEventType::SystemMessage);
-    EXPECT_EQ(std::get<EntityStateSnapshotData>(wrapped->applied[3].data).entity.name, "C");
+    EXPECT_EQ(std::get<EntitySpawnedData>(wrapped->applied[3].data).name, "C");
 }
 
 TEST_F(GameStateSyncBridgeTest, D24CoalescingHoldsOnRendererSideAcrossBatches) {
@@ -221,8 +222,8 @@ TEST_F(GameStateSyncBridgeTest, D24CoalescingHoldsOnRendererSideAcrossBatches) {
     // latest (30 for 5, 1 for 6), in order -- the same contract the
     // renderer had when it drained eventQueue_ directly.
     ASSERT_EQ(wrapped->applied.size(), 4u);
-    EXPECT_EQ(wrapped->applied[0].type, GameEventType::EntityStateSnapshot);
-    EXPECT_EQ(wrapped->applied[1].type, GameEventType::EntityStateSnapshot);
+    EXPECT_EQ(wrapped->applied[0].type, GameEventType::EntitySpawned);
+    EXPECT_EQ(wrapped->applied[1].type, GameEventType::EntitySpawned);
     EXPECT_EQ(wrapped->applied[2].type, GameEventType::EntityMoved);
     EXPECT_EQ(std::get<EntityMovedData>(wrapped->applied[2].data).spawnId, 6);
     EXPECT_FLOAT_EQ(std::get<EntityMovedData>(wrapped->applied[2].data).x, 1.0f);

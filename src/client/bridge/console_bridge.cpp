@@ -51,26 +51,6 @@ void ConsoleBridge::applyEvent(const state::GameEvent& event) {
         break;
     }
 
-    // Combat
-    case state::GameEventType::CombatEvent: {
-        auto& d = std::get<state::CombatEventData>(event.data);
-        switch (d.type) {
-            case state::CombatEventData::Type::Hit:
-                LOG_INFO(MOD_COMBAT, "[COMBAT] {} hit {} for {} damage",
-                    d.sourceName, d.targetName, d.damage);
-                break;
-            case state::CombatEventData::Type::Miss:
-                LOG_INFO(MOD_COMBAT, "[COMBAT] {} missed {}", d.sourceName, d.targetName);
-                break;
-            case state::CombatEventData::Type::Death:
-                LOG_INFO(MOD_COMBAT, "[COMBAT] {} killed {}", d.sourceName, d.targetName);
-                break;
-            default:
-                break;
-        }
-        break;
-    }
-
     // Target
     case state::GameEventType::TargetChanged: {
         auto& d = std::get<state::TargetChangedData>(event.data);

@@ -91,24 +91,15 @@ void CombatState::fireTargetChangedEvent() {
 
 void CombatState::fireCombatEvent() {
     if (m_eventBus) {
-        // T39/T104: setAutoAttacking() is now wired via GameStateSyncBridge's
-        // AutoAttackChanged case (game_state_sync_bridge.cpp), fed from
-        // CombatManager::EnableAutoAttack()/DisableAutoAttack() (combat.cpp)
-        // -- T104 replaced the prior feed, Application::syncCombatState(), a
-        // per-frame poll, with that typed event. This method itself stays a
-        // non-publishing stub, deliberately: CombatEventData (event_bus.h)
-        // models a single combat *round outcome* (Hit/Miss/Dodge/Parry/
-        // Block/Riposte/CriticalHit/Death against a source/target pair with
-        // a damage amount) -- there is no field of that struct, and no other
-        // GameEventType meant for THIS EventBus (the one ConsoleRenderer
-        // subscribes to), that means "auto-attack toggled". Reusing
-        // CombatEventData with a fabricated Type or invented damage value to
-        // represent a toggle would be inventing data the caller never
-        // provided, the same trap T104's own new AutoAttackChanged (a
-        // cross-thread bridge event, a different channel from this
-        // EventBus) was added to avoid rather than repeat. isAutoAttacking()
-        // now reflects real state and can be read directly; it has zero
-        // production readers today.
+        // T39/T104/T221: setAutoAttacking() is written at the source by
+        // CombatManager::WriteAutoAttackState() (combat.cpp), from
+        // EnableAutoAttack()/DisableAutoAttack(). This method stays a
+        // non-publishing stub, deliberately: there is no GameEventType meant
+        // for THIS EventBus that means "auto-attack toggled" (T264 deleted
+        // the unpublished CombatEvent and the unconsumed AutoAttackChanged),
+        // and inventing one here would be inventing data the caller never
+        // provided. isAutoAttacking() reflects real state and can be read
+        // directly.
     }
 }
 

@@ -43,30 +43,20 @@ TEST_F(ActionDispatcherTest, MovementFamily_RoutesToMatchingHandlerMethods) {
     connectHandler();
     connectZone();
 
-    EXPECT_TRUE(dispatcher->startMoving(Direction::Forward).success);
-    EXPECT_TRUE(dispatcher->startMoving(Direction::Backward).success);
-    EXPECT_TRUE(dispatcher->startMoving(Direction::Left).success);
-    EXPECT_TRUE(dispatcher->startMoving(Direction::Right).success);
-    EXPECT_TRUE(dispatcher->stopMoving(Direction::Up).success);
-    EXPECT_TRUE(dispatcher->stopMoving(Direction::Down).success);
+    // T264: startMoving()/stopMoving() (the Direction family) were deleted --
+    // no production caller; key movement is the renderer's own physics.
     EXPECT_TRUE(dispatcher->stopAllMovement().success);
     EXPECT_TRUE(dispatcher->jump().success);
     EXPECT_TRUE(dispatcher->sit().success);
     EXPECT_TRUE(dispatcher->stand().success);
     EXPECT_TRUE(dispatcher->toggleAutorun().success);
 
-    ASSERT_EQ(handler.count(), 11u);
-    EXPECT_EQ(handler.calls[0], "startMoving(Forward)");
-    EXPECT_EQ(handler.calls[1], "startMoving(Backward)");
-    EXPECT_EQ(handler.calls[2], "startMoving(Left)");
-    EXPECT_EQ(handler.calls[3], "startMoving(Right)");
-    EXPECT_EQ(handler.calls[4], "stopMoving(Up)");
-    EXPECT_EQ(handler.calls[5], "stopMoving(Down)");
-    EXPECT_EQ(handler.calls[6], "stopAllMovement()");
-    EXPECT_EQ(handler.calls[7], "jump()");
-    EXPECT_EQ(handler.calls[8], "sit()");
-    EXPECT_EQ(handler.calls[9], "stand()");
-    EXPECT_EQ(handler.calls[10], "toggleAutorun()");
+    ASSERT_EQ(handler.count(), 5u);
+    EXPECT_EQ(handler.calls[0], "stopAllMovement()");
+    EXPECT_EQ(handler.calls[1], "jump()");
+    EXPECT_EQ(handler.calls[2], "sit()");
+    EXPECT_EQ(handler.calls[3], "stand()");
+    EXPECT_EQ(handler.calls[4], "toggleAutorun()");
 }
 
 TEST_F(ActionDispatcherTest, SetHeading_NormalizesAndPassesThrough) {
@@ -122,7 +112,6 @@ TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
 
     // Not found cases don't touch the handler.
     EXPECT_FALSE(dispatcher->moveToEntity("Ghost").success);
-    EXPECT_FALSE(dispatcher->moveToEntityWithinRange("Ghost", 5.0f).success);
     EXPECT_FALSE(dispatcher->followEntity("Ghost").success);
     EXPECT_TRUE(handler.empty());
 
@@ -133,16 +122,14 @@ TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
 
     EXPECT_TRUE(dispatcher->moveToLocation(1.0f, 2.0f, 3.0f).success);
     EXPECT_TRUE(dispatcher->moveToEntity("Target").success);
-    EXPECT_TRUE(dispatcher->moveToEntityWithinRange("Target", 15.0f).success);
     EXPECT_TRUE(dispatcher->followEntity("Target").success);
     EXPECT_TRUE(dispatcher->stopFollow().success);
 
-    ASSERT_EQ(handler.count(), 5u);
+    ASSERT_EQ(handler.count(), 4u);
     EXPECT_EQ(handler.calls[0], "moveToLocation(1, 2, 3)");
     EXPECT_EQ(handler.calls[1], "moveToEntity(\"Target\")");
-    EXPECT_EQ(handler.calls[2], "moveToEntityWithinRange(\"Target\", 15)");
-    EXPECT_EQ(handler.calls[3], "followEntity(\"Target\")");
-    EXPECT_EQ(handler.calls[4], "stopFollow()");
+    EXPECT_EQ(handler.calls[2], "followEntity(\"Target\")");
+    EXPECT_EQ(handler.calls[3], "stopFollow()");
 }
 
 // The most likely real bug in this file per the plan: copy-pasted
@@ -153,7 +140,8 @@ TEST_F(ActionDispatcherTest, TargetingFamily_EachMemberRoutesToItsOwnHandlerMeth
 
     dispatcher->targetEntity(42);
     // T230: targetEntityByName was deleted (unreached second name resolver).
-    dispatcher->targetNearest();
+    // T264: targetNearest() was deleted (a "not yet implemented" stub with no
+    // caller; targetNearestPC/NPC are the live members).
     dispatcher->targetNearestPC();
     dispatcher->targetNearestNPC();
     dispatcher->cycleTargets();
@@ -162,16 +150,15 @@ TEST_F(ActionDispatcherTest, TargetingFamily_EachMemberRoutesToItsOwnHandlerMeth
     dispatcher->targetSelf();
     dispatcher->targetGroupMember(3);
 
-    ASSERT_EQ(handler.count(), 9u);
+    ASSERT_EQ(handler.count(), 8u);
     EXPECT_EQ(handler.calls[0], "targetEntity(42)");
-    EXPECT_EQ(handler.calls[1], "targetNearest()");
-    EXPECT_EQ(handler.calls[2], "targetNearestPC()");
-    EXPECT_EQ(handler.calls[3], "targetNearestNPC()");
-    EXPECT_EQ(handler.calls[4], "cycleTargets()");
-    EXPECT_EQ(handler.calls[5], "cycleTargetsReverse()");
-    EXPECT_EQ(handler.calls[6], "clearTarget()");
-    EXPECT_EQ(handler.calls[7], "targetSelf()");
-    EXPECT_EQ(handler.calls[8], "targetGroupMember(3)");
+    EXPECT_EQ(handler.calls[1], "targetNearestPC()");
+    EXPECT_EQ(handler.calls[2], "targetNearestNPC()");
+    EXPECT_EQ(handler.calls[3], "cycleTargets()");
+    EXPECT_EQ(handler.calls[4], "cycleTargetsReverse()");
+    EXPECT_EQ(handler.calls[5], "clearTarget()");
+    EXPECT_EQ(handler.calls[6], "targetSelf()");
+    EXPECT_EQ(handler.calls[7], "targetGroupMember(3)");
 }
 
 TEST_F(ActionDispatcherTest, AutoAttackFamily_EachMemberRoutesDistinctly) {
@@ -198,14 +185,10 @@ TEST_F(ActionDispatcherTest, CastSpellFamily_GemSlotBoundsAndRouting) {
 
     EXPECT_TRUE(dispatcher->castSpell(1).success);
     EXPECT_TRUE(dispatcher->castSpell(12).success);
-    EXPECT_TRUE(dispatcher->castSpellOnTarget(5, 99).success);
-    EXPECT_FALSE(dispatcher->castSpellOnTarget(0, 99).success);
-    EXPECT_FALSE(dispatcher->castSpellOnTarget(13, 99).success);
 
-    ASSERT_EQ(handler.count(), 3u);
+    ASSERT_EQ(handler.count(), 2u);
     EXPECT_EQ(handler.calls[0], "castSpell(1)");
     EXPECT_EQ(handler.calls[1], "castSpell(12)");
-    EXPECT_EQ(handler.calls[2], "castSpellOnTarget(5, 99)");
 }
 
 TEST_F(ActionDispatcherTest, InteractionFamily_DoorsAndCorpses) {
@@ -219,9 +202,8 @@ TEST_F(ActionDispatcherTest, InteractionFamily_DoorsAndCorpses) {
     door.z = 0;
     state.doors().addDoor(door);
 
-    EXPECT_TRUE(dispatcher->clickDoor(3).success);
-    EXPECT_FALSE(dispatcher->clickDoor(99).success);  // not found -> no dispatch
-
+    // T264: clickDoor(id) was deleted (no caller; DoorInteractIntent and
+    // clickNearestDoor() are the live door routes).
     auto& player = state.player();
     player.setPosition(9, 9, 0);
     EXPECT_TRUE(dispatcher->clickNearestDoor().success);
@@ -233,15 +215,14 @@ TEST_F(ActionDispatcherTest, InteractionFamily_DoorsAndCorpses) {
     dispatcher->lootAll(11);
     dispatcher->consider();
 
-    ASSERT_EQ(handler.count(), 8u);
-    EXPECT_EQ(handler.calls[0], "clickDoor(3)");
-    EXPECT_EQ(handler.calls[1], "clickNearestDoor()");
-    EXPECT_EQ(handler.calls[2], "hail()");
-    EXPECT_EQ(handler.calls[3], "hailTarget()");
-    EXPECT_EQ(handler.calls[4], "lootCorpse(11)");
-    EXPECT_EQ(handler.calls[5], "lootItem(11, 2)");
-    EXPECT_EQ(handler.calls[6], "lootAll(11)");
-    EXPECT_EQ(handler.calls[7], "consider()");
+    ASSERT_EQ(handler.count(), 7u);
+    EXPECT_EQ(handler.calls[0], "clickNearestDoor()");
+    EXPECT_EQ(handler.calls[1], "hail()");
+    EXPECT_EQ(handler.calls[2], "hailTarget()");
+    EXPECT_EQ(handler.calls[3], "lootCorpse(11)");
+    EXPECT_EQ(handler.calls[4], "lootItem(11, 2)");
+    EXPECT_EQ(handler.calls[5], "lootAll(11)");
+    EXPECT_EQ(handler.calls[6], "consider()");
 }
 
 TEST_F(ActionDispatcherTest, InteractNearest_PrefersCloserOfDoorAndNPC) {
@@ -353,7 +334,7 @@ TEST_F(ActionDispatcherTest, GroupFamily_CallLogExactSequence) {
     EXPECT_EQ(handler.calls[4], "leaveGroup()");
 }
 
-TEST_F(ActionDispatcherTest, CharacterStateFamily_AfkAnonSneakCamp) {
+TEST_F(ActionDispatcherTest, CharacterStateFamily_AfkAnon) {
     connectHandler();
     connectZone();
 
@@ -365,31 +346,27 @@ TEST_F(ActionDispatcherTest, CharacterStateFamily_AfkAnonSneakCamp) {
     dispatcher->setAFK(true);
     dispatcher->toggleAFK();  // reads current (still false) -> passes true
     dispatcher->setAnonymous(true);
-    dispatcher->toggleSneak();
-    dispatcher->startCamp();
-    dispatcher->cancelCamp();
+    // T264: toggleSneak()/startCamp()/cancelCamp() deleted -- /sneak is
+    // setMovementMode(2), /camp is camp() -> campNow(), and camp cancel
+    // happens on movement inside EverQuest; none had a caller here.
 
-    ASSERT_EQ(handler.count(), 6u);
+    ASSERT_EQ(handler.count(), 3u);
     EXPECT_EQ(handler.calls[0], "setAFK(true)");
     EXPECT_EQ(handler.calls[1], "setAFK(true)");
     EXPECT_EQ(handler.calls[2], "setAnonymous(true)");
-    EXPECT_EQ(handler.calls[3], "toggleSneak()");
-    EXPECT_EQ(handler.calls[4], "startCamp()");
-    EXPECT_EQ(handler.calls[5], "cancelCamp()");
 }
 
-TEST_F(ActionDispatcherTest, InventoryFamily_MoveDeleteUse) {
+TEST_F(ActionDispatcherTest, InventoryFamily_Use) {
     connectHandler();
     connectZone();
 
-    dispatcher->moveItem(1, 2, 5);
-    dispatcher->deleteItem(3);
+    // T264: moveItem()/deleteItem() deleted -- both were LOG-only stubs with
+    // no caller; the live item routes are InventoryManager's own intents and
+    // /equip (equip()).
     dispatcher->useItem(4);
 
-    ASSERT_EQ(handler.count(), 3u);
-    EXPECT_EQ(handler.calls[0], "moveItem(1, 2, 5)");
-    EXPECT_EQ(handler.calls[1], "deleteItem(3)");
-    EXPECT_EQ(handler.calls[2], "useItem(4)");
+    ASSERT_EQ(handler.count(), 1u);
+    EXPECT_EQ(handler.calls[0], "useItem(4)");
 }
 
 // T230: useItemById() is the keyboard hotbar's route. It resolves the ITEM
@@ -479,20 +456,16 @@ TEST_F(ActionDispatcherTest, SpellbookFamily_GemBoundsAndRouting) {
     connectHandler();
     connectZone();
 
-    EXPECT_FALSE(dispatcher->memorizeSpell(0, 100).success);
+    // T264: memorizeSpell(gem, id), openSpellbook(), closeSpellbook() deleted
+    // -- no caller; /mem is memorizeSpellByName() and the spellbook window
+    // is a renderer popup.
     EXPECT_FALSE(dispatcher->forgetSpell(13).success);
     EXPECT_TRUE(handler.empty());
 
-    dispatcher->memorizeSpell(2, 100);
     dispatcher->forgetSpell(2);
-    dispatcher->openSpellbook();
-    dispatcher->closeSpellbook();
 
-    ASSERT_EQ(handler.count(), 4u);
-    EXPECT_EQ(handler.calls[0], "memorizeSpell(2, 100)");
-    EXPECT_EQ(handler.calls[1], "forgetSpell(2)");
-    EXPECT_EQ(handler.calls[2], "openSpellbook()");
-    EXPECT_EQ(handler.calls[3], "closeSpellbook()");
+    ASSERT_EQ(handler.count(), 1u);
+    EXPECT_EQ(handler.calls[0], "forgetSpell(2)");
 }
 
 TEST_F(ActionDispatcherTest, TradeFamily_Routing) {
@@ -507,17 +480,6 @@ TEST_F(ActionDispatcherTest, TradeFamily_Routing) {
     EXPECT_EQ(handler.calls[0], "requestTrade(77)");
     EXPECT_EQ(handler.calls[1], "acceptTrade()");
     EXPECT_EQ(handler.calls[2], "cancelTrade()");
-}
-
-TEST_F(ActionDispatcherTest, ZoneRequest_ValidatesNonEmpty) {
-    connectHandler();
-    connectZone();
-
-    EXPECT_FALSE(dispatcher->requestZone("").success);
-    EXPECT_TRUE(handler.empty());
-
-    EXPECT_TRUE(dispatcher->requestZone("qeynos").success);
-    ASSERT_TRUE(handler.calledOnceWith("requestZone(\"qeynos\")"));
 }
 
 // Pet family: 9 near-identical convenience wrappers around sendPetCommand
@@ -734,11 +696,11 @@ TEST_F(ActionDispatcherTest, TradeskillFamily_Routing) {
     connectZone();
 
     dispatcher->clickWorldObject(123);
-    dispatcher->tradeskillCombine();
+    // T264: tradeskillCombine() deleted (a LOG-only stub with no caller;
+    // manual combine is a listed blocked feature, see the T264 Review).
 
-    ASSERT_EQ(handler.count(), 2u);
+    ASSERT_EQ(handler.count(), 1u);
     EXPECT_EQ(handler.calls[0], "clickWorldObject(123)");
-    EXPECT_EQ(handler.calls[1], "tradeskillCombine()");
 }
 
 TEST_F(ActionDispatcherTest, ExtendedMovementFamily_ModeAndPositionState) {
@@ -793,16 +755,15 @@ TEST_F(ActionDispatcherTest, EntityQueryFamily_ListAndDump) {
     EXPECT_EQ(handler.calls[1], "dumpEntityAppearance(\"Bob\")");
 }
 
-TEST_F(ActionDispatcherTest, UtilityFamily_AnimationAndPositionUpdate) {
+TEST_F(ActionDispatcherTest, UtilityFamily_Animation) {
     connectHandler();
     connectZone();
 
     dispatcher->sendAnimation(29, 15);
-    dispatcher->sendPositionUpdate();
+    // T264: sendPositionUpdate() deleted (no caller).
 
-    ASSERT_EQ(handler.count(), 2u);
+    ASSERT_EQ(handler.count(), 1u);
     EXPECT_EQ(handler.calls[0], "sendAnimation(29, 15)");
-    EXPECT_EQ(handler.calls[1], "sendPositionUpdate()");
 }
 
 // ===================================================================
@@ -824,8 +785,6 @@ TEST_F(ActionDispatcherTest, NoHandler_BroadSweepFailsCleanlyWithoutDispatch) {
     EXPECT_FALSE(dispatcher->isReady());
 
     std::vector<ActionResult> results;
-    results.push_back(dispatcher->startMoving(Direction::Forward));
-    results.push_back(dispatcher->stopMoving(Direction::Forward));
     results.push_back(dispatcher->stopAllMovement());
     results.push_back(dispatcher->setHeading(10));
     results.push_back(dispatcher->jump());
@@ -835,7 +794,6 @@ TEST_F(ActionDispatcherTest, NoHandler_BroadSweepFailsCleanlyWithoutDispatch) {
     results.push_back(dispatcher->moveToLocation(1, 2, 3));
     results.push_back(dispatcher->stopFollow());
     results.push_back(dispatcher->targetEntity(1));
-    results.push_back(dispatcher->targetNearest());
     results.push_back(dispatcher->targetNearestPC());
     results.push_back(dispatcher->targetNearestNPC());
     results.push_back(dispatcher->cycleTargets());
@@ -846,7 +804,6 @@ TEST_F(ActionDispatcherTest, NoHandler_BroadSweepFailsCleanlyWithoutDispatch) {
     results.push_back(dispatcher->toggleAutoAttack());
     results.push_back(dispatcher->castSpell(1));
     results.push_back(dispatcher->interruptCast());
-    results.push_back(dispatcher->useAbility(1));
     results.push_back(dispatcher->useSkill(1));
     results.push_back(dispatcher->consider());
     results.push_back(dispatcher->hail());
@@ -865,25 +822,15 @@ TEST_F(ActionDispatcherTest, NoHandler_BroadSweepFailsCleanlyWithoutDispatch) {
     results.push_back(dispatcher->setAFK(true));
     results.push_back(dispatcher->toggleAFK());
     results.push_back(dispatcher->setAnonymous(true));
-    results.push_back(dispatcher->toggleSneak());
-    results.push_back(dispatcher->startCamp());
-    results.push_back(dispatcher->cancelCamp());
-    results.push_back(dispatcher->moveItem(1, 2));
-    results.push_back(dispatcher->deleteItem(1));
     results.push_back(dispatcher->useItem(1));
-    results.push_back(dispatcher->memorizeSpell(1, 1));
     results.push_back(dispatcher->forgetSpell(1));
-    results.push_back(dispatcher->openSpellbook());
-    results.push_back(dispatcher->closeSpellbook());
     results.push_back(dispatcher->requestTrade(1));
     results.push_back(dispatcher->acceptTrade());
     results.push_back(dispatcher->cancelTrade());
-    results.push_back(dispatcher->requestZone("qeynos"));
     results.push_back(dispatcher->sendPetCommand(1));
     results.push_back(dispatcher->dismissPet());
     results.push_back(dispatcher->petAttack());
     results.push_back(dispatcher->clickWorldObject(1));
-    results.push_back(dispatcher->tradeskillCombine());
     results.push_back(dispatcher->setMovementMode(1));
     results.push_back(dispatcher->setPositionState(1));
     results.push_back(dispatcher->setRoleplay(true));
@@ -894,7 +841,6 @@ TEST_F(ActionDispatcherTest, NoHandler_BroadSweepFailsCleanlyWithoutDispatch) {
     results.push_back(dispatcher->listEntities(""));
     results.push_back(dispatcher->dumpEntityAppearance("Bob"));
     results.push_back(dispatcher->sendAnimation(1));
-    results.push_back(dispatcher->sendPositionUpdate());
 
     for (const auto& r : results) {
         EXPECT_FALSE(r.success);
@@ -915,26 +861,21 @@ TEST_F(ActionDispatcherTest, HandlerWithoutZone_ZoneGatedMethodsFail) {
     // Zone intentionally not connected.
     ASSERT_FALSE(state.world().isZoneConnected());
 
-    EXPECT_FALSE(dispatcher->startMoving(Direction::Forward).success);
     EXPECT_FALSE(dispatcher->setHeading(10).success);
     EXPECT_FALSE(dispatcher->jump().success);
     EXPECT_FALSE(dispatcher->sit().success);
     EXPECT_FALSE(dispatcher->stand().success);
     EXPECT_FALSE(dispatcher->toggleAutorun().success);
     EXPECT_FALSE(dispatcher->targetEntity(1).success);
-    EXPECT_FALSE(dispatcher->targetNearest().success);
     EXPECT_FALSE(dispatcher->enableAutoAttack().success);
     EXPECT_FALSE(dispatcher->toggleAutoAttack().success);
     EXPECT_FALSE(dispatcher->castSpell(1).success);
-    EXPECT_FALSE(dispatcher->useAbility(1).success);
     EXPECT_FALSE(dispatcher->consider().success);
     EXPECT_FALSE(dispatcher->hail().success);
-    EXPECT_FALSE(dispatcher->requestZone("qeynos").success);
     EXPECT_FALSE(dispatcher->setRoleplay(true).success);
     EXPECT_FALSE(dispatcher->setAutoHunting(true).success);
     EXPECT_FALSE(dispatcher->listEntities("").success);
     EXPECT_FALSE(dispatcher->sendAnimation(1).success);
-    EXPECT_FALSE(dispatcher->sendPositionUpdate().success);
 
     EXPECT_TRUE(handler.empty());
 }
@@ -945,7 +886,6 @@ TEST_F(ActionDispatcherTest, HandlerWithoutZone_CheckHandlerOnlyMethodsSucceed) 
     // only (no checkZoneConnection()), so they must still succeed.
     ASSERT_FALSE(state.world().isZoneConnected());
 
-    EXPECT_TRUE(dispatcher->stopMoving(Direction::Forward).success);
     EXPECT_TRUE(dispatcher->stopAllMovement().success);
     EXPECT_TRUE(dispatcher->stopFollow().success);
     EXPECT_TRUE(dispatcher->clearTarget().success);
@@ -954,22 +894,17 @@ TEST_F(ActionDispatcherTest, HandlerWithoutZone_CheckHandlerOnlyMethodsSucceed) 
     EXPECT_TRUE(dispatcher->openReplyToTell().success);
     state.group().setPendingInvite("Dave");
     EXPECT_TRUE(dispatcher->declineGroupInvite().success);
-    EXPECT_TRUE(dispatcher->cancelCamp().success);
-    EXPECT_TRUE(dispatcher->closeSpellbook().success);
     EXPECT_TRUE(dispatcher->cancelTrade().success);
     EXPECT_TRUE(dispatcher->setPathfinding(true).success);
 
     // Every one of these (except openReplyToTell, which never touches the
     // handler by design) must have actually dispatched.
-    EXPECT_TRUE(handler.calledOnceWith("stopMoving(Forward)"));
     EXPECT_TRUE(handler.calledOnceWith("stopAllMovement()"));
     EXPECT_TRUE(handler.calledOnceWith("stopFollow()"));
     EXPECT_TRUE(handler.calledOnceWith("clearTarget()"));
     EXPECT_TRUE(handler.calledOnceWith("disableAutoAttack()"));
     EXPECT_TRUE(handler.calledOnceWith("interruptCast()"));
     EXPECT_TRUE(handler.calledOnceWith("declineGroupInvite()"));
-    EXPECT_TRUE(handler.calledOnceWith("cancelCamp()"));
-    EXPECT_TRUE(handler.calledOnceWith("closeSpellbook()"));
     EXPECT_TRUE(handler.calledOnceWith("cancelTrade()"));
     EXPECT_TRUE(handler.calledOnceWith("setPathfinding(true)"));
 }
@@ -978,11 +913,10 @@ TEST_F(ActionDispatcherTest, ZoneConnected_GatedMethodsSucceed) {
     connectHandler();
     connectZone();
 
-    EXPECT_TRUE(dispatcher->startMoving(Direction::Forward).success);
-    EXPECT_TRUE(dispatcher->targetNearest().success);
-    EXPECT_TRUE(dispatcher->requestZone("qeynos").success);
+    EXPECT_TRUE(dispatcher->jump().success);
+    EXPECT_TRUE(dispatcher->targetNearestNPC().success);
     EXPECT_TRUE(dispatcher->setRoleplay(true).success);
-    EXPECT_EQ(handler.count(), 4u);
+    EXPECT_EQ(handler.count(), 3u);
 }
 
 // openReplyToTell is a curious case: guarded by checkHandler() but never

@@ -95,10 +95,6 @@ struct VendorSellIntent {
     uint8_t quantity;
 };
 
-struct CloseVendorIntent {
-    uint16_t npcId;
-};
-
 // --- Bank ---
 
 struct BankerInteractIntent {
@@ -116,18 +112,6 @@ struct BankCurrencyConvertIntent {
     int32_t amount;
 };
 
-struct CloseBankIntent {};
-
-// --- Trade ---
-
-struct TradeRequestIntent {
-    uint16_t targetId;
-};
-
-struct TradeAcceptIntent {};
-
-struct TradeCancelIntent {};
-
 // --- Trainer ---
 
 struct TrainerToggleIntent {};  // Validation stays on game thread
@@ -143,10 +127,6 @@ struct MemorizeSpellIntent {
     uint32_t spellId;
 };
 
-struct ForgetSpellIntent {
-    uint8_t gemSlot;
-};
-
 struct ScribeSpellIntent {
     uint32_t spellId;
     uint8_t bookSlot;
@@ -156,8 +136,6 @@ struct ScribeSpellIntent {
 struct SpellbookStateIntent {
     bool isOpen;  // Sends appearance animation
 };
-
-struct InterruptSpellIntent {};
 
 // --- Buffs ---
 
@@ -170,39 +148,6 @@ struct BuffCancelIntent {
 struct SkillActivateIntent {
     uint32_t skillId;
 };
-
-// --- Pet ---
-
-struct PetCommandIntent {
-    uint8_t command;     // PetCommand enum value
-    uint16_t targetId;   // For attack command
-};
-
-// --- Group ---
-
-struct GroupInviteIntent {
-    std::string targetName;
-};
-
-struct DisbandIntent {};
-
-struct DeclineInviteIntent {};
-
-// --- General ---
-
-struct RequestCampIntent {};
-
-struct RequestQuitIntent {};
-
-struct SlashCommandIntent {
-    std::string fullCommand;  // Game-affecting commands that cross the bridge
-};
-
-struct RequestMemoryReport {};
-
-struct RequestSceneDump {};
-
-struct HotbarChangedIntent {};
 
 // D20f4: BspTreeAvailableIntent removed — BSP tree set via typed setter
 
@@ -234,10 +179,6 @@ struct TrainSkillIntent {
 
 struct CloseTrainerIntent {};
 
-// --- Group ---
-
-struct GroupAcceptIntent {};
-
 // --- Hotbar ---
 
 struct HotbarActivateIntent {
@@ -248,14 +189,6 @@ struct HotbarActivateIntent {
     HotbarSlotType type = HotbarSlotType::Empty;
     uint32_t id = 0;     // spell_id, item_id, or skill_id
     std::string emoteText;  // For emote buttons
-};
-
-// --- Chat ---
-
-struct ChatLinkClickIntent {
-    uint8_t linkType;       // LinkType value
-    std::string displayText;
-    uint32_t itemId;        // For item links
 };
 
 // --- Inventory ---
@@ -299,51 +232,26 @@ using RendererIntent = std::variant<
     VendorToggleIntent,
     VendorBuyIntent,
     VendorSellIntent,
-    CloseVendorIntent,
     // Bank
     BankerInteractIntent,
     BankCurrencyMoveIntent,
     BankCurrencyConvertIntent,
-    CloseBankIntent,
-    // Trade
-    TradeRequestIntent,
-    TradeAcceptIntent,
-    TradeCancelIntent,
     // Trainer
     TrainerToggleIntent,
     // Spells
     CastSpellIntent,
     MemorizeSpellIntent,
-    ForgetSpellIntent,
     ScribeSpellIntent,
     SpellbookStateIntent,
-    InterruptSpellIntent,
     // Buffs
     BuffCancelIntent,
     // Skills
     SkillActivateIntent,
-    // Pet
-    PetCommandIntent,
-    // Group
-    GroupInviteIntent,
-    DisbandIntent,
-    DeclineInviteIntent,
-    // General
-    RequestCampIntent,
-    RequestQuitIntent,
-    SlashCommandIntent,
-    RequestMemoryReport,
-    RequestSceneDump,
-    HotbarChangedIntent,
     // Volume (D20c2)
     MusicVolumeChangeIntent,
     EffectsVolumeChangeIntent,
-    // Group (D20b2)
-    GroupAcceptIntent,
     // Hotbar (D20b2)
     HotbarActivateIntent,
-    // Chat links (D20b2)
-    ChatLinkClickIntent,
     // Tradeskill
     TradeskillCombineIntent,
     TradeskillCloseIntent,

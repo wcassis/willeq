@@ -327,15 +327,12 @@ void CombatManager::PublishTargetCleared() {
 		eqt::state::GameEventType::TargetChanged, std::move(data)));
 }
 
-void CombatManager::PublishAutoAttackChanged(bool enabled) {
-	m_eq->m_game_state.combat().setAutoAttacking(enabled);  // T221
-	if (!m_eq->m_bridge) {
-		return;
-	}
-	eqt::state::AutoAttackChangedData data;
-	data.enabled = enabled;
-	m_eq->m_bridge->pushEvent(eqt::state::GameEvent(
-		eqt::state::GameEventType::AutoAttackChanged, std::move(data)));
+void CombatManager::WriteAutoAttackState(bool enabled) {
+	// T221: the one GameState is written at the source. T264: the
+	// AutoAttackChanged bridge event that used to follow had no consumer on
+	// either bridge (the GameStateSyncBridge projection it fed died with
+	// T227) and was deleted.
+	m_eq->m_game_state.combat().setAutoAttacking(enabled);
 }
 
 uint16_t CombatManager::GetConsiderOpcodeForTarget() const {
@@ -524,7 +521,7 @@ void CombatManager::EnableAutoAttack() {
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoAttack: Auto attack ENABLED (sent both AutoAttack and AutoAttack2)");
 
 	// T104: replaces the auto-attack half of Application::syncCombatState().
-	PublishAutoAttackChanged(true);
+	WriteAutoAttackState(true);
 }
 
 void CombatManager::DisableAutoAttack() {
@@ -558,7 +555,7 @@ void CombatManager::DisableAutoAttack() {
 #endif
 
 	// T104: replaces the auto-attack half of Application::syncCombatState().
-	PublishAutoAttackChanged(false);
+	WriteAutoAttackState(false);
 }
 
 void CombatManager::NotifyTargetDied(uint16_t victim_id) {

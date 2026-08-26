@@ -123,7 +123,7 @@ TEST(CombatManagerTargeting, SetTargetPublishesTargetChangedWithEntityData) {
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
         NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
     auto* cm = eq.GetCombatManager();
-    bridge.drainEvents();  // discard the spawn's own EntityStateSnapshot publish (T81)
+    bridge.drainEvents();  // discard the spawn publish
 
     ASSERT_TRUE(cm->SetTarget(100));
 
@@ -252,10 +252,12 @@ TEST(CombatManagerAutoAttack, DisableWhileNotEngagedLeavesStateAlone) {
     EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_HUNTING);
 }
 
-// T104: EnableAutoAttack()/DisableAutoAttack() are the sole choke points
-// that publish AutoAttackChanged (see combat.cpp's
-// PublishAutoAttackChanged() and refactor/T104_combat_poll_to_bridge.md).
-TEST(CombatManagerAutoAttack, EnableAutoAttackPublishesAutoAttackChangedTrue) {
+// T104/T221: EnableAutoAttack()/DisableAutoAttack() are the sole choke
+// points that write GameState::combat().setAutoAttacking() (combat.cpp's
+// WriteAutoAttackState()). T264 deleted the AutoAttackChanged bridge event
+// they used to publish alongside (no consumer on either bridge), so the
+// observable is the state write itself, and NO event.
+TEST(CombatManagerAutoAttack, EnableAutoAttackWritesGameStateTrueAndPublishesNothing) {
     EverQuest eq = MakeEq();
     zonetest::TestBridge bridge;
     eq.setBridge(&bridge);
@@ -264,20 +266,18 @@ TEST(CombatManagerAutoAttack, EnableAutoAttackPublishesAutoAttackChangedTrue) {
     auto* cm = eq.GetCombatManager();
     ASSERT_TRUE(cm->SetTarget(100));
     bridge.drainEvents();  // discard the SetTarget publish
+    ASSERT_FALSE(eq.GetGameState().combat().isAutoAttacking());
 
     cm->EnableAutoAttack();
 
-    auto events = bridge.drainEvents();
-    ASSERT_EQ(events.size(), 1u);
-    EXPECT_EQ(events[0].type, eqt::state::GameEventType::AutoAttackChanged);
-    const auto& d = std::get<eqt::state::AutoAttackChangedData>(events[0].data);
-    EXPECT_TRUE(d.enabled);
+    EXPECT_TRUE(eq.GetGameState().combat().isAutoAttacking());
+    EXPECT_TRUE(bridge.drainEvents().empty());
 }
 
 TEST(CombatManagerAutoAttack, EnableWithoutTargetDoesNotPublish) {
     // Falsification pair: the no-target early return (see
-    // EnableWithoutTargetIsNoOp above) must not publish either -- the
-    // publish sits after the guard, not before it.
+    // EnableWithoutTargetIsNoOp above) must not write the state either --
+    // the write sits after the guard, not before it.
     EverQuest eq = MakeEq();
     zonetest::TestBridge bridge;
     eq.setBridge(&bridge);
@@ -285,22 +285,26 @@ TEST(CombatManagerAutoAttack, EnableWithoutTargetDoesNotPublish) {
 
     cm->EnableAutoAttack();
 
+    EXPECT_FALSE(eq.GetGameState().combat().isAutoAttacking());
     EXPECT_TRUE(bridge.drainEvents().empty());
 }
 
-TEST(CombatManagerAutoAttack, DisableAutoAttackPublishesAutoAttackChangedFalse) {
+TEST(CombatManagerAutoAttack, DisableAutoAttackWritesGameStateFalseAndPublishesNothing) {
     EverQuest eq = MakeEq();
     zonetest::TestBridge bridge;
     eq.setBridge(&bridge);
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
     auto* cm = eq.GetCombatManager();
+    ASSERT_TRUE(cm->SetTarget(100));
+    cm->EnableAutoAttack();
+    ASSERT_TRUE(eq.GetGameState().combat().isAutoAttacking());
+    bridge.drainEvents();
 
     cm->DisableAutoAttack();
 
-    auto events = bridge.drainEvents();
-    ASSERT_EQ(events.size(), 1u);
-    EXPECT_EQ(events[0].type, eqt::state::GameEventType::AutoAttackChanged);
-    const auto& d = std::get<eqt::state::AutoAttackChangedData>(events[0].data);
-    EXPECT_FALSE(d.enabled);
+    EXPECT_FALSE(eq.GetGameState().combat().isAutoAttacking());
+    EXPECT_TRUE(bridge.drainEvents().empty());
 }
 
 TEST(CombatManagerAutoFire, EnableWithoutTargetIsNoOp) {

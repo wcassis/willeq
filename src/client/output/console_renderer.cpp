@@ -92,11 +92,6 @@ void ConsoleRenderer::connectToGameState(state::GameState& state) {
         m_eventBus->subscribe(state::GameEventType::EntityDespawned,
             [this](const state::GameEvent& event) { handleEvent(event); }));
 
-    // Subscribe to combat events
-    m_listenerHandles.push_back(
-        m_eventBus->subscribe(state::GameEventType::CombatEvent,
-            [this](const state::GameEvent& event) { handleEvent(event); }));
-
     // Subscribe to zone events
     m_listenerHandles.push_back(
         m_eventBus->subscribe(state::GameEventType::ZoneChanged,
@@ -165,34 +160,6 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
                               << colorReset() << std::endl;
                 }
             }
-            break;
-        }
-
-        case state::GameEventType::CombatEvent: {
-            const auto& data = std::get<state::CombatEventData>(event.data);
-            std::ostringstream ss;
-
-            switch (data.type) {
-                case state::CombatEventData::Type::Hit:
-                    ss << data.sourceName << " hits " << data.targetName
-                       << " for " << data.damage << " points of damage!";
-                    break;
-                case state::CombatEventData::Type::Miss:
-                    ss << data.sourceName << " tries to hit " << data.targetName
-                       << " but misses!";
-                    break;
-                case state::CombatEventData::Type::CriticalHit:
-                    ss << data.sourceName << " scores a CRITICAL HIT on "
-                       << data.targetName << " for " << data.damage << " damage!";
-                    break;
-                case state::CombatEventData::Type::Death:
-                    ss << data.targetName << " has been slain!";
-                    break;
-                default:
-                    return;  // Don't display other combat event types
-            }
-
-            displayCombatMessage(ss.str());
             break;
         }
 

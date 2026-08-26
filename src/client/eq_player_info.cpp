@@ -320,18 +320,6 @@ void EverQuest::SyncEntityToGameState(const Entity& entity)
 		}
 	}
 
-	// T81: publish the same complete struct across the thread boundary so
-	// GameStateSyncBridge can feed Application::m_gameState->entities() --
-	// this is the one place that holds the fully-populated Entity (spawn,
-	// self-entity), called on the same three sites this function always
-	// was. Not per-tick: movement updates go through OnSpawnMovedGraphics's
-	// EntityMoved instead, never through here.
-	if (m_bridge) {
-		eqt::state::EntityStateSnapshotData snapshotData;
-		snapshotData.entity = stateEntity;
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::EntityStateSnapshot, std::move(snapshotData)));
-	}
 }
 
 void EverQuest::RemoveEntityFromGameState(uint16_t spawnId)
@@ -823,24 +811,6 @@ void EverQuest::PerformEmote(uint32_t animation)
 	}
 }
 
-// T218: publish the full own-flag set to the bridge so GameStateSyncBridge
-// can project it into Application::m_gameState (the copy the action layer's
-// toggles read). Called from the three setters below, the only writers of
-// m_is_afk/m_is_anonymous/m_is_roleplay.
-static void PublishPlayerFlagsChanged(eqt::bridge::GameStateBridge* bridge,
-                                      bool afk, bool anonymous, bool roleplay)
-{
-	if (!bridge) {
-		return;
-	}
-	eqt::state::PlayerFlagsChangedData data;
-	data.afk = afk;
-	data.anonymous = anonymous;
-	data.roleplay = roleplay;
-	bridge->pushEvent(eqt::state::GameEvent(
-		eqt::state::GameEventType::PlayerFlagsChanged, std::move(data)));
-}
-
 void EverQuest::SetAFK(bool afk)
 {
 	if (m_is_afk == afk) {
@@ -849,7 +819,6 @@ void EverQuest::SetAFK(bool afk)
 
 	m_is_afk = afk;
 	m_game_state.player().setAFK(afk);  // Phase 7.8
-	PublishPlayerFlagsChanged(m_bridge, m_is_afk, m_is_anonymous, m_is_roleplay);  // T218
 	SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
 
 	if (s_debug_level >= 1) {
@@ -865,7 +834,6 @@ void EverQuest::SetAnonymous(bool anon)
 
 	m_is_anonymous = anon;
 	m_game_state.player().setAnonymous(anon);  // Phase 7.8
-	PublishPlayerFlagsChanged(m_bridge, m_is_afk, m_is_anonymous, m_is_roleplay);  // T218
 	SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
 
 	if (s_debug_level >= 1) {
@@ -881,7 +849,6 @@ void EverQuest::SetRoleplay(bool rp)
 
 	m_is_roleplay = rp;
 	m_game_state.player().setRoleplay(rp);  // Phase 7.8
-	PublishPlayerFlagsChanged(m_bridge, m_is_afk, m_is_anonymous, m_is_roleplay);  // T218
 	SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
 	if (s_debug_level >= 1) {

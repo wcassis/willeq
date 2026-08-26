@@ -1051,19 +1051,11 @@ void EverQuest::ProcessBridgeIntents() {
 					AddChatSystemMessage("Spell not ready");
 				}
 			}
-			else if constexpr (std::is_same_v<T, eqt::events::ForgetSpellIntent>) {
-				if (m_spell_manager && m_spell_manager->forgetSpell(i.gemSlot)) {
-					AddChatSystemMessage(fmt::format("Forgot spell in gem {}", i.gemSlot + 1));
-				}
-			}
 			else if constexpr (std::is_same_v<T, eqt::events::ScribeSpellIntent>) {
 				ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
 				SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::InterruptSpellIntent>) {
-				if (m_spell_manager) m_spell_manager->interruptCast();
 			}
 			// Buff/skill intents
 			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
@@ -1101,13 +1093,7 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
 				SellToVendor(i.npcId, i.slot, i.quantity);
 			}
-			else if constexpr (std::is_same_v<T, eqt::events::CloseVendorIntent>) {
-				CloseVendorWindow();
-			}
 			// Bank intents
-			else if constexpr (std::is_same_v<T, eqt::events::CloseBankIntent>) {
-				CloseBankWindow();
-			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyMoveIntent>) {
 				// Build and send MoveCoin packet
 				EQT::MoveCoin_Struct move;
@@ -1252,49 +1238,6 @@ void EverQuest::ProcessBridgeIntents() {
 						eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 				}
 			}
-			// Trade intents
-			else if constexpr (std::is_same_v<T, eqt::events::TradeRequestIntent>) {
-				if (m_trade_manager) {
-					auto it = m_entities.find(static_cast<uint16_t>(i.targetId));
-					if (it != m_entities.end()) {
-						bool isNpc = (it->second.npc_type == 1);
-						m_trade_manager->requestTrade(static_cast<uint16_t>(i.targetId), it->second.name, isNpc);
-					}
-				}
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::TradeAcceptIntent>) {
-				if (m_trade_manager) m_trade_manager->clickAccept();
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::TradeCancelIntent>) {
-				if (m_trade_manager) m_trade_manager->cancelTrade();
-			}
-			// Pet/group intents
-			else if constexpr (std::is_same_v<T, eqt::events::PetCommandIntent>) {
-				SendPetCommand(static_cast<EQT::PetCommand>(i.command), i.targetId);
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::GroupInviteIntent>) {
-				SendGroupInvite(i.targetName);
-				AddChatSystemMessage(fmt::format("Inviting {} to group", i.targetName));
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::DisbandIntent>) {
-				if (m_in_group) {
-					if (m_is_group_leader) SendGroupDisband();
-					else SendLeaveGroup();
-				}
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::DeclineInviteIntent>) {
-				DeclineGroupInvite();
-			}
-			// General intents
-			else if constexpr (std::is_same_v<T, eqt::events::RequestCampIntent>) {
-				ProcessChatInput("/camp");
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::RequestQuitIntent>) {
-				ProcessChatInput("/q");
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::HotbarChangedIntent>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: HotbarChangedIntent");
-			}
 			// Volume change intents (D20c2)
 			else if constexpr (std::is_same_v<T, eqt::events::MusicVolumeChangeIntent>) {
 #ifdef WITH_AUDIO
@@ -1313,10 +1256,6 @@ void EverQuest::ProcessBridgeIntents() {
 					AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
 				}
 #endif
-			}
-			// Group accept intent (D20b2)
-			else if constexpr (std::is_same_v<T, eqt::events::GroupAcceptIntent>) {
-				AcceptGroupInvite();
 			}
 			// Hotbar activate intent (D20b2)
 			else if constexpr (std::is_same_v<T, eqt::events::HotbarActivateIntent>) {
@@ -1384,13 +1323,6 @@ void EverQuest::ProcessBridgeIntents() {
 					break;
 				}
 			}
-			// Chat link click intent (D20b2)
-			else if constexpr (std::is_same_v<T, eqt::events::ChatLinkClickIntent>) {
-				if (i.linkType == 0) {  // NPCName
-					ZoneSendChannelMessage(i.displayText, CHAT_CHANNEL_SAY, "");
-				}
-				// Item tooltip links handled on renderer side
-			}
 			// Tradeskill intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCombineIntent>) {
 				SendTradeSkillCombine(i.containerSlot);
@@ -1417,16 +1349,6 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
 				UpdatePlayerAppearanceFromInventory();
-			}
-			// Debug/diagnostic intents
-			else if constexpr (std::is_same_v<T, eqt::events::SlashCommandIntent>) {
-				ProcessChatInput(i.fullCommand);
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::RequestMemoryReport>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestMemoryReport (D20d)");
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::RequestSceneDump>) {
-				LOG_TRACE(MOD_MAIN, "Bridge intent: RequestSceneDump (D20d)");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				if (m_spell_manager) m_spell_manager->memorizeSpell(i.gemSlot, i.spellId);
