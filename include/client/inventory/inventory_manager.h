@@ -257,11 +257,12 @@ public:
     std::vector<int16_t> getBagContentsSlots(int16_t generalSlot) const;
     bool isBagEmpty(int16_t generalSlot) const;
     // T252 -- bag contents live FLAT in items_, keyed by the parent slot's
-    // range (general 22-29 -> 251-330, cursor 30 -> 331-340; eqemu's own
+    // range (general 22-29 -> 251-330, cursor 30 -> 331-340, T255: bank
+    // 2000-2015 -> 2031-2190, shared bank 2500-2501 -> 2531-2550; eqemu's own
     // CalcSlotId numbering). eqemu's SwapItem (common/inventory_profile.cpp
     // :392-393) swaps two ItemInstances that each CARRY their contents, so
     // whenever a bag moves, its contents range moves with it. Both parent
-    // slots may be a general slot or CURSOR_SLOT.
+    // slots may be a general, bank, shared-bank slot or CURSOR_SLOT.
     //   relocateBagContents: fromParent's range -> toParent's range (toParent's
     //     range is expected empty; the bag moved to an empty slot / cursor).
     //   swapBagContents: the two ranges trade places without either
@@ -338,10 +339,31 @@ private:
     // T252 helpers for the bag-content range moves above: take every item
     // out of a parent slot's BAG_SLOT_COUNT-slot range (keeping its index),
     // and put such a set back under another parent.
+    // T255: a parent may also be a bank / shared-bank slot (isBagParentSlot).
     using TakenBagContents = std::vector<std::pair<int16_t, std::unique_ptr<ItemInstance>>>;
     static bool isBagParentSlot(int16_t slotId);
     TakenBagContents takeBagContents(int16_t parentSlot);
     void putBagContents(int16_t parentSlot, TakenBagContents& contents);
+
+    // T255 -- contents of bags QUEUED BEHIND the cursor front. The server
+    // keeps every queued bag's contents inside that bag's own ItemInstance
+    // and serialises each cursor item at slot 33, so two queued bags both
+    // address the wire's cursor bag range 331-340; only the FRONT bag's
+    // contents may occupy that range client-side. Each other queued bag's
+    // contents are held here, keyed by the queued ItemInstance (stable:
+    // the deque owns it by unique_ptr), and promoted into the cursor range
+    // when that bag becomes the front. Every path that pops the front
+    // calls promoteCursorFrontContents(); every path that discards the
+    // front calls dropCursorFrontContents() first.
+    std::map<const ItemInstance*, TakenBagContents> queuedCursorBagContents_;
+    void promoteCursorFrontContents();
+    void dropCursorFrontContents();
+    // Shared tail of processCharInventory()/processItemPacket(): set the
+    // item, then route its parsed sub-items either into the parent's range
+    // or (a bag queued behind the cursor front) into queuedCursorBagContents_.
+    // Returns how many sub-items were stored.
+    int ingestParsedItem(int16_t slotId, std::unique_ptr<ItemInstance> item,
+                         std::map<int16_t, std::unique_ptr<ItemInstance>>& bagContents);
 
     std::deque<std::unique_ptr<ItemInstance>> cursorQueue_;
     int16_t cursorSourceSlot_ = SLOT_INVALID;  // Slot the CURRENT cursor front came from (T250: updated on swap)

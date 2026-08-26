@@ -964,4 +964,334 @@ TEST_F(EqCommandsEquipTest, CursorSwap_BagOnBag_BothContentsFollowTheirBags) {
     EXPECT_EQ(moves[2], std::make_pair(int16_t(CURSOR_SLOT), int16_t(22)));
 }
 
+// ---------------------------------------------------------------------------
+// T255 -- bank bag moves. eqemu's SwapItem is the same wholesale ItemInstance
+// swap for a bank parent as for a general one; the wire numbering for bank
+// bag contents is Titanium 2031 + (bank-2000)*10 + idx (titanium_limits.h,
+// CalcSlotId), server-side 6210 + (bank-2000)*200 + idx (emu_constants.h:
+// BANK_BAGS_BEGIN = CURSOR_BAG_END + 1 with RoF2 SLOT_COUNT 200). The client
+// keeps contents flat by parent range, so a bag moving general<->bank must
+// carry its range across exactly as T252 made general<->general do.
+// ---------------------------------------------------------------------------
+
+TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyBank_ContentsFollow) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Ay", 0);
+
+    eq.RequestEquip("22 2000");
+
+    EXPECT_EQ(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+    ASSERT_NE(inv->getItem(2000), nullptr);
+    EXPECT_EQ(inv->getItem(2000)->itemId, 7210u);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 1))->itemId, 7302u);
+    EXPECT_EQ(calcBankBagSlotId(2000, 0), 2031);
+
+    auto intents = bridge.drainIntents();
+    const auto* mv = FindMoveItemIntent(intents);
+    ASSERT_NE(mv, nullptr);
+    EXPECT_EQ(mv->fromSlot, 22);
+    EXPECT_EQ(mv->toSlot, 2000);
+}
+
+TEST_F(EqCommandsEquipTest, DirectMove_BagFromBankToGeneral_ContentsFollow) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 2001, 7210, "Small Bag A", 4);
+    SeedNamedItem(eq, calcBankBagSlotId(2001, 3), 7301, "Ax", 0);
+
+    eq.RequestEquip("2001 24");
+
+    EXPECT_EQ(inv->getItem(2001), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2001, 3)), nullptr);
+    ASSERT_NE(inv->getItem(24), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(24, 3)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(24, 3))->itemId, 7301u);
+}
+
+TEST_F(EqCommandsEquipTest, DirectSwap_GeneralBagOnBankBag_BothContentsFollowTheirBags) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedBag(eq, 2000, 7211, "Small Bag B", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
+    SeedNamedItem(eq, calcBankBagSlotId(2000, 0), 7401, "Bp", 0);
+
+    eq.RequestEquip("22 2000");
+
+    ASSERT_NE(inv->getItem(2000), nullptr);
+    EXPECT_EQ(inv->getItem(2000)->itemId, 7210u);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0))->itemId, 7301u);
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(22)->itemId, 7211u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7401u);
+}
+
+TEST_F(EqCommandsEquipTest, CursorMove_BagGeneralToBankAndBack_ContentsRideTheCursor) {
+    auto* inv = eq.GetInventoryManager();
+    SeedBag(eq, 22, 7210, "Small Bag A", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 2), 7301, "Ax", 0);
+
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(2)), nullptr);
+    ASSERT_TRUE(inv->placeItem(2005));
+    EXPECT_FALSE(inv->hasCursorItem());
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(2)), nullptr);
+    ASSERT_NE(inv->getItem(2005), nullptr);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2005, 2)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2005, 2))->itemId, 7301u);
+
+    ASSERT_TRUE(inv->pickupItem(2005));
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2005, 2)), nullptr);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(2)), nullptr);
+    ASSERT_TRUE(inv->placeItem(23));
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 2)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 2))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(2)), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// T255 item 2 -- more than one bag queued on the cursor. The server keeps
+// every queued bag's contents inside that bag's own ItemInstance and
+// serialises each cursor item (with its sub-items) at slot 33 in
+// CharInventory, so two queued bags both address the cursor bag range
+// 331-340 on the wire. Only the FRONT bag's contents may live in that
+// range client-side; the rest are held per queued bag and promoted into
+// the range when that bag becomes the front.
+// ---------------------------------------------------------------------------
+
+// Titanium serialized item (T43's builder shape) with the container fields
+// set so parseStaticData() yields a bag, plus optional depth-1 sub-items.
+std::string BuildBagString(int16_t slot, uint32_t itemId, const std::string& name, uint8_t bagSlots,
+                           const std::vector<std::pair<int16_t, std::string>>& subItems) {
+    std::string instance = "0|0|" + std::to_string(slot) + "|0|1|0|0|0|0|0|0";
+    std::vector<std::string> fields(135, "");
+    fields[0] = "1";
+    fields[1] = name;
+    fields[2] = name;
+    fields[3] = "IT63";
+    fields[4] = std::to_string(itemId);
+    fields[5] = "10";
+    fields[6] = "1";
+    fields[7] = "1";
+    fields[8] = "0";
+    fields[9] = "0";
+    fields[10] = "0";
+    fields[11] = "0";
+    fields[96] = "0";
+    fields[97] = std::to_string(bagSlots);
+    fields[98] = "4";
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+    std::string out = instance + "\"" + staticData + "\"";
+    // Sub-item block: |sub0|sub1|...|sub9, each occupied index wrapped as
+    // "instance|\"static\"" (titanium.cpp SerializeItem, depth 1).
+    for (int16_t idx = 0; idx < bagSlots; ++idx) {
+        out += "|";
+        for (const auto& [subIdx, subStr] : subItems) {
+            if (subIdx != idx) continue;
+            std::string escaped;
+            for (char c : subStr) {
+                if (c == '"') escaped += "\\\"";
+                else escaped += c;
+            }
+            out += "\"" + escaped + "\"";
+        }
+    }
+    return out;
+}
+
+std::string BuildPlainItemString(int16_t slot, uint32_t itemId, const std::string& name) {
+    std::string instance = "0|0|" + std::to_string(slot) + "|0|1|0|0|0|0|0|0";
+    std::vector<std::string> fields(135, "");
+    fields[0] = "0";
+    fields[1] = name;
+    fields[2] = name;
+    fields[3] = "IT63";
+    fields[4] = std::to_string(itemId);
+    fields[5] = "10";
+    fields[6] = "1";
+    fields[7] = "1";
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+    return instance + "\"" + staticData + "\"";
+}
+
+EQ::Net::DynamicPacket CharInventoryPacket(const std::vector<std::string>& items) {
+    std::string body;
+    for (const auto& s : items) {
+        body += s;
+        body.push_back('\0');
+    }
+    EQ::Net::DynamicPacket p;
+    p.Resize(body.size());
+    p.PutData(0, const_cast<char*>(body.data()), body.size());
+    return p;
+}
+
+EQ::Net::DynamicPacket ItemPacketPacket(const std::string& item) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(4 + item.size() + 1);
+    p.PutUInt32(0, 0);
+    p.PutData(4, const_cast<char*>(item.data()), item.size());
+    p.PutUInt8(4 + item.size(), 0);
+    return p;
+}
+
+TEST_F(EqCommandsEquipTest, CharInventory_SingleCursorBag_ContentsLandInCursorRange) {
+    // Found while writing the two-bag case: the server serialises a cursor
+    // item at ITS cursor slot (33), and parseSubItems() fed that raw slot to
+    // calcContainerSlotId(), which knows only the client cursor (30) -- so
+    // every cursor bag's contents collapsed onto SLOT_INVALID and were lost
+    // at zone-in, one bag or many. Pin the one-bag case on its own.
+    auto* inv = eq.GetInventoryManager();
+    auto pkt = CharInventoryPacket({
+        BuildBagString(SERVER_CURSOR_SLOT, 7210, "Bag A", 4, {{2, BuildPlainItemString(2, 7301, "Ax")}}),
+    });
+    inv->processCharInventory(pkt);
+
+    ASSERT_EQ(inv->getCursorQueueSize(), 1u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(2)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(2))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(SLOT_INVALID), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, CharInventory_TwoQueuedCursorBags_EachKeepsItsOwnContents) {
+    auto* inv = eq.GetInventoryManager();
+    // Server cursor queue: bag A{Ax @0} in front, bag B{Bp @0, Bq @1} behind.
+    auto pkt = CharInventoryPacket({
+        BuildBagString(SERVER_CURSOR_SLOT, 7210, "Bag A", 4, {{0, BuildPlainItemString(0, 7301, "Ax")}}),
+        BuildBagString(SERVER_CURSOR_SLOT, 7211, "Bag B", 4, {{0, BuildPlainItemString(0, 7401, "Bp")},
+                                                             {1, BuildPlainItemString(1, 7402, "Bq")}}),
+    });
+    inv->processCharInventory(pkt);
+
+    ASSERT_EQ(inv->getCursorQueueSize(), 2u);
+    ASSERT_NE(inv->getCursorItem(), nullptr);
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7210u);
+    // Front bag's contents are the cursor range; B's must NOT have clobbered them.
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+
+    // Place A into 22: Ax goes with it; B becomes the front WITH its contents.
+    ASSERT_TRUE(inv->placeItem(22));
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
+    ASSERT_EQ(inv->getCursorQueueSize(), 1u);
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7211u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7401u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1))->itemId, 7402u);
+
+    // Place B into 23: Bp/Bq follow; nothing left in the cursor range.
+    ASSERT_TRUE(inv->placeItem(23));
+    EXPECT_FALSE(inv->hasCursorItem());
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0))->itemId, 7401u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 1))->itemId, 7402u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+    // A's content stayed under A.
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
+}
+
+TEST_F(EqCommandsEquipTest, ItemPacket_BagQueuedBehindCursorFront_KeepsContentsUntilPromoted) {
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, CURSOR_SLOT, 7001, "Rusty Mace", EQUIPSLOT_PRIMARY);  // front, from server
+    ASSERT_EQ(inv->getCursorQueueSize(), 1u);
+
+    // A bag with one item arrives on the cursor behind the mace (OP_ItemPacket).
+    auto pkt = ItemPacketPacket(
+        BuildBagString(SERVER_CURSOR_SLOT, 7210, "Bag A", 4, {{1, BuildPlainItemString(1, 7301, "Ax")}}));
+    EXPECT_TRUE(isCursorSlot(inv->processItemPacket(pkt)));  // returns the wire slot (33)
+    ASSERT_EQ(inv->getCursorQueueSize(), 2u);
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7001u);
+    // The mace is not a bag; the cursor range stays EMPTY while it is the front.
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+
+    ASSERT_TRUE(inv->placeItem(22));  // mace -> 22; bag promoted with Ax
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7210u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1))->itemId, 7301u);
+
+    ASSERT_TRUE(inv->placeItem(2000));  // bag -> bank 2000 with Ax
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 1))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(1)), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, ItemPacket_BankBagWithContents_ContentsLandInBankRange) {
+    // Found in the T255 live leg (run 2): at zone-in eqemu delivers BANK
+    // items as individual OP_ItemPackets, each bag serialised WITH its
+    // contents -- not via CharInventory. processItemPacket() never parsed
+    // sub-items, so a bank bag always loaded empty client-side and a later
+    // bank->general move had nothing to relocate (the server still moved
+    // them). An ItemPacket for a bag is authoritative for that bag's whole
+    // contents: any stale range under that parent is replaced, never merged.
+    auto* inv = eq.GetInventoryManager();
+    SeedNamedItem(eq, calcBankBagSlotId(2000, 0), 7999, "Stale", 0);  // must be replaced, not kept
+    auto pkt = ItemPacketPacket(
+        BuildBagString(2000, 7210, "Large Bag", 6, {{0, BuildPlainItemString(0, 7301, "Rusty Short Sword")},
+                                                    {1, BuildPlainItemString(1, 7302, "Rusty Long Sword")}}));
+    EXPECT_EQ(inv->processItemPacket(pkt), 2000);
+    ASSERT_NE(inv->getItem(2000), nullptr);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBankBagSlotId(2000, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 1))->itemId, 7302u);
+
+    eq.RequestEquip("2000 22");
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1))->itemId, 7302u);
+    EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0)), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, CursorSwap_DisplacedBagOntoOccupiedQueue_QueuedBagContentsSurvive) {
+    // Queue: A{Ax} front, B{Bp} behind (CharInventory). A dropped onto bag
+    // C{Cz} at 22: C is displaced to the front with Cz; B still waits with
+    // Bp; when C is placed and B promoted, Bp is intact.
+    auto* inv = eq.GetInventoryManager();
+    auto pkt = CharInventoryPacket({
+        BuildBagString(SERVER_CURSOR_SLOT, 7210, "Bag A", 4, {{0, BuildPlainItemString(0, 7301, "Ax")}}),
+        BuildBagString(SERVER_CURSOR_SLOT, 7211, "Bag B", 4, {{0, BuildPlainItemString(0, 7401, "Bp")}}),
+    });
+    inv->processCharInventory(pkt);
+    SeedBag(eq, 22, 7212, "Bag C", 4);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7501, "Cz", 0);
+
+    ASSERT_TRUE(inv->placeItem(22));  // A -> 22 (Ax), C -> cursor front (Cz), B behind
+    ASSERT_EQ(inv->getCursorQueueSize(), 2u);
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7212u);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7501u);
+
+    ASSERT_TRUE(inv->placeItem(23));  // C -> 23 (Cz); B promoted (Bp)
+    ASSERT_NE(inv->getItem(calcBagSlotId(23, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(23, 0))->itemId, 7501u);
+    ASSERT_EQ(inv->getCursorQueueSize(), 1u);
+    EXPECT_EQ(inv->getCursorItem()->itemId, 7211u);
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7401u);
+}
+
 }  // namespace

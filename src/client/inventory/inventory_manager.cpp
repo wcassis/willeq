@@ -138,7 +138,11 @@ std::unique_ptr<ItemInstance> TitaniumItemParser::parseItem(const std::string& d
 
     // Parse sub-items (bag contents) if this is a container and caller wants them
     if (subItems && item->isContainer() && secondQuote + 1 < data.size()) {
-        parseSubItems(std::string_view(data), secondQuote + 1, slotId, *subItems);
+        // T255: the server serialises a cursor item at its own cursor slot
+        // (33); calcContainerSlotId() knows only the client cursor (30), so
+        // every cursor bag's contents used to collapse onto SLOT_INVALID.
+        int16_t parentSlot = (slotId == SERVER_CURSOR_SLOT) ? CURSOR_SLOT : slotId;
+        parseSubItems(std::string_view(data), secondQuote + 1, parentSlot, *subItems);
     }
 
     return item;
@@ -472,10 +476,13 @@ void TitaniumItemParser::parseSubItems(std::string_view data, size_t afterQuoteP
                 int16_t parsedSlot = SLOT_INVALID;
                 auto subItem = parseItem(unescaped, parsedSlot, nullptr);
 
-                if (subItem) {
+                if (subItem && bagSlotId != SLOT_INVALID) {
                     LOG_DEBUG(MOD_UI, "TitaniumItemParser Parsed bag content: {} in bag slot {} (index {}) qty={} stackable={}",
                               subItem->name, bagSlotId, slotIndex, subItem->quantity, subItem->stackable);
                     subItems[bagSlotId] = std::move(subItem);
+                } else if (subItem) {
+                    LOG_WARN(MOD_UI, "TitaniumItemParser Bag content '{}' under parent slot {} (index {}) has no client slot -- dropped",
+                             subItem->name, parentSlot, slotIndex);
                 }
             }
         }
@@ -689,6 +696,7 @@ void InventoryManager::removeItem(int16_t slotId) {
     // Handle cursor slot specially
     if (slotId == CURSOR_SLOT || slotId == SERVER_CURSOR_SLOT) {
         if (!cursorQueue_.empty()) {
+            dropCursorFrontContents();  // T255: the bag leaves with its contents
             cursorQueue_.pop_front();
             // If queue is now empty, reset source slot
             if (cursorQueue_.empty()) {
@@ -696,6 +704,7 @@ void InventoryManager::removeItem(int16_t slotId) {
             } else {
                 // Next item in queue becomes active, it came from server
                 cursorSourceSlot_ = CURSOR_SLOT;
+                promoteCursorFrontContents();
             }
         }
     } else {
@@ -707,6 +716,7 @@ void InventoryManager::removeItem(int16_t slotId) {
 void InventoryManager::clearAll() {
     items_.clear();
     cursorQueue_.clear();
+    queuedCursorBagContents_.clear();
     cursorSourceSlot_ = SLOT_INVALID;
     itemCacheById_.clear();
     ++changeCounter_;
@@ -769,7 +779,8 @@ bool InventoryManager::pickupItem(int16_t slotId) {
     // T252 -- a bag on the cursor keeps its contents (server: inside the
     // ItemInstance, addressed as the cursor bag range 331-340). Mirror that
     // so the contents never sit under whatever lands in the vacated slot.
-    if (pickedUpBag && isGeneralSlot(slotId)) {
+    // T255: the source may be a bank / shared-bank slot too.
+    if (pickedUpBag && isBagParentSlot(slotId)) {
         relocateBagContents(slotId, CURSOR_SLOT);
     }
 
@@ -835,7 +846,10 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // contents (targetSlot's range) go to the cursor range with it.
         // Either side may be empty or not a bag. This is what eqemu's
         // SwapItem does by swapping the two ItemInstances wholesale.
-        if ((cursorItemIsBag || targetItemIsBag) && isGeneralSlot(targetSlot)) {
+        // T255: targetSlot may be a bank / shared-bank slot. The queue's
+        // next item is NOT promoted here -- the displaced item is about to
+        // become the front, and its contents are the swapped-in range.
+        if ((cursorItemIsBag || targetItemIsBag) && isBagParentSlot(targetSlot)) {
             swapBagContents(CURSOR_SLOT, targetSlot);
         }
 
@@ -876,7 +890,8 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         // T252 -- the bag's contents come from the cursor range (put there
         // by pickupItem() / the displaced side of a swap), not from the
         // slot the bag was originally picked up from.
-        if (cursorItemIsBag && isGeneralSlot(targetSlot)) {
+        // T255: targetSlot may be a bank / shared-bank slot.
+        if (cursorItemIsBag && isBagParentSlot(targetSlot)) {
             relocateBagContents(CURSOR_SLOT, targetSlot);
         }
 
@@ -894,6 +909,7 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
                 bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, CURSOR_SLOT, 0});
             }
             cursorSourceSlot_ = CURSOR_SLOT;  // Next item is from server queue
+            promoteCursorFrontContents();     // T255: the new front's bag contents
         } else {
             cursorSourceSlot_ = SLOT_INVALID;
         }
@@ -1005,6 +1021,7 @@ bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
     // If cursor item is now empty, remove it from cursor
     if (cursorItem->quantity <= 0) {
         cursorQueue_.pop_front();
+        promoteCursorFrontContents();  // T255
         if (cursorQueue_.empty()) {
             cursorSourceSlot_ = SLOT_INVALID;
         } else {
@@ -1029,6 +1046,7 @@ void InventoryManager::popCursorItem() {
     }
 
     cursorQueue_.pop_front();
+    promoteCursorFrontContents();  // T255
 
     // If queue still has items, send pop notification to server
     if (!cursorQueue_.empty()) {
@@ -1423,13 +1441,14 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
             setItem(fromSlot, movedToItem);
             // T252 -- bag contents follow their bags, both ways at once
             // (eqemu SwapItem swaps whole ItemInstances, contents included).
-            if (anyBag && isGeneralSlot(fromSlot) && isGeneralSlot(toSlot)) {
+            // T255: either side may be a bank / shared-bank slot.
+            if (anyBag && isBagParentSlot(fromSlot) && isBagParentSlot(toSlot)) {
                 swapBagContents(fromSlot, toSlot);
             }
         } else {
             setItem(toSlot, movedFromItem);
             removeItem(fromSlot);
-            if (anyBag && isGeneralSlot(fromSlot) && isGeneralSlot(toSlot)) {
+            if (anyBag && isBagParentSlot(fromSlot) && isBagParentSlot(toSlot)) {
                 relocateBagContents(fromSlot, toSlot);
             }
         }
@@ -1610,7 +1629,45 @@ bool InventoryManager::isBagEmpty(int16_t generalSlot) const {
 }
 
 bool InventoryManager::isBagParentSlot(int16_t slotId) {
-    return isGeneralSlot(slotId) || slotId == CURSOR_SLOT;
+    // T255: bank (2000-2015 -> 2031-2190) and shared bank (2500-2501 ->
+    // 2531-2550) parents join general and cursor. eqemu carries the
+    // contents inside the bag's ItemInstance for every one of these, and
+    // CalcSlotId (common/patches/titanium.cpp) numbers them all
+    // parent-relative in steps of 10 on the wire.
+    return isGeneralSlot(slotId) || slotId == CURSOR_SLOT ||
+           isBankSlot(slotId) || isSharedBankSlot(slotId);
+}
+
+void InventoryManager::promoteCursorFrontContents() {
+    if (cursorQueue_.empty()) {
+        return;
+    }
+    auto it = queuedCursorBagContents_.find(cursorQueue_.front().get());
+    if (it == queuedCursorBagContents_.end()) {
+        return;
+    }
+    TakenBagContents contents = std::move(it->second);
+    queuedCursorBagContents_.erase(it);
+    LOG_DEBUG(MOD_UI, "InventoryManager Cursor front '{}' promoted with {} queued bag contents",
+              cursorQueue_.front()->name, contents.size());
+    putBagContents(CURSOR_SLOT, contents);
+    ++changeCounter_;
+}
+
+void InventoryManager::dropCursorFrontContents() {
+    if (cursorQueue_.empty()) {
+        return;
+    }
+    const ItemInstance* front = cursorQueue_.front().get();
+    queuedCursorBagContents_.erase(front);
+    if (front->isContainer()) {
+        auto gone = takeBagContents(CURSOR_SLOT);
+        if (!gone.empty()) {
+            LOG_DEBUG(MOD_UI, "InventoryManager Cursor bag '{}' leaves with {} contents",
+                      front->name, gone.size());
+            ++changeCounter_;
+        }
+    }
 }
 
 InventoryManager::TakenBagContents InventoryManager::takeBagContents(int16_t parentSlot) {
@@ -2026,8 +2083,11 @@ bool InventoryManager::destroyCursorItem() {
     LOG_DEBUG(MOD_UI, "InventoryManager destroyCursorItem: {} (cursorSourceSlot={})",
               cursorItem->name, cursorSourceSlot_);
 
-    // If it's a bag, it should be empty (bags on cursor can't have contents)
+    // A bag on the cursor CAN carry contents (T252); they are destroyed with
+    // it, and the next queued bag's contents (if any) become the range.
+    dropCursorFrontContents();
     cursorQueue_.pop_front();
+    promoteCursorFrontContents();
 
     // Update source slot for next item (if any)
     if (cursorQueue_.empty()) {
@@ -2075,14 +2135,8 @@ void InventoryManager::processCharInventory(const EQ::Net::Packet& packet) {
 
             if (item && slotId != SLOT_INVALID) {
                 LOG_DEBUG(MOD_UI, "InventoryManager Parsed item: {} in slot {}", item->name, slotId);
-                setItem(slotId, std::move(item));
                 itemCount++;
-
-                // Add any bag contents
-                for (auto& [bagSlotId, bagItem] : bagContents) {
-                    setItem(bagSlotId, std::move(bagItem));
-                    bagContentCount++;
-                }
+                bagContentCount += ingestParsedItem(slotId, std::move(item), bagContents);
             }
         }
 
@@ -2121,16 +2175,71 @@ int16_t InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
     }
 
     int16_t slotId = SLOT_INVALID;
-    auto item = TitaniumItemParser::parseItem(itemData, itemLen, slotId);
+    std::map<int16_t, std::unique_ptr<ItemInstance>> bagContents;
+    auto item = TitaniumItemParser::parseItem(itemData, itemLen, slotId, &bagContents);
 
     if (item && slotId != SLOT_INVALID) {
         LOG_DEBUG(MOD_UI, "InventoryManager Parsed item from ItemPacket: {} in slot {} (type: {})", item->name, slotId, packetType);
-        setItem(slotId, std::move(item));
+        // T255: an ItemPacket bag arrives with its contents serialised --
+        // eqemu delivers every BANK item this way at zone-in (live leg, run
+        // 2), and a bag pushed onto the cursor queue likewise. They were
+        // never parsed here before, so bank bags always loaded empty.
+        // ingestParsedItem() treats the packet as authoritative for the
+        // bag's whole contents (stale range replaced, never stack-merged).
+        ingestParsedItem(slotId, std::move(item), bagContents);
         return slotId;
     } else {
         LOG_DEBUG(MOD_UI, "Failed to parse item from ItemPacket");
         return SLOT_INVALID;
     }
+}
+
+int InventoryManager::ingestParsedItem(int16_t slotId, std::unique_ptr<ItemInstance> item,
+                                       std::map<int16_t, std::unique_ptr<ItemInstance>>& bagContents) {
+    const bool toCursor = isCursorSlot(slotId);
+    const bool isBag = item && item->isContainer();
+    setItem(slotId, std::move(item));
+    // A serialised bag carries ALL of its contents: whatever the client held
+    // under that parent before is stale. Lift it out rather than let
+    // setItem()'s same-id stack merge double a count. (A cursor-bound bag's
+    // range is the front's; only touch it when this bag IS the front.)
+    if (isBag && (toCursor ? cursorQueue_.size() == 1 : isBagParentSlot(slotId))) {
+        auto stale = takeBagContents(toCursor ? CURSOR_SLOT : slotId);
+        if (!stale.empty()) {
+            LOG_DEBUG(MOD_UI, "InventoryManager Replacing {} stale bag contents under parent slot {}",
+                      stale.size(), toCursor ? CURSOR_SLOT : slotId);
+        }
+    }
+    if (bagContents.empty()) {
+        return 0;
+    }
+    int stored = 0;
+    if (toCursor && cursorQueue_.size() > 1) {
+        // T255 -- a bag queued BEHIND the front: its contents cannot share
+        // the cursor bag range with the front's, so hold them against the
+        // queued instance until it is promoted (promoteCursorFrontContents).
+        const ItemInstance* owner = cursorQueue_.back().get();
+        TakenBagContents held;
+        for (auto& [bagSlotId, bagItem] : bagContents) {
+            int16_t index = getContainerIndex(bagSlotId);
+            if (index == SLOT_INVALID || !bagItem) {
+                continue;
+            }
+            cacheItemById(*bagItem);
+            held.emplace_back(index, std::move(bagItem));
+            stored++;
+        }
+        LOG_DEBUG(MOD_UI, "InventoryManager Cursor bag '{}' queued at position {} holds {} contents (deferred)",
+                  owner->name, cursorQueue_.size() - 1, held.size());
+        queuedCursorBagContents_[owner] = std::move(held);
+    } else {
+        for (auto& [bagSlotId, bagItem] : bagContents) {
+            setItem(bagSlotId, std::move(bagItem));
+            stored++;
+        }
+    }
+    bagContents.clear();
+    return stored;
 }
 
 void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
@@ -2218,7 +2327,9 @@ void InventoryManager::dumpInventory() const {
             if (idx == 0) {
                 LOG_DEBUG(MOD_UI, "  [{}]: {} (active, from slot {})", idx, item->name, cursorSourceSlot_);
             } else {
-                LOG_DEBUG(MOD_UI, "  [{}]: {}", idx, item->name);
+                auto held = queuedCursorBagContents_.find(item.get());
+                size_t heldCount = held == queuedCursorBagContents_.end() ? 0 : held->second.size();
+                LOG_DEBUG(MOD_UI, "  [{}]: {} ({} queued bag contents held)", idx, item->name, heldCount);
             }
             idx++;
         }
