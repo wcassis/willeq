@@ -883,6 +883,31 @@ ActionResult ActionDispatcher::useItemById(uint32_t itemId) {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::activateHotbarCommandSlot(HotbarSlotType type, const std::string& text) {
+    // T239: keyboard hotbar Emote/Macro/Combat route. The type gate lives
+    // here so a Spell/Skill/Item slot can never be run as command text.
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    switch (type) {
+        case HotbarSlotType::Emote:
+        case HotbarSlotType::Macro:
+            if (text.empty()) {
+                return ActionResult::Failure("Hotbar slot has no command");
+            }
+            break;
+        case HotbarSlotType::Combat:
+            break;
+        case HotbarSlotType::Empty:
+        case HotbarSlotType::Spell:
+        case HotbarSlotType::Skill:
+        case HotbarSlotType::Item:
+            return ActionResult::Failure("Not a command hotbar slot");
+    }
+    m_handler->activateHotbarCommandSlot(type, text);
+    return ActionResult::Success();
+}
+
 // ========== Spellbook Actions ==========
 
 ActionResult ActionDispatcher::memorizeSpell(uint8_t gemSlot, uint32_t spellId) {

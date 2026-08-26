@@ -429,6 +429,52 @@ TEST_F(ActionDispatcherTest, UseItemById_NotZoneConnected_FailsBeforeLookup) {
     EXPECT_TRUE(handler.empty());
 }
 
+// T239: the keyboard hotbar command route (Emote / Macro / Combat).
+TEST_F(ActionDispatcherTest, ActivateHotbarCommandSlot_CommandTypesReachHandler) {
+    connectHandler();
+    connectZone();
+
+    EXPECT_TRUE(dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Emote, "/wave").success);
+    EXPECT_TRUE(dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Macro, "/say hi").success);
+    EXPECT_TRUE(dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Combat, "").success);
+
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Emote, \"/wave\")"));
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Macro, \"/say hi\")"));
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Combat, \"\")"));
+    EXPECT_EQ(handler.count(), 3u);
+}
+
+TEST_F(ActionDispatcherTest, ActivateHotbarCommandSlot_EmptyTextFailsBeforeHandler) {
+    connectHandler();
+    connectZone();
+
+    auto result = dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Emote, "");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "Hotbar slot has no command");
+    EXPECT_FALSE(dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Macro, "").success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(ActionDispatcherTest, ActivateHotbarCommandSlot_NonCommandTypesRefused) {
+    connectHandler();
+    connectZone();
+
+    for (auto t : {eqt::HotbarSlotType::Empty, eqt::HotbarSlotType::Spell,
+                   eqt::HotbarSlotType::Skill, eqt::HotbarSlotType::Item}) {
+        auto result = dispatcher->activateHotbarCommandSlot(t, "/wave");
+        EXPECT_FALSE(result.success);
+        EXPECT_EQ(result.message, "Not a command hotbar slot");
+    }
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(ActionDispatcherTest, ActivateHotbarCommandSlot_NotZoneConnectedFails) {
+    connectHandler();
+
+    EXPECT_FALSE(dispatcher->activateHotbarCommandSlot(eqt::HotbarSlotType::Emote, "/wave").success);
+    EXPECT_TRUE(handler.empty());
+}
+
 TEST_F(ActionDispatcherTest, SpellbookFamily_GemBoundsAndRouting) {
     connectHandler();
     connectZone();

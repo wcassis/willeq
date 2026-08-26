@@ -470,19 +470,68 @@ TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {
     EXPECT_EQ(handler.count(), 1u);
 }
 
-TEST_F(InputActionBridgeTest, HotbarEmoteAndEmptySlots_AreSkippedNotCast) {
+TEST_F(InputActionBridgeTest, HotbarEmptySlot_IsSkippedNotCast) {
     eqt::HotbarModel model;
-    model.assignSlot(1, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
     // slot 5 left Empty (default).
     bridge->setHotbarModel(&model);
 
-    input.hotbarRequests.push({1});  // Emote
     input.hotbarRequests.push({5});  // Empty
     update();
 
-    // No dispatcher call and no reportAction for either -- log-and-skip.
+    // No dispatcher call and no reportAction -- log-and-skip.
     EXPECT_TRUE(handler.empty());
     EXPECT_TRUE(reported.empty());
+}
+
+// T239: the three command-type slots reach the dispatcher's command route
+// (was a logged skip for all three, T174/T230).
+TEST_F(InputActionBridgeTest, HotbarEmoteSlot_ReachesCommandRouteWithItsText) {
+    eqt::HotbarModel model;
+    model.assignSlot(1, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({1});
+    update();
+
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Emote, \"/wave\")"));
+    EXPECT_TRUE(reportedOnce("HotbarCommand", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarMacroSlot_ReachesCommandRouteWithItsText) {
+    eqt::HotbarModel model;
+    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "/say hi");
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({2});
+    update();
+
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Macro, \"/say hi\")"));
+    EXPECT_TRUE(reportedOnce("HotbarCommand", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarCombatSlot_ReachesCommandRoute) {
+    eqt::HotbarModel model;
+    model.assignSlot(4, eqt::HotbarSlotType::Combat, /*id=*/0);
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({4});
+    update();
+
+    EXPECT_TRUE(handler.calledOnceWith("activateHotbarCommandSlot(Combat, \"\")"));
+    EXPECT_TRUE(reportedOnce("HotbarCommand", true));
+}
+
+TEST_F(InputActionBridgeTest, HotbarMacroSlot_EmptyText_FailsWithoutDispatch) {
+    eqt::HotbarModel model;
+    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "");
+    bridge->setHotbarModel(&model);
+
+    input.hotbarRequests.push({2});
+    update();
+
+    // The dispatcher refuses ("Hotbar slot has no command") before the handler.
+    EXPECT_TRUE(handler.empty());
+    EXPECT_TRUE(reportedOnce("HotbarCommand", false));
 }
 
 TEST_F(InputActionBridgeTest, TargetRequests_RouteSpawnIdAndDropZero) {

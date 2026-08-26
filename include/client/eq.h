@@ -16,6 +16,7 @@ namespace Json { class Value; }
 #include "client/door_state_manager.h"
 #include "client/zone_load_snapshot.h"
 #include "client/raid_update.h"
+#include "client/hotbar/hotbar_slot_type.h"  // T239: ActivateHotbarCommandSlot
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -2311,6 +2312,18 @@ public:
 	// Pushes HotbarCooldownStarted for each hotbar slot holding the item.
 	// Defined in eq_bridge.cpp.
 	bool UseInventoryItem(int16_t slot);
+
+	// T239: fire a hotbar slot whose content is a COMMAND rather than a
+	// spell/skill/item: Emote and Macro carry command text (run through
+	// ProcessChatInput, the live chat window's unified dispatch entry);
+	// Combat toggles auto-attack (CombatManager::ToggleAutoAttack). The one
+	// body for both the mouse hotbar path (HotbarActivateIntent) and the
+	// keyboard hotbar path (EqActionHandler::activateHotbarCommandSlot <-
+	// ActionDispatcher <- InputActionBridge). Refusals are reported via
+	// AddChatSystemMessage; returns true only when something was executed.
+	// Any other slot type is not this function's business and returns false.
+	// Defined in eq_bridge.cpp.
+	bool ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text);
 
 	// Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);

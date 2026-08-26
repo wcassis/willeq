@@ -336,13 +336,11 @@ void EqActionHandler::disableAutoAttack() {
 }
 
 void EqActionHandler::toggleAutoAttack() {
+    // T239: rule moved into CombatManager so the Combat hotbar slot and /aa
+    // cannot drift.
     auto* combat = getCombatManager();
     if (combat) {
-        if (combat->IsAutoAttackEnabled()) {
-            combat->DisableAutoAttack();
-        } else if (combat->HasTarget()) {
-            combat->EnableAutoAttack();
-        }
+        combat->ToggleAutoAttack();
     }
 }
 
@@ -785,6 +783,12 @@ int16_t EqActionHandler::findItemSlotByItemId(uint32_t itemId) {
     auto* inv = m_eq.GetInventoryManager();
     if (!inv) return eqt::inventory::SLOT_INVALID;
     return inv->findItemSlotByItemId(itemId);
+}
+
+void EqActionHandler::activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) {
+    // T239: the keyboard hotbar Emote/Macro/Combat route lands on the same
+    // body the mouse HotbarActivateIntent arm calls (eq_bridge.cpp).
+    m_eq.ActivateHotbarCommandSlot(type, text);
 }
 
 // T141: /equip's three input forms all arrive as one free-text string --

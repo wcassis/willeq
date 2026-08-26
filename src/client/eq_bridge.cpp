@@ -1344,10 +1344,14 @@ void EverQuest::ProcessBridgeIntents() {
 					}
 					break;
 				}
-				case eqt::HotbarSlotType::Emote: {
-					if (!i.emoteText.empty()) ProcessChatInput(i.emoteText);
+				case eqt::HotbarSlotType::Emote:
+				case eqt::HotbarSlotType::Macro:
+				case eqt::HotbarSlotType::Combat:
+					// T239: the command-slot body is shared with the keyboard
+					// route (EqActionHandler::activateHotbarCommandSlot). Was:
+					// Emote -> ProcessChatInput inline, Macro/Combat no-ops.
+					ActivateHotbarCommandSlot(i.type, i.emoteText);
 					break;
-				}
 				case eqt::HotbarSlotType::Skill: {
 					// T156: reachable at last — see refactor/T156_skill_reachability.md.
 					if (m_skill_manager && i.id <= 0xFF) {
@@ -1357,9 +1361,6 @@ void EverQuest::ProcessBridgeIntents() {
 					break;
 				}
 				case eqt::HotbarSlotType::Empty:
-				case eqt::HotbarSlotType::Macro:
-				case eqt::HotbarSlotType::Combat:
-					// Not wired to anything yet; no producer assigns them either.
 					break;
 				}
 			}
@@ -2036,4 +2037,40 @@ bool EverQuest::UseInventoryItem(int16_t slot) {
 		}
 	}
 	return true;
+}
+
+// T239: the ONE body for the three command-type hotbar slots, reached from
+// the mouse HotbarActivateIntent arm above and from the keyboard route
+// (InputActionBridge -> ActionDispatcher::activateHotbarCommandSlot ->
+// EqActionHandler -> here). Emote and Macro are the same thing at this level
+// -- a line of command text, exactly what the chat window would run -- and go
+// through ProcessChatInput so a hotbar key and a typed command take the same
+// dispatch path (registry 1, then Application's fallback registries). Combat
+// is the auto-attack toggle, the same rule /aa applies
+// (CombatManager::ToggleAutoAttack), with a message where /aa is silent.
+bool EverQuest::ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) {
+	switch (type) {
+	case eqt::HotbarSlotType::Emote:
+	case eqt::HotbarSlotType::Macro:
+		if (text.empty()) {
+			AddChatSystemMessage("Hotbar slot has no command");
+			return false;
+		}
+		ProcessChatInput(text);
+		return true;
+	case eqt::HotbarSlotType::Combat:
+		if (!m_combat_manager) return false;
+		if (!m_combat_manager->IsAutoAttackEnabled() && !m_combat_manager->HasTarget()) {
+			AddChatSystemMessage("You must have a target to attack");
+			return false;
+		}
+		m_combat_manager->ToggleAutoAttack();
+		return true;
+	case eqt::HotbarSlotType::Empty:
+	case eqt::HotbarSlotType::Spell:
+	case eqt::HotbarSlotType::Skill:
+	case eqt::HotbarSlotType::Item:
+		break;
+	}
+	return false;
 }

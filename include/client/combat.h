@@ -176,6 +176,10 @@ public:
 	// Auto attack
 	void EnableAutoAttack();
 	void DisableAutoAttack();
+	// T239: the one toggle rule (on -> off; off -> on only with a target),
+	// shared by /aa (EqActionHandler::toggleAutoAttack) and the Combat hotbar
+	// slot (EverQuest::ActivateHotbarCommandSlot). Was inlined in the handler.
+	void ToggleAutoAttack();
 	bool IsAutoAttackEnabled() const { return m_auto_attack_enabled; }
 
 	// Auto fire (ranged)

@@ -330,16 +330,20 @@ void InputActionBridge::processHotbarRequests() {
                 // in inventory"), nothing sent. Was a logged skip (T174).
                 reportAction("UseItem", m_dispatcher.useItemById(slot.id));
                 break;
-            case eqt::HotbarSlotType::Empty:
             case eqt::HotbarSlotType::Emote:
             case eqt::HotbarSlotType::Macro:
             case eqt::HotbarSlotType::Combat:
-                // No safe ActionDispatcher route: Emote/Macro carry command
-                // text that needs the command processor (ProcessChatInput on
-                // the mouse path) -- still owed (T174, T230 left them);
-                // Combat is unwired everywhere, and Empty is nothing. Log and
-                // skip rather than fire the wrong thing -- mirrors the
-                // defensive no-op arms of eq_bridge.cpp's hotbar switch.
+                // T239: command-type slots. Emote/Macro carry their command
+                // line in slot.emoteText; Combat carries nothing. The
+                // dispatcher gates type and empty text, the handler runs the
+                // same body as the mouse path
+                // (EverQuest::ActivateHotbarCommandSlot). Was a logged skip
+                // (T174, T230).
+                reportAction("HotbarCommand",
+                    m_dispatcher.activateHotbarCommandSlot(slot.type, slot.emoteText));
+                break;
+            case eqt::HotbarSlotType::Empty:
+                // Nothing to fire. Log and skip.
                 LOG_DEBUG(MOD_INPUT,
                     "[INPUT-TRACE] processHotbarRequests: hotbar slot {} type {} "
                     "has no keyboard dispatch route; skipping",

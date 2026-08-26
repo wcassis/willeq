@@ -2077,6 +2077,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_item)
 
+# T239: real-EverQuest coverage for the keyboard hotbar Emote/Macro/Combat
+# route below the action layer: EqActionHandler::activateHotbarCommandSlot
+# -> EverQuest::ActivateHotbarCommandSlot (eq_bridge.cpp; the ONE command-slot
+# body, shared with the mouse HotbarActivateIntent arm).
+ADD_EXECUTABLE(test_eq_action_handler_hotbar_command
+    test_eq_action_handler_hotbar_command.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_command GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_command)
+
 # T152: the two skill-opcode bodies this client had to build from scratch
 # (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
 # eqemu's Disarm_Struct / PickPocket_Struct. Header-only -- no willeq_core, no

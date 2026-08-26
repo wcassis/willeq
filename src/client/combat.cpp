@@ -470,6 +470,14 @@ void CombatManager::CycleTargets(bool forward) {
 	LOG_DEBUG(MOD_COMBAT, "Cycled to target index {} (ID: {})", m_cycle_index, new_target);
 }
 
+void CombatManager::ToggleAutoAttack() {
+	if (m_auto_attack_enabled) {
+		DisableAutoAttack();
+	} else if (HasTarget()) {
+		EnableAutoAttack();
+	}
+}
+
 void CombatManager::EnableAutoAttack() {
 	LOG_DEBUG(MOD_COMBAT, "EnableAutoAttack called (has_target={}, target_id={})",
 		HasTarget(), m_current_target_id);

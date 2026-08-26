@@ -212,6 +212,9 @@ public:
     }
     void deleteItem(int16_t slot) override { record("deleteItem", slot); }
     void useItem(int16_t slot) override { record("useItem", slot); }
+    void activateHotbarCommandSlot(HotbarSlotType type, const std::string& text) override {
+        record("activateHotbarCommandSlot", Sym{hotbarSlotTypeName(type)}, text);
+    }
     // T230: scripted item-id -> inventory-slot table for useItemById();
     // absent id -> SLOT_INVALID (-1), like a real empty inventory. The
     // lookup is a query, not an action, so it is NOT recorded in `calls`.

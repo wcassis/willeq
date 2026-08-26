@@ -28,10 +28,12 @@ void HotbarModel::assignSlot(int index, HotbarSlotType type, uint32_t id,
     slot.iconId = iconId;
 
     // Resolve display name
-    if (nameResolver_ && type != HotbarSlotType::Empty) {
+    // T239: Emote and Macro slots are named by their command text; the
+    // resolver only knows spells and skills (eq.cpp) and returns "" for them.
+    if (type == HotbarSlotType::Emote || type == HotbarSlotType::Macro) {
+        slot.name = emoteText.empty() ? hotbarSlotTypeName(type) : emoteText.substr(0, 10);
+    } else if (nameResolver_ && type != HotbarSlotType::Empty) {
         slot.name = nameResolver_(type, id);
-    } else if (type == HotbarSlotType::Emote) {
-        slot.name = emoteText.empty() ? "Emote" : emoteText.substr(0, 10);
     } else {
         slot.name.clear();
     }
@@ -74,10 +76,10 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
                 slots_[i].emoteText = emoteText;
                 slots_[i].iconId = iconId;
 
-                if (nameResolver_) {
+                if (slotType == HotbarSlotType::Emote || slotType == HotbarSlotType::Macro) {
+                    slots_[i].name = emoteText.empty() ? hotbarSlotTypeName(slotType) : emoteText.substr(0, 10);
+                } else if (nameResolver_) {
                     slots_[i].name = nameResolver_(slotType, id);
-                } else if (slotType == HotbarSlotType::Emote) {
-                    slots_[i].name = emoteText.empty() ? "Emote" : emoteText.substr(0, 10);
                 }
             } else {
                 slots_[i] = {};

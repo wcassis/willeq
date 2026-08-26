@@ -121,6 +121,7 @@ public:
     void deleteItem(int16_t slot) override;
     void useItem(int16_t slot) override;
     int16_t findItemSlotByItemId(uint32_t itemId) override;  // T230
+    void activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) override;  // T239
     void equip(const std::string& args) override;  // T141
 
     // ========== Spellbook ==========

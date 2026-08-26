@@ -6,6 +6,7 @@
 #include <optional>
 #include <vector>  // T149: recipesFavorite() takes a recipe-id list
 #include <glm/glm.hpp>
+#include "client/hotbar/hotbar_slot_type.h"  // T239: activateHotbarCommandSlot
 
 namespace eqt {
 
@@ -228,6 +229,13 @@ public:
     virtual void moveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity = 0) = 0;
     virtual void deleteItem(int16_t slot) = 0;
     virtual void useItem(int16_t slot) = 0;
+
+    // T239: the keyboard hotbar route for the three COMMAND slot types.
+    // Emote/Macro carry command text (`text`, the slot's emoteText -- a line
+    // exactly as the chat window would run it, "/wave", "/say hi"); Combat
+    // carries nothing and toggles auto-attack. The handler owns the body
+    // (EverQuest::ActivateHotbarCommandSlot, shared with the mouse path).
+    virtual void activateHotbarCommandSlot(HotbarSlotType type, const std::string& text) = 0;
 
     // T230: the item-id -> inventory-slot hop the keyboard hotbar route needs.
     // A hotbar Item slot stores an ITEM id; useItem() takes an INVENTORY slot.
@@ -925,6 +933,14 @@ public:
      * inventory" -- and sends nothing when the item is not carried.
      */
     ActionResult useItemById(uint32_t itemId);
+
+    /**
+     * T239: fire a hotbar slot of a COMMAND type (Emote, Macro, Combat).
+     * Refuses any other type ("Not a command hotbar slot") and an Emote/Macro
+     * slot with empty text ("Hotbar slot has no command") before reaching the
+     * handler; otherwise IActionHandler::activateHotbarCommandSlot.
+     */
+    ActionResult activateHotbarCommandSlot(HotbarSlotType type, const std::string& text);
 
     /**
      * T141: /equip -- move/equip an item by slot numbers, by name, or
