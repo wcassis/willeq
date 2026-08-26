@@ -467,3 +467,24 @@ hazard class: `CombatManager::Update()` on `m_update_thread` can reach
 ticked from `UpdateMovement()` on the game thread and paces itself to
 500 ms. EverQuest now runs NO thread of its own -- every `m_game_state`
 writer is the game thread. No mutex was added.**
+
+## 2026-08-26 — EQE1 mip chains are completed and the alpha companion is fixed; goldens re-blessed (Will)
+
+**Decision:** (1) Fix the ETC1 **alpha companion** texture path (it carries
+`GL_NEAREST_MIPMAP_NEAREST` over the same truncated chain that made the UI
+atlas sample black in T275, and the driver never sets unit 1's filters).
+(2) Fix the **builder** so every EQE1 entry ships a *complete* mip chain
+(down to 1x1), rather than living with non-mipmap filters forever.
+**Re-blessing the visual goldens is approved** as part of this — whatever
+the alpha companion samples today is baked into them.
+
+**Rationale:** T275 (`ad51cc3f`) proved an incomplete chain plus a mipmap
+MIN_FILTER samples opaque black on GLES2, and that the 3D path only escapes
+it because the driver rewrites unit 0's filters per material bind. Leaving
+the alpha companion in that state is the same defect waiting for a driver
+that does not. `verify_eqe1` has been reporting `mipLevels=7 (expected 9)`
+for every entry of every pack all along.
+
+**Consequence:** all EQE1 packs are regenerated; `data/eqe1_texture_index.json`
+is rebuilt if entry offsets move; the goldens are re-blessed once, in the
+same unit, with before/after evidence.
