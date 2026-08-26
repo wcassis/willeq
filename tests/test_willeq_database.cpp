@@ -359,3 +359,140 @@ TEST(WilleqDatabaseShippedContentTest, DragonRacesNameTheirChrArchive) {
                "T199 candidate set never includes it and its textures resolve to nothing";
     }
 }
+
+// T265: every race_models row names an archive that exists AND holds its
+// model code. The runtime (RaceModelLoader) reads races from THIS db, tries
+// the row's s3d_file first for the mesh, and T199 adds the same archive to
+// the EQE1 texture candidate set -- so a row whose s3d_file is empty, missing,
+// or does not contain <CODE>_HS_DEF / <CODE>_ACTORDEF is a placeholder cube
+// (T211/T213/T262 all found instances). The check reads the archive's WLD
+// string hash directly (PfsArchive + the WLD XOR key), so it needs only
+// pfs.cpp, not the graphics stack. Skips when the EQ client tree is absent.
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <set>
+#include <vector>
+#include "client/graphics/eq/pfs.h"
+
+namespace {
+
+bool EndsWith(const std::string& s, const char* suffix) {
+    const size_t n = std::strlen(suffix);
+    return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
+}
+
+// Names of every model definition (<CODE>_HS_DEF / <CODE>_ACTORDEF) in the
+// archive's .wld files, read from the encoded string hash of each WLD header.
+bool ArchiveModelNames(const std::string& s3dPath, std::set<std::string>& names, std::string& err) {
+    EQT::Graphics::PfsArchive archive;
+    if (!archive.open(s3dPath)) { err = "cannot open " + s3dPath; return false; }
+    std::vector<std::string> wlds;
+    archive.getFilenames("wld", wlds);
+    if (wlds.empty()) { err = "no .wld in " + s3dPath; return false; }
+    static const uint8_t kKey[8] = {0x95, 0x3A, 0xC5, 0x2A, 0x95, 0x7A, 0x95, 0x6A};
+    for (const auto& wld : wlds) {
+        std::vector<char> buf;
+        if (!archive.get(wld, buf) || buf.size() < 28) continue;
+        uint32_t magic = 0, hashLen = 0;
+        std::memcpy(&magic, buf.data(), 4);
+        std::memcpy(&hashLen, buf.data() + 20, 4);
+        if (magic != 0x54503D02u || 28u + hashLen > buf.size()) continue;
+        std::string hash(buf.data() + 28, hashLen);
+        for (size_t i = 0; i < hash.size(); ++i) hash[i] ^= static_cast<char>(kKey[i % 8]);
+        size_t start = 0;
+        while (start < hash.size()) {
+            size_t end = hash.find('\0', start);
+            if (end == std::string::npos) end = hash.size();
+            std::string s = hash.substr(start, end - start);
+            if (EndsWith(s, "_HS_DEF") || EndsWith(s, "_ACTORDEF")) names.insert(s);
+            start = end + 1;
+        }
+    }
+    return true;
+}
+
+std::string Upper(std::string s) {
+    for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
+}  // namespace
+
+TEST(WilleqDatabaseShippedContentTest, EveryRaceRowNamesAnArchiveHoldingItsCode) {
+    const std::string dbPath = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+    const std::string eqPath = EQ_CLIENT_DATA_PATH;
+    if (!FileExists(eqPath + "/global_chr.s3d")) GTEST_SKIP() << "no EQ client tree at " << eqPath;
+
+    // Race 32 (Ghost, GHM/GHF) is the one documented exception: no archive in
+    // the client holds a GHM mesh (T265 scanned all 419 *_chr*.s3d), so there
+    // is nothing correct to name. Any other empty s3d_file is a regression.
+    const std::set<int> kNoModelAnywhere = {32};
+
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* stmt = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db, "SELECT race_id, code, s3d_file FROM race_models ORDER BY race_id",
+                                 -1, &stmt, nullptr), SQLITE_OK);
+    std::map<std::string, std::set<std::string>> cache;  // archive -> model names
+    int rows = 0, checked = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ++rows;
+        const int race = sqlite3_column_int(stmt, 0);
+        const char* c = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        const char* f = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        const std::string code = Upper(c ? c : "");
+        const std::string s3d = f ? f : "";
+        EXPECT_FALSE(code.empty()) << "race " << race << " has no code";
+        if (kNoModelAnywhere.count(race)) {
+            EXPECT_TRUE(s3d.empty()) << "race " << race << " gained an s3d_file; drop it from the exception list";
+            continue;
+        }
+        EXPECT_FALSE(s3d.empty()) << "race " << race << " (" << code << ") names no s3d_file";
+        if (s3d.empty()) continue;
+        const std::string path = eqPath + "/" + s3d;
+        EXPECT_TRUE(FileExists(path)) << "race " << race << " (" << code << ") s3d_file " << s3d << " is not in the client tree";
+        if (!FileExists(path)) continue;
+        auto it = cache.find(s3d);
+        if (it == cache.end()) {
+            std::set<std::string> names; std::string err;
+            ASSERT_TRUE(ArchiveModelNames(path, names, err)) << err;
+            it = cache.emplace(s3d, std::move(names)).first;
+        }
+        const bool holds = it->second.count(code + "_HS_DEF") || it->second.count(code + "_ACTORDEF");
+        EXPECT_TRUE(holds) << "race " << race << ": " << s3d << " holds no " << code
+                           << "_HS_DEF / _ACTORDEF (the row points at the wrong archive)";
+        ++checked;
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    EXPECT_GE(rows, 187) << "race_models shrank";
+    EXPECT_EQ(checked, rows - static_cast<int>(kNoModelAnywhere.size()));
+}
+
+// T265's individual fixes, pinned so a stale rebuild of the db from an older
+// race_models.json is caught by name (the generic test above would also fail,
+// but this says which row and why).
+TEST(WilleqDatabaseShippedContentTest, T265RaceRowFixesAreInTheDb) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(path));
+    const struct { uint16_t race; const char* code; const char* s3d; const char* why; } expected[] = {
+        {17,  "GOL",  "befallen_chr.s3d",        "GOM is the Velious golem; befallen_chr holds GOL"},
+        {72,  "SHIP", "oot_chr.s3d",             "timorous_chr holds LAUNCH/LAUNCHM, not SHIP"},
+        {330, "FRM",  "globalpcfroglok_chr.s3d", "FRM/FRF exist only in globalpcfroglok_chr"},
+        {240, "IVM",  "global_chr.s3d",          "no TPM mesh anywhere; aliased to 127 Invisible Man"},
+        {35,  "EEL",  "eel_chr.s3d",             "eqemu Race::GiantEel had no row"},
+        {114, "GSP",  "oot_chr.s3d",             "eqemu Race::GhostShip had no row"},
+        {141, "BOAT", "global_chr.s3d",          "eqemu Race::Boat had no row"},
+    };
+    for (const auto& e : expected) {
+        auto info = db.getRaceModel(e.race);
+        ASSERT_TRUE(info.found) << "race " << e.race << ": " << e.why;
+        EXPECT_EQ(info.code, e.code) << "race " << e.race << ": " << e.why;
+        EXPECT_EQ(info.s3dFile, e.s3d) << "race " << e.race << ": " << e.why;
+    }
+}

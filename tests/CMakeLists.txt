@@ -929,9 +929,12 @@ GTEST_DISCOVER_TESTS(test_spell_visual_selection)
 ADD_EXECUTABLE(test_willeq_database
     test_willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} dl)
+# T265: pfs.cpp (+zlib) so the shipped-content test can open each race row's
+# s3d_file and read the model names from its WLD string hash.
+TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} dl)
 # T257: the concurrent-open tests fork readers against the REAL tracked
 # file on its real filesystem (the race is NFS-specific and inter-process).
 TARGET_COMPILE_DEFINITIONS(test_willeq_database PRIVATE

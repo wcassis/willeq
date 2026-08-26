@@ -1,7 +1,7 @@
 {
   "_comment": "Pre-Luclin race ID to model code mappings for EverQuest Titanium client",
-  "_version": "1.2",
-  "_notes": "Updated with s3d_file locations verified against s3d_contents_reference.json",
+  "_version": "1.3",
+  "_notes": "Updated with s3d_file locations verified against s3d_contents_reference.json; T265 audited every row against an s3d_dump scan of all 419 *_chr*.s3d and the EQE1 texture index (refactor/T265_race_models_audit.md).",
   "races": {
     "1": {
       "code": "HUM",
@@ -175,93 +175,55 @@
       ]
     },
     "17": {
-      "code": "GOM",
+      "code": "GOL",
       "name": "Golem",
       "neuter_code": "GOL",
       "scale": 1.2,
       "s3d_file": "befallen_chr.s3d",
+      "note": "T265: code was GOM, which befallen_chr.s3d (the s3d_file) does not hold -- GOM is the Velious/PoP golem in 9 archives (kael, skyshrine, sleeper, ...), GOL the classic golem in 43 (befallen, cauldron, unrest, ...). Race 17 spawns classic; GOL matches the archive.",
       "also_in": [
-        "befallen.s3d",
-        "beholder.s3d",
         "beholder_chr.s3d",
-        "blackburrow.s3d",
         "blackburrow_chr.s3d",
-        "cauldron.s3d",
         "cauldron_chr.s3d",
-        "cazicthule.s3d",
         "cazicthule_chr.s3d",
         "cazicthule_chr2.s3d",
-        "citymist.s3d",
         "citymist_chr.s3d",
-        "erudnext.s3d",
         "erudnext_chr.s3d",
-        "erudnint.s3d",
         "erudnint_chr.s3d",
-        "fearplane.s3d",
         "fearplane_chr.s3d",
-        "felwithea.s3d",
         "felwithea_chr.s3d",
-        "felwitheb.s3d",
         "felwitheb_chr.s3d",
-        "freportw.s3d",
         "freportw_chr.s3d",
-        "frozenshadow.s3d",
-        "frozenshadow_chr.s3d",
-        "gfaydark.s3d",
         "gfaydark_chr.s3d",
-        "gukbottom.s3d",
         "gukbottom_chr.s3d",
-        "hateplane.s3d",
         "hateplane_chr.s3d",
-        "highkeep.s3d",
+        "hateplaneb_chr.s3d",
         "highkeep_chr.s3d",
-        "hole.s3d",
         "hole_chr.s3d",
-        "kael.s3d",
-        "kael_chr.s3d",
-        "kaladima.s3d",
         "kaladima_chr.s3d",
-        "kaladimb.s3d",
         "kaladimb_chr.s3d",
-        "lavastorm.s3d",
         "lavastorm_chr.s3d",
-        "mistmoore.s3d",
         "mistmoore_chr.s3d",
-        "najena.s3d",
         "najena_chr.s3d",
-        "nektulos.s3d",
         "nektulos_chr.s3d",
-        "neriaka.s3d",
         "neriaka_chr.s3d",
         "neriaka_chr2.s3d",
-        "neriakb.s3d",
         "neriakb_chr.s3d",
-        "neriakc.s3d",
         "neriakc_chr.s3d",
-        "overthere.s3d",
         "overthere_chr.s3d",
-        "paineel.s3d",
         "paineel_chr.s3d",
-        "qeynos.s3d",
+        "poeartha_chr.s3d",
+        "poearthb_chr.s3d",
+        "pofire_chr.s3d",
+        "potimea_chr.s3d",
+        "powar_chr.s3d",
         "qeynos_chr.s3d",
-        "runnyeye.s3d",
         "runnyeye_chr.s3d",
-        "skyshrine.s3d",
-        "skyshrine_chr.s3d",
-        "skyshrine_chr2.s3d",
-        "sleeper.s3d",
-        "sleeper_chr.s3d",
-        "sleeper_chr2.s3d",
-        "soldunga.s3d",
         "soldunga_chr.s3d",
-        "thurgadinb.s3d",
-        "thurgadinb_chr.s3d",
-        "tox.s3d",
+        "solrotower_chr.s3d",
+        "solrotower_chr2.s3d",
         "tox_chr.s3d",
-        "unrest.s3d",
-        "unrest_chr.s3d",
-        "velketor.s3d",
-        "velketor_chr.s3d"
+        "unrest_chr.s3d"
       ]
     },
     "18": {
@@ -850,6 +812,17 @@
         "soldungb_chr.s3d",
         "thurgadina.s3d",
         "thurgadina_chr.s3d"
+      ]
+    },
+    "35": {
+      "code": "EEL",
+      "name": "Eel",
+      "scale": 1.0,
+      "s3d_file": "eel_chr.s3d",
+      "note": "T265: eqemu Race::GiantEel (GetRaceIDName: Eel) had no row. EEL_HS_DEF is in eel_chr.s3d (the client's hole/paw/tak* _chr.txt lists name eel_chr); code taken from the model name, not from a live spawn.",
+      "also_in": [
+        "global5_chr.s3d",
+        "poeartha_chr.s3d"
       ]
     },
     "36": {
@@ -2227,7 +2200,16 @@
       "code": "SHIP",
       "name": "Ship",
       "scale": 2.0,
-      "s3d_file": "timorous_chr.s3d"
+      "s3d_file": "oot_chr.s3d",
+      "note": "T265: s3d_file was timorous_chr.s3d, which holds LAUNCH/LAUNCHM (the Timorous Deep launches) and no SHIP. SHIP_ACTORDEF is a non-skeletal object model.",
+      "also_in": [
+        "butcher_chr.s3d",
+        "erudnext_chr.s3d",
+        "erudsxing_chr.s3d",
+        "freporte_chr.s3d",
+        "oot_chr2.s3d",
+        "qeynos_chr.s3d"
+      ]
     },
     "73": {
       "code": "LAUNCH",
@@ -3199,6 +3181,16 @@
         "wakening_chr.s3d"
       ]
     },
+    "114": {
+      "code": "GSP",
+      "name": "Ghost Ship",
+      "scale": 2.0,
+      "s3d_file": "oot_chr.s3d",
+      "note": "T265: eqemu Race::GhostShip had no row. GSP_ACTORDEF is in oot_chr.s3d and oot_chr2.s3d (non-skeletal object model); code taken from the model name, not from a live spawn. Scale copied from race 72 Ship.",
+      "also_in": [
+        "oot_chr2.s3d"
+      ]
+    },
     "116": {
       "code": "SEA",
       "name": "Seahorse",
@@ -3746,6 +3738,13 @@
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
       ]
+    },
+    "141": {
+      "code": "BOAT",
+      "name": "Boat",
+      "scale": 2.0,
+      "s3d_file": "global_chr.s3d",
+      "note": "T265: eqemu Race::Boat had no row. BOAT_ACTORDEF is in global_chr.s3d (non-skeletal object model); code taken from the model name, not from a live spawn. Scale copied from race 72 Ship."
     },
     "144": {
       "code": "BRN",
@@ -4562,19 +4561,24 @@
       ]
     },
     "240": {
-      "code": "TPM",
+      "code": "IVM",
       "name": "Teleport Man",
       "gender_variants": true,
-      "female_code": "TPF",
+      "female_code": "IVF",
       "scale": 0.0,
-      "invisible": true
+      "invisible": true,
+      "s3d_file": "global_chr.s3d",
+      "alias_of": 127,
+      "alias_reason": "Race 240 (eqemu Race::TeleportMan) has no TPM/TPF mesh in any of the client's 419 *_chr archives; it is an invisible teleport trigger NPC, so it renders with race 127's IVM (Invisible Man) model instead of a placeholder cube. T265."
     },
     "330": {
       "code": "FRM",
       "name": "Froglok (Playable)",
       "gender_variants": true,
       "female_code": "FRF",
-      "scale": 0.8
+      "scale": 0.8,
+      "s3d_file": "globalpcfroglok_chr.s3d",
+      "note": "T265: FRM_HS_DEF and FRF_HS_DEF exist in exactly one archive, globalpcfroglok_chr.s3d. globalfroglok_chr.s3d holds FRG (the monster froglok) only."
     },
     "367": {
       "code": "SKE",
