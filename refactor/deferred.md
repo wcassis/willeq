@@ -194,7 +194,7 @@ replaces is preserved verbatim in git (`e6a8c4e9`) and in
   rig (provisioned a Rogue). The client-side `OP_CharacterCreate` handshake
   is still unimplemented — that is now a feature gap, not a test blocker.
   Heading: `## From Batch H`.
-- "Player BSP region is SIZE_MAX" stale-zone-name race — not chased.
+- ~~"Player BSP region is SIZE_MAX" stale-zone-name race~~ CLOSED T260 `53e3dac4`: the P17 tag `m_zone_bsp_tree_zone_name` was NEVER written, so the snapshot region lookup was skipped on 100% of zone-ins since P17 (spurious "stale" WARN); `SetZoneBspTree` now refuses a tree built for another zone; `playerBspRegion` has zero consumers so the FATAL became a WARN (P44 befallen (-195,-982,3) is legitimately outside every region). OWED: one live zone-in showing `Snapshot: player BSP region=2220` -- fold into the next eqemu unit.
   Heading: `## "Player BSP region is SIZE_MAX" with stale zone name`.
 - Pale fog-colored flat shapes in gfaydark/qeynos2 goldens — not chased.
   Heading: `## Pale fog-colored flat shapes in gfaydark/qeynos2 goldens`.
