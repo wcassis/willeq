@@ -1186,3 +1186,56 @@ TEST(EqActionHandlerCast, Aggro_MemoryExpires) {
 
     EXPECT_FALSE(cm->HasTarget());
 }
+
+// T254: a second NPC, id 404, LATER in the entity-map scan order than the
+// 403 beetle and (by default) farther away.
+constexpr uint16_t kBeetle2Id = 404;
+void spawnBeetle2(EverQuest& eq, float y = 14) {
+    ReplayZone(eq, HC_OP_NewSpawn,
+               NewSpawnPayloadAt(kBeetle2Id, "a_fire_beetle001", 0, y, 0, /*level=*/1,
+                                 /*npc_type=*/1, /*char_class=*/0));
+    ASSERT_NE(eq.GetEntities().find(kBeetle2Id), eq.GetEntities().end());
+}
+
+// T254: two attackers. The OLDER one (403, dist 2) is first in scan order
+// and nearer; the LATEST one (404, dist 4) must be the one engaged.
+TEST(EqActionHandlerCast, Aggro_TwoAttackers_LatestIsEngagedNotFirstInScan) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    spawnBeetle2(h.eq);
+    CombatManager* cm = h.eq.GetCombatManager();
+    cm->Enable();
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, 2));
+    cm->m_recent_attackers[kBeetleId] -= std::chrono::milliseconds(500);   // older, still in memory
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetle2Id, 2));
+    ASSERT_TRUE(cm->IsRecentAttacker(kBeetleId));
+    ASSERT_TRUE(cm->IsRecentAttacker(kBeetle2Id));
+    openCombatGates(*cm);
+
+    cm->Update();
+
+    EXPECT_EQ(cm->GetTargetId(), kBeetle2Id) << "the most recent attacker is engaged";
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_ENGAGED);
+}
+
+// T254: equal timestamps -> the nearer one wins (404 at dist 1 beats 403 at
+// dist 2 even though 403 is first in scan order).
+TEST(EqActionHandlerCast, Aggro_TwoAttackersSameInstant_NearestIsEngaged) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    spawnBeetle2(h.eq, /*y=*/11);
+    CombatManager* cm = h.eq.GetCombatManager();
+    cm->Enable();
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, 2));
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetle2Id, 2));
+    cm->m_recent_attackers[kBeetle2Id] = cm->m_recent_attackers[kBeetleId];   // exact tie
+    openCombatGates(*cm);
+
+    cm->Update();
+
+    EXPECT_EQ(cm->GetTargetId(), kBeetle2Id) << "tie on recency -> nearest";
+}

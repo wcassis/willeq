@@ -1273,16 +1273,27 @@ void CombatManager::ProcessCombatRound() {
 void CombatManager::CheckForAggro() {
 	// Check if any hostile mobs are aggroing us. is_aggro comes from
 	// NoteAttackedBy (T247); before that it was a hard-coded false and this
-	// never fired.
+	// never fired. T254: with several attackers engage the one that hit us
+	// LAST (ties -> nearest), not whichever the entity-map scan listed first.
+	const CombatTarget* best = nullptr;
+	std::chrono::steady_clock::time_point best_at{};
 	for (const auto& target : m_potential_targets) {
-		if (target.is_aggro && target.distance <= m_aggro_radius) {
-			// We're being attacked!
-			LOG_INFO(MOD_COMBAT, "CheckForAggro: {} (ID:{}) attacked us at {:.1f} -- engaging",
-				target.name, target.entity_id, target.distance);
-			if (SetTarget(target.entity_id)) {
-				EnableAutoAttack();
-			}
-			break;
+		if (!target.is_aggro || target.distance > m_aggro_radius) {
+			continue;
+		}
+		auto it = m_recent_attackers.find(target.entity_id);
+		auto at = it != m_recent_attackers.end() ? it->second : std::chrono::steady_clock::time_point{};
+		if (!best || at > best_at || (at == best_at && target.distance < best->distance)) {
+			best = &target;
+			best_at = at;
+		}
+	}
+	if (best) {
+		// We're being attacked!
+		LOG_INFO(MOD_COMBAT, "CheckForAggro: {} (ID:{}) attacked us at {:.1f} (latest of {} attacker(s)) -- engaging",
+			best->name, best->entity_id, best->distance, m_recent_attackers.size());
+		if (SetTarget(best->entity_id)) {
+			EnableAutoAttack();
 		}
 	}
 }
