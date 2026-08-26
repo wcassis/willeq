@@ -58,10 +58,6 @@ struct LootAllIntent {
     uint16_t corpseId;
 };
 
-struct DestroyAllLootIntent {
-    uint16_t corpseId;
-};
-
 struct CloseLootIntent {
     uint16_t corpseId;
 };
@@ -234,7 +230,6 @@ using RendererIntent = std::variant<
     LootCorpseIntent,
     LootItemIntent,
     LootAllIntent,
-    DestroyAllLootIntent,
     CloseLootIntent,
     WorldObjectInteractIntent,
     ZoningEnabledIntent,

@@ -976,7 +976,12 @@ TEST(CombatManagerLoot, CorpseDisappearingMidLootAbortsWithoutHanging) {
     EXPECT_EQ(cm->m_current_corpse_id, 0);
 }
 
-TEST(CombatManagerLoot, AwaitingItemsHardDeadlineClosesWhenAutoLootDisabled) {
+// T268: with auto-loot OFF and items on the corpse, the window is the
+// player's -- the machine parks in ManualOpen (no deadline; exits on
+// LootAll(), a close, or corpse gone) instead of closing on the hard
+// deadline as T26 had it. Closing on the deadline is what made "take ONE
+// item" impossible: the window was gone 5 s after it opened.
+TEST(CombatManagerLoot, AwaitingItemsWithAutoLootDisabledHoldsTheWindowOpen) {
     EverQuest eq = MakeEq();
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
         NewSpawnPayloadAt(901, "a_test_rat's_corpse1", 0, 10, 0)));
@@ -987,18 +992,67 @@ TEST(CombatManagerLoot, AwaitingItemsHardDeadlineClosesWhenAutoLootDisabled) {
     cm->AddLootItem(50);
     ASSERT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
 
-    // Corpse present, auto-loot disabled: quiescence never fires (gated on
-    // m_auto_loot_enabled), so this would hang forever under the pre-T26
-    // design. The hard deadline is the new safety net for exactly this.
     cm->UpdateLootState();
     EXPECT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems)
-        << "not yet at the hard deadline";
+        << "not yet quiescent";
 
     cm->m_loot_state_entered = std::chrono::steady_clock::now() -
         std::chrono::milliseconds(CombatManager::kAwaitingItemsHardDeadlineMs + 10);
     cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::ManualOpen)
+        << "auto-loot off + items: hold the window for the player";
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+    EXPECT_TRUE(eq.GetGameState().player().isLooting());
+
+    // ManualOpen has no deadline: many ticks later it is still open.
+    for (int i = 0; i < 5; ++i) cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::ManualOpen);
+
+    // LootAll() from ManualOpen drives the same drain as auto-loot.
+    ASSERT_TRUE(cm->LootAll());
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::LootingItems);
+}
+
+TEST(CombatManagerLoot, AwaitingItemsHardDeadlineClosesWhenNothingArrived) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(901, "a_test_rat's_corpse1", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+
+    cm->SetAutoLootEnabled(false);
+    cm->LootCorpse(901);
+    ASSERT_EQ(cm->GetLootSubState(), LootSubState::AwaitingItems);
+
+    // No items ever arrived (and no LootRequest response either): the hard
+    // deadline is still the safety net that closes the session.
+    cm->m_loot_state_entered = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kAwaitingItemsHardDeadlineMs + 10);
+    cm->UpdateLootState();
     EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle)
-        << "hard deadline must close the session even with auto-loot off";
+        << "hard deadline must close an empty session";
+    EXPECT_FALSE(eq.GetGameState().player().isLooting());
+}
+
+TEST(CombatManagerLoot, ManualOpenCorpseGoneAbortsToIdle) {
+    EverQuest eq = MakeEq();
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+        NewSpawnPayloadAt(902, "a_test_rat's_corpse2", 0, 10, 0)));
+    auto* cm = eq.GetCombatManager();
+    cm->SetAutoLootEnabled(false);
+    cm->LootCorpse(902);
+    cm->AddLootItem(50);
+    cm->m_last_loot_item_time = std::chrono::steady_clock::now() -
+        std::chrono::milliseconds(CombatManager::kItemQuiescenceMs + 10);
+    cm->UpdateLootState();
+    ASSERT_EQ(cm->GetLootSubState(), LootSubState::ManualOpen);
+
+    // The corpse decays / is deleted server-side.
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_DeleteSpawn,
+        BuildPayload(6, [&](EQ::Net::DynamicPacket& p) { p.PutUInt32(2, 902); })));
+    cm->UpdateLootState();
+    EXPECT_EQ(cm->GetLootSubState(), LootSubState::Idle);
+    EXPECT_NE(cm->GetCombatState(), COMBAT_STATE_LOOTING);
+    EXPECT_FALSE(eq.GetGameState().player().isLooting());
 }
 
 // ===================================================================

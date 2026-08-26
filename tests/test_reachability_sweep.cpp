@@ -181,8 +181,16 @@ std::vector<std::string> variantMembers() {
 // Intents whose consumer arm exists but which NO production code produces.
 // Each blocks a user-facing feature (T264 Review, "blocked features"); the
 // intent is kept as the natural target for the producer that feature needs.
+// T268 wired the loot window ACTIONS (take one, loot all, close) as the
+// /loot family of commands -- CommandProcessor -> ActionDispatcher ->
+// EqActionHandler, the same last hops the shift+click gesture uses. These
+// three intents are the UI-GESTURE leg of that same feature and stay
+// producer-less until a loot popup exists to click (T48's UI-gesture-only
+// class); their arms are live and pinned by tests/test_loot_window_actions.
+// DestroyAllLootIntent was DELETED: Titanium has no destroy-loot packet, so
+// its arm only closed the window -- a second name for CloseLootIntent.
 const std::set<std::string> kBlockedIntents = {
-    "LootItemIntent", "LootAllIntent", "DestroyAllLootIntent", "CloseLootIntent",
+    "LootItemIntent", "LootAllIntent", "CloseLootIntent",
     "ReadItemIntent",
     "MemorizeSpellIntent", "ScribeSpellIntent", "SpellbookStateIntent",
     "BuffCancelIntent",
@@ -319,8 +327,9 @@ std::set<std::string> handlerPureVirtuals() {
 }
 
 // Handler methods that are the real last hop of a feature nothing reaches
-// (loot a single item / loot all -- see the T264 Review). Kept, listed.
-const std::set<std::string> kBlockedHandlerMethods = {"lootItem", "lootAll"};
+// (see the T264 Review). T268 wired lootItem/lootAll (/loot <item>, /lootall);
+// the list is empty -- a new orphan fails the test with its name.
+const std::set<std::string> kBlockedHandlerMethods = {};
 
 TEST(ReachabilitySweep, UnreachableHandlerMethodsAreExactlyTheBlockedList) {
     auto virtuals = handlerPureVirtuals();

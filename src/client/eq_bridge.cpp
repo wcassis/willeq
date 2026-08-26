@@ -85,6 +85,7 @@
 #include <sstream>
 #include <ctime>
 #include <algorithm>
+#include <cctype>
 #include <vector>
 #include <cmath>
 #include <cstring>
@@ -954,7 +955,14 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::LootCorpseIntent>) {
-				RequestLootCorpse(i.spawnId);
+				// T268: the gesture enters the same loot machine /loot does
+				// (CombatManager::LootCorpse -> RequestLootCorpse), so
+				// LootAllIntent/CloseLootIntent can drive it afterwards.
+				if (m_combat_manager) {
+					m_combat_manager->LootCorpse(i.spawnId);
+				} else {
+					RequestLootCorpse(i.spawnId);
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DoorInteractIntent>) {
 				SendClickDoor(i.doorId);
@@ -1137,15 +1145,15 @@ void EverQuest::ProcessBridgeIntents() {
 					m_skill_manager->activateSkill(static_cast<uint8_t>(i.skillId), targetId);
 				}
 			}
-			// Loot intents
+			// Loot intents (T268: producers are the /loot family; a loot
+			// popup would push the same intents)
 			else if constexpr (std::is_same_v<T, eqt::events::LootItemIntent>) {
-				LootItemFromCorpse(i.corpseId, i.slot);
+				LootItemFromCorpse(i.corpseId, i.slot);  // to the cursor, like the real client
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::LootAllIntent>) {
-				LootAllFromCorpse(i.corpseId);
-			}
-			else if constexpr (std::is_same_v<T, eqt::events::DestroyAllLootIntent>) {
-				DestroyAllCorpseLoot(i.corpseId);
+				if (m_combat_manager) {
+					m_combat_manager->LootAll();
+				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::CloseLootIntent>) {
 				CloseLootWindow(i.corpseId);
@@ -1534,9 +1542,20 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 	}
 }
 
-void EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
+bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
 	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} m_player_looting_corpse_id={} m_my_spawn_id={}",
 		corpseId, slot, autoLoot, m_player_looting_corpse_id, m_my_spawn_id);
+
+	// T268: no window, nothing to take -- eqemu would answer a bare
+	// OP_LootItem with an EndLoot error anyway (Corpse::LootCorpseItem's
+	// IsBeingLootedBy check).
+	if (m_player_looting_corpse_id == 0) {
+		LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: no loot window open");
+		return false;
+	}
+	if (corpseId == 0) {
+		corpseId = m_player_looting_corpse_id;
+	}
 
 	// Track this slot as pending loot (waiting for server confirmation)
 	m_pending_loot_slots.push_back(slot);
@@ -1579,45 +1598,33 @@ void EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 		li->lootee, li->looter, li->slot_id, li->auto_loot);
 
 	QueuePacket(HC_OP_LootItem, &packet);
+	return true;
 }
 
-void EverQuest::LootAllFromCorpse(uint16_t corpseId) {
-	LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: corpseId={}", corpseId);
-
-	// Validate we're actively looting (D18a: uses game-side loot item tracking)
-	if (m_player_looting_corpse_id == 0) {
-		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Not currently looting");
-		return;
+int16_t EverQuest::FindLootSlotByName(const std::string& name) const {
+	if (m_player_looting_corpse_id == 0 || name.empty()) {
+		return -1;
 	}
-
-	if (m_loot_items.empty()) {
-		LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: No items to loot");
-		return;
-	}
-
-	// Store remaining slots for sequential looting
-	// In Titanium, server closes loot session after each item,
-	// so we must loot one item at a time and re-request loot for remaining items
-	m_loot_all_remaining_slots.clear();
+	auto lower = [](std::string v) {
+		for (auto& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		return v;
+	};
+	// Accept either spelling of a space: the player may type the name with
+	// underscores the way entity names print.
+	std::string want = lower(name);
+	std::replace(want.begin(), want.end(), '_', ' ');
+	int16_t partial = -1;
 	for (const auto& [slot, item] : m_loot_items) {
-		m_loot_all_remaining_slots.push_back(slot);
+		std::string have = lower(item.name);
+		std::replace(have.begin(), have.end(), '_', ' ');
+		if (have == want) {
+			return slot;
+		}
+		if (partial < 0 && have.find(want) != std::string::npos) {
+			partial = slot;
+		}
 	}
-
-	LOG_DEBUG(MOD_INVENTORY, "LootAllFromCorpse: Queued {} items for sequential looting", m_loot_all_remaining_slots.size());
-
-	// Start loot-all operation - loot first item only
-	m_loot_all_in_progress = true;
-	int16_t firstSlot = m_loot_all_remaining_slots.front();
-	m_loot_all_remaining_slots.erase(m_loot_all_remaining_slots.begin());
-	LootItemFromCorpse(corpseId, firstSlot, true);  // autoLoot=true for Loot All
-}
-
-void EverQuest::DestroyAllCorpseLoot(uint16_t corpseId) {
-	LOG_DEBUG(MOD_INVENTORY, "DestroyAllCorpseLoot: corpseId={}", corpseId);
-
-	// For now, just close the loot window - items stay on corpse until despawn
-	// The Titanium protocol doesn't have explicit destroy packets for loot items
-	CloseLootWindow(corpseId);
+	return partial;
 }
 
 void EverQuest::CloseLootWindow(uint16_t corpseId) {
@@ -1630,8 +1637,6 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	// Clear the looting state
 	m_player_looting_corpse_id = 0;
 	m_pending_loot_slots.clear();
-	m_loot_all_in_progress = false;
-	m_loot_all_remaining_slots.clear();
 	m_game_state.player().clearLootingCorpse();  // Phase 7.7
 
 	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
@@ -1648,6 +1653,12 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 
 	// Clear game-side loot items
 	m_loot_items.clear();
+
+	// T268: the loot policy machine leaves LOOTING with the window (this is
+	// the ONE close path; CombatManager::CloseLootWindow routes here).
+	if (m_combat_manager) {
+		m_combat_manager->OnLootWindowClosed();
+	}
 
 	// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
 	if (m_bridge) {

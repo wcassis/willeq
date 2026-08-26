@@ -401,6 +401,7 @@ ADD_EXECUTABLE(test_command_processor
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 # T140: cmdMove/cmdMoveTo/cmdFollow use fmt::format directly (T88's
@@ -421,6 +422,7 @@ ADD_EXECUTABLE(test_appearance_command
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
@@ -435,6 +437,7 @@ ADD_EXECUTABLE(test_merged_help
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
@@ -498,6 +501,19 @@ TARGET_COMPILE_DEFINITIONS(test_eqe1_texture_index PRIVATE
 TARGET_LINK_LIBRARIES(test_eqe1_texture_index GTest::gtest_main ${JSONCPP_LIBRARIES}
     ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_eqe1_texture_index)
+# T268: loot window actions (take one item, loot all, close) driven through
+# the real CommandProcessor -> ActionDispatcher -> EqActionHandler ->
+# EverQuest/CombatManager chain and asserted on the wire via the T268
+# QueuePacket capture seam (EverQuest::Test_GetQueuedPackets). Links
+# willeq_core the same way test_eq_action_handler_vendor does.
+ADD_EXECUTABLE(test_loot_window_actions
+    test_loot_window_actions.cpp
+)
+TARGET_LINK_LIBRARIES(test_loot_window_actions GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_loot_window_actions PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_loot_window_actions)
 
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the
@@ -509,6 +525,7 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
     # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
     # by slot content type. hotbar_model.cpp is dependency-light (event_bus +

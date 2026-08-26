@@ -50,9 +50,13 @@ enum class LootSubState {
 	LootingItems,     // sending LootItem for each staged slot, paced one
 	                  // per kInterItemDelayMs tick; exits when drained or
 	                  // corpse gone
-	Closing           // brief pause before EndLootRequest, mirrors legacy
+	Closing,          // brief pause before EndLootRequest, mirrors legacy
 	                  // "before closing the window" delay; exits on deadline
 	                  // or corpse gone
+	ManualOpen        // T268: auto-loot OFF and the window has items -- held
+	                  // open for the player (/loot <item>, /lootall,
+	                  // /lootclose, or the intents). No deadline: exits only
+	                  // on LootAll() (-> LootingItems), a close, or corpse gone
 };
 
 enum TargetPriority {
@@ -234,12 +238,20 @@ public:
 	bool IsFleeing() const { return m_combat_state == COMBAT_STATE_FLEEING; }
 	void SetFleeThreshold(float hp_percent) { m_flee_hp_threshold = hp_percent; }
 
-	// Looting
+	// Looting. T268: CombatManager is the loot POLICY (when to take what,
+	// pacing, when to close); every packet goes through EverQuest's single
+	// senders (RequestLootCorpse / LootItemFromCorpse / CloseLootWindow) and
+	// the window's item list lives in EverQuest::m_loot_items. The slot
+	// vector here is the auto-loot queue only.
 	void LootCorpse(uint16_t corpse_id);
 	void LootItem(uint32_t item_slot);
-	void LootAll();
+	bool LootAll();                 // false when no window is open (nothing sent)
 	void CloseLootWindow();
 	bool IsLooting() const { return m_combat_state == COMBAT_STATE_LOOTING; }
+	// T268: called by EverQuest::CloseLootWindow() (the ONE EndLootRequest
+	// sender) and the corpse-despawn path so the machine leaves LOOTING no
+	// matter who closed the window. Idempotent.
+	void OnLootWindowClosed();
 
 	// T33: called by EverQuest::ZoneProcessDeath() -- the authoritative,
 	// server-signalled death event -- right after DisableAutoAttack() for
@@ -282,9 +294,11 @@ public:
 	// Hunt target listing
 	void ListHuntTargets();
 
-	// Loot window handling
-	void ProcessLootWindow(const std::vector<uint32_t>& item_ids);
+	// Loot window handling. AddLootItem/RemoveLootItem are fed by
+	// EverQuest::ZoneProcessLootItemToUI / ZoneProcessLootedItemToInventory
+	// (T268: ProcessLootWindow, which had no caller, is gone).
 	void AddLootItem(uint32_t slot_id);
+	void RemoveLootItem(uint32_t slot_id);  // a slot the player took by hand
 	void CheckAutoLoot();
 	void SetAutoLootEnabled(bool enabled) { m_auto_loot_enabled = enabled; }
 	bool IsAutoLootEnabled() const { return m_auto_loot_enabled; }
@@ -423,6 +437,7 @@ private:
 	void TickAwaitingItems(std::chrono::steady_clock::time_point now);
 	void TickLootingItems(std::chrono::steady_clock::time_point now);
 	void TickClosing(std::chrono::steady_clock::time_point now);
+	void TickManualOpen();                       // T268: corpse-gone exit only
 	bool CorpseStillPresent(uint16_t corpse_id) const;
 	void BeginLootRequest(uint16_t corpse_id);  // shared by LootCorpse() and AwaitingCorpse's find
 	void AbortLoot();                            // deadline / corpse-gone exit

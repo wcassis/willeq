@@ -29,14 +29,6 @@ struct Consider_Struct {
 	uint8_t  unknown3[3];
 };
 
-struct LootingItem_Struct {
-	uint32_t lootee;
-	uint32_t looter;
-	uint16_t slot_id;
-	uint8_t  unknown3[2];
-	uint32_t auto_loot;
-};
-
 struct Action_Struct {
 	uint16_t target;           // id of target
 	uint16_t source;           // id of caster/attacker
@@ -861,13 +853,14 @@ void CombatManager::BeginLootRequest(uint16_t corpse_id) {
 	m_loot_items.clear();
 	SetCombatState(COMBAT_STATE_LOOTING);
 
-	LOG_DEBUG(MOD_COMBAT, "BeginLootRequest: Sending loot request for corpse ID {}", corpse_id);
+	LOG_DEBUG(MOD_COMBAT, "BeginLootRequest: requesting loot for corpse ID {}", corpse_id);
 
-	// Send loot request packet - server expects only the corpse ID (4 bytes)
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(4);
-	packet.PutUInt32(0, corpse_id); // Only the corpse entity ID
-	m_eq->QueuePacket(HC_OP_LootRequest, &packet);
+	// T268: EverQuest::RequestLootCorpse is the ONE OP_LootRequest sender --
+	// it also sets the game-side "window open" state (m_player_looting_corpse_id,
+	// PlayerState::setLootingCorpse) and publishes LootWindowOpened, so the
+	// item packets that follow populate EverQuest::m_loot_items (names
+	// included) for both this path and the shift+click intent.
+	m_eq->RequestLootCorpse(corpse_id);
 
 	EnterLootSubState(LootSubState::AwaitingItems);
 }
@@ -876,22 +869,22 @@ void CombatManager::LootItem(uint32_t item_slot) {
 	if (m_current_corpse_id == 0) {
 		return;
 	}
-
-	// Send loot item packet
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(sizeof(LootingItem_Struct));
-	LootingItem_Struct* li = (LootingItem_Struct*)packet.Data();
-	li->lootee = m_current_corpse_id;
-	li->looter = m_eq->GetEntityID();
-	li->slot_id = item_slot;
-	li->auto_loot = m_auto_loot_enabled ? 1 : 0;
-
-	m_eq->QueuePacket(HC_OP_LootItem, &packet);
+	// T268: the ONE OP_LootItem sender. auto_loot=1: straight to inventory
+	// (eqemu Corpse::LootCorpseItem -> AutoPutLootInInventory); a cursor
+	// item would make the server refuse the next take
+	// (Character:CheckCursorEmptyWhenLooting).
+	m_eq->LootItemFromCorpse(m_current_corpse_id, static_cast<int16_t>(item_slot), true);
 }
 
-void CombatManager::LootAll() {
-	if (m_current_corpse_id == 0 || m_loot_items.empty()) {
-		return;
+bool CombatManager::LootAll() {
+	if (m_current_corpse_id == 0) {
+		return false;
+	}
+	if (m_loot_items.empty()) {
+		// Nothing left to take: just close, the way the drained machine does.
+		LOG_DEBUG(MOD_COMBAT, "LootAll: no items on corpse {}, closing", m_current_corpse_id);
+		EnterLootSubState(LootSubState::Closing);
+		return true;
 	}
 
 	LOG_DEBUG(MOD_COMBAT, "Looting all {} items from corpse {} (event-driven, T26)",
@@ -901,27 +894,29 @@ void CombatManager::LootAll() {
 	// UpdateLootState(), ticked every game frame, drains m_loot_items one
 	// slot per kInterItemDelayMs and closes the window kClosingDelayMs
 	// after the last one (see TickLootingItems/TickClosing). Safe to call
-	// whether or not AwaitingItems already ran (CheckAutoLoot's path does;
-	// ProcessLootWindow's direct call does not).
+	// from AwaitingItems (CheckAutoLoot's path) or ManualOpen (/lootall,
+	// LootAllIntent -- T268).
 	EnterLootSubState(LootSubState::LootingItems);
+	return true;
 }
 
 void CombatManager::CloseLootWindow() {
-	// Save corpse ID before clearing
 	uint16_t corpseId = m_current_corpse_id;
+	if (corpseId == 0) {
+		OnLootWindowClosed();
+		return;
+	}
+	// T268: EverQuest::CloseLootWindow is the ONE OP_EndLootRequest sender;
+	// it calls back OnLootWindowClosed() for the state transition below.
+	m_eq->CloseLootWindow(corpseId);
+}
+
+void CombatManager::OnLootWindowClosed() {
 	m_current_corpse_id = 0;
 	m_loot_items.clear();
-
-	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
-	m_eq->m_loot_complete_corpse_id = corpseId;
-
-	// Send end loot request to server (OP_EndLootRequest, not OP_LootComplete)
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(4);
-	packet.PutUInt16(0, corpseId);
-	packet.PutUInt16(2, 0);  // padding
-	m_eq->QueuePacket(HC_OP_EndLootRequest, &packet);
-	LOG_DEBUG(MOD_COMBAT, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", corpseId);
+	if (m_loot_sub_state != LootSubState::Idle) {
+		EnterLootSubState(LootSubState::Idle);
+	}
 
 	// If we were looting, transition back to appropriate state
 	if (m_combat_state == COMBAT_STATE_LOOTING) {
@@ -1928,26 +1923,6 @@ void CombatManager::ListHuntTargets() {
 	}
 }
 
-void CombatManager::ProcessLootWindow(const std::vector<uint32_t>& item_ids) {
-	if (m_combat_state != COMBAT_STATE_LOOTING) {
-		LOG_DEBUG(MOD_COMBAT, "Received loot window but not in looting state");
-		return;
-	}
-
-	m_loot_items = item_ids;
-
-	LOG_DEBUG(MOD_COMBAT, "Loot window opened with {} items", item_ids.size());
-
-	// T26: no longer blocks (was: sleep_for(300ms) then LootAll()). Route
-	// through AwaitingItems so the quiescence/deadline/corpse-gone checks
-	// apply uniformly; UpdateLootState() advances it from here. This method
-	// has no production caller as of T26 (see Review) -- kept consistent
-	// with the live paths rather than left with a stray blocking call.
-	if (m_auto_loot_enabled && !m_loot_items.empty()) {
-		EnterLootSubState(LootSubState::AwaitingItems);
-	}
-}
-
 void CombatManager::AddLootItem(uint32_t slot_id) {
 	// Add to our loot items list if not already there
 	if (std::find(m_loot_items.begin(), m_loot_items.end(), slot_id) == m_loot_items.end()) {
@@ -1959,6 +1934,17 @@ void CombatManager::AddLootItem(uint32_t slot_id) {
 	// pushes the "loot everything now" decision out until items stop
 	// arriving (or the hard deadline fires). See TickAwaitingItems.
 	m_last_loot_item_time = std::chrono::steady_clock::now();
+}
+
+void CombatManager::RemoveLootItem(uint32_t slot_id) {
+	// T268: the player took this slot by hand (/loot <item>, LootItemIntent)
+	// and the server confirmed it -- drop it from the auto-loot queue so a
+	// later LootAll() does not re-request an already-taken slot.
+	auto it = std::find(m_loot_items.begin(), m_loot_items.end(), slot_id);
+	if (it != m_loot_items.end()) {
+		m_loot_items.erase(it);
+		LOG_DEBUG(MOD_COMBAT, "Removed loot item in slot {}, remaining: {}", slot_id, m_loot_items.size());
+	}
 }
 
 void CombatManager::CheckAutoLoot() {
@@ -2032,6 +2018,9 @@ void CombatManager::UpdateLootState() {
 		case LootSubState::Closing:
 			TickClosing(now);
 			break;
+		case LootSubState::ManualOpen:
+			TickManualOpen();
+			break;
 		case LootSubState::Idle:
 			break;
 	}
@@ -2077,9 +2066,16 @@ void CombatManager::TickAwaitingItems(std::chrono::steady_clock::time_point now)
 	}
 
 	auto since_last_item = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_loot_item_time).count();
-	if (m_auto_loot_enabled && !m_loot_items.empty() && since_last_item >= kItemQuiescenceMs) {
-		LOG_DEBUG(MOD_COMBAT, "Item quiescence reached ({} items), starting to loot", m_loot_items.size());
-		EnterLootSubState(LootSubState::LootingItems);
+	if (!m_loot_items.empty() && since_last_item >= kItemQuiescenceMs) {
+		if (m_auto_loot_enabled) {
+			LOG_DEBUG(MOD_COMBAT, "Item quiescence reached ({} items), starting to loot", m_loot_items.size());
+			EnterLootSubState(LootSubState::LootingItems);
+		} else {
+			// T268: manual looting -- the window is the player's now.
+			LOG_DEBUG(MOD_COMBAT, "Item quiescence reached ({} items), auto-loot off: holding the window open",
+				m_loot_items.size());
+			EnterLootSubState(LootSubState::ManualOpen);
+		}
 		return;
 	}
 
@@ -2089,10 +2085,24 @@ void CombatManager::TickAwaitingItems(std::chrono::steady_clock::time_point now)
 			LOG_DEBUG(MOD_COMBAT, "Hard deadline reached with {} items pending, looting anyway",
 				m_loot_items.size());
 			EnterLootSubState(LootSubState::LootingItems);
+		} else if (!m_auto_loot_enabled && !m_loot_items.empty()) {
+			// T268: auto-loot is off and there is something to take -- this
+			// is the player's window now. Hold it open (no deadline) until
+			// /loot <item>, /lootall, /lootclose, or the corpse goes away.
+			LOG_DEBUG(MOD_COMBAT, "Auto-loot off, {} items on corpse {}: holding the window open",
+				m_loot_items.size(), m_current_corpse_id);
+			EnterLootSubState(LootSubState::ManualOpen);
 		} else {
-			LOG_DEBUG(MOD_COMBAT, "Hard deadline reached with no items (or auto-loot disabled), closing");
+			LOG_DEBUG(MOD_COMBAT, "Hard deadline reached with no items, closing");
 			AbortLoot();
 		}
+	}
+}
+
+void CombatManager::TickManualOpen() {
+	if (!CorpseStillPresent(m_current_corpse_id)) {
+		LOG_DEBUG(MOD_COMBAT, "Corpse {} disappeared while its loot window was open", m_current_corpse_id);
+		AbortLoot();
 	}
 }
 

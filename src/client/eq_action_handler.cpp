@@ -596,13 +596,56 @@ void EqActionHandler::lootCorpse(uint16_t corpseId) {
     }
 }
 
-void EqActionHandler::lootItem(uint16_t corpseId, int16_t slot) {
-    // First ensure we're looting this corpse, then loot the item
-    m_eq.LootItemFromCorpse(corpseId, slot);
+// T268: the loot window actions. The dispatcher turns a false return into
+// a refusal that names what was asked for (T178 standard: the server's own
+// refusals never do); success prints what is being taken. Command-driven
+// takes use autoLoot=true (straight to inventory): a cursor item would make
+// eqemu refuse the next take (Character:CheckCursorEmptyWhenLooting) and a
+// scripted /loot has no way to clear the cursor.
+bool EqActionHandler::lootItem(uint16_t corpseId, int16_t slot) {
+    if (!m_eq.IsLootWindowOpen()) {
+        return false;
+    }
+    const auto& items = m_eq.GetLootItems();
+    auto it = items.find(slot);
+    if (it == items.end()) {
+        return false;
+    }
+    if (!m_eq.LootItemFromCorpse(corpseId, slot, true)) {
+        return false;
+    }
+    m_eq.AddChatSystemMessage(fmt::format("Looting {} (slot {})...", it->second.name, slot));
+    return true;
 }
 
-void EqActionHandler::lootAll(uint16_t corpseId) {
-    m_eq.LootAllFromCorpse(corpseId);
+bool EqActionHandler::lootItemByName(const std::string& name) {
+    int16_t slot = m_eq.FindLootSlotByName(name);
+    if (slot < 0) {
+        return false;
+    }
+    return lootItem(0, slot);
+}
+
+bool EqActionHandler::lootAll(uint16_t corpseId) {
+    (void)corpseId;  // the open window; CombatManager holds the corpse id
+    if (!m_eq.IsLootWindowOpen()) {
+        return false;
+    }
+    auto* combat = getCombatManager();
+    if (!combat || !combat->LootAll()) {
+        return false;
+    }
+    size_t n = m_eq.GetLootItems().size();
+    m_eq.AddChatSystemMessage(fmt::format("Looting everything ({} item{})...", n, n == 1 ? "" : "s"));
+    return true;
+}
+
+bool EqActionHandler::closeLootWindow() {
+    if (!m_eq.IsLootWindowOpen()) {
+        return false;
+    }
+    m_eq.CloseLootWindow(0);
+    return true;
 }
 
 void EqActionHandler::consider() {

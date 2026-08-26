@@ -8,6 +8,7 @@
 // change. See refactor/F05_merchant.md.
 
 #include "client/eq.h"
+#include "client/combat.h"
 #include "client/trade_manager.h"
 #include "client/spell/spell_manager.h"
 #include "client/skill/skill_manager.h"
@@ -867,6 +868,14 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 			// Track loot item in game state (D18a: game-side loot item tracking)
 			m_loot_items[slot_num] = GameLootItem{itemId, item_name};
 
+			// T268: feed the auto-loot queue too (this replaces the deleted
+			// headless-only ZoneProcessLootItem). CheckAutoLoot() is a
+			// non-blocking nudge; UpdateLootState() decides on the game tick.
+			if (m_combat_manager) {
+				m_combat_manager->AddLootItem(static_cast<uint32_t>(slot_num));
+				m_combat_manager->CheckAutoLoot();
+			}
+
 			// Publish LootItemAdded
 			if (m_bridge) {
 				eqt::state::LootItemAddedData ldata;
@@ -953,17 +962,12 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	}
 	LOG_TRACE(MOD_INVENTORY, "Removed item from loot window slot {}", expected_slot);
 
-	// Continue loot-all operation if there are more items to loot
-	if (m_loot_all_in_progress && !m_loot_all_remaining_slots.empty() && m_player_looting_corpse_id != 0) {
-		uint16_t corpseId = m_player_looting_corpse_id;
-		int16_t nextSlot = m_loot_all_remaining_slots.front();
-		m_loot_all_remaining_slots.erase(m_loot_all_remaining_slots.begin());
-		LOG_DEBUG(MOD_INVENTORY, "LootAll continuation: next slot={} remaining={}", nextSlot, m_loot_all_remaining_slots.size());
-		LootItemFromCorpse(corpseId, nextSlot, true);
-	} else if (m_loot_all_in_progress && m_loot_all_remaining_slots.empty()) {
-		// Finished looting all items
-		LOG_DEBUG(MOD_INVENTORY, "LootAll complete, all items looted");
-		m_loot_all_in_progress = false;
+	// T268: keep the auto-loot queue in step (a hand-taken slot must not be
+	// re-requested by a later /lootall). Loot-all sequencing itself is
+	// CombatManager's LootingItems state -- the confirmation-driven
+	// m_loot_all_* loop that used to continue here was the drifted duplicate.
+	if (m_combat_manager) {
+		m_combat_manager->RemoveLootItem(static_cast<uint32_t>(expected_slot));
 	}
 }
 

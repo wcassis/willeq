@@ -171,8 +171,14 @@ public:
     virtual void clickNearestDoor() = 0;
 
     virtual void lootCorpse(uint16_t corpseId) = 0;
-    virtual void lootItem(uint16_t corpseId, int16_t slot) = 0;
-    virtual void lootAll(uint16_t corpseId) = 0;
+    // T268: the loot window actions. corpseId 0 = the open window. Each
+    // returns false when nothing was sent (no window open, no such slot /
+    // item, nothing to take) so the dispatcher can refuse with a message
+    // naming what was asked for (T178 standard).
+    virtual bool lootItem(uint16_t corpseId, int16_t slot) = 0;
+    virtual bool lootItemByName(const std::string& name) = 0;
+    virtual bool lootAll(uint16_t corpseId) = 0;
+    virtual bool closeLootWindow() = 0;
 
     virtual void consider() = 0;
 
@@ -757,14 +763,26 @@ public:
     ActionResult lootCorpse(uint16_t corpseId);
 
     /**
-     * Loot a specific item from a corpse.
+     * Loot a specific item (by corpse slot) from the open loot window.
+     * T268: corpseId 0 means the currently open window.
      */
     ActionResult lootItem(uint16_t corpseId, int16_t slot);
 
     /**
-     * Loot all items from a corpse.
+     * T268: loot the open window's item whose name matches (exact, else
+     * case-insensitive substring).
+     */
+    ActionResult lootItemByName(const std::string& name);
+
+    /**
+     * Loot all items from a corpse (the open loot window).
      */
     ActionResult lootAll(uint16_t corpseId);
+
+    /**
+     * T268: close the open loot window (OP_EndLootRequest).
+     */
+    ActionResult closeLootWindow();
 
     // ========== Chat Actions ==========
 

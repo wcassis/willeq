@@ -134,11 +134,21 @@ public:
     void lootCorpse(uint16_t corpseId) override {
         record("lootCorpse", corpseId);
     }
-    void lootItem(uint16_t corpseId, int16_t slot) override {
+    bool lootItem(uint16_t corpseId, int16_t slot) override {
         record("lootItem", corpseId, slot);
+        return true;
     }
-    void lootAll(uint16_t corpseId) override {
+    bool lootItemByName(const std::string& name) override {
+        record("lootItemByName", name);
+        return true;
+    }
+    bool lootAll(uint16_t corpseId) override {
         record("lootAll", corpseId);
+        return true;
+    }
+    bool closeLootWindow() override {
+        record("closeLootWindow");
+        return true;
     }
 
     void consider() override { record("consider"); }

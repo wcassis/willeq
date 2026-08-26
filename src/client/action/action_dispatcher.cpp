@@ -592,7 +592,24 @@ ActionResult ActionDispatcher::lootItem(uint16_t corpseId, int16_t slot) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    m_handler->lootItem(corpseId, slot);
+    if (!m_handler->lootItem(corpseId, slot)) {
+        return ActionResult::Failure(
+            "Nothing to loot in slot " + std::to_string(slot) + " (is a loot window open?)");
+    }
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::lootItemByName(const std::string& name) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    if (name.empty()) {
+        return ActionResult::Failure("Usage: /loot <item name>");
+    }
+
+    if (!m_handler->lootItemByName(name)) {
+        return ActionResult::Failure(
+            "No loot item matching '" + name + "' (is a loot window open?)");
+    }
     return ActionResult::Success();
 }
 
@@ -600,7 +617,19 @@ ActionResult ActionDispatcher::lootAll(uint16_t corpseId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    m_handler->lootAll(corpseId);
+    if (!m_handler->lootAll(corpseId)) {
+        return ActionResult::Failure("Nothing to loot (is a loot window open?)");
+    }
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::closeLootWindow() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    if (!m_handler->closeLootWindow()) {
+        return ActionResult::Failure("No loot window is open");
+    }
     return ActionResult::Success();
 }
 

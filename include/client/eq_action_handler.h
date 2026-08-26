@@ -80,8 +80,10 @@ public:
     void clickNearestDoor() override;
 
     void lootCorpse(uint16_t corpseId) override;
-    void lootItem(uint16_t corpseId, int16_t slot) override;
-    void lootAll(uint16_t corpseId) override;
+    bool lootItem(uint16_t corpseId, int16_t slot) override;
+    bool lootItemByName(const std::string& name) override;
+    bool lootAll(uint16_t corpseId) override;
+    bool closeLootWindow() override;
 
     void consider() override;
 

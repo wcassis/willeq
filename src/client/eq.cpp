@@ -1062,17 +1062,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 				// Vendor item - add to vendor window via bridge
 				ZoneProcessVendorItemToUI(p);
 			} else if (m_player_looting_corpse_id != 0) {
-				// Player mode looting - check if this is a looted item or loot window population
-				if (!m_pending_loot_slots.empty()) {
-					// We have pending loot requests - this item is going to inventory
-					ZoneProcessLootedItemToInventory(p);
-				} else {
-					// No pending requests - this is loot window population
-					ZoneProcessLootItemToUI(p);
-				}
-			} else if (m_combat_manager && m_combat_manager->IsLooting()) {
-				// Headless mode looting
-				ZoneProcessLootItem(p);
+				// Looting (T268: every open path sets this). A pending slot means
+				// this is the item we asked for; otherwise it populates the window.
+				if (!m_pending_loot_slots.empty()) { ZoneProcessLootedItemToInventory(p); }
+				else { ZoneProcessLootItemToUI(p); }
 			} else {
 				// Check if this is a trade partner item.
 				// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
@@ -1451,6 +1444,9 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 					std::string old_name = it->second.name;
 					it->second.name = new_name;
 					it->second.is_corpse = true;
+					// T268: GameState kept the LIVING name + isCorpse=false forever
+					// (markAsCorpse had no caller) -- /target and /loot missed it.
+					SyncEntityToGameState(it->second);
 					if (s_debug_level >= 1) {
 						LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
 							entity_id, old_name, new_name);
@@ -3370,7 +3366,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 			          victim_it->second.name, corpse_name, victim_id);
 			victim_it->second.name = corpse_name;
 		}
-
+		SyncEntityToGameState(victim_it->second);  // T268: isCorpse/name, as at the MobRename site
 #ifdef WITH_AUDIO
 		// Play death sound at victim's position
 		if (m_audio_manager) {
@@ -3881,7 +3877,11 @@ void EverQuest::SetSneak(bool sneak)
 
 void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 {
-	if (!m_zone_connection || !packet) {
+	if (!packet) {
+		return;
+	}
+	Test_RecordQueuedPacket(opcode, packet->Data(), packet->Length());  // T268 seam (no-op unless armed)
+	if (!m_zone_connection) {
 		return;
 	}
 

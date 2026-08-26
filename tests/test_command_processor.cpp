@@ -680,6 +680,93 @@ TEST_F(CommandProcessorTest, Loot_ZeroIsAValidCorpseId) {
 }
 
 // ===================================================================
+// T268: the loot window -- /loot <name> opens a corpse by name, /loot <slot|
+// item> takes ONE item while a window is open, /lootall, /lootclose.
+// ===================================================================
+
+namespace {
+eqt::state::Entity MakeCorpse(uint16_t id, const char* name, float x, float y) {
+    eqt::state::Entity e;
+    e.spawnId = id;
+    e.name = name;
+    e.x = x; e.y = y; e.z = 0;
+    e.isCorpse = true;
+    return e;
+}
+}  // namespace
+
+TEST_F(CommandProcessorTest, Loot_ByName_DispatchesNearestMatchingCorpse) {
+    state.entities().addEntity(MakeCorpse(300, "a_fire_beetle's_corpse300", 50, 0));
+    state.entities().addEntity(MakeCorpse(301, "a_fire_beetle's_corpse301", 5, 0));
+    eqt::state::Entity living;
+    living.spawnId = 302; living.name = "a_fire_beetle302"; living.x = 1; living.y = 0;
+    state.entities().addEntity(living);
+
+    auto result = processor->processCommand("/loot fire beetle");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("lootCorpse(301)"))
+        << "nearest CORPSE wins; the living beetle at distance 1 is not lootable";
+}
+
+TEST_F(CommandProcessorTest, Loot_ByName_NoCorpse_FailsNamingTheToken) {
+    state.entities().addEntity(MakeCorpse(300, "a_rat's_corpse300", 5, 0));
+    auto result = processor->processCommand("/loot beetle");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("beetle"), std::string::npos) << result.message;
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, Loot_WindowOpen_NumberIsASlotNotACorpseId) {
+    state.player().setLootingCorpse(176);
+    auto result = processor->processCommand("/loot 3");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("lootItem(176, 3)"));
+}
+
+TEST_F(CommandProcessorTest, Loot_WindowOpen_NameIsAnItem) {
+    state.player().setLootingCorpse(176);
+    auto result = processor->processCommand("/loot Fire Beetle Eye");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("lootItemByName(\"Fire Beetle Eye\")"));
+}
+
+TEST_F(CommandProcessorTest, Loot_WindowOpen_SlotOutOfRange_FailsWithoutDispatch) {
+    state.player().setLootingCorpse(176);
+    auto result = processor->processCommand("/loot 70000");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, LootAll_WindowOpen_DispatchesWithTheOpenCorpse) {
+    state.player().setLootingCorpse(176);
+    auto result = processor->processCommand("/lootall");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("lootAll(176)"));
+}
+
+TEST_F(CommandProcessorTest, LootAll_NoWindow_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/lootall");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(CommandProcessorTest, LootClose_WindowOpen_DispatchesClose) {
+    state.player().setLootingCorpse(176);
+    auto result = processor->processCommand("/lootclose");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("closeLootWindow()"));
+
+    auto alias = processor->processCommand("/closeloot");
+    EXPECT_TRUE(alias.success) << alias.message;
+}
+
+TEST_F(CommandProcessorTest, LootClose_NoWindow_FailsWithoutDispatch) {
+    auto result = processor->processCommand("/lootclose");
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(handler.empty());
+}
+
+// ===================================================================
 // Output renderer integration (echo + timestamp toggle)
 // ===================================================================
 

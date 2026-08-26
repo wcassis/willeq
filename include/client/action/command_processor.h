@@ -525,6 +525,8 @@ private:
     ActionResult cmdAutoLoot(const std::string& args);
     ActionResult cmdListTargets(const std::string& args);
     ActionResult cmdLoot(const std::string& args);
+    ActionResult cmdLootAll(const std::string& args);    // T268
+    ActionResult cmdLootClose(const std::string& args);  // T268
     ActionResult cmdPathfinding(const std::string& args);
     ActionResult cmdRoleplay(const std::string& args);
     ActionResult cmdWave(const std::string& args);

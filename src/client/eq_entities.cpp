@@ -1799,12 +1799,15 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 						eqt::state::GameEventType::LootWindowClosed, std::move(lwdata)));
 				}
 				m_loot_items.clear();
+				m_pending_loot_slots.clear();
 				m_player_looting_corpse_id = 0;
-				m_loot_all_in_progress = false;
-				m_loot_all_remaining_slots.clear();
 				m_game_state.player().clearLootingCorpse();  // Phase 7.7
 				// Mark as ready for deletion
 				m_loot_complete_corpse_id = spawn_id;
+				// T268: the loot policy machine leaves LOOTING with the window.
+				if (m_combat_manager) {
+					m_combat_manager->OnLootWindowClosed();
+				}
 			}
 
 			// Only delete corpses we've completed looting

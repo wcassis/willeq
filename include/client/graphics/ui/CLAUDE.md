@@ -134,7 +134,10 @@ migration); `Application::DispatchSlashCommand` tries them in order:
 [target]` (`/a`), `/taunt`, `/useskill <id|name>` (`/skill`; class-cap gate
 T156/T159/T162), `/autofire` (`/af`), `/shield`, `/duel`, `/duelaccept`,
 `/dueldecline`, `/hunt [on|off]`, `/autoloot [on|off]`, `/listtargets`,
-`/loot <corpseId>`.
+`/loot <corpseId|corpse name>` (opens; with a loot window open `/loot
+<slot|item name>` takes ONE item), `/lootall`, `/lootclose` (`/closeloot`)
+(T268). There is no loot popup in the static UI; the loot window is
+command-driven (its intents are the same ones a popup would push).
 
 **Group:** `/invite [name]` (`/inv`), `/groupaccept` (`/gaccept`), `/decline`,
 `/disband`, `/split <pp> [gp] [sp] [cp]`, `/groupassist [name]` (`/ga`),

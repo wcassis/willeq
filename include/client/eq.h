@@ -888,6 +888,28 @@ public:
 	};
 	TestZoneChangeRequest Test_GetLastZoneChangeRequest() const { return m_test_last_zone_change_request; }
 
+	// T268 test seam: every packet QueuePacket() was asked to send (opcode +
+	// body bytes), captured before the connection gate so a headless test can
+	// assert the exact wire sequence a loot action produces (OP_LootRequest,
+	// N x OP_LootItem, OP_EndLootRequest) instead of re-deriving it. Off by
+	// default (zero cost in production); Test_SetCaptureQueuedPacketsForSeam
+	// (true) turns it on. Read-only; test-only.
+	struct TestQueuedPacket {
+		uint16_t opcode = 0;
+		std::vector<uint8_t> bytes;  // body only (no opcode prefix)
+	};
+	void Test_SetCaptureQueuedPacketsForSeam(bool capture) { m_test_capture_queued_packets = capture; }
+	const std::vector<TestQueuedPacket>& Test_GetQueuedPackets() const { return m_test_queued_packets; }
+	void Test_ClearQueuedPackets() { m_test_queued_packets.clear(); }
+	// Called from QueuePacket() BEFORE its connection gate; no-op unless armed.
+	void Test_RecordQueuedPacket(uint16_t opcode, const void* body, size_t len) {
+		if (!m_test_capture_queued_packets) {
+			return;
+		}
+		const auto* d = static_cast<const uint8_t*>(body);
+		m_test_queued_packets.push_back(TestQueuedPacket{opcode, std::vector<uint8_t>(d, d + len)});
+	}
+
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
 	// arrival branch (eq_movement.cpp: m_x = m_target_x; m_y = m_target_y;
@@ -1744,7 +1766,6 @@ private:
 	void ZoneProcessDamage(const EQ::Net::Packet &p);
 	void ZoneProcessStun(uint32_t duration_ms);  // T247
 	void ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p);
-	void ZoneProcessLootItem(const EQ::Net::Packet &p);
 
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager> m_zone_connection_manager;
 	std::shared_ptr<EQ::Net::DaybreakConnection> m_zone_connection;
@@ -2098,6 +2119,10 @@ private:
 	// T231 test seam -- see Test_GetLastZoneChangeRequest().
 	TestZoneChangeRequest m_test_last_zone_change_request;
 
+	// T268 test seam -- see Test_GetQueuedPackets().
+	bool m_test_capture_queued_packets = false;
+	std::vector<TestQueuedPacket> m_test_queued_packets;
+
 	// T231: one-shot flag read by SendPositionUpdate() -- bypass the 250 ms
 	// throttle and restart delta tracking at the current position. Set only
 	// by RelocateWithinZone().
@@ -2202,11 +2227,13 @@ private:
 	void runPmemDiagnostics(const std::string& label);
 	void runLoadDiagnostics(const std::string& label);
 
-	// Player mode loot state (game-side tracking, D18a)
-	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted in Player mode (0 = not looting)
+	// Loot window state (game-side tracking, D18a). T268: the ONE loot
+	// window -- set by RequestLootCorpse for every open path (/loot,
+	// shift+click, auto-hunt) and read by the item-packet dispatch; the
+	// loot-all sequencing lives in CombatManager's LootSubState machine
+	// (the m_loot_all_* loop that duplicated it is gone).
+	uint16_t m_player_looting_corpse_id = 0;  // Corpse being looted (0 = not looting)
 	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
-	bool m_loot_all_in_progress = false;         // True if we're in the middle of a loot-all operation
-	std::vector<int16_t> m_loot_all_remaining_slots;  // Remaining slots to loot in loot-all
 	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
 	struct GameLootItem {
 		uint32_t itemId = 0;
@@ -2309,12 +2336,21 @@ public:
 	// Save entity data to JSON file for debugging
 	void SaveEntityDataToFile(const std::string& filename);
 
-	// Loot window methods (Player mode with graphics)
+	// Loot window methods -- the single senders (T268): OP_LootRequest,
+	// OP_LootItem, OP_EndLootRequest. corpseId 0 means "the open window".
 	void RequestLootCorpse(uint16_t corpseId);
-	void LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot = false);
-	void LootAllFromCorpse(uint16_t corpseId);
-	void DestroyAllCorpseLoot(uint16_t corpseId);
+	// autoLoot=true: item goes straight to inventory (eqemu
+	// AutoPutLootInInventory); false: to the cursor, as the UI gesture does.
+	// Returns false (nothing sent) when no window is open.
+	bool LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot = false);
 	void CloseLootWindow(uint16_t corpseId);
+	bool IsLootWindowOpen() const { return m_player_looting_corpse_id != 0; }
+	uint16_t GetLootWindowCorpseId() const { return m_player_looting_corpse_id; }
+	const std::map<int16_t, GameLootItem>& GetLootItems() const { return m_loot_items; }
+	// Case-insensitive match against the open window's item names: an exact
+	// match wins, else the lowest slot whose name contains `name`. Returns
+	// -1 when nothing matches (or no window is open).
+	int16_t FindLootSlotByName(const std::string& name) const;
 
 	// Vendor window methods (Player mode with graphics)
 	void RequestOpenVendor(uint16_t npcId);

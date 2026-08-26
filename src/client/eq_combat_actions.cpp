@@ -3,14 +3,15 @@
 // Split out of eq.cpp (Batch F, unit F13): the Consider handler
 // (ZoneProcessConsider), the Action handler (ZoneProcessAction), the Damage
 // handler (ZoneProcessDamage, ~237 lines, plus its file-local getDamageVerb
-// helper), the MoneyOnCorpse handler (ZoneProcessMoneyOnCorpse), and the
-// loot-item handler (ZoneProcessLootItem). Moved verbatim, no behavior
-// change. See refactor/F13_combat_actions.md.
+// helper) and the MoneyOnCorpse handler (ZoneProcessMoneyOnCorpse). Moved
+// verbatim, no behavior change. See refactor/F13_combat_actions.md.
 //
-// Note: the loot-corpse family (RequestLootCorpse, LootItemFromCorpse,
-// LootAllFromCorpse, DestroyAllCorpseLoot) is NOT contiguous with this
-// cluster in eq.cpp (separated by ~1,600 lines of unrelated methods) and is
-// deliberately left in eq.cpp for a later unit.
+// T268: the headless loot-item handler (ZoneProcessLootItem, a second parser
+// of the loot ItemPacket that read the item name from the wrong field) is
+// gone -- every loot window is populated by ZoneProcessLootItemToUI
+// (eq_merchant.cpp), which now also feeds CombatManager's auto-loot queue.
+// The loot-corpse family (RequestLootCorpse, LootItemFromCorpse,
+// CloseLootWindow) lives in eq_bridge.cpp.
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -489,65 +490,6 @@ void EverQuest::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
 	}
 
 	// For now, just log it - money is auto-looted when we loot any item
-}
-
-void EverQuest::ZoneProcessLootItem(const EQ::Net::Packet &p)
-{
-	// Parse the serialized item data
-	// The packet contains pipe-delimited item data
-	if (p.Length() < 10) {
-		return;
-	}
-
-	// Skip the first 4 bytes (opcode is already removed, but there's a header)
-	const char* data = (const char*)p.Data() + 2;
-	int data_len = p.Length() - 2;
-
-	// Skip the first 4 bytes of the data (unknown header)
-	if (data_len > 4) {
-		data += 4;
-		data_len -= 4;
-	}
-
-	std::string item_data(data, data_len);
-
-	LOG_DEBUG(MOD_INVENTORY, "ProcessLootItem: Received item data, length={}", item_data.length());
-	LOG_TRACE(MOD_INVENTORY, "Item data preview: {}",
-		item_data.substr(0, std::min(size_t(100), item_data.length())));
-
-	// Parse the pipe-delimited fields to extract item slot and name
-	std::vector<std::string> fields;
-	std::stringstream ss(item_data);
-	std::string field;
-	while (std::getline(ss, field, '|')) {
-		fields.push_back(field);
-	}
-
-	// The format appears to be: slot|unknown|slot_number|....|item_name|...
-	if (fields.size() > 12) {
-		try {
-			uint32_t slot_num = std::stoi(fields[2]);  // Slot number in loot window
-			std::string item_name = fields[11];         // Item name
-
-			LOG_DEBUG(MOD_INVENTORY, "Loot window item: slot {} = '{}'", slot_num, item_name);
-
-			// Add to combat manager's loot list
-			if (m_combat_manager) {
-				m_combat_manager->AddLootItem(slot_num);
-			}
-		} catch (...) {
-			if (s_debug_level >= 1) {
-				LOG_DEBUG(MOD_MAIN, "Failed to parse loot item data");
-			}
-		}
-	}
-
-	// If auto-loot is enabled and we have items, start looting after a delay
-	if (m_combat_manager && m_combat_manager->IsAutoLootEnabled() &&
-	    m_combat_manager->GetCombatState() == COMBAT_STATE_LOOTING) {
-		// The combat manager will handle the actual looting
-		m_combat_manager->CheckAutoLoot();
-	}
 }
 
 // T247. OP_Stun: eqemu Stun_Struct{uint32 duration} in ms, sent only to the

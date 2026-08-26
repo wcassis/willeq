@@ -834,8 +834,18 @@ void CommandProcessor::registerBuiltinCommands() {
     }, [this](const std::string& args) { return cmdListTargets(args); });
 
     registerCommand({
-        "loot", {}, "/loot <corpseId>", "Loot a corpse by id (see /list)", "Combat", true
+        "loot", {}, "/loot <corpseId|corpse name> | /loot <slot|item name> (window open)",
+        "Open a corpse's loot window; with one open, take one item", "Combat", true
     }, [this](const std::string& args) { return cmdLoot(args); });
+
+    // T268: the rest of the loot window.
+    registerCommand({
+        "lootall", {}, "/lootall", "Take everything from the open loot window and close it", "Combat", false
+    }, [this](const std::string& args) { return cmdLootAll(args); });
+
+    registerCommand({
+        "lootclose", {"closeloot"}, "/lootclose", "Close the open loot window", "Combat", false
+    }, [this](const std::string& args) { return cmdLootClose(args); });
 
     // Pathfinding and roleplay
     registerCommand({
@@ -2531,42 +2541,6 @@ ActionResult CommandProcessor::cmdAutoLoot(const std::string& args) {
 
 ActionResult CommandProcessor::cmdListTargets(const std::string& args) {
     return m_dispatcher.listHuntTargets();
-}
-
-ActionResult CommandProcessor::cmdLoot(const std::string& args) {
-    // T34: dispatches to m_dispatcher.lootCorpse(corpseId) -- the exact
-    // same entry point the renderer's shift+click overlay callback uses
-    // (InputActionBridge::processLootRequests -> ActionDispatcher::lootCorpse),
-    // so a scripted /loot <id> and a live shift+click enter CombatManager::
-    // LootCorpse() through identical last hops. An explicit corpse id is
-    // the required form deliberately -- see refactor/T34_shiftclick_loot_verification.md;
-    // "nearest corpse" detection is out of scope for this unit.
-    if (args.empty()) {
-        return ActionResult::Failure("Usage: /loot <corpseId> - use '/list' to find corpse IDs");
-    }
-
-    // T178: every refusal echoes the offending id. The server's own failure
-    // ("Error: OP_LootRequest: Corpse not found (ent = 0)") hardcodes "0" and
-    // never names the id we asked for, so a decayed corpse and a bad id look
-    // identical. The client cannot change that string, but it can (a) name the
-    // id in its OWN validation refusals and (b) echo the id it is requesting,
-    // so the server's generic error is at least attributable.
-    try {
-        size_t consumed = 0;
-        long corpseId = std::stol(args, &consumed);
-        if (corpseId < 0 || corpseId > 0xFFFF || consumed != args.size()) {
-            return ActionResult::Failure(
-                "Invalid corpse id '" + args + "' - use '/list' to find corpse IDs");
-        }
-        auto result = m_dispatcher.lootCorpse(static_cast<uint16_t>(corpseId));
-        if (result.success) {
-            displayMessage("Requesting loot from corpse " + std::to_string(corpseId) + "...");
-        }
-        return result;
-    } catch (const std::exception&) {
-        return ActionResult::Failure(
-            "Invalid corpse id '" + args + "' - use '/list' to find corpse IDs");
-    }
 }
 
 ActionResult CommandProcessor::cmdPathfinding(const std::string& args) {
