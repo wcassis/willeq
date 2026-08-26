@@ -21,7 +21,7 @@ Review — read that before scoping the next unit off this file.
 - **T264 `344e6eac` REACHABILITY SWEEP (2026-08-26): 54 intents / 102 events / 165 handler methods / 77 senders audited; 19 intents, 6 events, 18 handlers DELETED (-1125 lines); `tests/test_reachability_sweep.cpp` parses the sources every ctest and pins the sets. EIGHT features exist but cannot be reached (class A, one unit each, kept hops named in the T264 Review):**
   - **F1 Loot window: take one item / loot all / destroy / close** (`/loot` only opens; with `/autoloot` off nothing can take an item; two drifted loot-all impls `EverQuest::LootAllFromCorpse` vs `CombatManager::LootAll`) -- IN PROGRESS T268
   - F2 Read a book/note item
-  - F3 Bank coin deposit / withdraw / convert
+  - ~~F3 Bank coin deposit / withdraw / convert~~ CLOSED T269 `c97c995f` (live DB proof; convert is any-pair ratio arithmetic, NOT 10:1 only; the server sends NO echo on MoveCoin so the client applies the server’s own arithmetic and refuses anything it would clamp)
   - F4 Spellbook popup click -> memorize (click handler is a LOG stub naming MemorizeSpellIntent); `cmdSpellbook`'s "not implemented in UI" message is stale
   - F5 Scribe a scroll
   - F6 Click off a buff
