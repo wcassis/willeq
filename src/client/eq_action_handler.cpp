@@ -1966,6 +1966,14 @@ void EqActionHandler::trainWithTarget() {
     m_eq.RequestTraining();
 }
 
+void EqActionHandler::bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) {
+    m_eq.RequestBankCoinMove(coinType, amount, fromBank);
+}
+
+void EqActionHandler::bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) {
+    m_eq.RequestBankCoinConvert(fromCoinType, toCoinType, amount);
+}
+
 // ========== Social / Find (T150) ==========
 // resolveTargetOrCurrent() repeats the targetId==0 fallback assist()/
 // shieldTarget()/duel() established at the top of the Combat section: the

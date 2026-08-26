@@ -184,7 +184,6 @@ std::vector<std::string> variantMembers() {
 const std::set<std::string> kBlockedIntents = {
     "LootItemIntent", "LootAllIntent", "DestroyAllLootIntent", "CloseLootIntent",
     "ReadItemIntent",
-    "BankCurrencyMoveIntent", "BankCurrencyConvertIntent",
     "MemorizeSpellIntent", "ScribeSpellIntent", "SpellbookStateIntent",
     "BuffCancelIntent",
     "TradeskillCombineIntent", "TradeskillCloseIntent",

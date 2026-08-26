@@ -101,15 +101,26 @@ struct BankerInteractIntent {
     uint16_t npcId;  // Validation stays on game thread
 };
 
+// T269: produced by EverQuest::RequestBankCoinMove() (/bank deposit|withdraw)
+// -- the same intent a bank-window coin gesture would push. Consumed by the
+// eq_bridge.cpp arm that builds OP_MoveCoin {inventory<->bank, cointype1==
+// cointype2} (eqemu zone/client_process.cpp OPMoveCoin: slot 1 = inventory,
+// slot 2 = bank; cointype 0=cp 1=sp 2=gp 3=pp).
 struct BankCurrencyMoveIntent {
     uint8_t coinType;   // 0=copper, 1=silver, 2=gold, 3=platinum
     int32_t amount;
     bool fromBank;      // true = bank→inventory, false = inventory→bank
 };
 
+// T269: produced by EverQuest::RequestBankCoinConvert() (/bank convert).
+// OP_MoveCoin bank->bank with cointype1 != cointype2; the server converts at
+// CoinTypeCoppers(from)/CoinTypeCoppers(to) (10:1 per step, either
+// direction, truncating) -- so toCoinType is explicit rather than the old
+// implied "fromCoinType + 1".
 struct BankCurrencyConvertIntent {
     uint8_t fromCoinType;  // 0=copper, 1=silver, 2=gold, 3=platinum
-    int32_t amount;
+    uint8_t toCoinType;    // same scale; must differ from fromCoinType
+    int32_t amount;        // in fromCoinType coins
 };
 
 // --- Trainer ---

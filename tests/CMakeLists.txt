@@ -400,6 +400,7 @@ ADD_EXECUTABLE(test_command_processor
     test_command_processor_senders.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 # T140: cmdMove/cmdMoveTo/cmdFollow use fmt::format directly (T88's
@@ -419,6 +420,7 @@ ADD_EXECUTABLE(test_appearance_command
     test_appearance_command.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
@@ -432,6 +434,7 @@ ADD_EXECUTABLE(test_merged_help
     test_merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
@@ -505,6 +508,7 @@ ADD_EXECUTABLE(test_input_action_bridge
     test_input_action_bridge.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
     # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
     # by slot content type. hotbar_model.cpp is dependency-light (event_bus +
@@ -628,6 +632,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
+
+# T269: bank coin deposit / withdraw / convert (T264 F3). Real EverQuest:
+# RequestBankCoinMove/Convert push the kept Bank* intents (refuse with the
+# window closed); the eq_bridge.cpp arms' OP_MoveCoin bytes are asserted on
+# a real DaybreakConnection over FakeUdpTransport (T234 idiom), plus the
+# local currency projection (eqemu echoes nothing on MoveCoin). No network,
+# no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_bank_coins
+    test_eq_bank_coins.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_bank_coins GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_bank_coins PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_bank_coins)
 
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/

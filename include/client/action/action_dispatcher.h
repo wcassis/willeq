@@ -443,6 +443,14 @@ public:
     virtual void bankToggle() = 0;
     virtual void trainWithTarget() = 0;
 
+    // ========== Bank coins (T269) ==========
+    // /bank deposit|withdraw|convert. coinType scale is the wire's
+    // (EQT::COINTYPE_*: 0=cp 1=sp 2=gp 3=pp). The pool check ("do you
+    // actually hold that many coins") is done by CommandProcessor against
+    // GameState BEFORE dispatch -- a refused command reaches none of these.
+    virtual void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) = 0;
+    virtual void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) = 0;
+
     // ========== Social / Find (T150) ==========
     // Four senders that had zero production callers until this unit
     // (refactor/T150_social_find_family.md). Each is a thin route to the
@@ -1326,6 +1334,17 @@ public:
      * RequestBankToggle(), not duplicated here.
      */
     ActionResult bankToggle();
+
+    /**
+     * T269: move coins between the inventory and bank pools (deposit when
+     * fromBank is false, withdraw when true), or convert one bank
+     * denomination into another. Both push the kept BankCurrencyMoveIntent /
+     * BankCurrencyConvertIntent via EverQuest::RequestBankCoinMove/Convert;
+     * the bank-window-open guard lives there, the pool check in
+     * CommandProcessor::cmdBank.
+     */
+    ActionResult bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank);
+    ActionResult bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount);
 
     /**
      * Request the trainer window for your current target. Target/

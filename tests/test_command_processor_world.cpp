@@ -638,6 +638,144 @@ TEST_F(CommandProcessorTest, Bank_NotConnectedToZone_FailsCleanlyWithoutDispatch
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// ========== /bank deposit|withdraw|convert (T269) ==========
+// What belongs at this layer: the sub-command parse, the denomination
+// scale (EQT::COINTYPE_*: cp=0 sp=1 gp=2 pp=3), and the LOCAL pool check
+// against GameState (player().platinum().. / bankPlatinum()..) -- a refused
+// command dispatches nothing at all. The intent push and the OP_MoveCoin
+// bytes are pinned on the real EverQuest in test_eq_bank_coins.cpp.
+
+class BankCoinCommandTest : public CommandProcessorTest {
+protected:
+    void SetUp() override {
+        CommandProcessorTest::SetUp();
+        state.player().setBanker(200);
+        state.player().setCurrency(10, 1, 2, 3);
+        state.player().setBankCurrency(4, 5, 6, 30);
+    }
+};
+
+TEST_F(BankCoinCommandTest, Deposit_DispatchesBankCoinMoveToBank) {
+    auto result = processor->processCommand("/bank deposit 5 pp");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinMove(3, 5, false)"));
+}
+
+TEST_F(BankCoinCommandTest, Deposit_LongDenominationNames_SameScale) {
+    EXPECT_TRUE(processor->processCommand("/bank deposit 1 gold").success);
+    EXPECT_TRUE(processor->processCommand("/bank deposit 2 SILVER").success);
+    EXPECT_TRUE(processor->processCommand("/bank deposit 3 copper").success);
+    EXPECT_TRUE(processor->processCommand("/bank deposit 10 platinum").success);
+    ASSERT_EQ(handler.count(), 4u);
+    EXPECT_EQ(handler.calls[0], "bankCoinMove(2, 1, false)");
+    EXPECT_EQ(handler.calls[1], "bankCoinMove(1, 2, false)");
+    EXPECT_EQ(handler.calls[2], "bankCoinMove(0, 3, false)");
+    EXPECT_EQ(handler.calls[3], "bankCoinMove(3, 10, false)");
+}
+
+TEST_F(BankCoinCommandTest, Withdraw_DispatchesBankCoinMoveFromBank) {
+    auto result = processor->processCommand("/bank withdraw 30 cp");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinMove(0, 30, true)"));
+}
+
+TEST_F(BankCoinCommandTest, Deposit_PoolLacksCoins_RefusedNothingDispatched) {
+    auto result = processor->processCommand("/bank deposit 11 pp");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("platinum"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Withdraw_PoolLacksCoins_RefusedNothingDispatched) {
+    auto result = processor->processCommand("/bank withdraw 7 sp");  // bank has 6
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("silver"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Deposit_ExactPool_Allowed) {
+    EXPECT_TRUE(processor->processCommand("/bank deposit 10 pp").success);
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinMove(3, 10, false)"));
+}
+
+TEST_F(BankCoinCommandTest, Deposit_BankWindowClosed_RefusedNothingDispatched) {
+    state.player().clearBanker();
+    auto result = processor->processCommand("/bank deposit 5 pp");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("bank"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Deposit_BadAmountOrDenomination_UsageNothingDispatched) {
+    for (const char* cmd : {"/bank deposit", "/bank deposit 5", "/bank deposit x pp",
+                            "/bank deposit 0 pp", "/bank deposit -3 pp", "/bank deposit 5 zz",
+                            "/bank deposit 99999999999 pp", "/bank withdraw 5"}) {
+        auto result = processor->processCommand(cmd);
+        EXPECT_FALSE(result.success) << cmd;
+        EXPECT_NE(result.message.find("Usage"), std::string::npos) << cmd << " -> " << result.message;
+    }
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, UnknownSubcommand_UsageNothingDispatched) {
+    auto result = processor->processCommand("/bank frobnicate");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Usage"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Convert_Up_DispatchesBankCoinConvert) {
+    auto result = processor->processCommand("/bank convert 30 cp sp");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinConvert(0, 1, 30)"));
+}
+
+TEST_F(BankCoinCommandTest, Convert_Down_DispatchesBankCoinConvert) {
+    auto result = processor->processCommand("/bank convert 2 pp gp");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinConvert(3, 2, 2)"));
+}
+
+TEST_F(BankCoinCommandTest, Convert_UpNotAMultiple_RefusedNothingDispatched) {
+    auto result = processor->processCommand("/bank convert 15 cp sp");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("multiple"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Convert_TwoStepsNeedsHundred) {
+    EXPECT_FALSE(processor->processCommand("/bank convert 30 cp gp").success);
+    EXPECT_EQ(handler.count(), 0u);
+    state.player().setBankCurrency(0, 0, 0, 200);
+    EXPECT_TRUE(processor->processCommand("/bank convert 200 cp gp").success);
+    ASSERT_TRUE(handler.calledOnceWith("bankCoinConvert(0, 2, 200)"));
+}
+
+TEST_F(BankCoinCommandTest, Convert_PoolLacksCoins_RefusedNothingDispatched) {
+    auto result = processor->processCommand("/bank convert 40 cp sp");  // bank has 30
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Convert_SameDenomination_RefusedNothingDispatched) {
+    auto result = processor->processCommand("/bank convert 10 cp cp");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, Convert_BankWindowClosed_RefusedNothingDispatched) {
+    state.player().clearBanker();
+    auto result = processor->processCommand("/bank convert 30 cp sp");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(BankCoinCommandTest, NoArgs_StillTogglesTheWindow) {
+    auto result = processor->processCommand("/bank");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("bankToggle()"));
+}
+
 TEST_F(CommandProcessorTest, Train_DispatchesTrainWithTarget) {
     auto result = processor->processCommand("/train");
     EXPECT_TRUE(result.success);

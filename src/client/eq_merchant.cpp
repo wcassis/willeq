@@ -330,6 +330,45 @@ void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
 	m_zone_connection->QueuePacket(packet);
 }
 
+// T269: /bank deposit|withdraw -> the kept BankCurrencyMoveIntent (T264
+// F3), the same shape a bank-window coin gesture would push. Same recipe as
+// RequestVendorBuy (eq_commands.cpp): the intent sits in the bridge's queue
+// and is drained by ProcessBridgeIntents() on the next GameTick(), whose arm
+// (eq_bridge.cpp) builds OP_MoveCoin and updates the local projection. The
+// coin-pool check is done by CommandProcessor::cmdBank against GameState
+// BEFORE this is reached and again by the arm; this wrapper owns only the
+// window-open guard (eqemu's OPMoveCoin refuses slot 2 silently -- with a
+// POSSIBLE_HACK player-event log -- when no banker is within
+// USE_NPC_RANGE2, and our proxy for "a banker is in range" is the window
+// BankerInteractIntent's distance check opened).
+void EverQuest::RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank)
+{
+	if (!IsBankWindowOpen()) {
+		AddChatSystemMessage("You must have a bank window open to move coins.");
+		return;
+	}
+
+	if (m_bridge) {
+		m_bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{coinType, amount, fromBank});
+	} else {
+		AddChatSystemMessage("Cannot move coins - no bridge attached.");
+	}
+}
+
+void EverQuest::RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount)
+{
+	if (!IsBankWindowOpen()) {
+		AddChatSystemMessage("You must have a bank window open to convert coins.");
+		return;
+	}
+
+	if (m_bridge) {
+		m_bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{fromCoinType, toCoinType, amount});
+	} else {
+		AddChatSystemMessage("Cannot convert coins - no bridge attached.");
+	}
+}
+
 void EverQuest::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
 {
 	if (!m_zone_connection) {

@@ -718,7 +718,8 @@ void CommandProcessor::registerBuiltinCommands() {
     }, [this](const std::string& args) { return cmdTime(args); });
 
     registerCommand({
-        "bank", {}, "/bank", "Open (or close) a bank window with your current target", "Utility", false
+        "bank", {}, "/bank [deposit|withdraw <amount> <pp|gp|sp|cp> | convert <amount> <from> <to>]",
+        "Open/close the bank window with your current target, or move bank coins", "Utility", false
     }, [this](const std::string& args) { return cmdBank(args); });
 
     registerCommand({
@@ -2202,9 +2203,9 @@ ActionResult CommandProcessor::cmdTime(const std::string& args) {
     return m_dispatcher.timeOfDay(args);
 }
 
-ActionResult CommandProcessor::cmdBank(const std::string& args) {
-    return m_dispatcher.bankToggle();
-}
+// T269: CommandProcessor::cmdBank (the /bank coin sub-commands) lives in
+// command_processor_bank.cpp -- this TU is at check_file_sizes.sh's 3000-line
+// FAIL ceiling, so substantial new code goes in a new TU.
 
 ActionResult CommandProcessor::cmdTrain(const std::string& args) {
     return m_dispatcher.trainWithTarget();

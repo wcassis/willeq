@@ -1663,6 +1663,22 @@ ActionResult ActionDispatcher::bankToggle() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->bankCoinMove(coinType, amount, fromBank);
+    return ActionResult::Success();
+}
+
+ActionResult ActionDispatcher::bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->bankCoinConvert(fromCoinType, toCoinType, amount);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::trainWithTarget() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

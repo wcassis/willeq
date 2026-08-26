@@ -253,6 +253,10 @@ public:
     void timeOfDay(const std::string& args) override;
     void bankToggle() override;
     void trainWithTarget() override;
+    // T269: thin wrappers over EverQuest::RequestBankCoinMove/Convert
+    // (eq_merchant.cpp), which push the kept Bank* intents.
+    void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) override;
+    void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) override;
 
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override;

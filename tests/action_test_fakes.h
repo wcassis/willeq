@@ -373,6 +373,13 @@ public:
     void timeOfDay(const std::string& args) override { record("timeOfDay", args); }
     void bankToggle() override { record("bankToggle"); }
     void trainWithTarget() override { record("trainWithTarget"); }
+    void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) override {
+        record("bankCoinMove", static_cast<uint32_t>(coinType), amount, fromBank);
+    }
+    void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) override {
+        record("bankCoinConvert", static_cast<uint32_t>(fromCoinType),
+               static_cast<uint32_t>(toCoinType), amount);
+    }
 
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override {

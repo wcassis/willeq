@@ -64,6 +64,8 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #endif
 
+#include <limits>
+
 #include "client/bridge/game_state_bridge.h"
 #include "client/bridge/irrlicht_bridge.h"
 
@@ -802,6 +804,68 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	SendPositionUpdate();
 }
 
+// ============================================================================
+// T269: bank-coin helpers, shared by the two Bank* intent arms below.
+// ============================================================================
+
+uint32_t* EverQuest::BankCoinPool(uint8_t coinType, bool bank) {
+	switch (coinType) {
+	case EQT::COINTYPE_CP: return bank ? &m_bank_copper : &m_copper;
+	case EQT::COINTYPE_SP: return bank ? &m_bank_silver : &m_silver;
+	case EQT::COINTYPE_GP: return bank ? &m_bank_gold : &m_gold;
+	case EQT::COINTYPE_PP: return bank ? &m_bank_platinum : &m_platinum;
+	default: return nullptr;
+	}
+}
+
+const char* EverQuest::BankCoinName(uint8_t coinType) {
+	switch (coinType) {
+	case EQT::COINTYPE_CP: return "copper";
+	case EQT::COINTYPE_SP: return "silver";
+	case EQT::COINTYPE_GP: return "gold";
+	case EQT::COINTYPE_PP: return "platinum";
+	default: return "coins";
+	}
+}
+
+// The server's own table (zone/client_process.cpp CoinTypeCoppers).
+int64_t EverQuest::BankCoinCoppers(uint8_t coinType) {
+	switch (coinType) {
+	case EQT::COINTYPE_PP: return 1000;
+	case EQT::COINTYPE_GP: return 100;
+	case EQT::COINTYPE_SP: return 10;
+	default: return 1;
+	}
+}
+
+void EverQuest::PublishBankCoinProjection(bool inventoryChanged) {
+	if (inventoryChanged) {
+		m_game_state.player().setCurrency(m_platinum, m_gold, m_silver, m_copper);
+	}
+	m_game_state.player().setBankCurrency(m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
+
+	if (!m_bridge) {
+		return;
+	}
+	if (inventoryChanged) {
+		eqt::state::CurrencyChangedData cdata;
+		cdata.platinum = static_cast<int32_t>(m_platinum);
+		cdata.gold = static_cast<int32_t>(m_gold);
+		cdata.silver = static_cast<int32_t>(m_silver);
+		cdata.copper = static_cast<int32_t>(m_copper);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
+	}
+
+	eqt::state::BankCurrencyChangedData bdata;
+	bdata.platinum = static_cast<int32_t>(m_bank_platinum);
+	bdata.gold = static_cast<int32_t>(m_bank_gold);
+	bdata.silver = static_cast<int32_t>(m_bank_silver);
+	bdata.copper = static_cast<int32_t>(m_bank_copper);
+	m_bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+}
+
 void EverQuest::ProcessBridgeIntents() {
 	if (!m_bridge) return;
 
@@ -1093,95 +1157,97 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
 				SellToVendor(i.npcId, i.slot, i.quantity);
 			}
-			// Bank intents
+			// Bank intents (T269: producers are EverQuest::RequestBankCoinMove/
+			// Convert via /bank deposit|withdraw|convert). Wire truth, from
+			// eqemu zone/client_process.cpp Client::OPMoveCoin: from_slot/
+			// to_slot 1 = inventory, 2 = bank; cointype 0=cp 1=sp 2=gp 3=pp;
+			// the server clamps amount to the source bucket, converts at
+			// CoinTypeCoppers(cointype1)/CoinTypeCoppers(cointype2) truncating,
+			// requires a banker within USE_NPC_RANGE2 for slot 2, and SENDS
+			// NOTHING BACK on success (it ends in SaveCurrency(), a DB write).
+			// So there is no echo to project from: the arm refuses anything
+			// the server would clamp or drop, and otherwise applies the same
+			// arithmetic the server applies to both the EverQuest counters and
+			// the GameState pools /bank's pre-check reads.
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyMoveIntent>) {
-				// Build and send MoveCoin packet
-				EQT::MoveCoin_Struct move;
-				if (i.fromBank) {
-					move.from_slot = EQT::COINSLOT_BANK;
-					move.to_slot = EQT::COINSLOT_INVENTORY;
-				} else {
-					move.from_slot = EQT::COINSLOT_INVENTORY;
-					move.to_slot = EQT::COINSLOT_BANK;
+				if (!IsBankWindowOpen()) {
+					LOG_WARN(MOD_INVENTORY, "Bank coin move refused: bank window not open (type={} amount={} fromBank={})",
+						i.coinType, i.amount, i.fromBank);
+					return;
 				}
+				if (i.amount <= 0 || i.coinType > EQT::COINTYPE_PP) {
+					LOG_WARN(MOD_INVENTORY, "Bank coin move refused: bad amount/type (type={} amount={})", i.coinType, i.amount);
+					return;
+				}
+
+				uint32_t* src = BankCoinPool(i.coinType, /*bank=*/i.fromBank);
+				uint32_t* dst = BankCoinPool(i.coinType, /*bank=*/!i.fromBank);
+				if (*src < static_cast<uint32_t>(i.amount)) {
+					// The server would silently move only what is there; refuse
+					// instead so the projection and the wire never disagree.
+					AddChatSystemMessage(fmt::format("You do not have {} {} {}.",
+						i.amount, BankCoinName(i.coinType), i.fromBank ? "in the bank" : "on hand"));
+					return;
+				}
+
+				EQT::MoveCoin_Struct move;
+				move.from_slot = i.fromBank ? EQT::COINSLOT_BANK : EQT::COINSLOT_INVENTORY;
+				move.to_slot = i.fromBank ? EQT::COINSLOT_INVENTORY : EQT::COINSLOT_BANK;
 				move.cointype1 = i.coinType;
 				move.cointype2 = i.coinType;
 				move.amount = i.amount;
-
 				SendMoveCoin(move);
 
-				// Update local currency values (server will confirm, but update locally for responsiveness)
-				uint32_t* srcPlatinum = i.fromBank ? &m_bank_platinum : &m_platinum;
-				uint32_t* srcGold = i.fromBank ? &m_bank_gold : &m_gold;
-				uint32_t* srcSilver = i.fromBank ? &m_bank_silver : &m_silver;
-				uint32_t* srcCopper = i.fromBank ? &m_bank_copper : &m_copper;
-
-				uint32_t* dstPlatinum = i.fromBank ? &m_platinum : &m_bank_platinum;
-				uint32_t* dstGold = i.fromBank ? &m_gold : &m_bank_gold;
-				uint32_t* dstSilver = i.fromBank ? &m_silver : &m_bank_silver;
-				uint32_t* dstCopper = i.fromBank ? &m_copper : &m_bank_copper;
-
-				switch (i.coinType) {
-					case EQT::COINTYPE_PP:
-						if (*srcPlatinum >= static_cast<uint32_t>(i.amount)) {
-							*srcPlatinum -= i.amount;
-							*dstPlatinum += i.amount;
-						}
-						break;
-					case EQT::COINTYPE_GP:
-						if (*srcGold >= static_cast<uint32_t>(i.amount)) {
-							*srcGold -= i.amount;
-							*dstGold += i.amount;
-						}
-						break;
-					case EQT::COINTYPE_SP:
-						if (*srcSilver >= static_cast<uint32_t>(i.amount)) {
-							*srcSilver -= i.amount;
-							*dstSilver += i.amount;
-						}
-						break;
-					case EQT::COINTYPE_CP:
-						if (*srcCopper >= static_cast<uint32_t>(i.amount)) {
-							*srcCopper -= i.amount;
-							*dstCopper += i.amount;
-						}
-						break;
-				}
+				*src -= static_cast<uint32_t>(i.amount);
+				*dst += static_cast<uint32_t>(i.amount);
 
 				LOG_DEBUG(MOD_INVENTORY, "Bank currency move: type={} amount={} fromBank={}, bank now: {}pp {}gp {}sp {}cp, inv now: {}pp {}gp {}sp {}cp",
 					i.coinType, i.amount, i.fromBank,
 					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper,
 					m_platinum, m_gold, m_silver, m_copper);
 
-				// Publish CurrencyChanged + BankCurrencyChanged (bridge events handle UI updates)
-				if (m_bridge) {
-					eqt::state::CurrencyChangedData cdata;
-					cdata.platinum = static_cast<int32_t>(m_platinum);
-					cdata.gold = static_cast<int32_t>(m_gold);
-					cdata.silver = static_cast<int32_t>(m_silver);
-					cdata.copper = static_cast<int32_t>(m_copper);
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
-
-					eqt::state::BankCurrencyChangedData bdata;
-					bdata.platinum = static_cast<int32_t>(m_bank_platinum);
-					bdata.gold = static_cast<int32_t>(m_bank_gold);
-					bdata.silver = static_cast<int32_t>(m_bank_silver);
-					bdata.copper = static_cast<int32_t>(m_bank_copper);
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
-				}
+				PublishBankCoinProjection(/*inventoryChanged=*/true);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyConvertIntent>) {
-				// Conversion is always 10:1 ratio: 10 cp -> 1 sp, 10 sp -> 1 gp, 10 gp -> 1 pp
-				if (i.amount < 10 || (i.amount % 10) != 0) {
-					LOG_WARN(MOD_INVENTORY, "Invalid conversion amount: {} (must be multiple of 10)", i.amount);
+				if (!IsBankWindowOpen()) {
+					LOG_WARN(MOD_INVENTORY, "Bank coin convert refused: bank window not open");
+					return;
+				}
+				if (i.amount <= 0 || i.fromCoinType > EQT::COINTYPE_PP || i.toCoinType > EQT::COINTYPE_PP
+				    || i.fromCoinType == i.toCoinType) {
+					LOG_WARN(MOD_INVENTORY, "Bank coin convert refused: bad amount/types (from={} to={} amount={})",
+						i.fromCoinType, i.toCoinType, i.amount);
 					return;
 				}
 
-				int32_t toCoinType = i.fromCoinType + 1;
-				if (toCoinType > EQT::COINTYPE_PP) {
-					LOG_WARN(MOD_INVENTORY, "Cannot convert platinum further");
+				// Same ratio the server computes: CoinTypeCoppers(from)/CoinTypeCoppers(to).
+				const int64_t fromCoppers = BankCoinCoppers(i.fromCoinType);
+				const int64_t toCoppers = BankCoinCoppers(i.toCoinType);
+				int64_t converted = 0;
+				if (toCoppers > fromCoppers) {
+					const int64_t step = toCoppers / fromCoppers;  // 10, 100 or 1000
+					if (i.amount % step != 0) {
+						// The server would take only the largest multiple and
+						// leave the remainder -- the wire amount would then
+						// not describe what happened. Refuse.
+						AddChatSystemMessage(fmt::format("Amount must be a multiple of {} to convert {} to {}.",
+							step, BankCoinName(i.fromCoinType), BankCoinName(i.toCoinType)));
+						return;
+					}
+					converted = i.amount / step;
+				} else {
+					converted = static_cast<int64_t>(i.amount) * (fromCoppers / toCoppers);
+				}
+
+				uint32_t* src = BankCoinPool(i.fromCoinType, /*bank=*/true);
+				uint32_t* dst = BankCoinPool(i.toCoinType, /*bank=*/true);
+				if (*src < static_cast<uint32_t>(i.amount)) {
+					AddChatSystemMessage(fmt::format("You do not have {} {} in the bank.",
+						i.amount, BankCoinName(i.fromCoinType)));
+					return;
+				}
+				if (converted > static_cast<int64_t>(std::numeric_limits<uint32_t>::max() - *dst)) {
+					AddChatSystemMessage("That conversion would overflow the destination pool.");
 					return;
 				}
 
@@ -1189,54 +1255,18 @@ void EverQuest::ProcessBridgeIntents() {
 				move.from_slot = EQT::COINSLOT_BANK;
 				move.to_slot = EQT::COINSLOT_BANK;
 				move.cointype1 = i.fromCoinType;
-				move.cointype2 = toCoinType;
+				move.cointype2 = i.toCoinType;
 				move.amount = i.amount;
-
 				SendMoveCoin(move);
 
-				LOG_DEBUG(MOD_INVENTORY, "Sent bank currency conversion: {} {} -> {} (cointype {} -> {})",
-					i.amount, (i.fromCoinType == EQT::COINTYPE_CP ? "copper" :
-					           i.fromCoinType == EQT::COINTYPE_SP ? "silver" : "gold"),
-					(toCoinType == EQT::COINTYPE_SP ? "silver" :
-					 toCoinType == EQT::COINTYPE_GP ? "gold" : "platinum"),
-					i.fromCoinType, toCoinType);
+				*src -= static_cast<uint32_t>(i.amount);
+				*dst += static_cast<uint32_t>(converted);
 
-				// Update local values for UI responsiveness (server will confirm)
-				uint32_t convertedAmount = i.amount / 10;
-				switch (i.fromCoinType) {
-					case EQT::COINTYPE_CP:
-						if (m_bank_copper >= static_cast<uint32_t>(i.amount)) {
-							m_bank_copper -= i.amount;
-							m_bank_silver += convertedAmount;
-						}
-						break;
-					case EQT::COINTYPE_SP:
-						if (m_bank_silver >= static_cast<uint32_t>(i.amount)) {
-							m_bank_silver -= i.amount;
-							m_bank_gold += convertedAmount;
-						}
-						break;
-					case EQT::COINTYPE_GP:
-						if (m_bank_gold >= static_cast<uint32_t>(i.amount)) {
-							m_bank_gold -= i.amount;
-							m_bank_platinum += convertedAmount;
-						}
-						break;
-				}
-
-				LOG_DEBUG(MOD_INVENTORY, "Bank currency after conversion: {}pp {}gp {}sp {}cp",
+				LOG_DEBUG(MOD_INVENTORY, "Bank currency convert: {} {} -> {} {}; bank now: {}pp {}gp {}sp {}cp",
+					i.amount, BankCoinName(i.fromCoinType), converted, BankCoinName(i.toCoinType),
 					m_bank_platinum, m_bank_gold, m_bank_silver, m_bank_copper);
 
-				// Publish BankCurrencyChanged (bridge event handles UI update)
-				if (m_bridge) {
-					eqt::state::BankCurrencyChangedData bdata;
-					bdata.platinum = static_cast<int32_t>(m_bank_platinum);
-					bdata.gold = static_cast<int32_t>(m_bank_gold);
-					bdata.silver = static_cast<int32_t>(m_bank_silver);
-					bdata.copper = static_cast<int32_t>(m_bank_copper);
-					m_bridge->pushEvent(eqt::state::GameEvent(
-						eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
-				}
+				PublishBankCoinProjection(/*inventoryChanged=*/false);
 			}
 			// Volume change intents (D20c2)
 			else if constexpr (std::is_same_v<T, eqt::events::MusicVolumeChangeIntent>) {

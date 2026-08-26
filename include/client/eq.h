@@ -2283,6 +2283,18 @@ private:
 	void SendTradeRequest(const EQT::TradeRequest_Struct& req);
 	void SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);
 	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
+
+	// T269 bank-coin helpers (eq_bridge.cpp, next to the Bank* intent arms).
+	// coinType is the wire scale (EQT::COINTYPE_*: 0=cp 1=sp 2=gp 3=pp).
+	// BankCoinPool returns the counter for one denomination in one pool
+	// (bank=true -> m_bank_*, false -> the on-hand m_platinum..). Members,
+	// not free functions, because the counters are private.
+	uint32_t* BankCoinPool(uint8_t coinType, bool bank);
+	static const char* BankCoinName(uint8_t coinType);
+	static int64_t BankCoinCoppers(uint8_t coinType);
+	// Mirrors the four (or eight) counters into GameState and publishes
+	// CurrencyChanged (only when the on-hand pool moved) + BankCurrencyChanged.
+	void PublishBankCoinProjection(bool inventoryChanged);
 	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
 	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
 
@@ -2389,6 +2401,14 @@ public:
 	void RequestTimeOfDay(const std::string& args);
 	void RequestBankToggle();
 	void RequestTraining();
+
+	// T269: /bank deposit|withdraw|convert. Push the kept
+	// BankCurrencyMoveIntent / BankCurrencyConvertIntent (the same shape a
+	// bank-window coin gesture would push) for ProcessBridgeIntents() to
+	// turn into OP_MoveCoin. Refuse (message, no intent) when the bank
+	// window is not open. Defined in eq_merchant.cpp next to SendMoveCoin.
+	void RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank);
+	void RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount);
 
 	// Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);
