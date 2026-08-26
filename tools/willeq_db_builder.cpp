@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <fstream>
@@ -1040,7 +1041,19 @@ static int loadZoneCharacters(sqlite3* db, const std::string& eqPath) {
         return 0;
     }
 
-    int totalCount = 0;
+    // T261: the table's PRIMARY KEY is (zone_name, model_code) and the insert
+    // is OR REPLACE, so a model code listed twice in one *_chr.txt collapses
+    // to one row (last line wins). Count what was actually written, and
+    // report the collapsed lines separately so "N entries" matches
+    // SELECT COUNT(*) -- the pre-T261 log printed the line count (2213)
+    // against a 2188-row table. Duplicates in the shipped Titanium files:
+    // 17 are byte-identical repeats, 8 repeat the model code with a
+    // different source_file hint (e.g. eastkorlach "BRL,BRL" then
+    // "brl,brl_chr"); no (zone, model) pair is lost either way.
+    int linesRead = 0;
+    int dupIdentical = 0;
+    int dupDifferentSource = 0;
+    std::map<std::pair<std::string, std::string>, std::string> firstSource;
     char pathBuf[1024];
     while (fgets(pathBuf, sizeof(pathBuf), pipe)) {
         std::string fullPath(pathBuf);
@@ -1082,7 +1095,21 @@ static int loadZoneCharacters(sqlite3* db, const std::string& eqPath) {
             sqlite3_bind_text(stmt, 2, modelCode.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(stmt, 3, sourceFile.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_step(stmt);
-            totalCount++;
+            linesRead++;
+
+            auto key = std::make_pair(zoneName, modelCode);
+            auto it = firstSource.find(key);
+            if (it == firstSource.end()) {
+                firstSource.emplace(key, sourceFile);
+            } else if (it->second == sourceFile) {
+                dupIdentical++;
+            } else {
+                dupDifferentSource++;
+                printf("  zone_chars: %s/%s listed twice with different source_file "
+                       "('%s' then '%s'); keeping the later one\n",
+                       zoneName.c_str(), modelCode.c_str(),
+                       it->second.c_str(), sourceFile.c_str());
+            }
         }
     }
 
@@ -1090,7 +1117,30 @@ static int loadZoneCharacters(sqlite3* db, const std::string& eqPath) {
     sqlite3_finalize(stmt);
     execSQL(db, "COMMIT");
     execSQL(db, "CREATE INDEX IF NOT EXISTS idx_zone_chars_zone ON zone_characters(zone_name)");
-    return totalCount;
+
+    int rowsWritten = static_cast<int>(firstSource.size());
+    // Cross-check against the table itself so the printed count can never
+    // drift from SELECT COUNT(*) again.
+    sqlite3_stmt* countStmt = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM zone_characters", -1, &countStmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(countStmt) == SQLITE_ROW) {
+            int dbRows = sqlite3_column_int(countStmt, 0);
+            if (dbRows != rowsWritten) {
+                fprintf(stderr, "ERROR: zone_characters holds %d rows but the loader counted %d unique (zone, model) keys\n",
+                        dbRows, rowsWritten);
+                sqlite3_finalize(countStmt);
+                exit(1);
+            }
+        }
+        sqlite3_finalize(countStmt);
+    }
+    int collapsed = linesRead - rowsWritten;
+    if (collapsed > 0) {
+        printf("  zone_chars: %d lines read, %d duplicate (zone, model) lines collapsed by the PRIMARY KEY "
+               "(%d identical, %d with a different source_file -- later line kept)\n",
+               linesRead, collapsed, dupIdentical, dupDifferentSource);
+    }
+    return rowsWritten;
 }
 
 // ============================================================================
@@ -1468,7 +1518,7 @@ int main(int argc, char** argv) {
         int n = loadZoneCharacters(db, eqPath);
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
-        printf("  zone_chars:   %6d entries (%.0f ms)\n", n, elapsed);
+        printf("  zone_chars:   %6d rows written (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

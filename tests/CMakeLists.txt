@@ -2021,7 +2021,17 @@ ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
 # failure, so the default `build/` + ctest suite stays fully independent of
 # whether build-gles2/ has ever been built in this worktree.
 ADD_TEST(NAME visual_gate COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/visual_gate.sh)
-SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125)
+# T261: RUN_SERIAL. The gate's p95 CPU-ms assertion (visual_gate.py, ceiling
+# = 2x the blessed baseline) is a steady_clock wall-time measurement of the
+# benchmark's CPU draw phase (tools/hwcaps/zone_bench_metrics.cpp cpuDrawMs),
+# so it is load-sensitive: under `ctest -j24` it shares llvmpipe's CPU with
+# ~23 other tests and tripped the befallen ceiling in T219/T220/T239/T258
+# while passing every time alone. The image/metric/memory assertions never
+# failed under load -- only the timing one. RUN_SERIAL gives the gate the
+# machine to itself; ctest still runs everything else in parallel around it
+# (measured T261: suite wall-time unchanged within noise, see
+# refactor/T261_visual_gate_serial.md).
+SET_TESTS_PROPERTIES(visual_gate PROPERTIES SKIP_RETURN_CODE 125 RUN_SERIAL TRUE)
 
 # T168: the zero-caller-sender gate. Fails if any EverQuest::Send*/Request*
 # method has no production call site -- the condition that held for 28 of 97
