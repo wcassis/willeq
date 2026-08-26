@@ -17,10 +17,15 @@
 
 #include "client/graphics/eqe1_texture_index.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 using EQT::Graphics::EQE1TextureIndex;
@@ -136,4 +141,75 @@ TEST(Eqe1TextureIndexShipped, T263NameLateOpensBwdChrForQeynos2) {
     ASSERT_TRUE(index.resolve("bwdhe0005", extended, r));
     EXPECT_FALSE(r.lateOpen);
     EXPECT_EQ(r.archive, "bwd_chr");
+}
+
+// T281: the shipped index must cover EVERY pack in the EQE1 tree.
+//
+// It did not. The committed index was built when the tree held 1008 packs;
+// P16/P48 later added 498 composite-sheet packs (*_hs_def_*, *_actordef_*)
+// and nobody rebuilt it, so 525 names were absent from the index entirely.
+// Absent from the index means EQE1TextureIndex::resolve() answers "no archive
+// has this" -- which is exactly the answer decision #2 turns into
+// ConstrainedTextureCache's exit(1). T266's late-open cannot rescue such a
+// name, because late-open resolves THROUGH this index.
+//
+// This test is the tripwire: a pack added to the tree without a matching
+// `eqe1_texture_index_builder --eqe1-path <tree>` rerun fails here instead of
+// waiting to become somebody's client exit. It compares the archive NAME SETS,
+// not just the counts, so an equal-sized but different tree is caught too.
+//
+// Skips cleanly when the tree is absent (same precedent as the shipped-index
+// test above and test_entity_viewer_regression's kEqe1Path).
+TEST(Eqe1TextureIndexShipped, CoversEveryPackInTheTree) {
+    const char* env = std::getenv("WILLEQ_EQE1_PATH");
+    const std::string tree = env && *env ? env : "/mnt/projects/EverQuest_ETC1";
+
+    std::error_code ec;
+    if (!std::filesystem::is_directory(tree, ec)) {
+        GTEST_SKIP() << "no EQE1 tree at '" << tree
+                     << "' (set WILLEQ_EQE1_PATH to point at one)";
+    }
+
+    std::set<std::string> onDisk;
+    for (const auto& e : std::filesystem::directory_iterator(tree, ec)) {
+        if (e.is_regular_file() && e.path().extension() == ".eqe1") {
+            onDisk.insert(e.path().stem().string());
+        }
+    }
+    ASSERT_FALSE(onDisk.empty()) << "no .eqe1 packs under '" << tree << "'";
+
+    EQE1TextureIndex index;
+    if (!index.load(EQE1_TEXTURE_INDEX_JSON)) {
+        GTEST_SKIP() << "no shipped index at " << EQE1_TEXTURE_INDEX_JSON;
+    }
+
+    std::set<std::string> indexed;
+    for (size_t i = 0; i < index.archiveCount(); ++i) {
+        indexed.insert(index.archiveName(static_cast<uint16_t>(i)));
+    }
+
+    std::vector<std::string> missing, extra;
+    std::set_difference(onDisk.begin(), onDisk.end(), indexed.begin(), indexed.end(),
+                        std::back_inserter(missing));
+    std::set_difference(indexed.begin(), indexed.end(), onDisk.begin(), onDisk.end(),
+                        std::back_inserter(extra));
+
+    const std::string rebuild =
+        "\nRebuild it: ./build/bin/eqe1_texture_index_builder --eqe1-path " + tree +
+        " --output data/eqe1_texture_index.json";
+    auto sample = [](const std::vector<std::string>& v) {
+        std::string s;
+        for (size_t i = 0; i < v.size() && i < 8; ++i) s += (i ? ", " : "") + v[i];
+        if (v.size() > 8) s += ", ... (" + std::to_string(v.size()) + " total)";
+        return s;
+    };
+
+    EXPECT_TRUE(missing.empty())
+        << missing.size() << " pack(s) in the tree are absent from the shipped index -- "
+        << "every name that lives ONLY in one of them resolves to nothing and takes the "
+        << "all-or-nothing exit(1): " << sample(missing) << rebuild;
+    EXPECT_TRUE(extra.empty())
+        << extra.size() << " archive(s) in the shipped index no longer exist in the tree: "
+        << sample(extra) << rebuild;
+    EXPECT_EQ(index.archiveCount(), onDisk.size());
 }

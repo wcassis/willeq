@@ -32,7 +32,7 @@ bool EQE1TextureIndex::load(const std::string& path) {
         LOG_ERROR(MOD_GRAPHICS, "EQE1 index: {} has no 'archives' array", path);
         return false;
     }
-    // uint16_t indices cap the tree at 65535 archives; the real tree is ~1008.
+    // uint16_t indices cap the tree at 65535 archives; the real tree is ~1506 (T281).
     if (archives.size() > UINT16_MAX) {
         LOG_ERROR(MOD_GRAPHICS, "EQE1 index: {} lists {} archives, over the {} cap",
                   path, archives.size(), UINT16_MAX);

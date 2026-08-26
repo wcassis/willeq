@@ -15,7 +15,7 @@ namespace EQT { namespace Graphics {
 // archive and retried, so a name present in no archive opened every one of them.
 // A cold befallen zone-in opened 37 archives of which 24 served zero lookups.
 //
-// A name may live in many archives (21356 of 50447 names do; one lives in 691),
+// A name may live in many archives (21356 of 50972 names do; one lives in 691),
 // so owners() returns the full list. Choosing among them is the caller's job --
 // it needs the zone's candidate set, which this class deliberately knows nothing
 // about.

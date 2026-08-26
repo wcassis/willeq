@@ -24,8 +24,8 @@
 //   }
 //
 // Each entry lists EVERY archive that holds that name, not just one. EQ packs
-// the same texture name into many archives (182468 total entries collapse to
-// 50447 unique names -- 72% duplication), so picking a single winner would
+// the same texture name into many archives (182993 total entries collapse to
+// 50972 unique names -- 72% duplication), so picking a single winner would
 // resolve e.g. "arm01" to whichever archive sorts first alphabetically and open
 // an unrelated zone's file. The runtime resolver picks from this list using the
 // current zone's candidate set, preferring archives already open.
