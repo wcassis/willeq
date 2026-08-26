@@ -497,21 +497,30 @@ void EqActionHandler::duelDecline() {
     m_eq.SendDuelDecline(m_eq.GetPendingDuelInitiatorId());
 }
 
+// T240: castSpell()/castSpellOnTarget() are the action-layer casts (spell-gem
+// hotkeys via InputActionBridge::processSpellCasts, ActionDispatcher::
+// castSpell). Until T240 they called CombatManager::CastSpell(SpellSlot),
+// which read CombatManager::m_spell_gems -- a second gem map that only
+// memorizeSpell() below ever wrote; the server's memorised gems (PlayerProfile
+// -> SpellManager::setSpellGems) never reached it, so every hotkey cast
+// reported success and sent nothing (T235 live AFTER run: three
+// reportAction: CastSpell lines, zero BeginCast). Both now go through the
+// same EQ::SpellManager path /cast uses (beginCastFromGem() below, T101
+// shape), and the CombatManager map/stub are deleted.
 void EqActionHandler::castSpell(uint8_t gemSlot) {
-    auto* combat = getCombatManager();
-    if (combat) {
-        // Convert from 1-indexed to SpellSlot enum
-        combat->CastSpell(static_cast<SpellSlot>(gemSlot - 1));
-    }
+    // targetId 0 = SpellManager resolves the current CombatManager target
+    // (or self/pet/group per the spell's target type).
+    beginCastFromGem(gemSlot, 0);
 }
 
 void EqActionHandler::castSpellOnTarget(uint8_t gemSlot, uint16_t targetId) {
-    // First set target, then cast
+    // First set target, then cast -- same order as before T240, so the
+    // explicit target is also the current target when the cast completes.
     auto* combat = getCombatManager();
     if (combat) {
         combat->SetTarget(targetId);
-        combat->CastSpell(static_cast<SpellSlot>(gemSlot - 1));
     }
+    beginCastFromGem(gemSlot, targetId);
 }
 
 void EqActionHandler::interruptCast() {
@@ -519,9 +528,9 @@ void EqActionHandler::interruptCast() {
     // EQ::SpellManager -- ported from game's /interrupt (eq_commands_
     // spells.cpp), which is the subsystem the real /cast path
     // (beginCastFromGem() below) actually uses. Not covered by any
-    // existing test against real CombatManager state (T93 tests castSpell/
-    // castSpellOnTarget/memorizeSpell only), so this repoint is safe -- see
-    // refactor/T101_migrate_spells_pet_family.md's Review.
+    // existing test against real CombatManager state, so this repoint was
+    // safe -- see refactor/T101_migrate_spells_pet_family.md's Review. T240
+    // finished the job for castSpell()/castSpellOnTarget()/memorizeSpell().
     auto* spellMgr = m_eq.GetSpellManager();
     if (!spellMgr) {
         m_eq.AddChatSystemMessage("Spell system not initialized");
@@ -537,8 +546,8 @@ void EqActionHandler::interruptCast() {
 
 void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
     // T101: ported from game's /cast (eq_commands_spells.cpp) verbatim --
-    // the real EQ::SpellManager casting path, distinct from castSpell()/
-    // castSpellOnTarget() above (CombatManager, untouched per T93).
+    // the real EQ::SpellManager casting path. Since T240 castSpell()/
+    // castSpellOnTarget() above are thin wrappers over this method.
     auto* spellMgr = m_eq.GetSpellManager();
     if (!spellMgr) {
         m_eq.AddChatSystemMessage("Spell system not initialized");
@@ -790,9 +799,24 @@ void EqActionHandler::equip(const std::string& args) {
 // ========== Spellbook ==========
 
 void EqActionHandler::memorizeSpell(uint8_t gemSlot, uint32_t spellId) {
-    auto* combat = getCombatManager();
-    if (combat) {
-        combat->MemorizeSpell(spellId, static_cast<SpellSlot>(gemSlot - 1));
+    // T240: was CombatManager::MemorizeSpell(), which wrote the dead
+    // CombatManager::m_spell_gems map (never read by any cast path after
+    // T240; never read by the real one before it) and sent nothing. Now the
+    // same SpellManager call memorizeSpellByName() ends in, so a memorise
+    // by id reaches the real gem store and the server (OP_MemorizeSpell).
+    auto* spellMgr = m_eq.GetSpellManager();
+    if (!spellMgr) {
+        m_eq.AddChatSystemMessage("Spell system not initialized");
+        return;
+    }
+    // gemSlot arrives 1-indexed (ActionDispatcher::memorizeSpell() already
+    // validated it); SpellManager's gems are 0-indexed.
+    if (spellMgr->memorizeSpell(spellId, static_cast<uint8_t>(gemSlot - 1))) {
+        m_eq.AddChatSystemMessage("Memorizing spell " + std::to_string(spellId) +
+                                  " in gem " + std::to_string(gemSlot));
+    } else {
+        m_eq.AddChatSystemMessage("Cannot memorize spell " + std::to_string(spellId) +
+                                  " - check if scribed and level requirement");
     }
 }
 

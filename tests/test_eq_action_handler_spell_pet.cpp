@@ -10,11 +10,10 @@
 // hasDb() + GTEST_SKIP precedent so this binary degrades cleanly where
 // data/willeq.db is missing.
 //
-// See refactor/T101_migrate_spells_pet_family.md's Review: T93 tested
-// castSpell()/castSpellOnTarget()/memorizeSpell() against the OLDER
-// CombatManager path and that coverage is deliberately left untouched --
-// this file covers the newer, real SpellManager path those methods do NOT
-// use.
+// See refactor/T101_migrate_spells_pet_family.md's Review. T240 repointed
+// castSpell()/castSpellOnTarget()/memorizeSpell() at this same SpellManager
+// path (the CombatManager gem map T93 tested against is deleted); their
+// wire-level coverage is test_eq_action_handler_cast.cpp.
 
 #include <gtest/gtest.h>
 

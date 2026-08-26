@@ -1250,22 +1250,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_setheading_conversion)
 
-# T93: fake-substitution sweep. Regression tests for TRANSFORMS in
-# EqActionHandler that RecordingActionHandler (tests/action_test_fakes.h)
-# cannot catch -- the 1-indexed-to-0-indexed gem slot conversion shared by
-# castSpell()/castSpellOnTarget()/memorizeSpell(). targetSelf()'s self/pet
-# toggle logic was investigated and deferred (no test seam for
-# EverQuest::m_entities -- see this file's own comment and refactor/
-# deferred.md). Same headless EverQuest + EqActionHandler idiom as T88/T90
-# above -- no network, no graphics, no eqemu.
-ADD_EXECUTABLE(test_eq_action_handler_transforms
-    test_eq_action_handler_transforms.cpp
+# T240: castSpell()/castSpellOnTarget()/memorizeSpell() against the real
+# EverQuest + EQ::SpellManager + a real DaybreakConnection over
+# FakeUdpTransport (T234 WireHarness idiom), gems loaded through the same
+# setSpellGems() call the PlayerProfile handler makes, outbound
+# OP_CastSpell / OP_MemorizeSpell bytes asserted. Replaces T93's
+# test_eq_action_handler_transforms (its two tests observed the
+# CombatManager gem map/IsCasting() that T240 deleted; the 1-based gem
+# conversion they pinned is pinned here on the real store). DB-gated cases
+# skip without data/willeq.db. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_cast
+    test_eq_action_handler_cast.cpp
 )
-TARGET_LINK_LIBRARIES(test_eq_action_handler_transforms GTest::gtest_main willeq_core)
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_cast PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_eq_action_handler_cast GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
-    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_transforms PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_cast PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_cast)
 
 # T234: the five transforms T93 listed but could not reach (targetSelf,
 # targetGroupMember, hailTarget, setMovementMode, setPositionState) pinned

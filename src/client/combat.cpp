@@ -29,14 +29,6 @@ struct Consider_Struct {
 	uint8_t  unknown3[3];
 };
 
-struct CastSpell_Struct {
-	uint32_t slot;
-	uint32_t spell_id;
-	uint32_t inventoryslot;
-	uint32_t target_id;
-	uint8_t  cs_unknown[4];
-};
-
 struct LootingItem_Struct {
 	uint32_t lootee;
 	uint32_t looter;
@@ -69,10 +61,6 @@ CombatManager::CombatManager(EverQuest* eq)
 	, m_current_target_id(0)
 	, m_auto_attack_enabled(false)
 	, m_auto_fire_enabled(false)
-	, m_is_casting(false)
-	, m_current_spell_id(0)
-	, m_spell_target_id(0)
-	, m_cast_time_ms(0)
 	, m_flee_hp_threshold(20.0f)
 	, m_current_corpse_id(0)
 	, m_auto_loot_enabled(true)
@@ -89,11 +77,6 @@ CombatManager::CombatManager(EverQuest* eq)
 	, m_spell_range(200.0f)
 	, m_attack_delay_ms(2000) // Default 2 second attack delay
 {
-	// Initialize spell gems as empty
-	for (int i = 0; i < MAX_SPELL_GEMS; ++i) {
-		m_spell_gems[static_cast<SpellSlot>(i)] = 0;
-	}
-
 	// Initialize memorized spells vector
 	m_memorized_spells.resize(MAX_SPELL_GEMS);
 
@@ -105,7 +88,6 @@ CombatManager::CombatManager(EverQuest* eq)
 	// Initialize time points
 	m_last_target_scan = std::chrono::steady_clock::now();
 	m_last_attack_time = std::chrono::steady_clock::now();
-	m_cast_start_time = std::chrono::steady_clock::now();
 	m_flee_start_time = std::chrono::steady_clock::now();
 	m_last_hunt_update = std::chrono::steady_clock::now();
 	m_last_rest_check = std::chrono::steady_clock::now();
@@ -650,65 +632,6 @@ void CombatManager::ToggleAutoFire() {
 	} else {
 		EnableAutoFire();
 	}
-}
-
-bool CombatManager::CastSpell(uint32_t spell_id, uint16_t target_id) {
-	if (m_is_casting) {
-		return false;
-	}
-
-	// TODO: Verify we know this spell and have it memorized
-
-	m_is_casting = true;
-	m_current_spell_id = spell_id;
-	m_spell_target_id = target_id ? target_id : m_current_target_id;
-	m_cast_start_time = std::chrono::steady_clock::now();
-	m_cast_time_ms = 3000; // TODO: Get actual cast time from spell data
-
-	// Send cast spell packet
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(sizeof(CastSpell_Struct));
-	CastSpell_Struct* cs = (CastSpell_Struct*)packet.Data();
-	cs->slot = 0; // TODO: Find correct slot
-	cs->spell_id = spell_id;
-	cs->inventoryslot = 0xFFFFFFFF;
-	cs->target_id = m_spell_target_id;
-
-	m_eq->QueuePacket(HC_OP_CastSpell, &packet);
-
-	return true;
-}
-
-bool CombatManager::CastSpell(SpellSlot slot, uint16_t target_id) {
-	auto it = m_spell_gems.find(slot);
-	if (it == m_spell_gems.end() || it->second == 0) {
-		return false;
-	}
-
-	return CastSpell(it->second, target_id);
-}
-
-void CombatManager::InterruptCast() {
-	if (!m_is_casting) {
-		return;
-	}
-
-	m_is_casting = false;
-	m_current_spell_id = 0;
-	m_spell_target_id = 0;
-
-	// Send interrupt packet
-	EQ::Net::DynamicPacket packet;
-	packet.Resize(4);
-	packet.PutUInt16(0, m_eq->GetEntityID());
-	packet.PutUInt16(2, 0x01); // Interrupt type
-	m_eq->QueuePacket(HC_OP_InterruptCast, &packet);
-}
-
-void CombatManager::MemorizeSpell(uint32_t spell_id, SpellSlot slot) {
-	m_spell_gems[slot] = spell_id;
-
-	// TODO: Send memorize spell packet
 }
 
 void CombatManager::UseAbility(uint32_t ability_id, uint16_t target_id) {

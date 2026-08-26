@@ -189,12 +189,11 @@ public:
 	void DisableAutoMovement() { m_auto_movement_enabled = false; }
 	bool IsAutoMovementEnabled() const { return m_auto_movement_enabled; }
 
-	// Spell casting
-	bool CastSpell(uint32_t spell_id, uint16_t target_id = 0);
-	bool CastSpell(SpellSlot slot, uint16_t target_id = 0);
-	void InterruptCast();
-	bool IsCasting() const { return m_is_casting; }
-	void MemorizeSpell(uint32_t spell_id, SpellSlot slot);
+	// Spell casting: none here. T240 deleted CastSpell()/InterruptCast()/
+	// IsCasting()/MemorizeSpell() and the m_spell_gems map they read -- a
+	// second gem store the PlayerProfile load never filled, plus a stub that
+	// sent OP_CastSpell with slot 0 and a hardcoded 3000 ms cast time. The
+	// one casting subsystem is EQ::SpellManager (beginCastFromGem etc.).
 
 	// Combat abilities
 	void UseAbility(uint32_t ability_id, uint16_t target_id = 0);
@@ -285,16 +284,8 @@ private:
 	std::chrono::steady_clock::time_point m_last_attack_time;
 	uint32_t m_attack_delay_ms;
 
-	// Spell casting
-	bool m_is_casting;
-	uint32_t m_current_spell_id;
-	uint16_t m_spell_target_id;
-	std::chrono::steady_clock::time_point m_cast_start_time;
-	uint32_t m_cast_time_ms;
-
 	// Spells
 	std::vector<SpellInfo> m_memorized_spells;
-	std::map<SpellSlot, uint32_t> m_spell_gems;
 
 	// Combat stats
 	CombatStats m_stats;
