@@ -273,3 +273,32 @@ TEST(EqActionHandlerTrade, CancelTrade_ActiveTrade_ResetsProjection) {
     EXPECT_FALSE(eq.GetGameState().trade().active());
     EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
 }
+
+// ---------------------------------------------------------------------
+// T259: /accept during an ACTIVE trade is the trade window's Accept
+// button. TradeManager::clickAccept() was reachable only through
+// TradeAcceptIntent, which had NO producer anywhere (eq_bridge.cpp consumes
+// it; nothing pushes it), so a trade could never be completed from a
+// scripted/headless client -- and the live leg needs exactly that.
+// ---------------------------------------------------------------------
+
+TEST(EqActionHandlerTrade, AcceptTrade_ActiveTrade_ClicksAcceptInsteadOfRefusing) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    EqActionHandler handler(eq);
+
+    simulateIncomingRequest(eq, 555, "Buddy");
+    handler.acceptTrade();
+    ASSERT_TRUE(eq.GetGameState().trade().active());
+    ASSERT_FALSE(eq.GetTradeManager()->isOwnAccepted());
+    bridge.drainEvents();
+
+    handler.acceptTrade();
+
+    EXPECT_TRUE(eq.GetTradeManager()->isOwnAccepted());
+    EXPECT_TRUE(eq.GetGameState().trade().ownAccepted());
+    const std::string msg = lastSystemMessage(bridge.drainEvents());
+    EXPECT_EQ(msg.find("No pending trade request"), std::string::npos) << msg;
+    EXPECT_NE(msg.find("Buddy"), std::string::npos) << msg;
+}

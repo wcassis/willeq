@@ -480,15 +480,32 @@ bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
 		}
 	}
 
+	// T259: a partner's bag arrives as its own TradeView packet AND one
+	// packet per content item at (3031 + idx) - 3000 = 31.. (eqemu
+	// Trade::SendItemData, zone/trading.cpp). The bag packet itself
+	// already carries the sub-items; the per-content packets are consumed
+	// here so they never reach the inventory model as slot 31-110.
+	if (slotId >= eqt::inventory::TRADE_BAGS_BEGIN - eqt::inventory::TRADE_BEGIN &&
+	    slotId <= eqt::inventory::TRADE_BAGS_END - eqt::inventory::TRADE_BEGIN) {
+		LOG_DEBUG(MOD_MAIN, "Trade partner bag content at relative slot {} (parent trade slot {}) -- consumed",
+		          slotId, (slotId - (eqt::inventory::TRADE_BAGS_BEGIN - eqt::inventory::TRADE_BEGIN)) /
+		                      eqt::inventory::BAG_SLOT_COUNT);
+		return true;
+	}
+
 	// Validate slot is 0-7 (partner trade slots)
 	if (slotId < 0 || slotId > 7) {
 		LOG_WARN(MOD_MAIN, "Invalid partner trade slot: {}", slotId);
 		return true;  // Still consumed - don't pass to inventory
 	}
 
-	// Parse the full item
-	std::map<int16_t, std::unique_ptr<eqt::inventory::ItemInstance>> subItems;
-	auto item = eqt::inventory::TitaniumItemParser::parseItem(itemData, itemLen, slotId, &subItems);
+	// Parse the item. T259: no sub-item map -- the partner's bag contents
+	// belong to the PARTNER's inventory; parsing them against our relative
+	// slot 0-7 only produced one "has no client slot -- dropped" WARN per
+	// content item (T255's parser guard), and nothing displayed them anyway
+	// (TradeState carries partner items per slot only). Surfacing partner
+	// bag contents in the trade window is a separate, unplanned feature.
+	auto item = eqt::inventory::TitaniumItemParser::parseItem(itemData, itemLen, slotId, nullptr);
 
 	if (!item) {
 		LOG_WARN(MOD_MAIN, "Failed to parse trade partner item for slot {}", slotId);

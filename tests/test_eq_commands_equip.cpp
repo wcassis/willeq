@@ -42,6 +42,8 @@
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/item_instance.h"
+#include "client/trade_manager.h"
+#include "common/packet_structs.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -1292,6 +1294,182 @@ TEST_F(EqCommandsEquipTest, CursorSwap_DisplacedBagOntoOccupiedQueue_QueuedBagCo
     EXPECT_EQ(inv->getCursorItem()->itemId, 7211u);
     ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
     EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0))->itemId, 7401u);
+}
+
+// ---------------------------------------------------------------------------
+// T259 -- trade-window slots (3000-3007) are bag parents too. Server model
+// (eqemu zone/trading.cpp): a bag reaches a trade slot ONLY from the cursor
+// (zone/inventory.cpp Client::SwapItem "Trade with non-cursor item" -> Kick);
+// Trade::AddEntity PutItemInInventory()s the whole ItemInstance, contents
+// included, addressed on the wire as 3031 + (trade-3000)*10 + idx
+// (common/patches/titanium_limits.h TRADE_BAGS_BEGIN). On completion the
+// giver gets NOTHING for its trade slots (Client::FinishTrade ->
+// DeleteItemInInventory(trade_slot) without client_update) and the receiver
+// gets one ItemPacketTrade for the bag WITH contents at a free general slot
+// (PutItemInInventory(free_slot, inst, true)). On cancel the canceller's own
+// items come back the same way (FinishTrade(this)); the OTHER side's items
+// come back only after that client echoes OP_CancelTrade (Handle_OP_
+// CancelTrade forwards the packet and FinishTrade()s only the sender).
+// ---------------------------------------------------------------------------
+
+void ActivateTradeWith(EverQuest& eq, uint32_t partnerSpawnId, const std::string& partnerName) {
+    EQT::TradeRequest_Struct req{};
+    req.target_spawn_id = 0;
+    req.from_spawn_id = partnerSpawnId;
+    eq.GetTradeManager()->handleTradeRequest(req, partnerName);
+    eq.GetTradeManager()->acceptTradeRequest();
+    ASSERT_EQ(eq.GetTradeManager()->getState(), TradeState::Active);
+}
+
+TEST_F(EqCommandsEquipTest, CursorMove_BagIntoTradeSlot_ContentsLandInTradeRange) {
+    auto* inv = eq.GetInventoryManager();
+    ActivateTradeWith(eq, 555, "Buddy");
+    SeedBag(eq, 22, 7210, "Large Bag", 6);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Rusty Short Sword", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Rusty Long Sword", 0);
+    (void)bridge.drainIntents();
+
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_NE(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    ASSERT_TRUE(inv->placeItem(TRADE_BEGIN));
+    EXPECT_FALSE(inv->hasCursorItem());
+    ASSERT_NE(inv->getItem(TRADE_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(TRADE_BEGIN)->itemId, 7210u);
+    // Wire numbering: 3031/3032 for trade slot 3000.
+    ASSERT_NE(inv->getItem(3031), nullptr);
+    ASSERT_NE(inv->getItem(3032), nullptr);
+    EXPECT_EQ(inv->getItem(3031)->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(3032)->itemId, 7302u);
+    EXPECT_EQ(calcContainerSlotId(TRADE_BEGIN, 0), 3031);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+
+    // Exactly the two MoveItems the server needs (22->30, 30->3000), no
+    // packet for the contents (they travel inside the bag server-side).
+    auto intents = bridge.drainIntents();
+    int moves = 0;
+    for (const auto& intent : intents) {
+        if (std::holds_alternative<eqt::events::MoveItemIntent>(intent)) moves++;
+    }
+    EXPECT_EQ(moves, 2);
+}
+
+TEST_F(EqCommandsEquipTest, DirectMove_GeneralBagStraightIntoTradeSlot_RefusedBeforeSend) {
+    // eqemu Client::SwapItem: a MoveItem into a trade slot whose source is
+    // not the cursor is answered with Kick("Trade with non-cursor item").
+    // Pre-flight refuse it locally, nothing mutated, nothing sent.
+    auto* inv = eq.GetInventoryManager();
+    ActivateTradeWith(eq, 555, "Buddy");
+    SeedBag(eq, 22, 7210, "Large Bag", 6);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Rusty Short Sword", 0);
+    (void)bridge.drainEvents();
+    (void)bridge.drainIntents();
+
+    eq.RequestEquip("22 3000");
+
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_NE(msgs[0].find("cursor"), std::string::npos) << msgs[0];
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    ASSERT_NE(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(TRADE_BEGIN), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(3031), nullptr);
+}
+
+TEST_F(EqCommandsEquipTest, TradeFinish_OwnTradeSlotsAndContentsClearedCleanly) {
+    // Giver's side: the server deletes the trade slots without any client
+    // update and sends OP_FinishTrade. The client must drop the bag AND its
+    // 3031+ range itself, leaving nothing behind anywhere.
+    auto* inv = eq.GetInventoryManager();
+    ActivateTradeWith(eq, 555, "Buddy");
+    SeedBag(eq, 22, 7210, "Large Bag", 6);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Rusty Short Sword", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Rusty Long Sword", 0);
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_TRUE(inv->placeItem(TRADE_BEGIN));
+    ASSERT_NE(inv->getItem(3031), nullptr);
+    (void)bridge.drainEvents();
+
+    eq.GetTradeManager()->handleFinishTrade();
+
+    // The completion summary sees what we offered (TradeManager::hasOwnItem
+    // reads the inventory trade slot; addItemToTrade() has no callers).
+    bool gaveBag = false;
+    for (const auto& msg : DrainSystemMessages(bridge)) {
+        if (msg == "You give Large Bag to Buddy.") gaveBag = true;
+    }
+    EXPECT_TRUE(gaveBag);
+    EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
+    EXPECT_EQ(inv->getItem(TRADE_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(3031), nullptr);
+    EXPECT_EQ(inv->getItem(3032), nullptr);
+    EXPECT_EQ(inv->getItem(22), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    EXPECT_EQ(inv->getItem(calcCursorBagSlotId(0)), nullptr);
+    EXPECT_FALSE(inv->hasCursorItem());
+}
+
+TEST_F(EqCommandsEquipTest, TradeCancelledByPartner_EchoesCancel_ClearsRange_ReturnedBagKeepsContents) {
+    auto* inv = eq.GetInventoryManager();
+    int cancelsSent = 0;
+    eq.GetTradeManager()->setSendCancelTrade([&](const EQT::CancelTrade_Struct&) { cancelsSent++; });
+    ActivateTradeWith(eq, 555, "Buddy");
+    SeedBag(eq, 22, 7210, "Large Bag", 6);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Rusty Short Sword", 0);
+    SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Rusty Long Sword", 0);
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_TRUE(inv->placeItem(TRADE_BEGIN));
+    ASSERT_NE(inv->getItem(3031), nullptr);
+    ASSERT_EQ(cancelsSent, 0);
+
+    // Partner cancelled: the server only returns the CANCELLER's items on its
+    // own; ours come back after we echo OP_CancelTrade (eqemu
+    // Handle_OP_CancelTrade -> FinishTrade(this) for the sender only).
+    EQT::CancelTrade_Struct cancel{};
+    cancel.spawn_id = 555;
+    cancel.action = 7;
+    eq.GetTradeManager()->handleCancelTrade(cancel);
+
+    EXPECT_EQ(cancelsSent, 1);
+    EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
+    EXPECT_EQ(inv->getItem(TRADE_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(3031), nullptr);
+    EXPECT_EQ(inv->getItem(3032), nullptr);
+
+    // A second OP_CancelTrade (the server forwards our echo back) is ignored:
+    // no second echo, no loop.
+    eq.GetTradeManager()->handleCancelTrade(cancel);
+    EXPECT_EQ(cancelsSent, 1);
+
+    // The returned bag arrives as ItemPacketTrade at a free general slot
+    // (server 23, already translated to Titanium 22 on the wire by
+    // titanium.cpp), serialised WITH its contents; T255's ItemPacket
+    // sub-item parsing lands them in that slot's range.
+    auto pkt = ItemPacketPacket(
+        BuildBagString(22, 7210, "Large Bag", 6, {{0, BuildPlainItemString(0, 7301, "Rusty Short Sword")},
+                                                  {1, BuildPlainItemString(1, 7302, "Rusty Long Sword")}}));
+    EXPECT_EQ(inv->processItemPacket(pkt), 22);
+    ASSERT_NE(inv->getItem(22), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
+    ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
+    EXPECT_EQ(inv->getItem(calcBagSlotId(22, 1))->itemId, 7302u);
+}
+
+TEST_F(EqCommandsEquipTest, LocalCancel_ClearsOwnTradeRange) {
+    auto* inv = eq.GetInventoryManager();
+    ActivateTradeWith(eq, 555, "Buddy");
+    SeedBag(eq, 22, 7210, "Large Bag", 6);
+    SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Rusty Short Sword", 0);
+    ASSERT_TRUE(inv->pickupItem(22));
+    ASSERT_TRUE(inv->placeItem(TRADE_BEGIN));
+    ASSERT_NE(inv->getItem(3031), nullptr);
+
+    eq.GetTradeManager()->cancelTrade();
+
+    EXPECT_EQ(inv->getItem(TRADE_BEGIN), nullptr);
+    EXPECT_EQ(inv->getItem(3031), nullptr);
 }
 
 }  // namespace

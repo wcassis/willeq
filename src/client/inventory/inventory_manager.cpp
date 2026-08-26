@@ -723,11 +723,26 @@ void InventoryManager::clearAll() {
 }
 
 void InventoryManager::clearTradeSlots() {
-    // Clear items in trade slots (3000-3007)
+    // Clear items in trade slots (3000-3007) AND their bag-content ranges
+    // (3031-3110). T259: the server never sends a client update for the
+    // giver's trade slots -- Client::FinishTrade / ResetTrade
+    // (zone/trading.cpp) DeleteItemInInventory(trade_slot) them with
+    // client_update=false -- so on OP_FinishTrade / OP_CancelTrade the
+    // client must drop them itself, contents included. A bag returned by a
+    // cancel arrives separately as an ItemPacketTrade at a general slot,
+    // never here.
+    size_t cleared = 0;
     for (int16_t slot = TRADE_BEGIN; slot <= TRADE_END; slot++) {
-        items_.erase(slot);
+        cleared += items_.erase(slot);
     }
-    LOG_DEBUG(MOD_UI, "InventoryManager Cleared trade slots {}-{}", TRADE_BEGIN, TRADE_END);
+    for (int16_t slot = TRADE_BAGS_BEGIN; slot <= TRADE_BAGS_END; slot++) {
+        cleared += items_.erase(slot);
+    }
+    if (cleared > 0) {
+        ++changeCounter_;
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager Cleared trade slots {}-{} and {}-{} ({} items)",
+              TRADE_BEGIN, TRADE_END, TRADE_BAGS_BEGIN, TRADE_BAGS_END, cleared);
 }
 
 void InventoryManager::clearBankSlots() {
@@ -1382,6 +1397,17 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
         outcome.message = legalityError;
         return outcome;
     }
+    // T259 -- eqemu Client::SwapItem (zone/inventory.cpp, "Step 4: Check
+    // for entity trade") accepts a MoveItem into a trade slot ONLY from the
+    // cursor and answers anything else with Kick("Trade with non-cursor
+    // item"). Refuse it here, before any mutation or packet, rather than
+    // let /equip 22 3000 disconnect the player.
+    if (isTradeSlot(toSlot) && !isCursorSlot(fromSlot)) {
+        outcome.message = "Items can only be offered in a trade from the cursor: pick up " +
+                          describeSlot(fromSlot) + " first (/equip " + std::to_string(fromSlot) +
+                          " 30, then /equip 30 " + std::to_string(toSlot) + ").";
+        return outcome;
+    }
 
     // T236 -- the OTHER half of a direct slot<->slot swap: when toSlot is
     // occupied, the displaced item lands in fromSlot, and the server
@@ -1634,8 +1660,14 @@ bool InventoryManager::isBagParentSlot(int16_t slotId) {
     // contents inside the bag's ItemInstance for every one of these, and
     // CalcSlotId (common/patches/titanium.cpp) numbers them all
     // parent-relative in steps of 10 on the wire.
+    // T259: trade-window slots (3000-3007 -> 3031-3110) too. eqemu
+    // Trade::AddEntity (zone/trading.cpp) PutItemInInventory()s the whole
+    // ItemInstance into the trade slot, contents and all, numbered
+    // TRADE_BAGS_BEGIN + (trade-3000)*10 + idx on the Titanium wire
+    // (common/patches/titanium_limits.h:229, titanium.cpp:3630/3717).
     return isGeneralSlot(slotId) || slotId == CURSOR_SLOT ||
-           isBankSlot(slotId) || isSharedBankSlot(slotId);
+           isBankSlot(slotId) || isSharedBankSlot(slotId) ||
+           isTradeSlot(slotId);
 }
 
 void InventoryManager::promoteCursorFrontContents() {

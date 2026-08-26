@@ -132,7 +132,7 @@ public:
     void setItem(int16_t slotId, std::unique_ptr<ItemInstance> item);
     void removeItem(int16_t slotId);
     void clearAll();
-    void clearTradeSlots();  // Clear items in trade slots (3000-3007)
+    void clearTradeSlots();  // Clear items in trade slots (3000-3007) and their bag ranges (3031-3110); T259
     void clearBankSlots();   // Clear items in bank slots (2000-2190, 2500-2550)
     void clearWorldContainerSlots();  // Clear items in world container slots (4000-4009)
 
@@ -340,6 +340,7 @@ private:
     // out of a parent slot's BAG_SLOT_COUNT-slot range (keeping its index),
     // and put such a set back under another parent.
     // T255: a parent may also be a bank / shared-bank slot (isBagParentSlot).
+    // T259: or a trade-window slot (3000-3007 -> 3031-3110).
     using TakenBagContents = std::vector<std::pair<int16_t, std::unique_ptr<ItemInstance>>>;
     static bool isBagParentSlot(int16_t slotId);
     TakenBagContents takeBagContents(int16_t parentSlot);

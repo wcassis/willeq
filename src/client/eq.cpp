@@ -169,6 +169,13 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// comment named but didn't itself touch.
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
 	SetupInventoryCallbacks();
+	// T259: TradeManager::setInventoryManager() had NO caller, so
+	// TradeManager::getOwnItem() (the "You give X to Y" lines) always saw a
+	// null manager and the trade-end clearing of the trade slots could not
+	// reach the inventory model at all.
+	if (m_trade_manager) {
+		m_trade_manager->setInventoryManager(m_inventory_manager.get());
+	}
 	LOG_DEBUG(MOD_INVENTORY, "Inventory manager initialized");
 
 	// T29: command registry creation was folded under EQT_HAS_GRAPHICS

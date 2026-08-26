@@ -90,7 +90,16 @@ bool TradeManager::hasOwnItem(int slot) const
     if (slot < 0 || slot >= TRADE_SLOT_COUNT) {
         return false;
     }
-    return m_own_item_slots[slot] != eqt::inventory::SLOT_INVALID;
+    if (m_own_item_slots[slot] != eqt::inventory::SLOT_INVALID) {
+        return true;
+    }
+    // T259: nothing calls addItemToTrade() (items reach the trade window
+    // through InventoryManager::placeItem(3000+slot) and one MoveItem), so
+    // m_own_item_slots was always empty and the completion summary's "You
+    // give X to Y" lines never printed. The inventory model's trade slot IS
+    // the truth for what we offered.
+    return m_inventory_manager &&
+           m_inventory_manager->getItem(static_cast<int16_t>(eqt::inventory::TRADE_BEGIN + slot)) != nullptr;
 }
 
 const eqt::inventory::ItemInstance* TradeManager::getOwnItem(int slot) const
@@ -359,6 +368,18 @@ void TradeManager::handleCancelTrade(const EQT::CancelTrade_Struct& cancel)
 
     LOG_INFO(MOD_MAIN, "Trade cancelled");
 
+    // T259: eqemu Handle_OP_CancelTrade (zone/client_packet.cpp) forwards
+    // the packet to us and FinishTrade(this)s only the SENDER -- the
+    // canceller's items go back to the canceller. OUR items stay in the
+    // server's trade slots until we send OP_CancelTrade ourselves (the
+    // official client echoes it; nothing else on the server ever calls
+    // ResetTrade for a live client). The server forwards the echo back to
+    // the partner, whose trade is already reset, and we ignore that second
+    // packet above (state None) -- no loop.
+    if (m_state == TradeState::Active) {
+        sendCancelTrade();
+    }
+
     if (m_on_cancelled) {
         m_on_cancelled(TradeEndReason::CancelledByPartner, std::string());
     }
@@ -421,6 +442,15 @@ void TradeManager::resetTradeState()
     m_own_item_slots.fill(eqt::inventory::SLOT_INVALID);
     for (auto& item : m_partner_items) {
         item.reset();
+    }
+    // T259: whatever we offered lives in the inventory model's trade slots
+    // (3000-3007, bag contents 3031-3110). The server never sends a client
+    // update for those slots when a trade ends (zone/trading.cpp
+    // DeleteItemInInventory(trade_slot) with client_update=false); given
+    // items are gone, returned items re-arrive as ItemPacketTrade at a
+    // general slot. Either way the trade range is stale now.
+    if (m_inventory_manager) {
+        m_inventory_manager->clearTradeSlots();
     }
 
     m_own_money.clear();

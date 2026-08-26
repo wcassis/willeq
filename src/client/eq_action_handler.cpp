@@ -1011,6 +1011,20 @@ void EqActionHandler::acceptTrade() {
         m_eq.AddChatSystemMessage("Trade not available");
         return;
     }
+    // T259: during an ACTIVE trade, /accept is the trade window's Accept
+    // button (TradeManager::clickAccept -> OP_TradeAcceptClick). That path
+    // was reachable only via TradeAcceptIntent, which nothing produced, so
+    // no trade could ever be completed from a headless/scripted client.
+    if (m_eq.GetGameState().trade().active()) {
+        if (trade->isOwnAccepted()) {
+            m_eq.AddChatSystemMessage("You have already accepted this trade");
+            return;
+        }
+        trade->clickAccept();
+        m_eq.AddChatSystemMessage(fmt::format("You accept the trade with {}",
+            EQT::toDisplayName(m_eq.GetGameState().trade().partnerName())));
+        return;
+    }
     if (!m_eq.GetGameState().trade().hasPendingRequest()) {
         m_eq.AddChatSystemMessage("No pending trade request");
         return;
