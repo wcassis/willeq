@@ -160,6 +160,17 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 	spellAction.level2 = action->spell_level;
 	spellAction.effect_flag = action->effect_flag;
 
+	// T247: an NPC casting a detrimental spell at us is on our hate list.
+	// Beneficial NPC casts (and our own / other players' actions) are not.
+	if (action->target == m_my_spawn_id && action->source != m_my_spawn_id &&
+	    m_combat_manager && m_spell_manager) {
+		auto src = m_entities.find(action->source);
+		const EQ::SpellData* spell = m_spell_manager->getSpell(action->spell);
+		if (src != m_entities.end() && src->second.npc_type == 1 && spell && spell->isDetrimental()) {
+			m_combat_manager->NoteAttackedBy(action->source);
+		}
+	}
+
 	// Pass to spell manager for spell effect handling
 	if (m_spell_manager) {
 		m_spell_manager->handleAction(spellAction);
@@ -231,6 +242,16 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	uint8_t damage_type = dmg->type;
 	uint16_t spell_id = dmg->spellid;
 	int32_t damage_amount = dmg->damage;
+
+	// T247: every attack an NPC makes on us arrives here -- hits, misses
+	// (damage 0) and DMG_INVULNERABLE (-5) alike -- and is the client's only
+	// evidence that it is on that NPC's hate list. Mark it for CheckForAggro.
+	if (target_id == m_my_spawn_id && source_id != m_my_spawn_id && m_combat_manager) {
+		auto src = m_entities.find(source_id);
+		if (src != m_entities.end() && src->second.npc_type == 1) {
+			m_combat_manager->NoteAttackedBy(source_id);
+		}
+	}
 
 	// Cancel trade if player takes damage (entering combat)
 	if (target_id == m_my_spawn_id && damage_amount > 0 &&
@@ -527,4 +548,37 @@ void EverQuest::ZoneProcessLootItem(const EQ::Net::Packet &p)
 		// The combat manager will handle the actual looting
 		m_combat_manager->CheckAutoLoot();
 	}
+}
+
+// T247. OP_Stun: eqemu Stun_Struct{uint32 duration} in ms, sent only to the
+// stunned client (Client::Stun / Client::UnStun with 0). A shorter stun does
+// not cut a longer one short (Mob::Stun's own rule); 0 clears. Only casting
+// consults this (SpellManager::checkPlayerState); the server still rejects
+// anything else a stunned client tries.
+void EverQuest::ZoneProcessStun(uint32_t duration_ms)
+{
+	auto now = std::chrono::steady_clock::now();
+	if (duration_ms == 0) {
+		if (IsStunned()) {
+			AddChatSystemMessage(GetStringMessage(12480));  // You are no longer stunned.
+		}
+		m_stunned_until = {};
+		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
+		return;
+	}
+	auto until = now + std::chrono::milliseconds(duration_ms);
+	bool was_stunned = IsStunned();
+	if (until > m_stunned_until) {
+		m_stunned_until = until;
+	}
+	if (!was_stunned) {
+		AddChatSystemMessage(GetStringMessage(12479));  // You are stunned!
+	}
+	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
+}
+
+bool EverQuest::IsStunned() const
+{
+	return m_stunned_until != std::chrono::steady_clock::time_point{} &&
+	       std::chrono::steady_clock::now() < m_stunned_until;
 }

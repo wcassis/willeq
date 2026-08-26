@@ -1453,19 +1453,13 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_Stun:
-		// Stun effect notification
+		// T247. eqemu Stun_Struct is 4 bytes: uint32 duration in MILLISECONDS
+		// (Client::Stun -> stunned_timer.Start(duration)); Client::UnStun sends
+		// duration 0. It is only ever sent to the stunned client itself, so
+		// there is no target field -- the pre-T247 code read a target/duration
+		// pair out of the low/high halves of the duration and stored nothing.
 		if (p.Length() >= 6) {
-			uint16_t target_id = p.GetUInt16(2);
-			uint16_t duration = p.GetUInt16(4);  // Duration in 10ths of a second
-			float duration_sec = duration / 10.0f;
-
-			if (target_id == m_my_spawn_id) {
-				if (s_debug_level >= 1) {
-					std::cout << fmt::format("[WARNING] You have been stunned for {:.1f} seconds!", duration_sec) << std::endl;
-				}
-			} else if (s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Entity {} stunned for {:.1f} seconds", target_id, duration_sec);
-			}
+			ZoneProcessStun(p.GetUInt32(2));
 		}
 		break;
 

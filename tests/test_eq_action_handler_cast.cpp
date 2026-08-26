@@ -30,11 +30,11 @@
 #define private public
 #define protected public
 #include "client/eq.h"
+#include "client/combat.h"   // T247: CombatManager pacing clocks + aggro memory
 #undef private
 #undef protected
 
 #include "client/bridge/game_state_bridge.h"
-#include "client/combat.h"
 #include "client/eq_action_handler.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/cast_refusal.h"
@@ -865,4 +865,223 @@ TEST(EqActionHandlerCast, CastSpell_NoMapLoaded_LineOfSightPermissive) {
 
     EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
     EXPECT_EQ(h.sentCasts().size(), 1u);
+}
+
+// =====================================================================
+// T247: the instantaneous OP_Stun packet blocks casting for its duration,
+// and an NPC that lands an attack on us is aggro to CombatManager, so
+// CheckForAggro engages it. Both RED on pre-T247 code: eq.cpp's OP_Stun
+// handler stored nothing (and misparsed eqemu's 4-byte Stun_Struct as a
+// target/duration pair), and CombatTarget::is_aggro was hard-coded false.
+// =====================================================================
+
+namespace {
+
+constexpr uint16_t kBeetleId = 403;
+
+// eqemu Stun_Struct: 4 bytes, uint32 duration in MILLISECONDS (Client::Stun
+// -> stunned_timer.Start(duration)); 0 = Client::UnStun. Wire = 2-byte
+// opcode + 4.
+std::vector<uint8_t> stunPayload(uint32_t duration_ms) {
+    return BuildPayload(6, [&](EQ::Net::DynamicPacket& p) { p.PutUInt32(2, duration_ms); });
+}
+
+// eqemu CombatDamage_Struct (23 bytes after the opcode), the one
+// ZoneProcessDamage parses. damage may be 0 (miss) or DMG_INVULNERABLE (-5).
+std::vector<uint8_t> damagePayload(uint16_t target, uint16_t source, int32_t damage) {
+    return BuildPayload(25, [&](EQ::Net::DynamicPacket& p) {
+        p.PutUInt16(2, target);
+        p.PutUInt16(4, source);
+        p.PutUInt8(6, 4);            // type: hand-to-hand
+        p.PutUInt16(7, 0xFFFF);      // spellid: none
+        p.PutUInt32(9, static_cast<uint32_t>(damage));
+    });
+}
+
+// An NPC (npc_type 1, class 0 -- IsHostile() keys on class_id == 0) 2 units
+// from the player.
+void spawnBeetle(EverQuest& eq) {
+    ReplayZone(eq, HC_OP_NewSpawn,
+               NewSpawnPayloadAt(kBeetleId, "a_fire_beetle000", 0, 12, 0, /*level=*/1,
+                                 /*npc_type=*/1, /*char_class=*/0));
+    ASSERT_NE(eq.GetEntities().find(kBeetleId), eq.GetEntities().end());
+}
+
+// Open both of CombatManager::Update()'s pacing gates so one call runs a
+// scan + the state machine (T245 idiom).
+void openCombatGates(CombatManager& cm) {
+    cm.m_last_update = std::chrono::steady_clock::time_point{};
+    cm.m_last_target_scan = std::chrono::steady_clock::time_point{};
+}
+
+} // namespace
+
+TEST(EqActionHandlerCast, CastSpell_AfterOpStun_SaysStunnedUntilItExpires) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+
+    ReplayZone(h.eq, HC_OP_Stun, stunPayload(5000));
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty()) << "nothing on the wire while stunned";
+    EXPECT_EQ(h.lastSystemMessage(), "You can't cast spells while stunned!");
+
+    // The stun runs out (backdate rather than sleep 5 s).
+    h.eq.m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u) << "cast goes out once the stun has expired";
+}
+
+TEST(EqActionHandlerCast, CastSpell_OpStunZero_ClearsTheStun) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = h.findSingleTargetSpell();
+    if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
+
+    ReplayZone(h.eq, HC_OP_Stun, stunPayload(60000));
+    ASSERT_TRUE(h.eq.IsStunned());
+    ReplayZone(h.eq, HC_OP_Stun, stunPayload(0));   // Client::UnStun()
+    EXPECT_FALSE(h.eq.IsStunned());
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+}
+
+// No DB: the packet-level truth. A short packet is ignored; 4-byte
+// Stun_Struct duration is milliseconds; a 0 clears; expiry is by clock.
+TEST(EqActionHandlerCast, OpStun_TracksDurationInMilliseconds) {
+    WireHarness h;
+    EXPECT_FALSE(h.eq.IsStunned());
+
+    ReplayZone(h.eq, HC_OP_Stun, std::vector<uint8_t>{0x88, 0x13});  // too short
+    EXPECT_FALSE(h.eq.IsStunned());
+
+    ReplayZone(h.eq, HC_OP_Stun, stunPayload(5000));
+    EXPECT_TRUE(h.eq.IsStunned());
+    auto remaining = h.eq.m_stunned_until - std::chrono::steady_clock::now();
+    EXPECT_GT(remaining, std::chrono::milliseconds(4000));
+    EXPECT_LE(remaining, std::chrono::milliseconds(5000));
+
+    // A shorter stun must not cut a longer one short (eqemu Mob::Stun rule).
+    ReplayZone(h.eq, HC_OP_Stun, stunPayload(1000));
+    EXPECT_GT(h.eq.m_stunned_until - std::chrono::steady_clock::now(), std::chrono::milliseconds(3900));
+
+    h.eq.m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    EXPECT_FALSE(h.eq.IsStunned());
+}
+
+// The defect: an NPC hits us, /combat on, and nothing engages because
+// is_aggro was never true. After T247 CheckForAggro selects the attacker
+// and turns auto-attack on (OP_AutoAttack on the wire).
+TEST(EqActionHandlerCast, Aggro_DamageFromNpcOnSelf_CheckForAggroEngagesIt) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    CombatManager* cm = h.eq.GetCombatManager();
+    ASSERT_NE(cm, nullptr);
+    cm->Enable();                       // /combat on
+    ASSERT_FALSE(cm->HasTarget());
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, 3));
+    h.clearSent();
+    openCombatGates(*cm);
+
+    cm->Update();
+
+    EXPECT_EQ(cm->GetTargetId(), kBeetleId) << "the attacker becomes the target";
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_ENGAGED);
+    bool auto_attack_sent = false;
+    for (auto& p : h.sentPackets()) {
+        if (p.opcode == HC_OP_AutoAttack && !p.body.empty() && p.body[0] == 1) auto_attack_sent = true;
+    }
+    EXPECT_TRUE(auto_attack_sent) << "EnableAutoAttack put OP_AutoAttack(on) on the wire";
+}
+
+// Control: with no attack on us the same scan engages nothing (a nearby NPC
+// is NOT aggro just for being hostile-classed).
+TEST(EqActionHandlerCast, Aggro_NoAttack_CheckForAggroEngagesNothing) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    CombatManager* cm = h.eq.GetCombatManager();
+    cm->Enable();
+    openCombatGates(*cm);
+
+    cm->Update();
+
+    EXPECT_FALSE(cm->HasTarget());
+    EXPECT_EQ(cm->GetCombatState(), COMBAT_STATE_IDLE);
+}
+
+// A miss (damage 0) and an invulnerable hit (DMG_INVULNERABLE, -5) are
+// still attacks; our OWN swings at the beetle are not.
+TEST(EqActionHandlerCast, Aggro_MissAndInvulnerableHitCount_OwnSwingsDoNot) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    CombatManager* cm = h.eq.GetCombatManager();
+    cm->Enable();
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kBeetleId, kSelfId, 3));   // we hit it
+    openCombatGates(*cm);
+    cm->Update();
+    EXPECT_FALSE(cm->HasTarget()) << "hitting an NPC does not mark it aggro to us";
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, 0));   // it misses us
+    openCombatGates(*cm);
+    cm->Update();
+    EXPECT_EQ(cm->GetTargetId(), kBeetleId);
+
+    cm->DisableAutoAttack();   // back to idle (Disable() keeps the target)
+    cm->ClearTarget();
+    ASSERT_FALSE(cm->HasTarget());
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, -5));  // #invul on
+    openCombatGates(*cm);
+    cm->Update();
+    EXPECT_EQ(cm->GetTargetId(), kBeetleId);
+}
+
+// Aggro memory expires: an attack older than kAggroMemoryMs no longer
+// engages (the NPC wandered off / was killed by someone else).
+TEST(EqActionHandlerCast, Aggro_MemoryExpires) {
+    WireHarness h;
+    h.spawnSelfAndGuard();
+    spawnBeetle(h.eq);
+    CombatManager* cm = h.eq.GetCombatManager();
+    cm->Enable();
+
+    ReplayZone(h.eq, HC_OP_Damage, damagePayload(kSelfId, kBeetleId, 2));
+    ASSERT_TRUE(cm->IsRecentAttacker(kBeetleId));
+    cm->m_recent_attackers[kBeetleId] =
+        std::chrono::steady_clock::now() - std::chrono::milliseconds(CombatManager::kAggroMemoryMs + 1);
+    EXPECT_FALSE(cm->IsRecentAttacker(kBeetleId));
+    openCombatGates(*cm);
+
+    cm->Update();
+
+    EXPECT_FALSE(cm->HasTarget());
 }

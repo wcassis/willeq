@@ -328,6 +328,8 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 		case 172: return "You lost your bait!";
 		case 173: return "Your spell fizzles!";
 		case 175: return "You can't cast spells while stunned!";
+		case 12479: return "You are stunned!";
+		case 12480: return "You are no longer stunned.";
 		case 179: return "You cannot use this item unless it is equipped.";
 		case 180: return "You miss a note, bringing your song to a close!";
 		case 181: return "Your race, class, or deity cannot use this item.";

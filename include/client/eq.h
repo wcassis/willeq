@@ -961,6 +961,9 @@ public:
 	// the shared_ptr so a zone change cannot free it mid-query (P35).
 	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
 	float GetSize() const { return m_size; }  // player model size (6 until the spawn says otherwise)
+	// T247: true while an instantaneous OP_Stun (eqemu Stun_Struct, duration
+	// in ms; 0 = UnStun) is in force. Buff-borne stuns are BuffManager's.
+	bool IsStunned() const;
 	float GetHeading() const;
 	bool IsMoving() const;
 	bool IsFullyZonedIn() const { return m_zone_connected && m_client_ready_sent && m_update_running; }
@@ -1732,6 +1735,7 @@ private:
 	void ZoneProcessConsider(const EQ::Net::Packet &p);
 	void ZoneProcessAction(const EQ::Net::Packet &p);
 	void ZoneProcessDamage(const EQ::Net::Packet &p);
+	void ZoneProcessStun(uint32_t duration_ms);  // T247
 	void ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p);
 	void ZoneProcessLootItem(const EQ::Net::Packet &p);
 
@@ -1786,6 +1790,8 @@ private:
 	// Entity tracking
 	std::map<uint16_t, Entity> m_entities;
 	uint16_t m_my_spawn_id = 0;
+	// T247: expiry of the current OP_Stun; epoch (the default) = not stunned.
+	std::chrono::steady_clock::time_point m_stunned_until{};
 	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
 
 	// Target tracking (server-authoritative — renderer is a consumer, not the source of truth)

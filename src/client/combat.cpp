@@ -777,7 +777,7 @@ std::vector<CombatTarget> CombatManager::GetNearbyHostiles(float range) {
 					target.hp_percent = entity.hp_percent;
 					target.con_color = CON_WHITE; // Default until we consider
 					target.priority = TARGET_PRIORITY_MEDIUM;
-					target.is_aggro = false; // TODO: Determine from faction
+					target.is_aggro = IsRecentAttacker(id); // T247: it has hit us lately
 					target.last_considered = std::chrono::steady_clock::now();
 					target.has_consider_data = false;
 
@@ -1064,6 +1064,7 @@ void CombatManager::ScanForTargets() {
 				// Update distance and other non-consider data
 				existing.distance = hostile.distance;
 				existing.hp_percent = hostile.hp_percent;
+				existing.is_aggro = hostile.is_aggro;   // T247
 				break;
 			}
 		}
@@ -1270,15 +1271,46 @@ void CombatManager::ProcessCombatRound() {
 }
 
 void CombatManager::CheckForAggro() {
-	// Check if any hostile mobs are aggroing us
+	// Check if any hostile mobs are aggroing us. is_aggro comes from
+	// NoteAttackedBy (T247); before that it was a hard-coded false and this
+	// never fired.
 	for (const auto& target : m_potential_targets) {
 		if (target.is_aggro && target.distance <= m_aggro_radius) {
 			// We're being attacked!
-			SetTarget(target.entity_id);
-			EnableAutoAttack();
+			LOG_INFO(MOD_COMBAT, "CheckForAggro: {} (ID:{}) attacked us at {:.1f} -- engaging",
+				target.name, target.entity_id, target.distance);
+			if (SetTarget(target.entity_id)) {
+				EnableAutoAttack();
+			}
 			break;
 		}
 	}
+}
+
+void CombatManager::NoteAttackedBy(uint16_t attacker_id) {
+	if (attacker_id == 0) {
+		return;
+	}
+	auto now = std::chrono::steady_clock::now();
+	m_recent_attackers[attacker_id] = now;
+	// Forget entries past the memory window so the map cannot grow with a
+	// long session's worth of dead ids.
+	for (auto it = m_recent_attackers.begin(); it != m_recent_attackers.end();) {
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second).count() > kAggroMemoryMs) {
+			it = m_recent_attackers.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
+bool CombatManager::IsRecentAttacker(uint16_t entity_id) const {
+	auto it = m_recent_attackers.find(entity_id);
+	if (it == m_recent_attackers.end()) {
+		return false;
+	}
+	auto age = std::chrono::steady_clock::now() - it->second;
+	return std::chrono::duration_cast<std::chrono::milliseconds>(age).count() <= kAggroMemoryMs;
 }
 
 

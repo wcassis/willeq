@@ -164,6 +164,17 @@ public:
 	void SetCombatState(CombatState state);
 	CombatState GetCombatState() const { return m_combat_state; }
 
+	// T247: aggro is INFERRED. eqemu never sends its hate list to a client;
+	// the official client (and this one) knows an NPC is on it because that
+	// NPC's attacks arrive as OP_Damage / OP_Action with target == our spawn
+	// id. EverQuest::ZoneProcessDamage/Action call NoteAttackedBy for each
+	// such packet from an NPC; the mark lives kAggroMemoryMs from the LAST
+	// attack, and GetNearbyHostiles() sets CombatTarget::is_aggro from it,
+	// which is what CheckForAggro() (idle + /combat on) engages on.
+	void NoteAttackedBy(uint16_t attacker_id);
+	bool IsRecentAttacker(uint16_t entity_id) const;
+	static constexpr int kAggroMemoryMs = 10000;
+
 	// Targeting
 	bool SetTarget(uint16_t entity_id);
 	void ClearTarget();
@@ -361,6 +372,9 @@ private:
 	std::vector<uint16_t> m_pending_considers;
 	std::chrono::steady_clock::time_point m_consider_start_time;
 
+	// T247: entity id -> steady-clock time of its last attack on us.
+	std::map<uint16_t, std::chrono::steady_clock::time_point> m_recent_attackers;
+
 	// Configuration
 	float m_assist_range;
 	float m_aggro_radius;
@@ -385,6 +399,7 @@ private:
 	void SelectBestFleePath();
 	bool CanCastSpell(const SpellInfo& spell);
 	void ProcessCombatRound();
+	// T247: engages a recent attacker (see NoteAttackedBy) when idle.
 	void CheckForAggro();
 	void SendAttackPacket(uint16_t target_id);
 	float CalculateCombatRange(float my_size, float target_size, uint16_t target_race) const;

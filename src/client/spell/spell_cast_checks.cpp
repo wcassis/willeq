@@ -106,17 +106,22 @@ bool SpellManager::checkReagents(const SpellData& spell) const
     return true;
 }
 
-// T246. The only casting-blocker state this client tracks is the player's
-// own buff list (BuffManager, fed by the PlayerProfile and OP_Buff), so
-// the checks are: an active player buff whose spell carries SE_Stun /
-// SE_Mez (-> Stunned, string 175), SE_Silence (-> Silenced, 207) or
-// SE_Fear (-> Feared, no official string). NOT covered, by design: the
-// instantaneous OP_Stun packet (eq.cpp logs it and stores nothing -- a
-// duration-less stun never appears in the buff list) and any server-side
-// state the client is never told about; those still fall to the server's
-// own refusal.
+// T246/T247. Two sources of casting-blocker state: the instantaneous
+// OP_Stun packet (T247: EverQuest::IsStunned(), a duration the server
+// sends in ms, cleared by OP_Stun{0} or expiry -- checked first, it is the
+// common melee-bash stun) and the player's own buff list (BuffManager, fed
+// by the PlayerProfile and OP_Buff): an active player buff whose spell
+// carries SE_Stun / SE_Mez (-> Stunned, string 175), SE_Silence
+// (-> Silenced, 207) or SE_Fear (-> Feared, no official string). Any
+// server-side state the client is never told about still falls to the
+// server's own refusal.
 CastResult SpellManager::checkPlayerState() const
 {
+    if (m_eq->IsStunned()) {
+        LOG_DEBUG(MOD_SPELL, "checkPlayerState: stunned (OP_Stun in force)");
+        return CastResult::Stunned;
+    }
+
     const BuffManager* buffs = m_eq->GetBuffManager();
     if (!buffs) {
         return CastResult::Success;
