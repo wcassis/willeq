@@ -1033,3 +1033,137 @@ TEST_F(ConstrainedRendererConfigTest, CompressedSize_NPOT) {
     size_t size = EQT::Graphics::DDSDecoder::compressedSize(0x83F0, 5, 5);
     EXPECT_EQ(size, 32u);
 }
+
+// =============================================================================
+// T293 — per-subsystem memory budgets (Will's ruling, 2026-08-26)
+//
+// T69 wired the CI gate to the per-subsystem memory accounting but could only
+// ENFORCE the two categories that already had a configured ceiling; it
+// explicitly refused to invent the rest. Will ruled: derive them from the
+// assets on disk, a 1280x720 maximum resolution, and the Orange Pi One's real
+// envelope. The derivation is in docs/decisions.md and in
+// constrained_renderer_config.h's block comment on these fields; these tests
+// pin the resolved values so a silent edit to either the C++ preset or the
+// shipped JSON is a test failure rather than an unremarked budget change.
+// =============================================================================
+
+TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudgets) {
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+
+    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
+    EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
+    EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(24) * 1024 * 1024);
+    EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+
+    // VBO/EBO is derived BY IDENTITY, not by scaling: the GPU hardware
+    // buffers hold the same vertex+index data as the CPU-side zone geometry
+    // and placeable objects (measured on gfaydark: 10.22 MiB of VBO/EBO
+    // against 4.76 + 5.36 = 10.12 MiB CPU-side). If either feeder budget
+    // moves, this one must move with it.
+    EXPECT_EQ(config.vboEboMemoryBytes,
+              config.zoneGeometryMemoryBytes + config.placeableObjectsMemoryBytes);
+}
+
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293Budgets) {
+    // Active-proof against the REAL shipped config/constrained_presets.json,
+    // same pattern as ShippedOrangePiPreset_ActivelyCarriesMemoryAndOcclusion-
+    // BufferKeys above. P39 and P42 both found preset keys that shipped in the
+    // JSON with no parse behind them (silently un-tunable, and misleading to
+    // anyone reading the JSON as the source of truth); this pins that these
+    // seven do not repeat that.
+#ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
+    EXPECT_TRUE(applied);
+    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
+    EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
+    EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(24) * 1024 * 1024);
+    EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+#else
+    GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
+#endif
+}
+
+TEST_F(ConstrainedRendererConfigTest, T293Budgets_UnsetOnUnbudgetedPresets) {
+    // Zero means "no budget configured" and the CI gate skips the assertion
+    // rather than asserting usage <= 0. Only OrangePi is budgeted today; the
+    // Voodoo/TNT presets predate the accounting entirely and must NOT pick up
+    // an Orange-Pi-derived ceiling by accident.
+    for (auto preset : {ConstrainedRenderingPreset::Voodoo1,
+                        ConstrainedRenderingPreset::Voodoo2,
+                        ConstrainedRenderingPreset::TNT}) {
+        auto config = ConstrainedRendererConfig::fromPreset(preset);
+        EXPECT_EQ(config.gpuTextureMemoryBytes, 0u)
+            << "preset " << ConstrainedRendererConfig::presetName(preset);
+        EXPECT_EQ(config.zoneGeometryMemoryBytes, 0u);
+        EXPECT_EQ(config.placeableObjectsMemoryBytes, 0u);
+        EXPECT_EQ(config.s3dZoneSourceMemoryBytes, 0u);
+        EXPECT_EQ(config.vboEboMemoryBytes, 0u);
+        EXPECT_EQ(config.characterModelsMemoryBytes, 0u);
+        EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, 0u);
+    }
+}
+
+TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetHolds1280x720) {
+    // T293 scope item 3, checked explicitly because the margin is not large
+    // and depends entirely on colorDepthBits. 1280x720 is the stated maximum
+    // resolution; the shipped preset is 16-bit colour with a D24S8
+    // depth-stencil, so 2*2 + 4 = 8 bytes per pixel.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    ASSERT_EQ(config.colorDepthBits, 16);
+    ASSERT_TRUE(config.enableStencilBuffer);
+
+    const size_t usage720p = config.calculateFramebufferUsage(1280, 720);
+    EXPECT_EQ(usage720p, static_cast<size_t>(1280) * 720 * 8);  // 7,372,800
+    EXPECT_EQ(usage720p, 7372800u);
+    EXPECT_LE(usage720p, config.framebufferMemoryBytes);        // FITS: 67% of 10 MiB
+
+    std::string error;
+    EXPECT_TRUE(config.validateResolution(1280, 720, error)) << error;
+
+    // ...and 1280x720 survives clamping untouched, which is the property that
+    // actually matters at runtime.
+    int w = 1280, h = 720;
+    EXPECT_FALSE(config.clampResolution(w, h));
+    EXPECT_EQ(w, 1280);
+    EXPECT_EQ(h, 720);
+}
+
+TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetWouldNotHold1280x720At32Bit) {
+    // The other half of the same finding, pinned so the reason 10 MiB is
+    // sufficient does not get lost: it is sufficient ONLY because this preset
+    // is 16-bit. At 32-bit colour the same resolution needs 2*4 + 4 = 12
+    // bytes per pixel = 11,059,200 bytes, which is 573,440 bytes OVER the
+    // 10,485,760-byte budget. The budget is deliberately NOT raised to cover
+    // this -- 16-bit is the shipped configuration and Mali 400 has no reason
+    // to want 32 -- but a future edit flipping colorDepthBits must fail here
+    // rather than silently clamping the display.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    config.colorDepthBits = 32;
+
+    const size_t usage720p32 = config.calculateFramebufferUsage(1280, 720);
+    EXPECT_EQ(usage720p32, 11059200u);
+    EXPECT_GT(usage720p32, config.framebufferMemoryBytes);
+    EXPECT_EQ(usage720p32 - config.framebufferMemoryBytes, 573440u);
+
+    std::string error;
+    EXPECT_FALSE(config.validateResolution(1280, 720, error));
+    EXPECT_FALSE(error.empty());
+
+    // And the clamp that would silently happen instead: 1280 narrows to the
+    // recomputed max width, 720 is left alone (it is already under the max
+    // height).
+    config.calculateMaxResolution();
+    EXPECT_EQ(config.maxResolutionWidth, 1072);
+    EXPECT_EQ(config.maxResolutionHeight, 808);
+    int w = 1280, h = 720;
+    EXPECT_TRUE(config.clampResolution(w, h));
+    EXPECT_EQ(w, 1072);
+    EXPECT_EQ(h, 720);
+}

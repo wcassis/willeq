@@ -23,10 +23,20 @@ checks them against three independent assertions:
      lists below):
        (a) Budget-enforced: usage <= a real configured ceiling
            (ConstrainedRendererConfig fields), independent of any baseline.
-           Texture cache (pre-existing) and framebuffer (new).
-       (b) Baseline-guarded: exact-match against the blessed value. These
-           categories have NO configured budget -- this is regression
-           detection, not budget enforcement. T69 measured 9 repeat runs
+           Texture cache (H02) and framebuffer (T69), plus -- since T293 --
+           GPU textures, zone geometry, placeable objects, S3D zone source,
+           VBO/EBO, character models, the EQE1 mapped address space, and the
+           tracked total. T293 derived those budgets from the assets on disk,
+           a 1280x720 maximum resolution and the Orange Pi One's measured
+           envelope (Will's ruling 2026-08-26, discharging the block T69 left
+           open); see MEMORY_BUDGET_PAIRS and docs/decisions.md. T293 also
+           fixed the reason (b) used to be the larger bucket AND the reason
+           the framebuffer budget had never actually fired -- see
+           assert_memory_budgets().
+       (b) Baseline-guarded: exact-match against the blessed value. Since
+           T293 these categories all have a budget too; this bucket is the
+           regression-detection half, which catches drift a budget with
+           headroom cannot. T69 measured 9 repeat runs
            across all 3 golden zones and found EVERY one of these fields
            bit-identical run to run (see refactor/T69_memory_enforcement_gate.md
            Review), so exact match is an empirically justified tolerance of
@@ -89,10 +99,52 @@ RESOLUTION_DEFAULT = {"width": 800, "height": 600}
 # "which fields get baselined" and "which get asserted".
 
 # (a) usage/budget pairs: assert usage <= budget, independent of baseline.
+#
+# T293 (2026-08-26): this list was two entries long until Will ruled on the
+# numbers. T69 could only enforce the two categories that already had a
+# configured ceiling in ConstrainedRendererConfig and explicitly refused to
+# invent the rest ("Proposing numbers is Will's call, not this unit's").
+# ConstrainedRendererConfig now carries a derived budget for every remaining
+# measurable category -- derived from the assets on disk, a 1280x720 maximum
+# resolution and the Orange Pi One's measured envelope; see that header's
+# block comment, docs/decisions.md ("2026-08-26 -- per-subsystem memory
+# budgets") and refactor/T293_memory_budgets.md for the derivation table --
+# and the benchmark emits each one alongside its usage number, so all of them
+# are now real "usage <= budget" assertions and not only baseline guards.
+#
+# A budget of 0 means the active preset configures none for that category;
+# assert_memory_budgets() skips it (and says so) rather than asserting
+# usage <= 0.
 MEMORY_BUDGET_PAIRS = [
     ("textureCacheBytesUsed", "textureCacheBytesLimit", "texture cache"),
     ("framebufferBytes", "framebufferBudgetBytes", "framebuffer"),
+    # --- T293 additions ---
+    ("gpuTextureBytes", "gpuTextureBudgetBytes", "GPU textures"),
+    ("zoneGeometryBytes", "zoneGeometryBudgetBytes", "zone geometry"),
+    ("placeableObjectsBytes", "placeableObjectsBudgetBytes", "placeable objects"),
+    ("s3dZoneSourceBytes", "s3dZoneSourceBudgetBytes", "S3D zone source"),
+    ("vboEboBytes", "vboEboBudgetBytes", "VBO/EBO"),
+    ("characterModelsBytes", "characterModelsBudgetBytes", "character models"),
+    # Address space, not RAM. eqe1MappedBytes is MAPPED bytes, of which T105
+    # measured only 1.6-10.6% resident, which is why it is excluded from
+    # totalEstimate (T108). The ceiling that binds it is the 32-bit ARM user
+    # address space (~3 GB) -- T195's eager directory scan exhausted that with
+    # ~2,900 MB mapped while 260 MB of RAM was still free.
+    ("eqe1MappedBytes", "eqe1MappedBudgetBytes", "EQE1 mapped address space"),
+    # The one genuinely aggregate ceiling: ConstrainedRendererConfig::
+    # totalMemoryBudgetBytes has shipped on the orangepi preset (128 MiB)
+    # since long before T69 with nothing asserting against it. This is a CI
+    # assertion on a measured total, NOT runtime enforcement and NOT a
+    # cross-asset coordinator -- Will's "no global cap" ruling is about
+    # runtime behaviour; nothing here evicts or coordinates anything.
+    ("totalEstimate", "totalEstimateBudgetBytes", "tracked total"),
 ]
+
+# T293: pairs whose usage is ALSO exact-matched against the blessed baseline
+# in verify(). Everything else in MEMORY_BUDGET_PAIRS is already covered by
+# MEMORY_BASELINE_FIELDS below, and checking it twice would report one
+# regression as two failures.
+MEMORY_BUDGET_PAIRS_ALSO_BASELINED = ["textureCacheBytesUsed", "framebufferBytes"]
 
 # (b) no configured budget -- baseline with the tolerance measured in T69
 # (zero: 9 repeat runs across all 3 golden zones, every field below was
@@ -435,6 +487,8 @@ def bless(manifest):
             # movement over time even though nothing gates on it).
             mem = {}
             for used_key, limit_key, _label in MEMORY_BUDGET_PAIRS:
+                if used_key not in memory or limit_key not in memory:
+                    continue  # benchmark predates this field
                 mem[used_key] = memory[used_key]
                 mem[limit_key] = memory[limit_key]
             for key in MEMORY_BASELINE_FIELDS:
@@ -491,6 +545,43 @@ def bless_memory_coverage(manifest):
         zone_cfg["memory"] = mem
 
 
+def assert_memory_budgets(label_prefix, memory, failures):
+    """T293: assert usage <= budget for every configured per-subsystem budget.
+
+    Deliberately independent of the blessed baseline. The pre-T293 code did
+    the budget check inside the same loop that exact-matched usage against
+    manifest["zones"][i]["memory"], and skipped the whole pair when used_key
+    was absent from that baseline -- so T69's framebuffer budget assertion had
+    NEVER actually fired against the committed manifest, whose "memory" blocks
+    carry only the three pre-T69 texture-cache fields. A budget is a config
+    value, not a measurement: it is knowable without a bless, and coupling it
+    to one silently disabled it. The baseline exact-match stays where it
+    belongs, in the MEMORY_BASELINE_FIELDS loop.
+
+    A budget of 0 (or a missing budget key) means the active preset configures
+    no ceiling for that category -- skipped, and named in the printed summary
+    so an unbudgeted category is visible rather than looking checked.
+    """
+    checked, skipped = [], []
+    for used_key, limit_key, label in MEMORY_BUDGET_PAIRS:
+        if used_key not in memory or limit_key not in memory:
+            continue  # benchmark predates this field; nothing to assert
+        budget = memory[limit_key]
+        if not budget:
+            skipped.append(label)
+            continue
+        used = memory[used_key]
+        checked.append(f"{label} {100.0 * used / budget:.0f}%")
+        if used > budget:
+            failures.append(
+                f"{label_prefix}: {label} bytes used {used} exceeds budget {budget}"
+            )
+    if checked:
+        print(f"  [budget] {label_prefix}: " + ", ".join(checked))
+    if skipped:
+        print(f"  [budget] {label_prefix}: NO BUDGET CONFIGURED for " + ", ".join(skipped))
+
+
 def verify_memory_coverage(manifest, failures):
     """T80: verify the SEPARATE memory-coverage run. Appends to `failures`
     in place (same accumulation pattern verify() uses for the golden-image
@@ -516,6 +607,12 @@ def verify_memory_coverage(manifest, failures):
         except RuntimeError as e:
             failures.append(f"memory-coverage {zone}: {e}")
             continue
+
+        # T293: budget assertions run on the coverage numbers regardless of
+        # whether this section has ever been blessed -- this is the ONLY run
+        # where placeableObjectsBytes/characterModelsBytes/eqe1MappedBytes are
+        # nonzero, so it is the only run where their budgets mean anything.
+        assert_memory_budgets(f"memory-coverage {zone}", memory, failures)
 
         expected_mem = zone_cfg.get("memory")
         if not expected_mem:
@@ -618,25 +715,26 @@ def verify(manifest):
         if memory:
             expected_mem = zone_cfg["memory"]
 
-            # (a) Budget pairs: usage <= a real configured ceiling, checked
-            # against the LIVE limit (not the blessed one) since the budget
-            # is a config value, not a measurement -- and separately, exact-
-            # match the usage against its blessed value (regression
-            # detection on top of the budget check; texture cache did this
-            # from H02 on, framebuffer usage is exact-deterministic per T69's
-            # repeat-run data, same as every other new field).
-            for used_key, limit_key, label in MEMORY_BUDGET_PAIRS:
+            # (a) Budget assertions: usage <= the LIVE configured ceiling
+            # (not the blessed one -- a budget is a config value, not a
+            # measurement). T293 moved this out of the baseline-coupled loop
+            # below; see assert_memory_budgets() for why that mattered.
+            assert_memory_budgets(zone, memory, failures)
+
+            # (a') Exact-match the two originally-budgeted categories' usage
+            # against their blessed values as well -- regression detection on
+            # top of the budget check, as the texture cache has done since
+            # H02. The T293 additions are omitted here because
+            # MEMORY_BASELINE_FIELDS already exact-matches every one of them.
+            for used_key, _limit_key, label in MEMORY_BUDGET_PAIRS:
+                if used_key not in MEMORY_BUDGET_PAIRS_ALSO_BASELINED:
+                    continue
                 if used_key not in memory or used_key not in expected_mem:
                     continue  # field predates this bless (old manifest); skip rather than false-fail
                 if memory[used_key] != expected_mem[used_key]:
                     failures.append(
                         f"{zone}: {label} bytes used mismatch (expected "
                         f"{expected_mem[used_key]}, got {memory[used_key]})"
-                    )
-                if memory[used_key] > memory[limit_key]:
-                    failures.append(
-                        f"{zone}: {label} bytes used {memory[used_key]} "
-                        f"exceeds budget {memory[limit_key]}"
                     )
 
             # (b) Baseline-guarded fields: exact match, no configured budget

@@ -76,6 +76,107 @@ struct ConstrainedRendererConfig {
     size_t textureMemoryBytes = 2 * 1024 * 1024;  // 2MB default (Voodoo1)
     int maxTextureDimension = 256;
 
+    // ---- T293: per-subsystem memory budgets (Will's ruling, 2026-08-26) ----
+    //
+    // Before T293 exactly two categories of the ~13 the memory accounting
+    // tracks had a configured ceiling: framebufferMemoryBytes and
+    // textureMemoryBytes above. T69 wired those two into the CI gate as real
+    // "usage <= budget" assertions and could only baseline-guard the rest,
+    // because no budget existed to assert against; T69 deliberately refused
+    // to invent numbers ("Proposing numbers is Will's call"). Will ruled on
+    // 2026-08-26: derive them from the assets on disk, a 1280x720 maximum
+    // resolution, and the Orange Pi One's real envelope.
+    //
+    // The full derivation (envelope arithmetic, per-category asset-scale
+    // factors, measured usage, headroom rule, and the residual gaps) is in
+    // docs/decisions.md under "2026-08-26 - per-subsystem memory budgets"
+    // and refactor/T293_memory_budgets.md. Summary of the rule used:
+    //
+    //   budget = ceil_8MiB( worst_measured_of_3_golden_zones
+    //                       * asset_scale_factor_from_disk
+    //                       * 1.25 slack )
+    //
+    // where asset_scale_factor is the ratio of the LARGEST on-disk asset of
+    // that kind across all 310 zones to the largest among the three golden
+    // zones the gate measures (2.34x zone geometry, 3.56x placeable objects,
+    // 4.28x character models). Rows with no natural on-disk analogue
+    // (GPU textures, VBO/EBO) are derived from the budgets that feed them
+    // instead -- see the per-field comments.
+    //
+    // ZERO MEANS "NO BUDGET CONFIGURED": the CI gate skips the assertion
+    // rather than asserting usage <= 0. Only the OrangePi preset (and
+    // config/constrained_presets.json's "orangepi" block) sets these today;
+    // the Voodoo/TNT presets predate the accounting and stay unbudgeted.
+    //
+    // These are per-subsystem CEILINGS, not reservations. Their sum (282 MiB)
+    // deliberately exceeds the derived 256 MB client RSS ceiling, because no
+    // single zone is the worst case for every category at once and because
+    // gpuTextureMemoryBytes and textureMemoryBytes bound substantially the
+    // same textures. The simultaneous total is bounded separately by
+    // totalMemoryBudgetBytes below. This matches Will's standing ruling:
+    // per-subsystem budgets, defined and enforced; no global cap, no
+    // cross-asset coordinator.
+
+    // GPU-side texture allocations reported by the driver. Superset of the
+    // constrained texture cache on the EQE1 path (measured delta 264-526 KB
+    // of non-cached driver textures: fonts, sky, UI), but NOT on the
+    // uncompressed S3D path, where the cache's CPU-side accounting exceeds
+    // the driver's allocation (qeynos2: cache 42.2 MB vs GPU 31.7 MB).
+    // Neither strictly contains the other, so both are budgeted separately.
+    // Derived: 2.0x the worst measured (31.7 MB, qeynos2/S3D), which also
+    // lands exactly on textureMemoryBytes -- the cache is its dominant feeder.
+    size_t gpuTextureMemoryBytes = 0;
+
+    // Zone region/single-mesh vertex+index bytes held CPU-side.
+    // Derived: 4.76 MiB worst measured (gfaydark) x 2.34 (ponightmare.s3d
+    // 9.72 MB / qeynos2.s3d 4.16 MB) x 1.25 = 13.95 MiB -> 16 MiB.
+    size_t zoneGeometryMemoryBytes = 0;
+
+    // Placeable-object mesh bytes held CPU-side.
+    // Derived: 5.36 MiB worst measured (gfaydark) x 3.56 (dulak_obj.s3d
+    // 10.60 MB / gfaydark_obj.s3d 2.98 MB) x 1.25 = 23.87 MiB -> 24 MiB.
+    size_t placeableObjectsMemoryBytes = 0;
+
+    // CPU-side S3D zone source retained for mesh rebuilds (geometry, BSP,
+    // animation data).
+    // Derived: 7.52 MiB worst measured (gfaydark) x 2.34 x 1.25 = 22.00 MiB
+    // -> 24 MiB.
+    size_t s3dZoneSourceMemoryBytes = 0;
+
+    // GPU hardware buffers (VBO/EBO). Measured to be exactly the GPU mirror
+    // of zone geometry + placeable objects (gfaydark: 10.22 MiB VBO/EBO vs
+    // 4.76 + 5.36 = 10.12 MiB CPU-side), so this is derived by identity from
+    // the two budgets above rather than by scaling: 16 + 24 = 40 MiB.
+    size_t vboEboMemoryBytes = 0;
+
+    // RaceModelLoader total (model geometry, skeletons, animated meshes and
+    // every character texture pool).
+    // Derived from a measured race-count sweep on qeynos2 rather than a flat
+    // multiple, because the category is mostly a fixed cost: 23.68 MiB with a
+    // single race resident, plus 189 KB per additional resident race (n=1..12,
+    // r^2 linear). Budget = 23.68 fixed + 40 races x 0.18 = 7.2 + 8.0 MiB for
+    // the largest zone _chr on disk (griegsend_chr.s3d 10.45 MB vs
+    // qeynos2_chr.s3d 2.44 MB) = 38.5 MiB -> 40 MiB. 40 resident races is
+    // ~3x the 14 distinct models T289 measured live in befallen on the Pi.
+    size_t characterModelsMemoryBytes = 0;
+
+    // EQE1 flat-pack mmap pool. THIS ONE BOUNDS ADDRESS SPACE, NOT RAM --
+    // mapping an archive costs virtual address space and only the touched
+    // pages become resident (T105 measured EQE1 archives at 1.6-10.6%
+    // resident), which is why eqe1MappedBytes is excluded from totalEstimate
+    // (T108). The binding ceiling for it is the 32-bit ARM user address space
+    // (~3 GB), not the 512 MB of RAM: T195's eager directory scan mapped
+    // ~2,900 MB and threw std::bad_alloc with 260 MB of RAM still free.
+    // Derived from the archive set the config can demand, not from a run:
+    // the worst zone (powar) is 41.24 MiB of zone packs + 132.57 MiB of the
+    // 33 global archives in config/eqe1_archives.json = 173.81 MiB; x1.25 for
+    // composite-entity late-opens (T289 saw 7 on the Pi) = 217 MiB -> 256 MiB.
+    // That is 8.3% of the address-space ceiling and 2.1x the 114.39 MiB the
+    // gate's coverage run actually maps. The whole EverQuest_ETC1 directory
+    // is 4,545 MiB across 1,506 packs -- the budget is emphatically not "fit
+    // the assets in RAM", it is "bound the resident/mapped working set".
+    size_t eqe1MappedAddressSpaceBytes = 0;
+
     // Render distance (clip plane) - geometry beyond this is not rendered
     float clipDistance = 500.0f;           // Max render distance (EQ units)
     float fogStartRatio = 0.6f;            // Fog starts at 60% of clip distance

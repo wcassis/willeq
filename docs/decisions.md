@@ -514,3 +514,111 @@ same unit, with before/after evidence.
 - **Memory budgets: derive them.** Extrapolate sensible per-category defaults
   from the assets actually on disk, a 1280x720 maximum resolution, and the
   Orange Pi One's real envelope (512 MB RAM, 32-bit ARM). Do not ask for numbers.
+
+## 2026-08-26 — per-subsystem memory budgets, derived (T293)
+
+Discharges the block T69 deliberately left open ("Proposing numbers is Will's
+call, not this unit's; recording the absence is the deliverable") against
+Will's ruling immediately above. **Settled — do not re-litigate the numbers;
+re-derive them if the inputs change.** Plan and full working:
+`refactor/T293_memory_budgets.md`. Evidence: `/mnt/projects/fable/review/T293/`.
+
+### The Orange Pi One envelope (measured, not assumed)
+
+| quantity | value | source |
+|---|---|---|
+| physical RAM | 512 MB | board |
+| usable RAM after kernel + CMA | ~483 MB | T195 |
+| OS/services baseline, client not running | ~151 MB (483 − 332 MemAvailable) | T289 rep1 pre-run meminfo |
+| client peak RSS, four completed runs | 209–230 MB | T289 |
+| MemAvailable floor, four completed runs | 55–66 MB | T289 |
+| client VmPeak, four completed runs | 571–575 MB | T289 |
+| 32-bit ARM user address space | ~3,072 MB | T195 |
+
+**Client RSS ceiling = 483 − 151 (OS) − 48 (MemAvailable reserve, under the
+54.9 MB minimum four completed runs actually survived) = 284 MB → adopt
+256 MB**, rounded down: a round number, 11% above the worst measured peak,
+and 28 MB inside the raw arithmetic so the rounding errs safe.
+
+**The address space, not the RAM, is the binding ceiling for anything mmapped**
+(T195: the eager EQE1 directory scan threw `std::bad_alloc` at ~2,900 MB mapped
+with 260 MB of RAM still free). VmPeak budget: 1,024 MB — 1.8x measured, 3x
+inside the hard limit.
+
+### Headroom rule
+
+    budget = ceil_8MiB( worst_measured_of_the_3_golden_zones
+                        × asset_scale_factor_from_disk
+                        × 1.25 slack )
+
+`asset_scale_factor` is the ratio of the **largest on-disk asset of that kind
+across all 310 zones** to the largest among the three zones the gate actually
+measures — the "extrapolate from the assets on disk" half of the ruling:
+
+| asset | largest on disk | largest golden | factor |
+|---|---|---|---|
+| `{zone}.s3d` | ponightmare 9.72 MB | qeynos2 4.16 MB | **2.34x** |
+| `{zone}_obj.s3d` | dulak 10.60 MB | gfaydark 2.98 MB | **3.56x** |
+| `{zone}_chr.s3d` | griegsend 10.45 MB | qeynos2 2.44 MB | **4.28x** |
+| all three summed | powar 21.20 MB | qeynos2 8.76 MB | 2.42x |
+
+Two rows use a different, stated basis because they have no on-disk analogue
+(VBO/EBO, character models) — see the table below.
+
+### The budgets
+
+Measured column = worst of six x86 runs (3 golden zones × {golden-image S3D
+path, T80 memory-coverage EQE1 path}), at fable `43e3430e`.
+
+| category | measured worst | budget | ratio | basis |
+|---|---|---|---|---|
+| framebuffer | 3.66 MiB @800x600; **7.03 MiB @1280x720** | **10 MiB** (unchanged) | 1.42x | pure arithmetic at the stated max resolution — see the verdict below |
+| texture cache | 40.27 MiB (qeynos2/S3D) | **64 MiB** (unchanged) | 1.59x | pre-existing; a hard cache ceiling, enforced by eviction |
+| GPU textures | 30.27 MiB (qeynos2/S3D) | **64 MiB** | 2.11x | 2x measured, which lands exactly on the texture-cache ceiling — the cache is its dominant feeder |
+| zone geometry | 4.76 MiB (gfaydark) | **16 MiB** | 3.36x | 4.76 × 2.34 × 1.25 = 13.95 → 16 |
+| placeable objects | 5.36 MiB (gfaydark) | **24 MiB** | 4.48x | 5.36 × 3.56 × 1.25 = 23.87 → 24 |
+| S3D zone source | 7.52 MiB (gfaydark) | **24 MiB** | 3.19x | 7.52 × 2.34 × 1.25 = 22.00 → 24 |
+| VBO/EBO | 10.22 MiB (gfaydark) | **40 MiB** | 3.91x | **derived by identity**: measured to be the GPU mirror of zone geometry + placeable objects (10.22 vs 4.76 + 5.36 = 10.12), so 16 + 24 |
+| character models | 24.54 MiB (qeynos2) | **40 MiB** | 1.63x | **derived from a measured race sweep**, not a flat multiple: 23.68 MiB fixed with one race resident + 189 KB per additional race (n=1..12) → 23.68 + 40 races × 0.18 + 8.0 for the largest `_chr` on disk = 38.5 → 40. 40 resident races is ~3x the 14 T289 measured live in befallen |
+| **EQE1 mapped (ADDRESS SPACE)** | 114.39 MiB (qeynos2) | **256 MiB** | 2.24x | worst possible zone set from disk: powar 41.24 (zone packs) + 132.57 (the 33 globals in `config/eqe1_archives.json`) = 173.81 × 1.25 for composite late-opens = 217 → 256. **8.3% of the address-space ceiling** |
+| tracked total | 62.24 MiB (gfaydark/coverage) | **128 MiB** (unchanged) | 2.06x | `totalMemoryBudgetBytes`, shipped since long before T69 with nothing asserting against it. Now asserted **in CI only** — not runtime enforcement, not a cross-asset coordinator |
+
+**The assets on disk are 4,545 MB across 1,506 EQE1 packs** (4.8 GB
+for the whole directory including the `.bmp`/`.json` sidecars). The budget is not
+"fit the assets in RAM"; it is "bound the resident/mapped working set".
+
+**The per-category budgets sum to 282 MiB, more than the 256 MB RSS ceiling.
+That is deliberate.** They are per-subsystem *ceilings*, not reservations: no
+single zone is the worst case for every category at once (qeynos2 maxes
+textures and character models, gfaydark maxes geometry, objects and VBO/EBO),
+and the two largest — texture cache and GPU textures — bound substantially the
+same textures. The simultaneous total is bounded separately, and measured at
+62.24 MiB, 49% of the 128 MiB tracked-total ceiling.
+
+### The 1280x720 framebuffer verdict
+
+    16-bit colour (as shipped): (2×2 + 4) =  8 B/px × 921,600 =  7,372,800 B =  7.03 MiB   FITS (67% of 10 MiB)
+    32-bit colour:              (2×4 + 4) = 12 B/px × 921,600 = 11,059,200 B = 10.55 MiB   DOES NOT FIT (over by 573,440 B)
+
+**The shipped 10 MiB budget holds the stated maximum resolution — but only
+because this preset is 16-bit.** At 32 bits `calculateMaxResolution()` yields
+1072x808 and `clampResolution()` would silently narrow a 1280x720 request to
+1072x720. The budget is **not** raised to cover the 32-bit case: 16-bit is the
+shipped configuration and Mali 400 has no reason to want 32. Both halves are
+pinned by tests so a future `colorDepthBits` edit fails loudly instead of
+silently clamping the display.
+
+### What is deliberately still unbudgeted
+
+- **Untracked RSS** (RSS minus every tallied category): 10–24% tracked on the
+  golden-image path, i.e. **76–90% of RSS is untracked**. T69 Step 4 ruled it
+  reported-not-gated and that stands. The x86 figure is inflated by llvmpipe
+  and does **not** transfer to the Pi, and T289 did not dump `/pmem`, so the
+  Pi's tracked/untracked split is **unmeasured**. That is the one place the
+  envelope arithmetic cannot be closed end-to-end today; a `/pmem` dump on a
+  live Pi zone-in is the cheap next measurement.
+- **Categories no benchmark constructs**: entity per-instance game state,
+  equipment models, HCMap/collision, audio, network, door/spell DB. Unchanged
+  from T69/T80 — a budget on a number nothing measures would be decoration.
+- **Non-OrangePi presets.** Voodoo1/2/TNT keep 0 = "no budget configured"; the
+  gate skips and says so rather than asserting `usage <= 0`.

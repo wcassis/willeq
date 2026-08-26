@@ -138,6 +138,18 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
         snap.framebufferBudgetBytes = cfg.framebufferMemoryBytes;
         snap.framebufferBytes = cfg.calculateFramebufferUsage(width, height);
         snap.totalEstimate += snap.framebufferBytes;
+
+        // T293: the rest of the per-subsystem budgets, from the same config
+        // object. Emitted so the gate can assert usage <= budget instead of
+        // only baseline-guarding these categories.
+        snap.gpuTextureBudgetBytes        = cfg.gpuTextureMemoryBytes;
+        snap.zoneGeometryBudgetBytes      = cfg.zoneGeometryMemoryBytes;
+        snap.placeableObjectsBudgetBytes  = cfg.placeableObjectsMemoryBytes;
+        snap.s3dZoneSourceBudgetBytes     = cfg.s3dZoneSourceMemoryBytes;
+        snap.vboEboBudgetBytes            = cfg.vboEboMemoryBytes;
+        snap.characterModelsBudgetBytes   = cfg.characterModelsMemoryBytes;
+        snap.eqe1MappedBudgetBytes        = cfg.eqe1MappedAddressSpaceBytes;
+        snap.totalEstimateBudgetBytes     = cfg.totalMemoryBudgetBytes;
     }
 
     for (auto& [id, region] : data.regions) {
@@ -236,6 +248,14 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             "  \"framebufferBytes\": %zu,\n"
             "  \"framebufferBudgetBytes\": %zu,\n"
             "  \"characterModelsBytes\": %zu,\n"
+            "  \"gpuTextureBudgetBytes\": %zu,\n"
+            "  \"zoneGeometryBudgetBytes\": %zu,\n"
+            "  \"placeableObjectsBudgetBytes\": %zu,\n"
+            "  \"s3dZoneSourceBudgetBytes\": %zu,\n"
+            "  \"vboEboBudgetBytes\": %zu,\n"
+            "  \"characterModelsBudgetBytes\": %zu,\n"
+            "  \"eqe1MappedBudgetBytes\": %zu,\n"
+            "  \"totalEstimateBudgetBytes\": %zu,\n"
             "  \"totalEstimate\": %zu,\n"
             "  \"processRssBytes\": %zu,\n"
             "  \"untrackedBytes\": %zu\n"
@@ -247,6 +267,10 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             snap.s3dZoneSourceBytes, snap.gpuTextureBytes, snap.vboEboBytes,
             snap.framebufferBytes, snap.framebufferBudgetBytes,
             snap.characterModelsBytes,
+            snap.gpuTextureBudgetBytes, snap.zoneGeometryBudgetBytes,
+            snap.placeableObjectsBudgetBytes, snap.s3dZoneSourceBudgetBytes,
+            snap.vboEboBudgetBytes, snap.characterModelsBudgetBytes,
+            snap.eqe1MappedBudgetBytes, snap.totalEstimateBudgetBytes,
             snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
     fclose(f);
     printf("[memory-json] %s: saved\n", path.c_str());

@@ -260,6 +260,20 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // Orange Pi One: Allwinner H3, Mali 400 (Lima/Mesa GL 2.1), 512MB shared RAM
             // 10MB framebuffer: 1280x720 @ 16-bit + D24S8 = 7.03MB + headroom for FBO RTTs
             // (MSAA is free on tile-based Mali 400 — resolved in on-chip tile SRAM)
+            //
+            // T293 verified this against the stated 1280x720 maximum, since the
+            // margin is not large and depends entirely on colorDepthBits:
+            //   colorDepthBits=16 (this preset): (2*2 + 4) = 8 B/px
+            //                                    * 921,600 px =  7,372,800 B = 7.03 MiB   FITS (67% of 10 MiB)
+            //   colorDepthBits=32:               (2*4 + 4) = 12 B/px
+            //                                    * 921,600 px = 11,059,200 B = 10.55 MiB  DOES NOT FIT
+            //                                    (over 10,485,760 B by 573,440 B)
+            // So 10 MiB holds the stated maximum resolution as shipped, but only
+            // because this preset is 16-bit; at 32 bits calculateMaxResolution()
+            // yields 1072x808 and clampResolution() would silently narrow a
+            // 1280x720 request to 1072x720.
+            // The budget is NOT raised to cover the 32-bit case -- 16-bit is the
+            // shipped configuration and Mali 400 has no reason to want 32.
             // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
             // P32: renderer-independent preset (see Voodoo1 comment above) —
             // GLES2 is the only backend, no #ifdef needed.
@@ -303,6 +317,21 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.anisotropicFilterLevel = 4;
             // System RAM budget
             config.totalMemoryBudgetBytes = 128 * 1024 * 1024;  // 128MB
+            // T293: per-subsystem memory budgets, derived from the assets on
+            // disk, a 1280x720 maximum resolution and this board's measured
+            // envelope (T289: peak RSS 209-230 MB, VmPeak 571-575 MB,
+            // MemAvailable floor 55-66 MB; T195: ~483 MB usable RAM, ~3 GB
+            // 32-bit address-space ceiling). Full derivation table in
+            // docs/decisions.md and constrained_renderer_config.h's block
+            // comment on these fields. Discharges the block T69 left open.
+            config.gpuTextureMemoryBytes         = 64 * 1024 * 1024;   // 64MB
+            config.zoneGeometryMemoryBytes       = 16 * 1024 * 1024;   // 16MB
+            config.placeableObjectsMemoryBytes   = 24 * 1024 * 1024;   // 24MB
+            config.s3dZoneSourceMemoryBytes      = 24 * 1024 * 1024;   // 24MB
+            config.vboEboMemoryBytes             = 40 * 1024 * 1024;   // 40MB
+            config.characterModelsMemoryBytes    = 40 * 1024 * 1024;   // 40MB
+            // Address space, not RAM -- see the field's comment.
+            config.eqe1MappedAddressSpaceBytes   = 256 * 1024 * 1024;  // 256MB
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.enableItemIcons = false;
@@ -476,6 +505,26 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         framebufferMemoryBytes = static_cast<size_t>(preset["framebufferMemoryBytes"].asUInt64());
     if (preset.isMember("textureMemoryBytes"))
         textureMemoryBytes = static_cast<size_t>(preset["textureMemoryBytes"].asUInt64());
+    // T293: per-subsystem memory budgets. Parsed here so they are tunable from
+    // config/constrained_presets.json exactly like the two budgets above --
+    // P39/P42 both found preset keys that shipped in the JSON with no parse
+    // behind them (silently un-tunable, and misleading to anyone reading the
+    // JSON as the source of truth). Absent key => keep the preset's C++ value;
+    // 0 => no budget configured, the CI gate skips that assertion.
+    if (preset.isMember("gpuTextureMemoryBytes"))
+        gpuTextureMemoryBytes = static_cast<size_t>(preset["gpuTextureMemoryBytes"].asUInt64());
+    if (preset.isMember("zoneGeometryMemoryBytes"))
+        zoneGeometryMemoryBytes = static_cast<size_t>(preset["zoneGeometryMemoryBytes"].asUInt64());
+    if (preset.isMember("placeableObjectsMemoryBytes"))
+        placeableObjectsMemoryBytes = static_cast<size_t>(preset["placeableObjectsMemoryBytes"].asUInt64());
+    if (preset.isMember("s3dZoneSourceMemoryBytes"))
+        s3dZoneSourceMemoryBytes = static_cast<size_t>(preset["s3dZoneSourceMemoryBytes"].asUInt64());
+    if (preset.isMember("vboEboMemoryBytes"))
+        vboEboMemoryBytes = static_cast<size_t>(preset["vboEboMemoryBytes"].asUInt64());
+    if (preset.isMember("characterModelsMemoryBytes"))
+        characterModelsMemoryBytes = static_cast<size_t>(preset["characterModelsMemoryBytes"].asUInt64());
+    if (preset.isMember("eqe1MappedAddressSpaceBytes"))
+        eqe1MappedAddressSpaceBytes = static_cast<size_t>(preset["eqe1MappedAddressSpaceBytes"].asUInt64());
     if (preset.isMember("colorDepthBits"))
         colorDepthBits = preset["colorDepthBits"].asInt();
     if (preset.isMember("maxVisibleEntities"))
