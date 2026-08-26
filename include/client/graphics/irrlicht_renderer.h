@@ -1442,6 +1442,21 @@ private:
 
     const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
 
+    // T284: getOrOpenEQE1's body, parameterised by directory. Exists so the
+    // composite-sheet fallback (openCompositeSheetEQE1) can open from a
+    // --composite-entities directory that is not --eqe1-path without a second
+    // copy of the open/register/negative-cache logic. Keyed by stem in the
+    // same eqe1Loaders_ map, so a stem is opened at most once per zone.
+    const EQE1Loader* getOrOpenEQE1FromDir(const std::string& archiveBaseName,
+                                           const std::string& dir);
+
+    // T284: open the self-named composite sheet pack for `name` from a
+    // composite directory the index does not cover. Returns nullptr (opening
+    // nothing) when composites are off, when the composite directory is the
+    // indexed eqe1Path (the shipped layout -- the index already answered), or
+    // when no such pack exists.
+    const EQE1Loader* openCompositeSheetEQE1(const std::string& name);
+
     // T214: archives that are NOT zone assets and must survive unloadZone().
     // "willeq" is the client's own pack (UI atlas + generated textures like
     // detail_atlas); it is opened once at renderer init for the life of the

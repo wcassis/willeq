@@ -38,7 +38,6 @@
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
-#include <filesystem>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -153,35 +152,31 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
                 [this](const std::string& n) { return openArchiveContaining(n); });
         }
 
-        // Load composite entity EQE1 files (from entity_composite_builder --eqe1 output)
-        if (config_.constrainedConfig.enableCompositeEntities &&
-            !config_.constrainedConfig.compositeEntityPath.empty()) {
-            namespace fs = std::filesystem;
-            const auto& compositeDir = config_.constrainedConfig.compositeEntityPath;
-            if (fs::is_directory(compositeDir)) {
-                size_t compositeCount = 0;
-                for (const auto& entry : fs::directory_iterator(compositeDir)) {
-                    if (entry.path().extension() == ".eqe1") {
-                        std::string baseName = entry.path().stem().string();
-                        // Skip if already loaded (shouldn't happen, but be safe)
-                        std::lock_guard<std::mutex> lock(eqe1Mutex_);
-                        if (eqe1Loaders_.find(baseName) != eqe1Loaders_.end()) continue;
-
-                        auto loader = std::make_unique<EQE1Loader>();
-                        if (loader->open(entry.path().string())) {
-                            const EQE1Loader* ptr = loader.get();
-                            eqe1Loaders_[baseName] = std::move(loader);
-                            if (constrainedTextureCache_) {
-                                constrainedTextureCache_->addEQE1Loader(ptr);
-                            }
-                            ++compositeCount;
-                        }
-                    }
-                }
-                LOG_INFO(MOD_GRAPHICS, "EQE1: loaded {} composite entity archives from '{}'",
-                         compositeCount, compositeDir);
-            }
-        }
+        // T284: composite entity sheets are NOT bulk-opened.
+        //
+        // This used to scan config_.constrainedConfig.compositeEntityPath and
+        // open EVERY .eqe1 in it. The shipped arrangement puts the sheet JSONs
+        // beside the packs in the ETC1 tree (compositeEntityPath == eqe1Path),
+        // so that scan mapped all 1506 packs / 4.44 GiB of the tree at step 0
+        // to reach the handful of sheets a zone's races actually use. On the
+        // 32-bit ARM Pi that is T195's address-space exhaustion (VmSize peaked
+        // at 3.13 GB of a ~3 GB ceiling, std::bad_alloc from mmap, not from a
+        // shortage of RAM) -- the reason composite entities are off there
+        // (T198, decision #3).
+        //
+        // Nothing replaces it here, because nothing has to: a composite sheet
+        // name is requested by RaceModelLoader::preloadModelData() through
+        // ConstrainedTextureCache::getOrLoad(), which misses on the open set
+        // and asks the resolver installed just above. That is
+        // openArchiveContaining() -- T207's index lookup plus T266's rule-R2
+        // late-open -- and it opens exactly the ONE pack that holds the name,
+        // or none at all when the name is in no pack (which stays the
+        // all-or-nothing FATAL, decision #2). T281 made the index know all 498
+        // sheet packs, which is what made this possible.
+        //
+        // The one case the index cannot answer is a compositeEntityPath that
+        // is NOT the indexed eqe1Path; openCompositeSheetEQE1() covers it (see
+        // openArchiveContaining()).
     }
 }
 

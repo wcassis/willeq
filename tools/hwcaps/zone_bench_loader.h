@@ -24,6 +24,7 @@ namespace EQT::Graphics {
     class SoftwareOcclusionCuller;
     class RaceModelLoader;
     class EQE1Loader;
+    class EQE1TextureIndex;
     class EQAnimatedMeshSceneNode;
     struct BspTree;
     struct ConstrainedRendererConfig;
@@ -276,6 +277,17 @@ struct ZoneBenchData {
 
     // EQE1 loaders (owned, kept alive for texture cache references)
     std::vector<std::unique_ptr<EQT::Graphics::EQE1Loader>> eqe1Loaders;
+
+    // T284: name -> owning-pack index (data/eqe1_texture_index.json), loaded
+    // only for --composite-entities runs. It is what replaced the composite
+    // directory scan: a sheet name resolves to exactly one pack, opened on
+    // demand by the resolver installed on the texture cache -- the same rule
+    // production uses (IrrlichtRenderer::openArchiveContaining).
+    std::unique_ptr<EQT::Graphics::EQE1TextureIndex> eqe1Index;
+    // Packs opened by that resolver, and their mapped bytes (the T284
+    // before/after metric). Not a subset of a scan any more, so counted here.
+    size_t eqe1ResolverOpens = 0;
+    size_t eqe1ResolverBytes = 0;
 
     // Cleanup
     ~ZoneBenchData();

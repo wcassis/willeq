@@ -5,6 +5,7 @@
 #include "common/logging.h"
 #include <cctype>
 #include <json/json.h>
+#include <filesystem>
 #include <fstream>
 #include <algorithm>
 #include <cmath>
@@ -374,7 +375,11 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
 
 const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBaseName) {
     if (config_.constrainedConfig.eqe1Path.empty()) return nullptr;
+    return getOrOpenEQE1FromDir(archiveBaseName, config_.constrainedConfig.eqe1Path);
+}
 
+const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1FromDir(const std::string& archiveBaseName,
+                                                         const std::string& dir) {
     std::lock_guard<std::mutex> lock(eqe1Mutex_);
 
     // Already opened?
@@ -384,7 +389,7 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
     }
 
     // Try to open
-    std::string path = config_.constrainedConfig.eqe1Path + "/" + archiveBaseName + ".eqe1";
+    std::string path = dir + "/" + archiveBaseName + ".eqe1";
     auto loader = std::make_unique<EQE1Loader>();
     if (loader->open(path)) {
         const EQE1Loader* ptr = loader.get();
@@ -402,6 +407,34 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBase
     eqe1Loaders_[archiveBaseName] = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EQE1: {} not found, S3D fallback", path);
     return nullptr;
+}
+
+const EQE1Loader* IrrlichtRenderer::openCompositeSheetEQE1(const std::string& name) {
+    // T284: the only composite case the name index cannot answer -- a
+    // --composite-entities directory that is NOT the indexed --eqe1-path.
+    //
+    // data/eqe1_texture_index.json is built over the eqe1 tree, so packs that
+    // live only in a separate composite directory are absent from it and
+    // resolve() answers "no archive has this" -- the branch decision #2 turns
+    // into ConstrainedTextureCache's exit(1). Before T284 the step-0 directory
+    // scan hid that by opening the whole composite directory; with the scan
+    // gone this is what keeps a split layout working.
+    //
+    // No scan and no index is needed for it: a composite sheet pack is
+    // SELF-NAMED -- the pack stem IS its single entry name
+    // (<model>_hs_def_<gender>_<variant>, <model>_actordef_0_<variant>; T281
+    // verified all 498 shipped sheet packs have this shape) -- so the
+    // requested name names its pack directly. At most one open, and none when
+    // the file is not there.
+    if (!config_.constrainedConfig.enableCompositeEntities) return nullptr;
+    const std::string& dir = config_.constrainedConfig.compositeEntityPath;
+    if (dir.empty() || dir == config_.constrainedConfig.eqe1Path) return nullptr;
+    // Existence-check first so a name that is simply absent from the tree (the
+    // decision-#2 asset gap) does not leave a negative entry in eqe1Loaders_
+    // under a stem some later archive lookup might legitimately want.
+    std::error_code ec;
+    if (!std::filesystem::exists(dir + "/" + name + ".eqe1", ec)) return nullptr;
+    return getOrOpenEQE1FromDir(name, dir);
 }
 
 const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& name) {
@@ -422,7 +455,7 @@ const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& nam
     //      none queued), and the same happens for any roamer/pet/summon of a
     //      race absent at zone load. The archive is appended to the candidate
     //      set so its sibling names take path 2 from then on.
-    if (!eqe1Index_.isLoaded()) return nullptr;
+    if (!eqe1Index_.isLoaded()) return openCompositeSheetEQE1(name);
 
     std::vector<std::string> candidates;
     size_t loadTimeCount = 0;
@@ -433,7 +466,7 @@ const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& nam
     }
 
     EQE1TextureIndex::Resolution r;
-    if (!eqe1Index_.resolve(name, candidates, r)) return nullptr;
+    if (!eqe1Index_.resolve(name, candidates, r)) return openCompositeSheetEQE1(name);
 
     bool late = r.lateOpen;
     if (!late) {

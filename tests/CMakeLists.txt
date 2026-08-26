@@ -504,6 +504,28 @@ TARGET_COMPILE_DEFINITIONS(test_eqe1_texture_index PRIVATE
 TARGET_LINK_LIBRARIES(test_eqe1_texture_index GTest::gtest_main ${JSONCPP_LIBRARIES}
     ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_eqe1_texture_index)
+
+# T284: a composite sheet opens ONE pack, not the whole sheet directory.
+# Index-level guard (sheet names are self-owned, so resolve() can only name one
+# pack) plus an integration guard that shells out to gles2_zone_benchmark --
+# the only x86 harness that drives the composite path with no server -- the
+# same popen() pattern test_entity_viewer_regression uses. Both skip without
+# the NFS assets. The benchmark dependency is graphics-gated.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_eqe1_composite_open
+        test_eqe1_composite_open.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_texture_index.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_composite_open PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${JSONCPP_INCLUDE_DIRS})
+    TARGET_COMPILE_DEFINITIONS(test_eqe1_composite_open PRIVATE
+        EQE1_TEXTURE_INDEX_JSON="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json"
+        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>")
+    TARGET_LINK_LIBRARIES(test_eqe1_composite_open GTest::gtest_main ${JSONCPP_LIBRARIES}
+        ${FMT_LIB})
+    ADD_DEPENDENCIES(test_eqe1_composite_open gles2_zone_benchmark)
+    GTEST_DISCOVER_TESTS(test_eqe1_composite_open)
+ENDIF()
 # T268: loot window actions (take one item, loot all, close) driven through
 # the real CommandProcessor -> ActionDispatcher -> EqActionHandler ->
 # EverQuest/CombatManager chain and asserted on the wire via the T268

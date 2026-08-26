@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <cstdlib>
+#include <mutex>
 #include <set>
 #include <unordered_map>
 
@@ -24,13 +26,19 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/load_mem_audit.h"
-
-#include <filesystem>
 
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
+#endif
+
+// T284: repo-root fallback for the EQE1 name->pack index, set by CMake for
+// every target that compiles this TU (same shape as WILLEQ_DB_REAL_PATH,
+// T270). Defined defensively so a new target that forgets it still builds.
+#ifndef WILLEQ_EQE1_INDEX_REAL_PATH
+#define WILLEQ_EQE1_INDEX_REAL_PATH "data/eqe1_texture_index.json"
 #endif
 
 using namespace EQT::Graphics;
@@ -669,27 +677,61 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         data->raceModelLoader->loadZoneModels(config.zoneName);
 
         // Wire composite entity textures (same as production renderer)
+        //
+        // T284: this used to SCAN config.eqe1Path and open every *_hs_def_* /
+        // *_actordef_* pack in it -- 498 packs on the shipped ETC1 tree
+        // (production's own scan, in loadZoneStep0_EQE1, was unfiltered and
+        // opened all 1506 / 4.44 GiB). Now a sheet name resolves through the
+        // shipped name->pack index to exactly ONE pack, opened on demand by
+        // the resolver below, which is the same rule production uses
+        // (IrrlichtRenderer::openArchiveContaining / EQE1TextureIndex::resolve
+        // -- T207's index lookup, T266's rule-R2 late-open). Keeping the
+        // benchmark on the same rule is the point: it is the only x86 harness
+        // that drives the composite path without a server, so a fork here
+        // would measure something production does not do.
         if (config.compositeEntities && !config.eqe1Path.empty()) {
             data->raceModelLoader->setCompositeEntityPath(config.eqe1Path);
 
-            // Open per-race composite EQE1 files from the eqe1 directory
-            namespace fs = std::filesystem;
-            if (fs::is_directory(config.eqe1Path)) {
-                int compositeCount = 0;
-                for (const auto& entry : fs::directory_iterator(config.eqe1Path)) {
-                    if (entry.path().extension() != ".eqe1") continue;
-                    std::string stem = entry.path().stem().string();
-                    // Composite files match pattern: {race}_hs_def_{gender}_{variant}
-                    if (stem.find("_hs_def_") == std::string::npos &&
-                        stem.find("_actordef_") == std::string::npos) continue;
-                    auto loader = std::make_unique<EQE1Loader>();
-                    if (loader->open(entry.path().string())) {
-                        data->textureCache->addEQE1Loader(loader.get());
-                        data->eqe1Loaders.push_back(std::move(loader));
-                        ++compositeCount;
-                    }
+            data->eqe1Index = std::make_unique<EQE1TextureIndex>();
+            const char* indexEnv = std::getenv("WILLEQ_EQE1_INDEX");
+            std::string indexPath = indexEnv && *indexEnv ? indexEnv
+                                                          : "data/eqe1_texture_index.json";
+            if (!data->eqe1Index->load(indexPath)) {
+                // Same fallback shape as WILLEQ_DB_REAL_PATH (T270): a run
+                // whose CWD is not the repo root still finds the shipped file.
+                if (!data->eqe1Index->load(WILLEQ_EQE1_INDEX_REAL_PATH)) {
+                    printf("  Composite EQE1: WARNING -- no name index at '%s' or '%s'; "
+                           "composite sheets will not resolve\n",
+                           indexPath.c_str(), WILLEQ_EQE1_INDEX_REAL_PATH);
                 }
-                printf("  Composite EQE1: %d archives loaded\n", compositeCount);
+            }
+
+            if (data->eqe1Index->isLoaded()) {
+                auto* raw = data.get();
+                std::string eqe1Dir = config.eqe1Path;
+                data->textureCache->setEQE1ArchiveResolver(
+                    [raw, eqe1Dir](const std::string& name) -> const EQE1Loader* {
+                        static std::mutex resolverMutex;
+                        std::lock_guard<std::mutex> lock(resolverMutex);
+                        EQE1TextureIndex::Resolution r;
+                        // No zone candidate set in the benchmark -- every
+                        // resolve is rule R2 (first owner in index order),
+                        // which is the branch a composite sheet takes in
+                        // production too (a sheet pack is never a candidate).
+                        if (!raw->eqe1Index->resolve(name, {}, r)) return nullptr;
+                        for (const auto& l : raw->eqe1Loaders) {
+                            if (l && l->getFilePath() == eqe1Dir + "/" + r.archive + ".eqe1")
+                                return l.get();
+                        }
+                        auto loader = std::make_unique<EQE1Loader>();
+                        if (!loader->open(eqe1Dir + "/" + r.archive + ".eqe1")) return nullptr;
+                        const EQE1Loader* ptr = loader.get();
+                        raw->eqe1ResolverOpens += 1;
+                        raw->eqe1ResolverBytes += ptr->getMappedBytes();
+                        raw->textureCache->addEQE1Loader(ptr);
+                        raw->eqe1Loaders.push_back(std::move(loader));
+                        return ptr;
+                    });
             }
         }
 
@@ -757,6 +799,12 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             }
 
             data->textureCache->uploadAllPending();
+
+            // T284 metric: how many packs the index-driven open actually
+            // mapped for this run's composites, against the directory scan it
+            // replaced. Machine-readable so tests/measurements can parse it.
+            printf("  EQE1-COMPOSITE: %zu pack(s) opened on demand, %zu byte(s) mapped\n",
+                   data->eqe1ResolverOpens, data->eqe1ResolverBytes);
         }
 
         // Pre-load meshes for each race (cache them)

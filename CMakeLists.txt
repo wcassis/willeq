@@ -1522,6 +1522,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/eqe1_texture_index.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
@@ -1572,6 +1573,10 @@ IF(EQT_GRAPHICS)
     # fallback for runs whose CWD is not the repo root.
     TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    # T284: same fallback for the EQE1 name->pack index, which the composite
+    # path now resolves through instead of scanning the sheet directory.
+    TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE
+        WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
     TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/tools)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_zone_benchmark PRIVATE EQT_HAS_DRM)
@@ -1630,6 +1635,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/eqe1_texture_index.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
@@ -1684,6 +1690,9 @@ IF(EQT_GRAPHICS)
         TARGET_COMPILE_DEFINITIONS(gles2_shader_diagnostic PRIVATE EQT_HAS_GLES2)
     ENDIF()
     TARGET_LINK_LIBRARIES(gles2_shader_diagnostic ${ZONE_BENCH_LIBS})
+    # T284: shares zone_bench_loader.cpp's index-driven composite open.
+    TARGET_COMPILE_DEFINITIONS(gles2_shader_diagnostic PRIVATE
+        WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 
     # Composite entity audit tool — renders all race/gender/variant combos as PNGs
     ADD_EXECUTABLE(gles2_composite_audit
@@ -1701,6 +1710,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/eqe1_texture_index.cpp
         src/client/graphics/load_mem_audit.cpp
         src/client/graphics/background_thread_pool.cpp
         src/client/graphics/portal_system.cpp
@@ -1755,6 +1765,9 @@ IF(EQT_GRAPHICS)
         TARGET_COMPILE_DEFINITIONS(gles2_composite_audit PRIVATE EQT_HAS_GLES2)
     ENDIF()
     TARGET_LINK_LIBRARIES(gles2_composite_audit ${ZONE_BENCH_LIBS})
+    # T284: shares zone_bench_loader.cpp's index-driven composite open.
+    TARGET_COMPILE_DEFINITIONS(gles2_composite_audit PRIVATE
+        WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 ENDIF()
 
 ADD_EXECUTABLE(test_gl_points tools/test_gl_points.cpp)
