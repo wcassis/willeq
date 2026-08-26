@@ -1311,12 +1311,15 @@ void EverQuest::ProcessBridgeIntents() {
 								if (result == EQ::CastResult::Success) {
 									const EQ::SpellData* spell = m_spell_manager->getSpell(i.id);
 									if (spell) AddChatSystemMessage(fmt::format("Casting {}", spell->name));
-								} else if (result == EQ::CastResult::NotEnoughMana) {
-									AddChatSystemMessage("Insufficient mana");
-								} else if (result == EQ::CastResult::GemCooldown) {
+								} else if (std::string refusal = EQ::castRefusalMessage(*this, result); !refusal.empty()) {
+									// T253: third refusal site, same table/renderer as
+									// CastSpellIntent above and EqActionHandler::
+									// beginCastFromGem(). Was three literals (mana /
+									// cooldown / already casting) and silence for
+									// every other refusal.
+									AddChatSystemMessage(refusal);
+								} else if (result == EQ::CastResult::SpellNotReady) {
 									AddChatSystemMessage("Spell not ready");
-								} else if (result == EQ::CastResult::AlreadyCasting) {
-									AddChatSystemMessage("Already casting");
 								}
 								break;
 							}

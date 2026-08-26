@@ -16,6 +16,11 @@
  * id through the string DB and, for ComponentMissing, names the short
  * component with 433 "You are missing %1." (the official client's form)
  * whenever the item's name is known, falling back to the unnamed 272.
+ *
+ * T253: a THIRD site -- the mouse hotbar Spell arm (HotbarActivateIntent in
+ * eq_bridge.cpp) -- had kept three literals and stayed silent for every
+ * other refusal; it now calls castRefusalMessage() too. Grep for a fourth
+ * (review/T253/fourth_site_grep.txt) found none.
  */
 #pragma once
 

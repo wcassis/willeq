@@ -815,6 +815,65 @@ TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SaysMissingNamedItem
     EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
 }
 
+// T253: the THIRD refusal site -- a mouse click on a hotbar Spell button
+// (HotbarActivateIntent, HotbarSlotType::Spell, eq_bridge.cpp) -- kept its
+// own literals after T244/T251 and said NOTHING for ComponentMissing,
+// OutOfRange, NoLineOfSight, InvalidTarget, Stunned, Silenced, NoPet.
+// Both cases below FAIL on the pre-T253 arm (lastSystemMessage() stays
+// empty); see review/T253/red_hotbar.txt.
+TEST(EqActionHandlerCast, HotbarSpellClick_ReagentCountShort_SaysMissingNamedItem) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    const EQ::SpellData* bw = h.eq.GetSpellManager()->getSpell(351);
+    if (!bw || bw->reagent_id[0] != 13073u || bw->reagent_count[0] != 2u) {
+        GTEST_SKIP() << "spell 351 is not Bone Walk with 2 x 13073 in this DB";
+    }
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({kEmpty, kEmpty, 351, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN, makeStack(13073, 1, "Bone Chips"));
+    h.clearSent();
+
+    eqt::events::HotbarActivateIntent click;
+    click.index = 3;
+    click.type = eqt::HotbarSlotType::Spell;
+    click.id = 351;
+    h.bridge.pushIntent(click);
+    h.eq.ProcessBridgeIntents();
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
+}
+
+TEST(EqActionHandlerCast, HotbarSpellClick_TargetOutOfRange_SaysOutOfRange) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    uint32_t id = findRangedSingleTargetSpell(h.eq);
+    if (id == 0) GTEST_SKIP() << "no ranged single-target spell in scanned range";
+
+    h.spawnSelfAndGuard();
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(kFarId, "a_distant_roamer", 0, 4000, 0));
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({id, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kFarId));
+    h.clearSent();
+
+    eqt::events::HotbarActivateIntent click;
+    click.index = 0;
+    click.type = eqt::HotbarSlotType::Spell;
+    click.id = id;
+    h.bridge.pushIntent(click);
+    h.eq.ProcessBridgeIntents();
+
+    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_TRUE(h.sentCasts().empty());
+    EXPECT_EQ(h.lastSystemMessage(), "Your target is out of range, get closer!");
+}
+
 // A reagent sitting in the BANK does not count (eqemu checks worn +
 // personal only).
 TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillRefused) {
