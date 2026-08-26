@@ -464,7 +464,7 @@ void EverQuest::RequestTraining()
 	// rather than inventing a third distance constant (the plan
 	// explicitly forbids that); see Review for the tradeoff stated
 	// plainly.
-	float dist = CalculateDistance2D(m_x, m_y, target.x, target.y);
+	float dist = CalculateDistance2D(PosX(), PosY(), target.x, target.y);
 	if (dist > NPC_INTERACTION_DISTANCE) {
 		AddChatSystemMessage(fmt::format("You are too far away to train with {}.", target.name));
 		return;

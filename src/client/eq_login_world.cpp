@@ -882,13 +882,12 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		// here). Fixed as a correctness hardening for whenever that
 		// reachability changes, not because it explains any live symptom.
 		if (m_game_state.world().pendingZoneId() != 0) {
-			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> m_x={:.1f}, m_y={:.1f}",
+			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> client x={:.1f}, y={:.1f}",
 				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(),
 				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY());
-			// T55: route through SetPosition/SetHeading so the state layer's
-			// player position (m_game_state.player()) is written too, not
-			// just the raw m_x/m_y/m_z members -- the T39 pattern ("setters
-			// written but never wired") this unit closes. See
+			// T55: route through SetPosition/SetHeading, the event-firing
+			// relocation path. T288 deleted the raw m_x/m_y/m_z members, so
+			// there is only one store to write now. See
 			// refactor/T55_position_state_propagation.md. This branch is
 			// still the one T52 found to be structurally dead in every
 			// traced production flow (is_zone_transition is always false),

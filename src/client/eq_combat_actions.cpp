@@ -163,7 +163,7 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 
 	// T247: an NPC casting a detrimental spell at us is on our hate list.
 	// Beneficial NPC casts (and our own / other players' actions) are not.
-	if (action->target == m_my_spawn_id && action->source != m_my_spawn_id &&
+	if (action->target == MySpawnId() && action->source != MySpawnId() &&
 	    m_combat_manager && m_spell_manager) {
 		auto src = m_entities.find(action->source);
 		const EQ::SpellData* spell = m_spell_manager->getSpell(action->spell);
@@ -247,7 +247,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	// T247: every attack an NPC makes on us arrives here -- hits, misses
 	// (damage 0) and DMG_INVULNERABLE (-5) alike -- and is the client's only
 	// evidence that it is on that NPC's hate list. Mark it for CheckForAggro.
-	if (target_id == m_my_spawn_id && source_id != m_my_spawn_id && m_combat_manager) {
+	if (target_id == MySpawnId() && source_id != MySpawnId() && m_combat_manager) {
 		auto src = m_entities.find(source_id);
 		if (src != m_entities.end() && src->second.npc_type == 1) {
 			m_combat_manager->NoteAttackedBy(source_id);
@@ -255,7 +255,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	}
 
 	// Cancel trade if player takes damage (entering combat)
-	if (target_id == m_my_spawn_id && damage_amount > 0 &&
+	if (target_id == MySpawnId() && damage_amount > 0 &&
 		m_trade_manager && m_trade_manager->isTrading()) {
 		LOG_DEBUG(MOD_MAIN, "Player took damage during trade, canceling trade");
 		m_trade_manager->cancelTrade();
@@ -294,8 +294,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 
 	// Add combat chat messages
 	if (damage_amount > 0 && !target_name.empty()) {
-		bool player_is_target = (target_id == m_my_spawn_id);
-		bool player_is_source = (source_id == m_my_spawn_id);
+		bool player_is_target = (target_id == MySpawnId());
+		bool player_is_source = (source_id == MySpawnId());
 
 		// Get verb based on damage type (crush, slash, pierce, kick, etc.)
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -328,8 +328,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		}
 	} else if (damage_amount == 0 && !target_name.empty()) {
 		// Miss - use CombatMiss channel (filterable separately from hits)
-		bool player_is_source = (source_id == m_my_spawn_id);
-		bool player_is_target = (target_id == m_my_spawn_id);
+		bool player_is_source = (source_id == MySpawnId());
+		bool player_is_target = (target_id == MySpawnId());
 
 		// Get verb for miss messages too
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -395,7 +395,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		if (isMeleeDamage && targetAlive) {
 			// Calculate damage percentage for animation selection
 			float damagePercent = 0.0f;
-			if (target_id == m_my_spawn_id && m_game_state.player().maxHP() > 0) {
+			if (target_id == MySpawnId() && m_game_state.player().maxHP() > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != m_entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
@@ -419,7 +419,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
 			// Non-melee damage (spells, DoT, environmental) - play immediately
 			float damagePercent = 0.0f;
-			if (target_id == m_my_spawn_id && m_game_state.player().maxHP() > 0) {
+			if (target_id == MySpawnId() && m_game_state.player().maxHP() > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != m_entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;

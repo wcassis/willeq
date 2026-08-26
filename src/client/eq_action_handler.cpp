@@ -109,13 +109,13 @@ std::string EqActionHandler::channelToString(action::ChatChannel channel) {
 // ========== Movement ==========
 
 void EqActionHandler::setHeading(float heading) {
-    // T90: EverQuest::SetHeading() stores its argument raw into m_heading,
+    // T90: EverQuest::SetHeading() stores its argument raw into the player heading (degrees),
     // which every other site (PlayerProfile zone-in, eq_movement.cpp's
-    // outbound server_heading = 90 - m_heading, the self ClientUpdate echo)
+    // outbound server_heading = 90 - the client heading, the self ClientUpdate echo)
     // treats as plain 0-360 degrees -- confirmed by reading SetHeading()
     // itself (eq.cpp) rather than assuming. This function used to also
     // convert degrees to EQ's 0-512 unit range before calling it, double-
-    // converting (e.g. setHeading(90) produced m_heading == 128). Pass
+    // converting (e.g. setHeading(90) produced a stored heading of 128). Pass
     // degrees straight through; only normalize into [0, 360).
     float normalizedHeading = heading;
     while (normalizedHeading < 0.0f) normalizedHeading += 360.0f;
@@ -1481,7 +1481,7 @@ void EqActionHandler::save() {
 
 // Ported from game's bindwound_cmd (eq_commands.cpp) exactly: targetId==0
 // resolves to the CombatManager's current target if one exists, otherwise
-// falls back to SELF (m_my_spawn_id) -- unlike assist()/shieldTarget()
+// falls back to SELF (the player spawn id) -- unlike assist()/shieldTarget()
 // above, which report "You don't have a target." instead of self-targeting.
 // Reuses the same getCombatManager() helper T102 built for the Combat
 // family rather than introducing any new targeting concept.
@@ -1953,7 +1953,7 @@ void EqActionHandler::sellToVendor(uint32_t slot, uint8_t quantity) {
 
 // Pure state read + print, ported verbatim from eq_commands_movement.cpp's
 // old loc_cmd lambda -- EverQuest::GetPosition() (eq.h) was already public
-// and already reads the same m_x/m_y/m_z this used directly, so no new
+// and already reads the same client position this used directly, so no new
 // EverQuest surface was needed here.
 void EqActionHandler::showLocation() {
     auto pos = m_eq.GetPosition();

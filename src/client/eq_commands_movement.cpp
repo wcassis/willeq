@@ -199,7 +199,7 @@ void EverQuest::RegisterMovementCommands()
 // T140: warp's ~80-line teleport body, carried verbatim into a thin
 // EverQuest wrapper (same recipe as T136's RequestVendorToggle) --
 // action::EqActionHandler has no access to m_combat_manager/m_entities/
-// m_bridge, all private. No behavior change: still writes m_x/m_y/m_z and
+// m_bridge, all private. No behavior change: still writes the client position and
 // the entity list directly (no pathfinding, no server round trip for the
 // teleport itself), still calls SendPositionUpdate() (real network send)
 // and pushes PlayerMovedData afterward, exactly as before.
@@ -252,13 +252,13 @@ void EverQuest::RequestWarp(const std::string& args)
 	}
 
 	if (found_destination) {
-		// Instantly set position
-		m_x = x;
-		m_y = y;
-		m_z = z;
+		// Instantly set position. T288: one store; the hand-rolled bridge
+		// publish below is still the only thing the renderer sees, so this
+		// write stays event-free exactly as the raw members were.
+		SetPosLocal(x, y, z);
 
 		// Update our entity in the entity list
-		auto it = m_entities.find(m_my_spawn_id);
+		auto it = m_entities.find(MySpawnId());
 		if (it != m_entities.end()) {
 			it->second.x = x;
 			it->second.y = y;
@@ -271,7 +271,7 @@ void EverQuest::RequestWarp(const std::string& args)
 		if (m_bridge) {
 			eqt::state::PlayerMovedData pdata;
 			pdata.x = x; pdata.y = y; pdata.z = z;
-			pdata.heading = m_heading;
+			pdata.heading = HeadingDeg();
 			pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 			pdata.isMoving = false;
 			m_bridge->pushEvent(eqt::state::GameEvent(

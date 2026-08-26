@@ -500,8 +500,8 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	m_game_state.player().setCurMana(new_mana);
 
 	// Update our entity if we're tracking it
-	if (m_my_spawn_id != 0) {
-		auto it = m_entities.find(m_my_spawn_id);
+	if (MySpawnId() != 0) {
+		auto it = m_entities.find(MySpawnId());
 		if (it != m_entities.end()) {
 			it->second.cur_mana = static_cast<uint16_t>(std::min(new_mana, static_cast<uint32_t>(65535)));
 		}
@@ -583,7 +583,7 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	uint32_t buff_fade = p.GetUInt32(30);
 
 	// Check if this is our buff
-	bool is_self = (entity_id == m_my_spawn_id);
+	bool is_self = (entity_id == MySpawnId());
 
 	LOG_DEBUG(MOD_SPELL, "Buff: entity={}, spell={}, slot={}, duration={}, fade={}, effect_type={}",
 		entity_id, buff.spellid, slot_id, buff.duration, buff_fade, buff.effect_type);
@@ -785,7 +785,7 @@ void EverQuest::SendBuffCancelRequest(uint8_t slot)
 		return;
 	}
 
-	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, m_my_spawn_id, slot, *buff);
+	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, MySpawnId(), slot, *buff);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(bytes.size());
@@ -1322,7 +1322,7 @@ void EverQuest::SendInspectRequest(uint32_t target_id)
 	// Build the inspect request
 	EQT::Inspect_Struct inspect;
 	inspect.TargetID = target_id;
-	inspect.PlayerID = m_my_spawn_id;
+	inspect.PlayerID = MySpawnId();
 
 	// Build and send the packet
 	// Body-only: QueuePacket(opcode, pkt) prepends the opcode itself.
@@ -1359,7 +1359,7 @@ void EverQuest::SendInspectRequest(uint32_t target_id)
 void EverQuest::SendInspectAnswer(uint32_t requester_id)
 {
 	EQT::InspectResponse_Struct answer =  // non-const: PutData takes void*
-		EQT::MakeInspectAnswer(requester_id, m_my_spawn_id, m_inspect_message);
+		EQT::MakeInspectAnswer(requester_id, MySpawnId(), m_inspect_message);
 
 	// T170 test seam, same shape as T88's and T167's: capture the body before
 	// the connection gate so a test can assert on the real encoder output.
@@ -1723,7 +1723,7 @@ void EverQuest::ZoneProcessLFGAppearance(const EQ::Net::Packet &p)
 	}
 
 	// Update our own status if it's us
-	if (lfg->spawn_id == m_my_spawn_id) {
+	if (lfg->spawn_id == MySpawnId()) {
 		m_is_lfg = (lfg->lfg != 0);
 	}
 }
@@ -1773,7 +1773,7 @@ void EverQuest::ZoneProcessEnvDamage(const EQ::Net::Packet &p)
 		default: damage_type = "environmental"; break;
 	}
 
-	if (env->id == m_my_spawn_id) {
+	if (env->id == MySpawnId()) {
 		LOG_INFO(MOD_MAIN, "You took {} {} damage!", env->damage, damage_type);
 		AddChatSystemMessage(fmt::format("You took {} points of {} damage.", env->damage, damage_type));
 	}
@@ -1919,7 +1919,7 @@ void EverQuest::SendDuelRequest(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_RequestDuel);
 
 	EQT::Duel_Struct duel;
-	duel.duel_initiator = m_my_spawn_id;
+	duel.duel_initiator = MySpawnId();
 	duel.duel_target = target_id;
 	packet.PutData(2, &duel, sizeof(duel));
 
@@ -1939,7 +1939,7 @@ void EverQuest::SendDuelAccept(uint32_t target_id)
 
 	EQT::Duel_Struct duel;
 	duel.duel_initiator = target_id;
-	duel.duel_target = m_my_spawn_id;
+	duel.duel_target = MySpawnId();
 	packet.PutData(2, &duel, sizeof(duel));
 
 	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
@@ -1958,7 +1958,7 @@ void EverQuest::SendDuelDecline(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_DuelDecline);
 
 	EQT::DuelResponse_Struct response;
-	response.target_id = m_my_spawn_id;
+	response.target_id = MySpawnId();
 	response.entity_id = target_id;
 	response.unknown = 0;
 	packet.PutData(2, &response, sizeof(response));
@@ -1982,7 +1982,7 @@ void EverQuest::ZoneProcessDuelRequest(const EQ::Net::Packet &p)
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	// Someone challenged us to a duel
-	if (duel->duel_target == m_my_spawn_id) {
+	if (duel->duel_target == MySpawnId()) {
 		m_has_pending_duel = true;
 		m_duel_initiator_id = duel->duel_initiator;
 
@@ -2131,9 +2131,9 @@ void EverQuest::SendFindPerson(uint32_t npc_id)
 
 	EQT::FindPersonRequest_Struct fp;
 	fp.npc_id = npc_id;
-	fp.client_pos.x = m_x;
-	fp.client_pos.y = m_y;
-	fp.client_pos.z = m_z;
+	fp.client_pos.x = PosX();
+	fp.client_pos.y = PosY();
+	fp.client_pos.z = PosZ();
 	packet.PutData(2, &fp, sizeof(fp));
 
 	if (m_zone_connection && m_game_state.world().isZoneConnected()) {

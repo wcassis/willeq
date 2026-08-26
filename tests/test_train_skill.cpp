@@ -107,7 +107,7 @@ public:
         dispatcher.setActionHandler(&handler);
         eq.GetGameState().world().setZoneConnected(true);
 
-        eq.m_my_spawn_id = 77;
+        eq.Test_SetMySpawnIdForSeam(77);  // T288: one store
         // T283: practice points live in ONE place -- PlayerState. Seeding
         // that single store is all a zone-in does and all a test may need;
         // if some other copy exists, this seeding is silently incomplete
@@ -126,7 +126,7 @@ public:
         EQT::GMTrainee_Struct t;
         std::memset(&t, 0, sizeof(t));
         t.npcid = kTrainerId;
-        t.playerid = eq.m_my_spawn_id;
+        t.playerid = eq.GetMySpawnID();
         t.skills[kSkill1HSlash] = cap1hSlash;
         t.skills[kSkillBash] = capBash;
         // kSkillForage deliberately left at 0 == "not taught here".
@@ -533,7 +533,7 @@ TEST(TrainClose, PushesTheIntentAndSendsEightExactBytes) {
     EQT::GMTrainEnd_Struct got{};
     std::memcpy(&got, pkts[0].body.data(), sizeof(got));
     EXPECT_EQ(got.npcid, kTrainerId);
-    EXPECT_EQ(got.playerid, h.eq.m_my_spawn_id);
+    EXPECT_EQ(got.playerid, h.eq.GetMySpawnID());
     EXPECT_FALSE(h.eq.IsTrainerWindowOpen());
 }
 

@@ -79,10 +79,10 @@ void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
 	// this Titanium client only ever occupies instance 0 (RequestZoneChange
 	// always sends instance_id 0), so a non-zero instance_id is a genuine
 	// cross-instance move and keeps the handshake path. An unknown current
-	// zone (m_current_zone_id == 0, no NewZone yet) also keeps the old path
+	// zone (zone id == 0, no NewZone yet) also keeps the old path
 	// rather than guessing.
-	const bool same_zone = (m_current_zone_id != 0
-		&& zone_id == m_current_zone_id
+	const bool same_zone = (CurrentZoneId() != 0
+		&& zone_id == CurrentZoneId()
 		&& instance_id == 0);
 	if (same_zone) {
 		LOG_INFO(MOD_ZONE, "Same-zone relocation (zone {}): applying locally, no OP_ZoneChange reply",
@@ -137,19 +137,19 @@ void EverQuest::RelocateWithinZone(float x, float y, float z, float server_headi
 	SetHeading(new_heading);
 
 	LOG_INFO(MOD_ZONE, "Relocated within zone to client=({:.2f}, {:.2f}, {:.2f}) heading={:.2f}deg (wire heading {:.2f})",
-		m_x, m_y, m_z, m_heading, server_heading);
+		PosX(), PosY(), PosZ(), HeadingDeg(), server_heading);
 
 	// Move the renderer's player/camera the same way PlayerProfile does on
 	// zone-in: a hand-rolled PlayerMoved on the bridge, heading in the 512
 	// format IrrlichtRenderer::setPlayerPosition() expects. Without this, in
 	// Player mode the renderer keeps its own copy of the position and its
-	// next PlayerPositionChanged intent would drag m_x/m_y/m_z straight
+	// next PlayerPositionChanged intent would drag the client position straight
 	// back. (SetPosition/SetHeading only fire on the state layer's own
 	// EventBus, which never reaches the bridge -- T58 Review trace table.)
 	if (m_bridge) {
 		eqt::state::PlayerMovedData data;
-		data.x = m_x; data.y = m_y; data.z = m_z;
-		data.heading = m_heading * 512.0f / 360.0f;
+		data.x = PosX(); data.y = PosY(); data.z = PosZ();
+		data.heading = HeadingDeg() * 512.0f / 360.0f;
 		data.dx = 0; data.dy = 0; data.dz = 0;
 		data.isMoving = false;
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -289,7 +289,7 @@ void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, f
 	// Server expects Y, X, Z order (opposite of our internal order).
 	// Established convention (T52, verified against live PlayerProfile wire
 	// evidence, which uses the identical relationship): our internal
-	// m_x = server_y, m_y = server_x. Inverting that to build an outgoing
+	// client x = server y, client y = server x. Inverting that to build an outgoing
 	// packet: the wire's y-field (offset 70) must carry OUR x, and the
 	// wire's x-field (offset 74) must carry OUR y.
 	//
@@ -458,9 +458,13 @@ void EverQuest::CleanupZone()
 	m_movement_history.clear();
 	m_last_movement_history_send = 0;
 
-	// Reset zone name and ID (both local and WorldState)
-	m_current_zone_name.clear();
-	m_current_zone_id = 0;
+	// Reset zone name and ID. T288: one store -- clearZone() is deliberately
+	// event-free so ConsoleRenderer is not told the zone "changed" to the
+	// empty string on every teardown (T286's stated reason for deferring
+	// this convergence). CreateZoneLoadSnapshot() reads the same store and
+	// so still sees an empty zone name here, which the P15 note in
+	// ProcessDeferredZoneChange() depends on.
+	m_game_state.world().clearZone();
 	m_game_state.world().resetZoneState();
 
 	LOG_DEBUG(MOD_ZONE, "Zone cleanup complete");
@@ -505,16 +509,16 @@ void EverQuest::ProcessDeferredZoneChange()
 	LOG_TRACE(MOD_ZONE, "Step 1 complete: Zone disconnected");
 
 	// P15 fix: do NOT signal a zone-load request here. CleanupZone() (inside
-	// DisconnectFromZone(), just above) clears m_current_zone_name, so a
+	// DisconnectFromZone(), just above) clears the zone name, so a
 	// snapshot created off of live game state at this point
-	// (CreateZoneLoadSnapshot() reads m_current_zone_name) would always be
+	// (CreateZoneLoadSnapshot() reads the zone name) would always be
 	// empty — gameThreadLoop consumes m_zone_load_requested in the same tick,
 	// well before the world/zone reconnect handshake below can repopulate the
 	// new zone's name. That produced "loadZoneGraphicsOnThread: snapshot has
 	// empty zone name" (GM #zone teleport and, in principle, any zone-line
 	// crossing — both funnel through this same re-zone path). The correct,
 	// single signal point is OnGameStateComplete() (eq.cpp), which only fires
-	// once the new zone's NewZone packet (and thus m_current_zone_name) has
+	// once the new zone's NewZone packet (and thus the zone name) has
 	// actually been received — exactly how the initial zone-in already
 	// works. Was previously D20e2's early pre-start signal; removed rather
 	// than guarded, since it was always redundant with OnGameStateComplete's
@@ -632,7 +636,7 @@ void EverQuest::LoadZoneLines(const std::string& zone_name)
 	m_game_state.world().setZoneLineTriggered(false);
 	m_game_state.world().setZoneChangeRequested(false);
 	m_game_state.world().clearPendingZone();
-	m_game_state.world().setLastZoneCheckPosition(m_x, m_y, m_z);
+	m_game_state.world().setLastZoneCheckPosition(PosX(), PosY(), PosZ());
 
 	// Try to load zone lines from the zone's S3D file
 	if (!m_eq_client_path.empty()) {
@@ -774,16 +778,16 @@ void EverQuest::CheckZoneLine()
 	checkCount++;
 	if (checkCount % 100 == 0) {
 		LOG_TRACE(MOD_ZONE, "Zone line check #{}: pos=({:.1f}, {:.1f}, {:.1f}) zone_lines={} regions={}",
-			checkCount, m_x, m_y, m_z,
+			checkCount, PosX(), PosY(), PosZ(),
 			m_zone_lines->hasZoneLines() ? "yes" : "no",
 			m_zone_lines->getZoneLineCount());
 	}
 
 	// Skip if we haven't moved since last check
 	constexpr float MIN_MOVE_THRESHOLD = 0.1f;
-	float dx = m_x - m_game_state.world().lastZoneCheckX();
-	float dy = m_y - m_game_state.world().lastZoneCheckY();
-	float dz = m_z - m_game_state.world().lastZoneCheckZ();
+	float dx = PosX() - m_game_state.world().lastZoneCheckX();
+	float dy = PosY() - m_game_state.world().lastZoneCheckY();
+	float dz = PosZ() - m_game_state.world().lastZoneCheckZ();
 	float dist_sq = dx * dx + dy * dy + dz * dz;
 
 	if (dist_sq < MIN_MOVE_THRESHOLD * MIN_MOVE_THRESHOLD) {
@@ -796,22 +800,22 @@ void EverQuest::CheckZoneLine()
 	float old_x = m_game_state.world().lastZoneCheckX();
 	float old_y = m_game_state.world().lastZoneCheckY();
 	float old_z = m_game_state.world().lastZoneCheckZ();
-	m_game_state.world().setLastZoneCheckPosition(m_x, m_y, m_z);
+	m_game_state.world().setLastZoneCheckPosition(PosX(), PosY(), PosZ());
 
 	// Check if currently in a zone line region
 	// The extracted zone lines use BSP coordinates which need to be checked against player position
-	// m_x = server_y, m_y = server_x (from spawn struct)
+	// client x = server y, client y = server x (from spawn struct)
 	// Testing with player position directly (coordinates may need adjustment based on zone)
-	float check_x = m_x;
-	float check_y = m_y;
-	float check_z = m_z;
+	float check_x = PosX();
+	float check_y = PosY();
+	float check_z = PosZ();
 
 	// Debug: log position being checked
 	static int posLogCount = 0;
 	posLogCount++;
 	if (posLogCount % 100 == 1) {
-		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: m_x={:.1f} m_y={:.1f} m_z={:.1f} (server: x={:.1f} y={:.1f})",
-			m_x, m_y, m_z, m_y, m_x);
+		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: x={:.1f} y={:.1f} z={:.1f} (server: x={:.1f} y={:.1f})",
+			PosX(), PosY(), PosZ(), PosY(), PosX());
 	}
 
 	EQT::ZoneLineResult result = m_zone_lines->checkPosition(check_x, check_y, check_z, check_x, check_y, check_z);
@@ -819,7 +823,7 @@ void EverQuest::CheckZoneLine()
 	// Debug output for every position check (throttled)
 	if (checkCount % 50 == 0) {
 		LOG_TRACE(MOD_ZONE, "Zone line check: check=({:.1f}, {:.1f}, {:.1f}) m_pos=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
-			check_x, check_y, check_z, m_x, m_y, m_z, result.isZoneLine ? "YES" : "no");
+			check_x, check_y, check_z, PosX(), PosY(), PosZ(), result.isZoneLine ? "YES" : "no");
 	}
 
 	if (result.isZoneLine) {
@@ -854,7 +858,7 @@ void EverQuest::CheckZoneLine()
 		// through, in CLIENT format -- they come from this zone's own
 		// WLD-derived zone-line data (m_zone_lines, loaded from the S3D/WLD
 		// geometry via LoadZoneLines), which is compared directly against
-		// check_x/check_y (== m_x/m_y) a few lines above with no swap. This
+		// check_x/check_y (== client x/y) a few lines above with no swap. This
 		// matches docs/CLAUDE.md's convention #3 (S3D/WLD files are Z-up,
 		// identity vs. client internal coords, no transform needed). So
 		// m_game_state.world().pendingZoneX()/y here are in the SAME format producer A stores
@@ -922,8 +926,8 @@ void EverQuest::FixZ()
 	}
 
 	// Get the best Z for our current position
-	float new_z = GetBestZ(m_x, m_y, m_z);
-	float z_diff = new_z - m_z;
+	float new_z = GetBestZ(PosX(), PosY(), PosZ());
+	float z_diff = new_z - PosZ();
 	float abs_diff = std::abs(z_diff);
 
 	// Always log Z-height info when following for debugging
@@ -938,7 +942,7 @@ void EverQuest::FixZ()
 		}
 
 		if (target) {
-			LOG_DEBUG(MOD_MAIN, "FixZ: Following {} - My Z: {:.2f}, Target Z: {:.2f}, Map thinks Z should be: {:.2f}, Diff: {:.2f}", m_game_state.player().followTarget(), m_z, target->z, new_z, z_diff);
+			LOG_DEBUG(MOD_MAIN, "FixZ: Following {} - My Z: {:.2f}, Target Z: {:.2f}, Map thinks Z should be: {:.2f}, Diff: {:.2f}", m_game_state.player().followTarget(), PosZ(), target->z, new_z, z_diff);
 		}
 	}
 
@@ -963,12 +967,12 @@ void EverQuest::FixZ()
 
 		if (s_debug_level >= 1) {
 			LOG_DEBUG(MOD_MAIN, "FixZ: Adjusting Z from {:.2f} to {:.2f} (adjustment: {:.2f}, diff was: {:.2f})",
-				m_z, m_z + adjustment, adjustment, z_diff);
+				PosZ(), PosZ() + adjustment, adjustment, z_diff);
 		}
 
-		m_z += adjustment;
+		SetPosLocal(PosX(), PosY(), PosZ() + adjustment);
 	} else if (s_debug_level >= 2 && abs_diff > 0.01f) {
 		LOG_DEBUG(MOD_MAIN, "FixZ: Z difference too small to adjust: {:.2f} (current: {:.2f}, best: {:.2f})",
-			z_diff, m_z, new_z);
+			z_diff, PosZ(), new_z);
 	}
 }

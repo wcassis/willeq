@@ -41,9 +41,9 @@ void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 //
 // The fields are FLOATS (eqemu common/eq_packet_structs.h:1949 -- `float y;
 // float x; float z;`), and they are in SERVER coordinates. Our internal
-// m_x = server_y, m_y = server_x (the T52 convention SendPositionUpdate and
+// client x = server y, client y = server x (the T52 convention SendPositionUpdate and
 // SendZoneChange both invert on the way out), so the wire's y-field gets our
-// m_x and the wire's x-field gets our m_y.
+// client x and the wire's x-field gets our client y.
 void EverQuest::SendGMSummon(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
@@ -53,9 +53,9 @@ void EverQuest::SendGMSummon(const std::string& charname)
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
 	strncpy(gm.gmname, m_character.c_str(), 63);
-	gm.y = m_x;  // server's y = our x
-	gm.x = m_y;  // server's x = our y
-	gm.z = m_z;
+	gm.y = PosX();  // server's y = our x
+	gm.x = PosY();  // server's x = our y
+	gm.z = PosZ();
 	packet.PutData(2, &gm, sizeof(gm));
 
 	// T229 test seam (same shape as T217's hideme one): the bytes we actually
@@ -67,7 +67,7 @@ void EverQuest::SendGMSummon(const std::string& charname)
 
 	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
 		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, m_x, m_y, m_z);
+		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, PosX(), PosY(), PosZ());
 	}
 }
 
@@ -167,7 +167,7 @@ void EverQuest::SendGMHideMe(bool hide)
 
 	EQT::SpawnAppearance_Struct sa;
 	memset(&sa, 0, sizeof(sa));
-	sa.spawn_id = m_my_spawn_id;
+	sa.spawn_id = MySpawnId();
 	sa.type = AT_GM;
 	sa.parameter = hide ? 0 : 1;
 	packet.PutData(2, &sa, sizeof(sa));

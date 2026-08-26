@@ -39,6 +39,15 @@ public:
     // reads from for the published event.
     void setZone(const std::string& name, uint16_t id, float x, float y, float z, float heading);
 
+    // T288: zone teardown. Clears the zone identity WITHOUT firing
+    // ZoneChanged. Before T288, EverQuest::CleanupZone() cleared its own
+    // m_current_zone_name/m_current_zone_id and left WorldState holding the
+    // departed zone; with one store the clear has to happen here, and it has
+    // to stay event-free -- ConsoleRenderer subscribes to ZoneChanged and
+    // would print a zone change to the empty string on every teardown
+    // (T286's stated reason for deferring this convergence).
+    void clearZone() { m_zoneName.clear(); m_zoneId = 0; }
+
     // Zone loading state
     bool isZoneLoading() const { return m_isZoneLoading; }
     void setZoneLoading(bool loading) { m_isZoneLoading = loading; }

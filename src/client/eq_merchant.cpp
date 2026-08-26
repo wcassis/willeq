@@ -1409,7 +1409,7 @@ void EverQuest::RequestOpenVendor(uint16_t npcId)
 	EQT::Merchant_Click_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npc_id = npcId;
-	req.player_id = m_my_spawn_id;
+	req.player_id = MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
 	QueuePacket(HC_OP_ShopRequest, &pkt);
 }
@@ -1427,7 +1427,7 @@ void EverQuest::BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quanti
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_Purchase_Struct buy;
 	buy.npc_id = npcId;
-	buy.player_id = m_my_spawn_id;
+	buy.player_id = MySpawnId();
 	buy.itemslot = itemSlot;
 	buy.unknown12 = 0;
 	buy.quantity = quantity;
@@ -1489,7 +1489,7 @@ void EverQuest::CloseVendorWindow()
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_End_Struct end;
 	end.npc_id = m_game_state.player().vendorNpcId();
-	end.player_id = m_my_spawn_id;
+	end.player_id = MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_ShopEnd, &pkt);
 
@@ -1737,7 +1737,7 @@ void EverQuest::RequestTrainerWindow(uint16_t npcId)
 	EQT::GMTrainee_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npcid = npcId;
-	req.playerid = m_my_spawn_id;
+	req.playerid = MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
 	QueuePacket(HC_OP_GMTraining, &pkt);
 }
@@ -1775,7 +1775,7 @@ void EverQuest::CloseTrainerWindow()
 	EQ::Net::DynamicPacket pkt;
 	EQT::GMTrainEnd_Struct end;
 	end.npcid = m_game_state.player().trainerNpcId();
-	end.playerid = m_my_spawn_id;
+	end.playerid = MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
 	QueuePacket(HC_OP_GMEndTraining, &pkt);
 

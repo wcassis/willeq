@@ -366,32 +366,30 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 			// Check if this is our own character and update our position
 			if (entity.name == m_character) {
-				if (m_my_spawn_id != 0 && m_my_spawn_id != entity.spawn_id) {
-					LOG_WARN(MOD_ZONE, "Spawn ID changed in ZoneSpawns: {} -> {}", m_my_spawn_id, entity.spawn_id);
+				if (MySpawnId() != 0 && MySpawnId() != entity.spawn_id) {
+					LOG_WARN(MOD_ZONE, "Spawn ID changed in ZoneSpawns: {} -> {}", MySpawnId(), entity.spawn_id);
 				}
-				m_my_spawn_id = entity.spawn_id;
-				// Phase 7.4: Also update PlayerState
-				m_game_state.player().setSpawnId(m_my_spawn_id);
+				SetMySpawnId(entity.spawn_id);  // T288: one store
 				if (m_trade_manager) {
-					m_trade_manager->setMySpawnId(m_my_spawn_id);
+					m_trade_manager->setMySpawnId(MySpawnId());
 				}
 
 				// Debug: Zone-in position tracking at level 1
 				if (s_debug_level >= 1) {
-					LOG_INFO(MOD_ZONE, "[ZONE-IN] Found our spawn in ZoneSpawns: ID={} Name='{}'", m_my_spawn_id, m_character);
+					LOG_INFO(MOD_ZONE, "[ZONE-IN] Found our spawn in ZoneSpawns: ID={} Name='{}'", MySpawnId(), m_character);
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Spawn entity: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} size={:.2f}",
 					         entity.x, entity.y, entity.z, entity.heading, entity.size);
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Previous client pos: ({:.2f},{:.2f},{:.2f}) heading={:.2f}",
-					         m_x, m_y, m_z, m_heading);
+					         PosX(), PosY(), PosZ(), HeadingDeg());
 				}
 
 				if (s_debug_level >= 2) {
 					LOG_DEBUG(MOD_ENTITY, "=== FOUND OUR CHARACTER ===");
-					LOG_DEBUG(MOD_ENTITY, "Name: '{}' Spawn ID: {}", m_character, m_my_spawn_id);
+					LOG_DEBUG(MOD_ENTITY, "Name: '{}' Spawn ID: {}", m_character, MySpawnId());
 					LOG_DEBUG(MOD_ENTITY, "Position: x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 						entity.x, entity.y, entity.z, entity.heading);
 					LOG_DEBUG(MOD_ENTITY, "Size: {:.2f} (THIS IS THE ACTUAL SIZE)", entity.size);
-					LOG_DEBUG(MOD_ENTITY, "Previous m_z={:.2f}, updating to entity.z={:.2f}", m_z, entity.z);
+					LOG_DEBUG(MOD_ENTITY, "Previous z={:.2f}, updating to entity.z={:.2f}", PosZ(), entity.z);
 					LOG_DEBUG(MOD_ENTITY, "Previous m_game_state.player().size()={:.2f}, updating to entity.size={:.2f}", m_game_state.player().size(), entity.size);
 					LOG_DEBUG(MOD_ENTITY, "==============================");
 				}
@@ -399,35 +397,35 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
 				if (m_bridge) {
 					if (s_debug_level >= 1) {
-						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", m_my_spawn_id);
+						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", MySpawnId());
 					}
 					m_bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::PlayerSpawnIdSet,
-						eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
+						eqt::state::PlayerSpawnIdSetData{MySpawnId()}));
 				}
 				// Mark player entity as pending creation - will be created when ClientUpdate arrives
 				// This ensures the loading screen stays visible until the player model is fully loaded
 				m_player_graphics_entity_pending = true;
 #endif
 				// Update our position to match server spawn position
-				m_x = entity.x;
-				m_y = entity.y;
 				m_game_state.player().setSize(entity.size);
 				// Server Z is model center. Convert to feet position for internal use.
 				// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
-				m_z = entity.z - (entity.size / 2.0f);
+				// T288: one store; heading deliberately NOT written from spawn
+				// data (see the note below), so this is a position-only write.
+				SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));
 				// Don't update heading from spawn data as it may be scaled differently
 
 				if (s_debug_level >= 1) {
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f}) heading unchanged={:.2f}",
-					         m_x, m_y, m_z, entity.z, m_heading);
+					         PosX(), PosY(), PosZ(), entity.z, HeadingDeg());
 				}
 
 				// Update bridge with corrected feet Z position
 				if (m_bridge) {
-					float heading512 = m_heading * 512.0f / 360.0f;
+					float heading512 = HeadingDeg() * 512.0f / 360.0f;
 					eqt::state::PlayerMovedData pdata;
-					pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+					pdata.x = PosX(); pdata.y = PosY(); pdata.z = PosZ();
 					pdata.heading = heading512;
 					pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 					pdata.isMoving = false;
@@ -465,15 +463,15 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	// Second pass: Check for pet after all spawns are loaded (if we know our spawn ID)
 	// This handles the case where our character is in ZoneSpawns. If not, deferred
 	// pet detection in ClientUpdate will find the pet when our spawn ID is set.
-	if (m_my_spawn_id != 0 && m_game_state.pet().petSpawnId() == 0) {
+	if (MySpawnId() != 0 && m_game_state.pet().petSpawnId() == 0) {
 		for (const auto& pair : m_entities) {
 			const Entity& ent = pair.second;
-			if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+			if (ent.is_pet != 0 && ent.pet_owner_id == MySpawnId()) {
 				// T286: PetState is the only store. setPet() (via
 				// OnPetCreated below) clears the button states, so FOLLOW
 				// is set AFTER it, not before.
 				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
-					ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
+					ent.name, ent.spawn_id, ent.level, MySpawnId());
 				// T43: was #ifdef EQT_HAS_GRAPHICS. OnPetCreated() is a pure
 				// bridge-event publish (eq_bridge.cpp; no renderer dependency)
 				// -- gating it meant pet deltas never published in a headless
@@ -798,11 +796,10 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		// spawn_id=0 means "self", parameter contains the new spawn ID
 		if (spawn_id == 0 && parameter != 0) {
 			uint16_t newSpawnId = static_cast<uint16_t>(parameter);
-			LOG_INFO(MOD_ZONE, "Server assigned new spawn ID: {} (was {})", newSpawnId, m_my_spawn_id);
-			m_my_spawn_id = newSpawnId;
-			m_game_state.player().setSpawnId(m_my_spawn_id);
+			LOG_INFO(MOD_ZONE, "Server assigned new spawn ID: {} (was {})", newSpawnId, MySpawnId());
+			SetMySpawnId(newSpawnId);  // T288: one store
 			if (m_trade_manager) {
-				m_trade_manager->setMySpawnId(m_my_spawn_id);
+				m_trade_manager->setMySpawnId(MySpawnId());
 			}
 		}
 		break;
@@ -919,7 +916,7 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 			if (it != m_entities.end()) {
 				it->second.guild_id = normalized;
 			}
-			if (spawn_id == m_my_spawn_id) {
+			if (spawn_id == MySpawnId()) {
 				m_guild_id = normalized;
 				LOG_INFO(MOD_ENTITY, "Our guild id changed to {} via SpawnAppearance", normalized);
 			}
@@ -1172,34 +1169,30 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 	if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 		// Check if this is our own spawn by comparing name
 		if (entity.name == m_character) {
-			m_my_spawn_id = entity.spawn_id;
-			// Phase 7.4: Also update PlayerState
-			m_game_state.player().setSpawnId(m_my_spawn_id);
+			SetMySpawnId(entity.spawn_id);  // T288: one store
 			if (m_trade_manager) {
-				m_trade_manager->setMySpawnId(m_my_spawn_id);
+				m_trade_manager->setMySpawnId(MySpawnId());
 			}
 			if (s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, server pos=({:.2f}, {:.2f}, {:.2f}) size={:.2f}",
-					entity.name, m_my_spawn_id, entity.x, entity.y, entity.z, entity.size);
+					entity.name, MySpawnId(), entity.x, entity.y, entity.z, entity.size);
 			}
 			// Update our position to match server spawn position
-			m_x = entity.x;
-			m_y = entity.y;
 			m_game_state.player().setSize(entity.size);
 			// Server Z is model center. Convert to feet position for internal use.
 			// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
-			m_z = entity.z - (entity.size / 2.0f);
+			SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));  // T288: one store
 
 			if (s_debug_level >= 1) {
 				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f})",
-					m_x, m_y, m_z, entity.z);
+					PosX(), PosY(), PosZ(), entity.z);
 			}
 
 			// Update bridge with corrected feet Z position
 			if (m_bridge) {
-				float heading512 = m_heading * 512.0f / 360.0f;
+				float heading512 = HeadingDeg() * 512.0f / 360.0f;
 				eqt::state::PlayerMovedData pdata;
-				pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
+				pdata.x = PosX(); pdata.y = PosY(); pdata.z = PosZ();
 				pdata.heading = heading512;
 				pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 				pdata.isMoving = false;
@@ -1225,17 +1218,17 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 		if (entity.name == m_character && m_bridge) {
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::PlayerSpawnIdSet,
-				eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
+				eqt::state::PlayerSpawnIdSetData{MySpawnId()}));
 		}
 #endif
 
 		// Check if this spawn is our pet (if we already know our spawn ID)
-		if (entity.is_pet != 0 && entity.pet_owner_id == m_my_spawn_id && m_my_spawn_id != 0) {
+		if (entity.is_pet != 0 && entity.pet_owner_id == MySpawnId() && MySpawnId() != 0) {
 			// T286: PetState is the only store; default button states
 			// (Follow=ON, others=OFF per server behavior) are applied after
 			// OnPetCreated, whose setPet() clears them.
 			LOG_INFO(MOD_MAIN, "Pet detected: {} (ID: {}) Level {} owned by us (ID: {})",
-				entity.name, entity.spawn_id, entity.level, m_my_spawn_id);
+				entity.name, entity.spawn_id, entity.level, MySpawnId());
 
 			// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note at
 			// the ZoneProcessSpawnAll second-pass call site above.
@@ -1485,7 +1478,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	uint16_t spawn_id = p.GetUInt16(2);
 
 	// Log if this is potentially our own ClientUpdate
-	if (m_my_spawn_id != 0 && spawn_id == m_my_spawn_id) {
+	if (MySpawnId() != 0 && spawn_id == MySpawnId()) {
 		LOG_INFO(MOD_ZONE, "*** RECEIVED OUR OWN ClientUpdate! spawn_id={} ***", spawn_id);
 	}
 	
@@ -1553,12 +1546,12 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	// Level 1: current player, current target, or tracked targets
 	// Level 2+: all entities
 	uint16_t currentTargetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
-	bool isCurrentPlayer = (spawn_id == m_my_spawn_id);
+	bool isCurrentPlayer = (spawn_id == MySpawnId());
 	bool shouldLogPosition = (s_debug_level >= 2) ||
 	                         (s_debug_level >= 1 && (isCurrentPlayer || spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
 	if (shouldLogPosition) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C spawn_id={} pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} delta=({:.2f}, {:.2f}, {:.2f}) (my_id={})",
-			spawn_id, x, y, z, server_h, animation, dx, dy, dz, m_my_spawn_id);
+			spawn_id, x, y, z, server_h, animation, dx, dy, dz, MySpawnId());
 	}
 	// Additional detailed logging for current player at debug level 1+
 	if (s_debug_level >= 1 && isCurrentPlayer) {
@@ -1569,38 +1562,42 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 	}
 
 	// Check if this is an update for our own character
-	if (spawn_id == m_my_spawn_id) {
-		// Update our position to match what the server says
-		m_x = x;
-		m_y = y;
-		m_z = z;
-		// S->C transformation for our player: inverse of C->S (server_heading = 90 - m_heading)
-		m_heading = 90.0f - server_h;
-		if (m_heading < 0.0f) m_heading += 360.0f;
-		if (m_heading >= 360.0f) m_heading -= 360.0f;
+	if (spawn_id == MySpawnId()) {
+		// Update our position to match what the server says.
+		// T288: one store -- before T288 this branch wrote EverQuest's private
+		// copy only, so PlayerState (and therefore GetHeading(),
+		// clickNearestDoor(), getNearestPlayer(), GameState::playerPosition())
+		// never moved off the zone-in value.
+		SetPosLocal(x, y, z);
+		// S->C transformation for our player: inverse of C->S
+		// (server_heading = 90 - client heading). LOAD-BEARING and PLAYER-ONLY:
+		// NPC headings a few lines above take server_h verbatim. Do not
+		// harmonise -- docs/CLAUDE.md, Heading/Rotation Conventions.
+		float self_heading = 90.0f - server_h;
+		if (self_heading < 0.0f) self_heading += 360.0f;
+		if (self_heading >= 360.0f) self_heading -= 360.0f;
+		SetHeadingLocal(self_heading);
 
 		// Track whether we need to create player entity on renderer
 		bool needPlayerEntityCreation = false;
 
 		// Also update our spawn ID if not set
-		if (m_my_spawn_id == 0) {
-			m_my_spawn_id = spawn_id;
-			// Phase 7.4: Also update PlayerState
-			m_game_state.player().setSpawnId(m_my_spawn_id);
+		if (MySpawnId() == 0) {
+			SetMySpawnId(spawn_id);  // T288: one store
 			if (m_trade_manager) {
-				m_trade_manager->setMySpawnId(m_my_spawn_id);
+				m_trade_manager->setMySpawnId(MySpawnId());
 			}
-			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", m_my_spawn_id);
+			LOG_INFO(MOD_MOVEMENT, "Set our spawn ID to {} from ClientUpdate", MySpawnId());
 
 			// Deferred pet detection: now that we know our spawn ID, check if any
 			// existing entity is our pet (spawns arrive before we know our ID)
 			if (m_game_state.pet().petSpawnId() == 0) {
 				for (const auto& pair : m_entities) {
 					const Entity& ent = pair.second;
-					if (ent.is_pet != 0 && ent.pet_owner_id == m_my_spawn_id) {
+					if (ent.is_pet != 0 && ent.pet_owner_id == MySpawnId()) {
 						// T286: PetState is the only store (see above).
 						LOG_INFO(MOD_MAIN, "Pet detected (deferred): {} (ID: {}) Level {} owned by us (ID: {})",
-							ent.name, ent.spawn_id, ent.level, m_my_spawn_id);
+							ent.name, ent.spawn_id, ent.level, MySpawnId());
 						// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical
 						// note at the ZoneProcessSpawnAll second-pass call site.
 						OnPetCreated(ent);
@@ -1614,23 +1611,23 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		}
 
 		// Also create player entity if it's pending (after zoning, entities were cleared)
-		if (m_player_graphics_entity_pending && m_my_spawn_id != 0) {
+		if (m_player_graphics_entity_pending && MySpawnId() != 0) {
 			needPlayerEntityCreation = true;
 		}
 
 		// Now create the player entity via bridge (D17b: bridge is sole path to renderer)
 		// Deferred from OnZoneLoadedGraphics to ensure all player data has been received
 		if (needPlayerEntityCreation && m_bridge) {
-			auto playerIt = m_entities.find(m_my_spawn_id);
+			auto playerIt = m_entities.find(MySpawnId());
 			if (playerIt != m_entities.end()) {
 				const Entity& entity = playerIt->second;
 
 				LOG_INFO(MOD_ENTITY, "Creating player entity {} ({}) from ClientUpdate - equipment: primary={} secondary={}",
-				         m_my_spawn_id, entity.name, entity.equipment[7], entity.equipment[8]);
+				         MySpawnId(), entity.name, entity.equipment[7], entity.equipment[8]);
 
 				// Publish EntitySpawned for player entity
 				eqt::state::EntitySpawnedData data;
-				data.spawnId = m_my_spawn_id;
+				data.spawnId = MySpawnId();
 				data.name = entity.name;
 				data.x = x;
 				data.y = y;
@@ -1661,12 +1658,12 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Publish PlayerSpawnIdSet so renderer marks the player node
 				m_bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::PlayerSpawnIdSet,
-					eqt::state::PlayerSpawnIdSetData{m_my_spawn_id}));
+					eqt::state::PlayerSpawnIdSetData{MySpawnId()}));
 
 				// Set entity light source if equipped
 				if (entity.light > 0) {
 					eqt::state::EntityLightChangedData lightData;
-					lightData.spawnId = m_my_spawn_id;
+					lightData.spawnId = MySpawnId();
 					lightData.lightLevel = entity.light;
 					m_bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::EntityLightChanged, std::move(lightData)));
@@ -1675,7 +1672,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 				// Player entity has been created, clear the pending flag
 				m_player_graphics_entity_pending = false;
 			} else {
-				LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", m_my_spawn_id);
+				LOG_WARN(MOD_ENTITY, "Player entity {} not found in m_entities when setting spawn ID from ClientUpdate", MySpawnId());
 			}
 		}
 
@@ -1683,7 +1680,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		// This indicates we're fully in the game world
 		if (!m_update_running) {
 			SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
-			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", m_my_spawn_id);
+			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", MySpawnId());
 			// T286: this setZoneConnected(true) is GONE. With one store,
 			// keeping it here would make "zone connected" true on a
 			// ClientUpdate replayed with no socket at all -- it describes
@@ -1707,7 +1704,7 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 		}
 		
 		// Update our entity in the entity list
-		auto it = m_entities.find(m_my_spawn_id);
+		auto it = m_entities.find(MySpawnId());
 		if (it != m_entities.end()) {
 			it->second.x = x;
 			it->second.y = y;
@@ -1724,11 +1721,11 @@ void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
 			// redundant (D24 coalesced it per spawn -- last write wins on
 			// both sides, so applying every packet here is state-identical).
 			m_game_state.entities().updateEntityPosition(
-				m_my_spawn_id, x, y, z, h_player, dx, dy, dz,
+				MySpawnId(), x, y, z, h_player, dx, dy, dz,
 				static_cast<uint8_t>(animation));
 
 #ifdef EQT_HAS_GRAPHICS
-			OnSpawnMovedGraphics(m_my_spawn_id, x, y, z, h_player, dx, dy, dz, animation);
+			OnSpawnMovedGraphics(MySpawnId(), x, y, z, h_player, dx, dy, dz, animation);
 #endif
 		}
 		return;
@@ -1970,7 +1967,7 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	uint16_t spawn_id = p.GetUInt16(10);
 
 	// Check if this is our own HP update
-	bool is_self = (spawn_id == m_my_spawn_id);
+	bool is_self = (spawn_id == MySpawnId());
 
 	if (is_self) {
 		// Update player HP tracking (T286: PlayerState is the only store)
@@ -2089,7 +2086,7 @@ void EverQuest::ListEntities(const std::string& search) const
 			}
 		}
 		
-		float dist = CalculateDistance(m_x, m_y, m_z, entity.x, entity.y, entity.z);
+		float dist = CalculateDistance(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
 		sorted_entities.push_back({dist, &entity});
 	}
 	
@@ -2159,7 +2156,7 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 		data.spawnId = spawn_id;
 		data.raceId = entity.race_id;
 		data.gender = entity.gender;
-		data.isPlayer = (spawn_id == m_my_spawn_id);
+		data.isPlayer = (spawn_id == MySpawnId());
 		data.face = entity.face;
 		data.haircolor = entity.haircolor;
 		data.hairstyle = entity.hairstyle;
@@ -2216,9 +2213,9 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 	}
 
 	// Find the player entity
-	auto it = m_entities.find(m_my_spawn_id);
+	auto it = m_entities.find(MySpawnId());
 	if (it == m_entities.end()) {
-		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", m_my_spawn_id);
+		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", MySpawnId());
 		return;
 	}
 
@@ -2226,7 +2223,7 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 
 	// Build appearance data from inventory items (D17b: bridge is sole path to renderer)
 	eqt::state::EntityAppearanceChangedData data;
-	data.spawnId = m_my_spawn_id;
+	data.spawnId = MySpawnId();
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
 	data.isPlayer = true;
@@ -2343,7 +2340,7 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	data.spawnId = static_cast<uint16_t>(spawn_id);
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
-	data.isPlayer = (spawn_id == m_my_spawn_id);
+	data.isPlayer = (spawn_id == MySpawnId());
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
 	data.hairstyle = entity.hairstyle;
@@ -2440,7 +2437,7 @@ void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 		// Play door sound only if player is close to the door
 		if (m_audio_manager) {
 			glm::vec3 doorPos(door->x, door->y, door->z);
-			glm::vec3 playerPos(m_x, m_y, m_z);
+			glm::vec3 playerPos(PosX(), PosY(), PosZ());
 			float distance = glm::distance(doorPos, playerPos);
 
 			// Only play door sounds within 10 units
@@ -2479,7 +2476,7 @@ void EverQuest::SendSpawnAppearance(uint16_t type, uint32_t value)
 	p.Resize(10);  // SpawnAppearance packet size: 2 bytes opcode + 8 bytes struct
 	
 	p.PutUInt16(0, HC_OP_SpawnAppearance);
-	p.PutUInt16(2, m_my_spawn_id);  // spawn_id
+	p.PutUInt16(2, MySpawnId());  // spawn_id
 	p.PutUInt16(4, type);            // type
 	p.PutUInt32(6, value);           // parameter
 	// Removed the extra 4 bytes that were at offset 10
@@ -2488,7 +2485,7 @@ void EverQuest::SendSpawnAppearance(uint16_t type, uint32_t value)
 	
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent SpawnAppearance: spawn_id={}, type={}, value={}", 
-			m_my_spawn_id, type, value);
+			MySpawnId(), type, value);
 	}
 }
 
@@ -2502,7 +2499,7 @@ void EverQuest::SendAnimation(uint8_t animation_id, uint8_t animation_speed)
 	p.Resize(6);  // Animation packet size: 2 bytes opcode + 4 bytes data
 	
 	p.PutUInt16(0, HC_OP_Animation);      // opcode (OP_Animation)
-	p.PutUInt16(2, m_my_spawn_id);        // spawn_id
+	p.PutUInt16(2, MySpawnId());        // spawn_id
 	p.PutUInt8(4, animation_speed);       // animation speed (usually 10)
 	p.PutUInt8(5, animation_id);          // animation ID
 	
@@ -2510,7 +2507,7 @@ void EverQuest::SendAnimation(uint8_t animation_id, uint8_t animation_speed)
 	
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent Animation: spawn_id={}, speed={}, animation_id={}",
-			m_my_spawn_id, animation_speed, animation_id);
+			MySpawnId(), animation_speed, animation_id);
 	}
 }
 
@@ -2547,7 +2544,7 @@ void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
 	p.PutUInt8(8, 0);                 // unknown005[1]
 	p.PutUInt8(9, 0);                 // unknown005[2]
 	p.PutUInt32(10, item_id);         // item_id (key)
-	p.PutUInt16(14, m_my_spawn_id);   // player_id
+	p.PutUInt16(14, MySpawnId());   // player_id
 	p.PutUInt16(16, 0);               // unknown014
 
 	m_zone_connection->QueuePacket(p, 0, true);
@@ -2581,7 +2578,7 @@ void EverQuest::SendClickObject(uint32_t drop_id)
 
 	p.PutUInt16(0, HC_OP_ClickObject);
 	p.PutUInt32(2, drop_id);           // drop_id
-	p.PutUInt32(6, m_my_spawn_id);     // player_id
+	p.PutUInt32(6, MySpawnId());     // player_id
 
 	m_zone_connection->QueuePacket(p, 0, true);
 }
@@ -2600,7 +2597,7 @@ void EverQuest::SendCloseContainer(uint32_t drop_id)
 	p.Resize(2 + sizeof(EQT::ClickObjectAction_Struct));
 
 	p.PutUInt16(0, HC_OP_ClickObjectAction);
-	p.PutUInt32(2, m_my_spawn_id);     // player_id
+	p.PutUInt32(2, MySpawnId());     // player_id
 	p.PutUInt32(6, drop_id);           // drop_id
 	p.PutUInt32(10, 0);                // open = 0 (closing)
 	p.PutUInt32(14, 0);                // type

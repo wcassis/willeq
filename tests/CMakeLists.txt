@@ -1631,6 +1631,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_game_state_source_writes)
 
+# T288: position/heading, spawn id and zone identity have one store each.
+# Coherence assertions across the public EverQuest accessors and the state
+# layer, driven through the real packet handlers (replay seam). No network,
+# no graphics, no eqemu.
+ADD_EXECUTABLE(test_position_store_coherence
+    test_position_store_coherence.cpp
+)
+TARGET_LINK_LIBRARIES(test_position_store_coherence GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_position_store_coherence PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_position_store_coherence)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live

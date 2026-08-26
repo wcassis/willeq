@@ -315,19 +315,19 @@ void EverQuest::PostRenderTick(float deltaTime) {
 	// NPCs sound distant. Player position is game state, no renderer query.
 	if (m_audio_manager) {
 		// Convert EQ heading (0-512 clockwise from north) to forward vector
-		float headingRad = m_heading * (2.0f * static_cast<float>(M_PI)) / 512.0f;
+		float headingRad = HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
 		float forwardX = std::sin(headingRad);
 		float forwardY = -std::cos(headingRad);
 		float forwardZ = 0.0f;
 
 		m_audio_manager->setListenerPosition(
-			glm::vec3(m_x, m_y, m_z),
+			glm::vec3(PosX(), PosY(), PosZ()),
 			glm::vec3(forwardX, forwardY, forwardZ),
 			glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
 		);
 
 		if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-			m_zone_audio_manager->update(deltaTime, glm::vec3(m_x, m_y, m_z), m_is_daytime);
+			m_zone_audio_manager->update(deltaTime, glm::vec3(PosX(), PosY(), PosZ()), m_is_daytime);
 		}
 
 		// D20c2: Volume hotkeys handled via intents from renderer
@@ -343,13 +343,13 @@ void EverQuest::PostRenderTick(float deltaTime) {
 // D20c3: Create immutable snapshot of game state for zone loading thread
 eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	eqt::ZoneLoadSnapshot snap;
-	snap.zoneName = m_current_zone_name;
-	snap.zoneId = m_current_zone_id;
-	snap.playerX = m_x;
-	snap.playerY = m_y;
-	snap.playerZ = m_z;
-	snap.playerHeading = m_heading;
-	snap.playerSpawnId = m_my_spawn_id;
+	snap.zoneName = CurrentZoneName();
+	snap.zoneId = CurrentZoneId();
+	snap.playerX = PosX();
+	snap.playerY = PosY();
+	snap.playerZ = PosZ();
+	snap.playerHeading = HeadingDeg();
+	snap.playerSpawnId = MySpawnId();
 	snap.playerName = m_character;
 	snap.playerLevel = m_game_state.player().level();
 	snap.skyType = m_zone_sky_type;
@@ -404,32 +404,32 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	// playerBspRegion, and the renderer treats a SIZE_MAX camera region as
 	// "no PVS" everywhere. The former LOG_FATAL + std::exit(1) was the only
 	// effect the lookup ever had.
-	if (m_zone_bsp_tree && m_zone_bsp_tree_zone_name == m_current_zone_name) {
-		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(m_x, m_y, m_z);
+	if (m_zone_bsp_tree && m_zone_bsp_tree_zone_name == CurrentZoneName()) {
+		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(PosX(), PosY(), PosZ());
 		if (snap.playerBspRegion == SIZE_MAX) {
 			LOG_WARN(MOD_MAIN, "Snapshot: player BSP region is SIZE_MAX (start position outside every "
 			         "BSP region) pos=({:.2f},{:.2f},{:.2f}) zone={} -- continuing, nothing consumes it (T260)",
-			         m_x, m_y, m_z, m_current_zone_name);
+			         PosX(), PosY(), PosZ(), CurrentZoneName());
 		} else {
 			LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f}) zone={}",
-			         snap.playerBspRegion, m_x, m_y, m_z, m_current_zone_name);
+			         snap.playerBspRegion, PosX(), PosY(), PosZ(), CurrentZoneName());
 		}
 	} else if (m_zone_bsp_tree) {
 		LOG_WARN(MOD_MAIN, "Snapshot: m_zone_bsp_tree is stale (captured for '{}', current zone '{}') -- "
 		         "skipping region lookup, falling back to no-tree-yet (P17)",
-		         m_zone_bsp_tree_zone_name, m_current_zone_name);
+		         m_zone_bsp_tree_zone_name, CurrentZoneName());
 	}
 
 	return snap;
 }
 
 void EverQuest::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone) {
-	if (bsp && builtForZone != m_current_zone_name) {
+	if (bsp && builtForZone != CurrentZoneName()) {
 		// The finalization of a load for a zone we have already left. Keep
 		// whatever LoadZoneSources() built for the current zone (or nothing).
 		LOG_WARN(MOD_MAIN, "SetZoneBspTree: rejecting tree built for '{}' (current zone '{}') -- "
 		         "late finalization of a previous load, keeping the current zone's tree (T260)",
-		         builtForZone, m_current_zone_name);
+		         builtForZone, CurrentZoneName());
 		return;
 	}
 	m_zone_bsp_tree = std::move(bsp);
@@ -492,7 +492,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	data.gender = entity.gender;
 	data.npcType = entity.npc_type;
 	data.isCorpse = isCorpse;
-	data.isPlayer = (entity.spawn_id == m_my_spawn_id);
+	data.isPlayer = (entity.spawn_id == MySpawnId());
 	data.serverSize = entity.size;
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
@@ -620,7 +620,7 @@ void EverQuest::SaveEntityDataToFile(const std::string& filename) {
 		return;
 	}
 
-	file << "{\n  \"zone\": \"" << m_current_zone_name << "\",\n  \"entities\": [\n";
+	file << "{\n  \"zone\": \"" << CurrentZoneName() << "\",\n  \"entities\": [\n";
 
 	bool first = true;
 	for (const auto& [spawn_id, entity] : m_entities) {
@@ -710,7 +710,7 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 
 	// If this is our player entity, publish player position update
 	// so the camera follows the server-authoritative position
-	if (spawn_id == m_my_spawn_id) {
+	if (spawn_id == MySpawnId()) {
 		// Convert heading from degrees (0-360) to EQ format (0-512)
 		float heading_512 = heading * 512.0f / 360.0f;
 		eqt::state::PlayerMovedData pdata;
@@ -748,11 +748,12 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	// Update position from graphics input
 	// The renderer provides ground-level Z (where player's feet are)
 	// SendMovementUpdate adds m_game_state.player().size()/2 to convert to model-center Z for the server
-	m_x = update.x;
-	m_y = update.y;
-	m_z = update.z;  // Ground-level Z from renderer
+	// T288: one store, and no PlayerMoved on the state bus -- this is the
+	// renderer's own movement arriving, echoing it back as a state event
+	// would be a new per-frame event stream (see setPositionNoEvent).
+	SetPosLocal(update.x, update.y, update.z);  // Ground-level Z from renderer
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
-	m_heading = update.heading * 360.0f / 512.0f;
+	SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
 	// Check water state at new position
 	UpdateWaterState();
@@ -1036,7 +1037,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 
 				// Check distance to NPC
-				float distSq = CalculateDistance2D(m_x, m_y, target.x, target.y);
+				float distSq = CalculateDistance2D(PosX(), PosY(), target.x, target.y);
 				distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
 				if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
@@ -1478,7 +1479,7 @@ void EverQuest::UpdateInventoryStats() {
 		}
 
 		// Update our entity's weapon skill types
-		auto it = m_entities.find(m_my_spawn_id);
+		auto it = m_entities.find(MySpawnId());
 		if (it != m_entities.end()) {
 			it->second.primary_weapon_skill = primaryWeaponSkill;
 			it->second.secondary_weapon_skill = secondaryWeaponSkill;
@@ -1487,7 +1488,7 @@ void EverQuest::UpdateInventoryStats() {
 		// Propagate weapon skill types via bridge (D17b: bridge is sole path to renderer)
 		if (m_bridge) {
 			eqt::state::EntityWeaponSkillsChangedData data;
-			data.spawnId = m_my_spawn_id;
+			data.spawnId = MySpawnId();
 			data.primaryWeaponSkill = primaryWeaponSkill;
 			data.secondaryWeaponSkill = secondaryWeaponSkill;
 			m_bridge->pushEvent(eqt::state::GameEvent(
@@ -1580,8 +1581,8 @@ void EverQuest::RequestLootCorpse(uint16_t corpseId) {
 }
 
 bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
-	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} m_game_state.player().lootingCorpseId()={} m_my_spawn_id={}",
-		corpseId, slot, autoLoot, m_game_state.player().lootingCorpseId(), m_my_spawn_id);
+	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} lootingCorpseId={} mySpawnId={}",
+		corpseId, slot, autoLoot, m_game_state.player().lootingCorpseId(), MySpawnId());
 
 	// T268: no window, nothing to take -- eqemu would answer a bare
 	// OP_LootItem with an EndLoot error anyway (Corpse::LootCorpseItem's
@@ -1614,7 +1615,7 @@ bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 	packet.Resize(sizeof(LootingItem_Struct));
 	LootingItem_Struct* li = (LootingItem_Struct*)packet.Data();
 	li->lootee = corpseId;
-	li->looter = m_my_spawn_id;
+	li->looter = MySpawnId();
 	li->slot_id = static_cast<uint16_t>(slot);
 	li->unknown3[0] = 0;
 	li->unknown3[1] = 0;

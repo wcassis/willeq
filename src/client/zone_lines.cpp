@@ -406,16 +406,16 @@ void ZoneLines::expandZoneLinesToGeometry(const HCMap* collisionMap) {
 
         // Convert display coords to server coords for HCMap
         // HCMap uses server coords: server_x = display_y, server_y = display_x
-        float serverCenterX = centerY;  // display m_y -> server x
-        float serverCenterY = centerX;  // display m_x -> server y
+        float serverCenterX = centerY;  // display y -> server x
+        float serverCenterY = centerX;  // display x -> server y
         float serverCenterZ = centerZ;
 
         LOG_DEBUG(MOD_MAP, "Zone line #{} center: display({:.1f},{:.1f},{:.1f}) server({:.1f},{:.1f},{:.1f}) expandX={} expandY={}",
             ezl.zonePointIndex, centerX, centerY, centerZ, serverCenterX, serverCenterY, serverCenterZ, expandX, expandY);
 
         if (expandX) {
-            // Expand in +X direction (display m_x)
-            // display m_x = server_y, so expanding +X means checking +server_y
+            // Expand in +X direction (display x)
+            // display client x = server y, so expanding +X means checking +server_y
             float newMaxX = ezl.maxX;
             for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
                 float testDisplayX = centerX + dist;
@@ -435,7 +435,7 @@ void ZoneLines::expandZoneLinesToGeometry(const HCMap* collisionMap) {
                 ezl.maxX = newMaxX;
             }
 
-            // Expand in -X direction (display m_x)
+            // Expand in -X direction (display x)
             float newMinX = ezl.minX;
             for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
                 float testDisplayX = centerX - dist;
@@ -455,8 +455,8 @@ void ZoneLines::expandZoneLinesToGeometry(const HCMap* collisionMap) {
         }
 
         if (expandY) {
-            // Expand in +Y direction (display m_y)
-            // display m_y = server_x, so expanding +Y means checking +server_x
+            // Expand in +Y direction (display y)
+            // display y = server_x, so expanding +Y means checking +server_x
             float newMaxY = ezl.maxY;
             for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
                 float testDisplayY = centerY + dist;
@@ -474,7 +474,7 @@ void ZoneLines::expandZoneLinesToGeometry(const HCMap* collisionMap) {
                 ezl.maxY = newMaxY;
             }
 
-            // Expand in -Y direction (display m_y)
+            // Expand in -Y direction (display y)
             float newMinY = ezl.minY;
             for (float dist = RAY_STEP; dist <= MAX_EXPANSION; dist += RAY_STEP) {
                 float testDisplayY = centerY - dist;
@@ -521,7 +521,7 @@ ZoneLineResult ZoneLines::checkPosition(float x, float y, float z,
     callCount++;
 
     // Check pre-extracted zone lines from zone_lines.json
-    // zone_lines.json uses display coordinates (m_x, m_y, m_z) format
+    // zone_lines.json uses display coordinates (client x, client y, client z) format
     if (!extractedZoneLines_.empty()) {
         result = checkExtractedZoneLines(x, y, z, currentX, currentY, currentZ);
         if (result.isZoneLine) {

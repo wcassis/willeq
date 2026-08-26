@@ -28,7 +28,7 @@ namespace EQ {
 // the server's calls, not a local refusal. Eye height follows eqemu's
 // CheckLosFN: server z (model centre) + size/2 * 0.9, size 6 when the
 // entity reports none. Entity z IS the server's model-centre z; the
-// player's m_z is ground level (eq_bridge.cpp), so it gets +size/2 first.
+// player's client z is ground level (eq_bridge.cpp), so it gets +size/2 first.
 bool SpellManager::checkLineOfSight(uint16_t target_id) const
 {
     std::shared_ptr<const HCMap> map = m_eq->GetZoneMap();

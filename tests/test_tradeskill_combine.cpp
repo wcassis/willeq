@@ -117,7 +117,7 @@ public:
         eq.GetGameState().world().setZoneConnected(true);
         eq.GetGameState().world().setClientReady(true);
         eq.m_update_running = true;
-        eq.m_my_spawn_id = kMySpawnId;
+        eq.Test_SetMySpawnIdForSeam(kMySpawnId);  // T288: one store
 
         dispatcher.setActionHandler(&handler);
     }

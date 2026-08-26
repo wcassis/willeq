@@ -771,11 +771,12 @@ public:
 
 	// T55 test seam: narrow, read-only reader for the state layer's player
 	// position (m_game_state.player().x()/y()/z()), which otherwise has no
-	// public accessor -- GetPosition() below reads the legacy raw
-	// m_x/m_y/m_z members only, which is exactly the propagation gap this
-	// unit closes (see refactor/T55_position_state_propagation.md). Deliberately
-	// does not widen GameState's public surface beyond this one read. Not
-	// called from any production path.
+	// public accessor. T288 deleted the raw m_x/m_y/m_z members entirely, so
+	// this and GetPosition() now read the SAME storage -- the tests that
+	// compare the two are coherence assertions, and they are the ones that
+	// fail if a future edit re-introduces a second copy. Deliberately does
+	// not widen GameState's public surface beyond this one read. Not called
+	// from any production path.
 	glm::vec3 Test_GetGameStatePlayerPosition() const;
 
 	// T52 test seam, continued: WorldProcessZoneServerInfo's consumer
@@ -807,11 +808,11 @@ public:
 	void Test_SetBypassSendGuardForSeam(bool bypass) { m_test_bypass_send_guard = bypass; }
 
 	// T88 test seam: SendPositionUpdate() silently no-ops (by design) when
-	// m_my_spawn_id is still 0 -- normally only ever set from a decoded
-	// PlayerProfile/ZoneSpawns entity id. Lets a test drive Move()/
+	// the player's spawn id is still 0 -- normally only ever set from a
+	// decoded PlayerProfile/ZoneSpawns entity id. Lets a test drive Move()/
 	// MoveToWithPath() without first replaying a full PlayerProfile.
 	// Test-only; not called from any production path.
-	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_my_spawn_id = spawn_id; }
+	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { SetMySpawnId(spawn_id); }
 
 	// T221 test seam: m_game_state.pet().petSpawnId() is normally set only by pet detection
 	// in ZoneSpawns/NewSpawn/ClientUpdate; lets a test drive the MobHealth
@@ -908,8 +909,8 @@ public:
 
 	// T88 test seam: forces immediate arrival at the current movement
 	// target, exactly mirroring UpdateMovement()'s own "distance < 2.0f"
-	// arrival branch (eq_movement.cpp: m_x = m_game_state.player().targetX(); m_y = m_game_state.player().targetY();
-	// m_z = m_game_state.player().targetZ(); then StopMovement(), which sends the final
+	// arrival branch (eq_movement.cpp: SetPosLocal(targetX, targetY, targetZ)
+	// then StopMovement(), which sends the final
 	// position) -- without depending on wall-clock-driven incremental
 	// movement steps for targets outside that 2-unit snap radius. Test-only.
 	void Test_SnapToMovementTargetForSeam();
@@ -1027,7 +1028,7 @@ public:
 	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
-	uint16_t GetEntityID() const { return m_my_spawn_id; }
+	uint16_t GetEntityID() const { return MySpawnId(); }
 
 	// D20c4: Quit signaling — Application checks this flag
 	bool IsQuitRequested() const { return m_quit_requested; }
@@ -1274,7 +1275,7 @@ public:
 	bool IsRoleplay() const;
 
 	// Additional public methods
-	uint16_t GetMySpawnID() const { return m_my_spawn_id; }
+	uint16_t GetMySpawnID() const { return MySpawnId(); }
 	uint16_t GetCurrentTargetId() const { return m_game_state.combat().targetId(); }
 
 	// T133: populated from the player's own PlayerProfile packet
@@ -1454,7 +1455,7 @@ public:
 	// a fast re-zone's NewZone (P15's "SIZE_MAX with zone=<source>" FATAL was
 	// the previous zone's tree paired with the new zone's position). The
 	// tree LoadZoneSources() built for the current zone stays in place.
-	// P17 tagged with m_current_zone_name at call time, which is exactly
+	// P17 tagged with the zone name at call time, which is exactly
 	// the value that is wrong in that race.
 	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone);
 	// D20e2: LoadZoneGraphics moved to Application
@@ -1521,6 +1522,53 @@ public:
 	// printed to the player).
 	static std::string GetRaceName(uint32_t race_id);
 private:
+	// ------------------------------------------------------------------
+	// T288: ONE store for position/heading, spawn id and zone identity.
+	//
+	// EverQuest used to keep its own position/heading, spawn id and zone
+	// name/id alongside the state layer's
+	// PlayerState/WorldState copies, and hand-mirror them at each wire
+	// site. Some sites mirrored, some did not: the self-ClientUpdate
+	// branch, the whole movement integrator and the PlayerProfile
+	// entity-id write all updated only EverQuest's copy, so every
+	// state-layer reader (GetHeading(), clickNearestDoor(),
+	// getNearestPlayer(), GameState::playerPosition()) saw the zone-in
+	// value for the rest of the session. T286 catalogued this class; these
+	// seven were the last of it.
+	//
+	// The members are GONE. What follows are accessors INTO
+	// m_game_state -- adding a member back here is the regression
+	// tests/test_duplicate_state_stores.cpp exists to catch.
+	//
+	// Coordinate order: PosX()/PosY()/PosZ() are CLIENT coordinates
+	// (INVERSEXY already applied -- client x is the server's y). Every
+	// wire site that reads them for an outbound packet swaps back; see
+	// docs/CLAUDE.md's coordinate section, and do not "simplify" a swap
+	// away. HeadingDeg() is the PLAYER's heading in degrees, carrying the
+	// deliberate `90 -` flip that NPC headings do not share.
+	float PosX() const { return m_game_state.player().x(); }
+	float PosY() const { return m_game_state.player().y(); }
+	float PosZ() const { return m_game_state.player().z(); }
+	float HeadingDeg() const { return m_game_state.player().heading(); }
+
+	// Movement-step writes: same store, no PlayerMoved event -- exactly the
+	// event behaviour the raw members had (see
+	// PlayerState::setPositionNoEvent). SetPosition()/SetHeading() remain
+	// the event-firing relocation path.
+	void SetPosLocal(float x, float y, float z) {
+		m_game_state.player().setPositionNoEvent(x, y, z);
+	}
+	void SetHeadingLocal(float heading) {
+		m_game_state.player().setHeadingNoEvent(heading);
+	}
+
+	uint16_t MySpawnId() const { return m_game_state.player().spawnId(); }
+	void SetMySpawnId(uint16_t id) { m_game_state.player().setSpawnId(id); }
+
+	const std::string& CurrentZoneName() const { return m_game_state.world().zoneName(); }
+	uint16_t CurrentZoneId() const { return m_game_state.world().zoneId(); }
+	// ------------------------------------------------------------------
+
 	static std::string GetDeityName(uint32_t deity_id);
 	static std::string GetBodyTypeName(uint8_t bodytype);
 	static std::string GetEquipSlotName(int slot);
@@ -1803,7 +1851,9 @@ private:
 
 	// Entity tracking
 	std::map<uint16_t, Entity> m_entities;
-	uint16_t m_my_spawn_id = 0;
+	// T288: the player's own spawn id lives in m_game_state.player() and
+	// nowhere else -- MySpawnId()/SetMySpawnId() above are accessors INTO
+	// that store, not a copy.
 	// T247: expiry of the current OP_Stun; epoch (the default) = not stunned.
 	std::chrono::steady_clock::time_point m_stunned_until{};
 	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
@@ -1835,11 +1885,10 @@ private:
 	uint32_t m_exp = 0;          // Current experience points
 	uint32_t m_exp_aa = 0;       // Current AA experience points
 
-	// Movement and position tracking
-	float m_x = 0.0f;
-	float m_y = 0.0f;
-	float m_z = 0.0f;
-	float m_heading = 0.0f;
+	// Movement and position tracking. T288: position and heading live in
+	// m_game_state.player() and nowhere else -- PosX()/PosY()/PosZ()/
+	// HeadingDeg() and SetPosLocal()/SetHeadingLocal() above are accessors
+	// INTO that store, not a copy.
 
 	// Movement target
 	uint32_t m_last_movement_update = 0;
@@ -1853,8 +1902,8 @@ private:
 
 	// Pathfinding
 	std::unique_ptr<IPathfinder> m_pathfinder;
-	std::string m_current_zone_name;
-	uint16_t m_current_zone_id = 0;
+	// T288: zone identity lives in m_game_state.world() and nowhere else --
+	// CurrentZoneName()/CurrentZoneId() above are accessors INTO that store.
 
 	// Zone environment data from NewZone packet
 	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)

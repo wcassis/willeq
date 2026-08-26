@@ -53,29 +53,18 @@ const fs::path kRoot = WILLEQ_REPO_ROOT;
 // Anything here is a REMAINING duplicate: it must still exist on both sides.
 //   key   = EverQuest member
 //   value = {state counterpart, why it survived T286}
+//
+// T288 closed the seven that T286 had deferred on size/behaviour risk
+// (m_x/m_y/m_z/m_heading, m_my_spawn_id, m_current_zone_name/
+// m_current_zone_id). ONE entry remains, and it is the only one that was
+// ever a genuine exception rather than a deferral.
 const std::map<std::string, std::pair<std::string, std::string>> kKnownRemaining = {
-    {"m_x",       {"PlayerState::m_x",
-                   "position: 19 direct writes in the movement integrator, "
-                   "grouped x/y/z setters on the state side -- own unit"}},
-    {"m_y",       {"PlayerState::m_y",       "see m_x"}},
-    {"m_z",       {"PlayerState::m_z",       "see m_x"}},
-    {"m_heading", {"PlayerState::m_heading", "see m_x"}},
-    {"m_my_spawn_id", {"PlayerState::m_spawnId",
-                   "138 references, and the spawn-id write order relative to "
-                   "the pet/player-entity creation paths is load-bearing -- "
-                   "own unit, with the position cluster"}},
     {"m_character", {"PlayerState::m_name",
                    "NOT the same value: m_character is the login-time "
                    "character name, fixed at construction and used by every "
                    "packet sender; PlayerState::m_name is the SERVER-reported "
                    "name from PlayerProfile ('name[0] ? name : m_character'), "
                    "which does not exist until the profile arrives"}},
-    {"m_current_zone_name", {"WorldState::m_zoneName",
-                   "WorldState::setZoneName fires ZoneChanged, which "
-                   "ConsoleRenderer subscribes to; CleanupZone clears the "
-                   "EverQuest copy, so converging them changes what a "
-                   "console session prints -- own unit"}},
-    {"m_current_zone_id", {"WorldState::m_zoneId", "see m_current_zone_name"}},
 };
 
 std::string readFile(const fs::path& p) {
@@ -202,18 +191,19 @@ TEST(DuplicateStateStores, EverQuestKeepsNoCopyOfAStateModuleMember) {
                return s;
            }();
 
-    // 2. The documented exceptions are still real -- otherwise this list and
-    //    the T286 Review's table have drifted. Checked by NAME on both sides,
-    //    because four of the eight are spelled differently across the two
-    //    classes (m_my_spawn_id / m_spawnId, m_current_zone_name / m_zoneName,
-    //    ...) and so are invisible to the normalised-name sweep above. That
+    // 2. The documented exception is still real -- otherwise this list and
+    //    the T286/T288 Review tables have drifted. Checked by NAME on both sides,
+    //    because the T286 exceptions that T288 has since deleted were spelled
+    //    differently across the two classes (m_my_spawn_id / m_spawnId,
+    //    m_current_zone_name / m_zoneName) and so were invisible to the
+    //    normalised-name sweep above. That
     //    is this test's one blind spot, stated out loud: a NEW duplicate
     //    introduced under a DIFFERENT name is not detected. Same-name
     //    duplicates -- every one T280/T283/T286 actually found -- are.
     for (const auto& [member, why] : kKnownRemaining) {
         EXPECT_TRUE(eqMembers.count(member))
             << member << " is gone from eq.h: remove it from kKnownRemaining "
-            << "(and from the T286 Review's deferred table). It was kept "
+            << "(and from the T286/T288 Review tables). It was kept "
             << "because: " << why.second;
 
         const std::string counterpart = why.first;      // "PlayerState::m_x"
@@ -224,6 +214,6 @@ TEST(DuplicateStateStores, EverQuestKeepsNoCopyOfAStateModuleMember) {
         EXPECT_TRUE(it != stateByKey.end() && it->second == counterpart)
             << counterpart << " no longer exists: " << member
             << " is no longer duplicated, so remove it from kKnownRemaining "
-            << "(and from the T286 Review's deferred table).";
+            << "(and from the T286/T288 Review tables).";
     }
 }

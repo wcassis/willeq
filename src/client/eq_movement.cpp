@@ -79,7 +79,7 @@ const float FOLLOW_MIN_SPEED_MULT = 0.5f;    // Minimum speed multiplier when cl
 const float FOLLOW_MAX_SPEED_MULT = 1.5f;    // Maximum speed multiplier when far
 
 // T88: FRAME CONTRACT -- x, y, z here are CLIENT frame, i.e. the same frame
-// as m_x/m_y/m_z (docs/CLAUDE.md's "Client Internal Coordinates"), NOT
+// as the client position (docs/CLAUDE.md's "Client Internal Coordinates"), NOT
 // server/wire frame. The two are axis-swapped (client_x = server_y,
 // client_y = server_x -- see ZoneProcessPlayerProfile in eq.cpp and
 // SendPositionUpdate below). This was previously undocumented at every
@@ -134,9 +134,9 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 		}
 		
 		// Calculate current distance
-		float dx = entity->x - m_x;
-		float dy = entity->y - m_y;
-		float dz = entity->z - m_z;
+		float dx = entity->x - PosX();
+		float dy = entity->y - PosY();
+		float dz = entity->z - PosZ();
 		float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// If we're already within range, don't move
@@ -161,17 +161,17 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 		float predicted_z = entity->z + entity->delta_z * time_to_reach;
 		
 		// Calculate direction to predicted position
-		dx = predicted_x - m_x;
-		dy = predicted_y - m_y;
-		dz = predicted_z - m_z;
+		dx = predicted_x - PosX();
+		dy = predicted_y - PosY();
+		dz = predicted_z - PosZ();
 		dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// Calculate position to stop at (stop_distance units away from predicted position)
 		// We want to move to 80% of the stop distance to ensure we're well within range
 		float move_ratio = (dist - stop_distance * 0.8f) / dist;
-		float target_x = m_x + dx * move_ratio;
-		float target_y = m_y + dy * move_ratio;
-		float target_z = m_z + dz * move_ratio;
+		float target_x = PosX() + dx * move_ratio;
+		float target_y = PosY() + dy * move_ratio;
+		float target_z = PosZ() + dz * move_ratio;
 		
 		if (s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Predictive targeting: entity at ({:.1f},{:.1f},{:.1f}), velocity ({:.1f},{:.1f},{:.1f})", entity->x, entity->y, entity->z, entity->delta_x, entity->delta_y, entity->delta_z);
@@ -186,7 +186,7 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 			// Just set the target and let the movement system handle it
 			m_game_state.player().setMovementTarget(target_x, target_y, target_z);
 			m_game_state.player().setMoving(true);
-			m_heading = CalculateHeading(m_x, m_y, predicted_x, predicted_y);
+			SetHeadingLocal(CalculateHeading(PosX(), PosY(), predicted_x, predicted_y));
 			
 			if (s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Non-blocking combat movement initiated");
@@ -210,13 +210,13 @@ void EverQuest::Follow(const std::string &name)
 		if (m_use_pathfinding && m_pathfinder) {
 			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding enabled, m_pathfinder={}", 
 				m_pathfinder ? "valid" : "null");
-			float dist = CalculateDistance2D(m_x, m_y, entity->x, entity->y);
+			float dist = CalculateDistance2D(PosX(), PosY(), entity->x, entity->y);
 			LOG_DEBUG(MOD_MAIN, "Follow: Distance to target: {:.2f}, follow_distance: {:.2f}", 
 				dist, m_game_state.player().followDistance());
 			if (dist > m_game_state.player().followDistance()) {
 				// Find path from current position to target
-				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", m_x, m_y, m_z, entity->x, entity->y, entity->z);
-				if (FindPath(m_x, m_y, m_z, entity->x, entity->y, entity->z)) {
+				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", PosX(), PosY(), PosZ(), entity->x, entity->y, entity->z);
+				if (FindPath(PosX(), PosY(), PosZ(), entity->x, entity->y, entity->z)) {
 					// Start following the path
 					m_current_path_index = 0;
 					m_game_state.player().setMoving(true);
@@ -316,9 +316,9 @@ void EverQuest::UpdateCombatMovement()
 	}
 	
 	// Calculate current distance
-	float dx = entity->x - m_x;
-	float dy = entity->y - m_y;
-	float dz = entity->z - m_z;
+	float dx = entity->x - PosX();
+	float dy = entity->y - PosY();
+	float dz = entity->z - PosZ();
 	float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 	
 	// Check if we're within range
@@ -391,18 +391,18 @@ void EverQuest::UpdateCombatMovement()
 				float predicted_z = entity->z + entity->delta_z * time_to_reach;
 				
 				// Recalculate direction to predicted position
-				dx = predicted_x - m_x;
-				dy = predicted_y - m_y;
-				dz = predicted_z - m_z;
+				dx = predicted_x - PosX();
+				dy = predicted_y - PosY();
+				dz = predicted_z - PosZ();
 				dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 			}
 			
 			// Calculate new position to move to
 			float move_ratio = (dist - m_game_state.combat().combatStopDistance() * 0.8f) / dist;
-			m_game_state.player().setMovementTarget(m_x + dx * move_ratio, m_y + dy * move_ratio, m_z + dz * move_ratio);
+			m_game_state.player().setMovementTarget(PosX() + dx * move_ratio, PosY() + dy * move_ratio, PosZ() + dz * move_ratio);
 			
 			// Update heading and start moving
-			m_heading = CalculateHeading(m_x, m_y, m_game_state.player().targetX(), m_game_state.player().targetY());
+			SetHeadingLocal(CalculateHeading(PosX(), PosY(), m_game_state.player().targetX(), m_game_state.player().targetY()));
 			
 			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ());
 		} else {
@@ -413,7 +413,7 @@ void EverQuest::UpdateCombatMovement()
 		m_game_state.player().setMoving(true);
 		m_game_state.combat().setLastCombatMovementUpdate(now);  // T286
 		
-		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", m_x, m_y, m_z, entity->name, entity->x, entity->y, entity->z, dist, m_game_state.combat().combatStopDistance());
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", PosX(), PosY(), PosZ(), entity->name, entity->x, entity->y, entity->z, dist, m_game_state.combat().combatStopDistance());
 		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_game_state.player().isMoving() set to {}",
 			m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_game_state.player().isMoving());
 		
@@ -429,15 +429,15 @@ void EverQuest::UpdateCombatMovement()
 void EverQuest::Face(float x, float y, float z)
 {
 	// Calculate heading to face the given position
-	float new_heading = CalculateHeading(m_x, m_y, x, y);
+	float new_heading = CalculateHeading(PosX(), PosY(), x, y);
 	
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", m_x, m_y, x, y, m_heading, new_heading);
+		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", PosX(), PosY(), x, y, HeadingDeg(), new_heading);
 	}
 	
 	// Always update heading - even small changes should be sent
 	// The previous 0.1f threshold was preventing the face command from working
-	m_heading = new_heading;
+	SetHeadingLocal(new_heading);
 	SendPositionUpdate();
 }
 
@@ -457,31 +457,30 @@ void EverQuest::FaceEntity(const std::string &name)
 void EverQuest::MoveTo(float x, float y, float z)
 {
 	// Trace who's calling MoveTo
-	if (s_debug_level >= 1 && std::abs(x - m_x) < 0.1f && std::abs(y - m_y) < 0.1f) {
-		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, m_x, m_y, m_z);
+	if (s_debug_level >= 1 && std::abs(x - PosX()) < 0.1f && std::abs(y - PosY()) < 0.1f) {
+		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, PosX(), PosY(), PosZ());
 	}
 	
 	m_game_state.player().setMovementTarget(x, y, z);
 	m_game_state.player().setMoving(true);
 	
 	// Calculate initial heading towards target
-	float new_heading = CalculateHeading(m_x, m_y, x, y);
-	m_heading = new_heading;
+	float new_heading = CalculateHeading(PosX(), PosY(), x, y);
+	SetHeadingLocal(new_heading);
 	// Send immediate position update to show the heading change
 	SendPositionUpdate();
 	
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_game_state.player().isMoving()={}", 
-			x, y, z, m_x, m_y, m_z, m_heading, m_game_state.player().isMoving());
+			x, y, z, PosX(), PosY(), PosZ(), HeadingDeg(), m_game_state.player().isMoving());
 	}
 }
 
 void EverQuest::Test_SnapToMovementTargetForSeam()
 {
 	// T88 test seam: see declaration comment in eq.h.
-	m_x = m_game_state.player().targetX();
-	m_y = m_game_state.player().targetY();
-	m_z = m_game_state.player().targetZ();
+	SetPosLocal(m_game_state.player().targetX(), m_game_state.player().targetY(),
+	            m_game_state.player().targetZ());
 	StopMovement();
 }
 
@@ -553,7 +552,7 @@ void EverQuest::UpdateMovement()
 			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_game_state.player().bankerNpcId());
 			CloseBankWindow();
 		} else {
-			float dist = CalculateDistance2D(m_x, m_y, it->second.x, it->second.y);
+			float dist = CalculateDistance2D(PosX(), PosY(), it->second.x, it->second.y);
 			if (dist > NPC_INTERACTION_DISTANCE) {
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
 					dist, NPC_INTERACTION_DISTANCE);
@@ -596,8 +595,8 @@ void EverQuest::UpdateMovement()
 			const Entity& entity = pair.second;
 			if (entity.name == m_game_state.player().followTarget()) {
 				// Check if we're close enough
-				float dist = CalculateDistance2D(m_x, m_y, entity.x, entity.y);
-				float z_diff = std::abs(m_z - entity.z);
+				float dist = CalculateDistance2D(PosX(), PosY(), entity.x, entity.y);
+				float z_diff = std::abs(PosZ() - entity.z);
 				
 				// Log follow status periodically
 				static std::chrono::steady_clock::time_point last_follow_log = std::chrono::steady_clock::now();
@@ -636,8 +635,8 @@ void EverQuest::UpdateMovement()
 						LOG_DEBUG(MOD_MAIN, "UpdateMovement: Target moved significantly (dist={:.2f})", final_dest_dist);
 						if (m_use_pathfinding && m_pathfinder) {
 							// Find path from current position to target
-							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", m_x, m_y, m_z, entity.x, entity.y, entity.z);
-							if (FindPath(m_x, m_y, m_z, entity.x, entity.y, entity.z)) {
+							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
+							if (FindPath(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z)) {
 								// Start following the path
 								m_current_path_index = 0;
 								m_game_state.player().setMoving(true);
@@ -668,11 +667,11 @@ void EverQuest::UpdateMovement()
 	
 	// Always update jump if jumping, even when not moving
 	if (m_game_state.player().isJumping()) {
-		float old_z = m_z;
+		float old_z = PosZ();
 		UpdateJump();
 		
 		// If Z changed, send position update immediately
-		if (m_z != old_z) {
+		if (PosZ() != old_z) {
 			SendPositionUpdate();
 		}
 	}
@@ -701,14 +700,14 @@ void EverQuest::UpdateMovement()
 	if (!m_current_path.empty() && m_current_path_index < m_current_path.size()) {
 		// Check if we've reached the current waypoint
 		const auto& waypoint = m_current_path[m_current_path_index];
-		float dist_to_waypoint = CalculateDistance2D(m_x, m_y, waypoint.x, waypoint.y);
+		float dist_to_waypoint = CalculateDistance2D(PosX(), PosY(), waypoint.x, waypoint.y);
 
 		// Always log path progress for debugging coordinate issues
 		static auto last_path_debug = std::chrono::steady_clock::now();
 		auto now_path_debug = std::chrono::steady_clock::now();
 		if (std::chrono::duration_cast<std::chrono::milliseconds>(now_path_debug - last_path_debug).count() >= 500) {
 			LOG_INFO(MOD_MAIN, "Path progress: pos=({:.1f},{:.1f},{:.1f}) waypoint[{}]=({:.1f},{:.1f},{:.1f}) dist={:.1f}",
-				m_x, m_y, m_z, m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
+				PosX(), PosY(), PosZ(), m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
 			last_path_debug = now_path_debug;
 		}
 
@@ -751,7 +750,7 @@ void EverQuest::UpdateMovement()
 		}
 		
 		// Check both 2D distance and Z difference for waypoint reached
-		float z_diff_to_waypoint = std::abs(m_z - waypoint.z);
+		float z_diff_to_waypoint = std::abs(PosZ() - waypoint.z);
 		bool waypoint_reached = (dist_to_waypoint < 5.0f && z_diff_to_waypoint < 10.0f) || dist_to_waypoint < 3.0f;
 		
 		if (waypoint_reached) { // Within range of waypoint
@@ -769,7 +768,7 @@ void EverQuest::UpdateMovement()
 				const auto& next_waypoint = m_current_path[m_current_path_index];
 				
 				// Check if the next waypoint is different enough from current position
-				float dist_to_next = CalculateDistance2D(m_x, m_y, next_waypoint.x, next_waypoint.y);
+				float dist_to_next = CalculateDistance2D(PosX(), PosY(), next_waypoint.x, next_waypoint.y);
 				if (dist_to_next > 2.0f) {  // Only move if it's far enough away
 					MoveTo(next_waypoint.x, next_waypoint.y, next_waypoint.z);
 
@@ -801,14 +800,14 @@ void EverQuest::UpdateMovement()
 	auto now_debug = std::chrono::steady_clock::now();
 	if (ShouldLog(MOD_MOVEMENT, LOG_DEBUG) && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
 		LOG_DEBUG(MOD_MOVEMENT, "Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
-			m_x, m_y, m_z, m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
+			PosX(), PosY(), PosZ(), m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
 		last_target_debug = now_debug;
 	}
 
 	// Calculate distance to target
-	float dx = m_game_state.player().targetX() - m_x;
-	float dy = m_game_state.player().targetY() - m_y;
-	float dz = m_game_state.player().targetZ() - m_z;
+	float dx = m_game_state.player().targetX() - PosX();
+	float dy = m_game_state.player().targetY() - PosY();
+	float dz = m_game_state.player().targetZ() - PosZ();
 	float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
 
 	// Check if we've reached the target
@@ -816,9 +815,8 @@ void EverQuest::UpdateMovement()
 		LOG_DEBUG(MOD_MOVEMENT, "Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
 			distance, m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ());
 
-		m_x = m_game_state.player().targetX();
-		m_y = m_game_state.player().targetY();
-		m_z = m_game_state.player().targetZ();
+		SetPosLocal(m_game_state.player().targetX(), m_game_state.player().targetY(),
+		            m_game_state.player().targetZ());
 
 		// If following a path, check for next waypoint
 		if (!m_current_path.empty() && m_current_path_index < m_current_path.size() - 1) {
@@ -874,31 +872,31 @@ void EverQuest::UpdateMovement()
 	static auto last_move_debug = std::chrono::steady_clock::now();
 	if (s_debug_level >= 1 && m_game_state.combat().inCombatMovement() && 
 	    std::chrono::duration_cast<std::chrono::seconds>(now_movement - last_move_debug).count() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", m_x, m_y, m_z, m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), distance, current_speed, step);
+		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", PosX(), PosY(), PosZ(), m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), distance, current_speed, step);
 		last_move_debug = now_movement;
 	}
 	
 	// Normalize direction and move
 	float factor = step / distance;
-	float old_x = m_x;
-	float old_y = m_y;
-	m_x += dx * factor;
-	m_y += dy * factor;
-	m_z += dz * factor;
+	float old_x = PosX();
+	float old_y = PosY();
+	SetPosLocal(PosX() + dx * factor, PosY() + dy * factor, PosZ() + dz * factor);
 	
 	// Debug: verify position actually changed
 	if (s_debug_level >= 1 && m_game_state.combat().inCombatMovement()) {
-		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, m_x, m_y, m_x - old_x, m_y - old_y);
+		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, PosX(), PosY(), PosX() - old_x, PosY() - old_y);
 	}
 	
-	// Update heading
-	m_heading = CalculateHeading(m_x - dx * factor, m_y - dy * factor, m_x, m_y);
+	// Update heading (from the pre-step position to the post-step position;
+	// old_x/old_y ARE that pre-step position -- identical arithmetic to the
+	// pre-T288 `PosX() - dx * factor` form, which recomputed it)
+	SetHeadingLocal(CalculateHeading(old_x, old_y, PosX(), PosY()));
 
 	// Update bridge position for console-driven movement (moveto, follow, etc.)
 	if (m_bridge) {
 		eqt::state::PlayerMovedData pdata;
-		pdata.x = m_x; pdata.y = m_y; pdata.z = m_z;
-		pdata.heading = m_heading;
+		pdata.x = PosX(); pdata.y = PosY(); pdata.z = PosZ();
+		pdata.heading = HeadingDeg();
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
 		pdata.isMoving = true;
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -933,11 +931,11 @@ void EverQuest::UpdateMovement()
 	
 	// Update jump if jumping
 	bool was_jumping = m_game_state.player().isJumping();
-	float old_z = m_z;
+	float old_z = PosZ();
 	UpdateJump();
 	
 	// If jumping and Z changed, send position update immediately
-	if (m_game_state.player().isJumping() && m_z != old_z) {
+	if (m_game_state.player().isJumping() && PosZ() != old_z) {
 		SendPositionUpdate();
 		m_last_position_update_time = now;
 	}
@@ -1016,16 +1014,16 @@ void EverQuest::SendPositionUpdate()
 	
 	// Initialize last position if this is the first update
 	if (force_update || last_positions.find(this) == last_positions.end()) {
-		last_positions[this] = std::make_tuple(m_x, m_y, m_z, m_heading);
+		last_positions[this] = std::make_tuple(PosX(), PosY(), PosZ(), HeadingDeg());
 	}
 	
 	auto& [last_x, last_y, last_z, last_heading] = last_positions[this];
 	
 	// Calculate deltas
-	float delta_x = m_x - last_x;
-	float delta_y = m_y - last_y;
-	float delta_z = m_z - last_z;
-	float delta_heading_deg = m_heading - last_heading;
+	float delta_x = PosX() - last_x;
+	float delta_y = PosY() - last_y;
+	float delta_z = PosZ() - last_z;
+	float delta_heading_deg = HeadingDeg() - last_heading;
 	
 	// Normalize delta heading to -180 to 180
 	while (delta_heading_deg > 180.0f) delta_heading_deg -= 360.0f;
@@ -1040,9 +1038,9 @@ void EverQuest::SendPositionUpdate()
 	// This simplifies to: degrees = raw * 360 / 2048
 	// So to convert degrees to raw: raw = degrees * 2048 / 360
 	//
-	// C->S transformation: -m_heading + 90 to match server convention
-	// Inverse of S->C transformation (m_heading = 90 - server_h)
-	float server_heading = 90.0f - m_heading;
+	// C->S transformation: -(client heading) + 90 to match server convention
+	// Inverse of S->C transformation (client heading = 90 - server_h)
+	float server_heading = 90.0f - HeadingDeg();
 	if (server_heading < 0.0f) server_heading += 360.0f;
 	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
@@ -1050,8 +1048,8 @@ void EverQuest::SendPositionUpdate()
 	uint16_t heading_scaled = heading_raw % 2048;
 	
 	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] m_heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
-			m_heading, server_heading, heading_scaled);
+		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
+			HeadingDeg(), server_heading, heading_scaled);
 	}
 	
 	// Build the client position update body. The wire layout is 36 bytes of
@@ -1077,35 +1075,35 @@ void EverQuest::SendPositionUpdate()
 
 	// Use the spawn ID we extracted from PlayerProfile or ZoneSpawns
 	// This is what the server expects in ClientUpdate packets
-	update.spawn_id = m_my_spawn_id;
+	update.spawn_id = MySpawnId();
 	m_game_state.player().incrementMovementSequence();
 	update.sequence = m_game_state.player().movementSequence();
 
 	// Validate that we have a valid spawn ID
-	if (m_my_spawn_id == 0) {
-		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with m_my_spawn_id = 0! Not sending update.");
+	if (MySpawnId() == 0) {
+		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with a spawn id of 0! Not sending update.");
 		return;
 	}
 
 	// Check if we're accidentally using another player's ID
-	auto it = m_entities.find(m_my_spawn_id);
+	auto it = m_entities.find(MySpawnId());
 	if (it != m_entities.end() && it->second.name != m_character) {
 		LOG_WARN(MOD_MOVEMENT, "m_my_spawn_id {} belongs to '{}', not our character '{}'!",
-			m_my_spawn_id, it->second.name, m_character);
+			MySpawnId(), it->second.name, m_character);
 	}
 	
 	// Convert from internal coordinate system back to server coordinate system
-	// When receiving from server: m_x = server_y, m_y = server_x (see ZoneProcessPlayerProfile)
-	// So to send back: server's y_pos = m_x, server's x_pos = m_y
-	update.y_pos = m_x;  // m_x holds server's original y
-	update.x_pos = m_y;  // m_y holds server's original x
+	// When receiving from server: client x = server y, client y = server x (see ZoneProcessPlayerProfile)
+	// So to send back: server's y_pos = client x, server's x_pos = client y
+	update.y_pos = PosX();  // client x holds server's original y
+	update.x_pos = PosY();  // client y holds server's original x
 	// Send Z position directly without offset - server stores the actual position
-	update.z_pos = m_z;
+	update.z_pos = PosZ();
 	// Deltas follow the same transformation:
-	// Internal delta_x (change in m_x) = change in server's y = server's delta_y
-	// Internal delta_y (change in m_y) = change in server's x = server's delta_x
-	update.delta_x = delta_y;  // server's delta_x = change in m_y (server's x)
-	update.delta_y = delta_x;  // server's delta_y = change in m_x (server's y)
+	// Internal delta_x (change in client x) = change in server's y = server's delta_y
+	// Internal delta_y (change in client y) = change in server's x = server's delta_x
+	update.delta_x = delta_y;  // server's delta_x = change in client y (server's x)
+	update.delta_y = delta_x;  // server's delta_y = change in client x (server's y)
 	update.delta_z = delta_z;
 	
 	// Pack animation and delta_heading into bitfield
@@ -1131,11 +1129,11 @@ void EverQuest::SendPositionUpdate()
 	
 	// Log C->S position updates at debug level 2+
 	if (s_debug_level >= 2) {
-		// Log server coordinates (x_pos, y_pos) = (m_y, m_x) due to coordinate swap
+		// Log server coordinates (x_pos, y_pos) = (client y, client x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
-			m_my_spawn_id, update.x_pos, update.y_pos, update.z_pos, m_heading, m_game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
+			MySpawnId(), update.x_pos, update.y_pos, update.z_pos, HeadingDeg(), m_game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
-			m_x, m_y, m_z, update.x_pos, update.y_pos, update.z_pos);
+			PosX(), PosY(), PosZ(), update.x_pos, update.y_pos, update.z_pos);
 	}
 
 	// T88 test seam: capture what was actually computed, unconditionally,
@@ -1150,16 +1148,16 @@ void EverQuest::SendPositionUpdate()
 	SafeQueueZonePacket(p, 0, false);  // Send unreliable
 	
 	// Update last position
-	last_x = m_x;
-	last_y = m_y;
-	last_z = m_z;
-	last_heading = m_heading;
+	last_x = PosX();
+	last_y = PosY();
+	last_z = PosZ();
+	last_heading = HeadingDeg();
 	
 	// Track movement history for anti-cheat
 	MovementHistoryEntry history_entry;
-	history_entry.x = m_x;
-	history_entry.y = m_y;
-	history_entry.z = m_z;
+	history_entry.x = PosX();
+	history_entry.y = PosY();
+	history_entry.z = PosZ();
 	history_entry.type = 1; // Normal movement (Collision type)
 	history_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	
@@ -1188,7 +1186,7 @@ float EverQuest::CalculateHeading(float x1, float y1, float x2, float y2)
 	
 	// If we're not moving, preserve current heading
 	if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
-		return m_heading;
+		return HeadingDeg();
 	}
 	
 	// Calculate angle in radians
@@ -1241,7 +1239,7 @@ bool EverQuest::HasReachedDestination() const
 	}
 	
 	// Check if we're close enough to the target (within 2 units)
-	float dist = CalculateDistance2D(m_x, m_y, m_game_state.player().targetX(), m_game_state.player().targetY());
+	float dist = CalculateDistance2D(PosX(), PosY(), m_game_state.player().targetX(), m_game_state.player().targetY());
 	return dist < 2.0f;
 }
 
@@ -1387,11 +1385,11 @@ void EverQuest::MoveToWithPath(float x, float y, float z)
 	}
 	
 	// Find path from current position to target
-	if (FindPath(m_x, m_y, m_z, x, y, z)) {
+	if (FindPath(PosX(), PosY(), PosZ(), x, y, z)) {
 		// Face the final destination immediately
-		float new_heading = CalculateHeading(m_x, m_y, x, y);
-		if (std::abs(new_heading - m_heading) > 0.1f) {
-			m_heading = new_heading;
+		float new_heading = CalculateHeading(PosX(), PosY(), x, y);
+		if (std::abs(new_heading - HeadingDeg()) > 0.1f) {
+			SetHeadingLocal(new_heading);
 			SendPositionUpdate();
 		}
 		
@@ -1415,7 +1413,7 @@ void EverQuest::FollowPath()
 	// Skip waypoints that are too close to current position (within 1 unit)
 	while (m_current_path_index < m_current_path.size()) {
 		const auto& waypoint = m_current_path[m_current_path_index];
-		float dist = CalculateDistance2D(m_x, m_y, waypoint.x, waypoint.y);
+		float dist = CalculateDistance2D(PosX(), PosY(), waypoint.x, waypoint.y);
 		
 		if (dist > 1.0f) {
 			// This waypoint is far enough, move to it
@@ -1640,7 +1638,7 @@ void EverQuest::Jump()
 	
 	// Allow jumping while moving or standing
 	m_game_state.player().setJumping(true);
-	m_game_state.player().setJumpStartZ(m_z);
+	m_game_state.player().setJumpStartZ(PosZ());
 	m_game_state.player().setJumpStartTime(std::chrono::steady_clock::now());
 	
 	// Real clients have a tiny position shift when jumping (to trigger server broadcasts)
@@ -1651,9 +1649,9 @@ void EverQuest::Jump()
 	
 	// Apply tiny shift to X or Y position (alternate between them)
 	if (jump_count % 4 < 2) {
-		m_x += tiny_shift;
+		SetPosLocal(PosX() + tiny_shift, PosY(), PosZ());
 	} else {
-		m_y += tiny_shift;
+		SetPosLocal(PosX(), PosY() + tiny_shift, PosZ());
 	}
 	
 	// Real clients send standing animation before jumping
@@ -1665,7 +1663,7 @@ void EverQuest::Jump()
 	// Don't set animation to jump - real clients keep animation at 0 in ClientUpdate
 	
 	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", m_z);
+		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", PosZ());
 	}
 	
 	// Don't block - let the update loop handle the jump
@@ -1689,7 +1687,8 @@ void EverQuest::UpdateJump()
 	if (elapsed >= jump_duration_ms) {
 		// Jump complete
 		m_game_state.player().setJumping(false);
-		m_z = m_game_state.player().jumpStartZ();  // Return to original height (or use FixZ)
+		// Return to original height (or use FixZ)
+		SetPosLocal(PosX(), PosY(), m_game_state.player().jumpStartZ());
 		
 		// Return to appropriate animation
 		if (m_game_state.player().isMoving()) {
@@ -1705,13 +1704,13 @@ void EverQuest::UpdateJump()
 		// Calculate jump height using parabola
 		float t = elapsed / jump_duration_ms;  // 0 to 1
 		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
-		m_z = m_game_state.player().jumpStartZ() + height;
+		SetPosLocal(PosX(), PosY(), m_game_state.player().jumpStartZ() + height);
 		
 		if (s_debug_level >= 2) {
 			static int jump_frame = 0;
 			if (jump_frame % 10 == 0) {  // Log every 10th frame
 				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
-					t, height, m_z);
+					t, height, PosZ());
 			}
 			jump_frame++;
 		}
@@ -1729,7 +1728,7 @@ void EverQuest::UpdateWaterState()
 
 	// Fully underwater zones - these don't have BSP water regions
 	// The entire zone is submerged so we hardcode them here
-	bool isFullyUnderwaterZone = (m_current_zone_name == "kedge");
+	bool isFullyUnderwaterZone = (CurrentZoneName() == "kedge");
 
 	if (isFullyUnderwaterZone) {
 		newState = WaterState::Submerged;
@@ -1740,9 +1739,9 @@ void EverQuest::UpdateWaterState()
 			// Check the region at current player position
 			// In EQ, the "head" is approximately 6 units above feet position
 			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
-			float headZ = m_z + HEAD_HEIGHT_OFFSET;
+			float headZ = PosZ() + HEAD_HEIGHT_OFFSET;
 
-			auto region = bspTree->findRegionForPoint(m_x, m_y, m_z);
+			auto region = bspTree->findRegionForPoint(PosX(), PosY(), PosZ());
 
 			if (region) {
 				// Check if this region is water
@@ -1758,7 +1757,7 @@ void EverQuest::UpdateWaterState()
 
 				if (isWaterRegion) {
 					// Check if head is also in water (determines OnSurface vs Submerged)
-					auto headRegion = bspTree->findRegionForPoint(m_x, m_y, headZ);
+					auto headRegion = bspTree->findRegionForPoint(PosX(), PosY(), headZ);
 					bool headInWater = false;
 					if (headRegion) {
 						for (auto type : headRegion->regionTypes) {
@@ -1776,7 +1775,7 @@ void EverQuest::UpdateWaterState()
 					} else {
 						newState = WaterState::OnSurface;
 						// Estimate water surface Z (head is above water, feet are in)
-						waterSurfaceZ = m_z + (HEAD_HEIGHT_OFFSET / 2.0f);
+						waterSurfaceZ = PosZ() + (HEAD_HEIGHT_OFFSET / 2.0f);
 					}
 				}
 			}
@@ -1799,7 +1798,7 @@ void EverQuest::UpdateWaterState()
 		if (m_bridge) {
 			float swimSpd = GetSwimSpeed();
 			bool lev = false;
-			auto me = m_entities.find(m_my_spawn_id);
+			auto me = m_entities.find(MySpawnId());
 			if (me != m_entities.end() && me->second.flymode == 2) {
 				lev = true;
 			}
@@ -1817,7 +1816,7 @@ void EverQuest::UpdateWaterState()
 void EverQuest::OnEnterWater()
 {
 	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", PosX(), PosY(), PosZ());
 	}
 
 	// Cancel any jump in progress
@@ -1837,12 +1836,12 @@ void EverQuest::OnEnterWater()
 void EverQuest::OnExitWater()
 {
 	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", m_x, m_y, m_z);
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", PosX(), PosY(), PosZ());
 	}
 
 	// Check if player is levitating (flymode 2 from buffs)
 	// If levitating, keep flymode 2, otherwise reset to 0
-	auto myEntity = m_entities.find(m_my_spawn_id);
+	auto myEntity = m_entities.find(MySpawnId());
 	uint8_t newFlymode = 0;
 	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
 		newFlymode = 2;  // Keep levitating
@@ -1988,10 +1987,11 @@ void EverQuest::UpdateKeyboardMovement()
 	}
 	
 	if (delta_heading != 0.0f) {
-		m_heading += delta_heading;
+		float h = HeadingDeg() + delta_heading;
 		// Normalize heading to 0-360
-		while (m_heading < 0.0f) m_heading += 360.0f;
-		while (m_heading >= 360.0f) m_heading -= 360.0f;
+		while (h < 0.0f) h += 360.0f;
+		while (h >= 360.0f) h -= 360.0f;
+		SetHeadingLocal(h);
 	}
 	
 	// Handle forward/backward movement
@@ -2016,17 +2016,16 @@ void EverQuest::UpdateKeyboardMovement()
 	// Apply movement
 	if (move_distance != 0.0f) {
 		// Convert heading to radians for calculations
-		float heading_rad = m_heading * M_PI / 180.0f;
+		float heading_rad = HeadingDeg() * M_PI / 180.0f;
 
 		// Calculate new position
 		// In EQ coordinates: +X = East, +Y = North
 		// Heading 0 = North, 90 = East, 180 = South, 270 = West
-		float new_x = m_x + move_distance * sin(heading_rad);
-		float new_y = m_y + move_distance * cos(heading_rad);
+		float new_x = PosX() + move_distance * sin(heading_rad);
+		float new_y = PosY() + move_distance * cos(heading_rad);
 
 		// Update position
-		m_x = new_x;
-		m_y = new_y;
+		SetPosLocal(new_x, new_y, PosZ());
 
 		// Fix Z position if we have map data
 		FixZ();

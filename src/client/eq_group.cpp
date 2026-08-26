@@ -398,7 +398,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			// Add self first
 			GroupMember self;
 			self.name = m_character;
-			self.spawnId = m_my_spawn_id;
+			self.spawnId = MySpawnId();
 			self.level = m_game_state.player().level();
 			self.classId = static_cast<uint8_t>(m_game_state.player().classId());
 			self.hpPercent = (m_game_state.player().maxHP() > 0) ? static_cast<uint8_t>(m_game_state.player().curHP() * 100 / m_game_state.player().maxHP()) : 100;

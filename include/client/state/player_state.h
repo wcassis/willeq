@@ -63,6 +63,24 @@ public:
     void setPositionAndHeading(float x, float y, float z, float heading);
     void setSize(float size) { m_size = size; }
 
+    // T288: the movement integrator's write path -- SAME storage as
+    // setPosition()/setHeading() above, but it does NOT fire PlayerMoved.
+    //
+    // Before T288, EverQuest kept its own m_x/m_y/m_z/m_heading and the whole
+    // integrator (UpdateMovement, jump, strafe, FixZ, the self-ClientUpdate
+    // branch, the PlayerPositionChanged intent) wrote only that copy, so
+    // PlayerState never moved and no event fired for any of it. Converging on
+    // one store must not, by itself, start publishing a per-tick PlayerMoved
+    // onto the state bus -- AutomatedMode subscribes to EVERY event on it, so
+    // that would be a new event stream for scripts, not a refactor. The
+    // integrator publishes its own PlayerMovedData onto the renderer bridge,
+    // which is unchanged and remains the only thing the renderer sees.
+    //
+    // Use setPosition()/setHeading() for a discrete relocation (zone-in,
+    // bind respawn, /loc-style teleport); use these for a movement step.
+    void setPositionNoEvent(float x, float y, float z) { m_x = x; m_y = y; m_z = z; }
+    void setHeadingNoEvent(float heading) { m_heading = heading; }
+
     // Velocity
     float dx() const { return m_dx; }
     float dy() const { return m_dy; }
