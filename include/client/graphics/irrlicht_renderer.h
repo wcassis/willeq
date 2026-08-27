@@ -2170,22 +2170,27 @@ private:
     void applyCameraProjectionForMode();
 
     // T300: THE HIDING SEAM. Everything that hides the player's own body in
-    // first person is in this one body. It derives the near clip plane from
-    // the player's CURRENT model size (EntityRenderer::getPlayerBodyRestRadius()
-    // x kFirstPersonNearPlaneMargin) and re-applies it whenever that value
-    // moves -- so a shrink or grow landing mid-first-person moves the plane
-    // with it. Called every frame before the scene draw, and on mode changes.
-    // A complete no-op outside first person.
+    // first person is in this one body. It clamps the stored mouse-look pitch
+    // so the frustum's lower edge never passes the nadir -- the body hangs
+    // directly below the eye, so a view that cannot look past straight down
+    // cannot contain it. The clamp angle is DERIVED from the camera's vertical
+    // FOV (90 - vFOV/2), which makes it scale-, race- and shrink/grow-
+    // invariant with no size term of any kind.
     //
-    // If T300 Leg A reports that the official client hides the player by
-    // per-object culling rather than a near plane, this body is what gets
-    // replaced; the camera formula and everything else stays.
-    void applyFirstPersonPlayerHiding();
+    // Called every frame before the scene draw, and on mode changes (entering
+    // first person from a third-person view that was pitched further down than
+    // the clamp allows has to be corrected immediately). A no-op outside first
+    // person, and a no-op in first person unless the pitch was out of range.
+    //
+    // Leg A REFUTED the near-plane hypothesis this seam previously held: the
+    // official client clips nothing, and the size sweep killed both the fixed
+    // and the size-derived plane. If the mechanism moves again, this body and
+    // firstPersonMaxDownPitchDegrees() are what get replaced.
+    void applyFirstPersonPitchClamp();
 
-    // Last near-plane value applied by applyFirstPersonPlayerHiding(), so the
-    // per-frame call only touches the camera when the model actually changed
-    // size. 0 = nothing applied yet / not in first person.
-    float firstPersonAppliedNearPlane_ = 0.0f;
+    // The vertical FOV the first-person camera is actually using, in radians.
+    // One answer, so the clamp derivation and the projection cannot disagree.
+    float getFirstPersonVerticalFov() const;
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

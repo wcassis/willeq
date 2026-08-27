@@ -2780,8 +2780,9 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
             // T300: the player model is drawn NORMALLY in first person --
             // full body, unfiltered, in the world render list, with its
             // equipment attached to its hand bones. It is hidden by the
-            // first-person NEAR CLIP PLANE and by nothing else
-            // (applyCameraProjectionForMode()).
+            // first-person DOWN-PITCH CLAMP and by nothing else
+            // (IrrlichtRenderer::applyFirstPersonPitchClamp()); first person
+            // clips exactly as third person does.
             //
             // Everything this function used to do is gone on purpose:
             //   * T74's arm-bone index filter (setFirstPersonMode() on the
@@ -2795,8 +2796,8 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
             // official client draws the ordinary world model from an eye-point
             // camera, and geometry REAPPEARS when an animation extends it
             // (a kick's boot, a swing's blade). Geometry that reappears was
-            // clipped, not omitted -- so there is nothing to filter and
-            // nothing to defer.
+            // clipped or out of frame, not omitted -- so there is nothing to
+            // filter and nothing to defer.
             //
             // Note for anyone tempted to "just hide the node" again: Irrlicht
             // skips OnAnimate() on invisible nodes, so a hidden player node
@@ -2810,9 +2811,9 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
             }
 
             // The floating name tag is the one thing that must still go: it
-            // is a camera-facing 2D billboard drawn in screen space, so the
-            // near plane does not clip it and the player would read his own
-            // name across the middle of the frame.
+            // is a camera-facing 2D billboard drawn in screen space, so no
+            // camera angle moves it off screen and the player would read his
+            // own name across the middle of the frame.
             if (visual.nameNode) {
                 visual.nameNode->setVisible(!enabled);
             }
@@ -2824,7 +2825,7 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
                 visual.secondaryEquipNode->setVisible(true);
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} (player model drawn normally; the near plane hides it)",
+            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} (player model drawn normally; the down-pitch clamp keeps it out of frame)",
                       enabled);
             break;
         }
@@ -3013,51 +3014,6 @@ float EntityRenderer::getPlayerEyeHeightAboveNodeOrigin() const {
     // Default fallback for human-sized entity (node-origin-relative, so
     // roughly the 3.65 a Human male measures -- NOT a feet-relative 6.x).
     return 3.65f;
-}
-
-float EntityRenderer::getPlayerBodyRestRadius() const {
-    // T300. Measured from the base mesh's bounding box, not per vertex: the
-    // box's furthest corner from the eye is a tight, conservative
-    // over-estimate of the furthest vertex (Human male: 6.90 from the box vs
-    // 6.87 measured across every vertex of the idle animation --
-    // FirstPersonNearPlaneSwallowsTheBody_Headless asserts that relationship
-    // for every race with model data). Conservative is the right side to err
-    // on: the plane must clear the body, and this runs every frame.
-    //
-    // The BASE mesh box is used deliberately, not the per-instance pose box.
-    // The rest radius must be STABLE: a pose-tracking radius would grow during
-    // a swing and push the plane out over exactly the geometry that has to
-    // stay visible. The base box spans every animation frame, which is why the
-    // proxy over-reports (Human male 7.38 vs a 6.87 furthest idle vertex,
-    // Troll male 8.66 vs 6.88) -- that slack is the price of stability and of
-    // an O(1) per-frame check, and it is measured per race in
-    // FirstPersonNearPlaneSwallowsTheBody_Headless.
-    for (const auto& [id, visual] : entities_) {
-        if (!visual.isPlayer || !visual.isAnimated || !visual.animatedNode) continue;
-        EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
-        if (!eqMesh) continue;
-        const irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-        const float eyeY = bbox.MaxEdge.Y;
-        if (!(eyeY > 0.0f)) continue;
-
-        float worst = 0.0f;
-        for (int corner = 0; corner < 8; ++corner) {
-            const float cx = (corner & 1) ? bbox.MaxEdge.X : bbox.MinEdge.X;
-            const float cy = (corner & 2) ? bbox.MaxEdge.Y : bbox.MinEdge.Y;
-            const float cz = (corner & 4) ? bbox.MaxEdge.Z : bbox.MinEdge.Z;
-            const float dy = cy - eyeY;
-            worst = std::max(worst, std::sqrt(cx * cx + dy * dy + cz * cz));
-        }
-
-        // The LIVE node scale -- this is the term that must track shrink/grow
-        // and the server's spawn size, not the base mesh. Uniform scale is
-        // what every writer in this file applies (setScale(s, s, s)); take the
-        // largest component so a non-uniform scale cannot under-report.
-        const irr::core::vector3df scale = visual.animatedNode->getScale();
-        const float s = std::max({std::fabs(scale.X), std::fabs(scale.Y), std::fabs(scale.Z)});
-        return worst * (s > 0.0f ? s : 1.0f);
-    }
-    return 0.0f;
 }
 
 void EntityRenderer::setCurrentZone(const std::string& zoneName) {

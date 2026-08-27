@@ -1255,11 +1255,12 @@ int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {
 // skeleton yielded no arm bones); T296 built the viewmodel pass on top of
 // them. T299 measured the actual mechanism in two client versions: the
 // official client draws the ORDINARY, unfiltered player model from an
-// eye-point camera and hides it with a large near clip plane -- geometry
-// reappears whenever an animation pushes it past that plane. There is
+// eye-point camera and hides it with a CLAMPED DOWN-PITCH (T300 Leg A: the
+// client clips nothing) -- geometry reappears whenever an animation rotates
+// it up into frame. There is
 // therefore no geometry to select and no fallback to fall back to. Do not
 // reintroduce a first-person triangle filter; if the body shows, the near
-// plane is wrong (IrrlichtRenderer::applyFirstPersonPlayerHiding()).
+// down-pitch clamp is wrong (IrrlichtRenderer::applyFirstPersonPitchClamp()).
 
 } // namespace Graphics
 } // namespace EQT

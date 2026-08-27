@@ -2470,9 +2470,9 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 // changing any of these numbers, and change them THERE, not here. The three
 // tunables it holds are kFirstPersonPitchDownDegrees (3.65, was T75's 12),
 // kFirstPersonHorizontalFovDegrees (62.8, was Irrlicht's default 72 vertical
-// == ~88 horizontal) and kFirstPersonNearPlaneMargin (the dimensionless margin
-// the body-hiding near plane is derived from; PLACEHOLDER, and the derivation
-// itself is unvalidated pending T300 Leg A).
+// == ~88 horizontal). The body-hiding lever is no longer a near plane at all:
+// Leg A measured the official client clipping nothing, so hiding is a DOWN-
+// PITCH CLAMP derived as 90 - vFOV/2 (firstPersonMaxDownPitchDegrees()).
 //
 // T76's kFirstPersonCameraStandoffUnits (0.3 BACKWARD) is gone: it existed to
 // pull the eye off in-world arm geometry that is no longer drawn as a
@@ -2481,42 +2481,45 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 void IrrlichtRenderer::applyCameraProjectionForMode() {
     if (!camera_) return;
     const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
-    if (firstPerson) {
-        camera_->setFOV(firstPersonVerticalFovRadians(camera_->getAspectRatio()));
-        firstPersonAppliedNearPlane_ = 0.0f;  // force a re-derive
-        applyFirstPersonPlayerHiding();
-    } else {
-        camera_->setNearValue(kWorldNearPlaneUnits);
-        camera_->setFOV(kWorldVerticalFovRadians);
-        firstPersonAppliedNearPlane_ = 0.0f;
-    }
+    // T300 (post-Leg-A): the NEAR PLANE IS THE SAME IN EVERY MODE. Leg A
+    // measured the official client clipping nothing -- geometry draws at
+    // point-blank range -- so first person must clip exactly as third person
+    // does. The near-plane hiding that briefly lived here is refuted and gone;
+    // the down-pitch clamp (applyFirstPersonPitchClamp()) is what hides the
+    // body. Only the FOV is mode-specific, so third person stays byte-for-byte
+    // what it was and the visual gate's goldens hold.
+    camera_->setNearValue(kWorldNearPlaneUnits);
+    camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
+                                : kWorldVerticalFovRadians);
+    if (firstPerson) applyFirstPersonPitchClamp();
     LOG_DEBUG(MOD_GRAPHICS,
               "[FP-PROJ] firstPerson={} near={:.3f} fovY={:.4f}rad aspect={:.4f}",
               firstPerson, camera_->getNearValue(), camera_->getFOV(),
               camera_->getAspectRatio());
 }
 
-// T300: THE HIDING SEAM -- see the declaration. The near plane is NOT a fixed
-// distance: races differ in size and shrink/grow changes a model's scale at
-// runtime, so the plane is derived from the player's CURRENT model every frame
-// and re-applied when it moves.
-void IrrlichtRenderer::applyFirstPersonPlayerHiding() {
+// T300: THE HIDING SEAM -- see the declaration. The body hangs directly below
+// the eye, so clamping the down-pitch so the frustum's lower edge never passes
+// the nadir is sufficient to hide it, at any model scale.
+void IrrlichtRenderer::applyFirstPersonPitchClamp() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
 
-    const float restRadius = entityRenderer_ ? entityRenderer_->getPlayerBodyRestRadius() : 0.0f;
-    const float nearPlane = firstPersonNearPlaneFromBodyRadius(restRadius);
+    const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+    if (playerPitch_ >= minLook && playerPitch_ <= kFirstPersonMaxUpPitchDegrees) return;
 
-    // Only touch the camera when the derived value actually moved -- this runs
-    // every frame, and setNearValue() invalidates the projection matrix.
-    if (std::fabs(nearPlane - firstPersonAppliedNearPlane_) < 0.001f) return;
+    const float before = playerPitch_;
+    playerPitch_ = std::min(std::max(playerPitch_, minLook), kFirstPersonMaxUpPitchDegrees);
+    LOG_DEBUG(MOD_GRAPHICS,
+              "[FP-CLAMP] mouse-look pitch {:.2f} -> {:.2f} deg (floor {:.2f}, total down-pitch limit {:.2f} = 90 - vFOV/2)",
+              before, playerPitch_, minLook,
+              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
+    repositionFirstPersonCamera();
+}
 
-    camera_->setNearValue(nearPlane);
-    LOG_INFO(MOD_GRAPHICS,
-             "[FP-HIDE] near plane {:.3f} -> {:.3f} (body rest radius {:.3f} x margin {:.3f}{})",
-             firstPersonAppliedNearPlane_, nearPlane, restRadius,
-             kFirstPersonNearPlaneMargin,
-             restRadius > 0.0f ? "" : " -- NO MODEL YET, using the fallback");
-    firstPersonAppliedNearPlane_ = nearPlane;
+// One place that answers "what vertical FOV is the first-person camera using",
+// so the clamp derivation and the projection cannot disagree.
+float IrrlichtRenderer::getFirstPersonVerticalFov() const {
+    return firstPersonVerticalFovRadians(camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f);
 }
 
 void IrrlichtRenderer::repositionFirstPersonCamera() {
@@ -2544,7 +2547,7 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // discarded the mouse.
     const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
         playerX_, playerY_, playerZ_, eyeHeight, playerConfig_.eyeHeight,
-        playerHeading_, playerPitch_);
+        playerHeading_, playerPitch_, getFirstPersonVerticalFov());
 
     camera_->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
     camera_->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
@@ -2554,10 +2557,11 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // emitter the unit's still-vs-moving proof diffs. T300: playerZ_ is the
     // node origin (== server Z, model CENTRE), not the feet; the log says so
     // now, because "feet=" is what invited a 3.05-unit "correction".
-    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeAboveOrigin={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg near={:.2f}",
+    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeAboveOrigin={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
               placement.posX, placement.posZ, placement.posY, playerZ_, eyeHeight,
               playerConfig_.eyeHeight, playerHeading_, playerPitch_,
-              kFirstPersonPitchDownDegrees, firstPersonAppliedNearPlane_);
+              kFirstPersonPitchDownDegrees,
+              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {

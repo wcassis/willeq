@@ -114,9 +114,27 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         heading += mouseDeltaX * 0.5f;
         // Mouse delta Y controls pitch (vertical look) - inverted so dragging up looks up
         playerPitch_ -= mouseDeltaY * 0.3f;
-        // Clamp pitch to prevent camera flipping
-        if (playerPitch_ > 89.0f) playerPitch_ = 89.0f;
-        if (playerPitch_ < -89.0f) playerPitch_ = -89.0f;
+        // Clamp pitch to prevent camera flipping.
+        if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
+        if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
+        // T300: THE HIDING MECHANISM, applied on the LIVE path. This function
+        // (updatePlayerMovement()) is the only writer of playerPitch_ in the
+        // tree and is what runs every frame the mouse moves -- T295's finding
+        // that the camera formula had a private duplicate here is exactly why
+        // the clamp is applied where the value is produced, not only where it
+        // is consumed. computeFirstPersonCamera() clamps the total pitch again
+        // at the point of use; this one keeps the STORED value in range so the
+        // control does not accumulate an invisible dead zone that has to be
+        // dragged back through before the view moves again.
+        //
+        // Down side only. The body hangs BELOW the eye, so looking UP moves it
+        // further out of frame; the +/-89 above is a gimbal guard for the
+        // look-at target, not part of the hiding, and Leg A measured only the
+        // down side.
+        if (cameraMode_ == CameraMode::FirstPerson) {
+            const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+            if (playerPitch_ < minLook) playerPitch_ = minLook;
+        }
     }
 
     // Normalize heading to 0-512

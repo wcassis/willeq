@@ -3,27 +3,39 @@
 /**
  * T300 -- the first-person camera, as constants plus one pure function.
  *
- * THE MECHANISM (settled by T299 against two client versions, classic and
- * Titanium; do not re-litigate it from source alone):
+ * THE MECHANISM (T299 + T300 Leg A, measured in the official client; do not
+ * re-litigate it from source alone):
  *
  *   First person is the player's ORDINARY world model, drawn normally, with
- *   the camera AT THE EYES and a near clip plane large enough to swallow the
- *   body. Nothing of the player renders at rest -- at any pitch, including
- *   aimed straight down at his own feet -- yet the SAME leg reappears the
- *   instant a kick extends it, and the main-hand blade appears on every
- *   swing, always truncated at a clean cut with the hand and elbow never
- *   drawn. Geometry that reappears was CLIPPED, not omitted; geometry cut
- *   cleanly with no attachment point was cut by a plane.
+ *   the camera AT THE EYES. **The client clips nothing** -- world and NPC
+ *   geometry draws at point-blank range (Leg A teleported the camera onto a
+ *   fixed NPC in 0.5-unit steps; at d=0 its head and shoulders render sharply
+ *   with no cut), so the near plane is under 1 unit. What hides the player is
+ *   that **first-person pitch is CLAMPED on the down side**: the body hangs
+ *   directly below the eye, and the frustum's lower edge is never allowed to
+ *   pass the nadir, so you can never look far enough down to see yourself.
+ *   A swing rotates the arm and weapon UP across a frame EDGE into view --
+ *   Leg A's halberd frame shows the arm, hand and shoulder running off the
+ *   bottom-RIGHT CORNER, and no frame in the session has a straight cut
+ *   across it.
+ *
+ * A NEAR PLANE WAS THE EARLIER HYPOTHESIS AND IS REFUTED. Leg A's size sweep
+ * killed both variants at once: at #size 30 (5x), 417 rendered frames of
+ * emotes with the UI hidden show zero player geometry while the ground 34
+ * units below is still drawn. A fixed ~7-unit plane would be poked through by
+ * a 5x body; a size-scaled plane (~35 units) would have erased that ground.
+ * Do not reintroduce near-plane hiding: first person must clip exactly as
+ * third person does.
  *
  * There is no viewmodel pass (T296's, retired here), no arm-bone geometry
- * filter (T74's, deleted here), and no standoff (T76's, removed here).
+ * filter (T74's, deleted here), no standoff (T76's, removed here), and no
+ * near-plane or size-derived hiding of any kind.
  *
  * THE HIDING MECHANISM IS DELIBERATELY ISOLATED. Everything that hides the
- * player lives behind two names: firstPersonNearPlaneFromBodyRadius() here,
- * and IrrlichtRenderer::applyFirstPersonPlayerHiding() (its only caller
- * besides the tests). T300 Leg A may yet report that the official client uses
- * per-object culling rather than a near plane; if it does, replacing the
- * mechanism is those two bodies, and the camera formula below is untouched.
+ * player lives behind two names: firstPersonMaxDownPitchDegrees() here, and
+ * IrrlichtRenderer::applyFirstPersonPitchClamp() (its only production
+ * caller). Swapping the mechanism again is those two bodies; the camera
+ * placement formula below is untouched by it.
  *
  * WHY THIS IS A HEADER, AND WHY THE MATH IS PURE: the first-person camera
  * formula has been duplicated four times across this codebase (T74, T75,
@@ -60,61 +72,51 @@ constexpr float kFirstPersonPitchDownDegrees = 3.65f;
 // ~88 degrees horizontal -- far wider than the official client's 62.8.
 constexpr float kFirstPersonHorizontalFovDegrees = 62.8f;
 
-// THE NEAR CLIP PLANE IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY; there is
-// no geometry filter and no hidden node behind it. It is NOT a fixed distance:
-// races are all different sizes, and shrink/grow effects change a model's
-// scale at RUNTIME, so a constant in EQ units is wrong the moment either
-// applies. (Measured statically, this unit: a Dwarf male's resting body
-// reaches 7.09 units from his own eye while a Human female's reaches 6.14 --
-// no single number serves both, before any spell is cast.)
+// THE DOWN-PITCH CLAMP IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY.
 //
-// So the plane is DERIVED per frame from the player's own current model:
+//     maxDownPitch = 90 degrees - vFOV/2
 //
-//     nearPlane = restRadius(current model, current scale) * margin
+// i.e. exactly the angle at which the frustum's LOWER EDGE reaches straight
+// down (the nadir). Below that the edge swings behind the vertical and the
+// body -- which hangs directly under the eye -- comes into frame.
 //
-// where restRadius is the furthest the player's own geometry gets from his eye
-// point (EntityRenderer::getPlayerBodyRestRadius(), measured off the live
-// scene node so it tracks whatever scale is applied to it), and the constant
-// that survives is this DIMENSIONLESS margin.
+// WHY DERIVED AND NOT HARDCODED: this form is automatically scale-invariant,
+// race-invariant and immune to shrink/grow, because the body's ANGULAR
+// position relative to the eye does not depend on how big the body is. It
+// needs no per-race table and no runtime size term at all -- which is
+// precisely the requirement a fixed or size-derived near plane could not meet.
+// It also tracks the FOV: widen the lens and the clamp tightens by itself.
 //
-// *** THE MARGIN IS A PLACEHOLDER, NOT A MEASUREMENT, AND THE DERIVATION
-// ITSELF IS UNVALIDATED. *** T300 Leg A is determining whether the official
-// client's hiding is (a) one global near plane, (b) a plane derived from model
-// size, or (c) player-specific culling that is not a near plane at all. Only
-// (b) is what this code assumes. Nothing here has been seen on a screen; the
-// live gate (Leg C) is what judges it.
-//
-// What the shipped evidence does support:
-//   LOWER BOUND, hard: the plane must exceed the resting body's reach, or the
-//   player sees himself -- T299 saw nothing of the body at ANY pitch,
-//   including aimed straight down at feet 6.75 units below the eye.
-//   UPPER BOUND, soft: it must stay inside the reach of an extended weapon or
-//   kick, because those DO render.
-// 1.02 sits just above the hard bound (for a Human male: rest radius ~6.90
-// from the base mesh's bounding box, plane ~7.04) and below the reach of a
-// held weapon, which hangs off a separate bone-attached node further out than
-// any body vertex. Replace it with Leg A's measured value; do not tune by eye.
-constexpr float kFirstPersonNearPlaneMargin = 1.02f;
-
-// Used only while the player's model has not loaded yet, so the plane is never
-// zero or negative. Human-male-derived; the moment a model exists the derived
-// value takes over.
-constexpr float kFirstPersonNearPlaneFallbackUnits = 7.0f;
-
-// The derivation, in one place so tests and production cannot disagree.
-// restRadiusWorldUnits <= 0 means "no model yet" -> the fallback.
-//
-// Cost of the mechanism, stated honestly: for a human this lands near 7 EQ
-// units, which is large against a 6.70-unit character -- world geometry within
-// that distance (a wall the player stands against, the ground when looking
-// steeply down) clips away in first person. That is a property of the
-// mechanism the official client appears to use, not something invented here,
-// and it applies in first person ONLY. Whether it is acceptable is Will's call
-// on the live gate.
-inline float firstPersonNearPlaneFromBodyRadius(float restRadiusWorldUnits) {
-    if (!(restRadiusWorldUnits > 0.0f)) return kFirstPersonNearPlaneFallbackUnits;
-    return restRadiusWorldUnits * kFirstPersonNearPlaneMargin;
+// *** 90 - vFOV/2 IS AN INFERENCE CONSISTENT WITH THE MEASUREMENT, NOT ITSELF
+// A MEASURED ANGLE. *** Leg A measured max down-pitch at roughly 65 degrees,
+// bracket 55-75, and independently re-derived hFOV 62.71 (+/- 0.25
+// statistical, 0.9 systematic) == vFOV 49.1 at 1024x768. 90 - 49.1/2 = 65.45
+// lands inside that bracket and matches Leg A's own description of the lower
+// edge sitting at the nadir -- which is why this form was chosen over the
+// bracket's midpoint. **A dedicated measurement of the clamp itself is the
+// outstanding follow-up**, and nothing here has been judged on a screen.
+inline float firstPersonMaxDownPitchDegrees(float verticalFovRadians) {
+    constexpr float kPi = 3.14159265358979323846f;
+    const float halfFovDeg = verticalFovRadians * 0.5f * 180.0f / kPi;
+    return 90.0f - halfFovDeg;
 }
+
+// The clamp applies to the camera's TOTAL down-pitch -- the mouse-look angle
+// PLUS the fixed kFirstPersonPitchDownDegrees bias, since it is the resulting
+// frustum that must not pass the nadir. This is the corresponding floor for
+// the STORED mouse-look value (playerPitch_, + = up), so the accumulator and
+// the camera formula clamp the same thing in the same place in the chain.
+inline float firstPersonMinLookPitchDegrees(float verticalFovRadians) {
+    return -(firstPersonMaxDownPitchDegrees(verticalFovRadians) -
+             kFirstPersonPitchDownDegrees);
+}
+
+// The gimbal clamp on the UP side is NOT part of the hiding mechanism and is
+// unchanged at +89: the body hangs BELOW the eye, so looking up moves it
+// further out of frame, and Leg A measured only the down side. 89 exists to
+// keep the look-at camera from degenerating when the target sits exactly
+// above the eye. Named here so the two clamps are not confused for each other.
+constexpr float kFirstPersonMaxUpPitchDegrees = 89.0f;
 
 // The world (non-first-person) near plane, restored when leaving first
 // person. Matches setupCamera()'s original setNearValue(1.0f).
@@ -165,7 +167,12 @@ struct FirstPersonCameraPlacement {
  *                          getPlayerEyeHeightAboveNodeOrigin().
  * @param eyeAdjustUnits    the user's +/- eye-height nudge (playerConfig_.eyeHeight).
  * @param headingUnits      EQ heading, 0..512.
- * @param lookPitchDegrees  the user's mouse-look pitch, + = up.
+ * @param lookPitchDegrees  the user's mouse-look pitch, + = up. Clamped here:
+ *                          see firstPersonMaxDownPitchDegrees().
+ * @param verticalFovRadians
+ *                          the camera's vertical FOV -- the clamp is derived
+ *                          from it (90 - vFOV/2), which is what makes the
+ *                          hiding scale- and race-invariant.
  * @param targetDistance    how far along the look ray to put the look target;
  *                          a look-at camera does not care about the value.
  *
@@ -178,13 +185,23 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
     float playerX, float playerY, float playerZ,
     float eyeAboveNodeOrigin, float eyeAdjustUnits,
     float headingUnits, float lookPitchDegrees,
+    float verticalFovRadians,
     float targetDistance = 100.0f)
 {
     FirstPersonCameraPlacement out;
 
     const float headingRad = headingUnits / 512.0f * 2.0f * kFirstPersonPi;
-    const float pitchRad = lookPitchDegrees * kFirstPersonPi / 180.0f -
-                           kFirstPersonPitchDownDegrees * kFirstPersonPi / 180.0f;
+
+    // THE HIDING MECHANISM, applied at the point of use so no caller can get
+    // around it: the TOTAL down-pitch is clamped so the frustum's lower edge
+    // never passes the nadir. The accumulator (renderer_player_physics.cpp)
+    // clamps the stored value too -- that is what keeps the control from
+    // feeling dead against an invisible wall -- but this is the guarantee.
+    const float maxDownDeg = firstPersonMaxDownPitchDegrees(verticalFovRadians);
+    float totalPitchDeg = lookPitchDegrees - kFirstPersonPitchDownDegrees;
+    if (totalPitchDeg < -maxDownDeg) totalPitchDeg = -maxDownDeg;
+    if (totalPitchDeg > kFirstPersonMaxUpPitchDegrees) totalPitchDeg = kFirstPersonMaxUpPitchDegrees;
+    const float pitchRad = totalPitchDeg * kFirstPersonPi / 180.0f;
     const float cosPitch = std::cos(pitchRad);
     const float sinPitch = std::sin(pitchRad);
 

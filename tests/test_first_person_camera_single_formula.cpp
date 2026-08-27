@@ -136,11 +136,18 @@ TEST(FirstPersonCameraSingleFormula, OnlyTheHelperTUDrivesTheCameraInFirstPerson
 // them is expected to mention them and is excluded).
 TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
     const std::string kTunableHome = "first_person_camera.h";
+    // T300: the DOWN-PITCH FLOOR is deliberately read by a second TU. The
+    // clamp is applied both where the mouse-look value is produced
+    // (renderer_player_physics.cpp -- the live path, so the stored value never
+    // leaves range and the control never develops a dead zone) and where the
+    // camera consumes it (the formula itself, which is the guarantee). That is
+    // one limit applied twice, not two formulas; every other tunable stays
+    // single-reader.
+    const std::string kFloorSecondReader = "renderer_player_physics.cpp";
     for (const char* tunable : {"kFirstPersonPitchDownDegrees",
                                 "kFirstPersonHorizontalFovDegrees",
-                                "kFirstPersonNearPlaneMargin",
-                                "kFirstPersonNearPlaneFallbackUnits",
-                                "firstPersonNearPlaneFromBodyRadius",
+                                "firstPersonMaxDownPitchDegrees",
+                                "firstPersonMinLookPitchDegrees",
                                 "firstPersonVerticalFovRadians",
                                 "computeFirstPersonCamera"}) {
         std::vector<std::string> files;
@@ -158,6 +165,17 @@ TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
         // only inside its own header (kFirstPersonHorizontalFovDegrees is
         // read by firstPersonVerticalFovRadians(), which irrlicht_renderer.cpp
         // calls); two or more means two formulas.
+        if (std::string(tunable) == "firstPersonMinLookPitchDegrees") {
+            for (const auto& f : files) {
+                EXPECT_TRUE(f == kHelperTU || f == kFloorSecondReader)
+                    << tunable << " is read by " << f << "; only " << kHelperTU << " and "
+                    << kFloorSecondReader << " may apply the down-pitch floor.";
+            }
+            ASSERT_LE(files.size(), 2u) << tunable << " is read by " << files.size()
+                << " translation units; at most the camera formula's TU and the pitch "
+                   "accumulator's TU may.";
+            continue;
+        }
         ASSERT_LE(files.size(), 1u)
             << tunable << " is referenced from " << files.size()
             << " translation units under " << kGraphicsDir << "; only " << kHelperTU
@@ -275,6 +293,9 @@ using EQT::Graphics::firstPersonVerticalFovRadians;
 
 namespace {
 constexpr float kDeg = 3.14159265358979323846f / 180.0f;
+// The camera's vertical FOV at 4:3 -- the clamp is derived from it, so every
+// call has to pass the same one production uses.
+const float kVFov43 = EQT::Graphics::firstPersonVerticalFovRadians(4.0f / 3.0f);
 }
 
 TEST(FirstPersonCameraFormula, NoStandoffInAnyDirection) {
@@ -284,7 +305,7 @@ TEST(FirstPersonCameraFormula, NoStandoffInAnyDirection) {
         const auto p = computeFirstPersonCamera(
             /*playerX*/ 21.9086f, /*playerY*/ -77.9232f, /*playerZ*/ 3.0f,
             /*eyeAboveNodeOrigin*/ 3.6527f, /*eyeAdjust*/ 0.0f,
-            heading, /*lookPitchDegrees*/ 0.0f);
+            heading, /*lookPitchDegrees*/ 0.0f, kVFov43);
         EXPECT_FLOAT_EQ(p.posX, 21.9086f) << "heading " << heading;
         EXPECT_FLOAT_EQ(p.posZ, -77.9232f) << "heading " << heading;
     }
@@ -297,7 +318,7 @@ TEST(FirstPersonCameraFormula, EyeSitsAtTheNodeOriginPlusEyeHeightNotPlusBoth) {
     // same frame. 3.65 above the origin IS the official 6.75 above the feet;
     // adding 6.75 here would put the eye 3.05 units above the crown.
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, /*playerZ*/ 3.0f,
-                                            /*eye*/ 3.6527f, 0.0f, 0.0f, 0.0f);
+                                            /*eye*/ 3.6527f, 0.0f, 0.0f, 0.0f, kVFov43);
     EXPECT_NEAR(p.posY, 6.6527f, 1e-4f);
     // The eye is 6.70 above the mesh's own feet (origin - 3.05), which is the
     // official 6.75 +/- 0.20 measurement.
@@ -311,7 +332,7 @@ TEST(FirstPersonCameraFormula, FixedPitchIsTheMeasured3Point65DegreesDown) {
     const float kTargetDistance = 100.0f;
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                             /*heading*/ 0.0f, /*lookPitch*/ 0.0f,
-                                            kTargetDistance);
+                                            kVFov43, kTargetDistance);
     // heading 0 -> forward is +Z in Irrlicht space.
     const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
     const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
@@ -322,7 +343,7 @@ TEST(FirstPersonCameraFormula, FixedPitchIsTheMeasured3Point65DegreesDown) {
 TEST(FirstPersonCameraFormula, MouseLookPitchAddsToTheFixedBias) {
     for (float look : {-30.0f, -5.0f, 0.0f, 5.0f, 30.0f}) {
         const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                                0.0f, look, 100.0f);
+                                                0.0f, look, kVFov43, 100.0f);
         const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
         const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
         EXPECT_NEAR(pitchDeg, look - 3.65f, 0.01f) << "mouse-look pitch " << look;
@@ -345,52 +366,104 @@ TEST(FirstPersonCameraFormula, HorizontalFovMatchesTheOfficialMeasurement) {
     EXPECT_GT(firstPersonVerticalFovRadians(0.0f), 0.0f);
 }
 
-TEST(FirstPersonCameraFormula, NearPlaneIsDerivedFromModelSizeNotFixed) {
-    // Will's objection, and it is correct: races are all different sizes AND
-    // shrink/grow effects change a model's scale at runtime, so a near plane
-    // expressed as a fixed distance in EQ units is wrong the moment either
-    // applies. The surviving constant is a DIMENSIONLESS margin over the
-    // player's own rest radius.
-    using EQT::Graphics::firstPersonNearPlaneFromBodyRadius;
-    using EQT::Graphics::kFirstPersonNearPlaneMargin;
+TEST(FirstPersonCameraFormula, DownPitchClampIsDerivedFromTheFov) {
+    // T300 post-Leg-A: the hiding mechanism is a clamped down-pitch, NOT a
+    // near plane. Leg A measured the official client clipping nothing, and its
+    // size sweep killed both the fixed and the size-derived plane at once (5x
+    // body, zero player geometry, ground 34 units below still drawn).
+    //
+    // The clamp is 90 degrees minus half the vertical FOV -- the angle at which
+    // the frustum's lower edge reaches straight down. 90 - vFOV/2 is an
+    // INFERENCE consistent with Leg A's measurement (roughly 65 degrees,
+    // bracket 55-75), not itself a measured angle; a dedicated measurement of
+    // the clamp is the outstanding follow-up.
+    using EQT::Graphics::firstPersonMaxDownPitchDegrees;
+    using EQT::Graphics::firstPersonVerticalFovRadians;
 
-    // Must exceed the body it has to swallow...
-    EXPECT_GT(kFirstPersonNearPlaneMargin, 1.0f)
-        << "a margin <= 1 puts the plane inside the player's own body -- he sees himself";
-    // ...and must not be so generous that an extended weapon or kick is
-    // swallowed too. Those DO render (T299), which is the whole reason we know
-    // the mechanism is a clip and not an omission.
-    EXPECT_LT(kFirstPersonNearPlaneMargin, 1.30f)
-        << "a large margin swallows the swing as well as the body";
+    const float clamp43 = firstPersonMaxDownPitchDegrees(kVFov43);
+    EXPECT_NEAR(clamp43, 90.0f - (kVFov43 / kDeg) * 0.5f, 1e-3f);
+    // Inside Leg A's measured bracket.
+    EXPECT_GT(clamp43, 55.0f);
+    EXPECT_LT(clamp43, 75.0f);
+    // And consistent with Leg A's own vFOV figure (49.1 at 1024x768).
+    EXPECT_NEAR(clamp43, 65.45f, 0.5f);
 
-    // The derivation scales with the model, in both directions -- this is the
-    // shrink/grow case.
-    for (float radius : {2.0f, 6.9f, 13.8f}) {
-        EXPECT_NEAR(firstPersonNearPlaneFromBodyRadius(radius),
-                    radius * kFirstPersonNearPlaneMargin, 1e-4f) << "radius " << radius;
-        EXPECT_GT(firstPersonNearPlaneFromBodyRadius(radius), radius)
-            << "the derived plane must clear the body it is derived from (radius "
-            << radius << ")";
+    // Tracks the lens: a wider vertical FOV tightens the clamp, because the
+    // frustum's lower edge reaches the nadir sooner.
+    EXPECT_LT(firstPersonMaxDownPitchDegrees(60.0f * kDeg),
+              firstPersonMaxDownPitchDegrees(40.0f * kDeg));
+    // At every aspect ratio the relationship holds exactly.
+    for (float aspect : {4.0f / 3.0f, 16.0f / 9.0f, 1.0f}) {
+        const float v = firstPersonVerticalFovRadians(aspect);
+        EXPECT_NEAR(firstPersonMaxDownPitchDegrees(v) + (v / kDeg) * 0.5f, 90.0f, 1e-3f)
+            << "aspect " << aspect << ": clamp + half-FOV must be exactly the nadir";
     }
-    // A shrunk player gets a nearer plane and a grown one a further plane --
-    // stated as an ordering so a future non-linear derivation still has to
-    // satisfy it.
-    EXPECT_LT(firstPersonNearPlaneFromBodyRadius(3.45f),
-              firstPersonNearPlaneFromBodyRadius(6.90f));
-    EXPECT_LT(firstPersonNearPlaneFromBodyRadius(6.90f),
-              firstPersonNearPlaneFromBodyRadius(13.80f));
+}
 
-    // "No model yet" is not "zero" -- a zero or negative near plane is a
-    // degenerate projection, not a wide one.
-    EXPECT_GT(firstPersonNearPlaneFromBodyRadius(0.0f), 1.0f);
-    EXPECT_GT(firstPersonNearPlaneFromBodyRadius(-5.0f), 1.0f);
+TEST(FirstPersonCameraFormula, DownPitchClampIsIndependentOfModelSize) {
+    // THE property that makes this mechanism right where a near plane was
+    // wrong, and Will's actual requirement: the hiding must be immune to
+    // race size and to shrink/grow. The clamp takes NO size term -- its only
+    // input is the FOV -- so a 5x body cannot move it. Asserted here rather
+    // than argued: the same lens gives the same clamp, whatever the model.
+    using EQT::Graphics::firstPersonMaxDownPitchDegrees;
+    const float clamp = firstPersonMaxDownPitchDegrees(kVFov43);
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_FLOAT_EQ(firstPersonMaxDownPitchDegrees(kVFov43), clamp);
+    }
+    // The camera formula honours it no matter what pitch is fed in, which is
+    // the guarantee at the point of use.
+    for (float look : {-10.0f, -60.0f, -89.0f, -1000.0f}) {
+        const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                0.0f, look, kVFov43, 100.0f);
+        const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+        const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+        EXPECT_GE(pitchDeg, -clamp - 0.01f)
+            << "look pitch " << look << " produced a total down-pitch of " << pitchDeg
+            << ", past the clamp. The clamp is the ONLY thing hiding the player's body; a "
+               "caller must not be able to get around it.";
+    }
+}
 
-    // Sanity, for the reference case only: a Human male's base mesh gives a
-    // rest radius of ~6.90 (bbox corner furthest from the eye at MaxEdge.Y),
-    // which must land the plane above T299's hard lower bound of 6.75 (nothing
-    // of the body renders with the camera aimed straight down at feet 6.75
-    // units below the eye) and inside a sane bracket.
-    const float humanPlane = firstPersonNearPlaneFromBodyRadius(6.90f);
-    EXPECT_GT(humanPlane, 6.75f);
-    EXPECT_LT(humanPlane, 20.0f);
+TEST(FirstPersonCameraFormula, StoredMouseLookFloorMatchesTheTotalClamp) {
+    // The accumulator (renderer_player_physics.cpp) clamps the STORED
+    // mouse-look value; the camera formula clamps the TOTAL, which includes
+    // the fixed kFirstPersonPitchDownDegrees bias. They must be the same limit
+    // expressed in the two frames, or the control develops a dead zone that
+    // has to be dragged back through before the view moves.
+    using EQT::Graphics::firstPersonMinLookPitchDegrees;
+    using EQT::Graphics::firstPersonMaxDownPitchDegrees;
+    const float minLook = firstPersonMinLookPitchDegrees(kVFov43);
+    EXPECT_NEAR(minLook - EQT::Graphics::kFirstPersonPitchDownDegrees,
+                -firstPersonMaxDownPitchDegrees(kVFov43), 1e-3f);
+
+    // Feeding the accumulator's floor into the formula lands exactly on the
+    // clamp, not short of it and not past it.
+    const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            0.0f, minLook, kVFov43, 100.0f);
+    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+    const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+    EXPECT_NEAR(pitchDeg, -firstPersonMaxDownPitchDegrees(kVFov43), 0.01f);
+}
+
+TEST(FirstPersonCameraFormula, UpSideIsNotPartOfTheHiding) {
+    // Leg A measured only the down side. The up side needs no hiding clamp:
+    // the body hangs BELOW the eye, so looking up moves it further out of
+    // frame. The +/-89 that remains is a gimbal guard for the look-at target,
+    // and it is kept.
+    EXPECT_FLOAT_EQ(EQT::Graphics::kFirstPersonMaxUpPitchDegrees, 89.0f);
+    const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            0.0f, 1000.0f, kVFov43, 100.0f);
+    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+    const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+    EXPECT_NEAR(pitchDeg, 89.0f, 0.01f);
+    EXPECT_GT(horizontal, 0.0f) << "a fully-up look must not degenerate the look-at target";
+}
+
+TEST(FirstPersonCameraFormula, FirstPersonClipsNoDifferentlyFromThirdPerson) {
+    // Leg A: the official client clips nothing -- world and NPC geometry draws
+    // at point-blank range, so its near plane is under 1 unit. The near-plane
+    // hiding that briefly lived here is refuted; first person must use the
+    // world's plane like every other mode.
+    EXPECT_FLOAT_EQ(EQT::Graphics::kWorldNearPlaneUnits, 1.0f);
 }
