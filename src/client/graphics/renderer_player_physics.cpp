@@ -103,6 +103,10 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
                             eventReceiver_->isRightButtonDown() ||
                             (ctrlHeld && eventReceiver_->isLeftButtonDown()));
 
+    // T295: remembered so a PURE vertical mouse-look (pitch changes, heading
+    // and position do not) still repositions the first-person camera --
+    // the old block keyed only off position/heading and dropped it.
+    float oldPitch = playerPitch_;
     if (mouseLookActive) {
         int mouseDeltaX = eventReceiver_->getMouseDeltaX();
         int mouseDeltaY = eventReceiver_->getMouseDeltaY();
@@ -677,6 +681,8 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         playerHeading_ = heading;
     }
 
+    bool pitchChanged = (std::abs(playerPitch_ - oldPitch) > 0.001f);
+
     // Update camera and entity position if anything changed
     if (positionChanged || headingChanged) {
         LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", playerX_, playerY_, playerZ_, playerHeading_);
@@ -686,62 +692,25 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
             entityRenderer_->updatePlayerEntityPosition(playerX_, playerY_, playerZ_, playerHeading_);
         }
 
-        // Update camera based on camera mode
-        if (camera_ && cameraMode_ == CameraMode::FirstPerson) {
-            // First-person: camera at head bone position to track model animation
-            float camX = playerX_;
-            float camY = playerY_;
-            float camZ = playerZ_ + 5.0f;  // Default fallback if no head bone
-
-            // Try to get head bone position from the animated player model
-            // This allows the camera to track head movement during animations
-            bool gotHeadBone = false;
-            if (entityRenderer_) {
-                float headX, headY, headZ;
-                if (entityRenderer_->getPlayerHeadBonePosition(headX, headY, headZ)) {
-                    // Use head bone position for camera (adds head bob/sway from animation)
-                    camX = headX;
-                    camY = headY;
-                    camZ = headZ;
-                    gotHeadBone = true;
-                }
-            }
-
-            // If no head bone, compute eye height from model bounding box
-            // playerZ_ is feet position, so camera is at feet + eye height
-            if (!gotHeadBone && entityRenderer_) {
-                float eyeHeightFromFeet = entityRenderer_->getPlayerEyeHeightFromFeet();
-                camZ = playerZ_ + eyeHeightFromFeet;
-
-                // Debug logging
-                static int fallbackLogCount = 0;
-                if (fallbackLogCount++ % 500 == 0) {
-                    LOG_DEBUG(MOD_GRAPHICS, "Camera fallback: playerZ(feet)={:.2f} + eyeHeight={:.2f} => camZ={:.2f} (before adjust)",
-                              playerZ_, eyeHeightFromFeet, camZ);
-                }
-            }
-
-            // Apply eye height offset (user-adjustable with Y/Shift+Y)
-            camZ += playerConfig_.eyeHeight;
-
-            // EQ coords: (x, y, z) -> Irrlicht coords: (x, z, y)
-            camera_->setPosition(irr::core::vector3df(camX, camZ, camY));
-
-            // Calculate look direction from playerHeading_ (yaw) and playerPitch_ (pitch)
-            float lookRad = playerHeading_ / 512.0f * 2.0f * static_cast<float>(M_PI);
-            float pitchRad = playerPitch_ * static_cast<float>(M_PI) / 180.0f;
-            float cosPitch = std::cos(pitchRad);
-            float sinPitch = std::sin(pitchRad);
-            irr::core::vector3df target(
-                camX + std::sin(lookRad) * cosPitch * 100.0f,
-                camZ + sinPitch * 100.0f,
-                camY + std::cos(lookRad) * cosPitch * 100.0f
-            );
-            camera_->setTarget(target);
-        } else if (cameraMode_ == CameraMode::Follow && cameraController_) {
+        if (cameraMode_ == CameraMode::Follow && cameraController_) {
             // Follow mode: third-person camera behind player
             cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
         }
+    }
+
+    // T295: ONE first-person camera formula, and this is NOT it -- this
+    // path used to carry a fourth private copy that set the camera straight
+    // from the "head bone"/bbox eye height with NEITHER T76's 0.3-unit
+    // standoff NOR T75's 12-degree down-pitch, so every frame in which the
+    // player moved or turned overwrote both fixes. It also read
+    // getPlayerHeadBonePosition(), which since T75 does not read a head
+    // bone at all: it returns the SAME getPlayerEyeHeightFromFeet() value
+    // added to the player visual's last position, i.e. a second spelling of
+    // what repositionFirstPersonCamera() already computes from playerZ_.
+    // The genuine head-bone lever lives inside getPlayerEyeHeightFromFeet()
+    // and is reached identically through the helper.
+    if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
+        repositionFirstPersonCamera();
     }
 
     // Movement state tracking and server sync - runs every frame to detect stops

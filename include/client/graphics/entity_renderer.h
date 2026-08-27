@@ -401,13 +401,6 @@ public:
     // When enabled, weapons are positioned relative to camera instead of skeleton
     void setPlayerFirstPersonMode(bool enabled);
 
-    // Update first-person weapon positions relative to camera
-    // Call this each frame when in first-person mode
-    // cameraPos/cameraTarget: Irrlicht world coordinates
-    void updateFirstPersonWeapons(const irr::core::vector3df& cameraPos,
-                                   const irr::core::vector3df& cameraTarget,
-                                   float deltaTime);
-
     // Check if player is in first-person mode
     bool isPlayerInFirstPersonMode() const;
 
@@ -421,11 +414,6 @@ public:
 
     // Set the player's spawn ID (marks that entity as the player)
     void setPlayerSpawnId(uint16_t spawnId);
-
-    // Get the player's head bone position in EQ coordinates for first-person camera
-    // Returns true if head bone was found and position was set, false otherwise
-    // If false, fallback to player entity position + eye height offset
-    bool getPlayerHeadBonePosition(float& eqX, float& eqY, float& eqZ) const;
 
     // Get the player's model Y offset (height offset from server Z to feet)
     // Server Z represents the CENTER of the model, so feet are at serverZ + modelYOffset

@@ -2808,6 +2808,28 @@ verification-only and did not touch `irrlicht_renderer.cpp`/
 `entity_renderer.cpp`; a future unit owns deciding whether/how to wire
 `setPlayerFirstPersonMode()` in.
 
+> **CLOSED (T295, 2026-08-27) — pattern #9 has no surviving members.**
+> Of the three named above: `triggerFirstPersonAttack()` was already gone
+> from the tree; `setPlayerFirstPersonMode()` was WIRED by T74 (three
+> production callers today — `renderer_entities.cpp:34`,
+> `irrlicht_renderer.cpp:2552` and `:2733`/`:2758`, all on the camera-mode
+> path); and **`updateFirstPersonWeapons()` was the last one, deleted by
+> T295** after an exhaustive grep of `src/`, `include/` and `tests/` found
+> zero callers — it was also a near-no-op, re-calling
+> `updateEquipmentTransforms()` which the normal per-entity update already
+> does at six sites. The same unit deleted
+> `EntityRenderer::getPlayerHeadBonePosition()`, which T295's own change
+> left caller-less: since T75 it had not read a head bone at all, only
+> re-spelled `getPlayerEyeHeightFromFeet()` against the player visual's
+> last position. Both deletions are PINNED by
+> `tests/test_first_person_camera_single_formula.cpp`
+> (`DeadFirstPersonHelpersStayDeleted`), which fails on the file:line if
+> either name reappears anywhere under `src/client/graphics/`. Note the
+> shape of the recurrence T295 actually found: the feature's *camera* half
+> had been de-duplicated three times and re-duplicated a fourth (see the
+> T295 entry in the STATUS block); pattern #9 was only ever the hollow-code
+> half of it.
+
 **T77 (2026-08-12) adds a TENTH instance of the same standing pattern in a
 slightly different shape: not "no producer at all" but "the validation
 existed and the caller did not use it."**

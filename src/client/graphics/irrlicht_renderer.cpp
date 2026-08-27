@@ -2500,19 +2500,34 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
     const float kTargetDistance = 100.0f;
     // T75: pitch the look target down by kFirstPersonPitchDownRad -- see
-    // that constant's comment. tan(angle) * distance drops the target
-    // below camera height by the right amount for a small-angle pitch at
-    // this target distance.
-    float targetY = camZ - std::tan(kFirstPersonPitchDownRad) * kTargetDistance;
+    // that constant's comment.
+    // T295: the user's mouse-look pitch (playerPitch_, degrees, +up) is
+    // applied ON TOP of that fixed bias, and the look vector is built from
+    // a unit direction rather than T75's small-angle tan() drop. At
+    // playerPitch_ == 0 the resulting look ANGLE is identical to T75's
+    // (drop/horizontal == tan(kFirstPersonPitchDownRad) either way); only
+    // the target's distance along the ray differs, which a look-at camera
+    // does not care about. Before T295 the mouse-look pitch existed ONLY
+    // in renderer_player_physics.cpp's private copy of this formula, so
+    // moving discarded the bias and standing still discarded the mouse.
+    float pitchRad = playerPitch_ * irr::core::PI / 180.0f - kFirstPersonPitchDownRad;
+    float cosPitch = std::cos(pitchRad);
+    float sinPitch = std::sin(pitchRad);
     float camX = playerX_ - std::sin(headingRad) * kFirstPersonCameraStandoffUnits, camY = playerY_ - std::cos(headingRad) * kFirstPersonCameraStandoffUnits;
     irr::core::vector3df camPos(camX, camZ, camY);
-    irr::core::vector3df target(camX + std::sin(headingRad) * kTargetDistance, targetY, camY + std::cos(headingRad) * kTargetDistance);
+    irr::core::vector3df target(camX + std::sin(headingRad) * cosPitch * kTargetDistance,
+                                camZ + sinPitch * kTargetDistance,
+                                camY + std::cos(headingRad) * cosPitch * kTargetDistance);
 
     camera_->setPosition(camPos);
     camera_->setTarget(target);
 
-    LOG_INFO(MOD_GRAPHICS, "First-person camera repositioned: playerZ(feet)={:.2f} + eyeHeight={:.2f} + adjust={:.2f} = camZ={:.2f}, pitchDown={:.1f}deg, standoff={:.2f}",
-             playerZ_, eyeHeight, playerConfig_.eyeHeight, camZ, kFirstPersonPitchDownRad * 180.0f / irr::core::PI, kFirstPersonCameraStandoffUnits);
+    // T295: DEBUG, not INFO -- this now runs on every frame in which the
+    // player moves, turns or looks. The FP-CAMERA tag is the evidence
+    // emitter the unit's still-vs-moving proof diffs.
+    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) feet={:.4f} eyeHeight={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg totalPitch={:.4f}deg standoff={:.2f}",
+              camX, camY, camZ, playerZ_, eyeHeight, playerConfig_.eyeHeight, playerHeading_,
+              playerPitch_, pitchRad * 180.0f / irr::core::PI, kFirstPersonCameraStandoffUnits);
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {

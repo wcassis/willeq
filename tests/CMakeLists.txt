@@ -490,6 +490,15 @@ ADD_EXECUTABLE(test_reachability_sweep
 TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_reachability_sweep)
 
+# T295: parses src/client/graphics and pins the first-person camera to ONE
+# formula (repositionFirstPersonCamera()), the tunables to one TU, and the
+# two unreachable first-person helpers T295 deleted to staying deleted.
+ADD_EXECUTABLE(test_first_person_camera_single_formula
+    test_first_person_camera_single_formula.cpp
+)
+TARGET_LINK_LIBRARIES(test_first_person_camera_single_formula GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_first_person_camera_single_formula)
+
 # T286: parses eq.h and include/client/state/*.h and asserts EverQuest keeps
 # no second copy of a state module's member, except the documented list.
 ADD_EXECUTABLE(test_duplicate_state_stores

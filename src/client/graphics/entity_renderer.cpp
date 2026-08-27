@@ -2828,22 +2828,6 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
     }
 }
 
-void EntityRenderer::updateFirstPersonWeapons(const irr::core::vector3df& cameraPos,
-                                               const irr::core::vector3df& cameraTarget,
-                                               float deltaTime) {
-    // In proper first-person mode, weapons stay attached to the character's hands
-    // via the skeleton bone system. No camera-relative positioning needed.
-    // The arms and equipment animate together through the normal skeletal animation.
-
-    // Update equipment transforms as usual (they follow hand bones)
-    for (auto& [spawnId, visual] : entities_) {
-        if (visual.isPlayer && visual.isFirstPersonMode) {
-            updateEquipmentTransforms(visual);
-            break;
-        }
-    }
-}
-
 bool EntityRenderer::isPlayerInFirstPersonMode() const {
     for (const auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
@@ -2957,50 +2941,6 @@ void EntityRenderer::setPlayerSpawnId(uint16_t spawnId) {
     }
 }
 
-bool EntityRenderer::getPlayerHeadBonePosition(float& eqX, float& eqY, float& eqZ) const {
-    // Find the player entity
-    const EntityVisual* playerVisual = nullptr;
-    for (const auto& [id, visual] : entities_) {
-        if (visual.isPlayer) {
-            playerVisual = &visual;
-            break;
-        }
-    }
-
-    if (!playerVisual || !playerVisual->isAnimated || !playerVisual->animatedNode) {
-        return false;
-    }
-
-    // T75: this used to duplicate getPlayerEyeHeightFromFeet()'s bbox math
-    // verbatim (including the same MaxEdge-MinEdge bug -- see that
-    // function's comment for the measured evidence). Despite the name,
-    // this function never actually read a head bone transform; it computed
-    // the identical static "top of bbox above feet" height. Delegating to
-    // the one real implementation removes the duplicate rather than fixing
-    // the bug twice.
-    float cameraHeightFromFeet = getPlayerEyeHeightFromFeet();
-    if (cameraHeightFromFeet <= 0.0f) {
-        return false;
-    }
-
-    // X and Y use entity position
-    eqX = playerVisual->lastX;
-    eqY = playerVisual->lastY;
-
-    // For Z: The collision system should have placed feet at ground level.
-    // Camera Z = lastZ (feet) + full model height
-    eqZ = playerVisual->lastZ + cameraHeightFromFeet;
-
-    // Debug logging
-    static int logCount = 0;
-    if (logCount++ % 100 == 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "HeadPos: lastZ={:.2f} cameraHeight={:.2f} => eqZ={:.2f}",
-                  playerVisual->lastZ, cameraHeightFromFeet, eqZ);
-    }
-
-    return true;
-}
-
 float EntityRenderer::getPlayerModelYOffset() const {
     // Find the player entity
     for (const auto& [id, visual] : entities_) {
@@ -3040,6 +2980,14 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
             if (headIdx >= 0) {
                 irr::core::vector3df headPos;
                 if (visual.animatedNode->getBoneWorldPosition(headIdx, headPos) && headPos.Y > 0.0f) {
+                    // T295: T76's captures only ever logged the bbox number,
+                    // so which branch fires LIVE was never established.
+                    // Throttled so a per-frame camera reposition cannot spam.
+                    static int headBoneLogCount = 0;
+                    if (headBoneLogCount++ % 500 == 0) {
+                        LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=HEAD_BONE boneIdx={} eyeHeight={:.4f}",
+                                  headIdx, headPos.Y);
+                    }
                     return headPos.Y;
                 }
             }
@@ -3065,6 +3013,13 @@ float EntityRenderer::getPlayerEyeHeightFromFeet() const {
             // ahead, is the unchanged design intent. Only reached when no
             // HEAD bone is available (T76's fallback path above).
             float cameraHeight = bbox.MaxEdge.Y;
+            // T295: see the HEAD_BONE log above -- these two lines are how a
+            // live run says which lever actually fired.
+            static int bboxLogCount = 0;
+            if (bboxLogCount++ % 500 == 0) {
+                LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=BBOX_FALLBACK headBoneIdx={} eyeHeight={:.4f}",
+                          headIdx, cameraHeight);
+            }
             return cameraHeight;
         }
     }
