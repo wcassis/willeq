@@ -643,3 +643,32 @@ race-dense zone. Will chose not to spend that budget.
 
 **Do not "fix" this by re-enabling it, and do not repeat the T195 rationale.**
 Superseded wording still sits in `src/client/graphics/CLAUDE.md:127`.
+
+## 2026-08-27 — First person gets a real viewmodel pass (Will)
+
+**Decision:** Implement a **viewmodel pass** for first person, as T76
+recommended. Do NOT lower the global near clip plane — that was the rejected
+alternative (it buys the arms at the cost of depth precision across the whole
+scene).
+
+**Why the current approach cannot be rescued by camera tuning:** T76 measured
+that the arm-filtered player geometry **straddles the near plane in every
+pose** — idle Z=[-1.06, 1.11], 1H-slash Z=[-1.02, 2.18], hand-to-hand
+Z=[-0.04, 2.15] in camera space. Negative Z is *behind the camera*. Pullbacks
+of 0/0.2/0.3/0.5/1.0 were all tested and none clears it, because the mesh's
+own depth span (~2-3 units) exceeds what any camera position can resolve.
+**The geometry is in the wrong place, not seen through the wrong lens.**
+
+**So the viewmodel is a separate pass with its own transform**, in the
+classic sense: the arm/weapon geometry is posed in VIEW space at a designed
+offset in front of the camera, rendered after the world with the depth buffer
+cleared, using its own projection. It is not the in-world player model viewed
+from inside — that is what has failed four times (T71, T74, T75, T76).
+
+**Standing facts this must respect:** the T74 arm index filter (triangles
+whose vertices are all bound to arm bones) is the geometry source and works
+headlessly; animation already reaches the first-person path (locomotion and
+combat both); the bone-attached weapon nodes are the held items. **Will judges
+the visual result — no unit may self-declare it acceptable** (protocol rule,
+and T76's README calling an unrecognizable mass "recognizable" is exactly the
+failure this guards against).
