@@ -38,7 +38,7 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. The default run 
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
-- First-person camera sits inside the player's arm geometry (`refactor/T76_first_person_camera_standoff.md`)
+- First-person view is rebuilt on the measured mechanism (player model at the eyes, near clip plane hides the body) but the near-plane VALUE is a placeholder pending a live measurement, and the live look is unjudged (`refactor/T300_leg_b_implementation.md`)
 - UI is a fixed static-panel HUD; merchant, bank, loot, and trade are driven by slash commands rather than windows
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
@@ -104,7 +104,7 @@ Legend: Done | Partial | Not Implemented
 ### Camera
 | Feature | Status | Notes |
 |---------|--------|-------|
-| First-person | Partial | Camera clips into arm geometry (T76) |
+| First-person | Partial | Player model + eye camera + near-plane clip (T300); near-plane value is a placeholder, live look unjudged |
 | Third-person follow | Done | With collision, zoom +/- |
 | Free camera | Done | Debug/admin mode |
 | Mouse look | Done | LMB or RMB drag |

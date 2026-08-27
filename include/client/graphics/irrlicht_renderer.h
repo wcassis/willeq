@@ -93,8 +93,8 @@ namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRen
 
 // Forward declaration for constrained texture cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
-// T296: the viewmodel pass's framing knobs live with its math.
-#include "client/graphics/viewmodel_tuning.h"
+// T300: the first-person camera's constants and its pure placement math.
+#include "client/graphics/first_person_camera.h"
 
 namespace EQT {
 namespace Graphics {
@@ -2161,26 +2161,13 @@ private:
     // FirstPerson mode.
     void repositionFirstPersonCamera();
 
-    // T296: the first-person viewmodel pass. Runs after the world render
-    // (and after particles/weather) and before the 2D UI; a complete no-op
-    // outside first person. Draws the T74 arm-filtered geometry plus the two
-    // bone-attached equipment nodes at a designed offset in its OWN view
-    // space, with its own small near plane -- see
-    // include/client/graphics/viewmodel_transform.h and
-    // src/client/graphics/viewmodel_renderer.cpp.
-    void renderFirstPersonViewmodel();
-
-public:
-    // Number of draw calls the last viewmodel pass issued (0 outside first
-    // person, or when the player has no usable arm geometry). Test hook.
-    size_t getLastViewmodelDrawCallCount() const { return lastViewmodelDrawCallCount_; }
-
-private:
-    ViewmodelTuning viewmodelTuning_;
-    irr::core::aabbox3d<irr::f32> viewmodelArmBoxBaked_;
-    float viewmodelArmBoxHeadingY_ = 0.0f;
-    bool viewmodelArmBoxValid_ = false;
-    size_t lastViewmodelDrawCallCount_ = 0;
+    // T300: first person is the ORDINARY player model seen from the eyes,
+    // hidden by a large near clip plane -- not a separate pass. This applies
+    // the projection that mechanism needs (near plane + the official client's
+    // horizontal FOV) on entering first person, and restores the world
+    // defaults on leaving it. Safe to call unconditionally; reads
+    // cameraMode_.
+    void applyCameraProjectionForMode();
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

@@ -18,11 +18,15 @@
 //   1. IrrlichtRenderer::repositionFirstPersonCamera() is the ONLY function
 //      in the renderer that drives camera_ under a CameraMode::FirstPerson
 //      condition;
-//   2. the two first-person tunables (kFirstPersonCameraStandoffUnits,
-//      kFirstPersonPitchDownRad) are referenced from exactly one TU;
-//   3. that one body actually applies BOTH of them, and applies the user's
-//      mouse-look pitch (playerPitch_) as well -- a helper that quietly
-//      stopped using a tunable would otherwise pass parts 1 and 2.
+//   2. the first-person tunables are DEFINED in exactly one place
+//      (include/client/graphics/first_person_camera.h) and read by exactly
+//      one .cpp;
+//   3. that one body actually applies the shared formula and the user's
+//      mouse-look pitch (playerPitch_) -- a helper that quietly stopped
+//      using a tunable would otherwise pass parts 1 and 2;
+//   4. T300: the formula's numbers are what they claim to be, checked
+//      NUMERICALLY against the official-client measurement (T298 A3), not
+//      just textually.
 
 #include <gtest/gtest.h>
 
@@ -128,11 +132,18 @@ TEST(FirstPersonCameraSingleFormula, OnlyTheHelperTUDrivesTheCameraInFirstPerson
            "camera -- T75 and T76's fixes were lost for months to exactly this:" << joined;
 }
 
-// Part 2: the two tunables live in, and are read by, exactly one TU.
+// Part 2: the tunables are read by exactly one .cpp (the header that DEFINES
+// them is expected to mention them and is excluded).
 TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
-    for (const char* tunable : {"kFirstPersonCameraStandoffUnits", "kFirstPersonPitchDownRad"}) {
+    const std::string kTunableHome = "first_person_camera.h";
+    for (const char* tunable : {"kFirstPersonPitchDownDegrees",
+                                "kFirstPersonHorizontalFovDegrees",
+                                "kFirstPersonNearPlaneUnits",
+                                "firstPersonVerticalFovRadians",
+                                "computeFirstPersonCamera"}) {
         std::vector<std::string> files;
         for (const auto& path : graphicsSources()) {
+            if (path.filename().string() == kTunableHome) continue;
             const auto lines = splitLines(readFile(path));
             for (const auto& line : lines) {
                 if (stripLineComment(line).find(tunable) != std::string::npos) {
@@ -141,11 +152,18 @@ TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
                 }
             }
         }
-        ASSERT_EQ(files.size(), 1u)
+        // At most one reader. Zero is legitimate for a constant consumed
+        // only inside its own header (kFirstPersonHorizontalFovDegrees is
+        // read by firstPersonVerticalFovRadians(), which irrlicht_renderer.cpp
+        // calls); two or more means two formulas.
+        ASSERT_LE(files.size(), 1u)
             << tunable << " is referenced from " << files.size()
-            << " translation units; it must be read only by " << kHelperTU << "'s "
-            << kHelperName << "(). More than one reader means more than one formula.";
-        EXPECT_EQ(files[0], kHelperTU) << tunable << " moved out of " << kHelperTU;
+            << " translation units under " << kGraphicsDir << "; only " << kHelperTU
+            << "'s " << kHelperName << "() may read it. More than one reader means "
+               "more than one formula.";
+        if (!files.empty()) {
+            EXPECT_EQ(files[0], kHelperTU) << tunable << " moved out of " << kHelperTU;
+        }
     }
 }
 
@@ -178,10 +196,18 @@ TEST(FirstPersonCameraSingleFormula, TheOneBodyAppliesBothTunablesAndMouseLookPi
     }
     ASSERT_TRUE(opened) << "could not delimit " << kHelperName << "()'s body";
 
-    EXPECT_NE(body.find("kFirstPersonCameraStandoffUnits"), std::string::npos)
-        << kHelperName << "() no longer applies T76's camera standoff.";
-    EXPECT_NE(body.find("kFirstPersonPitchDownRad"), std::string::npos)
-        << kHelperName << "() no longer applies T75's down-pitch.";
+    EXPECT_NE(body.find("computeFirstPersonCamera("), std::string::npos)
+        << kHelperName << "() no longer calls the shared placement formula in\n"
+           "include/client/graphics/first_person_camera.h. Re-deriving the camera here is\n"
+           "how T75's and T76's fixes were lost for months.";
+    EXPECT_NE(body.find("applyCameraProjectionForMode("), std::string::npos)
+        << kHelperName << "() no longer applies the first-person projection. The NEAR CLIP\n"
+           "PLANE is the only thing that hides the player's body in first person (T300);\n"
+           "without it the player's own model fills the frame.";
+    EXPECT_EQ(body.find("kFirstPersonCameraStandoffUnits"), std::string::npos)
+        << "T76's backward standoff is back. T298 measured the official client's forward\n"
+           "offset at 0.00 +/- 0.4; the standoff existed to clear in-world arm geometry\n"
+           "that T300 stopped drawing as a separate pass.";
     EXPECT_NE(body.find("playerPitch_"), std::string::npos)
         << kHelperName << "() no longer applies the user's mouse-look pitch. Before T295 the\n"
            "only code that read playerPitch_ was the duplicate formula in\n"
@@ -194,7 +220,18 @@ TEST(FirstPersonCameraSingleFormula, TheOneBodyAppliesBothTunablesAndMouseLookPi
 // members. Both had zero callers; if a declaration comes back without a
 // caller, it is the same defect again.
 TEST(FirstPersonCameraSingleFormula, DeadFirstPersonHelpersStayDeleted) {
-    for (const char* name : {"updateFirstPersonWeapons", "getPlayerHeadBonePosition"}) {
+    for (const char* name : {"updateFirstPersonWeapons", "getPlayerHeadBonePosition",
+                             // T300: the retired viewmodel pass and T74's
+                             // arm-bone geometry filter. First person draws
+                             // the ORDINARY player model and hides it with a
+                             // near clip plane (T299 measured that mechanism
+                             // in two client versions). A filter or a second
+                             // pass coming back is the same wrong mechanism
+                             // returning, not a refinement.
+                             "renderFirstPersonViewmodel", "ViewmodelParts",
+                             "setDeferredToViewmodelPass", "computeViewmodelPlacement",
+                             "buildArmBoneIndices", "applyFirstPersonIndexFilter",
+                             "hasValidFirstPersonGeometry", "getArmBoneIndices"}) {
         std::vector<std::string> hits;
         for (const auto& path : graphicsSources()) {
             const auto lines = splitLines(readFile(path));
@@ -207,8 +244,120 @@ TEST(FirstPersonCameraSingleFormula, DeadFirstPersonHelpersStayDeleted) {
         std::string joined;
         for (const auto& h : hits) joined += "\n    " + h;
         EXPECT_TRUE(hits.empty())
-            << name << "() was deleted by T295 as unreachable (zero callers). It is back at:"
+            << name << "() was deleted (T295 unreachable sweep, or T300's retirement of the\n"
+               "viewmodel pass and the arm-bone filter). It is back at:"
             << joined
             << "\nIf it is genuinely needed now, it needs a caller AND this expectation updated.";
     }
+}
+
+// ---------------------------------------------------------------------------
+// Part 4 (T300): the numbers, checked numerically against the measurement.
+//
+// The source-parsing tests above prove there is ONE formula. These prove that
+// the one formula is the RIGHT one, by calling it. Reference: T298 Leg A's
+// measurement of the official Titanium client (ring-ladder + marker-pair fits,
+// 2000-sample Monte Carlo error bars) --
+//   forward 0.00 +/- 0.4, lateral 0.00 +/- 0.05, eye 6.75 +/- 0.20 above the
+//   server z, pitch 3.65 +/- 0.15 deg DOWN, hFOV 62.8 +/- 0.3 deg.
+//
+// WHAT THESE CANNOT DO: they do not rasterize. They pin the camera's numbers.
+// Whether the body is actually clipped and a swing actually visible is the
+// live video gate's job (T300 Leg C), and nothing headless can substitute.
+// ---------------------------------------------------------------------------
+
+#include "client/graphics/first_person_camera.h"
+
+using EQT::Graphics::computeFirstPersonCamera;
+using EQT::Graphics::firstPersonVerticalFovRadians;
+
+namespace {
+constexpr float kDeg = 3.14159265358979323846f / 180.0f;
+}
+
+TEST(FirstPersonCameraFormula, NoStandoffInAnyDirection) {
+    // T76 shipped a 0.3-unit BACKWARD standoff. T298 measured 0.00 +/- 0.4
+    // forward and 0.00 +/- 0.05 lateral: the camera is at the player's own XY.
+    for (float heading : {0.0f, 64.0f, 128.0f, 190.0f, 300.0f, 511.0f}) {
+        const auto p = computeFirstPersonCamera(
+            /*playerX*/ 21.9086f, /*playerY*/ -77.9232f, /*playerZ*/ 3.0f,
+            /*eyeAboveNodeOrigin*/ 3.6527f, /*eyeAdjust*/ 0.0f,
+            heading, /*lookPitchDegrees*/ 0.0f);
+        EXPECT_FLOAT_EQ(p.posX, 21.9086f) << "heading " << heading;
+        EXPECT_FLOAT_EQ(p.posZ, -77.9232f) << "heading " << heading;
+    }
+}
+
+TEST(FirstPersonCameraFormula, EyeSitsAtTheNodeOriginPlusEyeHeightNotPlusBoth) {
+    // The frame trap this unit exists to close: playerZ_ is the player NODE
+    // ORIGIN (== the server's Z, the model CENTRE -- the Human male mesh spans
+    // Y=[-3.05,+3.65] about it), and eyeAboveNodeOrigin is measured in that
+    // same frame. 3.65 above the origin IS the official 6.75 above the feet;
+    // adding 6.75 here would put the eye 3.05 units above the crown.
+    const auto p = computeFirstPersonCamera(0.0f, 0.0f, /*playerZ*/ 3.0f,
+                                            /*eye*/ 3.6527f, 0.0f, 0.0f, 0.0f);
+    EXPECT_NEAR(p.posY, 6.6527f, 1e-4f);
+    // The eye is 6.70 above the mesh's own feet (origin - 3.05), which is the
+    // official 6.75 +/- 0.20 measurement.
+    const float feetZ = 3.0f - 3.05f;
+    EXPECT_NEAR(p.posY - feetZ, 6.75f, 0.20f);
+}
+
+TEST(FirstPersonCameraFormula, FixedPitchIsTheMeasured3Point65DegreesDown) {
+    // T75 shipped 12 degrees down (chosen to tip the frustum onto in-world
+    // arm geometry that is no longer drawn as a separate pass).
+    const float kTargetDistance = 100.0f;
+    const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            /*heading*/ 0.0f, /*lookPitch*/ 0.0f,
+                                            kTargetDistance);
+    // heading 0 -> forward is +Z in Irrlicht space.
+    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+    const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+    EXPECT_NEAR(pitchDeg, -3.65f, 0.15f)
+        << "the fixed down-bias must match T298's measured 3.65 +/- 0.15 degrees";
+}
+
+TEST(FirstPersonCameraFormula, MouseLookPitchAddsToTheFixedBias) {
+    for (float look : {-30.0f, -5.0f, 0.0f, 5.0f, 30.0f}) {
+        const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                0.0f, look, 100.0f);
+        const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+        const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+        EXPECT_NEAR(pitchDeg, look - 3.65f, 0.01f) << "mouse-look pitch " << look;
+    }
+}
+
+TEST(FirstPersonCameraFormula, HorizontalFovMatchesTheOfficialMeasurement) {
+    // fable never called setFOV(), so the camera ran at Irrlicht's default
+    // PI/2.5 vertical == ~88 degrees horizontal at 4:3. The official client
+    // measured 62.8 +/- 0.3 horizontal (49.3 vertical at 4:3).
+    const float fovY43 = firstPersonVerticalFovRadians(4.0f / 3.0f);
+    EXPECT_NEAR(fovY43 / kDeg, 49.3f, 0.3f);
+    // Round-trip: whatever the aspect, the HORIZONTAL angle stays 62.8.
+    for (float aspect : {4.0f / 3.0f, 16.0f / 9.0f, 1.0f}) {
+        const float fovY = firstPersonVerticalFovRadians(aspect);
+        const float hDeg = 2.0f * std::atan(std::tan(fovY * 0.5f) * aspect) / kDeg;
+        EXPECT_NEAR(hDeg, 62.8f, 0.3f) << "aspect " << aspect;
+    }
+    // A zero/garbage aspect must not produce a NaN projection.
+    EXPECT_GT(firstPersonVerticalFovRadians(0.0f), 0.0f);
+}
+
+TEST(FirstPersonCameraFormula, NearPlaneClearsAStandingHumanBody) {
+    // The near plane is the ONLY thing that hides the player. A Human male's
+    // body spans Y=[-3.05,+3.65] about the node origin with the eye at +3.65
+    // and a half-width/depth of ~1.1/1.2, so the furthest body vertex from
+    // the eye is ~sqrt(6.70^2 + 1.1^2 + 1.2^2). The plane must clear it.
+    // (The per-race measurement against the REAL meshes is
+    // FirstPersonNearPlaneSwallowsTheBody_Headless in
+    // test_inventory_model_view.cpp; this is the cheap always-runs guard.)
+    const float eyeToFeet = 3.65f + 3.05f;
+    const float furthest = std::sqrt(eyeToFeet * eyeToFeet + 1.1f * 1.1f + 1.2f * 1.2f);
+    EXPECT_GT(EQT::Graphics::kFirstPersonNearPlaneUnits, furthest)
+        << "kFirstPersonNearPlaneUnits must swallow a standing Human male's own body "
+           "(furthest vertex ~" << furthest << " units from the eye); it is the only "
+           "mechanism hiding the player in first person.";
+    // And it must stay well inside the world far plane / not swallow the world
+    // whole: a sanity bracket, not a measurement.
+    EXPECT_LT(EQT::Graphics::kFirstPersonNearPlaneUnits, 20.0f);
 }

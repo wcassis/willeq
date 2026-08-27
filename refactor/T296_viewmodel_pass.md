@@ -1,5 +1,14 @@
 # T296 — first-person viewmodel pass, STAGE 1: get arms on screen at all
 
+**⚠ SUPERSEDED (T300, 2026-08-27). The viewmodel pass this plan built has been
+DELETED, along with T74's arm-bone geometry filter it depended on.** T299
+measured the real mechanism in two client versions: first person is the
+ORDINARY player model seen from the eyes, hidden by a large near clip plane —
+geometry reappears (a kick's boot, a swing's blade) because it was CLIPPED, not
+omitted. Kept as the research record; none of it is live code. See
+`refactor/T300_firstperson_real_mechanism.md` and
+`refactor/T300_leg_b_implementation.md`.
+
 Slot: slot3. x86. OWNS eqemu (noclobber) for the live capture. Class A,
 feature. Decision: docs/decisions.md 2026-08-27 viewmodel entry (Will's).
 Territory: a NEW viewmodel render pass (its own TU under

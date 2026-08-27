@@ -758,12 +758,13 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
-    // T296: deferredToViewmodelPass_ keeps the node out of the scene graph's
-    // render list WITHOUT hiding it -- an invisible node gets no OnAnimate()
-    // from Irrlicht, which would freeze the skeleton the viewmodel pass is
-    // drawing. Children still register themselves normally; the viewmodel
-    // pass hides the equipment children separately and draws them itself.
-    if (IsVisible && !deferredToViewmodelPass_) {
+    // T300: the player node registers like any other node, in first person
+    // too -- the viewmodel pass that used to withhold it is gone. (T296
+    // withheld it rather than hiding it because Irrlicht skips OnAnimate()
+    // on invisible nodes; a re-hide would ship a frozen skeleton. Nothing
+    // hides or withholds it now: the first-person near clip plane does the
+    // work, and the skeleton keeps animating.)
+    if (IsVisible) {
         SceneManager->registerNodeForRendering(this);
     }
     ISceneNode::OnRegisterSceneNode();
@@ -1248,246 +1249,17 @@ int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {
     return -1;
 }
 
-void EQAnimatedMeshSceneNode::setFirstPersonMode(bool enabled) {
-    if (firstPersonMode_ == enabled) {
-        return;  // No change
-    }
-
-    firstPersonMode_ = enabled;
-
-    if (enabled) {
-        // Build arm bone indices on first enable
-        if (!armBonesBuilt_) {
-            buildArmBoneIndices();
-        }
-
-        if (!armBoneIndices_.empty()) {
-            // T74: rebuild the per-instance mesh from bind pose (discards any
-            // stale filtered index buffers from a previous enable), then
-            // drop every triangle not fully bound to an arm bone. Vertex
-            // ARRAYS are untouched -- applyAnimation() still writes all of
-            // them every frame; only which triangles the INDEX buffers
-            // reference changes, so re-enabling third person just needs a
-            // fresh, unfiltered createInstanceMesh() (below).
-            createInstanceMesh();
-            applyFirstPersonIndexFilter();
-            hasValidFirstPersonGeometry_ = true;
-        } else {
-            // T74 fallback: a skeleton that yields no usable arm bones must
-            // not render anything in first person -- picking nothing would
-            // already be invisible, but leaving the FULL body mesh visible
-            // (the pre-T74 no-filter state) would be worse than today's
-            // hide-everything behaviour. Explicit and logged so this isn't
-            // an accidental empty-filter silence; the caller
-            // (EntityRenderer::setPlayerFirstPersonMode) reads
-            // hasValidFirstPersonGeometry() and falls back to hiding the
-            // whole entity, same as before this unit.
-            hasValidFirstPersonGeometry_ = false;
-            auto skeleton = animator_.getSkeleton();
-            LOG_WARN(MOD_GRAPHICS,
-                "EQAnimatedMeshSceneNode::setFirstPersonMode: no usable arm bones "
-                "for skeleton model='{}' -- falling back to full-hide behaviour",
-                skeleton ? skeleton->modelCode : std::string("<none>"));
-        }
-        // Force applyAnimation() to reapply the current frame's bone
-        // transforms to the freshly-rebuilt (bind-pose) vertex arrays --
-        // its frame-cache optimization would otherwise skip this since the
-        // animation frame number itself did not change.
-        lastAppliedFrame_ = -1;
-    } else {
-        // Leaving first person: rebuild a full, unfiltered instance mesh.
-        // Third person's own rendering never reads armBoneIndices_/
-        // firstPersonMode_ (this whole feature is additive -- see class
-        // header), so this only restores THIS node's own geometry.
-        createInstanceMesh();
-        lastAppliedFrame_ = -1;
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "EQAnimatedMeshSceneNode::setFirstPersonMode: enabled={} armBones={} validGeometry={}",
-              enabled, armBoneIndices_.size(), hasValidFirstPersonGeometry_);
-}
-
-void EQAnimatedMeshSceneNode::applyFirstPersonIndexFilter() {
-    if (!instanceMesh_ || !eqMesh_) {
-        return;
-    }
-
-    const auto& vertexPieces = eqMesh_->getVertexPieces();
-    const auto& vertexMapping = eqMesh_->getVertexMapping();
-    if (vertexPieces.empty() || vertexMapping.empty()) {
-        // No multi-buffer vertex-piece data to filter by -- leave the mesh
-        // as createInstanceMesh() built it (full geometry). This matches
-        // the existing single-buffer-mode gap in applyBoneTransformsToMeshImpl.
-        return;
-    }
-
-    std::set<int> armBoneSet(armBoneIndices_.begin(), armBoneIndices_.end());
-
-    // Pass 1: mark which (bufferIndex, localIndex) destinations belong to an
-    // arm-bone-bound original vertex. Walk vertexPieces the same way
-    // applyBoneTransformsToMeshImpl does (cumulative run-length per piece)
-    // so this stays consistent with how vertices are actually bound.
-    irr::u32 bufferCount = instanceMesh_->getMeshBufferCount();
-    std::vector<std::vector<bool>> isArmVertex(bufferCount);
-    for (irr::u32 b = 0; b < bufferCount; ++b) {
-        irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(b);
-        isArmVertex[b].assign(mb ? mb->getVertexCount() : 0, false);
-    }
-
-    size_t vertexIdx = 0;
-    for (const auto& piece : vertexPieces) {
-        bool pieceIsArm = armBoneSet.count(static_cast<int>(piece.boneIndex)) > 0;
-        if (pieceIsArm) {
-            for (int i = 0; i < piece.count; ++i) {
-                size_t vIdx = vertexIdx + static_cast<size_t>(i);
-                if (vIdx >= vertexMapping.size()) break;
-                for (const auto& mapping : vertexMapping[vIdx]) {
-                    if (mapping.bufferIndex < bufferCount &&
-                        mapping.localIndex < isArmVertex[mapping.bufferIndex].size()) {
-                        isArmVertex[mapping.bufferIndex][mapping.localIndex] = true;
-                    }
-                }
-            }
-        }
-        vertexIdx += piece.count;
-    }
-
-    // Pass 2: rewrite each buffer's index array, keeping only triangles
-    // whose 3 vertices are ALL arm vertices. Requiring all 3 (rather than
-    // any) avoids spiky stretched triangles at torso/arm seams -- the cost
-    // is a hairline gap at the cut, which reads as clipped geometry rather
-    // than garbage.
-    for (irr::u32 b = 0; b < bufferCount; ++b) {
-        irr::scene::SMeshBuffer* mb =
-            static_cast<irr::scene::SMeshBuffer*>(instanceMesh_->getMeshBuffer(b));
-        if (!mb) continue;
-
-        const auto& isArm = isArmVertex[b];
-        irr::core::array<irr::u16> filtered;
-        filtered.reallocate(mb->Indices.size());
-        for (irr::u32 t = 0; t + 2 < mb->Indices.size(); t += 3) {
-            irr::u16 i0 = mb->Indices[t];
-            irr::u16 i1 = mb->Indices[t + 1];
-            irr::u16 i2 = mb->Indices[t + 2];
-            bool allArm = i0 < isArm.size() && i1 < isArm.size() && i2 < isArm.size() &&
-                          isArm[i0] && isArm[i1] && isArm[i2];
-            if (allArm) {
-                filtered.push_back(i0);
-                filtered.push_back(i1);
-                filtered.push_back(i2);
-            }
-        }
-        mb->Indices = filtered;
-    }
-}
-
-void EQAnimatedMeshSceneNode::buildArmBoneIndices() {
-    armBoneIndices_.clear();
-    armBonesBuilt_ = true;
-
-    auto skeleton = animator_.getSkeleton();
-    if (!skeleton) {
-        LOG_WARN(MOD_GRAPHICS, "buildArmBoneIndices: No skeleton available");
-        return;
-    }
-
-    // First, find the arm root bones and all their children
-    // EQ bone naming conventions:
-    // - Arms: contains "ARM" (e.g., HUFRARMVIS, HUFLARMVIS, RARM, LARM)
-    // - Hand attachment points: contains "POINT" (e.g., R_POINT, L_POINT, SHIELD_POINT)
-    // - Weapon/shield related: contains "DAG", "SHIELD"
-    // We want to show any bone that is part of the arm hierarchy
-
-    // Build a map of bone indices that are arm-related
-    std::set<int> armBones;
-
-    // Log all bone names for diagnostics
-    LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Skeleton has {} bones:", skeleton->bones.size());
-    for (size_t i = 0; i < skeleton->bones.size(); ++i) {
-        LOG_DEBUG(MOD_GRAPHICS, "  bone[{}] = '{}'", i, skeleton->bones[i].name);
-    }
-
-    // Pass 1: Find bones with arm-related names
-    for (size_t i = 0; i < skeleton->bones.size(); ++i) {
-        const std::string& name = skeleton->bones[i].name;
-
-        // Convert to uppercase for case-insensitive matching
-        std::string upperName = name;
-        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-
-        // Check for arm-related keywords (check ALL conditions, not mutually exclusive)
-        bool isArmBone = false;
-
-        // Primary arm bones (explicit ARM in name)
-        if (upperName.find("ARM") != std::string::npos) {
-            isArmBone = true;
-        }
-        // Hand attachment points for weapons
-        if (upperName.find("POINT") != std::string::npos) {
-            isArmBone = true;
-        }
-        // Weapon-related bones
-        if (upperName.find("DAG") != std::string::npos) {
-            isArmBone = true;
-        }
-        // Shield bones
-        if (upperName.find("SHIELD") != std::string::npos) {
-            isArmBone = true;
-        }
-        // Hand/wrist bones
-        if (upperName.find("HAND") != std::string::npos ||
-            upperName.find("WRIST") != std::string::npos ||
-            upperName.find("FINGER") != std::string::npos) {
-            isArmBone = true;
-        }
-        // Forearm bones (some models use FA suffix)
-        if (upperName.find("FOREARM") != std::string::npos) {
-            isArmBone = true;
-        }
-        // EQ-specific arm bone naming: BI (bicep/upper arm), FO (forearm), FI (fingers)
-        // Format: {race_code}BI_R, {race_code}FO_R, {race_code}FI_R, etc.
-        // e.g., HUMBI_R, HUMFO_R, HUMFI_R for human right arm
-        if (upperName.find("BI_R") != std::string::npos ||
-            upperName.find("BI_L") != std::string::npos ||
-            upperName.find("FO_R") != std::string::npos ||
-            upperName.find("FO_L") != std::string::npos ||
-            upperName.find("FI_R") != std::string::npos ||
-            upperName.find("FI_L") != std::string::npos) {
-            isArmBone = true;
-        }
-
-        if (isArmBone) {
-            armBones.insert(static_cast<int>(i));
-            LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Found arm bone[{}] '{}'", i, name);
-        }
-    }
-
-    // Pass 2: Add all children of arm bones (to get full arm hierarchy)
-    // This ensures we get forearms, hands, fingers, etc.
-    bool addedChild = true;
-    while (addedChild) {
-        addedChild = false;
-        for (size_t i = 0; i < skeleton->bones.size(); ++i) {
-            if (armBones.count(static_cast<int>(i)) > 0) {
-                continue;  // Already in the set
-            }
-
-            int parentIdx = skeleton->bones[i].parentIndex;
-            if (parentIdx >= 0 && armBones.count(parentIdx) > 0) {
-                armBones.insert(static_cast<int>(i));
-                addedChild = true;
-                LOG_DEBUG(MOD_GRAPHICS, "buildArmBoneIndices: Added child bone[{}] '{}' (parent={})",
-                          i, skeleton->bones[i].name, parentIdx);
-            }
-        }
-    }
-
-    // Convert set to vector
-    armBoneIndices_.assign(armBones.begin(), armBones.end());
-
-    LOG_INFO(MOD_GRAPHICS, "buildArmBoneIndices: Found {} arm-related bones out of {} total",
-             armBoneIndices_.size(), skeleton->bones.size());
-}
+// T300: setFirstPersonMode(), applyFirstPersonIndexFilter() and
+// buildArmBoneIndices() were DELETED here. T74 added them so first person
+// could draw arm-bone triangles only (and hide the player entirely when a
+// skeleton yielded no arm bones); T296 built the viewmodel pass on top of
+// them. T299 measured the actual mechanism in two client versions: the
+// official client draws the ORDINARY, unfiltered player model from an
+// eye-point camera and hides it with a large near clip plane -- geometry
+// reappears whenever an animation pushes it past that plane. There is
+// therefore no geometry to select and no fallback to fall back to. Do not
+// reintroduce a first-person triangle filter; if the body shows, the near
+// plane is wrong (irrlicht_renderer.cpp, kFirstPersonNearPlaneUnits).
 
 } // namespace Graphics
 } // namespace EQT

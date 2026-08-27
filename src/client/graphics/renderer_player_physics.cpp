@@ -703,12 +703,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     // from the "head bone"/bbox eye height with NEITHER T76's 0.3-unit
     // standoff NOR T75's 12-degree down-pitch, so every frame in which the
     // player moved or turned overwrote both fixes. It also read
-    // getPlayerHeadBonePosition(), which since T75 does not read a head
-    // bone at all: it returns the SAME getPlayerEyeHeightFromFeet() value
-    // added to the player visual's last position, i.e. a second spelling of
-    // what repositionFirstPersonCamera() already computes from playerZ_.
-    // The genuine head-bone lever lives inside getPlayerEyeHeightFromFeet()
-    // and is reached identically through the helper.
+    // getPlayerHeadBonePosition(), which since T75 did not read a head bone
+    // at all. T300 replaced both tunables (the standoff is gone, the pitch
+    // is 3.65 degrees) and moved the formula into
+    // include/client/graphics/first_person_camera.h; the reason this path
+    // must keep delegating is unchanged.
     if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
         repositionFirstPersonCamera();
     }

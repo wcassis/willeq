@@ -2777,70 +2777,55 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
         if (visual.isPlayer) {
             visual.isFirstPersonMode = enabled;
 
-            // T74: an animated node only actually gets arm-only geometry if
-            // its skeleton yielded usable arm bones (buildArmBoneIndices()).
-            // A skeleton that doesn't (unrecognized race/model naming) must
-            // fall back to hiding the player entirely -- the pre-T74
-            // behaviour -- rather than showing the full, unfiltered body or
-            // a fully-empty mesh. hideEverything mirrors the OLD
-            // setPlayerEntityVisible(false) call this replaces at every
-            // call site.
-            bool hasArmGeometry = false;
+            // T300: the player model is drawn NORMALLY in first person --
+            // full body, unfiltered, in the world render list, with its
+            // equipment attached to its hand bones. It is hidden by the
+            // first-person NEAR CLIP PLANE and by nothing else
+            // (applyCameraProjectionForMode()).
+            //
+            // Everything this function used to do is gone on purpose:
+            //   * T74's arm-bone index filter (setFirstPersonMode() on the
+            //     node) drew arms only, and fell back to hiding the player
+            //     when a skeleton yielded no arm bones;
+            //   * T296 additionally withheld the node from the render list
+            //     (setDeferredToViewmodelPass()) and hid the equipment, so a
+            //     separate viewmodel pass could draw them in its own view
+            //     space.
+            // T299 settled the mechanism against two client versions: the
+            // official client draws the ordinary world model from an eye-point
+            // camera, and geometry REAPPEARS when an animation extends it
+            // (a kick's boot, a swing's blade). Geometry that reappears was
+            // clipped, not omitted -- so there is nothing to filter and
+            // nothing to defer.
+            //
+            // Note for anyone tempted to "just hide the node" again: Irrlicht
+            // skips OnAnimate() on invisible nodes, so a hidden player node
+            // ships a FROZEN skeleton. That is why T296 withheld rather than
+            // hid. Under this mechanism the node is simply visible and
+            // registered, which has neither problem.
             if (visual.animatedNode) {
-                visual.animatedNode->setFirstPersonMode(enabled);
-                hasArmGeometry = visual.animatedNode->hasValidFirstPersonGeometry();
-            }
-            bool hideEverything = enabled && (!visual.animatedNode || !hasArmGeometry);
-
-            if (visual.animatedNode) {
-                // Visible unless falling back to full-hide -- the mesh's
-                // own index-buffer filter (set by setFirstPersonMode above)
-                // is what actually limits what's drawn to arm geometry.
-                visual.animatedNode->setVisible(!hideEverything);
-                // T296: when arm geometry exists, the arms are NOT drawn in
-                // world any more -- the viewmodel pass draws them in its own
-                // view space at a designed offset (T76 measured that the
-                // in-world arms straddle the near plane in every pose, so
-                // no camera lever can rescue them). The node stays visible
-                // so Irrlicht keeps animating it; it is only withheld from
-                // the scene graph's render list.
-                visual.animatedNode->setDeferredToViewmodelPass(
-                    enabled && !hideEverything);
+                visual.animatedNode->setVisible(true);
             } else if (visual.meshNode) {
-                // Static meshes have no skeleton to filter by -- always
-                // fall back to hiding in first person.
-                visual.meshNode->setVisible(!enabled);
+                visual.meshNode->setVisible(true);
             }
 
-            // Always hide name tag in first-person (both this and the
-            // fallback-hidden case).
+            // The floating name tag is the one thing that must still go: it
+            // is a camera-facing 2D billboard drawn in screen space, so the
+            // near plane does not clip it and the player would read his own
+            // name across the middle of the frame.
             if (visual.nameNode) {
                 visual.nameNode->setVisible(!enabled);
             }
 
-            // Equipment stays attached to hand bones (visible with arms);
-            // hidden along with the rest of the player in the fallback
-            // case (hideEverything == enabled when there's no animated
-            // node to filter by, which is the pre-T74 behaviour), and
-            // always shown again when leaving first person.
-            // T296: in first person with real arm geometry, the equipment
-            // is drawn by the viewmodel pass too (it must land in the hands
-            // of the arms it just relocated), so it is hidden from the world
-            // render here. updateEquipmentTransforms() keeps writing these
-            // nodes' relative transforms every frame regardless of
-            // visibility, which is what the pass consumes.
-            bool equipDrawnByViewmodelPass = enabled && !hideEverything;
             if (visual.primaryEquipNode) {
-                visual.primaryEquipNode->setVisible(
-                    !hideEverything && !equipDrawnByViewmodelPass);
+                visual.primaryEquipNode->setVisible(true);
             }
             if (visual.secondaryEquipNode) {
-                visual.secondaryEquipNode->setVisible(
-                    !hideEverything && !equipDrawnByViewmodelPass);
+                visual.secondaryEquipNode->setVisible(true);
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} hasArmGeometry={} hideEverything={}",
-                      enabled, hasArmGeometry, hideEverything);
+            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} (player model drawn normally; the near plane hides it)",
+                      enabled);
             break;
         }
     }
@@ -2979,70 +2964,55 @@ float EntityRenderer::getPlayerCollisionZOffset() const {
     return 0.0f;
 }
 
-float EntityRenderer::getPlayerEyeHeightFromFeet() const {
-    // Find the player entity
+float EntityRenderer::getPlayerEyeHeightAboveNodeOrigin() const {
+    // T300 -- READ THE FRAME BEFORE CHANGING THE NUMBER.
+    //
+    // The returned value is measured from the player NODE ORIGIN, which is
+    // where createEntity() puts the node and which equals the server's Z for
+    // this entity ("Server Z is the geometric MODEL CENTER", :594). The
+    // origin is INSIDE the body: the Human male base mesh spans
+    // Y = [-3.05, +3.65] about it. So bbox.MaxEdge.Y == 3.65 is the top of
+    // the head, 6.70 above the mesh's own feet.
+    //
+    // T298 A3 measured the official client's first-person eye at
+    // 6.75 +/- 0.20 above the player's server-reported z, with the ground
+    // ring plane 0.10 below that z -- i.e. the official client stands the
+    // model with its feet at the server z, and puts the eye at the crown of
+    // a 6.7-unit body. fable stands the same model CENTRED on the server z.
+    // The two clients therefore disagree about the model's placement
+    // relative to z by ~3 units, and agree about the eye's placement
+    // relative to the BODY to within 0.05. 3.65 (this value) and 6.75 (the
+    // official measurement) are the SAME eye expressed in two frames:
+    // 3.65 above the node origin == 6.70 above the feet == 6.75 +/- 0.20.
+    // "Correcting" 3.65 to 6.75 here raises the camera by 3.05 units, out
+    // through the top of the head. Do not.
+    //
+    // T76's HEAD-bone preference (3.10, i.e. 0.55 lower) is GONE: its only
+    // rationale was vertical framing for the viewmodel pass T300 retired,
+    // and it disagrees with the official measurement by more than that
+    // measurement's error bar. It also never fired live -- T295 logged
+    // [FP-EYE] source=BBOX_FALLBACK headBoneIdx=-1 on Testchar's model in
+    // every session. The bbox top is now the single, unconditional answer.
     for (const auto& [id, visual] : entities_) {
         if (visual.isPlayer && visual.isAnimated && visual.animatedNode) {
-            // T76: prefer the skeleton's own (live, pose-aware) HEAD bone Y
-            // over the static bbox top. T75's own measurement noted the
-            // fixed bbox top (3.65, the crown of the head) sits close to but
-            // above the head bone (3.10) -- ArmVsCameraGeometryMeasurement_Headless
-            // (test_inventory_model_view.cpp) showed that gap matters for
-            // VERTICAL framing: at the arm's typical forward depth (~1-1.1
-            // units in idle), lowering the eye by that ~0.55 units moves the
-            // pitched-down frustum's vertical window from mostly ABOVE the
-            // idle arm's Y range down onto it. Falls back to the T75 bbox
-            // formula if no HEAD bone resolves (T74's per-race survey found
-            // skeleton naming schemes vary) -- never silently returns 0.
-            int headIdx = visual.animatedNode->getBoneIndexByName("HEAD");
-            if (headIdx >= 0) {
-                irr::core::vector3df headPos;
-                if (visual.animatedNode->getBoneWorldPosition(headIdx, headPos) && headPos.Y > 0.0f) {
-                    // T295: T76's captures only ever logged the bbox number,
-                    // so which branch fires LIVE was never established.
-                    // Throttled so a per-frame camera reposition cannot spam.
-                    static int headBoneLogCount = 0;
-                    if (headBoneLogCount++ % 500 == 0) {
-                        LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=HEAD_BONE boneIdx={} eyeHeight={:.4f}",
-                                  headIdx, headPos.Y);
-                    }
-                    return headPos.Y;
-                }
-            }
-
-            // Use BASE mesh bounding box (not instance mesh) to avoid corruption
-            // from first-person mode collapsed vertices
+            // BASE mesh bbox, not the per-instance mesh.
             EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
             if (!eqMesh) {
                 continue;
             }
             irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-            // T75 fix: camera height = bbox.MaxEdge.Y alone (node origin ==
-            // feet, see updatePlayerEntityPosition()), NOT MaxEdge-MinEdge.
-            // MinEdge.Y is NOT 0 for these models (Human male: -3.00), so
-            // the old range formula added a spurious extra ~3 units,
-            // placing the camera a body's-height above the model's actual
-            // top -- confirmed by ArmVsCameraGeometryMeasurement_Headless
-            // (test_inventory_model_view.cpp): under the old formula arm
-            // bones sat 3.1-3.6 units below camera Y (outside frustum at
-            // the near-clip depth they sit at) in idle AND every attack
-            // anim sampled; under this fix that gap shrinks to ~0.1-0.5
-            // units. No offset for "eyes" -- top of bbox, looking straight
-            // ahead, is the unchanged design intent. Only reached when no
-            // HEAD bone is available (T76's fallback path above).
             float cameraHeight = bbox.MaxEdge.Y;
-            // T295: see the HEAD_BONE log above -- these two lines are how a
-            // live run says which lever actually fired.
-            static int bboxLogCount = 0;
-            if (bboxLogCount++ % 500 == 0) {
-                LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=BBOX_FALLBACK headBoneIdx={} eyeHeight={:.4f}",
-                          headIdx, cameraHeight);
+            static int eyeLogCount = 0;
+            if (eyeLogCount++ % 500 == 0) {
+                LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=BBOX_TOP eyeAboveNodeOrigin={:.4f} bboxY=[{:.4f},{:.4f}]",
+                          cameraHeight, bbox.MinEdge.Y, bbox.MaxEdge.Y);
             }
             return cameraHeight;
         }
     }
-    // Default fallback for human-sized entity
-    return 6.0f;
+    // Default fallback for human-sized entity (node-origin-relative, so
+    // roughly the 3.65 a Human male measures -- NOT a feet-relative 6.x).
+    return 3.65f;
 }
 
 void EntityRenderer::setCurrentZone(const std::string& zoneName) {

@@ -18,7 +18,23 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
-## FIRST PERSON — VIEWMODEL STAGE 1 ACHIEVED (T296 `f4bec359`, 2026-08-27)
+## FIRST PERSON — MECHANISM SETTLED, VIEWMODEL PASS RETIRED (T300 Leg B, 2026-08-27)
+
+**First person is the ORDINARY player model, camera at the eyes, hidden by a large near clip plane.** T299 measured it in BOTH client versions: nothing of the player renders at rest at ANY pitch — including aimed straight down at feet 6.75 units below the eye — yet the SAME leg reappears the instant a kick extends it, and the main-hand blade appears on every swing, always cut cleanly with the hand and elbow never drawn. **Geometry that reappears was CLIPPED, not omitted.** So T296's separate viewmodel pass was the wrong mechanism, not a mistuned one.
+
+**DELETED by T300 Leg B (do not reintroduce any of it):** `viewmodel_renderer.cpp`, `viewmodel_transform.h`, `viewmodel_tuning.h`, `tests/test_viewmodel_pass.cpp`, `renderFirstPersonViewmodel()`, `ViewmodelParts`/`getPlayerViewmodelParts()`, `setDeferredToViewmodelPass()`, the bounding-box `fillFraction` fit and its cached arm box — and, with them, **T74's arm-bone index filter** (`setFirstPersonMode()`, `buildArmBoneIndices()`, `applyFirstPersonIndexFilter()`, `hasValidFirstPersonGeometry()`, `getArmBoneIndices()`) and T76's 0.3-unit **backward standoff**. A returning symbol from that list fails `FirstPersonCameraSingleFormula.DeadFirstPersonHelpersStayDeleted`.
+
+**The camera now** (`include/client/graphics/first_person_camera.h`, the one home of the numbers; `IrrlichtRenderer::repositionFirstPersonCamera()` the one caller): player XY exactly, **no standoff**; eye = playerZ_ + `getPlayerEyeHeightAboveNodeOrigin()`; fixed pitch **3.65 deg down** (was 12); **hFOV 62.8 deg** (fable had never called `setFOV()` and ran at Irrlicht's default 72 deg VERTICAL ≈ 88 horizontal); near plane `kFirstPersonNearPlaneUnits`, applied in first person only and restored to 1.0 on the way out.
+
+**⚠ THE NEAR-PLANE VALUE IS A PLACEHOLDER (7.0), NOT A MEASUREMENT.** T300 Leg A is measuring it live off a two-hander's truncation cut. The bracket the evidence supports is > 6.75 (nothing renders looking straight down at the feet) and < the reach of an extended weapon/kick (those DO render). fable's own geometry corroborates the lower bound independently: a Human male's resting body reaches **6.87** units from its own eye (`FirstPersonNearPlaneSwallowsTheBody_Headless`).
+
+**⚠ OPEN: one fixed plane is a human-sized number.** Measured max radial distance from the eye to the player's own geometry, AT REST: Human male 6.87, Human female 6.14, Barbarian male 6.85, Dark Elf female 6.16, Troll male 6.88, Iksar male 6.88, **Dwarf male 7.09 — outside a 7.0 plane, i.e. a dwarf would see his own body.** Whether the official client scales the plane per race is unmeasured. Decide with Leg A's number in hand.
+
+**⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.** For a Human male that is 3.35 vs the mesh's real 3.05, so fable stands the player **0.30 units above** his own collision ground and the eye sits ~7.00 above ground where the official client measured 6.65-6.75. Not fixed here — it moves every entity in the world and belongs in its own unit.
+
+**Headless tests cannot close this feature.** Nothing in the suite rasterizes; they pin the camera's numbers and the body's geometry, and cannot show that the body is clipped or that a swing is visible. T296 shipped a depth clear that was silently compiled out and every headless test still passed. **T300 Leg C (live video) is the gate; Will judges the look.**
+
+## FIRST PERSON — VIEWMODEL STAGE 1 ACHIEVED (T296 `f4bec359`, 2026-08-27) — SUPERSEDED, MECHANISM WITHDRAWN BY T300 (see above). Kept as the research record; nothing in this section is live code any more.
 
 **Arms and a weapon are on screen and identifiable** — first time in five attempts (T71/T74/T75/T76 all failed). Shape: explicit transform + manual draw after `drawAll()`, mid-frame depth clear, the pass's own projection. Step 0 confirmed it three ways rather than assuming; a second camera would have needed a second `drawAll()` (the frame's dominant cost).
 
@@ -40,7 +56,7 @@ Two shape decisions worth keeping: the player node is **withheld from the render
 - **⚠ The head-bone eye-height lever DOES NOT FIRE LIVE.** `[FP-EYE] source=BBOX_FALLBACK headBoneIdx=-1 eyeHeight=3.6527` — `getBoneIndexByName("HEAD")` returns -1 on Testchar's model. That is why T76's captures logged 3.65, not 3.10: the lever is proven only headlessly. Unchanged, discriminator logging added.
 - **`getPlayerHeadBonePosition()` has not read a head bone since T75** — it returns `getPlayerEyeHeightFromFeet()` against the visual's last position. Left caller-less by T295 and deleted.
 - **REACHABILITY PATTERN #9 IS CLOSED**: `triggerFirstPersonAttack()` deleted (T74), `setPlayerFirstPersonMode()` wired (T74), `updateFirstPersonWeapons()` deleted (T295). No surviving members.
-- **First person still does NOT look right** — T295's frames show a flat untextured ground plane, a sky band, and a blurred brown slab. That is T296's problem (Will chose a viewmodel pass, docs/decisions.md 2026-08-27); T295 was camera correctness ONLY and says so.
+- **First person still does NOT look right** — T295's frames show a flat untextured ground plane, a sky band, and a blurred brown slab. That was routed to T296's viewmodel pass (docs/decisions.md 2026-08-27); T295 was camera correctness ONLY and says so. **The viewmodel pass is retired — T300 replaced it with the real mechanism (see the T300 section at the top of this file).**
 
 ## ⚠ SLOT INFRASTRUCTURE HAZARDS (T295, 2026-08-27) — not source defects, but they cost hours
 
