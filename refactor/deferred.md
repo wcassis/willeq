@@ -18,7 +18,29 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
-## FIRST PERSON — MECHANISM SETTLED, VIEWMODEL PASS RETIRED (T300 Leg B, 2026-08-27)
+## ⚠ FIRST PERSON — THE LIVE GATE FAILED (T300 Leg C, 2026-08-27). THE CLAMP DOES NOT HIDE THE BODY.
+
+**Read this before the T300 Leg B section below, which it corrects.** Leg C rendered fable's new first person to a screen for the first time (every rendered frame captured, `--dump-frames-dir --dump-every 1`, mouse-look driven with xdotool through the real input path). Evidence: `refactor/T300_leg_c_live_gate.md`, `review/T300/T300_C_README.md`, `review/T300/video_C/`.
+
+| question | answer |
+|---|---|
+| body visible at max down-pitch? | **YES — FAIL.** Human male's own FACE fills the lower two thirds at the 65.40-deg clamp; first geometry at **26.5 +/- 1.2 deg** total down-pitch. Troll: own shoulders/hands, first geometry at **60.6 +/- 1.5 deg**. |
+| body invisible at rest at every pitch? | **NO — FAIL, and worse.** At **LEVEL pitch while RUNNING**, the animated head bobs into the bottom of the frame. |
+| weapon visible on a swing? | **NO — FAIL.** 285 frames, 7 auto-attack exchanges with a two-hander: zero weapon geometry. |
+| foot on a kick? | **NO — FAIL.** 6 kicks, nothing. |
+| clips like third person? | **YES — PASS.** `near=1.000` measured in both modes in one run; a wall at point-blank is solid and identical in both. |
+
+**The controls that make the negatives load-bearing:** the same script at the same capture rate in `/camera follow` shows the kick and the halberd swing plainly; and every rest measurement was repeated with the primary slot emptied in the DB (identical), so the weapon is not what is or is not in frame.
+
+**DIAGNOSIS — the candidate order in the Leg B section is wrong.**
+
+1. **PRIMARY: the clamp is derived from the wrong condition.** `maxDownPitch = 90 - vFOV/2` is by construction the angle at which the frustum's LOWER edge reaches the NADIR. At the clamp the frustum spans 40.8..90.0 deg below the horizon — and the player's own body occupies exactly that cone (Human male's nose at 51.1 deg below horizon, feet at 90). The clamp does not exclude the body's directions; **it is precisely the condition that admits all of them.** To hide a Human male's face it would have to be ~27 deg (less than half), and ~61 for a Troll — so the claimed race-invariance fails too: the angle from a crown-mounted eye to the nearest body geometry is a property of the mesh's PROPORTIONS, not its size, and the two races differ by 34 deg. **No single down-pitch clamp both hides the body and lets a player look at the ground.**
+2. **SECOND, INDEPENDENT: the eye is at the STATIC bounding-box crown.** `[FP-CAMERA] nodeOriginZ=3.7500 eyeAboveOrigin=3.6527` (= `bbox.MaxEdge.Y`, a rest-pose constant). The run cycle lifts the animated head ABOVE it (the level-pitch head bob — no clamp value can fix that), and sitting ON the crown rather than inside the skull puts the whole head more than 1.0 unit from the eye, so the world's 1.000 near plane never touches it. **Put the eye where the eyes actually are and that same 1.000 plane swallows the face — which is the mechanism T299 inferred for the official client.** Leg B §3 is right that 3.65 and 6.75 are the same eye in two frames; the defect is that 6.75 is measured to the official client's EYE and 3.6527 is a bbox CROWN, and those are not the same point on the model.
+3. **The mesh forward-axis assumption is neither confirmed nor the explanation.** Live vs Leg B's headless sweep: Human male 26.5 vs 39.5 (headless 13 deg optimistic), Troll 60.6 vs 0/in-frame-at-level (headless 61 deg pessimistic). **The error changes sign between races**, so it is not one consistent "forward read as sideways"; the §4 table below must not be used as a quantitative guide. The question is also not observable live by turning — model and camera rotate together (confirmed at heading 0 and 128).
+
+**Open follow-ups named by Leg C:** the hiding mechanism needs re-opening (a down-pitch clamp alone cannot do it); `getPlayerEyeHeightAboveNodeOrigin()` returns a rest-pose constant and needs to be animation-aware or renamed for what it is; **fable has no UI-hide command** (no F10 equivalent — the chat box and hotbar are opaque in every capture, and every visual unit since T63 has fought this); and weapon/limb visibility in first person is untested downstream of the hiding question. **Two stale-slot traps for whoever merges:** rebuild `build/` after checkout or the source-parsing tests assert deleted symbols and fail, and `rm build/bin/test_viewmodel_pass` or `check_build_tree_orphans` fails on the orphan cmake never prunes.
+
+## FIRST PERSON — MECHANISM SETTLED, VIEWMODEL PASS RETIRED (T300 Leg B, 2026-08-27) — HIDING MECHANISM REFUTED LIVE BY LEG C, SEE ABOVE
 
 **First person is the ORDINARY player model, camera at the eyes, hidden by a large near clip plane.** T299 measured it in BOTH client versions: nothing of the player renders at rest at ANY pitch — including aimed straight down at feet 6.75 units below the eye — yet the SAME leg reappears the instant a kick extends it, and the main-hand blade appears on every swing, always cut cleanly with the hand and elbow never drawn. **Geometry that reappears was CLIPPED, not omitted.** So T296's separate viewmodel pass was the wrong mechanism, not a mistuned one.
 
@@ -36,7 +58,7 @@ Review — read that before scoping the next unit off this file.
 
 **⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.** For a Human male that is 3.35 vs the mesh's real 3.05, so fable stands the player **0.30 units above** his own collision ground and the eye sits ~7.00 above ground where the official client measured 6.65-6.75. Not fixed here — it moves every entity in the world and belongs in its own unit.
 
-**Headless tests cannot close this feature.** Nothing in the suite rasterizes; they pin the camera's numbers and the body's geometry, and cannot show that the body is clipped or that a swing is visible. T296 shipped a depth clear that was silently compiled out and every headless test still passed. **T300 Leg C (live video) is the gate; Will judges the look.**
+**Headless tests cannot close this feature.** Nothing in the suite rasterizes; they pin the camera's numbers and the body's geometry, and cannot show that the body is clipped or that a swing is visible. T296 shipped a depth clear that was silently compiled out and every headless test still passed. **T300 Leg C (live video) WAS the gate and it FAILED — see the Leg C section at the top of this file. Will judges the look.**
 
 ## FIRST PERSON — VIEWMODEL STAGE 1 ACHIEVED (T296 `f4bec359`, 2026-08-27) — SUPERSEDED, MECHANISM WITHDRAWN BY T300 (see above). Kept as the research record; nothing in this section is live code any more.
 
