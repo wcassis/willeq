@@ -18,6 +18,20 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+## FIRST PERSON — state after T295 (2026-08-27)
+
+- **T295 `a8dc8560`: the FOURTH camera copy is gone.** `renderer_player_physics.cpp`'s local-movement path applied neither T76's 0.3 standoff nor the 12 degree pitch, so **T76's only shipped fix was discarded the moment the player moved or turned**. Measured by the sky/ground boundary row: still 202/202, moving **290**, turning **290** BEFORE; 202/202/**202**/**203** AFTER. 445 `[FP-CAMERA]` lines in one session now show a single standoff (0.3) and a single pitch delta (-12.0) in both phases.
+  - Two things the plan did not anticipate: **mouse-look pitch (`playerPitch_`) lived ONLY in the duplicate** — a naive delete would have silently killed vertical look; and the trigger keyed off position/heading only, so a **pure vertical mouse drag never repositioned the camera at all** (fixed with `pitchChanged`).
+- **⚠ The head-bone eye-height lever DOES NOT FIRE LIVE.** `[FP-EYE] source=BBOX_FALLBACK headBoneIdx=-1 eyeHeight=3.6527` — `getBoneIndexByName("HEAD")` returns -1 on Testchar's model. That is why T76's captures logged 3.65, not 3.10: the lever is proven only headlessly. Unchanged, discriminator logging added.
+- **`getPlayerHeadBonePosition()` has not read a head bone since T75** — it returns `getPlayerEyeHeightFromFeet()` against the visual's last position. Left caller-less by T295 and deleted.
+- **REACHABILITY PATTERN #9 IS CLOSED**: `triggerFirstPersonAttack()` deleted (T74), `setPlayerFirstPersonMode()` wired (T74), `updateFirstPersonWeapons()` deleted (T295). No surviving members.
+- **First person still does NOT look right** — T295's frames show a flat untextured ground plane, a sky band, and a blurred brown slab. That is T296's problem (Will chose a viewmodel pass, docs/decisions.md 2026-08-27); T295 was camera correctness ONLY and says so.
+
+## ⚠ SLOT INFRASTRUCTURE HAZARDS (T295, 2026-08-27) — not source defects, but they cost hours
+
+- **ctest can die at DISCOVERY with `Process terminated due to timeout` on INTACT binaries.** `libwilleq_core.a` is **1.9 GB on NFS**, so a freshly relinked binary takes ~8.5 s to page in cold — over gtest's 5 s discovery timeout. Reading every binary once first fixes it. **This is NOT the T293 truncated-binary mode; do not confuse them.**
+- **`check_build_tree_orphans` can fail on a CORRUPT CMake file-API reply** — target JSON files describing a different target than their filename, left behind when a tool timeout kills `cmake` mid-write. 37 live targets got reported as orphans. Wipe `build/.cmake/api/v1/reply` and reconfigure.
+
 ## ⚠ AUDIT 2026-08-27 — the refactor programme IS complete; what remains is a defect list
 
 A full audit of every batch plan answered the owner's question "were the partially completed refactors all closed?": **YES.** Batches A/B/C/D/E/F/G/H/L/Q/R/S/U/T are COMPLETE; only two threads are genuinely partial — **S2 residue** (3 items) and **Z5.3** (empty-draw measurement, `progress.md:276`). Batch E is done but UNTRACEABLE: `progress.md:48-72` marks every unit `done` with **blank commit columns**, and E01-E09 appear in ZERO commit subjects across 2242 searched — verified shipped by artifact instead (`eqe1_format.h`, `eqe1_loader.h`, `tools/eqe1_builder.cpp`, `--eqe1-path`).
