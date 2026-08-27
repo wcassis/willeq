@@ -2499,3 +2499,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_gate_bypasses PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_skill_gate_bypasses)
+
+# T296: first-person viewmodel pass -- headless geometry/placement coverage.
+# Same EDT_NULL + willeq_core gate as test_inventory_model_view (real S3D
+# model data, shipped db for race codes, no server, no display).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_viewmodel_pass
+        test_viewmodel_pass.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_viewmodel_pass PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_viewmodel_pass GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_viewmodel_pass PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_viewmodel_pass)
+ENDIF()

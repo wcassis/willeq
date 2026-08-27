@@ -1366,6 +1366,12 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
     frameTimings_.weatherRender = measureSection();
 
+    // T296: first-person viewmodel pass. Placed here on purpose -- after ALL
+    // 3D world content (zone, entities, particles, weather) so nothing can
+    // occlude the arms, and before the debug overlays and 2D UI so those
+    // still draw on top. A complete no-op outside first person.
+    renderFirstPersonViewmodel();
+
     // Draw collision debug lines
     if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
 

@@ -135,6 +135,22 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
             }
         }
     }
+
+    // T296: equipment can be (re)attached AFTER first person was entered --
+    // the deferred entity-load path calls attachEquipment() from the normal
+    // per-frame update, and the nodes it creates are visible by default.
+    // Without this the freshly attached weapon renders a SECOND time in the
+    // world, at the player's own position, i.e. as a large object right at
+    // the camera. Observed live before this guard existed (an unexplained
+    // shape at the bottom of frame that changed identity when the equipped
+    // item changed). setPlayerFirstPersonMode() handles the nodes that
+    // already exist when the mode is entered; this handles the ones created
+    // afterwards.
+    if (visual.isPlayer && visual.isFirstPersonMode && visual.animatedNode &&
+        visual.animatedNode->hasValidFirstPersonGeometry()) {
+        if (visual.primaryEquipNode) visual.primaryEquipNode->setVisible(false);
+        if (visual.secondaryEquipNode) visual.secondaryEquipNode->setVisible(false);
+    }
 }
 
 // Bone lookup, rotation extraction, and weapon/shield grip-offset math are

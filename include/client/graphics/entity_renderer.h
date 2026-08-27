@@ -404,6 +404,20 @@ public:
     // Check if player is in first-person mode
     bool isPlayerInFirstPersonMode() const;
 
+    // T296: the geometry the first-person viewmodel pass draws. The player's
+    // animated node is left VISIBLE (so Irrlicht still calls OnAnimate on it
+    // and the skeleton keeps running) but deferred out of the scene graph's
+    // render list, and its equipment children are hidden; the viewmodel pass
+    // draws all of it itself at a designed offset in its own view space.
+    struct ViewmodelParts {
+        EQAnimatedMeshSceneNode* animatedNode = nullptr;
+        irr::scene::IMeshSceneNode* primaryEquipNode = nullptr;
+        irr::scene::IMeshSceneNode* secondaryEquipNode = nullptr;
+    };
+    // Returns false when there is no player entity, no animated node, or the
+    // skeleton yielded no usable arm bones (the T74 full-hide fallback).
+    bool getPlayerViewmodelParts(ViewmodelParts& out) const;
+
     // Update the player entity's position (used in player mode for third-person view)
     void updatePlayerEntityPosition(float x, float y, float z, float heading);
 

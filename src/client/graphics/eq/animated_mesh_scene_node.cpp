@@ -758,7 +758,12 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
-    if (IsVisible) {
+    // T296: deferredToViewmodelPass_ keeps the node out of the scene graph's
+    // render list WITHOUT hiding it -- an invisible node gets no OnAnimate()
+    // from Irrlicht, which would freeze the skeleton the viewmodel pass is
+    // drawing. Children still register themselves normally; the viewmodel
+    // pass hides the equipment children separately and draws them itself.
+    if (IsVisible && !deferredToViewmodelPass_) {
         SceneManager->registerNodeForRendering(this);
     }
     ISceneNode::OnRegisterSceneNode();

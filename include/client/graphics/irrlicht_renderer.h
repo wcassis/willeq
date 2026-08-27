@@ -93,6 +93,8 @@ namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRen
 
 // Forward declaration for constrained texture cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
+// T296: the viewmodel pass's framing knobs live with its math.
+#include "client/graphics/viewmodel_tuning.h"
 
 namespace EQT {
 namespace Graphics {
@@ -2158,6 +2160,27 @@ private:
     // (eyeHeight <= 0); safe to call unconditionally on entering
     // FirstPerson mode.
     void repositionFirstPersonCamera();
+
+    // T296: the first-person viewmodel pass. Runs after the world render
+    // (and after particles/weather) and before the 2D UI; a complete no-op
+    // outside first person. Draws the T74 arm-filtered geometry plus the two
+    // bone-attached equipment nodes at a designed offset in its OWN view
+    // space, with its own small near plane -- see
+    // include/client/graphics/viewmodel_transform.h and
+    // src/client/graphics/viewmodel_renderer.cpp.
+    void renderFirstPersonViewmodel();
+
+public:
+    // Number of draw calls the last viewmodel pass issued (0 outside first
+    // person, or when the player has no usable arm geometry). Test hook.
+    size_t getLastViewmodelDrawCallCount() const { return lastViewmodelDrawCallCount_; }
+
+private:
+    ViewmodelTuning viewmodelTuning_;
+    irr::core::aabbox3d<irr::f32> viewmodelArmBoxBaked_;
+    float viewmodelArmBoxHeadingY_ = 0.0f;
+    bool viewmodelArmBoxValid_ = false;
+    size_t lastViewmodelDrawCallCount_ = 0;
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

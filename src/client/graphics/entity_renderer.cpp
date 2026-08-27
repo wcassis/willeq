@@ -2797,6 +2797,15 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
                 // own index-buffer filter (set by setFirstPersonMode above)
                 // is what actually limits what's drawn to arm geometry.
                 visual.animatedNode->setVisible(!hideEverything);
+                // T296: when arm geometry exists, the arms are NOT drawn in
+                // world any more -- the viewmodel pass draws them in its own
+                // view space at a designed offset (T76 measured that the
+                // in-world arms straddle the near plane in every pose, so
+                // no camera lever can rescue them). The node stays visible
+                // so Irrlicht keeps animating it; it is only withheld from
+                // the scene graph's render list.
+                visual.animatedNode->setDeferredToViewmodelPass(
+                    enabled && !hideEverything);
             } else if (visual.meshNode) {
                 // Static meshes have no skeleton to filter by -- always
                 // fall back to hiding in first person.
@@ -2814,11 +2823,20 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
             // case (hideEverything == enabled when there's no animated
             // node to filter by, which is the pre-T74 behaviour), and
             // always shown again when leaving first person.
+            // T296: in first person with real arm geometry, the equipment
+            // is drawn by the viewmodel pass too (it must land in the hands
+            // of the arms it just relocated), so it is hidden from the world
+            // render here. updateEquipmentTransforms() keeps writing these
+            // nodes' relative transforms every frame regardless of
+            // visibility, which is what the pass consumes.
+            bool equipDrawnByViewmodelPass = enabled && !hideEverything;
             if (visual.primaryEquipNode) {
-                visual.primaryEquipNode->setVisible(!hideEverything);
+                visual.primaryEquipNode->setVisible(
+                    !hideEverything && !equipDrawnByViewmodelPass);
             }
             if (visual.secondaryEquipNode) {
-                visual.secondaryEquipNode->setVisible(!hideEverything);
+                visual.secondaryEquipNode->setVisible(
+                    !hideEverything && !equipDrawnByViewmodelPass);
             }
 
             LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} hasArmGeometry={} hideEverything={}",

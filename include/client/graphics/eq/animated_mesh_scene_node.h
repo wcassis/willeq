@@ -252,6 +252,14 @@ public:
     size_t getInstanceMeshIndexCount() const;
 
     // Mark this node as the player node (for debug logging)
+    // T296: when true this node is NOT registered for rendering by the
+    // scene graph -- the first-person viewmodel pass draws its instance mesh
+    // itself, in its own view space. The node stays VISIBLE on purpose:
+    // Irrlicht's ISceneNode::OnAnimate() skips invisible nodes entirely, so
+    // hiding it would freeze the skeleton and the arms would not animate.
+    void setDeferredToViewmodelPass(bool deferred) { deferredToViewmodelPass_ = deferred; }
+    bool isDeferredToViewmodelPass() const { return deferredToViewmodelPass_; }
+
     void setIsPlayerNode(bool isPlayer) { isPlayerNode_ = isPlayer; }
     bool isPlayerNode() const { return isPlayerNode_; }
 
@@ -293,6 +301,7 @@ private:
 
     // Debug: mark this node as the player for targeted logging
     bool isPlayerNode_ = false;
+    bool deferredToViewmodelPass_ = false;  // T296: drawn by the viewmodel pass, not by drawAll()
 
     // Performance: track last applied animation frame to skip redundant transforms
     int lastAppliedFrame_ = -1;
