@@ -682,7 +682,18 @@ failure this guards against).
   commented out in the live `WorldProcessSetChatServer` handler
   (`eq_login_world.cpp:834`). Will: *"ignore the UCS/chat server for now **as
   long as zone-wide and cross-zone communication is working**."*
-  **That condition is not yet established** — every two-client chat probe in
+  **SOURCE ANALYSIS (T297 `48800a8f`) SAYS THE DEFERRAL IS SAFE, LIVE PROOF
+  STILL OWED.** From `/mnt/projects/akk-stack/code`: the ONLY branch reaching
+  `UCSConnection::Instance()->SendMessage` is `chan_num == ChatChannel_UCSRelay`
+  (20) at `world/zoneserver.cpp:423` — an Underfoot-and-later relay a Titanium
+  client never sends. **No channel this client can speak depends on UCS.**
+  Tell, guild, ooc and auction are dispatched by WORLD itself; group has its
+  own `ServerOP_OOZGroupMessage` path; say/shout/emote are zone-local BY
+  DESIGN (that is correct EverQuest behaviour, not a failure). UCS on a
+  Titanium server covers only player-created channels (`/join`, `/1`) and
+  mail — neither implemented. So the commented-out `ConnectToUCS(...)` should
+  cost nothing.
+  **The condition is therefore predicted to hold, but not yet measured** — every two-client chat probe in
   the record (T222 `/reply`, T243 `/emote`, T239 macro) put both clients in
   the SAME zone. T291 is verifying it (two clients in DIFFERENT zones, across
   say/shout/ooc/auction/tell/guild/group). **If a channel turns out to be
