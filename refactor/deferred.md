@@ -18,6 +18,21 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+## FIRST PERSON — VIEWMODEL STAGE 1 ACHIEVED (T296 `f4bec359`, 2026-08-27)
+
+**Arms and a weapon are on screen and identifiable** — first time in five attempts (T71/T74/T75/T76 all failed). Shape: explicit transform + manual draw after `drawAll()`, mid-frame depth clear, the pass's own projection. Step 0 confirmed it three ways rather than assuming; a second camera would have needed a second `drawAll()` (the frame's dominant cost).
+
+**The load-bearing insight: the arm mesh and the equipment nodes live in DIFFERENT FRAMES.** The mesh is baked `-(h+90) deg` about Y relative to the node-local frame the hand bone and equipment children live in. Derived from `applyBoneTransformsToMeshImpl`, NOT curve-fitted — an early numeric fit gave inconsistent answers across headings. Composed with the viewmodel's own -90 deg yaw it collapses to `RotY(h)` for arms, `RotY(-90) * relativeTransform` for equipment. Pinned by a test asserting `R_POINT` lands inside the arm geometry (0.048 units, four headings).
+
+Two shape decisions worth keeping: the player node is **withheld from the render list, not hidden** (Irrlicht skips `OnAnimate` on invisible nodes — hiding would have shipped FROZEN arms), and the arm box is measured from the **indexed** vertices because T74's filter rewrites index buffers only, so the node's own bbox is still the whole body.
+
+**⚠ THE DEPTH CLEAR WAS SILENTLY COMPILED OUT** — guarded on `EQT_HAS_DRM` (copied from `renderer_zone_draw.cpp`) in a `DRM=OFF` config, so the arms were depth-tested against the world and sliced off by terrain. Correct guard is `EQT_HAS_GLES2`; the fallback is now a hard `#error`. **Every headless test passed with the clear absent — none of them rasterize.** That is the entire argument for requiring a live capture.
+
+**OPEN FOR STAGE 2 (Will judges the look, none of this is self-declared acceptable):**
+- **No visible swing** across 20 s of log-confirmed auto-attack; the attack pose is near-identical to idle. Frames 2 and 3 in `review/T296/` are essentially the same pose. Video included.
+- Upper arms run off the top of frame; the arms read as very large/close. Framing.
+- A dark teal wedge in frame was HYPOTHESISED as double-drawn equipment and then **REFUTED** by a control run with an empty weapon slot — it is qeynos2 world geometry. The guard added for it is kept but reported as unproven, not as a fixed bug.
+
 ## FIRST PERSON — state after T295 (2026-08-27)
 
 - **T295 `a8dc8560`: the FOURTH camera copy is gone.** `renderer_player_physics.cpp`'s local-movement path applied neither T76's 0.3 standoff nor the 12 degree pitch, so **T76's only shipped fix was discarded the moment the player moved or turned**. Measured by the sky/ground boundary row: still 202/202, moving **290**, turning **290** BEFORE; 202/202/**202**/**203** AFTER. 445 `[FP-CAMERA]` lines in one session now show a single standoff (0.3) and a single pitch delta (-12.0) in both phases.
