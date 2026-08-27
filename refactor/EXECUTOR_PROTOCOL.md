@@ -20,7 +20,12 @@ references this file; plans carry only unit-specific content.
   remote strings exempt); never pipe build output through
   grep/tail/tee.
 - Run long commands FOREGROUND with explicit timeouts (600000 ms max
-  per call); re-run on timeout. NEVER end a turn waiting on a
+  per call); re-run on timeout. **A timeout can kill a build MID-LINK and
+  leave test binaries silently TRUNCATED — ctest then dies at discovery
+  with a shell-parse error, not a test failure (T293). Verify a build by
+  its EXIT CODE, never by grepping its log: `cmake --build ... > log 2>&1;
+  echo EXIT=$?` — and note `grep ' error '` NEVER matches GCC, which prints
+  `error:`.** NEVER end a turn waiting on a
   background task or monitor. This failure mode has stalled 5+ units
   (T128 alone stalled 3 times in one unit); it is forbidden. Use
   `scripts/wait_for.sh` instead of writing your own polling loop — it
@@ -95,9 +100,11 @@ references this file; plans carry only unit-specific content.
    evidence. A second, unrelated, non-crash flake in the same test family
    [parallel `ctest -j` processes racing on a fixed RDP listener port] was
    found and fixed in the same unit. A future RDP segfault is a real bug,
-   not a flake — do not re-waive without root-causing it.) Baseline:
-   2745/2746 at fable `e70e3347` (T214, 2026-08-25; the one failure is the
-   ALSA quirk above). Earlier: 1234/1235 (P27 certification).
+   not a flake — do not re-waive without root-causing it.) **The suite
+   grows constantly — 3208 at T293 (2026-08-27), 2745 at T214, 1234 at P27.
+   Do NOT treat any count written here as current: read the `## STATUS`
+   block in `refactor/deferred.md`, or simply run it. The only invariant is
+   that the ALSA quirk above is the sole expected failure.**
 3. `bash <slot>/scripts/build-gles2-x86.sh`
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)
