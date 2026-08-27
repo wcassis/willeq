@@ -102,6 +102,8 @@ Review — read that before scoping the next unit off this file.
 
 ## Index — open and recently-closed items (rebuilt T215, 2026-08-25; supersedes the T53 index)
 
+**⚠ THIS INDEX IS A SNAPSHOT AT `e70e3347` (T215, 2026-08-25) AND IS NOW STALE. The `## STATUS` block ABOVE is current through T293 and wins.** A 2026-08-27 audit found the two halves of this file disagree: the Index still lists as OPEN at least nine items later commits closed — phantom `gequip7` (T223), TWO `state::GameState` instances (T227 `e7097114`; `application.cpp` now says "there is ONE state::GameState per run"), race 330 (T267), T04 (T228), T173's resolver and T174's Item slots (T230), `/reply` (T222), trade reject (T222), the T148 GM senders (T217/T229). The same audit grepped twelve struck items and found **zero** cases of the board claiming a fix the code lacks — the drift runs the other way: **this file UNDERSTATES progress.** Read the STATUS block, not this Index.
+
 **Each item is anchored by its `## ` section heading text (or a unit ID),
 not a line number** — `grep -n '<quoted text>' refactor/deferred.md` finds
 it. Items T53 listed that a later commit closed are kept here, struck, with

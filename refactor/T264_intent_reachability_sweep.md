@@ -1,3 +1,5 @@
+**⚠ REVIEW DOC STALE (audited 2026-08-27): this file still lists `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`, `MemorizeSpellIntent` and `BuffCancelIntent` as "KEPT, BLOCKED". All four now have producers (`eq_merchant.cpp:411,425` via T269; `static_ui_input.cpp:128,168` via T272/T277) and are correctly ABSENT from `kBlockedIntents`. **The test is right; this document is not.** `tests/test_reachability_sweep.cpp` is the source of truth — only `SpellbookStateIntent` remains blocked.**
+
 # T264 — intent/handler reachability sweep (patterns #12, #13, #15 were found one at a time)
 
 Slot: slot3. x86. NO eqemu. Class A. Territory: read the whole tree; EDIT
