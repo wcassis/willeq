@@ -115,16 +115,32 @@ void UIRenderer::drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::
     const auto size = texture->getOriginalSize();
     irr::core::rect<irr::s32> srcRect(0, static_cast<irr::s32>(size.Height),
                                        static_cast<irr::s32>(size.Width), 0);
+
+    // T294: on the atlas path this MUST be ordered against the accumulated
+    // atlas quads, not drawn immediately — the popup background that the
+    // caller submitted a few calls earlier is still sitting in the queue
+    // and would be flushed over the top of it. Queue it as a command with
+    // its own texture; endFrame() replays the queue in submission order.
+    // Opaque white is the same colour draw2DImage falls back to when the
+    // `colors` argument is null (T275), so the blit is unchanged.
+    if (atlas_) {
+        atlasQuads_.push_back({rect, srcRect,
+            irr::video::SColor(255, 255, 255, 255), texture});
+        return;
+    }
+
+    // Fallback path (no atlas): drawRect/drawSprite are immediate too, so
+    // submission order is already draw order — keep the direct blit.
     driver_->draw2DImage(texture, rect, srcRect, nullptr, nullptr, true);
 }
 
 void UIRenderer::endFrame() {
     if (!driver_) return;
 
-    // Flush atlas quads
+    // Flush the queued draw commands IN SUBMISSION ORDER (T294).
     if (atlas_ && !atlasQuads_.empty()) {
-        auto* tex = atlas_->getTexture();
-        if (tex) {
+        auto* atlasTex = atlas_->getTexture();
+        {
             // Draw each quad using draw2DImage with source rect.
             // T275: the per-quad colour MUST be handed to the driver here.
             // This loop used to pass nullptr for draw2DImage's `colors`
@@ -138,8 +154,18 @@ void UIRenderer::endFrame() {
             // The overload takes a POINTER TO AN ARRAY of four corner colours
             // and this driver reads colors[0]; a single-element address is
             // what every other caller in the tree passes.
-            // Future optimization: batch into single draw2DImageBatch call
+            //
+            // T294: a command with its own texture (drawTexture — the T60
+            // paperdoll RTT) is replayed at its submission position, so a
+            // panel background submitted before it stays behind it and a
+            // slot border submitted after it stays in front. Commands with
+            // a null texture are atlas quads; if the atlas has no texture
+            // they are skipped, exactly as before.
+            // Future optimization: batch runs of atlas quads into a single
+            // draw2DImageBatch call.
             for (const auto& q : atlasQuads_) {
+                auto* tex = q.texture ? q.texture : atlasTex;
+                if (!tex) continue;
                 driver_->draw2DImage(tex, q.destRect, q.srcRect, nullptr,
                     &q.color, true);
             }

@@ -202,8 +202,13 @@ loading/animation suite (`RaceModelLoader` + `EQAnimatedMeshSceneNode`
 under an `EDT_NULL` device): no EQEmu server, no `DISPLAY`, auto-discovered
 by ctest. T54 (2026-08-10) deleted the inventory-window-paperdoll fixture
 it used to also hold (`InventoryModelViewTest`, unconditionally skipped —
-its subject, the paperdoll UI, was deleted in 0f25cb57 and never rebuilt;
-see `refactor/deferred.md`). Run it like any other discovered test:
+its subject was `WindowManager`/`InventoryWindow`, deleted in 0f25cb57).
+**The paperdoll itself was rebuilt by T60** on the static-panel UI:
+`eqt::ui::CharacterModelView` renders the player's live `EntityAppearance`
+into a 304x256 RTT and `renderInventoryPopup()` blits it at
+`InventoryLayout::paperdollRect()` — see `refactor/T60_paperdoll_restore.md`
+and, for the atlas-ordering defect that hid it in the real client until
+T294, `refactor/T294_paperdoll_atlas_verify.md`. Run it like any other discovered test:
 `./bin/test_inventory_model_view` or `ctest -R RaceModelAnimationHeadlessTest`.
 Static-panel UI input/hit-testing coverage (also new, T54) lives in
 `tests/test_static_ui_panels.cpp`, same auto-discovered/no-device-needed

@@ -1260,20 +1260,12 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
         chat(fmt::format("New UI skills: {}", skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
-        if (inventoryState_.activePopup == PopupType::Inventory) {
-            inventoryState_.activePopup = PopupType::None;
-        } else {
-            inventoryState_.activePopup = PopupType::Inventory;
-            // T60: popup opened — mark the doll dirty so it re-renders even
-            // if the appearance hasn't changed since it was last open (e.g.
-            // the RTT texture is stale, or this is the first open of the
-            // session and ensurePaperdollInitialized() hasn't run yet).
-            if (characterModelView_) {
-                characterModelView_->markDirty();
-            }
-        }
+        // T294: ONE body, shared with the `I` keybind — the toggle used to
+        // be written out here and IrrlichtRenderer::toggleInventory() (what
+        // `I` actually reaches) was an empty stub, so the key did nothing.
+        toggleInventory();
         chat(fmt::format("New UI inventory: {}",
-            inventoryState_.activePopup == PopupType::Inventory ? "OPEN" : "CLOSED"));
+            isInventoryOpen() ? "OPEN" : "CLOSED"));
     } else if (cmd == "/timestamp" || cmd == "/timestamps" || cmd == "/ts") {
         // T139: dead stub on both ends (confirmed T138) -- "ts" alias added
         // for consistency with the other aliases in this unit even though

@@ -2,6 +2,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/renderer_zone_merge.h"  // ForwardingTextureGuard (T124)
+#include "client/graphics/ui/character_model_view.h"  // T294: markDirty() on popup open
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
@@ -348,16 +349,39 @@ void IrrlichtRenderer::initDeferredGraphics() {
     }
 }
 
+// T294: these four were left as no-op stubs when U07c2 (0f25cb57) deleted
+// WindowManager, and were never re-pointed at the static-panel inventory
+// popup that replaced it. toggleInventory() is NOT dead code — the `I`
+// keybind reaches it (hotkeys.json "ToggleInventory": "I" ->
+// HotkeyAction::ToggleInventory -> RendererAction::ToggleInventory ->
+// renderer_frame.cpp's action drain), so `I` silently did nothing and the
+// popup was reachable only via /newinv. This is now THE body; the /newinv
+// handler calls straight into it so the two paths cannot drift.
 void IrrlichtRenderer::toggleInventory() {
-    // WindowManager removed — inventory toggle is a no-op
+    if (isInventoryOpen()) {
+        closeInventory();
+    } else {
+        openInventory();
+    }
 }
 
 void IrrlichtRenderer::openInventory() {
-    // WindowManager removed
+    inventoryState_.activePopup = PopupType::Inventory;
+    // T60: popup opened — mark the doll dirty so it re-renders even if the
+    // appearance hasn't changed since it was last open (e.g. the RTT
+    // texture is stale, or this is the first open of the session and
+    // ensurePaperdollInitialized() hasn't run yet).
+    if (characterModelView_) {
+        characterModelView_->markDirty();
+    }
+    LOG_DEBUG(MOD_UI, "IrrlichtRenderer: inventory popup OPEN");
 }
 
 void IrrlichtRenderer::closeInventory() {
-    // WindowManager removed
+    if (inventoryState_.activePopup == PopupType::Inventory) {
+        inventoryState_.activePopup = PopupType::None;
+    }
+    LOG_DEBUG(MOD_UI, "IrrlichtRenderer: inventory popup CLOSED");
 }
 
 void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
@@ -366,7 +390,7 @@ void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
 }
 
 bool IrrlichtRenderer::isInventoryOpen() const {
-    return false;  // WindowManager removed
+    return inventoryState_.activePopup == PopupType::Inventory;
 }
 
 void IrrlichtRenderer::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {

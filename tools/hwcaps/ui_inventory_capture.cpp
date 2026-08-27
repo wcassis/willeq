@@ -559,6 +559,26 @@ bool runAtlasPanelCapture(const std::string& outputDir, const std::string& eqe1D
         inv.activePopup = PopupType::Inventory;
         populateFull(inv);
 
+        // T294: this capture never set paperdollTexture, so the ATLAS path
+        // had zero coverage of the T60 paperdoll blit -- which is exactly
+        // where the blit was being painted over by the popup background
+        // (UIRenderer::drawTexture() drew immediately; every other UIRenderer
+        // call accumulated and flushed afterwards). A solid magenta stand-in
+        // is used rather than a real CharacterModelView: what this capture
+        // has to show is whether the blit SURVIVES the flush, and the doll's
+        // own appearance is already covered by runPaperdollCaptures() above.
+        irr::video::ITexture* dollStandIn = nullptr;
+        {
+            irr::video::IImage* dollImg = driver->createImage(
+                irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(304, 256));
+            if (dollImg) {
+                dollImg->fill(irr::video::SColor(255, 255, 0, 255));
+                dollStandIn = driver->addTexture("t294_paperdoll_standin", dollImg);
+                dollImg->drop();
+            }
+        }
+        inv.paperdollTexture = dollStandIn;
+
         auto drawAll = [&]() {
             ui.beginFrame();
             renderSpellGemPanel(ui, layout, gems);

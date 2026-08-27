@@ -64,10 +64,18 @@ public:
 
     /**
      * Draw an arbitrary external texture (e.g. a render-to-texture target)
-     * stretched to fill rect. Unlike drawSprite(), this is not atlas-backed
-     * and draws immediately rather than batching — for the one-off,
-     * per-frame-optional case of blitting a separately-rendered texture
-     * (T60: the inventory paperdoll). No-op if texture is null.
+     * stretched to fill rect — the one-off, per-frame-optional case of
+     * blitting a separately-rendered texture (T60: the inventory
+     * paperdoll). No-op if texture is null.
+     *
+     * T294: this used to draw IMMEDIATELY while drawRect()/drawSprite()
+     * only ACCUMULATED, so on the atlas path every quad submitted before
+     * the blit was flushed in endFrame() ON TOP of it. The inventory
+     * popup's own background is submitted before the paperdoll, so the
+     * live atlas-backed client painted the doll and then covered it —
+     * see review/T294/before/. The blit now enters the SAME ordered
+     * command list as the atlas quads, so submission order is draw order
+     * for every UIRenderer call.
      */
     void drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::ITexture* texture);
 
@@ -82,13 +90,18 @@ private:
     UIAtlas* atlas_ = nullptr;
     TextBatch* textBatch_ = nullptr;
 
-    // For atlas path: accumulated sprite quads
-    struct SpriteQuad {
+    // For atlas path: accumulated draw commands, flushed in SUBMISSION
+    // ORDER by endFrame(). `texture == nullptr` means "the atlas texture"
+    // (the overwhelmingly common case — drawRect/drawSprite); a non-null
+    // texture is an external blit (drawTexture) that breaks the atlas run
+    // so that later quads land on top of it and earlier quads under it.
+    struct DrawCmd {
         irr::core::rect<irr::s32> destRect;
         irr::core::rect<irr::s32> srcRect;
         irr::video::SColor color;
+        irr::video::ITexture* texture = nullptr;
     };
-    std::vector<SpriteQuad> atlasQuads_;
+    std::vector<DrawCmd> atlasQuads_;
 };
 
 } // namespace Graphics

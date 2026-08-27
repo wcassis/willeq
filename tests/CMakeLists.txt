@@ -2000,6 +2000,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_renderer_command_echo)
 ENDIF()
 
+# T294: the `I` keybind must reach a working IrrlichtRenderer::toggleInventory()
+# (it was an empty stub left by U07c2, so the inventory popup was reachable
+# only via /newinv). Drives the real RendererEventReceiver + drainActions() +
+# processPlayerInput() on a bare, never-Init()'d IrrlichtRenderer -- same
+# no-device idiom as test_spell_gem_key_race below.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_inventory_toggle
+        test_inventory_toggle.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_inventory_toggle PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_inventory_toggle GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_inventory_toggle)
+ENDIF()
+
 # T235: spell-gem hotkeys reach the game thread -- drives the real
 # RendererEventReceiver + IrrlichtRenderer::processChatInput() (bare, no
 # device, friend access) and asserts GraphicsInputHandler still sees the

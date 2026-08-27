@@ -20,6 +20,7 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/inventory_layout.h"  // T294: paperdollRect()
 #include "client/graphics/text_batch.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -269,4 +270,125 @@ TEST_F(UIAtlasPixelTest, SpellGemWithoutMarkerIsNotGold) {
     EXPECT_LT(static_cast<int>(got.getRed()), 200)
         << "unmarked gem A3 came out gold (got " << (int)got.getRed() << ","
         << (int)got.getGreen() << "," << (int)got.getBlue() << ")";
+}
+
+// ---------------------------------------------------------------------------
+// T294: the inventory paperdoll (T60) vs the atlas flush.
+//
+// UIRenderer::drawTexture() used to draw IMMEDIATELY while every other
+// UIRenderer call only ACCUMULATED into atlasQuads_. renderInventoryPopup()
+// submits the popup background BEFORE the paperdoll blit, so on the atlas
+// path -- the only path the real client runs -- the background was flushed in
+// endFrame() ON TOP of the doll and the doll was invisible. Confirmed live
+// before the fix (review/T294/before/01_inventory_open_atlas.png: the popup's
+// centre is a solid slab).
+//
+// Every paperdoll capture in the tree until now was taken through the
+// ATLAS-LESS fallback (ui.init(driver, nullptr, ...)), where drawTexture()
+// and drawRect() are both immediate and the ordering is accidentally
+// correct -- which is why nothing caught it.
+//
+// These tests stand a solid-magenta texture in for the RTT (the ordering is
+// what is under test, not the character model) and assert it survives to the
+// framebuffer at the exact rect renderInventoryPopup() blits it to.
+class UIAtlasPaperdollTest : public UIAtlasPixelTest {
+protected:
+    irr::video::ITexture* makeSolidTexture(irr::video::SColor color, const char* name) {
+        irr::video::IImage* img = driver_->createImage(
+            irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(304, 256));
+        if (!img) return nullptr;
+        img->fill(color);
+        irr::video::ITexture* tex = driver_->addTexture(name, img);
+        img->drop();
+        return tex;
+    }
+};
+
+TEST_F(UIAtlasPaperdollTest, PaperdollSurvivesTheAtlasFlush) {
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    const irr::video::SColor kMagenta(255, 255, 0, 255);
+    irr::video::ITexture* doll = makeSolidTexture(kMagenta, "t294_doll_atlas");
+    ASSERT_NE(doll, nullptr);
+
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    inv.paperdollTexture = doll;
+
+    const irr::core::rect<irr::s32> r = InventoryLayout::paperdollRect(layout_);
+    const irr::s32 cx = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+    const irr::s32 cy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+
+    irr::video::SColor got = renderAndSample(ui, cx, cy, [&](UIRenderer& rr) {
+        renderInventoryPopup(rr, layout_, inv);
+    });
+
+    // Before the fix this sampled the popup background instead: a near-black
+    // slab (the panel_background atlas entry with its alpha companion
+    // unbound, T279), i.e. red and blue both near zero.
+    EXPECT_GT(static_cast<int>(got.getRed()), 150)
+        << "paperdoll blit did not survive the atlas flush (got "
+        << (int)got.getRed() << "," << (int)got.getGreen() << "," << (int)got.getBlue() << ")";
+    EXPECT_GT(static_cast<int>(got.getBlue()), 150);
+    EXPECT_LT(static_cast<int>(got.getGreen()), 100);
+}
+
+// The doll must not leak outside its own rect -- a "fix" that flushed the
+// blit last, or stretched it over the popup, would pass the test above.
+TEST_F(UIAtlasPaperdollTest, PaperdollStaysInsideItsRect) {
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    irr::video::ITexture* doll =
+        makeSolidTexture(irr::video::SColor(255, 255, 0, 255), "t294_doll_bounds");
+    ASSERT_NE(doll, nullptr);
+
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    inv.paperdollTexture = doll;
+
+    const irr::core::rect<irr::s32> r = InventoryLayout::paperdollRect(layout_);
+    // A point inside the popup but well left of the paperdoll rect.
+    const irr::s32 x = r.UpperLeftCorner.X - 12;
+    const irr::s32 y = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+    ASSERT_GT(x, layout_.centerPopup.UpperLeftCorner.X);
+
+    irr::video::SColor got = renderAndSample(ui, x, y, [&](UIRenderer& rr) {
+        renderInventoryPopup(rr, layout_, inv);
+    });
+
+    EXPECT_FALSE(got.getRed() > 150 && got.getBlue() > 150 && got.getGreen() < 100)
+        << "paperdoll bled outside paperdollRect() (got " << (int)got.getRed() << ","
+        << (int)got.getGreen() << "," << (int)got.getBlue() << ")";
+}
+
+// The atlas-less fallback path was already correct; pin it so the ordered
+// command list cannot regress the path the capture tool and the static-panel
+// tests use.
+TEST_F(UIAtlasPaperdollTest, PaperdollSurvivesOnTheFallbackPath) {
+    UIRenderer ui;
+    ui.init(driver_, nullptr, &textBatch_);
+
+    irr::video::ITexture* doll =
+        makeSolidTexture(irr::video::SColor(255, 255, 0, 255), "t294_doll_fallback");
+    ASSERT_NE(doll, nullptr);
+
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    inv.paperdollTexture = doll;
+
+    const irr::core::rect<irr::s32> r = InventoryLayout::paperdollRect(layout_);
+    const irr::s32 cx = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+    const irr::s32 cy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+
+    irr::video::SColor got = renderAndSample(ui, cx, cy, [&](UIRenderer& rr) {
+        renderInventoryPopup(rr, layout_, inv);
+    });
+
+    EXPECT_GT(static_cast<int>(got.getRed()), 150)
+        << "paperdoll blit lost on the fallback path (got " << (int)got.getRed() << ","
+        << (int)got.getGreen() << "," << (int)got.getBlue() << ")";
+    EXPECT_GT(static_cast<int>(got.getBlue()), 150);
+    EXPECT_LT(static_cast<int>(got.getGreen()), 100);
 }
