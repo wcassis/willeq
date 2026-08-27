@@ -18,6 +18,28 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+## ⚠ AUDIT 2026-08-27 — the refactor programme IS complete; what remains is a defect list
+
+A full audit of every batch plan answered the owner's question "were the partially completed refactors all closed?": **YES.** Batches A/B/C/D/E/F/G/H/L/Q/R/S/U/T are COMPLETE; only two threads are genuinely partial — **S2 residue** (3 items) and **Z5.3** (empty-draw measurement, `progress.md:276`). Batch E is done but UNTRACEABLE: `progress.md:48-72` marks every unit `done` with **blank commit columns**, and E01-E09 appear in ZERO commit subjects across 2242 searched — verified shipped by artifact instead (`eqe1_format.h`, `eqe1_loader.h`, `tools/eqe1_builder.cpp`, `--eqe1-path`).
+
+**NEWLY SURFACED CLASS-A DEFECTS (not previously on this board).** These are live paths, each with a file:line:
+1. **UCS/chat server NEVER CONNECTS** — `eq_login_world.cpp:834` `// TODO: Fix UCS implementation to use correct EQStream API`, `ConnectToUCS(...)` commented out inside the live `WorldProcessSetChatServer` handler. The whole cross-zone chat feature is dead.
+2. **CRC validation disabled on EVERY zone connect** — `eq.cpp:718` `zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is fixed`.
+3. **Autorun key is a live no-op** — `eq_action_handler.cpp:142` (bound at `input_action_bridge.cpp:72`).
+4. **`InteractWorldObject` keybind always fails** — `action_dispatcher.cpp:523`.
+5. **`ReplyToTell` keybind returns a sentinel and does nothing** — `action_dispatcher.cpp:688`.
+6. **Guild rank HARDCODED on the wire** — `eq_guild.cpp:54,105` (`officer = 2`, `leaderstatus = 2`), reached from `/guildinvite` and `/guildremove`.
+7. **`/mem <name>` partial-name search is exact-match only** — `spell_database.cpp:180`.
+8. **Skill combat/position gates unenforced** — `skill_manager.cpp:273,284,734,758`; Backstab's position check ALWAYS returns true.
+9. **Group spells target by PROXIMITY, not group membership** — `spell_type_processor.cpp:246,278`.
+10. **`GraphicalMode::initialize` falls through to the console renderer for Irrlicht modes** — `graphical_mode.cpp:41`.
+11. `Application::setupHotbarCallback` body is empty after the WindowManager removal and is still called twice at startup — `application.cpp:1885`.
+12. RDP remote input ignores caps lock — `renderer_rdp.cpp:159`.
+
+**TWO UNMERGED BRANCHES ARE 300 COMMITS AHEAD AND WERE NEVER AUDITED** by the 2026-08-11 survey: `task/eqcpp-zoneprocess-track-b-remaining` and `task/eqemu-zone-line-transition-scenario`, both branching from `4b5f2c8d`/`9564e18f`, pre-dating the entire lettered programme. Five other unmerged branches are correctly parked (self-refuted or superseded).
+
+**Reachability state is clean:** `kBlockedHandlerMethods` is EMPTY; only `SpellbookStateIntent` remains blocked (waiting on the spellbook open/close pose feature); `m_character` is the sole permanent duplicate-store exception. Not swept by T264: the InputAction/hotkey axis, and `IOutputRenderer::updateCurrentTargetHP` (caller-less at `console_renderer.cpp:311`, `null_renderer.cpp:69`).
+
 - **⚠ PI HYGIENE (T289, 2026-08-26): the Pi's `/tmp/config` and `/tmp/data` were STALE** — old `race_models.json`, an Aug-23 `willeq.db`, and **no `data/eqe1_texture_index.json` at all**. A timed run against them would have measured a client with no T207 index and no late-open path, silently. **Re-stage config+data from the slot before ANY timed Pi run.**
 - **⚠ `CmaFree` reached 0 kB in all four T289 runs including the CONTROL legs** — the P02 EQE1/ETC1 CMA leak is real, unchanged and NOT composite-related. New fact: **`drop_caches` recovers CMA on this kernel** (11,184 kB after 4 days uptime → 69 MB), a reboot is not required.
 - **`bridgeQueue_` is a plumbing fix, NOT a decision** (corrected 2026-08-26): the chat-typing half (`pendingKeyEvents_`) was resolved by T241 (render-thread-only now). What remains is `bridgeQueue_` — decoded HOTKEY actions `push_back` on the render thread, `swap`-drained on the game thread by `GraphicsInputHandler`, no mutex; a reallocating push against the swap is heap corruption. Ownership is already settled by the architecture (render decodes, game executes); it just needs the queue behind the mutex `GameStateBridge` already has, or a real SPSC queue. Same for the two-word mouse-delta read and `keyWasPressed_[]`. Class A.
