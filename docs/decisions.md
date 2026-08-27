@@ -622,3 +622,24 @@ silently clamping the display.
   from T69/T80 — a budget on a number nothing measures would be decoration.
 - **Non-OrangePi presets.** Voodoo1/2/TNT keep 0 = "no budget configured"; the
   gate skips and says so rather than asserting `usage <= 0`.
+
+## 2026-08-27 — Composite entities stay OFF on the orangepi (Will, after T289's measurement)
+
+**Decision:** `enableCompositeEntities` remains **false** for the `orangepi`
+preset. Unchanged from decision #3 — but the *reason* has changed and the old
+one must not be cited again.
+
+**What changed:** T284 deleted the eager scan that mapped the whole composite
+directory (1506 packs / 4.68 GB = **1.49x the entire 32-bit ARM user address
+space**), which is what actually threw `std::bad_alloc` in T195. T289 measured
+the result on the Pi: VmPeak 3,128 MB -> 575 MB (18.4% of the ceiling), RSS
++13.4 MB with composites ON, four clean runs, no allocation failure.
+
+**So the address-space argument is dead, and composites are OFF by choice, not
+by necessity.** The remaining cost is resident: +13.4 MB on a 483 MB board for
+one zone's seven composite races, and RSS now scales with the number of
+distinct resident composite races — which does not survive multiplication in a
+race-dense zone. Will chose not to spend that budget.
+
+**Do not "fix" this by re-enabling it, and do not repeat the T195 rationale.**
+Superseded wording still sits in `src/client/graphics/CLAUDE.md:127`.
