@@ -672,3 +672,19 @@ combat both); the bone-attached weapon nodes are the held items. **Will judges
 the visual result — no unit may self-declare it acceptable** (protocol rule,
 and T76's README calling an unrecognizable mass "recognizable" is exactly the
 failure this guards against).
+
+## 2026-08-27 — CRC validation bypass and UCS: Will's rulings
+
+- **CRC validation bypass: NOT a work item.** `eq.cpp:718` sets
+  `zone_opts.skip_crc_validation = true` with a `// TODO: Remove after CRC bug
+  is fixed`. Will has ruled this out of scope; leave it and do not re-raise it.
+- **UCS/chat server: DEFERRED, CONDITIONALLY.** `ConnectToUCS(...)` is
+  commented out in the live `WorldProcessSetChatServer` handler
+  (`eq_login_world.cpp:834`). Will: *"ignore the UCS/chat server for now **as
+  long as zone-wide and cross-zone communication is working**."*
+  **That condition is not yet established** — every two-client chat probe in
+  the record (T222 `/reply`, T243 `/emote`, T239 macro) put both clients in
+  the SAME zone. T291 is verifying it (two clients in DIFFERENT zones, across
+  say/shout/ooc/auction/tell/guild/group). **If a channel turns out to be
+  broken cross-zone, the deferral does not cover it and it comes back as a
+  defect** — the ruling was conditional, not blanket.
