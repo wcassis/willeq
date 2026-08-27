@@ -18,6 +18,13 @@
  * There is no viewmodel pass (T296's, retired here), no arm-bone geometry
  * filter (T74's, deleted here), and no standoff (T76's, removed here).
  *
+ * THE HIDING MECHANISM IS DELIBERATELY ISOLATED. Everything that hides the
+ * player lives behind two names: firstPersonNearPlaneFromBodyRadius() here,
+ * and IrrlichtRenderer::applyFirstPersonPlayerHiding() (its only caller
+ * besides the tests). T300 Leg A may yet report that the official client uses
+ * per-object culling rather than a near plane; if it does, replacing the
+ * mechanism is those two bodies, and the camera formula below is untouched.
+ *
  * WHY THIS IS A HEADER, AND WHY THE MATH IS PURE: the first-person camera
  * formula has been duplicated four times across this codebase (T74, T75,
  * T76, T295 each found another copy), and every duplicate silently discarded
@@ -53,31 +60,61 @@ constexpr float kFirstPersonPitchDownDegrees = 3.65f;
 // ~88 degrees horizontal -- far wider than the official client's 62.8.
 constexpr float kFirstPersonHorizontalFovDegrees = 62.8f;
 
-// The near clip plane, in EQ units from the eye. THIS IS THE ONE LEVER THAT
-// HIDES THE PLAYER'S BODY; there is no geometry filter and no hidden node
-// behind it.
+// THE NEAR CLIP PLANE IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY; there is
+// no geometry filter and no hidden node behind it. It is NOT a fixed distance:
+// races are all different sizes, and shrink/grow effects change a model's
+// scale at RUNTIME, so a constant in EQ units is wrong the moment either
+// applies. (Measured statically, this unit: a Dwarf male's resting body
+// reaches 7.09 units from his own eye while a Human female's reaches 6.14 --
+// no single number serves both, before any spell is cast.)
 //
-// *** PLACEHOLDER, NOT A MEASUREMENT. *** T300 Leg A is measuring this live
-// off the truncation cut across a two-hander's swing arc. Until that number
-// lands, this is the smallest value the T299 evidence certainly supports:
+// So the plane is DERIVED per frame from the player's own current model:
 //
-//   LOWER BOUND, hard: > 6.75. Nothing of the body renders with the camera
-//   aimed straight down at feet T298 measured 6.75 units below the eye, so
-//   the plane is beyond the far side of the standing body.
-//   UPPER BOUND, soft: less than the reach of an extended weapon or kick,
-//   because those DO render. T299 could not size that reach; a halberd's
-//   blade is the longest lever and Leg A is solving for it.
+//     nearPlane = restRadius(current model, current scale) * margin
 //
-// 7.0 is chosen as a documented placeholder just above the hard lower bound.
-// Replace it with Leg A's measured value; do not tune it by eye.
+// where restRadius is the furthest the player's own geometry gets from his eye
+// point (EntityRenderer::getPlayerBodyRestRadius(), measured off the live
+// scene node so it tracks whatever scale is applied to it), and the constant
+// that survives is this DIMENSIONLESS margin.
 //
-// Cost, stated honestly: a 7-unit near plane is large (a Human male is 6.70
-// units tall), so world geometry within 7 units of the eye -- a wall the
-// player stands against, the ground when looking steeply down -- will clip
-// away. That is a property of the mechanism the official client uses, not a
-// defect introduced here, but the live gate (Leg C) is what judges it. It is
-// applied ONLY in first person; Follow/Free keep the world's 1.0 plane.
-constexpr float kFirstPersonNearPlaneUnits = 7.0f;
+// *** THE MARGIN IS A PLACEHOLDER, NOT A MEASUREMENT, AND THE DERIVATION
+// ITSELF IS UNVALIDATED. *** T300 Leg A is determining whether the official
+// client's hiding is (a) one global near plane, (b) a plane derived from model
+// size, or (c) player-specific culling that is not a near plane at all. Only
+// (b) is what this code assumes. Nothing here has been seen on a screen; the
+// live gate (Leg C) is what judges it.
+//
+// What the shipped evidence does support:
+//   LOWER BOUND, hard: the plane must exceed the resting body's reach, or the
+//   player sees himself -- T299 saw nothing of the body at ANY pitch,
+//   including aimed straight down at feet 6.75 units below the eye.
+//   UPPER BOUND, soft: it must stay inside the reach of an extended weapon or
+//   kick, because those DO render.
+// 1.02 sits just above the hard bound (for a Human male: rest radius ~6.90
+// from the base mesh's bounding box, plane ~7.04) and below the reach of a
+// held weapon, which hangs off a separate bone-attached node further out than
+// any body vertex. Replace it with Leg A's measured value; do not tune by eye.
+constexpr float kFirstPersonNearPlaneMargin = 1.02f;
+
+// Used only while the player's model has not loaded yet, so the plane is never
+// zero or negative. Human-male-derived; the moment a model exists the derived
+// value takes over.
+constexpr float kFirstPersonNearPlaneFallbackUnits = 7.0f;
+
+// The derivation, in one place so tests and production cannot disagree.
+// restRadiusWorldUnits <= 0 means "no model yet" -> the fallback.
+//
+// Cost of the mechanism, stated honestly: for a human this lands near 7 EQ
+// units, which is large against a 6.70-unit character -- world geometry within
+// that distance (a wall the player stands against, the ground when looking
+// steeply down) clips away in first person. That is a property of the
+// mechanism the official client appears to use, not something invented here,
+// and it applies in first person ONLY. Whether it is acceptable is Will's call
+// on the live gate.
+inline float firstPersonNearPlaneFromBodyRadius(float restRadiusWorldUnits) {
+    if (!(restRadiusWorldUnits > 0.0f)) return kFirstPersonNearPlaneFallbackUnits;
+    return restRadiusWorldUnits * kFirstPersonNearPlaneMargin;
+}
 
 // The world (non-first-person) near plane, restored when leaving first
 // person. Matches setupCamera()'s original setNearValue(1.0f).

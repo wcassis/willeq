@@ -218,7 +218,7 @@ public:
     // were DELETED, along with T74's arm-bone index filter. First person
     // draws this node normally, unfiltered -- the camera sits at the eyes
     // and a large near clip plane hides the body (irrlicht_renderer.cpp,
-    // kFirstPersonNearPlaneUnits). See
+    // applyFirstPersonPlayerHiding()). See
     // refactor/T300_leg_b_implementation.md; do not reintroduce a
     // first-person geometry filter.
 

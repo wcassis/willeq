@@ -3015,6 +3015,51 @@ float EntityRenderer::getPlayerEyeHeightAboveNodeOrigin() const {
     return 3.65f;
 }
 
+float EntityRenderer::getPlayerBodyRestRadius() const {
+    // T300. Measured from the base mesh's bounding box, not per vertex: the
+    // box's furthest corner from the eye is a tight, conservative
+    // over-estimate of the furthest vertex (Human male: 6.90 from the box vs
+    // 6.87 measured across every vertex of the idle animation --
+    // FirstPersonNearPlaneSwallowsTheBody_Headless asserts that relationship
+    // for every race with model data). Conservative is the right side to err
+    // on: the plane must clear the body, and this runs every frame.
+    //
+    // The BASE mesh box is used deliberately, not the per-instance pose box.
+    // The rest radius must be STABLE: a pose-tracking radius would grow during
+    // a swing and push the plane out over exactly the geometry that has to
+    // stay visible. The base box spans every animation frame, which is why the
+    // proxy over-reports (Human male 7.38 vs a 6.87 furthest idle vertex,
+    // Troll male 8.66 vs 6.88) -- that slack is the price of stability and of
+    // an O(1) per-frame check, and it is measured per race in
+    // FirstPersonNearPlaneSwallowsTheBody_Headless.
+    for (const auto& [id, visual] : entities_) {
+        if (!visual.isPlayer || !visual.isAnimated || !visual.animatedNode) continue;
+        EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
+        if (!eqMesh) continue;
+        const irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
+        const float eyeY = bbox.MaxEdge.Y;
+        if (!(eyeY > 0.0f)) continue;
+
+        float worst = 0.0f;
+        for (int corner = 0; corner < 8; ++corner) {
+            const float cx = (corner & 1) ? bbox.MaxEdge.X : bbox.MinEdge.X;
+            const float cy = (corner & 2) ? bbox.MaxEdge.Y : bbox.MinEdge.Y;
+            const float cz = (corner & 4) ? bbox.MaxEdge.Z : bbox.MinEdge.Z;
+            const float dy = cy - eyeY;
+            worst = std::max(worst, std::sqrt(cx * cx + dy * dy + cz * cz));
+        }
+
+        // The LIVE node scale -- this is the term that must track shrink/grow
+        // and the server's spawn size, not the base mesh. Uniform scale is
+        // what every writer in this file applies (setScale(s, s, s)); take the
+        // largest component so a non-uniform scale cannot under-report.
+        const irr::core::vector3df scale = visual.animatedNode->getScale();
+        const float s = std::max({std::fabs(scale.X), std::fabs(scale.Y), std::fabs(scale.Z)});
+        return worst * (s > 0.0f ? s : 1.0f);
+    }
+    return 0.0f;
+}
+
 void EntityRenderer::setCurrentZone(const std::string& zoneName) {
     if (raceModelLoader_) {
         raceModelLoader_->setCurrentZone(zoneName);

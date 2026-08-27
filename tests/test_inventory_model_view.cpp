@@ -33,7 +33,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/entity_renderer.h"  // EntityAppearance
-#include "client/graphics/first_person_camera.h"  // T300: kFirstPersonNearPlaneUnits
+#include "client/graphics/first_person_camera.h"  // T300: the near-plane derivation
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/willeq_database.h"
@@ -419,12 +419,21 @@ TEST_F(RaceModelAnimationHeadlessTest, CreateAnimatedNodeWithEquipment_Headless)
 TEST_F(RaceModelAnimationHeadlessTest, FirstPersonNearPlaneSwallowsTheBody_Headless) {
     // The mechanism: eye at the top of the head (the production formula,
     // EntityRenderer::getPlayerEyeHeightAboveNodeOrigin() == base mesh
-    // bbox.MaxEdge.Y), near clip plane kFirstPersonNearPlaneUnits. The
-    // player pitches the camera freely with the mouse, and T299 observed
-    // nothing of the body at ANY pitch including straight down at the feet,
-    // so the requirement is RADIAL: every vertex of the player's own body
-    // must lie within kFirstPersonNearPlaneUnits of the eye point, because
-    // any of them can be brought onto the view axis by looking at it.
+    // bbox.MaxEdge.Y), near clip plane DERIVED from the player's own model
+    // (firstPersonNearPlaneFromBodyRadius(restRadius)). The player pitches the
+    // camera freely with the mouse, and T299 observed nothing of the body at
+    // ANY pitch including straight down at the feet, so the requirement is
+    // RADIAL: every vertex of the player's own body must lie inside the plane,
+    // because any of them can be brought onto the view axis by looking at it.
+    //
+    // Two things are checked per race, against real S3D mesh data:
+    //   1. the plane derived from THAT race's model clears THAT race's resting
+    //      body -- which a fixed distance could not do (a Dwarf male's resting
+    //      body reaches 7.09 units and a Human female's 6.14);
+    //   2. the cheap bounding-box radius production computes every frame
+    //      (EntityRenderer::getPlayerBodyRestRadius()) is never SMALLER than
+    //      the true furthest vertex -- if it under-reports, the derived plane
+    //      lands inside the body and the player sees himself.
     struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
     const RaceCase races[] = {
         {1, 0, "Human male"},        // the race T298/T299 measured the client on
@@ -443,10 +452,11 @@ TEST_F(RaceModelAnimationHeadlessTest, FirstPersonNearPlaneSwallowsTheBody_Headl
     const char* kIdleAnim = "l01";
     const char* attackAnims[] = {"c06", "c02", "c03", "c04", "c08"};
 
-    std::cout << "\nT300 first-person near plane vs body extent (radial from the eye),"
-                 " plane = " << EQT::Graphics::kFirstPersonNearPlaneUnits << ":\n";
-    std::cout << "  race | eyeAboveNodeOrigin | max radial AT REST (must be < plane)"
-                 " | max radial IN ATTACK (may exceed -- that is the visible swing)\n";
+    std::cout << "\nT300 first-person near plane, DERIVED per model (margin "
+              << EQT::Graphics::kFirstPersonNearPlaneMargin << " x rest radius):\n";
+    std::cout << "  race | eye | max radial AT REST (must be < plane) | bbox-corner radius"
+                 " (the per-frame proxy) | derived plane | max radial IN ATTACK"
+                 " (may exceed -- that is the visible swing)\n";
 
     bool humanMaleCovered = false;
     int racesCovered = 0;
@@ -489,26 +499,57 @@ TEST_F(RaceModelAnimationHeadlessTest, FirstPersonNearPlaneSwallowsTheBody_Headl
         float attackRadial = 0.0f;
         for (const char* code : attackAnims) attackRadial = std::max(attackRadial, measure(code));
 
+        // Reproduce EntityRenderer::getPlayerBodyRestRadius() exactly (node
+        // scale 1 here): the furthest bounding-box corner from the eye.
+        const irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
+        float bboxRadius = 0.0f;
+        for (int corner = 0; corner < 8; ++corner) {
+            const float cx = (corner & 1) ? bbox.MaxEdge.X : bbox.MinEdge.X;
+            const float cy = (corner & 2) ? bbox.MaxEdge.Y : bbox.MinEdge.Y;
+            const float cz = (corner & 4) ? bbox.MaxEdge.Z : bbox.MinEdge.Z;
+            const float dy = cy - eye;
+            bboxRadius = std::max(bboxRadius, std::sqrt(cx*cx + dy*dy + cz*cz));
+        }
+        const float derivedPlane =
+            EQT::Graphics::firstPersonNearPlaneFromBodyRadius(bboxRadius);
+
         ASSERT_GT(restRadial, 0.0f) << rc.label << ": no vertices measured";
-        const bool swallowed = restRadial < EQT::Graphics::kFirstPersonNearPlaneUnits;
-        std::cout << "  " << rc.label << " | " << eye << " | " << restRadial
+        const bool swallowed = restRadial < derivedPlane;
+        std::cout << "  " << rc.label << " | eye " << eye << " | rest " << restRadial
+                  << " | bbox radius " << bboxRadius << " | derived plane " << derivedPlane
                   << (swallowed ? " (swallowed)" : " (NOT SWALLOWED -- body on screen)")
-                  << " | " << attackRadial << "\n";
+                  << " | attack " << attackRadial << "\n";
         ++racesCovered;
+
+        // (1) The plane derived from THIS race's model must clear THIS race's
+        // resting body -- asserted for EVERY race, which is exactly what a
+        // fixed distance could not deliver.
+        EXPECT_LT(restRadial, derivedPlane)
+            << rc.label << ": the near plane derived from this model (" << derivedPlane
+            << ") does not clear its own resting body (" << restRadial << "). The plane is "
+               "the ONLY thing hiding the player in first person -- if this fails, the body "
+               "is on screen. The margin lives in include/client/graphics/first_person_camera.h.";
+
+        // (2) The cheap per-frame bbox proxy must not UNDER-report the true
+        // vertex extent, or the derivation is unsafe.
+        EXPECT_GE(bboxRadius, restRadial)
+            << rc.label << ": getPlayerBodyRestRadius()'s bounding-box proxy (" << bboxRadius
+            << ") is smaller than the furthest actual vertex at rest (" << restRadial
+            << "). The proxy must be conservative.";
+
         const float maxRadial = restRadial;
 
         if (rc.raceId == 1 && rc.gender == 0) {
             humanMaleCovered = true;
-            // The one hard assertion. T298 measured the official client's eye
-            // at 6.75 +/- 0.20 above the server z on a human, and T299 saw no
-            // body geometry at any pitch; a plane that does not clear a human
-            // male's own vertices cannot reproduce that.
-            EXPECT_LT(maxRadial, EQT::Graphics::kFirstPersonNearPlaneUnits)
-                << "kFirstPersonNearPlaneUnits (" << EQT::Graphics::kFirstPersonNearPlaneUnits
-                << ") does not swallow a Human male's body (max radial vertex distance "
-                << maxRadial << " from the eye). The near plane is the ONLY thing hiding "
-                   "the player in first person -- if this fails, the body is on screen. "
-                   "Change the constant in include/client/graphics/first_person_camera.h.";
+            // The reference race: T298 measured the official client's eye at
+            // 6.75 +/- 0.20 above the server z on a human, and T299 saw no body
+            // geometry at any pitch. The derived plane must land above that
+            // hard lower bound for this race specifically.
+            EXPECT_GT(derivedPlane, 6.75f)
+                << "the plane derived for a Human male (" << derivedPlane << ") is inside "
+                   "T299's hard lower bound of 6.75 -- the client showed nothing of the body "
+                   "with the camera aimed straight down at feet that far below the eye.";
+            (void)maxRadial;
         }
         node->remove();
     }
@@ -518,11 +559,15 @@ TEST_F(RaceModelAnimationHeadlessTest, FirstPersonNearPlaneSwallowsTheBody_Headl
            "race the official-client measurement was taken on";
     EXPECT_GT(racesCovered, 0);
 
-    // Deliberately NOT asserted for the other races: a single fixed plane is
-    // a human-sized number, and a Troll's body reaches further from its own
-    // eye than a human's does. Whether the official client scales the plane
-    // per race is unmeasured (T300 Leg A measures a human two-hander). The
-    // table above is the evidence for that open question; see
+    // NOTE the figures above are at node scale 1. Production multiplies the
+    // rest radius by the LIVE scene node scale, so the server's spawn size
+    // field and any runtime shrink/grow ride through the same derivation
+    // without changing anything measured here.
+    //
+    // UNVALIDATED: that the official client derives its hiding from model size
+    // at all is a hypothesis, not a measurement. T300 Leg A is determining
+    // whether the mechanism is one global plane, a size-derived plane, or
+    // per-object culling that is not a near plane. See
     // refactor/T300_leg_b_implementation.md.
 }
 

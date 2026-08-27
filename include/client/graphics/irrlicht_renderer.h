@@ -2169,6 +2169,24 @@ private:
     // cameraMode_.
     void applyCameraProjectionForMode();
 
+    // T300: THE HIDING SEAM. Everything that hides the player's own body in
+    // first person is in this one body. It derives the near clip plane from
+    // the player's CURRENT model size (EntityRenderer::getPlayerBodyRestRadius()
+    // x kFirstPersonNearPlaneMargin) and re-applies it whenever that value
+    // moves -- so a shrink or grow landing mid-first-person moves the plane
+    // with it. Called every frame before the scene draw, and on mode changes.
+    // A complete no-op outside first person.
+    //
+    // If T300 Leg A reports that the official client hides the player by
+    // per-object culling rather than a near plane, this body is what gets
+    // replaced; the camera formula and everything else stays.
+    void applyFirstPersonPlayerHiding();
+
+    // Last near-plane value applied by applyFirstPersonPlayerHiding(), so the
+    // per-frame call only touches the camera when the model actually changed
+    // size. 0 = nothing applied yet / not in first person.
+    float firstPersonAppliedNearPlane_ = 0.0f;
+
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {
         uint32_t dropId;

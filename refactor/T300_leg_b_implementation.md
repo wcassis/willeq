@@ -86,7 +86,7 @@ dependency), read by exactly one `.cpp`
 camera position = (playerX_, playerZ_ + eyeAboveNodeOrigin + playerConfig_.eyeHeight, playerY_)
 look direction  = heading (playerHeading_/512 * 2pi), pitched (playerPitch_ - 3.65) degrees
 horizontal FOV  = 62.8 degrees   (set as vertical via the camera's aspect ratio)
-near plane      = kFirstPersonNearPlaneUnits, first person ONLY
+near plane      = derived from the player's own model size, first person ONLY (section 4)
 ```
 
 | term | before | after | source |
@@ -96,7 +96,7 @@ near plane      = kFirstPersonNearPlaneUnits, first person ONLY
 | eye | `playerZ_ + 3.6527` | unchanged (see §3) | T298 A3: 6.75 +/- 0.20 above server z |
 | fixed pitch | 12.0 deg down | **3.65 deg down** | T298 A3: 3.65 +/- 0.15 |
 | hFOV | never set -> Irrlicht default 72 deg **vertical** ~= **88 deg horizontal** at 4:3 | **62.8 deg horizontal** (49.2 vertical at 4:3) | T298 A3: 62.8 +/- 0.3 |
-| near plane | 1.0 (world default) | `kFirstPersonNearPlaneUnits` in first person; 1.0 restored on exit | T300 Leg A (pending) |
+| near plane | 1.0 (world default) | derived per frame from the player's model in first person; 1.0 restored on exit | section 4; T300 Leg A (pending) |
 
 `applyCameraProjectionForMode()` is the new near-plane/FOV owner. It is called
 from `setCameraMode()`, `cycleCameraMode()` and from
@@ -149,57 +149,104 @@ plane must swallow — fable already agrees to 0.05. The 0.30 belongs to whoever
 fixes ground snapping; it moves every entity in the world and is not a camera
 change.
 
-## 4. The near plane
+## 4. The near plane — DERIVED from the player's current model, not a constant
 
-**Parameter: `EQT::Graphics::kFirstPersonNearPlaneUnits`**, in
-`include/client/graphics/first_person_camera.h`.
-**Placeholder value: 7.0 EQ units. NOT a measurement.** Leg A is measuring it
-live off a two-hander's truncation cut; relaying that number is a one-line edit
-to that constant plus re-running the two tests named below.
+**Revised after the coordinator's follow-up; Will's objection was correct.** A
+near plane expressed as a fixed distance in EQ units is wrong twice over:
+races are all different sizes (my own static table already showed a Dwarf male
+poking through a 7.0 plane while a Human female sat 0.9 inside it), and
+shrink/grow effects change a model's scale at RUNTIME, so any fixed value can
+be walked through mid-fight in either direction.
 
-The bracket the shipped evidence supports:
+**What ships now:**
 
-* **hard lower bound > 6.75** — T299 saw nothing of the body with the camera
-  aimed straight down at feet T298 measured 6.75 units below the eye;
-* **independent corroboration from fable's own meshes, measured this unit**: a
-  Human male's resting body reaches **6.87** units from its own eye (max radial
-  vertex distance over the idle animation, real S3D mesh data);
-* **soft upper bound** — less than the reach of an extended weapon or kick,
-  because those DO render. T299 could not size that reach; that is exactly what
-  Leg A is solving for.
+```
+nearPlane = EntityRenderer::getPlayerBodyRestRadius()   // world units, live scale
+          * kFirstPersonNearPlaneMargin                 // dimensionless, 1.02
+```
 
-7.0 is the smallest round value clearing both the 6.75 bound and the 6.87
-measurement. It clears a Human male's resting body by **0.13 units** — a thin
-margin, deliberately not padded, because padding it would be inventing the
-number Leg A is measuring.
+* `kFirstPersonNearPlaneUnits` (a distance) is **gone**. The surviving constant
+  is **`kFirstPersonNearPlaneMargin`, dimensionless** — the multiple of the
+  player's own rest radius. `kFirstPersonNearPlaneFallbackUnits` (7.0) is used
+  only while no player model has loaded, so the plane is never zero.
+* `firstPersonNearPlaneFromBodyRadius(restRadius)` is the derivation, in the
+  header, so production and tests cannot disagree.
+* **Recomputed every frame**, not once at mode entry:
+  `applyFirstPersonPlayerHiding()` runs from `renderer_frame.cpp` immediately
+  before `smgr_->drawAll()` and re-applies the plane whenever the derived value
+  moves by more than 0.001. A shrink or grow landing mid-first-person moves the
+  plane the next frame; the `[FP-HIDE]` log line records every change with the
+  radius and margin that produced it.
 
-**Measured per race (this unit, `FirstPersonNearPlaneSwallowsTheBody_Headless`,
-max radial distance from the eye to the player's own vertices):**
+**The scale term, and whether it reflects the size spell effect — asked
+directly, answered honestly: NO, and not because the term is wrong.**
 
-| race | eye above node origin | AT REST (must be < plane) | IN ATTACK (may exceed — that is the visible swing) |
-|---|---|---|---|
-| Human male | 3.653 | **6.873** | 6.976 |
-| Human female | 3.083 | 6.139 | 6.150 |
-| Barbarian male | 3.647 | 6.846 | 6.942 |
-| Dwarf male | 3.745 | **7.092 — NOT swallowed by a 7.0 plane** | 8.151 |
-| Dark Elf female | 3.096 | 6.160 | 6.165 |
-| Troll male | 3.482 | 6.882 | 7.566 |
-| Iksar male | 3.552 | 6.884 | 7.383 |
+* The term read is **the live scene node's own scale**,
+  `visual.animatedNode->getScale()` (largest component, so a non-uniform scale
+  cannot under-report). That is the value the GPU actually draws with, so it
+  reflects **whatever last wrote it**: the race base scale and the server's
+  spawn `size` field (`entity_renderer.cpp:492`,
+  `scale *= serverSize / 6.0`), applied on both the synchronous
+  `buildEntityMesh()` path and the deferred `NodeSetup` path.
+* **fable has no runtime size-change path at all today.** `serverSize` is
+  consumed only at entity creation; there is no size-update handler anywhere in
+  `src/`, and the spell effect's own handlers are **stubs**:
+  `SpellEffects::handleShrink()` / `handleGrow()`
+  (`src/client/spell/spell_effects.cpp:883-891`) are one `LOG_DEBUG` each and
+  write nothing. SPA 89 (`SpellEffect::ModelSize`) is decoded and dispatched
+  (`spell_effects.cpp:399-408`) and then dropped on the floor.
+* So the honest statement is: **the term is the right one and will track a size
+  change the instant anything applies one, but nothing applies one today, so
+  the claim "this reflects the size spell effect" is NOT demonstrable in fable
+  as it stands.** That is a class-A defect in its own right — shrink/grow is a
+  visible, commonly used effect that fable silently ignores — and it is now on
+  the board. Any fix for it will land on `setScale()` and be picked up here for
+  free.
 
-**⚠ Open question this raises: one fixed plane is a human-sized number.** A
-Dwarf's own body reaches beyond a 7.0 plane at rest, so a dwarf would see part
-of himself. Whether the official client scales the plane per race is unmeasured
-(T298/T299 measured a human). Flagged, not silently absorbed; decide with Leg
-A's number in hand. Note also that these figures are in **unscaled model
-units** — `createAnimatedNode()` applies a per-race node scale that this
-measurement does not, so the real-world requirement moves with that scale.
+**Why the base mesh's bounding box, and not the live pose.** `getPlayerBodyRestRadius()`
+takes the furthest of the 8 base-mesh bbox corners from the eye point
+(`bbox.MaxEdge.Y`), scaled. The rest radius must be **stable**: a pose-tracking
+radius would grow during a swing and push the plane out over exactly the
+geometry that has to stay visible. The base box spans every animation frame, so
+it over-reports — measured below — and that slack is the price of stability and
+of an O(1) per-frame check.
 
-**⚠ Cost of the mechanism, stated plainly.** A ~7-unit near plane is large
-against a 6.70-unit character. World geometry within 7 units of the eye — a
-wall the player stands against, the ground when looking steeply down — will
-clip away in first person. That is a property of the mechanism the official
-client uses, not something introduced here, and it is applied in first person
-ONLY. Whether it is acceptable is Will's call on Leg C's video, not this leg's.
+**Measured per race, this unit, against real S3D meshes**
+(`FirstPersonNearPlaneSwallowsTheBody_Headless`; node scale 1, production
+multiplies all of it by the live scale):
+
+| race | eye | rest radius (furthest idle vertex) | bbox proxy (what production reads) | derived plane | attack (body only) |
+|---|---|---|---|---|---|
+| Human male | 3.653 | 6.873 | 7.375 | **7.523** | 6.976 |
+| Human female | 3.083 | 6.139 | 6.324 | **6.450** | 6.150 |
+| Barbarian male | 3.647 | 6.846 | 6.957 | **7.096** | 6.942 |
+| Dwarf male | 3.745 | 7.092 | 7.488 | **7.638** | 8.151 |
+| Dark Elf female | 3.096 | 6.160 | 6.467 | **6.597** | 6.165 |
+| Troll male | 3.482 | 6.882 | 8.659 | **8.832** | 7.566 |
+| Iksar male | 3.552 | 6.884 | 7.859 | **8.016** | 7.383 |
+
+Every race is now swallowed by its own plane — including the Dwarf that broke
+the fixed constant. The test asserts that for every race, and separately that
+the bbox proxy never UNDER-reports the true furthest vertex (an under-report
+would put the plane inside the body).
+
+**⚠ UNVALIDATED, AND NOT TO BE PRESENTED OTHERWISE.** The margin 1.02 is a
+placeholder chosen to sit just above the hard lower bound, and **the derivation
+itself is a hypothesis**: that the official client's hiding scales with model
+size is exactly one of the three possibilities T300 Leg A is now testing —
+(a) one global near plane, (b) a size-derived plane, (c) player-specific
+culling that is not a near plane at all. Only (b) is what this code assumes.
+Nothing in this leg has been seen on a screen. Neither the margin nor the
+derivation is settled until Leg A reports and the live gate (Leg C) runs.
+
+**Structured so the mechanism can be swapped, not rewritten.** Everything that
+hides the player lives behind two names: `firstPersonNearPlaneFromBodyRadius()`
+in the header and `IrrlichtRenderer::applyFirstPersonPlayerHiding()` (its only
+production caller). If Leg A comes back (c), those two bodies are what change —
+per-object culling would be applied in the same seam, called from the same
+per-frame point — and the camera formula, the eye-height frame work, the
+deletions and the tests' structure are all untouched. Dropping in a measured
+margin is a one-line edit to the constant.
 
 ## 5. Tests
 
@@ -213,7 +260,12 @@ files. **T300 Leg C's live video is the gate; Will judges the look.**
 
 New/changed coverage:
 
-* `tests/test_first_person_camera_single_formula.cpp` — the source-parsing
+* `tests/test_first_person_camera_single_formula.cpp` — `NearPlaneIsDerivedFromModelSizeNotFixed`
+  pins the derivation itself: margin > 1 (a margin <= 1 puts the plane inside
+  the body) and < 1.30 (a large margin swallows the swing too), the plane
+  scaling with the radius in both directions (the shrink/grow case, asserted as
+  an ordering so a future non-linear derivation still has to satisfy it), and
+  "no model yet" never yielding a zero or negative plane. Plus the source-parsing
   invariants updated for the new tunables (the "one TU" rule now allows the
   defining header and zero readers for a constant consumed inside it), the
   deleted-symbol guard extended to `renderFirstPersonViewmodel`,
@@ -226,11 +278,14 @@ New/changed coverage:
   near plane clearing a standing human. A returning standoff constant fails.
 * `tests/test_inventory_model_view.cpp` —
   `FirstPersonNearPlaneSwallowsTheBody_Headless` replaces the four deleted arm-
-  filter tests, against real S3D meshes: rest-vs-attack radial extents per race
-  (table above), hard assertion on Human male, per-race figures reported rather
-  than asserted because the per-race plane is an open question.
+  filter tests, against real S3D meshes: for EVERY race, the plane derived from
+  that race's own model must clear that race's resting body, and the cheap
+  bbox proxy production reads must never under-report the true furthest vertex.
+  Rest/attack/proxy/plane figures are printed per race (table above).
 
 ## 6. Verification (by EXIT STATUS)
+
+(Re-run in full after the near-plane derivation change.)
 
 | step | result |
 |---|---|
@@ -239,20 +294,27 @@ New/changed coverage:
 | `bash scripts/build-gles2-x86.sh` | **EXIT=0** |
 | `bash scripts/ci/visual_gate.sh` | **EXIT=0, `=== VISUAL GATE: PASS ===`**, goldens untouched (`git status` shows no image changes) |
 | `bash scripts/build-arm-noble.sh` | **EXIT=0** |
-| `bash scripts/refactor/check_file_sizes.sh fable` | 2 FAILs, **both pre-existing**: `entity_renderer.cpp` 3283 (was 3313 — shrank), `irrlicht_renderer.cpp` 3074 (was 3066 — **+8 lines**, deviation noted below). No new FAIL. |
+| `bash scripts/refactor/check_file_sizes.sh fable` | 2 FAILs, **both pre-existing**: `entity_renderer.cpp` 3328 (was 3313 — +15, `getPlayerBodyRestRadius()`), `irrlicht_renderer.cpp` 3100 (was 3066 — **+34 lines**, deviation noted below). No new FAIL. |
 
-**Deviation:** `irrlicht_renderer.cpp` gained 8 lines while already over the
-3000-line limit. `applyCameraProjectionForMode()` is 15 lines and belongs with
-the camera it configures; the net is small because the standoff/pitch constants
-and their long comments moved out to the new header. Flagged rather than
-absorbed; splitting that TU is its own unit.
+**Deviation:** `irrlicht_renderer.cpp` gained 34 lines and `entity_renderer.cpp`
+15, both while already over the 3000-line limit (both were FAILing before this
+unit; no new FAIL). `applyCameraProjectionForMode()` and
+`applyFirstPersonPlayerHiding()` belong with the camera they configure, and
+`getPlayerBodyRestRadius()` belongs with the entity data it reads; the
+standoff/pitch constants and their long comments moved out to the new header,
+which is why the net is as small as it is. Flagged rather than absorbed;
+splitting those TUs is its own unit.
 
 ## 7. What this leg could NOT settle
 
-1. **The near-plane value.** Placeholder 7.0, bracket (6.87, weapon reach].
-   Leg A owns it.
-2. **Whether one plane fits every race.** A Dwarf's resting body exceeds 7.0.
-   Needs Leg A's number and a product call.
-3. **Whether the clip is acceptable to play with** (walls and ground vanishing
-   within 7 units). Live gate, Will's judgement.
+1. **The margin, and whether a size-derived plane is the mechanism at all.**
+   Placeholder 1.02; Leg A is testing plane-vs-culling by growing/shrinking the
+   character and walking flush into walls. If it reports per-object culling,
+   the two-name seam in §4 is what gets replaced.
+2. **Whether shrink/grow reaches the renderer.** It does not — fable's handlers
+   are stubs (`spell_effects.cpp:883-891`). The derivation is ready for it; the
+   effect is not implemented. Raised as a separate class-A defect.
+3. **Whether the clip is acceptable to play with** (world geometry within
+   ~7.5 units of the eye vanishing in first person). Live gate, Will's
+   judgement.
 4. **Anything visual at all.** Nothing in this leg was rendered to a screen.

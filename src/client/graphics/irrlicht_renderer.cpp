@@ -2470,8 +2470,9 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 // changing any of these numbers, and change them THERE, not here. The three
 // tunables it holds are kFirstPersonPitchDownDegrees (3.65, was T75's 12),
 // kFirstPersonHorizontalFovDegrees (62.8, was Irrlicht's default 72 vertical
-// == ~88 horizontal) and kFirstPersonNearPlaneUnits (the lever that hides the
-// player's body; PLACEHOLDER pending T300 Leg A's live measurement).
+// == ~88 horizontal) and kFirstPersonNearPlaneMargin (the dimensionless margin
+// the body-hiding near plane is derived from; PLACEHOLDER, and the derivation
+// itself is unvalidated pending T300 Leg A).
 //
 // T76's kFirstPersonCameraStandoffUnits (0.3 BACKWARD) is gone: it existed to
 // pull the eye off in-world arm geometry that is no longer drawn as a
@@ -2481,16 +2482,41 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
     if (!camera_) return;
     const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
     if (firstPerson) {
-        camera_->setNearValue(kFirstPersonNearPlaneUnits);
         camera_->setFOV(firstPersonVerticalFovRadians(camera_->getAspectRatio()));
+        firstPersonAppliedNearPlane_ = 0.0f;  // force a re-derive
+        applyFirstPersonPlayerHiding();
     } else {
         camera_->setNearValue(kWorldNearPlaneUnits);
         camera_->setFOV(kWorldVerticalFovRadians);
+        firstPersonAppliedNearPlane_ = 0.0f;
     }
     LOG_DEBUG(MOD_GRAPHICS,
               "[FP-PROJ] firstPerson={} near={:.3f} fovY={:.4f}rad aspect={:.4f}",
               firstPerson, camera_->getNearValue(), camera_->getFOV(),
               camera_->getAspectRatio());
+}
+
+// T300: THE HIDING SEAM -- see the declaration. The near plane is NOT a fixed
+// distance: races differ in size and shrink/grow changes a model's scale at
+// runtime, so the plane is derived from the player's CURRENT model every frame
+// and re-applied when it moves.
+void IrrlichtRenderer::applyFirstPersonPlayerHiding() {
+    if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
+
+    const float restRadius = entityRenderer_ ? entityRenderer_->getPlayerBodyRestRadius() : 0.0f;
+    const float nearPlane = firstPersonNearPlaneFromBodyRadius(restRadius);
+
+    // Only touch the camera when the derived value actually moved -- this runs
+    // every frame, and setNearValue() invalidates the projection matrix.
+    if (std::fabs(nearPlane - firstPersonAppliedNearPlane_) < 0.001f) return;
+
+    camera_->setNearValue(nearPlane);
+    LOG_INFO(MOD_GRAPHICS,
+             "[FP-HIDE] near plane {:.3f} -> {:.3f} (body rest radius {:.3f} x margin {:.3f}{})",
+             firstPersonAppliedNearPlane_, nearPlane, restRadius,
+             kFirstPersonNearPlaneMargin,
+             restRadius > 0.0f ? "" : " -- NO MODEL YET, using the fallback");
+    firstPersonAppliedNearPlane_ = nearPlane;
 }
 
 void IrrlichtRenderer::repositionFirstPersonCamera() {
@@ -2531,7 +2557,7 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeAboveOrigin={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg near={:.2f}",
               placement.posX, placement.posZ, placement.posY, playerZ_, eyeHeight,
               playerConfig_.eyeHeight, playerHeading_, playerPitch_,
-              kFirstPersonPitchDownDegrees, kFirstPersonNearPlaneUnits);
+              kFirstPersonPitchDownDegrees, firstPersonAppliedNearPlane_);
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {

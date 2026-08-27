@@ -1190,6 +1190,13 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
         zoneShader_->beginFrame();
     }
+    // T300: the first-person near clip plane is derived from the player's
+    // CURRENT model size, so it has to be re-checked every frame -- a shrink
+    // or grow landing mid-first-person must move the plane. A no-op outside
+    // first person, and a no-op in first person unless the derived value
+    // actually moved. Must run BEFORE the draw: it is the projection.
+    applyFirstPersonPlayerHiding();
+
     smgr_->drawAll();
     frameTimings_.sceneDrawAll = measureSection();
 

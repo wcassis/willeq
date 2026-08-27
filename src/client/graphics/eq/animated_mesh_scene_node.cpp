@@ -1259,7 +1259,7 @@ int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {
 // reappears whenever an animation pushes it past that plane. There is
 // therefore no geometry to select and no fallback to fall back to. Do not
 // reintroduce a first-person triangle filter; if the body shows, the near
-// plane is wrong (irrlicht_renderer.cpp, kFirstPersonNearPlaneUnits).
+// plane is wrong (IrrlichtRenderer::applyFirstPersonPlayerHiding()).
 
 } // namespace Graphics
 } // namespace EQT

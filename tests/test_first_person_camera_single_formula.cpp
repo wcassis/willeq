@@ -138,7 +138,9 @@ TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
     const std::string kTunableHome = "first_person_camera.h";
     for (const char* tunable : {"kFirstPersonPitchDownDegrees",
                                 "kFirstPersonHorizontalFovDegrees",
-                                "kFirstPersonNearPlaneUnits",
+                                "kFirstPersonNearPlaneMargin",
+                                "kFirstPersonNearPlaneFallbackUnits",
+                                "firstPersonNearPlaneFromBodyRadius",
                                 "firstPersonVerticalFovRadians",
                                 "computeFirstPersonCamera"}) {
         std::vector<std::string> files;
@@ -343,21 +345,52 @@ TEST(FirstPersonCameraFormula, HorizontalFovMatchesTheOfficialMeasurement) {
     EXPECT_GT(firstPersonVerticalFovRadians(0.0f), 0.0f);
 }
 
-TEST(FirstPersonCameraFormula, NearPlaneClearsAStandingHumanBody) {
-    // The near plane is the ONLY thing that hides the player. A Human male's
-    // body spans Y=[-3.05,+3.65] about the node origin with the eye at +3.65
-    // and a half-width/depth of ~1.1/1.2, so the furthest body vertex from
-    // the eye is ~sqrt(6.70^2 + 1.1^2 + 1.2^2). The plane must clear it.
-    // (The per-race measurement against the REAL meshes is
-    // FirstPersonNearPlaneSwallowsTheBody_Headless in
-    // test_inventory_model_view.cpp; this is the cheap always-runs guard.)
-    const float eyeToFeet = 3.65f + 3.05f;
-    const float furthest = std::sqrt(eyeToFeet * eyeToFeet + 1.1f * 1.1f + 1.2f * 1.2f);
-    EXPECT_GT(EQT::Graphics::kFirstPersonNearPlaneUnits, furthest)
-        << "kFirstPersonNearPlaneUnits must swallow a standing Human male's own body "
-           "(furthest vertex ~" << furthest << " units from the eye); it is the only "
-           "mechanism hiding the player in first person.";
-    // And it must stay well inside the world far plane / not swallow the world
-    // whole: a sanity bracket, not a measurement.
-    EXPECT_LT(EQT::Graphics::kFirstPersonNearPlaneUnits, 20.0f);
+TEST(FirstPersonCameraFormula, NearPlaneIsDerivedFromModelSizeNotFixed) {
+    // Will's objection, and it is correct: races are all different sizes AND
+    // shrink/grow effects change a model's scale at runtime, so a near plane
+    // expressed as a fixed distance in EQ units is wrong the moment either
+    // applies. The surviving constant is a DIMENSIONLESS margin over the
+    // player's own rest radius.
+    using EQT::Graphics::firstPersonNearPlaneFromBodyRadius;
+    using EQT::Graphics::kFirstPersonNearPlaneMargin;
+
+    // Must exceed the body it has to swallow...
+    EXPECT_GT(kFirstPersonNearPlaneMargin, 1.0f)
+        << "a margin <= 1 puts the plane inside the player's own body -- he sees himself";
+    // ...and must not be so generous that an extended weapon or kick is
+    // swallowed too. Those DO render (T299), which is the whole reason we know
+    // the mechanism is a clip and not an omission.
+    EXPECT_LT(kFirstPersonNearPlaneMargin, 1.30f)
+        << "a large margin swallows the swing as well as the body";
+
+    // The derivation scales with the model, in both directions -- this is the
+    // shrink/grow case.
+    for (float radius : {2.0f, 6.9f, 13.8f}) {
+        EXPECT_NEAR(firstPersonNearPlaneFromBodyRadius(radius),
+                    radius * kFirstPersonNearPlaneMargin, 1e-4f) << "radius " << radius;
+        EXPECT_GT(firstPersonNearPlaneFromBodyRadius(radius), radius)
+            << "the derived plane must clear the body it is derived from (radius "
+            << radius << ")";
+    }
+    // A shrunk player gets a nearer plane and a grown one a further plane --
+    // stated as an ordering so a future non-linear derivation still has to
+    // satisfy it.
+    EXPECT_LT(firstPersonNearPlaneFromBodyRadius(3.45f),
+              firstPersonNearPlaneFromBodyRadius(6.90f));
+    EXPECT_LT(firstPersonNearPlaneFromBodyRadius(6.90f),
+              firstPersonNearPlaneFromBodyRadius(13.80f));
+
+    // "No model yet" is not "zero" -- a zero or negative near plane is a
+    // degenerate projection, not a wide one.
+    EXPECT_GT(firstPersonNearPlaneFromBodyRadius(0.0f), 1.0f);
+    EXPECT_GT(firstPersonNearPlaneFromBodyRadius(-5.0f), 1.0f);
+
+    // Sanity, for the reference case only: a Human male's base mesh gives a
+    // rest radius of ~6.90 (bbox corner furthest from the eye at MaxEdge.Y),
+    // which must land the plane above T299's hard lower bound of 6.75 (nothing
+    // of the body renders with the camera aimed straight down at feet 6.75
+    // units below the eye) and inside a sane bracket.
+    const float humanPlane = firstPersonNearPlaneFromBodyRadius(6.90f);
+    EXPECT_GT(humanPlane, 6.75f);
+    EXPECT_LT(humanPlane, 20.0f);
 }

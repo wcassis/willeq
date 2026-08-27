@@ -442,6 +442,24 @@ public:
     // Returns 0.0f if player entity not found.
     float getPlayerEyeHeightAboveNodeOrigin() const;
 
+    // T300: the furthest the player's OWN geometry gets from his eye point, in
+    // WORLD units (i.e. with the scene node's current scale applied), measured
+    // off the base mesh's bounding box corners relative to the eye at
+    // bbox.MaxEdge.Y. This is what the first-person near clip plane is derived
+    // from -- the plane is not a fixed distance, because races differ in size
+    // and shrink/grow effects change a model's scale at runtime.
+    //
+    // The scale term is read from the LIVE scene node (getScale()), not from
+    // the base mesh or a race table, so it reflects whatever last wrote the
+    // node's scale: the race base scale and the server's spawn size field
+    // today, and any runtime size change the moment something applies one.
+    // See refactor/T300_leg_b_implementation.md for the caveat that fable's
+    // shrink/grow handlers are currently stubs that write nothing.
+    //
+    // Returns 0.0f when there is no player entity or no usable model yet --
+    // callers must treat that as "unknown", not as "zero".
+    float getPlayerBodyRestRadius() const;
+
     // Entity casting management (for showing casting bars above other entities)
     void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs);
     void cancelEntityCast(uint16_t spawnId);
