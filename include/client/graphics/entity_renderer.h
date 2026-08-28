@@ -398,16 +398,29 @@ public:
     void debugLogPlayerVisibility() const;
 
     // T300: first person draws the player's ORDINARY model, unfiltered, with
-    // its equipment, exactly as third person does. The camera sits at the
-    // eyes and a clamped down-pitch keeps the body (which hangs directly
-    // below the eye) out of frame -- that clamp is the ONLY thing that hides
-    // the player. All this call now does is record the
-    // mode and hide the floating name tag; there is no geometry filter, no
-    // deferral out of the render list, and no viewmodel pass.
+    // its equipment. There is no geometry filter and no viewmodel pass.
+    //
+    // T309: what HIDES it is the measured DRAW RULE, not the down-pitch clamp
+    // -- the model is withheld from the render list except while an ATTACK
+    // animation is playing (first_person_body_draw.h). This call records the
+    // mode, hides the floating name tag, and applies the rule immediately so
+    // entering first person mid-swing is not a frame late; thereafter
+    // updateFirstPersonBodyDrawRule() re-evaluates it every frame.
     void setPlayerFirstPersonMode(bool enabled);
 
     // Check if player is in first-person mode
     bool isPlayerInFirstPersonMode() const;
+
+    // T309: re-evaluate the first-person draw rule for the local player.
+    // Called once per frame from updateMainThreadEntityState(), before
+    // smgr_->drawAll() registers the scene. A no-op outside first person
+    // (and it restores the node to the render list on the way out).
+    // Public so a test can drive exactly what the frame loop drives.
+    void updateFirstPersonBodyDrawRule();
+
+    // T309 diagnostics/tests: is the local player's model currently withheld
+    // from the render list by the draw rule?
+    bool isPlayerBodyWithheldFromRenderList() const;
 
     // Update the player entity's position (used in player mode for third-person view)
     void updatePlayerEntityPosition(float x, float y, float z, float heading);

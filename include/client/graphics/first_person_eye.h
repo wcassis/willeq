@@ -107,29 +107,53 @@ constexpr float kCrownAboveEyeUnits = 0.60f;
 // OWN head cluster, so this stays ONE global constant and never a table.
 constexpr float kEyeHeightFractionOfSkull = 0.574f;
 
-// MEASURED: the eye sits +0.9 +/- 0.25 units FORWARD of the model's own
-// vertical axis (about 0.11 H).
+// The EXTRA forward nudge applied to the eye along the look ray, ON TOP of
+// the head cluster's own anatomical forward position. It is a per-mesh-axis-
+// free correction (applied along the heading, so it needs no knowledge of any
+// mesh's baked axes -- the trap that broke T300 Leg B's per-race table).
 //
-// *** THIS DISAGREES WITH T298's 0.00 +/- 0.4 AT ABOUT 1.9 SIGMA, and the
-// rotation-parallax test that would settle it could not be run. *** Leg A's
-// instruction was to treat the forward offset as a RANGE, 0 to 1.0, and pick
-// the value that keeps the face out of frame.
+// *** T309 CHANGED THIS FROM 1.0 TO 0.0. The reason it was 1.0 is dead. ***
 //
-// 1.0 IS THE TOP OF THAT RANGE AND IS CHOSEN DELIBERATELY, FOR THAT REASON.
-// Moving the eye forward carries it toward and then through the face plane,
-// so the further forward it sits the more of the player's own face falls
-// BEHIND the camera, where it cannot be drawn at all. The failure being
-// avoided -- review/T300/T300_C_12, a screenshot of the player's own face --
-// is caused by an eye too far BACK, so the far end of the range is the safe
-// end and the near end (0.0, T298's value) reintroduces the risk.
+// The two measurements still disagree: T301 Leg A measured +0.9 +/- 0.25
+// forward of the model's vertical axis, T298 measured 0.00 +/- 0.4, about
+// 1.9 sigma apart, and the rotation-parallax run that would settle it was
+// never done. Leg A's instruction was to treat the offset as the range
+// 0 to 1.0 and pick the value that KEEPS THE PLAYER'S OWN FACE OUT OF FRAME;
+// Leg B therefore took 1.0, the far end, on the argument that pushing the eye
+// forward carries the face behind the camera where it cannot be drawn.
 //
-// Applied along the LOOK RAY, on top of the head cluster's own forward
-// position, so it needs no knowledge of any mesh's baked axes -- the trap
-// that broke T300 Leg B's per-race table. For a Human male the head centroid
-// is 0.17 BEHIND the origin, so the total is +0.83 from the vertical axis:
-// inside Leg A's range, within 0.07 of its central +0.9. Hunched races carry
-// their own anatomy on top (Iksar +0.84, Froglok +1.48).
-constexpr float kEyeForwardOffsetUnits = 1.0f;
+// T307 measured the actual mechanism and that argument no longer applies.
+// The face is not kept out of frame by geometry at all -- it is kept out by
+// the DRAW RULE (first_person_body_draw.h): the official client simply does
+// not draw the player's model except during an attack. There is nothing left
+// for a large forward offset to buy, and it now costs something real:
+//
+//   1. T307 filmed, at the maximum down-pitch clamp, the player's own body
+//      FILLING the upper frame during a swing, with his own arm entering
+//      from the bottom right and his own halberd across the view. An eye
+//      shoved 0.83-1.0 units out in front of the chest cannot see that; the
+//      torso would be behind the camera. The offset that reproduces T307's
+//      frames is a small one.
+//   2. Measured directly (tests/test_first_person_weapon_attachment.cpp),
+//      the held weapon's grip at the c01 attack frame sits +0.678 forward of
+//      the model's vertical axis. At 1.0 the eye lands at +0.83 for a Human
+//      male and the grip falls 0.15 BEHIND the eye plane; at Leg A's central
+//      +0.9 it is 0.22 behind. The official client draws the weapon during
+//      the swing, so any offset that puts fable's weapon behind the eye at
+//      swing frames is wrong on its face.
+//
+// So the tiebreaker is no longer "which error bar do you like" but "which
+// value reproduces T307's pixels", and that is the SMALL end. 0.0 is T298's
+// measured value and sits 2.3 sigma from Leg A's -- not comfortable, but the
+// only value consistent with the geometry the official client was filmed
+// producing. The eye is then exactly the head cluster's OWN anatomical
+// position, which is still forward-of-axis for the races whose anatomy puts
+// it there (Iksar +0.84, Froglok +1.48) and 0.17 behind for a Human male --
+// i.e. inside the skull, which is where an eye belongs.
+//
+// If a rotation-parallax measurement is ever run and lands near +0.9, raise
+// this -- but re-check both constraints above at the same time.
+constexpr float kEyeForwardOffsetUnits = 0.0f;
 
 // -------------------------------------------------------------------------
 // THE DOWN-PITCH CLAMP -- MEASURED, AND IT IS NOT THE HIDING MECHANISM.
@@ -153,11 +177,13 @@ constexpr float kEyeForwardOffsetUnits = 1.0f;
 // arms, hands, belt and hair. THE FRUSTUM CONTAINS THE BODY; THE CLIENT
 // SIMPLY DOES NOT DRAW IT.
 //
-// The draw rule is a SEPARATE LEG's measurement and is deliberately NOT
-// implemented here. The hiding seam stays exactly where T300 put it -- this
-// constant and IrrlichtRenderer::applyFirstPersonPitchClamp() -- so swapping
-// the mechanism stays two function bodies. But do not mistake this clamp for
-// the mechanism any longer: it is a control-feel limit now.
+// T307 measured the draw rule and T309 IMPLEMENTED it:
+// include/client/graphics/first_person_body_draw.h, driven per frame by
+// EntityRenderer::updateFirstPersonBodyDrawRule(), which withholds the
+// player's model from the render list except while an ATTACK animation is
+// playing. This constant is a CONTROL-FEEL LIMIT and nothing more -- how far
+// down the official client lets you look. Do not pull it back under 90 in the
+// belief that it hides anything.
 //
 // CONSEQUENCE FOR THE CAMERA, AND IT IS NOT OPTIONAL: 94.9 passes straight
 // down, where a look-at camera's default (0,1,0) up vector degenerates and

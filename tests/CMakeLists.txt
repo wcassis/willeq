@@ -1786,6 +1786,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_inventory_model_view)
 ENDIF()
 
+# T309: the measured first-person draw rule (predicate + the withhold seam).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_body_draw_rule
+        test_first_person_body_draw_rule.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_body_draw_rule PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_body_draw_rule GTest::gtest willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_body_draw_rule PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule)
+ENDIF()
+
 # T301 Leg C: first-person weapon attachment geometry (probe).
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_first_person_weapon_attachment

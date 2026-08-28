@@ -227,8 +227,32 @@ TEST_F(FirstPersonWeaponAttachmentTest, HeldWeaponIsHeadingInvariantInTheCameraF
         EXPECT_NEAR(s.forward, ref.forward, 0.05f) << "heading " << s.headingDeg;
     }
 
-    // ...and it is held in front of the eye, on the right, where a right hand
+    // ...and it is held IN FRONT OF THE EYE, on the right, where a right hand
     // is -- not behind the head, which is where heading 0 used to put it.
+    //
+    // T309 KEPT THIS ASSERTION DELIBERATELY, AND IT IS NOW THE CANARY FOR THE
+    // DRAW RULE, not merely a sanity check on Leg C's attachment fix.
+    //
+    // The merge of T301 Leg B and Leg C left it FAILING at -0.1527: Leg B had
+    // pushed the eye 1.0 unit forward along the look ray (net +0.83 for a
+    // Human male) to keep the player's own face out of frame, which carried
+    // the eye past the grip. T309 did NOT delete the assertion to get green.
+    // T307 measured that the official client DRAWS the weapon for the whole
+    // duration of a swing, so a fable eye placement that leaves the weapon
+    // behind the camera at the attack frame is refuted by the official
+    // client's own pixels -- which makes this the cheapest automated guard
+    // there is on the rule's premise. The eye offset was re-decided against
+    // that constraint instead (kEyeForwardOffsetUnits: 1.0 -> 0.0; the
+    // argument is on the constant in first_person_eye.h).
+    //
+    // So: if this fails again, the eye has moved forward past the hand and
+    // the draw rule will reveal an empty view mid-swing. Fix the offset, do
+    // not relax the assertion. The margin is printed so a future change can
+    // see how much room it has.
+    std::cout << "  DRAW-RULE CANARY: weapon grip is " << ref.forward
+              << " units in FRONT of the first-person eye at the c01 attack "
+                 "frame (must stay > 0; T307: the official client draws the "
+                 "weapon for the whole swing)\n";
     EXPECT_GT(ref.forward, 0.0f) << "the weapon is BEHIND the first-person camera";
     EXPECT_LT(std::fabs(ref.right), 2.5f) << "the weapon is out beside the player, not in his hand";
 }

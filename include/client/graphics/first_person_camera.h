@@ -31,11 +31,16 @@
  * filter (T74's, deleted here), no standoff (T76's, removed here), and no
  * near-plane or size-derived hiding of any kind.
  *
- * THE HIDING MECHANISM IS DELIBERATELY ISOLATED. Everything that hides the
- * player lives behind two names: firstPersonMaxDownPitchDegrees() here, and
- * IrrlichtRenderer::applyFirstPersonPitchClamp() (its only production
- * caller). Swapping the mechanism again is those two bodies; the camera
- * placement formula below is untouched by it.
+ * NOTHING IN THIS HEADER HIDES THE PLAYER. T300 claimed the down-pitch clamp
+ * did; T301 Leg B and T307 both refuted it (the measured clamp reaches PAST
+ * the nadir, and the frustum plainly contains the body there). Since T309 the
+ * body is hidden by the measured DRAW RULE --
+ * include/client/graphics/first_person_body_draw.h, driven per frame by
+ * EntityRenderer::updateFirstPersonBodyDrawRule() -- which withholds the
+ * model from the render list except while an attack animation is playing.
+ * firstPersonMaxDownPitchDegrees() below is a CONTROL-FEEL limit: how far
+ * down the official client lets you look. The camera placement formula is
+ * untouched by either.
  *
  * WHY THIS IS A HEADER, AND WHY THE MATH IS PURE: the first-person camera
  * formula has been duplicated four times across this codebase (T74, T75,
@@ -208,10 +213,11 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
 
     const float headingRad = headingUnits / 512.0f * 2.0f * kFirstPersonPi;
 
-    // THE HIDING MECHANISM, applied at the point of use so no caller can get
-    // around it. The accumulator (renderer_player_physics.cpp) clamps the
-    // stored value too -- that is what keeps the control from feeling dead
-    // against an invisible wall -- but this is the guarantee.
+    // THE CONTROL-FEEL PITCH LIMIT (T309: not a hiding mechanism -- see the
+    // file header), applied at the point of use so no caller can get around
+    // it. The accumulator (renderer_player_physics.cpp) clamps the stored
+    // value too -- that is what keeps the control from feeling dead against
+    // an invisible wall -- but this is the guarantee.
     const float maxDownDeg = firstPersonMaxDownPitchDegrees();
     float totalPitchDeg = lookPitchDegrees - kFirstPersonPitchDownDegrees;
     if (totalPitchDeg < -maxDownDeg) totalPitchDeg = -maxDownDeg;

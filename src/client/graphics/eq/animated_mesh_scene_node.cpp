@@ -758,12 +758,28 @@ void EQAnimatedMeshSceneNode::applyAnimation() {
 }
 
 void EQAnimatedMeshSceneNode::OnRegisterSceneNode() {
-    // T300: the player node registers like any other node, in first person
-    // too -- the viewmodel pass that used to withhold it is gone. (T296
-    // withheld it rather than hiding it because Irrlicht skips OnAnimate()
-    // on invisible nodes; a re-hide would ship a frozen skeleton. Nothing
-    // hides or withholds it now: the first-person near clip plane does the
-    // work, and the skeleton keeps animating.)
+    // T309: THE FIRST-PERSON DRAW RULE'S ONE SEAM.
+    //
+    // withheldFromRenderList_ skips the DRAW and nothing else. It does not
+    // touch IsVisible, deliberately: Irrlicht gates OnAnimate() on IsVisible,
+    // and the draw rule needs this skeleton to keep running while it is
+    // hidden so an attack animation is at the right phase the instant it
+    // becomes visible (see first_person_body_draw.h; T296 learned this the
+    // hard way). OnAnimate() is driven from ISceneManager::drawAll()'s
+    // separate animation pass, not from registration, so a withheld node
+    // still animates, still updates its absolute transform, and still drives
+    // its children's transforms.
+    //
+    // The child recursion goes with it: the rule draws the whole model WITH
+    // its equipped weapon, or none of it, and the equipment nodes are
+    // ordinary children of this node.
+    //
+    // T300's note that "the player node registers like any other node in
+    // first person, the clamp does the hiding" was wrong about the mechanism
+    // -- T301 Leg B and T307 both refuted the clamp -- and is superseded here.
+    if (withheldFromRenderList_) {
+        return;
+    }
     if (IsVisible) {
         SceneManager->registerNodeForRendering(this);
     }
@@ -1259,8 +1275,13 @@ int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {
 // client clips nothing) -- geometry reappears whenever an animation rotates
 // it up into frame. There is
 // therefore no geometry to select and no fallback to fall back to. Do not
-// reintroduce a first-person triangle filter; if the body shows, the near
-// down-pitch clamp is wrong (IrrlichtRenderer::applyFirstPersonPitchClamp()).
+// reintroduce a first-person triangle filter.
+//
+// T309: the rest of that sentence used to read "if the body shows, the
+// down-pitch clamp is wrong". It is not the clamp. The body shows exactly
+// while an ATTACK animation plays (first_person_body_draw.h), enforced by
+// EntityRenderer::updateFirstPersonBodyDrawRule() withholding this node from
+// the render list -- see setWithheldFromRenderList().
 
 } // namespace Graphics
 } // namespace EQT
