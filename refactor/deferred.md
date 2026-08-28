@@ -262,6 +262,29 @@ turned out already closed are struck at the end of this section with their commi
     *Impact:* typing over RDP produces the wrong case whenever caps lock is on.
     **EXECUTOR-READY**, tiny. Audit provenance: #12.
 
+### TIER 2 addendum — the body-type numbering (T308, 2026-08-28)
+
+**Two more copies of the EverQuest body-type numbering are live and wrong, and both
+decide spell targeting.** eqemu's `common/bodytypes.h` is the authority
+(`Humanoid == 1`); the client now has one correct copy in
+`include/client/eq_body_types.h` (added by T308).
+
+- `SpellManager::CheckTargetBodyType()` — `src/client/spell/spell_manager.cpp:456-469`,
+  local `BT_*` constants **off by one for every value** (`BT_HUMANOID = 0`,
+  `BT_UNDEAD = 2`, `BT_ANIMAL = 20`, ...). Every undead / animal / summoned /
+  plant / giant / dragon restricted spell tests the wrong body type.
+- `SpellTypeProcessor` — `src/client/spell/spell_type_processor.cpp:585-591`, a THIRD
+  and differently-wrong set: `21` for Plant (that is Insect; Plant is 25) and `22` for
+  Giant (that is Monster; Giant is 4). Only its `26` for Dragon is right.
+
+*Impact:* a creature-restricted spell is refused against a legitimate target and
+accepted against an illegitimate one. **EXECUTOR-READY** — repoint both at
+`client/eq_body_types.h` and pin through a cast the user actually makes. T308 fixed the
+third copy (`EverQuest::GetBodyTypeName()`, display only) and deliberately left these
+two, because they change live spell behaviour. The fourth and worst copy,
+`CombatManager::IsHumanoid()`'s race-id table, is CLOSED by T308 Leg 1
+(`tests/test_hunt_target_body_type.cpp`).
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
@@ -277,6 +300,14 @@ turned out already closed are struck at the end of this section with their commi
     below has no consumer.
     **EXECUTOR-READY** as a delete-or-wire decision; the honest framing is that
     `GraphicalMode`'s renderer/input members are vestigial. Audit provenance: #10.
+    **PARTLY CLOSED.** T304 Leg 3 made the fallthrough explicit per Will's ruling (the
+    console path is kept, deliberately not built out). **T308 Leg 2 closed the
+    user-visible half**: `CommandProcessor` now also writes an
+    `EverQuest::AddChatSystemMessage()` sink that `Application::wireUnifiedCommandDispatch()`
+    installs, so registry 2's ~60 messages reach the on-screen chat window while stdout
+    is unchanged for `--script`/console runs. Pinned by
+    `tests/test_command_output_routing.cpp` (typed into `ProcessChatInput()`, asserted on
+    the bridge's `SystemMessage` events). See `refactor/T308_humanoid_and_command_output.md`.
 
 20. **`IOutputRenderer::updateCurrentTargetHP` is caller-less.** Declared
     `include/client/output/output_renderer.h:197`; implemented at

@@ -1,4 +1,5 @@
 #include "client/combat.h"
+#include "client/eq_body_types.h"
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
@@ -1623,9 +1624,10 @@ bool CombatManager::IsTargetSuitableForHunt(const Entity& entity) const {
 	}
 
 	// For non-aggressive mobs, only hunt non-humanoids
-	bool is_humanoid = IsHumanoid(entity.race_id);
-	LOG_TRACE(MOD_COMBAT, "  {} race {} humanoid={} - {}",
-		entity.name, entity.race_id, is_humanoid, is_humanoid ? "NOT suitable" : "suitable");
+	bool is_humanoid = IsHumanoid(entity);
+	LOG_TRACE(MOD_COMBAT, "  {} race {} bodytype {} humanoid={} - {}",
+		entity.name, entity.race_id, static_cast<int>(entity.bodytype), is_humanoid,
+		is_humanoid ? "NOT suitable" : "suitable");
 	return !is_humanoid;
 }
 
@@ -1762,57 +1764,35 @@ void CombatManager::ProcessConsiderResponse(uint32_t target_id, uint32_t faction
 	}
 }
 
-bool CombatManager::IsHumanoid(uint16_t race_id) const {
-	// EverQuest humanoid races
-	// Player races: 1-12
-	// Other humanoid races: various
-	switch (race_id) {
-		// Player races
-		case 1:   // Human
-		case 2:   // Barbarian
-		case 3:   // Erudite
-		case 4:   // Wood Elf
-		case 5:   // High Elf
-		case 6:   // Dark Elf
-		case 7:   // Half Elf
-		case 8:   // Dwarf
-		case 9:   // Troll
-		case 10:  // Ogre
-		case 11:  // Halfling
-		case 12:  // Gnome
-		// NPCs that are humanoid
-		case 44:  // Dark Elf (NPC)
-		case 55:  // Freeport Guard
-		case 71:  // Human (NPC)
-		case 77:  // Skeleton
-		case 78:  // Ghoul
-		case 81:  // Qeynos Citizen
-		case 82:  // Erudin Citizen
-		case 85:  // Spectre
-		case 106: // Fiend
-		case 110: // Erudite Ghost
-		case 111: // Human Ghost
-		case 112: // Iksar Ghost
-		case 117: // Iksar Citizen
-		case 118: // Forest Giant
-		case 120: // Pirate
-		case 122: // Kerran
-		case 123: // Barbarian (NPC)
-		case 124: // Erudite (NPC)
-		case 125: // Troll (NPC)
-		case 126: // Ogre (NPC)
-		case 127: // Dwarf (NPC)
-		case 128: // Iksar
-		case 137: // Yeti
-		case 139: // Coldain
-		case 140: // Velious Dragon
-		case 145: // Zombie
-		case 146: // Mummy
-		case 161: // Iksar Skeleton
-			return true;
-		default:
-			return false;
-	}
+// T308: server-authoritative, not a race-id table.
+//
+// This was the FIFTH live copy of the pre-JSON race numbering (T267, T270,
+// T271 and T304 killed the other four, every one of them live and wrong).
+// Checked against the audited race_models rows, its case comments were wrong
+// for all but 1-12, 85 and 128: 44 "Dark Elf (NPC)" is FPM Freeport Guard,
+// 55 "Freeport Guard" is BGM Human Beggar, 71 "Human (NPC)" is QCM Qeynos
+// Citizen, 77 "Skeleton" is NGM Neriak Citizen, 78 "Ghoul" is EGM Erudite
+// Citizen, 117 "Iksar Citizen" is GDM Ghost Dwarf, 140 "Velious Dragon" is
+// FGI Forest Giant, 145 "Zombie" is GOO Goo, 146 "Mummy" is SSN Spectral
+// Sarnak, and about twenty more. Hunt-target filtering
+// (IsTargetSuitableForHunt) reasoned about the wrong creature type.
+//
+// The race data CANNOT answer this question: race_models has code / name /
+// scale / model / colour and no creature-class field of any kind, and
+// inventing one would be a sixth hand-written table (T271's standing
+// objection, overruled only for the placeholder tints).
+//
+// The server already answers it. Spawn_Struct carries bodytype at offset 335
+// and eq_entities.cpp parses it into Entity::bodytype for every spawn; eqemu
+// stamps it from common/bodytypes.h, where Humanoid == 1. So the honest
+// predicate is the body type the server sent, keyed on the shared constants
+// in client/eq_body_types.h -- no table, no race ids, nothing to drift.
+//
+// bodytype 0 is not a valid eqemu value; it means no spawn data was recorded
+// for this entity. Answering false there preserves the deleted switch's
+// default for an unknown race.
+bool CombatManager::IsHumanoid(const Entity& entity) const {
+	return entity.bodytype == EQT::BodyType::Humanoid;
 }
 
 void CombatManager::ListHuntTargets() {
@@ -1870,10 +1850,10 @@ void CombatManager::ListHuntTargets() {
 						// Check faction (indifferent=5, dubious=6, threatening=8, scowls=9)
 						if (faction >= 5 && faction <= 9) {
 							// Check if it's non-humanoid or aggressive
-							if (!IsHumanoid(entity.race_id) || faction >= 8) {
+							if (!IsHumanoid(entity) || faction >= 8) {
 								is_suitable = true;
 								reason = fmt::format("con={}, faction={}, humanoid={}",
-									static_cast<int>(con_color), faction, IsHumanoid(entity.race_id));
+									static_cast<int>(con_color), faction, IsHumanoid(entity));
 							}
 						}
 					}

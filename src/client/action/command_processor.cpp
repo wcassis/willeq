@@ -28,6 +28,10 @@ void CommandProcessor::setOutputRenderer(output::IOutputRenderer* renderer) {
     m_renderer = renderer;
 }
 
+void CommandProcessor::setMessageSink(MessageSink sink) {  // T308
+    m_messageSink = std::move(sink);
+}
+
 ActionResult CommandProcessor::processCommand(const std::string& input) {
     if (input.empty()) {
         return ActionResult::Success();
@@ -46,8 +50,8 @@ ActionResult CommandProcessor::processCommand(const std::string& input) {
     }
 
     // Echo the command if enabled
-    if (m_echoEnabled && m_renderer) {
-        m_renderer->displaySystemMessage("/" + cmdName + (args.empty() ? "" : " " + args));
+    if (m_echoEnabled) {
+        emitMessage("/" + cmdName + (args.empty() ? "" : " " + args));
     }
 
     // Look up command
@@ -250,16 +254,25 @@ std::vector<std::string> CommandProcessor::splitArgs(const std::string& args) {
     return result;
 }
 
-void CommandProcessor::displayMessage(const std::string& message) {
+// T308: registry 2's text now reaches the on-screen chat window as well as
+// stdout. See setMessageSink() in the header for why stdout alone was a live
+// user-visible defect and why both sinks are written rather than one swapped
+// for the other.
+void CommandProcessor::emitMessage(const std::string& message) {
     if (m_renderer) {
         m_renderer->displaySystemMessage(message);
     }
+    if (m_messageSink) {
+        m_messageSink(message);
+    }
+}
+
+void CommandProcessor::displayMessage(const std::string& message) {
+    emitMessage(message);
 }
 
 void CommandProcessor::displayError(const std::string& message) {
-    if (m_renderer) {
-        m_renderer->displaySystemMessage("Error: " + message);
-    }
+    emitMessage("Error: " + message);
 }
 
 // T98: displayHelp() removed -- its only caller was cmdHelp (deleted, the

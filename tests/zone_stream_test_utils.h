@@ -134,7 +134,8 @@ inline PosFields EncodePos(int32_t server_x, int32_t server_y, int32_t z, uint32
 inline void WriteSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawn_id,
                               const std::string& name, uint8_t level, uint32_t race,
                               uint8_t char_class, uint8_t gender, uint8_t npc_type,
-                              uint8_t hp_percent, const PosFields& pos) {
+                              uint8_t hp_percent, const PosFields& pos,
+                              uint8_t bodytype = 0) {
     p.PutCString(base + 7, name.c_str());
     p.PutUInt8(base + 83, npc_type);
     p.PutUInt8(base + 86, hp_percent);
@@ -146,6 +147,10 @@ inline void WriteSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t sp
     p.PutUInt32(base + 284, race);
     p.PutUInt8(base + 331, char_class);
     p.PutUInt8(base + 334, gender);
+    // T308: Spawn_Struct offset 335, the server-sent body type
+    // (eqemu common/bodytypes.h: Humanoid == 1). eq_entities.cpp reads it
+    // into Entity::bodytype; hunt-target filtering now classifies on it.
+    p.PutUInt8(base + 335, bodytype);
     p.PutUInt32(base + 340, spawn_id);
 }
 
@@ -154,10 +159,11 @@ inline void WriteSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t sp
 inline std::vector<uint8_t> NewSpawnPayloadAt(uint32_t spawn_id, const std::string& name,
                                                int32_t server_x, int32_t server_y, int32_t z,
                                                uint8_t level = 5, uint8_t npc_type = 1,
-                                               uint8_t char_class = 1, uint8_t hp_percent = 100) {
+                                               uint8_t char_class = 1, uint8_t hp_percent = 100,
+                                               uint32_t race = 54, uint8_t bodytype = 0) {
     return BuildPayload(387, [&](EQ::Net::DynamicPacket& p) {
-        WriteSpawnStruct(p, 2, spawn_id, name, level, 54, char_class, 0, npc_type, hp_percent,
-                          EncodePos(server_x, server_y, z, 0));
+        WriteSpawnStruct(p, 2, spawn_id, name, level, race, char_class, 0, npc_type, hp_percent,
+                          EncodePos(server_x, server_y, z, 0), bodytype);
     });
 }
 

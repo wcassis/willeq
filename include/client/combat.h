@@ -429,7 +429,9 @@ private:
 	bool IsGuard(const Entity& entity) const;
 	bool IsCorpse(const Entity& entity) const;
 	Entity* FindNearbyCorpse() const;
-	bool IsHumanoid(uint16_t race_id) const;
+	// T308: body-type driven (server-sent Spawn_Struct field), not a race-id
+	// table -- see the definition in combat.cpp for the five-copy history.
+	bool IsHumanoid(const Entity& entity) const;
 
 	// T26: loot state machine helpers.
 	void EnterLootSubState(LootSubState state);

@@ -626,6 +626,37 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_combat_manager)
 
+# T308 Leg 1: hunt-target filtering classifies on the server-sent body type,
+# not on CombatManager::IsHumanoid()'s hand-written race-id table (the FIFTH
+# live copy of the pre-JSON numbering; T267/T270/T271/T304 killed the other
+# four). Same seam as test_combat_manager.cpp -- bare EverQuest via MakeEq(),
+# live CombatManager, spawns replayed as real NewSpawn packets -- but every
+# assertion is on the target the client ENGAGES through /pathfinding on +
+# /combat on + /hunt on, never on the private predicate.
+ADD_EXECUTABLE(test_hunt_target_body_type
+    test_hunt_target_body_type.cpp
+)
+TARGET_LINK_LIBRARIES(test_hunt_target_body_type GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_hunt_target_body_type PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_hunt_target_body_type)
+
+# T308 Leg 2: registry 2 (action::CommandProcessor) answers into the on-screen
+# chat window as well as stdout. Drives the user path -- text typed into the
+# chat window -> EverQuest::ProcessChatInput() -> registry 1 miss -> the
+# fallback Application installs in wireUnifiedCommandDispatch() (the same
+# production function that installs the chat sink) -- and asserts on the
+# SystemMessage events reaching the bridge.
+ADD_EXECUTABLE(test_command_output_routing
+    test_command_output_routing.cpp
+)
+TARGET_LINK_LIBRARIES(test_command_output_routing GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_command_output_routing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_command_output_routing)
+
 # T28: coverage for the four eq_commands.cpp readers repointed from the
 # never-populated state-layer CombatState target to the authoritative
 # CombatManager (refactor/T28_state_layer_readers.md Part 2). Same seam as
