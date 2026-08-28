@@ -434,7 +434,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_overlays.cpp
         src/client/graphics/renderer_player_physics.cpp
         src/client/graphics/renderer_zone_draw.cpp
-        src/client/graphics/viewmodel_renderer.cpp
         src/client/graphics/renderer_zone_merge.cpp
         src/client/graphics/renderer_zone_stream.cpp
         src/client/graphics/renderer_effects.cpp

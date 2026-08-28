@@ -397,26 +397,17 @@ public:
     // Debug: log player visibility status (call before drawAll to diagnose render issues)
     void debugLogPlayerVisibility() const;
 
-    // Set first-person mode for the player (shows only weapons)
-    // When enabled, weapons are positioned relative to camera instead of skeleton
+    // T300: first person draws the player's ORDINARY model, unfiltered, with
+    // its equipment, exactly as third person does. The camera sits at the
+    // eyes and a clamped down-pitch keeps the body (which hangs directly
+    // below the eye) out of frame -- that clamp is the ONLY thing that hides
+    // the player. All this call now does is record the
+    // mode and hide the floating name tag; there is no geometry filter, no
+    // deferral out of the render list, and no viewmodel pass.
     void setPlayerFirstPersonMode(bool enabled);
 
     // Check if player is in first-person mode
     bool isPlayerInFirstPersonMode() const;
-
-    // T296: the geometry the first-person viewmodel pass draws. The player's
-    // animated node is left VISIBLE (so Irrlicht still calls OnAnimate on it
-    // and the skeleton keeps running) but deferred out of the scene graph's
-    // render list, and its equipment children are hidden; the viewmodel pass
-    // draws all of it itself at a designed offset in its own view space.
-    struct ViewmodelParts {
-        EQAnimatedMeshSceneNode* animatedNode = nullptr;
-        irr::scene::IMeshSceneNode* primaryEquipNode = nullptr;
-        irr::scene::IMeshSceneNode* secondaryEquipNode = nullptr;
-    };
-    // Returns false when there is no player entity, no animated node, or the
-    // skeleton yielded no usable arm bones (the T74 full-hide fallback).
-    bool getPlayerViewmodelParts(ViewmodelParts& out) const;
 
     // Update the player entity's position (used in player mode for third-person view)
     void updatePlayerEntityPosition(float x, float y, float z, float heading);
@@ -439,10 +430,18 @@ public:
     // Returns 0.0f if player entity not found
     float getPlayerCollisionZOffset() const;
 
-    // Get the player's eye height from feet (for first-person camera positioning)
-    // Returns the height from ground level to approximate eye position
-    // Returns 0.0f if player entity not found
-    float getPlayerEyeHeightFromFeet() const;
+    // T300: eye height measured from the player NODE ORIGIN (== the server's
+    // Z for this entity), NOT from the feet -- the old name said "FromFeet"
+    // and the value has never been feet-relative. The node origin sits INSIDE
+    // the body: the Human male base mesh spans Y = [-3.05, +3.65] about it
+    // (createEntity()'s own comment: "Server Z is the geometric MODEL
+    // CENTER"). The returned value is bbox.MaxEdge.Y, i.e. the top of the
+    // head, which is ~6.70 above the mesh's own feet -- and that is what the
+    // official client's measured 6.75-above-server-z eye corresponds to
+    // (T298 A3, T300). Adding those two frames together is a 3.05-unit
+    // regression; the frame is named here so nobody does it again.
+    // Returns 0.0f if player entity not found.
+    float getPlayerEyeHeightAboveNodeOrigin() const;
 
     // Entity casting management (for showing casting bars above other entities)
     void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs);

@@ -114,9 +114,27 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         heading += mouseDeltaX * 0.5f;
         // Mouse delta Y controls pitch (vertical look) - inverted so dragging up looks up
         playerPitch_ -= mouseDeltaY * 0.3f;
-        // Clamp pitch to prevent camera flipping
-        if (playerPitch_ > 89.0f) playerPitch_ = 89.0f;
-        if (playerPitch_ < -89.0f) playerPitch_ = -89.0f;
+        // Clamp pitch to prevent camera flipping.
+        if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
+        if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
+        // T300: THE HIDING MECHANISM, applied on the LIVE path. This function
+        // (updatePlayerMovement()) is the only writer of playerPitch_ in the
+        // tree and is what runs every frame the mouse moves -- T295's finding
+        // that the camera formula had a private duplicate here is exactly why
+        // the clamp is applied where the value is produced, not only where it
+        // is consumed. computeFirstPersonCamera() clamps the total pitch again
+        // at the point of use; this one keeps the STORED value in range so the
+        // control does not accumulate an invisible dead zone that has to be
+        // dragged back through before the view moves again.
+        //
+        // Down side only. The body hangs BELOW the eye, so looking UP moves it
+        // further out of frame; the +/-89 above is a gimbal guard for the
+        // look-at target, not part of the hiding, and Leg A measured only the
+        // down side.
+        if (cameraMode_ == CameraMode::FirstPerson) {
+            const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+            if (playerPitch_ < minLook) playerPitch_ = minLook;
+        }
     }
 
     // Normalize heading to 0-512
@@ -703,12 +721,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
     // from the "head bone"/bbox eye height with NEITHER T76's 0.3-unit
     // standoff NOR T75's 12-degree down-pitch, so every frame in which the
     // player moved or turned overwrote both fixes. It also read
-    // getPlayerHeadBonePosition(), which since T75 does not read a head
-    // bone at all: it returns the SAME getPlayerEyeHeightFromFeet() value
-    // added to the player visual's last position, i.e. a second spelling of
-    // what repositionFirstPersonCamera() already computes from playerZ_.
-    // The genuine head-bone lever lives inside getPlayerEyeHeightFromFeet()
-    // and is reached identically through the helper.
+    // getPlayerHeadBonePosition(), which since T75 did not read a head bone
+    // at all. T300 replaced both tunables (the standoff is gone, the pitch
+    // is 3.65 degrees) and moved the formula into
+    // include/client/graphics/first_person_camera.h; the reason this path
+    // must keep delegating is unchanged.
     if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
         repositionFirstPersonCamera();
     }

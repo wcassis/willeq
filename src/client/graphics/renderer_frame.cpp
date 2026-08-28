@@ -1190,6 +1190,13 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
         zoneShader_->beginFrame();
     }
+    // T300: the down-pitch clamp that hides the player's own body. Re-checked
+    // every frame because the clamp tracks the FOV and because entering first
+    // person from a steeply-pitched third-person view has to be corrected.
+    // A no-op outside first person, and a no-op in first person unless the
+    // pitch is out of range. Must run BEFORE the draw.
+    applyFirstPersonPitchClamp();
+
     smgr_->drawAll();
     frameTimings_.sceneDrawAll = measureSection();
 
@@ -1365,12 +1372,6 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // Render weather effects
     if (weatherEffects_ && weatherEffects_->isEnabled()) weatherEffects_->render();
     frameTimings_.weatherRender = measureSection();
-
-    // T296: first-person viewmodel pass. Placed here on purpose -- after ALL
-    // 3D world content (zone, entities, particles, weather) so nothing can
-    // occlude the arms, and before the debug overlays and 2D UI so those
-    // still draw on top. A complete no-op outside first person.
-    renderFirstPersonViewmodel();
 
     // Draw collision debug lines
     if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);

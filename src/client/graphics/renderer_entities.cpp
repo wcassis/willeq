@@ -28,9 +28,10 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         // Set player race for vision-based lighting
         setPlayerRace(raceId);
 
-        // T74: arm-filtered first-person geometry (or full-hide fallback)
-        // if the player entity is (re)created while already in FirstPerson
-        // camera mode (e.g. zoning in with first person already selected).
+        // T300: re-apply first-person bookkeeping (name tag) if the player
+        // entity is (re)created while already in FirstPerson camera mode
+        // (e.g. zoning in with first person already selected). The model
+        // itself draws normally; the near plane hides it.
         bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerFirstPersonMode(firstPerson);
         if (firstPerson) {

@@ -93,8 +93,8 @@ namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRen
 
 // Forward declaration for constrained texture cache
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
-// T296: the viewmodel pass's framing knobs live with its math.
-#include "client/graphics/viewmodel_tuning.h"
+// T300: the first-person camera's constants and its pure placement math.
+#include "client/graphics/first_person_camera.h"
 
 namespace EQT {
 namespace Graphics {
@@ -2161,26 +2161,36 @@ private:
     // FirstPerson mode.
     void repositionFirstPersonCamera();
 
-    // T296: the first-person viewmodel pass. Runs after the world render
-    // (and after particles/weather) and before the 2D UI; a complete no-op
-    // outside first person. Draws the T74 arm-filtered geometry plus the two
-    // bone-attached equipment nodes at a designed offset in its OWN view
-    // space, with its own small near plane -- see
-    // include/client/graphics/viewmodel_transform.h and
-    // src/client/graphics/viewmodel_renderer.cpp.
-    void renderFirstPersonViewmodel();
+    // T300: first person is the ORDINARY player model seen from the eyes,
+    // hidden by a large near clip plane -- not a separate pass. This applies
+    // the projection that mechanism needs (near plane + the official client's
+    // horizontal FOV) on entering first person, and restores the world
+    // defaults on leaving it. Safe to call unconditionally; reads
+    // cameraMode_.
+    void applyCameraProjectionForMode();
 
-public:
-    // Number of draw calls the last viewmodel pass issued (0 outside first
-    // person, or when the player has no usable arm geometry). Test hook.
-    size_t getLastViewmodelDrawCallCount() const { return lastViewmodelDrawCallCount_; }
+    // T300: THE HIDING SEAM. Everything that hides the player's own body in
+    // first person is in this one body. It clamps the stored mouse-look pitch
+    // so the frustum's lower edge never passes the nadir -- the body hangs
+    // directly below the eye, so a view that cannot look past straight down
+    // cannot contain it. The clamp angle is DERIVED from the camera's vertical
+    // FOV (90 - vFOV/2), which makes it scale-, race- and shrink/grow-
+    // invariant with no size term of any kind.
+    //
+    // Called every frame before the scene draw, and on mode changes (entering
+    // first person from a third-person view that was pitched further down than
+    // the clamp allows has to be corrected immediately). A no-op outside first
+    // person, and a no-op in first person unless the pitch was out of range.
+    //
+    // Leg A REFUTED the near-plane hypothesis this seam previously held: the
+    // official client clips nothing, and the size sweep killed both the fixed
+    // and the size-derived plane. If the mechanism moves again, this body and
+    // firstPersonMaxDownPitchDegrees() are what get replaced.
+    void applyFirstPersonPitchClamp();
 
-private:
-    ViewmodelTuning viewmodelTuning_;
-    irr::core::aabbox3d<irr::f32> viewmodelArmBoxBaked_;
-    float viewmodelArmBoxHeadingY_ = 0.0f;
-    bool viewmodelArmBoxValid_ = false;
-    size_t lastViewmodelDrawCallCount_ = 0;
+    // The vertical FOV the first-person camera is actually using, in radians.
+    // One answer, so the clamp derivation and the projection cannot disagree.
+    float getFirstPersonVerticalFov() const;
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {

@@ -644,7 +644,46 @@ race-dense zone. Will chose not to spend that budget.
 **Do not "fix" this by re-enabling it, and do not repeat the T195 rationale.**
 Superseded wording still sits in `src/client/graphics/CLAUDE.md:127`.
 
-## 2026-08-27 — First person gets a real viewmodel pass (Will)
+## 2026-08-27 (later) — REVERSED: first person is the player model + eye camera + a clamped down-pitch (Will)
+
+**Will explicitly approved reversing the viewmodel decision below.** T299
+measured the mechanism in BOTH the classic client and Titanium: **first person
+is the ORDINARY player model, camera at the eyes, with a near clip plane large
+enough to swallow the body.** Nothing of the player renders at rest at ANY
+pitch — including aimed straight down at feet 6.75 units below the eye — yet
+the SAME leg reappears the instant a kick extends it, and the main-hand blade
+appears on every swing, always cut cleanly with the hand and elbow never drawn.
+**Geometry that reappears was CLIPPED, not omitted.** The weapon also enters
+22.9 degrees off-axis and rotates about an off-screen pivot, entering from
+different edges in different swings: world-space animation, not a screen-locked
+viewmodel.
+
+The entry below rested on T76's "no camera lever can fix it", which was
+measured against a camera now known to be wrong on two counts (a 12-degree
+down-pitch and a backward standoff, both introduced for in-world arms) and
+against a near plane of 1.0 that was never the lever under discussion. **The
+rejected alternative it names — "do NOT lower the global near clip plane" — is
+not what T300 does: the near plane is RAISED, in first person only, and the
+world's 1.0 plane is restored on leaving first person.**
+
+**The near plane is NOT the lever — T300 Leg A refuted that too.** The official
+client clips nothing (geometry draws at point-blank range), and a size sweep at
+5x showed zero player geometry while ground 34 units below still drew, which
+kills both a fixed and a size-derived plane. **The body is hidden by a clamped
+down-pitch**: it hangs directly below the eye, and pitch is clamped so the
+frustum's lower edge never passes the nadir, while a swing rotates the arm and
+weapon up across a frame edge into view.
+
+Implemented by T300 Leg B: the viewmodel pass, T74's arm-bone geometry filter
+and T76's standoff are DELETED; the camera is at the player's XY with pitch
+3.65 degrees down and hFOV 62.8 degrees (both T298's measured values); first
+person uses the world's near plane like every other mode; down-pitch is clamped
+at 90 - vFOV/2, which is scale- and race-invariant and needs no size term. See
+`refactor/T300_leg_b_implementation.md` and `refactor/deferred.md`'s FIRST
+PERSON section. **Will judges the live result (Leg C); no headless test can —
+nothing in the suite rasterizes.**
+
+## 2026-08-27 — First person gets a real viewmodel pass (Will) — SUPERSEDED, SEE ABOVE
 
 **Decision:** Implement a **viewmodel pass** for first person, as T76
 recommended. Do NOT lower the global near clip plane — that was the rejected

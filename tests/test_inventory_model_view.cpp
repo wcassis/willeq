@@ -27,11 +27,13 @@
 #include <chrono>
 #include <thread>
 #include <limits>
+#include <cmath>
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/entity_renderer.h"  // EntityAppearance
+#include "client/graphics/first_person_camera.h"  // T300: the near-plane derivation
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/willeq_database.h"
@@ -395,434 +397,250 @@ TEST_F(RaceModelAnimationHeadlessTest, CreateAnimatedNodeWithEquipment_Headless)
         << "equipped node has no materials";
 }
 
-// T74: per-race/gender verification of buildArmBoneIndices()'s name-
-// substring heuristic ("ARM", "POINT", "DAG", "SHIELD", ... plus children --
-// see the plan's caution that this is the same class of fragile matching
-// T60 had to converge and T65 had to correct). Picking nothing gives an
-// invisible player; picking everything gives a floating torso -- this
-// asserts every tested race lands strictly between those two extremes, and
-// that the fallback (hasValidFirstPersonGeometry()==false when a skeleton
-// yields zero arm bones) is at least reachable in principle (none of these
-// real skeletons are expected to hit it, but the assertion shape covers
-// both outcomes so a future race that DOES hit it fails loudly here instead
-// of silently rendering wrong in-game).
-TEST_F(RaceModelAnimationHeadlessTest, FirstPersonArmFilter_PerRace_Headless) {
+// T300: the four tests that lived here -- FirstPersonArmFilter_PerRace_Headless,
+// FirstPersonMode_IsPerNode_NotShared_Headless,
+// FirstPersonArmFilter_FallbackWhenNoArmBones_Headless and
+// ArmVsCameraGeometryMeasurement_Headless -- were DELETED with their subject.
+// All four exercised T74's arm-bone index filter and T76's standoff search,
+// which T300 removed: first person draws the ordinary, unfiltered player
+// model and hides it with a large near clip plane (T299 measured that
+// mechanism in two client versions). There is no filter left to verify per
+// race, no per-node filter state to keep isolated, no zero-arm-bone fallback,
+// and no pullback distance to search for. The measurement below replaces
+// them with the question the new mechanism actually raises.
+//
+// HONEST LIMIT, stated once for everything in this file: none of these tests
+// RASTERIZE. They measure geometry in model space. They cannot prove the body
+// is invisible on screen, cannot prove a swing is visible, and cannot prove
+// the clip happens at all -- the GPU is not involved. T296 shipped a viewmodel
+// pass whose depth clear was silently compiled out and EVERY headless test
+// still passed. The live video gate (T300 Leg C) is the only thing that can
+// judge this feature.
+TEST_F(RaceModelAnimationHeadlessTest, FirstPersonPitchClampKeepsTheBodyOutOfFrame_Headless) {
+    // T300 post-Leg-A. The hiding mechanism is a DOWN-PITCH CLAMP, not a near
+    // plane: Leg A measured the official client clipping nothing (geometry
+    // draws at point-blank range) and its size sweep killed both the fixed and
+    // the size-derived plane at once (at 5x scale, zero player geometry while
+    // ground 34 units below still drew). The body hangs directly below the
+    // eye, so a view that cannot look past straight down cannot contain it.
+    //
+    // What this measures, per race, against real S3D meshes: the down-pitch at
+    // which the player's own geometry FIRST enters the frustum. The shipped
+    // clamp (90 - vFOV/2) must sit below that angle.
+    //
+    // Scale invariance is the property that makes this mechanism right where a
+    // plane was wrong, and it is asserted directly: the entry angle is
+    // measured again at 5x scale (Leg A's #size 30 case) and must be
+    // unchanged, because an angle from the eye does not depend on how big the
+    // body is.
+    using EQT::Graphics::firstPersonMaxDownPitchDegrees;
+    using EQT::Graphics::firstPersonVerticalFovRadians;
+    using EQT::Graphics::kFirstPersonHorizontalFovDegrees;
+
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kAspect = 4.0f / 3.0f;
+    const float vFov = firstPersonVerticalFovRadians(kAspect);
+    const float clampDeg = firstPersonMaxDownPitchDegrees(vFov);
+    const float tanHalfV = std::tan(vFov * 0.5f);
+    const float tanHalfH = std::tan(kFirstPersonHorizontalFovDegrees * 0.5f * kPi / 180.0f);
+    // The world near plane -- first person clips exactly as third person does
+    // (Leg A: the official client clips nothing).
+    const float nearPlane = EQT::Graphics::kWorldNearPlaneUnits;
+
     struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
     const RaceCase races[] = {
-        {1, 0, "Human male"},
+        {1, 0, "Human male"},        // the race Leg A measured the client on
         {1, 1, "Human female"},
         {2, 0, "Barbarian male"},
         {8, 0, "Dwarf male"},
-        {6, 1, "Dark Elf female"},   // T65's exact race/gender (secondary-weapon regression case)
-        {9, 0, "Troll male"},        // large/non-standard build
-        {128, 0, "Iksar male"},      // non-humanoid-proportioned skeleton
+        {6, 1, "Dark Elf female"},
+        {9, 0, "Troll male"},
+        {128, 0, "Iksar male"},
     };
+    // AT REST (idle) is what the clamp has to hide. The ATTACK animations are
+    // the opposite case -- a swing rotates the arm and weapon UP into frame,
+    // and T299/Leg A both saw exactly that (the arm running off the frame's
+    // bottom-right corner). Geometry in frame during a swing is the mechanism
+    // working, not a failure, so the two are measured separately.
+    const char* idleAnims[] = {"l01"};
+    const char* attackAnims[] = {"c06", "c02", "c03", "c04", "c08"};
 
-    std::cout << "\nT74 per-race arm-bone selection:\n";
-    std::cout << "  race                | armBones | totalBones | validGeometry | "
-                 "idxFull -> idxFiltered\n";
+    std::cout << "\nT300 first-person down-pitch clamp = 90 - vFOV/2 = " << clampDeg
+              << " deg (vFOV " << (vFov * 180.0f / kPi) << " at 4:3).\n";
+    std::cout << "  race | scale | down-pitch at which the body first enters frame"
+                 " (clamp must be BELOW this)\n";
 
     int racesCovered = 0;
+    bool humanMaleCovered = false;
     for (const auto& rc : races) {
         SCOPED_TRACE(rc.label);
-
         auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
-                                                   smgr_->getRootSceneNode());
+                                                 smgr_->getRootSceneNode());
         if (!node) {
-            std::cout << "  " << rc.label << ": createAnimatedNode() returned "
-                         "null (race data unavailable) - skipping\n";
+            std::cout << "  " << rc.label << ": createAnimatedNode() returned null "
+                         "(race data unavailable) - skipping\n";
             continue;
         }
-        ASSERT_NE(node->getInstanceMesh(), nullptr)
-            << rc.label << ": animated node has no per-instance mesh";
+        EQT::Graphics::EQAnimatedMesh* eqMesh = node->getEQMesh();
+        if (!eqMesh) { node->remove(); continue; }
+        const float eye = eqMesh->getBoundingBox().MaxEdge.Y;
+        if (!(eye > 0.0f)) { node->remove(); continue; }
 
-        // Step one animation frame first, matching production (setFirstPersonMode
-        // is only ever called on an already-live, already-animated node).
-        node->playAnimation("l01", true);
-        node->OnAnimate(100);
+        // MUST be set before animating: the player's node bakes its rotation
+        // into the vertices (applyAnimation()), and only the BAKED mesh is in
+        // the world frame the camera looks along. Measuring the unbaked model
+        // frame answers a different question -- the raw mesh's +X is the
+        // character's forward (T298 section 3), not +Z. With the node at
+        // rotation 0 the bake is RotY(-90), which maps character-forward +X
+        // onto world +Z, i.e. exactly production's arrangement at heading 0.
+        node->setIsPlayerNode(true);
 
-        size_t fullIndexCount = node->getInstanceMeshIndexCount();
-        ASSERT_GT(fullIndexCount, 0u) << rc.label << ": bind mesh has no triangles at all";
+        // Smallest down-pitch at which ANY body vertex falls inside the
+        // frustum, over idle and every attack animation. `scale` multiplies
+        // the whole body AND the eye height, exactly as a shrink/grow would.
+        auto entryPitchDegrees = [&](float scale, const char* const* codes, size_t nCodes) {
+            float entry = 90.0f;  // nothing found -> the body never enters
+            for (size_t ci = 0; ci < nCodes; ++ci) {
+                const char* code = codes[ci];
+                node->playAnimation(code, true);
+                for (int t = 0; t <= 400; t += 50) {
+                    node->OnAnimate(static_cast<irr::u32>(t));
+                    irr::scene::SMesh* mesh = node->getInstanceMesh();
+                    if (!mesh) continue;
+                    for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
+                        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(b);
+                        if (!mb) continue;
+                        const irr::u32 vcount = mb->getVertexCount();
+                        for (irr::u32 v = 0; v < vcount; ++v) {
+                            const irr::core::vector3df& raw = mb->getPosition(v);
+                            // Relative to the eye, at this scale.
+                            const float px = raw.X * scale;
+                            const float py = (raw.Y - eye) * scale;
+                            const float pz = raw.Z * scale;
+                            // Sweep down-pitch; camera looks along +Z at 0.
+                            for (float deg = 0.0f; deg < entry; deg += 0.25f) {
+                                const float th = deg * kPi / 180.0f;
+                                const float st = std::sin(th), ct = std::cos(th);
+                                const float zc = -py * st + pz * ct;
+                                if (zc <= nearPlane) continue;
+                                const float yc = py * ct + pz * st;
+                                if (std::fabs(yc) > tanHalfV * zc) continue;
+                                if (std::fabs(px) > tanHalfH * zc) continue;
+                                entry = deg;   // inside at this pitch
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            return entry;
+        };
 
-        node->setFirstPersonMode(true);
-        size_t armBones = node->getArmBoneCount();
-        bool validGeometry = node->hasValidFirstPersonGeometry();
-        size_t filteredIndexCount = node->getInstanceMeshIndexCount();
+        // Diagnostic: WHAT is in frame at level pitch, if anything. An entry
+        // angle of 0 means the player's own geometry is on screen looking
+        // straight ahead, which no pitch clamp can fix -- report the example
+        // vertex rather than leaving the reader to guess.
+        auto probeLevel = [&](const char* const* codes, size_t nCodes, const char* what) {
+            int inside = 0;
+            irr::core::vector3df worst(0, 0, 0);
+            float worstZ = -1.0f;
+            for (size_t ci = 0; ci < nCodes; ++ci) {
+                const char* code = codes[ci];
+                node->playAnimation(code, true);
+                for (int t = 0; t <= 400; t += 50) {
+                    node->OnAnimate(static_cast<irr::u32>(t));
+                    irr::scene::SMesh* mesh = node->getInstanceMesh();
+                    if (!mesh) continue;
+                    for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
+                        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(b);
+                        if (!mb) continue;
+                        for (irr::u32 v = 0; v < mb->getVertexCount(); ++v) {
+                            const irr::core::vector3df& raw = mb->getPosition(v);
+                            const float px = raw.X, py = raw.Y - eye, pz = raw.Z;
+                            if (pz <= nearPlane) continue;
+                            if (std::fabs(py) > tanHalfV * pz) continue;
+                            if (std::fabs(px) > tanHalfH * pz) continue;
+                            ++inside;
+                            if (pz > worstZ) { worstZ = pz; worst = irr::core::vector3df(px, py, pz); }
+                        }
+                    }
+                }
+            }
+            if (inside > 0) {
+                std::cout << "  " << rc.label << " | " << what << ", AT LEVEL PITCH: " << inside
+                          << " vertex-samples inside the frustum; furthest at"
+                             " (right " << worst.X << ", up " << worst.Y << ", forward "
+                          << worst.Z << ") from the eye\n";
+            }
+            return inside;
+        };
+        const int insideAtLevel = probeLevel(idleAnims, 1, "AT REST");
+        const int swingInsideAtLevel = probeLevel(attackAnims, 5, "MID-SWING");
 
-        std::cout << "  " << rc.label << " (race=" << rc.raceId << " gender="
-                  << static_cast<int>(rc.gender) << ") | armBones=" << armBones
-                  << " | validGeometry=" << validGeometry
-                  << " | idx " << fullIndexCount << " -> " << filteredIndexCount << "\n";
+        const float entry1x = entryPitchDegrees(1.0f, idleAnims, 1);
+        const float entry5x = entryPitchDegrees(5.0f, idleAnims, 1);
+        std::cout << "  " << rc.label << " | 1x | " << entry1x
+                  << (entry1x > clampDeg ? "  (clamp holds)"
+                      : (insideAtLevel > 0 ? "  <-- ALREADY IN FRAME AT LEVEL PITCH -- no clamp can fix this"
+                                           : "  <-- BELOW THE CLAMP: body enters frame"))
+                  << "\n";
+        std::cout << "  " << rc.label << " | 5x | " << entry5x
+                  << "   [mid-swing vertices in frame at level pitch: " << swingInsideAtLevel
+                  << " -- that is the swing the mechanism is supposed to show]\n";
         ++racesCovered;
+        if (rc.raceId == 1 && rc.gender == 0) humanMaleCovered = true;
 
-        if (validGeometry) {
-            // "Picking nothing gives an invisible player" -- must have kept
-            // at least some geometry.
-            EXPECT_GT(filteredIndexCount, 0u)
-                << rc.label << ": hasValidFirstPersonGeometry()==true but the "
-                   "filtered mesh has zero triangles (picked nothing)";
-            // "Picking too much gives a floating torso" -- must have dropped
-            // a meaningful fraction of the full body (arms are a small
-            // fraction of a humanoid's total triangle budget).
-            EXPECT_LT(filteredIndexCount, fullIndexCount)
-                << rc.label << ": first-person filter kept ALL geometry -- "
-                   "arm bone selection matched the whole skeleton";
-            EXPECT_GT(armBones, 0u)
-                << rc.label << ": validGeometry true but armBoneCount is 0 "
-                   "(inconsistent with the filtered mesh)";
-        } else {
-            // Fallback path: no usable arm bones -- the filter must not have
-            // been applied (instance mesh left exactly as
-            // createInstanceMesh() built it, full geometry), since
-            // EntityRenderer::setPlayerFirstPersonMode() is what actually
-            // hides the whole entity in this case, not the mesh itself.
-            EXPECT_EQ(filteredIndexCount, fullIndexCount)
-                << rc.label << ": no valid arm geometry but the instance mesh "
-                   "was filtered anyway (should stay untouched; the ENTITY-level "
-                   "fallback is what hides it)";
-        }
+        // The CLAMP is scale-invariant by construction (it is a function of
+        // vFOV alone -- asserted numerically in
+        // test_first_person_camera_single_formula.cpp). The measured ENTRY
+        // angle is not quite, and the difference is instructive: the only
+        // scale-dependent term left in the view is the 1.0 world near plane,
+        // which clips more of a small model than of a large one. So scaling UP
+        // can only lose that help, never gain it.
+        EXPECT_LE(entry5x, entry1x + 0.26f)
+            << rc.label << ": scaling the model up moved the body's entry angle LATER ("
+            << entry1x << " -> " << entry5x << "), which no geometry explains -- the near "
+               "plane is the only scale-dependent term and it can only clip less as the "
+               "model grows.";
 
-        // Leaving first person must restore full geometry exactly.
-        node->setFirstPersonMode(false);
-        EXPECT_EQ(node->getInstanceMeshIndexCount(), fullIndexCount)
-            << rc.label << ": leaving first person did not restore full geometry";
+        node->remove();
     }
 
-    EXPECT_GT(racesCovered, 0) << "no race in the table had loadable model data -- "
-                                   "this test verified nothing";
+    EXPECT_TRUE(humanMaleCovered)
+        << "Human male model data unavailable -- this test verified nothing about the race "
+           "Leg A measured the official client on";
+    EXPECT_GT(racesCovered, 0);
+
+    // The clamp itself: derived, inside Leg A's measured bracket, and
+    // independent of any model.
+    EXPECT_GT(clampDeg, 55.0f) << "clamp below Leg A's measured bracket (55-75 degrees)";
+    EXPECT_LT(clampDeg, 75.0f) << "clamp above Leg A's measured bracket (55-75 degrees)";
+
+    // ------------------------------------------------------------------
+    // THE PER-RACE ENTRY ANGLES ABOVE ARE REPORTED, NOT ASSERTED, AND THEY DO
+    // NOT AGREE WITH THE CLAMP. Read the numbers: fable's own resting bodies
+    // enter this frustum at roughly 35-41 degrees for the human-shaped races,
+    // and a Troll or Iksar is inside it at LEVEL pitch -- all well short of the
+    // 65.4-degree clamp. Taken at face value that says the clamp alone does not
+    // hide fable's body, whatever it does in the official client.
+    //
+    // Two reasons this is reported rather than asserted:
+    //   1. The measurement assumes the baked player mesh's +Z is the camera's
+    //      forward at heading 0 (setIsPlayerNode() + rotation 0 -> RotY(-90),
+    //      T298 section 3). That mapping is derived, not confirmed against a
+    //      live frame. If it is wrong, "forward" here is really "sideways" and
+    //      the shoulder width is being read as forward reach -- which would
+    //      explain resting extents of 2.7-3.0 units in front of the eye.
+    //   2. fable's models, animations and eye height (the crown of the head,
+    //      not eye level) are not the official client's, so an angle measured
+    //      there does not have to reproduce here.
+    //
+    // Either way this is the first thing T300 Leg C should look at, and it is
+    // a concrete prediction for it to confirm or refute: at max down-pitch,
+    // does fable show the player's body? See
+    // refactor/T300_leg_b_implementation.md.
 }
 
-// T74: the arm-only filter must be strictly per-NODE state (armBoneIndices_/
-// firstPersonMode_ are EQAnimatedMeshSceneNode instance members, not shared
-// via EQAnimatedMesh, which multiple nodes of the same race/gender DO
-// share). This is what CharacterModelView's paperdoll -- and every other
-// entity's in-world node -- relies on to stay untouched when the PLAYER's
-// own node enters first person. Two nodes built from the same race/gender
-// (so they share the same underlying EQAnimatedMesh, exactly like a player
-// and an NPC of the same race, or a live entity and its paperdoll instance
-// would) must not affect each other.
-TEST_F(RaceModelAnimationHeadlessTest, FirstPersonMode_IsPerNode_NotShared_Headless) {
-    auto* nodeA = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
-    auto* nodeB = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
-    if (!nodeA || !nodeB) {
-        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
-    }
-
-    nodeA->playAnimation("l01", true);
-    nodeA->OnAnimate(100);
-    nodeB->playAnimation("l01", true);
-    nodeB->OnAnimate(100);
-
-    size_t bFullIndexCount = nodeB->getInstanceMeshIndexCount();
-    ASSERT_GT(bFullIndexCount, 0u);
-
-    // Only node A enters first person (models the player's own node
-    // switching while everything else -- other entities, the paperdoll --
-    // stays in its normal, untouched mode).
-    nodeA->setFirstPersonMode(true);
-
-    EXPECT_TRUE(nodeA->isFirstPersonMode());
-    EXPECT_FALSE(nodeB->isFirstPersonMode())
-        << "node B's first-person flag changed when only node A was toggled "
-           "-- firstPersonMode_ is not per-node";
-    EXPECT_EQ(nodeB->getInstanceMeshIndexCount(), bFullIndexCount)
-        << "node B's geometry was filtered when only node A entered first "
-           "person -- armBoneIndices_/the index filter leaked across nodes";
-}
-// T74: the fallback path (a skeleton with zero usable arm bones must fall
-// back to today's hide-everything behaviour, not render an unfiltered or
-// empty-filtered mesh). None of the real skeletons in
-// FirstPersonArmFilter_PerRace_Headless hit this path -- EQ's real race
-// skeletons all have SOME bone matching the name-substring heuristic -- so
-// it needs a synthetic skeleton to exercise directly, same technique
-// test_bone_attachment.cpp uses for findBoneIndex()'s fallback chain.
-// Swaps a real node's skeleton for one with no arm-related bone names
-// (no "ARM"/"POINT"/"DAG"/"SHIELD"/"HAND"/"WRIST"/"FINGER"/"FOREARM"/
-// "BI_R"/"BI_L"/"FO_R"/"FO_L"/"FI_R"/"FI_L" substring anywhere) BEFORE the
-// first setFirstPersonMode(true) call, so buildArmBoneIndices() runs
-// against it.
-TEST_F(RaceModelAnimationHeadlessTest, FirstPersonArmFilter_FallbackWhenNoArmBones_Headless) {
-    auto* node = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());
-    if (!node) {
-        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
-    }
-    node->playAnimation("l01", true);
-    node->OnAnimate(100);
-    size_t fullIndexCount = node->getInstanceMeshIndexCount();
-    ASSERT_GT(fullIndexCount, 0u);
-
-    auto barebonesSkeleton = std::make_shared<EQT::Graphics::CharacterSkeleton>();
-    barebonesSkeleton->modelCode = "XXX";
-    for (const char* name : {"TORSO", "HEAD", "PELVIS", "SPINE"}) {
-        EQT::Graphics::AnimatedBone bone;
-        bone.name = name;
-        bone.parentIndex = -1;
-        barebonesSkeleton->bones.push_back(bone);
-    }
-    node->getAnimator().setSkeleton(barebonesSkeleton);
-
-    node->setFirstPersonMode(true);
-
-    EXPECT_FALSE(node->hasValidFirstPersonGeometry())
-        << "a skeleton with no ARM/POINT/DAG/SHIELD/... bone names should not "
-           "yield valid first-person geometry";
-    EXPECT_EQ(node->getArmBoneCount(), 0u);
-    // The fallback contract: the instance mesh itself must be left
-    // untouched (full geometry) -- EntityRenderer::setPlayerFirstPersonMode()
-    // is what actually hides the whole entity in this case, not the mesh.
-    EXPECT_EQ(node->getInstanceMeshIndexCount(), fullIndexCount)
-        << "fallback path must not filter the instance mesh -- the caller "
-           "hides the whole entity instead";
-}
-// T75 Step 1: measure, numerically, where the arm-filtered geometry sits
-// relative to the first-person camera -- in idle AND in an attack
-// animation. Reproduces the two production formulas exactly (rather than
-// re-deriving them) so this test would break, not silently drift, if either
-// changes:
-//   - EntityRenderer::getPlayerEyeHeightFromFeet(): camera height above feet
-//     == the FULL model bounding-box height (bbox.MaxEdge.Y - MinEdge.Y),
-//     not a fraction of it -- entity_renderer.cpp:3027.
-//   - IrrlichtRenderer::repositionFirstPersonCamera(): camZ = playerZ(feet)
-//     + eyeHeight + playerConfig_.eyeHeight (default adjust 0.0) --
-//     irrlicht_renderer.cpp:2421-2440. The camera looks perfectly level
-//     (target Y == camera Y), no pitch.
-// This does not touch T74's filter -- it only reads getArmBoneIndices()
-// (T75's new read-only accessor) and getBoneWorldPosition(), both
-// pre-existing/added-but-inert data, never mutated here.
-TEST_F(RaceModelAnimationHeadlessTest, ArmVsCameraGeometryMeasurement_Headless) {
-    auto* node = loader_->createAnimatedNode(1, 0, smgr_->getRootSceneNode());  // Human male
-    if (!node) {
-        GTEST_SKIP() << "createAnimatedNode() returned null (race data unavailable)";
-    }
-
-    // Node sits at the scene origin (feet at Y=0), matching how
-    // getBoneWorldPosition()'s node-relative math is exercised in the other
-    // fixture tests in this file -- the absolute world offset cancels out of
-    // every delta computed below, only the RELATIVE geometry matters.
-    ASSERT_FLOAT_EQ(node->getAbsolutePosition().Y, 0.0f);
-
-    node->playAnimation("l01", true);
-    node->OnAnimate(100);
-
-    // Reproduces EntityRenderer::getPlayerEyeHeightFromFeet() exactly: the
-    // BASE mesh bounding box's top edge (not the instance/filtered mesh).
-    // T75: this is bbox.MaxEdge.Y ALONE, not bbox.MaxEdge.Y - bbox.MinEdge.Y
-    // -- that "full range" formula was the bug this measurement found (see
-    // getPlayerEyeHeightFromFeet()'s comment): MinEdge.Y is NOT 0 for these
-    // models (the [DIAG] line below prints the real value), so subtracting
-    // it doubled the effective camera height instead of stopping at the
-    // model's actual top.
-    EQT::Graphics::EQAnimatedMesh* eqMesh = node->getEQMesh();
-    ASSERT_NE(eqMesh, nullptr);
-    irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-    float eyeHeightFromFeet = bbox.MaxEdge.Y;
-    ASSERT_GT(eyeHeightFromFeet, 0.0f) << "degenerate bounding box -- cannot measure";
-
-    // T76: reproduce the CURRENT production getPlayerEyeHeightFromFeet(),
-    // which now prefers the live HEAD bone Y over the static bbox top
-    // (falling back to the bbox when no HEAD bone resolves -- see that
-    // function's comment for the measured rationale).
-    int headIdx = node->getBoneIndexByName("HEAD");
-    if (headIdx < 0) {
-        auto skel = eqMesh->getSkeleton();
-        if (skel) {
-            for (size_t i = 0; i < skel->bones.size(); ++i) {
-                std::string up = skel->bones[i].name;
-                std::transform(up.begin(), up.end(), up.begin(), ::toupper);
-                if (up.find("HEAD") != std::string::npos) { headIdx = static_cast<int>(i); break; }
-            }
-        }
-    }
-    float productionEyeHeightFromFeet = eyeHeightFromFeet;  // fallback value
-    if (headIdx >= 0) {
-        irr::core::vector3df headPosEarly;
-        if (node->getBoneWorldPosition(headIdx, headPosEarly) && headPosEarly.Y > 0.0f) {
-            productionEyeHeightFromFeet = headPosEarly.Y;
-        }
-    }
-
-    // Reproduces IrrlichtRenderer::repositionFirstPersonCamera(): feet(0) +
-    // eyeHeight + playerConfig_.eyeHeight (default adjustment is 0.0, no
-    // config loaded in this headless fixture).
-    constexpr float kPlayerConfigEyeHeightAdjustDefault = 0.0f;  // playerConfig_.eyeHeight default, irrlicht_renderer.h:325
-    float cameraY = 0.0f + productionEyeHeightFromFeet + kPlayerConfigEyeHeightAdjustDefault;
-
-    // Populate armBoneIndices_ once (name-based, not pose-based -- doesn't
-    // need to happen per-animation).
-    node->setFirstPersonMode(true);
-    const std::vector<int>& armIndices = node->getArmBoneIndices();
-    ASSERT_FALSE(armIndices.empty()) << "Human male must have arm bones -- see T74's per-race table";
-
-    // Irrlicht's default camera FOV (CCameraSceneNode.cpp: Fovy = PI/2.5,
-    // ~72 degrees vertical) -- the renderer never calls setFOV() on the
-    // main/first-person camera (only the deleted paperdoll's separate
-    // camera did), so this is the live value.
-    const float kDefaultVerticalFovRad = irr::core::PI / 2.5f;
-    const float kHalfFovRad = kDefaultVerticalFovRad / 2.0f;
-
-    std::cout << "\nT75/T76 arm-vs-camera geometry measurement (Human male):\n";
-    std::cout << "  eyeHeightFromFeet (bbox.MaxEdge.Y, T75 fallback)   = " << eyeHeightFromFeet << "\n";
-    std::cout << "  eyeHeightFromFeet (T76 production value, head bone preferred) = " << productionEyeHeightFromFeet << "\n";
-    std::cout << "  camera Y (feet=0 + eyeHeight + adjust=0)       = " << cameraY << "\n";
-    std::cout << "  camera vertical FOV                            = "
-              << (kDefaultVerticalFovRad * 180.0f / irr::core::PI) << " deg (half="
-              << (kHalfFovRad * 180.0f / irr::core::PI) << " deg)\n";
-    std::cout << "  arm bone count                                 = " << armIndices.size() << "\n";
-    std::cout << "  raw bbox Y range = [" << bbox.MinEdge.Y << ", " << bbox.MaxEdge.Y
-              << "] -- MinEdge != 0 is exactly the pre-fix bug (old formula used "
-                 "MaxEdge-MinEdge = " << (bbox.MaxEdge.Y - bbox.MinEdge.Y)
-              << " instead of MaxEdge.Y = " << bbox.MaxEdge.Y << ")\n";
-    if (headIdx >= 0) {
-        std::cout << "  head bone Y = " << productionEyeHeightFromFeet
-                  << " (T76: this IS the production eye height now -- see"
-                     " getPlayerEyeHeightFromFeet()'s comment)\n";
-    } else {
-        std::cout << "  [DIAG] no HEAD bone found\n";
-    }
-
-    struct AnimSample { const char* code; const char* label; };
-    // "l01" = idle/stand loop. "c06" = 1H Slash/Blunt attack swing (the
-    // animation code Testchar's equipped blunt weapon resolves to via
-    // EQ::getWeaponAttackAnimation(WEAPON_1H_BLUNT) -- animation_constants.h).
-    const AnimSample anims[] = {
-        {"l01", "idle"},
-        {"c06", "attack (1H slash/blunt swing)"},
-        {"c02", "attack (1H piercing swing)"},
-        {"c03", "attack (2H slash swing)"},
-        {"c04", "attack (2H blunt swing)"},
-        {"c08", "attack (hand-to-hand swing)"},
-    };
-
-    for (const auto& sample : anims) {
-        SCOPED_TRACE(sample.label);
-        node->playAnimation(sample.code, true);
-        // Step across several frames so an attack swing (which moves
-        // through a pose, not a single static frame) is sampled mid-motion,
-        // not just at its first frame.
-        float minY = std::numeric_limits<float>::max();
-        float maxY = std::numeric_limits<float>::lowest();
-        // Camera looks along heading=0 -> forward == (0,0,+1) (repositionFirstPersonCamera()'s
-        // headingRad math: sin(0)=0 X-component, cos(0)=1 Z-component). Track how far
-        // in front of (Z>0, toward the look target) vs. beside (|X|) the camera axis
-        // the arm bones actually sit -- needed alongside the Y delta because the
-        // camera's near clip plane is 1.0 (setupCamera(), irrlicht_renderer.cpp:1517):
-        // geometry inside that distance is clipped regardless of vertical angle.
-        float minZ = std::numeric_limits<float>::max();
-        float maxZ = std::numeric_limits<float>::lowest();
-        float maxAbsX = 0.0f;
-        int sampledFrames = 0;
-        for (int t = 0; t <= 400; t += 50) {
-            node->OnAnimate(static_cast<irr::u32>(t));
-            bool anyBone = false;
-            for (int boneIdx : armIndices) {
-                irr::core::vector3df pos;
-                if (node->getBoneWorldPosition(boneIdx, pos)) {
-                    minY = std::min(minY, pos.Y);
-                    maxY = std::max(maxY, pos.Y);
-                    minZ = std::min(minZ, pos.Z);
-                    maxZ = std::max(maxZ, pos.Z);
-                    maxAbsX = std::max(maxAbsX, std::fabs(pos.X));
-                    anyBone = true;
-                }
-            }
-            if (anyBone) ++sampledFrames;
-        }
-        ASSERT_GT(sampledFrames, 0) << sample.label << ": no arm bone ever resolved a world position";
-
-        float deltaMin = minY - cameraY;  // negative == below camera
-        float deltaMax = maxY - cameraY;
-        std::cout << "  [" << sample.label << "] arm bone Y range = [" << minY << ", " << maxY
-                  << "]  (delta vs camera Y=" << cameraY << ": [" << deltaMin << ", " << deltaMax << "])\n";
-        std::cout << "  [" << sample.label << "] arm bone Z (forward) range = [" << minZ << ", " << maxZ
-                  << "], max |X| (sideways) = " << maxAbsX
-                  << "  (camera at Z=0 looking toward +Z, near clip = 1.0)\n";
-
-        // Not asserted pass/fail (this is a measurement, not a regression
-        // gate) -- reported here and in the plan's Review for Will/the next
-        // executor to read the raw numbers from, per the plan's Step 1.
-
-        // T76: bone JOINT positions (above) understate how close the actual
-        // skin TRIANGLES get -- a forearm's mesh extends outward from its
-        // bone by the limb's radius, so the true nearest vertex can sit
-        // closer to the camera than any bone. Walk the arm-FILTERED instance
-        // mesh's own triangle indices (post applyFirstPersonIndexFilter(),
-        // post applyAnimation() skinning) and measure the actual vertex
-        // extents T74's filter left behind -- this is what the GPU actually
-        // rasterizes, not a proxy for it.
-        irr::scene::SMesh* filteredMesh = node->getInstanceMesh();
-        ASSERT_NE(filteredMesh, nullptr);
-        float vMinY = std::numeric_limits<float>::max();
-        float vMaxY = std::numeric_limits<float>::lowest();
-        float vMinZ = std::numeric_limits<float>::max();
-        float vMaxZ = std::numeric_limits<float>::lowest();
-        size_t triCount = 0;
-        for (irr::u32 b = 0; b < filteredMesh->getMeshBufferCount(); ++b) {
-            irr::scene::IMeshBuffer* mb = filteredMesh->getMeshBuffer(b);
-            if (!mb) continue;
-            const irr::u16* idx = mb->getIndices();
-            irr::u32 idxCount = mb->getIndexCount();
-            for (irr::u32 t = 0; t + 2 < idxCount; t += 3) {
-                for (int k = 0; k < 3; ++k) {
-                    const irr::core::vector3df& p = mb->getPosition(idx[t + k]);
-                    vMinY = std::min(vMinY, p.Y);
-                    vMaxY = std::max(vMaxY, p.Y);
-                    vMinZ = std::min(vMinZ, p.Z);
-                    vMaxZ = std::max(vMaxZ, p.Z);
-                }
-                ++triCount;
-            }
-        }
-        std::cout << "  [" << sample.label << "] ARM-FILTERED TRIANGLE VERTEX extents: Y=["
-                  << vMinY << ", " << vMaxY << "], Z(forward)=[" << vMinZ << ", " << vMaxZ
-                  << "], triangle count=" << triCount << "\n";
-
-        // T76: the near clip plane is 1.0 (setupCamera()). A candidate
-        // camera sitting at world Z=cameraForwardOffset (i.e. pushed
-        // `cameraForwardOffset` units forward of the body origin along the
-        // look axis, matching how repositionFirstPersonCamera() would need
-        // to change) would see this triangle set at distance range
-        // [vMinZ - offset, vMaxZ - offset]. Report whether the CURRENT
-        // (offset=0, matches shipped repositionFirstPersonCamera()) camera
-        // has triangles straddling (spanning across) the near plane --
-        // exactly the condition the plan warns produces the smeared mass
-        // regardless of pitch.
-        const float kNearPlane = 1.0f;  // setupCamera(), irrlicht_renderer.cpp:1517
-        bool straddlesAtZeroOffset = (vMinZ < kNearPlane) && (vMaxZ > kNearPlane);
-        bool entirelyInsideNear = (vMaxZ <= kNearPlane);
-        std::cout << "  [" << sample.label << "] at CURRENT camera offset (0): straddles near plane="
-                  << (straddlesAtZeroOffset ? "YES" : "no") << ", entirely inside near clip (invisible)="
-                  << (entirelyInsideNear ? "YES" : "no") << "\n";
-
-        // T76: evaluate candidate STANDOFF (pullback) distances -- moving the
-        // camera BACKWARD along the look axis by `pullback` units, i.e.
-        // camera position Z -> -pullback, increases distance-to-vertex for
-        // every vertex uniformly (distance = vertexZ - (-pullback) =
-        // vertexZ + pullback). This is the opposite sign from the plan's a
-        // priori guess ("push camera forward of the model origin"): a
-        // FORWARD push (positive offset) SHRINKS distance to the
-        // forward-swinging (visible, important) geometry -- exactly the
-        // wrong direction, since several poses' forward reach barely clears
-        // the near plane already (idle max=1.106, 2H-slash max=1.035, both
-        // <0.11 above kNearPlane). A BACKWARD pullback is what the unit's
-        // own name describes. It is not monotonically safe, though: the
-        // near-side (currently-negative, safely-behind) vertices move
-        // TOWARD zero as pullback grows, and vertices sitting at distance
-        // near 0 (not just <kNearPlane) are the ones that blow up under
-        // perspective divide -- so an overlarge pullback can walk a
-        // comfortably-behind vertex into that danger zone before it clears
-        // kNearPlane on the far side. Report several candidates so the
-        // choice is evidence-based, not a guess in either direction.
-        for (float pullback : {0.0f, 0.2f, 0.3f, 0.5f, 1.0f}) {
-            float distMin = vMinZ + pullback;
-            float distMax = vMaxZ + pullback;
-            bool straddles = (distMin < kNearPlane) && (distMax > kNearPlane);
-            bool nearZeroDanger = (distMin > -0.1f && distMin < kNearPlane);
-            std::cout << "    pullback=" << pullback << ": distance range=[" << distMin << ", " << distMax
-                      << "], straddles=" << (straddles ? "YES" : "no")
-                      << ", near-side within [-0.1,near) danger band=" << (nearZeroDanger ? "YES" : "no") << "\n";
-        }
-    }
-}
 #endif // EQT_HAS_GRAPHICS
 
 int main(int argc, char** argv) {

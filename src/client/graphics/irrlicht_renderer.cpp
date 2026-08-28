@@ -2465,69 +2465,103 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 }
 
 
-// T75: small downward pitch applied ONLY to the first-person camera's look
-// target (camera position/orientation lever, per the plan's least-change
-// preference -- no pose or node-transform change). T75's headless
-// measurement (ArmVsCameraGeometryMeasurement_Headless, human male) found
-// that even after fixing getPlayerEyeHeightFromFeet()'s bbox bug (see that
-// function's comment), the topmost arm-bone geometry sits ~0.1-0.9 units
-// below a perfectly level camera across idle and every attack animation
-// sampled, and lower arm/hand geometry sits several units further below
-// that. A purely level camera would clip the top edge of the held
-// weapon/forearm rather than frame it. 12 degrees was chosen empirically
-// against those measurements: enough to comfortably re-center the visible
-// cone on the arm/weapon geometry at the shallow (~1-2 unit) forward depth
-// it actually sits at, while staying small enough that looking forward at
-// the world -- not down at your own chest -- remains the dominant first-
-// person experience. Tune here if a live capture shows it needs
-// adjustment; it is the ONLY tunable this unit introduces.
-static constexpr float kFirstPersonPitchDownRad = 12.0f * 3.14159265359f / 180.0f;  // 12 degrees (irr::core::PI is not constexpr)
+// T300: the first-person camera's constants and its placement math now live
+// in include/client/graphics/first_person_camera.h -- read that header before
+// changing any of these numbers, and change them THERE, not here. The three
+// tunables it holds are kFirstPersonPitchDownDegrees (3.65, was T75's 12),
+// kFirstPersonHorizontalFovDegrees (62.8, was Irrlicht's default 72 vertical
+// == ~88 horizontal). The body-hiding lever is no longer a near plane at all:
+// Leg A measured the official client clipping nothing, so hiding is a DOWN-
+// PITCH CLAMP derived as 90 - vFOV/2 (firstPersonMaxDownPitchDegrees()).
+//
+// T76's kFirstPersonCameraStandoffUnits (0.3 BACKWARD) is gone: it existed to
+// pull the eye off in-world arm geometry that is no longer drawn as a
+// separate pass, it pointed the wrong way for a real eye, and T298 measured
+// the official client's forward offset at 0.00 +/- 0.4.
+void IrrlichtRenderer::applyCameraProjectionForMode() {
+    if (!camera_) return;
+    const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
+    // T300 (post-Leg-A): the NEAR PLANE IS THE SAME IN EVERY MODE. Leg A
+    // measured the official client clipping nothing -- geometry draws at
+    // point-blank range -- so first person must clip exactly as third person
+    // does. The near-plane hiding that briefly lived here is refuted and gone;
+    // the down-pitch clamp (applyFirstPersonPitchClamp()) is what hides the
+    // body. Only the FOV is mode-specific, so third person stays byte-for-byte
+    // what it was and the visual gate's goldens hold.
+    camera_->setNearValue(kWorldNearPlaneUnits);
+    camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
+                                : kWorldVerticalFovRadians);
+    if (firstPerson) applyFirstPersonPitchClamp();
+    LOG_DEBUG(MOD_GRAPHICS,
+              "[FP-PROJ] firstPerson={} near={:.3f} fovY={:.4f}rad aspect={:.4f}",
+              firstPerson, camera_->getNearValue(), camera_->getFOV(),
+              camera_->getAspectRatio());
+}
 
-// T76: pull camera BACK (not the plan's guessed "forward") -- measured triangles
-// straddle the near clip every pose; widens but doesn't eliminate it (near clip is the real fix, not touched -- plan Review has numbers).
-static constexpr float kFirstPersonCameraStandoffUnits = 0.3f;
+// T300: THE HIDING SEAM -- see the declaration. The body hangs directly below
+// the eye, so clamping the down-pitch so the frustum's lower edge never passes
+// the nadir is sufficient to hide it, at any model scale.
+void IrrlichtRenderer::applyFirstPersonPitchClamp() {
+    if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
+
+    const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+    if (playerPitch_ >= minLook && playerPitch_ <= kFirstPersonMaxUpPitchDegrees) return;
+
+    const float before = playerPitch_;
+    playerPitch_ = std::min(std::max(playerPitch_, minLook), kFirstPersonMaxUpPitchDegrees);
+    LOG_DEBUG(MOD_GRAPHICS,
+              "[FP-CLAMP] mouse-look pitch {:.2f} -> {:.2f} deg (floor {:.2f}, total down-pitch limit {:.2f} = 90 - vFOV/2)",
+              before, playerPitch_, minLook,
+              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
+    repositionFirstPersonCamera();
+}
+
+// One place that answers "what vertical FOV is the first-person camera using",
+// so the clamp derivation and the projection cannot disagree.
+float IrrlichtRenderer::getFirstPersonVerticalFov() const {
+    return firstPersonVerticalFovRadians(camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f);
+}
+
 void IrrlichtRenderer::repositionFirstPersonCamera() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) {
         return;
     }
-    float eyeHeight = entityRenderer_ ? entityRenderer_->getPlayerEyeHeightFromFeet() : 0.0f;
+    // The projection is part of the first-person camera, not a separate
+    // setting: without the near plane the player's own body fills the frame.
+    // Applied here as well as on the mode transitions so no entry point can
+    // position the eye without it.
+    applyCameraProjectionForMode();
+
+    float eyeHeight = entityRenderer_ ? entityRenderer_->getPlayerEyeHeightAboveNodeOrigin() : 0.0f;
     if (eyeHeight <= 0.0f) {
-        eyeHeight = 6.0f;  // Default fallback for human-sized entity (matches setPlayerPosition())
+        // Node-origin-relative fallback for a human-sized entity whose model
+        // has not loaded yet -- NOT a feet-relative 6.x. See
+        // getPlayerEyeHeightAboveNodeOrigin()'s comment for the two frames.
+        eyeHeight = 3.65f;
     }
 
-    // playerZ_ is feet position, so camera Z = feet + eye height + user adjustment
-    float camZ = playerZ_ + eyeHeight + playerConfig_.eyeHeight;
-    float headingRad = playerHeading_ / 512.0f * 2.0f * irr::core::PI;
-    const float kTargetDistance = 100.0f;
-    // T75: pitch the look target down by kFirstPersonPitchDownRad -- see
-    // that constant's comment.
     // T295: the user's mouse-look pitch (playerPitch_, degrees, +up) is
-    // applied ON TOP of that fixed bias, and the look vector is built from
-    // a unit direction rather than T75's small-angle tan() drop. At
-    // playerPitch_ == 0 the resulting look ANGLE is identical to T75's
-    // (drop/horizontal == tan(kFirstPersonPitchDownRad) either way); only
-    // the target's distance along the ray differs, which a look-at camera
-    // does not care about. Before T295 the mouse-look pitch existed ONLY
-    // in renderer_player_physics.cpp's private copy of this formula, so
-    // moving discarded the bias and standing still discarded the mouse.
-    float pitchRad = playerPitch_ * irr::core::PI / 180.0f - kFirstPersonPitchDownRad;
-    float cosPitch = std::cos(pitchRad);
-    float sinPitch = std::sin(pitchRad);
-    float camX = playerX_ - std::sin(headingRad) * kFirstPersonCameraStandoffUnits, camY = playerY_ - std::cos(headingRad) * kFirstPersonCameraStandoffUnits;
-    irr::core::vector3df camPos(camX, camZ, camY);
-    irr::core::vector3df target(camX + std::sin(headingRad) * cosPitch * kTargetDistance,
-                                camZ + sinPitch * kTargetDistance,
-                                camY + std::cos(headingRad) * cosPitch * kTargetDistance);
+    // applied on top of the fixed down-bias inside the helper. Before T295
+    // playerPitch_ existed ONLY in renderer_player_physics.cpp's private copy
+    // of this formula, so moving discarded the bias and standing still
+    // discarded the mouse.
+    const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
+        playerX_, playerY_, playerZ_, eyeHeight, playerConfig_.eyeHeight,
+        playerHeading_, playerPitch_, getFirstPersonVerticalFov());
 
-    camera_->setPosition(camPos);
-    camera_->setTarget(target);
+    camera_->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
+    camera_->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
 
     // T295: DEBUG, not INFO -- this now runs on every frame in which the
     // player moves, turns or looks. The FP-CAMERA tag is the evidence
-    // emitter the unit's still-vs-moving proof diffs.
-    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) feet={:.4f} eyeHeight={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg totalPitch={:.4f}deg standoff={:.2f}",
-              camX, camY, camZ, playerZ_, eyeHeight, playerConfig_.eyeHeight, playerHeading_,
-              playerPitch_, pitchRad * 180.0f / irr::core::PI, kFirstPersonCameraStandoffUnits);
+    // emitter the unit's still-vs-moving proof diffs. T300: playerZ_ is the
+    // node origin (== server Z, model CENTRE), not the feet; the log says so
+    // now, because "feet=" is what invited a 3.05-unit "correction".
+    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeAboveOrigin={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
+              placement.posX, placement.posZ, placement.posY, playerZ_, eyeHeight,
+              playerConfig_.eyeHeight, playerHeading_, playerPitch_,
+              kFirstPersonPitchDownDegrees,
+              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
@@ -2538,13 +2572,13 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
     if (entityRenderer_) {
         entityRenderer_->setPlayerSpawnId(spawnId);
 
-        // T74: apply first-person (arm-filtered geometry, or full-hide
-        // fallback) / normal visibility based on the current camera mode.
+        // T300: record the mode (name tag off in first person); the player
+        // model itself draws normally either way.
         bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerFirstPersonMode(firstPerson);
 
-        float eyeHeight = entityRenderer_->getPlayerEyeHeightFromFeet();
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeHeightFromFeet={:.2f} firstPerson={}", eyeHeight, firstPerson);
+        float eyeHeight = entityRenderer_->getPlayerEyeHeightAboveNodeOrigin();
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeAboveNodeOrigin={:.2f} firstPerson={}", eyeHeight, firstPerson);
 
         // Fix first-person camera height now that we have the player model
         if (firstPerson && eyeHeight > 0.0f) {
@@ -2719,11 +2753,15 @@ void IrrlichtRenderer::setCameraMode(CameraMode mode) {
     if (isLoading()) return;
     cameraMode_ = mode;
 
-    // T74: arm-filtered first-person geometry (or full-hide fallback)
-    // instead of the old unconditional hide-everything.
+    // T300: the player model draws normally in both modes; this only
+    // records the mode and hides the floating name tag in first person.
     if (entityRenderer_) {
         entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
+    // T300: the near plane and FOV are part of the first-person camera and
+    // must be restored on the way OUT as well, which repositionFirstPersonCamera()
+    // (an early-return no-op outside first person) cannot do.
+    applyCameraProjectionForMode();
     // T74: entering first person must move the camera to the player's own
     // eye position immediately -- previously only a later position update
     // did this, so a stationary player toggling modes kept looking through
@@ -2744,11 +2782,11 @@ void IrrlichtRenderer::cycleCameraMode() {
             break;
     }
 
-    // T74: arm-filtered first-person geometry (or full-hide fallback)
-    // instead of the old unconditional hide-everything.
+    // T300: see setCameraMode() -- mode record + name tag only.
     if (entityRenderer_) {
         entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
+    applyCameraProjectionForMode();
 
     // Log eye height when entering first-person mode
     if (cameraMode_ == CameraMode::FirstPerson) {
