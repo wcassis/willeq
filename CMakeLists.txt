@@ -420,6 +420,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/first_person_eye.cpp
         src/client/graphics/irrlicht_renderer.cpp
         # T166: the loadZoneSequential() step sequence, split out of one
         # 2996-line TU. Driver + geometry steps here, the rest alongside.
@@ -762,6 +764,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/first_person_eye.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp
         # SQLite database (required by spell_database, race_codes, equipment_model_loader)
@@ -1543,6 +1547,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/graphics_archive_index.cpp
@@ -1656,6 +1662,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/graphics_archive_index.cpp
@@ -1731,6 +1739,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/graphics_archive_index.cpp

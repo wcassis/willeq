@@ -2892,55 +2892,94 @@ float EntityRenderer::getPlayerCollisionZOffset() const {
     return 0.0f;
 }
 
-float EntityRenderer::getPlayerEyeHeightAboveNodeOrigin() const {
-    // T300 -- READ THE FRAME BEFORE CHANGING THE NUMBER.
+EntityRenderer::FirstPersonEyeOffset
+EntityRenderer::getPlayerFirstPersonEyeOffset() const {
+    // T301 -- READ include/client/graphics/first_person_eye.h BEFORE CHANGING
+    // ANY NUMBER HERE.
     //
-    // The returned value is measured from the player NODE ORIGIN, which is
-    // where createEntity() puts the node and which equals the server's Z for
-    // this entity ("Server Z is the geometric MODEL CENTER", :594). The
-    // origin is INSIDE the body: the Human male base mesh spans
-    // Y = [-3.05, +3.65] about it. So bbox.MaxEdge.Y == 3.65 is the top of
-    // the head, 6.70 above the mesh's own feet.
+    // The offset is measured from the player NODE ORIGIN, which is where
+    // createEntity() puts the node and which equals the server's Z for this
+    // entity ("Server Z is the geometric MODEL CENTER", :594). The origin is
+    // INSIDE the body: the Human male base mesh spans Y = [-3.05, +3.65]
+    // about it.
     //
-    // T298 A3 measured the official client's first-person eye at
-    // 6.75 +/- 0.20 above the player's server-reported z, with the ground
-    // ring plane 0.10 below that z -- i.e. the official client stands the
-    // model with its feet at the server z, and puts the eye at the crown of
-    // a 6.7-unit body. fable stands the same model CENTRED on the server z.
-    // The two clients therefore disagree about the model's placement
-    // relative to z by ~3 units, and agree about the eye's placement
-    // relative to the BODY to within 0.05. 3.65 (this value) and 6.75 (the
-    // official measurement) are the SAME eye expressed in two frames:
-    // 3.65 above the node origin == 6.70 above the feet == 6.75 +/- 0.20.
-    // "Correcting" 3.65 to 6.75 here raises the camera by 3.05 units, out
-    // through the top of the head. Do not.
+    // T300 returned bbox.MaxEdge.Y (3.65 for a Human male) -- the crown of
+    // the skull, ~6.70 above the mesh's own feet -- on the reasoning that
+    // T298 A3 measured the official client's eye 6.75 +/- 0.20 above the
+    // player's server z and 3.65-above-origin == 6.70-above-feet. The
+    // ARITHMETIC was right and the KIND was wrong: 6.75 was measured to an
+    // EYE and 3.65 is a BOUNDING-BOX CROWN. They are not the same point, and
+    // the difference is exactly the two live failures T300 Leg C recorded.
     //
-    // T76's HEAD-bone preference (3.10, i.e. 0.55 lower) is GONE: its only
-    // rationale was vertical framing for the viewmodel pass T300 retired,
-    // and it disagrees with the official measurement by more than that
-    // measurement's error bar. It also never fired live -- T295 logged
-    // [FP-EYE] source=BBOX_FALLBACK headBoneIdx=-1 on Testchar's model in
-    // every session. The bbox top is now the single, unconditional answer.
+    // The eye now comes from the head bone's own vertex cluster, per race,
+    // via EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(). No hand-written
+    // per-race table exists anywhere in this path and none may be added.
+    //
+    // T76's getBoneIndexByName("HEAD") is gone for a better reason than T300
+    // gave: NO EQ SKELETON HAS EVER CONTAINED A BONE CALLED "HEAD". The head
+    // is <modelCode>he (humhe, trmhe, ikmhe; frmhehead for the Luclin-era
+    // Froglok), which is why T295 logged source=BBOX_FALLBACK headBoneIdx=-1
+    // in every live session. The lever was not disabled, it was misspelled.
+    FirstPersonEyeOffset out;
+
     for (const auto& [id, visual] : entities_) {
-        if (visual.isPlayer && visual.isAnimated && visual.animatedNode) {
-            // BASE mesh bbox, not the per-instance mesh.
-            EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
-            if (!eqMesh) {
-                continue;
-            }
-            irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
-            float cameraHeight = bbox.MaxEdge.Y;
+        if (!visual.isPlayer || !visual.isAnimated || !visual.animatedNode) continue;
+
+        // POSTURE, not animation. T301 Leg A measured the official eye as
+        // driven by the discrete posture state (sitting drops it 3.6 units)
+        // and NOT by the animated skeleton. visual.poseState is exactly that
+        // state: it arrives on SpawnAppearance and is deliberately never
+        // written by movement updates, which is why it is the right input and
+        // the animator is not.
+        EyePosture posture = EyePosture::Standing;
+        switch (visual.poseState) {
+            case EntityVisual::PoseState::Standing:  posture = EyePosture::Standing;  break;
+            case EntityVisual::PoseState::Sitting:   posture = EyePosture::Sitting;   break;
+            case EntityVisual::PoseState::Crouching: posture = EyePosture::Crouching; break;
+            case EntityVisual::PoseState::Lying:     posture = EyePosture::Lying;     break;
+        }
+
+        irr::core::vector3df offset;
+        if (visual.animatedNode->getFirstPersonEyeOffset(offset, posture)) {
+            out.irrX = offset.X;
+            out.irrY = offset.Y;
+            out.irrZ = offset.Z;
+            out.derivedFromHead = true;
             static int eyeLogCount = 0;
             if (eyeLogCount++ % 500 == 0) {
-                LOG_DEBUG(MOD_GRAPHICS, "[FP-EYE] source=BBOX_TOP eyeAboveNodeOrigin={:.4f} bboxY=[{:.4f},{:.4f}]",
-                          cameraHeight, bbox.MinEdge.Y, bbox.MaxEdge.Y);
+                LOG_DEBUG(MOD_GRAPHICS,
+                          "[FP-EYE] source=HEAD_BONE offset=({:.4f},{:.4f},{:.4f}) pose={} posture={}",
+                          out.irrX, out.irrY, out.irrZ,
+                          static_cast<int>(kFirstPersonEyeSource),
+                          static_cast<int>(posture));
             }
-            return cameraHeight;
+            return out;
         }
+
+        // FALLBACK ONLY. This is the T300 behaviour and it is the defect;
+        // it survives solely so a model with no head anchor still produces a
+        // camera rather than a camera at the player's navel. If this fires
+        // for a playable race, that race's skeleton needs investigating --
+        // all 30 shipped race/gender combinations resolve a head bone.
+        EQAnimatedMesh* eqMesh = visual.animatedNode->getEQMesh();
+        if (!eqMesh) continue;
+        irr::core::aabbox3df bbox = eqMesh->getBoundingBox();
+        out.irrY = bbox.MaxEdge.Y;
+        out.derivedFromHead = false;
+        static int fallbackLogCount = 0;
+        if (fallbackLogCount++ % 500 == 0) {
+            LOG_WARN(MOD_GRAPHICS,
+                     "[FP-EYE] source=BBOX_CROWN_FALLBACK eyeAboveNodeOrigin={:.4f} bboxY=[{:.4f},{:.4f}] -- no head anchor on this model",
+                     out.irrY, bbox.MinEdge.Y, bbox.MaxEdge.Y);
+        }
+        return out;
     }
-    // Default fallback for human-sized entity (node-origin-relative, so
-    // roughly the 3.65 a Human male measures -- NOT a feet-relative 6.x).
-    return 3.65f;
+
+    // No player entity yet (pre-zone-in). Node-origin-relative default for a
+    // human-sized body -- NOT a feet-relative 6.x. Replaced the moment the
+    // model loads.
+    out.irrY = 3.65f;
+    return out;
 }
 
 void EntityRenderer::setCurrentZone(const std::string& zoneName) {

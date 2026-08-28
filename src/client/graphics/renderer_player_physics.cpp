@@ -132,7 +132,7 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         // look-at target, not part of the hiding, and Leg A measured only the
         // down side.
         if (cameraMode_ == CameraMode::FirstPerson) {
-            const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+            const float minLook = firstPersonMinLookPitchDegrees();
             if (playerPitch_ < minLook) playerPitch_ = minLook;
         }
     }

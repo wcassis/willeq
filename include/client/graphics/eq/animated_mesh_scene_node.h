@@ -7,6 +7,7 @@
 #include <vector>
 #include "skeletal_animator.h"
 #include "s3d_loader.h"
+#include "client/graphics/first_person_eye.h"
 
 namespace EQT {
 namespace Graphics {
@@ -208,6 +209,19 @@ public:
     // Get bone index by name using skeleton (returns -1 if not found)
     int getBoneIndexByName(const std::string& boneName) const;
 
+    // T301: offset from this node's ORIGIN to the first-person eye, in
+    // Irrlicht world axes. Derived per race from the HEAD BONE's own vertex
+    // cluster -- NOT from the whole-body bounding box, whose MaxEdge.Y is the
+    // crown of the skull and was what put the camera on top of the head
+    // (see include/client/graphics/first_person_eye.h). Returns false when
+    // the model has no head anchor, in which case the caller must fall back.
+    // The pose the eye is taken in is kFirstPersonEyeSource; T301 Leg A
+    // measured the official client as POSTURE-DRIVEN (not skeleton-following,
+    // but not posture-blind either -- sitting drops the eye 3.6 units), so
+    // the caller passes the entity's DISCRETE posture, never its animation.
+    bool getFirstPersonEyeOffset(irr::core::vector3df& outOffset,
+                                 EyePosture posture = EyePosture::Standing) const;
+
     // Find hand bone indices (convenience method for spell effects)
     // Returns -1 if hand bone not found
     int findRightHandBoneIndex() const;
@@ -255,6 +269,14 @@ private:
 
     // Debug: mark this node as the player for targeted logging
     bool isPlayerNode_ = false;
+
+    // T301 first-person eye cache. Both are properties of the MESH, not of
+    // this instance's pose, so they are resolved once. -2 = not yet
+    // attempted, -1 = attempted and this model has no usable head anchor
+    // (must not be retried per frame).
+    mutable int eyeHeadBoneIndex_ = -2;
+    mutable EyeLocalPoint eyeLocalPoint_;
+    mutable BoneMat4 eyeRestHeadTransform_;
 
     // Performance: track last applied animation frame to skip redundant transforms
     int lastAppliedFrame_ = -1;

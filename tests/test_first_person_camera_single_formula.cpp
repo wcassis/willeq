@@ -29,6 +29,7 @@
 //      just textually.
 
 #include <gtest/gtest.h>
+#include <type_traits>
 
 #include <filesystem>
 #include <fstream>
@@ -293,21 +294,79 @@ using EQT::Graphics::firstPersonVerticalFovRadians;
 
 namespace {
 constexpr float kDeg = 3.14159265358979323846f / 180.0f;
-// The camera's vertical FOV at 4:3 -- the clamp is derived from it, so every
-// call has to pass the same one production uses.
-const float kVFov43 = EQT::Graphics::firstPersonVerticalFovRadians(4.0f / 3.0f);
+// T301 REMOVED the vertical FOV from the clamp and from
+// computeFirstPersonCamera(); it is now only the projection's own number, so
+// no test here needs it any more.
 }
 
-TEST(FirstPersonCameraFormula, NoStandoffInAnyDirection) {
-    // T76 shipped a 0.3-unit BACKWARD standoff. T298 measured 0.00 +/- 0.4
-    // forward and 0.00 +/- 0.05 lateral: the camera is at the player's own XY.
+namespace {
+// THE TOTAL DOWN-PITCH, RECOVERED UNAMBIGUOUSLY.
+//
+// Every earlier test here measured pitch as atan2(dy, |horizontal|). That is
+// only valid while the pitch stays inside +/-90: past the nadir the horizontal
+// component points BEHIND the heading, |horizontal| throws the sign away, and
+// the angle folds back about -90 -- so -92.65 reads as -87.35 and a clamp
+// comparison silently inverts. T301 Leg A's measured clamp is 94.9, past the
+// nadir, so the fold is now reachable in normal play.
+//
+// Projecting onto the heading keeps the sign and gives the true angle in
+// (-180, 180].
+float signedTotalPitchDegrees(const EQT::Graphics::FirstPersonCameraPlacement& p,
+                              float headingUnits) {
+    constexpr float kPiLocal = 3.14159265358979323846f;
+    const float headingRad = headingUnits / 512.0f * 2.0f * kPiLocal;
+    const float fwdX = std::sin(headingRad);
+    const float fwdZ = std::cos(headingRad);
+    const float dx = p.targetX - p.posX;
+    const float dy = p.targetY - p.posY;
+    const float dz = p.targetZ - p.posZ;
+    const float alongHeading = dx * fwdX + dz * fwdZ;   // signed, not a magnitude
+    return std::atan2(dy, alongHeading) * 180.0f / kPiLocal;
+}
+}  // namespace
+
+TEST(FirstPersonCameraFormula, ForwardOffsetIsLegAsMeasuredValueAndIsPurelyForward) {
+    // SUPERSEDES T300's "NoStandoffInAnyDirection", whose premise came from
+    // T298's forward offset of 0.00 +/- 0.4.
+    //
+    // T301 Leg A measured +0.9 +/- 0.25 units FORWARD of the model's vertical
+    // axis. *** THE TWO MEASUREMENTS DISAGREE AT ABOUT 1.9 SIGMA and the
+    // rotation-parallax test that would settle it could not be run. *** Leg A's
+    // instruction was to treat it as the range 0 to 1.0 and pick the value
+    // that keeps the face out of frame; kEyeForwardOffsetUnits is 1.0, the far
+    // end, because an eye that is too far BACK is what produced
+    // review/T300/T300_C_12 -- a screenshot of the player's own face.
+    //
+    // T76's 0.3 BACKWARD standoff is still wrong, and is now wrong by sign
+    // against a measurement rather than against an inference. That is what
+    // this test guards: the offset must be FORWARD along the look ray and
+    // must have no lateral component (T298's 0.00 +/- 0.05 lateral stands --
+    // Leg A did not contradict it).
+    using EQT::Graphics::kEyeForwardOffsetUnits;
+    constexpr float kPiLocal = 3.14159265358979323846f;
+
+    EXPECT_GE(kEyeForwardOffsetUnits, 0.0f) << "Leg A's range floor";
+    EXPECT_LE(kEyeForwardOffsetUnits, 1.0f) << "Leg A's range ceiling";
+
     for (float heading : {0.0f, 64.0f, 128.0f, 190.0f, 300.0f, 511.0f}) {
         const auto p = computeFirstPersonCamera(
             /*playerX*/ 21.9086f, /*playerY*/ -77.9232f, /*playerZ*/ 3.0f,
-            /*eyeAboveNodeOrigin*/ 3.6527f, /*eyeAdjust*/ 0.0f,
-            heading, /*lookPitchDegrees*/ 0.0f, kVFov43);
-        EXPECT_FLOAT_EQ(p.posX, 21.9086f) << "heading " << heading;
-        EXPECT_FLOAT_EQ(p.posZ, -77.9232f) << "heading " << heading;
+            /*eyeAboveNodeOrigin*/ 3.0f, /*eyeAdjust*/ 0.0f,
+            heading, /*lookPitchDegrees*/ 0.0f);
+
+        const float headingRad = heading / 512.0f * 2.0f * kPiLocal;
+        const float fwdX = std::sin(headingRad);
+        const float fwdZ = std::cos(headingRad);
+
+        const float dx = p.posX - 21.9086f;
+        const float dz = p.posZ - (-77.9232f);
+
+        // Entirely along the heading...
+        EXPECT_NEAR(dx * fwdX + dz * fwdZ, kEyeForwardOffsetUnits, 1e-3f)
+            << "heading " << heading << ": forward component";
+        // ...and nothing across it.
+        EXPECT_NEAR(dx * fwdZ - dz * fwdX, 0.0f, 1e-3f)
+            << "heading " << heading << ": lateral component must stay zero";
     }
 }
 
@@ -318,7 +377,7 @@ TEST(FirstPersonCameraFormula, EyeSitsAtTheNodeOriginPlusEyeHeightNotPlusBoth) {
     // same frame. 3.65 above the origin IS the official 6.75 above the feet;
     // adding 6.75 here would put the eye 3.05 units above the crown.
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, /*playerZ*/ 3.0f,
-                                            /*eye*/ 3.6527f, 0.0f, 0.0f, 0.0f, kVFov43);
+                                            /*eye*/ 3.6527f, 0.0f, 0.0f, 0.0f);
     EXPECT_NEAR(p.posY, 6.6527f, 1e-4f);
     // The eye is 6.70 above the mesh's own feet (origin - 3.05), which is the
     // official 6.75 +/- 0.20 measurement.
@@ -332,9 +391,9 @@ TEST(FirstPersonCameraFormula, FixedPitchIsTheMeasured3Point65DegreesDown) {
     const float kTargetDistance = 100.0f;
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                             /*heading*/ 0.0f, /*lookPitch*/ 0.0f,
-                                            kVFov43, kTargetDistance);
+                                            kTargetDistance);
     // heading 0 -> forward is +Z in Irrlicht space.
-    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+    const float horizontal = std::sqrt((p.targetX - p.posX) * (p.targetX - p.posX) + (p.targetZ - p.posZ) * (p.targetZ - p.posZ));
     const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
     EXPECT_NEAR(pitchDeg, -3.65f, 0.15f)
         << "the fixed down-bias must match T298's measured 3.65 +/- 0.15 degrees";
@@ -343,8 +402,8 @@ TEST(FirstPersonCameraFormula, FixedPitchIsTheMeasured3Point65DegreesDown) {
 TEST(FirstPersonCameraFormula, MouseLookPitchAddsToTheFixedBias) {
     for (float look : {-30.0f, -5.0f, 0.0f, 5.0f, 30.0f}) {
         const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                                0.0f, look, kVFov43, 100.0f);
-        const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+                                                0.0f, look, 100.0f);
+        const float horizontal = std::sqrt((p.targetX - p.posX) * (p.targetX - p.posX) + (p.targetZ - p.posZ) * (p.targetZ - p.posZ));
         const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
         EXPECT_NEAR(pitchDeg, look - 3.65f, 0.01f) << "mouse-look pitch " << look;
     }
@@ -366,62 +425,125 @@ TEST(FirstPersonCameraFormula, HorizontalFovMatchesTheOfficialMeasurement) {
     EXPECT_GT(firstPersonVerticalFovRadians(0.0f), 0.0f);
 }
 
-TEST(FirstPersonCameraFormula, DownPitchClampIsDerivedFromTheFov) {
-    // T300 post-Leg-A: the hiding mechanism is a clamped down-pitch, NOT a
-    // near plane. Leg A measured the official client clipping nothing, and its
-    // size sweep killed both the fixed and the size-derived plane at once (5x
-    // body, zero player geometry, ground 34 units below still drawn).
+TEST(FirstPersonCameraFormula, DownPitchClampIsTheMeasuredAngleAndReachesPastTheNadir) {
+    // T301 Leg A MEASURED the official max down-pitch at 94.9 +/- 0.5 degrees
+    // below horizontal, and verified it is genuinely clamped there (4 further
+    // seconds of input changed 0.08% of pixels). Two things are refuted at
+    // once: T300's 55-75 bracket, and its `90 - vFOV/2` derivation.
     //
-    // The clamp is 90 degrees minus half the vertical FOV -- the angle at which
-    // the frustum's lower edge reaches straight down. 90 - vFOV/2 is an
-    // INFERENCE consistent with Leg A's measurement (roughly 65 degrees,
-    // bracket 55-75), not itself a measured angle; a dedicated measurement of
-    // the clamp is the outstanding follow-up.
+    // *** THE HEADLINE IS THAT IT IS PAST 90. *** A clamp that reaches beyond
+    // straight down cannot be what hides the player's body, which is why this
+    // test asserts the inequality explicitly rather than just a value: if
+    // someone "fixes" this back under 90 they have reintroduced the refuted
+    // theory, and this is where that stops.
     using EQT::Graphics::firstPersonMaxDownPitchDegrees;
-    using EQT::Graphics::firstPersonVerticalFovRadians;
+    using EQT::Graphics::kFirstPersonMaxDownPitchDegrees;
 
-    const float clamp43 = firstPersonMaxDownPitchDegrees(kVFov43);
-    EXPECT_NEAR(clamp43, 90.0f - (kVFov43 / kDeg) * 0.5f, 1e-3f);
-    // Inside Leg A's measured bracket.
-    EXPECT_GT(clamp43, 55.0f);
-    EXPECT_LT(clamp43, 75.0f);
-    // And consistent with Leg A's own vFOV figure (49.1 at 1024x768).
-    EXPECT_NEAR(clamp43, 65.45f, 0.5f);
+    EXPECT_FLOAT_EQ(firstPersonMaxDownPitchDegrees(), kFirstPersonMaxDownPitchDegrees);
+    EXPECT_NEAR(kFirstPersonMaxDownPitchDegrees, 94.9f, 0.5f)
+        << "Leg A's measured value, with its own error bar";
+    EXPECT_GT(kFirstPersonMaxDownPitchDegrees, 90.0f)
+        << "THE CLAMP MUST REACH PAST THE NADIR. Leg A measured it there, and "
+           "its control run (an identical model teleported onto the actor's own "
+           "coordinates fills 17.8% of the frame at this clamp) proves the "
+           "frustum CONTAINS the body. The clamp is not the hiding mechanism; "
+           "pulling it back under 90 does not make it one.";
 
-    // Tracks the lens: a wider vertical FOV tightens the clamp, because the
-    // frustum's lower edge reaches the nadir sooner.
-    EXPECT_LT(firstPersonMaxDownPitchDegrees(60.0f * kDeg),
-              firstPersonMaxDownPitchDegrees(40.0f * kDeg));
-    // At every aspect ratio the relationship holds exactly.
-    for (float aspect : {4.0f / 3.0f, 16.0f / 9.0f, 1.0f}) {
-        const float v = firstPersonVerticalFovRadians(aspect);
-        EXPECT_NEAR(firstPersonMaxDownPitchDegrees(v) + (v / kDeg) * 0.5f, 90.0f, 1e-3f)
-            << "aspect " << aspect << ": clamp + half-FOV must be exactly the nadir";
+    // THE REGRESSION GUARD against the FOV derivation: a measured constant
+    // does not track the lens. 90 - vFOV/2 would have moved by 10 degrees
+    // between these two aspects.
+    const float wide = EQT::Graphics::firstPersonVerticalFovRadians(1.0f);
+    const float narrow = EQT::Graphics::firstPersonVerticalFovRadians(16.0f / 9.0f);
+    EXPECT_NE(wide, narrow) << "the two aspects must differ for this to prove anything";
+    EXPECT_FLOAT_EQ(firstPersonMaxDownPitchDegrees(), kFirstPersonMaxDownPitchDegrees);
+
+    // And the signature carries no FOV, so it cannot be re-coupled by accident.
+    static_assert(std::is_same<decltype(firstPersonMaxDownPitchDegrees()), float>::value,
+                  "firstPersonMaxDownPitchDegrees() takes no arguments by design");
+}
+
+TEST(FirstPersonCameraFormula, UpVectorStaysDefinedThroughAndPastTheNadir) {
+    // WITHOUT THIS THE MEASURED CLAMP IS UNUSABLE. A look-at camera on
+    // Irrlicht's default (0,1,0) up vector degenerates as the look ray nears
+    // straight down -- ray parallel to up, view basis undefined -- and flips
+    // as it crosses. Leg A's 94.9 crosses.
+    constexpr float kDegLocal = 3.14159265358979323846f / 180.0f;
+    for (float heading : {0.0f, 64.0f, 128.0f, 190.0f, 300.0f, 511.0f}) {
+        for (float look : {80.0f, 10.0f, 0.0f, -45.0f, -86.35f, -91.25f, -1000.0f}) {
+            const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 3.0f, 0.0f,
+                                                    heading, look, 100.0f);
+            const float upLen = std::sqrt(p.upX * p.upX + p.upY * p.upY + p.upZ * p.upZ);
+            EXPECT_NEAR(upLen, 1.0f, 1e-4f)
+                << "heading " << heading << " look " << look;
+
+            // Up must never be parallel to the look ray, at any pitch -- that
+            // is the degeneracy itself.
+            const float fx = p.targetX - p.posX;
+            const float fy = p.targetY - p.posY;
+            const float fz = p.targetZ - p.posZ;
+            const float flen = std::sqrt(fx * fx + fy * fy + fz * fz);
+            ASSERT_GT(flen, 0.0f);
+            const float dot = (fx * p.upX + fy * p.upY + fz * p.upZ) / flen;
+            EXPECT_NEAR(dot, 0.0f, 1e-3f)
+                << "up is not perpendicular to forward at heading " << heading
+                << " look " << look;
+        }
     }
+
+    // Level pitch must reproduce the ordinary world up exactly, or every
+    // level-view golden moves for no reason.
+    const auto level = computeFirstPersonCamera(
+        0.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f,
+        EQT::Graphics::kFirstPersonPitchDownDegrees, 100.0f);
+    EXPECT_NEAR(level.upX, 0.0f, 1e-6f);
+    EXPECT_NEAR(level.upY, 1.0f, 1e-6f);
+    EXPECT_NEAR(level.upZ, 0.0f, 1e-6f);
+
+    // At the clamp the view has gone OVER the top: up tilts below horizontal.
+    // This is the observable signature of a past-nadir clamp, and it is what
+    // would silently vanish if the clamp were pulled back under 90.
+    const auto clamped = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 3.0f, 0.0f,
+                                                  0.0f, -1000.0f, 100.0f);
+    EXPECT_LT(clamped.upY, 0.0f)
+        << "at a past-nadir clamp the up vector must have tipped below "
+           "horizontal; upY = " << clamped.upY;
+    const float clampedPitch =
+        std::atan2(clamped.targetY - clamped.posY,
+                   std::sqrt((clamped.targetX - clamped.posX) *
+                                 (clamped.targetX - clamped.posX) +
+                             (clamped.targetZ - clamped.posZ) *
+                                 (clamped.targetZ - clamped.posZ))) /
+        kDegLocal;
+    // Past the nadir the horizontal component has flipped to point BEHIND the
+    // heading, so the measured pitch reads as its reflection about -90.
+    EXPECT_NEAR(clampedPitch,
+                -(180.0f - EQT::Graphics::kFirstPersonMaxDownPitchDegrees), 0.05f);
 }
 
 TEST(FirstPersonCameraFormula, DownPitchClampIsIndependentOfModelSize) {
-    // THE property that makes this mechanism right where a near plane was
-    // wrong, and Will's actual requirement: the hiding must be immune to
-    // race size and to shrink/grow. The clamp takes NO size term -- its only
-    // input is the FOV -- so a 5x body cannot move it. Asserted here rather
-    // than argued: the same lens gives the same clamp, whatever the model.
+    // The clamp takes NO size term -- its only input is a measured constant --
+    // so a 5x body cannot move it, and neither can a Troll.
+    //
+    // NOTE WHAT THIS TEST NO LONGER CLAIMS. Until T301 its failure message
+    // read "the clamp is the ONLY thing hiding the player's body". Leg A
+    // refuted that: the clamp sits at 94.9 degrees, PAST the nadir, and Leg A's
+    // control (an identical model teleported onto the actor's own coordinates)
+    // fills 17.8% of the frame at exactly that clamp. The frustum contains the
+    // body; the client does not draw it. What is asserted here is only that
+    // the clamp is honoured at the point of use and is size-independent.
     using EQT::Graphics::firstPersonMaxDownPitchDegrees;
-    const float clamp = firstPersonMaxDownPitchDegrees(kVFov43);
+    const float clamp = firstPersonMaxDownPitchDegrees();
     for (int i = 0; i < 4; ++i) {
-        EXPECT_FLOAT_EQ(firstPersonMaxDownPitchDegrees(kVFov43), clamp);
+        EXPECT_FLOAT_EQ(firstPersonMaxDownPitchDegrees(), clamp);
     }
-    // The camera formula honours it no matter what pitch is fed in, which is
-    // the guarantee at the point of use.
-    for (float look : {-10.0f, -60.0f, -89.0f, -1000.0f}) {
+    for (float look : {-10.0f, -60.0f, -89.0f, -120.0f, -1000.0f}) {
         const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                                0.0f, look, kVFov43, 100.0f);
-        const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
-        const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
+                                                0.0f, look, 100.0f);
+        const float pitchDeg = signedTotalPitchDegrees(p, 0.0f);
         EXPECT_GE(pitchDeg, -clamp - 0.01f)
-            << "look pitch " << look << " produced a total down-pitch of " << pitchDeg
-            << ", past the clamp. The clamp is the ONLY thing hiding the player's body; a "
-               "caller must not be able to get around it.";
+            << "look pitch " << look << " produced a total down-pitch of "
+            << pitchDeg << ", past the clamp -- a caller must not be able to "
+                           "get around the limit applied at the point of use.";
     }
 }
 
@@ -433,17 +555,16 @@ TEST(FirstPersonCameraFormula, StoredMouseLookFloorMatchesTheTotalClamp) {
     // has to be dragged back through before the view moves.
     using EQT::Graphics::firstPersonMinLookPitchDegrees;
     using EQT::Graphics::firstPersonMaxDownPitchDegrees;
-    const float minLook = firstPersonMinLookPitchDegrees(kVFov43);
+    const float minLook = firstPersonMinLookPitchDegrees();
     EXPECT_NEAR(minLook - EQT::Graphics::kFirstPersonPitchDownDegrees,
-                -firstPersonMaxDownPitchDegrees(kVFov43), 1e-3f);
+                -firstPersonMaxDownPitchDegrees(), 1e-3f);
 
     // Feeding the accumulator's floor into the formula lands exactly on the
     // clamp, not short of it and not past it.
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                            0.0f, minLook, kVFov43, 100.0f);
-    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
-    const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
-    EXPECT_NEAR(pitchDeg, -firstPersonMaxDownPitchDegrees(kVFov43), 0.01f);
+                                            0.0f, minLook, 100.0f);
+    EXPECT_NEAR(signedTotalPitchDegrees(p, 0.0f),
+                -firstPersonMaxDownPitchDegrees(), 0.01f);
 }
 
 TEST(FirstPersonCameraFormula, UpSideIsNotPartOfTheHiding) {
@@ -453,8 +574,8 @@ TEST(FirstPersonCameraFormula, UpSideIsNotPartOfTheHiding) {
     // and it is kept.
     EXPECT_FLOAT_EQ(EQT::Graphics::kFirstPersonMaxUpPitchDegrees, 89.0f);
     const auto p = computeFirstPersonCamera(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                            0.0f, 1000.0f, kVFov43, 100.0f);
-    const float horizontal = std::sqrt(p.targetX * p.targetX + p.targetZ * p.targetZ);
+                                            0.0f, 1000.0f, 100.0f);
+    const float horizontal = std::sqrt((p.targetX - p.posX) * (p.targetX - p.posX) + (p.targetZ - p.posZ) * (p.targetZ - p.posZ));
     const float pitchDeg = std::atan2(p.targetY - p.posY, horizontal) / kDeg;
     EXPECT_NEAR(pitchDeg, 89.0f, 0.01f);
     EXPECT_GT(horizontal, 0.0f) << "a fully-up look must not degenerate the look-at target";

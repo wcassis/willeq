@@ -48,6 +48,8 @@
 
 #include <cmath>
 
+#include "client/graphics/first_person_eye.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -72,33 +74,32 @@ constexpr float kFirstPersonPitchDownDegrees = 3.65f;
 // ~88 degrees horizontal -- far wider than the official client's 62.8.
 constexpr float kFirstPersonHorizontalFovDegrees = 62.8f;
 
-// THE DOWN-PITCH CLAMP IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY.
+// THE DOWN-PITCH CLAMP IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY, and it
+// is a SEPARATE, NAMED, MEASURED CONSTANT living in first_person_eye.h:
+// kFirstPersonMaxDownPitchDegrees.
+//
+// *** IT IS NOT DERIVED FROM THE FOV, AND MUST NOT BE. *** T300 shipped
 //
 //     maxDownPitch = 90 degrees - vFOV/2
 //
-// i.e. exactly the angle at which the frustum's LOWER EDGE reaches straight
-// down (the nadir). Below that the edge swings behind the vertical and the
-// body -- which hangs directly under the eye -- comes into frame.
+// on the reasoning that this is the angle at which the frustum's lower edge
+// reaches the nadir. T301 REFUTED it: that is by construction the condition
+// under which the frustum ADMITS the cone of directions the body occupies,
+// not one that excludes it. At that clamp the frustum spans 40.8-90.0 deg
+// below the horizon and a Human male's body occupies exactly that cone (nose
+// 51.1 deg, feet 90 deg) -- see review/T300/T300_C_12, which is a screenshot
+// of the player's own face. It agreed with Leg A's 55-75 bracket by
+// coincidence and was adopted without checking which side of the inequality
+// it fell on.
 //
-// WHY DERIVED AND NOT HARDCODED: this form is automatically scale-invariant,
-// race-invariant and immune to shrink/grow, because the body's ANGULAR
-// position relative to the eye does not depend on how big the body is. It
-// needs no per-race table and no runtime size term at all -- which is
-// precisely the requirement a fixed or size-derived near plane could not meet.
-// It also tracks the FOV: widen the lens and the clamp tightens by itself.
-//
-// *** 90 - vFOV/2 IS AN INFERENCE CONSISTENT WITH THE MEASUREMENT, NOT ITSELF
-// A MEASURED ANGLE. *** Leg A measured max down-pitch at roughly 65 degrees,
-// bracket 55-75, and independently re-derived hFOV 62.71 (+/- 0.25
-// statistical, 0.9 systematic) == vFOV 49.1 at 1024x768. 90 - 49.1/2 = 65.45
-// lands inside that bracket and matches Leg A's own description of the lower
-// edge sitting at the nadir -- which is why this form was chosen over the
-// bracket's midpoint. **A dedicated measurement of the clamp itself is the
-// outstanding follow-up**, and nothing here has been judged on a screen.
-inline float firstPersonMaxDownPitchDegrees(float verticalFovRadians) {
-    constexpr float kPi = 3.14159265358979323846f;
-    const float halfFovDeg = verticalFovRadians * 0.5f * 180.0f / kPi;
-    return 90.0f - halfFovDeg;
+// Its claimed race-invariance was false too: the angle from a crown-mounted
+// eye to the nearest own geometry measured ~27 deg for a Human male and ~61
+// for a Troll, because that angle is a property of mesh PROPORTIONS, not of
+// size. The FOV argument has been REMOVED from this function and from
+// computeFirstPersonCamera() so the coupling cannot be reintroduced by
+// accident.
+inline float firstPersonMaxDownPitchDegrees() {
+    return kFirstPersonMaxDownPitchDegrees;
 }
 
 // The clamp applies to the camera's TOTAL down-pitch -- the mouse-look angle
@@ -106,9 +107,8 @@ inline float firstPersonMaxDownPitchDegrees(float verticalFovRadians) {
 // frustum that must not pass the nadir. This is the corresponding floor for
 // the STORED mouse-look value (playerPitch_, + = up), so the accumulator and
 // the camera formula clamp the same thing in the same place in the chain.
-inline float firstPersonMinLookPitchDegrees(float verticalFovRadians) {
-    return -(firstPersonMaxDownPitchDegrees(verticalFovRadians) -
-             kFirstPersonPitchDownDegrees);
+inline float firstPersonMinLookPitchDegrees() {
+    return -(firstPersonMaxDownPitchDegrees() - kFirstPersonPitchDownDegrees);
 }
 
 // The gimbal clamp on the UP side is NOT part of the hiding mechanism and is
@@ -139,9 +139,17 @@ inline float firstPersonVerticalFovRadians(float aspect) {
 
 // The camera's placement, in Irrlicht world space (EQ x -> Irr X,
 // EQ z -> Irr Y, EQ y -> Irr Z), as the renderer's own convention has it.
+//
+// THE UP VECTOR IS NOT DECORATION. T301 Leg A measured the official max
+// down-pitch at 94.9 degrees -- about 5 degrees PAST THE NADIR. A look-at
+// camera left on Irrlicht's default (0,1,0) up vector degenerates as the look
+// ray approaches straight down (the ray becomes parallel to up, and the view
+// basis is undefined) and then FLIPS as it crosses. Every caller must apply
+// this vector, or the measured clamp cannot be used at all.
 struct FirstPersonCameraPlacement {
     float posX = 0.0f, posY = 0.0f, posZ = 0.0f;
     float targetX = 0.0f, targetY = 0.0f, targetZ = 0.0f;
+    float upX = 0.0f, upY = 1.0f, upZ = 0.0f;
 };
 
 /**
@@ -156,48 +164,55 @@ struct FirstPersonCameraPlacement {
  *                          with the Human male mesh spanning Y=[-3.05,+3.65]
  *                          about it. It is NOT the feet, whatever the old
  *                          name getPlayerEyeHeightFromFeet() implied.
- * @param eyeAboveNodeOrigin
- *                          EntityRenderer::getPlayerEyeHeightAboveNodeOrigin(),
- *                          the base mesh's bbox.MaxEdge.Y (3.65 for a Human
- *                          male) -- the crown of the head, ~6.70 above the
- *                          mesh's own feet. THAT is the official client's
- *                          measured 6.75-above-server-z eye, expressed in
- *                          fable's frame. Adding 6.75 to this is a 3.05-unit
- *                          regression; see the header comment on
- *                          getPlayerEyeHeightAboveNodeOrigin().
+ * @param eyeOffsetIrrX,eyeAboveNodeOrigin,eyeOffsetIrrZ
+ *                          EntityRenderer::getPlayerFirstPersonEyeOffset(),
+ *                          the offset from the node origin to the EYE in
+ *                          Irrlicht world axes, derived per race from the
+ *                          HEAD BONE's own vertex cluster (T301). It is
+ *                          already rotated into world axes by the node, so
+ *                          the heading must NOT be applied to it again.
+ *
+ *                          T300 passed the whole-body bbox.MaxEdge.Y here --
+ *                          the CROWN OF THE SKULL -- and that is what put the
+ *                          camera on top of the head. See
+ *                          include/client/graphics/first_person_eye.h. The
+ *                          horizontal components are non-zero for hunched
+ *                          races (Iksar, Froglok) and near zero for the rest.
  * @param eyeAdjustUnits    the user's +/- eye-height nudge (playerConfig_.eyeHeight).
  * @param headingUnits      EQ heading, 0..512.
  * @param lookPitchDegrees  the user's mouse-look pitch, + = up. Clamped here:
  *                          see firstPersonMaxDownPitchDegrees().
- * @param verticalFovRadians
- *                          the camera's vertical FOV -- the clamp is derived
- *                          from it (90 - vFOV/2), which is what makes the
- *                          hiding scale- and race-invariant.
  * @param targetDistance    how far along the look ray to put the look target;
  *                          a look-at camera does not care about the value.
  *
- * There is NO forward/backward standoff: the camera sits at the player's own
- * XY, which is what T298 measured (0.00 +/- 0.4) and what T76's 0.3 backward
- * standoff -- introduced to clear in-world arm geometry that no longer exists
- * as a separate pass -- got wrong in sign as well as purpose.
+ * THE VERTICAL-FOV PARAMETER IS GONE. T300 used it to derive the down-pitch
+ * clamp as 90 - vFOV/2; T301 refuted that (it is the condition that ADMITS
+ * the body's cone, not one that excludes it) and the clamp is now the named
+ * measured constant kFirstPersonMaxDownPitchDegrees. Removing the parameter
+ * is deliberate: the coupling cannot come back by accident.
+ *
+ * There is NO forward/backward standoff beyond the head's own anatomical
+ * position and kEyeForwardOffsetUnits: T298 measured the official eye at
+ * 0.00 +/- 0.4 from the player's XY, and T76's 0.3 backward standoff --
+ * introduced to clear in-world arm geometry that no longer exists as a
+ * separate pass -- was wrong in sign as well as in purpose.
  */
 inline FirstPersonCameraPlacement computeFirstPersonCamera(
     float playerX, float playerY, float playerZ,
     float eyeAboveNodeOrigin, float eyeAdjustUnits,
     float headingUnits, float lookPitchDegrees,
-    float verticalFovRadians,
-    float targetDistance = 100.0f)
+    float targetDistance = 100.0f,
+    float eyeOffsetIrrX = 0.0f, float eyeOffsetIrrZ = 0.0f)
 {
     FirstPersonCameraPlacement out;
 
     const float headingRad = headingUnits / 512.0f * 2.0f * kFirstPersonPi;
 
     // THE HIDING MECHANISM, applied at the point of use so no caller can get
-    // around it: the TOTAL down-pitch is clamped so the frustum's lower edge
-    // never passes the nadir. The accumulator (renderer_player_physics.cpp)
-    // clamps the stored value too -- that is what keeps the control from
-    // feeling dead against an invisible wall -- but this is the guarantee.
-    const float maxDownDeg = firstPersonMaxDownPitchDegrees(verticalFovRadians);
+    // around it. The accumulator (renderer_player_physics.cpp) clamps the
+    // stored value too -- that is what keeps the control from feeling dead
+    // against an invisible wall -- but this is the guarantee.
+    const float maxDownDeg = firstPersonMaxDownPitchDegrees();
     float totalPitchDeg = lookPitchDegrees - kFirstPersonPitchDownDegrees;
     if (totalPitchDeg < -maxDownDeg) totalPitchDeg = -maxDownDeg;
     if (totalPitchDeg > kFirstPersonMaxUpPitchDegrees) totalPitchDeg = kFirstPersonMaxUpPitchDegrees;
@@ -207,13 +222,38 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
 
     const float camZ = playerZ + eyeAboveNodeOrigin + eyeAdjustUnits;
 
-    out.posX = playerX;
-    out.posY = camZ;
-    out.posZ = playerY;
+    // The look ray's horizontal direction, reused for Leg A's forward nudge
+    // so that constant needs no knowledge of any mesh's baked axes -- the
+    // trap that broke T300 Leg B's per-race table (its error changed SIGN
+    // between Human and Troll, so it was not an offset).
+    const float fwdX = std::sin(headingRad);
+    const float fwdZ = std::cos(headingRad);
 
-    out.targetX = playerX + std::sin(headingRad) * cosPitch * targetDistance;
+    out.posX = playerX + eyeOffsetIrrX + fwdX * kEyeForwardOffsetUnits;
+    out.posY = camZ;
+    out.posZ = playerY + eyeOffsetIrrZ + fwdZ * kEyeForwardOffsetUnits;
+
+    out.targetX = out.posX + fwdX * cosPitch * targetDistance;
     out.targetY = camZ + sinPitch * targetDistance;
-    out.targetZ = playerY + std::cos(headingRad) * cosPitch * targetDistance;
+    out.targetZ = out.posZ + fwdZ * cosPitch * targetDistance;
+
+    // The camera's own up vector, carried through and past the nadir.
+    //
+    // With forward F = (sinH*cosP, sinP, cosH*cosP) and the horizontal right
+    // vector R = (cosH, 0, -sinH), up is F x R:
+    //
+    //     U = (-sinH*sinP, cosP, -cosH*sinP)
+    //
+    // At level pitch that is exactly (0,1,0), so nothing changes for an
+    // ordinary view. At pitch -90 it becomes (sinH, 0, cosH) -- looking
+    // straight down, screen-up is the direction you are facing, which is
+    // correct and, more to the point, DEFINED. Past -90 its Y component goes
+    // negative and the view continues smoothly over the top instead of
+    // flipping. It is unit length for every pitch, so no normalisation is
+    // needed and none is done.
+    out.upX = -fwdX * sinPitch;
+    out.upY = cosPitch;
+    out.upZ = -fwdZ * sinPitch;
 
     return out;
 }
