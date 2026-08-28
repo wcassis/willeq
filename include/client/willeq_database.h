@@ -19,7 +19,7 @@ namespace EQT {
 // the client compares against it in WilleqDatabase::open() (T56). Bump this
 // AND the builder's setMeta() call together, in the same commit, whenever
 // the schema changes — they must never drift independently again.
-inline constexpr int kWilleqDbExpectedVersion = 4;  // T246: spells reagent columns added (T68 added effect slots at 3)
+inline constexpr int kWilleqDbExpectedVersion = 5;  // T304: race_models.color added (T246 added spell reagents at 4, T68 effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -65,6 +65,13 @@ struct RaceModelInfo {
     std::string animationSource;
     std::string animationSourceS3d;
     float scale = 1.0f;
+    // T304 Leg 2: packed ARGB placeholder-cube tint, used only when no model
+    // could be built for the race (T213). These values are INVENTED -- Will
+    // ruled on 2026-08-28 that inventing them is acceptable and the bar is
+    // "plausible and distinguishable", NOT authenticity. They are not sourced
+    // from EverQuest data; see config/race_models.json's _notes. 0 means the
+    // row records no colour.
+    uint32_t colorARGB = 0;
     bool genderVariants = false;
     bool invisible = false;
     bool found = false;

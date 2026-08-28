@@ -85,6 +85,18 @@ std::string getRaceModelFilename(uint16_t raceId, uint8_t gender);
 // Get race scale factor (some races are larger/smaller)
 float getRaceScale(uint16_t raceId);
 
+// T304 Leg 2: packed ARGB tint for the placeholder cube drawn when no model
+// could be built for a race (T213). Served from race_models.color.
+//
+// THE COLUMN'S VALUES ARE INVENTED -- Will ruled on 2026-08-28 that inventing
+// them is acceptable and the bar is "plausible and distinguishable", NOT
+// authenticity. Do not mistake them for sourced EverQuest data; the file
+// config/race_models.json says the same in its _notes.
+//
+// Returns kDefaultRaceColorARGB when the db is absent or the race has no row.
+inline constexpr uint32_t kDefaultRaceColorARGB = 0xFF969696u;  // opaque grey
+uint32_t getRaceColorARGB(uint16_t raceId);
+
 // T274: getRaceName() and getGenderName() lived here with ZERO callers
 // (found by T271). Race names for display come from EverQuest::GetRaceName()
 // (eq_strings.cpp), which reads the same race_models row; there is no second

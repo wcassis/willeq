@@ -110,95 +110,22 @@ bool EntityRenderer::loadGlobalCharacters() {
     return raceModelLoader_->loadGlobalModels();
 }
 
+// T304 Leg 2: one colour source. The hand-written switch deleted here was the
+// LAST surviving copy of the pre-JSON race numbering (T267/T270/T271 killed
+// the other three, all of which were live and wrong): it called 21 "Skeleton"
+// when row 21 is BEH Evil Eye, 26 "Snake" (FRO Froglok), 33 "Ghost" (GHU
+// Ghoul), 35 "Rat" (EEL Eel), 42 "Rat" (WOL Wolf), 43 "Bat" (BEA Bear), 46
+// "Goblin" (IMP Imp), 48/49 "Spider" (KOB Kobold / DRA Lava Dragon) and 85
+// "Dragon" (SPE Spectre). The tint now comes from race_models.color, keyed on
+// each row's own name.
+//
+// THOSE COLUMN VALUES ARE INVENTED, by Will's ruling of 2026-08-28 -- the bar
+// is "plausible and distinguishable", not authenticity, because the cube is
+// reached only when no model could be built for the race (T213). They are not
+// sourced from EverQuest data.
 irr::video::SColor EntityRenderer::getColorForRace(uint16_t raceId) const {
-    // Placeholder-cube tint, reached only when no model could be built for
-    // the race (T213). T271 audited this against race_models and left the
-    // colours alone ON PURPOSE: there is no colour column, so re-keying it to
-    // the audited rows would mean inventing a colour per race. The case
-    // comments below are therefore NOT a name source -- several carry the
-    // pre-JSON numbering and the rows contradict them (21 is BEH Evil Eye not
-    // Skeleton, 26 FRO Froglok not Snake, 33 GHU Ghoul not Ghost, 35 EEL Eel
-    // not Rat, 42 WOL Wolf not Rat, 43 BEA Bear not Bat, 46 IMP Imp not
-    // Goblin, 48/49 KOB Kobold / DRA Lava Dragon not Spiders, 85 SPE Spectre
-    // not Dragon). For a race NAME call EverQuest::GetRaceName() (T274).
-    switch (raceId) {
-        case 1:   // Human
-            return irr::video::SColor(255, 200, 180, 160);
-        case 2:   // Barbarian
-            return irr::video::SColor(255, 180, 160, 140);
-        case 3:   // Erudite
-            return irr::video::SColor(255, 160, 140, 120);
-        case 4:   // Wood Elf
-            return irr::video::SColor(255, 140, 180, 140);
-        case 5:   // High Elf
-            return irr::video::SColor(255, 220, 220, 200);
-        case 6:   // Dark Elf
-            return irr::video::SColor(255, 80, 80, 100);
-        case 7:   // Half Elf
-            return irr::video::SColor(255, 180, 180, 160);
-        case 8:   // Dwarf
-            return irr::video::SColor(255, 180, 140, 100);
-        case 9:   // Troll
-            return irr::video::SColor(255, 100, 140, 100);
-        case 10:  // Ogre
-            return irr::video::SColor(255, 140, 120, 100);
-        case 11:  // Halfling
-            return irr::video::SColor(255, 180, 160, 140);
-        case 12:  // Gnome
-            return irr::video::SColor(255, 160, 160, 180);
-        case 128: // Iksar
-            return irr::video::SColor(255, 100, 140, 100);
-        case 130: // Vah Shir
-            return irr::video::SColor(255, 180, 160, 120);
-        case 330: // Froglok
-            return irr::video::SColor(255, 80, 160, 80);
-
-        // Common NPCs/monsters
-        case 21:  // Skeleton
-        case 60:  // Skeleton (variant)
-        case 367: // Decaying Skeleton
-            return irr::video::SColor(255, 220, 220, 200);
-        case 22:  // Beetle / Fire Beetle
-            return irr::video::SColor(255, 80, 60, 40);
-        case 24:  // Fish / Koalindl
-            return irr::video::SColor(255, 100, 140, 180);
-        case 26:  // Snake
-        case 37:  // Giant Snake / Grass Snake
-            return irr::video::SColor(255, 80, 100, 60);
-        case 33:  // Ghost
-        case 63:  // Ghost (variant)
-            return irr::video::SColor(150, 200, 200, 255);  // Translucent blue
-        case 34:  // Giant Bat
-        case 43:  // Bat
-            return irr::video::SColor(255, 60, 40, 40);
-        case 35:  // Rat (small)
-        case 36:  // Giant Rat / Large Rat
-        case 42:  // Rat
-            return irr::video::SColor(255, 100, 80, 60);
-        case 39:  // Gnoll Pup
-        case 44:  // Gnoll
-        case 87:  // Gnoll (variant)
-            return irr::video::SColor(255, 140, 100, 60);
-        case 46:  // Goblin
-            return irr::video::SColor(255, 100, 140, 60);
-        case 48:  // Spider (small)
-        case 49:  // Spider (large)
-            return irr::video::SColor(255, 60, 60, 60);
-        case 77:  // Werewolf
-        case 28:  // Werewolf (variant)
-            return irr::video::SColor(255, 120, 100, 80);
-        case 85:  // Dragon
-            return irr::video::SColor(255, 200, 50, 50);
-
-        // Invisible / Zone entities - fully transparent
-        case 127: // Invisible Man
-        case 240: // Zone Controller / Marker
-            return irr::video::SColor(0, 0, 0, 0);
-
-        default:
-            // Generic NPC/monster color - gray
-            return irr::video::SColor(255, 150, 150, 150);
-    }
+    const uint32_t argb = EQT::Graphics::getRaceColorARGB(raceId);
+    return irr::video::SColor(argb);
 }
 
 // T271: one scale source. RaceModelLoader::getRaceScale() is a one-line
