@@ -416,230 +416,26 @@ TEST_F(RaceModelAnimationHeadlessTest, CreateAnimatedNodeWithEquipment_Headless)
 // pass whose depth clear was silently compiled out and EVERY headless test
 // still passed. The live video gate (T300 Leg C) is the only thing that can
 // judge this feature.
-TEST_F(RaceModelAnimationHeadlessTest, FirstPersonPitchClampKeepsTheBodyOutOfFrame_Headless) {
-    // T300 post-Leg-A. The hiding mechanism is a DOWN-PITCH CLAMP, not a near
-    // plane: Leg A measured the official client clipping nothing (geometry
-    // draws at point-blank range) and its size sweep killed both the fixed and
-    // the size-derived plane at once (at 5x scale, zero player geometry while
-    // ground 34 units below still drew). The body hangs directly below the
-    // eye, so a view that cannot look past straight down cannot contain it.
-    //
-    // What this measures, per race, against real S3D meshes: the down-pitch at
-    // which the player's own geometry FIRST enters the frustum. The shipped
-    // clamp (90 - vFOV/2) must sit below that angle.
-    //
-    // Scale invariance is the property that makes this mechanism right where a
-    // plane was wrong, and it is asserted directly: the entry angle is
-    // measured again at 5x scale (Leg A's #size 30 case) and must be
-    // unchanged, because an angle from the eye does not depend on how big the
-    // body is.
-    using EQT::Graphics::firstPersonMaxDownPitchDegrees;
-    using EQT::Graphics::firstPersonVerticalFovRadians;
-    using EQT::Graphics::kFirstPersonHorizontalFovDegrees;
-
-    constexpr float kPi = 3.14159265358979323846f;
-    constexpr float kAspect = 4.0f / 3.0f;
-    const float vFov = firstPersonVerticalFovRadians(kAspect);
-    const float clampDeg = firstPersonMaxDownPitchDegrees(vFov);
-    const float tanHalfV = std::tan(vFov * 0.5f);
-    const float tanHalfH = std::tan(kFirstPersonHorizontalFovDegrees * 0.5f * kPi / 180.0f);
-    // The world near plane -- first person clips exactly as third person does
-    // (Leg A: the official client clips nothing).
-    const float nearPlane = EQT::Graphics::kWorldNearPlaneUnits;
-
-    struct RaceCase { uint16_t raceId; uint8_t gender; const char* label; };
-    const RaceCase races[] = {
-        {1, 0, "Human male"},        // the race Leg A measured the client on
-        {1, 1, "Human female"},
-        {2, 0, "Barbarian male"},
-        {8, 0, "Dwarf male"},
-        {6, 1, "Dark Elf female"},
-        {9, 0, "Troll male"},
-        {128, 0, "Iksar male"},
-    };
-    // AT REST (idle) is what the clamp has to hide. The ATTACK animations are
-    // the opposite case -- a swing rotates the arm and weapon UP into frame,
-    // and T299/Leg A both saw exactly that (the arm running off the frame's
-    // bottom-right corner). Geometry in frame during a swing is the mechanism
-    // working, not a failure, so the two are measured separately.
-    const char* idleAnims[] = {"l01"};
-    const char* attackAnims[] = {"c06", "c02", "c03", "c04", "c08"};
-
-    std::cout << "\nT300 first-person down-pitch clamp = 90 - vFOV/2 = " << clampDeg
-              << " deg (vFOV " << (vFov * 180.0f / kPi) << " at 4:3).\n";
-    std::cout << "  race | scale | down-pitch at which the body first enters frame"
-                 " (clamp must be BELOW this)\n";
-
-    int racesCovered = 0;
-    bool humanMaleCovered = false;
-    for (const auto& rc : races) {
-        SCOPED_TRACE(rc.label);
-        auto* node = loader_->createAnimatedNode(rc.raceId, rc.gender,
-                                                 smgr_->getRootSceneNode());
-        if (!node) {
-            std::cout << "  " << rc.label << ": createAnimatedNode() returned null "
-                         "(race data unavailable) - skipping\n";
-            continue;
-        }
-        EQT::Graphics::EQAnimatedMesh* eqMesh = node->getEQMesh();
-        if (!eqMesh) { node->remove(); continue; }
-        const float eye = eqMesh->getBoundingBox().MaxEdge.Y;
-        if (!(eye > 0.0f)) { node->remove(); continue; }
-
-        // MUST be set before animating: the player's node bakes its rotation
-        // into the vertices (applyAnimation()), and only the BAKED mesh is in
-        // the world frame the camera looks along. Measuring the unbaked model
-        // frame answers a different question -- the raw mesh's +X is the
-        // character's forward (T298 section 3), not +Z. With the node at
-        // rotation 0 the bake is RotY(-90), which maps character-forward +X
-        // onto world +Z, i.e. exactly production's arrangement at heading 0.
-        node->setIsPlayerNode(true);
-
-        // Smallest down-pitch at which ANY body vertex falls inside the
-        // frustum, over idle and every attack animation. `scale` multiplies
-        // the whole body AND the eye height, exactly as a shrink/grow would.
-        auto entryPitchDegrees = [&](float scale, const char* const* codes, size_t nCodes) {
-            float entry = 90.0f;  // nothing found -> the body never enters
-            for (size_t ci = 0; ci < nCodes; ++ci) {
-                const char* code = codes[ci];
-                node->playAnimation(code, true);
-                for (int t = 0; t <= 400; t += 50) {
-                    node->OnAnimate(static_cast<irr::u32>(t));
-                    irr::scene::SMesh* mesh = node->getInstanceMesh();
-                    if (!mesh) continue;
-                    for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
-                        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(b);
-                        if (!mb) continue;
-                        const irr::u32 vcount = mb->getVertexCount();
-                        for (irr::u32 v = 0; v < vcount; ++v) {
-                            const irr::core::vector3df& raw = mb->getPosition(v);
-                            // Relative to the eye, at this scale.
-                            const float px = raw.X * scale;
-                            const float py = (raw.Y - eye) * scale;
-                            const float pz = raw.Z * scale;
-                            // Sweep down-pitch; camera looks along +Z at 0.
-                            for (float deg = 0.0f; deg < entry; deg += 0.25f) {
-                                const float th = deg * kPi / 180.0f;
-                                const float st = std::sin(th), ct = std::cos(th);
-                                const float zc = -py * st + pz * ct;
-                                if (zc <= nearPlane) continue;
-                                const float yc = py * ct + pz * st;
-                                if (std::fabs(yc) > tanHalfV * zc) continue;
-                                if (std::fabs(px) > tanHalfH * zc) continue;
-                                entry = deg;   // inside at this pitch
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            return entry;
-        };
-
-        // Diagnostic: WHAT is in frame at level pitch, if anything. An entry
-        // angle of 0 means the player's own geometry is on screen looking
-        // straight ahead, which no pitch clamp can fix -- report the example
-        // vertex rather than leaving the reader to guess.
-        auto probeLevel = [&](const char* const* codes, size_t nCodes, const char* what) {
-            int inside = 0;
-            irr::core::vector3df worst(0, 0, 0);
-            float worstZ = -1.0f;
-            for (size_t ci = 0; ci < nCodes; ++ci) {
-                const char* code = codes[ci];
-                node->playAnimation(code, true);
-                for (int t = 0; t <= 400; t += 50) {
-                    node->OnAnimate(static_cast<irr::u32>(t));
-                    irr::scene::SMesh* mesh = node->getInstanceMesh();
-                    if (!mesh) continue;
-                    for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b) {
-                        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(b);
-                        if (!mb) continue;
-                        for (irr::u32 v = 0; v < mb->getVertexCount(); ++v) {
-                            const irr::core::vector3df& raw = mb->getPosition(v);
-                            const float px = raw.X, py = raw.Y - eye, pz = raw.Z;
-                            if (pz <= nearPlane) continue;
-                            if (std::fabs(py) > tanHalfV * pz) continue;
-                            if (std::fabs(px) > tanHalfH * pz) continue;
-                            ++inside;
-                            if (pz > worstZ) { worstZ = pz; worst = irr::core::vector3df(px, py, pz); }
-                        }
-                    }
-                }
-            }
-            if (inside > 0) {
-                std::cout << "  " << rc.label << " | " << what << ", AT LEVEL PITCH: " << inside
-                          << " vertex-samples inside the frustum; furthest at"
-                             " (right " << worst.X << ", up " << worst.Y << ", forward "
-                          << worst.Z << ") from the eye\n";
-            }
-            return inside;
-        };
-        const int insideAtLevel = probeLevel(idleAnims, 1, "AT REST");
-        const int swingInsideAtLevel = probeLevel(attackAnims, 5, "MID-SWING");
-
-        const float entry1x = entryPitchDegrees(1.0f, idleAnims, 1);
-        const float entry5x = entryPitchDegrees(5.0f, idleAnims, 1);
-        std::cout << "  " << rc.label << " | 1x | " << entry1x
-                  << (entry1x > clampDeg ? "  (clamp holds)"
-                      : (insideAtLevel > 0 ? "  <-- ALREADY IN FRAME AT LEVEL PITCH -- no clamp can fix this"
-                                           : "  <-- BELOW THE CLAMP: body enters frame"))
-                  << "\n";
-        std::cout << "  " << rc.label << " | 5x | " << entry5x
-                  << "   [mid-swing vertices in frame at level pitch: " << swingInsideAtLevel
-                  << " -- that is the swing the mechanism is supposed to show]\n";
-        ++racesCovered;
-        if (rc.raceId == 1 && rc.gender == 0) humanMaleCovered = true;
-
-        // The CLAMP is scale-invariant by construction (it is a function of
-        // vFOV alone -- asserted numerically in
-        // test_first_person_camera_single_formula.cpp). The measured ENTRY
-        // angle is not quite, and the difference is instructive: the only
-        // scale-dependent term left in the view is the 1.0 world near plane,
-        // which clips more of a small model than of a large one. So scaling UP
-        // can only lose that help, never gain it.
-        EXPECT_LE(entry5x, entry1x + 0.26f)
-            << rc.label << ": scaling the model up moved the body's entry angle LATER ("
-            << entry1x << " -> " << entry5x << "), which no geometry explains -- the near "
-               "plane is the only scale-dependent term and it can only clip less as the "
-               "model grows.";
-
-        node->remove();
-    }
-
-    EXPECT_TRUE(humanMaleCovered)
-        << "Human male model data unavailable -- this test verified nothing about the race "
-           "Leg A measured the official client on";
-    EXPECT_GT(racesCovered, 0);
-
-    // The clamp itself: derived, inside Leg A's measured bracket, and
-    // independent of any model.
-    EXPECT_GT(clampDeg, 55.0f) << "clamp below Leg A's measured bracket (55-75 degrees)";
-    EXPECT_LT(clampDeg, 75.0f) << "clamp above Leg A's measured bracket (55-75 degrees)";
-
-    // ------------------------------------------------------------------
-    // THE PER-RACE ENTRY ANGLES ABOVE ARE REPORTED, NOT ASSERTED, AND THEY DO
-    // NOT AGREE WITH THE CLAMP. Read the numbers: fable's own resting bodies
-    // enter this frustum at roughly 35-41 degrees for the human-shaped races,
-    // and a Troll or Iksar is inside it at LEVEL pitch -- all well short of the
-    // 65.4-degree clamp. Taken at face value that says the clamp alone does not
-    // hide fable's body, whatever it does in the official client.
-    //
-    // Two reasons this is reported rather than asserted:
-    //   1. The measurement assumes the baked player mesh's +Z is the camera's
-    //      forward at heading 0 (setIsPlayerNode() + rotation 0 -> RotY(-90),
-    //      T298 section 3). That mapping is derived, not confirmed against a
-    //      live frame. If it is wrong, "forward" here is really "sideways" and
-    //      the shoulder width is being read as forward reach -- which would
-    //      explain resting extents of 2.7-3.0 units in front of the eye.
-    //   2. fable's models, animations and eye height (the crown of the head,
-    //      not eye level) are not the official client's, so an angle measured
-    //      there does not have to reproduce here.
-    //
-    // Either way this is the first thing T300 Leg C should look at, and it is
-    // a concrete prediction for it to confirm or refute: at max down-pitch,
-    // does fable show the player's body? See
-    // refactor/T300_leg_b_implementation.md.
-}
+// T301 STRUCK T300 Leg B's FirstPersonPitchClampKeepsTheBodyOutOfFrame_Headless
+// AND ITS PER-RACE ENTRY-ANGLE TABLE. Do not restore either.
+//
+// Two independent reasons, both fatal:
+//
+//  1. THE AXIS ASSUMPTION IS BROKEN IN A WAY THAT IS NOT AN OFFSET. The table
+//     assumed the baked player mesh's +Z is camera-forward at heading 0. Live
+//     vs headless entry angles came out 26.5 vs 39.5 for a Human male and
+//     60.6 vs 0 for a Troll -- THE ERROR CHANGES SIGN BETWEEN RACES, so no
+//     correction to the table can rescue it.
+//  2. IT MEASURED FROM THE WRONG EYE. Every angle was taken from
+//     bbox.MaxEdge.Y, the CROWN OF THE SKULL, which T301 established is not
+//     where the eye is (include/client/graphics/first_person_eye.h). Angles
+//     from a point on top of the head do not describe the view from inside it.
+//
+// It also asserted the refuted `90 - vFOV/2` clamp against Leg A's bracket.
+//
+// The replacement lives in tests/test_first_person_eye_anatomy.cpp, is built
+// on the head-bone eye, and is equally explicit that it does not rasterize.
+// T301 Leg E is the live gate.
 
 #endif // EQT_HAS_GRAPHICS
 

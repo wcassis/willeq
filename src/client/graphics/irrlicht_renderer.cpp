@@ -2472,7 +2472,9 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 // kFirstPersonHorizontalFovDegrees (62.8, was Irrlicht's default 72 vertical
 // == ~88 horizontal). The body-hiding lever is no longer a near plane at all:
 // Leg A measured the official client clipping nothing, so hiding is a DOWN-
-// PITCH CLAMP derived as 90 - vFOV/2 (firstPersonMaxDownPitchDegrees()).
+// PITCH CLAMP -- a NAMED MEASURED CONSTANT, kFirstPersonMaxDownPitchDegrees
+// in first_person_eye.h. T301 refuted T300's 90 - vFOV/2 derivation and
+// removed the FOV parameter so it cannot come back.
 //
 // T76's kFirstPersonCameraStandoffUnits (0.3 BACKWARD) is gone: it existed to
 // pull the eye off in-world arm geometry that is no longer drawn as a
@@ -2504,15 +2506,15 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
 void IrrlichtRenderer::applyFirstPersonPitchClamp() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
 
-    const float minLook = firstPersonMinLookPitchDegrees(getFirstPersonVerticalFov());
+    const float minLook = firstPersonMinLookPitchDegrees();
     if (playerPitch_ >= minLook && playerPitch_ <= kFirstPersonMaxUpPitchDegrees) return;
 
     const float before = playerPitch_;
     playerPitch_ = std::min(std::max(playerPitch_, minLook), kFirstPersonMaxUpPitchDegrees);
     LOG_DEBUG(MOD_GRAPHICS,
-              "[FP-CLAMP] mouse-look pitch {:.2f} -> {:.2f} deg (floor {:.2f}, total down-pitch limit {:.2f} = 90 - vFOV/2)",
+              "[FP-CLAMP] mouse-look pitch {:.2f} -> {:.2f} deg (floor {:.2f}, measured total down-pitch limit {:.2f})",
               before, playerPitch_, minLook,
-              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
+              firstPersonMaxDownPitchDegrees());
     repositionFirstPersonCamera();
 }
 
@@ -2532,12 +2534,19 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // position the eye without it.
     applyCameraProjectionForMode();
 
-    float eyeHeight = entityRenderer_ ? entityRenderer_->getPlayerEyeHeightAboveNodeOrigin() : 0.0f;
-    if (eyeHeight <= 0.0f) {
+    // T301: the eye is the HEAD BONE's, per race, from the mesh -- not the
+    // whole-body bbox crown T300 used. getPlayerFirstPersonEyeOffset() falls
+    // back to that crown only for a model with no head anchor, and says so.
+    EntityRenderer::FirstPersonEyeOffset eye;
+    if (entityRenderer_) {
+        eye = entityRenderer_->getPlayerFirstPersonEyeOffset();
+    } else {
+        eye.irrY = 3.65f;
+    }
+    if (eye.irrY <= 0.0f) {
         // Node-origin-relative fallback for a human-sized entity whose model
-        // has not loaded yet -- NOT a feet-relative 6.x. See
-        // getPlayerEyeHeightAboveNodeOrigin()'s comment for the two frames.
-        eyeHeight = 3.65f;
+        // has not loaded yet -- NOT a feet-relative 6.x.
+        eye.irrY = 3.65f;
     }
 
     // T295: the user's mouse-look pitch (playerPitch_, degrees, +up) is
@@ -2546,8 +2555,8 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // of this formula, so moving discarded the bias and standing still
     // discarded the mouse.
     const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
-        playerX_, playerY_, playerZ_, eyeHeight, playerConfig_.eyeHeight,
-        playerHeading_, playerPitch_, getFirstPersonVerticalFov());
+        playerX_, playerY_, playerZ_, eye.irrY, playerConfig_.eyeHeight,
+        playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
 
     camera_->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
     camera_->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
@@ -2555,13 +2564,13 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // T295: DEBUG, not INFO -- this now runs on every frame in which the
     // player moves, turns or looks. The FP-CAMERA tag is the evidence
     // emitter the unit's still-vs-moving proof diffs. T300: playerZ_ is the
-    // node origin (== server Z, model CENTRE), not the feet; the log says so
-    // now, because "feet=" is what invited a 3.05-unit "correction".
-    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeAboveOrigin={:.4f} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
-              placement.posX, placement.posZ, placement.posY, playerZ_, eyeHeight,
+    // node origin (== server Z, model CENTRE), not the feet.
+    LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeOffset=({:.4f},{:.4f},{:.4f}) fromHead={} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
+              placement.posX, placement.posZ, placement.posY, playerZ_,
+              eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead,
               playerConfig_.eyeHeight, playerHeading_, playerPitch_,
               kFirstPersonPitchDownDegrees,
-              firstPersonMaxDownPitchDegrees(getFirstPersonVerticalFov()));
+              firstPersonMaxDownPitchDegrees());
 }
 
 void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
@@ -2577,11 +2586,13 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
         bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerFirstPersonMode(firstPerson);
 
-        float eyeHeight = entityRenderer_->getPlayerEyeHeightAboveNodeOrigin();
-        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeAboveNodeOrigin={:.2f} firstPerson={}", eyeHeight, firstPerson);
+        const EntityRenderer::FirstPersonEyeOffset eye =
+            entityRenderer_->getPlayerFirstPersonEyeOffset();
+        LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeOffset=({:.2f},{:.2f},{:.2f}) fromHead={} firstPerson={}",
+                 eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead, firstPerson);
 
         // Fix first-person camera height now that we have the player model
-        if (firstPerson && eyeHeight > 0.0f) {
+        if (firstPerson && eye.irrY > 0.0f) {
             repositionFirstPersonCamera();
         }
     }

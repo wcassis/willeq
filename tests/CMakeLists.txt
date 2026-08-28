@@ -2499,3 +2499,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_gate_bypasses PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_skill_gate_bypasses)
+
+# T301 Leg B: the first-person eye is inside the head and derived per race
+# from the mesh. Pure-geometry parts need nothing; the shipped-mesh parts use
+# the same EDT_NULL + willeq_core gate as test_race_330_loader and skip
+# without the db or the client tree. NOTHING HERE RASTERIZES -- see the file
+# header; T301 Leg E is the live gate.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_eye_anatomy
+        test_first_person_eye_anatomy.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_eye_anatomy PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_eye_anatomy GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_eye_anatomy PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy)
+ENDIF()

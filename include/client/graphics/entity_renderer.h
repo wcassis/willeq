@@ -430,18 +430,33 @@ public:
     // Returns 0.0f if player entity not found
     float getPlayerCollisionZOffset() const;
 
-    // T300: eye height measured from the player NODE ORIGIN (== the server's
-    // Z for this entity), NOT from the feet -- the old name said "FromFeet"
-    // and the value has never been feet-relative. The node origin sits INSIDE
-    // the body: the Human male base mesh spans Y = [-3.05, +3.65] about it
-    // (createEntity()'s own comment: "Server Z is the geometric MODEL
-    // CENTER"). The returned value is bbox.MaxEdge.Y, i.e. the top of the
-    // head, which is ~6.70 above the mesh's own feet -- and that is what the
-    // official client's measured 6.75-above-server-z eye corresponds to
-    // (T298 A3, T300). Adding those two frames together is a 3.05-unit
-    // regression; the frame is named here so nobody does it again.
-    // Returns 0.0f if player entity not found.
-    float getPlayerEyeHeightAboveNodeOrigin() const;
+    // T301: the offset from the player NODE ORIGIN to the EYE, in Irrlicht
+    // world axes.
+    //
+    // The node origin is the server's Z and sits INSIDE the body
+    // (createEntity(): "Server Z is the geometric MODEL CENTER"); the Human
+    // male base mesh spans Y = [-3.05, +3.65] about it.
+    //
+    // T300 returned a single number here, bbox.MaxEdge.Y == 3.65, the CROWN
+    // OF THE SKULL. It put the camera on top of the head: the player's own
+    // face sat below and forward of it (51 deg depression, inside any
+    // plausible frustum) and the run cycle lifted the ANIMATED head above the
+    // STATIC crown, so the head bobbed through frame at level pitch. Both are
+    // eye-placement defects and no clamp value fixes either.
+    //
+    // The eye is now derived from the HEAD BONE's own vertex cluster, per
+    // race, from the mesh -- see include/client/graphics/first_person_eye.h.
+    // It carries a horizontal component too, because a hunched race's head
+    // genuinely is forward of its origin (Iksar 0.84, Froglok 1.48 EQ units).
+    // derivedFromHead is false when the model has no head anchor and the
+    // legacy bbox crown was used; that is a FALLBACK, not the answer.
+    struct FirstPersonEyeOffset {
+        float irrX = 0.0f;
+        float irrY = 0.0f;
+        float irrZ = 0.0f;
+        bool derivedFromHead = false;
+    };
+    FirstPersonEyeOffset getPlayerFirstPersonEyeOffset() const;
 
     // Entity casting management (for showing casting bars above other entities)
     void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs);

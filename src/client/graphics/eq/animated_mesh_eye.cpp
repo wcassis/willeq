@@ -1,0 +1,134 @@
+// T301 Leg B -- EQAnimatedMeshSceneNode::getFirstPersonEyeOffset().
+//
+// Split out of animated_mesh_scene_node.cpp deliberately: that TU is already
+// large and this is substantial new code (refactor/check_file_sizes.sh).
+//
+// WHAT THIS COMPUTES: the offset, in Irrlicht WORLD axes, from this node's
+// origin to the player's eye -- derived from the HEAD BONE's own vertex
+// cluster, per race, from the mesh. See include/client/graphics/
+// first_person_eye.h for the anchor survey and the beard trap.
+//
+// THE 90-DEGREE OFFSET IS LOAD-BEARING AND IS REPRODUCED HERE ON PURPOSE.
+// The PLAYER node bakes its Y rotation into the vertices with a +90 degree
+// offset (applyAnimation(), "the model's back faces the camera") and then
+// renders with a POSITION-ONLY world transform. getBoneWorldPosition() below
+// does NOT do that -- it applies the raw nodeRot.Y -- so it is off by 90
+// degrees for the player node specifically, and could not be reused here.
+// Players and NPCs genuinely do not share a default rotation; this is not
+// drift to harmonize.
+
+#include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/first_person_eye.h"
+
+#include <cmath>
+
+namespace EQT {
+namespace Graphics {
+
+bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
+    irr::core::vector3df& outOffset) const {
+    if (!eqMesh_) return false;
+
+    auto skeleton = eqMesh_->getSkeleton();
+    if (!skeleton || skeleton->bones.empty()) return false;
+
+    const auto& vertexPieces = eqMesh_->getVertexPieces();
+    const auto& originalVertices = eqMesh_->getOriginalVertices();
+    if (vertexPieces.empty() || originalVertices.empty()) return false;
+
+    // ---- resolve + cache the head anchor and the eye's bone-local point ----
+    // Both are properties of the MESH, not of this instance's pose, so they
+    // are computed once. -2 means "not yet attempted"; -1 means "attempted
+    // and there is no head bone", which must not be retried every frame.
+    if (eyeHeadBoneIndex_ == -2) {
+        std::vector<std::string> names;
+        names.reserve(skeleton->bones.size());
+        for (const auto& bone : skeleton->bones) names.push_back(bone.name);
+        eyeHeadBoneIndex_ = findHeadBoneIndex(skeleton->modelCode, names);
+
+        if (eyeHeadBoneIndex_ >= 0) {
+            // Raw vertices are stored in the OWNING BONE's local space (the
+            // bone matrix is what lifts them to model space), EQ axes, +Z up.
+            std::vector<BoneVertexRun> runs;
+            runs.reserve(vertexPieces.size());
+            for (const auto& piece : vertexPieces) {
+                runs.push_back({piece.boneIndex, piece.count});
+            }
+            const HeadVertexCluster cluster = accumulateHeadCluster(
+                runs, eyeHeadBoneIndex_,
+                &originalVertices[0].Pos.X, originalVertices.size(),
+                sizeof(irr::video::S3DVertex) / sizeof(float));
+            if (cluster.valid()) {
+                eyeLocalPoint_ = computeEyeInHeadBoneSpace(cluster);
+            } else {
+                // A head bone with no geometry of its own is not an anchor.
+                eyeHeadBoneIndex_ = -1;
+            }
+        }
+
+        if (eyeHeadBoneIndex_ >= 0 && !kFirstPersonEyeFollowsAnimation) {
+            // REST-POSE BRANCH: a private animator that is never updated
+            // holds the bind pose (setSkeleton() calls computeBoneTransforms()
+            // and nothing advances it), so this is the head bone's rest
+            // transform and it never changes.
+            SkeletalAnimator rest;
+            rest.setSkeleton(skeleton);
+            const auto& restStates = rest.getBoneStates();
+            if (eyeHeadBoneIndex_ < static_cast<int>(restStates.size())) {
+                eyeRestHeadTransform_ = restStates[eyeHeadBoneIndex_].worldTransform;
+            }
+        }
+    }
+
+    if (eyeHeadBoneIndex_ < 0) return false;
+
+    // ---- lift the bone-local eye into model space ----
+    // THE ANIMATION-FOLLOW SWITCH, and the whole of it: which head-bone
+    // matrix is used. Only the resulting POSITION is taken; the bone's
+    // orientation is discarded, so the look direction stays on the mouse.
+    BoneMat4 headTransform;
+    if (kFirstPersonEyeFollowsAnimation) {
+        const auto& boneStates = animator_.getBoneStates();
+        if (eyeHeadBoneIndex_ >= static_cast<int>(boneStates.size())) return false;
+        headTransform = boneStates[eyeHeadBoneIndex_].worldTransform;
+    } else {
+        headTransform = eyeRestHeadTransform_;
+    }
+
+    float ex = eyeLocalPoint_.x;
+    float ey = eyeLocalPoint_.y;
+    float ez = eyeLocalPoint_.z;
+    headTransform.transformPoint(ex, ey, ez);
+
+    // ---- model space -> world axes, exactly as render() draws this node ----
+    const irr::core::vector3df nodeRot = getRotation();
+    const irr::core::vector3df nodeScale = getScale();
+
+    if (isPlayerNode_) {
+        // Rotation baked into the vertices with the +90 offset; render()
+        // then uses a translation-only world matrix (no scale either).
+        const float rad = (nodeRot.Y + 90.0f) * 3.14159265358979323846f / 180.0f;
+        const float c = std::cos(rad);
+        const float s = std::sin(rad);
+        const float rx = ex * c - ey * s;
+        const float ry = ex * s + ey * c;
+        outOffset.X = rx;
+        outOffset.Y = ez;   // EQ Z (up) -> Irrlicht Y
+        outOffset.Z = ry;   // EQ Y      -> Irrlicht Z
+    } else {
+        // NPC path: the node's own transform carries rotation and scale.
+        const float lx = ex * nodeScale.X;
+        const float ly = ez * nodeScale.Z;
+        const float lz = ey * nodeScale.Y;
+        const float rad = nodeRot.Y * 3.14159265358979323846f / 180.0f;
+        const float c = std::cos(rad);
+        const float s = std::sin(rad);
+        outOffset.X = lx * c + lz * s;
+        outOffset.Y = ly;
+        outOffset.Z = -lx * s + lz * c;
+    }
+    return true;
+}
+
+}  // namespace Graphics
+}  // namespace EQT
