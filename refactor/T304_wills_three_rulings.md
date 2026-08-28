@@ -91,3 +91,186 @@ So the ruling is neither "delete the capability" nor "wire the adapter":
   the user is looking at an Irrlicht window, that is a LIVE user-visible defect
   and it is bigger than this leg — report it, do not silently fix or silently
   leave it.
+
+---
+
+## Review — Legs 2 and 3 (T304-leg23, 2026-08-28)
+
+Leg 1 (the death state) is NOT in this unit — it owns eqemu, which another leg
+held while this ran.
+
+### Leg 2 — the race colour column
+
+**THE COLUMN'S VALUES ARE INVENTED. They are not sourced from EverQuest data.**
+Will ruled on **2026-08-28** that inventing them is acceptable, overruling T271's
+standing objection; the bar he set is "plausible and distinguishable", not
+authenticity, because the tint is reached only when no model could be built for
+a race (T213). That sentence is written, in those terms and with that date, in
+**six** places a future audit can hit:
+
+| where | form |
+|---|---|
+| `config/race_models.json` `_notes` (and `_version` 1.3 -> 1.4) | the data file itself says its colours are invented |
+| `include/client/graphics/eq/race_codes.h`, on `getRaceColorARGB()` | the public accessor |
+| `src/client/graphics/eq/race_codes.cpp`, on the implementation | the db read |
+| `include/client/willeq_database.h`, on `RaceModelInfo::colorARGB` | the struct field |
+| `src/client/graphics/entity_renderer.cpp`, on `getColorForRace()` | the consumer |
+| `tests/test_race_names.cpp`, above the new colour block | plus the reason the assertions are relational |
+
+**Shape.** JSON key `"color": "#AARRGGBB"` on every one of the 190 race rows;
+db column `race_models.color INTEGER` holding the same value packed ARGB;
+`RaceModelInfo::colorARGB` (`uint32_t`, 0 = "no colour recorded");
+`EQT::Graphics::getRaceColorARGB(uint16_t)` serving it db-only, with
+`kDefaultRaceColorARGB = 0xFF969696` (the deleted switch's own generic grey)
+when there is no db or no row. `EntityRenderer::getColorForRace()` is now two
+lines over that. `kWilleqDbExpectedVersion` 4 -> 5.
+
+**How the values were produced** (`scripts/generate_race_colors.py`, committed so
+the method is inspectable and the result reproducible): a curated keyword table
+keyed on **each row's own `name`** -- never on a race id -- plus a deterministic
+per-id jitter so siblings sharing a keyword stay apart, plus a de-collision pass.
+Result: 190 rows, **189 distinct tints**; the single sanctioned duplicate is the
+fully transparent `#00000000` shared by 127 IVM Invisible Man and 240 IVM
+Teleport Man, the two rows flagged `invisible`.
+
+**Row-level proof** (rebuilt with `willeq_db_builder --eq-path
+/mnt/projects/EverQuestP1999 --data-path data --config-path config --output
+data/willeq.db`, exit 0, `race_models: 190 entries`):
+
+```
+version                         5
+count/ non-zero / distinct      190 / 188 / 189
+color=0 rows                    127 IVM Invisible Man, 240 IVM Teleport Man
+```
+
+Every other table in the rebuilt db was diffed against the committed one
+(`.dump` per table, all twelve): **byte-identical**. `race_models` itself was
+diffed on all thirteen pre-existing columns: **identical apart from `color`**.
+So the db change is exactly the column and nothing else.
+
+**The stale numbering is dead here.** The deleted switch was the LAST surviving
+copy of the pre-JSON numbering (T267/T270/T271 killed the other three, all live
+and wrong). Checked against the real rows, its case comments were wrong at:
+21 "Skeleton" (row 21 is BEH Evil Eye), 26 "Snake" (FRO Froglok), 33 "Ghost"
+(GHU Ghoul), 34/43 "Giant Bat"/"Bat" (43 is BEA Bear), 35/36/42 "Rat" (35 is EEL
+Eel, 42 is WOL Wolf), 46 "Goblin" (IMP Imp), 48/49 "Spider" (KOB Kobold / DRA
+Lava Dragon), 85 "Dragon" (SPE Spectre), 28/77 "Werewolf" (28 is FUN Fungusman;
+14 is the Werewolf row), 37 "Giant Snake" (SNA Snake), 39 "Gnoll Pup" / 44 / 87
+"Gnoll" (87 is ARM Armadillo), 60 "Skeleton (variant)" (correct), 63 "Ghost
+(variant)" (TIG Tiger), 22 "Beetle" (correct), 24 "Fish" (correct). None of that
+numbering survives in what this leg leaves behind: the replacement carries the
+corrections only as a historical note, and the column is keyed on names.
+
+**BUT ONE MORE COPY OF THAT NUMBERING IS STILL LIVE, OUTSIDE THIS LEG.**
+`CombatManager::IsHumanoid()` (`src/client/combat.cpp:1765-1816`) is a hand-
+written race-id switch with the same shift, and it is reached by hunt-target
+filtering (`combat.cpp:1626`, `:1873`). Spot-checked against the audited rows:
+44 "Dark Elf (NPC)" is FPM Freeport Guard, 55 "Freeport Guard" is BGM Human
+Beggar, 71 "Human (NPC)" is QCM Qeynos Citizen, 77 "Skeleton" is NGM Neriak
+Citizen, 78 "Ghoul" is EGM Erudite Citizen, 81 "Qeynos Citizen" is RIM Rivervale
+Citizen, 82 "Erudin Citizen" is SCA Scarecrow, 106 "Fiend" is FEM Felguard,
+110 "Erudite Ghost" is MER Mermaid, 111 "Human Ghost" is HAR Harpy, 112 "Iksar
+Ghost" is GFM Fayguard, 117 "Iksar Citizen" is GDM Ghost Dwarf, 118 "Forest
+Giant" is GEM Erudite Ghost, 120 "Pirate" is WOE Wolf Elemental, 122 "Kerran" is
+DRU Dragon Skeleton, 123-127 "Barbarian/Erudite/Troll/Ogre/Dwarf (NPC)" are
+INN/UNI/PEG/DJI/IVM, 137 "Yeti" is KGO Kunark Goblin, 139 "Coldain" is ICM Iksar
+Citizen, 140 "Velious Dragon" is FGI Forest Giant, 145 "Zombie" is GOO Goo,
+146 "Mummy" is SSN Spectral Sarnak. Only 1-12, 85 and 128 happen to be right.
+**Reported, deliberately NOT fixed here** -- it is a behavioural change to combat
+target selection, outside this leg's scope. It should be its own class-B item.
+
+**Goldens: no re-bless, and it was checked rather than assumed.** The gate's
+benchmark binary does not link `entity_renderer.cpp` at all (P44b root-caused
+this: `nm` shows no EntityRenderer symbols in `gles2_zone_benchmark`;
+`zone_bench_loader.cpp:48-79` is a deliberate benchmark-side mirror precisely
+because of that), so `getColorForRace()` -- the sole caller of the placeholder
+cube path -- is unreachable in every golden and memory-coverage run. **No golden
+frame can contain an EntityRenderer placeholder cube.** The gate passes with the
+goldens untouched.
+
+**Trap worth recording** (cost one bisect): the visual gate runs
+`build-gles2/bin/gles2_zone_benchmark`, a DIFFERENT build tree from `build`.
+Bumping `kWilleqDbExpectedVersion` and rebuilding `data/willeq.db` while only
+`build` had been rebuilt left the stale `build-gles2` binary expecting version 4;
+it silently refused the version-5 db, loaded no character models, and the gate
+failed as `characterModelsBytes mismatch` (-1,035,817 bytes, identically in all
+three zones) -- which reads exactly like a real memory regression and is not one.
+Verification step 3 (`scripts/build-gles2-x86.sh`) must run BEFORE the gate
+whenever the db schema version moves.
+
+**Pins** (`tests/test_race_names.cpp`, 6 new tests, all reached the way the
+production accessor is): every row serves its own tint and no non-invisible row
+is transparent; every tint is distinct; each mis-tinted id differs from the race
+the switch borrowed its colour from; the invisible pair stays `#00000000`; no db
+and no row both answer the neutral grey. The assertions are **relational, never
+on a particular RGB triple** -- so nobody can later cite a test as evidence that
+a specific colour is sourced.
+
+### Leg 3 — GraphicalMode's silent fallthrough
+
+**Where slash-command output actually goes in a graphical run, established
+first:** `Application::init()` does `m_commandProcessor->setOutputRenderer(
+m_gameMode->getRenderer())` (`application.cpp:382-385`), and
+`GraphicalMode::initialize()` hands back a `ConsoleRenderer` for every renderer
+type. `CommandProcessor::displayMessage()/displayError()` go straight to it
+(`command_processor.cpp:253-263`), and `ConsoleRenderer::displaySystemMessage()`
+is a `std::cout` write (`console_renderer.cpp:343`).
+
+The three dispatch registries do NOT share a sink:
+- registry 1 (`EverQuest::m_command_registry`) and the merged `/help` view use
+  `EverQuest::AddChatSystemMessage()`, which pushes a `SystemMessage` event onto
+  the bridge -- **it reaches the on-screen chat window**;
+- registry 3 (renderer commands) goes to the render thread over the bridge;
+- **registry 2 (`action::CommandProcessor`) goes to stdout only.**
+
+So in a graphical run, roughly 60 registry-2 messages -- "Movement mode set to
+walk", "Targeting: <name>", "Group disbanded", "You have joined X's group", the
+whole pet-command ack family, the `/spellbook` hint, and every `Unknown command`
+/ `Usage:` error -- are printed to the terminal while the user is looking at the
+Irrlicht window and sees nothing. Registry 2 owns real user-facing commands
+(`/say`, `/shout`, `/tell`, `/gu`, `/emote`, `/face`, `/pet`, ...), and
+`printCommandResult()` is likewise a stdout ack line, so there is no second path
+carrying this text to the window.
+
+**This is a LIVE, USER-VISIBLE DEFECT and it is bigger than this leg. It is
+reported here and deliberately NOT fixed:** the fix is a routing decision
+(point `CommandProcessor` at `AddChatSystemMessage()`, or give it a sink that
+fans out) that would change what every registry-2 command prints in both
+graphical and headless runs, and it needs its own unit and its own pins. Nothing
+in this leg makes it better or worse.
+
+**What changed in `graphical_mode.cpp`:** only the misleading part, per Will's
+ruling -- the console/headless interaction capability is kept, and no roadmap for
+it is implied.
+- The `switch (m_rendererType)` with `IrrlichtSoftware`/`IrrlichtGPU`
+  `[[fallthrough]]`-ing into the console branch is gone. Every arm produced the
+  same two objects, so the construction is now a plain unconditional pair of
+  statements with a comment that says out loud that this is a `ConsoleRenderer`
+  in every case, that it is NOT the window you see (Application owns the real
+  Irrlicht renderer; `m_rendererType` only records which one it asked for), and
+  that the console path is deliberately kept and deliberately not built out.
+- The commented-out `IrrlichtRendererAdapter` construction and the stale
+  `// TODO: Create IrrlichtRendererAdapter when available` are deleted, citing
+  T241's deletion of the sibling `connectRendererCallbacks()`.
+- The `#ifdef EQT_HAS_GRAPHICS` include of `graphics_input_handler.h` went with
+  it -- this mode has never constructed a `GraphicsInputHandler` and nothing in
+  the file names one. The `#else` arm disappeared with the `#ifdef`, since both
+  arms now build the same thing.
+No behaviour change: the object graph a graphical run produces is byte-for-byte
+what it produced before.
+
+### Verification
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT 0** |
+| `ctest --test-dir build -j6` | **EXIT 8 -- 3232/3233**, sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host exception). 6 new tests present and passing. |
+| `scripts/build-gles2-x86.sh` | **EXIT 0** |
+| visual gate | **PASS**, goldens untouched, no re-bless (see the reachability argument above) |
+| `scripts/build-arm-noble.sh` | **EXIT 0** |
+| `check_file_sizes.sh fable` | 7 ok, 1 FAIL -- `entity_renderer.cpp` 3211 lines. **Pre-existing**: the file was 3284 lines at the base rev, i.e. already over 3000; this leg REMOVES 73 lines from it. No new FAIL. |
+
+Deviation, flagged: `check_build_tree_orphans` failed on the first full run over
+two stale binaries in `build/bin` (`test_first_person_weapon_attachment`,
+`test_ui_hide_command`) left by an earlier branch built in this slot -- worktree
+contamination, not produced by this unit. Deleted; the test passes.

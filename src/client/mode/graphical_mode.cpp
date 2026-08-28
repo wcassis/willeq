@@ -3,11 +3,9 @@
 #include "client/output/console_renderer.h"
 #include "client/input/console_input_handler.h"
 
-#ifdef EQT_HAS_GRAPHICS
-#include "client/input/graphics_input_handler.h"
-// Note: When IrrlichtRenderer is adapted, include it here
-// #include "client/graphics/irrlicht_renderer_adapter.h"
-#endif
+// T304 Leg 3: the EQT_HAS_GRAPHICS include of graphics_input_handler.h is
+// gone with the switch it served -- this mode has never constructed a
+// GraphicsInputHandler, and nothing here names one.
 
 namespace eqt {
 namespace mode {
@@ -32,31 +30,28 @@ bool GraphicalMode::initialize(state::GameState& state, const ModeConfig& config
     rendererConfig.eqClientPath = config.eqClientPath;
     rendererConfig.lighting = config.lighting;
 
-#ifdef EQT_HAS_GRAPHICS
-    // When IrrlichtRenderer is adapted, create it here based on m_rendererType
-    // For now, we fall back to console renderer
-    switch (m_rendererType) {
-        case GraphicalRendererType::IrrlichtSoftware:
-        case GraphicalRendererType::IrrlichtGPU:
-            // TODO: Create IrrlichtRendererAdapter when available
-            // m_renderer = std::make_unique<IrrlichtRendererAdapter>(rendererConfig);
-            // m_inputHandler = std::make_unique<GraphicsInputHandler>(m_renderer->getEventReceiver());
-            // For now, fall through to console
-            [[fallthrough]];
-        case GraphicalRendererType::ASCII:
-        case GraphicalRendererType::TopDown:
-        case GraphicalRendererType::LowRes:
-        default:
-            // Fall back to console renderer until graphical renderers are adapted
-            m_renderer = std::make_unique<output::ConsoleRenderer>();
-            m_inputHandler = std::make_unique<input::ConsoleInputHandler>();
-            break;
-    }
-#else
-    // No graphics support - use console
+    // T304 Leg 3: this is a ConsoleRenderer in EVERY case, including
+    // IrrlichtSoftware and IrrlichtGPU, and that is stated here instead of
+    // being implied by a [[fallthrough]] under a "TODO: create the adapter"
+    // that has not moved in the life of the tree.
+    //
+    // It is not a stand-in for the window you see. In a graphical run the
+    // real Irrlicht renderer is constructed and owned by Application, not by
+    // this mode; m_rendererType only records which one Application asked for
+    // (getRendererType()). What this ConsoleRenderer is actually for is the
+    // console/headless interaction path -- driving a running client by
+    // script rather than by mouse. Will (2026-08-28) confirmed that use case
+    // is real but not on the radar, so it is deliberately kept and
+    // deliberately not built out; do not delete it, and do not read this as
+    // a roadmap for adapting IrrlichtRenderer to output::IOutputRenderer.
+    //
+    // The commented-out IrrlichtRendererAdapter construction that used to sit
+    // in the fallthrough is deleted: T241 already removed its sibling
+    // connectRendererCallbacks() after finding nothing derives from
+    // output::GraphicalRenderer, so an adapter is not coming back in that
+    // shape.
     m_renderer = std::make_unique<output::ConsoleRenderer>();
     m_inputHandler = std::make_unique<input::ConsoleInputHandler>();
-#endif
 
     if (!m_renderer->initialize(rendererConfig)) {
         return false;

@@ -1,7 +1,7 @@
 {
   "_comment": "Pre-Luclin race ID to model code mappings for EverQuest Titanium client",
-  "_version": "1.3",
-  "_notes": "Updated with s3d_file locations verified against s3d_contents_reference.json; T265 audited every row against an s3d_dump scan of all 419 *_chr*.s3d and the EQE1 texture index (refactor/T265_race_models_audit.md).",
+  "_version": "1.4",
+  "_notes": "Updated with s3d_file locations verified against s3d_contents_reference.json; T265 audited every row against an s3d_dump scan of all 419 *_chr*.s3d and the EQE1 texture index (refactor/T265_race_models_audit.md). T304 Leg 2 added the \"color\" column (#AARRGGBB placeholder-cube tint, used only when no model could be built for the race, T213). THOSE COLOUR VALUES ARE INVENTED, not sourced from EverQuest data: Will ruled on 2026-08-28 that inventing them is acceptable and the bar is \"plausible and distinguishable\". They are keyed on each row's own name, never on the pre-JSON race numbering.",
   "races": {
     "1": {
       "code": "HUM",
@@ -9,7 +9,8 @@
       "gender_variants": true,
       "female_code": "HUF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFC8B4A0"
     },
     "2": {
       "code": "BAM",
@@ -20,7 +21,8 @@
       "s3d_file": "global4_chr.s3d",
       "also_in": [
         "global_chr.s3d"
-      ]
+      ],
+      "color": "#FFB4A08C"
     },
     "3": {
       "code": "ERM",
@@ -28,7 +30,8 @@
       "gender_variants": true,
       "female_code": "ERF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFA08C78"
     },
     "4": {
       "code": "ELM",
@@ -36,7 +39,8 @@
       "gender_variants": true,
       "female_code": "ELF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF8CB48C"
     },
     "5": {
       "code": "HIM",
@@ -44,7 +48,8 @@
       "gender_variants": true,
       "female_code": "HIF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFDCDCC8"
     },
     "6": {
       "code": "DAM",
@@ -52,7 +57,8 @@
       "gender_variants": true,
       "female_code": "DAF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF505064"
     },
     "7": {
       "code": "HAM",
@@ -60,7 +66,8 @@
       "gender_variants": true,
       "female_code": "HAF",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFB4B4A0"
     },
     "8": {
       "code": "DWM",
@@ -68,7 +75,8 @@
       "gender_variants": true,
       "female_code": "DWF",
       "scale": 0.7,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFB48C64"
     },
     "9": {
       "code": "TRM",
@@ -76,7 +84,8 @@
       "gender_variants": true,
       "female_code": "TRF",
       "scale": 1.4,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF648C64"
     },
     "10": {
       "code": "OGM",
@@ -84,7 +93,8 @@
       "gender_variants": true,
       "female_code": "OGF",
       "scale": 1.5,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF8C7864"
     },
     "11": {
       "code": "HOM",
@@ -92,7 +102,8 @@
       "gender_variants": true,
       "female_code": "HOF",
       "scale": 0.5,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFB7A08C"
     },
     "12": {
       "code": "GNM",
@@ -100,7 +111,8 @@
       "gender_variants": true,
       "female_code": "GNF",
       "scale": 0.6,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FFA0A0B4"
     },
     "13": {
       "code": "AVI",
@@ -126,13 +138,15 @@
         "steamfont_chr.s3d",
         "timorous.s3d",
         "timorous_chr.s3d"
-      ]
+      ],
+      "color": "#FFAABE78"
     },
     "14": {
       "code": "WER",
       "name": "Werewolf",
       "scale": 1.2,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF786450"
     },
     "15": {
       "code": "BRM",
@@ -157,7 +171,8 @@
         "steamfont_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FF967850"
     },
     "16": {
       "code": "CEN",
@@ -172,7 +187,8 @@
         "qrg_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FFA0825A"
     },
     "17": {
       "code": "GOL",
@@ -224,7 +240,8 @@
         "solrotower_chr2.s3d",
         "tox_chr.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF968C82"
     },
     "18": {
       "code": "GIA",
@@ -259,7 +276,8 @@
         "southkarana_chr.s3d",
         "sro.s3d",
         "sro_chr.s3d"
-      ]
+      ],
+      "color": "#FFA09178"
     },
     "19": {
       "code": "TRK",
@@ -272,7 +290,8 @@
         "sebilis_chr.s3d",
         "templeveeshan.s3d",
         "templeveeshan_chr.s3d"
-      ]
+      ],
+      "color": "#FF6E9646"
     },
     "20": {
       "code": "VST",
@@ -283,7 +302,8 @@
         "kaesora.s3d",
         "karnor.s3d",
         "karnor_chr.s3d"
-      ]
+      ],
+      "color": "#FF8C9678"
     },
     "21": {
       "code": "BEH",
@@ -304,7 +324,8 @@
         "kedge_chr.s3d",
         "runnyeye.s3d",
         "runnyeye_chr.s3d"
-      ]
+      ],
+      "color": "#FFAA6E8C"
     },
     "22": {
       "code": "BET",
@@ -370,7 +391,8 @@
         "tox_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF503C28"
     },
     "23": {
       "code": "CPM",
@@ -387,7 +409,8 @@
         "kerraridge_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FFBE965A"
     },
     "24": {
       "code": "FIS",
@@ -468,7 +491,8 @@
         "sirens_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF648CB4"
     },
     "25": {
       "code": "FAF",
@@ -491,7 +515,8 @@
         "rivervale_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FFDCD2F0"
     },
     "26": {
       "code": "FRO",
@@ -528,7 +553,8 @@
         "swampofnohope_chr2.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FF50A050"
     },
     "27": {
       "code": "FRG",
@@ -569,7 +595,8 @@
         "swampofnohope_chr2.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FF96A082"
     },
     "28": {
       "code": "FUN",
@@ -599,7 +626,8 @@
         "sebilis_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF82966E"
     },
     "29": {
       "code": "GAR",
@@ -639,7 +667,8 @@
         "runnyeye_chr.s3d",
         "soldungb.s3d",
         "soldungb_chr.s3d"
-      ]
+      ],
+      "color": "#FF78787D"
     },
     "30": {
       "code": "BEH",
@@ -660,7 +689,8 @@
         "kedge_chr.s3d",
         "runnyeye.s3d",
         "runnyeye_chr.s3d"
-      ]
+      ],
+      "color": "#C8BEB482"
     },
     "31": {
       "code": "CUB",
@@ -692,14 +722,16 @@
         "skyshrine_chr2.s3d",
         "thurgadinb.s3d",
         "thurgadinb_chr.s3d"
-      ]
+      ],
+      "color": "#AAB4D2AA"
     },
     "32": {
       "code": "GHM",
       "name": "Ghost",
       "gender_variants": true,
       "female_code": "GHF",
-      "scale": 1.0
+      "scale": 1.0,
+      "color": "#96C8C8F5"
     },
     "33": {
       "code": "GHU",
@@ -751,7 +783,8 @@
         "sro_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFA2A774"
     },
     "34": {
       "code": "BAT",
@@ -812,7 +845,8 @@
         "soldungb_chr.s3d",
         "thurgadina.s3d",
         "thurgadina_chr.s3d"
-      ]
+      ],
+      "color": "#FF463030"
     },
     "35": {
       "code": "EEL",
@@ -823,7 +857,8 @@
       "also_in": [
         "global5_chr.s3d",
         "poeartha_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A786E"
     },
     "36": {
       "code": "RAT",
@@ -908,7 +943,8 @@
         "thurgadina_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF64503C"
     },
     "37": {
       "code": "SNA",
@@ -977,7 +1013,8 @@
         "sro_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF50643C"
     },
     "38": {
       "code": "SPI",
@@ -1074,7 +1111,8 @@
         "tox_chr.s3d",
         "velketor.s3d",
         "velketor_chr.s3d"
-      ]
+      ],
+      "color": "#FF464146"
     },
     "39": {
       "code": "GNN",
@@ -1114,7 +1152,8 @@
         "qrg_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FF8C643C"
     },
     "40": {
       "code": "GOB",
@@ -1170,7 +1209,8 @@
         "soldunga_chr.s3d",
         "soldungb.s3d",
         "soldungb_chr.s3d"
-      ]
+      ],
+      "color": "#FF648C3C"
     },
     "41": {
       "code": "GOR",
@@ -1206,7 +1246,8 @@
         "thurgadinb_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A5046"
     },
     "42": {
       "code": "WOL",
@@ -1274,7 +1315,8 @@
         "sro_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FF8C8778"
     },
     "43": {
       "code": "BEA",
@@ -1325,7 +1367,8 @@
         "rathemtn_chr2.s3d",
         "rivervale.s3d",
         "rivervale_chr.s3d"
-      ]
+      ],
+      "color": "#FF826446"
     },
     "44": {
       "code": "FPM",
@@ -1352,7 +1395,8 @@
         "neriaka_chr2.s3d",
         "nro.s3d",
         "nro_chr.s3d"
-      ]
+      ],
+      "color": "#FFA0A5B4"
     },
     "45": {
       "code": "DML",
@@ -1361,7 +1405,8 @@
       "s3d_file": "charasis_chr.s3d",
       "also_in": [
         "charasis.s3d"
-      ]
+      ],
+      "color": "#FFBEC8BE"
     },
     "46": {
       "code": "IMP",
@@ -1427,7 +1472,8 @@
         "steamfont_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFAA5046"
     },
     "47": {
       "code": "GRI",
@@ -1452,7 +1498,8 @@
         "iceclad_chr2.s3d",
         "northkarana.s3d",
         "northkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEA05A"
     },
     "48": {
       "code": "KOB",
@@ -1493,7 +1540,8 @@
         "unrest_chr.s3d",
         "velketor.s3d",
         "velketor_chr.s3d"
-      ]
+      ],
+      "color": "#FF786E46"
     },
     "49": {
       "code": "DRA",
@@ -1535,7 +1583,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFC84632"
     },
     "50": {
       "code": "LIM",
@@ -1562,7 +1611,8 @@
         "qeynos_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FFC8A564"
     },
     "51": {
       "code": "LIZ",
@@ -1587,7 +1637,8 @@
         "rathemtn.s3d",
         "rathemtn_chr.s3d",
         "rathemtn_chr2.s3d"
-      ]
+      ],
+      "color": "#FF64966E"
     },
     "52": {
       "code": "MIM",
@@ -1618,7 +1669,8 @@
         "runnyeye_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF8C6E46"
     },
     "53": {
       "code": "MIN",
@@ -1650,7 +1702,8 @@
         "steamfont_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF856446"
     },
     "54": {
       "code": "ORC",
@@ -1732,7 +1785,8 @@
         "runnyeye_chr.s3d",
         "sro.s3d",
         "sro_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A7846"
     },
     "55": {
       "code": "BGM",
@@ -1778,7 +1832,8 @@
         "steamfont_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFCEA496"
     },
     "56": {
       "code": "PIF",
@@ -1805,7 +1860,8 @@
         "tox_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFD2C8E6"
     },
     "57": {
       "code": "DRM",
@@ -1826,13 +1882,15 @@
         "firiona_chr.s3d",
         "nurga.s3d",
         "nurga_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A465A"
     },
     "58": {
       "code": "SOL",
       "name": "Solusek Ro",
       "scale": 1.5,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FFDC6E32"
     },
     "59": {
       "code": "BGG",
@@ -1845,7 +1903,8 @@
         "lakeofillomen_chr.s3d",
         "timorous.s3d",
         "timorous_chr.s3d"
-      ]
+      ],
+      "color": "#FF6E968C"
     },
     "60": {
       "code": "SKE",
@@ -1854,7 +1913,8 @@
       "s3d_file": "global_chr.s3d",
       "also_in": [
         "global6_chr.s3d"
-      ]
+      ],
+      "color": "#FFDFDCC8"
     },
     "61": {
       "code": "SHA",
@@ -1882,13 +1942,15 @@
         "qeynos_chr.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF6E8296"
     },
     "62": {
       "code": "TUN",
       "name": "Tunare",
       "scale": 1.5,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FF6EB46E"
     },
     "63": {
       "code": "TIG",
@@ -1920,7 +1982,8 @@
         "qeynos_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FFD29646"
     },
     "64": {
       "code": "TRE",
@@ -1943,7 +2006,8 @@
         "qrg_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FF6E8250"
     },
     "65": {
       "code": "DVM",
@@ -1956,13 +2020,15 @@
         "hateplane.s3d",
         "mistmoore.s3d",
         "mistmoore_chr.s3d"
-      ]
+      ],
+      "color": "#FF783C46"
     },
     "66": {
       "code": "RAL",
       "name": "Rallos Zek",
       "scale": 2.0,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FF825A3C"
     },
     "67": {
       "code": "HHM",
@@ -1976,7 +2042,8 @@
         "highkeep.s3d",
         "highpass.s3d",
         "highpass_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEAF9B"
     },
     "68": {
       "code": "TEN",
@@ -2001,7 +2068,8 @@
         "unrest_chr.s3d",
         "velketor.s3d",
         "velketor_chr.s3d"
-      ]
+      ],
+      "color": "#FF785A82"
     },
     "69": {
       "code": "WIL",
@@ -2054,7 +2122,8 @@
         "tox_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#AAE6F0AA"
     },
     "70": {
       "code": "ZOM",
@@ -2129,7 +2198,8 @@
         "sro_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF85966E"
     },
     "71": {
       "code": "QCM",
@@ -2194,7 +2264,8 @@
         "rathemtn.s3d",
         "rathemtn_chr.s3d",
         "rathemtn_chr2.s3d"
-      ]
+      ],
+      "color": "#FFADBBAE"
     },
     "72": {
       "code": "SHIP",
@@ -2209,13 +2280,15 @@
         "freporte_chr.s3d",
         "oot_chr2.s3d",
         "qeynos_chr.s3d"
-      ]
+      ],
+      "color": "#FF826E55"
     },
     "73": {
       "code": "LAUNCH",
       "name": "Launch",
       "scale": 1.0,
-      "s3d_file": "timorous_chr.s3d"
+      "s3d_file": "timorous_chr.s3d",
+      "color": "#FF8C785F"
     },
     "74": {
       "code": "PIR",
@@ -2283,13 +2356,15 @@
         "tox_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF828C78"
     },
     "75": {
       "code": "ELE",
       "name": "Elemental",
       "scale": 1.0,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#FF96BED2"
     },
     "76": {
       "code": "PUM",
@@ -2333,7 +2408,8 @@
         "steamfont_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFAF966E"
     },
     "77": {
       "code": "NGM",
@@ -2356,7 +2432,8 @@
         "neriakc_chr.s3d",
         "overthere.s3d",
         "overthere_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEB195"
     },
     "78": {
       "code": "EGM",
@@ -2375,7 +2452,8 @@
         "neriaka_chr2.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF9C9A67"
     },
     "79": {
       "code": "BIX",
@@ -2396,7 +2474,8 @@
         "nektulos_chr.s3d",
         "rivervale.s3d",
         "rivervale_chr.s3d"
-      ]
+      ],
+      "color": "#FFD2BE46"
     },
     "80": {
       "code": "REA",
@@ -2429,7 +2508,8 @@
         "neriakc_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEB4A0"
     },
     "81": {
       "code": "RIM",
@@ -2445,7 +2525,8 @@
         "misty_chr.s3d",
         "rivervale.s3d",
         "rivervale_chr.s3d"
-      ]
+      ],
+      "color": "#FFAEB892"
     },
     "82": {
       "code": "SCA",
@@ -2461,7 +2542,8 @@
         "rivervale_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEAA64"
     },
     "83": {
       "code": "SKU",
@@ -2476,7 +2558,8 @@
         "mischiefplane_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF3C3C46"
     },
     "85": {
       "code": "SPE",
@@ -2506,7 +2589,8 @@
         "rathemtn_chr2.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#96B4BEE6"
     },
     "86": {
       "code": "SPH",
@@ -2522,7 +2606,8 @@
         "rathemtn.s3d",
         "rathemtn_chr.s3d",
         "rathemtn_chr2.s3d"
-      ]
+      ],
+      "color": "#FFC8B46E"
     },
     "87": {
       "code": "ARM",
@@ -2537,7 +2622,8 @@
         "nro_chr.s3d",
         "oggok.s3d",
         "oggok_chr.s3d"
-      ]
+      ],
+      "color": "#FFA5916E"
     },
     "88": {
       "code": "CLM",
@@ -2557,7 +2643,8 @@
         "soldunga_chr.s3d",
         "steamfont.s3d",
         "steamfont_chr.s3d"
-      ]
+      ],
+      "color": "#FF9DABB0"
     },
     "89": {
       "code": "DRK",
@@ -2605,7 +2692,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFAA5A46"
     },
     "90": {
       "code": "HLM",
@@ -2621,7 +2709,8 @@
         "halas_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FFB3A9AA"
     },
     "91": {
       "code": "ALL",
@@ -2674,7 +2763,8 @@
         "sro_chr.s3d",
         "timorous.s3d",
         "timorous_chr.s3d"
-      ]
+      ],
+      "color": "#FF64825A"
     },
     "92": {
       "code": "GRM",
@@ -2695,7 +2785,8 @@
         "neriakc_chr.s3d",
         "oggok.s3d",
         "oggok_chr.s3d"
-      ]
+      ],
+      "color": "#FFABC194"
     },
     "93": {
       "code": "OKM",
@@ -2712,7 +2803,8 @@
         "innothule_chr2.s3d",
         "oggok.s3d",
         "oggok_chr.s3d"
-      ]
+      ],
+      "color": "#FFD0A489"
     },
     "94": {
       "code": "KAM",
@@ -2731,7 +2823,8 @@
         "kaladima_chr.s3d",
         "kaladimb.s3d",
         "kaladimb_chr.s3d"
-      ]
+      ],
+      "color": "#FFCCB0A7"
     },
     "95": {
       "code": "CAZ",
@@ -2834,7 +2927,8 @@
         "tox_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A326E"
     },
     "96": {
       "code": "COC",
@@ -2847,7 +2941,8 @@
         "overthere_chr.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FFBE8C6E"
     },
     "98": {
       "code": "VSM",
@@ -2873,7 +2968,8 @@
         "neriakb_chr.s3d",
         "neriakc.s3d",
         "neriakc_chr.s3d"
-      ]
+      ],
+      "color": "#FF76444F"
     },
     "99": {
       "code": "DEN",
@@ -2890,7 +2986,8 @@
         "neriakb_chr.s3d",
         "neriakc.s3d",
         "neriakc_chr.s3d"
-      ]
+      ],
+      "color": "#FF826E82"
     },
     "100": {
       "code": "DER",
@@ -2922,7 +3019,8 @@
         "sro_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FFAA9682"
     },
     "101": {
       "code": "EFR",
@@ -2969,7 +3067,8 @@
         "steamfont_chr.s3d",
         "velketor.s3d",
         "velketor_chr.s3d"
-      ]
+      ],
+      "color": "#FFD2783C"
     },
     "102": {
       "code": "FRT",
@@ -2989,7 +3088,8 @@
         "innothule_chr2.s3d",
         "oggok.s3d",
         "oggok_chr.s3d"
-      ]
+      ],
+      "color": "#FF3EAF56"
     },
     "103": {
       "code": "KED",
@@ -3000,7 +3100,8 @@
         "cauldron.s3d",
         "kedge.s3d",
         "kedge_chr.s3d"
-      ]
+      ],
+      "color": "#FF649696"
     },
     "104": {
       "code": "LEE",
@@ -3023,7 +3124,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF6E505A"
     },
     "105": {
       "code": "SWO",
@@ -3043,7 +3145,8 @@
         "oot_chr2.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF6E8CAA"
     },
     "106": {
       "code": "FEM",
@@ -3062,7 +3165,8 @@
         "firiona_chr.s3d",
         "gfaydark.s3d",
         "gfaydark_chr.s3d"
-      ]
+      ],
+      "color": "#FFA792B7"
     },
     "107": {
       "code": "MAM",
@@ -3079,13 +3183,15 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF8C735A"
     },
     "108": {
       "code": "EYE",
       "name": "Eye of Zomm",
       "scale": 0.05,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#C8BEC8DC"
     },
     "109": {
       "code": "WAS",
@@ -3104,7 +3210,8 @@
         "misty_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FFC8AF3C"
     },
     "110": {
       "code": "MER",
@@ -3124,7 +3231,8 @@
         "oot_chr2.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF6EAFB4"
     },
     "111": {
       "code": "HAR",
@@ -3135,7 +3243,8 @@
         "airplane.s3d",
         "steamfont.s3d",
         "steamfont_chr.s3d"
-      ]
+      ],
+      "color": "#FFB4A0BE"
     },
     "112": {
       "code": "GFM",
@@ -3150,7 +3259,8 @@
         "felwithea_chr.s3d",
         "gfaydark.s3d",
         "gfaydark_chr.s3d"
-      ]
+      ],
+      "color": "#FF8FB1C7"
     },
     "113": {
       "code": "DRI",
@@ -3179,7 +3289,8 @@
         "tox_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFC896C8"
     },
     "114": {
       "code": "GSP",
@@ -3189,7 +3300,8 @@
       "note": "T265: eqemu Race::GhostShip had no row. GSP_ACTORDEF is in oot_chr.s3d and oot_chr2.s3d (non-skeletal object model); code taken from the model name, not from a live spawn. Scale copied from race 72 Ship.",
       "also_in": [
         "oot_chr2.s3d"
-      ]
+      ],
+      "color": "#96AABED2"
     },
     "116": {
       "code": "SEA",
@@ -3204,7 +3316,8 @@
         "kedge_chr.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF8CB4BE"
     },
     "117": {
       "code": "GDM",
@@ -3228,7 +3341,8 @@
         "thurgadinb_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#96CBC8F5"
     },
     "118": {
       "code": "GEM",
@@ -3251,7 +3365,8 @@
         "paineel_chr.s3d",
         "veeshan.s3d",
         "veeshan_chr.s3d"
-      ]
+      ],
+      "color": "#96CBC2F5"
     },
     "119": {
       "code": "STC",
@@ -3268,7 +3383,8 @@
         "overthere_chr.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FFBEAA6E"
     },
     "120": {
       "code": "WOE",
@@ -3277,7 +3393,8 @@
       "s3d_file": "global6_chr.s3d",
       "also_in": [
         "global_chr.s3d"
-      ]
+      ],
+      "color": "#FF8EAFDF"
     },
     "121": {
       "code": "GRG",
@@ -3288,7 +3405,8 @@
         "airplane.s3d",
         "fearplane.s3d",
         "fearplane_chr.s3d"
-      ]
+      ],
+      "color": "#FF789678"
     },
     "122": {
       "code": "DRU",
@@ -3307,7 +3425,8 @@
         "sleeper.s3d",
         "sleeper_chr.s3d",
         "sleeper_chr2.s3d"
-      ]
+      ],
+      "color": "#FFCCE5BF"
     },
     "123": {
       "code": "INN",
@@ -3416,7 +3535,8 @@
         "tox_chr.s3d",
         "unrest.s3d",
         "unrest_chr.s3d"
-      ]
+      ],
+      "color": "#FF78285A"
     },
     "124": {
       "code": "UNI",
@@ -3452,7 +3572,8 @@
         "steamfont_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFEBEBF0"
     },
     "125": {
       "code": "PEG",
@@ -3467,7 +3588,8 @@
         "northkarana_chr.s3d",
         "southkarana.s3d",
         "southkarana_chr.s3d"
-      ]
+      ],
+      "color": "#FFE1E6F0"
     },
     "126": {
       "code": "DJI",
@@ -3494,7 +3616,8 @@
         "permafrost_chr.s3d",
         "sro.s3d",
         "sro_chr.s3d"
-      ]
+      ],
+      "color": "#FF82AAD2"
     },
     "127": {
       "code": "IVM",
@@ -3503,7 +3626,8 @@
       "female_code": "IVF",
       "scale": 0.0,
       "invisible": true,
-      "s3d_file": "global_chr.s3d"
+      "s3d_file": "global_chr.s3d",
+      "color": "#00000000"
     },
     "128": {
       "code": "IKM",
@@ -3511,7 +3635,8 @@
       "gender_variants": true,
       "female_code": "IKF",
       "scale": 1.1,
-      "s3d_file": "global4_chr.s3d"
+      "s3d_file": "global4_chr.s3d",
+      "color": "#FF678C64"
     },
     "129": {
       "code": "SCR",
@@ -3526,7 +3651,8 @@
         "fieldofbone_chr.s3d",
         "firiona.s3d",
         "firiona_chr.s3d"
-      ]
+      ],
+      "color": "#FF78643C"
     },
     "130": {
       "code": "KEM",
@@ -3534,7 +3660,8 @@
       "gender_variants": true,
       "female_code": "KEF",
       "scale": 1.2,
-      "s3d_file": "global7_chr.s3d"
+      "s3d_file": "global7_chr.s3d",
+      "color": "#FFB4A078"
     },
     "131": {
       "code": "SRW",
@@ -3564,7 +3691,8 @@
         "swampofnohope_chr2.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FF968246"
     },
     "133": {
       "code": "LYC",
@@ -3584,7 +3712,8 @@
         "karnor_chr.s3d",
         "thurgadinb.s3d",
         "thurgadinb_chr.s3d"
-      ]
+      ],
+      "color": "#FF826E50"
     },
     "134": {
       "code": "MOS",
@@ -3602,7 +3731,8 @@
         "swampofnohope.s3d",
         "swampofnohope_chr.s3d",
         "swampofnohope_chr2.s3d"
-      ]
+      ],
+      "color": "#FF6E695F"
     },
     "135": {
       "code": "RHI",
@@ -3614,7 +3744,8 @@
         "eastwastes_chr2.s3d",
         "overthere.s3d",
         "overthere_chr.s3d"
-      ]
+      ],
+      "color": "#FF878782"
     },
     "136": {
       "code": "XAL",
@@ -3625,7 +3756,8 @@
         "kaesora.s3d",
         "karnor.s3d",
         "karnor_chr.s3d"
-      ]
+      ],
+      "color": "#FF788C96"
     },
     "137": {
       "code": "KGO",
@@ -3655,7 +3787,8 @@
         "swampofnohope_chr2.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FF6A7C32"
     },
     "138": {
       "code": "YET",
@@ -3672,7 +3805,8 @@
         "timorous_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FFDCE1E6"
     },
     "139": {
       "code": "ICM",
@@ -3720,7 +3854,8 @@
         "trakanon_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FF62946D"
     },
     "140": {
       "code": "FGI",
@@ -3737,14 +3872,16 @@
         "frontiermtns_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FF789664"
     },
     "141": {
       "code": "BOAT",
       "name": "Boat",
       "scale": 2.0,
       "s3d_file": "global_chr.s3d",
-      "note": "T265: eqemu Race::Boat had no row. BOAT_ACTORDEF is in global_chr.s3d (non-skeletal object model); code taken from the model name, not from a live spawn. Scale copied from race 72 Ship."
+      "note": "T265: eqemu Race::Boat had no row. BOAT_ACTORDEF is in global_chr.s3d (non-skeletal object model); code taken from the model name, not from a live spawn. Scale copied from race 72 Ship.",
+      "color": "#FF856E55"
     },
     "144": {
       "code": "BRN",
@@ -3763,7 +3900,8 @@
         "kurn_chr.s3d",
         "nurga.s3d",
         "nurga_chr.s3d"
-      ]
+      ],
+      "color": "#FFA08C5A"
     },
     "145": {
       "code": "GOO",
@@ -3786,7 +3924,8 @@
         "thurgadina_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FF8CAA78"
     },
     "146": {
       "code": "SSN",
@@ -3817,7 +3956,8 @@
         "veeshan_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#96AAD2DC"
     },
     "147": {
       "code": "SIM",
@@ -3858,7 +3998,8 @@
         "veeshan_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#96B1BFDF"
     },
     "148": {
       "code": "BAC",
@@ -3883,7 +4024,8 @@
         "thurgadinb_chr.s3d",
         "timorous.s3d",
         "timorous_chr.s3d"
-      ]
+      ],
+      "color": "#FF6785AC"
     },
     "149": {
       "code": "ISC",
@@ -3892,25 +4034,29 @@
       "s3d_file": "overthere_chr.s3d",
       "also_in": [
         "overthere.s3d"
-      ]
+      ],
+      "color": "#FF639151"
     },
     "150": {
       "code": "ERO",
       "name": "Erollisi",
       "scale": 1.5,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FFDCAABE"
     },
     "151": {
       "code": "TRI",
       "name": "Tribunal",
       "scale": 1.5,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FF9696AA"
     },
     "153": {
       "code": "BRI",
       "name": "Bristlebane",
       "scale": 0.8,
-      "s3d_file": "global2_chr.s3d"
+      "s3d_file": "global2_chr.s3d",
+      "color": "#FFC8BE6E"
     },
     "154": {
       "code": "FDR",
@@ -3925,7 +4071,8 @@
         "templeveeshan_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFBE494E"
     },
     "155": {
       "code": "SSK",
@@ -3950,7 +4097,8 @@
         "kurn_chr.s3d",
         "lakeofillomen.s3d",
         "lakeofillomen_chr.s3d"
-      ]
+      ],
+      "color": "#FFECD7C5"
     },
     "156": {
       "code": "VRM",
@@ -3967,7 +4115,8 @@
         "mischiefplane_chr.s3d",
         "necropolis.s3d",
         "necropolis_chr.s3d"
-      ]
+      ],
+      "color": "#FF7B6450"
     },
     "157": {
       "code": "WYV",
@@ -3991,7 +4140,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF966E3C"
     },
     "158": {
       "code": "WUR",
@@ -4019,7 +4169,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF8C7850"
     },
     "159": {
       "code": "DEV",
@@ -4037,7 +4188,8 @@
         "swampofnohope.s3d",
         "swampofnohope_chr.s3d",
         "swampofnohope_chr2.s3d"
-      ]
+      ],
+      "color": "#FF6E645A"
     },
     "160": {
       "code": "IKG",
@@ -4060,13 +4212,15 @@
         "sebilis_chr.s3d",
         "timorous.s3d",
         "timorous_chr.s3d"
-      ]
+      ],
+      "color": "#FF609A53"
     },
     "161": {
       "code": "IKS",
       "name": "Iksar Skeleton",
       "scale": 1.1,
-      "s3d_file": "global4_chr.s3d"
+      "s3d_file": "global4_chr.s3d",
+      "color": "#FFD4CDD5"
     },
     "162": {
       "code": "MEP",
@@ -4088,7 +4242,8 @@
         "swampofnohope_chr2.s3d",
         "trakanon.s3d",
         "trakanon_chr.s3d"
-      ]
+      ],
+      "color": "#FF5A965A"
     },
     "163": {
       "code": "RAP",
@@ -4109,7 +4264,8 @@
         "veeshan_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FF82A05A"
     },
     "164": {
       "code": "SGO",
@@ -4124,7 +4280,8 @@
         "karnor_chr.s3d",
         "lakeofillomen.s3d",
         "lakeofillomen_chr.s3d"
-      ]
+      ],
+      "color": "#FF826E32"
     },
     "165": {
       "code": "SED",
@@ -4151,7 +4308,8 @@
         "timorous_chr.s3d",
         "warslikswood.s3d",
         "warslikswood_chr.s3d"
-      ]
+      ],
+      "color": "#FF3C82BE"
     },
     "166": {
       "code": "IKH",
@@ -4162,7 +4320,8 @@
         "cabeast.s3d",
         "karnor.s3d",
         "karnor_chr.s3d"
-      ]
+      ],
+      "color": "#FF719063"
     },
     "167": {
       "code": "SUC",
@@ -4171,7 +4330,8 @@
       "s3d_file": "overthere_chr.s3d",
       "also_in": [
         "overthere.s3d"
-      ]
+      ],
+      "color": "#FF64A064"
     },
     "168": {
       "code": "FMO",
@@ -4180,7 +4340,8 @@
       "s3d_file": "wakening_chr.s3d",
       "also_in": [
         "wakening.s3d"
-      ]
+      ],
+      "color": "#FF8C826E"
     },
     "169": {
       "code": "BTM",
@@ -4192,7 +4353,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF827864"
     },
     "170": {
       "code": "SDE",
@@ -4207,7 +4369,8 @@
         "iceclad_chr2.s3d",
         "thurgadinb.s3d",
         "thurgadinb_chr.s3d"
-      ]
+      ],
+      "color": "#FFA7A17E"
     },
     "171": {
       "code": "DIW",
@@ -4233,7 +4396,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF6E737D"
     },
     "172": {
       "code": "MTC",
@@ -4243,7 +4407,8 @@
       "also_in": [
         "eastwastes.s3d",
         "eastwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFAA7850"
     },
     "173": {
       "code": "TOT",
@@ -4252,7 +4417,8 @@
       "s3d_file": "growthplane_chr.s3d",
       "also_in": [
         "growthplane.s3d"
-      ]
+      ],
+      "color": "#FFA3825A"
     },
     "174": {
       "code": "SPC",
@@ -4263,7 +4429,8 @@
         "frozenshadow.s3d",
         "velketor.s3d",
         "velketor_chr.s3d"
-      ]
+      ],
+      "color": "#96A1D0DF"
     },
     "175": {
       "code": "ENA",
@@ -4280,7 +4447,8 @@
         "templeveeshan_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFAAB4C8"
     },
     "176": {
       "code": "SBU",
@@ -4294,7 +4462,8 @@
         "mischiefplane_chr.s3d",
         "templeveeshan.s3d",
         "templeveeshan_chr.s3d"
-      ]
+      ],
+      "color": "#FFE6E8EB"
     },
     "177": {
       "code": "WAL",
@@ -4309,7 +4478,8 @@
         "iceclad_chr2.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF9B8C7D"
     },
     "178": {
       "code": "RGM",
@@ -4320,7 +4490,8 @@
         "crystal.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FF82828C"
     },
     "181": {
       "code": "YAK",
@@ -4333,7 +4504,8 @@
         "growthplane_chr.s3d",
         "wakening.s3d",
         "wakening_chr.s3d"
-      ]
+      ],
+      "color": "#FFA09682"
     },
     "183": {
       "code": "COM",
@@ -4370,7 +4542,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFBEAA96"
     },
     "184": {
       "code": "DR2",
@@ -4395,7 +4568,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFA0BEDC"
     },
     "185": {
       "code": "HAG",
@@ -4404,7 +4578,8 @@
       "s3d_file": "frozenshadow_chr.s3d",
       "also_in": [
         "frozenshadow.s3d"
-      ]
+      ],
+      "color": "#FF858C78"
     },
     "187": {
       "code": "SIR",
@@ -4417,7 +4592,8 @@
         "growthplane_chr.s3d",
         "sirens.s3d",
         "sirens_chr.s3d"
-      ]
+      ],
+      "color": "#FF78B4BE"
     },
     "188": {
       "code": "FSG",
@@ -4446,7 +4622,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FFAAC8DC"
     },
     "189": {
       "code": "STG",
@@ -4473,7 +4650,8 @@
         "westwastes.s3d",
         "westwastes_chr.s3d",
         "westwastes_chr2.s3d"
-      ]
+      ],
+      "color": "#FF8CA0C8"
     },
     "190": {
       "code": "OTM",
@@ -4484,7 +4662,8 @@
         "cobaltscar.s3d",
         "thurgadina.s3d",
         "thurgadina_chr.s3d"
-      ]
+      ],
+      "color": "#FFAA9678"
     },
     "191": {
       "code": "WLM",
@@ -4504,7 +4683,8 @@
         "sirens_chr.s3d",
         "thurgadinb.s3d",
         "thurgadinb_chr.s3d"
-      ]
+      ],
+      "color": "#FF96A0AA"
     },
     "193": {
       "code": "ABH",
@@ -4513,7 +4693,8 @@
       "s3d_file": "frozenshadow_chr.s3d",
       "also_in": [
         "frozenshadow.s3d"
-      ]
+      ],
+      "color": "#FF6E5A6E"
     },
     "194": {
       "code": "STU",
@@ -4523,7 +4704,8 @@
       "also_in": [
         "iceclad.s3d",
         "iceclad_chr2.s3d"
-      ]
+      ],
+      "color": "#FF648C6E"
     },
     "195": {
       "code": "BWD",
@@ -4537,7 +4719,8 @@
         "skyshrine2_chr.s3d",
         "solrotower_chr.s3d",
         "solrotower_chr2.s3d"
-      ]
+      ],
+      "color": "#FF787882"
     },
     "196": {
       "code": "GDR",
@@ -4546,7 +4729,8 @@
       "s3d_file": "gdr_chr.s3d",
       "also_in": [
         "necropolis2_chr.s3d"
-      ]
+      ],
+      "color": "#96C8A0C8"
     },
     "198": {
       "code": "PRI",
@@ -4558,7 +4742,8 @@
         "povalor_chr2.s3d",
         "skyshrine2_chr.s3d",
         "sleeper2_chr.s3d"
-      ]
+      ],
+      "color": "#FFC878DC"
     },
     "240": {
       "code": "IVM",
@@ -4569,7 +4754,8 @@
       "invisible": true,
       "s3d_file": "global_chr.s3d",
       "alias_of": 127,
-      "alias_reason": "Race 240 (eqemu Race::TeleportMan) has no TPM/TPF mesh in any of the client's 419 *_chr archives; it is an invisible teleport trigger NPC, so it renders with race 127's IVM (Invisible Man) model instead of a placeholder cube. T265."
+      "alias_reason": "Race 240 (eqemu Race::TeleportMan) has no TPM/TPF mesh in any of the client's 419 *_chr archives; it is an invisible teleport trigger NPC, so it renders with race 127's IVM (Invisible Man) model instead of a placeholder cube. T265.",
+      "color": "#00000000"
     },
     "330": {
       "code": "FRM",
@@ -4578,7 +4764,8 @@
       "female_code": "FRF",
       "scale": 0.8,
       "s3d_file": "globalpcfroglok_chr.s3d",
-      "note": "T265: FRM_HS_DEF and FRF_HS_DEF exist in exactly one archive, globalpcfroglok_chr.s3d. globalfroglok_chr.s3d holds FRG (the monster froglok) only. T274: this is the PLAYABLE froglok model, distinct from row 26 (FRO, the monster froglok); that disambiguation lives here and NOT in name, because name is the display string /who and /consider print and Titanium prints \"Froglok\" for both."
+      "note": "T265: FRM_HS_DEF and FRF_HS_DEF exist in exactly one archive, globalpcfroglok_chr.s3d. globalfroglok_chr.s3d holds FRG (the monster froglok) only. T274: this is the PLAYABLE froglok model, distinct from row 26 (FRO, the monster froglok); that disambiguation lives here and NOT in name, because name is the display string /who and /consider print and Titanium prints \"Froglok\" for both.",
+      "color": "#FF5DA44F"
     },
     "367": {
       "code": "SKE",
@@ -4587,7 +4774,8 @@
       "s3d_file": "global_chr.s3d",
       "also_in": [
         "global6_chr.s3d"
-      ]
+      ],
+      "color": "#FFD0D9CA"
     },
     "415": {
       "code": "RAT",
@@ -4674,7 +4862,8 @@
         "thurgadina_chr.s3d",
         "tox.s3d",
         "tox_chr.s3d"
-      ]
+      ],
+      "color": "#FF654F43"
     },
     "457": {
       "code": "CLM",
@@ -4695,7 +4884,8 @@
         "soldunga_chr.s3d",
         "steamfont.s3d",
         "steamfont_chr.s3d"
-      ]
+      ],
+      "color": "#FFA0ABB0"
     }
   }
 }

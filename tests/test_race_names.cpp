@@ -29,6 +29,7 @@
 
 #include <gtest/gtest.h>
 #include <fstream>
+#include <map>
 #include <string>
 
 #include "client/eq.h"
@@ -218,6 +219,103 @@ TEST_F(RaceNameFromDbTest, GraphicsScalePinsTheContradictedIds) {
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(94),  0.7f);  // KAM Kaladim Citizen; switch 1.5 "Minotaur"
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(95),  3.0f);  // CAZ Cazic Thule; switch 1.5 "Drake"
     EXPECT_FLOAT_EQ(EQT::Graphics::getRaceScale(127), 0.0f);  // IVM Invisible Man
+}
+
+// T304 Leg 2: the placeholder-cube tint. EntityRenderer::getColorForRace()
+// carried a hand-written switch that was the LAST surviving copy of the
+// pre-JSON race numbering (T267/T270/T271 killed the other three, all of
+// which were live and wrong): it tinted 21 as a Skeleton (row 21 is BEH Evil
+// Eye), 26 as a Snake (FRO Froglok), 33 as a Ghost (GHU Ghoul), 35 as a Rat
+// (EEL Eel), 42 as a Rat (WOL Wolf), 43 as a Bat (BEA Bear), 46 as a Goblin
+// (IMP Imp), 48/49 as Spiders (KOB Kobold / DRA Lava Dragon) and 85 as a
+// Dragon (SPE Spectre). The tint now comes from race_models.color.
+//
+// THOSE COLUMN VALUES ARE INVENTED. Will ruled on 2026-08-28 that inventing
+// them is acceptable, because the cube is reached only when no model could be
+// built for a race (T213), so the bar is "plausible and distinguishable" and
+// NOT authenticity. They are not sourced from EverQuest data. The assertions
+// below are therefore RELATIONAL -- every row has a tint, tints are distinct,
+// and no id is tinted as the race the stale switch named -- never assertions
+// on a particular RGB triple, which nobody may cite as sourced.
+
+TEST_F(RaceNameNoDatabaseTest, GraphicsColourIsTheNeutralGreyWithNoDb) {
+    for (uint16_t id : {2, 21, 26, 33, 35, 42, 43, 46, 48, 49, 85, 127, 240}) {
+        EXPECT_EQ(EQT::Graphics::getRaceColorARGB(id), EQT::Graphics::kDefaultRaceColorARGB)
+            << "race " << id;
+    }
+}
+
+TEST_F(RaceNameFromDbTest, GraphicsColourFollowsEveryRow) {
+    int rows = 0;
+    for (uint16_t id = 0; id <= kMaxRaceId; ++id) {
+        auto info = db_.getRaceModel(id);
+        if (!info.found) continue;
+        ++rows;
+        EXPECT_EQ(EQT::Graphics::getRaceColorARGB(id), info.colorARGB) << "race " << id;
+        if (info.invisible) {
+            // The one deliberate zero: an invisible race gets a fully
+            // transparent cube, not a grey one.
+            EXPECT_EQ(info.colorARGB, 0u) << "race " << id;
+        } else {
+            EXPECT_NE(info.colorARGB, 0u)
+                << "race " << id << " has no colour in race_models";
+            EXPECT_GT((info.colorARGB >> 24) & 0xFFu, 0u)
+                << "race " << id << " would draw a fully transparent cube";
+        }
+    }
+    EXPECT_EQ(rows, kExpectedRowCount);
+}
+
+// "Distinguishable" is the whole bar Will set, so hold it: no two races may
+// share a tint. The invisible races are the sole sanctioned exception -- they
+// are all equally invisible.
+TEST_F(RaceNameFromDbTest, EveryRaceTintIsDistinct) {
+    std::map<uint32_t, uint16_t> seen;
+    for (uint16_t id = 0; id <= kMaxRaceId; ++id) {
+        auto info = db_.getRaceModel(id);
+        if (!info.found || info.invisible) continue;
+        auto it = seen.find(info.colorARGB);
+        EXPECT_TRUE(it == seen.end())
+            << "races " << id << " and " << (it == seen.end() ? 0 : it->second)
+            << " share a placeholder tint";
+        seen[info.colorARGB] = id;
+    }
+}
+
+// The ids the deleted switch mis-tinted, each pinned against the race it was
+// borrowing the colour from. If the numbering ever creeps back, these fail.
+TEST_F(RaceNameFromDbTest, ColourPinsTheContradictedIds) {
+    struct Pin { uint16_t id; uint16_t borrowedFrom; const char* wasCalled; };
+    const Pin pins[] = {
+        {21, 60,  "Skeleton"},      // row 21 is BEH Evil Eye; 60 is SKE Skeleton
+        {26, 37,  "Snake"},         // row 26 is FRO Froglok;  37 is SNA Snake
+        {33, 32,  "Ghost"},         // row 33 is GHU Ghoul;    32 is GHM Ghost
+        {35, 36,  "Rat"},           // row 35 is EEL Eel;      36 is RAT Rat
+        {42, 36,  "Rat"},           // row 42 is WOL Wolf
+        {43, 34,  "Bat"},           // row 43 is BEA Bear;     34 is BAT Giant Bat
+        {46, 40,  "Goblin"},        // row 46 is IMP Imp;      40 is GOB Goblin
+        {48, 38,  "Spider"},        // row 48 is KOB Kobold;   38 is SPI Spider
+        {49, 38,  "Spider"},        // row 49 is DRA Lava Dragon
+        {85, 122, "Dragon"},        // row 85 is SPE Spectre
+    };
+    for (const auto& p : pins) {
+        ASSERT_TRUE(db_.getRaceModel(p.id).found) << "race " << p.id;
+        ASSERT_TRUE(db_.getRaceModel(p.borrowedFrom).found) << "race " << p.borrowedFrom;
+        EXPECT_NE(EQT::Graphics::getRaceColorARGB(p.id),
+                  EQT::Graphics::getRaceColorARGB(p.borrowedFrom))
+            << "race " << p.id << " is tinted as the \"" << p.wasCalled
+            << "\" the deleted switch called it";
+    }
+}
+
+TEST_F(RaceNameFromDbTest, InvisibleRacesStayFullyTransparent) {
+    EXPECT_EQ(EQT::Graphics::getRaceColorARGB(127), 0u);  // IVM Invisible Man
+    EXPECT_EQ(EQT::Graphics::getRaceColorARGB(240), 0u);  // IVM Teleport Man
+}
+
+TEST_F(RaceNameFromDbTest, IdWithNoRowGetsTheNeutralGrey) {
+    ASSERT_FALSE(db_.getRaceModel(9999).found);
+    EXPECT_EQ(EQT::Graphics::getRaceColorARGB(9999), EQT::Graphics::kDefaultRaceColorARGB);
 }
 
 #endif  // EQT_HAS_GRAPHICS

@@ -551,7 +551,7 @@ RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
     auto* stmt = prepare(
         "SELECT race_id, code, name, female_code, male_code, neuter_code, "
         "s3d_file, fallback_code, animation_source, animation_source_s3d, "
-        "scale, gender_variants, invisible FROM race_models WHERE race_id=?",
+        "scale, gender_variants, invisible, color FROM race_models WHERE race_id=?",
         stmtGetRaceModel_);
     if (!stmt) return info;
 
@@ -573,6 +573,7 @@ RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
         info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
         info.genderVariants = sqlite3_column_int(stmt, 11) != 0;
         info.invisible = sqlite3_column_int(stmt, 12) != 0;
+        info.colorARGB = static_cast<uint32_t>(sqlite3_column_int64(stmt, 13));
     }
 
     return info;
@@ -587,7 +588,7 @@ RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
     auto* stmt = prepare(
         "SELECT race_id, code, name, female_code, male_code, neuter_code, "
         "s3d_file, fallback_code, animation_source, animation_source_s3d, "
-        "scale, gender_variants, invisible FROM race_models WHERE code=? COLLATE NOCASE",
+        "scale, gender_variants, invisible, color FROM race_models WHERE code=? COLLATE NOCASE",
         stmtGetRaceModelByCode_);
     if (!stmt) return info;
 
@@ -609,6 +610,7 @@ RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
         info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
         info.genderVariants = sqlite3_column_int(stmt, 11) != 0;
         info.invisible = sqlite3_column_int(stmt, 12) != 0;
+        info.colorARGB = static_cast<uint32_t>(sqlite3_column_int64(stmt, 13));
     }
 
     return info;

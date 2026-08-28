@@ -208,6 +208,32 @@ float getRaceScale(uint16_t raceId) {
     return 1.0f;
 }
 
+// T304 Leg 2: the placeholder-cube tint, db only -- the same rule T270/T271
+// applied to the code and scale functions. This replaces the hand-written
+// switch in EntityRenderer::getColorForRace(), which was the LAST surviving
+// copy of the pre-JSON race numbering: it answered 21 as "Skeleton" (row 21
+// is BEH Evil Eye), 26 "Snake" (FRO Froglok), 33 "Ghost" (GHU Ghoul), 35
+// "Rat" (EEL Eel), 42 "Rat" (WOL Wolf), 43 "Bat" (BEA Bear), 46 "Goblin"
+// (IMP Imp), 48/49 "Spider" (KOB Kobold / DRA Lava Dragon) and 85 "Dragon"
+// (SPE Spectre). The column is keyed on each row's own name instead.
+//
+// THE COLUMN'S VALUES ARE INVENTED. Will ruled on 2026-08-28 that inventing
+// them is acceptable; the bar is "plausible and distinguishable", not
+// authenticity. They are not sourced from EverQuest data -- see the _notes in
+// config/race_models.json. With no row there is no colour data, so the
+// switch's own generic grey is the only honest answer.
+uint32_t getRaceColorARGB(uint16_t raceId) {
+    auto* db = WilleqDatabase::globalInstance();
+    if (db) {
+        auto info = db->getRaceModel(raceId);
+        if (info.found && info.colorARGB != 0) return info.colorARGB;
+        // A found row whose colour is exactly 0 is the fully transparent
+        // invisible tint (races 127/240), and that is deliberate.
+        if (info.found && info.invisible) return 0;
+    }
+    return kDefaultRaceColorARGB;
+}
+
 std::string getClassName(uint8_t classId) {
     switch (classId) {
         case 1:  return "Warrior";

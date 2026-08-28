@@ -664,7 +664,8 @@ static int loadRaceModels(sqlite3* db, const std::string& filepath) {
             animation_source_s3d TEXT,
             scale REAL DEFAULT 1.0,
             gender_variants INTEGER DEFAULT 0,
-            invisible INTEGER DEFAULT 0
+            invisible INTEGER DEFAULT 0,
+            color INTEGER DEFAULT 0
         )
     )");
 
@@ -674,8 +675,8 @@ static int loadRaceModels(sqlite3* db, const std::string& filepath) {
     sqlite3_prepare_v2(db,
         "INSERT OR REPLACE INTO race_models (race_id, code, name, female_code, "
         "male_code, neuter_code, s3d_file, fallback_code, animation_source, "
-        "animation_source_s3d, scale, gender_variants, invisible) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "animation_source_s3d, scale, gender_variants, invisible, color) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         -1, &stmt, nullptr);
 
     // Parse JSON
@@ -759,6 +760,18 @@ static int loadRaceModels(sqlite3* db, const std::string& filepath) {
         sqlite3_bind_double(stmt, 11, extractFloat("scale", 1.0f));
         sqlite3_bind_int(stmt, 12, extractBool("gender_variants"));
         sqlite3_bind_int(stmt, 13, extractBool("invisible"));
+        // T304 Leg 2: "#AARRGGBB" placeholder-cube tint -> packed ARGB.
+        // These values are INVENTED (Will's ruling, 2026-08-28); see the
+        // file's _notes. A row without one gets 0, which the client reads
+        // as "no colour recorded" and answers with its generic grey.
+        {
+            std::string colorStr = extractStr("color");
+            unsigned long packed = 0;
+            if (!colorStr.empty() && colorStr[0] == '#') {
+                packed = std::strtoul(colorStr.c_str() + 1, nullptr, 16);
+            }
+            sqlite3_bind_int64(stmt, 14, static_cast<sqlite3_int64>(packed));
+        }
 
         sqlite3_step(stmt);
         count++;
