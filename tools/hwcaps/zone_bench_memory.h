@@ -28,12 +28,28 @@ struct BenchMemorySnapshot {
     size_t eqe1MappedBytes = 0;
     size_t eqe1ArchiveCount = 0;
     size_t zoneGeometryBytes = 0;
+    // WHAT THIS MEASURES (T303, 2026-08-28): STATIC ARCHIVE PLACEABLES ONLY.
+    // Summed over ZoneBenchData::objects, which zone_bench_loader.cpp fills
+    // from the zone's own objects.wld/_obj.s3d placement instances on disk.
+    // This tool never connects to a server, so the objects EQEmu SENDS at
+    // zone-in -- the `object` table (ground spawns, forges, containers) and
+    // the `doors` table -- are NOT counted here and are unmeasured by any
+    // gate today. The production field of the same name
+    // (renderer_diagnostics.cpp getMemoryReportBreakdown, over objectNodes_)
+    // uses the identical per-buffer arithmetic but counts BOTH populations,
+    // so an offline baseline and a live report may differ legitimately.
+    // Do not read a blessed value here as coverage of the category.
     size_t placeableObjectsBytes = 0;
     size_t s3dZoneSourceBytes = 0;
     size_t gpuTextureBytes = 0;
     size_t vboEboBytes = 0;
     size_t framebufferBytes = 0;
     size_t framebufferBudgetBytes = 0;
+    // T303: depends entirely on WHICH races were loaded. The gate pins that
+    // (visual_gate.py MEMORY_COVERAGE_TEST_RACES = 1..5, ENTITY_COUNT = 5);
+    // without --test-races the loader defaults to races 1..12
+    // (zone_bench_loader.cpp). A blessed value guards those races only --
+    // character memory for any race outside the list is unmeasured.
     size_t characterModelsBytes = 0;
 
     // T293: the per-subsystem budgets from ConstrainedRendererConfig, emitted

@@ -18,6 +18,41 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+## SERVER-SENT PLACEABLES AND DOORS ARE UNMEASURED BY ANY GATE (T303, 2026-08-28)
+
+**Will's question, and the answer is that it was never ensured.** The T80
+memory-coverage run's `placeableObjectsBytes` is summed over
+`ZoneBenchData::objects`, which `zone_bench_loader.cpp:406-431` fills by
+re-opening the zone's OWN S3D archive with `loadObjects=true` and walking
+`objects.wld`/`_obj.s3d` placement instances **on disk**. The benchmark never
+connects to a server. So the objects EQEmu SENDS at zone-in -- the `object`
+table (ground spawns, forges, containers) and the `doors` table -- are counted
+by NOTHING.
+
+**The two paths measure different populations under the same field name.**
+Production's `placeableObjectsBytes` (`renderer_diagnostics.cpp:693-704`) loops
+over `objectNodes_` with the identical per-buffer arithmetic and counts both the
+archive placeables and whatever the server sent. An offline baseline and a live
+report can therefore differ legitimately, and nothing in the manifest said so
+until this entry. Annotated in place: `tools/hwcaps/zone_bench_memory.h` (both
+field declarations) and the `memoryCoverage.note` in `tests/goldens/manifest.json`.
+
+`characterModelsBytes` has the same shape of limit for a different reason: it is
+`RaceModelLoader::getMemoryStats()` summed, so it depends on WHICH races loaded.
+The gate pins that (`visual_gate.py` `MEMORY_COVERAGE_TEST_RACES = [1,2,3,4,5]`,
+`ENTITY_COUNT = 5`); races outside that list are unmeasured. Without
+`--test-races` the loader defaults to races 1..12 (`zone_bench_loader.cpp:741`).
+
+**Does NOT block the T80 sign-off.** The table remains worth blessing as a
+build-time regression detector over fixed archives -- it would catch a mesh-format
+or loader change that inflates static object memory. It must be blessed as that,
+not as coverage of the category.
+
+**OPEN, class A (measurement coverage):** the live half needs a live-client memory
+harness, not this offline benchmark -- which is what T69's original entry
+predicted and what the untracked-RSS gap (76-90% of Pi RSS unattributed, T293)
+is circling. Executor-ready as a scoping unit; the instrument does not exist yet.
+
 ## ⚠ THE ONE CLASS-A LIST (T302, 2026-08-28) — RANKED BY SEVERITY. START HERE.
 
 **This replaces the numbered list under "AUDIT 2026-08-27" as the class-A queue.**
