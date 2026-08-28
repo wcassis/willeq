@@ -214,12 +214,15 @@ turned out already closed are struck at the end of this section with their commi
     NOT dispatched, and Will judges the look on the live gate. Out of scope for T302;
     listed here so it is counted, not re-planned.
 
-17. **fable has no UI-hide command.** No F10 equivalent exists; the chat box and
-    hotbar are opaque in every capture.
-    *Impact:* not a user-facing defect so much as a **gate blocker** — T300 Leg C
-    could not rule out a weapon sliver hidden under the UI, and every visual unit
-    since T63 has fought this. **EXECUTOR-READY**, small, and it unblocks every future
-    visual gate. Planned as T301 Leg D but independent of the first-person arc.
+17. ~~**fable has no UI-hide command.**~~ **CLOSED — T301 Leg D.** The premise was
+    half wrong, and that was the interesting part: `IrrlichtRenderer::toggleAllUI()`
+    and its F11 global binding had existed for a long time, but `allUIHidden_` gated
+    only the entity casting bars, the legacy `guienv_->drawAll()` and the FPS counter
+    — NOT the static-UI block right below them (`renderer_frame.cpp`), which is the
+    entire UI the client ships. So F11 hid nothing a capture cared about. Fixed by
+    gating that block, plus `/hideui` (aliases `/toggleui`, `/ui`) so a `--script`
+    run or a harness with no X server can reach it — the same gap `/camera` closed in
+    T66. Pinned on both user paths by `tests/test_ui_hide_command.cpp`.
 
 18. **RDP remote input ignores caps lock** —
     `src/client/graphics/renderer_rdp.cpp:159`,
@@ -328,7 +331,7 @@ pass). T287 Part 2 (the Pi composite run) is scoped and awaits Will's go.
 2. **SECOND, INDEPENDENT: the eye is at the STATIC bounding-box crown.** `[FP-CAMERA] nodeOriginZ=3.7500 eyeAboveOrigin=3.6527` (= `bbox.MaxEdge.Y`, a rest-pose constant). The run cycle lifts the animated head ABOVE it (the level-pitch head bob — no clamp value can fix that), and sitting ON the crown rather than inside the skull puts the whole head more than 1.0 unit from the eye, so the world's 1.000 near plane never touches it. **Put the eye where the eyes actually are and that same 1.000 plane swallows the face — which is the mechanism T299 inferred for the official client.** Leg B §3 is right that 3.65 and 6.75 are the same eye in two frames; the defect is that 6.75 is measured to the official client's EYE and 3.6527 is a bbox CROWN, and those are not the same point on the model.
 3. **The mesh forward-axis assumption is neither confirmed nor the explanation.** Live vs Leg B's headless sweep: Human male 26.5 vs 39.5 (headless 13 deg optimistic), Troll 60.6 vs 0/in-frame-at-level (headless 61 deg pessimistic). **The error changes sign between races**, so it is not one consistent "forward read as sideways"; the §4 table below must not be used as a quantitative guide. The question is also not observable live by turning — model and camera rotate together (confirmed at heading 0 and 128).
 
-**Open follow-ups named by Leg C:** the hiding mechanism needs re-opening (a down-pitch clamp alone cannot do it); `getPlayerEyeHeightAboveNodeOrigin()` returns a rest-pose constant and needs to be animation-aware or renamed for what it is; **fable has no UI-hide command** (no F10 equivalent — the chat box and hotbar are opaque in every capture, and every visual unit since T63 has fought this); and weapon/limb visibility in first person is untested downstream of the hiding question. **Two stale-slot traps for whoever merges:** rebuild `build/` after checkout or the source-parsing tests assert deleted symbols and fail, and `rm build/bin/test_viewmodel_pass` or `check_build_tree_orphans` fails on the orphan cmake never prunes.
+**Open follow-ups named by Leg C:** the hiding mechanism needs re-opening (a down-pitch clamp alone cannot do it); `getPlayerEyeHeightAboveNodeOrigin()` returns a rest-pose constant and needs to be animation-aware or renamed for what it is; ~~fable has no UI-hide command~~ (**CLOSED, T301 Leg D** — one existed on F11, but it did not gate the static UI; see item 17); and weapon/limb visibility in first person is untested downstream of the hiding question (**diagnosed and fixed, T301 Leg C** — the player's equipment sat (-2*nodeRot.Y - 90) degrees away from the hand holding it, because the player node bakes its rotation into its vertices while its equipment children still inherit the node's own rotation; see `refactor/T301_leg_c_weapon_visibility.md`). **Two stale-slot traps for whoever merges:** rebuild `build/` after checkout or the source-parsing tests assert deleted symbols and fail, and `rm build/bin/test_viewmodel_pass` or `check_build_tree_orphans` fails on the orphan cmake never prunes.
 
 ## FIRST PERSON — MECHANISM SETTLED, VIEWMODEL PASS RETIRED (T300 Leg B, 2026-08-27) — HIDING MECHANISM REFUTED LIVE BY LEG C, SEE ABOVE
 

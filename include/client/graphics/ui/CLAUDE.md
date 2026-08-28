@@ -44,6 +44,7 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 **Global:**
 | Key | Action |
 |-----|--------|
+| F11 | Toggle ALL UI (T301: also hides the static panels -- chat, hotbar, gems, popups, XP bar; before T301 it gated only the casting bars, the legacy `guienv_` draw and the FPS counter, so with the static UI on it hid nothing. Scriptable as `/hideui`.) |
 | F12 | Screenshot |
 | LMB+drag | Look around (camera) |
 | RMB+drag | Look around (camera) |
@@ -113,7 +114,8 @@ migration); `Application::DispatchSlashCommand` tries them in order:
 3. **Registry 3 — renderer if-chain** (`IrrlichtRenderer::processSlashCommand()`,
    reached via the `RendererCommand` bridge queue): ~70 debug/graphics
    toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
-   `/dumpscene`, `/newskills`, `/newinv`, `/newbook`, `/weatherpreset`, …)
+   `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
+   of F11, T301), `/newskills`, `/newinv`, `/newbook`, `/weatherpreset`, …)
    — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
 
 `/help [command]` (registry-aware since T143 `e979a821`) lists registries

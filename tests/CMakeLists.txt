@@ -1755,6 +1755,32 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_inventory_model_view)
 ENDIF()
 
+# T301 Leg C: first-person weapon attachment geometry (probe).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_weapon_attachment
+        test_first_person_weapon_attachment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_weapon_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_weapon_attachment GTest::gtest willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_weapon_attachment PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment)
+ENDIF()
+
+# T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
+# reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
+# steps that need a GL device to execute.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_hide_command
+        test_ui_hide_command.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_hide_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_hide_command GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_ui_hide_command PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_ui_hide_command)
+ENDIF()
+
 # T267: race 330 (playable Froglok) resolves to and loads from the row's
 # globalpcfroglok_chr.s3d. Same EDT_NULL + willeq_core gate as
 # test_inventory_model_view; opens the shipped data/willeq.db as the race

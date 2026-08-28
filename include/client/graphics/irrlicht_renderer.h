@@ -939,6 +939,9 @@ public:
     void toggleWireframe();
     void toggleHUD();
     void toggleAllUI();
+    // T301 Leg D: readable so /hideui can echo the resulting state and so the
+    // toggle can be asserted headlessly (tests/test_ui_hide_command.cpp).
+    bool isAllUIHidden() const { return allUIHidden_; }
     void toggleNameTags();
     void toggleFog();
     void toggleZoneLights();

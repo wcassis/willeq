@@ -44,6 +44,9 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"dumpscene", {"ds"}, "Dump the scene graph to the console log"},
     {"simworker", {"sw"}, "Show simulation worker status"},
     // --- UI ---
+    // T301 Leg D: hides EVERY panel (chat, hotbar, gems, buffs, popups, XP bar,
+    // casting bars, FPS counter) -- the scriptable half of the F11 hotkey.
+    {"hideui", {"toggleui", "ui"}, "Show/hide the whole UI (same as F11)"},
     {"newui", {}, "Toggle the static UI"},
     {"newbook", {}, "Toggle the spellbook window"},
     {"newbookprev", {}, "Spellbook: previous page"},

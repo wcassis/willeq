@@ -1239,6 +1239,17 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // had zero callers, per T105/T106) — EverQuest::runPmemDiagnostics() is now
     // called directly by the command handler; see irrlicht_bridge.cpp.
     // --- UI ---
+    // T301 Leg D: the scriptable half of the UI-hide toggle. F11
+    // (HotkeyAction::ToggleAllUI) has hidden the UI since long before this,
+    // but a raw key event is not reachable from a --script run or from any
+    // capture harness that does not own an X server -- the same gap /camera
+    // closed for camera modes in T66. Every visual gate since T63 has fought
+    // the overlay; T300 Leg C had to record its 285-frame combat negative
+    // with the chat box and hotbar opaque over the bottom of every frame.
+    else if (cmd == "/hideui" || cmd == "/toggleui" || cmd == "/ui") {
+        toggleAllUI();
+        chat(fmt::format("UI: {}", isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
+    }
     else if (cmd == "/newui") {
         newUIEnabled_ = !newUIEnabled_;
         chat(fmt::format("New static UI: {}", newUIEnabled_ ? "ENABLED" : "DISABLED"));

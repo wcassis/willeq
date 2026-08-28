@@ -149,5 +149,39 @@ inline irr::core::vector3df computeSecondaryItemBaseRotation() {
     return irr::core::vector3df(180.0f, 0.0f, 180.0f);
 }
 
+// T301 Leg C -- THE PLAYER'S OWN NODE DRAWS ITS BODY IN A DIFFERENT FRAME
+// FROM THE ONE ITS EQUIPMENT CHILDREN INHERIT, AND THIS RECONCILES THEM.
+//
+// EQAnimatedMeshSceneNode::applyAnimation() BAKES a Y rotation of
+// (nodeRot.Y + 90) degrees into the player's per-instance vertices (it is
+// applied about the EQ Z axis, which is Irrlicht's Y), and
+// EQAnimatedMeshSceneNode::render() then draws that node with a
+// TRANSLATION-ONLY world transform -- the node's own rotation and scale are
+// deliberately dropped. NPCs do neither: their vertices are unbaked and they
+// draw through the full AbsoluteTransformation.
+//
+// Equipment, however, is an ordinary child scene node of the animated node
+// for players and NPCs alike, so it inherits the node's R(nodeRot.Y) and its
+// scale in both cases. For an NPC that matches the body exactly. For the
+// PLAYER it does not: the body ends up at Irrlicht yaw -(nodeRot.Y + 90)
+// while its weapon sits at +nodeRot.Y, an error of (-2*nodeRot.Y - 90)
+// degrees that passes through zero only near one heading (45 deg) and is
+// otherwise large -- 90 degrees at heading 0. In third person the weapon is
+// still on screen (wrongly oriented, beside the player rather than in his
+// hand, and rotating at twice his rate); in FIRST person, where the frustum
+// is only 62.8 degrees wide and centred on the body's forward, the weapon
+// falls outside the frustum at almost every heading and is simply never seen.
+// That is T300 Leg C's 285-frame, seven-exchange, zero-weapon negative.
+//
+// The compensation below is applied to the player's equipment ONLY, in
+// EntityRenderer::updateEquipmentTransforms(); the NPC path is untouched.
+//
+// Returns the extra Irrlicht Y rotation (degrees) that a player's equipment
+// child must carry so that, after the parent's own R(nodeRot.Y) is applied,
+// it lands in the same frame as the baked body.
+inline float playerEquipmentYawCompensationDegrees(float nodeRotYDegrees) {
+    return -2.0f * nodeRotYDegrees - 90.0f;
+}
+
 } // namespace Graphics
 } // namespace EQT
