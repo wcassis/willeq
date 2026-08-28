@@ -177,6 +177,54 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
     std::transform(raceCode.begin(), raceCode.end(), raceCode.begin(),
                   [](unsigned char c) { return std::toupper(c); });
 
+    // T301 Leg C: the PLAYER's body is drawn in a different frame from the one
+    // its equipment children inherit -- applyAnimation() bakes (nodeRot.Y + 90)
+    // into the player's vertices and render() then uses a TRANSLATION-ONLY
+    // world transform, dropping the node's rotation AND scale, while an
+    // equipment child still inherits both. Left uncompensated the weapon sits
+    // at a yaw of (-2*nodeRot.Y - 90) degrees away from the hand that holds it,
+    // which is why first person -- a 62.8-degree frustum centred on the body's
+    // forward -- never showed it. See bone_attachment.h's
+    // playerEquipmentYawCompensationDegrees() for the derivation, and
+    // tests/test_first_person_weapon_attachment.cpp for the pin.
+    // NPCs bake nothing and draw through their full AbsoluteTransformation, so
+    // they take none of this: playerBake is false and every value below is the
+    // pre-T301 one, bit for bit.
+    const bool playerBake = visual.animatedNode->isPlayerNode();
+    irr::core::matrix4 playerYawFix;   // identity unless playerBake
+    float playerScale = 1.0f;
+    if (playerBake) {
+        playerYawFix.setRotationDegrees(irr::core::vector3df(
+            0.0f, playerEquipmentYawCompensationDegrees(visual.animatedNode->getRotation().Y), 0.0f));
+        const float s = visual.animatedNode->getScale().X;
+        if (s > 0.0001f) playerScale = s;
+    }
+    // Places one bone-derived attachment, in the parent node's local frame, so
+    // that it coincides with the geometry the node actually DRAWS for that bone.
+    auto placeAttachment = [&](irr::scene::ISceneNode* node,
+                               float px, float py, float pz,
+                               const irr::core::vector3df& itemRot,
+                               const irr::core::vector3df& worldOffset) {
+        if (!playerBake) {
+            node->setRotation(itemRot);
+            node->setPosition(irr::core::vector3df(
+                px + worldOffset.X, pz + worldOffset.Y, py + worldOffset.Z));
+            return;
+        }
+        // Bone position: EQ(x,y,z) -> Irr(x,z,y), un-scaled because the baked
+        // body is drawn without the node's scale; the grip offset stays in the
+        // child's own (scaled) units, with the mesh it is derived from.
+        irr::core::vector3df local(px / playerScale + worldOffset.X,
+                                   pz / playerScale + worldOffset.Y,
+                                   py / playerScale + worldOffset.Z);
+        playerYawFix.rotateVect(local);
+        irr::core::matrix4 itemMat;
+        itemMat.setRotationDegrees(itemRot);
+        // m3 = m1 * m2 applies m2 first, then m1 (Irrlicht matrix4::operator*).
+        node->setRotation((playerYawFix * itemMat).getRotationDegrees());
+        node->setPosition(local);
+    };
+
     // Update primary weapon position and rotation (right hand - R_POINT)
     if (visual.primaryEquipNode) {
         std::vector<std::string> suffixes = {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"};
@@ -193,7 +241,6 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             // Extract and apply bone rotation, then add weapon's base rotation (180° around X)
             irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
             irr::core::vector3df weaponRot = boneRot + irr::core::vector3df(180.0f, 0, 0);
-            visual.primaryEquipNode->setRotation(weaponRot);
 
             // Calculate weapon offset based on mesh bounding box
             // The grip point should be near the hilt (end of weapon) for 1H weapons,
@@ -211,8 +258,7 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             rotMat.rotateVect(localOffset);
 
             // Convert EQ coords to Irrlicht coords: EQ(x,y,z) -> Irr(x,z,y) and apply offset
-            visual.primaryEquipNode->setPosition(irr::core::vector3df(
-                px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
+            placeAttachment(visual.primaryEquipNode, px, py, pz, weaponRot, localOffset);
         }
     }
 
@@ -245,7 +291,6 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             // inside the body mesh).
             irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
             irr::core::vector3df itemRot = boneRot + computeSecondaryItemBaseRotation();
-            visual.secondaryEquipNode->setRotation(itemRot);
 
             // Calculate offset based on item type and size
             float itemOffset = 0.5f;  // Default fallback
@@ -265,8 +310,7 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             rotMat.rotateVect(localOffset);
 
             // Convert EQ coords to Irrlicht coords and apply offset
-            visual.secondaryEquipNode->setPosition(irr::core::vector3df(
-                px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
+            placeAttachment(visual.secondaryEquipNode, px, py, pz, itemRot, localOffset);
         }
     }
 }

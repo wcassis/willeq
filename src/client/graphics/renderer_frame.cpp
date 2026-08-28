@@ -1605,8 +1605,15 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     }
     inventoryState_.paperdollTexture = characterModelView_ ? characterModelView_->getTexture() : nullptr;
 
-    // U03c: Render new static UI when enabled
-    if (newUIEnabled_ && uiRenderer_) {
+    // U03c: Render new static UI when enabled.
+    // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F11 /
+    // `/hideui`) predates the static UI and gated only the three things that
+    // existed when it was written -- the casting bars, the old guienv_ draw
+    // and the FPS counter -- so with the static UI on (the shipped default)
+    // pressing F11 left the chat panel, the hotbar and every other panel
+    // painted on top of the frame. That is why T300 Leg C could not rule out
+    // a weapon sliver hidden under the chat box.
+    if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
         uiRenderer_->beginFrame();
         renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
         renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
