@@ -299,6 +299,22 @@ void RDPServer::setResolution(uint32_t width, uint32_t height) {
     height_ = height;
 }
 
+// T306: release everything initialize() acquired, in the reverse order it
+// acquired it. Shared by start()'s failure path and stop()'s tail so the two
+// cannot drift.
+void RDPServer::releaseListenerResources() {
+    if (listener_) {
+        // Idempotent: freerdp_listener_close() zeroes num_sockfds, so the
+        // second call from stop() (which must Close at a specific point in
+        // its join sequence) does nothing.
+        listener_->Close(listener_);
+        freerdp_listener_free(listener_);
+        listener_ = nullptr;
+    }
+    WSACleanup();
+    initialized_.store(false);
+}
+
 bool RDPServer::start() {
     if (running_.load()) {
         return true;
@@ -312,6 +328,14 @@ bool RDPServer::start() {
     // Open the listener on all interfaces
     if (!listener_->Open(listener_, nullptr, port_)) {
         LOG_ERROR(MOD_GRAPHICS, "Failed to open listener on port {}", port_);
+        // T306: release what initialize() acquired. Without this the
+        // listener leaks for the lifetime of the process -- stop() early-
+        // returns on !running_, and a retried initialize() early-returns on
+        // initialized_ == true, so it silently reuses a half-owned listener
+        // still pinned to the port that just failed. Dropping back to the
+        // uninitialized state makes the failure recoverable: the caller can
+        // initialize() again (on another port) and start() for real.
+        releaseListenerResources();
         return false;
     }
 
@@ -323,7 +347,12 @@ bool RDPServer::start() {
 }
 
 void RDPServer::stop() {
-    if (!running_.load()) {
+    // T306: guard on BOTH flags. Guarding on running_ alone leaked the
+    // listener and the Winsock reference on the initialize()-then-destroy
+    // path -- ~RDPServer() calls stop(), and a server that was initialized
+    // but never started is never running_, so stop() returned immediately
+    // and freerdp_listener_free()/WSACleanup() never ran.
+    if (!initialized_.load() && !running_.load()) {
         return;
     }
 
@@ -362,14 +391,8 @@ void RDPServer::stop() {
         activePeers_.clear();
     }
 
-    // Free the listener
-    if (listener_) {
-        freerdp_listener_free(listener_);
-        listener_ = nullptr;
-    }
-
-    WSACleanup();
-    initialized_.store(false);
+    // Free the listener and the Winsock reference.
+    releaseListenerResources();
 
     LOG_INFO(MOD_GRAPHICS, "RDP server stopped");
 }

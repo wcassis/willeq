@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "client/graphics/rdp/rdp_server.h"
 
+
 using namespace EQT::Graphics;
 
 // =============================================================================
@@ -378,6 +379,105 @@ TEST_F(RDPServerThreadTest, UpdateFrameFromMultipleIterations) {
     }
 
     server_.stop();
+}
+
+// =============================================================================
+// T306: resource-release gaps on the two non-happy lifecycle paths
+// (ported from the audited branch task/eqcpp-zoneprocess-track-b-remaining)
+// =============================================================================
+
+// Occupy a port with a real, successfully started RDPServer so that a second
+// RDPServer::start() on the same port hits a failing listener_->Open(). Using
+// an RDPServer (rather than a hand-rolled socket) guarantees the blocker binds
+// exactly the address family set freerdp_listener_open() tries, so the second
+// Open() cannot partially succeed on an unblocked family.
+class PortBlocker {
+public:
+    explicit PortBlocker(uint16_t port) {
+        ok_ = server_.initialize(port) && server_.start();
+    }
+    ~PortBlocker() {
+        if (server_.isRunning()) {
+            server_.stop();
+        }
+    }
+    bool ok() const { return ok_; }
+private:
+    RDPServer server_;
+    bool ok_ = false;
+};
+
+class RDPServerCleanupTest : public ::testing::Test {
+protected:
+    void TearDown() override {}
+};
+
+// start() used to log-and-return on a failed listener_->Open(), keeping
+// initialized_ == true and the listener alive. stop() then early-returned on
+// !running_ and a retried initialize() early-returned on initialized_, so the
+// server was permanently wedged on the port that had already failed: the
+// listener leaked and every recovery attempt silently reused it.
+TEST_F(RDPServerCleanupTest, FailedStartReleasesResourcesAndAllowsRecovery) {
+    PortBlocker blocker(23461);
+    ASSERT_TRUE(blocker.ok()) << "could not bind the blocker socket";
+
+    RDPServer server;
+    ASSERT_TRUE(server.initialize(23461));
+    ASSERT_TRUE(server.isInitialized());
+
+    EXPECT_FALSE(server.start());
+    EXPECT_FALSE(server.isRunning());
+
+    // The failed start must have released the listener and the Winsock
+    // reference, i.e. dropped back to the uninitialized state.
+    EXPECT_FALSE(server.isInitialized());
+
+    // Which is what makes the failure recoverable: a fresh initialize() on a
+    // free port must actually re-create the listener and bind THAT port,
+    // instead of early-returning on a stale initialized_ and re-opening the
+    // blocked one.
+    ASSERT_TRUE(server.initialize(23462));
+    EXPECT_TRUE(server.isInitialized());
+    EXPECT_TRUE(server.start());
+    EXPECT_TRUE(server.isRunning());
+    server.stop();
+    EXPECT_FALSE(server.isRunning());
+}
+
+TEST_F(RDPServerCleanupTest, RepeatedFailedStartIsSafe) {
+    PortBlocker blocker(23463);
+    ASSERT_TRUE(blocker.ok()) << "could not bind the blocker socket";
+
+    RDPServer server;
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_TRUE(server.initialize(23463)) << "iteration " << i;
+        EXPECT_FALSE(server.start()) << "iteration " << i;
+        EXPECT_FALSE(server.isRunning()) << "iteration " << i;
+        EXPECT_FALSE(server.isInitialized()) << "iteration " << i;
+    }
+}
+
+// ~RDPServer() calls stop(). stop()'s guard used to be `if (!running_) return;`
+// alone, so a server that was initialized but never started freed nothing:
+// the freerdp listener and the WSAStartup reference leaked at destruction.
+// The guard is now `!initialized_ && !running_`.
+TEST_F(RDPServerCleanupTest, InitWithoutStartIsSafeAndReleases) {
+    RDPServer server;
+    ASSERT_TRUE(server.initialize(23464));
+    ASSERT_TRUE(server.isInitialized());
+    EXPECT_FALSE(server.isRunning());
+
+    // This is exactly what ~RDPServer() does.
+    server.stop();
+
+    EXPECT_FALSE(server.isRunning());
+    EXPECT_FALSE(server.isInitialized())
+        << "stop() left the listener and the Winsock reference owned";
+
+    // Idempotent: a second stop() (destructor after an explicit stop()) is a
+    // no-op, not a double free.
+    server.stop();
+    EXPECT_FALSE(server.isInitialized());
 }
 
 #else
