@@ -2998,8 +2998,22 @@ EntityRenderer::getPlayerFirstPersonEyeOffset() const {
     for (const auto& [id, visual] : entities_) {
         if (!visual.isPlayer || !visual.isAnimated || !visual.animatedNode) continue;
 
+        // POSTURE, not animation. T301 Leg A measured the official eye as
+        // driven by the discrete posture state (sitting drops it 3.6 units)
+        // and NOT by the animated skeleton. visual.poseState is exactly that
+        // state: it arrives on SpawnAppearance and is deliberately never
+        // written by movement updates, which is why it is the right input and
+        // the animator is not.
+        EyePosture posture = EyePosture::Standing;
+        switch (visual.poseState) {
+            case EntityVisual::PoseState::Standing:  posture = EyePosture::Standing;  break;
+            case EntityVisual::PoseState::Sitting:   posture = EyePosture::Sitting;   break;
+            case EntityVisual::PoseState::Crouching: posture = EyePosture::Crouching; break;
+            case EntityVisual::PoseState::Lying:     posture = EyePosture::Lying;     break;
+        }
+
         irr::core::vector3df offset;
-        if (visual.animatedNode->getFirstPersonEyeOffset(offset)) {
+        if (visual.animatedNode->getFirstPersonEyeOffset(offset, posture)) {
             out.irrX = offset.X;
             out.irrY = offset.Y;
             out.irrZ = offset.Z;
@@ -3007,9 +3021,10 @@ EntityRenderer::getPlayerFirstPersonEyeOffset() const {
             static int eyeLogCount = 0;
             if (eyeLogCount++ % 500 == 0) {
                 LOG_DEBUG(MOD_GRAPHICS,
-                          "[FP-EYE] source=HEAD_BONE offset=({:.4f},{:.4f},{:.4f}) follows={}",
+                          "[FP-EYE] source=HEAD_BONE offset=({:.4f},{:.4f},{:.4f}) pose={} posture={}",
                           out.irrX, out.irrY, out.irrZ,
-                          kFirstPersonEyeFollowsAnimation ? "anim" : "rest");
+                          static_cast<int>(kFirstPersonEyeSource),
+                          static_cast<int>(posture));
             }
             return out;
         }

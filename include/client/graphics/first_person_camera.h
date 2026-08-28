@@ -139,9 +139,17 @@ inline float firstPersonVerticalFovRadians(float aspect) {
 
 // The camera's placement, in Irrlicht world space (EQ x -> Irr X,
 // EQ z -> Irr Y, EQ y -> Irr Z), as the renderer's own convention has it.
+//
+// THE UP VECTOR IS NOT DECORATION. T301 Leg A measured the official max
+// down-pitch at 94.9 degrees -- about 5 degrees PAST THE NADIR. A look-at
+// camera left on Irrlicht's default (0,1,0) up vector degenerates as the look
+// ray approaches straight down (the ray becomes parallel to up, and the view
+// basis is undefined) and then FLIPS as it crosses. Every caller must apply
+// this vector, or the measured clamp cannot be used at all.
 struct FirstPersonCameraPlacement {
     float posX = 0.0f, posY = 0.0f, posZ = 0.0f;
     float targetX = 0.0f, targetY = 0.0f, targetZ = 0.0f;
+    float upX = 0.0f, upY = 1.0f, upZ = 0.0f;
 };
 
 /**
@@ -228,6 +236,24 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
     out.targetX = out.posX + fwdX * cosPitch * targetDistance;
     out.targetY = camZ + sinPitch * targetDistance;
     out.targetZ = out.posZ + fwdZ * cosPitch * targetDistance;
+
+    // The camera's own up vector, carried through and past the nadir.
+    //
+    // With forward F = (sinH*cosP, sinP, cosH*cosP) and the horizontal right
+    // vector R = (cosH, 0, -sinH), up is F x R:
+    //
+    //     U = (-sinH*sinP, cosP, -cosH*sinP)
+    //
+    // At level pitch that is exactly (0,1,0), so nothing changes for an
+    // ordinary view. At pitch -90 it becomes (sinH, 0, cosH) -- looking
+    // straight down, screen-up is the direction you are facing, which is
+    // correct and, more to the point, DEFINED. Past -90 its Y component goes
+    // negative and the view continues smoothly over the top instead of
+    // flipping. It is unit length for every pitch, so no normalisation is
+    // needed and none is done.
+    out.upX = -fwdX * sinPitch;
+    out.upY = cosPitch;
+    out.upZ = -fwdZ * sinPitch;
 
     return out;
 }

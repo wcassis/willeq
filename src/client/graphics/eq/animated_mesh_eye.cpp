@@ -26,7 +26,7 @@ namespace EQT {
 namespace Graphics {
 
 bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
-    irr::core::vector3df& outOffset) const {
+    irr::core::vector3df& outOffset, EyePosture posture) const {
     if (!eqMesh_) return false;
 
     auto skeleton = eqMesh_->getSkeleton();
@@ -66,11 +66,12 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
             }
         }
 
-        if (eyeHeadBoneIndex_ >= 0 && !kFirstPersonEyeFollowsAnimation) {
-            // REST-POSE BRANCH: a private animator that is never updated
-            // holds the bind pose (setSkeleton() calls computeBoneTransforms()
-            // and nothing advances it), so this is the head bone's rest
-            // transform and it never changes.
+        if (eyeHeadBoneIndex_ >= 0 &&
+            kFirstPersonEyeSource != EyePoseSource::AnimatedPose) {
+            // A private animator that is never updated holds the BIND POSE
+            // (setSkeleton() calls computeBoneTransforms() and nothing
+            // advances it), so this is the head bone's rest transform and it
+            // never changes. Both non-animated sources ride it.
             SkeletalAnimator rest;
             rest.setSkeleton(skeleton);
             const auto& restStates = rest.getBoneStates();
@@ -83,11 +84,16 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     if (eyeHeadBoneIndex_ < 0) return false;
 
     // ---- lift the bone-local eye into model space ----
-    // THE ANIMATION-FOLLOW SWITCH, and the whole of it: which head-bone
-    // matrix is used. Only the resulting POSITION is taken; the bone's
-    // orientation is discarded, so the look direction stays on the mouse.
+    //
+    // THE POSE SOURCE, and the whole of it: which head-bone matrix is used,
+    // plus a posture offset. T301 Leg A MEASURED that the official eye does
+    // not follow the skeleton (one distinct frame in 12 s of running against
+    // a wall, zero pixel change, while an observing client watched the crown
+    // bob 0.16 units) but IS posture-aware (sitting drops it 3.6 units).
     BoneMat4 headTransform;
-    if (kFirstPersonEyeFollowsAnimation) {
+    if (kFirstPersonEyeSource == EyePoseSource::AnimatedPose) {
+        // REFUTED by Leg A Q3; kept compiled so the comparison is real and
+        // reversible, not a claim about deleted code.
         const auto& boneStates = animator_.getBoneStates();
         if (eyeHeadBoneIndex_ >= static_cast<int>(boneStates.size())) return false;
         headTransform = boneStates[eyeHeadBoneIndex_].worldTransform;
@@ -99,6 +105,24 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     float ey = eyeLocalPoint_.y;
     float ez = eyeLocalPoint_.z;
     headTransform.transformPoint(ex, ey, ez);
+
+    // POSTURE. Applied in MODEL space, on the up axis, as a fraction of this
+    // model's OWN standing height -- so it scales per race from the mesh
+    // rather than from a table, and so a Troll's sit drop is a Troll's.
+    //
+    // This is the one place the whole-body bounding box is legitimately read:
+    // its HEIGHT, which is a real property of the mesh. Its MaxEdge (the
+    // crown) is what T300 mistook for an eye and is not read anywhere.
+    if (kFirstPersonEyeSource == EyePoseSource::PostureDriven) {
+        const float drop = eyeDropFractionForPosture(posture);
+        if (drop != 0.0f) {
+            const irr::core::aabbox3df bbox = eqMesh_->getBoundingBox();
+            const float standingHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+            if (standingHeight > 0.0f) {
+                ez -= drop * standingHeight;   // EQ Z is up in model space
+            }
+        }
+    }
 
     // ---- model space -> world axes, exactly as render() draws this node ----
     const irr::core::vector3df nodeRot = getRotation();

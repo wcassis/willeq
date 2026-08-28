@@ -159,9 +159,13 @@ TEST(FirstPersonEyeGeometry, ABeardIsNotMistakenForTheSkull) {
     // The number this rule was written to kill: with the raw minimum the eye
     // lands at -0.563 in bone space, which on the real dwmhe transform is
     // model Z 1.48 -- 2.27 below the crown, in his chest.
+    // Derived from the constant, not pasted in, so re-solving the fraction
+    // (as T301 Leg A's measurement required) cannot silently stale this out.
     const float naive = dwarf.minZ + kEyeHeightFractionOfSkull * (dwarf.maxZ - dwarf.minZ);
-    EXPECT_NEAR(naive, -0.563f, 0.01f) << "the naive value this test exists to reject";
-    EXPECT_GT(eye.z - naive, 0.6f)
+    EXPECT_LT(naive, 0.0f)
+        << "with the raw minimum the eye lands BELOW the head joint, which on "
+           "the real dwmhe transform is model Z 1.48 -- in his chest";
+    EXPECT_GT(eye.z - naive, 0.5f)
         << "the beard is still dragging the eye down the skull";
 
     // A cluster that is ALREADY tighter than symmetric is left alone: this
@@ -321,6 +325,7 @@ protected:
         float eyeModelX = 0.0f, eyeModelY = 0.0f, eyeModelZ = 0.0f;
         float headModelMinZ = 0.0f, headModelMaxZ = 0.0f;
         float crownZ = 0.0f;   // whole-body bbox top: what T300 used as "the eye"
+        float bodyMinZ = 0.0f; // the mesh's own feet
     };
 
     Derived derive(const RaceCase& rc) {
@@ -363,10 +368,12 @@ protected:
         d.headModelMinZ = 1e9f;
         d.headModelMaxZ = -1e9f;
         d.crownZ = -1e9f;
+        d.bodyMinZ = 1e9f;
         const auto& cv = md->combinedGeometry->vertices;
         for (const auto& p : md->vertexPieces) {
             for (unsigned k = 0; k < p.count && vi < cv.size(); ++k, ++vi) {
                 if (cv[vi].z > d.crownZ) d.crownZ = cv[vi].z;
+                if (cv[vi].z < d.bodyMinZ) d.bodyMinZ = cv[vi].z;
                 if (p.boneIndex != d.headBone) continue;
                 d.headModelMinZ = std::min(d.headModelMinZ, cv[vi].z);
                 d.headModelMaxZ = std::max(d.headModelMaxZ, cv[vi].z);
@@ -374,6 +381,7 @@ protected:
         }
         for (; vi < cv.size(); ++vi) {
             if (cv[vi].z > d.crownZ) d.crownZ = cv[vi].z;
+            if (cv[vi].z < d.bodyMinZ) d.bodyMinZ = cv[vi].z;
         }
         d.ok = (d.headModelMaxZ > d.headModelMinZ);
         return d;
@@ -478,6 +486,119 @@ TEST_F(ShippedMeshEyeTest, EyeIsDerivedPerRaceFromTheMeshNotFromATable) {
                                "that would mean it is not coming from the mesh";
 }
 
+TEST_F(ShippedMeshEyeTest, EyeMatchesLegAsMeasuredCrownMinusSixTenths) {
+    // T301 Leg A MEASURED the crown 0.60 above the eye on the official client
+    // (Human male, two-client protocol, feet-ladder fit rms 0.19 px).
+    // kEyeHeightFractionOfSkull is solved against exactly this, so this test
+    // is the one that would catch the solve going stale if the head-cluster
+    // derivation or the symmetrised skull bound ever changes.
+    bool covered = false;
+    for (const auto& rc : kPlayableRaces) {
+        if (rc.raceId != 1 || rc.gender != 0) continue;   // the reference race
+        const Derived d = derive(rc);
+        if (!d.ok) continue;
+        covered = true;
+        EXPECT_NEAR(d.crownZ - d.eyeModelZ, EQT::Graphics::kCrownAboveEyeUnits, 0.05f)
+            << "the Human male eye must land at crown - 0.60; got crown - "
+            << (d.crownZ - d.eyeModelZ)
+            << ". kEyeHeightFractionOfSkull is solved for this and needs "
+               "re-solving.";
+    }
+    if (!covered) GTEST_SKIP() << "Human male model unavailable";
+}
+
+TEST_F(ShippedMeshEyeTest, StandingHeightCrossCheckAgainstLegAsPoint925) {
+    // Leg A's OTHER number: the eye at 0.925 +/- 0.004 of standing height.
+    //
+    // *** THE TWO MEASUREMENTS DISAGREE, AND THIS TEST REPORTS THE
+    // DISAGREEMENT RATHER THAN AVERAGING IT AWAY. *** They are taken in
+    // different frames: fable stands the model CENTRED on the server z, the
+    // official client stands it FEET-ON-z, so "standing height" does not name
+    // the same span in the two clients. Leg A's own figures show the seam --
+    // the sit drop is 0.455 H and is reported as 3.6 units, implying H = 7.9
+    // where this mesh's crown-to-feet span is 6.67.
+    //
+    // The eye is keyed to crown-minus-0.60, which is measured INSIDE the head
+    // and is immune to the frame question. This is a sanity band, not the
+    // spec: it catches an eye that has drifted somewhere absurd, and it makes
+    // the residual visible instead of silent.
+    std::printf("\n%-20s %8s %8s %8s   %s\n", "race", "H", "eye/H",
+                "LegA", "delta");
+    int covered = 0;
+    for (const auto& rc : kPlayableRaces) {
+        const Derived d = derive(rc);
+        if (!d.ok) continue;
+        ++covered;
+        const float H = d.crownZ - d.bodyMinZ;
+        ASSERT_GT(H, 0.0f) << rc.label;
+        const float frac = (d.eyeModelZ - d.bodyMinZ) / H;
+        std::printf("%-20s %8.3f %8.3f %8.3f   %+.3f\n", rc.label, H, frac,
+                    EQT::Graphics::kEyeHeightFractionOfStandingHeight,
+                    frac - EQT::Graphics::kEyeHeightFractionOfStandingHeight);
+        EXPECT_GT(frac, 0.80f)
+            << rc.label << ": the eye is far too low up the body to be an eye";
+        EXPECT_LT(frac, 1.0f)
+            << rc.label << ": the eye is at or above the crown -- the T300 defect";
+    }
+    EXPECT_GE(covered, 20);
+}
+
+TEST(FirstPersonEyePosture, PostureDrivenIsWhatLegAMeasured) {
+    // Leg A Q3, measured directly: the actor pinned against a wall holding
+    // forward produced ONE distinct rendered frame in 12 seconds with ZERO
+    // pixel change in his own view, while the observing client watched his
+    // crown bob 0.16 units over ~10 gait cycles. The official eye does not
+    // follow the skeleton. But sitting drops it 3.6 units, so it is not
+    // posture-blind either.
+    EXPECT_EQ(EQT::Graphics::kFirstPersonEyeSource,
+              EQT::Graphics::EyePoseSource::PostureDriven);
+    EXPECT_NE(EQT::Graphics::kFirstPersonEyeSource,
+              EQT::Graphics::EyePoseSource::AnimatedPose)
+        << "AnimatedPose was this leg's first choice and Leg A REFUTED it. The "
+           "argument for it (an eye inside the skull cannot be bobbed through) "
+           "is moot: the official client accepts the bob and never draws the "
+           "body. Do not restore it on that argument.";
+}
+
+TEST(FirstPersonEyePosture, SitDropIsLegAsMeasuredFractionAndStandingIsZero) {
+    using EQT::Graphics::EyePosture;
+    using EQT::Graphics::eyeDropFractionForPosture;
+
+    EXPECT_FLOAT_EQ(eyeDropFractionForPosture(EyePosture::Standing), 0.0f)
+        << "standing must be the undisplaced reference";
+
+    // MEASURED: 0.925 H standing -> 0.47 H sitting.
+    EXPECT_NEAR(eyeDropFractionForPosture(EyePosture::Sitting), 0.455f, 1e-4f);
+    EXPECT_GT(eyeDropFractionForPosture(EyePosture::Sitting), 0.0f)
+        << "sitting must LOWER the eye";
+
+    // *** CROUCHING AND LYING ARE UNMEASURED *** and deliberately reuse the
+    // sit drop rather than carry invented constants. This test states that
+    // out loud so the reuse is found on purpose rather than mistaken for a
+    // measurement. Both are outstanding follow-ups; a prone eye in particular
+    // is certainly lower than a seated one.
+    EXPECT_FLOAT_EQ(eyeDropFractionForPosture(EyePosture::Crouching),
+                    eyeDropFractionForPosture(EyePosture::Sitting));
+    EXPECT_FLOAT_EQ(eyeDropFractionForPosture(EyePosture::Lying),
+                    eyeDropFractionForPosture(EyePosture::Sitting));
+}
+
+TEST(FirstPersonEyePosture, SitDropIsAboutThreeAndAHalfUnitsForAHumanSizedBody) {
+    // Leg A reports the sit drop as 3.6 units. Scaling the measured FRACTION
+    // by this mesh's own crown-to-feet span (6.67 for a Human male) gives
+    // 3.04, not 3.6 -- the same frame disagreement as the 0.925 cross-check,
+    // and for the same reason (Leg A's H implies 7.9). The fraction is what
+    // is applied, because it is the frame-independent form Leg A itself
+    // recommended keying off. This test pins the resulting magnitude so the
+    // discrepancy stays visible and bounded rather than growing unnoticed.
+    const float humanMaleMeshHeight = 6.67f;
+    const float drop = EQT::Graphics::kSitEyeDropFractionOfHeight * humanMaleMeshHeight;
+    EXPECT_NEAR(drop, 3.04f, 0.10f);
+    EXPECT_LT(std::fabs(drop - 3.6f), 0.7f)
+        << "the applied sit drop has diverged from Leg A's reported 3.6 units "
+           "by more than the known frame disagreement explains";
+}
+
 TEST_F(ShippedMeshEyeTest, TheEyeMovesTheOwnHeadInsideTheNearPlane) {
     // THE PREDICTED MECHANISM, measured. T301's hypothesis is that with the
     // eye inside the head the player's own head falls within the ORDINARY
@@ -526,28 +647,42 @@ TEST_F(ShippedMeshEyeTest, TheEyeMovesTheOwnHeadInsideTheNearPlane) {
     EXPECT_GE(covered, 20);
 }
 
-TEST_F(ShippedMeshEyeTest, TheDownFrustumHoldsLessOwnBodyThanWithTheCrownEye) {
-    // What can honestly be said headlessly about "does the player see his own
-    // body at max down-pitch", and what cannot.
+TEST_F(ShippedMeshEyeTest, NoClampCanEmptyTheDownFrustumOfTheOwnBody) {
+    // *** THIS TEST PINS A REFUTATION, NOT A FIX. ***
     //
-    // CANNOT: anything involving the look DIRECTION. Deciding whether a vertex
-    // is inside the frustum needs the camera's forward axis, and T300 Leg B's
-    // per-race entry-angle table died on exactly that -- live vs headless was
-    // 26.5 vs 39.5 for a Human male and 60.6 vs 0 for a Troll, THE ERROR
-    // CHANGING SIGN BETWEEN RACES. That table is struck (see
-    // tests/test_inventory_model_view.cpp) and is not rebuilt here.
+    // It began life asserting that the corrected eye puts LESS of the player's
+    // own body into the clamped frustum's vertical band than the crown eye
+    // did. T301 Leg A made that the wrong figure of merit: the measured clamp
+    // is 94.9 degrees, roughly 5 PAST THE NADIR, and Leg A's control run -- an
+    // identical Human-male model teleported onto the actor's own coordinates,
+    // at that same clamp -- fills 17.8% of the frame with shoulders, arms,
+    // hands, belt and hair. THE FRUSTUM CONTAINS THE BODY. THE OFFICIAL CLIENT
+    // SIMPLY DOES NOT DRAW IT.
     //
-    // CAN: the DEPRESSION ANGLE below horizontal, which needs only the up
-    // axis and is therefore heading-independent. Counting the own-body
-    // vertices whose depression falls in the clamped frustum's vertical band
-    // over ALL headings is an upper bound on what any heading could show. It
-    // is a direction-of-improvement measurement and it is reported as one.
+    // So band occupancy no longer measures anything about hiding, and
+    // asserting it monotonically improves was asserting noise (the Iksar male
+    // moved by 3 vertices out of ~1000 when the eye was re-solved to Leg A's
+    // spec, and "fixing" that would have meant tuning to a dead metric).
+    //
+    // What IS worth pinning is the refutation itself: NO CLAMP VALUE CAN EMPTY
+    // THIS BAND, because from any eye inside the head the body spans
+    // depression angles from near 0 (the hands) to near 90 (the feet). If a
+    // future unit pulls the clamp back under 90 and claims that hides the
+    // body, this test is what says otherwise.
+    //
+    // The per-race counts are REPORTED for the draw-rule leg, which is where
+    // the real mechanism is being measured. Nothing here rasterizes.
     const float kNear = EQT::Graphics::kWorldNearPlaneUnits;
     const float clamp = EQT::Graphics::kFirstPersonMaxDownPitchDegrees;
     const float halfV = EQT::Graphics::firstPersonVerticalFovRadians(4.0f / 3.0f) *
                         0.5f * 180.0f / 3.14159265358979323846f;
     const float lo = clamp - halfV;
     const float hi = clamp + halfV;
+
+    ASSERT_GT(clamp, 90.0f)
+        << "Leg A measured the clamp past the nadir; if this ever drops back "
+           "under 90 the comment above needs rereading before the number is "
+           "changed";
 
     int covered = 0;
     std::printf("\nband %.1f..%.1f deg below horizon; own-body vertices beyond "
@@ -575,21 +710,14 @@ TEST_F(ShippedMeshEyeTest, TheDownFrustumHoldsLessOwnBodyThanWithTheCrownEye) {
         const int headBand = inBand(d.eyeModelX, d.eyeModelY, d.eyeModelZ);
         std::printf("%-20s %10d %10d\n", rc.label, crownBand, headBand);
 
-        EXPECT_LE(headBand, crownBand)
-            << rc.label << ": the corrected eye put MORE of the body into the "
-                           "down-frustum band than the crown eye did";
+        EXPECT_GT(headBand, 0)
+            << rc.label << ": the down-frustum band came out EMPTY, which "
+                           "would mean the clamp alone hides the body. Leg A's "
+                           "control measured 17.8% of the frame filled with it "
+                           "at this clamp -- check the measurement before "
+                           "believing this.";
     }
     EXPECT_GE(covered, 20);
-
-    // *** AND THE PART THAT DOES NOT PASS, STATED RATHER THAN HIDDEN: the
-    // counts above are NOT zero. A clamp alone cannot empty this band --
-    // the body spans depression angles from near 0 (the hands) to near 90
-    // (the feet) from ANY eye inside the head, so for every clamp value some
-    // part of the body lies in [clamp - vFOV/2, clamp + vFOV/2]. Whether it
-    // is actually ON SCREEN depends on the azimuth, which is the axis
-    // question above and is LIVE-ONLY. T301 Leg A is measuring whether the
-    // official client shows a sliver at its own max down-pitch; Leg E judges
-    // fable's. Do not assert zero here -- it would be a false pass.
 }
 
 #endif  // EQT_HAS_GRAPHICS

@@ -2493,7 +2493,14 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
     camera_->setNearValue(kWorldNearPlaneUnits);
     camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
                                 : kWorldVerticalFovRadians);
-    if (firstPerson) applyFirstPersonPitchClamp();
+    if (firstPerson) {
+        applyFirstPersonPitchClamp();
+    } else {
+        // Leaving first person must put the up vector back, or third person
+        // inherits whatever roll the last first-person pitch left behind --
+        // the visual gate's goldens are third-person renders.
+        camera_->setUpVector(irr::core::vector3df(0.0f, 1.0f, 0.0f));
+    }
     LOG_DEBUG(MOD_GRAPHICS,
               "[FP-PROJ] firstPerson={} near={:.3f} fovY={:.4f}rad aspect={:.4f}",
               firstPerson, camera_->getNearValue(), camera_->getFOV(),
@@ -2560,6 +2567,9 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
 
     camera_->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
     camera_->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
+    // REQUIRED, not cosmetic: Leg A's measured 94.9-degree clamp reaches past
+    // the nadir, where the default (0,1,0) up vector degenerates and flips.
+    camera_->setUpVector(irr::core::vector3df(placement.upX, placement.upY, placement.upZ));
 
     // T295: DEBUG, not INFO -- this now runs on every frame in which the
     // player moves, turns or looks. The FP-CAMERA tag is the evidence

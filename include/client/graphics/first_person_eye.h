@@ -12,7 +12,9 @@
  *   - the player's own face sits FORWARD OF and BELOW that point (51 deg
  *     depression for a Human male) and so is inside any plausible frustum;
  *   - the run cycle lifts the ANIMATED head ABOVE the STATIC crown, so the
- *     head bobs through frame at LEVEL pitch.
+ *     head bobs through frame at LEVEL pitch. (T301 Leg A later measured that
+ *     the OFFICIAL client has this same theoretical bob and does not care,
+ *     because it never draws the body at all -- see kFirstPersonEyeSource.)
  *
  * THE ANCHOR (established from the shipped client tree, not assumed). Every
  * playable skeleton names its head bone `<modelCode>he...`:
@@ -59,6 +61,7 @@
  */
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -66,71 +69,160 @@ namespace EQT {
 namespace Graphics {
 
 // -------------------------------------------------------------------------
-// T301 LEG A LANDS AS THESE THREE NUMBERS. They are the whole interface
-// between Leg A's measurement of the official client and this code: setting
-// them is the change, and no formula has to move.
+// T301 LEG A'S MEASUREMENTS, against the official Titanium client, two-client
+// protocol (Testchar as actor, a second Human male as observer twin;
+// feet-ladder fit residuals rms 0.19 px over 8 rungs). These are measured
+// values, not the interim placeholders this leg first shipped, except where
+// a comment says otherwise.
 // -------------------------------------------------------------------------
 
-// Where the eye sits up the skull, as a fraction from the underside of the
-// skull (chin/jaw line) to the crown. 0.0 = chin, 1.0 = crown.
-//
-// *** INTERIM. T301 Leg A measures the official client's eye as a fraction
-// of the model's own standing height and this is where that lands. *** 0.55
-// is the human-anatomy midpoint (the eye line sits at about half of
-// crown-to-chin) and it is NOT a measurement. Cross-check that it is not
-// absurd: for a Human male it yields model Z 3.04, which is 0.63 below the
-// crown the old code used and within 0.06 of the 3.10 T76's HEAD-bone
-// preference produced by an unrelated route.
-constexpr float kEyeHeightFractionOfSkull = 0.55f;
+// MEASURED: the eye sits at 0.925 +/- 0.004 of the model's own standing
+// height. Leg A's advice is to key off a fraction rather than an absolute,
+// because it does not depend on the frame "height" is measured in.
+constexpr float kEyeHeightFractionOfStandingHeight = 0.925f;
 
-// Extra forward offset along the LOOK RAY, in EQ units, on top of the head
-// cluster's own forward position. *** INTERIM: 0.0 until Leg A reports. ***
-// T298 measured the official eye's forward offset from the player's XY as
-// 0.00 +/- 0.4, and the head cluster already carries each race's real forward
-// position (a Human male's head centroid is 0.17 BEHIND the origin; an Iksar's
-// is 0.84 ahead, a Froglok's 1.48 -- those are hunched models, not errors).
-// This constant is only for a residual Leg A finds on top of that.
-constexpr float kEyeForwardOffsetUnits = 0.0f;
+// MEASURED: the crown sits 0.60 above the eye -- and 0.75 BEHIND it. The
+// bbox-crown placement T300 shipped was therefore wrong in BOTH axes, not
+// just in height.
+//
+// *** THE SKULL FRACTION IS KEYED TO THIS, NOT TO 0.925 H. *** The two
+// disagree: 0.925 H puts a Human male's eye at model Z 3.17, crown - 0.60
+// puts it at 3.07. The difference is the FRAME. fable stands the model
+// CENTRED on the server z and the official client stands it FEET-ON-z -- a
+// ~3-unit disagreement about the model's placement (T300; see
+// getPlayerFirstPersonEyeOffset()) -- so "standing height" does not name the
+// same span in the two clients. Leg A's own figures show the seam: the sit
+// drop is 0.925 - 0.47 = 0.455 of H, reported as 3.6 units, which implies
+// H = 7.9 where this mesh's own crown-to-feet span is 6.67.
+//
+// crown-minus-eye is measured INSIDE the head and is immune to that question,
+// so it is what the fraction is solved against. 0.925 H is asserted as a
+// per-race CROSS-CHECK instead, with the disagreement reported rather than
+// averaged away (tests/test_first_person_eye_anatomy.cpp).
+constexpr float kCrownAboveEyeUnits = 0.60f;
 
-// THE DOWN-PITCH CLAMP. A SEPARATE, NAMED, MEASURED CONSTANT.
+// Where the eye sits up the skull: a fraction from the underside of the skull
+// (chin/jaw line) to the crown. Solved so a Human male's eye lands at
+// crown - kCrownAboveEyeUnits. Every other race's value then follows from ITS
+// OWN head cluster, so this stays ONE global constant and never a table.
+constexpr float kEyeHeightFractionOfSkull = 0.574f;
+
+// MEASURED: the eye sits +0.9 +/- 0.25 units FORWARD of the model's own
+// vertical axis (about 0.11 H).
 //
-// *** DO NOT RE-DERIVE THIS FROM THE FOV. *** T300 shipped
-// `90 - vFOV/2` and T301 REFUTED it: that expression is by construction the
-// angle at which the frustum's LOWER EDGE REACHES THE NADIR, so it is the
-// condition that ADMITS the cone of directions the body occupies, not one
-// that excludes it. It agreed with Leg A's 55-75 bracket by coincidence and
-// was adopted without checking which side of the inequality it fell on. Its
-// claimed race-invariance is false as well: the angle from a crown-mounted
-// eye to the nearest own geometry was ~27 deg for a Human male and ~61 deg
-// for a Troll, because that angle is a property of mesh PROPORTIONS.
+// *** THIS DISAGREES WITH T298's 0.00 +/- 0.4 AT ABOUT 1.9 SIGMA, and the
+// rotation-parallax test that would settle it could not be run. *** Leg A's
+// instruction was to treat the forward offset as a RANGE, 0 to 1.0, and pick
+// the value that keeps the face out of frame.
 //
-// *** INTERIM: 65.0, the centre of T300 Leg A's 55-75 bracket. T301 Leg A
-// measures the clamp itself and this is where that number lands. ***
-constexpr float kFirstPersonMaxDownPitchDegrees = 65.0f;
+// 1.0 IS THE TOP OF THAT RANGE AND IS CHOSEN DELIBERATELY, FOR THAT REASON.
+// Moving the eye forward carries it toward and then through the face plane,
+// so the further forward it sits the more of the player's own face falls
+// BEHIND the camera, where it cannot be drawn at all. The failure being
+// avoided -- review/T300/T300_C_12, a screenshot of the player's own face --
+// is caused by an eye too far BACK, so the far end of the range is the safe
+// end and the near end (0.0, T298's value) reintroduces the risk.
+//
+// Applied along the LOOK RAY, on top of the head cluster's own forward
+// position, so it needs no knowledge of any mesh's baked axes -- the trap
+// that broke T300 Leg B's per-race table. For a Human male the head centroid
+// is 0.17 BEHIND the origin, so the total is +0.83 from the vertical axis:
+// inside Leg A's range, within 0.07 of its central +0.9. Hunched races carry
+// their own anatomy on top (Iksar +0.84, Froglok +1.48).
+constexpr float kEyeForwardOffsetUnits = 1.0f;
 
 // -------------------------------------------------------------------------
-// THE ANIMATION-FOLLOW SWITCH -- the unit's central design decision, made
-// once, here, and reversible by one bool.
-//
-// TRUE  = the eye rides the head bone's CURRENT animated transform. The eye
-//         is inside the skull in every frame of every animation BY
-//         CONSTRUCTION, so the head can never bob through the camera: the
-//         defect is closed structurally rather than tuned away.
-// FALSE = the eye rides the head bone's REST transform. Rock steady, but the
-//         run cycle then lifts the animated head past a fixed eye -- which is
-//         exactly the T300_C_20/21 defect, merely moved 0.6 units down.
-//
-// NOTE WHAT IS *NOT* FOLLOWED: only the head bone's POSITION is taken. Its
-// ORIENTATION is discarded, so the look direction stays entirely under the
-// mouse and the run cycle's head yaw/roll never shakes the view. That is the
-// distinction between "view bob" (which the official client has) and "the
-// camera is parented to the skull" (which would be unplayable).
-//
-// T301 Leg A Q3 measures what the official client does. If it reports a
-// rest-pose eye, flip this to false -- both branches are implemented and
-// tested; nothing else moves.
+// THE DOWN-PITCH CLAMP -- MEASURED, AND IT IS NOT THE HIDING MECHANISM.
 // -------------------------------------------------------------------------
-constexpr bool kFirstPersonEyeFollowsAnimation = true;
+//
+// MEASURED: 94.9 +/- 0.5 degrees below horizontal -- about 5 degrees PAST THE
+// NADIR -- and verified genuinely clamped (4 further seconds of input changed
+// 0.08% of pixels). T300's 55-75 bracket is REFUTED, and so is its
+// `90 - vFOV/2` derivation (that expression is by construction the angle at
+// which the frustum's lower edge reaches the nadir, so it is the condition
+// that ADMITS the body's cone of directions, not one that excludes it).
+//
+// *** A CLAMP THAT REACHES PAST VERTICAL CANNOT BE WHAT HIDES THE BODY. ***
+// This leg's own headless measurement had already said so: no clamp value can
+// empty the down-frustum band, because from any eye inside the head the body
+// spans depression angles from near 0 (the hands) to near 90 (the feet). For
+// a Human male, hiding the shoulders needs C > 49.1 and hiding the feet needs
+// C < 48.4 -- the interval is EMPTY by about 0.7 degrees. Leg A's control
+// settles it: an identical Human-male model teleported onto the actor's own
+// coordinates, at the same clamp, fills 17.8% of the frame with shoulders,
+// arms, hands, belt and hair. THE FRUSTUM CONTAINS THE BODY; THE CLIENT
+// SIMPLY DOES NOT DRAW IT.
+//
+// The draw rule is a SEPARATE LEG's measurement and is deliberately NOT
+// implemented here. The hiding seam stays exactly where T300 put it -- this
+// constant and IrrlichtRenderer::applyFirstPersonPitchClamp() -- so swapping
+// the mechanism stays two function bodies. But do not mistake this clamp for
+// the mechanism any longer: it is a control-feel limit now.
+//
+// CONSEQUENCE FOR THE CAMERA, AND IT IS NOT OPTIONAL: 94.9 passes straight
+// down, where a look-at camera's default (0,1,0) up vector degenerates and
+// then flips through the nadir. The camera formula therefore computes an
+// EXPLICIT up vector -- see FirstPersonCameraPlacement in
+// first_person_camera.h. Without it this measured value cannot be used at all.
+constexpr float kFirstPersonMaxDownPitchDegrees = 94.9f;
+
+// -------------------------------------------------------------------------
+// WHERE THE EYE'S POSE COMES FROM -- the unit's central design decision,
+// settled by Leg A's Q3 MEASUREMENT rather than by argument.
+//
+// The actor pinned against a wall holding forward produced ONE distinct
+// rendered frame in 12 seconds, with ZERO pixel change in his own view, while
+// the observing client watched his crown oscillate between rows 372 and 389
+// over about 10 gait cycles -- a 0.16-unit head bob. The official eye
+// therefore does NOT follow the skeleton. But it IS posture-aware: sitting
+// drops it 3.6 units, to 0.47 H.
+//
+// That is a THIRD option, and it is what fable now implements.
+//
+// AnimatedPose -- this leg's first choice, argued from "an eye inside the
+// skull cannot be bobbed through" -- is REFUTED. Do not restore it on that
+// argument: the official client accepts the theoretical bob-through and
+// simply never draws the body, which makes the argument moot. RestPose is
+// stable but ignores posture and so cannot reproduce the sit drop.
+// -------------------------------------------------------------------------
+enum class EyePoseSource : uint8_t {
+    RestPose = 0,        // bind pose only; posture ignored
+    PostureDriven = 1,   // bind pose + a per-posture offset  <-- MEASURED
+    AnimatedPose = 2,    // rides the animated skeleton; REFUTED by Leg A Q3
+};
+constexpr EyePoseSource kFirstPersonEyeSource = EyePoseSource::PostureDriven;
+
+// The DISCRETE posture states the eye is driven from. These mirror
+// EntityVisual::PoseState / eqt::state::EntityPoseState, which arrive on
+// SpawnAppearance and are deliberately never touched by movement updates --
+// exactly the "discrete posture state, never the animated pose" Leg A's
+// measurement calls for.
+enum class EyePosture : uint8_t {
+    Standing = 0,
+    Sitting = 1,
+    Crouching = 2,
+    Lying = 3,
+};
+
+// MEASURED: sitting drops the eye from 0.925 H to 0.47 H.
+constexpr float kSitEyeDropFractionOfHeight =
+    kEyeHeightFractionOfStandingHeight - 0.47f;   // 0.455
+
+// *** CROUCHING AND LYING ARE UNMEASURED. *** Leg A measured standing and
+// sitting only. Rather than invent two numbers, both take the SIT drop: it is
+// the only measured non-standing value, it is in the right direction, and an
+// honest reuse is far easier to find later than a fabricated constant that
+// reads as measured. Measuring these is an outstanding follow-up -- a prone
+// eye in particular is certainly lower than a seated one.
+inline float eyeDropFractionForPosture(EyePosture posture) {
+    switch (posture) {
+        case EyePosture::Standing:  return 0.0f;
+        case EyePosture::Sitting:   return kSitEyeDropFractionOfHeight;
+        case EyePosture::Crouching: return kSitEyeDropFractionOfHeight;  // UNMEASURED
+        case EyePosture::Lying:     return kSitEyeDropFractionOfHeight;  // UNMEASURED
+    }
+    return 0.0f;
+}
 
 // -------------------------------------------------------------------------
 // Head-bone name resolution.

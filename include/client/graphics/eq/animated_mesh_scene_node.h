@@ -215,8 +215,12 @@ public:
     // crown of the skull and was what put the camera on top of the head
     // (see include/client/graphics/first_person_eye.h). Returns false when
     // the model has no head anchor, in which case the caller must fall back.
-    // Whether the eye follows the animation is kFirstPersonEyeFollowsAnimation.
-    bool getFirstPersonEyeOffset(irr::core::vector3df& outOffset) const;
+    // The pose the eye is taken in is kFirstPersonEyeSource; T301 Leg A
+    // measured the official client as POSTURE-DRIVEN (not skeleton-following,
+    // but not posture-blind either -- sitting drops the eye 3.6 units), so
+    // the caller passes the entity's DISCRETE posture, never its animation.
+    bool getFirstPersonEyeOffset(irr::core::vector3df& outOffset,
+                                 EyePosture posture = EyePosture::Standing) const;
 
     // Find hand bone indices (convenience method for spell effects)
     // Returns -1 if hand bone not found
