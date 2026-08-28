@@ -18,6 +18,296 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+## ⚠ THE ONE CLASS-A LIST (T302, 2026-08-28) — RANKED BY SEVERITY. START HERE.
+
+**This replaces the numbered list under "AUDIT 2026-08-27" as the class-A queue.**
+Those numbers meant "found on 2026-08-27, not previously on this board" — a
+provenance fact, not a severity one — and the consequence was that the worst open
+defect in the tree (`bridgeQueue_`) carried no number while twelve less severe ones
+did, and sat mis-filed as a class-C *decision* for two weeks when it needs no
+decision at all. The audit's numbering is kept below as provenance; the ranking is
+here. **The historical entries stay where they are and are cross-referenced from
+each line — nothing was deleted.**
+
+**Ranking criterion**, so the next reader can apply it rather than guess:
+
+| tier | what qualifies |
+|---|---|
+| **1** | can corrupt memory or destroy data — wrongness that is not confined to the wrong answer |
+| **2** | a live, user-reachable path gives the wrong answer, silently does nothing, or looks wrong |
+| **3** | implemented but unreachable / dead — no user impact today, real trap for the next reader |
+| **4** | process and bookkeeping — unaudited work, doc debt, stale trackers |
+
+Within a tier, ordered by breadth of blast radius. **Every entry below was
+re-verified against the tree at `4dd8b0bc` on 2026-08-28** — the two entries that
+turned out already closed are struck at the end of this section with their commits.
+
+### TIER 1 — memory corruption
+
+1. **`bridgeQueue_` is an unsynchronised `std::vector` written on the render thread
+   and swap-drained on the game thread.** Pushes at
+   `src/client/graphics/irrlicht_renderer.cpp:305-351` (render thread, decoded
+   hotkey actions); drained by `drainBridgeActions()`
+   (`include/client/graphics/irrlicht_renderer.h:387`, a `swap`) from
+   `GraphicsInputHandler::update()` (`src/client/input/graphics_input_handler.cpp:86`)
+   on the game thread. A reallocating `push_back` racing the swap is **heap
+   corruption**, not a wrong value.
+   *Impact:* a real keyboard session can corrupt the heap; `--script` runs inject no
+   Irrlicht input, which is why TSAN has never seen it.
+   **EXECUTOR-READY.** Ownership is already settled by the architecture (render
+   decodes, game executes) — it needs the queue behind the mutex `GameStateBridge`
+   already has, or a real SPSC queue. It was filed class C ("thread-ownership
+   decision"); that decision was about *chat key events*, which T241 already
+   resolved by making them render-thread-only. Historical entries: the T225 bullet
+   and the 2026-08-26 correction bullet in the STATUS block above.
+
+2. **Same receiver, same shape, same unit: the mouse-delta two-word RMW and the key
+   arrays.** `getMouseDeltaX/Y()` (`include/client/graphics/irrlicht_renderer.h:369`)
+   is a read-and-reset of two words touched by both threads;
+   `keyIsDown_[]` / `keyWasPressed_[]` (`:436-437`) likewise.
+   *Impact:* dropped or doubled mouse-look deltas and stuck/lost keys under real
+   input. Scalar races, not corruption — but they live in the same object as (1) and
+   should not be a second unit. **EXECUTOR-READY.**
+
+### TIER 2 — live, user-reachable wrongness
+
+3. **CRC validation is disabled on EVERY zone connect** —
+   `src/client/eq.cpp:718`, `zone_opts.skip_crc_validation = true;  // TODO: Remove
+   after CRC bug is fixed`.
+   *Impact:* every corrupted or truncated zone-stream packet is accepted and parsed
+   as if valid, for the whole session. This is the widest live correctness hole in
+   the client.
+   **EXECUTOR-READY to root-cause**; the flip itself is blocked on finding the
+   underlying CRC bug, which nothing on this board describes. Audit provenance: #2.
+
+4. **UCS / chat server NEVER CONNECTS** — `src/client/eq_login_world.cpp:833-834`:
+   `// TODO: Fix UCS implementation to use correct EQStream API` with
+   `ConnectToUCS(...)` commented out inside the live `WorldProcessSetChatServer`
+   handler, which does parse and store host/port/mail key.
+   *Impact:* the entire cross-zone chat feature (tells across zones, mail, global
+   channels) is dead in every session.
+   **EXECUTOR-READY** — `refactor/T297_cross_zone_chat_verify.md` is written.
+   Audit provenance: #1.
+
+5. **Group spells target by PROXIMITY, not group membership** —
+   `src/client/spell/spell_type_processor.cpp:246` (`// TODO: When group system is
+   implemented...`) and `:278` (`// TODO: Check if actually in group`). The loop
+   takes every non-corpse player entity inside `range`.
+   *Impact:* a group heal or buff lands on strangers standing nearby and misses group
+   mates who are out of range. Wrong on both sides. **EXECUTOR-READY** — the group
+   domain exists in `GameState` (T286 swept it). Audit provenance: #9.
+
+6. **Guild rank is HARDCODED on the wire** — `src/client/eq_guild.cpp:54`
+   (`invite.officer = 2;  // TODO: Use actual rank`) and `:105`
+   (`remove.leaderstatus = 2;`), reached from `/guildinvite` and `/guildremove`.
+   *Impact:* both commands claim officer/leader status the player may not have; the
+   server's answer is whatever it makes of the lie. **EXECUTOR-READY.**
+   Audit provenance: #6.
+
+7. **Skill combat/position gates are unenforced** —
+   `src/client/skill/skill_manager.cpp:273` (`requires_combat`: `// TODO: Check if in
+   combat`), `:284` (`requires_behind`: no check), `:734`
+   (`checkCombatRequirement()` substitutes "has a target" for "in combat"), `:758`
+   (`checkPositionRequirement()` unconditionally `return true`).
+   *Impact:* Backstab's behind-the-target requirement is never checked client-side, so
+   the client sends attempts the server refuses. T159 already removed the *lying*
+   refusal message; the gate itself is still absent. **EXECUTOR-READY**, and the
+   comment at `:277-283` says explicitly that both sides go back in together.
+   Audit provenance: #8.
+
+8. **SPA 89 (shrink/grow) AND SPA 58 (illusion) are decoded, dispatched, and then
+   dropped.** `SpellEffects::handleIllusion()` / `handleShrink()` / `handleGrow()`
+   (`src/client/spell/spell_effects.cpp:877-891`) are one `LOG_DEBUG` each and write
+   nothing; all three are really dispatched (`:395`, `:403`, `:406`). `serverSize` is
+   consumed only at entity creation and there is no size-update path anywhere in
+   `src/`.
+   *Impact:* a shrink, a grow or an illusion has **no visible effect in fable**, on
+   the player or on any NPC. **NEW IN T302: illusion is the same defect at the same
+   site and was not on the board** — only shrink/grow was. **EXECUTOR-READY**, one
+   unit for all three. Historical entry: the T300 Leg B section below.
+
+9. **`collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance** —
+   `src/client/graphics/entity_renderer.cpp:602`,
+   `visual.collisionZOffset = (bboxHeight / 2.0f) * scale;`. For a Human male that is
+   3.35 against the mesh's real 3.05.
+   *Impact:* every entity in the world stands **0.30 units above its own collision
+   ground**, and the first-person eye sits ~7.00 above ground where the official
+   client measures 6.65-6.75. **EXECUTOR-READY** but it moves every entity, so it
+   needs its own unit and a golden re-bless conversation. Historical entry: the T300
+   Leg B section below.
+
+10. **The autorun key is a live no-op** — `EqActionHandler::toggleAutorun()`
+    (`src/client/eq_action_handler.cpp:139-142`) is a `LOG_DEBUG`. The path is fully
+    live: three default bindings (`src/client/input/hotkey_manager.cpp:472-474`:
+    Grave, Numpad+, NumLock) -> `bridgeQueue_` -> `GraphicsInputHandler`
+    (`graphics_input_handler.cpp:116`) -> `InputActionBridge`
+    (`input_action_bridge.cpp:70-72`) -> `ActionDispatcher::toggleAutorun()`
+    (`action_dispatcher.cpp:119-123`) -> the stub. Console input reaches it too
+    (`console_input_handler.cpp:336`).
+    *Impact:* three keys a player will actually press do nothing and report success.
+    **EXECUTOR-READY.** Audit provenance: #3.
+
+11. **`/mem <name>` partial-name search is exact-match only** —
+    `SpellDatabase::findSpellsByName()`
+    (`src/client/spell/spell_database.cpp:174-186`) forwards to `getSpellByName()`
+    and returns 0 or 1 result; `// TODO: Add a LIKE query to WilleqDatabase`.
+    *Impact:* memorising by partial name fails unless the player types the spell name
+    exactly. **EXECUTOR-READY.** Audit provenance: #7.
+
+12. **NO SCROLL INPUT EXISTS ANYWHERE IN THE STATIC UI.** Three panels carry a
+    `scrollOffset` that render and hit-test both honour —
+    chat (`include/client/graphics/ui/static_panels.h:67`), skills (`:340`), loot
+    (`:386`, with a `maxScrollOffset()`) — and **nothing but a clamp or a reset ever
+    writes one**: `static_panels.cpp:169-170` (clamp), `loot_panel.cpp:192` (reset to
+    0), `:233` (clamp). `StaticUIInput` has no wheel handler at all, and no
+    PageUp/PageDown binding exists (`hotkey_manager.cpp:457` binds `KEY_NEXT` to
+    StrafeRight).
+    *Impact:* chat scrollback, the skills window and the loot panel are all
+    permanently pinned to their first page; a corpse with more items than fit is
+    partly unlootable from the panel. **EXECUTOR-READY.**
+    **NEW IN T302 — this is broader than what was on the board.** The board carried
+    only "loot panel mouse-wheel plumbing, owed by T290"; the same gap covers chat and
+    skills, and the fix is one input path, not three. Historical entry: the T290
+    bullet in the F-list of the AUDIT section below.
+
+13. **`ReplyToTell` keybind returns a sentinel and does nothing** —
+    `ActionDispatcher::openReplyToTell()`
+    (`src/client/action/action_dispatcher.cpp:684-692`) returns
+    `ActionResult::Success("open_reply")` with a `// TODO: Implement when ChatState is
+    added to GameState`.
+    *Impact:* the reply-to-tell key reports success and opens nothing.
+    **EXECUTOR-READY** — but note the comment's premise is stale: `GameState` is now
+    the single store (T288) and the last-tell sender is what needs a home.
+    Audit provenance: #5.
+
+14. **`InteractWorldObject` keybind always fails** —
+    `ActionDispatcher::interactNearestWorldObject()`
+    (`src/client/action/action_dispatcher.cpp:518-526`) returns
+    `Failure("Use clickWorldObject with drop ID")`; `// TODO: Implement when
+    ObjectState is added to GameState`.
+    *Impact:* the interact key cannot open a forge, a chest or any ground container —
+    only the explicit drop-id path works, which no keybind reaches.
+    **EXECUTOR-READY**; the nearest-door sibling directly above it (`:509-516`) is the
+    working template. Audit provenance: #4.
+
+15. **Server-FORCED self position/pose changes have no non-sending internal setter.**
+    `EverQuest::SetPositionState()` (`src/client/eq_movement.cpp:1479-1532`) always
+    ends in a `SendSpawnAppearance(...)`, so a server-originated change cannot be
+    applied without echoing it back; and `ZoneProcessSpawnAppearance`'s `AT_DIE` arm
+    (`src/client/eq_entities.cpp:774-782`) publishes a death animation for any spawn
+    id and never touches self's `positionState`.
+    *Impact:* a stun, a GM-forced pose, or death by `AT_DIE` leaves the client's own
+    `PlayerState::positionState()` stale for the rest of the session.
+    **PARTLY BLOCKED ON WILL:** the setter is small and executor-ready, but what
+    `AT_DIE` for self means for `POS_DEAD` is a product question (T237 flagged exactly
+    this and deliberately did not answer it). Historical entry: the T234/T237 bullet
+    in the STATUS block above; reasoning in
+    `refactor/T237_movement_mode_source_write.md` under "Server echo".
+
+16. **First person renders the player's own body, at rest and while running, and
+    never shows the weapon.** The full failure table is the Leg C section at the top
+    of this file; the mechanism diagnosis is that the eye is at the static bbox crown
+    (`getPlayerEyeHeightAboveNodeOrigin()` returns a rest-pose constant) and that no
+    single down-pitch clamp can both hide the body and let a player look down.
+    *Impact:* the feature is unusable as shipped.
+    **BLOCKED ON WILL:** `refactor/T301_first_person_eye_placement.md` is written and
+    NOT dispatched, and Will judges the look on the live gate. Out of scope for T302;
+    listed here so it is counted, not re-planned.
+
+17. **fable has no UI-hide command.** No F10 equivalent exists; the chat box and
+    hotbar are opaque in every capture.
+    *Impact:* not a user-facing defect so much as a **gate blocker** — T300 Leg C
+    could not rule out a weapon sliver hidden under the UI, and every visual unit
+    since T63 has fought this. **EXECUTOR-READY**, small, and it unblocks every future
+    visual gate. Planned as T301 Leg D but independent of the first-person arc.
+
+18. **RDP remote input ignores caps lock** —
+    `src/client/graphics/renderer_rdp.cpp:159`,
+    `bool capsLock = false;  // TODO: track caps lock state`.
+    *Impact:* typing over RDP produces the wrong case whenever caps lock is on.
+    **EXECUTOR-READY**, tiny. Audit provenance: #12.
+
+### TIER 3 — implemented but unreachable
+
+19. **`GraphicalMode::initialize()` falls through to the console renderer for every
+    Irrlicht mode** — `src/client/mode/graphical_mode.cpp:36-45`: both
+    `IrrlichtSoftware` and `IrrlichtGPU` `[[fallthrough]]` into the default arm, which
+    constructs a `ConsoleRenderer` + `ConsoleInputHandler`. The mode IS constructed in
+    a real graphical run (`application.cpp:324`).
+    *Impact:* in a graphical run, the renderer `Application` hands the command
+    processor (`application.cpp:381-385`) is a **`ConsoleRenderer`**, not the
+    Irrlicht one. The real graphical renderer is owned by `Application` on a separate
+    path, so this is not a black screen — but every `IOutputRenderer` call the command
+    processor makes goes to stdout instead of the game UI, which is also why (20)
+    below has no consumer.
+    **EXECUTOR-READY** as a delete-or-wire decision; the honest framing is that
+    `GraphicalMode`'s renderer/input members are vestigial. Audit provenance: #10.
+
+20. **`IOutputRenderer::updateCurrentTargetHP` is caller-less.** Declared
+    `include/client/output/output_renderer.h:197`; implemented at
+    `src/client/output/console_renderer.cpp:311` and
+    `src/client/output/null_renderer.cpp:69`; the only other occurrence is a test
+    fixture (`tests/command_processor_test_fixture.h:70`). **Zero production callers**
+    — verified by grep over `src/`, `include/` and `tests/` at this tip.
+    *Impact:* none today; it is a trap for the next reader and the named gap T264's
+    reachability sweep did not cover. **EXECUTOR-READY** (delete, or wire it from the
+    HP-update path). Historical entries: the "Reachability state is clean" paragraph
+    and the "Not swept" bullet in the AUDIT section below.
+
+21. **`Application::setupHotbarCallback()` is empty and is still called twice at
+    startup** — body at `src/client/application.cpp:1883-1886` (`// WindowManager
+    removed — hotbar changed callback not wired`), called from `:1752` and `:1865`.
+    *Impact:* none today; the hotbar-changed callback is genuinely not wired, so a
+    hotbar mutation from the game side does not notify the renderer through this
+    route. **EXECUTOR-READY**: either delete both calls and the method, or wire it and
+    say which live gesture proves it. Audit provenance: #11.
+
+### TIER 4 — process and bookkeeping
+
+22. **Two unmerged branches are 300 commits ahead of `fable` and have never been
+    audited** — `task/eqcpp-zoneprocess-track-b-remaining` and
+    `task/eqemu-zone-line-transition-scenario`, both 300 commits ahead as measured at
+    this tip, both pre-dating the entire lettered programme. The 2026-08-11
+    unmerged-branch survey missed them. **EXECUTOR-READY** (a survey unit, same shape
+    as the 2026-08-11 one). Audit provenance: the "TWO UNMERGED BRANCHES" paragraph
+    below.
+
+23. **Doc debt:** `docker/CLAUDE.md` still documents
+    `scripts/build-arm-noble.sh --no-gles2` (retired by P32) and describes the Pi
+    target as Lima/Mesa desktop GL. **EXECUTOR-READY.**
+
+24. **The Index at "Index — open and recently-closed items" below is a snapshot at
+    `e70e3347` and is stale in one direction only** — it lists as OPEN at least nine
+    items later commits closed, and the 2026-08-27 audit found **zero** cases of it
+    claiming a fix the code lacks. It is kept (never delete a section) and already
+    carries a ⚠ banner. **Do not scope work off it. This list and the `## STATUS`
+    block are the queue of record.**
+
+### Verified ALREADY CLOSED while building this list — struck, kept in place
+
+- ~~`/target <substring>` returns the LOWEST spawn id, not the nearest match~~ —
+  **CLOSED by T244 `a6218d6f`** ("T244: cast refusals say why; /target prefers the
+  nearest match"). `EntityManager::findEntityByNameRanked()`
+  (`src/client/state/entity_manager.cpp:162-200`) tiers exact match ahead of
+  substring and breaks ties by distance when a position is supplied. The board entry
+  at the T240 bullet in the STATUS block is now struck in place.
+- ~~`Application::connectRendererCallbacks()` is UNREACHABLE — class A: delete~~ —
+  **CLOSED by T241**; the method and all 15 unreachable callback setters were
+  deleted. Only the tombstone comments survive
+  (`src/client/application.cpp:388-391`, `src/client/graphics/renderer_frame.cpp:829`).
+  The board entry at the T235 bullet in the STATUS block is now struck in place.
+
+### Adjacent, deliberately NOT in this list
+
+These are open but are not class A, and are recorded so nobody re-discovers them
+here: T149/T150 senders still wire-unverified (class B); the skills-window cap
+screenshot owed from the official client (Will's decision #4 — never ask him for a
+number); the S2 residue (`InitGraphics` renderer parameter, asset-loader namespace,
+`GetDebugLevel()` static), Z5.3 / P52 / `waitForFlipComplete()` perf residuals, and
+the UI-gesture-only reachability pattern (all class C, need a ruling or a design
+pass). T287 Part 2 (the Pi composite run) is scoped and awaits Will's go.
+
+
 ## ⚠ FIRST PERSON — THE LIVE GATE FAILED (T300 Leg C, 2026-08-27). THE CLAMP DOES NOT HIDE THE BODY.
 
 **Read this before the T300 Leg B section below, which it corrects.** Leg C rendered fable's new first person to a screen for the first time (every rendered frame captured, `--dump-frames-dir --dump-every 1`, mouse-look driven with xdotool through the real input path). Evidence: `refactor/T300_leg_c_live_gate.md`, `review/T300/T300_C_README.md`, `review/T300/video_C/`.
@@ -54,9 +344,9 @@ Review — read that before scoping the next unit off this file.
 
 **⚠ MEASURED IN LEG B AND IT DOES NOT AGREE — the first thing Leg C must check.** Sweeping down-pitch against real S3D meshes, fable's own RESTING body enters the frustum at: Human male 39.5 deg, Human female 35.5, Barbarian 41.0, Dwarf 8.5, Dark Elf f 35.75, **Troll and Iksar at 0 — in frame at LEVEL pitch**. All far short of the 65.40 clamp, i.e. taken at face value the clamp alone does NOT hide fable's body. Reported, not asserted, for two named reasons: the measurement assumes the baked player mesh's +Z is camera-forward at heading 0 (`setIsPlayerNode()` + rot 0 -> `RotY(-90)`, T298 §3) — derived, not confirmed against a live frame; and fable's models/anims/eye height (crown, not eye level) are not the official client's. **Concrete prediction for Leg C: at max down-pitch, does fable show the body?** If yes, candidates in order are eye height (crown vs eye level), that axis assumption, then the clamp angle.
 
-**⚠ CLASS-A DEFECT FOUND ON THE WAY: shrink/grow (SPA 89, `SpellEffect::ModelSize`) IS DECODED, DISPATCHED, AND THEN DROPPED.** `SpellEffects::handleShrink()` / `handleGrow()` (`src/client/spell/spell_effects.cpp:883-891`) are one `LOG_DEBUG` each and write nothing; `serverSize` is consumed only at entity creation and there is no size-update path anywhere in `src/`. A shrink or grow has **no visible effect in fable**, on the player or on any NPC. (The pitch clamp is immune either way — it has no size term — but the defect stands on its own.)
+**⚠ CLASS-A DEFECT FOUND ON THE WAY: shrink/grow (SPA 89, `SpellEffect::ModelSize`) IS DECODED, DISPATCHED, AND THEN DROPPED.** `SpellEffects::handleShrink()` / `handleGrow()` (`src/client/spell/spell_effects.cpp:883-891`) are one `LOG_DEBUG` each and write nothing; `serverSize` is consumed only at entity creation and there is no size-update path anywhere in `src/`. A shrink or grow has **no visible effect in fable**, on the player or on any NPC. (The pitch clamp is immune either way — it has no size term — but the defect stands on its own.) **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 8 -- and `handleIllusion()` (SPA 58) at `spell_effects.cpp:877` is the SAME defect at the same site, added there.]**
 
-**⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.** For a Human male that is 3.35 vs the mesh's real 3.05, so fable stands the player **0.30 units above** his own collision ground and the eye sits ~7.00 above ground where the official client measured 6.65-6.75. Not fixed here — it moves every entity in the world and belongs in its own unit.
+**⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.** For a Human male that is 3.35 vs the mesh's real 3.05, so fable stands the player **0.30 units above** his own collision ground and the eye sits ~7.00 above ground where the official client measured 6.65-6.75. Not fixed here — it moves every entity in the world and belongs in its own unit. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 9.]**
 
 **Headless tests cannot close this feature.** Nothing in the suite rasterizes; they pin the camera's numbers and the body's geometry, and cannot show that the body is clipped or that a swing is visible. T296 shipped a depth clear that was silently compiled out and every headless test still passed. **T300 Leg C (live video) WAS the gate and it FAILED — see the Leg C section at the top of this file. Will judges the look.**
 
@@ -93,7 +383,7 @@ Two shape decisions worth keeping: the player node is **withheld from the render
 
 A full audit of every batch plan answered the owner's question "were the partially completed refactors all closed?": **YES.** Batches A/B/C/D/E/F/G/H/L/Q/R/S/U/T are COMPLETE; only two threads are genuinely partial — **S2 residue** (3 items) and **Z5.3** (empty-draw measurement, `progress.md:276`). Batch E is done but UNTRACEABLE: `progress.md:48-72` marks every unit `done` with **blank commit columns**, and E01-E09 appear in ZERO commit subjects across 2242 searched — verified shipped by artifact instead (`eqe1_format.h`, `eqe1_loader.h`, `tools/eqe1_builder.cpp`, `--eqe1-path`).
 
-**NEWLY SURFACED CLASS-A DEFECTS (not previously on this board).** These are live paths, each with a file:line:
+**NEWLY SURFACED CLASS-A DEFECTS (not previously on this board).** These are live paths, each with a file:line. **⚠ T302 (2026-08-28): THIS NUMBERING IS PROVENANCE, NOT SEVERITY — an item earned a number by being NEW THAT DAY. The severity-ranked queue of record is "THE ONE CLASS-A LIST" at the top of this file; every item below was re-verified against `4dd8b0bc` and appears there under its rank, with its audit number cited as provenance. Do not scope work off the order below.**
 1. **UCS/chat server NEVER CONNECTS** — `eq_login_world.cpp:834` `// TODO: Fix UCS implementation to use correct EQStream API`, `ConnectToUCS(...)` commented out inside the live `WorldProcessSetChatServer` handler. The whole cross-zone chat feature is dead.
 2. **CRC validation disabled on EVERY zone connect** — `eq.cpp:718` `zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is fixed`.
 3. **Autorun key is a live no-op** — `eq_action_handler.cpp:142` (bound at `input_action_bridge.cpp:72`).
@@ -113,7 +403,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 
 - **⚠ PI HYGIENE (T289, 2026-08-26): the Pi's `/tmp/config` and `/tmp/data` were STALE** — old `race_models.json`, an Aug-23 `willeq.db`, and **no `data/eqe1_texture_index.json` at all**. A timed run against them would have measured a client with no T207 index and no late-open path, silently. **Re-stage config+data from the slot before ANY timed Pi run.**
 - **⚠ `CmaFree` reached 0 kB in all four T289 runs including the CONTROL legs** — the P02 EQE1/ETC1 CMA leak is real, unchanged and NOT composite-related. New fact: **`drop_caches` recovers CMA on this kernel** (11,184 kB after 4 days uptime → 69 MB), a reboot is not required.
-- **`bridgeQueue_` is a plumbing fix, NOT a decision** (corrected 2026-08-26): the chat-typing half (`pendingKeyEvents_`) was resolved by T241 (render-thread-only now). What remains is `bridgeQueue_` — decoded HOTKEY actions `push_back` on the render thread, `swap`-drained on the game thread by `GraphicsInputHandler`, no mutex; a reallocating push against the swap is heap corruption. Ownership is already settled by the architecture (render decodes, game executes); it just needs the queue behind the mutex `GameStateBridge` already has, or a real SPSC queue. Same for the two-word mouse-delta read and `keyWasPressed_[]`. Class A.
+- **`bridgeQueue_` is a plumbing fix, NOT a decision** (corrected 2026-08-26): the chat-typing half (`pendingKeyEvents_`) was resolved by T241 (render-thread-only now). What remains is `bridgeQueue_` — decoded HOTKEY actions `push_back` on the render thread, `swap`-drained on the game thread by `GraphicsInputHandler`, no mutex; a reallocating push against the swap is heap corruption. Ownership is already settled by the architecture (render decodes, game executes); it just needs the queue behind the mutex `GameStateBridge` already has, or a real SPSC queue. Same for the two-word mouse-delta read and `keyWasPressed_[]`. Class A. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file -- it is TIER 1 ITEM 1, the top of the whole queue: the only open item that can corrupt the heap rather than merely behave wrongly, and it needs no decision from Will.]**
 
 - **T286 `529a7df8` DUPLICATE-STORE SWEEP (2026-08-26): 107 duplicates found, 99 deleted, 8 justified** (+8 non-scalar: a shadow `std::array<GroupMember,6>`, a second `GroupMember` struct and `MAX_GROUP_MEMBERS`, `SyncGroupMemberToGameState()`, the pet button array, a THIRD store of the current target id, `SetCurrentTargetId()`, and `BankCoinPool()` which handed out a raw `uint32_t*` INTO a duplicate counter). `tests/test_duplicate_state_stores.cpp` pins the exception list both directions.
   **This was not a straggler hunt** -- T280/T283's `m_practice_points` and T271/T276's `m_class`/`m_level` were three samples of one population: every stat, currency/bank counter, the bind point, flags, vendor/banker/trainer/loot ids, zone-transition state, the whole group domain and the pet were all held twice under `// update both local members and GameState during migration`.
@@ -130,18 +420,18 @@ A full audit of every batch plan answered the owner's question "were the partial
   - ~~F6 Click off a buff~~ **CLOSED T277 `d43ac0bb`** (`/removebuff <slot|name>` + a real buff-bar hit-test -- there was NO hit-test at all, and the bar PACKS so the on-screen column never equalled the slot; live both directions twice). Wire truth: **Titanium has no `OP_BuffRemoveRequest`** (that is Underfoot+); it uses `OP_Buff` (0x6a53) and `Handle_OP_Buff` reads only `spellid`. A REFUSAL echoes our own bytes back, so `bufffade` must be 0 on the request or the echo replays as a fade and deletes a buff the server just refused. Titanium does not honour `no_remove`. **Two defects: (1) the consumer arm removed the buff LOCALLY and optimistically with `target_id 0` and sent nothing -- never executed because nothing produced the intent (the T272 class again). (2) THE BUFF BAR COULD NEVER FILL: eqemu only sends OP_Buff on a duration change or fade, and the PlayerProfile's 25 slots reached BuffManager and stopped -- nothing published `BuffUpdated`, so the bar was empty every session, always.** Fixed; the `OP_Action` mid-session-cast leg is reported, not fixed.
   - ~~F7 Manual tradeskill combine + close container~~ **CLOSED T278 `472d6863`** (`/combine [slot]`, `/closecontainer`; live: carried Forge produced Boots of Ro in the DB). **`/recipecombine` was NOT this feature** -- it is T149's AUTO-combine (OP_RecipeAutoCombine, server picks components); `SendTradeSkillCombine` and `SendCloseContainer` were reachable only from the two dead arms, exactly as T264 said. Third find: `InventoryManager::clearWorldContainerSlots()` had zero callers. **Bug fixed on the way: `ZoneProcessClearObject` read OP_ClearObject's first 4 bytes as a world-object `drop_id`, but the packet is `{uint8 Clear=1; uint8 Unknown[7]}` -- so the id was ALWAYS the literal 1 and any ground spawn with drop_id 1 was silently deleted.** ~~**OWED (T278): the client cannot PUT items into a world container~~ **CLOSED T282 `950339bb`** (live world combine: two components consumed, Boots of Ro produced). Server rules read off eqemu, and three of them are traps: with NO container open a put falls to `SwapItem` Step 5 where `CalcSlotId(4000)` is INVALID_INDEX -> **the item is DESTROYED and SwapItem still returns true with no packet back** (now refused client-side); taking an item OUT calls `DeleteItem(dst)` first, so an occupied destination is silently destroyed (refused); NO DROP is LEGAL in a world container (the client's refusal was invented -- removed); and `Object::HandleClick` sends contents with bag index 0-9 which untranslated IS equipment slots 0-9 -- an occupied forge would have overwritten charm/ears/head (remapped). Neither put nor take is confirmed by the server (both arms `return true` silently), so the model carries them locally -- flagged. **UNPLANNED DEFECT FIXED: `processItemPacket()` read the type at offset 0 and the item at offset 4, but the dispatcher passes an OPCODE-PREFIXED packet (its two siblings correctly skip 2+4). The stray `\0\0` landed on instance field 0 -- the STACK COUNT -- so every stacked item arriving as an OP_ItemPacket (looted stacks, vendor buys) silently became quantity 1.** Server-side, not fixed: `Object::Close()` leaves stale `object_contents` rows. Old note: -- `InventoryManager::isValidSlot()` rejects 4000-4009, so `/equip <from> 4000` never sends; the world form of /combine is correct on the wire but not usable from the client alone. Class A, next inventory unit.** Server-side note: eqemu empties a world container on first open by a new user (`ItemInstance::ClearByFlags` switch falls through) -- do not repeat the `object_contents` pre-fill experiment.
   - ~~F8 Train a skill at a trainer / close trainer~~ **CLOSED T280 `176bb944`** -- **ALL EIGHT ARE NOW CLOSED.** `/train <skill>`, `/train list`, `/trainclose`; live: skill 1 -> 2 -> 21, points 10 -> 9, copper 17 -> 7. Wire truth: Titanium has `OP_GMTraining/GMEndTraining/GMTrainSkill`; `OP_GMEndTrainingResponse` is COMMENTED OUT and `OP_GMTrainSkillConfirm` is ABSENT (gated on >= SoF). `GMSkillChange_Struct` is 12 bytes with a **uint16 npcid** -- eqemu's own per-field offset comments are all wrong. **The only reply Titanium gets is `OP_SkillUpdate`: `TakeMoneyFromPP(Cost)` defaults `update_client=false`, so the server deducts and saves the coin and NEVER TELLS THE CLIENT** (confirmed live -- copper moved in the DB, client money did not). Nothing is written locally; the test asserts the absence. Two defects fixed: the client quoted an INVENTED price `(current+1)*10` under a comment calling it "the EQ training cost formula" (eqemu is `(current-10)^3/100`; 510 vs 640 at skill 50), and the server's per-skill caps were read once and thrown away. ⚠ The caps in `GMTrainee_Struct` are MaxLevel caps, not the player's level caps, so `/train list` can show something the server then refuses (it answers politely) -- left as the server's job. ~~⚠ Practice points live in TWO stores~~ CLOSED T283 `ef05b11f` (`PlayerState::m_practicePoints` survives; `EverQuest::m_practice_points` had exactly ONE reader -- the OP_SkillUpdate spend gate -- while every user-visible reader already went through PlayerState). Old note: practice points lived in two stores (`EverQuest::m_practice_points`, `PlayerState::m_practicePoints`), both fed from the same PlayerProfile -- cannot drift in production, but a test seeding one gets a silently wrong answer. Class A tiny.
-  - ~~**LOOT PANEL is a genuine FEATURE REQUEST**~~ **BUILT T290 `cb96cd8e` (Will: REQUIRED).** Recovered from `0f25cb57^` (the pre-static-UI window, 1,030 lines) and ported to static panels in ~320: KEPT the open/close/add/remove state machine, the packed display-row -> corpse-slot indirection (the load-bearing part), the scrolled window and the Loot All/Close buttons; REWROTE the item container (renderer has no `ItemInstance`) and the 4x2 icon grid -> full-width name rows (no item-icon atlas exists in the static UI); DROPPED `WindowBase`, the draggable thumb, `DestroyAll` (no Titanium packet) and ~250 lines of pre-flight duplicating a refusal the server already sends. Live: panel shows the corpse's real name + 7 real items, `/loot <name>` removes exactly that row and the list re-packs, `/lootall` drains and the panel closes on the SERVER's event, DB restored to an empty diff. The three loot intents are DELISTED. **Found on the way: `StaticUIInput::processKey()` had NO production caller** -- the whole ESC-dismisses-a-popup handler was reached only from tests (T48 class); now wired into `renderer_frame.cpp`'s escape handling ahead of clear-target. **OWED (T290, class A): mouse-wheel plumbing does not exist in `StaticUIInput`, so `scrollOffset` is honoured by render and hit-test but nothing moves it** -- the one piece of the old window not restored. Also: the panel deliberately never self-closes (a local close would desync `CombatManager`'s LOOTING state). Old note: (T283 `ef05b11f`, correctly STOPped): there is no panel and no half of one.** `PopupType::Loot` is a bare enumerator; none of `static_panels.cpp`'s thirteen render functions is a loot popup; `static_ui_input.cpp` knows only `Inventory` + a generic Escape arm; **there is no renderer-side corpse-contents state at all** (it went with U07c3's `getWindowManager()` removal) and the four loot events reach `IrrlichtBridge` only to LOG_TRACE, discarding their payloads -- the renderer does not know what is on a corpse. Unlike T272/T277 (which hit-tested pixels ALREADY DRAWN), this needs a `LootPanelState`, four real bridge arms, a renderer, layout, hit-testing, the three intents, tests and a golden re-bless. **Class C -- Will's call whether to build it.** The three loot intents stay blocked with the reason written into `test_reachability_sweep.cpp` and `include/client/graphics/ui/CLAUDE.md`.
+  - ~~**LOOT PANEL is a genuine FEATURE REQUEST**~~ **BUILT T290 `cb96cd8e` (Will: REQUIRED).** Recovered from `0f25cb57^` (the pre-static-UI window, 1,030 lines) and ported to static panels in ~320: KEPT the open/close/add/remove state machine, the packed display-row -> corpse-slot indirection (the load-bearing part), the scrolled window and the Loot All/Close buttons; REWROTE the item container (renderer has no `ItemInstance`) and the 4x2 icon grid -> full-width name rows (no item-icon atlas exists in the static UI); DROPPED `WindowBase`, the draggable thumb, `DestroyAll` (no Titanium packet) and ~250 lines of pre-flight duplicating a refusal the server already sends. Live: panel shows the corpse's real name + 7 real items, `/loot <name>` removes exactly that row and the list re-packs, `/lootall` drains and the panel closes on the SERVER's event, DB restored to an empty diff. The three loot intents are DELISTED. **Found on the way: `StaticUIInput::processKey()` had NO production caller** -- the whole ESC-dismisses-a-popup handler was reached only from tests (T48 class); now wired into `renderer_frame.cpp`'s escape handling ahead of clear-target. **OWED (T290, class A): mouse-wheel plumbing does not exist in `StaticUIInput`, so `scrollOffset` is honoured by render and hit-test but nothing moves it** -- the one piece of the old window not restored. Also: the panel deliberately never self-closes (a local close would desync `CombatManager`'s LOOTING state). Old note: (T283 `ef05b11f`, correctly STOPped): there is no panel and no half of one.** `PopupType::Loot` is a bare enumerator; none of `static_panels.cpp`'s thirteen render functions is a loot popup; `static_ui_input.cpp` knows only `Inventory` + a generic Escape arm; **there is no renderer-side corpse-contents state at all** (it went with U07c3's `getWindowManager()` removal) and the four loot events reach `IrrlichtBridge` only to LOG_TRACE, discarding their payloads -- the renderer does not know what is on a corpse. Unlike T272/T277 (which hit-tested pixels ALREADY DRAWN), this needs a `LootPanelState`, four real bridge arms, a renderer, layout, hit-testing, the three intents, tests and a golden re-bless. **Class C -- Will's call whether to build it.** The three loot intents stay blocked with the reason written into `test_reachability_sweep.cpp` and `include/client/graphics/ui/CLAUDE.md`. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 12 -- and T302 found the gap is BROADER than the loot panel: chat scrollback (`static_panels.h:67`) and the skills window (`:340`) have the identical never-written `scrollOffset`, and no wheel or PageUp path exists anywhere in the static UI. One input path, not three.]**
   - Not swept: InputAction/hotkey axis; `IOutputRenderer::updateCurrentTargetHP` family is caller-less.
 
 ~~- **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.~~ **CLOSED T245: `m_update_thread` DELETED; `CombatManager::Update()` is ticked from `UpdateMovement()` on the game thread, self-paced to `kUpdateIntervalMs` (500 ms). TSAN BEFORE (`/hunt on`, three beetles) vs AFTER in `review/T245/`. Note found on the way: `CombatTarget::is_aggro` is hard-coded `false` (TODO in `GetNearbyHostiles`), so `CheckForAggro` can never fire -- the only reachable off-thread writer was the hunt path.**
 - **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. **Emote/Macro/Combat CLOSED T239 `422ce591`** (one shared `ActivateHotbarCommandSlot`, macro proven on the observer, combat toggle live).**
-- **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.**
+- **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.** **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 15 -- executor-ready except for what `AT_DIE` for self means for `POS_DEAD`, which is Will's.]**
 - ~~**NEW (T239): `/emote <text>` (cmdEmote → OP_ChannelMessage channel 22) produced NO chat on a second client and no self-echo; `/wave` (OP_Animation) is not logged by a headless observer either. Titanium's official client sends OP_Emote (a different struct) — the `/emote` command's wire behaviour is a pre-existing open question. Class B: capture what the official client sends (eq-oracle) or read eqemu's Handle_OP_Emote, then fix cmdEmote. `review/T239/`.**~~ CLOSED T243 `8196394c` — AND two larger defects: `HC_OP_Emote` was OP_Animation's number (inbound text emotes never dispatched; renamed `HC_OP_Animation`, real `OP_Emote=0x547a` added), and **`ZoneSendSetServerFilter` sent 0xFFFFFFFF×29 which eqemu reads as HIDE for every filtered class** (socials, guild/group/shout/OOC/auction, others' hits, pet hits, DoTs, crits — now show-all like the official default; per-class defaults are a one-line table if chat volume is a problem). Observer-proven.
 - **T245 leads:** ~~`CombatTarget::is_aggro` hard-coded false → no auto-defence~~ CLOSED T247 `451cecbf` (aggro inferred from OP_Damage/OP_Action on self, 10 s memory; `CheckForAggro` engages in ~1 s live; OP_Stun was decoding the 4-byte ms duration as two halves — fixed, cast refused while stunned, timed stuns expire client-side because eqemu never sends the unstun). ~~Open: stun-vs-movement; first-aggro-in-scan~~ CLOSED T254 `26c6394b` (server ACCEPTS movement while stunned -- client_packet.cpp:4831, cheat_manager.cpp:277 exempts stunned -- so no gate; latest attacker engaged, ties nearest, live two-beetle proof); befallen holds dozens of leftover GM-spawned `a_scaled_wolf_pup` at Testchar's home spot (server hygiene: `#depopzone`/`#repop` before hunt probes). **T248 `e4a73c9e` CLOSED the MidiPlayer/miniaudio teardown race — it was a CRASH class (heap-use-after-free + SEGV in `MidiPlayer::render` under TSAN, 139 reports → 0) fixed by a lock-free `RenderBarrier` epoch handshake on stop/seekTo/freeChannel; miniaudio log callback wired (T128 item closed).**
 - ~~**NEW (T240): `beginCastFromGem()`'s result switch collapses OutOfRange / NoLineOfSight / InvalidTarget into "Cannot cast spell" — the official client names each. Class A, small (eq_strings ids exist).**~~ CLOSED T244 `25695e62` (one table `cast_refusal.h`; a SECOND drifted copy in eq_bridge.cpp's CastSpellIntent arm also folded). ~~⚠ `checkPlayerState/checkLineOfSight/checkReagents` are `return true` STUBS~~ CLOSED T246 `408cd295`: buff-based stun/mez/silence/fear, reagents (willeq.db had NO reagent columns — schema v4, 383 reagent rows), LoS via `HCMap::CheckLOS`. Still permissive: ~~instantaneous `OP_Stun`~~ (CLOSED T247), `noexpend_reagent_id`, count-0 components; ~~eqstr 433 per-item form not emitted~~ CLOSED T251 `a252a7a4` (name from the ItemPacket cache; unseen reagent → 272). ~~NEW (T251): a THIRD refusal site — the hotbar Spell arm~~ CLOSED T253 `7e1c7c0f` (no fourth site); `InventoryManager::getItemById()` returns `false` not `nullptr` on miss. Class A, tiny.
-- **NEW (T240): `/target <substring>` returns the LOWEST spawn id, not the nearest match. Class A: rank by distance among matches (T173's resolver).**
+- ~~**NEW (T240): `/target <substring>` returns the LOWEST spawn id, not the nearest match. Class A: rank by distance among matches (T173's resolver).**~~ **CLOSED by T244 `a6218d6f` ("T244: cast refusals say why; /target prefers the nearest match") -- verified in place by T302 (2026-08-28): `EntityManager::findEntityByNameRanked()` (`src/client/state/entity_manager.cpp:162-200`) tiers exact match ahead of substring and breaks ties by distance when a position is supplied; `findEntityByName(name, px, py, pz)` is the ranked overload. This entry had survived on the board for two weeks after its fix landed.**
 - ~~**NEW (T235): spell-gem KEYS still do not cast — `EqActionHandler::castSpell()` → `CombatManager::CastSpell()` reads `CombatManager::m_spell_gems`, a SECOND gem map written only by `CombatManager::MemorizeSpell()` (never by the profile load), while the real gems live in `EQ::SpellManager` (`/gems` lists them). Same class as T101's `interruptCast` repoint. Class A: repoint castSpell/castSpellOnTarget at SpellManager, delete `m_spell_gems` and the hardcoded cast-time stub (`combat.cpp:681-732`, TODO). `review/T235/`.**~~ CLOSED T240 `84a22da9` — live: Alt+1/Alt+2//cast 1 → 4/4 server BeginCast; CombatManager cast stub + gem map DELETED.
-- **NEW (T235): `Application::connectRendererCallbacks()` is UNREACHABLE (nothing derives from `output::GraphicalRenderer`; its dynamic_cast always fails) — target/door/chat-submit callbacks and `IrrlichtRenderer`'s parallel setters all dead; live routes are bridge intents. Reachability pattern #13. Class A: delete.**
+- ~~**NEW (T235): `Application::connectRendererCallbacks()` is UNREACHABLE (nothing derives from `output::GraphicalRenderer`; its dynamic_cast always fails) -- target/door/chat-submit callbacks and `IrrlichtRenderer`'s parallel setters all dead; live routes are bridge intents. Reachability pattern #13. Class A: delete.**~~ **CLOSED by T241 -- verified in place by T302 (2026-08-28): the method and all 15 unreachable callback setters are gone from the tree; only the tombstone comments survive at `src/client/application.cpp:388-391` and `src/client/graphics/renderer_frame.cpp:829`. The next bullet down (T241's own entry) already said so -- the two bullets disagreed on the same board.**
 - **NEW (T235): `enterKeyPressed`/`slashKeyPressed` and `popKeyEvent`/`clearPendingKeyEvents` are two-thread pairs whose GAME-thread consumers have no production caller (dead second readers). Class A: delete the dead game-thread side (also shrinks T225's vector-race inventory).** **CLOSED (T241): game-thread readers deleted (Enter, slash AND Escape -- the Escape one was a real raced-and-lost against the render thread's target-clear); `IInputHandler` text-input trio and `InputAction::OpenChat/OpenChatSlash/CloseChat` gone; `Application::connectRendererCallbacks()` and all 15 unreachable callback setters deleted. `pendingKeyEvents_` and the three chat flags are now render-thread-only (plain bool).**
 - ~~**NEW (T230): same two-consumer race for spell-gem keys — `processChatInput()` still consumes `getSpellGemCastRequest()` while `GraphicsInputHandler::consumeSpellCastRequest()` also polls it. Class A, one-line delete + live keypress proof (T230's Xvfb+xdotool driver in `review/T230/`).**~~ CLOSED T235 `b926a306` (render-thread swallow removed, dead callback plumbing deleted; before/after live).
 - ~~**NEW (T230): `/equip 30 22` (swap with CURSOR) reports a client-side swap the server never applied~~ **RETRACTED by T236 `1e1972d3`: the swap HAD applied on both sides (T230 misread — the meal was queued behind the cursor). T236 instead CLOSED T82's real sibling: `moveItem()` slot↔slot swaps now pre-flight the displaced item via `checkEquipDestination`, refuse locally, send nothing (live: DB untouched on refusal). ~~Open divergence: `placeItem()` validates against `cursorSourceSlot_`~~ CLOSED T249 `ee0e1479` (server rule matched; live 2 packets, 0 desync). ~~NEW (T249): after a cursor-source swap `cursorSourceSlot_` still names the original pickup slot~~ CLOSED T250 `4ed1bf17` (`returnCursorItem` deleted — eqemu has no counterpart). ~~NEW (T250): swapping two bags that BOTH have contents collides client-side~~ CLOSED T252 `79bd1fef` (server swaps both with contents — mirrored via lift-then-put; cursor bag range 331-340; the direct `/equip 22 23` bag move carried NO contents before — fixed; live DB matches). ~~Open (T252): general-BANK bag moves / front-cursor-only contents~~ CLOSED T255 `f7568144` (bank content range 6210+ server / 2031+ wire verified live; queued cursor bags keep contents). Two more defects found live and fixed: cursor bag contents were NEVER parsed at zone-in (slot 33 not mapped -> SLOT_INVALID), and BANK bags always loaded EMPTY (eqemu sends them as OP_ItemPacket with sub-items; `processItemPacket` never parsed them). ~~Open (T255): trade-window parents are not bag parents~~ CLOSED T259 `987ddc6d` (wire 3031+; completion/cancel semantics matched from zone/trading.cpp; live 3 runs). Four latent defects fixed on the way: `TradeManager::setInventoryManager()` had no caller; **`TradeAcceptIntent` had NO producer -- no willeq client could ever accept a trade** (`/accept` during a trade now clicks it; reachability #15); no OP_CancelTrade echo (partner's items stranded server-side); `/equip 22 3000` got the player KICKED (non-cursor trade move) -- now refused locally. Stray row 6011: T263 hygiene.** Original: — client/server inventory drift on swap-with-cursor moves. Same class as T82's "doMove swap branch never validates the displaced item". Class A/B: reproduce with the DB, then fix the swap validation.**
@@ -151,7 +441,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 - **T224 `c94d2eba`: `/who` prints entries (world-sender layout verified live); `/who all` filter bug and GM `%9` formatting fixed. ~~Owed: anon/linkdead/guild lines exercised by unit tests only~~ CLOSED T256 `ace77a65` (all formats verified live with a real non-GM viewer; linkdead is unreachable on eqemu-world for Titanium, `clientlist.cpp:854` hardcodes it). Two fixes: phantom `[0 Class0]` line when the GM viewer is itself anon; **EVERY SQLite-served string carried a trailing CR** (14k rows; the text loader stripped it, the SQLite getters did not) -- fixed in `willeq_database.cpp`. NEW (T256): two willeq processes opening `willeq.db` in the same second -> one fails 'missing metadata table' (concurrent open); CLOSED T257 `d92e1f98`: WAL-mode DB on NFS, readers raced WAL recovery (SQLITE_BUSY_RECOVERY 261) -- now opened immutable, zero sidecars; ALSO explains flaky willeq.db test SKIPs under ctest -j. ~~Follow-up: builder journal_mode=DELETE~~ CLOSED T258 `cdd1bc85` (shipped willeq.db is a plain rollback-journal file; plain readers create no sidecars). NEW (harness): `visual_gate`'s befallen p95 CPU-ms ceiling trips under parallel ctest (T219, T220, T239, T258 all saw it; alone it passes) -- class A: RUN_SERIAL / a resource lock on the gate test, or a wall-clock-insensitive assertion. ~~visual_gate under -j / zone_chars 2213 vs 2188~~ CLOSED T261 `ffa783b1` (gate is RUN_SERIAL -- its cpu_ms is wall-clock by construction; +26 s suite, accepted; 25 duplicate lines collapsed by the PK, none lost). NEW (T261): `WilleqDatabase::getZoneCharacters()` -- the ONLY reader of the `zone_characters` table -- has ZERO callers, and `source_file` is consumed by nothing (reachability pattern #14). ~~wire or delete~~ CLOSED T262 `a73b34f1`: DELETED (1864/2188 rows named codes no race can produce; 318/324 spawnable rows resolved without the hint). The 6 that needed it exposed races 195/196/198 (BWD/GDR/PRI dragons) with an EMPTY `s3d_file` in race_models.json -- fixed, db rebuilt. Dragon pixel check (T263): mesh LOADS from bwd_chr.s3d (4631 verts, row correct) but the client HARD-EXITS: `EQE1: 'bwdhe0005' exists in 9 archive(s), none a candidate for zone` -> FATAL. **NEW CRITICAL (T263): the EQE1 candidate set is frozen at zone load (T199 spawn list); any race that spawns LATER (roamer, GM spawn, pet, summoned) and is not already present -> `openArchiveContaining()` refuses the archive that holds the texture -> all-or-nothing FATAL exit. Violates rule R2.~~ **CLOSED T266 `865b6219`: late spawns extend the candidate set (T199 race->archive) and `EQE1TextureIndex::resolve()` late-opens the first indexed owner, tagged `late-open` in the request log; FATAL kept for names in NO archive. Live: dragon placeholder=false, 4631 verts, 0 magenta of 480000. Will judges `review/T266/after/dragon_race195_qeynos2_800x600.png`.** Server-hygiene facts (T263): this eqemu PERSISTS GM spawns across restarts in `zone_state_spawns` (spawn2_id=0) -- `#depopzone`+`#repop` clears; qeynos2 (13) and arena (19) still hold GM leftovers, ids in review/T263/. A client that exits without `/camp` gets its position re-saved at TERM, overwriting a restore done while the server is up.**
 - ~~**NEW LEAD (T220 live screenshot, 2026-08-25): a magenta patch in qeynos2 CEILING geometry**~~ **CLOSED T226 `046b061f` — NOT a defect: T220's driver ran WITHOUT `--eqe1-path`; on the S3D/BMP path qeynos2's ~230-texture working set exceeds the 64MB constrained budget, the LRU evicts textures the live zone still references, and `RegionMeshTextureGuard` paints the placeholder (29 evictions, 12,492 px). With EQE1: 0 magenta, 0 evictions. Eviction line is now WARN with the texture name. ⚠ RULE: every live x86 pixel run passes `--eqe1-path` (decision #2: EQE1 is the shipped path; S3D is dev-only and thrashes under the orangepi budget).** Original lead: (`review/T220/`). T211 fixed the 0x2C material-list guess for equipment; this is zone geometry — different loader path. Class B: reproduce with `--dump-frames-dir` at the same spot, then find which texture name misses (EQT_EQE1_REQUEST_LOG_DIR shows NOT-FOUND). Untriaged.
 - ~~**T221 (stage 2) note: `GameState::tradeskill()` has NO writer on either instance and no bridge case**~~ **CLOSED T232: zero readers anywhere (src/include/tests) — the domain was deleted. The open tradeskill container lives in `EverQuest::m_active_tradeskill_object_id` (read by `EqActionHandler` via `GetActiveTradeskillObjectId()`), and `ZoneProcessClickObjectAction` already publishes `TradeskillContainerOpened/Closed` directly; recipes are send-only (`SendRecipes*`, eq_merchant.cpp). `refactor/T232_tradeskill_state.md`.**
-- **NEW (T225, 2026-08-25): `RendererEventReceiver` still has `pendingKeyEvents_` (T241: no longer -- single-threaded since the game-thread `popKeyEvent`/`clearPendingKeyEvents` were deleted; only `bridgeQueue_` and the items below remain) / `bridgeQueue_` (std::vector pushed on the render thread, erased/swap-drained on BOTH threads — a push racing `erase(begin())` is heap corruption), `getMouseDeltaX/Y()` two-word RMW on both threads, and `keyWasPressed_[]`/`keyIsDown_[]`.** TSAN never sees them because `--script` injects no Irrlicht input; a real keyboard session would. Atomics cannot fix a vector; the right shape is one swap-drained queue behind the intent path — which requires deciding which thread owns chat key events. **Class C (thread-ownership decision), then a small unit.** `review/T225/`.
+- **NEW (T225, 2026-08-25): `RendererEventReceiver` still has `pendingKeyEvents_` (T241: no longer -- single-threaded since the game-thread `popKeyEvent`/`clearPendingKeyEvents` were deleted; only `bridgeQueue_` and the items below remain) / `bridgeQueue_` (std::vector pushed on the render thread, erased/swap-drained on BOTH threads — a push racing `erase(begin())` is heap corruption), `getMouseDeltaX/Y()` two-word RMW on both threads, and `keyWasPressed_[]`/`keyIsDown_[]`.** TSAN never sees them because `--script` injects no Irrlicht input; a real keyboard session would. Atomics cannot fix a vector; the right shape is one swap-drained queue behind the intent path — which requires deciding which thread owns chat key events. **Class C (thread-ownership decision), then a small unit.** `review/T225/`. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file -- **RECLASSIFIED: this is TIER 1, not class C.** The thread-ownership decision the entry names was about CHAT key events, which T241 settled by making them render-thread-only; what is left needs no decision. `bridgeQueue_` is tier 1 item 1, the mouse-delta RMW and the key arrays are tier 1 item 2 (same unit).]**
 - ~~**T220 residual: 17 TSAN warnings, all T114 inventory #10~~ CLOSED T225 `b43106d4` (atomics + exchange, 17→0) (`RendererEventReceiver` read-and-reset key/mouse flags on game vs render thread).** Class A, own unit: make them atomics or route through the intent queue. `review/T220/tsan_after_*.txt`.
 
 - **fable tip:** `e70e3347` (T214). **Suite:** 2746 registered, 2745 pass —
@@ -195,7 +485,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 
 ## Index — open and recently-closed items (rebuilt T215, 2026-08-25; supersedes the T53 index)
 
-**⚠ THIS INDEX IS A SNAPSHOT AT `e70e3347` (T215, 2026-08-25) AND IS NOW STALE. The `## STATUS` block ABOVE is current through T293 and wins.** A 2026-08-27 audit found the two halves of this file disagree: the Index still lists as OPEN at least nine items later commits closed — phantom `gequip7` (T223), TWO `state::GameState` instances (T227 `e7097114`; `application.cpp` now says "there is ONE state::GameState per run"), race 330 (T267), T04 (T228), T173's resolver and T174's Item slots (T230), `/reply` (T222), trade reject (T222), the T148 GM senders (T217/T229). The same audit grepped twelve struck items and found **zero** cases of the board claiming a fix the code lacks — the drift runs the other way: **this file UNDERSTATES progress.** Read the STATUS block, not this Index.
+**⚠ THIS INDEX IS A SNAPSHOT AT `e70e3347` (T215, 2026-08-25) AND IS NOW STALE. The `## STATUS` block ABOVE is current through T293 and wins.** A 2026-08-27 audit found the two halves of this file disagree: the Index still lists as OPEN at least nine items later commits closed — phantom `gequip7` (T223), TWO `state::GameState` instances (T227 `e7097114`; `application.cpp` now says "there is ONE state::GameState per run"), race 330 (T267), T04 (T228), T173's resolver and T174's Item slots (T230), `/reply` (T222), trade reject (T222), the T148 GM senders (T217/T229). The same audit grepped twelve struck items and found **zero** cases of the board claiming a fix the code lacks — the drift runs the other way: **this file UNDERSTATES progress.** Read the STATUS block, not this Index. **T302 (2026-08-28): kept, never deleted, but it is now two removes from current -- read "THE ONE CLASS-A LIST" at the top of this file first, then the `## STATUS` block. Nothing should be scoped off this Index.**
 
 **Each item is anchored by its `## ` section heading text (or a unit ID),
 not a line number** — `grep -n '<quoted text>' refactor/deferred.md` finds
