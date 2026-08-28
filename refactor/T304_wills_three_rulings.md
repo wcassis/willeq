@@ -178,6 +178,12 @@ Citizen, 140 "Velious Dragon" is FGI Forest Giant, 145 "Zombie" is GOO Goo,
 146 "Mummy" is SSN Spectral Sarnak. Only 1-12, 85 and 128 happen to be right.
 **Reported, deliberately NOT fixed here** -- it is a behavioural change to combat
 target selection, outside this leg's scope. It should be its own class-B item.
+**CLOSED by T308 Leg 1 (2026-08-28)**: the race data cannot answer "is this humanoid"
+(no creature-class field on any of the 190 rows), but the SERVER already does --
+`Spawn_Struct` offset 335, eqemu `common/bodytypes.h` `Humanoid == 1`. `IsHumanoid()`
+now reads `Entity::bodytype`, no table at all. Pinned by
+`tests/test_hunt_target_body_type.cpp` through /pathfinding+/combat+/hunt and the
+engaged target. See `refactor/T308_humanoid_and_command_output.md`.
 
 **Goldens: no re-bless, and it was checked rather than assumed.** The gate's
 benchmark binary does not link `entity_renderer.cpp` at all (P44b root-caused
@@ -233,7 +239,10 @@ Irrlicht window and sees nothing. Registry 2 owns real user-facing commands
 carrying this text to the window.
 
 **This is a LIVE, USER-VISIBLE DEFECT and it is bigger than this leg. It is
-reported here and deliberately NOT fixed:** the fix is a routing decision
+reported here and deliberately NOT fixed** (**CLOSED by T308 Leg 2, 2026-08-28**:
+`CommandProcessor` gained a second sink, wired to `AddChatSystemMessage()` in
+`Application::wireUnifiedCommandDispatch()`; stdout unchanged; pinned by
+`tests/test_command_output_routing.cpp`)**:** the fix is a routing decision
 (point `CommandProcessor` at `AddChatSystemMessage()`, or give it a sink that
 fans out) that would change what every registry-2 command prints in both
 graphical and headless runs, and it needs its own unit and its own pins. Nothing

@@ -344,6 +344,7 @@ public:
 
 private:
     friend struct ApplicationScriptTestPeer;  // T238
+    friend struct ApplicationCommandOutputTestPeer;  // T308
 
     // ========== Main Loop Stages ==========
 

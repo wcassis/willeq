@@ -113,6 +113,33 @@ public:
     void setOutputRenderer(output::IOutputRenderer* renderer);
 
     /**
+     * T308: a SECOND sink for this registry's user-facing text.
+     *
+     * setOutputRenderer() is not enough on its own. GraphicalMode hands
+     * Application a ConsoleRenderer for EVERY renderer type (it is not the
+     * Irrlicht window -- Application owns that separately), and
+     * ConsoleRenderer::displaySystemMessage() is a bare std::cout. So before
+     * this unit every message this registry produced -- movement-mode acks,
+     * "Targeting: X", the group and pet ack families, the /spellbook hint,
+     * and every "Unknown command" / "Usage:" error -- went to the terminal
+     * while the player was looking at the game window and saw nothing.
+     *
+     * Registries 1 and 3 do not have this problem: registry 1 and the merged
+     * /help go through EverQuest::AddChatSystemMessage() (which reaches the
+     * on-screen chat window), and registry 3 goes over the bridge to the
+     * render thread. This sink gives registry 2 the same reach WITHOUT
+     * taking anything away from stdout: both the renderer and the sink are
+     * written, so --script runs, piped-stdin runs and the console mode T304
+     * Leg 3 deliberately preserved keep the exact stdout they had.
+     *
+     * Application wires it to EverQuest::AddChatSystemMessage() in
+     * wireUnifiedCommandDispatch(). May be left unset (nullptr sink), which
+     * is the pre-T308 behaviour.
+     */
+    using MessageSink = std::function<void(const std::string&)>;
+    void setMessageSink(MessageSink sink);
+
+    /**
      * Process a command string.
      * The string may or may not include the leading '/'.
      * @param input Command string (e.g., "/say hello" or "say hello")
@@ -200,6 +227,7 @@ private:
     state::GameState& m_state;
     ActionDispatcher& m_dispatcher;
     output::IOutputRenderer* m_renderer = nullptr;
+    MessageSink m_messageSink;  // T308, see setMessageSink()
 
     bool m_echoEnabled = false;
     ChatChannel m_defaultChannel = ChatChannel::Say;
@@ -561,6 +589,9 @@ private:
     static std::vector<std::string> splitArgs(const std::string& args);
     void displayMessage(const std::string& message);
     void displayError(const std::string& message);
+    // T308: the one place registry-2 text leaves this class. Writes the
+    // renderer (stdout in every mode this build ships) AND the chat sink.
+    void emitMessage(const std::string& message);
     // T98: displayHelp() removed -- its only caller was cmdHelp (deleted, see
     // refactor/T98_delete_shadowed_commands.md); getCommandInfo()/
     // getCategories()/getCommandsByCategory() it used are public API used

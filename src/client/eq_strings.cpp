@@ -2,6 +2,7 @@
 // Split out of eq.cpp (F02) — pure move, no behavior change.
 
 #include "client/eq.h"
+#include "client/eq_body_types.h"
 #include "client/willeq_database.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -553,50 +554,65 @@ std::string EverQuest::GetDeityName(uint32_t deity_id) {
 	}
 }
 
-std::string EverQuest::GetBodyTypeName(uint8_t bodytype) {
-	switch (bodytype) {
-		case 0: return "Humanoid";
-		case 1: return "Lycanthrope";
-		case 2: return "Undead";
-		case 3: return "Giant";
-		case 4: return "Construct";
-		case 5: return "Extraplanar";
-		case 6: return "Magical";
-		case 7: return "Summoned Undead";
-		case 8: return "BaneGiant";
-		case 9: return "Dain";
-		case 10: return "NoTarget";
-		case 11: return "Vampire";
-		case 12: return "Atenha Ra";
-		case 13: return "Greater Akheva";
-		case 14: return "Khati Sha";
-		case 15: return "Seru";
-		case 16: return "Grieg Veneficus";
-		case 17: return "Draz Nurakk";
-		case 18: return "Zek";
-		case 19: return "Luggald";
-		case 20: return "Animal";
-		case 21: return "Insect";
-		case 22: return "Monster";
-		case 23: return "Summoned";
-		case 24: return "Plant";
-		case 25: return "Dragon";
-		case 26: return "Summoned2";
-		case 27: return "Summoned3";
-		case 28: return "Dragon2";
-		case 29: return "VeliousDragon";
-		case 30: return "Familiar";
-		case 31: return "Dragon3";
-		case 32: return "Boxes";
-		case 33: return "Muramite";
-		case 34: return "NoTarget2";
-		case 60: return "Untargetable";
-		case 63: return "SwarmPet";
-		case 64: return "MonsterSummon";
-		case 66: return "InvisibleMan";
-		case 67: return "Special";
-		default: return fmt::format("BodyType{}", bodytype);
+namespace EQT {
+namespace BodyType {
+
+// T308: transcribed from eqemu's common/bodytypes.h -- the server that stamps
+// this field. The switch this replaces was OFF BY ONE for every value (it
+// answered "Humanoid" for 0, which is not a valid eqemu body type at all, and
+// so mis-named every real one: a Humanoid read as Lycanthrope, an Undead as
+// Giant, an Animal as Luggald, ...). Reached by /entityinfo's "Body Type:"
+// line, so the wrong names were user-visible.
+std::string Name(uint8_t bodyType) {
+	switch (bodyType) {
+		case Humanoid:       return "Humanoid";
+		case Lycanthrope:    return "Lycanthrope";
+		case Undead:         return "Undead";
+		case Giant:          return "Giant";
+		case Construct:      return "Construct";
+		case Extraplanar:    return "Extraplanar";
+		case Magical:        return "Magical";
+		case SummonedUndead: return "Summoned Undead";
+		case RaidGiant:      return "Raid Giant";
+		case RaidColdain:    return "Raid Coldain";
+		case NoTarget:       return "Untargetable";
+		case Vampire:        return "Vampire";
+		case AtenHaRa:       return "Aten Ha Ra";
+		case GreaterAkheva:  return "Greater Akheva";
+		case KhatiSha:       return "Khati Sha";
+		case Seru:           return "Seru";
+		case GriegVeneficus: return "Grieg Veneficus";
+		case DrazNurakk:     return "Draz Nurakk";
+		case Zek:            return "Zek";
+		case Luggald:        return "Luggald";
+		case Animal:         return "Animal";
+		case Insect:         return "Insect";
+		case Monster:        return "Monster";
+		case Summoned:       return "Summoned";
+		case Plant:          return "Plant";
+		case Dragon:         return "Dragon";
+		case Summoned2:      return "Summoned 2";
+		case Summoned3:      return "Summoned 3";
+		case Dragon2:        return "Dragon 2";
+		case VeliousDragon:  return "Velious Dragon";
+		case Familiar:       return "Familiar";
+		case Dragon3:        return "Dragon 3";
+		case Boxes:          return "Boxes";
+		case Muramite:       return "Muramite";
+		case NoTarget2:      return "Untargetable 2";
+		case SwarmPet:       return "Swarm Pet";
+		case MonsterSummon:  return "Monster Summon";
+		case InvisibleMan:   return "Invisible Man";
+		case Special:        return "Special";
+		default:             return fmt::format("BodyType{}", bodyType);
 	}
+}
+
+}  // namespace BodyType
+}  // namespace EQT
+
+std::string EverQuest::GetBodyTypeName(uint8_t bodytype) {
+	return EQT::BodyType::Name(bodytype);
 }
 
 std::string EverQuest::GetEquipSlotName(int slot) {

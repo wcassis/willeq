@@ -1331,6 +1331,24 @@ void Application::wireUnifiedCommandDispatch() {
         result.command = "/" + cmdLine;
         return dispatchToActionOrRenderer(cmdLine, result);
     });
+
+    // T308: the return path. The fallback above is how a command TYPED IN THE
+    // CHAT WINDOW reaches registry 2; before this unit registry 2's answer
+    // went only to the ConsoleRenderer GraphicalMode hands us -- a bare
+    // std::cout -- so the player typed "/tell" with no arguments and saw
+    // nothing at all while "Error: Usage: /tell <name> <message>" scrolled
+    // past in a terminal they were not looking at. Registries 1 and 3 already
+    // answer into the chat window (AddChatSystemMessage / the render-thread
+    // bridge); this gives registry 2 the same reach. setOutputRenderer() is
+    // untouched, so every stdout line a --script or piped-stdin run relied on
+    // is still printed.
+    if (m_commandProcessor) {
+        m_commandProcessor->setMessageSink([this](const std::string& text) {
+            if (m_eqClient) {
+                m_eqClient->AddChatSystemMessage(text);
+            }
+        });
+    }
 }
 
 CommandDispatchResult Application::DispatchSlashCommand(const std::string& rawLine) {
