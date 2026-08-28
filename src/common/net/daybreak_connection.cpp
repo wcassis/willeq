@@ -44,8 +44,18 @@ void EQ::Net::DaybreakConnectionManager::Tick()
 
 			// With a connected UDP socket we know the peer; use the first connection's endpoint.
 			if (!m_connections.empty()) {
-				auto& conn = m_connections.begin()->second;
-				ProcessPacket(conn->RemoteEndpoint(), conn->RemotePort(),
+				// T306: hold the connection by VALUE (shared_ptr copy), not by
+				// reference into the map. ProcessPacket() runs application
+				// callbacks that may erase this entry (a disconnect handler,
+				// a reconnect), which destroys the mapped shared_ptr and with
+				// it the DaybreakConnection whose m_endpoint the `endpoint`
+				// parameter is bound to. A copy keeps the object alive for the
+				// whole dispatch. Also copy the endpoint string, since the
+				// parameter binds by const reference to m_endpoint.
+				auto conn = m_connections.begin()->second;
+				std::string endpoint = conn->RemoteEndpoint();
+				int port = conn->RemotePort();
+				ProcessPacket(endpoint, port,
 					reinterpret_cast<const char*>(m_recv_buf), static_cast<size_t>(n));
 			}
 		}
@@ -86,10 +96,28 @@ void EQ::Net::DaybreakConnectionManager::Connect(const std::string &addr, int po
 void EQ::Net::DaybreakConnectionManager::Process()
 {
 	auto now = Clock::now();
-	auto iter = m_connections.begin();
 
-	while (iter != m_connections.end()) {
-		auto connection = iter->second;
+	// T306: iterate a SNAPSHOT of the map, not live iterators. Everything in
+	// this loop -- ChangeStatus() (m_on_connection_state_change),
+	// connection->Process() (m_on_packet_recv) -- can run application code
+	// that inserts into or erases from m_connections. A raw iterator into the
+	// map is undefined behaviour the moment a callback erases the node it
+	// points at. Each snapshot entry is re-looked-up by key and identity-
+	// checked before we touch the map again, so an entry a callback already
+	// removed or replaced is skipped rather than acted on twice.
+	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<DaybreakConnection>>>
+		snapshot(m_connections.begin(), m_connections.end());
+
+	for (auto &entry : snapshot) {
+		const auto &key       = entry.first;
+		auto        connection = entry.second;
+
+		auto iter = m_connections.find(key);
+		if (iter == m_connections.end() || iter->second.get() != connection.get()) {
+			// Erased or replaced by a callback earlier in this same pass.
+			continue;
+		}
+
 		auto status = connection->m_status;
 
 		if (status == StatusDisconnecting) {
@@ -97,8 +125,17 @@ void EQ::Net::DaybreakConnectionManager::Process()
 			if (time_since_close.count() > m_options.connection_close_time) {
 				connection->FlushBuffer();
 				connection->SendDisconnect();
+				// T306: ERASE BEFORE the status callback. ChangeStatus()
+				// dispatches m_on_connection_state_change, and a disconnect
+				// handler that reconnects the same endpoint calls Connect(),
+				// whose m_connections.emplace() SILENTLY NO-OPS while this
+				// key is still present. The old code then erased that key,
+				// leaving the manager with no entry at all for the new
+				// connection: the reconnect dangles and every inbound packet
+				// goes undispatched (FindConnectionByEndpoint returns null).
+				// That is the zone-transition reconnect path.
+				m_connections.erase(iter);
 				connection->ChangeStatus(StatusDisconnected);
-				iter = m_connections.erase(iter);
 				continue;
 			}
 		}
@@ -106,7 +143,7 @@ void EQ::Net::DaybreakConnectionManager::Process()
 		if (status == StatusConnecting) {
 			auto time_since_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(now - connection->m_last_recv);
 			if ((size_t)time_since_last_recv.count() > m_options.connect_stale_ms) {
-				iter = m_connections.erase(iter);
+				m_connections.erase(iter);
 				connection->ChangeStatus(StatusDisconnecting);
 				continue;
 			}
@@ -114,7 +151,7 @@ void EQ::Net::DaybreakConnectionManager::Process()
 		else if (status == StatusConnected) {
 			auto time_since_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(now - connection->m_last_recv);
 			if ((size_t)time_since_last_recv.count() > m_options.stale_connection_ms) {
-				iter = m_connections.erase(iter);
+				m_connections.erase(iter);
 				connection->ChangeStatus(StatusDisconnecting);
 				continue;
 			}
@@ -137,14 +174,13 @@ void EQ::Net::DaybreakConnectionManager::Process()
 					}
 				}
 			}
+			[[fallthrough]];
 			case StatusDisconnecting:
 				connection->Process();
 				break;
 			default:
 				break;
 		}
-
-		iter++;
 	}
 }
 
@@ -158,20 +194,30 @@ void EQ::Net::DaybreakConnectionManager::UpdateDataBudget()
 	auto update_rate = (uint64_t)(1000.0 / m_options.tic_rate_hertz);
 	auto budget_add = update_rate * outgoing_data_rate / 1000.0;
 
-	auto iter = m_connections.begin();
-	while (iter != m_connections.end()) {
-		auto &connection = iter->second;
-		connection->UpdateDataBudget(budget_add);
+	// T306: snapshot -- see Process(). Held by value so a callback that
+	// erases the entry cannot destroy the connection mid-call.
+	std::vector<std::shared_ptr<DaybreakConnection>> snapshot;
+	snapshot.reserve(m_connections.size());
+	for (auto &kv : m_connections) {
+		snapshot.push_back(kv.second);
+	}
 
-		iter++;
+	for (auto &connection : snapshot) {
+		connection->UpdateDataBudget(budget_add);
 	}
 }
 
 void EQ::Net::DaybreakConnectionManager::ProcessResend()
 {
-	auto iter = m_connections.begin();
-	while (iter != m_connections.end()) {
-		auto &connection = iter->second;
+	// T306: snapshot -- see Process(). ProcessResend() re-sends buffered
+	// packets, which can drive status changes and application callbacks.
+	std::vector<std::shared_ptr<DaybreakConnection>> snapshot;
+	snapshot.reserve(m_connections.size());
+	for (auto &kv : m_connections) {
+		snapshot.push_back(kv.second);
+	}
+
+	for (auto &connection : snapshot) {
 		auto status = connection->m_status;
 
 		switch (status)
@@ -183,8 +229,6 @@ void EQ::Net::DaybreakConnectionManager::ProcessResend()
 			default:
 				break;
 		}
-
-		iter++;
 	}
 }
 

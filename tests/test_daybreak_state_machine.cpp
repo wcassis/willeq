@@ -787,3 +787,198 @@ TEST_F(DaybreakStateMachineTest, FullHandshakeViaManagerTick) {
 	// that outcome and must not hang, crash, or throw.
 	SUCCEED();
 }
+
+// =====================================================================
+// T306: Teardown-callback re-entrancy (ported from the audited branch
+// task/eqcpp-zoneprocess-track-b-remaining, re-expressed on this fixture)
+//
+// DaybreakConnectionManager::Process() used to do
+//     connection->ChangeStatus(StatusDisconnected);   // fires the callback
+//     iter = m_connections.erase(iter);               // ...and only THEN erase
+// on the StatusDisconnecting timeout path. m_on_connection_state_change is
+// application code: on a zone transition it calls Connect() on the same
+// host/port to re-establish the session. Connect() ends in
+//     m_connections.emplace(make_pair(make_pair(addr, port), connection));
+// and std::map::emplace SILENTLY NO-OPS when the key is already present --
+// which it is, because the old entry has not been erased yet. Control then
+// returns to Process(), which erases the key, taking the reconnect with it.
+// The manager ends up with NO entry for the live connection, so
+// FindConnectionByEndpoint() returns null for every inbound datagram and the
+// client hangs mid-zone with a socket that is receiving but not dispatching.
+//
+// The pre-existing ManagerProcessTearsDownAfterCloseTimeElapses above only
+// asserts size()==0 after a backdated close and never runs a callback that
+// mutates the map, so it passed with the bug in place.
+//
+// The fix erases before ChangeStatus and iterates a re-validated snapshot.
+// =====================================================================
+
+TEST_F(DaybreakStateMachineTest, ReconnectSameKeyFromDisconnectCallbackReplacesEntry) {
+	createManager();
+	forceConnected();
+
+	auto old_conn = conn_;
+	std::shared_ptr<DaybreakConnection> new_conn;
+	int reconnects = 0;
+
+	// Application behaviour under test: reconnect the SAME endpoint from the
+	// disconnected callback, exactly as the zone-transition path does.
+	manager_->OnConnectionStateChange(
+		[&](std::shared_ptr<DaybreakConnection> c, DbProtocolStatus, DbProtocolStatus n) {
+			if (n == StatusDisconnected && c.get() == old_conn.get() && reconnects == 0) {
+				reconnects++;
+				manager_->Connect("peer", 12345);
+			}
+		});
+	manager_->OnNewConnection([&](std::shared_ptr<DaybreakConnection> c) { new_conn = c; });
+
+	old_conn->Close();
+	ASSERT_EQ(old_conn->GetStatus(), StatusDisconnecting);
+	old_conn->m_close_time = Clock::now() - std::chrono::milliseconds(opts_.connection_close_time + 100);
+
+	manager_->Process();
+
+	ASSERT_EQ(reconnects, 1);
+	ASSERT_NE(new_conn, nullptr);
+	EXPECT_EQ(old_conn->GetStatus(), StatusDisconnected);
+
+	// The reconnect must OWN the key, not be swallowed by the no-op emplace
+	// and then erased with the old entry.
+	ASSERT_EQ(manager_->m_connections.size(), 1u);
+	auto iter = manager_->m_connections.find(std::make_pair(std::string("peer"), 12345));
+	ASSERT_NE(iter, manager_->m_connections.end());
+	EXPECT_EQ(iter->second.get(), new_conn.get());
+	EXPECT_NE(iter->second.get(), old_conn.get());
+}
+
+TEST_F(DaybreakStateMachineTest, ReconnectFromDisconnectCallbackStillDispatchesInboundPackets) {
+	createManager();
+	forceConnected();
+
+	auto old_conn = conn_;
+	std::shared_ptr<DaybreakConnection> new_conn;
+
+	manager_->OnConnectionStateChange(
+		[&](std::shared_ptr<DaybreakConnection> c, DbProtocolStatus, DbProtocolStatus n) {
+			if (n == StatusDisconnected && c.get() == old_conn.get() && !new_conn) {
+				manager_->Connect("peer", 12345);
+			}
+		});
+	manager_->OnNewConnection([&](std::shared_ptr<DaybreakConnection> c) { new_conn = c; });
+
+	old_conn->Close();
+	old_conn->m_close_time = Clock::now() - std::chrono::milliseconds(opts_.connection_close_time + 100);
+	manager_->Process();
+	ASSERT_NE(new_conn, nullptr);
+
+	// The user-visible symptom: with no map entry, the manager's recv path
+	// cannot route a datagram to the reconnected session at all.
+	EXPECT_EQ(manager_->FindConnectionByEndpoint("peer", 12345).get(), new_conn.get());
+
+	// Drive a real inbound datagram through the manager's dispatch entry
+	// point and prove the new connection receives it.
+	new_conn->m_status    = StatusConnected;
+	new_conn->m_crc_bytes = 2;
+	new_conn->m_encode_key = 0x12345678u;
+	new_conn->m_encode_passes[0] = EncodeNone;
+	new_conn->m_encode_passes[1] = EncodeNone;
+	new_conn->m_max_packet_size  = 512;
+
+	DaybreakReliableHeader hdr;
+	hdr.zero     = 0;
+	hdr.opcode   = (uint8_t)OP_Packet;
+	hdr.sequence = HostToNetwork((uint16_t)0);
+	DynamicPacket p;
+	p.PutSerialize(0, hdr);
+	auto payload = MakeAppPayload(0xBEEF, {9, 9});
+	p.PutData(p.Length(), payload.data(), payload.size());
+	new_conn->AppendCRC(p);
+
+	received_.clear();
+	manager_->ProcessPacket("peer", 12345, (const char *)p.Data(), p.Length());
+
+	ASSERT_EQ(received_.size(), 1u);
+	EXPECT_EQ(received_[0].first, 0xBEEFu);
+}
+
+TEST_F(DaybreakStateMachineTest, ManyDisconnectingEntriesWithReconnectCallbacksAllReplaced) {
+	createManager();
+	forceConnected();
+
+	// Three more endpoints alongside the fixture's "peer":12345.
+	std::vector<std::pair<std::string, int>> keys = {
+		{"peer", 12345}, {"peer", 12346}, {"peer", 12347}, {"peer", 12348}};
+
+	std::set<DaybreakConnection *> originals;
+	originals.insert(conn_.get());
+	for (size_t i = 1; i < keys.size(); i++) {
+		std::shared_ptr<DaybreakConnection> made;
+		manager_->OnNewConnection([&](std::shared_ptr<DaybreakConnection> c) { made = c; });
+		manager_->Connect(keys[i].first, keys[i].second);
+		ASSERT_NE(made, nullptr);
+		originals.insert(made.get());
+	}
+	ASSERT_EQ(manager_->m_connections.size(), keys.size());
+
+	// Put every entry into the timed-out Disconnecting state.
+	for (auto &kv : manager_->m_connections) {
+		kv.second->m_status     = StatusDisconnecting;
+		kv.second->m_close_time = Clock::now() - std::chrono::milliseconds(opts_.connection_close_time + 100);
+	}
+
+	int reconnects = 0;
+	manager_->OnNewConnection([](std::shared_ptr<DaybreakConnection>) {});
+	manager_->OnConnectionStateChange(
+		[&](std::shared_ptr<DaybreakConnection> c, DbProtocolStatus, DbProtocolStatus n) {
+			if (n == StatusDisconnected && originals.count(c.get())) {
+				reconnects++;
+				manager_->Connect(c->RemoteEndpoint(), c->RemotePort());
+			}
+		});
+
+	manager_->Process();
+
+	EXPECT_EQ(reconnects, (int)keys.size());
+	ASSERT_EQ(manager_->m_connections.size(), keys.size());
+	for (auto &k : keys) {
+		auto iter = manager_->m_connections.find(k);
+		ASSERT_NE(iter, manager_->m_connections.end()) << k.first << ":" << k.second;
+		EXPECT_EQ(originals.count(iter->second.get()), 0u)
+			<< "entry for " << k.first << ":" << k.second << " is still the old connection";
+	}
+}
+
+TEST_F(DaybreakStateMachineTest, DisconnectCallbackThatErasesItsOwnEntryIsSafe) {
+	// A handler that reacts to StatusDisconnected by tearing the entry out of
+	// the manager itself. Under the old ordering the callback ran while
+	// Process() still held a live iterator to that node, and Process() then
+	// called erase()/operator++ on the freed iterator -- undefined behaviour
+	// on the exact path a zone-out takes. With the fix the entry is already
+	// gone, the callback's erase is a no-op, and the snapshot loop re-looks-up
+	// every remaining key before touching the map.
+	createManager();
+	forceConnected();
+
+	auto victim = conn_;
+	std::shared_ptr<DaybreakConnection> survivor;
+	manager_->OnNewConnection([&](std::shared_ptr<DaybreakConnection> c) { survivor = c; });
+	manager_->Connect("peer", 12346);
+	ASSERT_NE(survivor, nullptr);
+	survivor->m_status = StatusConnected;
+
+	manager_->OnConnectionStateChange(
+		[&](std::shared_ptr<DaybreakConnection> c, DbProtocolStatus, DbProtocolStatus n) {
+			if (n == StatusDisconnected) {
+				manager_->m_connections.erase(std::make_pair(c->RemoteEndpoint(), c->RemotePort()));
+			}
+		});
+
+	victim->Close();
+	victim->m_close_time = Clock::now() - std::chrono::milliseconds(opts_.connection_close_time + 100);
+
+	manager_->Process();
+
+	EXPECT_EQ(victim->GetStatus(), StatusDisconnected);
+	ASSERT_EQ(manager_->m_connections.size(), 1u);
+	EXPECT_EQ(manager_->m_connections.begin()->second.get(), survivor.get());
+}

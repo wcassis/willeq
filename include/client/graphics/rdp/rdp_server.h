@@ -127,6 +127,17 @@ public:
     bool isRunning() const { return running_.load(); }
 
     /**
+     * @brief Check if the server holds initialized resources
+     *
+     * True between a successful initialize() and the stop() that
+     * releases the listener and the Winsock reference. A failed
+     * start() releases them too, so this goes back to false (T306).
+     *
+     * @return true if initialize() has succeeded and not yet been undone
+     */
+    bool isInitialized() const { return initialized_.load(); }
+
+    /**
      * Get the number of connected clients.
      */
     size_t getClientCount() const;
@@ -211,6 +222,10 @@ private:
     bool generateSelfSignedCertificate();
     // Listener thread function
     void listenerThread();
+
+    // Release the listener + Winsock reference acquired by initialize()
+    // and drop back to the uninitialized state (T306).
+    void releaseListenerResources();
     // Join and remove finished peer threads
     void cleanupFinishedPeerThreads();
 
