@@ -185,13 +185,20 @@ TEST_F(FirstPersonWeaponAttachmentTest, HeldWeaponIsHeadingInvariantInTheCameraF
         equip->updateAbsolutePosition();
         const irr::core::vector3df weapon = equip->getAbsoluteTransformation().getTranslation();
 
-        // The real first-person camera, from the one formula.
-        const float aspect = 4.0f / 3.0f;
-        const float vFov = firstPersonVerticalFovRadians(aspect);
+        // The real first-person camera, from the one formula, called exactly
+        // as IrrlichtRenderer::updateFirstPersonCamera() calls it. MERGE NOTE
+        // (fable, 2026-08-28): T301 Leg B replaced
+        // getPlayerEyeHeightAboveNodeOrigin() with the per-race
+        // getPlayerFirstPersonEyeOffset() and dropped the unused
+        // verticalFovRadians parameter from computeFirstPersonCamera(); this
+        // call site is mirrored onto the new production call verbatim. The
+        // property under test is unchanged.
+        const auto eyeOffset = entities_->getPlayerFirstPersonEyeOffset();
         const float headingUnits = headingDeg * 512.0f / 360.0f;
         const FirstPersonCameraPlacement cam = computeFirstPersonCamera(
-            px, py, pz, /*eyeAboveNodeOrigin=*/entities_->getPlayerEyeHeightAboveNodeOrigin(),
-            /*eyeAdjustUnits=*/0.0f, headingUnits, /*lookPitchDegrees=*/0.0f, vFov);
+            px, py, pz, eyeOffset.irrY,
+            /*eyeAdjustUnits=*/0.0f, headingUnits, /*lookPitchDegrees=*/0.0f,
+            /*targetDistance=*/100.0f, eyeOffset.irrX, eyeOffset.irrZ);
 
         irr::core::vector3df eye(cam.posX, cam.posY, cam.posZ);
         irr::core::vector3df fwd(cam.targetX - cam.posX, 0.0f, cam.targetZ - cam.posZ);
