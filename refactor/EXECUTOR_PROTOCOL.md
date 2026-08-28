@@ -42,6 +42,17 @@ references this file; plans carry only unit-specific content.
   540s so a single invocation can never approach the Bash tool's 600s
   ceiling. `scripts/wait_for.sh --help` for full usage.
 - Stay out of parallel units' file territory (named in each plan).
+- **NEVER use `git stash`. THE STASH STACK IS SHARED ACROSS ALL WORKTREES** —
+  it lives in the common `.git`, exactly like the eqemu lock, and slots are NOT
+  isolated from each other on it. T306 (2026-08-28) pushed a stash, another slot
+  pushed one in between, and T306's `git stash pop` pulled the OTHER unit's work
+  into its tree and dropped that entry: race_models.json, willeq.db, race_codes,
+  entity_renderer, plus a stray 644->755 mode change on `data/willeq.db`. It was
+  recovered by hand (`git stash store <sha>`) and cost most of an hour. **A pop
+  can silently take another agent's uncommitted work.** To stage a
+  revert-and-prove step, export a patch (`git diff > /tmp/.../x.patch`,
+  `git apply -R`, `git apply`) or write your own patch script — never the stash.
+
 - Honor STOP conditions exactly; report narrowed evidence, don't thrash.
 - Evidence discipline: garbled/invalid renders void any claim built on
   them; identity-between-paths ≠ correctness; never self-declare
