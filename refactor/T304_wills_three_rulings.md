@@ -13,8 +13,11 @@ control of the character**. If HP drops further (exact threshold unconfirmed) th
 player **dies and is immediately relocated to the bind point BY THE SERVER**.
 
 Consequences for the design, none of which may be re-litigated:
-- A client death/unconscious state must **GATE INPUT**, not merely play an
-  animation. The `AT_DIE` inbound handler being animation-only
+- A client death/unconscious state must **GATE INPUT SELECTIVELY** (Will,
+  2026-08-28, clarifying): **chat STILL WORKS while unconscious** — "strangely",
+  but it does. What is blocked is **player movement, inventory, spells and the
+  hotbar**. So this is NOT a blanket input block: a gate that kills chat too is
+  WRONG, and so is one that only plays an animation. The `AT_DIE` inbound handler being animation-only
   (`eq_entities.cpp:774-782`, pushes `EntityDeathAnimation` keyed by spawnId and
   nothing else) is therefore incomplete for the LOCAL player.
 - The relocation is the **server's** to perform. The client never initiates it.
@@ -34,9 +37,15 @@ Then implement:
    news. This same setter is what stun and GM-teleport need; build it once.
    Outbound `POS_DEAD` (`eq_movement.cpp:1522-1527`) must keep working unchanged.
 2. Adopt the measured state locally for the LOCAL player and gate control.
-3. Pin it: a test that a server-originated death sets the state and sends NOTHING,
-   and a test that input is refused in that state. Reach the gate the way a USER
-   does, per the pin-every-fix rule.
+3. Pin it: a test that a server-originated death sets the state and sends NOTHING;
+   a test that movement, inventory, spells and hotbar are refused in that state;
+   and — equally load-bearing — **a test that CHAT STILL WORKS in that state**, so
+   a later over-broad gate cannot pass. Reach each the way a USER does, per the
+   pin-every-fix rule.
+4. Enumerate every input path against that split before writing the gate, and list
+   it in the Review. Anything not in Will's four blocked categories (movement,
+   inventory, spells, hotbar) stays ALLOWED unless the live capture shows
+   otherwise — do not extrapolate the blocklist.
 
 ## Leg 2 — RACE COLOUR COLUMN. No server.
 
