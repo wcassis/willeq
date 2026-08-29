@@ -301,6 +301,66 @@ two, because they change live spell behaviour. The fourth and worst copy,
 `CombatManager::IsHumanoid()`'s race-id table, is CLOSED by T308 Leg 1
 (`tests/test_hunt_target_body_type.cpp`).
 
+### TIER 2 addendum — the first-person camera azimuth and the wire z (T310 Leg C, 2026-08-29)
+
+**Both were MEASURED against the official client at the same server-set pose, both
+are reported and deliberately NOT fixed, and both need Will's call plus their own
+two-client verification.** Evidence: `refactor/T310_camera_match_against_oracle.md`
+(Leg C Review), `review/T310/legC/`.
+
+25. **fable's first-person camera azimuth is MIRRORED against the official
+    client's** — not offset, reflected:
+
+        psi_official = 90 deg - heading_deg     (measured on the oracle by DISPLACEMENT:
+                                                 at h=480 a 1.2 s walk gave a 112.5 deg bearing)
+        psi_fable    =          heading_deg     (measured from fable's own /fpcam dump
+                                                 eye/target vectors at h = 480, 416, 352, 288)
+
+    They agree only at headings 64 and 320. **The mirror made a prediction and the
+    prediction held:** it says the oracle's h=480 frame is reproduced by fable at
+    `128 - 480 mod 512 = 160`, and the scored sweep's minimum is exactly at 160
+    (edge 0.723 vs 0.835-0.896 for 96/128/192/224/480).
+    *Impact:* in first person the player looks in a different direction than the
+    same server heading points the official client. Every Configuration-1
+    measurement in Leg C was therefore taken with fable at h=480 against the oracle
+    at h=160.
+    **⚠ This is NOT the `docs/CLAUDE.md` Heading/Rotation Conventions warning**, which
+    is about player-vs-NPC MODEL rotation (see the memory `heading-90-offset-load-bearing`
+    — that asymmetry is load-bearing and must not be harmonised). This is the
+    first-person CAMERA. Note the oracle's bearing is exactly what fable's own
+    documented `90 - server_heading_deg` convention predicts: **the convention is
+    right and the first-person camera is not using it.**
+
+26. **The two clients put different z ON THE WIRE, live.** At a qeynos2 spot where
+    the server's own raycast puts the collision ground at `Best Z = -0.00`, the
+    official client's `#loc` reads `3.75` across three readings in two sessions —
+    exactly EQEmu's `Mob::GetZOffset()` for a default size-6 humanoid
+    (`zone/waypoints.cpp:881-1006`, `0.2 * size * k`). fable transmits **3.00**, with
+    its feet 0.119 BELOW that ground.
+    *Impact:* standing at the same physical spot, the two clients report different
+    positions to the server and therefore to every other player. This is the live
+    half of Leg B's Part 1, which could only establish that the server takes a
+    client's z verbatim and never adjusts it (`Mob::FixZ` early-returns for clients
+    and nothing passes `fix_client_z = true`) — so whatever a client sends is what
+    everyone sees.
+    **Related and still open, same belief family (T310 Leg B, found not fixed):**
+    `eq_entities.cpp:416,1184` subtract `size/2` from the player's own z on a comment
+    claiming `SendPositionUpdate` adds it back — it does not (`eq_movement.cpp:1100`
+    sends z directly), and `spell_cast_checks.cpp` adds it back for its LOS ray,
+    double-counting; and `eq_movement.cpp:1741` uses `PosZ() + 6.0` for water
+    detection, a third frame in the same subsystem.
+
+27. **Auto-attack produced NO SWING in 12 live runs** with `/target` and `/attack`
+    both confirmed in the log (max own-geometry coverage 0.90%, zero frames above
+    10%). T310 Leg C could not reach its Configuration 3 because of it, so **T309
+    Leg 2's level-pitch face-fill is NOT closed** and the draw rule's live behaviour
+    during a swing is unconfirmed at the solved camera.
+    **This is a LEAD, not a finding** — it may be the draw predicate, the animation,
+    the attack timer, or the test setup. It is on this list because a player who
+    presses attack and sees no swing is a live defect if it reproduces.
+    **EXECUTOR-READY as a diagnosis unit**; needs the server.
+
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
