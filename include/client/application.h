@@ -134,6 +134,14 @@ struct ApplicationConfig {
     // complete no-op when dumpFramesDir is empty or dumpFramesEvery is 0.
     int dumpFramesMaxCount = 600;
 
+    // T310 Leg A: --fpcam name=value[,name=value...] (repeatable) -- the
+    // startup form of the /fpcam command, so a camera sweep can launch a
+    // fresh process per candidate value instead of typing into a running one.
+    // Applied by Application::initialize() before any renderer exists; an
+    // empty vector is a complete no-op and every parameter keeps its compiled
+    // default. See include/client/graphics/first_person_tunables.h.
+    std::vector<std::string> fpCamOverrides;
+
     // Help flag
     bool showHelp = false;
 

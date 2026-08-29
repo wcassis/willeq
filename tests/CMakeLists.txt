@@ -2065,6 +2065,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
 ENDIF()
 
+# T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
+# never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
+# plus the catalog gate and Application::parseArguments -- so ONE binary covers
+# both command paths and the startup form.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_tunables
+        test_first_person_tunables.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_tunables PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_tunables GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_first_person_tunables)
+ENDIF()
+
 # T233: registry-3 (renderer) command replies must echo to the console log
 # as well as the chat panel. Same bare-IrrlichtRenderer idiom as
 # test_irrlicht_camera_command above, plus the T31 stdout-capture idiom

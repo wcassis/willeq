@@ -193,3 +193,131 @@ the fixed pose through the server, capture, diff against the stored oracle frame
 emit the score; sweep. Keep it in `scripts/` with the oracle frames it compares
 against named in a README. **The point is that the next camera question is
 answered in an afternoon by running this, not in three units by argument.**
+
+---
+
+## Review — Leg A (slot3, 2026-08-29)
+
+**Delivered: every first-person camera parameter is settable at runtime, and no
+default changed.** A candidate value now costs a slash command or a process
+launch, not a rebuild.
+
+### What was built
+
+- `include/client/graphics/first_person_tunables.h` — nine parameters in one
+  atomic, process-global store with `fpTunable(FpTunable::X)` as the read. The
+  DEFAULTS ARE THE CONSTANTS, read from them directly rather than retyped.
+- `src/client/graphics/first_person_tunables.cpp` — name lookup, parsing,
+  formatting, and `FormatFirstPersonPoseDump()`. A new TU on purpose: the
+  renderer's own TU is already over the size gate, and none of this needs a
+  camera.
+- `/fpcam` in `IrrlichtRenderer::processSlashCommand()` (registry 3) + the
+  mandatory `kCatalog` row. `/fpcam` | `list` | `set <name> <value>` |
+  `reset [<name>]` | `dump` | `help [<name>]`. A `set`/`reset` calls
+  `repositionFirstPersonCamera()` so it lands on the current frame.
+- `--fpcam name=value[,name=value...]`, repeatable, applied by
+  `Application::initialize()` before anything reads a camera number. A rejected
+  assignment is logged at ERROR and that parameter keeps its default — a sweep
+  must never silently render the default and produce a flat difference curve.
+
+### The nine, and an honest split
+
+Live (a production consumer reads them): `eyeForwardOffset`,
+`eyeHeightFractionOfSkull`, `maxDownPitch`, `maxUpPitch`, `pitchDown`, `hfov`,
+`nearPlane`.
+
+**ADVISORY (no runtime consumer): `crownAboveEye` and
+`eyeHeightFractionOfStandingHeight`.** The plan names `kCrownAboveEyeUnits` in
+its minimum set, so it is exposed — but a grep of the tree shows both constants
+are read only by `tests/test_first_person_eye_anatomy.cpp`;
+`kEyeHeightFractionOfSkull` was SOLVED against `crownAboveEye` at authoring
+time and nothing consults it at runtime. Rather than pretend, both are labelled
+`status=advisory` in every listing and `set` on one prints
+"ADVISORY: this parameter has no runtime consumer and moves no pixels".
+A tunable that silently does nothing is exactly the trap this unit exists to
+remove. **Leg C: the live lever for eye HEIGHT is `eyeHeightFractionOfSkull`
+(plus the existing `playerConfig_.eyeHeight` nudge), not `crownAboveEye`.**
+
+### Two findings worth carrying forward
+
+1. **The eye point was cached at model load** (`animated_mesh_eye.cpp`, the
+   `eyeHeadBoneIndex_ == -2` block), so a runtime `eyeHeightFractionOfSkull`
+   would have been frozen at whatever value happened to be set when the model
+   loaded — the tunable would have looked live and been dead after the first
+   frame. Fixed by caching the head-vertex CLUSTER (a real property of the
+   mesh) and deriving the eye point per call; the expensive scan still happens
+   once.
+2. **`nearPlane` is applied in EVERY camera mode**, not just first person
+   (`applyCameraProjectionForMode()` deliberately sets one near value for both
+   — T300 measured the official client clipping nothing). Overriding it
+   therefore changes third person too, and so would move the visual goldens.
+   Said so in the parameter's own help text.
+
+### Frames, because the dump is Leg C's input format
+
+`/fpcam dump` emits one `[FPCAM-DUMP]` line per group, every number carrying
+its units and frame in the key. The eye is reported in BOTH frames
+(`eyeIrrX/Y/Z` Irrlicht world, `eyeEqX/Y/Z` EQ world) so a reader never has to
+remember which one a dump is in, plus `nodeOriginEqZ`, `collisionZOffset`,
+`feetEqZ`, `eyeAboveNodeOrigin`, `eyeAboveGround`, the pitch chain, the FOV,
+the near plane, the target and up vectors, and a `tunables ...` line carrying
+the inputs that produced the pose — so one dump is a complete sweep sample.
+
+`collisionZOffset`/`feetEqZ` are REPORTED ONLY; Leg B owns that number and is
+expected to change it, which will change `eyeAboveGround` here.
+
+**⚠ RESTATED FOR THE SWEEP DRIVER: assert on the emitted line, never on
+`outcome`.** Registry 3 is fire-and-forget; `printCommandResult()` says
+`outcome=queued` whatever happened. The `chat` lambda both pushes the
+`SystemMessage` and `LOG_INFO(MOD_MAIN, ...)`, so `[FPCAM-DUMP]` is greppable
+from a `--script` run's log.
+
+### Verification (by EXIT STATUS)
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` | PASS (exit 0) |
+| `ctest --test-dir build -j6` | PASS — 3316 tests, 1 failure: `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk) |
+| `tests/test_first_person_tunables.cpp` (new, 29 tests) | PASS |
+| `tests/test_merged_help.cpp` (catalog/if-chain drift) | PASS — 24/24, incl. `MatchesRendererIfChainExactly` |
+| `tests/test_first_person_camera_single_formula.cpp` (single-formula drift) | PASS — 15/15 |
+| `scripts/build-gles2-x86.sh` | PASS (exit 0) |
+| `scripts/ci/visual_gate.sh` | **PASS**, goldens untouched (`git status` clean under goldens) |
+| `scripts/build-arm-noble.sh` | PASS (exit 0) |
+| `scripts/refactor/check_file_sizes.sh fable` | no NEW FAIL — `irrlicht_renderer.cpp` was already 3148 (>3000) on `fable` and is 3237; both WARNs pre-existing |
+
+**Reachability, demonstrated on both paths concretely:**
+- *Chat / renderer if-chain*: `FpCamRendererTest` drives the REAL
+  `IrrlichtRenderer::processSlashCommand("/fpcam ...")` on a bare renderer and
+  drains the `SystemMessage` replies — list, set, reset, dump.
+- *`--script` / console*: `Application::DispatchSlashCommand("/fpcam dump")` —
+  the exact function `updateScript()` (`application.cpp:1162`) and piped stdin
+  (`:395`) call — returns `registry=renderer`, i.e. the catalog gate at `:1231`
+  admitted it; `/fpcamnotacommand` returns `registry=none`. Confirmed live:
+  piping `/fpcam dump` into a real headless run printed
+  `CMD outcome=held registry=pending ... cmd="/fpcam dump"` (held only because
+  there is no server in this leg — Leg C owns eqemu).
+- *Startup*: a real run with
+  `--fpcam eyeForwardOffset=0.9,hfov=70 --fpcam bogus=1` logged
+  `[FPCAM] --fpcam applied: eyeForwardOffset=0.9,hfov=70` and
+  `[FPCAM] --fpcam 'bogus=1' REJECTED: unknown parameter 'bogus' ...`.
+
+### Deviations, flagged
+
+1. **Four constants moved file** (values and comments byte-identical):
+   `kFirstPersonPitchDownDegrees`, `kFirstPersonHorizontalFovDegrees`,
+   `kFirstPersonMaxUpPitchDegrees`, `kWorldNearPlaneUnits` moved from
+   `first_person_camera.h` to `first_person_tunables.h`, which that header now
+   includes — so every existing `EQT::Graphics::k...` spelling still resolves
+   and no caller changed. The move exists solely so the default table can name
+   them without a circular include. Breadcrumb comments left behind.
+2. **`maxUpPitch` above 89 does not take full effect.** The camera formula
+   honours it, but the mouse-look accumulator in `renderer_player_physics.cpp`
+   still clamps the STORED pitch to the constant — that file is Leg B's
+   territory this unit, so it was left alone. Lowering `maxUpPitch` works in
+   both directions; raising it past 89 is capped by the accumulator. Not a
+   solve target, and noted in the parameter's help.
+3. **`crownAboveEye` / `eyeHeightFractionOfStandingHeight` are advisory**, per
+   the section above.
+4. **No live oracle work, by design** — this leg took no server and produced no
+   pixels; that is Leg C's.
